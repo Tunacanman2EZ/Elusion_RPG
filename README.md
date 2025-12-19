@@ -29,3 +29,5 @@ To Do:
     * Weapons, armor and items
     * Animated character and pet sprites (8-directional, attacks)
     * Skill and ability effect animations
+ 
+Contributing Art/Assets If you’d like to submit art or other assets, please first read ASSET_CONTRIBUTOR_AGREEMENT.md for terms and instructions.
