@@ -1,0 +1,67 @@
+[gd_scene load_steps=5 format=3 uid="uid://lon8advnxgqx"]
+
+[ext_resource type="Script" uid="uid://csey5unhicv5r" path="res://scripts/login_menu.gd" id="1_u8sew"]
+[ext_resource type="Texture2D" uid="uid://bpu2av41q1t8g" path="res://assets/images/skeleton.png" id="2_jmb1l"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jmb1l"]
+bg_color = Color(0.787515, 0.528556, 0.417338, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hhelq"]
+bg_color = Color(0.58919, 0.603833, 0.602271, 1)
+
+[node name="LoginMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_u8sew")
+metadata/_edit_use_anchors_ = true
+
+[node name="TextureRect" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -444.0
+offset_bottom = 444.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_jmb1l")
+stretch_mode = 3
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 0
+anchor_right = 1.01838
+anchor_bottom = 0.993056
+metadata/_edit_use_anchors_ = true
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(400, 250)
+layout_mode = 2
+
+[node name="UsernameLineEdit" type="LineEdit" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_jmb1l")
+placeholder_text = "New/Existing UserName"
+
+[node name="PasswordLineEdit" type="LineEdit" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_hhelq")
+placeholder_text = "Password"
+secret = true
+
+[node name="RememberMe" type="CheckBox" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0, 0.776471, 0, 1)
+text = "Remember me"
+
+[node name="Login_button" type="Button" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+text = "Log Into Elysium"
+
+[node name="ErrorLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Login_button" to="." method="_on_Login_Button_pressed"]
