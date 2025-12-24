@@ -1,4 +1,4 @@
-[gd_scene load_steps=66 format=3 uid="uid://6q2racoc6hp3"]
+[gd_scene load_steps=67 format=3 uid="uid://6q2racoc6hp3"]
 
 [ext_resource type="Script" uid="uid://c4x1qwa8wnlsu" path="res://Healer.gd" id="1_qi8gc"]
 [ext_resource type="Texture2D" uid="uid://b50r78uk6l76n" path="res://assets/character_sprite/Healer/AdventurerWalk64x64-1.png.png" id="2_5sjyc"]
@@ -63,6 +63,7 @@
 [ext_resource type="Texture2D" uid="uid://dy3v3fsqudly3" path="res://assets/character_sprite/Healer/AdventurerWalk64x64-29.png.png" id="61_ood7c"]
 [ext_resource type="Texture2D" uid="uid://dtk7qpxxk1cqg" path="res://assets/character_sprite/Healer/AdventurerWalk64x64-30.png.png" id="62_wd54d"]
 [ext_resource type="Texture2D" uid="uid://dp6js6awan1tf" path="res://assets/character_sprite/Healer/AdventurerWalk64x64-31.png (1).png" id="63_8fvyt"]
+[ext_resource type="PackedScene" uid="uid://ncocxhleglxb" path="res://scenes/Mage.tscn" id="64_5sjyc"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_52ku1"]
 animations = [{
@@ -312,5 +313,8 @@ shape = SubResource("CircleShape2D_2o75m")
 [node name="Camera2D" type="Camera2D" parent="."]
 z_index = 10
 texture_filter = 1
-zoom = Vector2(4, 4)
+zoom = Vector2(3, 3)
 rotation_smoothing_enabled = true
+
+[node name="Player_2" parent="." instance=ExtResource("64_5sjyc")]
+z_index = 10

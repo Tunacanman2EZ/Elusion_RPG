@@ -12,11 +12,19 @@ config_version=5
 
 config/name="elusion_trial"
 run/main_scene="uid://lon8advnxgqx"
+run/disable_stdout=true
 config/features=PackedStringArray("4.4", "Mobile")
 
 [autoload]
 
 CharacterData="*res://CharacterData.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/mode=3
+window/stretch/mode="viewport"
 
 [input]
 

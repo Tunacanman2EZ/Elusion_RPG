@@ -51,9 +51,9 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 80.0
-offset_top = 45.0
+offset_top = 41.0
 offset_right = 163.0
-offset_bottom = 68.0
+offset_bottom = 64.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_rpq25")
@@ -86,9 +86,9 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 272.0
-offset_top = 41.0
+offset_top = 37.0
 offset_right = 355.0
-offset_bottom = 64.0
+offset_bottom = 60.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_gk21y")
@@ -116,9 +116,9 @@ layout_mode = 2
 
 [node name="Label_3" type="Label" parent="CenterContainer/VBoxContainer/Tank"]
 layout_mode = 0
-offset_left = 472.0
+offset_left = 464.0
 offset_top = 33.0
-offset_right = 555.0
+offset_right = 547.0
 offset_bottom = 56.0
 theme_override_styles/normal = SubResource("StyleBoxFlat_nb21n")
 text = "Empty Slot"
@@ -167,11 +167,11 @@ offset_right = 760.0
 offset_bottom = 381.0
 text = "Create Healer"
 
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Warrior/SelectButton_1" to="." method="_on_select_button_1_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Warrior/SelectButton_1" to="." method="_on_SelectButton_1_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/Warrior/CreateButton_1" to="." method="_on_create_button_1_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Mage/SelectButton_2" to="." method="_on_select_button_2_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Mage/SelectButton_2" to="." method="_on_SelectButton_2_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/Mage/CreateButton_2" to="." method="_on_create_button_2_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Tank/SelectButton_3" to="." method="_on_select_button_3_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Tank/SelectButton_3" to="." method="_on_SelectButton_3_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/Tank/CreateButton_3" to="." method="_on_create_button_3_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Healer/SelectButton_4" to="." method="_on_select_button_4_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Healer/SelectButton_4" to="." method="_on_SelectButton_4_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/Healer/CreateButton_4" to="." method="_on_create_button_4_pressed"]

@@ -313,7 +313,7 @@ script = ExtResource("64_ffrwm")
 z_index = 1
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_ih3hd")
-animation = &"Walk_Up"
+animation = &"Walk_Down"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 z_index = 1
@@ -322,6 +322,6 @@ shape = SubResource("CircleShape2D_r8um1")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 texture_filter = 1
-zoom = Vector2(4, 4)
+zoom = Vector2(3, 3)
 position_smoothing_enabled = true
 position_smoothing_speed = 3.0

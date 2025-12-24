@@ -299,7 +299,6 @@ animations = [{
 radius = 8.0
 
 [node name="Player_2" type="CharacterBody2D"]
-z_index = 10
 script = ExtResource("64_6o3c0")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
@@ -311,5 +310,5 @@ z_index = 1
 shape = SubResource("CircleShape2D_nd6ov")
 
 [node name="Camera2D" type="Camera2D" parent="."]
-zoom = Vector2(4, 4)
+zoom = Vector2(3, 3)
 position_smoothing_enabled = true

@@ -4,9 +4,9 @@ extends CharacterBody2D
 @export var speed := 150  # Base move speed (improves with agility)
 
 # === INVENTORY AND CURRENCY ===
-var gold := 0               # How much gold this player has
-var lusions := 0            # How many Lusions (special currency/resources)
-var inventory := []         # Player's inventory (list of items, can be strings, Dictionaries, or custom objects)
+var gold := 0             # Gold count
+var lusions := 0          # Lusions (special currency)
+var inventory := []       # List of item identifiers/objects
 
 # === CORE RPG STATS ===
 var character_name := "Warrior"
@@ -20,7 +20,7 @@ var magic := 1
 var fishing := 1
 var cooking := 1
 var xp := 0                  # General XP for character level
-var xp_next := 100           # XP needed to reach next level
+var xp_next := 100           # XP needed for next level
 
 # === SKILL XP TRACKING ===
 var attack_xp := 0
@@ -31,12 +31,12 @@ var fishing_xp := 0
 var cooking_xp := 0
 
 func _ready():
-	"""Initialize player: set up camera and group for main character."""
 	$Camera2D.make_current()
 	add_to_group("player")
+	print("Player added to group: player")  # Debug line!
 
 func _physics_process(_delta):
-	"""Handle player movement and movement-based animation."""
+	# Handle player movement and movement-based animation.
 	var direction := Vector2.ZERO
 
 	# Simple WASD/arrow movement
@@ -63,12 +63,12 @@ func _physics_process(_delta):
 # === HP DAMAGE AND LEVEL SYSTEM ===
 
 func take_damage(amount: int) -> void:
-	"""Deal HP damage, clamp HP to [0, max_hp]."""
+	# Deal HP damage, clamp HP to [0, max_hp]
 	hp = clamp(hp - amount, 0, max_hp)
 	assert(hp >= 0, "HP went below 0!")
 
 func level_up() -> void:
-	"""Level up: increase max and current HP, up to new max."""
+	# Level up: increase max/current HP, up to new max.
 	level += 1
 	max_hp += 10
 	hp = clamp(hp + 10, 0, max_hp)
@@ -77,10 +77,7 @@ func level_up() -> void:
 # === ANIMATION HANDLING ===
 
 func get_walk_animation(dir: Vector2) -> String:
-	"""
-	Find which walk animation to play, based on direction.
-	You must have animations named "Walk_Right", "Walk_Left", etc.
-	"""
+	# Returns walk animation name based on movement direction.
 	var angle = dir.angle()
 	if angle < 0:
 		angle += PI * 2
@@ -106,14 +103,11 @@ func get_walk_animation(dir: Vector2) -> String:
 # === XP AND LEVELING LOGIC ===
 
 func get_threshold(stat_level: int, multiplier: float) -> int:
-	"""
-	XP required to reach the next level for a skill.
-	Each skill may use a different multiplier for difficulty curve.
-	"""
+	# XP required for next level for a skill. Hardcoded base of 100.
 	return int(100 * pow(multiplier, stat_level - 1))
 
 func gain_xp(amount: int):
-	"""Add general XP, level up when enough is acquired (XP curve doubles each level)."""
+	# Add general XP, level up when enough is acquired (XP curve doubles each level)
 	xp += amount
 	while xp >= xp_next:
 		level_up()
@@ -121,9 +115,7 @@ func gain_xp(amount: int):
 		xp_next *= 2
 
 func calculate_xp_award(player_stat: int, monster_level: int, base_xp: int) -> int:
-	"""
-	Calculate XP reward scale for monsters, adjusted for difficulty difference.
-	"""
+	# XP reward adjustment for monsters/stat curve
 	if monster_level > player_stat + 10:
 		return int(base_xp * 0.25)
 	elif monster_level < player_stat - 10:
@@ -133,9 +125,7 @@ func calculate_xp_award(player_stat: int, monster_level: int, base_xp: int) -> i
 # === STAT XP & LEVELING EXAMPLES ===
 
 func swing_attack(monster_level: int, base_xp: int = 1):
-	"""
-	Earn attack XP for hitting a monster, including leveling logic.
-	"""
+	# Earn attack XP for hitting a monster.
 	var xp_gain = calculate_xp_award(attack, monster_level, base_xp)
 	attack_xp += xp_gain
 	var threshold = get_threshold(attack, 1.25)
@@ -145,25 +135,38 @@ func swing_attack(monster_level: int, base_xp: int = 1):
 		threshold = get_threshold(attack, 1.25)
 
 func take_step():
-	"""Every frame you move, gain agility XP (example of skill XP on action)."""
+	# Every frame you move, gain agility XP
 	agility_xp += 1
-	var threshold = get_threshold(agility, 1.08)
+	var threshold = get_threshold(agility, 1.25)
 	while agility_xp >= threshold:
 		agility += 1
 		agility_xp -= threshold
-		threshold = get_threshold(agility, 1.08)
+		threshold = get_threshold(agility, 1.25)
 
-# === INVENTORY UTILITIES (expand as needed) ===
+func cast_spell(monster_level: int, base_xp: int = 1):
+	# Earn magic XP for casting spells.
+	var xp_gain = calculate_xp_award(magic, monster_level, base_xp)
+	magic_xp += xp_gain
+	var threshold = get_threshold(magic, 1.23)
+	while magic_xp >= threshold:
+		magic += 1
+		magic_xp -= threshold
+		threshold = get_threshold(magic, 1.23)
 
-func add_item(item):
-	"""Adds an item (could be a string, dict, or object) to the inventory."""
-	inventory.append(item)
+func fish_catch(_area_level: int, base_xp: int = 1):
+	# Earn fishing XP for catching fish.
+	fishing_xp += base_xp
+	var threshold = get_threshold(fishing, 1.27)
+	while fishing_xp >= threshold:
+		fishing += 1
+		fishing_xp -= threshold
+		threshold = get_threshold(fishing, 1.27)
 
-func remove_item(item):
-	"""Removes an item (by value) from the inventory, if it exists."""
-	if item in inventory:
-		inventory.erase(item)
-
-func has_item(item) -> bool:
-	"""Check if player has the given item in their inventory."""
-	return item in inventory
+func cook_dish(_difficulty: int, base_xp: int = 1):
+	# Earn cooking XP for cooking dishes.
+	cooking_xp += base_xp
+	var threshold = get_threshold(cooking, 1.21)
+	while cooking_xp >= threshold:
+		cooking += 1
+		cooking_xp -= threshold
+		threshold = get_threshold(cooking, 1.21)

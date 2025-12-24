@@ -1,0 +1,74 @@
+[gd_scene load_steps=7 format=3 uid="uid://40fim22w86ph"]
+
+[ext_resource type="Script" uid="uid://bknkbe5edumu8" path="res://scripts/teleporter_1.gd" id="1_pgi76"]
+[ext_resource type="Texture2D" uid="uid://dg3uikwr64ilk" path="res://assets/Tiles/teleport_tile-1.png.png" id="2_m8lym"]
+[ext_resource type="Texture2D" uid="uid://dt38kh22i5drp" path="res://assets/Tiles/teleport_tile-2.png.png" id="3_y0d3q"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_a20sn"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_m8lym")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_y0d3q")
+}],
+"loop": true,
+"name": &"Teleporter2",
+"speed": 2.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_impho"]
+radius = 0.000122083
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_cjm56"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_m8lym")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_y0d3q")
+}],
+"loop": true,
+"name": &"default",
+"speed": 1.0
+}]
+
+[node name="Teleports" type="Node2D"]
+
+[node name="Teleporter_1" type="Area2D" parent="."]
+z_index = 1
+scale = Vector2(0.928403, 0.135342)
+script = ExtResource("1_pgi76")
+
+[node name="Teleporter2" type="AnimatedSprite2D" parent="Teleporter_1"]
+z_index = 1
+texture_filter = 1
+position = Vector2(-1.90735e-06, 2187.05)
+scale = Vector2(1.61568, 9.23585)
+sprite_frames = SubResource("SpriteFrames_a20sn")
+animation = &"Teleporter2"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Teleporter_1"]
+modulate = Color(0, 0, 0, 1)
+self_modulate = Color(0.00184107, 0.00184107, 0.00184107, 1)
+z_index = 1
+texture_filter = 1
+position = Vector2(-9.53674e-07, 2187.05)
+rotation = 3.14159
+scale = Vector2(0.532251, -2.53758)
+shape = SubResource("CircleShape2D_impho")
+debug_color = Color(0.954221, 0.990519, 1, 0.42)
+
+[node name="DestinationPoint" type="Marker2D" parent="Teleporter_1"]
+z_index = 1
+texture_filter = 1
+position = Vector2(0, 3664.79)
+
+[node name="Teleporter1" type="AnimatedSprite2D" parent="Teleporter_1"]
+position = Vector2(3.8147e-06, 3605.68)
+scale = Vector2(1.26126, -10.8658)
+sprite_frames = SubResource("SpriteFrames_cjm56")
+
+[connection signal="body_entered" from="Teleporter_1" to="Teleporter_1" method="_on_body_entered"]
