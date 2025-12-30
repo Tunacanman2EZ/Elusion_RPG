@@ -304,7 +304,7 @@ animations = [{
 [sub_resource type="CircleShape2D" id="CircleShape2D_r8um1"]
 radius = 8.0
 
-[node name="Player" type="CharacterBody2D"]
+[node name="Warrior" type="CharacterBody2D"]
 z_index = 1
 texture_filter = 1
 script = ExtResource("64_ffrwm")

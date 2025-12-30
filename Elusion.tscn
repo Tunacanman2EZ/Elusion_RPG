@@ -1,4 +1,4 @@
-[gd_scene load_steps=26 format=4 uid="uid://cn2pdqcvl6hx5"]
+[gd_scene load_steps=25 format=4 uid="uid://cn2pdqcvl6hx5"]
 
 [ext_resource type="Texture2D" uid="uid://bbpy6asm3aovn" path="res://assets/Tiles/top left brick wall-1.png.png" id="1_d35cg"]
 [ext_resource type="Script" uid="uid://dpxjfqc24q2rg" path="res://elusion.gd" id="1_s1bvo"]
@@ -11,8 +11,7 @@
 [ext_resource type="Texture2D" uid="uid://cpbnpho8ey5s5" path="res://assets/Tiles/New Piskel-1.png (2).png" id="8_581ge"]
 [ext_resource type="Texture2D" uid="uid://b8emqu5al65ft" path="res://assets/Tiles/New Piskel-1.png (3).png" id="9_e8yo3"]
 [ext_resource type="Texture2D" uid="uid://cft7xewsa6egr" path="res://assets/Tiles/New Piskel-1.png (1).png" id="10_m1uj6"]
-[ext_resource type="PackedScene" uid="uid://40fim22w86ph" path="res://teleports.tscn" id="11_bawno"]
-[ext_resource type="PackedScene" uid="uid://tnx8p0sumd67" path="res://inventory.tscn" id="14_m8bs7"]
+[ext_resource type="PackedScene" uid="uid://urywvo8tedkr" path="res://teleports.tscn" id="11_bawno"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_wjb0r"]
 texture = ExtResource("1_d35cg")
@@ -124,6 +123,261 @@ sources/10 = SubResource("TileSetAtlasSource_bo7i5")
 texture_filter = 1
 script = ExtResource("1_s1bvo")
 
+[node name="MenuScreen" type="CanvasLayer" parent="."]
+
+[node name="InventoryUI" type="CanvasLayer" parent="MenuScreen"]
+
+[node name="PanelContainer" type="PanelContainer" parent="MenuScreen/InventoryUI"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -168.0
+offset_top = -182.5
+offset_right = 168.0
+offset_bottom = 182.5
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MenuScreen/InventoryUI/PanelContainer"]
+layout_mode = 2
+
+[node name="LusionsLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer"]
+layout_mode = 2
+text = "Lusions: 0"
+
+[node name="GoldLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer"]
+layout_mode = 2
+text = "Gold: 0"
+
+[node name="Label" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer"]
+layout_mode = 2
+theme_type_variation = &"HeaderLarge"
+text = "Inventory"
+
+[node name="GridContainer" type="GridContainer" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+columns = 5
+
+[node name="InventorySlot1" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot2" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot3" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot4" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot5" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot6" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot7" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot8" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot9" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot10" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot11" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot12" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot13" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot14" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot15" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot16" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot17" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot18" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot19" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="InventorySlot20" type="TextureButton" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/GridContainer"]
+z_index = 10
+texture_filter = 1
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+focus_mode = 0
+
+[node name="MainHBox" type="VBoxContainer" parent="MenuScreen/InventoryUI"]
+modulate = Color(0.669449, 0.64744, 0.981795, 1)
+offset_right = 443.0
+offset_bottom = 31.0
+size_flags_horizontal = 4
+size_flags_vertical = 8
+
+[node name="NavButton" type="HBoxContainer" parent="MenuScreen/InventoryUI/MainHBox"]
+layout_mode = 2
+
+[node name="InventoryButton" type="Button" parent="MenuScreen/InventoryUI/MainHBox/NavButton"]
+texture_filter = 1
+layout_mode = 2
+focus_mode = 0
+text = "Inventory"
+
+[node name="StatsButton" type="Button" parent="MenuScreen/InventoryUI/MainHBox/NavButton"]
+z_index = 1
+texture_filter = 1
+layout_mode = 2
+size_flags_vertical = 0
+focus_mode = 0
+text = "Stats"
+
+[node name="LogoutButton" type="Button" parent="MenuScreen/InventoryUI/MainHBox/NavButton"]
+z_index = 1
+texture_filter = 1
+layout_mode = 2
+focus_mode = 0
+text = "Logout"
+
+[node name="DiscordButton" type="Button" parent="MenuScreen/InventoryUI/MainHBox/NavButton"]
+z_index = 1
+texture_filter = 1
+layout_mode = 2
+focus_mode = 0
+text = "Discord"
+
+[node name="ShopButton" type="Button" parent="MenuScreen/InventoryUI/MainHBox/NavButton"]
+z_index = 1
+texture_filter = 1
+layout_mode = 2
+focus_mode = 0
+text = "Shop"
+
+[node name="MapButton" type="Button" parent="MenuScreen/InventoryUI/MainHBox/NavButton"]
+z_index = 1
+texture_filter = 1
+layout_mode = 2
+focus_mode = 0
+text = "Map"
+
+[node name="OptionsButton" type="Button" parent="MenuScreen/InventoryUI/MainHBox/NavButton"]
+z_index = 1
+texture_filter = 1
+layout_mode = 2
+focus_mode = 0
+text = "Options"
+
+[node name="StatsPanel" type="Panel" parent="MenuScreen/InventoryUI/MainHBox"]
+visible = false
+layout_mode = 2
+
+[node name="OptionsPanel" type="Panel" parent="MenuScreen/InventoryUI/MainHBox"]
+visible = false
+layout_mode = 2
+
+[node name="MapPanel" type="Panel" parent="MenuScreen/InventoryUI/MainHBox"]
+visible = false
+layout_mode = 2
+
+[node name="ShopPanel" type="Panel" parent="MenuScreen/InventoryUI/MainHBox"]
+visible = false
+layout_mode = 2
+
 [node name="Tilemaps" type="Node" parent="."]
 
 [node name="Ground" type="TileMapLayer" parent="Tilemaps"]
@@ -135,95 +389,10 @@ tile_set = SubResource("TileSet_6ah6f")
 
 [node name="PlayerSpawn" type="Marker2D" parent="."]
 
-[node name="InventoryUI" parent="." instance=ExtResource("14_m8bs7")]
-
-[node name="InventoryUI" type="Control" parent="InventoryUI"]
-layout_mode = 3
-anchors_preset = 0
-offset_right = 40.0
-offset_bottom = 40.0
-
-[node name="MenuScreen" type="CanvasLayer" parent="."]
-
-[node name="MainHBox" type="VBoxContainer" parent="MenuScreen"]
-modulate = Color(0.669449, 0.64744, 0.981795, 1)
-offset_right = 443.0
-offset_bottom = 31.0
-size_flags_horizontal = 4
-size_flags_vertical = 8
-
-[node name="NavButton" type="HBoxContainer" parent="MenuScreen/MainHBox"]
-layout_mode = 2
-
-[node name="InventoryButton" type="Button" parent="MenuScreen/MainHBox/NavButton"]
-texture_filter = 1
-layout_mode = 2
-focus_mode = 0
-text = "Inventory"
-
-[node name="StatsButton" type="Button" parent="MenuScreen/MainHBox/NavButton"]
-z_index = 1
-texture_filter = 1
-layout_mode = 2
-size_flags_vertical = 0
-focus_mode = 0
-text = "Stats"
-
-[node name="LogoutButton" type="Button" parent="MenuScreen/MainHBox/NavButton"]
-z_index = 1
-texture_filter = 1
-layout_mode = 2
-focus_mode = 0
-text = "Logout"
-
-[node name="DiscordButton" type="Button" parent="MenuScreen/MainHBox/NavButton"]
-z_index = 1
-texture_filter = 1
-layout_mode = 2
-focus_mode = 0
-text = "Discord"
-
-[node name="ShopButton" type="Button" parent="MenuScreen/MainHBox/NavButton"]
-z_index = 1
-texture_filter = 1
-layout_mode = 2
-focus_mode = 0
-text = "Shop"
-
-[node name="MapButton" type="Button" parent="MenuScreen/MainHBox/NavButton"]
-z_index = 1
-texture_filter = 1
-layout_mode = 2
-focus_mode = 0
-text = "Map"
-
-[node name="OptionsButton" type="Button" parent="MenuScreen/MainHBox/NavButton"]
-z_index = 1
-texture_filter = 1
-layout_mode = 2
-focus_mode = 0
-text = "Options"
-
-[node name="StatsPanel" type="Panel" parent="MenuScreen/MainHBox"]
-visible = false
-layout_mode = 2
-
-[node name="OptionsPanel" type="Panel" parent="MenuScreen/MainHBox"]
-visible = false
-layout_mode = 2
-
-[node name="MapPanel" type="Panel" parent="MenuScreen/MainHBox"]
-visible = false
-layout_mode = 2
-
-[node name="ShopPanel" type="Panel" parent="MenuScreen/MainHBox"]
-visible = false
-layout_mode = 2
-
-[connection signal="pressed" from="MenuScreen/MainHBox/NavButton/InventoryButton" to="." method="_on_InventoryButton_pressed"]
-[connection signal="pressed" from="MenuScreen/MainHBox/NavButton/StatsButton" to="." method="_on_StatsButton_pressed"]
-[connection signal="pressed" from="MenuScreen/MainHBox/NavButton/LogoutButton" to="." method="_on_LogoutButton_pressed"]
-[connection signal="pressed" from="MenuScreen/MainHBox/NavButton/DiscordButton" to="." method="_on_DiscordButton_pressed"]
-[connection signal="pressed" from="MenuScreen/MainHBox/NavButton/ShopButton" to="." method="_on_ShopButton_pressed"]
-[connection signal="pressed" from="MenuScreen/MainHBox/NavButton/MapButton" to="." method="_on_MapButton_pressed"]
-[connection signal="pressed" from="MenuScreen/MainHBox/NavButton/OptionsButton" to="." method="_on_OptionsButton_pressed"]
+[connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/InventoryButton" to="." method="_on_InventoryButton_pressed"]
+[connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/StatsButton" to="." method="_on_StatsButton_pressed"]
+[connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/LogoutButton" to="." method="_on_LogoutButton_pressed"]
+[connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/DiscordButton" to="." method="_on_DiscordButton_pressed"]
+[connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/ShopButton" to="." method="_on_ShopButton_pressed"]
+[connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/MapButton" to="." method="_on_MapButton_pressed"]
+[connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/OptionsButton" to="." method="_on_OptionsButton_pressed"]

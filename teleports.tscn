@@ -1,8 +1,25 @@
-[gd_scene load_steps=7 format=3 uid="uid://40fim22w86ph"]
+[gd_scene load_steps=7 format=3 uid="uid://urywvo8tedkr"]
 
-[ext_resource type="Script" uid="uid://bknkbe5edumu8" path="res://scripts/teleporter_1.gd" id="1_pgi76"]
 [ext_resource type="Texture2D" uid="uid://dg3uikwr64ilk" path="res://assets/Tiles/teleport_tile-1.png.png" id="2_m8lym"]
 [ext_resource type="Texture2D" uid="uid://dt38kh22i5drp" path="res://assets/Tiles/teleport_tile-2.png.png" id="3_y0d3q"]
+
+[sub_resource type="GDScript" id="GDScript_860if"]
+script/source = "extends Area2D
+
+@onready var destination_point = $DestinationPoint
+
+var can_teleport := true
+
+func _on_body_entered(body):
+	if body and can_teleport and (body.name == \"Player\" or body.is_in_group(\"player\")):
+		can_teleport = false
+		body.global_position = destination_point.global_position
+		print(\"Teleported\", body.name, \"to\", destination_point.global_position)
+
+func _on_body_exited(body):
+	if body and (body.name == \"Player\" or body.is_in_group(\"player\")):
+		can_teleport = true
+"
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_a20sn"]
 animations = [{
@@ -40,7 +57,7 @@ animations = [{
 [node name="Teleporter_1" type="Area2D" parent="."]
 z_index = 1
 scale = Vector2(0.928403, 0.135342)
-script = ExtResource("1_pgi76")
+script = SubResource("GDScript_860if")
 
 [node name="Teleporter2" type="AnimatedSprite2D" parent="Teleporter_1"]
 z_index = 1

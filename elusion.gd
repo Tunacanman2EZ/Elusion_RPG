@@ -1,49 +1,35 @@
 extends Node2D
 
+# --- Variables ---
+var current_player: Node = null
+
+# --- Player Management ---
 func spawn_player_from_selection():
-	print("spawn_player_from_selection() called.")
-
 	var slot_idx = CharacterData.active_character_index
-	print("slot_idx =", slot_idx)
-
 	var scenes = [
 		preload("res://scenes/Warrior.tscn"),
 		preload("res://scenes/Mage.tscn"),
 		preload("res://scenes/Tank.tscn"),
 		preload("res://scenes/Healer.tscn")
 	]
-	print("Available scenes count:", scenes.size())
-
 	if slot_idx < 0 or slot_idx >= scenes.size():
-		push_error("No valid character slot selected for spawning! Index: %d" % slot_idx)
+		push_error("No valid character slot selected! Index: %d" % slot_idx)
 		return
-
+	if current_player and current_player.is_inside_tree():
+		current_player.queue_free()
 	var scene = scenes[slot_idx]
-	print("About to instance player from:", scene)
-
 	var player = scene.instantiate()
 	if not player:
 		push_error("Player scene failed to instance!")
 		return
-
-	print("Instanced player:", player)
-
-	var children_names = []
-	for child in get_children():
-		children_names.append(child.name)
-	print("Current children of root node:", children_names)
-
 	var spawn = get_node_or_null("PlayerSpawn")
 	if not spawn:
-		push_error("PlayerSpawn node not found! Children are: %s" % str(children_names))
+		push_error("PlayerSpawn node not found!")
 		return
-
-	print("PlayerSpawn position:", spawn.global_position)
 	player.global_position = spawn.global_position
 	add_child(player)
-	print("Player added to scene at position:", player.global_position)
+	current_player = player
 
-# --- Wait for player node to appear (optional utility) ---
 func wait_for_player():
 	while get_player() == null:
 		await get_tree().create_timer(0.01).timeout
@@ -52,57 +38,79 @@ func get_player():
 	var players = get_tree().get_nodes_in_group("player")
 	return players[0] if players.size() > 0 else null
 
-func get_inventory_ui():
-	var canvas = get_node_or_null("CanvasLayer")
-	if canvas and canvas.has_node("InventoryUI"):
-		return canvas.get_node("InventoryUI")
-	return null
+# --- Inventory Helpers ---
+func get_inventory_grid():
+	var inventory_ui = get_node_or_null("MenuScreen/InventoryUI")
+	if not inventory_ui:
+		return null
+	var panel = inventory_ui.get_node_or_null("PanelContainer")
+	if not panel:
+		return null
+	var vbox = panel.get_node_or_null("VBoxContainer")
+	if not vbox:
+		return null
+	var grid_container = vbox.get_node_or_null("GridContainer")
+	if not grid_container:
+		return null
+	return grid_container
 
-func _ready():
-	print("GETTING CanvasLayer:")
-	var canvas = get_node_or_null("CanvasLayer")
-	print("CanvasLayer is: ", canvas)
-	if canvas:
-		var child_names = []
-		for c in canvas.get_children():
-			child_names.append(c.name)
-		print("CanvasLayer children: ", child_names)
-		if canvas.has_node("InventoryUI"):
-			print("InventoryUI found: ", canvas.get_node("InventoryUI"))
-		else:
-			print("InventoryUI NOT found!")
-	else:
-		print("No CanvasLayer node found!")
-
-	var inv_ui = get_inventory_ui()
-	if inv_ui:
-		inv_ui.visible = false
-	else:
-		push_error("InventoryUI not found!")
-		
 func update_inventory_panel():
+	var inventory_grid = get_inventory_grid()
+	if not inventory_grid:
+		return
+
 	var player = get_player()
 	if not player:
-		push_error("Player node not found for update_inventory_panel!")
-		return
-	var inv_ui = get_inventory_ui()
-	if not inv_ui:
-		push_error("InventoryUI not found!")
 		return
 
-	# TODO: Add UI update logic when you build out the inventory panel.
+	# Update currency labels
+	var inventory_ui = get_node("MenuScreen/InventoryUI")
+	var panel = inventory_ui.get_node("PanelContainer")
+	var vbox = panel.get_node("VBoxContainer")
+	vbox.get_node("GoldLabel").text = "Gold: " + str(player.gold)
+	vbox.get_node("LusionsLabel").text = "Elusions: " + str(player.lusions)
+
+	# Fill the grid slots (blank unless item present)
+	for child in inventory_grid.get_children():
+		child.queue_free()
+	for i in range(20):
+		var slot = TextureButton.new()
+		slot.custom_minimum_size = Vector2(64, 64)
+		# To display an item, you can check your inventory array here in the future
+		inventory_grid.add_child(slot)
+
+# --- Button Signal Handlers ---
+func _on_InventoryButton_pressed():
+	var inventory_ui = get_node("MenuScreen/InventoryUI")
+	var panel = inventory_ui.get_node("PanelContainer")
+	panel.visible = not panel.visible
+	if panel.visible:
+		update_inventory_panel()
 
 func _on_DiscordButton_pressed():
 	OS.shell_open("https://discord.gg/4PEhh4Uu")
 
 func _on_LogoutButton_pressed():
+	if current_player and current_player.is_inside_tree():
+		current_player.queue_free()
+		current_player = null
 	get_tree().quit()
 
-func _on_InventoryButton_pressed():
-	var inv_ui = get_inventory_ui()
-	if not inv_ui:
-		push_error("InventoryUI not found!")
-		return
-	inv_ui.visible = not inv_ui.visible
-	if inv_ui.visible:
-		update_inventory_panel()
+func _on_StatsButton_pressed() -> void:
+	pass # TODO: Implement
+
+func _on_ShopButton_pressed() -> void:
+	pass # TODO: Implement
+
+func _on_MapButton_pressed() -> void:
+	pass # TODO: Implement
+
+func _on_OptionsButton_pressed() -> void:
+	pass # TODO: Implement
+
+# --- Node Ready Setup ---
+func _ready():
+	var inventory_ui = get_node("MenuScreen/InventoryUI")
+	var panel = inventory_ui.get_node("PanelContainer")
+	panel.visible = false
+	spawn_player_from_selection()

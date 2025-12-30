@@ -70,7 +70,7 @@ func _on_Login_Button_pressed():
 				print("Admin privileges granted!")
 			else:
 				print("Standard user login.")
-			get_tree().change_scene_to_file("res://scenes/CharacterSelect.tscn")
+			get_tree().change_scene_to_file("/Users/tunacan2ez/elusion_trial/scenes/CharacterSelect.tscn")
 		else:
 			error_label.text = "Incorrect password."
 	else:

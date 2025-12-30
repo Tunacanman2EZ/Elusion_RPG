@@ -298,7 +298,8 @@ animations = [{
 [sub_resource type="CircleShape2D" id="CircleShape2D_nd6ov"]
 radius = 8.0
 
-[node name="Player_2" type="CharacterBody2D"]
+[node name="Mage" type="CharacterBody2D"]
+z_index = 1
 script = ExtResource("64_6o3c0")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]

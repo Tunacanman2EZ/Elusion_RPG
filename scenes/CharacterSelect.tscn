@@ -1,6 +1,6 @@
 [gd_scene load_steps=7 format=3 uid="uid://b756xxenwprr4"]
 
-[ext_resource type="Script" uid="uid://ct57blldpgyn2" path="res://scripts/character_select.gd" id="1_rpq25"]
+[ext_resource type="Script" uid="uid://gdr8hlyfpcx8" path="res://scenes/CharacterSelect.gd" id="1_rpq25"]
 [ext_resource type="Texture2D" uid="uid://cpuw2jylt7xsm" path="res://assets/images/treasure.png" id="1_sr2wn"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rpq25"]
@@ -168,10 +168,10 @@ offset_bottom = 381.0
 text = "Create Healer"
 
 [connection signal="pressed" from="CenterContainer/VBoxContainer/Warrior/SelectButton_1" to="." method="_on_SelectButton_1_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Warrior/CreateButton_1" to="." method="_on_create_button_1_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Warrior/CreateButton_1" to="." method="_on_CreateButton_1_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/Mage/SelectButton_2" to="." method="_on_SelectButton_2_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Mage/CreateButton_2" to="." method="_on_create_button_2_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Mage/CreateButton_2" to="." method="_on_CreateButton_2_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/Tank/SelectButton_3" to="." method="_on_SelectButton_3_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Tank/CreateButton_3" to="." method="_on_create_button_3_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Tank/CreateButton_3" to="." method="_on_CreateButton_3_pressed"]
 [connection signal="pressed" from="CenterContainer/VBoxContainer/Healer/SelectButton_4" to="." method="_on_SelectButton_4_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Healer/CreateButton_4" to="." method="_on_create_button_4_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/Healer/CreateButton_4" to="." method="_on_CreateButton_4_pressed"]
