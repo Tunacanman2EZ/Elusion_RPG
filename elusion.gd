@@ -3,6 +3,8 @@ extends Node2D
 # --- Variables ---
 var current_player: Node = null
 
+const InventoryPersist = preload("res://inventory/InventoryPersistence.gd")
+
 # --- Player Management ---
 func spawn_player_from_selection():
 	var slot_idx = CharacterData.active_character_index
@@ -29,6 +31,9 @@ func spawn_player_from_selection():
 	player.global_position = spawn.global_position
 	add_child(player)
 	current_player = player
+	# Load or create the player's persistent bag inventory for this character slot.
+	if "inventory" in player:
+		player.inventory = InventoryPersist.load_or_create_bag(slot_idx)
 
 func wait_for_player():
 	while get_player() == null:
@@ -38,8 +43,7 @@ func get_player():
 	var players = get_tree().get_nodes_in_group("player")
 	return players[0] if players.size() > 0 else null
 
-# --- Inventory Helpers ---
-func get_inventory_grid():
+func _get_inventory_screen():
 	var inventory_ui = get_node_or_null("MenuScreen/InventoryUI")
 	if not inventory_ui:
 		return null
@@ -49,16 +53,26 @@ func get_inventory_grid():
 	var vbox = panel.get_node_or_null("VBoxContainer")
 	if not vbox:
 		return null
-	var grid_container = vbox.get_node_or_null("GridContainer")
-	if not grid_container:
-		return null
-	return grid_container
 
+	var screen = vbox.get_node_or_null("InventoryScreen")
+	if screen != null:
+		return screen
+
+	# Replace the legacy slot grid with our new InventoryScreen at runtime.
+	var legacy_grid := vbox.get_node_or_null("GridContainer")
+	if legacy_grid:
+		legacy_grid.visible = false
+
+	var screen_scene := preload("res://inventory/ui/InventoryScreen.tscn")
+	screen = screen_scene.instantiate()
+	screen.name = "InventoryScreen"
+	vbox.add_child(screen)
+	if legacy_grid:
+		vbox.move_child(screen, legacy_grid.get_index())
+	return screen
+
+# --- Inventory Helpers ---
 func update_inventory_panel():
-	var inventory_grid = get_inventory_grid()
-	if not inventory_grid:
-		return
-
 	var player = get_player()
 	if not player:
 		return
@@ -70,14 +84,9 @@ func update_inventory_panel():
 	vbox.get_node("GoldLabel").text = "Gold: " + str(player.gold)
 	vbox.get_node("LusionsLabel").text = "Elusions: " + str(player.lusions)
 
-	# Fill the grid slots (blank unless item present)
-	for child in inventory_grid.get_children():
-		child.queue_free()
-	for i in range(20):
-		var slot = TextureButton.new()
-		slot.custom_minimum_size = Vector2(64, 64)
-		# To display an item, you can check your inventory array here in the future
-		inventory_grid.add_child(slot)
+	var screen: Node = _get_inventory_screen()
+	if screen != null and screen.has_method("setup_for_player"):
+		screen.call("setup_for_player", player, CharacterData.active_character_index)
 
 # --- Button Signal Handlers ---
 func _on_InventoryButton_pressed():

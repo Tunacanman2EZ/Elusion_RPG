@@ -6,7 +6,7 @@ extends CharacterBody2D
 # === INVENTORY AND CURRENCY ===
 var gold := 0               # How much gold this player has
 var lusions := 0            # How many Lusions (special currency/resources)
-var inventory := []         # Player's inventory (list of items, can be strings, Dictionaries, or custom objects)
+var inventory: Inventory = null
 
 # === CORE RPG STATS ===
 var character_name := "Tank"

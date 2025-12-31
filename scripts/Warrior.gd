@@ -6,7 +6,7 @@ extends CharacterBody2D
 # === INVENTORY AND CURRENCY ===
 var gold := 0
 var lusions := 0
-var inventory := []
+var inventory: Inventory = null
 
 # --- UI label node paths (set these from your inventory UI code if needed) ---
 var gold_label: Label = null

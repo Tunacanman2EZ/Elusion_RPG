@@ -1,22 +1,16 @@
-<<<<<<< HEAD
-
+# Godot 4+ specific ignores
 .godot/
 .nomedia
-
-
 .import/
 export.cfg
 export_credentials.cfg
-
-
 *.translation
-
-
 .mono/
 data_*/
 mono_crash.*.json
-=======
-# Godot 4+ specific ignores
-.godot/
 /android/
->>>>>>> b1b8d09 (Initial project commit)
+
+# Project-local files to keep untracked
+WARP.md
+.editorconfig
+
