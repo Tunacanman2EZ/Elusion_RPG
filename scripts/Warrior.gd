@@ -2,6 +2,7 @@ extends CharacterBody2D
 
 @export var speed := 150
 
+# --- CURRENCY & INVENTORY ---
 var gold := 0
 var lusions := 0
 var inventory = []
@@ -9,38 +10,21 @@ var inventory = []
 var gold_label: Label = null
 var lusions_label: Label = null
 
-# === MAIN LEVEL, HP, AND XP (all start at 1/0/100) ===
+# --- MAIN LEVEL, HP, AND XP ---
 var character_name := "Warrior"
 var level := 1
-var xp := 0
+var xp := 0             # Total XP starts at 0!
 var xp_next := 100
 var max_hp := 20
 var hp := 20
 
-# === SKILL LEVELS, XP, AND XP REQUIRED (all start at 1/0/100) ===
-var attack := 1
-var attack_xp := 0
-var attack_xp_next := 100
-
-var defense := 1
-var defense_xp := 0
-var defense_xp_next := 100
-
-var agility := 1
-var agility_xp := 0
-var agility_xp_next := 100
-
-var magic := 1
-var magic_xp := 0
-var magic_xp_next := 100
-
-var fishing := 1
-var fishing_xp := 0
-var fishing_xp_next := 100
-
-var cooking := 1
-var cooking_xp := 0
-var cooking_xp_next := 100
+# --- SKILL LEVELS, XP, AND NEXT XP (all start at 1/0/100) ---
+var attack := 1; var attack_xp := 0; var attack_xp_next := 100
+var defense := 1; var defense_xp := 0; var defense_xp_next := 100
+var agility := 1; var agility_xp := 0; var agility_xp_next := 100
+var magic := 1; var magic_xp := 0; var magic_xp_next := 100
+var fishing := 1; var fishing_xp := 0; var fishing_xp_next := 100
+var cooking := 1; var cooking_xp := 0; var cooking_xp_next := 100
 
 func _ready():
 	$Camera2D.make_current()
@@ -74,6 +58,22 @@ func get_walk_animation(dir: Vector2) -> String:
 
 func take_step(): pass
 
+# --- UI LABEL UPDATER FOR STATS PANEL ---
+func update_stats_labels(stats_panel):
+	stats_panel.get_node("LevelLabel").text = "Level: lvl " + str(level)
+	stats_panel.get_node("HPLabel").text = "HP: lvl " + str(level)
+	stats_panel.get_node("StaminaLabel").text = "Stamina: lvl " + str(level)
+
+	stats_panel.get_node("AttackLabel").text = "Attack: lvl " + str(attack)
+	stats_panel.get_node("DefenseLabel").text = "Defense: lvl " + str(defense)
+	stats_panel.get_node("AgilityLabel").text = "Agility: lvl " + str(agility)
+	stats_panel.get_node("MagicLabel").text = "Magic: lvl " + str(magic)
+	stats_panel.get_node("FishingLabel").text = "Fishing: lvl " + str(fishing)
+	stats_panel.get_node("CookingLabel").text = "Cooking: lvl " + str(cooking)
+
+	# Show total XP as label
+	stats_panel.get_node("XPLabel").text = "Total XP: " + str(xp)
+
 # --- CURRENCY/INVENTORY HELPERS ---
 func add_lusions(amount: int) -> void:
 	lusions += amount
@@ -105,7 +105,7 @@ func level_up() -> void:
 	hp = clamp(hp + 10, 0, max_hp)
 	assert(hp <= max_hp, "HP went above max after level up!")
 
-# --- XP/LEVELING CURVES ---
+# --- XP/LEVELING CURVES (customizable for each skill) ---
 func xp_needed_for_skill(skill_level: int, base := 100, factor := 1.18) -> int:
 	return int(base * pow(factor, skill_level - 1))
 
@@ -158,35 +158,3 @@ func gain_cooking_xp(amount: int):
 		cooking += 1
 		cooking_xp -= cooking_xp_next
 		cooking_xp_next = xp_needed_for_skill(cooking)
-
-# --- UI: Update Labels and XP Bars (call after any XP/level change!) ---
-func update_stats_panel(stats_panel):
-	stats_panel.get_node("AttackLabel").text = "Attack: lvl " + str(attack)
-	stats_panel.get_node("AttackXPBar").max_value = attack_xp_next
-	stats_panel.get_node("AttackXPBar").value = attack_xp
-	stats_panel.get_node("AttackXPBar").hint_tooltip = "XP: %d / %d" % [attack_xp, attack_xp_next]
-
-	stats_panel.get_node("DefenseLabel").text = "Defense: lvl " + str(defense)
-	stats_panel.get_node("DefenseXPBar").max_value = defense_xp_next
-	stats_panel.get_node("DefenseXPBar").value = defense_xp
-	stats_panel.get_node("DefenseXPBar").hint_tooltip = "XP: %d / %d" % [defense_xp, defense_xp_next]
-
-	stats_panel.get_node("AgilityLabel").text = "Agility: lvl " + str(agility)
-	stats_panel.get_node("AgilityXPBar").max_value = agility_xp_next
-	stats_panel.get_node("AgilityXPBar").value = agility_xp
-	stats_panel.get_node("AgilityXPBar").hint_tooltip = "XP: %d / %d" % [agility_xp, agility_xp_next]
-
-	stats_panel.get_node("MagicLabel").text = "Magic: lvl " + str(magic)
-	stats_panel.get_node("MagicXPBar").max_value = magic_xp_next
-	stats_panel.get_node("MagicXPBar").value = magic_xp
-	stats_panel.get_node("MagicXPBar").hint_tooltip = "XP: %d / %d" % [magic_xp, magic_xp_next]
-
-	stats_panel.get_node("FishingLabel").text = "Fishing: lvl " + str(fishing)
-	stats_panel.get_node("FishingXPBar").max_value = fishing_xp_next
-	stats_panel.get_node("FishingXPBar").value = fishing_xp
-	stats_panel.get_node("FishingXPBar").hint_tooltip = "XP: %d / %d" % [fishing_xp, fishing_xp_next]
-
-	stats_panel.get_node("CookingLabel").text = "Cooking: lvl " + str(cooking)
-	stats_panel.get_node("CookingXPBar").max_value = cooking_xp_next
-	stats_panel.get_node("CookingXPBar").value = cooking_xp
-	stats_panel.get_node("CookingXPBar").hint_tooltip = "XP: %d / %d" % [cooking_xp, cooking_xp_next]

@@ -348,13 +348,6 @@ offset_right = 48.0
 offset_bottom = 61.5
 text = "XP:"
 
-[node name="XPBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
-layout_mode = 0
-offset_left = 192.0
-offset_top = 38.5
-offset_right = 392.0
-offset_bottom = 65.5
-
 [node name="HPLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
