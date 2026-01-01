@@ -1,9 +1,50 @@
 extends Node2D
 
-# --- Variables ---
-var current_player: Node = null
-
 const InventoryPersist = preload("res://inventory/InventoryPersistence.gd")
+
+var current_player: Node = null
+var last_panel: String = ""
+
+# --- Panel/Screen Helpers ---
+func _get_panelcontainer():
+	return get_node("MenuScreen/InventoryUI/PanelContainer")
+
+func _get_vbox():
+	return _get_panelcontainer().get_node("VBoxContainer")
+
+func _get_inventory_screen():
+	return _get_vbox().get_node("InventoryScreen")
+
+# --- General toggle logic for any panel or screen ---
+func toggle_panel(panel_name: String):
+	var container = _get_panelcontainer()
+	# Specialized: Inventory toggles VBoxContainer + InventoryScreen together
+	if panel_name == "InventoryScreen":
+		var vbox = _get_vbox()
+		var inv_screen = _get_inventory_screen()
+		var is_open = container.visible and vbox.visible and inv_screen.visible
+		# Hide all
+		for child in container.get_children():
+			child.visible = false
+		for node in vbox.get_children():
+			node.visible = false
+		vbox.visible = false
+		container.visible = false
+		if not is_open:
+			container.visible = true
+			vbox.visible = true
+			inv_screen.visible = true
+		return
+	# Normal: Toggle panel by name (e.g., Stats, Shop, etc)
+	var panel = container.get_node_or_null(panel_name)
+	if panel:
+		var was_open = container.visible and panel.visible
+		for child in container.get_children():
+			child.visible = false
+		container.visible = false
+		if not was_open:
+			container.visible = true
+			panel.visible = true
 
 # --- Player Management ---
 func spawn_player_from_selection():
@@ -12,7 +53,7 @@ func spawn_player_from_selection():
 		preload("res://scenes/Warrior.tscn"),
 		preload("res://scenes/Mage.tscn"),
 		preload("res://scenes/Tank.tscn"),
-		preload("res://scenes/Healer.tscn")
+		preload("res://scenes/Healer.tscn"),
 	]
 	if slot_idx < 0 or slot_idx >= scenes.size():
 		push_error("No valid character slot selected! Index: %d" % slot_idx)
@@ -31,70 +72,55 @@ func spawn_player_from_selection():
 	player.global_position = spawn.global_position
 	add_child(player)
 	current_player = player
-	# Load or create the player's persistent bag inventory for this character slot.
 	if "inventory" in player:
 		player.inventory = InventoryPersist.load_or_create_bag(slot_idx)
-
-func wait_for_player():
-	while get_player() == null:
-		await get_tree().create_timer(0.01).timeout
+	update_stats_panel()
+	update_inventory_panel()
 
 func get_player():
 	var players = get_tree().get_nodes_in_group("player")
 	return players[0] if players.size() > 0 else null
 
-func _get_inventory_screen():
-	var inventory_ui = get_node_or_null("MenuScreen/InventoryUI")
-	if not inventory_ui:
-		return null
-	var panel = inventory_ui.get_node_or_null("PanelContainer")
-	if not panel:
-		return null
-	var vbox = panel.get_node_or_null("VBoxContainer")
-	if not vbox:
-		return null
-
-	var screen = vbox.get_node_or_null("InventoryScreen")
-	if screen != null:
-		return screen
-
-	# Replace the legacy slot grid with our new InventoryScreen at runtime.
-	var legacy_grid := vbox.get_node_or_null("GridContainer")
-	if legacy_grid:
-		legacy_grid.visible = false
-
-	var screen_scene := preload("res://inventory/ui/InventoryScreen.tscn")
-	screen = screen_scene.instantiate()
-	screen.name = "InventoryScreen"
-	vbox.add_child(screen)
-	if legacy_grid:
-		vbox.move_child(screen, legacy_grid.get_index())
-	return screen
-
-# --- Inventory Helpers ---
+# --- Inventory Panel Update ---
 func update_inventory_panel():
 	var player = get_player()
 	if not player:
 		return
+	var inv_screen = _get_inventory_screen()
+	if inv_screen:
+		inv_screen.get_node("GoldLabel").text = "Gold: " + str(player.gold)
+		inv_screen.get_node("LusionsLabel").text = "Elusions: " + str(player.lusions)
+		if inv_screen.has_method("setup_for_player"):
+			inv_screen.call("setup_for_player", player, CharacterData.active_character_index)
 
-	# Update currency labels
-	var inventory_ui = get_node("MenuScreen/InventoryUI")
-	var panel = inventory_ui.get_node("PanelContainer")
-	var vbox = panel.get_node("VBoxContainer")
-	vbox.get_node("GoldLabel").text = "Gold: " + str(player.gold)
-	vbox.get_node("LusionsLabel").text = "Elusions: " + str(player.lusions)
+# --- Stats Panel Update ---
+func update_stats_panel():
+	var player = get_player()
+	if not player:
+		return
+	var stats = _get_panelcontainer().get_node("Stats")
+	if stats and player.has_method("update_stats_labels"):
+		player.update_stats_labels(stats)
 
-	var screen: Node = _get_inventory_screen()
-	if screen != null and screen.has_method("setup_for_player"):
-		screen.call("setup_for_player", player, CharacterData.active_character_index)
-
-# --- Button Signal Handlers ---
+# --- Button Signal Handlers (all toggle mode) ---
 func _on_InventoryButton_pressed():
-	var inventory_ui = get_node("MenuScreen/InventoryUI")
-	var panel = inventory_ui.get_node("PanelContainer")
-	panel.visible = not panel.visible
-	if panel.visible:
+	toggle_panel("InventoryScreen")
+	if _get_panelcontainer().visible and _get_inventory_screen().visible:
 		update_inventory_panel()
+
+func _on_StatsButton_pressed():
+	toggle_panel("Stats")
+	if _get_panelcontainer().visible and _get_panelcontainer().get_node("Stats").visible:
+		update_stats_panel()
+
+func _on_ShopButton_pressed():
+	toggle_panel("ShopScreen")
+
+func _on_MapButton_pressed():
+	toggle_panel("MapScreen")
+
+func _on_OptionsButton_pressed():
+	toggle_panel("OptionsScreen")
 
 func _on_DiscordButton_pressed():
 	OS.shell_open("https://discord.gg/4PEhh4Uu")
@@ -105,21 +131,14 @@ func _on_LogoutButton_pressed():
 		current_player = null
 	get_tree().quit()
 
-func _on_StatsButton_pressed() -> void:
-	pass # TODO: Implement
-
-func _on_ShopButton_pressed() -> void:
-	pass # TODO: Implement
-
-func _on_MapButton_pressed() -> void:
-	pass # TODO: Implement
-
-func _on_OptionsButton_pressed() -> void:
-	pass # TODO: Implement
-
 # --- Node Ready Setup ---
 func _ready():
-	var inventory_ui = get_node("MenuScreen/InventoryUI")
-	var panel = inventory_ui.get_node("PanelContainer")
-	panel.visible = false
+	var container = _get_panelcontainer()
+	container.visible = false
+	for child in container.get_children():
+		child.visible = false
+	var vbox = _get_vbox()
+	vbox.visible = false
+	for node in vbox.get_children():
+		node.visible = false
 	spawn_player_from_selection()
