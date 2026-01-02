@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://lon8advnxgqx"]
+[gd_scene load_steps=6 format=3 uid="uid://lon8advnxgqx"]
 
 [ext_resource type="Script" uid="uid://csey5unhicv5r" path="res://scripts/login_menu.gd" id="1_u8sew"]
+[ext_resource type="PackedScene" uid="uid://b756xxenwprr4" path="res://scenes/CharacterSelect.tscn" id="2_hhelq"]
 [ext_resource type="Texture2D" uid="uid://bpu2av41q1t8g" path="res://assets/images/skeleton.png" id="2_jmb1l"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jmb1l"]
@@ -17,6 +18,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_u8sew")
+char_select_scene = ExtResource("2_hhelq")
 metadata/_edit_use_anchors_ = true
 
 [node name="TextureRect" type="TextureRect" parent="."]

@@ -7,6 +7,8 @@ const ADMIN_USERNAME = "Tunacan"
 # ------------------------ CHARACTER SELECT ----------------------
 var selected_index := -1
 
+@export var char_select_scene : PackedScene
+
 func _ready():
 	# Detect if we're on the login or character select scene (by node presence)
 	if has_node("CenterContainer/VBoxContainer/UsernameLineEdit"):
@@ -70,7 +72,7 @@ func _on_Login_Button_pressed():
 				print("Admin privileges granted!")
 			else:
 				print("Standard user login.")
-			get_tree().change_scene_to_file("/Users/tunacan2ez/elusion_trial/scenes/CharacterSelect.tscn")
+			get_tree().change_scene_to_packed(char_select_scene)
 		else:
 			error_label.text = "Incorrect password."
 	else:
