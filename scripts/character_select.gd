@@ -79,12 +79,12 @@ func _on_SelectButton_3_pressed():
 func _on_SelectButton_4_pressed():
 	_select_character(3, "Healer")
 
-func _select_character(idx: int, char_class: String) -> void:
+func _select_character(idx, class_name):
 	var char = CharacterData.character_slots[idx]
 	if char == null or typeof(char) != TYPE_DICTIONARY or not char.has("class") or not char.has("level"):
 		print("No character in slot %d to select!" % [idx + 1])
 		return
-	print("Selected %s in slot %d" % [char_class, idx + 1])
+	print("Selected %s in slot %d" % [class_name, idx + 1])
 	CharacterData.active_character_index = idx
 	CharacterData.save_data()
 	get_tree().change_scene_to_file("res://Elusion.tscn")

@@ -5,7 +5,7 @@ extends CharacterBody2D
 # --- CURRENCY & INVENTORY ---
 var gold := 0
 var lusions := 0
-var inventory = []
+var inventory := []
 
 var gold_label: Label = null
 var lusions_label: Label = null
