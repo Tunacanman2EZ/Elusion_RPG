@@ -1,6 +1,5 @@
 extends Node2D
 
-# --- Variables ---
 var current_player: Node = null
 
 # --- Player Management ---
@@ -10,7 +9,7 @@ func spawn_player_from_selection():
 		preload("res://scenes/Warrior.tscn"),
 		preload("res://scenes/Mage.tscn"),
 		preload("res://scenes/Tank.tscn"),
-		preload("res://scenes/Healer.tscn")
+		preload("res://scenes/Healer.tscn"),
 	]
 	if slot_idx < 0 or slot_idx >= scenes.size():
 		push_error("No valid character slot selected! Index: %d" % slot_idx)
@@ -78,13 +77,38 @@ func update_inventory_panel():
 		slot.custom_minimum_size = Vector2(64, 64)
 		inventory_grid.add_child(slot)
 
+# --- Toggle logic for all panels ---
+func toggle_panel(panel_name: String):
+	var container = get_node("MenuScreen/InventoryUI/PanelContainer")
+	var panel = container.get_node_or_null(panel_name)
+	if panel:
+		var was_open = container.visible and panel.visible
+		# Hide all direct child panels
+		for child in container.get_children():
+			child.visible = false
+		container.visible = false
+		# Show the requested panel if it wasn't already open
+		if not was_open:
+			container.visible = true
+			panel.visible = true
+
 # --- Button Signal Handlers ---
 func _on_InventoryButton_pressed():
-	var inventory_ui = get_node("MenuScreen/InventoryUI")
-	var panel = inventory_ui.get_node("PanelContainer")
-	panel.visible = not panel.visible
-	if panel.visible:
+	toggle_panel("VBoxContainer")
+	if get_node("MenuScreen/InventoryUI/PanelContainer/VBoxContainer").visible:
 		update_inventory_panel()
+
+func _on_StatsButton_pressed():
+	toggle_panel("Stats")
+
+func _on_ShopButton_pressed():
+	toggle_panel("ShopScreen")
+
+func _on_MapButton_pressed():
+	toggle_panel("MapScreen")
+
+func _on_OptionsButton_pressed():
+	toggle_panel("OptionsScreen")
 
 func _on_DiscordButton_pressed():
 	OS.shell_open("https://discord.gg/4PEhh4Uu")
@@ -95,21 +119,10 @@ func _on_LogoutButton_pressed():
 		current_player = null
 	get_tree().quit()
 
-func _on_StatsButton_pressed() -> void:
-	pass # TODO: Implement Stats panel behavior
-
-func _on_ShopButton_pressed() -> void:
-	pass # TODO: Implement Shop panel behavior
-
-func _on_MapButton_pressed() -> void:
-	pass # TODO: Implement Map panel behavior
-
-func _on_OptionsButton_pressed() -> void:
-	pass # TODO: Implement Options panel behavior
-
 # --- Node Ready Setup ---
 func _ready():
-	var inventory_ui = get_node("MenuScreen/InventoryUI")
-	var panel = inventory_ui.get_node("PanelContainer")
-	panel.visible = false
+	var container = get_node("MenuScreen/InventoryUI/PanelContainer")
+	container.visible = false
+	for child in container.get_children():
+		child.visible = false
 	spawn_player_from_selection()

@@ -147,15 +147,17 @@ size_flags_vertical = 3
 layout_mode = 2
 
 [node name="InventoryScreen" type="Control" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer"]
+texture_filter = 1
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("2_m8bs7")
 
 [node name="GridContainer" type="GridContainer" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/InventoryScreen"]
+texture_filter = 1
 layout_mode = 0
 offset_top = 86.5
 offset_right = 336.0
-offset_bottom = 354.5
+offset_bottom = 358.5
 size_flags_vertical = 3
 columns = 5
 
@@ -315,9 +317,9 @@ text = "Gold: 0"
 
 [node name="Label" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/VBoxContainer/InventoryScreen"]
 layout_mode = 0
-offset_top = -1.5
+offset_top = -9.5
 offset_right = 336.0
-offset_bottom = 37.5
+offset_bottom = 29.5
 theme_type_variation = &"HeaderLarge"
 text = "Inventory"
 
@@ -328,152 +330,152 @@ layout_mode = 2
 [node name="LevelLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 6.5
+offset_top = 38.5
 offset_right = 53.0
-offset_bottom = 29.5
+offset_bottom = 61.5
 text = "Level:"
 
 [node name="LevelBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
-layout_mode = 0
-offset_left = 192.0
-offset_top = 6.5
-offset_right = 392.0
-offset_bottom = 33.5
-
-[node name="XPLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
-layout_mode = 0
-offset_left = 8.0
-offset_top = 38.5
-offset_right = 48.0
-offset_bottom = 61.5
-text = "XP:"
-
-[node name="HPLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
-layout_mode = 0
-offset_left = 8.0
-offset_top = 70.5
-offset_right = 48.0
-offset_bottom = 93.5
-text = "HP:"
-
-[node name="HPBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 192.0
 offset_top = 70.5
 offset_right = 392.0
 offset_bottom = 97.5
 
-[node name="StaminaLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="XPLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 102.5
-offset_right = 76.0
-offset_bottom = 125.5
-text = "Stamina:"
+offset_top = 78.5
+offset_right = 48.0
+offset_bottom = 101.5
+text = "XP:"
 
-[node name="StaminaBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="HPLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 110.5
+offset_right = 48.0
+offset_bottom = 133.5
+text = "HP:"
+
+[node name="HPBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 192.0
 offset_top = 102.5
 offset_right = 392.0
 offset_bottom = 129.5
 
-[node name="MagicLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="StaminaLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 134.5
-offset_right = 58.0
-offset_bottom = 157.5
-text = "Magic:"
+offset_top = 142.5
+offset_right = 76.0
+offset_bottom = 165.5
+text = "Stamina:"
 
-[node name="MagicBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="StaminaBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 192.0
 offset_top = 134.5
 offset_right = 392.0
 offset_bottom = 161.5
 
-[node name="AttackLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="MagicLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 166.5
-offset_right = 62.0
-offset_bottom = 189.5
-text = "Attack:"
+offset_top = 174.5
+offset_right = 58.0
+offset_bottom = 197.5
+text = "Magic:"
 
-[node name="AttackBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="MagicBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 192.0
 offset_top = 166.5
 offset_right = 392.0
 offset_bottom = 193.5
 
-[node name="DefenseLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="AttackLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 198.5
-offset_right = 76.0
-offset_bottom = 221.5
-text = "Defense:"
+offset_top = 206.5
+offset_right = 62.0
+offset_bottom = 229.5
+text = "Attack:"
 
-[node name="DefenseBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="AttackBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 192.0
 offset_top = 198.5
 offset_right = 392.0
 offset_bottom = 225.5
 
-[node name="AgilityLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="DefenseLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 230.5
-offset_right = 61.0
-offset_bottom = 253.5
-text = "Agility:"
+offset_top = 238.5
+offset_right = 76.0
+offset_bottom = 261.5
+text = "Defense:"
 
-[node name="AgilityBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="DefenseBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 192.0
 offset_top = 230.5
 offset_right = 392.0
 offset_bottom = 257.5
 
-[node name="FishingLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="AgilityLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 262.5
-offset_right = 67.0
-offset_bottom = 285.5
-text = "Fishing:"
+offset_top = 270.5
+offset_right = 61.0
+offset_bottom = 293.5
+text = "Agility:"
 
-[node name="FishingBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="AgilityBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 192.0
 offset_top = 262.5
 offset_right = 392.0
 offset_bottom = 289.5
 
-[node name="CookingLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="FishingLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 8.0
-offset_top = 294.5
-offset_right = 75.0
-offset_bottom = 317.5
-text = "Cooking:"
+offset_top = 302.5
+offset_right = 67.0
+offset_bottom = 325.5
+text = "Fishing:"
 
-[node name="CookingBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+[node name="FishingBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 192.0
 offset_top = 294.5
 offset_right = 392.0
 offset_bottom = 321.5
 
+[node name="CookingLabel" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 334.5
+offset_right = 75.0
+offset_bottom = 357.5
+text = "Cooking:"
+
+[node name="CookingBar" type="ProgressBar" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
+layout_mode = 0
+offset_left = 192.0
+offset_top = 326.5
+offset_right = 392.0
+offset_bottom = 353.5
+
 [node name="Label" type="Label" parent="MenuScreen/InventoryUI/PanelContainer/Stats"]
 layout_mode = 0
 offset_left = 120.0
-offset_top = 334.5
+offset_top = -1.5
 offset_right = 249.0
-offset_bottom = 357.5
+offset_bottom = 21.5
 text = "Character Status"
 
 [node name="MainHBox" type="VBoxContainer" parent="MenuScreen/InventoryUI"]
@@ -534,6 +536,17 @@ texture_filter = 1
 layout_mode = 2
 focus_mode = 0
 text = "Options"
+
+[node name="ActiveCharUI" type="Control" parent="MenuScreen"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="AttackButton" type="Button" parent="MenuScreen/ActiveCharUI"]
+layout_mode = 0
+offset_right = 8.0
+offset_bottom = 8.0
 
 [node name="Tilemaps" type="Node" parent="."]
 
