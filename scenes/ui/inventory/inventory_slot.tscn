@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3 uid="uid://cdvapwwwsyka3"]
+
+[ext_resource type="Script" uid="uid://beoo2gt4m041f" path="res://scripts/ui/inventory/inventory_slot.gd" id="1_wle7a"]
+
+[node name="InventorySlot" type="Control"]
+custom_minimum_size = Vector2(200, 200)
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_wle7a")
+
+[node name="ItemButton" type="Button" parent="."]
+custom_minimum_size = Vector2(200, 200)
+layout_mode = 0
+offset_right = 8.0
+offset_bottom = 8.0
+
+[node name="Icon" type="Sprite2D" parent="ItemButton"]
+position = Vector2(100, 100)
+scale = Vector2(2, 2)
+
+[node name="Label" type="Label" parent="ItemButton/Icon"]
+custom_minimum_size = Vector2(40, 45)
+offset_left = 6.0
+offset_top = 2.0
+offset_right = 46.0
+offset_bottom = 47.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
