@@ -6,10 +6,10 @@ var current_player: Node = null
 func spawn_player_from_selection():
 	var slot_idx = CharacterData.active_character_index
 	var scenes = [
-		preload("res://scenes/Warrior.tscn"),
-		preload("res://scenes/Mage.tscn"),
-		preload("res://scenes/Tank.tscn"),
-		preload("res://scenes/Healer.tscn"),
+		preload("res://scenes/characters/Warrior.tscn"),
+		preload("res://scenes/characters/Mage.tscn"),
+		preload("res://scenes/characters/Tank.tscn"),
+		preload("res://scenes/characters/Healer.tscn"),
 	]
 	if slot_idx < 0 or slot_idx >= scenes.size():
 		push_error("No valid character slot selected! Index: %d" % slot_idx)

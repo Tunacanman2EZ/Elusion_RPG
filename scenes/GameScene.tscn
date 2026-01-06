@@ -1,8 +1,8 @@
 [gd_scene load_steps=4 format=3 uid="uid://byb5wq86mygai"]
 
-[ext_resource type="Script" uid="uid://o0f43varxbj0" path="res://GameScene.gd" id="1_6pl24"]
-[ext_resource type="PackedScene" uid="uid://cmicyqpd5i5rh" path="res://scenes/menu_screen.tscn" id="3_kxqg4"]
-[ext_resource type="PackedScene" uid="uid://tnx8p0sumd67" path="res://inventory.tscn" id="3_qitmq"]
+[ext_resource type="Script" uid="uid://o0f43varxbj0" path="res://scripts/GameScene.gd" id="1_6pl24"]
+[ext_resource type="PackedScene" uid="uid://cmicyqpd5i5rh" path="res://scenes/ui/menus/menu_screen.tscn" id="3_kxqg4"]
+[ext_resource type="PackedScene" uid="uid://tnx8p0sumd67" path="res://scenes/ui/inventory/inventory.tscn" id="3_qitmq"]
 
 [node name="Elusion" type="Node2D"]
 script = ExtResource("1_6pl24")

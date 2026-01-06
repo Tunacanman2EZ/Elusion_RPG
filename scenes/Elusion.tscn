@@ -1,8 +1,8 @@
 [gd_scene load_steps=26 format=4 uid="uid://cn2pdqcvl6hx5"]
 
 [ext_resource type="Texture2D" uid="uid://bbpy6asm3aovn" path="res://assets/Tiles/top left brick wall-1.png.png" id="1_d35cg"]
-[ext_resource type="Script" uid="uid://dpxjfqc24q2rg" path="res://elusion.gd" id="1_s1bvo"]
-[ext_resource type="Script" uid="uid://dkbhggxq3mk22" path="res://InventoryScreen.gd" id="2_m8bs7"]
+[ext_resource type="Script" uid="uid://dpxjfqc24q2rg" path="res://scripts/elusion.gd" id="1_s1bvo"]
+[ext_resource type="Script" uid="uid://dkbhggxq3mk22" path="res://scripts/ui/inventory/InventoryScreen.gd" id="2_m8bs7"]
 [ext_resource type="Texture2D" uid="uid://6lwpeowg18ls" path="res://assets/Tiles/lava_tile_2-1.png (1).png" id="2_s1bvo"]
 [ext_resource type="Texture2D" uid="uid://gfwleprj1o3l" path="res://assets/Tiles/middle brick wall-1.png.png" id="3_m8bs7"]
 [ext_resource type="Texture2D" uid="uid://cdk48150hf5h0" path="res://assets/Tiles/flowers_tile-1.png.png" id="4_t6ygf"]
@@ -12,7 +12,7 @@
 [ext_resource type="Texture2D" uid="uid://cpbnpho8ey5s5" path="res://assets/Tiles/New Piskel-1.png (2).png" id="8_581ge"]
 [ext_resource type="Texture2D" uid="uid://b8emqu5al65ft" path="res://assets/Tiles/New Piskel-1.png (3).png" id="9_e8yo3"]
 [ext_resource type="Texture2D" uid="uid://cft7xewsa6egr" path="res://assets/Tiles/New Piskel-1.png (1).png" id="10_m1uj6"]
-[ext_resource type="PackedScene" uid="uid://urywvo8tedkr" path="res://teleports.tscn" id="11_bawno"]
+[ext_resource type="PackedScene" uid="uid://urywvo8tedkr" path="res://scenes/teleports.tscn" id="11_bawno"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_wjb0r"]
 texture = ExtResource("1_d35cg")

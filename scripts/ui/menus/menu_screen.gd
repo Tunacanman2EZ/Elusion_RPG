@@ -3,6 +3,9 @@ extends CanvasLayer
 const ADMIN_USERNAME = "Tunacan"
 var selected_index := -1
 
+var char_select_scene: PackedScene = preload("res://scenes/ui/menus/CharacterSelect.tscn")
+var elusion_scene: PackedScene = preload("res://scenes/Elusion.tscn")
+
 func _ready():
 	# Show login if present, else char select if present
 	if has_node("CenterContainer/VBoxContainer/UsernameLineEdit"):
@@ -14,7 +17,7 @@ func _ready():
 
 # ------------------- MAIN MENU BUTTONS (optional) -------------------
 func _on_Play_Button_pressed():
-	get_tree().change_scene_to_file("res://scenes/CharacterSelect.tscn")
+	get_tree().change_scene_to_packed(char_select_scene)
 
 # ------------------- CHARACTER SELECT -------------------
 func _on_character_button_pressed(index):
@@ -26,7 +29,7 @@ func _on_confirm_button_pressed():
 		show_error("Select a character first!")
 		return
 	CharacterData.active_character_index = selected_index
-	get_tree().change_scene_to_file("res://scenes/Elusion.tscn")
+	get_tree().change_scene_to_packed(elusion_scene)
 
 func update_selection_display():
 	# To highlight the selected character button, implement as needed
@@ -61,7 +64,7 @@ func _on_login_button_pressed():
 			error_label.text = ""
 			if username == ADMIN_USERNAME:
 				print("Admin privileges granted!")
-			get_tree().change_scene_to_file("res://scenes/CharacterSelect.tscn")
+			get_tree().change_scene_to_packed(char_select_scene)
 		else:
 			error_label.text = "Incorrect password."
 	else:
@@ -69,7 +72,7 @@ func _on_login_button_pressed():
 		error_label.text = "Account created! Logging in..."
 		if username == ADMIN_USERNAME:
 			print("Admin privileges granted!")
-		get_tree().change_scene_to_file("res://scenes/CharacterSelect.tscn")
+		get_tree().change_scene_to_packed(char_select_scene)
 
 func is_valid_input(input_str):
 	var regex = RegEx.new()

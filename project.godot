@@ -17,7 +17,8 @@ config/features=PackedStringArray("4.5", "Mobile")
 
 [autoload]
 
-CharacterData="*res://CharacterData.gd"
+CharacterData="*res://scripts/globals/CharacterData.gd"
+Global="*res://scripts/globals/Global.gd"
 
 [display]
 
