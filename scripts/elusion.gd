@@ -126,3 +126,10 @@ func _ready():
 	for child in container.get_children():
 		child.visible = false
 	spawn_player_from_selection()
+
+	var active_ui = get_node("MenuScreen/ActiveCharUI")
+	var warrior = get_node("Characters/Warrior")
+	if active_ui and warrior:
+		active_ui.set_active_character(warrior)
+	else:
+		print("Could not find ActiveCharUI or Warrior! Active UI:", active_ui, "Warrior:", warrior)

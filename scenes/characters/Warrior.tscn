@@ -2,7 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://87sa4yhvy632" path="res://assets/Animated_Tiles/Warrior$.png" id="2_4tnwm"]
 [ext_resource type="Texture2D" uid="uid://b8qu2hjt00qkb" path="res://assets/Animated_Tiles/Warrior$2.png" id="2_w7oh4"]
-[ext_resource type="Script" uid="uid://gr8xl2t4cebx" path="res://scripts/Warrior.gd" id="64_ffrwm"]
+[ext_resource type="Script" uid="uid://gr8xl2t4cebx" path="res://scripts/characters/Warrior.gd" id="64_ffrwm"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ddtn8"]
 atlas = ExtResource("2_4tnwm")
@@ -334,7 +334,7 @@ animations = [{
 }],
 "loop": true,
 "name": &"Attack_Down",
-"speed": 5.0
+"speed": 2.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -611,7 +611,9 @@ script = ExtResource("64_ffrwm")
 z_index = 1
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_ih3hd")
-animation = &"Idle_Down"
+animation = &"Attack_Down"
+frame = 3
+frame_progress = 0.11064804
 speed_scale = 1.5
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]

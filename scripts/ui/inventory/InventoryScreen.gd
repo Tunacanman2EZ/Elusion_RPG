@@ -90,3 +90,7 @@ func loot_item(player, item_name):
 			arr[arr.find(item)] = dict_item
 			return
 	arr.append({ "name": item_name, "count": 1 })
+
+
+func _on_AttackButton_pressed() -> void:
+	pass # Replace with function body.

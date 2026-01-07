@@ -1,10 +1,11 @@
-[gd_scene load_steps=26 format=4 uid="uid://cn2pdqcvl6hx5"]
+[gd_scene load_steps=27 format=4 uid="uid://cn2pdqcvl6hx5"]
 
 [ext_resource type="Texture2D" uid="uid://bbpy6asm3aovn" path="res://assets/Tiles/top left brick wall-1.png.png" id="1_d35cg"]
 [ext_resource type="Script" uid="uid://dpxjfqc24q2rg" path="res://scripts/elusion.gd" id="1_s1bvo"]
 [ext_resource type="Script" uid="uid://dkbhggxq3mk22" path="res://scripts/ui/inventory/InventoryScreen.gd" id="2_m8bs7"]
 [ext_resource type="Texture2D" uid="uid://6lwpeowg18ls" path="res://assets/Tiles/lava_tile_2-1.png (1).png" id="2_s1bvo"]
 [ext_resource type="Texture2D" uid="uid://gfwleprj1o3l" path="res://assets/Tiles/middle brick wall-1.png.png" id="3_m8bs7"]
+[ext_resource type="Script" uid="uid://doul2n883ywyv" path="res://scenes/ActiveCharUI.gd" id="3_v8730"]
 [ext_resource type="Texture2D" uid="uid://cdk48150hf5h0" path="res://assets/Tiles/flowers_tile-1.png.png" id="4_t6ygf"]
 [ext_resource type="Texture2D" uid="uid://cmbjnhj7f24ns" path="res://assets/Tiles/dry floor tile-1.png.png" id="5_oiujd"]
 [ext_resource type="Texture2D" uid="uid://dal24cdbakh21" path="res://assets/Tiles/black tile.png" id="6_50t1i"]
@@ -542,11 +543,22 @@ layout_mode = 3
 anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
+script = ExtResource("3_v8730")
 
 [node name="AttackButton" type="Button" parent="MenuScreen/ActiveCharUI"]
-layout_mode = 0
-offset_right = 8.0
-offset_bottom = 8.0
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 1138.0
+offset_top = 595.0
+offset_right = 1239.0
+offset_bottom = 678.0
+grow_horizontal = 0
+grow_vertical = 0
+text = "Attack"
 
 [node name="Tilemaps" type="Node" parent="."]
 
@@ -566,3 +578,4 @@ tile_set = SubResource("TileSet_6ah6f")
 [connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/ShopButton" to="." method="_on_ShopButton_pressed"]
 [connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/MapButton" to="." method="_on_MapButton_pressed"]
 [connection signal="pressed" from="MenuScreen/InventoryUI/MainHBox/NavButton/OptionsButton" to="." method="_on_OptionsButton_pressed"]
+[connection signal="pressed" from="MenuScreen/ActiveCharUI/AttackButton" to="MenuScreen/ActiveCharUI" method="_on_AttackButton_pressed"]

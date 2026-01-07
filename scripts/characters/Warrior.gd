@@ -79,7 +79,8 @@ func get_idle_animation() -> String:
 		return "Idle_Up"
 	return "Idle"
 
-func _on_AttackButton_pressed():
+func attack_action():
+	print("Warrior is attacking!")
 	var dir = last_direction
 	var anim = get_attack_animation(dir)
 	$AnimatedSprite2D.play(anim)
@@ -105,15 +106,15 @@ func take_step(): pass
 # --- UI LABEL UPDATER FOR STATS PANEL ---
 func update_stats_labels(stats_panel):
 	print("Updating stat panel: ", stats_panel)
-	stats_panel.get_node("LevelLabel").text    = "Level: lvl " + str(level)
-	stats_panel.get_node("HPLabel").text       = "HP: lvl 1"
-	stats_panel.get_node("StaminaLabel").text  = "Stamina: lvl 1"
-	stats_panel.get_node("AttackLabel").text   = "Attack: lvl " + str(attack)
-	stats_panel.get_node("DefenseLabel").text  = "Defense: lvl " + str(defense)
-	stats_panel.get_node("AgilityLabel").text  = "Agility: lvl " + str(agility)
-	stats_panel.get_node("MagicLabel").text    = "Magic: lvl " + str(magic)
-	stats_panel.get_node("FishingLabel").text  = "Fishing: lvl " + str(fishing)
-	stats_panel.get_node("CookingLabel").text  = "Cooking: lvl " + str(cooking)
+	stats_panel.get_node("LevelLabel").text    = "Level: " + str(level)
+	stats_panel.get_node("HPLabel").text       = "HP: 1"
+	stats_panel.get_node("StaminaLabel").text  = "Stamina: 1"
+	stats_panel.get_node("AttackLabel").text   = "Attack: " + str(attack)
+	stats_panel.get_node("DefenseLabel").text  = "Defense: " + str(defense)
+	stats_panel.get_node("AgilityLabel").text  = "Agility: " + str(agility)
+	stats_panel.get_node("MagicLabel").text    = "Magic: " + str(magic)
+	stats_panel.get_node("FishingLabel").text  = "Fishing: " + str(fishing)
+	stats_panel.get_node("CookingLabel").text  = "Cooking: " + str(cooking)
 	stats_panel.get_node("XPLabel").text       = "Total XP: " + str(xp)
 
 # --- CURRENCY/INVENTORY HELPERS ---
