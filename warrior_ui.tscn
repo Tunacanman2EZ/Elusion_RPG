@@ -1,10 +1,13 @@
-[gd_scene format=3 uid="uid://bxu3j5xy6k3rp"]
+[gd_scene load_steps=2 format=3 uid="uid://bxu3j5xy6k3rp"]
+
+[ext_resource type="Script" uid="uid://bjytia240ji0f" path="res://warrior_ui.gd" id="1_u557l"]
 
 [node name="WarriorUI" type="Control"]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
+script = ExtResource("1_u557l")
 
 [node name="HPBar" type="ProgressBar" parent="."]
 layout_mode = 0
@@ -56,3 +59,5 @@ offset_top = 584.0
 offset_right = 1274.0
 offset_bottom = 647.0
 text = "Interact"
+
+[connection signal="pressed" from="AttackButton" to="." method="_on_AttackButton_pressed"]

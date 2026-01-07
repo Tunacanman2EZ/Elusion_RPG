@@ -1,6 +1,6 @@
 extends CharacterBody2D
 
-@export var speed := 150
+@export var speed := 75
 
 var gold := 0
 var lusions := 0
@@ -105,7 +105,6 @@ func take_step(): pass
 
 # --- UI LABEL UPDATER FOR STATS PANEL ---
 func update_stats_labels(stats_panel):
-	print("Updating stat panel: ", stats_panel)
 	stats_panel.get_node("LevelLabel").text    = "Level: " + str(level)
 	stats_panel.get_node("HPLabel").text       = "HP: 1"
 	stats_panel.get_node("StaminaLabel").text  = "Stamina: 1"

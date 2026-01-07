@@ -127,9 +127,8 @@ func _ready():
 		child.visible = false
 	spawn_player_from_selection()
 
-	var active_ui = get_node("MenuScreen/ActiveCharUI")
-	var warrior = get_node("Characters/Warrior")
-	if active_ui and warrior:
+	var active_ui = get_node_or_null("MenuScreen/WarriorUI")  # Or "ActiveCharUI" if swapped at runtime
+	var warrior = get_tree().get_nodes_in_group("player")[0] if get_tree().get_nodes_in_group("player").size() > 0 else null
+
+	if active_ui and warrior and active_ui.has_method("set_active_character"):
 		active_ui.set_active_character(warrior)
-	else:
-		print("Could not find ActiveCharUI or Warrior! Active UI:", active_ui, "Warrior:", warrior)

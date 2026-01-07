@@ -1,4 +1,4 @@
-[gd_scene load_steps=82 format=3 uid="uid://c5fxj5ihssij5"]
+[gd_scene load_steps=83 format=3 uid="uid://c5fxj5ihssij5"]
 
 [ext_resource type="Texture2D" uid="uid://87sa4yhvy632" path="res://assets/Animated_Tiles/Warrior$.png" id="2_4tnwm"]
 [ext_resource type="Texture2D" uid="uid://b8qu2hjt00qkb" path="res://assets/Animated_Tiles/Warrior$2.png" id="2_w7oh4"]
@@ -386,7 +386,7 @@ animations = [{
 }],
 "loop": true,
 "name": &"Attack_Right",
-"speed": 5.0
+"speed": 3.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -599,6 +599,9 @@ animations = [{
 "speed": 3.0
 }]
 
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_gihqn"]
+size = Vector2(20, 13)
+
 [sub_resource type="CircleShape2D" id="CircleShape2D_r8um1"]
 radius = 8.0
 
@@ -611,10 +614,15 @@ script = ExtResource("64_ffrwm")
 z_index = 1
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_ih3hd")
-animation = &"Attack_Down"
-frame = 3
-frame_progress = 0.11064804
+animation = &"Attack_Right"
+frame_progress = 0.22108465
 speed_scale = 1.5
+
+[node name="Area2D" type="Area2D" parent="AnimatedSprite2D"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AnimatedSprite2D/Area2D"]
+position = Vector2(22, 0)
+shape = SubResource("RectangleShape2D_gihqn")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 z_index = 1
