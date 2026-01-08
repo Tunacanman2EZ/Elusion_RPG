@@ -1,6 +1,6 @@
 [gd_scene load_steps=66 format=3 uid="uid://6q2racoc6hp3"]
 
-[ext_resource type="Script" uid="uid://c4x1qwa8wnlsu" path="res://Healer.gd" id="1_qi8gc"]
+[ext_resource type="Script" uid="uid://c4x1qwa8wnlsu" path="res://scripts/characters/healer.gd" id="1_qi8gc"]
 [ext_resource type="Texture2D" uid="uid://b50r78uk6l76n" path="res://assets/character_sprite/Healer/AdventurerWalk64x64-1.png.png" id="2_5sjyc"]
 [ext_resource type="Texture2D" uid="uid://bda6bvhcopu5r" path="res://assets/character_sprite/Healer/AdventurerWalk64x64-2.png.png" id="3_r3m43"]
 [ext_resource type="Texture2D" uid="uid://dfe7411o2fpsm" path="res://assets/character_sprite/Healer/AdventurerWalk64x64-3.png.png" id="4_4oyvt"]

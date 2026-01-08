@@ -1,0 +1,99 @@
+[gd_scene load_steps=3 format=3 uid="uid://y8py0d7k22ov"]
+
+[ext_resource type="Script" path="res://scripts/ui/character_hud.gd" id="1_hud"]
+[ext_resource type="Theme" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
+
+[node name="CharacterHUD" type="CanvasLayer"]
+layer = 5
+
+[node name="HUDControl" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_hud")
+
+[node name="HUDPanel" type="PanelContainer" parent="HUDControl"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -80.0
+offset_right = 200.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="HUDControl/HUDPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="VitalBars" type="HBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="HPContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HPLabel" type="Label" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/HPContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 11
+text = "HP: 100/100"
+horizontal_alignment = 1
+
+[node name="HPBar" type="ProgressBar" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/HPContainer"]
+custom_minimum_size = Vector2(150, 16)
+layout_mode = 2
+theme_override_styles/fill = null
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="StaminaContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StaminaLabel" type="Label" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
+theme_override_font_sizes/font_size = 11
+text = "Stamina: 100/100"
+horizontal_alignment = 1
+
+[node name="StaminaBar" type="ProgressBar" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer"]
+custom_minimum_size = Vector2(150, 16)
+layout_mode = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="ActionButtons" type="HBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="InteractButton" type="Button" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/ActionButtons"]
+custom_minimum_size = Vector2(80, 30)
+layout_mode = 2
+text = "Interact"
+
+[node name="AttackButton" type="Button" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/ActionButtons"]
+custom_minimum_size = Vector2(80, 30)
+layout_mode = 2
+text = "Attack"
+

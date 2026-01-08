@@ -1,6 +1,6 @@
 [gd_scene load_steps=7 format=3 uid="uid://b756xxenwprr4"]
 
-[ext_resource type="Script" uid="uid://gdr8hlyfpcx8" path="res://scenes/CharacterSelect.gd" id="1_rpq25"]
+[ext_resource type="Script" uid="uid://gdr8hlyfpcx8" path="res://scripts/ui/menus/character_select.gd" id="1_rpq25"]
 [ext_resource type="Texture2D" uid="uid://cpuw2jylt7xsm" path="res://assets/images/treasure.png" id="1_sr2wn"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rpq25"]

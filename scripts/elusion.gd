@@ -2,6 +2,10 @@ extends Node2D
 
 var current_player: Node = null
 
+## Reference to the ActiveCharUI controller
+@onready var active_char_ui: ActiveCharUI = $MenuScreen/ActiveCharUI
+
+
 # --- Player Management ---
 func spawn_player_from_selection():
 	var slot_idx = CharacterData.active_character_index
@@ -28,90 +32,46 @@ func spawn_player_from_selection():
 	player.global_position = spawn.global_position
 	add_child(player)
 	current_player = player
+	
+	# Setup ActiveCharUI with the player
+	if active_char_ui:
+		active_char_ui.set_active_character(current_player)
 
-func wait_for_player():
-	while get_player() == null:
-		await get_tree().create_timer(0.01).timeout
 
 func get_player():
 	var players = get_tree().get_nodes_in_group("player")
 	return players[0] if players.size() > 0 else null
 
-# --- Inventory Helpers ---
-func get_inventory_grid():
-	var inventory_ui = get_node_or_null("MenuScreen/InventoryUI")
-	if not inventory_ui:
-		return null
-	var panel = inventory_ui.get_node_or_null("PanelContainer")
-	if not panel:
-		return null
-	var vbox = panel.get_node_or_null("VBoxContainer")
-	if not vbox:
-		return null
-	var grid_container = vbox.get_node_or_null("GridContainer")
-	if not grid_container:
-		return null
-	return grid_container
 
-func update_inventory_panel():
-	var inventory_grid = get_inventory_grid()
-	if not inventory_grid:
-		return
-
-	var player = get_player()
-	if not player:
-		return
-
-	# Update currency labels
-	var inventory_ui = get_node("MenuScreen/InventoryUI")
-	var panel = inventory_ui.get_node("PanelContainer")
-	var vbox = panel.get_node("VBoxContainer")
-	vbox.get_node("GoldLabel").text = "Gold: " + str(player.gold)
-	vbox.get_node("LusionsLabel").text = "Elusions: " + str(player.lusions)
-
-	# Fill the grid slots (blank unless item present)
-	for child in inventory_grid.get_children():
-		child.queue_free()
-	for i in range(20):
-		var slot = TextureButton.new()
-		slot.custom_minimum_size = Vector2(64, 64)
-		inventory_grid.add_child(slot)
-
-# --- Toggle logic for all panels ---
-func toggle_panel(panel_name: String):
-	var container = get_node("MenuScreen/InventoryUI/PanelContainer")
-	var panel = container.get_node_or_null(panel_name)
-	if panel:
-		var was_open = container.visible and panel.visible
-		# Hide all direct child panels
-		for child in container.get_children():
-			child.visible = false
-		container.visible = false
-		# Show the requested panel if it wasn't already open
-		if not was_open:
-			container.visible = true
-			panel.visible = true
-
-# --- Button Signal Handlers ---
+# --- Navigation Button Handlers ---
 func _on_InventoryButton_pressed():
-	toggle_panel("VBoxContainer")
-	if get_node("MenuScreen/InventoryUI/PanelContainer/VBoxContainer").visible:
-		update_inventory_panel()
+	if active_char_ui:
+		active_char_ui.toggle_inventory()
+
 
 func _on_StatsButton_pressed():
-	toggle_panel("Stats")
+	if active_char_ui:
+		active_char_ui.toggle_stats()
+
 
 func _on_ShopButton_pressed():
-	toggle_panel("ShopScreen")
+	# TODO: Implement shop panel
+	pass
+
 
 func _on_MapButton_pressed():
-	toggle_panel("MapScreen")
+	# TODO: Implement map panel
+	pass
+
 
 func _on_OptionsButton_pressed():
-	toggle_panel("OptionsScreen")
+	# TODO: Implement options panel
+	pass
+
 
 func _on_DiscordButton_pressed():
 	OS.shell_open("https://discord.gg/4PEhh4Uu")
+
 
 func _on_LogoutButton_pressed():
 	if current_player and current_player.is_inside_tree():
@@ -119,16 +79,7 @@ func _on_LogoutButton_pressed():
 		current_player = null
 	get_tree().quit()
 
+
 # --- Node Ready Setup ---
 func _ready():
-	var container = get_node("MenuScreen/InventoryUI/PanelContainer")
-	container.visible = false
-	for child in container.get_children():
-		child.visible = false
 	spawn_player_from_selection()
-
-	var active_ui = get_node_or_null("MenuScreen/WarriorUI")  # Or "ActiveCharUI" if swapped at runtime
-	var warrior = get_tree().get_nodes_in_group("player")[0] if get_tree().get_nodes_in_group("player").size() > 0 else null
-
-	if active_ui and warrior and active_ui.has_method("set_active_character"):
-		active_ui.set_active_character(warrior)

@@ -15,6 +15,8 @@ var xp := 0
 var xp_next := 100
 var max_hp := 20
 var hp := 20
+var max_stamina := 100
+var stamina := 100
 
 var attack := 1;   var attack_xp := 0;   var attack_xp_next := 100
 var defense := 1;  var defense_xp := 0;  var defense_xp_next := 100
