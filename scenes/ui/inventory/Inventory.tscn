@@ -1,72 +1,68 @@
-[gd_scene load_steps=6 format=3 uid="uid://tnx8p0sumd67"]
+[gd_scene load_steps=6 format=3 uid="uid://bjjfm61rvs0jm"]
 
-[ext_resource type="Script" path="res://scripts/ui/inventory/inventory_screen.gd" id="1_screen"]
-[ext_resource type="Script" path="res://scripts/ui/inventory/inventory_container.gd" id="2_container"]
-[ext_resource type="Theme" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
+[ext_resource type="Script" uid="uid://bcc12su0q1ug8" path="res://scripts/ui/inventory/inventory_screen.gd" id="1_screen"]
+[ext_resource type="Script" uid="uid://bc57yob44578e" path="res://scripts/ui/inventory/inventory_container.gd" id="2_container"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip_separator"]
-bg_color = Color(0.5, 0.42, 0.28, 0.4)
 content_margin_top = 1.0
 content_margin_bottom = 1.0
+bg_color = Color(0.5, 0.42, 0.28, 0.4)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stat_bg"]
+content_margin_left = 4.0
+content_margin_top = 2.0
+content_margin_right = 4.0
+content_margin_bottom = 2.0
 bg_color = Color(0.1, 0.08, 0.06, 0.5)
 corner_radius_top_left = 2
 corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
-content_margin_left = 4.0
-content_margin_top = 2.0
-content_margin_right = 4.0
-content_margin_bottom = 2.0
 
-[node name="InventoryUI" type="CanvasLayer"]
-layer = 10
-
-[node name="InventoryScreen" type="Control" parent="."]
+[node name="InventoryScreen" type="Control"]
+custom_minimum_size = Vector2(250, 450)
 layout_mode = 3
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme = ExtResource("3_theme")
-script = ExtResource("1_screen")
-
-[node name="MainPanel" type="PanelContainer" parent="InventoryScreen"]
-layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -180.0
-offset_top = -200.0
-offset_right = 180.0
-offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme = ExtResource("3_theme")
+script = ExtResource("1_screen")
+
+[node name="MainPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="InventoryScreen/MainPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="MainPanel"]
 layout_mode = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 12
 
-[node name="VBoxContainer" type="VBoxContainer" parent="InventoryScreen/MainPanel/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="HeaderPanel" type="PanelContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer"]
+[node name="HeaderPanel" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_type_variation = &"PanelHeader"
 
-[node name="HBoxContainer" type="HBoxContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/HeaderPanel"]
+[node name="HBoxContainer" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel"]
 layout_mode = 2
 
-[node name="HeaderLabel" type="Label" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer"]
+[node name="HeaderLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
@@ -74,7 +70,7 @@ theme_override_font_sizes/font_size = 20
 text = "INVENTORY"
 horizontal_alignment = 1
 
-[node name="CloseButton" type="Button" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer"]
+[node name="CloseButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer"]
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
@@ -83,68 +79,68 @@ theme_override_font_sizes/font_size = 18
 text = "×"
 flat = true
 
-[node name="HSeparator" type="HSeparator" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer"]
+[node name="HSeparator" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 
-[node name="CurrencyPanel" type="PanelContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer"]
+[node name="CurrencyPanel" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_type_variation = &"PanelSub"
 
-[node name="CurrencyHBox" type="HBoxContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/CurrencyPanel"]
+[node name="CurrencyHBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel"]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="GoldContainer" type="HBoxContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox"]
+[node name="GoldContainer" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="GoldIcon" type="Label" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/GoldContainer"]
+[node name="GoldIcon" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/GoldContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
 theme_override_font_sizes/font_size = 14
 text = "◆"
 
-[node name="GoldLabel" type="Label" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/GoldContainer"]
+[node name="GoldLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/GoldContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
 theme_override_font_sizes/font_size = 12
 text = "Gold: 0"
 
-[node name="LusionsContainer" type="HBoxContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox"]
+[node name="LusionsContainer" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="LusionIcon" type="Label" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/LusionsContainer"]
+[node name="LusionIcon" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/LusionsContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.6, 0.85, 1, 1)
 theme_override_font_sizes/font_size = 14
 text = "✦"
 
-[node name="LusionsLabel" type="Label" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/LusionsContainer"]
+[node name="LusionsLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/LusionsContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.9, 1, 1)
 theme_override_font_sizes/font_size = 12
 text = "Lusions: 0"
 
-[node name="HSeparator2" type="HSeparator" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer"]
+[node name="HSeparator2" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 
-[node name="InventoryScroll" type="ScrollContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer"]
+[node name="InventoryScroll" type="ScrollContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
-vertical_scroll_mode = 1
 
-[node name="ScrollContent" type="VBoxContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/InventoryScroll"]
+[node name="ScrollContent" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/InventoryScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="InventoryContainer" type="GridContainer" parent="InventoryScreen/MainPanel/MarginContainer/VBoxContainer/InventoryScroll/ScrollContent"]
+[node name="InventoryContainer" type="GridContainer" parent="MainPanel/MarginContainer/VBoxContainer/InventoryScroll/ScrollContent"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
@@ -152,21 +148,18 @@ theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
 columns = 5
 script = ExtResource("2_container")
-grid_width = 5
-grid_height = 4
 
-[node name="ItemTooltip" type="PanelContainer" parent="InventoryScreen"]
+[node name="ItemTooltip" type="PanelContainer" parent="."]
 unique_name_in_owner = true
 visible = false
 z_index = 100
 layout_mode = 1
-anchors_preset = 0
 offset_right = 200.0
 offset_bottom = 150.0
 mouse_filter = 2
 theme_type_variation = &"PanelTooltip"
 
-[node name="MarginContainer" type="MarginContainer" parent="InventoryScreen/ItemTooltip"]
+[node name="MarginContainer" type="MarginContainer" parent="ItemTooltip"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 10
@@ -174,17 +167,17 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 8
 
-[node name="VBoxContainer" type="VBoxContainer" parent="InventoryScreen/ItemTooltip/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="ItemTooltip/MarginContainer"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="HeaderHBox" type="HBoxContainer" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="HeaderHBox" type="HBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="TooltipIcon" type="TextureRect" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/HeaderHBox"]
+[node name="TooltipIcon" type="TextureRect" parent="ItemTooltip/MarginContainer/VBoxContainer/HeaderHBox"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
@@ -192,115 +185,107 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="TooltipName" type="Label" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/HeaderHBox"]
+[node name="TooltipName" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/HeaderHBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 1
-mouse_filter = 2
 theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
 theme_override_font_sizes/font_size = 14
 text = "Item Name"
 vertical_alignment = 1
 
-[node name="HSeparator" type="HSeparator" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="HSeparator" type="HSeparator" parent="ItemTooltip/MarginContainer/VBoxContainer"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxFlat_tooltip_separator")
 
-[node name="TooltipDescription" type="Label" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="TooltipDescription" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.85, 0.82, 0.75, 1)
 theme_override_font_sizes/font_size = 11
 text = "Item description goes here."
 autowrap_mode = 2
 
-[node name="HSeparator2" type="HSeparator" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="HSeparator2" type="HSeparator" parent="ItemTooltip/MarginContainer/VBoxContainer"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxFlat_tooltip_separator")
 
-[node name="StatsContainer" type="VBoxContainer" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="StatsContainer" type="VBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 3
 
-[node name="ValueStat" type="PanelContainer" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
+[node name="ValueStat" type="PanelContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat"]
+[node name="HBoxContainer" type="HBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat"]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Label" type="Label" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat/HBoxContainer"]
+[node name="Label" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
 theme_override_font_sizes/font_size = 10
 text = "Value:"
 
-[node name="TooltipValue" type="Label" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat/HBoxContainer"]
+[node name="TooltipValue" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat/HBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
 theme_override_font_sizes/font_size = 10
 text = "100"
 horizontal_alignment = 2
 
-[node name="TierStat" type="PanelContainer" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
+[node name="TierStat" type="PanelContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat"]
+[node name="HBoxContainer" type="HBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat"]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Label" type="Label" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat/HBoxContainer"]
+[node name="Label" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
 theme_override_font_sizes/font_size = 10
 text = "Tier:"
 
-[node name="TooltipTier" type="Label" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat/HBoxContainer"]
+[node name="TooltipTier" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat/HBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 theme_override_font_sizes/font_size = 10
 text = "1"
 horizontal_alignment = 2
 
-[node name="LevelStat" type="PanelContainer" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
+[node name="LevelStat" type="PanelContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat"]
+[node name="HBoxContainer" type="HBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat"]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Label" type="Label" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat/HBoxContainer"]
+[node name="Label" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
 theme_override_font_sizes/font_size = 10
 text = "Required Level:"
 
-[node name="TooltipLevel" type="Label" parent="InventoryScreen/ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat/HBoxContainer"]
+[node name="TooltipLevel" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat/HBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 theme_override_font_sizes/font_size = 10
 text = "1"

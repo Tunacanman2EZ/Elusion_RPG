@@ -10,8 +10,8 @@
 [ext_resource type="Texture2D" uid="uid://cpbnpho8ey5s5" path="res://assets/Tiles/New Piskel-1.png (2).png" id="8_cbp6q"]
 [ext_resource type="Texture2D" uid="uid://b8emqu5al65ft" path="res://assets/Tiles/New Piskel-1.png (3).png" id="9_26xuy"]
 [ext_resource type="Texture2D" uid="uid://cft7xewsa6egr" path="res://assets/Tiles/New Piskel-1.png (1).png" id="10_bc84e"]
-[ext_resource type="PackedScene" uid="uid://40fim22w86ph" path="res://teleports.tscn" id="11_k3n1d"]
-[ext_resource type="PackedScene" uid="uid://cmicyqpd5i5rh" path="res://scenes/menu_screen.tscn" id="12_2o6r5"]
+[ext_resource type="PackedScene" uid="uid://40fim22w86ph" path="res://scenes/Teleports.tscn" id="11_k3n1d"]
+[ext_resource type="PackedScene" uid="uid://cmicyqpd5i5rh" path="res://scenes/ui/menus/MenuScreen.tscn" id="12_2o6r5"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_wjb0r"]
 texture = ExtResource("1_k3n1d")

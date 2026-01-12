@@ -1,9 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://chv8c718f2sfa"]
+[gd_scene load_steps=3 format=3 uid="uid://chv8c718f2sfa"]
 
 [ext_resource type="Script" path="res://scripts/ui/active_char_ui.gd" id="1_active"]
-[ext_resource type="PackedScene" uid="uid://c8hudcharacter" path="res://scenes/ui/CharacterHUD.tscn" id="2_hud"]
-[ext_resource type="PackedScene" uid="uid://tnx8p0sumd67" path="res://scenes/ui/inventory/Inventory.tscn" id="3_inv"]
-[ext_resource type="PackedScene" uid="uid://statsscreen123" path="res://scenes/ui/StatsScreen.tscn" id="4_stats"]
+[ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scenes/ui/CharacterHUD.tscn" id="2_hud"]
 
 [node name="ActiveCharUI" type="Control"]
 layout_mode = 3
@@ -16,10 +14,3 @@ mouse_filter = 2
 script = ExtResource("1_active")
 
 [node name="CharacterHUD" parent="." instance=ExtResource("2_hud")]
-
-[node name="InventoryUI" parent="." instance=ExtResource("3_inv")]
-visible = false
-
-[node name="StatsUI" parent="." instance=ExtResource("4_stats")]
-visible = false
-

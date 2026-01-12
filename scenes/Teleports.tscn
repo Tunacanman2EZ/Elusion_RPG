@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://urywvo8tedkr"]
+[gd_scene load_steps=7 format=3 uid="uid://y7mjmefw8b0j"]
 
 [ext_resource type="Texture2D" uid="uid://dg3uikwr64ilk" path="res://assets/Tiles/teleport_tile-1.png.png" id="2_m8lym"]
 [ext_resource type="Texture2D" uid="uid://dt38kh22i5drp" path="res://assets/Tiles/teleport_tile-2.png.png" id="3_y0d3q"]

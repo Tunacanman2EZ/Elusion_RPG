@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://y8py0d7k22ov"]
 
-[ext_resource type="Script" path="res://scripts/ui/character_hud.gd" id="1_hud"]
-[ext_resource type="Theme" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
+[ext_resource type="Script" uid="uid://b5421s5c7eqda" path="res://scripts/ui/character_hud.gd" id="1_hud"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
 
 [node name="CharacterHUD" type="CanvasLayer"]
 layer = 5
@@ -25,10 +25,12 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -200.0
-offset_top = -80.0
+offset_top = -96.0
 offset_right = 200.0
+offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 0
+theme = ExtResource("2_theme")
 
 [node name="MarginContainer" type="MarginContainer" parent="HUDControl/HUDPanel"]
 layout_mode = 2
@@ -59,8 +61,6 @@ horizontal_alignment = 1
 [node name="HPBar" type="ProgressBar" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/HPContainer"]
 custom_minimum_size = Vector2(150, 16)
 layout_mode = 2
-theme_override_styles/fill = null
-max_value = 100.0
 value = 100.0
 show_percentage = false
 
@@ -78,22 +78,44 @@ horizontal_alignment = 1
 [node name="StaminaBar" type="ProgressBar" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer"]
 custom_minimum_size = Vector2(150, 16)
 layout_mode = 2
-max_value = 100.0
 value = 100.0
 show_percentage = false
 
-[node name="ActionButtons" type="HBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer"]
-layout_mode = 2
-theme_override_constants/separation = 10
-alignment = 1
+[node name="HUDPanel2" type="PanelContainer" parent="HUDControl"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -180.0
+offset_top = -96.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 0
+grow_vertical = 0
+theme = ExtResource("2_theme")
 
-[node name="InteractButton" type="Button" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/ActionButtons"]
+[node name="VBoxContainer" type="VBoxContainer" parent="HUDControl/HUDPanel2"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionButtons" type="MarginContainer" parent="HUDControl/HUDPanel2/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="ButtonsVBox" type="VBoxContainer" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons"]
+layout_mode = 2
+
+[node name="InteractButton" type="Button" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox"]
 custom_minimum_size = Vector2(80, 30)
 layout_mode = 2
 text = "Interact"
 
-[node name="AttackButton" type="Button" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/ActionButtons"]
+[node name="AttackButton" type="Button" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox"]
 custom_minimum_size = Vector2(80, 30)
 layout_mode = 2
 text = "Attack"
-
