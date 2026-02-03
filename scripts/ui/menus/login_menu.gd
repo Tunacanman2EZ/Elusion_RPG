@@ -11,7 +11,7 @@ var selected_index := -1
 
 func _ready():
 	# Detect if we're on the login or character select scene (by node presence)
-	if has_node("CenterContainer/VBoxContainer/UsernameLineEdit"):
+	if has_node("%UsernameLineEdit"):
 		load_remembered_user()
 	if has_node("CharacterPanel"): # Example parent for character selection
 		update_selection_display()
@@ -33,8 +33,8 @@ func update_selection_display():
 	pass
 
 func show_error(message):
-	if has_node("ErrorLabel"):
-		$ErrorLabel.text = message
+	if has_node("%ErrorLabel"):
+		%ErrorLabel.text = message
 	else:
 		print(message)
 
@@ -42,9 +42,9 @@ func show_error(message):
 # ------------------------ LOGIN LOGIC ---------------------------
 
 func _on_Login_Button_pressed():
-	var username = $CenterContainer/VBoxContainer/UsernameLineEdit.text.strip_edges()
-	var password = $CenterContainer/VBoxContainer/PasswordLineEdit.text.strip_edges()
-	var error_label = $CenterContainer/VBoxContainer/ErrorLabel
+	var username = %UsernameLineEdit.text.strip_edges()
+	var password = %PasswordLineEdit.text.strip_edges()
+	var error_label = %ErrorLabel
 
 	# Validate input
 	if username.is_empty() or password.is_empty():
@@ -58,7 +58,7 @@ func _on_Login_Button_pressed():
 		return
 
 	# Remember Me
-	if $CenterContainer/VBoxContainer/RememberMe.pressed:
+	if %RememberMe.pressed:
 		save_remembered_user(username, password)
 	else:
 		save_remembered_user("", "")
@@ -85,6 +85,9 @@ func _on_Login_Button_pressed():
 			print("Standard user login.")
 		get_tree().change_scene_to_file("res://scenes/CharacterSelect.tscn")
 
+func _on_ExitButton_pressed():
+	get_tree().quit()
+
 func is_valid_input(input_str):
 	var regex = RegEx.new()
 	regex.compile("^[a-zA-Z0-9_]+$")
@@ -102,9 +105,9 @@ func load_remembered_user():
 	if err == OK:
 		var remembered_user = config.get_value("login", "remembered_username", "")
 		var remembered_pass = config.get_value("login", "remembered_password", "")
-		$CenterContainer/VBoxContainer/UsernameLineEdit.text = remembered_user
-		$CenterContainer/VBoxContainer/PasswordLineEdit.text = remembered_pass
-		$CenterContainer/VBoxContainer/RememberMe.button_pressed = (remembered_user != "" or remembered_pass != "")
+		%UsernameLineEdit.text = remembered_user
+		%PasswordLineEdit.text = remembered_pass
+		%RememberMe.button_pressed = (remembered_user != "" or remembered_pass != "")
 
 func is_username_taken(username):
 	var config = ConfigFile.new()

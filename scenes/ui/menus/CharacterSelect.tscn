@@ -1,19 +1,8 @@
-[gd_scene load_steps=7 format=3 uid="uid://b756xxenwprr4"]
+[gd_scene load_steps=5 format=3 uid="uid://b756xxenwprr4"]
 
 [ext_resource type="Script" uid="uid://gdr8hlyfpcx8" path="res://scripts/ui/menus/character_select.gd" id="1_rpq25"]
 [ext_resource type="Texture2D" uid="uid://cpuw2jylt7xsm" path="res://assets/images/treasure.png" id="1_sr2wn"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rpq25"]
-bg_color = Color(0.1488, 0.31, 0.291193, 1)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_gk21y"]
-bg_color = Color(0.0414921, 0.254852, 0.244604, 1)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nb21n"]
-bg_color = Color(0.077, 0.55, 0.274083, 0.478431)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_uq28m"]
-bg_color = Color(0.13694, 0.41, 0.1066, 0.631373)
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
 
 [node name="CharacterSelect" type="Control"]
 layout_mode = 3
@@ -22,6 +11,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("2_theme")
 script = ExtResource("1_rpq25")
 
 [node name="TextureRect" type="TextureRect" parent="."]
@@ -32,146 +22,222 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("1_sr2wn")
+expand_mode = 1
+stretch_mode = 6
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
-custom_minimum_size = Vector2(400, 250)
-layout_mode = 0
-offset_right = 104.0
-offset_bottom = 80.0
-
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
-layout_mode = 2
-
-[node name="Warrior" type="Panel" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
-
-[node name="Label_1" type="Label" parent="CenterContainer/VBoxContainer/Warrior"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 80.0
-offset_top = 41.0
-offset_right = 163.0
-offset_bottom = 64.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/normal = SubResource("StyleBoxFlat_rpq25")
+
+[node name="MainPanel" type="PanelContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(900, 400)
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="CenterContainer/MainPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="HeaderPanel" type="PanelContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="HeaderLabel" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/HeaderPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 24
+text = "SELECT YOUR HERO"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="GridContainer" type="GridContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 20
+theme_override_constants/v_separation = 20
+columns = 4
+
+[node name="Warrior" type="PanelContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_type_variation = &"PanelSlot"
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Warrior"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="ClassName" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Warrior/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 18
+text = "WARRIOR"
+horizontal_alignment = 1
+
+[node name="Label_1" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Warrior/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
 text = "Empty Slot"
 horizontal_alignment = 1
-vertical_alignment = 1
 
-[node name="SelectButton_1" type="Button" parent="CenterContainer/VBoxContainer/Warrior"]
-layout_mode = 0
-offset_left = 56.0
-offset_top = 133.0
-offset_right = 184.0
-offset_bottom = 261.0
-text = "Select"
-
-[node name="CreateButton_1" type="Button" parent="CenterContainer/VBoxContainer/Warrior"]
-layout_mode = 0
-offset_left = 56.0
-offset_top = 261.0
-offset_right = 184.0
-offset_bottom = 389.0
-text = "Create Warrior"
-
-[node name="Mage" type="Panel" parent="CenterContainer/VBoxContainer"]
+[node name="Buttons" type="HBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Warrior/VBox"]
 layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
 
-[node name="Label_2" type="Label" parent="CenterContainer/VBoxContainer/Mage"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 272.0
-offset_top = 37.0
-offset_right = 355.0
-offset_bottom = 60.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/normal = SubResource("StyleBoxFlat_gk21y")
-text = "Empty Slot"
-vertical_alignment = 1
-
-[node name="SelectButton_2" type="Button" parent="CenterContainer/VBoxContainer/Mage"]
-layout_mode = 0
-offset_left = 248.0
-offset_top = 129.0
-offset_right = 376.0
-offset_bottom = 257.0
-text = "Select"
-
-[node name="CreateButton_2" type="Button" parent="CenterContainer/VBoxContainer/Mage"]
-layout_mode = 0
-offset_left = 248.0
-offset_top = 257.0
-offset_right = 376.0
-offset_bottom = 385.0
-text = "Create Mage"
-
-[node name="Tank" type="Panel" parent="CenterContainer/VBoxContainer"]
+[node name="SelectButton_1" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Warrior/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 35)
 layout_mode = 2
-
-[node name="Label_3" type="Label" parent="CenterContainer/VBoxContainer/Tank"]
-layout_mode = 0
-offset_left = 464.0
-offset_top = 33.0
-offset_right = 547.0
-offset_bottom = 56.0
-theme_override_styles/normal = SubResource("StyleBoxFlat_nb21n")
-text = "Empty Slot"
-
-[node name="SelectButton_3" type="Button" parent="CenterContainer/VBoxContainer/Tank"]
-layout_mode = 0
-offset_left = 440.0
-offset_top = 129.0
-offset_right = 568.0
-offset_bottom = 257.0
 text = "Select"
 
-[node name="CreateButton_3" type="Button" parent="CenterContainer/VBoxContainer/Tank"]
-layout_mode = 0
-offset_left = 440.0
-offset_top = 257.0
-offset_right = 568.0
-offset_bottom = 385.0
-text = "Create Tank"
-
-[node name="Healer" type="Panel" parent="CenterContainer/VBoxContainer"]
+[node name="CreateButton_1" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Warrior/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 35)
 layout_mode = 2
+text = "Create"
 
-[node name="Label_4" type="Label" parent="CenterContainer/VBoxContainer/Healer"]
-layout_mode = 0
-offset_left = 656.0
-offset_top = 29.0
-offset_right = 739.0
-offset_bottom = 52.0
-theme_override_styles/normal = SubResource("StyleBoxFlat_uq28m")
+[node name="Mage" type="PanelContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_type_variation = &"PanelSlot"
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Mage"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="ClassName" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Mage/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.6, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "MAGE"
+horizontal_alignment = 1
+
+[node name="Label_2" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Mage/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
 text = "Empty Slot"
+horizontal_alignment = 1
 
-[node name="SelectButton_4" type="Button" parent="CenterContainer/VBoxContainer/Healer"]
-layout_mode = 0
-offset_left = 632.0
-offset_top = 125.0
-offset_right = 760.0
-offset_bottom = 253.0
+[node name="Buttons" type="HBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Mage/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="SelectButton_2" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Mage/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 35)
+layout_mode = 2
 text = "Select"
 
-[node name="CreateButton_4" type="Button" parent="CenterContainer/VBoxContainer/Healer"]
-layout_mode = 0
-offset_left = 632.0
-offset_top = 253.0
-offset_right = 760.0
-offset_bottom = 381.0
-text = "Create Healer"
+[node name="CreateButton_2" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Mage/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 35)
+layout_mode = 2
+text = "Create"
 
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Warrior/SelectButton_1" to="." method="_on_SelectButton_1_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Warrior/CreateButton_1" to="." method="_on_CreateButton_1_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Mage/SelectButton_2" to="." method="_on_SelectButton_2_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Mage/CreateButton_2" to="." method="_on_CreateButton_2_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Tank/SelectButton_3" to="." method="_on_SelectButton_3_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Tank/CreateButton_3" to="." method="_on_CreateButton_3_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Healer/SelectButton_4" to="." method="_on_SelectButton_4_pressed"]
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Healer/CreateButton_4" to="." method="_on_CreateButton_4_pressed"]
+[node name="Tank" type="PanelContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_type_variation = &"PanelSlot"
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Tank"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="ClassName" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Tank/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 1, 0.6, 1)
+theme_override_font_sizes/font_size = 18
+text = "TANK"
+horizontal_alignment = 1
+
+[node name="Label_3" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Tank/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Empty Slot"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Tank/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="SelectButton_3" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Tank/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 35)
+layout_mode = 2
+text = "Select"
+
+[node name="CreateButton_3" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Tank/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 35)
+layout_mode = 2
+text = "Create"
+
+[node name="Healer" type="PanelContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_type_variation = &"PanelSlot"
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Healer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="ClassName" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Healer/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
+theme_override_font_sizes/font_size = 18
+text = "HEALER"
+horizontal_alignment = 1
+
+[node name="Label_4" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Healer/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Empty Slot"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Healer/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="SelectButton_4" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Healer/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 35)
+layout_mode = 2
+text = "Select"
+
+[node name="CreateButton_4" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Healer/VBox/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 35)
+layout_mode = 2
+text = "Create"
+
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Warrior/VBox/Buttons/SelectButton_1" to="." method="_on_SelectButton_1_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Warrior/VBox/Buttons/CreateButton_1" to="." method="_on_CreateButton_1_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Mage/VBox/Buttons/SelectButton_2" to="." method="_on_SelectButton_2_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Mage/VBox/Buttons/CreateButton_2" to="." method="_on_CreateButton_2_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Tank/VBox/Buttons/SelectButton_3" to="." method="_on_SelectButton_3_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Tank/VBox/Buttons/CreateButton_3" to="." method="_on_CreateButton_3_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Healer/VBox/Buttons/SelectButton_4" to="." method="_on_SelectButton_4_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/GridContainer/Healer/VBox/Buttons/CreateButton_4" to="." method="_on_CreateButton_4_pressed"]

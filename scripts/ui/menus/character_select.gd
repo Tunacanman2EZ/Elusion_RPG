@@ -9,45 +9,49 @@ func _ready() -> void:
 	update_slot_labels()
 
 func update_slot_labels() -> void:
+	# Slot 1: Warrior
 	var char1 = CharacterData.character_slots[0]
 	if char1 == null or typeof(char1) != TYPE_DICTIONARY or not char1.has("class") or not char1.has("level"):
-		$CenterContainer/VBoxContainer/Warrior/Label_1.text = "Empty Slot"
-		$CenterContainer/VBoxContainer/Warrior/CreateButton_1.disabled = false
-		$CenterContainer/VBoxContainer/Warrior/SelectButton_1.disabled = true
+		%Label_1.text = "Empty Slot"
+		%CreateButton_1.disabled = false
+		%SelectButton_1.disabled = true
 	else:
-		$CenterContainer/VBoxContainer/Warrior/Label_1.text = "Class: %s\nLevel: %s" % [str(char1["class"]), str(char1["level"])]
-		$CenterContainer/VBoxContainer/Warrior/CreateButton_1.disabled = true
-		$CenterContainer/VBoxContainer/Warrior/SelectButton_1.disabled = false
+		%Label_1.text = "Level: %s" % str(char1["level"])
+		%CreateButton_1.disabled = true
+		%SelectButton_1.disabled = false
 
+	# Slot 2: Mage
 	var char2 = CharacterData.character_slots[1]
 	if char2 == null or typeof(char2) != TYPE_DICTIONARY or not char2.has("class") or not char2.has("level"):
-		$CenterContainer/VBoxContainer/Mage/Label_2.text = "Empty Slot"
-		$CenterContainer/VBoxContainer/Mage/CreateButton_2.disabled = false
-		$CenterContainer/VBoxContainer/Mage/SelectButton_2.disabled = true
+		%Label_2.text = "Empty Slot"
+		%CreateButton_2.disabled = false
+		%SelectButton_2.disabled = true
 	else:
-		$CenterContainer/VBoxContainer/Mage/Label_2.text = "Class: %s\nLevel: %s" % [str(char2["class"]), str(char2["level"])]
-		$CenterContainer/VBoxContainer/Mage/CreateButton_2.disabled = true
-		$CenterContainer/VBoxContainer/Mage/SelectButton_2.disabled = false
+		%Label_2.text = "Level: %s" % str(char2["level"])
+		%CreateButton_2.disabled = true
+		%SelectButton_2.disabled = false
 
+	# Slot 3: Tank
 	var char3 = CharacterData.character_slots[2]
 	if char3 == null or typeof(char3) != TYPE_DICTIONARY or not char3.has("class") or not char3.has("level"):
-		$CenterContainer/VBoxContainer/Tank/Label_3.text = "Empty Slot"
-		$CenterContainer/VBoxContainer/Tank/CreateButton_3.disabled = false
-		$CenterContainer/VBoxContainer/Tank/SelectButton_3.disabled = true
+		%Label_3.text = "Empty Slot"
+		%CreateButton_3.disabled = false
+		%SelectButton_3.disabled = true
 	else:
-		$CenterContainer/VBoxContainer/Tank/Label_3.text = "Class: %s\nLevel: %s" % [str(char3["class"]), str(char3["level"])]
-		$CenterContainer/VBoxContainer/Tank/CreateButton_3.disabled = true
-		$CenterContainer/VBoxContainer/Tank/SelectButton_3.disabled = false
+		%Label_3.text = "Level: %s" % str(char3["level"])
+		%CreateButton_3.disabled = true
+		%SelectButton_3.disabled = false
 
+	# Slot 4: Healer
 	var char4 = CharacterData.character_slots[3]
 	if char4 == null or typeof(char4) != TYPE_DICTIONARY or not char4.has("class") or not char4.has("level"):
-		$CenterContainer/VBoxContainer/Healer/Label_4.text = "Empty Slot"
-		$CenterContainer/VBoxContainer/Healer/CreateButton_4.disabled = false
-		$CenterContainer/VBoxContainer/Healer/SelectButton_4.disabled = true
+		%Label_4.text = "Empty Slot"
+		%CreateButton_4.disabled = false
+		%SelectButton_4.disabled = true
 	else:
-		$CenterContainer/VBoxContainer/Healer/Label_4.text = "Class: %s\nLevel: %s" % [str(char4["class"]), str(char4["level"])]
-		$CenterContainer/VBoxContainer/Healer/CreateButton_4.disabled = true
-		$CenterContainer/VBoxContainer/Healer/SelectButton_4.disabled = false
+		%Label_4.text = "Level: %s" % str(char4["level"])
+		%CreateButton_4.disabled = true
+		%SelectButton_4.disabled = false
 
 func _on_CreateButton_1_pressed() -> void:
 	CharacterData.character_slots[0] = {"class": "Warrior", "level": 1}

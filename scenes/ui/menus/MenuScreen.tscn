@@ -1,8 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://cmicyqpd5i5rh"]
-
-[ext_resource type="Script" uid="uid://mbkhdk2v4x8m" path="res://menu_screen.gd" id="1_yft84"]
-
-[node name="MenuScreen" type="CanvasLayer"]
-layer = 0
-script = ExtResource("1_yft84")
-metadata/_edit_vertical_guides_ = [704.0]

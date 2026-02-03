@@ -13,22 +13,22 @@ signal close_requested()
 ## Reference to close button
 @onready var close_button: Button = $MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer/CloseButton
 
-## Stat labels
-@onready var level_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/LevelRow/LevelValue
-@onready var xp_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/XPRow/XPValue
-@onready var xp_bar: ProgressBar = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/XPRow/XPBar
-@onready var hp_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/HPRow/HPValue
-@onready var hp_bar: ProgressBar = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/HPRow/HPBar
-@onready var stamina_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/StaminaRow/StaminaValue
-@onready var stamina_bar: ProgressBar = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/StaminaRow/StaminaBar
-@onready var mana_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/ManaRow/ManaValue
-@onready var mana_bar: ProgressBar = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/ManaRow/ManaBar
-@onready var attack_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/AttackRow/AttackValue
-@onready var defense_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/DefenseRow/DefenseValue
-@onready var agility_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/AgilityRow/AgilityValue
-@onready var magic_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/MagicRow/MagicValue
-@onready var fishing_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/FishingRow/FishingValue
-@onready var cooking_label: Label = $MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CookingRow/CookingValue
+## Stat labels using unique names (%)
+@onready var level_label: Label = %LevelValue
+@onready var xp_label: Label = %XPValue
+@onready var xp_bar: ProgressBar = %XPBar
+@onready var hp_label: Label = %HPValue
+@onready var hp_bar: ProgressBar = %HPBar
+@onready var stamina_label: Label = %StaminaValue
+@onready var stamina_bar: ProgressBar = %StaminaBar
+@onready var mana_label: Label = %ManaValue
+@onready var mana_bar: ProgressBar = %ManaBar
+@onready var attack_label: Label = %AttackValue
+@onready var defense_label: Label = %DefenseValue
+@onready var agility_label: Label = %AgilityValue
+@onready var magic_label: Label = %MagicValue
+@onready var fishing_label: Label = %FishingValue
+@onready var cooking_label: Label = %CookingValue
 
 ## Currently active player reference
 var current_player: Node = null
@@ -167,4 +167,3 @@ func _update_stat(stat_name: String, label: Label) -> void:
 		label.text = str(value)
 
 #endregion
-

@@ -30,7 +30,7 @@ offset_right = 200.0
 offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 0
-theme = ExtResource("2_theme")
+theme_type_variation = &"PanelSub"
 
 [node name="MarginContainer" type="MarginContainer" parent="HUDControl/HUDPanel"]
 layout_mode = 2
@@ -94,7 +94,7 @@ offset_right = -8.0
 offset_bottom = -8.0
 grow_horizontal = 0
 grow_vertical = 0
-theme = ExtResource("2_theme")
+theme_type_variation = &"PanelSub"
 
 [node name="VBoxContainer" type="VBoxContainer" parent="HUDControl/HUDPanel2"]
 layout_mode = 2

@@ -1,14 +1,9 @@
-[gd_scene load_steps=6 format=3 uid="uid://lon8advnxgqx"]
+[gd_scene load_steps=5 format=3 uid="uid://lon8advnxgqx"]
 
-[ext_resource type="Script" uid="uid://csey5unhicv5r" path="res://scripts/login_menu.gd" id="1_u8sew"]
-[ext_resource type="PackedScene" uid="uid://b756xxenwprr4" path="res://scenes/CharacterSelect.tscn" id="2_hhelq"]
+[ext_resource type="Script" uid="uid://csey5unhicv5r" path="res://scripts/ui/menus/login_menu.gd" id="1_u8sew"]
+[ext_resource type="PackedScene" uid="uid://b756xxenwprr4" path="res://scenes/ui/menus/CharacterSelect.tscn" id="2_hhelq"]
 [ext_resource type="Texture2D" uid="uid://bpu2av41q1t8g" path="res://assets/images/skeleton.png" id="2_jmb1l"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jmb1l"]
-bg_color = Color(0.787515, 0.528556, 0.417338, 1)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hhelq"]
-bg_color = Color(0.58919, 0.603833, 0.602271, 1)
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
 
 [node name="LoginMenu" type="Control"]
 layout_mode = 3
@@ -17,6 +12,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("3_theme")
 script = ExtResource("1_u8sew")
 char_select_scene = ExtResource("2_hhelq")
 metadata/_edit_use_anchors_ = true
@@ -34,36 +30,106 @@ texture = ExtResource("2_jmb1l")
 stretch_mode = 3
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
-layout_mode = 0
-anchor_right = 1.01838
-anchor_bottom = 0.993056
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 metadata/_edit_use_anchors_ = true
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
-custom_minimum_size = Vector2(400, 250)
+[node name="MainPanel" type="PanelContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(450, 400)
 layout_mode = 2
 
-[node name="UsernameLineEdit" type="LineEdit" parent="CenterContainer/VBoxContainer"]
+[node name="MarginContainer" type="MarginContainer" parent="CenterContainer/MainPanel"]
 layout_mode = 2
-theme_override_styles/normal = SubResource("StyleBoxFlat_jmb1l")
-placeholder_text = "New/Existing UserName"
+theme_override_constants/margin_left = 25
+theme_override_constants/margin_top = 25
+theme_override_constants/margin_right = 25
+theme_override_constants/margin_bottom = 25
 
-[node name="PasswordLineEdit" type="LineEdit" parent="CenterContainer/VBoxContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer"]
 layout_mode = 2
-theme_override_styles/normal = SubResource("StyleBoxFlat_hhelq")
+theme_override_constants/separation = 15
+
+[node name="HeaderPanel" type="PanelContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="HeaderLabel" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/HeaderPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 28
+text = "ELUSION RPG"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="LoginForm" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="UsernameLineEdit" type="LineEdit" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Username"
+alignment = 1
+
+[node name="PasswordLineEdit" type="LineEdit" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm"]
+unique_name_in_owner = true
+layout_mode = 2
 placeholder_text = "Password"
+alignment = 1
 secret = true
 
-[node name="RememberMe" type="CheckBox" parent="CenterContainer/VBoxContainer"]
+[node name="RememberMe" type="CheckBox" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm"]
+unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0, 0.776471, 0, 1)
+size_flags_horizontal = 4
 text = "Remember me"
 
-[node name="Login_button" type="Button" parent="CenterContainer/VBoxContainer"]
+[node name="LoginButton" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 45)
 layout_mode = 2
-text = "Log Into Elysium"
+size_flags_horizontal = 4
+text = "Enter Elysium"
 
-[node name="ErrorLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+[node name="ErrorLabel" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="HSeparator2" type="HSeparator" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 
-[connection signal="pressed" from="CenterContainer/VBoxContainer/Login_button" to="." method="_on_Login_Button_pressed"]
+[node name="MenuButtons" type="HBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 15
+alignment = 1
+
+[node name="ShopButton" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/MenuButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 38)
+layout_mode = 2
+text = "Shop"
+
+[node name="SettingsButton" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/MenuButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 38)
+layout_mode = 2
+text = "Settings"
+
+[node name="ExitButton" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/MenuButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 38)
+layout_mode = 2
+text = "Exit"
+
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm/LoginButton" to="." method="_on_Login_Button_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/MenuButtons/ExitButton" to="." method="_on_ExitButton_pressed"]
