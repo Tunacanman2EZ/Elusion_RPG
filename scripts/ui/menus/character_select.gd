@@ -1,13 +1,40 @@
+"""
+Character Slot Selection UI (Godot 4.5)
+
+WHY: Lets players view, create, or select one of four character slots (Warrior, Mage, Tank, Healer).
+HOW: Syncs slot data from CharacterData, updates labels/buttons, and transitions to game scene on selection.
+WHAT: Handles empty slot prompts, prevents selecting uninitialized characters, and manages slot state UI.
+TODO:
+ - Genericize for more/fewer slots (array-driven).
+ - Add delete/rename functionality per slot.
+ - Show avatar/previews beside levels.
+ - Animate selection and creation for richer feedback.
+"""
 extends Control
 
+# Preloads the main game scene for quick selection transition.
 var elusion_scene: PackedScene = preload("res://scenes/Elusion.tscn")
 
+"""
+Initializes slot data, loads character info from disk, and redraws UI.
+WHY: Ensures all slots are valid arrays; guards against corrupted data.
+TODO: Support loading icons/skins for each slot.
+"""
 func _ready() -> void:
 	CharacterData.load_data()
 	if CharacterData.character_slots == null or typeof(CharacterData.character_slots) != TYPE_ARRAY or CharacterData.character_slots.size() != 4:
 		CharacterData.character_slots = [null, null, null, null]
 	update_slot_labels()
 
+"""
+Update all labels and buttons to match current character_slots array.
+
+WHY: Dynamically reflects slot state in UI (empty vs. taken, correct level/classes).
+HOW: For each slot:
+ - If slot is empty/malformed, show "Empty Slot" and enable Create.
+ - If slot has class/level, show info and enable Select.
+TODO: Extract loop for larger slot counts.
+"""
 func update_slot_labels() -> void:
 	# Slot 1: Warrior
 	var char1 = CharacterData.character_slots[0]
@@ -53,6 +80,13 @@ func update_slot_labels() -> void:
 		%CreateButton_4.disabled = true
 		%SelectButton_4.disabled = false
 
+# Slot creation handlers—set new character with level 1
+"""
+On Create pressed, assigns a new character with starting level to relevant slot, then refreshes display.
+
+WHY: Initializes character info for selected class/slot.
+TODO: Ask for name/customization before creation.
+"""
 func _on_CreateButton_1_pressed() -> void:
 	CharacterData.character_slots[0] = {"class": "Warrior", "level": 1}
 	CharacterData.save_data()
@@ -73,6 +107,14 @@ func _on_CreateButton_4_pressed() -> void:
 	CharacterData.save_data()
 	update_slot_labels()
 
+# Slot select handlers—move to main game scene with chosen character/class
+"""
+Select handlers set the current active character index, 
+then save and jump to the main game.
+
+WHY: Only lets players select initialized slots; avoids index errors.
+TODO: Fade screen or animate transition.
+"""
 func _on_SelectButton_1_pressed() -> void:
 	_select_character(0, "Warrior")
 
@@ -84,7 +126,13 @@ func _on_SelectButton_3_pressed() -> void:
 
 func _on_SelectButton_4_pressed() -> void:
 	_select_character(3, "Healer")
-	
+
+"""
+Selects a character in the given slot, validates slot, and launches the game.
+
+WHY: Prevents broken selection (like picking an empty slot).
+TODO: Support per-character loadouts, achievements, stat recall.
+"""
 func _select_character(idx: int, _name: String) -> void:
 	var slot = CharacterData.character_slots[idx]
 	if slot == null or typeof(slot) != TYPE_DICTIONARY or not slot.has("class") or not slot.has("level"):
