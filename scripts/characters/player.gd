@@ -1,23 +1,69 @@
 """
-Warrior Character Class (Godot 4.5)
+Player Base Class (Godot 4.5)
 
-WHY: Warrior class extending the base Player class.
-HOW: Inherits all core player functionality, sets Warrior-specific properties.
-WHAT: Warrior specialization with balanced stats and abilities.
+WHY: Contains all shared functionality for player characters (Warrior, Tank, Mage, Healer).
+     Eliminates code duplication between character classes.
+HOW: Extends CharacterBody2D, provides movement, stats, combat, leveling, and UI systems.
+     Individual character classes extend this base class.
+WHAT: Core player mechanics that all classes share.
 TODO:
- - Add Warrior-specific abilities (tankiness, melee focus).
- - Customize skill progression rates.
+ - Add stamina/mana regeneration system.
+ - Modularize UI updates for better performance.
+ - Add status effects and debuff system.
 """
-extends "res://scripts/characters/player.gd"
 
-# --- WARRIOR INITIALIZATION ---
+extends CharacterBody2D
+
+# --- BASIC PLAYER PROPERTIES ---
+@export var speed := 75  # Player movement speed (can be overridden by subclasses).
+
+var gold := 0            # Soft currency ("gold coins")—shop, loot, rewards, etc.
+var lusions := 0         # Premium currency for rare items or upgrades (design choice).
+var inventory = []       # Item storage. TODO: Replace with Dict<String, int> for stackable items.
+
+# --- UI LABELS (referenced nodes) ---
+var gold_label: Label = null     # Label node for displaying gold UI.
+var lusions_label: Label = null  # Label node for lusions currency UI.
+
+# --- RPG CHARACTER STATS ---
+var character_name := "Player"  # For multiplayer, could export or randomize.
+var level := 1
+var xp := 0
+var xp_next := 100
+var max_hp := 20
+var hp := 20
+var max_stamina := 100  # Base class uses stamina; Mage/Healer override with mana
+var stamina := 100
+
+# --- INDIVIDUAL SKILL TRACKING (could modularize later) ---
+var attack := 1;   var attack_xp := 0;   var attack_xp_next := 100
+var defense := 1;  var defense_xp := 0;  var defense_xp_next := 100
+var agility := 1;  var agility_xp := 0;  var agility_xp_next := 100
+var magic := 1;    var magic_xp := 0;    var magic_xp_next := 100
+var fishing := 1;  var fishing_xp := 0;  var fishing_xp_next := 100
+var cooking := 1;  var cooking_xp := 0;  var cooking_xp_next := 100
+
+var last_direction := Vector2.DOWN  # Used for idle/facing/attack direction replay
+
+# --- PLAYER INITIALIZATION ---
 """
-Warrior-specific initialization.
+Runs once when the scene is loaded.
+WHY: Ensures camera follows player, adds to global group, sets up stat panel if present.
+HOW: Checks for Stats UI node to avoid null refs.
+TODO: Replace hard-coded node paths for better modularity.
 """
 func _ready():
-	super._ready()  # Call parent _ready first
-	character_name = "Warrior"
-	speed = 75
+	$Camera2D.make_current()  # Lock camera to player
+	add_to_group("player")
+	# Try to update stats panel immediately if present
+	var stats_panel = null
+	var curr_scene = get_tree().current_scene
+	if curr_scene and curr_scene.has_node("MenuScreen/InventoryUI/PanelContainer/Stats"):
+		stats_panel = curr_scene.get_node("MenuScreen/InventoryUI/PanelContainer/Stats")
+	if stats_panel:
+		update_stats_labels(stats_panel)
+
+# --- MAIN MOVEMENT AND PHYSICS LOOP ---
 """
 Handles all walking, direction, and animation logic.
 
@@ -74,7 +120,7 @@ func get_walk_animation(dir: Vector2) -> String:
 """
 Chooses the correct idle animation string based on last movement direction.
 
-WHY: Player stays facing the last way they moved; avoids “twist reset” bug.
+WHY: Player stays facing the last way they moved; avoids "twist reset" bug.
 TODO: Animate idle stance (blinking, fidgeting), add weapons.
 """
 func get_idle_animation() -> String:
@@ -97,7 +143,7 @@ HOW: Uses `last_direction` to choose correct animation.
 WHAT: Only does visuals for now. TODO: Add hitboxes, target detection, and effect triggers.
 """
 func attack_action():
-	print("Warrior is attacking!")  # Debug print—replace or expand soon.
+	print(character_name + " is attacking!")  # Debug print—replace or expand soon.
 	var dir = last_direction
 	var anim = get_attack_animation(dir)
 	$AnimatedSprite2D.play(anim)
@@ -131,7 +177,7 @@ func _on_AnimatedSprite2D_animation_finished():
 	if current.begins_with("Attack"):
 		$AnimatedSprite2D.play(get_idle_animation())
 
-func take_step(): 
+func take_step():
 	pass  # TODO: Add stamina drain, footstep audio, tile/loot triggers
 
 # --- UI LABEL UPDATER FOR STATS PANEL ---
@@ -172,7 +218,7 @@ func update_lusions_label() -> void:
 Adds gold and updates relevant UI.
 
 WHY: Standard currency gain.
-TODO: Trigger “gold sparkle” effect on add.
+TODO: Trigger "gold sparkle" effect on add.
 """
 func add_gold(amount: int) -> void:
 	gold += amount
@@ -193,10 +239,10 @@ func heal(amount: int):
 
 # --- HP DAMAGE & LEVEL LOGIC ---
 """
-Subtracts HP from player and asserts they can’t go negative.
+Subtracts HP from player and asserts they can't go negative.
 
 WHY: Centralizes damage—could be hooked to play hurt effects or trigger death soon.
-TODO: Add invulnerability frames, knockback, and “game over.”
+TODO: Add invulnerability frames, knockback, and "game over."
 """
 func take_damage(amount: int) -> void:
 	hp = clamp(hp - amount, 0, max_hp)
@@ -249,42 +295,42 @@ func gain_attack_xp(amount: int):
 	while attack_xp >= attack_xp_next:
 		attack += 1
 		attack_xp -= attack_xp_next
-		attack_xp_next = xp_needed_for_skill(attack)
+		attack_xp_next = xp_needed_for_skill(attack, 100, 1.25)
 
 func gain_defense_xp(amount: int):
 	defense_xp += amount
 	while defense_xp >= defense_xp_next:
 		defense += 1
 		defense_xp -= defense_xp_next
-		defense_xp_next = xp_needed_for_skill(defense)
+		defense_xp_next = xp_needed_for_skill(defense, 100, 1.20)
 
 func gain_agility_xp(amount: int):
 	agility_xp += amount
 	while agility_xp >= agility_xp_next:
 		agility += 1
 		agility_xp -= agility_xp_next
-		agility_xp_next = xp_needed_for_skill(agility)
+		agility_xp_next = xp_needed_for_skill(agility, 100, 1.15)
 
 func gain_magic_xp(amount: int):
 	magic_xp += amount
 	while magic_xp >= magic_xp_next:
 		magic += 1
 		magic_xp -= magic_xp_next
-		magic_xp_next = xp_needed_for_skill(magic)
+		magic_xp_next = xp_needed_for_skill(magic, 100, 1.25)
 
 func gain_fishing_xp(amount: int):
 	fishing_xp += amount
 	while fishing_xp >= fishing_xp_next:
 		fishing += 1
 		fishing_xp -= fishing_xp_next
-		fishing_xp_next = xp_needed_for_skill(fishing)
+		fishing_xp_next = xp_needed_for_skill(fishing, 100, 1.12)
 
 func gain_cooking_xp(amount: int):
 	cooking_xp += amount
 	while cooking_xp >= cooking_xp_next:
 		cooking += 1
 		cooking_xp -= cooking_xp_next
-		cooking_xp_next = xp_needed_for_skill(cooking)
+		cooking_xp_next = xp_needed_for_skill(cooking, 100, 1.10)
 
 # --- FUTURE WORK ---
 """

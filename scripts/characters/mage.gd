@@ -1,176 +1,28 @@
-extends CharacterBody2D
+"""
+Mage Character Class (Godot 4.5)
 
-# === BASIC MOVEMENT ===
-@export var speed := 150  # Base move speed (improves with agility)
+WHY: Mage class extending the base Player class.
+HOW: Inherits all core player functionality, overrides stamina with mana.
+WHAT: Mage specialization with spellcasting focus and mana resource.
+TODO:
+ - Add Mage-specific abilities (spells, magic focus).
+ - Customize skill progression rates.
+ - Implement mana regeneration.
+"""
+extends "res://scripts/characters/player.gd"
 
-# === INVENTORY AND CURRENCY ===
-var gold := 0               # How much gold this player has
-var lusions := 0            # How many Lusions (special currency/resources)
-var inventory := []         # Player's inventory (list of items, can be strings, Dictionaries, or custom objects)
-
-# === CORE RPG STATS ===
-var character_name := "Mage"
-var max_hp := 20
-var hp := 20
+# Mage-specific properties (override stamina with mana)
 var max_mana := 100
 var mana := 100
-var level := 1
-var attack := 1
-var defense := 1
-var agility := 1
-var magic := 1
-var fishing := 1
-var cooking := 1
-var xp := 0                  # General XP for character level
-var xp_next := 100           # XP needed to reach next level
 
-# === SKILL XP TRACKING ===
-var attack_xp := 0
-var defense_xp := 0
-var agility_xp := 0
-var magic_xp := 0
-var fishing_xp := 0
-var cooking_xp := 0
-
+# --- MAGE INITIALIZATION ---
+"""
+Mage-specific initialization.
+"""
 func _ready():
-	$Camera2D.make_current()
-	add_to_group("player")
+	super._ready()  # Call parent _ready first
+	character_name = "Mage"
+	# Mage uses mana instead of stamina
+	max_stamina = max_mana
+	stamina = mana
 
-func _physics_process(_delta):
-	# 4-directional WASD/Arrow movement (no diagonals)
-	var direction := Vector2.ZERO
-
-	if Input.is_action_pressed("ui_right"):
-		direction.x += 1
-	if Input.is_action_pressed("ui_left"):
-		direction.x -= 1
-	if Input.is_action_pressed("ui_down"):
-		direction.y += 1
-	if Input.is_action_pressed("ui_up"):
-		direction.y -= 1
-
-	# Block diagonal input: only allow one axis at a time
-	if abs(direction.x) > 0:
-		direction.y = 0
-	elif abs(direction.y) > 0:
-		direction.x = 0
-
-	if direction != Vector2.ZERO:
-		velocity = direction.normalized() * (speed + (agility - 1) * 10)
-		$AnimatedSprite2D.play(get_walk_animation(direction))
-		take_step()
-	else:
-		velocity = Vector2.ZERO
-		$AnimatedSprite2D.stop()
-
-	move_and_slide()
-
-# === ANIMATION HANDLING (only 4 directions) ===
-
-func get_walk_animation(dir: Vector2) -> String:
-	if dir.x > 0:
-		return "Walk_Right"
-	elif dir.x < 0:
-		return "Walk_Left"
-	elif dir.y > 0:
-		return "Walk_Down"
-	elif dir.y < 0:
-		return "Walk_Up"
-	return "Idle" # Optional: if you have Idle animation
-
-# === MOVEMENT HOOK ===
-
-func take_step():
-	# Optional: put step sound or event here
-	pass
-
-# === HP DAMAGE AND LEVEL SYSTEM ===
-
-func take_damage(amount: int) -> void:
-	hp = clamp(hp - amount, 0, max_hp)
-	assert(hp >= 0, "HP went below 0!")
-
-func level_up() -> void:
-	level += 1
-	max_hp += 10
-	hp = clamp(hp + 10, 0, max_hp)
-	assert(hp <= max_hp, "HP went above max after level up!")
-
-# === XP AND LEVELING LOGIC ===
-
-func get_threshold(stat_level: int, multiplier: float) -> int:
-	# XP required to reach the next level for a skill.
-	return int(100 * pow(multiplier, stat_level - 1))
-
-func gain_xp(amount: int):
-	# Add general XP, level up when enough is acquired (XP curve doubles each level).
-	xp += amount
-	while xp >= xp_next:
-		level_up()
-		xp -= xp_next
-		xp_next *= 2
-
-func calculate_xp_award(player_stat: int, monster_level: int, base_xp: int) -> int:
-	# Calculate XP reward scale for monsters, adjusted for difficulty difference.
-	if monster_level > player_stat + 10:
-		return int(base_xp * 0.25)
-	elif monster_level < player_stat - 10:
-		return int(base_xp * 0.5)
-	return base_xp
-
-# === STAT XP & LEVELING EXAMPLES ===
-
-func swing_attack(monster_level: int, base_xp: int = 1):
-	# Earn attack XP for hitting a monster, including leveling logic.
-	var xp_gain = calculate_xp_award(attack, monster_level, base_xp)
-	attack_xp += xp_gain
-	var threshold = get_threshold(attack, 1.25)
-	while attack_xp >= threshold:
-		attack += 1
-		attack_xp -= threshold
-		threshold = get_threshold(attack, 1.25)
-
-func block(monster_level: int, base_xp: int = 1):
-	var xp_gain = calculate_xp_award(defense, monster_level, base_xp)
-	defense_xp += xp_gain
-	var threshold = get_threshold(defense, 1.20)
-	while defense_xp >= threshold:
-		defense += 1
-		defense_xp -= threshold
-		threshold = get_threshold(defense, 1.20)
-
-func dodge(monster_level: int, base_xp: int = 1):
-	var xp_gain = calculate_xp_award(agility, monster_level, base_xp)
-	agility_xp += xp_gain
-	var threshold = get_threshold(agility, 1.15)
-	while agility_xp >= threshold:
-		agility += 1
-		agility_xp -= threshold
-		threshold = get_threshold(agility, 1.15)
-
-func cast_spell(monster_level: int, base_xp: int = 1):
-	var xp_gain = calculate_xp_award(magic, monster_level, base_xp)
-	magic_xp += xp_gain
-	var threshold = get_threshold(magic, 1.25)
-	while magic_xp >= threshold:
-		magic += 1
-		magic_xp -= threshold
-		threshold = get_threshold(magic, 1.25)
-
-func fish(base_xp: int = 1):
-	var xp_gain = calculate_xp_award(fishing, 1, base_xp)
-	fishing_xp += xp_gain
-	var threshold = get_threshold(fishing, 1.12)
-	while fishing_xp >= threshold:
-		fishing += 1
-		fishing_xp -= threshold
-		threshold = get_threshold(fishing, 1.12)
-
-func cook(base_xp: int = 1):
-	var xp_gain = calculate_xp_award(cooking, 1, base_xp)
-	cooking_xp += xp_gain
-	var threshold = get_threshold(cooking, 1.10)
-	while cooking_xp >= threshold:
-		cooking += 1
-		cooking_xp -= threshold
-		threshold = get_threshold(cooking, 1.10)
