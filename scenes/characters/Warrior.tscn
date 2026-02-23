@@ -1,8 +1,8 @@
-[gd_scene load_steps=83 format=3 uid="uid://c5fxj5ihssij5"]
+[gd_scene format=3 uid="uid://c5fxj5ihssij5"]
 
-[ext_resource type="Texture2D" uid="uid://87sa4yhvy632" path="res://assets/Animated_Tiles/Warrior$.png" id="2_4tnwm"]
-[ext_resource type="Texture2D" uid="uid://b8qu2hjt00qkb" path="res://assets/Animated_Tiles/Warrior$2.png" id="2_w7oh4"]
-[ext_resource type="Script" uid="uid://gr8xl2t4cebx" path="res://scripts/characters/warrior.gd" id="64_ffrwm"]
+[ext_resource type="Texture2D" uid="uid://87sa4yhvy632" path="res://Art/Character/Warrior$.png" id="2_4tnwm"]
+[ext_resource type="Texture2D" uid="uid://b8qu2hjt00qkb" path="res://Art/Character/Warrior$2.png" id="2_w7oh4"]
+[ext_resource type="Script" uid="uid://dyainuh3u1iu5" path="res://scripts/characters/warrior.gd" id="64_ffrwm"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ddtn8"]
 atlas = ExtResource("2_4tnwm")
@@ -332,9 +332,9 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_7u24g")
 }],
-"loop": true,
+"loop": false,
 "name": &"Attack_Down",
-"speed": 2.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -358,7 +358,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_la2b3")
 }],
-"loop": true,
+"loop": false,
 "name": &"Attack_Left",
 "speed": 5.0
 }, {
@@ -384,9 +384,9 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_gl20q")
 }],
-"loop": true,
+"loop": false,
 "name": &"Attack_Right",
-"speed": 3.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -410,9 +410,9 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_r1vns")
 }],
-"loop": true,
+"loop": false,
 "name": &"Attack_Up",
-"speed": 3.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -433,7 +433,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_0ty1w")
 }],
-"loop": true,
+"loop": false,
 "name": &"Idle_Down",
 "speed": 2.0
 }, {
@@ -600,37 +600,37 @@ animations = [{
 }]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_gihqn"]
-size = Vector2(20, 13)
+size = Vector2(62, 58)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_r8um1"]
 radius = 8.0
 
-[node name="Warrior" type="CharacterBody2D"]
+[node name="Warrior" type="CharacterBody2D" unique_id=781238535]
 z_index = 1
 texture_filter = 1
 script = ExtResource("64_ffrwm")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
-z_index = 1
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1319435616]
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_ih3hd")
-animation = &"Attack_Right"
-frame_progress = 0.22108465
+animation = &"Attack_Down"
 speed_scale = 1.5
 
-[node name="Area2D" type="Area2D" parent="AnimatedSprite2D"]
+[node name="Area2D" type="Area2D" parent="AnimatedSprite2D" unique_id=1080463860]
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="AnimatedSprite2D/Area2D"]
-position = Vector2(22, 0)
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AnimatedSprite2D/Area2D" unique_id=1394274438]
+position = Vector2(1, 1)
 shape = SubResource("RectangleShape2D_gihqn")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1491416616]
 z_index = 1
 texture_filter = 1
 shape = SubResource("CircleShape2D_r8um1")
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." unique_id=749862179]
 texture_filter = 1
 zoom = Vector2(3, 3)
 position_smoothing_enabled = true
 position_smoothing_speed = 3.0
+
+[connection signal="animation_finished" from="AnimatedSprite2D" to="." method="_on_animated_sprite_2d_animation_finished"]

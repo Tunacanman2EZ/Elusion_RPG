@@ -1,0 +1,86 @@
+[gd_scene format=3 uid="uid://cf7n3w3rl1pfp"]
+
+[ext_resource type="Script" uid="uid://o1ieolp4omhx" path="res://Resources/Script/firepit.gd" id="1_vtlr4"]
+[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://Art/Tiles/3.png" id="2_yu3y2"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_378rs"]
+atlas = ExtResource("2_yu3y2")
+region = Rect2(0, 64, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_a2ld7"]
+atlas = ExtResource("2_yu3y2")
+region = Rect2(32, 64, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_u3lxk"]
+atlas = ExtResource("2_yu3y2")
+region = Rect2(64, 64, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ko84l"]
+atlas = ExtResource("2_yu3y2")
+region = Rect2(96, 64, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_s71wp"]
+atlas = ExtResource("2_yu3y2")
+region = Rect2(128, 64, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_p8up1"]
+atlas = ExtResource("2_yu3y2")
+region = Rect2(160, 64, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_828a2"]
+atlas = ExtResource("2_yu3y2")
+region = Rect2(192, 64, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7k0jf"]
+atlas = ExtResource("2_yu3y2")
+region = Rect2(224, 64, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_wqhum"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_378rs")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_a2ld7")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_u3lxk")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ko84l")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_s71wp")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_p8up1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_828a2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7k0jf")
+}],
+"loop": true,
+"name": &"burn",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_k5h5w"]
+radius = 21.023796
+
+[node name="Firepit" type="Area2D" unique_id=258032866]
+z_index = 1
+script = ExtResource("1_vtlr4")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=2050364898]
+sprite_frames = SubResource("SpriteFrames_wqhum")
+animation = &"burn"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1528466811]
+position = Vector2(0, 4)
+shape = SubResource("CircleShape2D_k5h5w")
+
+[connection signal="body_entered" from="." to="." method="_on_body_entered"]
+[connection signal="body_exited" from="." to="." method="_on_body_exited"]

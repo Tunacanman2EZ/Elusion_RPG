@@ -1,146 +1,83 @@
-"""
-Warrior Character Class (Godot 4.5)
-
-WHY: Warrior class extending the base Player class.
-HOW: Inherits all core player functionality, sets Warrior-specific properties.
-WHAT: Warrior specialization with balanced stats and abilities.
-TODO:
- - Add Warrior-specific abilities (tankiness, melee focus).
- - Customize skill progression rates.
-"""
 extends "res://scripts/characters/player.gd"
 
+var is_attacking = false
+
 # --- WARRIOR INITIALIZATION ---
-"""
-Warrior-specific initialization.
-"""
 func _ready():
-	super._ready()  # Call parent _ready first
+	super._ready()
 	character_name = "Warrior"
 	speed = 75
-"""
-Handles all walking, direction, and animation logic.
+	add_to_group("player")
 
-WHY: Core player feel—smooth, simple, can be extended.
-HOW:
- - Reads directional input.
- - Only one axis at a time (classic RPG style; fixes diagonal sprint cheat).
- - Sets velocity and plays walk/idle animations.
- - Updates last_direction for attack/idling.
-TODO: Add stamina drain, dashing, obstacles, run toggle, and sound FX!
-"""
 func _physics_process(_delta):
+	if is_attacking:
+		velocity = Vector2.ZERO   # Locks the player in place during attack
+		move_and_slide()
+		return
+
+	# Regular movement code
 	var direction := Vector2.ZERO
-	# Gather input into direction vector; supports arrow keys and remapped controls.
 	if Input.is_action_pressed("ui_right"): direction.x += 1
 	if Input.is_action_pressed("ui_left"): direction.x -= 1
 	if Input.is_action_pressed("ui_down"): direction.y += 1
 	if Input.is_action_pressed("ui_up"): direction.y -= 1
-	# Lock to horizontal or vertical axis only (disable diagonals for snappier feel).
 	if abs(direction.x) > 0:
 		direction.y = 0
 	elif abs(direction.y) > 0:
 		direction.x = 0
 
 	if direction != Vector2.ZERO:
-		# Speed increases slightly with agility stat
 		velocity = direction.normalized() * (speed + (agility - 1) * 10)
 		$AnimatedSprite2D.play(get_walk_animation(direction))
 		last_direction = direction
-		take_step()  # Placeholder for step logic (sound, event, footstep FX)
+		take_step()
 	else:
 		velocity = Vector2.ZERO
 		$AnimatedSprite2D.play(get_idle_animation())
 	move_and_slide()
 
-"""
-Chooses the correct walk animation string based on player direction.
-
-WHY: Keeps visuals consistent with movement.
-HOW: Checks horizontal/vertical axes.
-TODO: Add new sprites for diagonal walking.
-"""
 func get_walk_animation(dir: Vector2) -> String:
-	if dir.x > 0:
-		return "Walk_Right"
-	elif dir.x < 0:
-		return "Walk_Left"
-	elif dir.y > 0:
-		return "Walk_Down"
-	elif dir.y < 0:
-		return "Walk_Up"
+	if dir.x > 0: return "Walk_Right"
+	elif dir.x < 0: return "Walk_Left"
+	elif dir.y > 0: return "Walk_Down"
+	elif dir.y < 0: return "Walk_Up"
 	return "Idle"
 
-"""
-Chooses the correct idle animation string based on last movement direction.
-
-WHY: Player stays facing the last way they moved; avoids “twist reset” bug.
-TODO: Animate idle stance (blinking, fidgeting), add weapons.
-"""
 func get_idle_animation() -> String:
-	if last_direction.x > 0:
-		return "Idle_Right"
-	elif last_direction.x < 0:
-		return "Idle_Left"
-	elif last_direction.y > 0:
-		return "Idle_Down"
-	elif last_direction.y < 0:
-		return "Idle_Up"
+	if last_direction.x > 0: return "Idle_Right"
+	elif last_direction.x < 0: return "Idle_Left"
+	elif last_direction.y > 0: return "Idle_Down"
+	elif last_direction.y < 0: return "Idle_Up"
 	return "Idle"
 
 # --- COMBAT/ATTACK LOGIC ---
-"""
-Handles all logic for when the player attacks.
-
-WHY: Triggers combat visuals (and, soon, game mechanics).
-HOW: Uses `last_direction` to choose correct animation.
-WHAT: Only does visuals for now. TODO: Add hitboxes, target detection, and effect triggers.
-"""
 func attack_action():
-	print("Warrior is attacking!")  # Debug print—replace or expand soon.
+	if is_attacking:
+		print("Attack ignored: already attacking!")
+		return
+	is_attacking = true
+	print("Warrior is attacking!")
 	var dir = last_direction
 	var anim = get_attack_animation(dir)
+	print("Trying to play animation: ", anim)
 	$AnimatedSprite2D.play(anim)
 
-"""
-Chooses the attack animation string for given direction.
-
-WHY: Ensures attack matches player facing.
-TODO: Add diagonal attacks, weapon type checks, and multi-hit support.
-"""
 func get_attack_animation(dir: Vector2) -> String:
-	if dir.x > 0:
-		return "Attack_Right"
-	elif dir.x < 0:
-		return "Attack_Left"
-	elif dir.y > 0:
-		return "Attack_Down"
-	elif dir.y < 0:
-		return "Attack_Up"
-	return "Attack"  # Neutral/fallback
+	if dir.x > 0: return "Attack_Right"
+	elif dir.x < 0: return "Attack_Left"
+	elif dir.y > 0: return "Attack_Down"
+	elif dir.y < 0: return "Attack_Up"
+	return "Attack"
 
-# --- ANIMATION SIGNAL HANDLERS ---
-"""
-When attack animation finishes, auto-return to idle.
-
-WHY: Other state resets could happen here (combo timer, hit recovery).
-TODO: Only auto-idle if attack not interrupted (add state manager?).
-"""
+# --- ANIMATION SIGNAL HANDLER ---
 func _on_AnimatedSprite2D_animation_finished():
 	var current = $AnimatedSprite2D.animation
 	if current.begins_with("Attack"):
+		is_attacking = false
 		$AnimatedSprite2D.play(get_idle_animation())
 
-func take_step(): 
-	pass  # TODO: Add stamina drain, footstep audio, tile/loot triggers
-
 # --- UI LABEL UPDATER FOR STATS PANEL ---
-"""
-Updates the RPG stats panel UI after stat changes.
 
-WHY: Keeps player informed—core part of game feel!
-TODO: Update HP/Stamina to show real values. Rework panel for more skills/bars.
-"""
 func update_stats_labels(stats_panel):
 	stats_panel.get_node("LevelLabel").text    = "Level: " + str(level)
 	stats_panel.get_node("HPLabel").text       = "HP: 1"  # TODO: Show real HP/max_hp
@@ -154,12 +91,7 @@ func update_stats_labels(stats_panel):
 	stats_panel.get_node("XPLabel").text       = "Total XP: " + str(xp)
 
 # --- CURRENCY/INVENTORY HELPERS ---
-"""
-Adds lusions to total and updates UI.
 
-WHY: Currency change must be shown instantly.
-TODO: Add max/limit logic.
-"""
 func add_lusions(amount: int) -> void:
 	lusions += amount
 	update_lusions_label()
@@ -168,12 +100,6 @@ func update_lusions_label() -> void:
 	if lusions_label:
 		lusions_label.text = "Lusions: " + str(lusions)
 
-"""
-Adds gold and updates relevant UI.
-
-WHY: Standard currency gain.
-TODO: Trigger “gold sparkle” effect on add.
-"""
 func add_gold(amount: int) -> void:
 	gold += amount
 	update_gold_label()
@@ -182,32 +108,15 @@ func update_gold_label() -> void:
 	if gold_label:
 		gold_label.text = "Gold: " + str(gold)
 
-"""
-Heals the player by a set amount, clamped to max_hp.
-
-WHY: Could be called from items/events that restore health.
-TODO: Trigger heal animation/effects, sound.
-"""
 func heal(amount: int):
 	hp = clamp(hp + amount, 0, max_hp)
 
 # --- HP DAMAGE & LEVEL LOGIC ---
-"""
-Subtracts HP from player and asserts they can’t go negative.
 
-WHY: Centralizes damage—could be hooked to play hurt effects or trigger death soon.
-TODO: Add invulnerability frames, knockback, and “game over.”
-"""
 func take_damage(amount: int) -> void:
 	hp = clamp(hp - amount, 0, max_hp)
 	assert(hp >= 0, "HP went below 0!")  # Useful for catching bugs in combat events.
 
-"""
-Levels up player: increase level & HP.
-
-WHY: Keeps RPG progression clear and reusable.
-TODO: Show a level-up popup, play SFX, unlock new skills at milestones!
-"""
 func level_up() -> void:
 	level += 1
 	max_hp += 10
@@ -215,21 +124,9 @@ func level_up() -> void:
 	assert(hp <= max_hp, "HP went above max after level up!")
 
 # --- XP/LEVELING CURVES ---
-"""
-Calculates XP needed for next skill level.
-
-WHY: Allows tuning/adjustment of skill curve easily across the project.
-TODO: Use per-skill curve adjustments for more granularity.
-"""
 func xp_needed_for_skill(skill_level: int, base := 100, factor := 1.18) -> int:
 	return int(base * pow(factor, skill_level - 1))
 
-"""
-Gains general XP, handles player level-up logic.
-
-WHY: Centralizes XP flow for game-wide events/rewards.
-TODO: Trigger level-up cutscene/UI, scale xp_next more smoothly.
-"""
 func gain_xp(amount: int):
 	xp += amount
 	while xp >= xp_next:
@@ -238,12 +135,6 @@ func gain_xp(amount: int):
 		xp_next *= 2
 
 # --- PER-SKILL XP/LEVELING ---
-"""
-Handles individual skill XP gain/level up for all skills.
-
-WHY: Lets players specialize; easy to add new skills or rebalance.
-TODO: Extract into SkillManager system. Add callbacks for new unlocks.
-"""
 func gain_attack_xp(amount: int):
 	attack_xp += amount
 	while attack_xp >= attack_xp_next:
@@ -286,11 +177,9 @@ func gain_cooking_xp(amount: int):
 		cooking_xp -= cooking_xp_next
 		cooking_xp_next = xp_needed_for_skill(cooking)
 
-# --- FUTURE WORK ---
-"""
-Team future notes:
- - Refactor large methods into smaller helpers (SRP).
- - Add SFX, VFX, and robust error handling across currency/stats.
- - Consider Signals for UI/data sync, not direct node lookups.
- - Thoroughly test all stat/level up overflow/edge cases.
-"""
+func _on_animated_sprite_2d_animation_finished() -> void:
+	var current = $AnimatedSprite2D.animation
+	print("Animation finished! Current was: ", current)
+	if current.begins_with("Attack"):
+		is_attacking = false
+		$AnimatedSprite2D.play(get_idle_animation())

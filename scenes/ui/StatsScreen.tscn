@@ -1,9 +1,9 @@
-[gd_scene load_steps=3 format=3 uid="uid://bbcxm4xccpekg"]
+[gd_scene format=3 uid="uid://bbcxm4xccpekg"]
 
-[ext_resource type="Script" uid="uid://dmvq83vjfqxhi" path="res://scripts/ui/stats_screen.gd" id="1_stats"]
+[ext_resource type="Script" uid="uid://dmvq83vjfqxhi" path="res://scripts/ui/menus/stats_screen.gd" id="1_stats"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
 
-[node name="StatsScreen" type="Control"]
+[node name="StatsScreen" type="Control" unique_id=378052773]
 custom_minimum_size = Vector2(350, 500)
 layout_mode = 3
 anchors_preset = 8
@@ -19,7 +19,7 @@ mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_stats")
 
-[node name="MainPanel" type="PanelContainer" parent="."]
+[node name="MainPanel" type="PanelContainer" parent="." unique_id=1561961774]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -27,25 +27,25 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="MainPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="MainPanel" unique_id=1015228849]
 layout_mode = 2
 theme_override_constants/margin_left = 15
 theme_override_constants/margin_top = 15
 theme_override_constants/margin_right = 15
 theme_override_constants/margin_bottom = 15
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer" unique_id=1784219503]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="HeaderPanel" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="HeaderPanel" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1320504855]
 layout_mode = 2
 theme_type_variation = &"PanelHeader"
 
-[node name="HBoxContainer" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel"]
+[node name="HBoxContainer" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel" unique_id=2110938975]
 layout_mode = 2
 
-[node name="HeaderLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer"]
+[node name="HeaderLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer" unique_id=1324454974]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
@@ -53,7 +53,7 @@ theme_override_font_sizes/font_size = 20
 text = "CHARACTER STATS"
 horizontal_alignment = 1
 
-[node name="CloseButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer"]
+[node name="CloseButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer" unique_id=371312596]
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
@@ -62,318 +62,318 @@ theme_override_font_sizes/font_size = 18
 text = "×"
 flat = true
 
-[node name="StatsScroll" type="ScrollContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="StatsScroll" type="ScrollContainer" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=881359720]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="StatsContainer" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll"]
+[node name="StatsContainer" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll" unique_id=688227954]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
-[node name="CharStatMargin" type="MarginContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer"]
+[node name="CharStatMargin" type="MarginContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer" unique_id=1857744988]
 layout_mode = 2
 theme_override_constants/margin_left = 5
 theme_override_constants/margin_top = 5
 theme_override_constants/margin_right = 5
 theme_override_constants/margin_bottom = 5
 
-[node name="CharStatHbox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin"]
+[node name="CharStatHbox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin" unique_id=1266683175]
 layout_mode = 2
 theme_override_constants/separation = 16
 alignment = 1
 
-[node name="LvlXPVBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox"]
+[node name="LvlXPVBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox" unique_id=2103896783]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="LevelStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox"]
+[node name="LevelStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox" unique_id=453523070]
 layout_mode = 2
 theme_type_variation = &"PanelStatBg"
 
-[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/LevelStat"]
+[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/LevelStat" unique_id=404895705]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/LevelStat/HBox"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/LevelStat/HBox" unique_id=726697154]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Level:"
 
-[node name="LevelValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/LevelStat/HBox"]
+[node name="LevelValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/LevelStat/HBox" unique_id=787073742]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
 text = "1"
 horizontal_alignment = 2
 
-[node name="XPStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox"]
+[node name="XPStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox" unique_id=1895527986]
 layout_mode = 2
 theme_type_variation = &"PanelStatBg"
 
-[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat"]
+[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat" unique_id=620936978]
 layout_mode = 2
 
-[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat/VBox"]
+[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat/VBox" unique_id=644962860]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat/VBox/HBox"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat/VBox/HBox" unique_id=785124905]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "XP:"
 
-[node name="XPValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat/VBox/HBox"]
+[node name="XPValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat/VBox/HBox" unique_id=783366056]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.6, 0.85, 1, 1)
 text = "0 / 100"
 horizontal_alignment = 2
 
-[node name="XPBar" type="ProgressBar" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat/VBox"]
+[node name="XPBar" type="ProgressBar" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/LvlXPVBox/XPStat/VBox" unique_id=67469790]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 show_percentage = false
 
-[node name="VSeparator" type="VSeparator" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox"]
+[node name="VSeparator" type="VSeparator" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox" unique_id=1224974615]
 layout_mode = 2
 
-[node name="BarsVBox2" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox"]
+[node name="BarsVBox2" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox" unique_id=51079421]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 1.75
 alignment = 1
 
-[node name="HPStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2"]
+[node name="HPStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2" unique_id=1564847970]
 layout_mode = 2
 theme_type_variation = &"PanelStatBg"
 
-[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat"]
+[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat" unique_id=419565986]
 layout_mode = 2
 
-[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat/VBox"]
+[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat/VBox" unique_id=1447830387]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat/VBox/HBox"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat/VBox/HBox" unique_id=1181114522]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "HP:"
 
-[node name="HPValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat/VBox/HBox"]
+[node name="HPValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat/VBox/HBox" unique_id=38393401]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
 text = "100 / 100"
 horizontal_alignment = 2
 
-[node name="HPBar" type="ProgressBar" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat/VBox"]
+[node name="HPBar" type="ProgressBar" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/HPStat/VBox" unique_id=104953936]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 value = 100.0
 show_percentage = false
 
-[node name="StaminaStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2"]
+[node name="StaminaStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2" unique_id=1412600370]
 layout_mode = 2
 theme_type_variation = &"PanelStatBg"
 
-[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat"]
+[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat" unique_id=25577532]
 layout_mode = 2
 
-[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat/VBox"]
+[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat/VBox" unique_id=1510277628]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat/VBox/HBox"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat/VBox/HBox" unique_id=910573808]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Stamina:"
 
-[node name="StaminaValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat/VBox/HBox"]
+[node name="StaminaValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat/VBox/HBox" unique_id=907871091]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
 text = "100 / 100"
 horizontal_alignment = 2
 
-[node name="StaminaBar" type="ProgressBar" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat/VBox"]
+[node name="StaminaBar" type="ProgressBar" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/StaminaStat/VBox" unique_id=1074181531]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 value = 100.0
 show_percentage = false
 
-[node name="ManaStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2"]
+[node name="ManaStat" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2" unique_id=683282063]
 layout_mode = 2
 theme_type_variation = &"PanelStatBg"
 
-[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat"]
+[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat" unique_id=2048939811]
 layout_mode = 2
 
-[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat/VBox"]
+[node name="HBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat/VBox" unique_id=1245537646]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat/VBox/HBox"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat/VBox/HBox" unique_id=1043088831]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Mana:"
 
-[node name="ManaValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat/VBox/HBox"]
+[node name="ManaValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat/VBox/HBox" unique_id=1894503892]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 0.6, 1, 1)
 text = "100 / 100"
 horizontal_alignment = 2
 
-[node name="ManaBar" type="ProgressBar" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat/VBox"]
+[node name="ManaBar" type="ProgressBar" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CharStatMargin/CharStatHbox/BarsVBox2/ManaStat/VBox" unique_id=1011305304]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 value = 100.0
 show_percentage = false
 
-[node name="HSeparator2" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer"]
+[node name="HSeparator2" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer" unique_id=1129120697]
 layout_mode = 2
 
-[node name="CombatSub" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer"]
+[node name="CombatSub" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer" unique_id=69634482]
 layout_mode = 2
 theme_type_variation = &"PanelSub"
 
-[node name="CombatStatMargin" type="MarginContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub"]
+[node name="CombatStatMargin" type="MarginContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub" unique_id=1767964677]
 layout_mode = 2
 theme_override_constants/margin_left = 5
 theme_override_constants/margin_right = 5
 theme_override_constants/margin_bottom = 5
 
-[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin"]
+[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin" unique_id=2047093579]
 layout_mode = 2
 
-[node name="CombatLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox"]
+[node name="CombatLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox" unique_id=848133187]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
 theme_override_font_sizes/font_size = 14
 text = "Combat Stats"
 horizontal_alignment = 1
 
-[node name="AttackRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox"]
+[node name="AttackRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox" unique_id=2116890988]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/AttackRow"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/AttackRow" unique_id=1834334543]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Attack:"
 
-[node name="AttackValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/AttackRow"]
+[node name="AttackValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/AttackRow" unique_id=666215065]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.6, 0.4, 1)
 text = "1"
 horizontal_alignment = 2
 
-[node name="DefenseRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox"]
+[node name="DefenseRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox" unique_id=1312994536]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/DefenseRow"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/DefenseRow" unique_id=2087719953]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Defense:"
 
-[node name="DefenseValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/DefenseRow"]
+[node name="DefenseValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/DefenseRow" unique_id=1348993767]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 0.7, 1, 1)
 text = "1"
 horizontal_alignment = 2
 
-[node name="AgilityRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox"]
+[node name="AgilityRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox" unique_id=1098350512]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/AgilityRow"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/AgilityRow" unique_id=461802380]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Agility:"
 
-[node name="AgilityValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/AgilityRow"]
+[node name="AgilityValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/AgilityRow" unique_id=842119567]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 1, 0.6, 1)
 text = "1"
 horizontal_alignment = 2
 
-[node name="MagicRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox"]
+[node name="MagicRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox" unique_id=1068739797]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/MagicRow"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/MagicRow" unique_id=892800830]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Magic:"
 
-[node name="MagicValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/MagicRow"]
+[node name="MagicValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/CombatSub/CombatStatMargin/VBox/MagicRow" unique_id=503675417]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.5, 1, 1)
 text = "1"
 horizontal_alignment = 2
 
-[node name="HSeparator3" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer"]
+[node name="HSeparator3" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer" unique_id=1028968090]
 layout_mode = 2
 
-[node name="SkillsSub" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer"]
+[node name="SkillsSub" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer" unique_id=314866790]
 layout_mode = 2
 theme_type_variation = &"PanelSub"
 
-[node name="SkillsMargin" type="MarginContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub"]
+[node name="SkillsMargin" type="MarginContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub" unique_id=1375857669]
 layout_mode = 2
 theme_override_constants/margin_left = 5
 theme_override_constants/margin_right = 5
 theme_override_constants/margin_bottom = 5
 
-[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin"]
+[node name="VBox" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin" unique_id=330728430]
 layout_mode = 2
 
-[node name="SkillsLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox"]
+[node name="SkillsLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox" unique_id=898259891]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
 theme_override_font_sizes/font_size = 14
 text = "Skills"
 horizontal_alignment = 1
 
-[node name="FishingRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox"]
+[node name="FishingRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox" unique_id=1750261643]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox/FishingRow"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox/FishingRow" unique_id=984984238]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Fishing:"
 
-[node name="FishingValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox/FishingRow"]
+[node name="FishingValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox/FishingRow" unique_id=67483399]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 0.8, 1, 1)
 text = "1"
 horizontal_alignment = 2
 
-[node name="CookingRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox"]
+[node name="CookingRow" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox" unique_id=1780810521]
 layout_mode = 2
 
-[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox/CookingRow"]
+[node name="Label" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox/CookingRow" unique_id=2082493353]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Cooking:"
 
-[node name="CookingValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox/CookingRow"]
+[node name="CookingValue" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsScroll/StatsContainer/SkillsSub/SkillsMargin/VBox/CookingRow" unique_id=1156372384]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.7, 0.4, 1)

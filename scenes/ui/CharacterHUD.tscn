@@ -1,23 +1,27 @@
-[gd_scene load_steps=3 format=3 uid="uid://y8py0d7k22ov"]
+[gd_scene format=3 uid="uid://y8py0d7k22ov"]
 
-[ext_resource type="Script" uid="uid://b5421s5c7eqda" path="res://scripts/ui/character_hud.gd" id="1_hud"]
+[ext_resource type="Script" uid="uid://b5421s5c7eqda" path="res://scripts/ui/menus/character_hud.gd" id="1_hud"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
 
-[node name="CharacterHUD" type="CanvasLayer"]
+[node name="CharacterHUD" type="CanvasLayer" unique_id=2045428837]
 layer = 5
 
-[node name="HUDControl" type="Control" parent="."]
+[node name="HUDControl" type="Control" parent="." unique_id=1171106605]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = -4.0
+offset_top = 3.0
+offset_right = 4.0
+offset_bottom = 3.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_hud")
 
-[node name="HUDPanel" type="PanelContainer" parent="HUDControl"]
+[node name="HUDPanel" type="PanelContainer" parent="HUDControl" unique_id=709884569]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -32,56 +36,56 @@ grow_horizontal = 2
 grow_vertical = 0
 theme_type_variation = &"PanelSub"
 
-[node name="MarginContainer" type="MarginContainer" parent="HUDControl/HUDPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="HUDControl/HUDPanel" unique_id=1779039599]
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 8
 
-[node name="VBoxContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer" unique_id=1470512086]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="VitalBars" type="HBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer"]
+[node name="VitalBars" type="HBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer" unique_id=304364604]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="HPContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars"]
+[node name="HPContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars" unique_id=577101358]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="HPLabel" type="Label" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/HPContainer"]
+[node name="HPLabel" type="Label" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/HPContainer" unique_id=614930746]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
 theme_override_font_sizes/font_size = 11
 text = "HP: 100/100"
 horizontal_alignment = 1
 
-[node name="HPBar" type="ProgressBar" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/HPContainer"]
+[node name="HPBar" type="ProgressBar" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/HPContainer" unique_id=378671411]
 custom_minimum_size = Vector2(150, 16)
 layout_mode = 2
 value = 100.0
 show_percentage = false
 
-[node name="StaminaContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars"]
+[node name="StaminaContainer" type="VBoxContainer" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars" unique_id=1050394936]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="StaminaLabel" type="Label" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer"]
+[node name="StaminaLabel" type="Label" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer" unique_id=1327415632]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
 theme_override_font_sizes/font_size = 11
 text = "Stamina: 100/100"
 horizontal_alignment = 1
 
-[node name="StaminaBar" type="ProgressBar" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer"]
+[node name="StaminaBar" type="ProgressBar" parent="HUDControl/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer" unique_id=641792301]
 custom_minimum_size = Vector2(150, 16)
 layout_mode = 2
 value = 100.0
 show_percentage = false
 
-[node name="HUDPanel2" type="PanelContainer" parent="HUDControl"]
+[node name="HUDPanel2" type="PanelContainer" parent="HUDControl" unique_id=781080779]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
@@ -96,26 +100,26 @@ grow_horizontal = 0
 grow_vertical = 0
 theme_type_variation = &"PanelSub"
 
-[node name="VBoxContainer" type="VBoxContainer" parent="HUDControl/HUDPanel2"]
+[node name="VBoxContainer" type="VBoxContainer" parent="HUDControl/HUDPanel2" unique_id=1470097422]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="ActionButtons" type="MarginContainer" parent="HUDControl/HUDPanel2/VBoxContainer"]
+[node name="ActionButtons" type="MarginContainer" parent="HUDControl/HUDPanel2/VBoxContainer" unique_id=768207432]
 layout_mode = 2
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="ButtonsVBox" type="VBoxContainer" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons"]
+[node name="ButtonsVBox" type="VBoxContainer" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons" unique_id=139614804]
 layout_mode = 2
 
-[node name="InteractButton" type="Button" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox"]
+[node name="InteractButton" type="Button" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox" unique_id=415859818]
 custom_minimum_size = Vector2(80, 30)
 layout_mode = 2
 text = "Interact"
 
-[node name="AttackButton" type="Button" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox"]
+[node name="AttackButton" type="Button" parent="HUDControl/HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox" unique_id=2144166807]
 custom_minimum_size = Vector2(80, 30)
 layout_mode = 2
 text = "Attack"

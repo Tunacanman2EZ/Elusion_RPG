@@ -25,4 +25,3 @@ func _ready():
 	# Healer uses mana instead of stamina
 	max_stamina = max_mana
 	stamina = mana
-

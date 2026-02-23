@@ -438,4 +438,3 @@ func _use_item(slot: InventorySlot) -> void:
 		print("%s is not usable." % item_name)
 
 #endregion
-

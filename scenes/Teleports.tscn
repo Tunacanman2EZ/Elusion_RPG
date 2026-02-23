@@ -1,25 +1,8 @@
-[gd_scene load_steps=7 format=3 uid="uid://y7mjmefw8b0j"]
+[gd_scene format=3 uid="uid://y7mjmefw8b0j"]
 
-[ext_resource type="Texture2D" uid="uid://dg3uikwr64ilk" path="res://assets/Tiles/teleport_tile-1.png.png" id="2_m8lym"]
-[ext_resource type="Texture2D" uid="uid://dt38kh22i5drp" path="res://assets/Tiles/teleport_tile-2.png.png" id="3_y0d3q"]
-
-[sub_resource type="GDScript" id="GDScript_860if"]
-script/source = "extends Area2D
-
-@onready var destination_point = $DestinationPoint
-
-var can_teleport := true
-
-func _on_body_entered(body):
-	if body and can_teleport and (body.name == \"Player\" or body.is_in_group(\"player\")):
-		can_teleport = false
-		body.global_position = destination_point.global_position
-		print(\"Teleported\", body.name, \"to\", destination_point.global_position)
-
-func _on_body_exited(body):
-	if body and (body.name == \"Player\" or body.is_in_group(\"player\")):
-		can_teleport = true
-"
+[ext_resource type="Script" uid="uid://dm0wvqr63gv05" path="res://Resources/Script/teleporter_2.gd" id="1_wwtix"]
+[ext_resource type="Texture2D" uid="uid://dg3uikwr64ilk" path="res://Art/Tiles/teleport_tile-1.png.png" id="2_m8lym"]
+[ext_resource type="Texture2D" uid="uid://dt38kh22i5drp" path="res://Art/Tiles/teleport_tile-2.png.png" id="3_y0d3q"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_a20sn"]
 animations = [{
@@ -52,14 +35,14 @@ animations = [{
 "speed": 1.0
 }]
 
-[node name="Teleports" type="Node2D"]
+[node name="Teleports" type="Node2D" unique_id=88436015]
 
-[node name="Teleporter_1" type="Area2D" parent="."]
+[node name="Teleporter_1" type="Area2D" parent="." unique_id=1088152715]
 z_index = 1
 scale = Vector2(0.928403, 0.135342)
-script = SubResource("GDScript_860if")
+script = ExtResource("1_wwtix")
 
-[node name="Teleporter2" type="AnimatedSprite2D" parent="Teleporter_1"]
+[node name="Teleporter2" type="AnimatedSprite2D" parent="Teleporter_1" unique_id=857823241]
 z_index = 1
 texture_filter = 1
 position = Vector2(-1.90735e-06, 2187.05)
@@ -67,7 +50,7 @@ scale = Vector2(1.61568, 9.23585)
 sprite_frames = SubResource("SpriteFrames_a20sn")
 animation = &"Teleporter2"
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Teleporter_1"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Teleporter_1" unique_id=1980648528]
 modulate = Color(0, 0, 0, 1)
 self_modulate = Color(0.00184107, 0.00184107, 0.00184107, 1)
 z_index = 1
@@ -78,12 +61,12 @@ scale = Vector2(0.532251, -2.53758)
 shape = SubResource("CircleShape2D_impho")
 debug_color = Color(0.954221, 0.990519, 1, 0.42)
 
-[node name="DestinationPoint" type="Marker2D" parent="Teleporter_1"]
+[node name="DestinationPoint" type="Marker2D" parent="Teleporter_1" unique_id=680847466]
 z_index = 1
 texture_filter = 1
 position = Vector2(0, 3664.79)
 
-[node name="Teleporter1" type="AnimatedSprite2D" parent="Teleporter_1"]
+[node name="Teleporter1" type="AnimatedSprite2D" parent="Teleporter_1" unique_id=836781994]
 position = Vector2(3.8147e-06, 3605.68)
 scale = Vector2(1.26126, -10.8658)
 sprite_frames = SubResource("SpriteFrames_cjm56")
