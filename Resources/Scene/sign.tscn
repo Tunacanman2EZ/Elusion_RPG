@@ -7,6 +7,7 @@
 radius = 32.06244
 
 [node name="Area2D" type="Area2D" unique_id=1577598432]
+z_index = 1
 script = ExtResource("1_t7f8m")
 
 [node name="Sign" type="Sprite2D" parent="." unique_id=1431344393]
@@ -18,18 +19,21 @@ shape = SubResource("CircleShape2D_q3tny")
 [node name="Label" type="Label" parent="." unique_id=839999221]
 visible = false
 texture_filter = 1
-anchors_preset = -1
+anchors_preset = 7
 anchor_left = 0.5
+anchor_top = 1.0
 anchor_right = 0.5
+anchor_bottom = 1.0
 offset_left = -83.0
-offset_top = -41.0
+offset_top = -23.0
 offset_right = 83.0
-offset_bottom = -18.0
 grow_horizontal = 2
+grow_vertical = 0
 size_flags_horizontal = 4
 size_flags_vertical = 0
-theme_override_colors/font_color = Color(0.5398828, 0.8727061, 0.5269948, 1)
+theme_override_colors/font_color = Color(0.9037094, 0.82587767, 0.98370844, 1)
 text = "\"Welcome to Elusion\""
+horizontal_alignment = 1
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
 [connection signal="body_exited" from="." to="." method="_on_body_exited"]

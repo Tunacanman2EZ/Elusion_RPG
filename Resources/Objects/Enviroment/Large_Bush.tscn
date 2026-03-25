@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://dds38e1u6swql"]
+
+[ext_resource type="Texture2D" uid="uid://tmjenpld6v4b" path="res://Art/Tiles/6.png" id="1_251jj"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_3qfgb"]
+texture = ExtResource("1_251jj")
+1:1/0 = 0
+1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 0.52711964, -8, -1.3155689, 3.4151163, -8, 4.587736)
+0:1/0 = 0
+0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(0.14244652, -8, 0.52711964, -8, 8, -8, 8, 4.1705647, 0.4392128, 2.1921177)
+0:0/0 = 0
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(0.8349018, -8, 8, -8, 8.847609, 8.720989, 0.14244652, 8.918835)
+1:0/0 = 0
+1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, 1.2305908, -8, 1.527359, 8.918835, -7.8702602, 9.116678, -8, 8)
+
+[sub_resource type="TileSet" id="TileSet_xcfr8"]
+physics_layer_0/collision_layer = 1
+sources/0 = SubResource("TileSetAtlasSource_3qfgb")
+
+[node name="Area2D" type="Area2D" unique_id=1751052770]
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=1552988932]
+texture_filter = 1
+tile_map_data = PackedByteArray(0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0)
+tile_set = SubResource("TileSet_xcfr8")

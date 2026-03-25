@@ -6,7 +6,7 @@ var is_attacking = false
 func _ready():
 	super._ready()
 	character_name = "Warrior"
-	speed = 75
+	speed = 200
 	add_to_group("player")
 
 func _physics_process(_delta):
@@ -68,14 +68,6 @@ func get_attack_animation(dir: Vector2) -> String:
 	elif dir.y > 0: return "Attack_Down"
 	elif dir.y < 0: return "Attack_Up"
 	return "Attack"
-
-# --- ANIMATION SIGNAL HANDLER ---
-func _on_AnimatedSprite2D_animation_finished():
-	var current = $AnimatedSprite2D.animation
-	if current.begins_with("Attack"):
-		is_attacking = false
-		$AnimatedSprite2D.play(get_idle_animation())
-
 # --- UI LABEL UPDATER FOR STATS PANEL ---
 
 func update_stats_labels(stats_panel):

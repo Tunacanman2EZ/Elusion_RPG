@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://sc2553vue1ug"]
 
-[ext_resource type="Script" uid="uid://4dba2hu8o0rg" path="res://Resources/Scene/bank_chest.gd" id="1_op8v8"]
+[ext_resource type="Script" uid="uid://4dba2hu8o0rg" path="res://Resources/Script/bank_chest.gd" id="1_op8v8"]
 [ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://Art/Tiles/3.png" id="2_nebis"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_pf14g"]

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://k57opxhhscd1"
-path="res://.godot/imported/1_Animation 1_00.png-b3c0a8e797e5762977dff481732a7728.ctex"
+uid="uid://3w5sl3jor5s2"
+path="res://.godot/imported/BushMage_Movement.png-b8b7ece2e9cdd2fcc02e564b69e909fa.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Tiles/1_Animation 1_00.png"
-dest_files=["res://.godot/imported/1_Animation 1_00.png-b3c0a8e797e5762977dff481732a7728.ctex"]
+source_file="res://Art/Enemy/BushMage_Movement.png"
+dest_files=["res://.godot/imported/BushMage_Movement.png-b8b7ece2e9cdd2fcc02e564b69e909fa.ctex"]
 
 [params]
 

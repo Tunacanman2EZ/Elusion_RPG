@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dfywy6hbeiu5y"
-path="res://.godot/imported/1_Animation 1_01.png-7a52a20a29ed00b5becc718808d5185a.ctex"
+uid="uid://btr8qllm6k3tu"
+path="res://.godot/imported/Screenshot 2026-03-24 at 6.30.39 PM.png-4d0325514493b67b0d6faa78e427756c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Tiles/1_Animation 1_01.png"
-dest_files=["res://.godot/imported/1_Animation 1_01.png-7a52a20a29ed00b5becc718808d5185a.ctex"]
+source_file="res://Art/Enemy/Screenshot 2026-03-24 at 6.30.39 PM.png"
+dest_files=["res://.godot/imported/Screenshot 2026-03-24 at 6.30.39 PM.png-4d0325514493b67b0d6faa78e427756c.ctex"]
 
 [params]
 

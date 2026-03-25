@@ -433,7 +433,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_0ty1w")
 }],
-"loop": false,
+"loop": true,
 "name": &"Idle_Down",
 "speed": 2.0
 }, {
@@ -603,7 +603,7 @@ animations = [{
 size = Vector2(62, 58)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_r8um1"]
-radius = 8.0
+radius = 9.219544
 
 [node name="Warrior" type="CharacterBody2D" unique_id=781238535]
 z_index = 1
@@ -613,7 +613,7 @@ script = ExtResource("64_ffrwm")
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1319435616]
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_ih3hd")
-animation = &"Attack_Down"
+animation = &"Attack_Right"
 speed_scale = 1.5
 
 [node name="Area2D" type="Area2D" parent="AnimatedSprite2D" unique_id=1080463860]
