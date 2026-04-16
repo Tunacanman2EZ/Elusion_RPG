@@ -1,0 +1,45 @@
+[gd_scene format=3 uid="uid://bykkpc6d1oump"]
+
+[ext_resource type="Texture2D" uid="uid://b80rjrtlrnpsf" path="res://art/Tiles/font.png" id="1_whd7s"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3687l"]
+atlas = ExtResource("1_whd7s")
+region = Rect2(0, 0, 32, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_iknir"]
+atlas = ExtResource("1_whd7s")
+region = Rect2(32, 0, 32, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_l1dot"]
+atlas = ExtResource("1_whd7s")
+region = Rect2(64, 0, 32, 96)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_1is6e"]
+atlas = ExtResource("1_whd7s")
+region = Rect2(96, 0, 32, 96)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_22yxe"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3687l")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_iknir")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_l1dot")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_1is6e")
+}],
+"loop": true,
+"name": &"waterfall",
+"speed": 5.0
+}]
+
+[node name="waterfall" type="AnimatedSprite2D" unique_id=20570695]
+sprite_frames = SubResource("SpriteFrames_22yxe")
+animation = &"waterfall"
+frame = 2
+frame_progress = 0.41491902

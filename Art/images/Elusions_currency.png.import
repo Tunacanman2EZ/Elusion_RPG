@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cp35droej4tqm"
-path="res://.godot/imported/Elusions_currency.png-eebfb3639df162e27ac6e8b4809f6eb9.ctex"
+path="res://.godot/imported/Elusions_currency.png-44e4de1f9d0549b4bb027b9c6786f7fb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/images/Elusions_currency.png"
-dest_files=["res://.godot/imported/Elusions_currency.png-eebfb3639df162e27ac6e8b4809f6eb9.ctex"]
+source_file="res://art/images/Elusions_currency.png"
+dest_files=["res://.godot/imported/Elusions_currency.png-44e4de1f9d0549b4bb027b9c6786f7fb.ctex"]
 
 [params]
 

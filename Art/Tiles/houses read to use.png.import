@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://wckilo02vwsc"
-path="res://.godot/imported/houses read to use.png-96820150bc67ea2c363c403c50e6355e.ctex"
+path="res://.godot/imported/houses read to use.png-bd43f843de81e585e8c03e1feef02432.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Tiles/houses read to use.png"
-dest_files=["res://.godot/imported/houses read to use.png-96820150bc67ea2c363c403c50e6355e.ctex"]
+source_file="res://art/Tiles/houses read to use.png"
+dest_files=["res://.godot/imported/houses read to use.png-bd43f843de81e585e8c03e1feef02432.ctex"]
 
 [params]
 

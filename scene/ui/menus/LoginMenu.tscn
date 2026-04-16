@@ -1,0 +1,138 @@
+[gd_scene format=3 uid="uid://lon8advnxgqx"]
+
+[ext_resource type="Script" uid="uid://csey5unhicv5r" path="res://src/login_menu.gd" id="1_u8sew"]
+[ext_resource type="PackedScene" uid="uid://b756xxenwprr4" path="res://scene/ui/menus/characterselect.tscn" id="2_hhelq"]
+[ext_resource type="Texture2D" uid="uid://bpu2av41q1t8g" path="res://art/images/skeleton.png" id="2_jmb1l"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
+
+[node name="LoginMenu" type="Control" unique_id=848796310]
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("3_theme")
+script = ExtResource("1_u8sew")
+char_select_scene = ExtResource("2_hhelq")
+metadata/_edit_use_anchors_ = true
+
+[node name="TextureRect" type="TextureRect" parent="." unique_id=464289615]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -640.0
+offset_top = -768.0
+offset_right = 643.0
+offset_bottom = 768.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_jmb1l")
+
+[node name="CenterContainer" type="CenterContainer" parent="." unique_id=2097526681]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="MainPanel" type="PanelContainer" parent="CenterContainer" unique_id=172146919]
+custom_minimum_size = Vector2(450, 400)
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="CenterContainer/MainPanel" unique_id=1390455789]
+layout_mode = 2
+theme_override_constants/margin_left = 25
+theme_override_constants/margin_top = 25
+theme_override_constants/margin_right = 25
+theme_override_constants/margin_bottom = 25
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer" unique_id=1969327641]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="HeaderPanel" type="PanelContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer" unique_id=466948465]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="HeaderLabel" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/HeaderPanel" unique_id=762769286]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 28
+text = "ELUSION RPG"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer" unique_id=1769956154]
+layout_mode = 2
+
+[node name="LoginForm" type="VBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer" unique_id=1667337425]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="UsernameLineEdit" type="LineEdit" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm" unique_id=823585511]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Username"
+alignment = 1
+
+[node name="PasswordLineEdit" type="LineEdit" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm" unique_id=2118952238]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Password"
+alignment = 1
+secret = true
+
+[node name="RememberMe" type="CheckBox" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm" unique_id=2071452913]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Remember me"
+
+[node name="LoginButton" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm" unique_id=121373850]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 45)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Enter Elysium"
+
+[node name="ErrorLabel" type="Label" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm" unique_id=667489728]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="HSeparator2" type="HSeparator" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer" unique_id=2078952930]
+layout_mode = 2
+
+[node name="MenuButtons" type="HBoxContainer" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer" unique_id=1470518291]
+layout_mode = 2
+theme_override_constants/separation = 15
+alignment = 1
+
+[node name="ShopButton" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/MenuButtons" unique_id=324999331]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 38)
+layout_mode = 2
+text = "Shop"
+
+[node name="SettingsButton" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/MenuButtons" unique_id=1577972604]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 38)
+layout_mode = 2
+text = "Settings"
+
+[node name="ExitButton" type="Button" parent="CenterContainer/MainPanel/MarginContainer/VBoxContainer/MenuButtons" unique_id=1370688401]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 38)
+layout_mode = 2
+text = "Exit"
+
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/LoginForm/LoginButton" to="." method="_on_Login_Button_pressed"]
+[connection signal="pressed" from="CenterContainer/MainPanel/MarginContainer/VBoxContainer/MenuButtons/ExitButton" to="." method="_on_ExitButton_pressed"]

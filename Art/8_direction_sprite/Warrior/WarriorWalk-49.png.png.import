@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dtaquhix85sob"
-path="res://.godot/imported/WarriorWalk-49.png.png-3c527f69c4d31c27ec0986bb5d3defe2.ctex"
+path="res://.godot/imported/WarriorWalk-49.png.png-39ac12bdbfdcaecfa80f601032154be5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/8_direction_sprite/Warrior/WarriorWalk-49.png.png"
-dest_files=["res://.godot/imported/WarriorWalk-49.png.png-3c527f69c4d31c27ec0986bb5d3defe2.ctex"]
+source_file="res://art/8_direction_sprite/Warrior/WarriorWalk-49.png.png"
+dest_files=["res://.godot/imported/WarriorWalk-49.png.png-39ac12bdbfdcaecfa80f601032154be5.ctex"]
 
 [params]
 

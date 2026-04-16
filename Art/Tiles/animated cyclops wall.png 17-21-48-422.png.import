@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://co1fbovbrsqxx"
-path="res://.godot/imported/animated cyclops wall.png 17-21-48-422.png-83eb04029f67a835a944dff20072f72c.ctex"
+path="res://.godot/imported/animated cyclops wall.png 17-21-48-422.png-28ef22e1ff9da9ac2063e46c1bb4fbe4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Tiles/animated cyclops wall.png 17-21-48-422.png"
-dest_files=["res://.godot/imported/animated cyclops wall.png 17-21-48-422.png-83eb04029f67a835a944dff20072f72c.ctex"]
+source_file="res://art/Tiles/animated cyclops wall.png 17-21-48-422.png"
+dest_files=["res://.godot/imported/animated cyclops wall.png 17-21-48-422.png-28ef22e1ff9da9ac2063e46c1bb4fbe4.ctex"]
 
 [params]
 

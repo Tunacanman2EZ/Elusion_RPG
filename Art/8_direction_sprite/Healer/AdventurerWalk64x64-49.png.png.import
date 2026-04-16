@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dabuitpaau5k4"
-path="res://.godot/imported/AdventurerWalk64x64-49.png.png-acea19344af0a736bc84a31f960f6c1e.ctex"
+path="res://.godot/imported/AdventurerWalk64x64-49.png.png-e5536969d6c0d10b5fff5e60294bd981.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/8_direction_sprite/Healer/AdventurerWalk64x64-49.png.png"
-dest_files=["res://.godot/imported/AdventurerWalk64x64-49.png.png-acea19344af0a736bc84a31f960f6c1e.ctex"]
+source_file="res://art/8_direction_sprite/Healer/AdventurerWalk64x64-49.png.png"
+dest_files=["res://.godot/imported/AdventurerWalk64x64-49.png.png-e5536969d6c0d10b5fff5e60294bd981.ctex"]
 
 [params]
 

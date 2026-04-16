@@ -1,0 +1,214 @@
+[gd_scene format=3 uid="uid://y8py0d7k22ov"]
+
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_2g5dy"]
+[ext_resource type="Script" uid="uid://b5421s5c7eqda" path="res://src/characterhud.gd" id="2_3w28r"]
+[ext_resource type="Texture2D" uid="uid://cdmueb5d3pgdb" path="res://art/images/1_Animation 1_8.png" id="4_m5snm"]
+[ext_resource type="Texture2D" uid="uid://rsul4xgnanfu" path="res://art/images/1_Animation 1_7.png" id="5_wkrex"]
+[ext_resource type="Texture2D" uid="uid://d07hokb6hgc15" path="res://art/images/1_Animation 1_6.png" id="6_vf5gg"]
+[ext_resource type="Texture2D" uid="uid://dhadq3r2hcfu0" path="res://art/images/1_Animation 1_5.png" id="7_j6ui7"]
+[ext_resource type="Texture2D" uid="uid://c8324w7ajx525" path="res://art/images/1_Animation 1_4.png" id="8_s3c7b"]
+[ext_resource type="Texture2D" uid="uid://ba7lwle0ecywv" path="res://art/images/1_Animation 1_3.png" id="9_xinkp"]
+[ext_resource type="Texture2D" uid="uid://ij8qqqskjcof" path="res://art/images/1_Animation 1_2.png" id="10_a33qf"]
+[ext_resource type="Texture2D" uid="uid://c5pa47hb18im8" path="res://art/images/1_Animation 1_1.png" id="11_p3m5x"]
+[ext_resource type="Texture2D" uid="uid://bv4f14feq4lo0" path="res://art/images/1_Animation 1_0.png" id="12_5jg1o"]
+[ext_resource type="Texture2D" uid="uid://c0a3ejqlnsdn4" path="res://art/images/hp bar_Animation 1_1.png" id="12_j6ui7"]
+[ext_resource type="Texture2D" uid="uid://dnkn7v4hsw0rt" path="res://art/images/hp bar_Animation 1_0.png" id="13_s3c7b"]
+[ext_resource type="Texture2D" uid="uid://b3modwsqj6x15" path="res://art/images/hp bar_Animation 1_3.png" id="14_xinkp"]
+[ext_resource type="Texture2D" uid="uid://chifeiilo8fws" path="res://art/images/hp bar_Animation 1_2.png" id="15_a33qf"]
+
+[node name="hudcontrol" type="Control" unique_id=1051031709]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 1.0
+offset_right = 14.0
+offset_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("1_2g5dy")
+script = ExtResource("2_3w28r")
+
+[node name="HUDPanel2" type="PanelContainer" parent="." unique_id=781080779]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -180.0
+offset_top = -96.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_type_variation = &"PanelSub"
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HUDPanel2" unique_id=1470097422]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionButtons" type="MarginContainer" parent="HUDPanel2/VBoxContainer" unique_id=768207432]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="ButtonsVBox" type="VBoxContainer" parent="HUDPanel2/VBoxContainer/ActionButtons" unique_id=139614804]
+layout_mode = 2
+
+[node name="HUDPanel" type="PanelContainer" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox" unique_id=709884569]
+layout_mode = 2
+theme_type_variation = &"PanelSub"
+
+[node name="MarginContainer" type="MarginContainer" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox/HUDPanel" unique_id=1779039599]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox/HUDPanel/MarginContainer" unique_id=1470512086]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="VitalBars" type="HBoxContainer" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox/HUDPanel/MarginContainer/VBoxContainer" unique_id=304364604]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="StaminaContainer" type="VBoxContainer" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox/HUDPanel/MarginContainer/VBoxContainer/VitalBars" unique_id=1050394936]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StaminaLabel" type="Label" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer" unique_id=1327415632]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
+theme_override_font_sizes/font_size = 11
+text = "Stamina: 100/100"
+horizontal_alignment = 1
+
+[node name="StaminaBar" type="ProgressBar" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox/HUDPanel/MarginContainer/VBoxContainer/VitalBars/StaminaContainer" unique_id=641792301]
+custom_minimum_size = Vector2(150, 16)
+layout_mode = 2
+value = 100.0
+show_percentage = false
+
+[node name="InteractButton" type="Button" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox" unique_id=415859818]
+custom_minimum_size = Vector2(80, 30)
+layout_mode = 2
+text = "Interact"
+
+[node name="AttackButton" type="Button" parent="HUDPanel2/VBoxContainer/ActionButtons/ButtonsVBox" unique_id=2144166807]
+custom_minimum_size = Vector2(80, 30)
+layout_mode = 2
+text = "Attack"
+
+[node name="characterhud" type="CanvasLayer" parent="." unique_id=2045428837]
+layer = 0
+
+[node name="navhbox" type="VBoxContainer" parent="characterhud" unique_id=440246108]
+offset_left = 12.0
+offset_top = 13.0
+offset_right = 456.0
+offset_bottom = 45.0
+size_flags_horizontal = 4
+
+[node name="navbuttons" type="HBoxContainer" parent="characterhud/navhbox" unique_id=1515114216]
+layout_mode = 2
+
+[node name="InventoryButton" type="Button" parent="characterhud/navhbox/navbuttons" unique_id=1421840767]
+layout_mode = 2
+text = "Inventory"
+
+[node name="StatsButton" type="Button" parent="characterhud/navhbox/navbuttons" unique_id=2038986305]
+layout_mode = 2
+text = "Stats"
+
+[node name="ShopButton" type="Button" parent="characterhud/navhbox/navbuttons" unique_id=1681920515]
+layout_mode = 2
+text = "Shop"
+
+[node name="MapButton" type="Button" parent="characterhud/navhbox/navbuttons" unique_id=1039820360]
+layout_mode = 2
+text = "Map"
+
+[node name="OptionsButton" type="Button" parent="characterhud/navhbox/navbuttons" unique_id=1350421317]
+layout_mode = 2
+text = "Options"
+
+[node name="DiscordButton" type="Button" parent="characterhud/navhbox/navbuttons" unique_id=1360650016]
+layout_mode = 2
+text = "Discord"
+
+[node name="LogoutButton" type="Button" parent="characterhud/navhbox/navbuttons" unique_id=1289277085]
+layout_mode = 2
+text = "Logout"
+
+[node name="hboxcontainer" type="HBoxContainer" parent="characterhud" unique_id=91626537]
+offset_left = 681.0
+offset_top = 671.0
+offset_right = 1073.0
+offset_bottom = 711.0
+
+[node name="Button" type="Button" parent="characterhud/hboxcontainer" unique_id=1265138672]
+layout_mode = 2
+icon = ExtResource("4_m5snm")
+
+[node name="Button2" type="Button" parent="characterhud/hboxcontainer" unique_id=558828151]
+layout_mode = 2
+icon = ExtResource("5_wkrex")
+
+[node name="Button3" type="Button" parent="characterhud/hboxcontainer" unique_id=368005331]
+layout_mode = 2
+icon = ExtResource("6_vf5gg")
+
+[node name="Button4" type="Button" parent="characterhud/hboxcontainer" unique_id=1203937166]
+layout_mode = 2
+icon = ExtResource("7_j6ui7")
+
+[node name="Button5" type="Button" parent="characterhud/hboxcontainer" unique_id=632582185]
+layout_mode = 2
+icon = ExtResource("8_s3c7b")
+
+[node name="Button6" type="Button" parent="characterhud/hboxcontainer" unique_id=934911389]
+layout_mode = 2
+icon = ExtResource("9_xinkp")
+
+[node name="Button7" type="Button" parent="characterhud/hboxcontainer" unique_id=2044878538]
+layout_mode = 2
+icon = ExtResource("10_a33qf")
+
+[node name="Button8" type="Button" parent="characterhud/hboxcontainer" unique_id=2120426381]
+layout_mode = 2
+icon = ExtResource("11_p3m5x")
+
+[node name="Button9" type="Button" parent="characterhud/hboxcontainer" unique_id=980757471]
+layout_mode = 2
+icon = ExtResource("12_5jg1o")
+
+[node name="hp" type="TextureProgressBar" parent="characterhud" unique_id=1719083138]
+texture_filter = 1
+offset_left = 809.0
+offset_top = 573.0
+offset_right = 1110.0
+offset_bottom = 648.0
+value = 60.0
+fill_mode = 1
+nine_patch_stretch = true
+texture_under = ExtResource("12_j6ui7")
+texture_over = ExtResource("13_s3c7b")
+
+[node name="mp" type="TextureProgressBar" parent="characterhud" unique_id=758577933]
+texture_filter = 1
+custom_minimum_size = Vector2(300, 75)
+offset_left = 809.0
+offset_top = 607.0
+offset_right = 1109.0
+offset_bottom = 682.0
+value = 60.0
+nine_patch_stretch = true
+texture_under = ExtResource("14_xinkp")
+texture_over = ExtResource("15_a33qf")

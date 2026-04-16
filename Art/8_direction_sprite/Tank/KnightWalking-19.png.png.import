@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bwdnpqqrdgy1d"
-path="res://.godot/imported/KnightWalking-19.png.png-7583e021dd8ebb9b5e3b3b8188bd23b2.ctex"
+path="res://.godot/imported/KnightWalking-19.png.png-2bc264ec582e1df38dacf65e38c2a425.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/8_direction_sprite/Tank/KnightWalking-19.png.png"
-dest_files=["res://.godot/imported/KnightWalking-19.png.png-7583e021dd8ebb9b5e3b3b8188bd23b2.ctex"]
+source_file="res://art/8_direction_sprite/Tank/KnightWalking-19.png.png"
+dest_files=["res://.godot/imported/KnightWalking-19.png.png-2bc264ec582e1df38dacf65e38c2a425.ctex"]
 
 [params]
 

@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dg3uikwr64ilk"
-path="res://.godot/imported/teleport_tile-1.png.png-077f45f8c0cd84f2946073d21d7dfbd0.ctex"
+path="res://.godot/imported/teleport_tile-1.png.png-3b33a36b959ad70516078a6ff379fccc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Tiles/teleport_tile-1.png.png"
-dest_files=["res://.godot/imported/teleport_tile-1.png.png-077f45f8c0cd84f2946073d21d7dfbd0.ctex"]
+source_file="res://art/Tiles/teleport_tile-1.png.png"
+dest_files=["res://.godot/imported/teleport_tile-1.png.png-3b33a36b959ad70516078a6ff379fccc.ctex"]
 
 [params]
 

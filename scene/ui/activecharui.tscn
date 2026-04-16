@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://chv8c718f2sfa"]
+
+[ext_resource type="Script" uid="uid://b6sjr1xqknwi1" path="res://src/active_char_ui.gd" id="1_active"]
+[ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/CharacterHUD.tscn" id="2_hud"]
+
+[node name="Control" type="Control" unique_id=1606713456]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 32.0
+offset_bottom = 22.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_active")
+
+[node name="CharacterHUD" parent="." unique_id=1267190851 instance=ExtResource("2_hud")]

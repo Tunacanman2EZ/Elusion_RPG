@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://si5e8ngmmtil"
-path="res://.godot/imported/Tiles set ready to use.png-203d61845238c4311503f85d3062b0b3.ctex"
+path="res://.godot/imported/Tiles set ready to use.png-9c1e9ab621a40a5c8a774807307f56e8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Tiles/Tiles set ready to use.png"
-dest_files=["res://.godot/imported/Tiles set ready to use.png-203d61845238c4311503f85d3062b0b3.ctex"]
+source_file="res://art/Tiles/Tiles set ready to use.png"
+dest_files=["res://.godot/imported/Tiles set ready to use.png-9c1e9ab621a40a5c8a774807307f56e8.ctex"]
 
 [params]
 

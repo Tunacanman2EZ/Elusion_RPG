@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://5kg631gn0ji"
-path="res://.godot/imported/BlackMageWalk64x64x8-6.png.png-2eaef600ff3ce480e8b133d3e8dab4ef.ctex"
+path="res://.godot/imported/BlackMageWalk64x64x8-6.png.png-c29992d4e12b493a62975240737a9d47.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/8_direction_sprite/Mage/BlackMageWalk64x64x8-6.png.png"
-dest_files=["res://.godot/imported/BlackMageWalk64x64x8-6.png.png-2eaef600ff3ce480e8b133d3e8dab4ef.ctex"]
+source_file="res://art/8_direction_sprite/Mage/BlackMageWalk64x64x8-6.png.png"
+dest_files=["res://.godot/imported/BlackMageWalk64x64x8-6.png.png-c29992d4e12b493a62975240737a9d47.ctex"]
 
 [params]
 

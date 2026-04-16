@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://ci04j0fjx2wh"]
+
+[ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/arrow.gd" id="1_hidqo"]
+[ext_resource type="Texture2D" uid="uid://c0gh7dy3ajnwo" path="res://art/enemy/arrow.png" id="2_bn4bf"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_w5x45"]
+
+[node name="Arrow" type="Area2D" unique_id=393929235]
+collision_layer = 64
+collision_mask = 6
+script = ExtResource("1_hidqo")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=428680932]
+texture_filter = 1
+texture = ExtResource("2_bn4bf")
+
+[node name="AttackRange" type="CollisionShape2D" parent="." unique_id=1040485105]
+position = Vector2(1, 1)
+shape = SubResource("CircleShape2D_w5x45")
