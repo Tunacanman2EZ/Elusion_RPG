@@ -1,6 +1,5 @@
 [gd_scene format=4 uid="uid://b6vx3uak1ynb3"]
 
-[ext_resource type="Script" uid="uid://ddwqwfk2e6blj" path="res://src/inn.gd" id="1_pn5or"]
 [ext_resource type="Texture2D" uid="uid://wckilo02vwsc" path="res://art/Tiles/houses read to use.png" id="2_1lnow"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_0n516"]
@@ -4659,6 +4658,32 @@ texture = ExtResource("2_1lnow")
 physics_layer_0/collision_layer = 1
 sources/2 = SubResource("TileSetAtlasSource_5423a")
 
+[sub_resource type="GDScript" id="GDScript_7jv6y"]
+script/source = "extends Area2D
+
+@onready var interior = $\"../Interior\"
+@onready var exterior = $\"../Exterior\"
+
+func _ready():
+	# Only show exterior at start, hide interior
+	if interior:
+		interior.visible = false
+	if exterior:
+		exterior.visible = true
+
+func _on_body_entered(body):
+	if body.is_in_group(\"player\"):
+		print(\"Player near building: interior visible, exterior hidden.\")
+		if interior: interior.visible = true
+		if exterior: exterior.visible = false
+
+func _on_body_exited(body):
+	if body.is_in_group(\"player\"):
+		print(\"Player left: interior hidden, exterior visible.\")
+		if interior: interior.visible = false
+		if exterior: exterior.visible = true
+"
+
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_pn5or"]
 size = Vector2(327.84863, 166.89429)
 
@@ -4679,7 +4704,7 @@ tile_map_data = PackedByteArray("AAD0//n/AgBEAC4AAAD0//r/AgBEAC8AAAD0//v/AgBEADA
 tile_set = SubResource("TileSet_na364")
 
 [node name="Area2D" type="Area2D" parent="." unique_id=1007700552]
-script = ExtResource("1_pn5or")
+script = SubResource("GDScript_7jv6y")
 
 [node name="Proximity" type="CollisionShape2D" parent="Area2D" unique_id=278010288]
 position = Vector2(-0.5, 42.500008)

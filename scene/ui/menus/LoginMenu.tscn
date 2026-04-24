@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://lon8advnxgqx"]
 
-[ext_resource type="Script" uid="uid://csey5unhicv5r" path="res://src/login_menu.gd" id="1_u8sew"]
+[ext_resource type="Script" uid="uid://csey5unhicv5r" path="res://src/ui/login_menu.gd" id="1_u8sew"]
 [ext_resource type="PackedScene" uid="uid://b756xxenwprr4" path="res://scene/ui/menus/characterselect.tscn" id="2_hhelq"]
 [ext_resource type="Texture2D" uid="uid://bpu2av41q1t8g" path="res://art/images/skeleton.png" id="2_jmb1l"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]

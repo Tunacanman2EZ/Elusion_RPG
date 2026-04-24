@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://drdxx0g4cmv2b"]
 
-[ext_resource type="Script" uid="uid://dyainuh3u1iu5" path="res://src/warrior.gd" id="1_iybb3"]
+[ext_resource type="Script" uid="uid://dyainuh3u1iu5" path="res://src/characters/warrior.gd" id="1_iybb3"]
 [ext_resource type="Texture2D" uid="uid://87sa4yhvy632" path="res://art/maincharacter/warrior.png" id="2_qbecf"]
 [ext_resource type="Texture2D" uid="uid://b6o0vycnkasgi" path="res://art/maincharacter/warrior3.png" id="3_4w1p4"]
 [ext_resource type="Texture2D" uid="uid://b8qu2hjt00qkb" path="res://art/maincharacter/warrior2.png" id="4_4rile"]
@@ -968,17 +968,18 @@ size = Vector2(70, 64)
 radius = 7.0
 
 [node name="warrior" type="CharacterBody2D" unique_id=781238535]
-z_index = 1
 texture_filter = 1
 collision_layer = 4
-collision_mask = 74
+collision_mask = 19
 script = ExtResource("1_iybb3")
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=1895518730]
+texture_filter = 1
 position = Vector2(2, 5)
 shape = SubResource("CapsuleShape2D_5gggr")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1319435616]
+z_index = 1
 texture_filter = 1
 position = Vector2(2.4999988, 3.5000007)
 scale = Vector2(1.109375, 1.015625)
@@ -1017,11 +1018,9 @@ offset_right = 20.0
 offset_bottom = -20.0
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=749862179]
-z_index = 1
+z_index = 4
 texture_filter = 1
 position = Vector2(0, 1)
 zoom = Vector2(3, 3)
-position_smoothing_enabled = true
-position_smoothing_speed = 3.0
 
 [connection signal="animation_finished" from="animatedsprite2d" to="." method="_on_animated_sprite_2d_animation_finished"]

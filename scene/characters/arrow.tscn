@@ -1,19 +1,37 @@
 [gd_scene format=3 uid="uid://dcv1j1kp1rumf"]
 
-[ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/arrow.gd" id="1_hotjg"]
 [ext_resource type="Texture2D" uid="uid://c0gh7dy3ajnwo" path="res://art/enemy/arrow.png" id="2_w5gax"]
+
+[sub_resource type="GDScript" id="GDScript_4r35h"]
+script/source = "extends Area2D
+
+var speed: float = 400
+var velocity: Vector2 = Vector2.ZERO
+
+func shoot(direction: Vector2) -> void:
+	velocity = direction.normalized() * speed
+	rotation = velocity.angle()
+
+func _physics_process(delta: float) -> void:
+	position += velocity * delta
+	# Despawn arrow if it leaves the visible window
+	if not get_viewport_rect().has_point(global_position):
+		queue_free()
+"
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_w5x45"]
 
-[node name="Arrow" type="Area2D" unique_id=393929235]
+[node name="arrow" type="Area2D" unique_id=393929235]
 collision_layer = 64
-collision_mask = 6
-script = ExtResource("1_hotjg")
+collision_mask = 4
+script = SubResource("GDScript_4r35h")
 
-[node name="Sprite2D" type="Sprite2D" parent="." unique_id=428680932]
+[node name="sprite2d" type="Sprite2D" parent="." unique_id=428680932]
 texture_filter = 1
 texture = ExtResource("2_w5gax")
 
-[node name="AttackRange" type="CollisionShape2D" parent="." unique_id=1040485105]
+[node name="attackrange" type="CollisionShape2D" parent="." unique_id=1040485105]
 position = Vector2(1, 1)
 shape = SubResource("CircleShape2D_w5x45")
+
+[node name="VisibleOnScreenNotifier2D" type="VisibleOnScreenNotifier2D" parent="." unique_id=870757594]

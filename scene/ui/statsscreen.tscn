@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bbcxm4xccpekg"]
 
-[ext_resource type="Script" uid="uid://dmvq83vjfqxhi" path="res://scripts/ui/menus/stats_screen.gd" id="1_stats"]
+[ext_resource type="Script" uid="uid://dmvq83vjfqxhi" path="res://src/ui/stats_screen.gd" id="1_stats"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
 
 [node name="StatsScreen" type="Control" unique_id=378052773]

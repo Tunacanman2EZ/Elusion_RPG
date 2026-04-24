@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://de3b4cl5fjmyh"]
 
-[ext_resource type="Script" uid="uid://cx018qe863b38" path="res://src/bushmage.gd" id="1_chk58"]
+[ext_resource type="Script" uid="uid://cx018qe863b38" path="res://src/enemies/bushmage.gd" id="1_chk58"]
 [ext_resource type="Texture2D" uid="uid://d0ndep0ujh56x" path="res://art/enemy/bushmageattack.png" id="2_puit4"]
 [ext_resource type="Texture2D" uid="uid://3w5sl3jor5s2" path="res://art/enemy/bushmagemovement.png" id="3_ko43g"]
-[ext_resource type="Texture2D" uid="uid://c0a3ejqlnsdn4" path="res://art/images/hp bar_Animation 1_1.png" id="4_4jhod"]
-[ext_resource type="Texture2D" uid="uid://dnkn7v4hsw0rt" path="res://art/images/hp bar_Animation 1_0.png" id="5_7n7hd"]
+[ext_resource type="Texture2D" uid="uid://chv7j5j7sgxib" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_09.png" id="4_wldbk"]
+[ext_resource type="Texture2D" uid="uid://cr3b5ffq28xuv" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_06.png" id="5_nhtsg"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_eu7fx"]
 atlas = ExtResource("2_puit4")
@@ -373,7 +373,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_2m6o2")
 }],
 "loop": false,
-"name": &"Attack_Down",
+"name": &"attackdown",
 "speed": 3.0
 }, {
 "frames": [{
@@ -405,7 +405,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_pisrl")
 }],
 "loop": false,
-"name": &"Attack_Left",
+"name": &"attackleft",
 "speed": 3.0
 }, {
 "frames": [{
@@ -437,7 +437,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_a8kix")
 }],
 "loop": false,
-"name": &"Attack_Right",
+"name": &"attackright",
 "speed": 3.0
 }, {
 "frames": [{
@@ -469,7 +469,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_m8qp6")
 }],
 "loop": false,
-"name": &"Attack_Up",
+"name": &"attackup",
 "speed": 3.0
 }, {
 "frames": [{
@@ -492,7 +492,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_3m56x")
 }],
 "loop": true,
-"name": &"Idle_Down",
+"name": &"idledown",
 "speed": 3.0
 }, {
 "frames": [{
@@ -515,7 +515,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_2005q")
 }],
 "loop": true,
-"name": &"Idle_Left",
+"name": &"idleleft",
 "speed": 3.0
 }, {
 "frames": [{
@@ -538,7 +538,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_awpai")
 }],
 "loop": true,
-"name": &"Idle_Right",
+"name": &"idleright",
 "speed": 3.0
 }, {
 "frames": [{
@@ -561,7 +561,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_yep1u")
 }],
 "loop": true,
-"name": &"Idle_Up",
+"name": &"idleup",
 "speed": 3.0
 }, {
 "frames": [{
@@ -584,7 +584,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_6vk4k")
 }],
 "loop": true,
-"name": &"Walk_Down",
+"name": &"walkdown",
 "speed": 3.0
 }, {
 "frames": [{
@@ -607,7 +607,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_b4vgk")
 }],
 "loop": true,
-"name": &"Walk_Left",
+"name": &"walkleft",
 "speed": 3.0
 }, {
 "frames": [{
@@ -630,7 +630,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_ijnw4")
 }],
 "loop": true,
-"name": &"Walk_Right",
+"name": &"walkright",
 "speed": 3.0
 }, {
 "frames": [{
@@ -653,7 +653,7 @@ animations = [{
 "texture": SubResource("AtlasTexture_aedqn")
 }],
 "loop": true,
-"name": &"Walk_Up",
+"name": &"walkup",
 "speed": 3.0
 }]
 
@@ -664,14 +664,16 @@ animations = [{
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_vvu6j"]
 size = Vector2(151, 152)
 
-[node name="CharacterBody2D" type="CharacterBody2D" unique_id=709913725]
+[node name="bushmage" type="CharacterBody2D" unique_id=709913725]
 collision_layer = 8
 collision_mask = 38
 script = ExtResource("1_chk58")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=919068649]
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=919068649]
+z_index = 4
+texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_jm8lx")
-animation = &"Attack_Left"
+animation = &"walkup"
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=30006892]
 position = Vector2(-3, -11)
@@ -690,16 +692,16 @@ debug_color = Color(0.72194225, 0.38394785, 0.7402885, 0.41960785)
 [node name="collisionshape2d" type="CollisionShape2D" parent="attackbox" unique_id=1941689432]
 shape = SubResource("RectangleShape2D_vvu6j")
 
-[node name="TextureProgressBar" type="TextureProgressBar" parent="." unique_id=48577092]
+[node name="healthbar" type="TextureProgressBar" parent="." unique_id=48577092]
 texture_filter = 1
-offset_left = -26.0
-offset_top = -47.0
-offset_right = 70.0
-offset_bottom = -15.0
+offset_left = -19.0
+offset_top = -46.0
+offset_right = 141.0
+offset_bottom = -14.0
 scale = Vector2(0.5, 0.5)
-texture_under = ExtResource("4_4jhod")
-texture_over = ExtResource("5_7n7hd")
+value = 100.0
+fill_mode = 1
+texture_under = ExtResource("4_wldbk")
+texture_over = ExtResource("5_nhtsg")
 
-[node name="Timer" type="Timer" parent="." unique_id=827030860]
-
-[connection signal="animation_finished" from="AnimatedSprite2D" to="." method="_on_animated_sprite_2d_animation_finished"]
+[node name="attacktimer" type="Timer" parent="." unique_id=827030860]

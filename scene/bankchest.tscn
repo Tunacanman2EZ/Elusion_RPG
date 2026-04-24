@@ -1,9 +1,33 @@
 [gd_scene format=3 uid="uid://sc2553vue1ug"]
 
-[ext_resource type="Script" uid="uid://4dba2hu8o0rg" path="res://src/bankchest.gd" id="1_op8v8"]
+[ext_resource type="Script" uid="uid://4dba2hu8o0rg" path="res://src/world/bankchest.gd" id="1_op8v8"]
 [ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/Tiles/3.png" id="2_nebis"]
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_pf14g"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_3pf1k"]
+atlas = ExtResource("2_nebis")
+region = Rect2(192, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_q2sce"]
+atlas = ExtResource("2_nebis")
+region = Rect2(160, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_a2won"]
+atlas = ExtResource("2_nebis")
+region = Rect2(128, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lrs4p"]
+atlas = ExtResource("2_nebis")
+region = Rect2(96, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_51h7t"]
+atlas = ExtResource("2_nebis")
+region = Rect2(64, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_pdqt5"]
+atlas = ExtResource("2_nebis")
+region = Rect2(32, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fd8ej"]
 atlas = ExtResource("2_nebis")
 region = Rect2(0, 32, 32, 32)
 
@@ -39,7 +63,25 @@ region = Rect2(192, 32, 32, 32)
 animations = [{
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_pf14g")
+"texture": SubResource("AtlasTexture_3pf1k")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_q2sce")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_a2won")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lrs4p")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_51h7t")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_pdqt5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fd8ej")
 }],
 "loop": false,
 "name": &"closed",
@@ -73,18 +115,18 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_op8v8"]
-radius = 17.117243
+radius = 42.0
 
 [node name="BankChest" type="Area2D" unique_id=1909775092]
+texture_filter = 1
 collision_layer = 16
-collision_mask = 4
+collision_mask = 6
 script = ExtResource("1_op8v8")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=125570595]
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=125570595]
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_qycu1")
 animation = &"closed"
-frame_progress = 1.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2057434990]
 position = Vector2(1, 4)
@@ -92,4 +134,4 @@ shape = SubResource("CircleShape2D_op8v8")
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
 [connection signal="body_exited" from="." to="." method="_on_body_exited"]
-[connection signal="animation_finished" from="AnimatedSprite2D" to="." method="_on_animated_sprite_2d_animation_finished"]
+[connection signal="animation_finished" from="animatedsprite2d" to="." method="_on_animated_sprite_2d_animation_finished"]

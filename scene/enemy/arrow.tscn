@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://ci04j0fjx2wh"]
 
-[ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/arrow.gd" id="1_hidqo"]
+[ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/projectiles/arrow.gd" id="1_hidqo"]
 [ext_resource type="Texture2D" uid="uid://c0gh7dy3ajnwo" path="res://art/enemy/arrow.png" id="2_bn4bf"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_w5x45"]

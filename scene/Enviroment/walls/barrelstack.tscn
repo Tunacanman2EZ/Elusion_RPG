@@ -18,6 +18,7 @@ physics_layer_0/collision_layer = 1
 sources/0 = SubResource("TileSetAtlasSource_7cr53")
 
 [node name="Area2D" type="Area2D" unique_id=583930127]
+texture_filter = 1
 collision_layer = 2
 collision_mask = 108
 

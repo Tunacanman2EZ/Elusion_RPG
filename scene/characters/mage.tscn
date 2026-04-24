@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c1x3r5x0u3k2o"]
 
-[ext_resource type="Script" uid="uid://c87y1umh1n1p0" path="res://src/mage.gd" id="1_1urxr"]
+[ext_resource type="Script" uid="uid://c87y1umh1n1p0" path="res://src/characters/mage.gd" id="1_1urxr"]
 [ext_resource type="Texture2D" uid="uid://lmscjq75gjkt" path="res://art/8_direction_sprite/Mage/BlackMageWalk64x64x8-1.png.png" id="2_612fm"]
 [ext_resource type="Texture2D" uid="uid://ck67d22cj6a5q" path="res://art/8_direction_sprite/Mage/BlackMageWalk64x64x8-2.png.png" id="3_hhf6d"]
 [ext_resource type="Texture2D" uid="uid://dpuq41m460j8j" path="res://art/8_direction_sprite/Mage/BlackMageWalk64x64x8-3.png.png" id="4_8y8u7"]
@@ -299,7 +299,7 @@ animations = [{
 radius = 8.0
 
 [node name="mage" type="CharacterBody2D" unique_id=1876251839]
-z_index = 1
+texture_filter = 1
 script = ExtResource("1_1urxr")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1544333046]

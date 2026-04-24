@@ -21,8 +21,8 @@ config/features=PackedStringArray("4.6", "Mobile")
 
 [autoload]
 
-CharacterData="*res://scripts/autoloads/character_data.gd"
-GameState="*res://scripts/autoloads/game_state.gd"
+CharacterData="*uid://cvkrtide3lisi"
+GameState="*uid://cjruyiklfgr1l"
 
 [display]
 
