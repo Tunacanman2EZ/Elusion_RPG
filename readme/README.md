@@ -1,3 +1,6 @@
+Code in this repository is licensed under the MIT License (see LICENSE file).
+All art, graphics, and audio assets in the /assets folder are NOT included under this license. See ASSET_LICENSE.md for details.
+
 GAME ELUSION (Godot 4)
 College Project Proposal
 
