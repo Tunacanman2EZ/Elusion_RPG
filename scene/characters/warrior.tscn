@@ -4,12 +4,6 @@
 [ext_resource type="Texture2D" uid="uid://87sa4yhvy632" path="res://art/maincharacter/warrior.png" id="2_qbecf"]
 [ext_resource type="Texture2D" uid="uid://b6o0vycnkasgi" path="res://art/maincharacter/warrior3.png" id="3_4w1p4"]
 [ext_resource type="Texture2D" uid="uid://b8qu2hjt00qkb" path="res://art/maincharacter/warrior2.png" id="4_4rile"]
-[ext_resource type="Texture2D" uid="uid://kbxkyq8iyqes" path="res://scene/characters/warrior/1.tres" id="5_ka3wk"]
-[ext_resource type="Texture2D" uid="uid://bkshu5m62dm4q" path="res://scene/characters/warrior/2.tres" id="6_6qa6f"]
-[ext_resource type="Texture2D" uid="uid://covxxtoegt2jy" path="res://scene/characters/warrior/3.tres" id="7_qubbo"]
-[ext_resource type="Texture2D" uid="uid://clhfjsc50cfrl" path="res://scene/characters/warrior/4.tres" id="8_2j6py"]
-[ext_resource type="Texture2D" uid="uid://coejw2hj6wpbn" path="res://scene/characters/warrior/5.tres" id="9_20rnx"]
-[ext_resource type="Texture2D" uid="uid://7wiltjn0k310" path="res://scene/characters/warrior/6.tres" id="10_bk4x3"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_5gggr"]
 radius = 7.0
@@ -341,6 +335,30 @@ region = Rect2(256, 0, 64, 64)
 [sub_resource type="AtlasTexture" id="AtlasTexture_0ty1w"]
 atlas = ExtResource("4_4rile")
 region = Rect2(320, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_iybb3"]
+atlas = ExtResource("4_4rile")
+region = Rect2(0, 128, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_qbecf"]
+atlas = ExtResource("4_4rile")
+region = Rect2(64, 128, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4w1p4"]
+atlas = ExtResource("4_4rile")
+region = Rect2(128, 128, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4rile"]
+atlas = ExtResource("4_4rile")
+region = Rect2(192, 128, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lf3mb"]
+atlas = ExtResource("4_4rile")
+region = Rect2(256, 128, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xkutj"]
+atlas = ExtResource("4_4rile")
+region = Rect2(320, 128, 64, 64)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_fjlnq"]
 atlas = ExtResource("4_4rile")
@@ -801,22 +819,22 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("5_ka3wk")
+"texture": SubResource("AtlasTexture_iybb3")
 }, {
 "duration": 1.0,
-"texture": ExtResource("6_6qa6f")
+"texture": SubResource("AtlasTexture_qbecf")
 }, {
 "duration": 1.0,
-"texture": ExtResource("7_qubbo")
+"texture": SubResource("AtlasTexture_4w1p4")
 }, {
 "duration": 1.0,
-"texture": ExtResource("8_2j6py")
+"texture": SubResource("AtlasTexture_4rile")
 }, {
 "duration": 1.0,
-"texture": ExtResource("9_20rnx")
+"texture": SubResource("AtlasTexture_lf3mb")
 }, {
 "duration": 1.0,
-"texture": ExtResource("10_bk4x3")
+"texture": SubResource("AtlasTexture_xkutj")
 }],
 "loop": true,
 "name": &"idleleft",
@@ -968,6 +986,7 @@ size = Vector2(70, 64)
 radius = 7.0
 
 [node name="warrior" type="CharacterBody2D" unique_id=781238535]
+y_sort_enabled = true
 texture_filter = 1
 collision_layer = 4
 collision_mask = 19
@@ -979,14 +998,12 @@ position = Vector2(2, 5)
 shape = SubResource("CapsuleShape2D_5gggr")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1319435616]
-z_index = 1
+y_sort_enabled = true
 texture_filter = 1
 position = Vector2(2.4999988, 3.5000007)
 scale = Vector2(1.109375, 1.015625)
 sprite_frames = SubResource("SpriteFrames_ih3hd")
-animation = &"attackup"
-frame = 6
-frame_progress = 1.0
+animation = &"idleleft"
 speed_scale = 1.5
 
 [node name="hitbox" type="Area2D" parent="." unique_id=1858165833]
@@ -1006,15 +1023,17 @@ position = Vector2(2, 5)
 shape = SubResource("CapsuleShape2D_0t7bt")
 
 [node name="damagelabel" type="Label" parent="." unique_id=896093901]
-offset_right = 40.0
-offset_bottom = 23.0
+offset_left = -20.0
+offset_top = -42.0
+offset_right = 20.0
+offset_bottom = -19.0
 
 [node name="damagelabeltimer" type="Timer" parent="damagelabel" unique_id=1458790110]
 
 [node name="damagerecievedlabel" type="Label" parent="." unique_id=265783334]
-offset_left = -20.0
+offset_left = -19.0
 offset_top = -43.0
-offset_right = 20.0
+offset_right = 21.0
 offset_bottom = -20.0
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=749862179]

@@ -1,6 +1,6 @@
 extends Control
 
-var elusion_scene: PackedScene = preload("res://elusion.tscn")
+var elusion_scene: PackedScene = preload("res://scene/elusion.tscn")
 
 func _ready() -> void:
 	CharacterData.load_data()

@@ -1,6 +1,6 @@
 extends BaseEnemy
 
-const ARROW_SCENE = preload("res://scene/enemy/arrow.tscn")
+const ARROW_SCENE = preload("res://scene/arrow.tscn")
 
 func _ready():
 	max_hp = 50
@@ -29,7 +29,6 @@ func _get_spawn_node() -> Marker2D:
 		"down":  return $arrowspawnbottom
 	return null
 
-# no run — use walk for all movement
 func play_walk_animation(dir: String) -> void:
 	if dir != "":
 		$animatedsprite2d.play("walk" + dir)

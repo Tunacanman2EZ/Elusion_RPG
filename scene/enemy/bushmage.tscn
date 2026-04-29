@@ -374,7 +374,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attackdown",
-"speed": 3.0
+"speed": 8.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -406,7 +406,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attackleft",
-"speed": 3.0
+"speed": 8.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -438,7 +438,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attackright",
-"speed": 3.0
+"speed": 8.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -470,7 +470,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attackup",
-"speed": 3.0
+"speed": 8.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -658,38 +658,45 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_tvagl"]
-
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_r3w2w"]
+radius = 8.0
+height = 20.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_vvu6j"]
-size = Vector2(151, 152)
+size = Vector2(67, 110)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wldbk"]
+size = Vector2(60, 107)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_nhtsg"]
+size = Vector2(106, 66)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_3d2ue"]
+size = Vector2(105, 65)
 
 [node name="bushmage" type="CharacterBody2D" unique_id=709913725]
+y_sort_enabled = true
+texture_filter = 1
 collision_layer = 8
-collision_mask = 38
+collision_mask = 3
 script = ExtResource("1_chk58")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=919068649]
-z_index = 4
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_jm8lx")
-animation = &"walkup"
+animation = &"attackdown"
+frame = 4
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=30006892]
+texture_filter = 1
 position = Vector2(-3, -11)
 shape = SubResource("CapsuleShape2D_tvagl")
 
-[node name="hurtbox" type="Area2D" parent="." unique_id=1220465557]
-position = Vector2(0, 8)
+[node name="attackboxright" type="Area2D" parent="." unique_id=1958429154]
+collision_layer = 8
+collision_mask = 4
 
-[node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=1252167357]
-position = Vector2(-3, -20)
-shape = SubResource("CapsuleShape2D_r3w2w")
-debug_color = Color(0.72194225, 0.38394785, 0.7402885, 0.41960785)
-
-[node name="attackbox" type="Area2D" parent="." unique_id=1958429154]
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="attackbox" unique_id=1941689432]
+[node name="collisionshape2d" type="CollisionShape2D" parent="attackboxright" unique_id=1941689432]
+position = Vector2(43.5, 3)
 shape = SubResource("RectangleShape2D_vvu6j")
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=48577092]
@@ -702,6 +709,30 @@ scale = Vector2(0.5, 0.5)
 value = 100.0
 fill_mode = 1
 texture_under = ExtResource("4_wldbk")
-texture_over = ExtResource("5_nhtsg")
+texture_progress = ExtResource("5_nhtsg")
 
 [node name="attacktimer" type="Timer" parent="." unique_id=827030860]
+
+[node name="attackboxleft" type="Area2D" parent="." unique_id=1582994504]
+collision_layer = 8
+collision_mask = 4
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxleft" unique_id=340199033]
+position = Vector2(-45, 3.5)
+shape = SubResource("RectangleShape2D_wldbk")
+
+[node name="attackboxup" type="Area2D" parent="." unique_id=593656052]
+collision_layer = 8
+collision_mask = 4
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxup" unique_id=55941429]
+position = Vector2(-2, -40)
+shape = SubResource("RectangleShape2D_nhtsg")
+
+[node name="attackboxdown" type="Area2D" parent="." unique_id=2142756400]
+collision_layer = 8
+collision_mask = 4
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxdown" unique_id=1408769476]
+position = Vector2(-2.5, 40.5)
+shape = SubResource("RectangleShape2D_3d2ue")

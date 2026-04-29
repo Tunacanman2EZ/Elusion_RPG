@@ -8,8 +8,8 @@ func _ready():
 	hp = 100
 	max_stamina = 100
 	stamina = 100
-	max_mana = 0
-	mana = 0
+	max_mana = 100
+	mana = 100
 	attack = 2
 	defense = 1
 	if not $animatedsprite2d.animation_finished.is_connected(_on_animatedsprite2d_animation_finished):

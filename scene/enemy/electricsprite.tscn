@@ -703,10 +703,11 @@ height = 36.0
 [node name="electricsprite" type="CharacterBody2D" unique_id=289962471]
 texture_filter = 1
 collision_layer = 8
-collision_mask = 38
+collision_mask = 3
 script = ExtResource("1_qfaod")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1382034932]
+y_sort_enabled = true
 sprite_frames = SubResource("SpriteFrames_1up8b")
 animation = &"projectile"
 
@@ -727,8 +728,9 @@ offset_top = -46.0
 offset_right = 130.0
 offset_bottom = -6.0
 value = 100.0
+fill_mode = 1
 texture_under = ExtResource("3_fy2rl")
-texture_over = ExtResource("4_56m4t")
+texture_progress = ExtResource("4_56m4t")
 
 [node name="attacktimer" type="Timer" parent="." unique_id=2058528377]
 

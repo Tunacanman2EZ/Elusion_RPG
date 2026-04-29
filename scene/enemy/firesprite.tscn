@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" uid="uid://wqaarl16xnnp" path="res://src/enemies/firesprite.gd" id="1_msv7k"]
 [ext_resource type="Texture2D" uid="uid://ddj2u5guyytbb" path="res://art/enemy/firesprite.png" id="2_jrjah"]
+[ext_resource type="Texture2D" uid="uid://chv7j5j7sgxib" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_09.png" id="3_tik12"]
+[ext_resource type="Texture2D" uid="uid://cr3b5ffq28xuv" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_06.png" id="4_5bmra"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_3ghro"]
 atlas = ExtResource("2_jrjah")
@@ -694,9 +696,6 @@ animations = [{
 "speed": 5.0
 }]
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_lf1jj"]
-radius = 9.0
-
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_wjhka"]
 radius = 9.0
 
@@ -706,19 +705,15 @@ radius = 6.0
 [node name="firesprite" type="CharacterBody2D" unique_id=736242394]
 texture_filter = 1
 collision_layer = 8
-collision_mask = 38
+collision_mask = 3
 script = ExtResource("1_msv7k")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=392472798]
+y_sort_enabled = true
+texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_et1wx")
 animation = &"attackup"
 frame = 4
-
-[node name="hurtbox" type="Area2D" parent="." unique_id=1230326573]
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=137128166]
-position = Vector2(1, 4)
-shape = SubResource("CapsuleShape2D_lf1jj")
 
 [node name="hitbox" type="Area2D" parent="." unique_id=1897405412]
 
@@ -727,8 +722,13 @@ position = Vector2(1, 4)
 shape = SubResource("CapsuleShape2D_wjhka")
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=387788377]
-offset_right = 40.0
-offset_bottom = 40.0
+offset_left = -31.0
+offset_top = -55.0
+offset_right = 129.0
+offset_bottom = -15.0
+fill_mode = 1
+texture_under = ExtResource("3_tik12")
+texture_progress = ExtResource("4_5bmra")
 
 [node name="attacktimer" type="Timer" parent="." unique_id=846679983]
 

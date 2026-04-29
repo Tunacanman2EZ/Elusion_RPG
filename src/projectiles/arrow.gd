@@ -2,7 +2,8 @@ extends Area2D
 
 var speed: float = 400.0
 var velocity: Vector2 = Vector2.ZERO
-var lifetime: float = 3.0
+var lifetime: float = 10.0
+var grace_time: float = 0.2
 
 func shoot(direction: String) -> void:
 	match direction:
@@ -20,12 +21,13 @@ func shoot(direction: String) -> void:
 			rotation = PI / 2
 
 func _ready():
+	await get_tree().process_frame
 	body_entered.connect(_on_body_entered)
 
 func _physics_process(delta: float) -> void:
 	position += velocity * delta
 	lifetime -= delta
-	if lifetime <= 0 or not get_viewport_rect().has_point(global_position):
+	if lifetime <= 0:
 		queue_free()
 
 func _on_body_entered(body: Node) -> void:

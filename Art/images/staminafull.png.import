@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://nqhgg6340427"
-path="res://.godot/imported/2.png-2a389cd0d5979d16ad47e25b405a9a19.ctex"
+uid="uid://d06nte36o16nj"
+path="res://.godot/imported/staminafull.png-cd1e80d9c9b89eb9a9707c45e5edd61f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/Tiles/2.png"
-dest_files=["res://.godot/imported/2.png-2a389cd0d5979d16ad47e25b405a9a19.ctex"]
+source_file="res://art/images/staminafull.png"
+dest_files=["res://.godot/imported/staminafull.png-cd1e80d9c9b89eb9a9707c45e5edd61f.ctex"]
 
 [params]
 

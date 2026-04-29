@@ -13,9 +13,10 @@ func get_move_speed() -> float:
 	return 75.0
 
 func fire_projectile():
-	if not has_node("attackarea"):
+	var box_name = "attackbox" + attack_direction
+	if not has_node(box_name):
 		return
-	var bodies = $attackarea.get_overlapping_bodies()
+	var bodies = get_node(box_name).get_overlapping_bodies()
 	for body in bodies:
 		if body.is_in_group("player"):
 			if body.has_method("take_damage"):

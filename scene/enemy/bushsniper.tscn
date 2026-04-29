@@ -657,32 +657,25 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_5pvwv"]
-radius = 15.033297
-
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_5pvwv"]
-radius = 8.0
-height = 26.0
+radius = 6.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_0w03b"]
-radius = 127.141655
+radius = 15.132746
 
 [node name="bushsniper" type="CharacterBody2D" unique_id=1073679386]
 texture_filter = 1
 collision_layer = 8
-collision_mask = 38
+collision_mask = 3
 script = ExtResource("1_tc7da")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=2055609014]
+y_sort_enabled = true
 sprite_frames = SubResource("SpriteFrames_r0rwy")
 animation = &"attackleft"
 
 [node name="collision" type="CollisionShape2D" parent="." unique_id=253938158]
+texture_filter = 1
 shape = SubResource("CircleShape2D_5pvwv")
-
-[node name="damage" type="Area2D" parent="." unique_id=2015128861]
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="damage" unique_id=486092749]
-shape = SubResource("CapsuleShape2D_5pvwv")
 
 [node name="damage recieved" type="Area2D" parent="." unique_id=1890498783]
 
@@ -697,7 +690,7 @@ scale = Vector2(0.5, 0.5)
 value = 100.0
 fill_mode = 1
 texture_under = ExtResource("3_tc7da")
-texture_over = ExtResource("4_05sle")
+texture_progress = ExtResource("4_05sle")
 
 [node name="arrowspawntop" type="Marker2D" parent="." unique_id=396773774]
 texture_filter = 1

@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://bux5n6560e5yx"]
+
+[ext_resource type="Texture2D" uid="uid://c0gh7dy3ajnwo" path="res://art/enemy/arrow.png" id="1_rufgg"]
+[ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/projectiles/arrow.gd" id="1_yspra"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_w5x45"]
+radius = 8.0
+
+[node name="arrow" type="Area2D" unique_id=393929235]
+collision_layer = 64
+collision_mask = 4
+script = ExtResource("1_yspra")
+
+[node name="sprite2d" type="Sprite2D" parent="." unique_id=428680932]
+texture_filter = 1
+texture = ExtResource("1_rufgg")
+
+[node name="attackrange" type="CollisionShape2D" parent="." unique_id=1040485105]
+position = Vector2(1, 1)
+shape = SubResource("CircleShape2D_w5x45")
+
+[node name="VisibleOnScreenNotifier2D" type="VisibleOnScreenNotifier2D" parent="." unique_id=870757594]

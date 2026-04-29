@@ -5,6 +5,7 @@ var current_player: Node = null
 @onready var active_char_ui = $hudcontrol
 
 func _ready():
+	print("ELUSION READY CALLED")
 	spawn_player_from_selection()
 
 func spawn_player_from_selection():
@@ -34,7 +35,6 @@ func spawn_player_from_selection():
 	current_player = player
 	CharacterData.load_character_state(current_player)
 
-	# connect player signals to GameState
 	current_player.took_damage.connect(func(amount, type):
 		GameState.damage_dealt.emit(
 			0,
@@ -55,7 +55,12 @@ func spawn_player_from_selection():
 			dir
 		))
 
+	if current_player == null:
+		OS.alert("PLAYER IS NULL!")
+		return
+
 	if active_char_ui and active_char_ui.has_method("set_active_character"):
+		OS.alert("CALLING SET ACTIVE CHARACTER")
 		active_char_ui.set_active_character(current_player)
 
 func _on_InventoryButton_pressed():

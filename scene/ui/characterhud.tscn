@@ -21,6 +21,52 @@
 layer = 0
 script = ExtResource("1_s3c7b")
 
+[node name="barcontainer" type="Control" parent="." unique_id=1885492825]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="healthbar" type="TextureProgressBar" parent="barcontainer" unique_id=1719083138]
+texture_filter = 1
+layout_mode = 0
+offset_left = 987.0
+offset_top = 617.0
+offset_right = 1288.0
+offset_bottom = 692.0
+value = 60.0
+fill_mode = 1
+nine_patch_stretch = true
+texture_under = ExtResource("12_xinkp")
+texture_progress = ExtResource("13_a33qf")
+
+[node name="magicbar" type="TextureProgressBar" parent="barcontainer" unique_id=758577933]
+texture_filter = 1
+custom_minimum_size = Vector2(300, 75)
+layout_mode = 0
+offset_left = 987.0
+offset_top = 650.0
+offset_right = 1287.0
+offset_bottom = 725.0
+value = 60.0
+fill_mode = 1
+nine_patch_stretch = true
+texture_under = ExtResource("14_p3m5x")
+texture_progress = ExtResource("15_5jg1o")
+
+[node name="staminabar" type="TextureProgressBar" parent="barcontainer" unique_id=1448665782]
+texture_filter = 1
+layout_mode = 0
+offset_left = 1177.0
+offset_top = 694.0
+offset_right = 1337.0
+offset_bottom = 734.0
+fill_mode = 1
+texture_under = ExtResource("16_hqo1d")
+texture_progress = ExtResource("17_tecjo")
+
 [node name="navhbox" type="VBoxContainer" parent="." unique_id=440246108]
 offset_left = 12.0
 offset_top = 13.0
@@ -100,37 +146,3 @@ icon = ExtResource("11_p3m5x")
 [node name="Button9" type="Button" parent="hboxcontainer" unique_id=980757471]
 layout_mode = 2
 icon = ExtResource("12_5jg1o")
-
-[node name="healthbar" type="TextureProgressBar" parent="." unique_id=1719083138]
-texture_filter = 1
-offset_left = 987.0
-offset_top = 617.0
-offset_right = 1288.0
-offset_bottom = 692.0
-value = 60.0
-fill_mode = 1
-nine_patch_stretch = true
-texture_under = ExtResource("12_xinkp")
-texture_over = ExtResource("13_a33qf")
-
-[node name="magicbar" type="TextureProgressBar" parent="." unique_id=758577933]
-texture_filter = 1
-custom_minimum_size = Vector2(300, 75)
-offset_left = 987.0
-offset_top = 650.0
-offset_right = 1287.0
-offset_bottom = 725.0
-value = 60.0
-nine_patch_stretch = true
-texture_under = ExtResource("14_p3m5x")
-texture_over = ExtResource("15_5jg1o")
-
-[node name="staminabar" type="TextureProgressBar" parent="." unique_id=1448665782]
-texture_filter = 1
-offset_left = 1179.0
-offset_top = 695.0
-offset_right = 1339.0
-offset_bottom = 735.0
-fill_mode = 1
-texture_under = ExtResource("16_hqo1d")
-texture_over = ExtResource("17_tecjo")

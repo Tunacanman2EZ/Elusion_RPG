@@ -4,6 +4,7 @@ var character_slots: Array = [null, null, null, null]
 var active_character_index: int = 0
 
 func _ready():
+	print("=== CHARACTERDATA READY ===")
 	load_data()
 
 func _ensure_slot_array():
@@ -55,8 +56,8 @@ func create_character(slot_idx: int, character_name: String) -> void:
 		"max_hp": 100,
 		"stamina": 100,
 		"max_stamina": 100,
-		"mana": 0,
-		"max_mana": 0,
+		"mana": 100,
+		"max_mana": 100,
 		"attack": 1,
 		"defense": 1,
 		"agility": 1,
@@ -104,8 +105,8 @@ func load_character_state(player: Node) -> void:
 	player.max_hp      = slot.get("max_hp", 100)
 	player.stamina     = slot.get("stamina", 100)
 	player.max_stamina = slot.get("max_stamina", 100)
-	player.mana        = slot.get("mana", 0)
-	player.max_mana    = slot.get("max_mana", 0)
+	player.mana        = slot.get("mana", 100)
+	player.max_mana    = slot.get("max_mana", 100)
 	player.attack      = slot.get("attack", 1)
 	player.defense     = slot.get("defense", 1)
 	player.agility     = slot.get("agility", 1)

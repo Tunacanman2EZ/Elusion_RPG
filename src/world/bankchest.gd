@@ -6,7 +6,7 @@ var player_nearby: Node = null
 var spawn_timer = 0.0
 
 func _ready():
-	anim.play("closed")
+	anim.play("idle")
 	spawn_timer = 1.0
 
 func _process(delta):
@@ -22,11 +22,13 @@ func _on_body_entered(body):
 		player_nearby = body
 
 func _on_body_exited(body):
-	if spawn_timer > 0:
-		return
 	if body == player_nearby:
 		player_nearby = null
 		if is_open:
-			await get_tree().create_timer(0.1).timeout
 			is_open = false
-			anim.play("closed")
+			anim.play_backwards("open")
+
+func _on_animatedsprite2d_animation_finished():
+	if anim.animation == "open":
+		var frame_count = anim.sprite_frames.get_frame_count("open")
+		anim.frame = frame_count - 1

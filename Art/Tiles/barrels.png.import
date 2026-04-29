@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d06nte36o16nj"
-path="res://.godot/imported/hpbar-1.png (8)-1.png.png-15f238d9bdb1214849149927a160ff69.ctex"
+uid="uid://nqhgg6340427"
+path="res://.godot/imported/barrels.png-1fc46390c65107068fc1e3e60a594f9f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/images/hpbar-1.png (8)-1.png.png"
-dest_files=["res://.godot/imported/hpbar-1.png (8)-1.png.png-15f238d9bdb1214849149927a160ff69.ctex"]
+source_file="res://art/Tiles/barrels.png"
+dest_files=["res://.godot/imported/barrels.png-1fc46390c65107068fc1e3e60a594f9f.ctex"]
 
 [params]
 

@@ -36,10 +36,8 @@ func _physics_process(_delta):
 		if players.size() > 0:
 			player = players[0]
 		return
-
 	var dist = position.distance_to(player.position)
 	attack_direction = _get_direction_to_player()
-
 	if dist < flee_range:
 		state = "run"
 		var move_vec = (position - player.position).normalized()
@@ -48,18 +46,15 @@ func _physics_process(_delta):
 		play_walk_animation(_get_direction_from_vec(move_vec))
 		if attack_ready:
 			_trigger_attack()
-
 	elif dist < attack_range:
 		state = "attack"
 		play_attack_animation(attack_direction)
 		if attack_ready:
 			_trigger_attack()
-
 	else:
 		state = "idle"
 		play_idle_animation(attack_direction)
 		velocity = Vector2.ZERO
-
 	if has_node("healthbar"):
 		$healthbar.value = hp
 	if Engine.get_physics_frames() % 3 == 0:
