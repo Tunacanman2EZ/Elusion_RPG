@@ -1,31 +1,59 @@
+# base item resource — all items in the game inherit from this class
+# saved as a Resource so items can be created as .tres files in the editor
 extends Resource
 class_name Item
 
-enum Type { CONSUMABLE, WEAPON, ARMOR, MATERIAL, QUEST }
+# --- item type enum ---
+# determines how the item behaves when used from inventory or hotbar
+enum Type {
+	CONSUMABLE, # potions, food — used on self for instant effect
+	WEAPON,     # swords, bows — equippable combat items
+	ARMOR,      # chest, helmet — equippable defense items
+	MATERIAL,   # crafting ingredients, quest drops
+	QUEST       # quest items — cannot be dropped or traded
+}
 
-## The display name of the item
+# --- exported properties ---
+# all properties are exported so items can be configured in the Godot editor
+
+# the display name shown in tooltips and inventory
 @export var name: String = ""
-## A brief description shown in tooltips
+
+# short description shown in the item tooltip
 @export var description: String = ""
-## The icon texture displayed in inventory slots
+
+# the icon texture displayed in the inventory slot
 @export var icon: Texture2D = null
-## Whether multiple of this item can occupy the same slot
+
+# whether this item can stack with others of the same type in one slot
 @export var stackable: bool = false
-## Current quantity of items in this stack
+
+# current quantity in this stack — starts at 1
 @export var quantity: int = 1
-## Maximum number of items that can be stacked in one slot
+
+# maximum number that can fit in a single stack
 @export var max_stack: int = 99
-## Base value of the item
+
+# gold value of this item — used by shops and trading
 @export var value: int = 0
-## Item tier/rarity level (1 = common, higher = rarer)
+
+# rarity tier — 1 is common, higher numbers are rarer
+# used for color coding and drop rate calculations
 @export var tier: int = 1
-## Minimum character level required to use this item
+
+# minimum character level required to use or equip this item
 @export var required_level: int = 1
-## The slot index this item occupies in the inventory (-1 if not in inventory)
+
+# which inventory slot this item currently occupies
+# -1 means the item is not in any inventory slot
 @export var slot_index: int = -1
-## Item type — determines how it behaves when used
+
+# the item type — determines behavior when used
 @export var type: Type = Type.MATERIAL
 
+# --- constructor ---
+
+# suppress warning about parameter names shadowing class variables
 @warning_ignore("shadowed_variable")
 func _init(
 	name: String = "",
@@ -39,6 +67,7 @@ func _init(
 	slot_index: int = -1,
 	type: Type = Type.MATERIAL
 ) -> void:
+	# assign all properties from constructor arguments
 	self.name = name
 	self.description = description
 	self.icon = icon
@@ -50,27 +79,38 @@ func _init(
 	self.slot_index = slot_index
 	self.type = type
 
-## Returns true if this item can stack with another item.
 func can_stack_with(other: Item) -> bool:
+	# items can only stack if both are stackable and same name and tier
 	if not stackable or other == null:
 		return false
+
+	# name and tier must match exactly to stack together
 	return name == other.name and tier == other.tier
 
-## Attempts to add quantity to this stack.
-## Returns the leftover amount that couldn't fit (0 if all fit).
 func add_to_stack(amount: int) -> int:
+	# non-stackable items cannot receive additional quantity
 	if not stackable:
 		return amount
+
+	# calculate how much space is available in this stack
 	var space_available = max_stack - quantity
+
+	# add as much as possible without exceeding max stack size
 	var to_add = min(amount, space_available)
 	quantity += to_add
+
+	# return leftover amount that didn't fit — 0 means everything fit
 	return amount - to_add
 
-## Creates a duplicate of this item for inventory operations.
 func duplicate_item() -> Item:
+	# create a fresh copy of this item for inventory operations
+	# slot_index is reset to -1 since the copy has no slot yet
 	var new_item = Item.new(
 		name, description, icon, stackable,
 		max_stack, value, tier, required_level, -1, type
 	)
+
+	# copy the current stack quantity to the duplicate
 	new_item.quantity = quantity
+
 	return new_item

@@ -19,6 +19,7 @@ sources/0 = SubResource("TileSetAtlasSource_7cr53")
 
 [node name="Area2D" type="Area2D" unique_id=583930127]
 texture_filter = 1
+position = Vector2(-1, -15)
 collision_layer = 2
 collision_mask = 108
 

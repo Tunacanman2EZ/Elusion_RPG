@@ -39,6 +39,7 @@ animations = [{
 }]
 
 [node name="waterfall" type="AnimatedSprite2D" unique_id=20570695]
+position = Vector2(-2, -49)
 sprite_frames = SubResource("SpriteFrames_22yxe")
 animation = &"waterfall"
 frame = 2

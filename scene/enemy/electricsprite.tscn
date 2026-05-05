@@ -692,41 +692,36 @@ animations = [{
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_56m4t"]
 radius = 9.0
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_omkbw"]
-radius = 13.0
-height = 36.0
-
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_fy2rl"]
-radius = 5.0
-height = 36.0
+radius = 7.0
+height = 32.0
 
 [node name="electricsprite" type="CharacterBody2D" unique_id=289962471]
 texture_filter = 1
+position = Vector2(0, -4)
 collision_layer = 8
 collision_mask = 3
+motion_mode = 1
 script = ExtResource("1_qfaod")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1382034932]
 y_sort_enabled = true
 sprite_frames = SubResource("SpriteFrames_1up8b")
-animation = &"projectile"
+animation = &"attackright"
+offset = Vector2(0, -16)
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=9522945]
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=2133702737]
+position = Vector2(0, -14)
 shape = SubResource("CapsuleShape2D_56m4t")
-
-[node name="hitbox" type="Area2D" parent="." unique_id=1513113055]
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="hitbox" unique_id=2125166805]
-shape = SubResource("CapsuleShape2D_omkbw")
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=779148548]
 texture_filter = 1
-offset_left = -30.0
-offset_top = -46.0
-offset_right = 130.0
-offset_bottom = -6.0
+offset_left = -32.0
+offset_top = -58.0
+offset_right = 128.0
+offset_bottom = -18.0
 value = 100.0
 fill_mode = 1
 texture_under = ExtResource("3_fy2rl")
@@ -736,6 +731,7 @@ texture_progress = ExtResource("4_56m4t")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2114397408]
 texture_filter = 1
+position = Vector2(0, -13)
 shape = SubResource("CapsuleShape2D_fy2rl")
 
 [node name="orbspawnbottom" type="Marker2D" parent="." unique_id=789231567]

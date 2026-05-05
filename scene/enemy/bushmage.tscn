@@ -659,57 +659,58 @@ animations = [{
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_tvagl"]
 radius = 8.0
-height = 20.0
+height = 32.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_vvu6j"]
-size = Vector2(67, 110)
+size = Vector2(63.5, 108)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wldbk"]
-size = Vector2(60, 107)
+size = Vector2(60, 108)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_nhtsg"]
-size = Vector2(106, 66)
+size = Vector2(108, 67)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_3d2ue"]
-size = Vector2(105, 65)
+size = Vector2(108.25, 66.5)
 
 [node name="bushmage" type="CharacterBody2D" unique_id=709913725]
-y_sort_enabled = true
 texture_filter = 1
+position = Vector2(3, 9)
 collision_layer = 8
 collision_mask = 3
+motion_mode = 1
 script = ExtResource("1_chk58")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=919068649]
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_jm8lx")
-animation = &"attackdown"
-frame = 4
+animation = &"walkdown"
+offset = Vector2(0, -16)
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=30006892]
 texture_filter = 1
-position = Vector2(-3, -11)
+position = Vector2(-3, -27)
 shape = SubResource("CapsuleShape2D_tvagl")
+
+[node name="healthbar" type="TextureProgressBar" parent="." unique_id=48577092]
+texture_filter = 1
+offset_left = -19.0
+offset_top = -55.0
+offset_right = 141.0
+offset_bottom = -23.0
+scale = Vector2(0.5, 0.5)
+value = 100.0
+fill_mode = 1
+texture_under = ExtResource("4_wldbk")
+texture_progress = ExtResource("5_nhtsg")
 
 [node name="attackboxright" type="Area2D" parent="." unique_id=1958429154]
 collision_layer = 8
 collision_mask = 4
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="attackboxright" unique_id=1941689432]
-position = Vector2(43.5, 3)
+position = Vector2(43.25, -12)
 shape = SubResource("RectangleShape2D_vvu6j")
-
-[node name="healthbar" type="TextureProgressBar" parent="." unique_id=48577092]
-texture_filter = 1
-offset_left = -19.0
-offset_top = -46.0
-offset_right = 141.0
-offset_bottom = -14.0
-scale = Vector2(0.5, 0.5)
-value = 100.0
-fill_mode = 1
-texture_under = ExtResource("4_wldbk")
-texture_progress = ExtResource("5_nhtsg")
 
 [node name="attacktimer" type="Timer" parent="." unique_id=827030860]
 
@@ -718,7 +719,7 @@ collision_layer = 8
 collision_mask = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxleft" unique_id=340199033]
-position = Vector2(-45, 3.5)
+position = Vector2(-46, -12)
 shape = SubResource("RectangleShape2D_wldbk")
 
 [node name="attackboxup" type="Area2D" parent="." unique_id=593656052]
@@ -726,7 +727,7 @@ collision_layer = 8
 collision_mask = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxup" unique_id=55941429]
-position = Vector2(-2, -40)
+position = Vector2(-1, -57)
 shape = SubResource("RectangleShape2D_nhtsg")
 
 [node name="attackboxdown" type="Area2D" parent="." unique_id=2142756400]
@@ -734,5 +735,5 @@ collision_layer = 8
 collision_mask = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxdown" unique_id=1408769476]
-position = Vector2(-2.5, 40.5)
+position = Vector2(-1.875, 25.75)
 shape = SubResource("RectangleShape2D_3d2ue")

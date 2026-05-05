@@ -698,27 +698,31 @@ animations = [{
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_wjhka"]
 radius = 9.0
+height = 38.0
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_k161i"]
-radius = 6.0
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_tik12"]
+height = 38.0
 
 [node name="firesprite" type="CharacterBody2D" unique_id=736242394]
 texture_filter = 1
+position = Vector2(-1, -5)
 collision_layer = 8
 collision_mask = 3
+motion_mode = 1
 script = ExtResource("1_msv7k")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=392472798]
 y_sort_enabled = true
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_et1wx")
-animation = &"attackup"
-frame = 4
+animation = &"idledown"
+offset = Vector2(0, -16)
 
 [node name="hitbox" type="Area2D" parent="." unique_id=1897405412]
+position = Vector2(17, -11)
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hitbox" unique_id=203757361]
-position = Vector2(1, 4)
+position = Vector2(-16, -3)
 shape = SubResource("CapsuleShape2D_wjhka")
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=387788377]
@@ -733,8 +737,8 @@ texture_progress = ExtResource("4_5bmra")
 [node name="attacktimer" type="Timer" parent="." unique_id=846679983]
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=1394985736]
-position = Vector2(1, -5)
-shape = SubResource("CircleShape2D_k161i")
+position = Vector2(1, -14)
+shape = SubResource("CapsuleShape2D_tik12")
 
 [node name="orbspawnbottom" type="Marker2D" parent="." unique_id=1888128203]
 texture_filter = 1
