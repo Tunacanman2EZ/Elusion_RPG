@@ -790,27 +790,27 @@ animations = [{
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_epmd0"]
 atlas = ExtResource("2_6lggi")
-region = Rect2(0, 0, 128, 135)
+region = Rect2(640, 0, 128, 144)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_1tsqf"]
 atlas = ExtResource("2_6lggi")
-region = Rect2(128, 0, 128, 135)
+region = Rect2(512, 0, 128, 144)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_6iooi"]
 atlas = ExtResource("2_6lggi")
-region = Rect2(256, 0, 128, 135)
+region = Rect2(384, 0, 128, 144)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_00yuo"]
 atlas = ExtResource("2_6lggi")
-region = Rect2(384, 0, 128, 135)
+region = Rect2(256, 0, 128, 144)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_4y6qs"]
 atlas = ExtResource("2_6lggi")
-region = Rect2(512, 0, 128, 135)
+region = Rect2(128, 0, 128, 144)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ixjfy"]
 atlas = ExtResource("2_6lggi")
-region = Rect2(640, 0, 128, 135)
+region = Rect2(0, 0, 128, 144)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_1hx8c"]
 animations = [{
@@ -845,7 +845,6 @@ height = 160.0
 [node name="tank" type="CharacterBody2D" unique_id=724977901]
 y_sort_enabled = true
 texture_filter = 1
-position = Vector2(-1, -51)
 collision_layer = 4
 collision_mask = 19
 motion_mode = 1
@@ -853,35 +852,36 @@ script = ExtResource("1_kkm52")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1531608484]
 texture_filter = 1
-position = Vector2(1, 30)
+position = Vector2(-1, -20)
 sprite_frames = SubResource("SpriteFrames_epri2")
 animation = &"walkdown"
 offset = Vector2(0, -16)
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=309465999]
-position = Vector2(1, 32)
+position = Vector2(-2, -34)
 shape = SubResource("CapsuleShape2D_6lggi")
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=1489667327]
+texture_filter = 1
 zoom = Vector2(3, 3)
 position_smoothing_enabled = true
 
 [node name="firering" type="AnimatedSprite2D" parent="." unique_id=1899786570]
-z_index = 1
 texture_filter = 1
-position = Vector2(7.1054274e-15, 36)
-scale = Vector2(1.6171876, 1.7703704)
+position = Vector2(-104.99999, -149)
+scale = Vector2(1.6249999, 1.5972222)
 sprite_frames = SubResource("SpriteFrames_1hx8c")
 animation = &"firering"
-frame_progress = 0.19951983
-offset = Vector2(0, -16)
+frame_progress = 0.03747811
+speed_scale = 0.5
+centered = false
 
 [node name="aura" type="Area2D" parent="." unique_id=1885856176]
-position = Vector2(0, 30)
+position = Vector2(-1, -19)
 collision_layer = 4
 collision_mask = 8
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="aura" unique_id=798835221]
-position = Vector2(0, 6)
+position = Vector2(0, 3)
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_xt8cs")

@@ -40,7 +40,7 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_tlgt8"]
-radius = 8.0
+radius = 4.1231055
 
 [node name="MagicOrb" type="Area2D" unique_id=1414126183]
 texture_filter = 1

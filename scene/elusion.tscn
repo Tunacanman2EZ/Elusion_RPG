@@ -2434,7 +2434,7 @@ sources/16 = SubResource("TileSetAtlasSource_vlby3")
 sources/31 = SubResource("TileSetAtlasSource_hty57")
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_dftlr"]
-radius = 17.029394
+radius = 8.062258
 
 [node name="Elusion" type="Node2D" unique_id=371864451]
 y_sort_enabled = true
@@ -2459,19 +2459,19 @@ script = ExtResource("30_4vabo")
 
 [node name="teleporter" type="Sprite2D" parent="teleportnextarea" unique_id=1073445355]
 texture_filter = 1
-position = Vector2(0, 306)
+position = Vector2(1, 391.00003)
 scale = Vector2(2.5, 2.2499998)
 texture = ExtResource("31_b1u2j")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="teleportnextarea" unique_id=2145867989]
 texture_filter = 1
-position = Vector2(-5.722046e-06, 301.00003)
+position = Vector2(1, 385)
 scale = Vector2(1, 0.99999994)
 shape = SubResource("CircleShape2D_dftlr")
 
 [node name="DestinationPoint" type="Marker2D" parent="teleportnextarea" unique_id=709581760]
 texture_filter = 1
-position = Vector2(480, 1033)
+position = Vector2(484, 1016)
 scale = Vector2(1, 0.99999994)
 
 [node name="teleportnextarea2" type="Area2D" parent="." unique_id=1089054740]
@@ -2500,20 +2500,8 @@ shape = SubResource("CircleShape2D_dftlr")
 [node name="electricsprite" parent="teleportnextarea2" unique_id=289962471 instance=ExtResource("31_7sc0i")]
 position = Vector2(-914, 189)
 
-[node name="electricsprite2" parent="teleportnextarea2" unique_id=1059990354 instance=ExtResource("31_7sc0i")]
-position = Vector2(-945, 214)
-
-[node name="electricsprite3" parent="teleportnextarea2" unique_id=202322719 instance=ExtResource("31_7sc0i")]
-position = Vector2(-940, 271)
-
-[node name="electricsprite4" parent="teleportnextarea2" unique_id=2058254345 instance=ExtResource("31_7sc0i")]
-position = Vector2(-916, 335)
-
 [node name="firesprite" parent="teleportnextarea2" unique_id=736242394 instance=ExtResource("32_m5nfn")]
 position = Vector2(-883, 278)
-
-[node name="firesprite2" parent="teleportnextarea2" unique_id=2145006949 instance=ExtResource("32_m5nfn")]
-position = Vector2(-889, 393)
 
 [node name="bankchest" parent="." unique_id=1909775092 instance=ExtResource("32_om7sc")]
 position = Vector2(63, -67)
@@ -2574,23 +2562,8 @@ position = Vector2(144, 689)
 [node name="bushmage" parent="." unique_id=709913725 instance=ExtResource("45_7sc0i")]
 position = Vector2(-984, 262)
 
-[node name="bushmage2" parent="." unique_id=1888829782 instance=ExtResource("45_7sc0i")]
-position = Vector2(-1025, 312)
-
-[node name="bushmage3" parent="." unique_id=2088467515 instance=ExtResource("45_7sc0i")]
-position = Vector2(-1052, 382)
-
 [node name="bushsniper" parent="." unique_id=1073679386 instance=ExtResource("46_m5nfn")]
 position = Vector2(-1021, 447)
-
-[node name="bushsniper2" parent="." unique_id=1451049653 instance=ExtResource("46_m5nfn")]
-position = Vector2(-964, 480)
-
-[node name="bushsniper3" parent="." unique_id=1541330586 instance=ExtResource("46_m5nfn")]
-position = Vector2(-956, 335)
-
-[node name="bushsniper4" parent="." unique_id=1254240708 instance=ExtResource("46_m5nfn")]
-position = Vector2(-881, 480)
 
 [connection signal="body_entered" from="teleportnextarea" to="teleportnextarea" method="_on_body_entered"]
 [connection signal="body_exited" from="teleportnextarea" to="teleportnextarea" method="_on_body_exited"]

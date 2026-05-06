@@ -58,10 +58,6 @@ func _physics_process(delta):
 			taunt_active = false
 
 	if aura_active:
-		# keep fire ring positioned under the tank
-		if has_node("firering"):
-			$firering.global_position = global_position
-
 		# drain mana every 0.5 seconds
 		mana_drain_timer += delta
 		if mana_drain_timer >= mana_drain_tick:

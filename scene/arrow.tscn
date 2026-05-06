@@ -3,8 +3,9 @@
 [ext_resource type="Texture2D" uid="uid://c0gh7dy3ajnwo" path="res://art/enemy/arrow.png" id="1_rufgg"]
 [ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/projectiles/arrow.gd" id="1_yspra"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_w5x45"]
-radius = 8.0
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_yspra"]
+radius = 2.0
+height = 16.0
 
 [node name="arrow" type="Area2D" unique_id=393929235]
 position = Vector2(0, -4)
@@ -17,7 +18,10 @@ texture_filter = 1
 texture = ExtResource("1_rufgg")
 
 [node name="attackrange" type="CollisionShape2D" parent="." unique_id=1040485105]
-position = Vector2(1, 1)
-shape = SubResource("CircleShape2D_w5x45")
+position = Vector2(1, 2)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_yspra")
 
 [node name="VisibleOnScreenNotifier2D" type="VisibleOnScreenNotifier2D" parent="." unique_id=870757594]
+position = Vector2(1, 0)
+rect = Rect2(-10, -3, 20, 9)

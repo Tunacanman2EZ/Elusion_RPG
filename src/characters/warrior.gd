@@ -15,8 +15,8 @@ func _ready():
 	if not $animatedsprite2d.animation_finished.is_connected(_on_animatedsprite2d_animation_finished):
 		$animatedsprite2d.animation_finished.connect(_on_animatedsprite2d_animation_finished)
 
-# connected via hitbox body_entered signal in warrior.tscn
-# detects enemy CharacterBody2D nodes directly
+# connected via hitbox area_entered signal in warrior.tscn
+# gets the parent of the area to find the enemy CharacterBody2D
 func _on_hitbox_area_entered(area: Area2D) -> void:
 	var parent = area.get_parent()
 	if parent and parent.is_in_group("enemies"):
@@ -65,10 +65,8 @@ func _physics_process(_delta):
 	if Input.is_action_pressed("move_left"):  direction.x -= 1
 	if Input.is_action_pressed("move_down"):  direction.y += 1
 	if Input.is_action_pressed("move_up"):    direction.y -= 1
-	if abs(direction.x) > 0:
-		direction.y = 0
-	elif abs(direction.y) > 0:
-		direction.x = 0
+
+	# removed axis locking — warrior now moves in 8 directions
 	if direction != Vector2.ZERO:
 		velocity = direction.normalized() * (speed + (agility - 1) * 10)
 		if has_node("animatedsprite2d"):

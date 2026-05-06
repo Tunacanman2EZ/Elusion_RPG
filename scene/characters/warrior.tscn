@@ -1006,7 +1006,8 @@ texture_filter = 1
 position = Vector2(0, 15)
 scale = Vector2(1.109375, 1.015625)
 sprite_frames = SubResource("SpriteFrames_ih3hd")
-animation = &"idleleft"
+animation = &"attackleft"
+frame = 4
 speed_scale = 1.5
 offset = Vector2(0, -16)
 

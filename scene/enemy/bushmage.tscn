@@ -675,7 +675,7 @@ size = Vector2(108.25, 66.5)
 
 [node name="bushmage" type="CharacterBody2D" unique_id=709913725]
 texture_filter = 1
-position = Vector2(3, 9)
+position = Vector2(0, -7)
 collision_layer = 8
 collision_mask = 3
 motion_mode = 1
@@ -683,21 +683,22 @@ script = ExtResource("1_chk58")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=919068649]
 texture_filter = 1
+position = Vector2(-1, 1)
 sprite_frames = SubResource("SpriteFrames_jm8lx")
-animation = &"walkdown"
-offset = Vector2(0, -16)
+animation = &"attackup"
+frame = 5
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=30006892]
 texture_filter = 1
-position = Vector2(-3, -27)
+position = Vector2(-3, -9)
 shape = SubResource("CapsuleShape2D_tvagl")
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=48577092]
 texture_filter = 1
 offset_left = -19.0
-offset_top = -55.0
+offset_top = -43.0
 offset_right = 141.0
-offset_bottom = -23.0
+offset_bottom = -11.0
 scale = Vector2(0.5, 0.5)
 value = 100.0
 fill_mode = 1
@@ -705,6 +706,7 @@ texture_under = ExtResource("4_wldbk")
 texture_progress = ExtResource("5_nhtsg")
 
 [node name="attackboxright" type="Area2D" parent="." unique_id=1958429154]
+position = Vector2(-1, 17)
 collision_layer = 8
 collision_mask = 4
 
@@ -715,6 +717,7 @@ shape = SubResource("RectangleShape2D_vvu6j")
 [node name="attacktimer" type="Timer" parent="." unique_id=827030860]
 
 [node name="attackboxleft" type="Area2D" parent="." unique_id=1582994504]
+position = Vector2(-1, 17)
 collision_layer = 8
 collision_mask = 4
 
@@ -727,7 +730,7 @@ collision_layer = 8
 collision_mask = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxup" unique_id=55941429]
-position = Vector2(-1, -57)
+position = Vector2(-2, -40)
 shape = SubResource("RectangleShape2D_nhtsg")
 
 [node name="attackboxdown" type="Area2D" parent="." unique_id=2142756400]
@@ -735,5 +738,5 @@ collision_layer = 8
 collision_mask = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxdown" unique_id=1408769476]
-position = Vector2(-1.875, 25.75)
+position = Vector2(-3, 44)
 shape = SubResource("RectangleShape2D_3d2ue")
