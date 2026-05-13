@@ -1,181 +1,184 @@
-# tank character — defensive frontliner with placeable aura damage
+# tank character — defensive frontliner with placeable aura damage.
+# the tank's signature mechanic: a passive AoE damage aura (firering) that
+# drains mana while active. press attack to toggle on/off. when mana runs
+# out the aura auto-deactivates. provides constant pressure on melee
+# enemies while the rest of the party deals burst damage.
 extends "res://src/characters/player.gd"
 
 # --- aura settings ---
-# damage dealt to enemies per aura tick
+# damage dealt to each enemy in the aura every aura_tick seconds
 var aura_damage: int = 4
-
-# seconds between each aura damage tick
+# how often the aura ticks damage on enemies (seconds)
 var aura_tick: float = 1.0
-
-# internal countdown timer for aura damage ticks
+# accumulator that fires aura damage when it reaches aura_tick
 var aura_timer: float = 0.0
-
-# seconds between each mana drain
+# how often mana drains while the aura is active (seconds)
 var mana_drain_tick: float = 0.5
-
-# internal countdown timer for mana drain
+# accumulator that drains mana when it reaches mana_drain_tick
 var mana_drain_timer: float = 0.0
-
-# how much mana is drained per drain tick
+# how much mana drains per tick — at 2 mana / 0.5s = 4 mp/sec
 var mana_drain_cost: int = 2
-
-# whether the aura ring is currently active and dealing damage
+# true while the aura is running (consumes mana, damages enemies)
 var aura_active: bool = false
-
-# --- tank skills ---
-# whether taunt is currently active
-var taunt_active: bool = false
-
-# taunt duration countdown in seconds
-var taunt_duration: float = 0.0
 
 func _ready():
 	super._ready()
 	character_name = "tank"
-	speed = 140
+	speed = 160
 	max_hp = 150
 	hp = 150
-	max_stamina = 120
-	stamina = 120
+	max_stamina = 25
+	stamina = 25
 	max_mana = 100
 	mana = 100
 	defense = 3
-
-	# hide fire ring on start — only shows when aura is active
 	if has_node("firering"):
 		$firering.play("firering")
 		$firering.visible = false
 
 func _physics_process(delta):
-	# run base player movement and input
-	super._physics_process(delta)
+	# block all input/movement during death sequence so the death animation
+	# can play through without being overwritten by walk/idle. parent's
+	# _physics_process has this guard but tank fully overrides it.
+	if is_dying:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
 
-	# handle taunt countdown
-	if taunt_active:
-		taunt_duration -= delta
-		if taunt_duration <= 0:
-			taunt_active = false
-
+	# --- aura logic ---
 	if aura_active:
-		# drain mana every 0.5 seconds
 		mana_drain_timer += delta
 		if mana_drain_timer >= mana_drain_tick:
 			mana_drain_timer = 0.0
+			var before := mana
 			mana = clamp(mana - mana_drain_cost, 0, max_mana)
-
-			# deactivate aura if mana runs out
+			print("AURA DRAIN: mana %d -> %d" % [before, mana])
 			if mana <= 0:
 				_deactivate_aura()
 				return
-
-		# deal aura damage every second
 		aura_timer += delta
 		if aura_timer >= aura_tick:
 			aura_timer = 0.0
 			_deal_aura_damage()
 
-# --- override attack action for tank ---
+	# --- movement ---
+	if is_attacking:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
+
+	if Input.is_action_just_pressed("attack"):
+		attack_action()
+		return
+
+	var direction := Vector2.ZERO
+	if Input.is_action_pressed("move_right"): direction.x += 1
+	if Input.is_action_pressed("move_left"):  direction.x -= 1
+	if Input.is_action_pressed("move_down"):  direction.y += 1
+	if Input.is_action_pressed("move_up"):    direction.y -= 1
+
+	if direction != Vector2.ZERO:
+		velocity = velocity.lerp(direction.normalized() * (speed + (agility - 1) * 10), 0.3)
+		if has_node("animatedsprite2d"):
+			$animatedsprite2d.play(get_walk_animation(direction))
+		last_direction = direction
+		take_step()
+	else:
+		velocity = velocity.lerp(Vector2.ZERO, 0.3)
+		if has_node("animatedsprite2d"):
+			$animatedsprite2d.play(get_idle_animation())
+	move_and_slide()
+
+# --- attack overridden for tank ---
 func attack_action():
 	if aura_active:
 		_deactivate_aura()
 	else:
 		_activate_aura()
 
-
 func _activate_aura():
 	if mana <= 0:
+		print("CANNOT ACTIVATE AURA: no mana")
 		return
 	aura_active = true
 	aura_timer = 0.0
 	mana_drain_timer = 0.0
+	print("AURA ACTIVATED, mana=%d" % mana)
 	if has_node("firering"):
 		$firering.visible = true
 		$firering.play("firering")
-		
-func _deactivate_aura():
-	# deactivate aura
-	aura_active = false
 
-	# hide fire ring
+func _deactivate_aura():
+	print("AURA DEACTIVATED")
+	aura_active = false
 	if has_node("firering"):
 		$firering.visible = false
 
 func _deal_aura_damage():
-	# deal damage to all enemies overlapping the aura area
 	if has_node("aura"):
 		for body in $aura.get_overlapping_bodies():
 			if body.is_in_group("enemies"):
 				if body.has_method("take_damage"):
 					body.take_damage(aura_damage)
-					# emit signal for multiplayer tracking
 					GameState.aura_damage_dealt.emit(
 						get_instance_id(),
 						body.get_instance_id(),
 						aura_damage
 					)
 
-# --- helper to get direction string from last_direction ---
-func _get_dir_string() -> String:
-	if last_direction.x > 0: return "right"
-	elif last_direction.x < 0: return "left"
-	elif last_direction.y > 0: return "down"
-	elif last_direction.y < 0: return "up"
-	return "down"
+# --- direction helpers ---
 
-# --- animation overrides ---
+func _get_dir_string() -> String:
+	if abs(last_direction.x) > abs(last_direction.y):
+		return "right" if last_direction.x > 0 else "left"
+	return "down" if last_direction.y > 0 else "up"
 
 func get_walk_animation(dir: Vector2) -> String:
-	if dir.x > 0: return "walkright"
-	elif dir.x < 0: return "walkleft"
-	elif dir.y > 0: return "walkdown"
-	elif dir.y < 0: return "walkup"
-	return "idledown"
+	if abs(dir.x) > abs(dir.y):
+		return "walkright" if dir.x > 0 else "walkleft"
+	else:
+		return "walkdown" if dir.y > 0 else "walkup"
 
 func get_idle_animation() -> String:
-	if last_direction.x > 0: return "idleright"
-	elif last_direction.x < 0: return "idleleft"
-	elif last_direction.y > 0: return "idledown"
-	elif last_direction.y < 0: return "idleup"
-	return "idledown"
+	if abs(last_direction.x) > abs(last_direction.y):
+		return "idleright" if last_direction.x > 0 else "idleleft"
+	else:
+		return "idledown" if last_direction.y > 0 else "idleup"
 
 func get_attack_animation(dir: Vector2) -> String:
-	# tank has no direct attack animation
 	return get_idle_animation()
 
-# --- override take_damage to show hitflash ---
+# --- damage handling overrides ---
+
 func take_damage(amount: int, _type: StringName = &"physical") -> void:
-	# call parent take_damage first
+	var was_alive: bool = hp > 0
 	super.take_damage(amount, _type)
 
-	# play hit flash animation if still alive
-	if has_node("animatedsprite2d") and hp > 0:
+	# play tank-specific hitflash animation ONLY if still alive after the hit.
+	# without this guard, hitflash would overwrite the death animation that
+	# parent's _start_death_sequence just started playing, breaking the
+	# game-over transition that relies on death animation_finished firing.
+	if has_node("animatedsprite2d") and hp > 0 and not is_dying:
 		$animatedsprite2d.play("hitflash" + _get_dir_string())
 
-# --- override die to show death animation ---
+	# deactivate aura if tank just died — so the aura doesn't continue ticking
+	# damage during the death animation.
+	if was_alive and hp <= 0:
+		_deactivate_aura()
+
 func die():
-	# play death animation
-	if has_node("animatedsprite2d"):
-		$animatedsprite2d.play("death" + _get_dir_string())
+	# UNUSED — parent.gd calls _start_death_sequence() at hp<=0 instead of
+	# calling die() directly. kept here as a hook for future class-specific
+	# death behavior that doesn't fit in _start_death_sequence.
+	pass
 
-	# hide fire ring on death
-	_deactivate_aura()
-
-	# change scene after animation
-	call_deferred("_deferred_die")
-
-# --- tank skills ---
+# --- placeholder ability stubs (phase 2 content) ---
 
 func activate_taunt(duration: float) -> void:
-	# forces nearby enemies to target the tank
-	taunt_active = true
-	taunt_duration = duration
-	mana = clamp(mana - 20, 0, max_mana)
-	GameState.taunt_activated.emit(get_instance_id(), duration)
-	# TODO — enemy AI taunt targeting in phase 1
+	# TODO: pull aggro from all enemies within taunt radius for duration seconds.
+	pass
 
 func activate_aura_burst() -> void:
-	# temporarily doubles aura damage
 	if mana >= 30:
 		mana = clamp(mana - 30, 0, max_mana)
 		aura_damage *= 2
@@ -183,7 +186,6 @@ func activate_aura_burst() -> void:
 		aura_damage /= 2
 
 func activate_expand() -> void:
-	# temporarily increases aura and character size
 	if mana >= 25:
 		mana = clamp(mana - 25, 0, max_mana)
 		scale = Vector2(1.5, 1.5)
@@ -194,8 +196,5 @@ func activate_expand() -> void:
 		if has_node("firering"):
 			$firering.scale = Vector2(1.0, 1.0)
 
-# --- future skill placeholder ---
 func drop_aura_on_enemy(target: Node) -> void:
-	# TODO phase 1 — drop aura on enemy position
-	# decreases enemy magic % and deals damage over time
 	pass

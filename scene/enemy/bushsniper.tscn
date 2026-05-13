@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" uid="uid://65cuceouprgd" path="res://src/enemies/bushsniper.gd" id="1_tc7da"]
 [ext_resource type="Texture2D" uid="uid://v2jbaq5rifj0" path="res://art/enemy/busharcher.png" id="2_05sle"]
-[ext_resource type="Texture2D" uid="uid://chv7j5j7sgxib" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_09.png" id="3_tc7da"]
-[ext_resource type="Texture2D" uid="uid://cr3b5ffq28xuv" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_06.png" id="4_05sle"]
+[ext_resource type="Texture2D" uid="uid://b1i7c7i3eu80" path="res://art/images/3_Animation 1_1.png" id="3_tc7da"]
+[ext_resource type="Texture2D" uid="uid://cy8ini2n25byq" path="res://art/images/3_Animation 1_0.png" id="4_05sle"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_a4eob"]
 atlas = ExtResource("2_05sle")
@@ -467,7 +467,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_4ci84")
 }],
-"loop": true,
+"loop": false,
 "name": &"attackup",
 "speed": 5.0
 }, {
@@ -662,36 +662,39 @@ animations = [{
 
 [node name="bushsniper" type="CharacterBody2D" unique_id=1073679386]
 texture_filter = 1
-position = Vector2(0, -16)
 collision_layer = 8
 collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_tc7da")
+leash_range = 500.0
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=2055609014]
 y_sort_enabled = true
 position = Vector2(0, 16)
 sprite_frames = SubResource("SpriteFrames_r0rwy")
-animation = &"attackleft"
+animation = &"attackup"
 offset = Vector2(0, -16)
 
 [node name="collision" type="CollisionShape2D" parent="." unique_id=253938158]
 texture_filter = 1
-position = Vector2(0, 1)
+position = Vector2(-1, 4)
 shape = SubResource("CapsuleShape2D_tc7da")
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=1890498783]
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=644611748]
-position = Vector2(0, 1)
+position = Vector2(-1, 4)
 shape = SubResource("CapsuleShape2D_05sle")
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=241463025]
-offset_left = -16.0
-offset_top = -32.0
-offset_right = 144.0
+offset_left = -10.0
+offset_top = -21.0
+offset_right = 150.0
+offset_bottom = 11.0
 scale = Vector2(0.5, 0.5)
-value = 100.0
+min_value = 40.0
+max_value = 40.0
+value = 40.0
 fill_mode = 1
 texture_under = ExtResource("3_tc7da")
 texture_progress = ExtResource("4_05sle")

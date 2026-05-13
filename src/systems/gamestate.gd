@@ -2,6 +2,17 @@
 # contains multiplayer-ready signals and shared game data
 extends Node
 
+# transient state used by the death/revive system.
+# stored in memory only (no disk write) so force-quitting during the
+# death sequence does NOT preserve a "frozen" state for exploit. on next
+# login the player loads from their last legitimate save instead.
+var death_state: Dictionary = {}
+
+# true between game over screen and world scene reload when player chose
+# to revive. world scene checks this on load to teleport the player to
+# death_state.death_position and skip default spawn behavior.
+var reviving: bool = false
+
 # --- multiplayer ready signals ---
 # these signals are emitted by game systems and will be forwarded
 # to the server when multiplayer is implemented in phase 3

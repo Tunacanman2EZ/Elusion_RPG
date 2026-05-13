@@ -16,13 +16,14 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="elusion_trial"
 run/main_scene="uid://lon8advnxgqx"
-run/disable_stdout=true
 config/features=PackedStringArray("4.6", "Mobile")
+run/flush_stdout_on_print=true
 
 [autoload]
 
 CharacterData="*uid://cvkrtide3lisi"
 GameState="*uid://cjruyiklfgr1l"
+ItemRegistry="*uid://dx6llg3mjckfx"
 
 [display]
 
@@ -119,6 +120,7 @@ move_down={
 
 [physics]
 
+common/physics_ticks_per_second=180
 2d/default_gravity=0.0
 
 [rendering]

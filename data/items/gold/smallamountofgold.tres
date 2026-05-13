@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://pcxvny7ke6gx"]
+
+[ext_resource type="Texture2D" uid="uid://by6axn6kcpvbl" path="res://assets/placeholder/icons/icon366.png" id="1_vvexe"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="1_wewr3"]
+
+[resource]
+script = ExtResource("1_wewr3")
+item_id = "smallamountofgold"
+display_name = "Small Pile Of Coins"
+description = "Finally some money for hot chocolate"
+icon = ExtResource("1_vvexe")
+stackable = true
+max_stack = 9999
+value = 1
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

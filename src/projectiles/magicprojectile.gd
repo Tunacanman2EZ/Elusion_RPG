@@ -1,60 +1,61 @@
 # magic projectile — fired by the electricspirit enemy
+# travels in any direction (cardinal or arbitrary angle), damages player on hit
 extends Area2D
 
-# how fast the projectile travels in pixels per second — exported for easy tuning
 @export var speed: float = 300.0
-
-# how much damage the projectile deals on hit — exported for easy tuning
 @export var damage: int = 10
-
 # the damage type — used by the elemental system later
 # &"magic" is a StringName literal which is faster than a regular String
 @export var damage_type: StringName = &"magic"
 
-# the direction the projectile is travelling as a Vector2
+# the direction the projectile is travelling, normalized
 var direction: Vector2 = Vector2.ZERO
 
-func _ready():
+func _ready() -> void:
 	# play the projectile animation if the sprite node exists
 	if has_node("animatedsprite2d"):
 		$animatedsprite2d.play("projectile")
-		if has_node("firering"):
-			$firering.play("firering")  # animation name is "firering" not "ring"
-			$firering.visible = true
 
-	# connect body entered signal — check first to avoid double connection
+	# connect collision signals — guard against double connection
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
+	if not area_entered.is_connected(_on_area_entered):
+		area_entered.connect(_on_area_entered)
 
+# called for cardinal direction shots — kept for compatibility with old enemies
 func shoot(dir: String) -> void:
-	# convert the direction string into a Vector2 for movement
 	match dir:
-		"left":  direction = Vector2.LEFT   # move left
-		"right": direction = Vector2.RIGHT  # move right
-		"up":    direction = Vector2.UP     # move up
-		"down":  direction = Vector2.DOWN   # move down
+		"left":  shoot_vector(Vector2.LEFT)
+		"right": shoot_vector(Vector2.RIGHT)
+		"up":    shoot_vector(Vector2.UP)
+		"down":  shoot_vector(Vector2.DOWN)
+
+# called for arbitrary-angle shots — used for player-tracking projectiles
+func shoot_vector(dir: Vector2) -> void:
+	direction = dir.normalized()
+	rotation = direction.angle()
 
 func _physics_process(delta: float) -> void:
-	# move the projectile in its direction every frame
-	# normalized() ensures consistent speed regardless of direction
-	position += direction.normalized() * speed * delta
+	# direction is pre-normalized in shoot_vector, so no need to renormalize
+	position += direction * speed * delta
 
 func _on_body_entered(body: Node2D) -> void:
-	# check if the body that was hit is the player
-	if body.is_in_group(&"player"):
-		# check if the player has a take_damage function
-		if body.has_method(&"take_damage"):
-			# deal magic damage to the player
-			body.take_damage(damage, damage_type)
+	# damage player if hit, destroy on any body (player, walls, anything solid)
+	if body.is_in_group(&"player") and body.has_method(&"take_damage"):
+		body.take_damage(damage, damage_type)
+	destroy_projectile()
 
-		# destroy the projectile after hitting the player
-		destroy_projectile()
+func _on_area_entered(area: Area2D) -> void:
+	# in case the player uses an Area2D hurtbox child, check the parent
+	var target: Node = area.get_parent()
+	if target.is_in_group(&"player") and target.has_method(&"take_damage"):
+		target.take_damage(damage, damage_type)
+	destroy_projectile()
 
 func _on_visible_on_screen_notifier_2d_screen_exited() -> void:
-	# destroy the projectile when it leaves the visible screen area
-	# prevents projectiles from travelling forever off screen
+	# despawn when leaving visible screen — saves processing
 	destroy_projectile()
 
 func destroy_projectile() -> void:
-	# remove the projectile from the scene
+	# single cleanup point — add particles, sound, etc. here later
 	queue_free()

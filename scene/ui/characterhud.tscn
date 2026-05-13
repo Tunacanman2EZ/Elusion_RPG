@@ -1,7 +1,11 @@
 [gd_scene format=3 uid="uid://y8py0d7k22ov"]
 
 [ext_resource type="Script" uid="uid://b5421s5c7eqda" path="res://src/ui/characterhud.gd" id="1_s3c7b"]
+[ext_resource type="Texture2D" uid="uid://bpjyuft8fvubi" path="res://art/images/2026-04-11 19-12-01 - hp bar_Animation 1_3_Animation 1_3.png" id="2_s3c7b"]
+[ext_resource type="Texture2D" uid="uid://dgqbq5vvg3552" path="res://art/images/2026-04-11 19-12-01 - hp bar_Animation 1_3_Animation 1_0.png" id="3_xinkp"]
+[ext_resource type="Texture2D" uid="uid://crcfawfx7u8j2" path="res://art/images/2026-04-11 19-12-01 - hp bar_Animation 1_3_Animation 1_4.png" id="4_a33qf"]
 [ext_resource type="Texture2D" uid="uid://cdmueb5d3pgdb" path="res://art/images/1_Animation 1_8.png" id="4_m5snm"]
+[ext_resource type="Texture2D" uid="uid://dvycuh1mibifp" path="res://art/images/2026-04-11 19-12-01 - hp bar_Animation 1_3_Animation 1_1.png" id="5_p3m5x"]
 [ext_resource type="Texture2D" uid="uid://rsul4xgnanfu" path="res://art/images/1_Animation 1_7.png" id="5_wkrex"]
 [ext_resource type="Texture2D" uid="uid://d07hokb6hgc15" path="res://art/images/1_Animation 1_6.png" id="6_vf5gg"]
 [ext_resource type="Texture2D" uid="uid://dhadq3r2hcfu0" path="res://art/images/1_Animation 1_5.png" id="7_j6ui7"]
@@ -10,10 +14,6 @@
 [ext_resource type="Texture2D" uid="uid://ij8qqqskjcof" path="res://art/images/1_Animation 1_2.png" id="10_a33qf"]
 [ext_resource type="Texture2D" uid="uid://c5pa47hb18im8" path="res://art/images/1_Animation 1_1.png" id="11_p3m5x"]
 [ext_resource type="Texture2D" uid="uid://bv4f14feq4lo0" path="res://art/images/1_Animation 1_0.png" id="12_5jg1o"]
-[ext_resource type="Texture2D" uid="uid://cmc2phq1wogwx" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_03.png" id="12_xinkp"]
-[ext_resource type="Texture2D" uid="uid://g2e2en066v85" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_00.png" id="13_a33qf"]
-[ext_resource type="Texture2D" uid="uid://quwy1j6mt2g5" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_04.png" id="14_p3m5x"]
-[ext_resource type="Texture2D" uid="uid://dyd7fi6qa83yg" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_01.png" id="15_5jg1o"]
 [ext_resource type="Texture2D" uid="uid://cwfmuem8iq25w" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_05.png" id="16_hqo1d"]
 [ext_resource type="Texture2D" uid="uid://cm13ld8mxvk8d" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_02.png" id="17_tecjo"]
 
@@ -32,37 +32,38 @@ grow_vertical = 2
 [node name="healthbar" type="TextureProgressBar" parent="barcontainer" unique_id=1719083138]
 texture_filter = 1
 layout_mode = 0
-offset_left = 987.0
-offset_top = 617.0
-offset_right = 1288.0
-offset_bottom = 692.0
-value = 60.0
+offset_left = 912.0
+offset_top = 635.0
+offset_right = 1060.0
+offset_bottom = 649.0
+scale = Vector2(2.5, 2.5)
+value = 100.0
 fill_mode = 1
-nine_patch_stretch = true
-texture_under = ExtResource("12_xinkp")
-texture_progress = ExtResource("13_a33qf")
+texture_under = ExtResource("2_s3c7b")
+texture_progress = ExtResource("3_xinkp")
 
 [node name="magicbar" type="TextureProgressBar" parent="barcontainer" unique_id=758577933]
 texture_filter = 1
-custom_minimum_size = Vector2(300, 75)
 layout_mode = 0
-offset_left = 987.0
-offset_top = 650.0
-offset_right = 1287.0
-offset_bottom = 725.0
-value = 60.0
+offset_left = 912.0001
+offset_top = 669.0
+offset_right = 1060.0001
+offset_bottom = 683.0
+scale = Vector2(2.5, 2.5)
+value = 100.0
 fill_mode = 1
-nine_patch_stretch = true
-texture_under = ExtResource("14_p3m5x")
-texture_progress = ExtResource("15_5jg1o")
+texture_under = ExtResource("4_a33qf")
+texture_progress = ExtResource("5_p3m5x")
 
 [node name="staminabar" type="TextureProgressBar" parent="barcontainer" unique_id=1448665782]
 texture_filter = 1
 layout_mode = 0
-offset_left = 1177.0
+offset_left = 1181.0
 offset_top = 694.0
-offset_right = 1337.0
-offset_bottom = 734.0
+offset_right = 1341.0
+offset_bottom = 726.0
+min_value = 100.0
+value = 100.0
 fill_mode = 1
 texture_under = ExtResource("16_hqo1d")
 texture_progress = ExtResource("17_tecjo")
@@ -77,72 +78,87 @@ size_flags_horizontal = 4
 [node name="navbuttons" type="HBoxContainer" parent="navhbox" unique_id=1515114216]
 layout_mode = 2
 
-[node name="InventoryButton" type="Button" parent="navhbox/navbuttons" unique_id=1421840767]
+[node name="inventorybutton" type="Button" parent="navhbox/navbuttons" unique_id=1421840767]
 layout_mode = 2
+focus_mode = 0
 text = "Inventory"
 
-[node name="StatsButton" type="Button" parent="navhbox/navbuttons" unique_id=2038986305]
+[node name="statsbutton" type="Button" parent="navhbox/navbuttons" unique_id=2038986305]
 layout_mode = 2
+focus_mode = 0
 text = "Stats"
 
-[node name="ShopButton" type="Button" parent="navhbox/navbuttons" unique_id=1681920515]
+[node name="shopbutton" type="Button" parent="navhbox/navbuttons" unique_id=1681920515]
 layout_mode = 2
+focus_mode = 0
 text = "Shop"
 
-[node name="MapButton" type="Button" parent="navhbox/navbuttons" unique_id=1039820360]
+[node name="mapbutton" type="Button" parent="navhbox/navbuttons" unique_id=1039820360]
 layout_mode = 2
+focus_mode = 0
 text = "Map"
 
-[node name="OptionsButton" type="Button" parent="navhbox/navbuttons" unique_id=1350421317]
+[node name="optionsbutton" type="Button" parent="navhbox/navbuttons" unique_id=1350421317]
 layout_mode = 2
+focus_mode = 0
 text = "Options"
 
-[node name="DiscordButton" type="Button" parent="navhbox/navbuttons" unique_id=1360650016]
+[node name="discordbutton" type="Button" parent="navhbox/navbuttons" unique_id=1360650016]
 layout_mode = 2
+focus_mode = 0
 text = "Discord"
 
-[node name="LogoutButton" type="Button" parent="navhbox/navbuttons" unique_id=1289277085]
+[node name="logoutbutton" type="Button" parent="navhbox/navbuttons" unique_id=1289277085]
 layout_mode = 2
+focus_mode = 0
 text = "Logout"
 
-[node name="hboxcontainer" type="HBoxContainer" parent="." unique_id=91626537]
+[node name="hotbar" type="HBoxContainer" parent="." unique_id=91626537]
 offset_left = 884.0
 offset_top = 594.0
 offset_right = 1276.0
 offset_bottom = 634.0
 
-[node name="Button" type="Button" parent="hboxcontainer" unique_id=1265138672]
+[node name="slot1" type="Button" parent="hotbar" unique_id=1265138672]
 layout_mode = 2
 icon = ExtResource("4_m5snm")
 
-[node name="Button2" type="Button" parent="hboxcontainer" unique_id=558828151]
+[node name="slot2" type="Button" parent="hotbar" unique_id=558828151]
 layout_mode = 2
 icon = ExtResource("5_wkrex")
 
-[node name="Button3" type="Button" parent="hboxcontainer" unique_id=368005331]
+[node name="slot3" type="Button" parent="hotbar" unique_id=368005331]
 layout_mode = 2
 icon = ExtResource("6_vf5gg")
 
-[node name="Button4" type="Button" parent="hboxcontainer" unique_id=1203937166]
+[node name="slot4" type="Button" parent="hotbar" unique_id=1203937166]
 layout_mode = 2
 icon = ExtResource("7_j6ui7")
 
-[node name="Button5" type="Button" parent="hboxcontainer" unique_id=632582185]
+[node name="slot5" type="Button" parent="hotbar" unique_id=632582185]
 layout_mode = 2
 icon = ExtResource("8_s3c7b")
 
-[node name="Button6" type="Button" parent="hboxcontainer" unique_id=934911389]
+[node name="slot6" type="Button" parent="hotbar" unique_id=934911389]
 layout_mode = 2
 icon = ExtResource("9_xinkp")
 
-[node name="Button7" type="Button" parent="hboxcontainer" unique_id=2044878538]
+[node name="slot7" type="Button" parent="hotbar" unique_id=2044878538]
 layout_mode = 2
 icon = ExtResource("10_a33qf")
 
-[node name="Button8" type="Button" parent="hboxcontainer" unique_id=2120426381]
+[node name="slot8" type="Button" parent="hotbar" unique_id=2120426381]
 layout_mode = 2
 icon = ExtResource("11_p3m5x")
 
-[node name="Button9" type="Button" parent="hboxcontainer" unique_id=980757471]
+[node name="slot9" type="Button" parent="hotbar" unique_id=980757471]
 layout_mode = 2
 icon = ExtResource("12_5jg1o")
+
+[connection signal="pressed" from="navhbox/navbuttons/inventorybutton" to="." method="_on_inventorybutton_pressed"]
+[connection signal="pressed" from="navhbox/navbuttons/statsbutton" to="." method="_on_statsbutton_pressed"]
+[connection signal="pressed" from="navhbox/navbuttons/shopbutton" to="." method="_on_shopbutton_pressed"]
+[connection signal="pressed" from="navhbox/navbuttons/mapbutton" to="." method="_on_mapbutton_pressed"]
+[connection signal="pressed" from="navhbox/navbuttons/optionsbutton" to="." method="_on_optionsbutton_pressed"]
+[connection signal="pressed" from="navhbox/navbuttons/discordbutton" to="." method="_on_discordbutton_pressed"]
+[connection signal="pressed" from="navhbox/navbuttons/logoutbutton" to="." method="_on_logoutbutton_pressed"]

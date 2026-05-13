@@ -1,236 +1,271 @@
-# base class for all enemies — inherited by bushmage, bushsniper, electricsprite, firesprite
+# base class for all enemies — inherited by bushmage, bushsniper, electricspirit, firesprite
 extends CharacterBody2D
-
-# gives this script a global class name so other scripts can reference it
 class_name BaseEnemy
 
-# exported vars show in the Godot Inspector and can be tweaked per enemy scene
-@export var max_hp: int = 50              # maximum health points
-@export var attack_cooldown: float = 2.0  # seconds between attacks
-@export var attack_range: float = 200.0   # distance at which enemy starts attacking
-@export var flee_range: float = 10.0      # distance at which enemy flees from player
+@export var max_hp: int = 50
+@export var attack_cooldown: float = 2.0
+@export var attack_range: float = 200.0
+@export var flee_range: float = 40.0
+@export var xp_reward: int = 20
+@export var attack_xp_reward: int = 5
 
-# current health — set to max_hp on ready
+# how far an enemy will chase from its spawn point before returning home.
+# prevents enemies migrating across the map toward distant players.
+# tune higher for boss-arena enemies, lower for static patrol mobs.
+@export var leash_range: float = 400.0
+
 var hp: int
-
-# current AI state — idle, run, or attack
-var state: String = "idle"
-
-# reference to the player node — found at runtime
 var player: CharacterBody2D = null
-
-# which direction the enemy is facing toward the player
-var attack_direction: String = "left"
-
-# whether the enemy can attack right now — false during cooldown
+var attack_direction: String = "down"
 var attack_ready: bool = true
 
-# signal emitted when enemy takes damage — passes the amount
-signal damaged(amount)
+# true while the attack animation is playing — enemy can't move or attack again
+var is_attacking: bool = false
 
-# signal emitted when enemy dies
+# tracks which animation is currently playing — prevents restart spam
+var current_anim: String = ""
+
+# remembered spawn position — enemy returns here if leashed
+var spawn_position: Vector2 = Vector2.ZERO
+
+# true while the enemy is heading back to its spawn after disengaging
+var is_returning_home: bool = false
+
+signal damaged(amount: int)
 signal died
 
-func _ready():
-	# set current hp to max hp at start
+func _ready() -> void:
 	hp = max_hp
-
-	# add to enemies group so player and other systems can find this enemy
 	add_to_group("enemies")
 
-	# find the player node in the scene
-	var players = get_tree().get_nodes_in_group("player")
+	# remember where this enemy was placed — used as the leash anchor
+	spawn_position = global_position
 
-	# if a player exists assign the first one as our target
+	# find the player via group lookup
+	var players := get_tree().get_nodes_in_group("player")
 	if players.size() > 0:
 		player = players[0]
 
-	# if this enemy has an attack timer node set it up
+	# attack cooldown timer — guard against double connection in case
+	# the timeout signal is also wired through the editor
 	if has_node("attacktimer"):
-		# set how long the cooldown lasts
 		$attacktimer.wait_time = attack_cooldown
-		# one_shot means timer fires once then stops — not looping
 		$attacktimer.one_shot = true
-		# connect timer timeout to our handler function
-		$attacktimer.timeout.connect(_on_attack_timer_timeout)
+		if not $attacktimer.timeout.is_connected(_on_attack_timer_timeout):
+			$attacktimer.timeout.connect(_on_attack_timer_timeout)
 
-	# if this enemy has a health bar set its starting values
+	# healthbar setup — explicitly force ALL range properties so scene defaults
+	# can't leak through. without min_value=0 and step=1, scene-set values can
+	# cause the bar to show 0% even though hp is positive.
 	if has_node("healthbar"):
-		$healthbar.max_value = max_hp  # set the bar maximum
-		$healthbar.value = hp          # set the bar current value
+		var bar = $healthbar
+		bar.min_value = 0
+		bar.max_value = max_hp
+		bar.step = 1
+		bar.value = hp
 
-	# start with idle animation facing down
+	# connect animation_finished so we can transition out of attack animations
+	if has_node("animatedsprite2d"):
+		var sprite: AnimatedSprite2D = $animatedsprite2d
+		if not sprite.animation_finished.is_connected(_on_animation_finished):
+			sprite.animation_finished.connect(_on_animation_finished)
+
 	play_idle_animation("down")
 
-func _physics_process(_delta):
-	# if we lost the player reference try to find them again
+func _physics_process(_delta: float) -> void:
+	# look up player if we don't have one yet
 	if player == null:
-		var players = get_tree().get_nodes_in_group("player")
+		var players := get_tree().get_nodes_in_group("player")
 		if players.size() > 0:
 			player = players[0]
-		# stop processing this frame if still no player found
 		return
 
-	# calculate distance between this enemy and the player
-	var dist = position.distance_to(player.position)
+	# always update the cached facing toward the player, even while attacking.
+	# this prevents the "frozen direction" bug when the player circles during
+	# a long attack animation. animation isn't switched here during attack —
+	# we only refresh the direction value so the post-attack idle plays correctly.
+	if not is_returning_home:
+		attack_direction = _get_direction_to_player()
 
-	# update which direction we are facing toward the player
-	attack_direction = _get_direction_to_player()
-
-	if dist < flee_range:
-		# player is too close — flee away in a straight 4-directional line
-		state = "run"
-
-		# get the flee direction as a string based on which axis is dominant
-		var flee_dir = _get_direction_from_vec(position - player.position)
-
-		# convert flee direction string back to a clean Vector2
-		# this ensures movement is strictly 4-directional — no diagonals
-		var move_vec = Vector2.ZERO
-		match flee_dir:
-			"left":  move_vec = Vector2.LEFT
-			"right": move_vec = Vector2.RIGHT
-			"up":    move_vec = Vector2.UP
-			"down":  move_vec = Vector2.DOWN
-
-		# set velocity in the flee direction at move speed
-		velocity = move_vec * get_move_speed()
-
-		# actually move the character
+	# while attacking, freeze in place — projectile fires on a frame_changed
+	# signal in subclasses; movement and new attacks resume on animation_finished
+	if is_attacking:
+		velocity = Vector2.ZERO
 		move_and_slide()
+		return
 
-		# play walk animation in the flee direction
+	var dist_to_player := global_position.distance_to(player.global_position)
+
+	# if the player is beyond the leash range from spawn, return home.
+	# this prevents enemies migrating across the entire map.
+	if dist_to_player > leash_range:
+		var dist_from_spawn := global_position.distance_to(spawn_position)
+		if dist_from_spawn > 4.0:
+			# walk back to spawn
+			is_returning_home = true
+			var return_dir := _get_direction_from_vec(spawn_position - global_position)
+			velocity = _vec_from_dir(return_dir) * get_move_speed()
+			move_and_slide()
+			play_walk_animation(return_dir)
+		else:
+			# arrived home — idle in place
+			is_returning_home = false
+			velocity = Vector2.ZERO
+			play_idle_animation("down")
+		return
+
+	# player is within leash range — normal aggro behavior
+	is_returning_home = false
+
+	if dist_to_player < flee_range:
+		# player too close — flee in 4-directional line
+		var flee_dir := _get_direction_from_vec(global_position - player.global_position)
+		velocity = _vec_from_dir(flee_dir) * get_move_speed()
+		move_and_slide()
 		play_walk_animation(flee_dir)
 
-		# still attack while fleeing if cooldown is ready
-		if attack_ready:
-			_trigger_attack()
-
-	elif dist < attack_range:
-		# player is in attack range — stop and attack
-		state = "attack"
-
-		# stop moving while attacking
+	elif dist_to_player < attack_range:
+		# in attack range — stop and attack when ready, otherwise idle
 		velocity = Vector2.ZERO
-
-		# play attack animation facing player
-		play_attack_animation(attack_direction)
-
-		# trigger attack if cooldown is ready
 		if attack_ready:
 			_trigger_attack()
+		else:
+			# waiting for cooldown — idle facing the player
+			play_idle_animation(attack_direction)
 
 	else:
-		# player is out of range — idle
-		state = "idle"
+		# in leash range but out of attack range — chase the player
+		var to_player := _get_direction_from_vec(player.global_position - global_position)
+		velocity = _vec_from_dir(to_player) * get_move_speed()
+		move_and_slide()
+		play_walk_animation(to_player)
 
-		# play idle animation facing player direction
-		play_idle_animation(attack_direction)
-
-		# stop moving
-		velocity = Vector2.ZERO
-
-	# update health bar every frame if it exists
-	if has_node("healthbar"):
-		$healthbar.value = hp
-
-	# every 3 physics frames check for enemy stacking
-	# modulo 3 reduces how often this runs to save performance
-	if Engine.get_physics_frames() % 3 == 0:
+	# stagger the stacking check by instance id so enemies don't all spike on the same frame
+	if (Engine.get_physics_frames() + get_instance_id()) % 3 == 0:
 		_avoid_stacking_with_others()
 
 # --- override these in subclasses ---
 
-# returns move speed — subclasses override this for different speeds
 func get_move_speed() -> float:
 	return 80.0
 
-# fires a projectile or deals melee damage — overridden in each enemy
-func fire_projectile():
+func fire_projectile() -> void:
+	# subclasses override this — called via frame_changed signal at the right
+	# animation frame, NOT directly from _trigger_attack.
 	pass
 
-# plays the walk animation in the given direction
+# --- animation helpers ---
+# _set_animation only calls play() when the animation actually changes.
+# without this guard, play() runs every physics frame and the animation
+# restarts from frame 0, so frame_changed signals never reach later frames.
+# also defensively checks if the animation exists before playing — missing
+# animations cause silent failure that can lock state machines.
+
+func _set_animation(new_anim: String) -> void:
+	if new_anim == "" or not has_node("animatedsprite2d"):
+		return
+	if new_anim == current_anim:
+		return  # already playing this — don't restart
+
+	var sprite: AnimatedSprite2D = $animatedsprite2d
+	if not sprite.sprite_frames.has_animation(new_anim):
+		push_warning("%s: missing animation '%s'" % [name, new_anim])
+		return
+
+	current_anim = new_anim
+	sprite.play(new_anim)
+
 func play_walk_animation(dir: String) -> void:
-	# only play if direction is valid and sprite node exists
-	if dir != "" and has_node("animatedsprite2d"):
-		$animatedsprite2d.play("walk" + dir)  # e.g. "walkright", "walkdown"
+	if dir != "":
+		_set_animation("walk" + dir)
 
-# plays the attack animation in the given direction
 func play_attack_animation(dir: String) -> void:
-	if has_node("animatedsprite2d"):
-		$animatedsprite2d.play("attack" + dir)  # e.g. "attackleft", "attackup"
+	if dir != "":
+		_set_animation("attack" + dir)
 
-# plays the idle animation in the given direction
 func play_idle_animation(dir: String) -> void:
-	if has_node("animatedsprite2d"):
-		$animatedsprite2d.play("idle" + dir)  # e.g. "idledown", "idleright"
+	if dir != "":
+		_set_animation("idle" + dir)
 
 # --- shared logic ---
 
-func _trigger_attack():
-	# mark attack as not ready — starts cooldown
+func _trigger_attack() -> void:
 	attack_ready = false
-
-	# start the attack cooldown timer if it exists
+	is_attacking = true
 	if has_node("attacktimer"):
 		$attacktimer.start()
+	play_attack_animation(attack_direction)
+	# fire_projectile() NOT called here — subclasses fire on the correct
+	# animation frame via AnimatedSprite2D.frame_changed.
 
-	# call fire_projectile — overridden in each enemy subclass
-	fire_projectile()
-
-func _on_attack_timer_timeout():
-	# cooldown finished — enemy can attack again
+func _on_attack_timer_timeout() -> void:
 	attack_ready = true
 
-func _get_direction_to_player() -> String:
-	# get the vector from this enemy to the player
-	var diff = player.position - position
+func _on_animation_finished() -> void:
+	# called when any animation finishes playing.
+	# transitions out of attack animations so the enemy doesn't get stuck.
+	if not has_node("animatedsprite2d"):
+		return
 
-	# return the dominant axis direction as a string
-	# this ensures facing direction is always one of 4 directions
-	if abs(diff.x) > abs(diff.y):
-		# horizontal movement is dominant
-		return "right" if diff.x > 0 else "left"
-	else:
-		# vertical movement is dominant
-		return "down" if diff.y > 0 else "up"
+	var sprite: AnimatedSprite2D = $animatedsprite2d
+	if sprite.animation.begins_with("attack"):
+		is_attacking = false
+		play_idle_animation(attack_direction)
+
+func _get_direction_to_player() -> String:
+	if player == null:
+		return attack_direction  # fall back to last known
+	return _get_direction_from_vec(player.global_position - global_position)
 
 func _get_direction_from_vec(vec: Vector2) -> String:
-	# convert a Vector2 into a 4-directional string
+	# always returns one of the 4 cardinals (or "" for zero vector).
+	# matches the player's animation set — no diagonals.
 	if abs(vec.x) > abs(vec.y):
-		# horizontal is dominant
 		return "right" if vec.x > 0 else "left"
 	elif abs(vec.y) > 0:
-		# vertical is dominant
 		return "down" if vec.y > 0 else "up"
-	# no movement — return empty string
 	return ""
 
-func _avoid_stacking_with_others():
-	# get all enemies in the scene
-	var others = get_tree().get_nodes_in_group("enemies")
+func _vec_from_dir(dir: String) -> Vector2:
+	match dir:
+		"left":  return Vector2.LEFT
+		"right": return Vector2.RIGHT
+		"up":    return Vector2.UP
+		"down":  return Vector2.DOWN
+	return Vector2.ZERO
+
+func _avoid_stacking_with_others() -> void:
+	# nudge enemies apart slightly when they overlap.
+	# uses velocity so move_and_slide handles wall collision properly,
+	# preventing the "phase through wall" bug from direct global_position writes.
+	var others := get_tree().get_nodes_in_group("enemies")
 	for other in others:
-		# skip self — only check other enemies
-		if other != self and position.distance_to(other.position) < 24:
-			# push this enemy slightly away from the overlapping enemy
-			position += (position - other.position).normalized() * 1
+		if other == self:
+			continue
+		var d := global_position.distance_to(other.global_position)
+		if d < 24 and d > 0:
+			velocity += (global_position - other.global_position).normalized() * 20
 
-func take_damage(amount: int):
-	# reduce hp by damage amount — clamp between 0 and max_hp
-	hp = clamp(hp - amount, 0, max_hp)
+# --- damage ---
 
-	# emit damaged signal so other systems can react
-	emit_signal("damaged", amount)
+func take_damage(amount: int, _type: StringName = &"physical") -> void:
+	hp = max(hp - amount, 0)
+	damaged.emit(amount)
 
-	# check if enemy has died
+	if has_node("healthbar"):
+		var bar = $healthbar
+		if bar.max_value != max_hp:
+			bar.max_value = max_hp
+		bar.value = hp
+
 	if hp <= 0:
-		# award xp to player if player exists and has the method
-		if player and player.has_method("gain_xp"):
-			player.gain_xp(20)        # award general xp
-			player.gain_attack_xp(5) # award attack skill xp
+		_die()
 
-		# emit died signal so other systems can react
-		emit_signal("died")
-
-		# remove this enemy from the scene
-		queue_free()
+func _die() -> void:
+	# award xp to the player who killed this enemy
+	if player and player.has_method("gain_xp"):
+		player.gain_xp(xp_reward)
+		if player.has_method("gain_attack_xp"):
+			player.gain_attack_xp(attack_xp_reward)
+	died.emit()
+	queue_free()

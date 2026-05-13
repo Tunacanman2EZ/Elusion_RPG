@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cf3seqpv70w13"
-path="res://.godot/imported/monsterhprmpty.png-aa04ce6912d9ff98cf1642684545e93c.ctex"
+uid="uid://dn1emu0qnrivj"
+path="res://.godot/imported/1.png-e04f16970747289487df9a06c4b28ea2.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/images/monsterhprmpty.png"
-dest_files=["res://.godot/imported/monsterhprmpty.png-aa04ce6912d9ff98cf1642684545e93c.ctex"]
+source_file="res://art/maincharacter/1.png"
+dest_files=["res://.godot/imported/1.png-e04f16970747289487df9a06c4b28ea2.ctex"]
 
 [params]
 

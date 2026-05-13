@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dxiy1ap2ab4nf"]
+
+[ext_resource type="Texture2D" uid="uid://dlgvggabxarit" path="res://assets/placeholder/icons/icon277.png" id="1_872p2"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="1_jlmmw"]
+
+[resource]
+script = ExtResource("1_jlmmw")
+item_id = "healthpotion"
+display_name = "Small Health Potion"
+description = "A bottle of crimson tonic. Restores 20 HP."
+icon = ExtResource("1_872p2")
+stackable = true
+max_stack = 20
+value = 40
+restore_amount = 20
+type = 0
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

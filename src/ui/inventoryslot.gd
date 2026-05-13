@@ -1,26 +1,21 @@
-# represents a single slot in the inventory grid
-# handles item display, hover and selection states, and user interactions
+# represents a single slot in the inventory grid.
+# handles item display, hover and selection states, and user interactions.
+# slots own their index; stacks know nothing about where they live.
 extends PanelContainer
 class_name InventorySlot
 
 # --- signals ---
 
-# emitted when slot is left clicked — passes this slot as reference
 signal slot_clicked(slot: InventorySlot)
-
-# emitted when slot is right clicked — passes this slot as reference
 signal slot_right_clicked(slot: InventorySlot)
-
-# emitted when mouse enters the slot — used to show tooltip
 signal slot_hovered(slot: InventorySlot)
-
-# emitted when mouse exits the slot — used to hide tooltip
 signal slot_unhovered(slot: InventorySlot)
 
 # --- state ---
 
-# the item stored in this slot — null if slot is empty
-var item: Item = null
+# the item stack stored in this slot — null if slot is empty
+# stacks reference shared ItemData and carry per-instance quantity
+var stack: ItemStack = null
 
 # the index of this slot in the inventory grid — set by InventoryContainer
 var slot_index: int = -1
@@ -33,59 +28,41 @@ var is_selected: bool = false
 
 # --- styles ---
 
-# normal appearance when slot is not hovered or selected
 var style_normal: StyleBoxFlat
-
-# highlighted appearance when slot is hovered or selected
 var style_hover: StyleBoxFlat
 
 # --- node references ---
 
-# the texture rect that displays the item icon
-@onready var icon_rect: TextureRect = $CenterContainer/Icon
-
-# the label that shows stack quantity for stackable items
-@onready var quantity_label: Label = $QuantityLabel
+@onready var icon_rect: TextureRect = $centercontainer/icon
+@onready var quantity_label: Label = $quantitylabel
 
 func _ready() -> void:
-	# create or load slot visual styles
 	_create_styles()
-
-	# connect mouse enter signal to hover handler
 	mouse_entered.connect(_on_mouse_entered)
-
-	# connect mouse exit signal to unhover handler
 	mouse_exited.connect(_on_mouse_exited)
-
-	# connect input event signal to click handler
 	gui_input.connect(_on_gui_input)
-
-	# refresh display to show correct initial state
 	refresh_display()
 
 func _create_styles() -> void:
 	# try to get styles from the project theme first
-	var slot_theme = get_theme()
-	if slot_theme:
-		# look for a custom PanelSlot stylebox in the theme
-		var theme_normal = slot_theme.get_stylebox("panel", "PanelSlot")
-		var theme_hover = slot_theme.get_stylebox("panel", "PanelSlotHover")
-
-		# use theme styles if they exist
-		if theme_normal:
+	var slot_theme: Theme = get_theme()
+	if slot_theme != null:
+		var theme_normal := slot_theme.get_stylebox("panel", "PanelSlot")
+		var theme_hover := slot_theme.get_stylebox("panel", "PanelSlotHover")
+		if theme_normal != null:
 			style_normal = theme_normal
-		if theme_hover:
+		if theme_hover != null:
 			style_hover = theme_hover
 
 	# fallback — create styles programmatically if theme styles not found
 	if style_normal == null:
 		style_normal = StyleBoxFlat.new()
-		style_normal.bg_color = Color(0.15, 0.12, 0.1, 0.9)  # dark brown background
+		style_normal.bg_color = Color(0.15, 0.12, 0.1, 0.9)
 		style_normal.border_width_left   = 2
 		style_normal.border_width_top    = 2
 		style_normal.border_width_right  = 2
 		style_normal.border_width_bottom = 2
-		style_normal.border_color = Color(0.4, 0.35, 0.25, 1.0)  # muted gold border
+		style_normal.border_color = Color(0.4, 0.35, 0.25, 1.0)
 		style_normal.corner_radius_top_left     = 2
 		style_normal.corner_radius_top_right    = 2
 		style_normal.corner_radius_bottom_right = 2
@@ -93,109 +70,144 @@ func _create_styles() -> void:
 
 	if style_hover == null:
 		style_hover = StyleBoxFlat.new()
-		style_hover.bg_color = Color(0.25, 0.2, 0.15, 0.95)  # slightly lighter on hover
+		style_hover.bg_color = Color(0.25, 0.2, 0.15, 0.95)
 		style_hover.border_width_left   = 2
 		style_hover.border_width_top    = 2
 		style_hover.border_width_right  = 2
 		style_hover.border_width_bottom = 2
-		style_hover.border_color = Color(0.85, 0.75, 0.45, 1.0)  # bright gold border on hover
+		style_hover.border_color = Color(0.85, 0.75, 0.45, 1.0)
 		style_hover.corner_radius_top_left     = 2
 		style_hover.corner_radius_top_right    = 2
 		style_hover.corner_radius_bottom_right = 2
 		style_hover.corner_radius_bottom_left  = 2
 
-	# apply the normal style as the starting appearance
 	add_theme_stylebox_override("panel", style_normal)
 
-func set_item(new_item: Item) -> void:
-	# store the new item in this slot
-	item = new_item
+# --- stack management ---
 
-	# update the item's slot index to match this slot position
-	if item != null:
-		item.slot_index = slot_index
-
-	# refresh the visual display
+func set_stack(new_stack: ItemStack) -> void:
+	# store the new stack in this slot — null clears the slot
+	# the slot does NOT track position on the stack — slot owns its index
+	stack = new_stack
 	refresh_display()
 
-func clear_item() -> void:
-	# remove the item from this slot
-	item = null
-
-	# refresh display to show empty state
+func clear_stack() -> void:
+	# remove the stack from this slot
+	stack = null
 	refresh_display()
 
 func is_empty() -> bool:
-	# return true if this slot has no item
-	return item == null
+	# return true if this slot has no valid stack
+	return stack == null or not stack.is_valid()
+
+# --- compatibility shim (temporary, removed in step 5) ---
+# inventorycontainer.gd still passes old Item objects until we migrate it.
+# these methods convert Item -> ItemStack on the fly via the registry,
+# so the container doesn't need to know about ItemStack yet.
+
+func set_item(old_item) -> void:
+	# accepts old Item — converts to ItemStack via registry lookup
+	# this is a temporary bridge; remove after step 5 migrates the container
+	if old_item == null:
+		clear_stack()
+		return
+
+	# old_item could be an Item resource — look up its ItemData via name
+	# this is fragile (matching by name) but only used during the migration
+	if "name" in old_item:
+		var data: ItemData = _find_itemdata_by_name(old_item.name)
+		if data != null:
+			var new_stack := ItemStack.new(data, old_item.quantity if "quantity" in old_item else 1)
+			set_stack(new_stack)
+			return
+
+	# couldn't convert — log and clear
+	push_warning("InventorySlot: failed to convert legacy Item to ItemStack")
+	clear_stack()
+
+func clear_item() -> void:
+	# old name kept for container compatibility — delegates to clear_stack
+	clear_stack()
+
+# look up ItemData by display_name (for legacy Item conversion only).
+# this is fragile and only works because we're in transition.
+# step 5 will use item_id directly and remove this helper.
+func _find_itemdata_by_name(item_name: String) -> ItemData:
+	for data in ItemRegistry.get_all_items():
+		if data.display_name == item_name:
+			return data
+	return null
+
+# --- legacy property accessor (temporary) ---
+# inventorycontainer.gd reads `slot.item.name`, `slot.item.tier`, etc.
+# until container is migrated, expose a fake `item` property that proxies
+# to the stack's data. read-only. remove after step 5.
+var item:
+	get:
+		if stack == null or not stack.is_valid():
+			return null
+		return stack  # the stack itself acts as a proxy — has .quantity, .data
+	set(value):
+		set_item(value)
+
+# --- display ---
 
 func refresh_display() -> void:
 	# do nothing if nodes are not ready yet
 	if not is_node_ready():
 		return
 
-	if item == null:
+	if stack == null or not stack.is_valid():
 		# slot is empty — clear icon and quantity label
 		icon_rect.texture = null
 		quantity_label.text = ""
 	else:
-		# slot has item — show its icon
-		icon_rect.texture = item.icon
+		# slot has a stack — read display info from its ItemData
+		icon_rect.texture = stack.data.icon
 
 		# show stack quantity if item is stackable and has more than 1
-		if item.stackable and item.quantity > 1:
-			quantity_label.text = str(item.quantity)
+		if stack.data.stackable and stack.quantity > 1:
+			quantity_label.text = str(stack.quantity)
 		else:
-			# hide quantity label for non-stackable or single items
 			quantity_label.text = ""
 
-	# update visual style after content change
 	_update_style()
 
 func set_hovered(hovered: bool) -> void:
-	# update hover state and refresh style
 	is_hovered = hovered
 	_update_style()
 
 func set_selected(selected: bool) -> void:
-	# update selected state and refresh style
 	is_selected = selected
 	_update_style()
 
 func _update_style() -> void:
-	# do nothing if styles haven't been created yet
-	if not style_normal or not style_hover:
+	if style_normal == null or style_hover == null:
 		return
 
 	if is_selected:
-		# selected state — yellow tint and hover style
 		modulate = Color(1.0, 1.0, 0.7, 1.0)
 		add_theme_stylebox_override("panel", style_hover)
 	elif is_hovered:
-		# hovered state — normal tint and hover style
 		modulate = Color(1.0, 1.0, 1.0, 1.0)
 		add_theme_stylebox_override("panel", style_hover)
 	else:
-		# default state — normal tint and normal style
 		modulate = Color(1.0, 1.0, 1.0, 1.0)
 		add_theme_stylebox_override("panel", style_normal)
 
+# --- input handling ---
+
 func _on_gui_input(event: InputEvent) -> void:
-	# handle mouse button clicks on this slot
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			# left click — emit slot clicked signal
 			slot_clicked.emit(self)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			# right click — emit slot right clicked signal
 			slot_right_clicked.emit(self)
 
 func _on_mouse_entered() -> void:
-	# mouse entered — set hovered and emit signal for tooltip
 	set_hovered(true)
 	slot_hovered.emit(self)
 
 func _on_mouse_exited() -> void:
-	# mouse exited — clear hovered and emit signal to hide tooltip
 	set_hovered(false)
 	slot_unhovered.emit(self)

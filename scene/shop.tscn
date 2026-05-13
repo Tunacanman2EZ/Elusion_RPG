@@ -4603,39 +4603,92 @@ physics_layer_0/collision_layer = 1
 sources/0 = SubResource("TileSetAtlasSource_c0ofq")
 
 [sub_resource type="GDScript" id="GDScript_iuafe"]
-script/source = "extends Area2D
+script/source = "# house interior/exterior swap — shows the house cutaway when the player
+# is inside the trigger area, full exterior when outside.
+# attached to an Area2D that overlaps the house bounds.
+# expects sibling nodes named \"interior\" and \"exterior\" (lowercase) OR
+# the original \"Interior\" and \"Exterior\" (CamelCase) as a fallback.
+extends Area2D
 
-@onready var interior = $\"../Interior\"
-@onready var exterior = $\"../Exterior\"
+# sibling node references — populated in _ready() with name fallback.
+# stored as Node (not specific type) since they could be Sprite2D, etc.
+var interior: Node = null
+var exterior: Node = null
 
-func _ready():
-	# Only show exterior at start, hide interior
+func _ready() -> void:
+	# look up the sibling nodes by name — try lowercase first (project
+	# convention), fall back to CamelCase for older scenes.
+	# both paths are relative to this Area2D's parent.
+	_find_sibling_nodes()
+
+	# initial state — exterior visible, interior hidden.
+	# the player starts outside the building so only the outer view shows.
 	if interior:
 		interior.visible = false
 	if exterior:
 		exterior.visible = true
 
-func _on_body_entered(body):
-	if body.is_in_group(\"player\"):
-		print(\"Player near building: interior visible, exterior hidden.\")
-		if interior: interior.visible = true
-		if exterior: exterior.visible = false
+	# connect collision signals — guard against double connection in case
+	# the editor also wired them up. without this connect call, the signal
+	# handlers below never fire and the swap doesn't happen.
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+	if not body_exited.is_connected(_on_body_exited):
+		body_exited.connect(_on_body_exited)
 
-func _on_body_exited(body):
+	# log the setup so missing nodes are easy to spot at runtime
+	if interior == null:
+		push_warning(\"HouseSwap: 'interior' node not found as sibling\")
+	if exterior == null:
+		push_warning(\"HouseSwap: 'exterior' node not found as sibling\")
+
+func _find_sibling_nodes() -> void:
+	# search the parent for interior/exterior nodes.
+	# tries lowercase names first, then CamelCase for backward compatibility.
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+
+	# lowercase (project convention)
+	if parent.has_node(\"interior\"):
+		interior = parent.get_node(\"interior\")
+	elif parent.has_node(\"Interior\"):
+		interior = parent.get_node(\"Interior\")
+
+	if parent.has_node(\"exterior\"):
+		exterior = parent.get_node(\"exterior\")
+	elif parent.has_node(\"Exterior\"):
+		exterior = parent.get_node(\"Exterior\")
+
+func _on_body_entered(body: Node2D) -> void:
+	# fired when any body enters the trigger area. only respond to the player.
+	# the player's body must be on a collision layer that this Area2D's mask
+	# includes — if it isn't, this signal never fires.
 	if body.is_in_group(\"player\"):
-		print(\"Player left: interior hidden, exterior visible.\")
-		if interior: interior.visible = false
-		if exterior: exterior.visible = true
+		print(\"HouseSwap: player entered, showing interior\")
+		if interior:
+			interior.visible = true
+		if exterior:
+			exterior.visible = false
+
+func _on_body_exited(body: Node2D) -> void:
+	# fired when the player leaves the area — swap back to exterior view
+	if body.is_in_group(\"player\"):
+		print(\"HouseSwap: player left, showing exterior\")
+		if interior:
+			interior.visible = false
+		if exterior:
+			exterior.visible = true
 "
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_c53l5"]
 size = Vector2(249, 260)
 
-[node name="Node2D" type="Node2D" unique_id=1973909077]
+[node name="node2d" type="Node2D" unique_id=1973909077]
 light_mask = 108
 visibility_layer = 2
 
-[node name="Exterior" type="TileMapLayer" parent="." unique_id=1133026560]
+[node name="exterior" type="TileMapLayer" parent="." unique_id=1133026560]
 visible = false
 z_index = 1
 position = Vector2(17, 2)
@@ -4643,16 +4696,17 @@ scale = Vector2(1.6301513, 1.4802445)
 tile_map_data = PackedByteArray("AAD6//z/AAAEAAcAAAD6//3/AAAEAAgAAAD6//7/AAAEAAkAAAD6////AAAEAAoAAAD6/wAAAAAEAAsAAAD6/wEAAAAEAAwAAAD7//v/AAAFAAYAAAD7//z/AAAFAAcAAAD7//3/AAAFAAgAAAD7//7/AAAFAAkAAAD7////AAAFAAoAAAD7/wAAAAAFAAsAAAD7/wEAAAAFAAwAAAD7/wIAAAAFAA0AAAD7/wMAAAAFAA4AAAD8//r/AAAGAAUAAAD8//v/AAAGAAYAAAD8//z/AAAGAAcAAAD8//3/AAAGAAgAAAD8//7/AAAGAAkAAAD8////AAAGAAoAAAD8/wAAAAAGAAsAAAD8/wEAAAAGAAwAAAD8/wIAAAAGAA0AAAD8/wMAAAAGAA4AAAD9//j/AAAHAAMAAAD9//n/AAAHAAQAAAD9//r/AAAHAAUAAAD9//v/AAAHAAYAAAD9//z/AAAHAAcAAAD9//3/AAAHAAgAAAD9//7/AAAHAAkAAAD9////AAAHAAoAAAD9/wAAAAAHAAsAAAD9/wEAAAAHAAwAAAD9/wIAAAAHAA0AAAD9/wMAAAAHAA4AAAD+//j/AAAIAAMAAAD+//n/AAAIAAQAAAD+//r/AAAIAAUAAAD+//v/AAAIAAYAAAD+//z/AAAIAAcAAAD+//3/AAAIAAgAAAD+//7/AAAIAAkAAAD+////AAAIAAoAAAD+/wAAAAAIAAsAAAD+/wEAAAAIAAwAAAD+/wIAAAAIAA0AAAD+/wMAAAAIAA4AAAD///j/AAAJAAMAAAD///n/AAAJAAQAAAD///r/AAAJAAUAAAD///v/AAAJAAYAAAD///z/AAAJAAcAAAD///3/AAAJAAgAAAD///7/AAAJAAkAAAD/////AAAJAAoAAAD//wAAAAAJAAsAAAD//wEAAAAJAAwAAAD//wIAAAAJAA0AAAD//wMAAAAJAA4AAAAAAPn/AAAKAAQAAAAAAPr/AAAKAAUAAAAAAPv/AAAKAAYAAAAAAPz/AAAKAAcAAAAAAP3/AAAKAAgAAAAAAP7/AAAKAAkAAAAAAP//AAAKAAoAAAAAAAAAAAAKAAsAAAAAAAEAAAAKAAwAAAAAAAIAAAAKAA0AAAAAAAMAAAAKAA4AAAABAPn/AAALAAQAAAABAPr/AAALAAUAAAABAPv/AAALAAYAAAABAPz/AAALAAcAAAABAP3/AAALAAgAAAABAP7/AAALAAkAAAABAP//AAALAAoAAAABAAAAAAALAAsAAAABAAEAAAALAAwAAAABAAIAAAALAA0AAAABAAMAAAALAA4AAAACAPv/AAAMAAYAAAACAPz/AAAMAAcAAAACAP3/AAAMAAgAAAACAP7/AAAMAAkAAAACAP//AAAMAAoAAAACAAAAAAAMAAsAAAACAAEAAAAMAAwAAAACAAIAAAAMAA0AAAACAAMAAAAMAA4AAAADAPv/AAANAAYAAAADAPz/AAANAAcAAAADAP3/AAANAAgAAAADAP7/AAANAAkAAAADAP//AAANAAoAAAADAAAAAAANAAsAAAADAAEAAAANAAwAAAA=")
 tile_set = SubResource("TileSet_f511j")
 
-[node name="Interior" type="TileMapLayer" parent="." unique_id=79494777]
+[node name="interior" type="TileMapLayer" parent="." unique_id=79494777]
 tile_map_data = PackedByteArray("AAD6//n/AAAPAAIAAAD6//r/AAAPAAMAAAD6//v/AAAPAAQAAAD6//z/AAAPAAUAAAD6//3/AAAPAAYAAAD6//7/AAAPAAcAAAD6////AAAPAAgAAAD6/wAAAAAPAAkAAAD6/wEAAAAPAAoAAAD6/wIAAAAPAAsAAAD6/wMAAAAPAAwAAAD6/wQAAAAPAA0AAAD6/wUAAAAPAA4AAAD7//n/AAAQAAIAAAD7//r/AAAQAAMAAAD7//v/AAAQAAQAAAD7//z/AAAQAAUAAAD7//3/AAAQAAYAAAD7//7/AAAQAAcAAAD7////AAAQAAgAAAD7/wAAAAAQAAkAAAD7/wEAAAAQAAoAAAD7/wIAAAAQAAsAAAD7/wMAAAAQAAwAAAD7/wQAAAAQAA0AAAD7/wUAAAAQAA4AAAD8//n/AAARAAIAAAD8//r/AAARAAMAAAD8//v/AAARAAQAAAD8//z/AAARAAUAAAD8//3/AAARAAYAAAD8//7/AAARAAcAAAD8////AAARAAgAAAD8/wAAAAARAAkAAAD8/wEAAAARAAoAAAD8/wIAAAARAAsAAAD8/wMAAAARAAwAAAD8/wQAAAARAA0AAAD8/wUAAAARAA4AAAD9//n/AAASAAIAAAD9//r/AAASAAMAAAD9//v/AAASAAQAAAD9//z/AAASAAUAAAD9//3/AAASAAYAAAD9//7/AAASAAcAAAD9////AAASAAgAAAD9/wAAAAASAAkAAAD9/wEAAAASAAoAAAD9/wIAAAASAAsAAAD9/wMAAAASAAwAAAD9/wQAAAASAA0AAAD9/wUAAAASAA4AAAD+//n/AAATAAIAAAD+//r/AAATAAMAAAD+//v/AAATAAQAAAD+//z/AAATAAUAAAD+//3/AAATAAYAAAD+//7/AAATAAcAAAD+////AAATAAgAAAD+/wAAAAATAAkAAAD+/wEAAAATAAoAAAD+/wIAAAATAAsAAAD+/wMAAAATAAwAAAD+/wQAAAATAA0AAAD+/wUAAAATAA4AAAD///n/AAAUAAIAAAD///r/AAAUAAMAAAD///v/AAAUAAQAAAD///z/AAAUAAUAAAD///3/AAAUAAYAAAD///7/AAAUAAcAAAD/////AAAUAAgAAAD//wAAAAAUAAkAAAD//wEAAAAUAAoAAAD//wIAAAAUAAsAAAD//wMAAAAUAAwAAAD//wQAAAAUAA0AAAD//wUAAAAUAA4AAAAAAPn/AAAVAAIAAAAAAPr/AAAVAAMAAAAAAPv/AAAVAAQAAAAAAPz/AAAVAAUAAAAAAP3/AAAVAAYAAAAAAP7/AAAVAAcAAAAAAP//AAAVAAgAAAAAAAAAAAAVAAkAAAAAAAEAAAAVAAoAAAAAAAIAAAAVAAsAAAAAAAMAAAAVAAwAAAAAAAQAAAAVAA0AAAAAAAUAAAAVAA4AAAABAPn/AAAWAAIAAAABAPr/AAAWAAMAAAABAPv/AAAWAAQAAAABAPz/AAAWAAUAAAABAP3/AAAWAAYAAAABAP7/AAAWAAcAAAABAP//AAAWAAgAAAABAAAAAAAWAAkAAAABAAEAAAAWAAoAAAABAAIAAAAWAAsAAAABAAMAAAAWAAwAAAABAAQAAAAWAA0AAAABAAUAAAAWAA4AAAACAPn/AAAXAAIAAAACAPr/AAAXAAMAAAACAPv/AAAXAAQAAAACAPz/AAAXAAUAAAACAP3/AAAXAAYAAAACAP7/AAAXAAcAAAACAP//AAAXAAgAAAACAAAAAAAXAAkAAAACAAEAAAAXAAoAAAACAAIAAAAXAAsAAAACAAMAAAAXAAwAAAACAAQAAAAXAA0AAAACAAUAAAAXAA4AAAADAPn/AAAYAAIAAAADAPr/AAAYAAMAAAADAPv/AAAYAAQAAAADAPz/AAAYAAUAAAADAP3/AAAYAAYAAAADAP7/AAAYAAcAAAADAP//AAAYAAgAAAADAAAAAAAYAAkAAAADAAEAAAAYAAoAAAADAAIAAAAYAAsAAAADAAMAAAAYAAwAAAADAAQAAAAYAA0AAAADAAUAAAAYAA4AAAAEAPn/AAAZAAIAAAAEAPr/AAAZAAMAAAAEAPv/AAAZAAQAAAAEAPz/AAAZAAUAAAAEAP3/AAAZAAYAAAAEAP7/AAAZAAcAAAAEAP//AAAZAAgAAAAEAAAAAAAZAAkAAAAEAAEAAAAZAAoAAAAEAAIAAAAZAAsAAAAEAAMAAAAZAAwAAAAEAAQAAAAZAA0AAAAEAAUAAAAZAA4AAAA=")
 tile_set = SubResource("TileSet_svtxo")
 
-[node name="Area2D" type="Area2D" parent="." unique_id=1448547754]
+[node name="area2d" type="Area2D" parent="." unique_id=1448547754]
+collision_mask = 4
 script = SubResource("GDScript_iuafe")
 
-[node name="Proximity" type="CollisionShape2D" parent="Area2D" unique_id=885302796]
+[node name="proximity" type="CollisionShape2D" parent="area2d" unique_id=885302796]
 position = Vector2(-10.5, -5)
 shape = SubResource("RectangleShape2D_c53l5")
 
-[connection signal="body_entered" from="Area2D" to="Area2D" method="_on_body_entered"]
-[connection signal="body_exited" from="Area2D" to="Area2D" method="_on_body_exited"]
+[connection signal="body_entered" from="area2d" to="area2d" method="_on_body_entered"]
+[connection signal="body_exited" from="area2d" to="area2d" method="_on_body_exited"]

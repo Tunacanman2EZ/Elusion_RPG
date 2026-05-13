@@ -5,9 +5,8 @@
 [ext_resource type="Texture2D" uid="uid://b6o0vycnkasgi" path="res://art/maincharacter/warrior3.png" id="3_4w1p4"]
 [ext_resource type="Texture2D" uid="uid://b8qu2hjt00qkb" path="res://art/maincharacter/warrior2.png" id="4_4rile"]
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_5gggr"]
-radius = 9.0
-height = 28.0
+[sub_resource type="CircleShape2D" id="CircleShape2D_iybb3"]
+radius = 7.0
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ddtn8"]
 atlas = ExtResource("2_qbecf")
@@ -639,7 +638,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_bk4x3")
 }],
-"loop": true,
+"loop": false,
 "name": &"deathdown",
 "speed": 5.0
 }, {
@@ -671,7 +670,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_c8awi")
 }],
-"loop": true,
+"loop": false,
 "name": &"deathleft",
 "speed": 5.0
 }, {
@@ -703,7 +702,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_7kh3b")
 }],
-"loop": true,
+"loop": false,
 "name": &"deathright",
 "speed": 5.0
 }, {
@@ -735,7 +734,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_i13qj")
 }],
-"loop": true,
+"loop": false,
 "name": &"deathup",
 "speed": 5.0
 }, {
@@ -749,7 +748,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_oopac")
 }],
-"loop": true,
+"loop": false,
 "name": &"hitflashdown",
 "speed": 5.0
 }, {
@@ -763,7 +762,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_311i8")
 }],
-"loop": true,
+"loop": false,
 "name": &"hitflashleft",
 "speed": 5.0
 }, {
@@ -777,7 +776,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_cwpd0")
 }],
-"loop": true,
+"loop": false,
 "name": &"hitflashright",
 "speed": 5.0
 }, {
@@ -791,7 +790,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_e62gw")
 }],
-"loop": true,
+"loop": false,
 "name": &"hitflashup",
 "speed": 5.0
 }, {
@@ -981,24 +980,35 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_iybb3"]
-radius = 11.0
-height = 38.0
+radius = 8.0
+height = 60.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_0t7bt"]
 height = 36.0
 
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_qbecf"]
+radius = 8.0
+height = 60.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_4w1p4"]
+radius = 12.0
+height = 60.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_4rile"]
+radius = 19.0
+height = 58.0
+
 [node name="warrior" type="CharacterBody2D" unique_id=781238535]
 y_sort_enabled = true
 texture_filter = 1
-position = Vector2(-1, -15)
 collision_layer = 4
 collision_mask = 3
 script = ExtResource("1_iybb3")
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=1895518730]
 texture_filter = 1
-position = Vector2(0, 2)
-shape = SubResource("CapsuleShape2D_5gggr")
+position = Vector2(1, 2)
+shape = SubResource("CircleShape2D_iybb3")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1319435616]
 y_sort_enabled = true
@@ -1006,22 +1016,22 @@ texture_filter = 1
 position = Vector2(0, 15)
 scale = Vector2(1.109375, 1.015625)
 sprite_frames = SubResource("SpriteFrames_ih3hd")
-animation = &"attackleft"
-frame = 4
+animation = &"hitflashup"
 speed_scale = 1.5
 offset = Vector2(0, -16)
 
-[node name="hitbox" type="Area2D" parent="." unique_id=1858165833]
+[node name="hitboxleft" type="Area2D" parent="." unique_id=1858165833]
 collision_layer = 32
 collision_mask = 8
 
-[node name="collisionshape2d" type="CollisionShape2D" parent="hitbox" unique_id=2136183269]
-position = Vector2(1, 1)
+[node name="collisionshape2d" type="CollisionShape2D" parent="hitboxleft" unique_id=2136183269]
+position = Vector2(-4, -1)
+rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_iybb3")
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=1400725654]
 collision_layer = 4
-collision_mask = 72
+collision_mask = 64
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=1956716044]
 position = Vector2(1, 1)
@@ -1045,5 +1055,36 @@ offset_bottom = -20.0
 texture_filter = 1
 zoom = Vector2(3, 3)
 
-[connection signal="animation_finished" from="animatedsprite2d" to="." method="_on_animated_sprite_2d_animation_finished"]
-[connection signal="area_entered" from="hitbox" to="." method="_on_hitbox_area_entered"]
+[node name="hitboxright" type="Area2D" parent="." unique_id=1186619930]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="hitboxright" unique_id=1302896671]
+position = Vector2(4, -1)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_qbecf")
+debug_color = Color(0.9131094, 0.21419215, 0.5101747, 0.41960785)
+
+[node name="hitboxup" type="Area2D" parent="." unique_id=2025225062]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="hitboxup" unique_id=1151075294]
+position = Vector2(3, -21)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_4w1p4")
+
+[node name="hitboxdown" type="Area2D" parent="." unique_id=514226487]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="hitboxdown" unique_id=2130232141]
+position = Vector2(7, 10)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_4rile")
+
+[node name="wavespawnleft" type="Marker2D" parent="." unique_id=501535175]
+position = Vector2(-36, -1)
+
+[node name="wavespawnright" type="Marker2D" parent="." unique_id=1645835551]
+position = Vector2(36, -1)
+
+[node name="wavespawnup" type="Marker2D" parent="." unique_id=1382551829]
+position = Vector2(1, -35)
+
+[node name="wavespawndown" type="Marker2D" parent="." unique_id=1371355413]
+position = Vector2(1, 30)

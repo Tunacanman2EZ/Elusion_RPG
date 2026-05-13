@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/projectiles/arrow.gd" id="1_yspra"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_yspra"]
-radius = 2.0
+radius = 1.0
 height = 16.0
 
 [node name="arrow" type="Area2D" unique_id=393929235]

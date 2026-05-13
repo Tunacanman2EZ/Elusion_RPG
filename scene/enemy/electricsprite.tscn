@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" uid="uid://v4304f6hy5ui" path="res://src/enemies/electricspirit.gd" id="1_qfaod"]
 [ext_resource type="Texture2D" uid="uid://db7fkgqqydvh7" path="res://art/enemy/electricsprite.png" id="2_vprnr"]
-[ext_resource type="Texture2D" uid="uid://chv7j5j7sgxib" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_09.png" id="3_fy2rl"]
-[ext_resource type="Texture2D" uid="uid://cr3b5ffq28xuv" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_06.png" id="4_56m4t"]
+[ext_resource type="Texture2D" uid="uid://b1i7c7i3eu80" path="res://art/images/3_Animation 1_1.png" id="3_fy2rl"]
+[ext_resource type="Texture2D" uid="uid://cy8ini2n25byq" path="res://art/images/3_Animation 1_0.png" id="4_56m4t"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_cte2n"]
 atlas = ExtResource("2_vprnr")
@@ -698,16 +698,17 @@ height = 32.0
 
 [node name="electricsprite" type="CharacterBody2D" unique_id=289962471]
 texture_filter = 1
-position = Vector2(0, -4)
 collision_layer = 8
 collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_qfaod")
+leash_range = 500.0
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1382034932]
 y_sort_enabled = true
 sprite_frames = SubResource("SpriteFrames_1up8b")
 animation = &"attackright"
+frame = 5
 offset = Vector2(0, -16)
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=9522945]
@@ -716,13 +717,16 @@ offset = Vector2(0, -16)
 position = Vector2(0, -14)
 shape = SubResource("CapsuleShape2D_56m4t")
 
-[node name="healthbar" type="TextureProgressBar" parent="." unique_id=779148548]
+[node name="healthbar" type="TextureProgressBar" parent="." unique_id=128019405]
 texture_filter = 1
-offset_left = -32.0
-offset_top = -58.0
-offset_right = 128.0
-offset_bottom = -18.0
-value = 100.0
+custom_minimum_size = Vector2(30, 4)
+offset_left = -15.0
+offset_top = -47.0
+offset_right = 465.0
+offset_bottom = 81.0
+min_value = 35.0
+max_value = 35.0
+value = 35.0
 fill_mode = 1
 texture_under = ExtResource("3_fy2rl")
 texture_progress = ExtResource("4_56m4t")

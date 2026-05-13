@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://bjjfm61rvs0jm"]
 
-[ext_resource type="Script" uid="uid://bcc12su0q1ug8" path="res://src/inventory_screen.gd" id="1_screen"]
-[ext_resource type="Script" uid="uid://bc57yob44578e" path="res://src/inventorycontainerui.gd" id="2_container"]
+[ext_resource type="Script" uid="uid://c8i5b7j3mu2hv" path="res://src/ui/inventoryscreen.gd" id="2_ncbfh"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
+[ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventorycontainer.gd" id="3_x3yba"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip_separator"]
 content_margin_top = 1.0
@@ -20,23 +20,26 @@ corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
-[node name="InventoryScreen" type="Control"]
-custom_minimum_size = Vector2(250, 450)
+[node name="inventoryscreen" type="Control" unique_id=1169906003]
 layout_mode = 3
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
+offset_left = -125.0
+offset_top = -225.0
+offset_right = 149.0
+offset_bottom = 225.0
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 theme = ExtResource("3_theme")
-script = ExtResource("1_screen")
+script = ExtResource("2_ncbfh")
 
-[node name="MainPanel" type="PanelContainer" parent="."]
+[node name="mainpanel" type="PanelContainer" parent="." unique_id=1358899883]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -44,25 +47,25 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="MainPanel"]
+[node name="margincontainer" type="MarginContainer" parent="mainpanel" unique_id=225496306]
 layout_mode = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 12
 theme_override_constants/margin_bottom = 12
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer"]
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer" unique_id=1623378330]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="HeaderPanel" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1312552404]
 layout_mode = 2
 theme_type_variation = &"PanelHeader"
 
-[node name="HBoxContainer" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel"]
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel" unique_id=1325984035]
 layout_mode = 2
 
-[node name="HeaderLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer"]
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1587516618]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
@@ -70,7 +73,8 @@ theme_override_font_sizes/font_size = 20
 text = "INVENTORY"
 horizontal_alignment = 1
 
-[node name="CloseButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer/HeaderPanel/HBoxContainer"]
+[node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1719753082]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
@@ -79,77 +83,80 @@ theme_override_font_sizes/font_size = 18
 text = "×"
 flat = true
 
-[node name="HSeparator" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="hseparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1913068419]
 layout_mode = 2
 
-[node name="CurrencyPanel" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="currencypanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=986007530]
 layout_mode = 2
 theme_type_variation = &"PanelSub"
 
-[node name="CurrencyHBox" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel"]
+[node name="currencyhbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel" unique_id=11114280]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="GoldContainer" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox"]
+[node name="goldcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox" unique_id=1715886666]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="GoldIcon" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/GoldContainer"]
+[node name="goldicon" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=839725113]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
 theme_override_font_sizes/font_size = 14
 text = "◆"
 
-[node name="GoldLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/GoldContainer"]
+[node name="goldlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=149820312]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
 theme_override_font_sizes/font_size = 12
 text = "Gold: 0"
 
-[node name="LusionsContainer" type="HBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox"]
+[node name="lusionscontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox" unique_id=774710298]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="LusionIcon" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/LusionsContainer"]
+[node name="lusionicon" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/lusionscontainer" unique_id=762917998]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.6, 0.85, 1, 1)
 theme_override_font_sizes/font_size = 14
 text = "✦"
 
-[node name="LusionsLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/CurrencyPanel/CurrencyHBox/LusionsContainer"]
+[node name="lusionslabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/lusionscontainer" unique_id=91406067]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.9, 1, 1)
 theme_override_font_sizes/font_size = 12
 text = "Lusions: 0"
 
-[node name="HSeparator2" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1707617651]
 layout_mode = 2
 
-[node name="InventoryScroll" type="ScrollContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="inventoryscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1050388235]
 custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="ScrollContent" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/InventoryScroll"]
+[node name="scrollcontent" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/inventoryscroll" unique_id=454690486]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
 
-[node name="InventoryContainer" type="GridContainer" parent="MainPanel/MarginContainer/VBoxContainer/InventoryScroll/ScrollContent"]
+[node name="inventorycontainer" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/inventoryscroll/scrollcontent" unique_id=359467517]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_vertical = 3
 theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
 columns = 5
-script = ExtResource("2_container")
+script = ExtResource("3_x3yba")
 
-[node name="ItemTooltip" type="PanelContainer" parent="."]
+[node name="itemtooltip" type="PanelContainer" parent="." unique_id=1963751465]
 unique_name_in_owner = true
 visible = false
 z_index = 100
@@ -159,7 +166,7 @@ offset_bottom = 150.0
 mouse_filter = 2
 theme_type_variation = &"PanelTooltip"
 
-[node name="MarginContainer" type="MarginContainer" parent="ItemTooltip"]
+[node name="margincontainer" type="MarginContainer" parent="itemtooltip" unique_id=2120921974]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 10
@@ -167,17 +174,17 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 8
 
-[node name="VBoxContainer" type="VBoxContainer" parent="ItemTooltip/MarginContainer"]
+[node name="vboxcontainer" type="VBoxContainer" parent="itemtooltip/margincontainer" unique_id=33870140]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="HeaderHBox" type="HBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="headerhbox" type="HBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=910648105]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="TooltipIcon" type="TextureRect" parent="ItemTooltip/MarginContainer/VBoxContainer/HeaderHBox"]
+[node name="tooltipicon" type="TextureRect" parent="itemtooltip/margincontainer/vboxcontainer/headerhbox" unique_id=1255224810]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
@@ -185,7 +192,7 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="TooltipName" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/HeaderHBox"]
+[node name="tooltipname" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/headerhbox" unique_id=2117220526]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -195,12 +202,12 @@ theme_override_font_sizes/font_size = 14
 text = "Item Name"
 vertical_alignment = 1
 
-[node name="HSeparator" type="HSeparator" parent="ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="hseparator" type="HSeparator" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=1615119583]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxFlat_tooltip_separator")
 
-[node name="TooltipDescription" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="tooltipdescription" type="Label" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=1211112562]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.82, 0.75, 1)
@@ -208,34 +215,34 @@ theme_override_font_sizes/font_size = 11
 text = "Item description goes here."
 autowrap_mode = 2
 
-[node name="HSeparator2" type="HSeparator" parent="ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="hseparator2" type="HSeparator" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=1407194313]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxFlat_tooltip_separator")
 
-[node name="StatsContainer" type="VBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer"]
+[node name="statscontainer" type="VBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=1858081500]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 3
 
-[node name="ValueStat" type="PanelContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
+[node name="valuestat" type="PanelContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer" unique_id=818627631]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat"]
+[node name="hboxcontainer" type="HBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/valuestat" unique_id=2143575554]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Label" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat/HBoxContainer"]
+[node name="label" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/valuestat/hboxcontainer" unique_id=1542924308]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
 theme_override_font_sizes/font_size = 10
 text = "Value:"
 
-[node name="TooltipValue" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/ValueStat/HBoxContainer"]
+[node name="tooltipvalue" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/valuestat/hboxcontainer" unique_id=2088439535]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
@@ -243,23 +250,23 @@ theme_override_font_sizes/font_size = 10
 text = "100"
 horizontal_alignment = 2
 
-[node name="TierStat" type="PanelContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
+[node name="tierstat" type="PanelContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer" unique_id=1289540869]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat"]
+[node name="hboxcontainer" type="HBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/tierstat" unique_id=1235073836]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Label" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat/HBoxContainer"]
+[node name="label" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/tierstat/hboxcontainer" unique_id=43972951]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
 theme_override_font_sizes/font_size = 10
 text = "Tier:"
 
-[node name="TooltipTier" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/TierStat/HBoxContainer"]
+[node name="tooltipter" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/tierstat/hboxcontainer" unique_id=1529033198]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
@@ -267,23 +274,23 @@ theme_override_font_sizes/font_size = 10
 text = "1"
 horizontal_alignment = 2
 
-[node name="LevelStat" type="PanelContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer"]
+[node name="levelstat" type="PanelContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer" unique_id=1050073983]
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat"]
+[node name="hboxcontainer" type="HBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/levelstat" unique_id=1901963076]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Label" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat/HBoxContainer"]
+[node name="label" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/levelstat/hboxcontainer" unique_id=898008069]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
 theme_override_font_sizes/font_size = 10
 text = "Required Level:"
 
-[node name="TooltipLevel" type="Label" parent="ItemTooltip/MarginContainer/VBoxContainer/StatsContainer/LevelStat/HBoxContainer"]
+[node name="tooltiplevel" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/levelstat/hboxcontainer" unique_id=1412179879]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)

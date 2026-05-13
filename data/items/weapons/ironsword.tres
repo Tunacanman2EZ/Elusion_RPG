@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b48rky73i4fpe"]
+
+[ext_resource type="Texture2D" uid="uid://bchtvr6hbemwq" path="res://assets/placeholder/icons/icon449.png" id="1_ibhhg"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="1_npjud"]
+
+[resource]
+script = ExtResource("1_npjud")
+item_id = "ironsword"
+display_name = "Iron Sword"
+description = "Forged in the bushlands, where iron is rare and warriors rarer. Lifts heavy in your hand."
+icon = ExtResource("1_ibhhg")
+max_stack = 1
+value = 25
+type = 1
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

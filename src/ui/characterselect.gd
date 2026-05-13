@@ -1,40 +1,33 @@
 # character select screen — allows players to create and select characters
 extends Control
 
-# preload the main game scene so we can switch to it after selecting a character
-var elusion_scene: PackedScene = preload("res://scene/elusion.tscn")
+# preloaded reference to the main game scene
+const ELUSION_SCENE := preload("res://scene/elusion.tscn")
+
+# class assigned to each slot — slot index maps to class name
+const SLOT_CLASSES := ["warrior", "mage", "tank", "healer"]
 
 func _ready() -> void:
-	# load saved character data from disk when screen opens
+	# refresh save data from disk
+	# CharacterData also loads on autoload init, but we reload here
+	# in case the player just logged out and saved progress
 	CharacterData.load_data()
-
-	# safety check — ensure character slots array is valid
-	# resets to 4 empty slots if data is missing or corrupted
-	if CharacterData.character_slots == null \
-			or typeof(CharacterData.character_slots) != TYPE_ARRAY \
-			or CharacterData.character_slots.size() != 4:
-		CharacterData.character_slots = [null, null, null, null]
 
 	# refresh the UI to show current slot data
 	update_slot_labels()
 
 func update_slot_labels() -> void:
-	# get references to all 4 slot labels using unique name % syntax
-	var labels = [%Label_1, %Label_2, %Label_3, %Label_4]
-
-	# get references to all 4 create buttons
-	var create_btns = [%CreateButton_1, %CreateButton_2, %CreateButton_3, %CreateButton_4]
-
-	# get references to all 4 select buttons
-	var select_btns = [%SelectButton_1, %SelectButton_2, %SelectButton_3, %SelectButton_4]
+	# get references to slot UI nodes via unique name % syntax
+	var labels = [%label1, %label2, %label3, %label4]
+	var create_btns = [%createbutton1, %createbutton2, %createbutton3, %createbutton4]
+	var select_btns = [%selectbutton1, %selectbutton2, %selectbutton3, %selectbutton4]
 
 	# loop through all 4 slots and update the UI for each
 	for i in range(4):
-		# get the save data for this slot
 		var slot = CharacterData.character_slots[i]
 
 		# check if this slot has valid character data
-		var is_valid = slot != null \
+		var is_valid: bool = slot != null \
 			and typeof(slot) == TYPE_DICTIONARY \
 			and slot.has("character") \
 			and slot.has("level")
@@ -42,63 +35,49 @@ func update_slot_labels() -> void:
 		if is_valid:
 			# slot has a character — show their name and level
 			labels[i].text = "%s  |  level: %d" % [slot["character"], slot["level"]]
-
-			# disable create button — slot is already taken
-			create_btns[i].disabled = true
-
-			# enable select button — player can enter this character
-			select_btns[i].disabled = false
+			create_btns[i].disabled = true   # slot taken — can't create
+			select_btns[i].disabled = false  # character exists — can select
 		else:
-			# slot is empty — show placeholder text
+			# slot is empty — show placeholder
 			labels[i].text = "empty slot"
-
-			# enable create button — player can create a character here
-			create_btns[i].disabled = false
-
-			# disable select button — no character to select
-			select_btns[i].disabled = true
+			create_btns[i].disabled = false  # empty — can create
+			select_btns[i].disabled = true   # no character — can't select
 
 # --- create button handlers — one per slot ---
+# these are connected via the editor signals panel.
+# function names must match the connections in the .tscn file.
 
-func _on_CreateButton_1_pressed() -> void:
-	# create a warrior in slot 1 (index 0)
-	CharacterData.create_character(0, "warrior")
+func _on_createbutton1_pressed() -> void:
+	CharacterData.create_character(0, SLOT_CLASSES[0])
 	update_slot_labels()
 
-func _on_CreateButton_2_pressed() -> void:
-	# create a mage in slot 2 (index 1)
-	CharacterData.create_character(1, "mage")
+func _on_createbutton2_pressed() -> void:
+	CharacterData.create_character(1, SLOT_CLASSES[1])
 	update_slot_labels()
 
-func _on_CreateButton_3_pressed() -> void:
-	# create a tank in slot 3 (index 2)
-	CharacterData.create_character(2, "tank")
+func _on_createbutton3_pressed() -> void:
+	CharacterData.create_character(2, SLOT_CLASSES[2])
 	update_slot_labels()
 
-func _on_CreateButton_4_pressed() -> void:
-	# create a healer in slot 4 (index 3)
-	CharacterData.create_character(3, "healer")
+func _on_createbutton4_pressed() -> void:
+	CharacterData.create_character(3, SLOT_CLASSES[3])
 	update_slot_labels()
 
 # --- select button handlers — one per slot ---
 
-func _on_SelectButton_1_pressed() -> void:
-	# select the character in slot 1
-	_select_character(0, "warrior")
+func _on_selectbutton1_pressed() -> void:
+	_select_character(0)
 
-func _on_SelectButton_2_pressed() -> void:
-	# select the character in slot 2
-	_select_character(1, "mage")
+func _on_selectbutton2_pressed() -> void:
+	_select_character(1)
 
-func _on_SelectButton_3_pressed() -> void:
-	# select the character in slot 3
-	_select_character(2, "tank")
+func _on_selectbutton3_pressed() -> void:
+	_select_character(2)
 
-func _on_SelectButton_4_pressed() -> void:
-	# select the character in slot 4
-	_select_character(3, "healer")
+func _on_selectbutton4_pressed() -> void:
+	_select_character(3)
 
-func _select_character(idx: int, _name: String) -> void:
+func _select_character(idx: int) -> void:
 	# get the save data for the selected slot
 	var slot = CharacterData.character_slots[idx]
 
@@ -111,13 +90,15 @@ func _select_character(idx: int, _name: String) -> void:
 		return
 
 	# confirm selection in the output panel
-	print("selected %s in slot %d" % [_name, idx + 1])
+	print("selected %s in slot %d" % [slot["character"], idx + 1])
 
-	# store the selected slot index in characterdata autoload
+	# set this slot as the active character
 	CharacterData.active_character_index = idx
 
-	# save the active character selection to disk
+	# save the active selection to disk
 	CharacterData.save_data()
 
 	# switch to the main game scene
-	get_tree().change_scene_to_packed(elusion_scene)
+	# the player's _ready() should call CharacterData.load_character_state(self)
+	# to pull stats from the slot into the player instance
+	get_tree().change_scene_to_packed(ELUSION_SCENE)

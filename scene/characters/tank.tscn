@@ -424,7 +424,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_vl27r")
 }],
-"loop": true,
+"loop": false,
 "name": &"deathdown",
 "speed": 5.0
 }, {
@@ -447,7 +447,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_hou2i")
 }],
-"loop": true,
+"loop": false,
 "name": &"deathleft",
 "speed": 5.0
 }, {
@@ -470,7 +470,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_ncyic")
 }],
-"loop": true,
+"loop": false,
 "name": &"deathright",
 "speed": 5.0
 }, {
@@ -493,7 +493,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_4n5vp")
 }],
-"loop": true,
+"loop": false,
 "name": &"deathup",
 "speed": 5.0
 }, {
@@ -521,7 +521,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_5n70e")
 }],
-"loop": true,
+"loop": false,
 "name": &"hitflashleft",
 "speed": 5.0
 }, {
@@ -535,7 +535,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_p7poj")
 }],
-"loop": true,
+"loop": false,
 "name": &"hitflashright",
 "speed": 5.0
 }, {
@@ -549,7 +549,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_f0fpb")
 }],
-"loop": true,
+"loop": false,
 "name": &"hitflashup",
 "speed": 5.0
 }, {
@@ -572,7 +572,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_7mkok")
 }],
-"loop": true,
+"loop": false,
 "name": &"idledown",
 "speed": 5.0
 }, {
@@ -787,6 +787,8 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_6lggi"]
+radius = 14.333334
+height = 30.88889
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_epmd0"]
 atlas = ExtResource("2_6lggi")
@@ -839,12 +841,19 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_xt8cs"]
-radius = 51.0
-height = 160.0
+radius = 47.0
+height = 164.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_j1aco"]
+radius = 18.0
+height = 44.0
 
 [node name="tank" type="CharacterBody2D" unique_id=724977901]
+light_mask = 3
+visibility_layer = 4
 y_sort_enabled = true
 texture_filter = 1
+scale = Vector2(0.9, 0.9)
 collision_layer = 4
 collision_mask = 19
 motion_mode = 1
@@ -854,12 +863,13 @@ script = ExtResource("1_kkm52")
 texture_filter = 1
 position = Vector2(-1, -20)
 sprite_frames = SubResource("SpriteFrames_epri2")
-animation = &"walkdown"
+animation = &"idledown"
 offset = Vector2(0, -16)
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=309465999]
-position = Vector2(-2, -34)
+position = Vector2(-1, -18)
 shape = SubResource("CapsuleShape2D_6lggi")
+debug_color = Color(0.9294581, 0.090397246, 0.6164005, 0.41960785)
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=1489667327]
 texture_filter = 1
@@ -868,7 +878,7 @@ position_smoothing_enabled = true
 
 [node name="firering" type="AnimatedSprite2D" parent="." unique_id=1899786570]
 texture_filter = 1
-position = Vector2(-104.99999, -149)
+position = Vector2(-105, -146)
 scale = Vector2(1.6249999, 1.5972222)
 sprite_frames = SubResource("SpriteFrames_1hx8c")
 animation = &"firering"
@@ -877,11 +887,23 @@ speed_scale = 0.5
 centered = false
 
 [node name="aura" type="Area2D" parent="." unique_id=1885856176]
+z_index = -1
+texture_filter = 1
 position = Vector2(-1, -19)
 collision_layer = 4
 collision_mask = 8
+monitorable = false
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="aura" unique_id=798835221]
-position = Vector2(0, 3)
+position = Vector2(0, 4)
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_xt8cs")
+
+[node name="hurtbox" type="Area2D" parent="." unique_id=785314498]
+collision_layer = 4
+collision_mask = 64
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="hurtbox" unique_id=1997584844]
+position = Vector2(-1.1111112, -33.333336)
+shape = SubResource("CapsuleShape2D_j1aco")
+debug_color = Color(0.6959545, 0.49238682, 0.13868463, 0.41960785)

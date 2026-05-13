@@ -3,8 +3,8 @@
 [ext_resource type="Script" uid="uid://cx018qe863b38" path="res://src/enemies/bushmage.gd" id="1_chk58"]
 [ext_resource type="Texture2D" uid="uid://d0ndep0ujh56x" path="res://art/enemy/bushmageattack.png" id="2_puit4"]
 [ext_resource type="Texture2D" uid="uid://3w5sl3jor5s2" path="res://art/enemy/bushmagemovement.png" id="3_ko43g"]
-[ext_resource type="Texture2D" uid="uid://chv7j5j7sgxib" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_09.png" id="4_wldbk"]
-[ext_resource type="Texture2D" uid="uid://cr3b5ffq28xuv" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_06.png" id="5_nhtsg"]
+[ext_resource type="Texture2D" uid="uid://b1i7c7i3eu80" path="res://art/images/3_Animation 1_1.png" id="4_wldbk"]
+[ext_resource type="Texture2D" uid="uid://cy8ini2n25byq" path="res://art/images/3_Animation 1_0.png" id="5_nhtsg"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_eu7fx"]
 atlas = ExtResource("2_puit4")
@@ -658,7 +658,7 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_tvagl"]
-radius = 8.0
+radius = 9.0
 height = 32.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_vvu6j"]
@@ -675,11 +675,11 @@ size = Vector2(108.25, 66.5)
 
 [node name="bushmage" type="CharacterBody2D" unique_id=709913725]
 texture_filter = 1
-position = Vector2(0, -7)
 collision_layer = 8
 collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_chk58")
+leash_range = 500.0
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=919068649]
 texture_filter = 1
@@ -695,12 +695,14 @@ shape = SubResource("CapsuleShape2D_tvagl")
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=48577092]
 texture_filter = 1
-offset_left = -19.0
-offset_top = -43.0
-offset_right = 141.0
-offset_bottom = -11.0
+offset_left = -11.0
+offset_top = -39.0
+offset_right = 149.0
+offset_bottom = -7.0
 scale = Vector2(0.5, 0.5)
-value = 100.0
+min_value = 40.0
+max_value = 40.0
+value = 40.0
 fill_mode = 1
 texture_under = ExtResource("4_wldbk")
 texture_progress = ExtResource("5_nhtsg")
@@ -721,7 +723,7 @@ position = Vector2(-1, 17)
 collision_layer = 8
 collision_mask = 4
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxleft" unique_id=340199033]
+[node name="collisionshape2d" type="CollisionShape2D" parent="attackboxleft" unique_id=340199033]
 position = Vector2(-46, -12)
 shape = SubResource("RectangleShape2D_wldbk")
 
@@ -729,7 +731,7 @@ shape = SubResource("RectangleShape2D_wldbk")
 collision_layer = 8
 collision_mask = 4
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxup" unique_id=55941429]
+[node name="collisionshape2d" type="CollisionShape2D" parent="attackboxup" unique_id=55941429]
 position = Vector2(-2, -40)
 shape = SubResource("RectangleShape2D_nhtsg")
 
@@ -737,6 +739,6 @@ shape = SubResource("RectangleShape2D_nhtsg")
 collision_layer = 8
 collision_mask = 4
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="attackboxdown" unique_id=1408769476]
+[node name="collisionshape2d" type="CollisionShape2D" parent="attackboxdown" unique_id=1408769476]
 position = Vector2(-3, 44)
 shape = SubResource("RectangleShape2D_3d2ue")
