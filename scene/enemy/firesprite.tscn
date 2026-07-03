@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" uid="uid://wqaarl16xnnp" path="res://src/enemies/firesprite.gd" id="1_msv7k"]
 [ext_resource type="Texture2D" uid="uid://ddj2u5guyytbb" path="res://art/enemy/firesprite.png" id="2_jrjah"]
-[ext_resource type="Texture2D" uid="uid://b1i7c7i3eu80" path="res://art/images/3_Animation 1_1.png" id="3_tik12"]
-[ext_resource type="Texture2D" uid="uid://cy8ini2n25byq" path="res://art/images/3_Animation 1_0.png" id="4_5bmra"]
+[ext_resource type="Texture2D" uid="uid://b1i7c7i3eu80" path="res://art/images/monsterhpempty.png" id="3_tik12"]
+[ext_resource type="Texture2D" uid="uid://cy8ini2n25byq" path="res://art/images/monsterhpfull.png" id="4_5bmra"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_3ghro"]
 atlas = ExtResource("2_jrjah")
@@ -696,14 +696,16 @@ animations = [{
 "speed": 5.0
 }]
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_wjhka"]
-radius = 9.0
-height = 38.0
-
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_tik12"]
-height = 38.0
+radius = 6.0
+height = 12.0
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_5bmra"]
+radius = 9.0
+height = 32.0
 
 [node name="firesprite" type="CharacterBody2D" unique_id=736242394]
+y_sort_enabled = true
 texture_filter = 1
 collision_layer = 8
 collision_mask = 3
@@ -712,24 +714,16 @@ script = ExtResource("1_msv7k")
 leash_range = 500.0
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=392472798]
-y_sort_enabled = true
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_et1wx")
 animation = &"attackup"
 offset = Vector2(0, -16)
 
-[node name="hitbox" type="Area2D" parent="." unique_id=1897405412]
-position = Vector2(17, -11)
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="hitbox" unique_id=203757361]
-position = Vector2(-16, -3)
-shape = SubResource("CapsuleShape2D_wjhka")
-
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=387788377]
 offset_left = -18.0
-offset_top = -53.0
+offset_top = -46.0
 offset_right = 142.0
-offset_bottom = -13.0
+offset_bottom = -6.0
 min_value = 40.0
 max_value = 40.0
 value = 40.0
@@ -739,8 +733,8 @@ texture_progress = ExtResource("4_5bmra")
 
 [node name="attacktimer" type="Timer" parent="." unique_id=846679983]
 
-[node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=1394985736]
-position = Vector2(1, -14)
+[node name="bodyshape" type="CollisionShape2D" parent="." unique_id=1394985736]
+position = Vector2(0, -1)
 shape = SubResource("CapsuleShape2D_tik12")
 
 [node name="orbspawnbottom" type="Marker2D" parent="." unique_id=1888128203]
@@ -755,3 +749,18 @@ position = Vector2(-22, -24)
 
 [node name="orbspawntop" type="Marker2D" parent="." unique_id=1675768830]
 position = Vector2(9, -24)
+
+[node name="hurtbox" type="Area2D" parent="." unique_id=1155883984]
+position = Vector2(1, -16)
+collision_layer = 8
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=1403269595]
+position = Vector2(0, 2)
+shape = SubResource("CapsuleShape2D_5bmra")
+debug_color = Color(0.4397211, 0.59804714, 0.10347933, 0.41960785)
+
+[node name="damagerecievedlabel" type="Label" parent="." unique_id=241450995]
+offset_left = -19.0
+offset_top = -43.0
+offset_right = 21.0
+offset_bottom = -20.0

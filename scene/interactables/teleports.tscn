@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://y7mjmefw8b0j"]
+
+[ext_resource type="Script" uid="uid://dm0wvqr63gv05" path="res://src/world/teleporter_2.gd" id="1_wwtix"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_impho"]
+radius = 38.3351
+
+[node name="teleporter" type="Node2D" unique_id=88436015]
+light_mask = 4
+visibility_layer = 16
+texture_filter = 1
+
+[node name="teleporter" type="Area2D" parent="." unique_id=1088152715]
+scale = Vector2(0.928403, 0.135342)
+script = ExtResource("1_wwtix")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="teleporter" unique_id=1980648528]
+modulate = Color(0, 0, 0, 1)
+self_modulate = Color(0.00184107, 0.00184107, 0.00184107, 1)
+z_index = 1
+texture_filter = 1
+rotation = 3.14159
+scale = Vector2(0.532251, -2.53758)
+shape = SubResource("CircleShape2D_impho")
+debug_color = Color(0.954221, 0.990519, 1, 0.42)
+
+[node name="DestinationPoint" type="Marker2D" parent="teleporter" unique_id=680847466]
+texture_filter = 1
+position = Vector2(510.55414, 7063.587)
+
+[connection signal="body_entered" from="teleporter" to="teleporter" method="_on_body_entered"]

@@ -1,128 +1,174 @@
 # local file-based storage backend for save data.
 # implements atomic writes with automatic backup and crash recovery.
+#
 # this class knows about files and JSON — but knows NOTHING about characters,
 # stats, or game logic. it just stores and retrieves dictionaries.
+#
+# atomic write flow:
+# 1. write the new payload to a .tmp file (existing save untouched)
+# 2. copy the current save to .bak (backup before overwrite)
+# 3. delete the existing save
+# 4. rename .tmp to the real save name (atomic OS operation)
+# at no point can a crash leave a half-written save file. either:
+# - .tmp exists with the new payload, .save unchanged → recoverable
+# - .save exists with the new payload, .tmp gone → completed
+# the .bak gives a second-chance fallback if both fail somehow.
 #
 # to swap for a different storage backend (e.g. server-based for MMO),
 # write a new class with the same save() and load() methods.
 class_name LocalStorage
 extends RefCounted
 
-# file paths for the save, temp, and backup files
-var save_path: String
-var tmp_path: String
+
+# =============================================================================
+# STATE
+# =============================================================================
+
+# absolute paths to the three save files (real, temp, backup).
+# derived from the base_path passed to _init().
+var save_path:   String
+var tmp_path:    String
 var backup_path: String
 
+
+# =============================================================================
+# CONSTRUCTOR
+# =============================================================================
+
 func _init(base_path: String = "user://character.save") -> void:
-	# allow callers to specify the save file path — defaults to character.save
-	# tmp and backup are derived from the base path
-	save_path = base_path
-	tmp_path = base_path + ".tmp"
+	# allow callers to override the save location (test isolation, alt save
+	# slots, etc.). tmp and backup paths are derived from the base.
+	save_path   = base_path
+	tmp_path    = base_path + ".tmp"
 	backup_path = base_path + ".bak"
 
-func save(payload: Dictionary) -> bool:
-	# atomic save: write to a temp file, back up the current save,
-	# then rename temp to real. if anything fails partway through,
-	# the existing save file is untouched. prevents corruption on crash.
 
-	# step 1: open the temp file for writing — does NOT touch the real save yet
-	var file := FileAccess.open(tmp_path, FileAccess.WRITE)
+# =============================================================================
+# SAVE
+# =============================================================================
+
+func save(payload: Dictionary) -> bool:
+	# atomic save: write to .tmp first, back up the current save, then
+	# rename .tmp to the real save name. if any step fails, the existing
+	# save file is untouched. prevents corruption on crash.
+	if not _write_temp_file(payload):
+		return false
+
+	_backup_existing_save()
+
+	return _promote_temp_to_save()
+
+
+func _write_temp_file(payload: Dictionary) -> bool:
+	# step 1: write the new payload to .tmp.
+	# the real save file is not touched at this point — if this fails,
+	# the previous save remains intact.
+	var file: FileAccess = FileAccess.open(tmp_path, FileAccess.WRITE)
 	if file == null:
 		push_error("save failed: could not open temp file. error: %s" % FileAccess.get_open_error())
 		return false
 
-	# step 2: write the payload as JSON
 	file.store_line(JSON.stringify(payload))
 	file.close()
+	return true
 
-	# step 3: if a previous save exists, copy it to the backup file
-	# uses copy_absolute with full paths — more reliable than relative copy
-	if FileAccess.file_exists(save_path):
-		# remove old backup first if it exists
-		if FileAccess.file_exists(backup_path):
-			DirAccess.remove_absolute(backup_path)
-		# copy current save to backup using absolute paths
-		var copy_err := DirAccess.copy_absolute(save_path, backup_path)
-		if copy_err != OK:
-			# backup failed but the new save is still safe in the temp file
-			# log the issue but don't abort — the main save can still proceed
-			push_warning("backup creation failed: %s (save will still proceed)" % error_string(copy_err))
 
-	# step 4: rename temp file to the real save file
-	# this is the "atomic" part — the OS does this as a single operation,
-	# so the file is either fully the old version or fully the new version,
-	# never half-written.
-	var dir := DirAccess.open("user://")
+func _backup_existing_save() -> void:
+	# step 2: copy the current save to .bak before we overwrite it.
+	# non-fatal if this fails — log a warning but let the save proceed,
+	# since the new payload is still safely on disk as .tmp.
+	if not FileAccess.file_exists(save_path):
+		return
+
+	# remove old backup before copying
+	if FileAccess.file_exists(backup_path):
+		DirAccess.remove_absolute(backup_path)
+
+	var copy_err: int = DirAccess.copy_absolute(save_path, backup_path)
+	if copy_err != OK:
+		push_warning("backup creation failed: %s (save will still proceed)" % error_string(copy_err))
+
+
+func _promote_temp_to_save() -> bool:
+	# step 3: rename .tmp to the real save file. this is the "atomic" step —
+	# the OS does the rename as a single operation, so the file is either
+	# fully the old version or fully the new one, never half-written.
+	var dir: DirAccess = DirAccess.open("user://")
 	if dir == null:
 		push_error("save failed: could not access user:// directory")
 		return false
 
-	# extract the filename from the path for the rename call
-	var save_filename := save_path.get_file()
-	var tmp_filename := tmp_path.get_file()
+	# DirAccess.rename uses filenames relative to its open path, not full paths
+	var save_filename: String = save_path.get_file()
+	var tmp_filename:  String = tmp_path.get_file()
 
-	# delete the existing save file first to be safe across platforms
+	# delete the existing save first — some platforms refuse to rename
+	# over an existing file (Windows is notorious for this).
 	if FileAccess.file_exists(save_path):
 		dir.remove(save_filename)
 
-	var err := dir.rename(tmp_filename, save_filename)
+	var err: int = dir.rename(tmp_filename, save_filename)
 	if err != OK:
 		push_error("save failed: could not finalize save. error: %s" % error_string(err))
 		return false
 
 	return true
 
+
+# =============================================================================
+# LOAD
+# =============================================================================
+
 func load() -> Dictionary:
 	# loads save data with automatic fallback to the backup file.
-	# returns the parsed dictionary on success, or empty {} if both files
-	# are missing or corrupt.
+	# returns the parsed dictionary on success, or {} if both files are
+	# missing or corrupt.
+	#
+	# fallback order:
+	# 1. try the main save file
+	# 2. if main fails AND backup exists, try the backup
+	# 3. if both fail, log critical error and return {}
 
-	# try the main save file first
-	var data := _load_file(save_path)
+	var data: Dictionary = _load_file(save_path)
 
-	# if main save failed and we have a backup, try the backup
+	# fall back to backup if main save was unreadable
 	if data.is_empty() and FileAccess.file_exists(backup_path):
 		push_warning("main save unavailable, attempting to load backup")
 		data = _load_file(backup_path)
 		if not data.is_empty():
 			print("recovered from backup save file")
 
-	# log clearly if everything failed but a save was supposed to exist
+	# critical: save file exists but couldn't be parsed AND no backup
 	if data.is_empty() and FileAccess.file_exists(save_path):
 		push_error("CRITICAL: save file exists but could not be loaded, and backup is missing or corrupt")
 
 	return data
 
+
 func _load_file(path: String) -> Dictionary:
 	# attempts to load and parse a single save file at the given path.
-	# returns the parsed dictionary on success, or empty {} on failure.
-
-	# bail early if the file doesn't exist
+	# returns {} on any failure (missing, unreadable, empty, malformed JSON,
+	# wrong root type). errors are logged with the path for diagnosability.
 	if not FileAccess.file_exists(path):
 		return {}
 
-	# try to open the file
-	var file := FileAccess.open(path, FileAccess.READ)
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		push_error("could not open save file at %s. error: %s" % [path, FileAccess.get_open_error()])
 		return {}
 
-	# read and close
-	var line := file.get_line()
+	var line: String = file.get_line()
 	file.close()
 
-	# guard against empty file
 	if line.is_empty():
 		push_error("save file at %s is empty" % path)
 		return {}
 
-	# parse the JSON
 	var data = JSON.parse_string(line)
 	if data == null:
 		push_error("save file at %s contains invalid JSON" % path)
 		return {}
 
-	# guard against unexpected structure
 	if typeof(data) != TYPE_DICTIONARY:
 		push_error("save file at %s does not contain a dictionary" % path)
 		return {}

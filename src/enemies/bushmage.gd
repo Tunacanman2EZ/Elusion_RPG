@@ -1,82 +1,197 @@
-# bushmage enemy — melee attacker that uses directional vine attack boxes
-# chases the player and holds at roughly 1 tile away, then attacks
+# bushmage enemy — ranged caster that summons a stationary vine attack
+# in front of itself, stretching toward the player. holds at roughly 1 tile
+# away and casts when the player is in range.
+#
+# attack flow:
+# 1. bushmage plays directional attack animation (attackleft/right/up/down)
+# 2. on contact_frame, spawns vine.tscn at bushmage's position
+# 3. vine plays its own stretch animation in the same direction
+# 4. vine damages player on its own impact frame
+# 5. vine despawns when its animation finishes
+#
+# spawn guard:
+# _vine_spawned_this_attack flag ensures only ONE vine per attack cycle,
+# even if the attack animation loops or frame_changed fires extra times.
+# the flag resets at the start of each new _trigger_attack call.
+#
+# this differs from BaseEnemy._physics_process because bushmage uses
+# chase-and-hold positioning (target distance ~1 tile) rather than the
+# default flee/attack/idle state machine.
 extends BaseEnemy
 class_name BushMage
 
+
+# =============================================================================
+# EXPORTED SETTINGS
+# =============================================================================
+
+# damage dealt by the vine effect (passed to the spawned vine instance)
 @export var attack_power: int = 8
-@export var desired_distance: float = 32.0  # 1 tile — adjust to your tile size
-@export var distance_tolerance: float = 4.0  # dead zone to prevent jitter
-@export var contact_frame: int = 3  # frame of attack anim where damage is dealt
+
+# preferred distance from player — bushmage chases/backs off to hold this
+@export var desired_distance:   float = 32.0  # ~1 tile
+@export var distance_tolerance: float = 4.0   # dead zone to prevent jitter
+
+# frame of the bushmage attack animation where the vine spawns
+@export var contact_frame: int = 3
+
+# vine projectile scene — assign in inspector or rely on the default preload
+@export var vine_scene: PackedScene = preload("res://scene/projectiles/vine.tscn")
+
+
+# =============================================================================
+# STATE
+# =============================================================================
+
+# guards against multiple vine spawns within a single attack cycle.
+# set false on each _trigger_attack, set true after the first spawn.
+var _vine_spawned_this_attack: bool = false
+
+
+# =============================================================================
+# NODE REFERENCES
+# =============================================================================
 
 @onready var sprite: AnimatedSprite2D = $animatedsprite2d
 
+
+# =============================================================================
+# LIFECYCLE
+# =============================================================================
+
 func _ready() -> void:
-	max_hp = 80
+	# class-specific stat overrides BEFORE super._ready() so BaseEnemy
+	# wires the healthbar and attack timer with the right values
+	max_hp          = 80
 	attack_cooldown = 1.2
-	attack_range = desired_distance + 8.0  # attack range slightly larger than hold distance
-	# flee_range left at default but bushmage ignores it — see _physics_process
+	attack_range    = desired_distance + 8.0  # reach slightly past hold zone
+
 	super._ready()
+
+	# wire frame_changed so we can spawn the vine on contact_frame
 	sprite.frame_changed.connect(_on_frame_changed)
 
-func get_move_speed() -> float:
-	return 75.0
 
 func _physics_process(_delta: float) -> void:
-	# we override BaseEnemy's _physics_process entirely because bushmage
-	# uses chase-and-hold behavior instead of the default flee/attack/idle.
+	# override BaseEnemy's _physics_process entirely — bushmage uses
+	# chase-and-hold instead of the default flee/attack/idle pattern.
 	if player == null:
-		var players := get_tree().get_nodes_in_group("player")
-		if players.size() > 0:
-			player = players[0]
+		_resolve_player()
 		return
 
-	var dist := global_position.distance_to(player.global_position)
 	attack_direction = _get_direction_to_player()
 
-	if dist > desired_distance + distance_tolerance:
-		# too far — chase the player
-		var chase_dir := _get_direction_from_vec(player.global_position - global_position)
-		velocity = _vec_from_dir(chase_dir) * get_move_speed()
-		move_and_slide()
-		play_walk_animation(chase_dir)
-
-	elif dist < desired_distance - distance_tolerance:
-		# too close — back off
-		var back_dir := _get_direction_from_vec(global_position - player.global_position)
-		velocity = _vec_from_dir(back_dir) * get_move_speed()
-		move_and_slide()
-		play_walk_animation(back_dir)
-
-	else:
-		# in the sweet spot — stop and attack
+	# while attacking, freeze in place and let the animation play out
+	if is_attacking:
 		velocity = Vector2.ZERO
-		play_attack_animation(attack_direction)
-		if attack_ready:
-			_trigger_attack()
+		move_and_slide()
+		return
+
+	var dist: float = global_position.distance_to(player.global_position)
+
+	if dist > desired_distance + distance_tolerance:
+		_move_toward_player()
+	elif dist < desired_distance - distance_tolerance:
+		_back_off_from_player()
+	else:
+		_hold_and_attack()
 
 	# inherited stacking avoidance, staggered by instance id
 	if (Engine.get_physics_frames() + get_instance_id()) % 3 == 0:
 		_avoid_stacking_with_others()
 
-func _on_frame_changed() -> void:
-	# deal damage exactly at the contact frame of the attack animation
-	if sprite.animation.begins_with("attack") and sprite.frame == contact_frame:
-		_deal_melee_damage()
 
-func _deal_melee_damage() -> void:
-	# checks the directional attack box for overlapping bodies and damages the player
-	var box_name := "attackbox" + attack_direction
-	if not has_node(box_name):
-		return
-	var box := get_node(box_name)
-	if not box is Area2D:
-		return
-	for body in box.get_overlapping_bodies():
-		if body.is_in_group("player") and body.has_method("take_damage"):
-			body.take_damage(attack_power)
+# =============================================================================
+# MOVEMENT MODES
+# =============================================================================
 
-# fire_projectile is the BaseEnemy hook name — bushmage doesn't use it,
-# but we keep an empty override for documentation. damage flows through
-# _on_frame_changed -> _deal_melee_damage instead.
+func _move_toward_player() -> void:
+	# too far — chase the player in 4-directional line
+	var chase_dir: String = _get_direction_from_vec(player.global_position - global_position)
+	velocity = _vec_from_dir(chase_dir) * get_move_speed()
+	move_and_slide()
+	play_walk_animation(chase_dir)
+
+
+func _back_off_from_player() -> void:
+	# too close — back off toward open space
+	var back_dir: String = _get_direction_from_vec(global_position - player.global_position)
+	velocity = _vec_from_dir(back_dir) * get_move_speed()
+	move_and_slide()
+	play_walk_animation(back_dir)
+
+
+func _hold_and_attack() -> void:
+	# in the sweet spot — stop and cast when ready, otherwise idle
+	velocity = Vector2.ZERO
+	if attack_ready:
+		_trigger_attack()
+	else:
+		play_idle_animation(attack_direction)
+
+
+# =============================================================================
+# ATTACK OVERRIDE
+# =============================================================================
+
+func _trigger_attack() -> void:
+	# reset the spawn guard so this attack can spawn a vine.
+	# then delegate to BaseEnemy._trigger_attack which sets attack_ready,
+	# is_attacking, starts the cooldown timer, and plays the attack animation.
+	_vine_spawned_this_attack = false
+	super._trigger_attack()
+
+
+# =============================================================================
+# SUBCLASS OVERRIDES
+# =============================================================================
+
+func get_move_speed() -> float:
+	return 75.0
+
+
+# bushmage doesn't use the BaseEnemy fire_projectile hook because we spawn
+# from frame_changed instead. kept empty for documentation.
 func fire_projectile() -> void:
 	pass
+
+
+# =============================================================================
+# VINE SPAWNING
+# =============================================================================
+
+func _on_frame_changed() -> void:
+	# spawn the vine ONCE per attack cycle, on contact_frame.
+	# the spawn guard prevents multiple vines if the attack animation loops
+	# or frame_changed fires repeatedly during the same cast.
+
+	# if we're not in an attack animation, reset the guard so the next
+	# attack can spawn fresh (covers the idle->attack transition cleanly)
+	if not sprite.animation.begins_with("attack"):
+		_vine_spawned_this_attack = false
+		return
+
+	# guard: already spawned this attack
+	if _vine_spawned_this_attack:
+		return
+
+	# guard: not on the contact frame yet
+	if sprite.frame != contact_frame:
+		return
+
+	_spawn_vine()
+	_vine_spawned_this_attack = true
+
+
+func _spawn_vine() -> void:
+	# instantiate vine at bushmage's position, parent to scene root so it
+	# doesn't follow bushmage if bushmage moves during the vine's animation.
+	if vine_scene == null:
+		push_warning("BushMage: vine_scene not assigned")
+		return
+
+	var vine: Node2D = vine_scene.instantiate()
+	get_tree().current_scene.add_child(vine)
+	vine.global_position = global_position
+	vine.damage = attack_power
+	vine.fire(attack_direction)

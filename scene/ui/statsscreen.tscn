@@ -2,6 +2,15 @@
 
 [ext_resource type="Script" uid="uid://dmvq83vjfqxhi" path="res://src/ui/statsscreen.gd" id="1_stats"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
+[ext_resource type="Texture2D" uid="uid://bnhtasr5gohe2" path="res://art/icons/hpiconcharacterstats.png" id="3_ecirk"]
+[ext_resource type="Texture2D" uid="uid://bdu14t1fyfnb2" path="res://art/icons/staminaiconcharacterstats.png" id="4_rowrm"]
+[ext_resource type="Texture2D" uid="uid://brc1qc8jqtjmj" path="res://art/icons/manaiconcharacterstats.png" id="5_wrf8c"]
+[ext_resource type="Texture2D" uid="uid://esg0c3cr0ixw" path="res://art/icons/attackiconcharacterstats.png" id="6_hauye"]
+[ext_resource type="Texture2D" uid="uid://bg1qgaben8yx5" path="res://art/icons/defenceiconcharacterstats.png" id="7_nmnmi"]
+[ext_resource type="Texture2D" uid="uid://b60vpvv0gjppb" path="res://art/icons/agilityiconcharacterstats.png" id="8_0u0r4"]
+[ext_resource type="Texture2D" uid="uid://uill32t5fyk0" path="res://art/icons/magiciconcharacterstats.png" id="9_0oet0"]
+[ext_resource type="Texture2D" uid="uid://cavsu5dx05ykt" path="res://art/icons/fishingiconcharacterstats.png" id="10_23bjm"]
+[ext_resource type="Texture2D" uid="uid://b42kj0m3p6b5e" path="res://art/icons/cookingiconcharacterselection.png" id="11_mtu1p"]
 
 [node name="Statsscreen" type="Control" unique_id=378052773]
 custom_minimum_size = Vector2(350, 500)
@@ -164,6 +173,10 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "HP:"
 
+[node name="hpicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat/vbox/hbox" unique_id=1355658789]
+layout_mode = 2
+texture = ExtResource("3_ecirk")
+
 [node name="hpvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat/vbox/hbox" unique_id=38393401]
 unique_name_in_owner = true
 layout_mode = 2
@@ -194,6 +207,10 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Stamina:"
 
+[node name="staminaicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/staminastat/vbox/hbox" unique_id=909121212]
+layout_mode = 2
+texture = ExtResource("4_rowrm")
+
 [node name="staminavalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/staminastat/vbox/hbox" unique_id=907871091]
 unique_name_in_owner = true
 layout_mode = 2
@@ -223,6 +240,10 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Mana:"
+
+[node name="manaicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/manastat/vbox/hbox" unique_id=1800389430]
+layout_mode = 2
+texture = ExtResource("5_wrf8c")
 
 [node name="manavalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/manastat/vbox/hbox" unique_id=1894503892]
 unique_name_in_owner = true
@@ -262,20 +283,48 @@ text = "Combat Stats"
 horizontal_alignment = 1
 
 [node name="attackrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox" unique_id=2116890988]
+unique_name_in_owner = true
 layout_mode = 2
 
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=1834334543]
+custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Attack:"
 
+[node name="attackicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=1270178750]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("6_hauye")
+
+[node name="attackbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=101700174]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 10)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+show_percentage = false
+
+[node name="attackbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow/attackbar" unique_id=1846724919]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 85.0
+offset_top = -2.0
+offset_right = 112.0
+offset_bottom = 12.0
+theme_override_font_sizes/font_size = 10
+text = "0/100"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="attackvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=666215065]
 unique_name_in_owner = true
+texture_filter = 1
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.6, 0.4, 1)
 text = "1"
-horizontal_alignment = 2
 
 [node name="defenserow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox" unique_id=1312994536]
 layout_mode = 2
@@ -285,6 +334,37 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Defense:"
+
+[node name="defencebaricon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=873388737]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("7_nmnmi")
+
+[node name="defensebar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=1151399401]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 10)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+show_percentage = false
+
+[node name="defensebarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow/defensebar" unique_id=1794530690]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 89.0
+offset_top = -6.0
+offset_right = -83.0
+offset_bottom = 7.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 10
+text = "0/100"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="defensevalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=1348993767]
 unique_name_in_owner = true
@@ -302,6 +382,37 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Agility:"
 
+[node name="agilityicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=629385863]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("8_0u0r4")
+
+[node name="agilitybar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=1980357902]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 10)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+show_percentage = false
+
+[node name="agilitybarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow/agilitybar" unique_id=762117563]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 85.0
+offset_top = -6.0
+offset_right = -86.0
+offset_bottom = 7.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 10
+text = "0/100"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="agilityvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=842119567]
 unique_name_in_owner = true
 layout_mode = 2
@@ -317,6 +428,37 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Magic:"
+
+[node name="magicicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=1212975546]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("9_0oet0")
+
+[node name="magicbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=2066434972]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 10)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+show_percentage = false
+
+[node name="magicbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow/magicbar" unique_id=701086560]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 86.0
+offset_top = -6.0
+offset_right = -87.0
+offset_bottom = 7.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 10
+text = "0/100"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="magicvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=503675417]
 unique_name_in_owner = true
@@ -357,6 +499,35 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Fishing:"
 
+[node name="fishingicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=1965319229]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("10_23bjm")
+
+[node name="fishingbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=455983359]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 10)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+show_percentage = false
+
+[node name="fishingbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow/fishingbar" unique_id=1729450723]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -6.5
+offset_bottom = 6.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 10
+text = "0/100"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="fishingvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=67483399]
 unique_name_in_owner = true
 layout_mode = 2
@@ -373,7 +544,36 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Cooking:"
 
-[node name="cookingvaluealue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=1156372384]
+[node name="cookingicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=1626471090]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture = ExtResource("11_mtu1p")
+
+[node name="cookingbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=224907749]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 10)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+show_percentage = false
+
+[node name="cookingbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow/cookingbar" unique_id=1993200524]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -6.5
+offset_bottom = 6.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 10
+text = "0/100"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="cookingvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=1156372384]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.7, 0.4, 1)

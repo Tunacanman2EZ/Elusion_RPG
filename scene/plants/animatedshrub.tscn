@@ -1,0 +1,67 @@
+[gd_scene format=3 uid="uid://dunrwhpq1qxey"]
+
+[ext_resource type="Texture2D" uid="uid://2j3csc52ho5x" path="res://art/Tiles/plantandtiles.png" id="1_0w2jm"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_gnopa"]
+atlas = ExtResource("1_0w2jm")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_8nu2f"]
+atlas = ExtResource("1_0w2jm")
+region = Rect2(32, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hl3t6"]
+atlas = ExtResource("1_0w2jm")
+region = Rect2(64, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_nxkxk"]
+atlas = ExtResource("1_0w2jm")
+region = Rect2(96, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_vag0v"]
+atlas = ExtResource("1_0w2jm")
+region = Rect2(128, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rtrmp"]
+atlas = ExtResource("1_0w2jm")
+region = Rect2(160, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6x1wg"]
+atlas = ExtResource("1_0w2jm")
+region = Rect2(192, 0, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_gdy7b"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_gnopa")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8nu2f")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hl3t6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_nxkxk")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_vag0v")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rtrmp")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6x1wg")
+}],
+"loop": true,
+"name": &"grass",
+"speed": 5.0
+}]
+
+[node name="shrub" type="AnimatedSprite2D" unique_id=1050897925]
+sprite_frames = SubResource("SpriteFrames_gdy7b")
+animation = &"grass"
+autoplay = "grass"
+frame = 1
+frame_progress = 0.72128016

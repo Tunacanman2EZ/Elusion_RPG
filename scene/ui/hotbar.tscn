@@ -1,0 +1,153 @@
+[gd_scene format=3 uid="uid://bqw1e521x7ngr"]
+
+[ext_resource type="Script" uid="uid://csopi3oux81bg" path="res://src/ui/hotbar.gd" id="1_4c1i3"]
+[ext_resource type="Script" uid="uid://yc2wbqckw8jt" path="res://src/ui/hotbarslot.gd" id="2_veb73"]
+[ext_resource type="Texture2D" uid="uid://bv4f14feq4lo0" path="res://art/images/hotbar0.png" id="3_l23q4"]
+[ext_resource type="Texture2D" uid="uid://c5pa47hb18im8" path="res://art/images/hotbar1.png" id="4_l85tu"]
+[ext_resource type="Texture2D" uid="uid://ij8qqqskjcof" path="res://art/images/hotbar2.png" id="5_bbprc"]
+[ext_resource type="Texture2D" uid="uid://ba7lwle0ecywv" path="res://art/images/hotbar3.png" id="6_q6w7q"]
+[ext_resource type="Texture2D" uid="uid://c8324w7ajx525" path="res://art/images/hotbar4.png" id="7_ve4ro"]
+[ext_resource type="Texture2D" uid="uid://dhadq3r2hcfu0" path="res://art/images/hotbar5.png" id="8_lhyyo"]
+[ext_resource type="Texture2D" uid="uid://d07hokb6hgc15" path="res://art/images/hotbar6.png" id="9_elm0i"]
+[ext_resource type="Texture2D" uid="uid://rsul4xgnanfu" path="res://art/images/hotbar7.png" id="10_57ck0"]
+[ext_resource type="Texture2D" uid="uid://cdmueb5d3pgdb" path="res://art/images/hotbar8.png" id="11_bnnwq"]
+
+[node name="hotbar" type="HBoxContainer" unique_id=147410389]
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_4c1i3")
+
+[node name="slot1" type="PanelContainer" parent="." unique_id=1294619876]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("3_l23q4")
+
+[node name="centercontainer" type="CenterContainer" parent="slot1" unique_id=1548502929]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot1/centercontainer" unique_id=1181584708]
+layout_mode = 2
+texture = ExtResource("3_l23q4")
+
+[node name="quantitylabel" type="Label" parent="slot1" unique_id=1440662307]
+layout_mode = 2
+
+[node name="slot2" type="PanelContainer" parent="." unique_id=398101357]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("4_l85tu")
+
+[node name="centercontainer" type="CenterContainer" parent="slot2" unique_id=1804023370]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot2/centercontainer" unique_id=81891322]
+layout_mode = 2
+texture = ExtResource("4_l85tu")
+
+[node name="quantitylabel" type="Label" parent="slot2" unique_id=978305501]
+layout_mode = 2
+
+[node name="slot3" type="PanelContainer" parent="." unique_id=2080734021]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("5_bbprc")
+
+[node name="centercontainer" type="CenterContainer" parent="slot3" unique_id=584516607]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot3/centercontainer" unique_id=1948031172]
+layout_mode = 2
+texture = ExtResource("5_bbprc")
+
+[node name="quantitylabel" type="Label" parent="slot3" unique_id=1973547528]
+layout_mode = 2
+
+[node name="slot4" type="PanelContainer" parent="." unique_id=1496550858]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("6_q6w7q")
+
+[node name="centercontainer" type="CenterContainer" parent="slot4" unique_id=1598046726]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot4/centercontainer" unique_id=137418052]
+layout_mode = 2
+texture = ExtResource("6_q6w7q")
+
+[node name="quantitylabel" type="Label" parent="slot4" unique_id=178259076]
+layout_mode = 2
+
+[node name="slot5" type="PanelContainer" parent="." unique_id=1379908505]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("7_ve4ro")
+
+[node name="centercontainer" type="CenterContainer" parent="slot5" unique_id=1864824974]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot5/centercontainer" unique_id=1919741823]
+layout_mode = 2
+texture = ExtResource("7_ve4ro")
+
+[node name="quantitylabel" type="Label" parent="slot5" unique_id=511868107]
+layout_mode = 2
+
+[node name="slot6" type="PanelContainer" parent="." unique_id=687518470]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("8_lhyyo")
+
+[node name="centercontainer" type="CenterContainer" parent="slot6" unique_id=734382617]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot6/centercontainer" unique_id=1718217396]
+layout_mode = 2
+texture = ExtResource("8_lhyyo")
+
+[node name="quantitylabel" type="Label" parent="slot6" unique_id=1291083648]
+layout_mode = 2
+
+[node name="slot7" type="PanelContainer" parent="." unique_id=1179176134]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("9_elm0i")
+
+[node name="centercontainer" type="CenterContainer" parent="slot7" unique_id=294737382]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot7/centercontainer" unique_id=1880090559]
+layout_mode = 2
+texture = ExtResource("9_elm0i")
+
+[node name="quantitylabel" type="Label" parent="slot7" unique_id=884846098]
+layout_mode = 2
+
+[node name="slot8" type="PanelContainer" parent="." unique_id=2052893818]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("10_57ck0")
+
+[node name="centercontainer" type="CenterContainer" parent="slot8" unique_id=560289696]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot8/centercontainer" unique_id=1870947375]
+layout_mode = 2
+texture = ExtResource("10_57ck0")
+
+[node name="quantitylabel" type="Label" parent="slot8" unique_id=923246582]
+layout_mode = 2
+
+[node name="slot9" type="PanelContainer" parent="." unique_id=983498044]
+layout_mode = 2
+script = ExtResource("2_veb73")
+empty_icon = ExtResource("11_bnnwq")
+
+[node name="centercontainer" type="CenterContainer" parent="slot9" unique_id=739143774]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="slot9/centercontainer" unique_id=1825474752]
+layout_mode = 2
+texture = ExtResource("11_bnnwq")
+
+[node name="quantitylabel" type="Label" parent="slot9" unique_id=1012683382]
+layout_mode = 2

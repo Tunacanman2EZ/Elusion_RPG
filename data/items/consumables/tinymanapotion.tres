@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://br5na7bhq0u4f"]
+
+[ext_resource type="Texture2D" uid="uid://dsjyokpu0oq0a" path="res://art/consumables/tinymanapotion.png" id="1_x10w4"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="2_vfuga"]
+
+[resource]
+script = ExtResource("2_vfuga")
+item_id = "tinymanapotion"
+display_name = "Tiny Mana Potion"
+description = "A bottle of azure liquid. Restores 20 MP."
+icon = ExtResource("1_x10w4")
+stackable = true
+max_stack = 20
+value = 40
+type = 0
+restore_amount = 20
+restore_target = 2
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

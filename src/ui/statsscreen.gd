@@ -1,117 +1,195 @@
-# stats screen UI panel — displays player stats with bars and labels.
-# attached to res://scene/ui/statsscreen.tscn
-# - opens via the stats button in characterhud
-# - emits close_requested when the user closes it
-# - supports dragging by the header to reposition
-# - remembers position across opens within a session (static var)
+# statsscreen.gd — stats panel showing the player's level, XP, HP, mana,
+# stamina, combat stats, and skill stats with bars and labels.
+# attached to res://scene/ui/statsscreen.tscn.
+#
+# skill XP bars:
+# each of the 6 skills has a ProgressBar (0..100) + centered "XX/100" label
+# showing progress to the next skill level. fills as (skill_xp / skill_xp_next)
+# * 100; on skill level-up, skill_xp resets so the bar empties and refills.
+#
+# refresh model:
+# update_display() reads fresh values from the player on each call. the HUD
+# polls this every frame while the screen is open (characterhud._process).
 extends Control
-class_name StatsScreen
 
-# emitted when the close button is pressed so parent can hide/cleanup
+
+# =============================================================================
+# SIGNALS
+# =============================================================================
+
 signal close_requested()
 
-# --- node references — paths match the lowercase scene tree ---
-@onready var main_panel: PanelContainer = $mainpanel
-@onready var header_panel: PanelContainer = $mainpanel/margincontainer/vboxcontainer/headerpanel
-@onready var close_button: Button = $mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/closebutton
 
-# stat labels and bars — accessed via unique names (% syntax)
-# all of these require Access as Unique Name to be enabled in the scene tree
-@onready var level_label: Label = %levelvalue
-@onready var xp_label: Label = %xpvalue
-@onready var xp_bar: ProgressBar = %xpbar
-@onready var hp_label: Label = %hpvalue
-@onready var hp_bar: ProgressBar = %hpbar
-@onready var stamina_label: Label = %staminavalue
-@onready var stamina_bar: ProgressBar = %staminabar
-@onready var mana_label: Label = %manavalue
-@onready var mana_bar: ProgressBar = %manabar
-@onready var attack_label: Label = %attackvalue
+# =============================================================================
+# NODE REFERENCES — STRUCTURE
+# =============================================================================
+
+@onready var main_panel:   PanelContainer = $mainpanel
+@onready var header_panel: PanelContainer = $mainpanel/margincontainer/vboxcontainer/headerpanel
+@onready var close_button: Button         = $mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/closebutton
+
+
+# =============================================================================
+# NODE REFERENCES — STAT WIDGETS
+# =============================================================================
+
+@onready var level_label: Label       = %levelvalue
+@onready var xp_label:    Label       = %xpvalue
+@onready var xp_bar:      ProgressBar = %xpbar
+
+@onready var hp_label:      Label       = %hpvalue
+@onready var hp_bar:        ProgressBar = %hpbar
+@onready var stamina_label: Label       = %staminavalue
+@onready var stamina_bar:   ProgressBar = %staminabar
+@onready var mana_label:    Label       = %manavalue
+@onready var mana_bar:      ProgressBar = %manabar
+
+@onready var attack_label:  Label = %attackvalue
 @onready var defense_label: Label = %defensevalue
 @onready var agility_label: Label = %agilityvalue
-@onready var magic_label: Label = %magicvalue
+@onready var magic_label:   Label = %magicvalue
+
 @onready var fishing_label: Label = %fishingvalue
 @onready var cooking_label: Label = %cookingvalue
 
-# the player whose stats we're displaying. set via setup_for_player()
+
+# =============================================================================
+# NODE REFERENCES — SKILL XP BARS + LABELS
+# =============================================================================
+
+@onready var attack_bar:   ProgressBar = %attackbar
+@onready var defense_bar:  ProgressBar = %defensebar
+@onready var agility_bar:  ProgressBar = %agilitybar
+@onready var magic_bar:    ProgressBar = %magicbar
+@onready var fishing_bar:  ProgressBar = %fishingbar
+@onready var cooking_bar:  ProgressBar = %cookingbar
+
+@onready var attack_bar_label:   Label = %attackbarlabel
+@onready var defense_bar_label:  Label = %defensebarlabel
+@onready var agility_bar_label:  Label = %agilitybarlabel
+@onready var magic_bar_label:    Label = %magicbarlabel
+@onready var fishing_bar_label:  Label = %fishingbarlabel
+@onready var cooking_bar_label:  Label = %cookingbarlabel
+
+
+# =============================================================================
+# STATE
+# =============================================================================
+
 var current_player: Node = null
 
-# drag state for header-grab repositioning
-var _is_dragging := false
-var _drag_offset := Vector2.ZERO
+var _is_dragging: bool = false
+var _drag_offset: Vector2 = Vector2.ZERO
 
-# session-persistent position so the player's preferred spot is remembered
-# across multiple opens in the same play session.
-# resets when the game closes — for true persistence, write to disk later.
+
+# =============================================================================
+# SESSION-PERSISTENT POSITION
+# =============================================================================
+
 static var _last_position: Vector2 = Vector2(-1, -1)
-static var _has_saved_position := false
+static var _has_saved_position: bool = false
+
+
+# =============================================================================
+# LIFECYCLE
+# =============================================================================
 
 func _ready() -> void:
-	# close button
-	if close_button != null:
-		if not close_button.pressed.is_connected(_on_close_button_pressed):
-			close_button.pressed.connect(_on_close_button_pressed)
+	_wire_close_button()
+	_wire_header_drag()
+	_restore_last_position()
 
-	# header drag input — clicking and dragging the header repositions the panel
-	if header_panel != null:
-		if not header_panel.gui_input.is_connected(_on_header_gui_input):
-			header_panel.gui_input.connect(_on_header_gui_input)
-
-	# restore previous position if available
-	if _has_saved_position and main_panel != null:
-		main_panel.position = _last_position
 
 func _process(_delta: float) -> void:
-	# follow mouse with stored offset so the grab feels natural
 	if _is_dragging and main_panel != null:
 		main_panel.global_position = get_global_mouse_position() - _drag_offset
 		_save_position()
 
-# --- dragging and close ---
+
+# =============================================================================
+# INITIALIZATION HELPERS
+# =============================================================================
+
+func _wire_close_button() -> void:
+	if close_button == null:
+		return
+	if not close_button.pressed.is_connected(_on_close_button_pressed):
+		close_button.pressed.connect(_on_close_button_pressed)
+
+
+func _wire_header_drag() -> void:
+	if header_panel == null:
+		return
+	if not header_panel.gui_input.is_connected(_on_header_gui_input):
+		header_panel.gui_input.connect(_on_header_gui_input)
+
+
+func _restore_last_position() -> void:
+	if _has_saved_position and main_panel != null:
+		main_panel.position = _last_position
+
+
+# =============================================================================
+# DRAG HANDLING
+# =============================================================================
 
 func _on_header_gui_input(event: InputEvent) -> void:
-	# left-click on header begins drag; release ends drag
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			if event.pressed:
-				_is_dragging = true
-				_drag_offset = get_global_mouse_position() - main_panel.global_position
-			else:
-				_is_dragging = false
-				_save_position()
+	if not (event is InputEventMouseButton):
+		return
+	if event.button_index != MOUSE_BUTTON_LEFT:
+		return
+
+	if event.pressed:
+		_is_dragging = true
+		_drag_offset = get_global_mouse_position() - main_panel.global_position
+	else:
+		_is_dragging = false
+		_save_position()
+
 
 func _save_position() -> void:
-	# persist current position to the static var so reopen reuses it
 	if main_panel != null:
 		_last_position = main_panel.position
 		_has_saved_position = true
 
+
+# =============================================================================
+# CLOSE BUTTON
+# =============================================================================
+
 func _on_close_button_pressed() -> void:
-	# emit signal — parent (characterhud) listens and hides the screen
 	close_requested.emit()
 
-# --- player setup and display refresh ---
+
+# =============================================================================
+# PLAYER SETUP
+# =============================================================================
 
 func setup_for_player(player: Node) -> void:
-	# called by characterhud when opening the screen.
-	# stores the player reference and refreshes all displays immediately.
 	current_player = player
 	update_display()
 
+
+# =============================================================================
+# DISPLAY REFRESH
+# =============================================================================
+
 func update_display() -> void:
-	# refresh every label and bar from the current player's values.
-	# safe to call multiple times — each call re-reads fresh values.
-	# called automatically by setup_for_player; can also be called
-	# externally if the player's stats change while the screen is open.
 	if current_player == null:
 		return
 
-	# level
+	_update_progression()
+	_update_resource_bars()
+	_update_combat_stats()
+	_update_skill_stats()
+	_update_skill_xp_bars()
+
+
+func _update_progression() -> void:
 	var level = current_player.get("level")
 	if level != null and level_label != null:
 		level_label.text = str(level)
 
-	# xp + xp bar
 	var xp = current_player.get("xp")
 	var xp_next = current_player.get("xp_next")
 	if xp != null and xp_next != null:
@@ -121,47 +199,79 @@ func update_display() -> void:
 			xp_bar.max_value = xp_next
 			xp_bar.value = xp
 
-	# hp + hp bar
+
+func _update_resource_bars() -> void:
 	var hp = current_player.get("hp")
 	var max_hp = current_player.get("max_hp")
 	if hp != null and max_hp != null:
-		if hp_label != null:
-			hp_label.text = "%d / %d" % [hp, max_hp]
-		if hp_bar != null:
-			hp_bar.max_value = max_hp
-			hp_bar.value = hp
+		_set_bar_and_label(hp, max_hp, hp_label, hp_bar)
 
-	# stamina + stamina bar — defaults to 100/100 if not present on player
 	var stamina = current_player.get("stamina") if current_player.get("stamina") != null else 100
 	var max_stamina = current_player.get("max_stamina") if current_player.get("max_stamina") != null else 100
-	if stamina_label != null:
-		stamina_label.text = "%d / %d" % [stamina, max_stamina]
-	if stamina_bar != null:
-		stamina_bar.max_value = max_stamina
-		stamina_bar.value = stamina
+	_set_bar_and_label(stamina, max_stamina, stamina_label, stamina_bar)
 
-	# mana + mana bar — defaults to 100/100 if not present on player
 	var mana = current_player.get("mana") if current_player.get("mana") != null else 100
 	var max_mana = current_player.get("max_mana") if current_player.get("max_mana") != null else 100
-	if mana_label != null:
-		mana_label.text = "%d / %d" % [mana, max_mana]
-	if mana_bar != null:
-		mana_bar.max_value = max_mana
-		mana_bar.value = mana
+	_set_bar_and_label(mana, max_mana, mana_label, mana_bar)
 
-	# combat stats — handled by the helper
-	_update_stat("attack", attack_label)
+
+func _update_combat_stats() -> void:
+	_update_stat("attack",  attack_label)
 	_update_stat("defense", defense_label)
 	_update_stat("agility", agility_label)
-	_update_stat("magic", magic_label)
+	_update_stat("magic",   magic_label)
 
-	# skill stats
+
+func _update_skill_stats() -> void:
 	_update_stat("fishing", fishing_label)
 	_update_stat("cooking", cooking_label)
 
+
+# =============================================================================
+# SKILL XP BARS
+# =============================================================================
+
+func _update_skill_xp_bars() -> void:
+	_update_skill_bar("attack",  attack_bar,  attack_bar_label)
+	_update_skill_bar("defense", defense_bar, defense_bar_label)
+	_update_skill_bar("agility", agility_bar, agility_bar_label)
+	_update_skill_bar("magic",   magic_bar,   magic_bar_label)
+	_update_skill_bar("fishing", fishing_bar, fishing_bar_label)
+	_update_skill_bar("cooking", cooking_bar, cooking_bar_label)
+
+
+func _update_skill_bar(skill: String, bar: ProgressBar, label: Label) -> void:
+	if bar == null or label == null:
+		return
+
+	var xp = current_player.get(skill + "_xp")
+	var xp_next = current_player.get(skill + "_xp_next")
+
+	if xp == null or xp_next == null or xp_next <= 0:
+		bar.value = 0
+		label.text = "0/100"
+		return
+
+	var percent: int = int(clamp((float(xp) / float(xp_next)) * 100.0, 0.0, 100.0))
+	bar.min_value = 0
+	bar.max_value = 100
+	bar.value = percent
+	label.text = "%d/100" % percent
+
+
+# =============================================================================
+# SHARED HELPERS
+# =============================================================================
+
+func _set_bar_and_label(value: int, max_value: int, label: Label, bar: ProgressBar) -> void:
+	if label != null:
+		label.text = "%d / %d" % [value, max_value]
+	if bar != null:
+		bar.max_value = max_value
+		bar.value = value
+
+
 func _update_stat(stat_name: String, label: Label) -> void:
-	# generic helper to set a stat label's text from a player property.
-	# avoids the per-stat if-label-not-null repetition.
 	if label == null or current_player == null:
 		return
 	var value = current_player.get(stat_name)

@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://k5iomcwkdim4"]
+
+[ext_resource type="Script" uid="uid://c86sgck20esth" path="res://scene/ui/lootbag/lootbag.gd" id="1_tbvya"]
+[ext_resource type="Texture2D" uid="uid://bb4k8pcvrymna" path="res://art/lootbag/lootbag.png" id="1_utt7e"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_tbvya"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_utt7e")
+}],
+"loop": false,
+"name": &"idle",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_ickyf"]
+
+[sub_resource type="Gradient" id="Gradient_51ybt"]
+colors = PackedColorArray(0.84313726, 0.5058824, 0.105882354, 1, 0.49803922, 1, 1, 0)
+
+[node name="Lootbag" type="Area2D" unique_id=1233554956]
+collision_layer = 16
+collision_mask = 6
+script = ExtResource("1_tbvya")
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1764216656]
+sprite_frames = SubResource("SpriteFrames_tbvya")
+animation = &"idle"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=161310585]
+position = Vector2(0, -1)
+shape = SubResource("CircleShape2D_ickyf")
+
+[node name="despawntimer" type="Timer" parent="." unique_id=1813109740]
+
+[node name="petbeam" type="Line2D" parent="." unique_id=1091666137]
+visible = false
+show_behind_parent = true
+points = PackedVector2Array(0, 0, 0, -149)
+width = 5.0
+default_color = Color(0.25566, 0.72894365, 0.52790177, 1)
+gradient = SubResource("Gradient_51ybt")

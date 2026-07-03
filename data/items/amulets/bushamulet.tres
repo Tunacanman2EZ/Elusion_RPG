@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dqnlcnd22e511"]
+
+[ext_resource type="Texture2D" uid="uid://dasrnuni7e4cp" path="res://art/amulets/bushamulet.png" id="1_slpxg"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="2_36ceh"]
+
+[resource]
+script = ExtResource("2_36ceh")
+item_id = "bushamulet"
+display_name = "Bush Amulet"
+description = "\"Fantastic Trophy Good Job!\""
+icon = ExtResource("1_slpxg")
+max_stack = 1
+value = 200
+type = 2
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,21 +1,14 @@
 [gd_scene format=3 uid="uid://y8py0d7k22ov"]
 
 [ext_resource type="Script" uid="uid://b5421s5c7eqda" path="res://src/ui/characterhud.gd" id="1_s3c7b"]
-[ext_resource type="Texture2D" uid="uid://bpjyuft8fvubi" path="res://art/images/2026-04-11 19-12-01 - hp bar_Animation 1_3_Animation 1_3.png" id="2_s3c7b"]
-[ext_resource type="Texture2D" uid="uid://dgqbq5vvg3552" path="res://art/images/2026-04-11 19-12-01 - hp bar_Animation 1_3_Animation 1_0.png" id="3_xinkp"]
-[ext_resource type="Texture2D" uid="uid://crcfawfx7u8j2" path="res://art/images/2026-04-11 19-12-01 - hp bar_Animation 1_3_Animation 1_4.png" id="4_a33qf"]
-[ext_resource type="Texture2D" uid="uid://cdmueb5d3pgdb" path="res://art/images/1_Animation 1_8.png" id="4_m5snm"]
-[ext_resource type="Texture2D" uid="uid://dvycuh1mibifp" path="res://art/images/2026-04-11 19-12-01 - hp bar_Animation 1_3_Animation 1_1.png" id="5_p3m5x"]
-[ext_resource type="Texture2D" uid="uid://rsul4xgnanfu" path="res://art/images/1_Animation 1_7.png" id="5_wkrex"]
-[ext_resource type="Texture2D" uid="uid://d07hokb6hgc15" path="res://art/images/1_Animation 1_6.png" id="6_vf5gg"]
-[ext_resource type="Texture2D" uid="uid://dhadq3r2hcfu0" path="res://art/images/1_Animation 1_5.png" id="7_j6ui7"]
-[ext_resource type="Texture2D" uid="uid://c8324w7ajx525" path="res://art/images/1_Animation 1_4.png" id="8_s3c7b"]
-[ext_resource type="Texture2D" uid="uid://ba7lwle0ecywv" path="res://art/images/1_Animation 1_3.png" id="9_xinkp"]
-[ext_resource type="Texture2D" uid="uid://ij8qqqskjcof" path="res://art/images/1_Animation 1_2.png" id="10_a33qf"]
-[ext_resource type="Texture2D" uid="uid://c5pa47hb18im8" path="res://art/images/1_Animation 1_1.png" id="11_p3m5x"]
-[ext_resource type="Texture2D" uid="uid://bv4f14feq4lo0" path="res://art/images/1_Animation 1_0.png" id="12_5jg1o"]
-[ext_resource type="Texture2D" uid="uid://cwfmuem8iq25w" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_05.png" id="16_hqo1d"]
-[ext_resource type="Texture2D" uid="uid://cm13ld8mxvk8d" path="res://assets/images/2026-04-11 19-12-01 - hp bar_Animation 1_02.png" id="17_tecjo"]
+[ext_resource type="Texture2D" uid="uid://bpjyuft8fvubi" path="res://art/images/hpempty.png" id="2_s3c7b"]
+[ext_resource type="Texture2D" uid="uid://dgqbq5vvg3552" path="res://art/images/hpfull.png" id="3_xinkp"]
+[ext_resource type="Texture2D" uid="uid://crcfawfx7u8j2" path="res://art/images/manaempty.png" id="4_a33qf"]
+[ext_resource type="Texture2D" uid="uid://dvycuh1mibifp" path="res://art/images/manafull.png" id="5_p3m5x"]
+[ext_resource type="Texture2D" uid="uid://bcusdsabfo3re" path="res://art/images/staminaempty.png" id="6_xinkp"]
+[ext_resource type="Texture2D" uid="uid://bawnet1v7qvbg" path="res://art/images/staminafull.png" id="7_a33qf"]
+[ext_resource type="PackedScene" uid="uid://bqw1e521x7ngr" path="res://scene/ui/hotbar.tscn" id="10_manxm"]
+[ext_resource type="PackedScene" uid="uid://cjnng780ylcn6" path="res://scene/ui/inventory/itemtooltip.tscn" id="17_xinkp"]
 
 [node name="characterhud" type="CanvasLayer" unique_id=2045428837]
 layer = 0
@@ -26,47 +19,48 @@ layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 5.0
+offset_top = 4.0
+offset_right = 5.0
+offset_bottom = 4.0
 grow_horizontal = 2
 grow_vertical = 2
 
 [node name="healthbar" type="TextureProgressBar" parent="barcontainer" unique_id=1719083138]
 texture_filter = 1
 layout_mode = 0
-offset_left = 912.0
-offset_top = 635.0
-offset_right = 1060.0
-offset_bottom = 649.0
+offset_left = 905.0
+offset_top = 611.0
+offset_right = 1053.0
+offset_bottom = 625.0
 scale = Vector2(2.5, 2.5)
 value = 100.0
-fill_mode = 1
 texture_under = ExtResource("2_s3c7b")
 texture_progress = ExtResource("3_xinkp")
 
 [node name="magicbar" type="TextureProgressBar" parent="barcontainer" unique_id=758577933]
 texture_filter = 1
 layout_mode = 0
-offset_left = 912.0001
-offset_top = 669.0
-offset_right = 1060.0001
-offset_bottom = 683.0
+offset_left = 905.0
+offset_top = 644.0
+offset_right = 1053.0
+offset_bottom = 658.0
 scale = Vector2(2.5, 2.5)
 value = 100.0
-fill_mode = 1
 texture_under = ExtResource("4_a33qf")
 texture_progress = ExtResource("5_p3m5x")
 
 [node name="staminabar" type="TextureProgressBar" parent="barcontainer" unique_id=1448665782]
 texture_filter = 1
-layout_mode = 0
-offset_left = 1181.0
-offset_top = 694.0
-offset_right = 1341.0
-offset_bottom = 726.0
-min_value = 100.0
+layout_mode = 1
+offset_left = 1099.0
+offset_top = 676.0
+offset_right = 1259.0
+offset_bottom = 708.0
+scale = Vector2(2, 2)
 value = 100.0
-fill_mode = 1
-texture_under = ExtResource("16_hqo1d")
-texture_progress = ExtResource("17_tecjo")
+texture_under = ExtResource("6_xinkp")
+texture_progress = ExtResource("7_a33qf")
 
 [node name="navhbox" type="VBoxContainer" parent="." unique_id=440246108]
 offset_left = 12.0
@@ -113,47 +107,19 @@ layout_mode = 2
 focus_mode = 0
 text = "Logout"
 
-[node name="hotbar" type="HBoxContainer" parent="." unique_id=91626537]
-offset_left = 884.0
-offset_top = 594.0
-offset_right = 1276.0
-offset_bottom = 634.0
+[node name="itemtooltip" parent="." unique_id=1631671194 instance=ExtResource("17_xinkp")]
+visible = true
+offset_left = 3.0
+offset_top = 154.0
+offset_right = 203.0
+offset_bottom = 310.0
 
-[node name="slot1" type="Button" parent="hotbar" unique_id=1265138672]
-layout_mode = 2
-icon = ExtResource("4_m5snm")
-
-[node name="slot2" type="Button" parent="hotbar" unique_id=558828151]
-layout_mode = 2
-icon = ExtResource("5_wkrex")
-
-[node name="slot3" type="Button" parent="hotbar" unique_id=368005331]
-layout_mode = 2
-icon = ExtResource("6_vf5gg")
-
-[node name="slot4" type="Button" parent="hotbar" unique_id=1203937166]
-layout_mode = 2
-icon = ExtResource("7_j6ui7")
-
-[node name="slot5" type="Button" parent="hotbar" unique_id=632582185]
-layout_mode = 2
-icon = ExtResource("8_s3c7b")
-
-[node name="slot6" type="Button" parent="hotbar" unique_id=934911389]
-layout_mode = 2
-icon = ExtResource("9_xinkp")
-
-[node name="slot7" type="Button" parent="hotbar" unique_id=2044878538]
-layout_mode = 2
-icon = ExtResource("10_a33qf")
-
-[node name="slot8" type="Button" parent="hotbar" unique_id=2120426381]
-layout_mode = 2
-icon = ExtResource("11_p3m5x")
-
-[node name="slot9" type="Button" parent="hotbar" unique_id=980757471]
-layout_mode = 2
-icon = ExtResource("12_5jg1o")
+[node name="hotbar" parent="." unique_id=147410389 instance=ExtResource("10_manxm")]
+unique_name_in_owner = true
+offset_left = 914.0
+offset_top = 566.0
+offset_right = 1234.0
+offset_bottom = 606.0
 
 [connection signal="pressed" from="navhbox/navbuttons/inventorybutton" to="." method="_on_inventorybutton_pressed"]
 [connection signal="pressed" from="navhbox/navbuttons/statsbutton" to="." method="_on_statsbutton_pressed"]

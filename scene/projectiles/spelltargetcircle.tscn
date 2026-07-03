@@ -1,0 +1,87 @@
+[gd_scene format=3 uid="uid://5mj0kvqhf017"]
+
+[ext_resource type="Script" uid="uid://cosbncy3h8lns" path="res://src/projectiles/spelltargetcircle.gd" id="1_oj0tb"]
+[ext_resource type="Texture2D" uid="uid://bcgb5u6yo0s8k" path="res://art/maincharacter/mage.png" id="2_4x8s4"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6ml14"]
+atlas = ExtResource("2_4x8s4")
+region = Rect2(0, 1600, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lch3i"]
+atlas = ExtResource("2_4x8s4")
+region = Rect2(64, 1600, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bd5fd"]
+atlas = ExtResource("2_4x8s4")
+region = Rect2(128, 1600, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_y0sqs"]
+atlas = ExtResource("2_4x8s4")
+region = Rect2(192, 1600, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_oj3nj"]
+atlas = ExtResource("2_4x8s4")
+region = Rect2(256, 1600, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_wjru0"]
+atlas = ExtResource("2_4x8s4")
+region = Rect2(320, 1600, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2hes1"]
+atlas = ExtResource("2_4x8s4")
+region = Rect2(384, 1600, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5of08"]
+atlas = ExtResource("2_4x8s4")
+region = Rect2(448, 1600, 64, 64)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_g0pon"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6ml14")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lch3i")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_bd5fd")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_y0sqs")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_oj3nj")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_wjru0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_2hes1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_5of08")
+}],
+"loop": false,
+"name": &"fall",
+"speed": 12.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_4x8s4"]
+radius = 18.0
+
+[node name="spelltargetcircle" type="Area2D" unique_id=1483653573]
+collision_layer = 64
+collision_mask = 11
+script = ExtResource("1_oj0tb")
+
+[node name="stalagmiteprojectile" type="AnimatedSprite2D" parent="." unique_id=1000099205]
+texture_filter = 1
+position = Vector2(0, -39)
+scale = Vector2(1.5, 1.5)
+sprite_frames = SubResource("SpriteFrames_g0pon")
+animation = &"fall"
+
+[node name="targetcircle" type="CollisionShape2D" parent="." unique_id=1065116999]
+texture_filter = 1
+shape = SubResource("CircleShape2D_4x8s4")

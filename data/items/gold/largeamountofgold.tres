@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://6bhglqems5jh"]
+
+[ext_resource type="Texture2D" uid="uid://cy6bua65nqkvu" path="res://art/currency/largeamountofgold.png" id="1_ivp02"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="1_lgao6"]
+
+[resource]
+script = ExtResource("1_lgao6")
+item_id = "largeamountofgold"
+display_name = "Large Amount Of Coins"
+description = "Finally some money for my trip to town"
+icon = ExtResource("1_ivp02")
+stackable = true
+max_stack = 9999
+value = 1
+type = 6
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

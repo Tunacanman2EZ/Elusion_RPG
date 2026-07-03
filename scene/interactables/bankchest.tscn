@@ -1,0 +1,151 @@
+[gd_scene format=3 uid="uid://sc2553vue1ug"]
+
+[ext_resource type="Script" uid="uid://4dba2hu8o0rg" path="res://src/world/bankchest.gd" id="1_op8v8"]
+[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/Tiles/ladderchestlevertiles.png" id="2_nebis"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3pf1k"]
+atlas = ExtResource("2_nebis")
+region = Rect2(192, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_q2sce"]
+atlas = ExtResource("2_nebis")
+region = Rect2(160, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_a2won"]
+atlas = ExtResource("2_nebis")
+region = Rect2(128, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lrs4p"]
+atlas = ExtResource("2_nebis")
+region = Rect2(96, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_51h7t"]
+atlas = ExtResource("2_nebis")
+region = Rect2(64, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fd8ej"]
+atlas = ExtResource("2_nebis")
+region = Rect2(32, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_u58in"]
+atlas = ExtResource("2_nebis")
+region = Rect2(0, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_pdqt5"]
+atlas = ExtResource("2_nebis")
+region = Rect2(0, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_88fvq"]
+atlas = ExtResource("2_nebis")
+region = Rect2(0, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_88v8g"]
+atlas = ExtResource("2_nebis")
+region = Rect2(32, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_vngoi"]
+atlas = ExtResource("2_nebis")
+region = Rect2(64, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_cvad5"]
+atlas = ExtResource("2_nebis")
+region = Rect2(96, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_biein"]
+atlas = ExtResource("2_nebis")
+region = Rect2(128, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_wpwjw"]
+atlas = ExtResource("2_nebis")
+region = Rect2(160, 32, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7yptu"]
+atlas = ExtResource("2_nebis")
+region = Rect2(192, 32, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_qycu1"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3pf1k")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_q2sce")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_a2won")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lrs4p")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_51h7t")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fd8ej")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_u58in")
+}],
+"loop": false,
+"name": &"closed",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_pdqt5")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_88fvq")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_88v8g")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_vngoi")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_cvad5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_biein")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_wpwjw")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7yptu")
+}],
+"loop": false,
+"name": &"open",
+"speed": 4.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_op8v8"]
+radius = 42.0
+
+[node name="bankchest" type="Area2D" unique_id=1909775092]
+y_sort_enabled = true
+texture_filter = 1
+position = Vector2(0, -8)
+collision_layer = 16
+collision_mask = 6
+script = ExtResource("1_op8v8")
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=125570595]
+texture_filter = 1
+position = Vector2(0, 4)
+sprite_frames = SubResource("SpriteFrames_qycu1")
+animation = &"open"
+speed_scale = 2.5
+offset = Vector2(0, -8)
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=2057434990]
+texture_filter = 1
+position = Vector2(1, 3)
+shape = SubResource("CircleShape2D_op8v8")

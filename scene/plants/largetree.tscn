@@ -1,0 +1,30 @@
+[gd_scene format=4 uid="uid://dg2kkkojbw2n1"]
+
+[ext_resource type="Texture2D" uid="uid://duffqgsi806re" path="res://art/Tiles/largetree.png" id="1_ts2vw"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1i4ft"]
+texture = ExtResource("1_ts2vw")
+0:0/0 = 0
+1:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+0:2/0 = 0
+0:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(8, 8, 8, 6.044838, 4.558402, 6.8376045, 3.2701578, 8)
+1:2/0 = 0
+1:2/0/physics_layer_0/polygon_0/points = PackedVector2Array(-4.261115, 8, -5.152977, 6.639412, -8, 6.5403156, -8, 8)
+0:3/0 = 0
+0:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(4.0629244, -8, 8, -8, 8, -1.7837219, 4.0629244, -1.7837219, 1.0900526, -4.1620197)
+1:3/0 = 0
+1:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, -8, -2.6755838, -8, -1.7837229, -4.261115, -4.558403, -2.6755838, -8, -2.7746792)
+
+[sub_resource type="TileSet" id="TileSet_lqmoh"]
+physics_layer_0/collision_layer = 1
+sources/0 = SubResource("TileSetAtlasSource_1i4ft")
+
+[node name="largetree" type="Node2D" unique_id=2140333536]
+
+[node name="largetreepysics0" type="TileMapLayer" parent="." unique_id=300424882]
+texture_filter = 1
+scale = Vector2(1.5, 1.5)
+tile_map_data = PackedByteArray("AAD///3/AAAAAAAAAAD///7/AAAAAAEAAAD/////AAAAAAIAAAD//wAAAAAAAAMAAAAAAP3/AAABAAAAAAAAAP7/AAABAAEAAAAAAP//AAABAAIAAAAAAAAAAAABAAMAAAA=")
+tile_set = SubResource("TileSet_lqmoh")

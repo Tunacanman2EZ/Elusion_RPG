@@ -1,104 +1,142 @@
 # character select screen — allows players to create and select characters
+# across 4 slots. each slot is hardcoded to a class (warrior/mage/tank/healer)
+# so the class roster is predictable regardless of slot pick order.
+#
+# button signals are wired through the .tscn editor signal panel — function
+# names below must match the connections in characterselect.tscn or the
+# buttons will silently fail to respond.
 extends Control
 
-# preloaded reference to the main game scene
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+# preloaded reference to the main game scene. preloading here means any
+# parse error in elusion.tscn surfaces at characterselect.tscn load time,
+# not on first click — easier to catch broken references early.
 const ELUSION_SCENE := preload("res://scene/elusion.tscn")
 
-# class assigned to each slot — slot index maps to class name
+# class assigned to each slot — slot index maps to class name.
+# the order here defines which class each slot creates.
 const SLOT_CLASSES := ["warrior", "mage", "tank", "healer"]
 
-func _ready() -> void:
-	# refresh save data from disk
-	# CharacterData also loads on autoload init, but we reload here
-	# in case the player just logged out and saved progress
-	CharacterData.load_data()
 
-	# refresh the UI to show current slot data
+# =============================================================================
+# LIFECYCLE
+# =============================================================================
+
+func _ready() -> void:
+	# refresh save data from disk. CharacterData also loads on autoload init,
+	# but we reload here in case the player just logged out and saved progress
+	# during their last session.
+	CharacterData.load_data()
 	update_slot_labels()
 
+
+# =============================================================================
+# SLOT UI REFRESH
+# =============================================================================
+
 func update_slot_labels() -> void:
-	# get references to slot UI nodes via unique name % syntax
-	var labels = [%label1, %label2, %label3, %label4]
+	# loop all 4 slots, populating the label and toggling buttons based on
+	# whether the slot contains valid character data. called on _ready and
+	# after any create-button press to refresh the new slot's state.
+	var labels      = [%label1,        %label2,        %label3,        %label4]
 	var create_btns = [%createbutton1, %createbutton2, %createbutton3, %createbutton4]
 	var select_btns = [%selectbutton1, %selectbutton2, %selectbutton3, %selectbutton4]
 
-	# loop through all 4 slots and update the UI for each
 	for i in range(4):
 		var slot = CharacterData.character_slots[i]
-
-		# check if this slot has valid character data
-		var is_valid: bool = slot != null \
-			and typeof(slot) == TYPE_DICTIONARY \
-			and slot.has("character") \
-			and slot.has("level")
+		var is_valid: bool = _is_slot_valid(slot)
 
 		if is_valid:
-			# slot has a character — show their name and level
+			# slot has a character — show name and level, enable select only
 			labels[i].text = "%s  |  level: %d" % [slot["character"], slot["level"]]
-			create_btns[i].disabled = true   # slot taken — can't create
-			select_btns[i].disabled = false  # character exists — can select
+			create_btns[i].disabled = true
+			select_btns[i].disabled = false
 		else:
-			# slot is empty — show placeholder
+			# slot is empty — show placeholder, enable create only
 			labels[i].text = "empty slot"
-			create_btns[i].disabled = false  # empty — can create
-			select_btns[i].disabled = true   # no character — can't select
+			create_btns[i].disabled = false
+			select_btns[i].disabled = true
 
-# --- create button handlers — one per slot ---
-# these are connected via the editor signals panel.
-# function names must match the connections in the .tscn file.
+
+func _is_slot_valid(slot) -> bool:
+	# returns true if the slot has the minimum data needed to be selectable.
+	# guards against null, wrong types, and partial/corrupted save data.
+	return slot != null \
+		and typeof(slot) == TYPE_DICTIONARY \
+		and slot.has("character") \
+		and slot.has("level")
+
+
+# =============================================================================
+# CREATE BUTTON HANDLERS
+# =============================================================================
+# one handler per slot — connected via the editor's signals panel.
+# function names below MUST match the connections in characterselect.tscn.
 
 func _on_createbutton1_pressed() -> void:
-	CharacterData.create_character(0, SLOT_CLASSES[0])
-	update_slot_labels()
+	_create_in_slot(0)
+
 
 func _on_createbutton2_pressed() -> void:
-	CharacterData.create_character(1, SLOT_CLASSES[1])
-	update_slot_labels()
+	_create_in_slot(1)
+
 
 func _on_createbutton3_pressed() -> void:
-	CharacterData.create_character(2, SLOT_CLASSES[2])
-	update_slot_labels()
+	_create_in_slot(2)
+
 
 func _on_createbutton4_pressed() -> void:
-	CharacterData.create_character(3, SLOT_CLASSES[3])
+	_create_in_slot(3)
+
+
+func _create_in_slot(idx: int) -> void:
+	# shared logic for all 4 create buttons. delegates to CharacterData
+	# which handles the actual character creation and disk save.
+	CharacterData.create_character(idx, SLOT_CLASSES[idx])
 	update_slot_labels()
 
-# --- select button handlers — one per slot ---
+
+# =============================================================================
+# SELECT BUTTON HANDLERS
+# =============================================================================
+# one handler per slot — connected via the editor's signals panel.
 
 func _on_selectbutton1_pressed() -> void:
 	_select_character(0)
 
+
 func _on_selectbutton2_pressed() -> void:
 	_select_character(1)
+
 
 func _on_selectbutton3_pressed() -> void:
 	_select_character(2)
 
+
 func _on_selectbutton4_pressed() -> void:
 	_select_character(3)
 
-func _select_character(idx: int) -> void:
-	# get the save data for the selected slot
-	var slot = CharacterData.character_slots[idx]
 
-	# validate the slot has a real character before proceeding
-	if slot == null \
-			or typeof(slot) != TYPE_DICTIONARY \
-			or not slot.has("character") \
-			or not slot.has("level"):
+func _select_character(idx: int) -> void:
+	# validates the slot, sets it as active, saves to disk, and transitions
+	# to the main game scene. the player's _ready() will then call
+	# CharacterData.load_character_state(self) to pull saved stats into
+	# the freshly instanced player.
+	var slot = CharacterData.character_slots[idx]
+	if not _is_slot_valid(slot):
 		print("no character in slot %d to select!" % [idx + 1])
 		return
 
-	# confirm selection in the output panel
 	print("selected %s in slot %d" % [slot["character"], idx + 1])
 
-	# set this slot as the active character
+	# mark this slot as the active character and persist before scene change.
+	# without saving here, a crash between scene transitions could lose the
+	# selection.
 	CharacterData.active_character_index = idx
-
-	# save the active selection to disk
 	CharacterData.save_data()
 
-	# switch to the main game scene
-	# the player's _ready() should call CharacterData.load_character_state(self)
-	# to pull stats from the slot into the player instance
 	get_tree().change_scene_to_packed(ELUSION_SCENE)

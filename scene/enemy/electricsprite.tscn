@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" uid="uid://v4304f6hy5ui" path="res://src/enemies/electricspirit.gd" id="1_qfaod"]
 [ext_resource type="Texture2D" uid="uid://db7fkgqqydvh7" path="res://art/enemy/electricsprite.png" id="2_vprnr"]
-[ext_resource type="Texture2D" uid="uid://b1i7c7i3eu80" path="res://art/images/3_Animation 1_1.png" id="3_fy2rl"]
-[ext_resource type="Texture2D" uid="uid://cy8ini2n25byq" path="res://art/images/3_Animation 1_0.png" id="4_56m4t"]
+[ext_resource type="Texture2D" uid="uid://b1i7c7i3eu80" path="res://art/images/monsterhpempty.png" id="3_fy2rl"]
+[ext_resource type="Texture2D" uid="uid://cy8ini2n25byq" path="res://art/images/monsterhpfull.png" id="4_56m4t"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_cte2n"]
 atlas = ExtResource("2_vprnr")
@@ -690,13 +690,15 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_56m4t"]
-radius = 9.0
+radius = 8.0
+height = 28.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_fy2rl"]
-radius = 7.0
-height = 32.0
+radius = 5.0
+height = 10.0
 
 [node name="electricsprite" type="CharacterBody2D" unique_id=289962471]
+y_sort_enabled = true
 texture_filter = 1
 collision_layer = 8
 collision_mask = 3
@@ -705,17 +707,10 @@ script = ExtResource("1_qfaod")
 leash_range = 500.0
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1382034932]
-y_sort_enabled = true
 sprite_frames = SubResource("SpriteFrames_1up8b")
 animation = &"attackright"
 frame = 5
 offset = Vector2(0, -16)
-
-[node name="hurtbox" type="Area2D" parent="." unique_id=9522945]
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=2133702737]
-position = Vector2(0, -14)
-shape = SubResource("CapsuleShape2D_56m4t")
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=128019405]
 texture_filter = 1
@@ -733,10 +728,20 @@ texture_progress = ExtResource("4_56m4t")
 
 [node name="attacktimer" type="Timer" parent="." unique_id=2058528377]
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2114397408]
+[node name="hurtbox" type="Area2D" parent="." unique_id=1660739133]
+collision_layer = 8
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=375237201]
 texture_filter = 1
-position = Vector2(0, -13)
+position = Vector2(1, -14)
+shape = SubResource("CapsuleShape2D_56m4t")
+debug_color = Color(0.4397211, 0.59804714, 0.10347933, 0.41960785)
+
+[node name="bodyshape" type="CollisionShape2D" parent="." unique_id=2114397408]
+texture_filter = 1
+position = Vector2(0, -5)
 shape = SubResource("CapsuleShape2D_fy2rl")
+debug_color = Color(0, 0, 0, 0.41960785)
 
 [node name="orbspawnbottom" type="Marker2D" parent="." unique_id=789231567]
 position = Vector2(-8, -17)
@@ -750,3 +755,9 @@ position = Vector2(-15, -19)
 
 [node name="orbspawnleft" type="Marker2D" parent="." unique_id=726293116]
 position = Vector2(14, -19)
+
+[node name="damagerecievedlabel" type="Label" parent="." unique_id=1735176927]
+offset_left = -19.0
+offset_top = -43.0
+offset_right = 21.0
+offset_bottom = -20.0

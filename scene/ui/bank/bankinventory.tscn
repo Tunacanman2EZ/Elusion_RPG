@@ -1,0 +1,138 @@
+[gd_scene format=3 uid="uid://d04rvh8u33jbl"]
+
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_2vgm5"]
+[ext_resource type="Script" uid="uid://drsoebtbbsv8h" path="res://src/ui/bankinventory.gd" id="2_2qeky"]
+[ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventorycontainer.gd" id="3_2qeky"]
+
+[node name="bankinventory" type="Control" unique_id=1169906003]
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -125.0
+offset_top = -225.0
+offset_right = 149.0
+offset_bottom = 225.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme = ExtResource("1_2vgm5")
+script = ExtResource("2_2qeky")
+
+[node name="mainpanel" type="PanelContainer" parent="." unique_id=1358899883]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margincontainer" type="MarginContainer" parent="mainpanel" unique_id=225496306]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer" unique_id=1623378330]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1312552404]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel" unique_id=1325984035]
+layout_mode = 2
+
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1587516618]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 20
+text = "Bank"
+horizontal_alignment = 1
+
+[node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1719753082]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
+theme_override_colors/font_hover_color = Color(1, 0.5, 0.4, 1)
+theme_override_font_sizes/font_size = 18
+text = "×"
+flat = true
+
+[node name="hseparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1913068419]
+layout_mode = 2
+
+[node name="currencypanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=986007530]
+layout_mode = 2
+theme_type_variation = &"PanelSub"
+
+[node name="currencyvbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel" unique_id=778557311]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="goldinput" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox" unique_id=244134073]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Enter amount"
+
+[node name="goldcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox" unique_id=1715886666]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="goldicon" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldcontainer" unique_id=839725113]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 14
+text = "◆"
+
+[node name="goldlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldcontainer" unique_id=149820312]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
+theme_override_font_sizes/font_size = 12
+text = "Gold: 0"
+
+[node name="goldbuttons" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=594480210]
+layout_mode = 2
+alignment = 1
+
+[node name="depositbuttons" type="Button" parent="mainpanel/margincontainer/vboxcontainer/goldbuttons" unique_id=536358147]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Deposit"
+
+[node name="withdrawbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/goldbuttons" unique_id=1926912019]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Withdraw"
+
+[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1707617651]
+layout_mode = 2
+
+[node name="bankscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1050388235]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="bankcontainer" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/bankscroll" unique_id=1727293017]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+columns = 5
+script = ExtResource("3_2qeky")
+grid_width = 10
+grid_height = 5
+metadata/_custom_type_script = "uid://dfssy5oqbqqkh"

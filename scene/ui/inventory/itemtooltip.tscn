@@ -1,0 +1,163 @@
+[gd_scene format=3 uid="uid://cjnng780ylcn6"]
+
+[ext_resource type="Script" uid="uid://bus5md8lbkyyf" path="res://src/ui/itemtooltip.gd" id="1_xttnj"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip_separator"]
+content_margin_top = 1.0
+content_margin_bottom = 1.0
+bg_color = Color(0.5, 0.42, 0.28, 0.4)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stat_bg"]
+content_margin_left = 4.0
+content_margin_top = 2.0
+content_margin_right = 4.0
+content_margin_bottom = 2.0
+bg_color = Color(0.1, 0.08, 0.06, 0.5)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[node name="itemtooltip" type="PanelContainer" unique_id=1631671194]
+visible = false
+z_index = 100
+offset_right = 200.0
+offset_bottom = 150.0
+size_flags_vertical = 0
+mouse_filter = 2
+theme_type_variation = &"PanelTooltip"
+script = ExtResource("1_xttnj")
+
+[node name="margincontainer" type="MarginContainer" parent="." unique_id=342616348]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="vboxcontainer" type="VBoxContainer" parent="margincontainer" unique_id=75063744]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="headerhbox" type="HBoxContainer" parent="margincontainer/vboxcontainer" unique_id=1059722816]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="tooltipicon" type="TextureRect" parent="margincontainer/vboxcontainer/headerhbox" unique_id=157056098]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="tooltipname" type="Label" parent="margincontainer/vboxcontainer/headerhbox" unique_id=1972590790]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 1
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 14
+text = "Item Name"
+vertical_alignment = 1
+
+[node name="hseparator" type="HSeparator" parent="margincontainer/vboxcontainer" unique_id=1083058538]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/separator = SubResource("StyleBoxFlat_tooltip_separator")
+
+[node name="tooltipdescription" type="Label" parent="margincontainer/vboxcontainer" unique_id=1263744257]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.82, 0.75, 1)
+theme_override_font_sizes/font_size = 11
+text = "Item description goes here."
+autowrap_mode = 2
+
+[node name="hseparator2" type="HSeparator" parent="margincontainer/vboxcontainer" unique_id=867480809]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/separator = SubResource("StyleBoxFlat_tooltip_separator")
+
+[node name="statscontainer" type="VBoxContainer" parent="margincontainer/vboxcontainer" unique_id=1498171186]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="valuestat" type="PanelContainer" parent="margincontainer/vboxcontainer/statscontainer" unique_id=1059976007]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
+
+[node name="hboxcontainer" type="HBoxContainer" parent="margincontainer/vboxcontainer/statscontainer/valuestat" unique_id=1653171658]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="label" type="Label" parent="margincontainer/vboxcontainer/statscontainer/valuestat/hboxcontainer" unique_id=1458482699]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 10
+text = "Value:"
+
+[node name="tooltipvalue" type="Label" parent="margincontainer/vboxcontainer/statscontainer/valuestat/hboxcontainer" unique_id=577688876]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 10
+text = "100"
+horizontal_alignment = 2
+
+[node name="tierstat" type="PanelContainer" parent="margincontainer/vboxcontainer/statscontainer" unique_id=68538157]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
+
+[node name="hboxcontainer" type="HBoxContainer" parent="margincontainer/vboxcontainer/statscontainer/tierstat" unique_id=1705588073]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="label" type="Label" parent="margincontainer/vboxcontainer/statscontainer/tierstat/hboxcontainer" unique_id=1843910073]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 10
+text = "Tier:"
+
+[node name="tooltipter" type="Label" parent="margincontainer/vboxcontainer/statscontainer/tierstat/hboxcontainer" unique_id=979677084]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 10
+text = "1"
+horizontal_alignment = 2
+
+[node name="levelstat" type="PanelContainer" parent="margincontainer/vboxcontainer/statscontainer" unique_id=1672673117]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
+
+[node name="hboxcontainer" type="HBoxContainer" parent="margincontainer/vboxcontainer/statscontainer/levelstat" unique_id=2079953157]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="label" type="Label" parent="margincontainer/vboxcontainer/statscontainer/levelstat/hboxcontainer" unique_id=1713405171]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 10
+text = "Required Level:"
+
+[node name="tooltiplevel" type="Label" parent="margincontainer/vboxcontainer/statscontainer/levelstat/hboxcontainer" unique_id=1076410284]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 10
+text = "1"
+horizontal_alignment = 2

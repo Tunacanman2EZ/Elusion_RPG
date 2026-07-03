@@ -1,14 +1,39 @@
-# inventory grid container — manages a grid of inventory slots
-# inherited by any UI that needs a grid-based inventory display
+# inventory grid container — manages a grid of inventory slots.
+# inherited by any UI that needs a grid-based inventory display (player
+# inventory, bank, loot bag, future shop UI, etc.).
+#
+# architecture:
+# - one InventorySlot scene per grid cell, instanced in _ready
+# - slot signals (click, right-click, double-click, hover) relay up to
+#   whoever owns this container
+# - save format is item_id + quantity per slot — small + MMO-ready
+# - add_stack handles stackable consolidation + max_stack overflow splitting
+# - linked_item_ids tracks which items are referenced by hotbar slots so
+#   matching inventory items can be tinted gold to show the connection
+#
+# common usage flow:
+# 1. parent scene places InventoryContainer in its tree
+# 2. _ready instantiates slots based on grid_width × grid_height
+# 3. parent calls add_stack / remove_quantity_at as items move
+# 4. inventory_changed signal fires on every mutation for save sync
+# 5. hotbar calls set_linked_item_ids to keep inventory tinting in sync
 extends GridContainer
 class_name InventoryContainer
 
-# --- signals ---
+
+# =============================================================================
+# SIGNALS
+# =============================================================================
+
 # emitted when a slot is left clicked — passes the slot reference
 signal slot_clicked(slot: InventorySlot)
 
 # emitted when a slot is right clicked — passes the slot reference
 signal slot_right_clicked(slot: InventorySlot)
+
+# emitted when a slot is double-clicked (LMB double-click) — used for
+# quick-transfer flows like "double-click loot to send to inventory"
+signal slot_double_clicked(slot: InventorySlot)
 
 # emitted when the mouse enters a slot — used for tooltip display
 signal slot_hovered(slot: InventorySlot)
@@ -19,80 +44,84 @@ signal slot_unhovered(slot: InventorySlot)
 # emitted whenever the inventory contents change — used to sync with save system
 signal inventory_changed()
 
-# --- exported settings ---
-# number of columns in the inventory grid
-@export var grid_width: int = 5
 
-# number of rows in the inventory grid
+# =============================================================================
+# EXPORTED SETTINGS
+# =============================================================================
+
+@export var grid_width:  int = 5
 @export var grid_height: int = 4
 
-# the inventory slot scene to instantiate for each grid cell
 @export var inventory_slot_scene: PackedScene = preload("res://scene/ui/inventory/inventoryslot.tscn")
 
-# --- state ---
-# array of all slot instances in this inventory
+
+# =============================================================================
+# STATE
+# =============================================================================
+
 var slots: Array[InventorySlot] = []
 
-# calculated total capacity based on grid dimensions — read only
 var capacity: int:
 	get: return grid_width * grid_height
 
-func _ready() -> void:
-	# set the GridContainer column count to match grid width
-	columns = grid_width
 
-	# create all slot instances and add them to the grid
+# =============================================================================
+# LINKED ITEM TRACKING
+# =============================================================================
+
+var linked_item_ids: Dictionary = {}
+
+
+# =============================================================================
+# LIFECYCLE
+# =============================================================================
+
+func _ready() -> void:
+	columns = grid_width
 	_create_slots()
 
+
+# =============================================================================
+# SLOT CREATION AND RESIZING
+# =============================================================================
+
 func _create_slots() -> void:
-	# remove any existing slot children before recreating
-	# free() is immediate, unlike queue_free() which is deferred —
-	# avoids one-frame window where old + new slots both exist
 	for child in get_children():
 		remove_child(child)
 		child.free()
 
-	# clear the slots array
 	slots.clear()
 
-	# create one slot instance for each cell in the grid
 	for i in range(capacity):
 		var slot_instance: InventorySlot = inventory_slot_scene.instantiate()
 		if slot_instance == null:
 			push_error("InventoryContainer: failed to instantiate inventory_slot_scene")
 			return
 
-		# assign the slot its index position in the grid
 		slot_instance.slot_index = i
 
-		# connect slot signals to this container's handler functions
+		# connect each slot's signals to this container's relay handlers
 		slot_instance.slot_clicked.connect(_on_slot_clicked)
 		slot_instance.slot_right_clicked.connect(_on_slot_right_clicked)
+		slot_instance.slot_double_clicked.connect(_on_slot_double_clicked)
 		slot_instance.slot_hovered.connect(_on_slot_hovered)
 		slot_instance.slot_unhovered.connect(_on_slot_unhovered)
 
-		# add the slot to the scene tree
 		add_child(slot_instance)
-
-		# add to our tracking array
 		slots.append(slot_instance)
 
+
 func resize(w: int, h: int) -> Array[ItemStack]:
-	# collect all existing stacks before resizing
 	var existing_stacks: Array[ItemStack] = []
 	for slot in slots:
 		if not slot.is_empty():
 			existing_stacks.append(slot.stack.duplicate_stack())
 
-	# update grid dimensions
 	grid_width = w
 	grid_height = h
 	columns = grid_width
-
-	# recreate slots with new dimensions
 	_create_slots()
 
-	# try to re-add all existing stacks to the resized grid
 	var overflow: Array[ItemStack] = []
 	for stack in existing_stacks:
 		if not add_stack(stack):
@@ -101,25 +130,21 @@ func resize(w: int, h: int) -> Array[ItemStack]:
 	inventory_changed.emit()
 	return overflow
 
-# --- core inventory operations ---
+
+# =============================================================================
+# CORE INVENTORY OPERATIONS — ADD
+# =============================================================================
 
 func add_stack(stack: ItemStack) -> bool:
-	# add an ItemStack to the inventory.
-	# returns true if the entire quantity fit, false if some/all couldn't fit.
-	# if stackable, tries to top up existing stacks first, then places remainder
-	# in empty slots — splitting across multiple slots if needed.
-
 	if stack == null or not stack.is_valid():
 		return false
 
-	# work on a copy so we don't mutate the caller's stack
 	var working: ItemStack = stack.duplicate_stack()
 
-	# step 1: if stackable, try to top up existing stacks of the same item
 	if working.data.stackable:
 		for slot in slots:
 			if working.quantity <= 0:
-				break  # everything fit, done
+				break
 			if slot.is_empty():
 				continue
 			if slot.stack.can_stack_with(working):
@@ -127,14 +152,10 @@ func add_stack(stack: ItemStack) -> bool:
 				working.quantity = leftover
 				slot.refresh_display()
 
-	# step 2: place remainder in empty slots, splitting if needed
-	# handles "adding 250 arrows when max_stack is 100" correctly:
-	# fills first empty slot to 100, then next to 100, then next to 50.
 	while working.quantity > 0:
 		var found_empty: bool = false
 		for slot in slots:
 			if slot.is_empty():
-				# place up to max_stack worth in this slot
 				var to_place: int = min(working.quantity, working.data.max_stack)
 				var new_stack: ItemStack = working.duplicate_stack()
 				new_stack.quantity = to_place
@@ -143,16 +164,51 @@ func add_stack(stack: ItemStack) -> bool:
 				found_empty = true
 				break
 		if not found_empty:
-			break  # no more empty slots — inventory is full
+			break
 
 	inventory_changed.emit()
-	# true if the entire quantity fit, false if there's leftover
 	return working.quantity == 0
 
-func add_stack_at(index: int, stack: ItemStack) -> bool:
-	# place a stack at a specific slot index.
-	# returns true if it fit (or stacked), false otherwise.
 
+func add_stack_partial(stack: ItemStack) -> int:
+	# add as much of `stack` as fits, return how many units DID NOT fit.
+	# same logic as add_stack, but returns the leftover count so callers can
+	# put the remainder back where it came from (loot bag partial-take flow).
+	if stack == null or not stack.is_valid():
+		return 0
+
+	var working: ItemStack = stack.duplicate_stack()
+
+	if working.data.stackable:
+		for slot in slots:
+			if working.quantity <= 0:
+				break
+			if slot.is_empty():
+				continue
+			if slot.stack.can_stack_with(working):
+				var leftover: int = slot.stack.add_to_stack(working.quantity)
+				working.quantity = leftover
+				slot.refresh_display()
+
+	while working.quantity > 0:
+		var found_empty: bool = false
+		for slot in slots:
+			if slot.is_empty():
+				var to_place: int = min(working.quantity, working.data.max_stack)
+				var new_stack: ItemStack = working.duplicate_stack()
+				new_stack.quantity = to_place
+				slot.set_stack(new_stack)
+				working.quantity -= to_place
+				found_empty = true
+				break
+		if not found_empty:
+			break
+
+	inventory_changed.emit()
+	return working.quantity
+
+
+func add_stack_at(index: int, stack: ItemStack) -> bool:
 	if stack == null or not stack.is_valid():
 		return false
 	if index < 0 or index >= slots.size():
@@ -160,32 +216,28 @@ func add_stack_at(index: int, stack: ItemStack) -> bool:
 
 	var slot: InventorySlot = slots[index]
 
-	# if slot is empty, place the stack directly (clamped to max_stack)
 	if slot.is_empty():
 		var to_place: int = min(stack.quantity, stack.data.max_stack)
 		var new_stack: ItemStack = stack.duplicate_stack()
 		new_stack.quantity = to_place
 		slot.set_stack(new_stack)
 		inventory_changed.emit()
-		# if the original quantity exceeded max_stack, return false to
-		# signal the caller has overflow they need to handle
 		return to_place == stack.quantity
 
-	# if slot is occupied with a compatible stack, try to merge
 	if slot.stack.can_stack_with(stack):
 		var leftover: int = slot.stack.add_to_stack(stack.quantity)
 		slot.refresh_display()
 		inventory_changed.emit()
-		# true only if all quantity fit
 		return leftover == 0
 
-	# slot is occupied with an incompatible stack
 	return false
 
-func remove_stack_at(index: int) -> ItemStack:
-	# remove and return the entire stack at a given slot index.
-	# returns null if slot is empty or index is invalid.
 
+# =============================================================================
+# CORE INVENTORY OPERATIONS — REMOVE
+# =============================================================================
+
+func remove_stack_at(index: int) -> ItemStack:
 	if index < 0 or index >= slots.size():
 		return null
 
@@ -198,11 +250,8 @@ func remove_stack_at(index: int) -> ItemStack:
 	inventory_changed.emit()
 	return removed
 
-func remove_quantity_at(index: int, amount: int) -> int:
-	# remove a specific quantity from the stack at a slot index.
-	# clears the slot if quantity drops to zero.
-	# returns how much was actually removed.
 
+func remove_quantity_at(index: int, amount: int) -> int:
 	if index < 0 or index >= slots.size() or amount <= 0:
 		return 0
 
@@ -221,11 +270,8 @@ func remove_quantity_at(index: int, amount: int) -> int:
 		inventory_changed.emit()
 	return removed
 
-func remove_quantity_by_id(item_id: String, amount: int) -> int:
-	# remove a quantity of an item across all slots that contain it.
-	# useful for "consume 5 arrows" — pulls from any slot containing arrows.
-	# returns how much was actually removed (may be less than requested).
 
+func remove_quantity_by_id(item_id: String, amount: int) -> int:
 	if item_id == "" or amount <= 0:
 		return 0
 
@@ -254,43 +300,48 @@ func remove_quantity_by_id(item_id: String, amount: int) -> int:
 		inventory_changed.emit()
 	return amount - remaining
 
-# --- queries ---
+
+func clear_inventory() -> void:
+	for slot in slots:
+		slot.clear_stack()
+	inventory_changed.emit()
+
+
+# =============================================================================
+# QUERIES
+# =============================================================================
 
 func get_stack_at(index: int) -> ItemStack:
-	# returns the ItemStack at a slot index, or null if empty/invalid
 	if index < 0 or index >= slots.size():
 		return null
 	return slots[index].stack
 
+
 func get_slot_at(index: int) -> InventorySlot:
-	# returns the slot node at a given index
 	if index < 0 or index >= slots.size():
 		return null
 	return slots[index]
 
+
 func get_all_stacks() -> Array[ItemStack]:
-	# collect and return all non-empty stacks in the inventory
 	var result: Array[ItemStack] = []
 	for slot in slots:
 		if not slot.is_empty():
 			result.append(slot.stack)
 	return result
 
+
 func has_space() -> bool:
-	# returns true if any slot is empty
 	for slot in slots:
 		if slot.is_empty():
 			return true
 	return false
 
-func can_add_stack(stack: ItemStack) -> bool:
-	# returns true if the given stack can fit in the inventory,
-	# accounting for both empty slots and existing stack space.
 
+func can_add_stack(stack: ItemStack) -> bool:
 	if stack == null or not stack.is_valid():
 		return false
 
-	# count available space across existing matching stacks
 	if stack.data.stackable:
 		var remaining: int = stack.quantity
 		for slot in slots:
@@ -299,7 +350,6 @@ func can_add_stack(stack: ItemStack) -> bool:
 				if remaining <= 0:
 					return true
 
-		# also account for empty slots — each can hold one full stack
 		for slot in slots:
 			if slot.is_empty():
 				remaining -= stack.data.max_stack
@@ -307,11 +357,10 @@ func can_add_stack(stack: ItemStack) -> bool:
 					return true
 		return false
 
-	# non-stackable: just need an empty slot
 	return has_space()
 
+
 func get_quantity_of(item_id: String) -> int:
-	# count total quantity of an item across all slots
 	if item_id == "":
 		return 0
 
@@ -321,8 +370,8 @@ func get_quantity_of(item_id: String) -> int:
 			total += slot.stack.quantity
 	return total
 
+
 func find_first_index_of(item_id: String) -> int:
-	# return the slot index of the first stack matching item_id, or -1
 	if item_id == "":
 		return -1
 
@@ -331,21 +380,36 @@ func find_first_index_of(item_id: String) -> int:
 			return i
 	return -1
 
-func clear_inventory() -> void:
-	# clear all slots in the inventory
-	for slot in slots:
-		slot.clear_stack()
-	inventory_changed.emit()
 
-# --- save / load helpers ---
-# these methods serialize the inventory contents for the save system.
-# only item_id and quantity are saved per slot — the data is hydrated
-# from ItemRegistry on load. this is what makes saves small and MMO-ready.
+# =============================================================================
+# LINKED ITEM TINTING
+# =============================================================================
+
+func set_linked_item_ids(item_ids: Array) -> void:
+	linked_item_ids.clear()
+	for item_id in item_ids:
+		var s: String = str(item_id)
+		if s != "":
+			linked_item_ids[s] = true
+
+	_refresh_all_slot_styles()
+
+
+func is_item_linked(item_id: String) -> bool:
+	return linked_item_ids.has(item_id)
+
+
+func _refresh_all_slot_styles() -> void:
+	for slot in slots:
+		if slot != null:
+			slot.refresh_display()
+
+
+# =============================================================================
+# SAVE / LOAD
+# =============================================================================
 
 func to_save_array() -> Array:
-	# serialize the inventory to an array of dictionaries.
-	# null entries represent empty slots.
-	# preserves slot order so layout is restored on load.
 	var result: Array = []
 	for slot in slots:
 		if slot.is_empty():
@@ -354,10 +418,8 @@ func to_save_array() -> Array:
 			result.append(slot.stack.to_dict())
 	return result
 
-func load_save_array(save_array: Array) -> void:
-	# restore inventory from a saved array. clears existing contents first.
-	# unknown item_ids are skipped (with a registry warning) — slot stays empty.
 
+func load_save_array(save_array: Array) -> void:
 	clear_inventory()
 
 	for i in range(min(save_array.size(), slots.size())):
@@ -369,8 +431,6 @@ func load_save_array(save_array: Array) -> void:
 		if stack == null:
 			continue
 
-		# clamp quantity to max_stack on load — protects against legacy
-		# save files where stacks exceeded their data's current max_stack
 		if stack.data.stackable and stack.quantity > stack.data.max_stack:
 			push_warning("InventoryContainer: clamped %s quantity %d -> %d on load" % [
 				stack.data.item_id, stack.quantity, stack.data.max_stack
@@ -381,40 +441,47 @@ func load_save_array(save_array: Array) -> void:
 
 	inventory_changed.emit()
 
-func sort_by_name() -> void:
-	# sort all stacks alphabetically by display_name, consolidating
-	# matching stackable items into single stacks where possible.
 
-	# collect all current stacks
+# =============================================================================
+# SORTING
+# =============================================================================
+
+func sort_by_name() -> void:
 	var stacks: Array[ItemStack] = []
 	for slot in slots:
 		if not slot.is_empty():
 			stacks.append(slot.stack.duplicate_stack())
 
-	# clear all slots
 	for slot in slots:
 		slot.clear_stack()
 
-	# sort by display name (case-insensitive)
 	stacks.sort_custom(func(a: ItemStack, b: ItemStack) -> bool:
 		return a.data.display_name.to_lower() < b.data.display_name.to_lower()
 	)
 
-	# re-add — add_stack handles consolidation of stackables automatically
 	for stack in stacks:
 		add_stack(stack)
 
-# --- signal relay functions ---
-# forward slot signals up to the parent UI (the InventoryScreen)
+
+# =============================================================================
+# SIGNAL RELAY
+# =============================================================================
 
 func _on_slot_clicked(slot: InventorySlot) -> void:
 	slot_clicked.emit(slot)
 
+
 func _on_slot_right_clicked(slot: InventorySlot) -> void:
 	slot_right_clicked.emit(slot)
 
+
+func _on_slot_double_clicked(slot: InventorySlot) -> void:
+	slot_double_clicked.emit(slot)
+
+
 func _on_slot_hovered(slot: InventorySlot) -> void:
 	slot_hovered.emit(slot)
+
 
 func _on_slot_unhovered(slot: InventorySlot) -> void:
 	slot_unhovered.emit(slot)

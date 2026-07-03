@@ -1,0 +1,53 @@
+[gd_scene format=3 uid="uid://bbmlrx4hkvhrp"]
+
+[ext_resource type="Script" uid="uid://27kw28uq54px" path="res://src/projectiles/turretprojectile.gd" id="1_dpp00"]
+[ext_resource type="Texture2D" uid="uid://dsdpgtq8sjcvh" path="res://art/maincharacter/healerprojectile.png" id="2_dpp00"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_wxd72"]
+atlas = ExtResource("2_dpp00")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6o46c"]
+atlas = ExtResource("2_dpp00")
+region = Rect2(32, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_y55wu"]
+atlas = ExtResource("2_dpp00")
+region = Rect2(64, 0, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_c6ec3"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_wxd72")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6o46c")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_y55wu")
+}],
+"loop": true,
+"name": &"projectile",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_6o46c"]
+radius = 8.0
+
+[node name="turretprojectile" type="Area2D" unique_id=900178149]
+texture_filter = 1
+scale = Vector2(2, 2)
+collision_layer = 64
+collision_mask = 11
+script = ExtResource("1_dpp00")
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=927937555]
+light_mask = 32
+visibility_layer = 8
+texture_filter = 1
+sprite_frames = SubResource("SpriteFrames_c6ec3")
+animation = &"projectile"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=750730735]
+shape = SubResource("CircleShape2D_6o46c")

@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://bhcvimg66faj5"]
+
+[ext_resource type="Texture2D" uid="uid://mbi6abi0ouy6" path="res://art/Tiles/redflower.png" id="1_mnutq"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_wpwp7"]
+texture = ExtResource("1_mnutq")
+1:1/0 = 0
+0:1/0 = 0
+0:0/0 = 0
+1:0/0 = 0
+
+[sub_resource type="TileSet" id="TileSet_kjqqh"]
+sources/0 = SubResource("TileSetAtlasSource_wpwp7")
+
+[node name="Area2D" type="Area2D" unique_id=1773852408]
+texture_filter = 1
+collision_layer = 2
+collision_mask = 108
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=513408703]
+tile_map_data = PackedByteArray(0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0)
+tile_set = SubResource("TileSet_kjqqh")

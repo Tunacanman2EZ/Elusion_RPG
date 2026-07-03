@@ -1,213 +1,289 @@
-# represents a single slot in the inventory grid.
-# handles item display, hover and selection states, and user interactions.
-# slots own their index; stacks know nothing about where they live.
+# inventoryslot.gd — a single inventory slot. displays one ItemStack (icon +
+# quantity), handles hover highlighting, tooltips, right-click use, double-click
+# quick-transfer, and drag-and-drop between slots.
+#
+# slot_type distinguishes contexts ("inventory", "hotbar", "bank", "lootbag")
+# so behavior and drag rules can vary. drag-and-drop is container-agnostic:
+# any slot can drop onto any other slot, which is what lets items move freely
+# between inventory, bank, hotbar, and loot bags.
+#
+# visual state:
+# three styleboxes — normal, hover, and linked (gold border for items with
+# a hotbar assignment). the linked style is queried per-frame from the parent
+# container so hotbar changes are reflected immediately across all slots.
+#
+# drop cases:
+# - CASE A: source is HotbarSlot → reference-clear only (no item transfer)
+# - CASE B1: target empty → move stack from source to here
+# - CASE B2: target matches → merge stacks with overflow to source
+# - CASE B3: target differs → swap stacks
 extends PanelContainer
 class_name InventorySlot
 
-# --- signals ---
+
+# =============================================================================
+# SIGNALS
+# =============================================================================
 
 signal slot_clicked(slot: InventorySlot)
 signal slot_right_clicked(slot: InventorySlot)
 signal slot_hovered(slot: InventorySlot)
 signal slot_unhovered(slot: InventorySlot)
+signal slot_changed(slot: InventorySlot)
+signal slot_double_clicked(slot: InventorySlot)
 
-# --- state ---
 
-# the item stack stored in this slot — null if slot is empty
-# stacks reference shared ItemData and carry per-instance quantity
+# =============================================================================
+# EXPORTED SETTINGS
+# =============================================================================
+
+@export var slot_type: String = "inventory"
+
+
+# =============================================================================
+# STATE
+# =============================================================================
+
 var stack: ItemStack = null
-
-# the index of this slot in the inventory grid — set by InventoryContainer
 var slot_index: int = -1
 
-# whether the mouse is currently hovering over this slot
 var is_hovered: bool = false
-
-# whether this slot is currently selected by the player
 var is_selected: bool = false
 
-# --- styles ---
+var style_normal: StyleBoxFlat = null
+var style_hover:  StyleBoxFlat = null
+var style_linked: StyleBoxFlat = null
 
-var style_normal: StyleBoxFlat
-var style_hover: StyleBoxFlat
 
-# --- node references ---
+# =============================================================================
+# NODE REFERENCES
+# =============================================================================
 
 @onready var icon_rect: TextureRect = $centercontainer/icon
 @onready var quantity_label: Label = $quantitylabel
 
+
+# =============================================================================
+# LIFECYCLE
+# =============================================================================
+
 func _ready() -> void:
-	_create_styles()
+	_build_styles()
+	_update_style()
+	refresh_display()
+
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
-	gui_input.connect(_on_gui_input)
-	refresh_display()
 
-func _create_styles() -> void:
-	# try to get styles from the project theme first
-	var slot_theme: Theme = get_theme()
-	if slot_theme != null:
-		var theme_normal := slot_theme.get_stylebox("panel", "PanelSlot")
-		var theme_hover := slot_theme.get_stylebox("panel", "PanelSlotHover")
-		if theme_normal != null:
-			style_normal = theme_normal
-		if theme_hover != null:
-			style_hover = theme_hover
 
-	# fallback — create styles programmatically if theme styles not found
-	if style_normal == null:
-		style_normal = StyleBoxFlat.new()
-		style_normal.bg_color = Color(0.15, 0.12, 0.1, 0.9)
-		style_normal.border_width_left   = 2
-		style_normal.border_width_top    = 2
-		style_normal.border_width_right  = 2
-		style_normal.border_width_bottom = 2
-		style_normal.border_color = Color(0.4, 0.35, 0.25, 1.0)
-		style_normal.corner_radius_top_left     = 2
-		style_normal.corner_radius_top_right    = 2
-		style_normal.corner_radius_bottom_right = 2
-		style_normal.corner_radius_bottom_left  = 2
+# =============================================================================
+# STYLE
+# =============================================================================
 
-	if style_hover == null:
-		style_hover = StyleBoxFlat.new()
-		style_hover.bg_color = Color(0.25, 0.2, 0.15, 0.95)
-		style_hover.border_width_left   = 2
-		style_hover.border_width_top    = 2
-		style_hover.border_width_right  = 2
-		style_hover.border_width_bottom = 2
-		style_hover.border_color = Color(0.85, 0.75, 0.45, 1.0)
-		style_hover.corner_radius_top_left     = 2
-		style_hover.corner_radius_top_right    = 2
-		style_hover.corner_radius_bottom_right = 2
-		style_hover.corner_radius_bottom_left  = 2
+func _build_styles() -> void:
+	var base: StyleBox = get_theme_stylebox("panel")
+	if base is StyleBoxFlat:
+		style_normal = base.duplicate()
+		style_hover = base.duplicate()
+		style_hover.bg_color = style_normal.bg_color.lightened(0.15)
 
-	add_theme_stylebox_override("panel", style_normal)
-
-# --- stack management ---
-
-func set_stack(new_stack: ItemStack) -> void:
-	# store the new stack in this slot — null clears the slot
-	# the slot does NOT track position on the stack — slot owns its index
-	stack = new_stack
-	refresh_display()
-
-func clear_stack() -> void:
-	# remove the stack from this slot
-	stack = null
-	refresh_display()
-
-func is_empty() -> bool:
-	# return true if this slot has no valid stack
-	return stack == null or not stack.is_valid()
-
-# --- compatibility shim (temporary, removed in step 5) ---
-# inventorycontainer.gd still passes old Item objects until we migrate it.
-# these methods convert Item -> ItemStack on the fly via the registry,
-# so the container doesn't need to know about ItemStack yet.
-
-func set_item(old_item) -> void:
-	# accepts old Item — converts to ItemStack via registry lookup
-	# this is a temporary bridge; remove after step 5 migrates the container
-	if old_item == null:
-		clear_stack()
-		return
-
-	# old_item could be an Item resource — look up its ItemData via name
-	# this is fragile (matching by name) but only used during the migration
-	if "name" in old_item:
-		var data: ItemData = _find_itemdata_by_name(old_item.name)
-		if data != null:
-			var new_stack := ItemStack.new(data, old_item.quantity if "quantity" in old_item else 1)
-			set_stack(new_stack)
-			return
-
-	# couldn't convert — log and clear
-	push_warning("InventorySlot: failed to convert legacy Item to ItemStack")
-	clear_stack()
-
-func clear_item() -> void:
-	# old name kept for container compatibility — delegates to clear_stack
-	clear_stack()
-
-# look up ItemData by display_name (for legacy Item conversion only).
-# this is fragile and only works because we're in transition.
-# step 5 will use item_id directly and remove this helper.
-func _find_itemdata_by_name(item_name: String) -> ItemData:
-	for data in ItemRegistry.get_all_items():
-		if data.display_name == item_name:
-			return data
-	return null
-
-# --- legacy property accessor (temporary) ---
-# inventorycontainer.gd reads `slot.item.name`, `slot.item.tier`, etc.
-# until container is migrated, expose a fake `item` property that proxies
-# to the stack's data. read-only. remove after step 5.
-var item:
-	get:
-		if stack == null or not stack.is_valid():
-			return null
-		return stack  # the stack itself acts as a proxy — has .quantity, .data
-	set(value):
-		set_item(value)
-
-# --- display ---
-
-func refresh_display() -> void:
-	# do nothing if nodes are not ready yet
-	if not is_node_ready():
-		return
-
-	if stack == null or not stack.is_valid():
-		# slot is empty — clear icon and quantity label
-		icon_rect.texture = null
-		quantity_label.text = ""
+		style_linked = style_normal.duplicate()
+		style_linked.border_color = Color(0.95, 0.80, 0.30, 1.0)
 	else:
-		# slot has a stack — read display info from its ItemData
-		icon_rect.texture = stack.data.icon
+		style_normal = StyleBoxFlat.new()
+		style_hover = StyleBoxFlat.new()
+		style_linked = StyleBoxFlat.new()
 
-		# show stack quantity if item is stackable and has more than 1
-		if stack.data.stackable and stack.quantity > 1:
-			quantity_label.text = str(stack.quantity)
-		else:
-			quantity_label.text = ""
-
-	_update_style()
-
-func set_hovered(hovered: bool) -> void:
-	is_hovered = hovered
-	_update_style()
-
-func set_selected(selected: bool) -> void:
-	is_selected = selected
-	_update_style()
 
 func _update_style() -> void:
 	if style_normal == null or style_hover == null:
 		return
 
-	if is_selected:
-		modulate = Color(1.0, 1.0, 0.7, 1.0)
+	if is_hovered or is_selected:
 		add_theme_stylebox_override("panel", style_hover)
-	elif is_hovered:
-		modulate = Color(1.0, 1.0, 1.0, 1.0)
-		add_theme_stylebox_override("panel", style_hover)
+	elif _is_linked_to_hotbar() and style_linked != null:
+		add_theme_stylebox_override("panel", style_linked)
 	else:
-		modulate = Color(1.0, 1.0, 1.0, 1.0)
 		add_theme_stylebox_override("panel", style_normal)
 
-# --- input handling ---
 
-func _on_gui_input(event: InputEvent) -> void:
+func _is_linked_to_hotbar() -> bool:
+	if is_empty():
+		return false
+
+	var parent_container: Node = get_parent()
+	if parent_container == null:
+		return false
+	if not parent_container.has_method("is_item_linked"):
+		return false
+
+	return parent_container.is_item_linked(stack.data.item_id)
+
+
+# =============================================================================
+# STACK MANAGEMENT
+# =============================================================================
+
+func set_stack(new_stack: ItemStack) -> void:
+	stack = new_stack
+	refresh_display()
+
+
+func clear_stack() -> void:
+	stack = null
+	refresh_display()
+
+
+func is_empty() -> bool:
+	return stack == null or not stack.is_valid()
+
+
+func refresh_display() -> void:
+	if not is_node_ready():
+		return
+
+	if is_empty():
+		icon_rect.texture = null
+		quantity_label.text = ""
+		_update_style()
+		return
+
+	icon_rect.texture = stack.data.icon
+	if stack.quantity > 1:
+		quantity_label.text = str(stack.quantity)
+	else:
+		quantity_label.text = ""
+
+	_update_style()
+
+
+# =============================================================================
+# INPUT — LEFT CLICK (select) + RIGHT CLICK (use) + DOUBLE CLICK (quick transfer)
+# =============================================================================
+
+func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			slot_clicked.emit(self)
+			if event.double_click and not is_empty():
+				slot_double_clicked.emit(self)
+			else:
+				slot_clicked.emit(self)
+			accept_event()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			slot_right_clicked.emit(self)
+			accept_event()
+
+
+# =============================================================================
+# HOVER + TOOLTIP
+# =============================================================================
 
 func _on_mouse_entered() -> void:
-	set_hovered(true)
+	is_hovered = true
+	_update_style()
 	slot_hovered.emit(self)
+	_show_tooltip()
+
 
 func _on_mouse_exited() -> void:
-	set_hovered(false)
+	is_hovered = false
+	_update_style()
 	slot_unhovered.emit(self)
+	_hide_tooltip()
+
+
+func _show_tooltip() -> void:
+	if is_empty():
+		return
+	var tooltip: Node = get_tree().get_first_node_in_group("itemtooltip")
+	if tooltip == null:
+		return
+	if tooltip.has_method("show_for_stack"):
+		tooltip.show_for_stack(stack, self)
+
+
+func _hide_tooltip() -> void:
+	var tooltip: Node = get_tree().get_first_node_in_group("itemtooltip")
+	if tooltip == null:
+		return
+	if tooltip.has_method("hide_tooltip"):
+		tooltip.hide_tooltip()
+
+
+# =============================================================================
+# DRAG AND DROP — SOURCE
+# =============================================================================
+
+func _get_drag_data(_at_position: Vector2) -> Variant:
+	if is_empty():
+		return null
+
+	_hide_tooltip()
+
+	var preview: TextureRect = TextureRect.new()
+	preview.texture = icon_rect.texture
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.custom_minimum_size = Vector2(40, 40)
+	set_drag_preview(preview)
+
+	return {
+		"stack":       stack.duplicate_stack(),
+		"source_slot": self,
+		"source_type": slot_type,
+	}
+
+
+# =============================================================================
+# DRAG AND DROP — TARGET
+# =============================================================================
+
+func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	return typeof(data) == TYPE_DICTIONARY \
+		and data.has("stack") \
+		and data.has("source_slot")
+
+
+func _drop_data(_at_position: Vector2, data: Variant) -> void:
+	var incoming:    ItemStack     = data["stack"]
+	var source_slot: InventorySlot = data["source_slot"]
+
+	if source_slot == self:
+		return
+
+	# CASE A — drag from HotbarSlot. hotbar is just a reference layer; the
+	# actual stack already lives in inventory. clearing the hotbar removes
+	# the link without touching real inventory contents.
+	if source_slot is HotbarSlot:
+		source_slot.clear()
+		source_slot.slot_changed.emit(source_slot)
+		return
+
+	# B1: empty target — move incoming here, clear source
+	if is_empty():
+		set_stack(incoming)
+		source_slot.clear_stack()
+		_emit_both_changed(source_slot)
+		return
+
+	# B2: target has matching stackable item — merge with overflow handling
+	if stack.can_stack_with(incoming):
+		var leftover: int = stack.add_to_stack(incoming.quantity)
+		if leftover > 0:
+			incoming.quantity = leftover
+			source_slot.set_stack(incoming)
+		else:
+			source_slot.clear_stack()
+		refresh_display()
+		_emit_both_changed(source_slot)
+		return
+
+	# B3: different items — swap the two slots' stacks
+	var our_old_stack: ItemStack = stack
+	set_stack(incoming)
+	source_slot.set_stack(our_old_stack)
+	_emit_both_changed(source_slot)
+
+
+func _emit_both_changed(source_slot: InventorySlot) -> void:
+	slot_changed.emit(self)
+	source_slot.slot_changed.emit(source_slot)

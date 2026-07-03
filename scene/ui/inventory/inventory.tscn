@@ -1,38 +1,19 @@
 [gd_scene format=3 uid="uid://bjjfm61rvs0jm"]
 
 [ext_resource type="Script" uid="uid://c8i5b7j3mu2hv" path="res://src/ui/inventoryscreen.gd" id="2_ncbfh"]
+[ext_resource type="Texture2D" uid="uid://dygejq5jjt3b2" path="res://art/icons/inventorygold.png" id="3_d77iw"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
 [ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventorycontainer.gd" id="3_x3yba"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip_separator"]
-content_margin_top = 1.0
-content_margin_bottom = 1.0
-bg_color = Color(0.5, 0.42, 0.28, 0.4)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stat_bg"]
-content_margin_left = 4.0
-content_margin_top = 2.0
-content_margin_right = 4.0
-content_margin_bottom = 2.0
-bg_color = Color(0.1, 0.08, 0.06, 0.5)
-corner_radius_top_left = 2
-corner_radius_top_right = 2
-corner_radius_bottom_right = 2
-corner_radius_bottom_left = 2
+[ext_resource type="Texture2D" uid="uid://ct1jb184ql10d" path="res://art/currency/lusions.png" id="4_a8y50"]
 
 [node name="inventoryscreen" type="Control" unique_id=1169906003]
 layout_mode = 3
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -125.0
-offset_top = -225.0
-offset_right = 149.0
-offset_bottom = 225.0
-grow_horizontal = 2
-grow_vertical = 2
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -274.0
+offset_bottom = 340.0
+grow_horizontal = 0
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
@@ -99,11 +80,9 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="goldicon" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=839725113]
+[node name="goldicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=313845736]
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
-theme_override_font_sizes/font_size = 14
-text = "◆"
+texture = ExtResource("3_d77iw")
 
 [node name="goldlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=149820312]
 unique_name_in_owner = true
@@ -118,11 +97,9 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="lusionicon" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/lusionscontainer" unique_id=762917998]
+[node name="lusionicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/lusionscontainer" unique_id=753102347]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.85, 1, 1)
-theme_override_font_sizes/font_size = 14
-text = "✦"
+texture = ExtResource("4_a8y50")
 
 [node name="lusionslabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/lusionscontainer" unique_id=91406067]
 unique_name_in_owner = true
@@ -155,145 +132,3 @@ theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
 columns = 5
 script = ExtResource("3_x3yba")
-
-[node name="itemtooltip" type="PanelContainer" parent="." unique_id=1963751465]
-unique_name_in_owner = true
-visible = false
-z_index = 100
-layout_mode = 1
-offset_right = 200.0
-offset_bottom = 150.0
-mouse_filter = 2
-theme_type_variation = &"PanelTooltip"
-
-[node name="margincontainer" type="MarginContainer" parent="itemtooltip" unique_id=2120921974]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/margin_left = 10
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 10
-theme_override_constants/margin_bottom = 8
-
-[node name="vboxcontainer" type="VBoxContainer" parent="itemtooltip/margincontainer" unique_id=33870140]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 6
-
-[node name="headerhbox" type="HBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=910648105]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 8
-
-[node name="tooltipicon" type="TextureRect" parent="itemtooltip/margincontainer/vboxcontainer/headerhbox" unique_id=1255224810]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(32, 32)
-layout_mode = 2
-mouse_filter = 2
-expand_mode = 1
-stretch_mode = 5
-
-[node name="tooltipname" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/headerhbox" unique_id=2117220526]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 1
-theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
-theme_override_font_sizes/font_size = 14
-text = "Item Name"
-vertical_alignment = 1
-
-[node name="hseparator" type="HSeparator" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=1615119583]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/separator = SubResource("StyleBoxFlat_tooltip_separator")
-
-[node name="tooltipdescription" type="Label" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=1211112562]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.85, 0.82, 0.75, 1)
-theme_override_font_sizes/font_size = 11
-text = "Item description goes here."
-autowrap_mode = 2
-
-[node name="hseparator2" type="HSeparator" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=1407194313]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/separator = SubResource("StyleBoxFlat_tooltip_separator")
-
-[node name="statscontainer" type="VBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer" unique_id=1858081500]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 3
-
-[node name="valuestat" type="PanelContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer" unique_id=818627631]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
-
-[node name="hboxcontainer" type="HBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/valuestat" unique_id=2143575554]
-layout_mode = 2
-mouse_filter = 2
-
-[node name="label" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/valuestat/hboxcontainer" unique_id=1542924308]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
-text = "Value:"
-
-[node name="tooltipvalue" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/valuestat/hboxcontainer" unique_id=2088439535]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
-theme_override_font_sizes/font_size = 10
-text = "100"
-horizontal_alignment = 2
-
-[node name="tierstat" type="PanelContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer" unique_id=1289540869]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
-
-[node name="hboxcontainer" type="HBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/tierstat" unique_id=1235073836]
-layout_mode = 2
-mouse_filter = 2
-
-[node name="label" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/tierstat/hboxcontainer" unique_id=43972951]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
-text = "Tier:"
-
-[node name="tooltipter" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/tierstat/hboxcontainer" unique_id=1529033198]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 10
-text = "1"
-horizontal_alignment = 2
-
-[node name="levelstat" type="PanelContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer" unique_id=1050073983]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
-
-[node name="hboxcontainer" type="HBoxContainer" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/levelstat" unique_id=1901963076]
-layout_mode = 2
-mouse_filter = 2
-
-[node name="label" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/levelstat/hboxcontainer" unique_id=898008069]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
-text = "Required Level:"
-
-[node name="tooltiplevel" type="Label" parent="itemtooltip/margincontainer/vboxcontainer/statscontainer/levelstat/hboxcontainer" unique_id=1412179879]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 10
-text = "1"
-horizontal_alignment = 2

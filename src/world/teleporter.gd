@@ -1,6 +1,6 @@
 extends Area2D
 
-@onready var destination_point = $DestinationPoint
+@onready var destination_point = $destinationpoint
 
 var can_teleport := true
 

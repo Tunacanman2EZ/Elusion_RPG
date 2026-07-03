@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://dck44xxiydddy"]
+
+[ext_resource type="Texture2D" uid="uid://beg0xx5uwiae" path="res://art/Tiles/bush.png" id="1_87ii5"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_p3jpm"]
+texture = ExtResource("1_87ii5")
+0:0/0 = 0
+0:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-2.9728718, 4.261116, -3.0719671, 8, 8, 8, 8, -3.2701578, 3.963828, -2.9728708, -0.3963833, -2.5764885, -1.8828192, 1.189148)
+1:0/0 = 0
+1:0/0/physics_layer_0/polygon_0/points = PackedVector2Array(-4.3602114, -2.8737755, -8, -4.6574974, -8, 8, 3.963828, 8, 3.0719671, 4.1620197, 2.1801043, 1.0900526, -1.1891489, -0.594574)
+0:1/0 = 0
+0:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-4.7565937, -3.4683495, -4.0629244, -8, 8, -8, 8, 2.9728718, 2.8737745, 3.3692532, -2.0810099, 0.3963833)
+1:1/0 = 0
+1:1/0/physics_layer_0/polygon_0/points = PackedVector2Array(-3.963828, 3.1710625, -8, 2.9728718, -8, -8, 3.1710615, -8, 3.666541, -4.6574974, 1.7837229, -0.7927656, -0.8918619, 2.1801052)
+
+[sub_resource type="TileSet" id="TileSet_2yyco"]
+physics_layer_0/collision_layer = 1
+sources/0 = SubResource("TileSetAtlasSource_p3jpm")
+
+[node name="bush" type="Node2D" unique_id=446794483]
+
+[node name="bushpysics0" type="TileMapLayer" parent="." unique_id=312998438]
+texture_filter = 1
+tile_map_data = PackedByteArray(0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 255, 255, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0)
+tile_set = SubResource("TileSet_2yyco")

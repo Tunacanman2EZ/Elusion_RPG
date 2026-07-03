@@ -1,21 +1,50 @@
-# autoload global game state — persists across all scenes
-# contains multiplayer-ready signals and shared game data
+# autoload global game state — persists across all scenes.
+# this is the central signal bus and shared-state container for the game.
+# any system that needs to react to gameplay events subscribes to the
+# signals here rather than coupling directly to the emitter.
+#
+# multiplayer-ready architecture:
+# the signals below carry instance_id parameters (player_id, enemy_id, etc.)
+# so when multiplayer is added in phase 3, the same signals forward across
+# the network without restructuring callers. single-player today uses
+# self-IDs only; multiplayer routes IDs to the right peer.
 extends Node
 
-# transient state used by the death/revive system.
-# stored in memory only (no disk write) so force-quitting during the
-# death sequence does NOT preserve a "frozen" state for exploit. on next
-# login the player loads from their last legitimate save instead.
+
+# =============================================================================
+# DEATH AND REVIVE STATE
+# =============================================================================
+# transient state used by the death/revive system. stored in memory only
+# (no disk write) so force-quitting during the death sequence does NOT
+# preserve a "frozen" state for exploit. on next login the player loads
+# from their last legitimate save instead.
+
+# packed character + death context (set by player._change_to_game_over).
+# the gameover scene reads this to display info and route the revive choice.
 var death_state: Dictionary = {}
 
-# true between game over screen and world scene reload when player chose
-# to revive. world scene checks this on load to teleport the player to
+# true between gameover screen and world scene reload when player chose to
+# revive. the world scene checks this on load to teleport the player to
 # death_state.death_position and skip default spawn behavior.
 var reviving: bool = false
 
-# --- multiplayer ready signals ---
-# these signals are emitted by game systems and will be forwarded
-# to the server when multiplayer is implemented in phase 3
+
+# =============================================================================
+# GLOBAL STATE
+# =============================================================================
+
+# last known player world position — used by multiplayer sync.
+# currently set passively by player_moved signal listeners.
+var player_position: Vector2 = Vector2()
+
+# logged-in username — populated after Firebase auth in phase 2.
+# empty string means anonymous/offline mode.
+var logged_in_username: String = ""
+
+
+# =============================================================================
+# MOVEMENT AND COMBAT SIGNALS
+# =============================================================================
 
 # emitted every time the player moves — sends position and direction
 signal player_moved(player_id: int, position: Vector2, direction: String)
@@ -23,17 +52,27 @@ signal player_moved(player_id: int, position: Vector2, direction: String)
 # emitted when any damage is dealt — source, target, amount, and type
 signal damage_dealt(source_id: int, target_id: int, amount: int, type: String)
 
-# emitted when a player dies — used to trigger death handling server side
+# emitted when a player dies — used to trigger death handling server-side
 signal player_died(player_id: int)
 
-# emitted when an enemy dies — tracks who killed it for xp and loot
+# emitted when an enemy dies — tracks who killed it for XP and loot
 signal enemy_died(enemy_id: int, killer_id: int)
 
-# emitted when a player gains xp — server validates and updates leaderboard
+
+# =============================================================================
+# PROGRESSION SIGNALS
+# =============================================================================
+
+# emitted when a player gains XP — server validates and updates leaderboard
 signal xp_gained(player_id: int, amount: int)
 
 # emitted when a player's gold amount changes
 signal gold_changed(player_id: int, amount: int)
+
+
+# =============================================================================
+# INVENTORY AND ITEMS
+# =============================================================================
 
 # emitted when a player picks up an item from the world
 signal item_picked_up(player_id: int, item_id: String)
@@ -44,11 +83,21 @@ signal item_used(player_id: int, item_id: String)
 # emitted when a player activates a skill from the hotbar
 signal skill_used(player_id: int, skill_id: String, target_pos: Vector2)
 
+
+# =============================================================================
+# TANK-SPECIFIC SIGNALS
+# =============================================================================
+
 # emitted when the tank's aura deals damage to a nearby enemy
 signal aura_damage_dealt(tank_id: int, enemy_id: int, amount: int)
 
-# emitted when the tank activates their taunt skill
+# emitted when the tank activates their taunt skill (phase 2 ability)
 signal taunt_activated(tank_id: int, duration: float)
+
+
+# =============================================================================
+# BANK SIGNALS
+# =============================================================================
 
 # emitted when a player deposits an item into the bank chest
 signal bank_deposited(player_id: int, item_id: String, amount: int)
@@ -56,36 +105,37 @@ signal bank_deposited(player_id: int, item_id: String, amount: int)
 # emitted when a player withdraws an item from the bank chest
 signal bank_withdrawn(player_id: int, item_id: String, amount: int)
 
-# --- global state ---
 
-# tracks the player's last known world position — used by multiplayer sync
-var player_position := Vector2()
+# =============================================================================
+# ELEMENT TYPES
+# =============================================================================
 
-# stores the logged in username — set after Firebase auth in phase 2
-var logged_in_username := ""
-
-# --- element types ---
-
-# enum of all elemental damage types used in combat and dungeons
+# enum of all elemental damage types used in combat and dungeons.
+# NONE is index 0 for "no element / physical damage" — keep this as the
+# default for any non-elemental hit.
 enum Element {
-	NONE,   # no element — physical damage
-	DARK,   # dark element
-	LIGHT,  # light element
-	ICE,    # ice element
-	WIND,   # wind element
-	EARTH,  # earth element
-	FIRE,   # fire element
-	WATER   # water element
+	NONE,   # physical / no element
+	DARK,
+	LIGHT,
+	ICE,
+	WIND,
+	EARTH,
+	FIRE,
+	WATER,
 }
 
-func get_element_name(element) -> String:
-	# converts an Element enum value to a readable string
+
+func get_element_name(element: int) -> String:
+	# converts an Element enum value to a readable lowercase string.
+	# used by UI, damage labels, and debug output. the default branch
+	# catches both NONE and any invalid out-of-range value, returning
+	# "none" so callers never get a crash from a bad enum.
 	match element:
-		1: return "dark"
-		2: return "light"
-		3: return "ice"
-		4: return "wind"
-		5: return "earth"
-		6: return "fire"
-		7: return "water"
-		_: return "none"  # default — covers NONE and any invalid values
+		Element.DARK:  return "dark"
+		Element.LIGHT: return "light"
+		Element.ICE:   return "ice"
+		Element.WIND:  return "wind"
+		Element.EARTH: return "earth"
+		Element.FIRE:  return "fire"
+		Element.WATER: return "water"
+		_:             return "none"
