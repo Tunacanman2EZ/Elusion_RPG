@@ -1,0 +1,62 @@
+[gd_scene format=3 uid="uid://cgolafg6boiy7"]
+
+[ext_resource type="Script" uid="uid://bakrdel82pwjk" path="res://src/projectiles/petelectricprojectile.gd" id="1_c0fdo"]
+[ext_resource type="Texture2D" uid="uid://db7fkgqqydvh7" path="res://art/enemy/electricsprite.png" id="2_gxt0s"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_cboh3"]
+atlas = ExtResource("2_gxt0s")
+region = Rect2(0, 1152, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0ds6m"]
+atlas = ExtResource("2_gxt0s")
+region = Rect2(128, 1152, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_pipdk"]
+atlas = ExtResource("2_gxt0s")
+region = Rect2(256, 1152, 128, 128)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_yo75q"]
+atlas = ExtResource("2_gxt0s")
+region = Rect2(384, 1152, 128, 128)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_b88wd"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_cboh3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0ds6m")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_pipdk")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_yo75q")
+}],
+"loop": true,
+"name": &"projectile",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_tlgt8"]
+radius = 4.1231055
+
+[node name="petelectricprojectile" type="Area2D" unique_id=1414126183]
+modulate = Color(0.7117874, 0.25014624, 0.14438316, 1)
+self_modulate = Color(0.89452136, 0.9198862, 0.5425783, 1)
+texture_filter = 1
+collision_layer = 64
+collision_mask = 10
+script = ExtResource("1_c0fdo")
+speed = 20.0
+damage = 10
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1352338978]
+sprite_frames = SubResource("SpriteFrames_b88wd")
+animation = &"projectile"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=1467582072]
+shape = SubResource("CircleShape2D_tlgt8")
+
+[connection signal="body_entered" from="." to="." method="_on_body_entered"]

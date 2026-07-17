@@ -22,6 +22,6 @@ position = Vector2(1, 2)
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_yspra")
 
-[node name="VisibleOnScreenNotifier2D" type="VisibleOnScreenNotifier2D" parent="." unique_id=870757594]
+[node name="visableonscreennotifier2d" type="VisibleOnScreenNotifier2D" parent="." unique_id=870757594]
 position = Vector2(1, 0)
 rect = Rect2(-10, -3, 20, 9)

@@ -11,9 +11,9 @@
 # 6. orb travels in a straight line until hit, wall, or lifetime expiry
 #
 # projectile container:
-# if a "projectiles" group node exists, orbs parent under it for tidier
-# scene organization. otherwise they parent to the current scene root.
-# bushsniper does the same — keep both consistent.
+# orbs parent under the "projectiles" group node (the Y-sorted Projectiles
+# container inside YSortWorld) so they depth-sort correctly against
+# characters. falls back to the current scene root if the group is missing.
 extends BaseEnemy
 class_name ElectricSpirit
 
@@ -77,19 +77,19 @@ func fire_projectile() -> void:
 	# spawn an orb at the directional spawn marker, aimed at the player's
 	# position at the moment of release.
 	#
-	# tries to parent the orb under a "projectiles" group node for tidier
-	# scene organization — if no such node exists, falls back to the
-	# current scene root.
-	#
-	# uses call_deferred so we don't mutate the scene tree mid-physics
-	# frame (Godot warns otherwise during certain collision callbacks).
+	# parents the orb under the "projectiles" group (the Y-sorted Projectiles
+	# container) so it depth-sorts against characters. uses call_deferred so
+	# we don't mutate the scene tree mid-physics-frame.
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
 	if spawn_node == null or player == null:
 		return
 
 	var orb: Node = ELECTRIC_ORB_SCENE.instantiate()
 	_parent_to_projectiles_container(orb)
-	orb.global_position = spawn_node.global_position
+
+	# defer the position set too — the orb isn't in the tree until the
+	# deferred add_child runs, so set global_position deferred to match.
+	orb.set_deferred("global_position", spawn_node.global_position)
 
 	# aim at the player's current position. orb won't track after firing —
 	# if the player dodges between release and impact, the orb misses
@@ -107,9 +107,10 @@ func fire_projectile() -> void:
 # =============================================================================
 
 func _parent_to_projectiles_container(orb: Node) -> void:
-	# parent orbs under a "projectiles" group node if one exists in the
-	# scene, otherwise under the current scene root. either way uses
-	# call_deferred to defer the add_child until the physics step ends.
+	# parent orbs under the "projectiles" group node (Y-sorted Projectiles
+	# container inside YSortWorld). falls back to the current scene root if
+	# the group node is missing. call_deferred defers the add_child until
+	# the physics step ends, avoiding mid-frame scene-tree mutation errors.
 	var projectiles: Node = get_tree().get_first_node_in_group("projectiles")
 	if projectiles == null:
 		projectiles = get_tree().current_scene

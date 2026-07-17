@@ -1,4 +1,4 @@
-# base player class — inherited by warrior, mage, healer, and tank.
+# player.gd base player class — inherited by warrior, mage, healer, and tank.
 # handles movement, animation, combat, leveling, currency, the death/revive
 # sequence including hit flash and game over transition, universal regen,
 # AND universal sprint.
@@ -22,11 +22,8 @@ extends CharacterBody2D
 # CONSTANTS
 # =============================================================================
 
-# preloaded floating label scene — spawned on damage, healing, and level-ups
 const FLOATING_LABEL_SCENE := preload("res://scene/ui/floatinglabel.tscn")
 
-# code skill name -> display name for level-up popups. only "defense" differs
-# (shown as "Defence"); the rest just capitalize.
 const SKILL_DISPLAY_NAMES := {
 	"attack":  "Attack",
 	"defense": "Defence",
@@ -316,9 +313,6 @@ func _spawn_floating_label(amount: int, type: int) -> void:
 
 
 func _spawn_levelup_popup() -> void:
-	# big gold "LEVEL UP!\n{level}" popup above the player. character level-ups
-	# are rare, so this lingers longer and is scaled up to feel celebratory.
-	# Type.LEVELUP = 3 in floatinglabel's enum (DAMAGE,HEAL,MANA,LEVELUP,SKILLUP)
 	if FLOATING_LABEL_SCENE == null:
 		return
 	var lbl = FLOATING_LABEL_SCENE.instantiate()
@@ -327,14 +321,10 @@ func _spawn_levelup_popup() -> void:
 	get_tree().current_scene.add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -40)
 	if lbl.has_method("show_text"):
-		# message, type, lifetime override (~2s), scale (big)
 		lbl.show_text("LEVEL UP!\n%d" % level, 3, 2.0, 1.5)
 
 
 func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
-	# smaller cyan "{Display} {level}" popup. skill level-ups are frequent, so
-	# this is compact and short-lived. defense shows as "Defence".
-	# Type.SKILLUP = 4 in floatinglabel's enum.
 	if FLOATING_LABEL_SCENE == null:
 		return
 	var display: String = SKILL_DISPLAY_NAMES.get(skill_code, skill_code.capitalize())
@@ -344,7 +334,6 @@ func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
 	get_tree().current_scene.add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -35)
 	if lbl.has_method("show_text"):
-		# message, type, lifetime override (~1.2s), scale (smaller)
 		lbl.show_text("%s %d" % [display, new_level], 4, 1.2, 0.9)
 
 
@@ -425,14 +414,10 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 	_play_hit_flash()
 
 	if hp <= 0:
-		# killing blow — no defense XP granted. dying to farm defense is a
-		# degenerate strategy; surviving the hit is what trains the skill.
 		died.emit()
 		_start_death_sequence()
 		return
 
-	# survived the hit — train defense, scaled to damage taken so bigger
-	# hits train faster (and weak chip hits can't be farmed efficiently).
 	gain_defense_xp(maxi(1, amount / 2))
 
 
@@ -507,8 +492,6 @@ func _change_to_game_over() -> void:
 # =============================================================================
 
 func level_up() -> void:
-	# universal level-up: increment level, recompute maxes, refill to full,
-	# apply class skill bonuses, then spawn the celebratory level-up popup.
 	level += 1
 	_recompute_max_stats()
 	_fill_all_resources()
@@ -658,6 +641,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)
+			KEY_P: _debug_spawn_pet()
+			KEY_O: _debug_spawn_pet_mage()
+			KEY_I: _debug_spawn_pet_electric()
+			KEY_U: _debug_spawn_pet_fire()
 			KEY_M:
 				mana = max(mana - 30, 0)
 				print("DEBUG: drained 30 mana (now %d)" % mana)
@@ -665,6 +652,51 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F10: gain_defense_xp(30)
 			KEY_F11: gain_agility_xp(30)
 			KEY_F12: gain_magic_xp(30)
+
+func _debug_spawn_pet_fire() -> void:
+	# spawn a test fire pet next to the player to tune follow/attack behavior.
+	var pet_scene: PackedScene = load("res://scene/pets/petfiresprite.tscn")
+	if pet_scene == null:
+		print("DEBUG: petfiresprite.tscn not found — check the path")
+		return
+	var pet: Node = pet_scene.instantiate()
+	get_tree().current_scene.add_child(pet)
+	pet.global_position = global_position + Vector2(0, -40)
+	print("DEBUG: spawned fire pet")
+
+func _debug_spawn_pet_electric() -> void:
+	var pet_scene: PackedScene = load("res://scene/pets/petelectricsprite.tscn")
+	if pet_scene == null:
+		print("DEBUG: petelectricsprite.tscn not found — check the path")
+		return
+	var pet: Node = pet_scene.instantiate()
+	get_tree().current_scene.add_child(pet)
+	pet.global_position = global_position + Vector2(0, 40)
+	print("DEBUG: spawned electric pet")
+
+func _debug_spawn_pet() -> void:
+	# spawn a test archer pet next to the player to tune follow/attack behavior.
+	var pet_scene: PackedScene = load("res://scene/pets/petsniper.tscn")
+	if pet_scene == null:
+		print("DEBUG: petsniper.tscn not found — check the path")
+		return
+	var pet: Node = pet_scene.instantiate()
+	get_tree().current_scene.add_child(pet)
+	pet.global_position = global_position + Vector2(40, 0)
+	print("DEBUG: spawned pet")
+
+
+func _debug_spawn_pet_mage() -> void:
+	# spawn a test mage pet next to the player to tune the vine attack.
+	var pet_scene: PackedScene = load("res://scene/pets/petmage.tscn")
+	if pet_scene == null:
+		print("DEBUG: petmage.tscn not found — check the path")
+		return
+	var pet: Node = pet_scene.instantiate()
+	get_tree().current_scene.add_child(pet)
+	pet.global_position = global_position + Vector2(-40, 0)
+	print("DEBUG: spawned mage pet")
+
 
 func _debug_give_item(item_id: String, quantity: int) -> void:
 	var data := ItemRegistry.get_item(item_id)

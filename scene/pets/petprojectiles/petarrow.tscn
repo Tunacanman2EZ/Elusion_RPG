@@ -1,0 +1,27 @@
+[gd_scene format=3 uid="uid://256wmeq2w2gr"]
+
+[ext_resource type="Texture2D" uid="uid://c0gh7dy3ajnwo" path="res://art/enemy/arrow.png" id="1_7r0xb"]
+[ext_resource type="Script" uid="uid://ffskorujk4sm" path="res://src/projectiles/petarrow.gd" id="1_nmr24"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_e0kuc"]
+radius = 5.8999996
+height = 49.999996
+
+[node name="area2d" type="Area2D" unique_id=1860504771]
+collision_layer = 4
+collision_mask = 8
+script = ExtResource("1_nmr24")
+
+[node name="sprite2d" type="Sprite2D" parent="." unique_id=1713686155]
+modulate = Color(0.14140752, 0.91318846, 0.8260631, 1)
+self_modulate = Color(0.5019608, 0.6901961, 1, 1)
+texture_filter = 1
+position = Vector2(0, -0.5)
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("1_7r0xb")
+
+[node name="attackrange" type="CollisionShape2D" parent="." unique_id=1652821496]
+position = Vector2(-4.2351647e-22, 7.1054274e-15)
+rotation = 1.5707964
+scale = Vector2(0.2, 0.2)
+shape = SubResource("CapsuleShape2D_e0kuc")

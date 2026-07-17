@@ -20,8 +20,12 @@
 #   1. bag drop (bag_drop_chance) — gold + tier-gated items
 #   2. pet drop — three d6, all sixes (1/216) drops this enemy's signature
 #      pet (pet_drop_id). a won pet forces a bag to spawn to hold it.
-# gold is guaranteed in any bag: amount = randi(max_loot_tier, max_loot_tier*25),
-# small pile under 100, large pile at/above. bags are killer-owned and despawn.
+# gold is guaranteed in any bag.
+#
+# projectile spawning:
+# spawn_projectile_node() parents projectiles into the y-sorted "projectiles"
+# container so they depth-sort against characters. deferred to avoid the
+# "can't change state while flushing queries" physics error.
 extends CharacterBody2D
 class_name BaseEnemy
 
@@ -30,29 +34,15 @@ class_name BaseEnemy
 # CONSTANTS
 # =============================================================================
 
-# preloaded floating label scene for damage numbers above the enemy
 const FLOATING_LABEL_SCENE := preload("res://scene/ui/floatinglabel.tscn")
-
-# preloaded loot bag entity spawned on death. NOTE the folder spelling:
-# scene/interactables/ (with an 'a').
 const LOOTBAG_SCENE := preload("res://scene/interactables/lootbag.tscn")
 
-# distance threshold for stacking-avoidance nudges (pixels)
 const STACK_AVOID_DISTANCE := 24.0
-
-# nudge strength applied to velocity when enemies overlap
 const STACK_AVOID_FORCE := 20.0
-
-# how close to spawn position counts as "home" before idling (pixels)
 const HOME_ARRIVAL_THRESHOLD := 4.0
 
-# how many item slots a dropped bag rolls (gold is separate + guaranteed)
 const BAG_ITEM_SLOTS := 8
-
-# gold amount at or above which the large gold pile is used instead of small
 const LARGE_GOLD_THRESHOLD := 100
-
-# gold currency item_ids (both CURRENCY type, value=1, quantity = amount)
 const GOLD_SMALL_ID := "smallamountofgold"
 const GOLD_LARGE_ID := "largeamountofgold"
 
@@ -61,18 +51,14 @@ const GOLD_LARGE_ID := "largeamountofgold"
 # EXPORTED SETTINGS
 # =============================================================================
 
-# base health pool — subclasses can override
 @export var max_hp:           int   = 50
 
-# attack cycle settings
 @export var attack_cooldown:  float = 2.0
 @export var attack_range:     float = 200.0
 @export var flee_range:       float = 40.0
 
-# how far an enemy will chase from spawn before returning home
 @export var leash_range:      float = 400.0
 
-# XP rewards on kill
 @export var xp_reward:        int = 20
 @export var attack_xp_reward: int = 5
 
@@ -81,19 +67,9 @@ const GOLD_LARGE_ID := "largeamountofgold"
 # EXPORTED SETTINGS — LOOT DROPS
 # =============================================================================
 
-# chance (0.0–1.0) that killing this enemy drops a loot bag. 0.30 keeps bags
-# rewarding rather than constant.
 @export var bag_drop_chance: float = 0.30
-
-# highest item tier this enemy can drop. starter mobs use 1 so they can never
-# roll high-tier gear; bosses use higher. also scales the gold amount.
 @export var max_loot_tier: int = 1
-
-# per-slot chance (0.0–1.0) that each of the bag's item slots contains an item.
 @export var slot_fill_chance: float = 0.35
-
-# this enemy's SIGNATURE pet item_id. empty = this enemy drops no pet.
-# e.g. bushsniper sets "archerpet". the pet only drops on a triple-six roll.
 @export var pet_drop_id: String = ""
 
 
@@ -284,6 +260,26 @@ func fire_projectile() -> void:
 
 
 # =============================================================================
+# PROJECTILE SPAWNING
+# =============================================================================
+
+func spawn_projectile_node(projectile: Node, spawn_pos: Vector2) -> void:
+	# parent a projectile into the y-sorted "projectiles" container so it
+	# depth-sorts correctly against characters. falls back to the scene root
+	# if the container is missing (wrongly-sorted but still functional).
+	#
+	# add_child + position are BOTH deferred: deferred add avoids the
+	# "can't change state while flushing queries" physics error when a
+	# projectile spawns during a collision, and deferred position ensures
+	# global_position is applied AFTER the node is actually in the tree.
+	var container: Node = get_tree().get_first_node_in_group("projectiles")
+	if container == null:
+		container = get_tree().current_scene
+	container.add_child.call_deferred(projectile)
+	projectile.set_deferred("global_position", spawn_pos)
+
+
+# =============================================================================
 # ANIMATION HELPERS
 # =============================================================================
 
@@ -365,9 +361,6 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 
 
 func _die() -> void:
-	# award xp to the killer, roll loot, then despawn.
-	# capture the killer BEFORE queue_free so the bag knows its owner, and
-	# roll loot BEFORE freeing so the bag spawns into the scene.
 	var killer: Node = player
 
 	if killer and killer.has_method("gain_xp"):
@@ -386,12 +379,6 @@ func _die() -> void:
 # =============================================================================
 
 func _roll_and_spawn_loot(killer: Node) -> void:
-	# two independent rolls:
-	#   pet — three d6 all sixes (1/216). requires this enemy to have a
-	#         signature pet_drop_id that exists in the registry.
-	#   bag — bag_drop_chance for normal gold + items.
-	# a won pet FORCES a bag to spawn (so the pet has a container), even if
-	# the bag roll missed. if neither hits, nothing drops.
 	var pet_won: bool = _roll_pet()
 	var bag_drops: bool = randf() <= bag_drop_chance
 
@@ -403,14 +390,10 @@ func _roll_and_spawn_loot(killer: Node) -> void:
 	if pet_won:
 		contents.append({ "item_id": pet_drop_id, "quantity": 1 })
 
-	# a pet bag with no other contents would be odd, but gold is guaranteed
-	# in _build_bag_contents, so contents is never empty here.
 	_spawn_loot_bag(contents, killer, pet_won)
 
 
 func _roll_pet() -> bool:
-	# three six-sided dice; all three must be 6 (1/216 ≈ 0.46%). only counts
-	# if this enemy has a signature pet that exists in the registry.
 	if pet_drop_id == "":
 		return false
 	if not ItemRegistry.has_item(pet_drop_id):
@@ -423,18 +406,13 @@ func _roll_pet() -> bool:
 
 
 func _build_bag_contents() -> Array:
-	# gold is guaranteed; item slots are each an independent slot_fill_chance
-	# roll of a tier-gated weighted item. returns an array of
-	# { "item_id": String, "quantity": int } dictionaries.
 	var contents: Array = []
 
-	# guaranteed gold — amount scales with tier, pile item picked by threshold
 	var gold_amount: int = randi_range(max_loot_tier, max_loot_tier * 25)
 	var gold_id: String = GOLD_LARGE_ID if gold_amount >= LARGE_GOLD_THRESHOLD else GOLD_SMALL_ID
 	if ItemRegistry.has_item(gold_id):
 		contents.append({ "item_id": gold_id, "quantity": gold_amount })
 
-	# item slots — each independently rolls to contain a tier-gated item
 	for i in range(BAG_ITEM_SLOTS):
 		if randf() <= slot_fill_chance:
 			var picked_id: String = _pick_weighted_item_id(max_loot_tier)
@@ -445,9 +423,6 @@ func _build_bag_contents() -> Array:
 
 
 func _pick_weighted_item_id(max_tier: int) -> String:
-	# pull a random droppable item_id where tier <= max_tier, excluding
-	# PET (signature-only), QUEST (never random), and CURRENCY (gold is
-	# handled separately). lower tiers weighted more common.
 	var candidates: Array = []
 	var weights: Array = []
 	var total_weight: int = 0
@@ -484,13 +459,6 @@ func _pick_weighted_item_id(max_tier: int) -> String:
 
 
 func _spawn_loot_bag(contents: Array, killer: Node, has_pet: bool) -> void:
-	# instantiate the bag at the death position, hand it the contents, the
-	# killer (ownership), and whether it holds a pet (triggers the loot beam).
-	#
-	# deferred insertion: the killing projectile is often mid-collision when
-	# _die runs, and adding an Area2D to the tree during a physics query
-	# flush errors. defer both the add_child AND the setup calls so they run
-	# after the physics frame settles.
 	if LOOTBAG_SCENE == null:
 		push_warning("BaseEnemy: LOOTBAG_SCENE not loaded — no bag spawned")
 		return
@@ -498,16 +466,18 @@ func _spawn_loot_bag(contents: Array, killer: Node, has_pet: bool) -> void:
 	var bag: Node = LOOTBAG_SCENE.instantiate()
 	bag.global_position = global_position
 
-	# defer the setup until after the current physics query flushes.
-	# we pass the fully-configured bag reference through so the deferred
-	# helper doesn't need to re-resolve state.
 	call_deferred("_finish_spawn_loot_bag", bag, contents, killer, has_pet)
 
 
 func _finish_spawn_loot_bag(bag: Node, contents: Array, killer: Node, has_pet: bool) -> void:
-	# runs one physics frame later than _spawn_loot_bag, so Area2D collision
-	# state is safe to modify. this is where add_child + setup calls run.
-	get_tree().current_scene.add_child(bag)
+	# parent loot bags into the y-sorted world so they sort with characters.
+	# prefer a "lootbags" container, fall back to "projectiles", then scene root.
+	var container: Node = get_tree().get_first_node_in_group("lootbags")
+	if container == null:
+		container = get_tree().get_first_node_in_group("projectiles")
+	if container == null:
+		container = get_tree().current_scene
+	container.add_child(bag)
 
 	if bag.has_method("set_contents"):
 		bag.set_contents(contents)
@@ -516,12 +486,18 @@ func _finish_spawn_loot_bag(bag: Node, contents: Array, killer: Node, has_pet: b
 	if bag.has_method("set_has_pet"):
 		bag.set_has_pet(has_pet)
 
+
 # =============================================================================
 # UI / VISUAL EFFECTS
 # =============================================================================
 
 func _spawn_floating_label(amount: int, type: int) -> void:
+	# damage numbers go to the FloatingLabels container (always-on-top,
+	# not y-sorted) if it exists, else fall back to the scene root.
 	var lbl: Node = FLOATING_LABEL_SCENE.instantiate()
-	get_tree().current_scene.add_child(lbl)
+	var container: Node = get_tree().get_first_node_in_group("floatinglabels")
+	if container == null:
+		container = get_tree().current_scene
+	container.add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -30)
 	lbl.show_number(amount, type, 0.5)

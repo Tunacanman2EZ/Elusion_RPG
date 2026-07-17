@@ -1,10 +1,14 @@
-# main game scene controller — spawns the active player character based on
+# elusion.gd main game scene controller — spawns the active player character based on
 # the slot selected at character select, then wires its signals into
 # GameState for the rest of the game to react to.
 #
 # the player is fully driven by signals: combat, XP, gold, movement all
 # emit through GameState so any system (achievements, multiplayer sync,
 # analytics) can subscribe without coupling to the player directly.
+#
+# y-sort: the player spawns into ysortworld/player so it depth-sorts against
+# pre-placed enemies. everything upright (player, enemies, projectiles, pets,
+# props) lives under the y-sorted ysortworld container.
 extends Node2D
 
 
@@ -35,8 +39,8 @@ func _ready() -> void:
 
 func spawn_player_from_selection() -> void:
 	# instantiates the character scene matching the slot selected at
-	# character select, parents it to this scene at the playerspawn
-	# marker, then wires up all signals.
+	# character select, parents it into the y-sorted player container so it
+	# depth-sorts correctly against pre-placed enemies, then wires signals.
 	var slot_idx: int = CharacterData.active_character_index
 
 	# preloaded character scenes — array index matches slot index, so
@@ -69,11 +73,20 @@ func spawn_player_from_selection() -> void:
 		push_error("playerspawn node not found!")
 		return
 
+	# resolve the spawn container. the player MUST land inside ysortworld's
+	# sort space to depth-sort against enemies. prefer ysortworld/player,
+	# fall back to ysortworld, then to self (degraded but non-crashing).
+	var spawn_parent: Node = self
+	var ysort_world: Node = get_node_or_null("ysortworld")
+	if ysort_world != null:
+		var player_container: Node = ysort_world.get_node_or_null("player")
+		spawn_parent = player_container if player_container != null else ysort_world
+
 	# position then attach. attach last so player._ready() runs with the
 	# correct global_position when CharacterData.load_character_state(self)
 	# pulls saved stats onto the instance.
 	player.global_position = spawn.global_position
-	add_child(player)
+	spawn_parent.add_child(player)
 	current_player = player
 
 	_wire_player_signals()
