@@ -1,16 +1,13 @@
-# Godot 4+ specific ignores
+# Godot 4 specific ignores
 .godot/
 .nomedia
-.import/
-export.cfg
+
+# Godot-specific ignores
+.import/	export.cfg
 export_credentials.cfg
-*.translation
+*.tmp
+
+# Mono-specific ignores
 .mono/
 data_*/
 mono_crash.*.json
-/android/
-
-# Project-local files to keep untracked
-WARP.md
-.editorconfig
-
