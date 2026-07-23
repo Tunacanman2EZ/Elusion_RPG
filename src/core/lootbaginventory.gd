@@ -6,6 +6,17 @@
 # if the inventory can't fit the whole stack, the fit portion goes and the
 # leftover stays in the loot bag. if inventory is completely full for that
 # item type, nothing moves and a message logs to console.
+#
+# AUTO-CLOSE ON DISTANCE (NEW):
+# lootbag.gd emits player_left_range when the player who has this panel open
+# walks out of its Area2D. we connect to that signal in open_for_bag() and
+# route it straight into _on_close_pressed() — the exact same close path the
+# X button uses (sync remaining contents back to the bag, hide, clear ref) —
+# so there's only ever one way this panel actually closes, not two divergent
+# ones. the connection is torn down in _disconnect_world_bag_signal(),
+# called both when closing normally and before wiring a new bag, so a stale
+# connection to a previous (possibly despawned) bag can never fire against
+# whatever bag the panel is currently pointed at.
 extends Control
 
 
@@ -46,11 +57,10 @@ func _ready() -> void:
 # =============================================================================
 
 func open_for_bag(world_bag: Node, player: Node) -> void:
-	# === DIAGNOSTIC — remove after fixing ===
-	print("LOOTBAG_INV.open_for_bag: world_bag=%s player=%s contents_from_bag=%s" % [
-		world_bag, player, world_bag.get_contents() if world_bag != null else "null"
-	])
-	# === END DIAGNOSTIC ===
+	# tear down any leftover connection to a PREVIOUS bag before pointing
+	# this panel at a new one — prevents a stale signal from an old bag
+	# ever reaching _on_close_pressed() once we've moved on.
+	_disconnect_world_bag_signal()
 
 	_world_bag = world_bag
 	_player = player
@@ -59,18 +69,34 @@ func open_for_bag(world_bag: Node, player: Node) -> void:
 	_loading = false
 	visible = true
 
-	# === DIAGNOSTIC — remove after fixing ===
-	print("LOOTBAG_INV.open_for_bag DONE: visible=true, container_empty=%s" % _is_container_empty())
-	# === END DIAGNOSTIC ===
+	# NEW: snap the panel's size to its real content (header + 6-slot grid)
+	# instead of whatever fixed size was last set in the editor. only works
+	# correctly now that lootscroll (a ScrollContainer) has been removed from
+	# the hierarchy — ScrollContainers don't propagate their child's actual
+	# size upward, which is what caused the dead space below the grid.
+	# called after visible = true since Godot needs the control to be
+	# visible to compute an accurate combined minimum size.
+	reset_size()
+
+	# NEW: listen for the bag telling us the player walked out of range.
+	if _world_bag != null and _world_bag.has_signal("player_left_range"):
+		if not _world_bag.player_left_range.is_connected(_on_close_pressed):
+			_world_bag.player_left_range.connect(_on_close_pressed)
 
 
 func _on_close_pressed() -> void:
-	# === DIAGNOSTIC — remove after fixing ===
-	print("LOOTBAG_INV._on_close_pressed CALLED")
-	# === END DIAGNOSTIC ===
 	_sync_back_to_bag()
+	_disconnect_world_bag_signal()
 	visible = false
 	_world_bag = null
+
+
+func _disconnect_world_bag_signal() -> void:
+	# NEW: shared cleanup so the player_left_range connection never outlives
+	# its usefulness — called before wiring a new bag AND when closing.
+	if _world_bag != null and _world_bag.has_signal("player_left_range"):
+		if _world_bag.player_left_range.is_connected(_on_close_pressed):
+			_world_bag.player_left_range.disconnect(_on_close_pressed)
 
 
 # =============================================================================
@@ -78,21 +104,22 @@ func _on_close_pressed() -> void:
 # =============================================================================
 
 func _load_contents(contents: Array) -> void:
-	# === DIAGNOSTIC — remove after fixing ===
-	print("LOOTBAG_INV._load_contents: received %d entries" % contents.size())
-	# === END DIAGNOSTIC ===
-
 	var resolved: Array = []
 	for entry in contents:
+		# NEW: skip empty-slot placeholders. %lootcontainer's save-array
+		# format represents empty slots as null (or possibly an empty dict)
+		# in a fixed-length array rather than omitting them — without this
+		# guard, entry.get(...) below crashes with "Nonexistent function
+		# 'get' in base 'Nil'" the moment any slot is empty.
+		if not (entry is Dictionary):
+			continue
+
 		var item_id: String = entry.get("item_id", "")
 		var qty: int = entry.get("quantity", 1)
 		if item_id == "":
 			continue
 		var data: ItemData = ItemRegistry.get_item(item_id)
 		if data == null:
-			# === DIAGNOSTIC ===
-			print("  ... skipping '%s' — not in ItemRegistry" % item_id)
-			# === END ===
 			continue
 		if data.type == ItemData.Type.PET and _player_owns_pet(item_id):
 			resolved.append({
@@ -102,9 +129,6 @@ func _load_contents(contents: Array) -> void:
 		else:
 			resolved.append({ "item_id": item_id, "quantity": qty })
 
-	# === DIAGNOSTIC ===
-	print("LOOTBAG_INV._load_contents: resolved %d entries, calling load_save_array" % resolved.size())
-	# === END ===
 	loot_container.load_save_array(resolved)
 
 
@@ -155,32 +179,18 @@ func _get_player_inventory_container() -> Node:
 # =============================================================================
 
 func _on_container_changed() -> void:
-	# === DIAGNOSTIC — remove after fixing ===
-	print("LOOTBAG_INV._on_container_changed: _loading=%s _player=%s _world_bag=%s" % [
-		_loading, _player, _world_bag
-	])
-	# === END DIAGNOSTIC ===
-
 	if _loading:
-		# === DIAGNOSTIC ===
-		print("  ... _loading flag is true, returning early (safe)")
-		# === END ===
 		return
 	if _player != null:
 		CharacterData.save_character_state(_player)
 	_sync_back_to_bag()
 
 	var empty: bool = _is_container_empty()
-	# === DIAGNOSTIC ===
-	print("  ... container_empty=%s _world_bag=%s" % [empty, _world_bag])
-	# === END ===
 
 	if empty:
-		# === DIAGNOSTIC ===
-		print("  ... DESPAWNING — calling _world_bag.despawn_now()")
-		# === END ===
 		if _world_bag != null and _world_bag.has_method("despawn_now"):
 			_world_bag.despawn_now()
+		_disconnect_world_bag_signal()
 		_world_bag = null
 		visible = false
 

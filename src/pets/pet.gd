@@ -17,6 +17,20 @@
 #   Projectiles container) so they depth-sort with characters.
 # - vine attacks parent under the "groundeffects" group (Y-sorted
 #   GroundEffects container) so they root at the target's feet, under bodies.
+#
+# DEFERRED SPAWN TIMING (IMPORTANT):
+# _parent_to_group() deliberately uses add_child.call_deferred() rather than
+# add_child() directly, to avoid mutating the tree mid-physics-frame. that
+# means the spawned node's _ready() — and therefore any @onready vars on it,
+# like a sprite reference — does NOT run until later in the same frame's
+# deferred-call flush. calling a method like fire()/shoot_vector() on that
+# node SYNCHRONOUSLY right after spawning it will hit those @onready vars
+# before they're assigned (still null), crashing with "Invalid access to
+# property or key '...' on a base object of type 'Nil'". both _fire_vine()
+# and _fire_projectile() defer their trigger call for exactly this reason —
+# deferred calls run in the order they were queued, so the deferred add_child
+# (which triggers _ready()) always completes before the deferred fire/shoot
+# call runs, even though both were queued within the same physics frame.
 extends CharacterBody2D
 class_name Pet
 
@@ -94,15 +108,7 @@ func _physics_process(_delta: float) -> void:
 	_update_follow()
 
 	_current_target = _find_nearest_enemy()
-	
-	# === DIAGNOSTIC — remove after fixing ===
-	if _current_target != null:
-		var d: float = global_position.distance_to(_current_target.global_position)
-		print("PET: target=%s dist=%.1f attack_ready=%s is_attacking=%s" % [
-			_current_target.name, d, _attack_ready, _is_attacking
-		])
-	# === END DIAGNOSTIC ===
-	
+
 	if _current_target != null and _attack_ready:
 		_fire_at(_current_target)
 
@@ -211,8 +217,17 @@ func _fire_projectile(dir: Vector2) -> void:
 
 	if "damage" in projectile:
 		projectile.damage = projectile_damage
+
+	# NEW: deferred for the same reason as _fire_vine's fire() call below —
+	# see the DEFERRED SPAWN TIMING note at the top of this file. this
+	# wasn't crashing visibly (unlike petvine.gd's fire()), but it's the
+	# identical latent timing bug: if any projectile's shoot_vector() ever
+	# touches an @onready sprite reference, it'll hit the same null crash
+	# the moment that code path changes. deferring here costs nothing and
+	# closes the gap for all projectile types at once, not just the ones
+	# lucky enough not to have tripped it yet.
 	if projectile.has_method("shoot_vector"):
-		projectile.shoot_vector(dir)
+		projectile.call_deferred("shoot_vector", dir)
 
 
 func _fire_vine(target: Node, dir: Vector2) -> void:
@@ -223,8 +238,18 @@ func _fire_vine(target: Node, dir: Vector2) -> void:
 	vine.set_deferred("global_position", target.global_position)
 	if "damage" in vine:
 		vine.damage = projectile_damage
+
+	# NEW: fire() must be deferred — _parent_to_group's add_child is itself
+	# deferred, so vine._ready() (and its @onready sprite assignment) hasn't
+	# run yet at this point in the same physics frame. calling fire()
+	# synchronously here is exactly what produced "Invalid access to
+	# property or key 'sprite_frames' on a base object of type 'Nil'" —
+	# petvine.gd's fire() touches sprite.sprite_frames immediately, and
+	# sprite was still unassigned. deferring queues fire() to run right
+	# after the deferred add_child completes _ready(), in the same
+	# end-of-frame flush, in queue order — so sprite is guaranteed set.
 	if vine.has_method("fire"):
-		vine.fire(_dir_to_cardinal(dir))
+		vine.call_deferred("fire", _dir_to_cardinal(dir))
 
 
 func _parent_to_group(node: Node, group_name: String) -> void:

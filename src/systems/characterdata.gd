@@ -11,6 +11,30 @@
 #
 # migration: _migrate_save() upgrades older save formats to current version
 # automatically on load, so players don't lose progress when the schema evolves.
+#
+# ANTI-TAMPER / SANITY VALIDATION (NEW):
+# runs on every load_data() call — for tampered saves AND honest bugs alike.
+# does NOT reject or wipe corrupted saves; clamps/corrects individual fields
+# and logs what changed via push_warning, so a beta tester who trips this
+# from a real bug (not cheating) doesn't lose progress outright.
+#
+# IMPORTANT — what this does and doesn't cover:
+# hp/max_hp/mana/max_mana/stamina/max_stamina are already effectively
+# tamper-proof today as a side effect of existing design: player.gd's
+# _ready() calls _recompute_max_stats() + _fill_all_resources() right after
+# load_character_state(), unconditionally overwriting all six from `level`
+# + the class's own stat-curve constants. editing them in the save file
+# currently has zero live effect. this file still clamps them defensively
+# (MAX_STAT_POOL below) in case something later reads the raw save dict
+# without going through that pipeline (e.g. a character-select stat
+# preview) — but it CANNOT validate "is max_hp correct for this class at
+# this level," since per-class curves (hp_base/hp_per_lvl etc.) live in
+# each player script's _set_stat_curve(), not here. that would require
+# either exposing those curves as static data this script can read, or
+# doing the check player-side instead.
+#
+# level/skill caps (MAX_LEVEL, MIN/MAX_SKILL_LEVEL) below are placeholders —
+# confirm against your actual design before relying on them.
 extends Node
 
 
@@ -51,6 +75,15 @@ const DEFAULT_ACCOUNT_DATA := {
 	"bank_gold":       0,    # account-shared, safe from death
 	"bank_inventory":  [],   # account-shared item array (50 slots)
 }
+
+# --- anti-tamper sanity ranges — PLACEHOLDERS, confirm against your design ---
+const MAX_LEVEL := 99
+const MIN_SKILL_LEVEL := 1
+const MAX_SKILL_LEVEL := 99
+const MAX_GOLD := 999999999
+# blunt ceiling for hp/mana/stamina + their maxes — see class comment above
+# for why this can't be a precise per-class check.
+const MAX_STAT_POOL := 999999
 
 
 # =============================================================================
@@ -121,6 +154,107 @@ func _initialize_account_data() -> void:
 
 
 # =============================================================================
+# ANTI-TAMPER / SANITY VALIDATION  (NEW)
+# =============================================================================
+
+func _sanitize_character_slot(slot) -> void:
+	# clamps/corrects one character slot in place (Dictionaries are
+	# reference types in GDScript, so mutating `slot` here mutates the
+	# actual entry inside character_slots — no reassignment needed).
+	if slot == null or typeof(slot) != TYPE_DICTIONARY:
+		return
+
+	# --- level ---
+	var level: int = clamp(int(slot.get("level", 1)), 1, MAX_LEVEL)
+	slot["level"] = level
+
+	# --- xp / xp_next cross-check ---
+	# xp_next is fully deterministic from level (100, doubling each level —
+	# see player.gd's gain_xp()). recompute rather than trust the saved
+	# value. NOTE: this formula overflows a 64-bit int somewhere around
+	# level 58 — a pre-existing property of the doubling curve itself, not
+	# something this validation fixes. clamp xp below expected_xp_next,
+	# since gain_xp()'s while-loop guarantees that invariant on any
+	# legitimately-saved state (xp reaching xp_next always triggers an
+	# immediate level-up before saving).
+	var expected_xp_next: int = int(100 * pow(2, level - 1))
+	var saved_xp_next: int = int(slot.get("xp_next", expected_xp_next))
+	if saved_xp_next != expected_xp_next:
+		push_warning("CharacterData: xp_next mismatch for level %d (had %d, expected %d) — correcting" % [
+			level, saved_xp_next, expected_xp_next
+		])
+	slot["xp_next"] = expected_xp_next
+	slot["xp"] = clamp(int(slot.get("xp", 0)), 0, max(expected_xp_next - 1, 0))
+
+	# --- gold (carry) ---
+	slot["gold"] = clamp(int(slot.get("gold", 0)), 0, MAX_GOLD)
+
+	# --- skills ---
+	for skill in ["attack", "defense", "agility", "magic", "fishing", "cooking"]:
+		var val: int = clamp(int(slot.get(skill, MIN_SKILL_LEVEL)), MIN_SKILL_LEVEL, MAX_SKILL_LEVEL)
+		slot[skill] = val
+
+	# --- hp/mana/stamina + maxes — blunt defensive ceiling only, see notes above ---
+	for stat in ["hp", "max_hp", "mana", "max_mana", "stamina", "max_stamina"]:
+		slot[stat] = clamp(int(slot.get(stat, 0)), 0, MAX_STAT_POOL)
+	slot["hp"] = min(int(slot["hp"]), int(slot["max_hp"]))
+	slot["mana"] = min(int(slot["mana"]), int(slot["max_mana"]))
+	slot["stamina"] = min(int(slot["stamina"]), int(slot["max_stamina"]))
+
+	# --- inventory item validation ---
+	if slot.has("inventory") and typeof(slot["inventory"]) == TYPE_ARRAY:
+		slot["inventory"] = _validate_item_array(slot["inventory"], "character inventory")
+
+
+func _sanitize_account_data() -> void:
+	# lusions/bank_gold already clamp >= 0 in their setters (below), but
+	# that doesn't help against a save file edited directly on disk and
+	# loaded straight in — clamp again here at load time to close that gap.
+	account_data["lusions"] = max(int(account_data.get("lusions", 0)), 0)
+	account_data["bank_gold"] = max(int(account_data.get("bank_gold", 0)), 0)
+
+	if account_data.has("bank_inventory") and typeof(account_data["bank_inventory"]) == TYPE_ARRAY:
+		account_data["bank_inventory"] = _validate_item_array(account_data["bank_inventory"], "bank inventory")
+
+
+func _is_item_registry_ready() -> bool:
+	# defensive check: if ItemRegistry reports zero total items, it almost
+	# certainly hasn't finished loading its item table yet (autoload order
+	# issue, or some other startup timing gap) — NOT that the game genuinely
+	# has zero items defined. treating "not ready" as "doesn't exist" is
+	# exactly what caused real, legitimate items (ironsword, bushamulet,
+	# etc.) to get silently dropped from real saves. this check exists so
+	# that failure mode can't happen again regardless of autoload order.
+	return ItemRegistry.get_all_items().size() > 0
+
+
+func _validate_item_array(items: Array, context: String) -> Array:
+	# drops entries referencing an item_id that doesn't exist in
+	# ItemRegistry (e.g. a fabricated ID from a modified/fake registry)
+	# instead of silently trusting whatever's in the save. logs what got
+	# dropped so it's visible in testing/support, rather than a silent skip.
+	if not _is_item_registry_ready():
+		push_warning("CharacterData: ItemRegistry not populated yet — skipping item validation for %s this load (nothing dropped)" % context)
+		return items
+
+	var validated: Array = []
+	for entry in items:
+		if entry == null:
+			validated.append(null)
+			continue
+		if typeof(entry) != TYPE_DICTIONARY or not entry.has("item_id"):
+			validated.append(null)
+			continue
+		var item_id: String = str(entry.get("item_id", ""))
+		if item_id == "" or ItemRegistry.get_item(item_id) == null:
+			push_warning("CharacterData: %s references unknown item_id '%s' — dropping" % [context, item_id])
+			validated.append(null)
+			continue
+		validated.append(entry)
+	return validated
+
+
+# =============================================================================
 # SAVE / LOAD
 # =============================================================================
 
@@ -155,6 +289,14 @@ func load_data() -> bool:
 
 	_ensure_slot_array()
 	_ensure_account_data()
+
+	# NEW: sanity/anti-tamper pass — runs on every load regardless of
+	# whether the save was actually tampered with. see class-level comment
+	# for scope/limitations.
+	for slot in character_slots:
+		_sanitize_character_slot(slot)
+	_sanitize_account_data()
+
 	return true
 
 

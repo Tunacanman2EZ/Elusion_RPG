@@ -111,6 +111,13 @@ var cooking: int = 1;  var cooking_xp: int = 0;  var cooking_xp_next: int = 100
 var last_direction := Vector2.DOWN
 var is_attacking := false
 
+# NEW: whether entering is_attacking freezes movement. defaults to true so
+# mage/tank/healer keep their existing behavior untouched. warrior sets this
+# to false in its own _ready() so it can keep walking during its swing —
+# melee classes with cursor-aim attacks don't need the WASD-lock that made
+# sense for the old fixed-4-direction swing.
+@export var attack_locks_movement: bool = true
+
 
 # =============================================================================
 # SPRINT
@@ -197,7 +204,10 @@ func _physics_process(_delta):
 		move_and_slide()
 		return
 
-	if is_attacking:
+	# CHANGED: only freeze movement during an attack if this class opts into
+	# it (attack_locks_movement). warrior sets this false so it can walk
+	# while swinging; mage/tank/healer keep the old frozen behavior.
+	if is_attacking and attack_locks_movement:
 		velocity = Vector2.ZERO
 		move_and_slide()
 		_set_active()
@@ -230,7 +240,18 @@ func _physics_process(_delta):
 				_sprint_drain_accumulator -= drain_amount
 				stamina = max(0, stamina - drain_amount)
 
-		if has_node("animatedsprite2d"):
+		# CHANGED: guard against stomping an in-progress attack animation,
+		# same as the idle guard below. previously this fired every physics
+		# frame while a movement key was held, which would immediately
+		# overwrite the warrior's swing animation with the walk animation
+		# since warrior no longer freezes movement during attacks. because
+		# looping animations never fire animation_finished, that left
+		# is_attacking permanently stuck true — locking out all future
+		# attacks and leaving the sprite stuck on a looping walk/idle frame.
+		# now: movement (velocity/position) still happens every frame, but
+		# the ANIMATION stays on the attack swing until it finishes, then
+		# reverts to reflecting walk/idle normally.
+		if has_node("animatedsprite2d") and not is_attacking:
 			$animatedsprite2d.play(get_walk_animation(direction))
 			$animatedsprite2d.speed_scale = sprint_speed_multiplier if _is_sprinting else 1.0
 		last_direction = direction
@@ -240,7 +261,7 @@ func _physics_process(_delta):
 		velocity = Vector2.ZERO
 		_is_sprinting = false
 		_sprint_drain_accumulator = 0.0
-		if has_node("animatedsprite2d"):
+		if has_node("animatedsprite2d") and not is_attacking:
 			$animatedsprite2d.play(get_idle_animation())
 			$animatedsprite2d.speed_scale = 1.0
 

@@ -697,15 +697,14 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_tik12"]
-radius = 6.0
-height = 12.0
+radius = 4.0
+height = 8.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_5bmra"]
-radius = 9.0
-height = 32.0
+radius = 5.0
+height = 10.0
 
 [node name="firesprite" type="CharacterBody2D" unique_id=736242394]
-y_sort_enabled = true
 texture_filter = 1
 collision_layer = 8
 collision_mask = 3
@@ -734,7 +733,7 @@ texture_progress = ExtResource("4_5bmra")
 [node name="attacktimer" type="Timer" parent="." unique_id=846679983]
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=1394985736]
-position = Vector2(0, -1)
+position = Vector2(1, 1)
 shape = SubResource("CapsuleShape2D_tik12")
 
 [node name="orbspawnbottom" type="Marker2D" parent="." unique_id=1888128203]
@@ -751,11 +750,11 @@ position = Vector2(-22, -24)
 position = Vector2(9, -24)
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=1155883984]
-position = Vector2(1, -16)
+position = Vector2(2, -14)
 collision_layer = 8
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=1403269595]
-position = Vector2(0, 2)
+position = Vector2(-1, -2)
 shape = SubResource("CapsuleShape2D_5bmra")
 debug_color = Color(0.4397211, 0.59804714, 0.10347933, 0.41960785)
 

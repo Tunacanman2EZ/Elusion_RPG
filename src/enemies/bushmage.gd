@@ -4,7 +4,8 @@
 #
 # attack flow:
 # 1. bushmage plays directional attack animation (attackleft/right/up/down)
-# 2. on contact_frame, spawns vine.tscn at bushmage's position
+# 2. on contact_frame, spawns vine.tscn AT THE PLAYER's position, parented
+#    into the Y-sorted "groundeffects" group so it renders under the player
 # 3. vine plays its own stretch animation in the same direction
 # 4. vine damages player on its own impact frame
 # 5. vine despawns when its animation finishes
@@ -184,14 +185,23 @@ func _on_frame_changed() -> void:
 
 
 func _spawn_vine() -> void:
-	# instantiate vine at bushmage's position, parent to scene root so it
-	# doesn't follow bushmage if bushmage moves during the vine's animation.
+	# instantiate vine at bushmage's OWN position (this is the original,
+	# intended design — the vine's stretch animation visually reaches
+	# toward the player from here; only petvine.gd spawns at the target
+	# directly, since pets use a different no-travel eruption style).
+	# parented into the Y-sorted "groundeffects" group so it still renders
+	# under characters correctly, regardless of where it spawns. falls back
+	# to current_scene if no groundeffects group exists yet, same fallback
+	# pattern as pet.gd.
 	if vine_scene == null:
 		push_warning("BushMage: vine_scene not assigned")
 		return
 
 	var vine: Node2D = vine_scene.instantiate()
-	get_tree().current_scene.add_child(vine)
+	var container: Node = get_tree().get_first_node_in_group("groundeffects")
+	if container == null:
+		container = get_tree().current_scene
+	container.add_child(vine)
 	vine.global_position = global_position
 	vine.damage = attack_power
 	vine.fire(attack_direction)

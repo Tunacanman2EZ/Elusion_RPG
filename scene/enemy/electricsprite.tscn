@@ -690,8 +690,8 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_56m4t"]
-radius = 8.0
-height = 28.0
+radius = 5.0
+height = 10.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_fy2rl"]
 radius = 5.0
