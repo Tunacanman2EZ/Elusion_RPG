@@ -310,9 +310,9 @@ show_percentage = false
 [node name="attackbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow/attackbar" unique_id=1846724919]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 85.0
+offset_left = 86.0
 offset_top = -2.0
-offset_right = 112.0
+offset_right = 113.0
 offset_bottom = 12.0
 theme_override_font_sizes/font_size = 10
 text = "0/100"
@@ -335,7 +335,7 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Defense:"
 
-[node name="defencebaricon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=873388737]
+[node name="defensebaricon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=873388737]
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
@@ -355,9 +355,9 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 89.0
+offset_left = 85.0
 offset_top = -6.0
-offset_right = -83.0
+offset_right = -87.0
 offset_bottom = 7.0
 grow_horizontal = 2
 grow_vertical = 2

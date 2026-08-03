@@ -1,23 +1,44 @@
-# sign.gd — world-placed readable sign. shows its Label child when the
-# player walks into the detection area, hides it on exit.
+# sign.gd — world-placed readable sign. shows a text panel when the player
+# walks into the detection area, hides it on exit.
 #
 # scene setup:
 # - Area2D root (this script)
-# - Label child named "Label" (CamelCase) with the sign text already filled in
-# - CollisionShape2D sized to the area where the label should be readable
+# - a "signpanel" child (PanelContainer) — this is what actually gets
+#   shown/hidden/faded now, NOT the label directly. if this project has a
+#   global UI theme set (Project Settings → GUI → Theme), a plain
+#   PanelContainer should automatically pick up the same brown/gold look
+#   already used by the inventory/loot bag/stats screens, with zero extra
+#   styling needed. if there's no global theme, copy the StyleBoxFlat from
+#   an existing panel (e.g. the stats screen's mainpanel) onto this one.
+# - a "label" child NESTED INSIDE signpanel (not directly under the Area2D
+#   root anymore) — holds the sign's text, styled/positioned in the editor
+# - CollisionShape2D sized to the area where the sign should be readable
 #
-# the label can be styled and positioned in the editor — this script just
-# toggles its visibility. for richer behavior (typewriter effect, dialogue
-# trees, NPC speech), this is a good template to extend from.
+# CHANGED: previously toggled the Label's visibility directly, with
+# nothing behind it — readable only by accident depending on whatever
+# happened to be in the background at that moment. now toggles a panel
+# (with the label nested inside it), and fades rather than hard-cuts.
 extends Area2D
+
+
+# =============================================================================
+# EXPORTED SETTINGS
+# =============================================================================
+
+# how long the fade in/out takes. set to 0 for an instant toggle instead
+# of a fade, if you'd rather keep it simple.
+@export var fade_duration: float = 0.2
 
 
 # =============================================================================
 # NODE REFERENCES
 # =============================================================================
 
-# the label that holds the sign's text. shown only when the player is nearby.
-@onready var label: Label = $label
+# the panel that holds the sign's text — this is what actually gets
+# shown/hidden/faded now. the label is nested inside it, so toggling the
+# panel's visibility handles both together.
+@onready var panel: Control = $signpanel
+@onready var label: Label = $signpanel/label
 
 
 # =============================================================================
@@ -26,7 +47,8 @@ extends Area2D
 
 func _ready() -> void:
 	# start hidden — sign only reveals its text when the player approaches
-	label.visible = false
+	panel.visible = false
+	panel.modulate.a = 0.0
 
 
 # =============================================================================
@@ -34,13 +56,36 @@ func _ready() -> void:
 # =============================================================================
 
 func _on_body_entered(body: Node) -> void:
-	# show the label when the player enters the detection area.
+	# reveal the panel when the player enters the detection area.
 	# ignores enemies, projectiles, drops — only the player triggers reveal.
 	if body.is_in_group("player"):
-		label.visible = true
+		_fade_panel(true)
 
 
 func _on_body_exited(body: Node) -> void:
-	# hide the label when the player leaves the detection area
+	# hide the panel when the player leaves the detection area
 	if body.is_in_group("player"):
-		label.visible = false
+		_fade_panel(false)
+
+
+# =============================================================================
+# FADE
+# =============================================================================
+
+func _fade_panel(show_panel: bool) -> void:
+	if fade_duration <= 0.0:
+		# instant toggle instead of a fade, if fade_duration is set to 0
+		panel.visible = show_panel
+		panel.modulate.a = 1.0 if show_panel else 0.0
+		return
+
+	if show_panel:
+		panel.visible = true
+
+	var tween := create_tween()
+	var target_alpha: float = 1.0 if show_panel else 0.0
+	tween.tween_property(panel, "modulate:a", target_alpha, fade_duration)
+
+	if not show_panel:
+		tween.finished.connect(func(): panel.visible = false)
+		return

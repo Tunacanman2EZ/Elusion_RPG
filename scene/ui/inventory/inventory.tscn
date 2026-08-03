@@ -5,6 +5,8 @@
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
 [ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventorycontainer.gd" id="3_x3yba"]
 [ext_resource type="Texture2D" uid="uid://ct1jb184ql10d" path="res://art/currency/lusions.png" id="4_a8y50"]
+[ext_resource type="Texture2D" uid="uid://y7ytomwyv8c6" path="res://art/Tiles/lootbag2.png" id="6_1hfxc"]
+[ext_resource type="Script" uid="uid://blldfbqitghhi" path="res://src/ui/trashslot.gd" id="7_y42jl"]
 
 [node name="inventoryscreen" type="Control" unique_id=1169906003]
 layout_mode = 3
@@ -26,6 +28,8 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_top = -24.0
+offset_bottom = 42.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -133,3 +137,21 @@ theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 4
 columns = 5
 script = ExtResource("3_x3yba")
+
+[node name="HSeparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=186729775]
+layout_mode = 2
+
+[node name="texturebutton" type="TextureButton" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1386625385]
+layout_mode = 2
+texture_normal = ExtResource("6_1hfxc")
+script = ExtResource("7_y42jl")
+
+[node name="confirmationdialog" type="ConfirmationDialog" parent="mainpanel/margincontainer/vboxcontainer/texturebutton" unique_id=319561101]
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/texturebutton" unique_id=1453206382]
+layout_mode = 0
+offset_left = 47.0
+offset_top = 10.0
+offset_right = 202.0
+offset_bottom = 33.0
+text = "Put your trash here!"

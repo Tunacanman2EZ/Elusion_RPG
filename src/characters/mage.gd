@@ -1,10 +1,3 @@
-# mage character — ranged spellcaster. only attack is the stalagmite drop spell.
-# pressing spacebar (attack action) OR right-click drops a stalagmite at the
-# cursor position, dealing AoE damage on impact frame.
-#
-# class identity:
-# - lowest HP, squishy (the fragile glass-cannon caster)
-# - largest mana pool for sustained spell spam
 # - high stamina growth — kiting survival fuel, not flee
 # - 1 ability: stalagmite drop, drops at cursor for AOE damage
 #
@@ -72,6 +65,19 @@ func _set_stat_curve() -> void:
 	hp_base    = 110; hp_per_lvl   = 5
 	mana_base  = 250; mana_per_lvl = 16
 	stam_base  = 40;  stam_per_lvl = 7
+
+
+# =============================================================================
+# SKILL PROFICIENCY  (NEW)
+# =============================================================================
+
+func _set_skill_proficiency() -> void:
+	# mage's specialty: magic climbs 50% faster than any other class
+	# landing the same spell hits. attack XP is still gained from stalagmite
+	# hits too (universal now — see player.gd's gain_attack_xp()), just at
+	# the base 1.0 rate, unlike warrior's boosted melee. starting value,
+	# tune to taste.
+	skill_proficiency["magic"] = 1.5
 
 
 # =============================================================================
@@ -186,18 +192,32 @@ func _spawn_stalagmite() -> void:
 	var spell = target_circle_scene.instantiate()
 	get_tree().current_scene.add_child(spell)
 	spell.global_position = get_global_mouse_position()
-	spell.explosion_damage = magic * damage_per_magic
+	# CHANGED: was magic * damage_per_magic — magic-only, and damage_per_magic
+	# was acting as a "per point" multiplier rather than a flat base. now
+	# damage_per_magic is a flat base damage value, scaled by
+	# get_damage_multiplier() — the same shared function every class's
+	# damage uses (see player.gd), which already folds magic in, plus
+	# attack too. same export, same default (25), reinterpreted role.
+	spell.explosion_damage = int(damage_per_magic * get_damage_multiplier())
+	# NEW: identifies the mage for spelltargetcircle.gd's XP-on-hit — same
+	# pattern as slashwave.gd's caster reference for warrior. this is what
+	# lets the spell grant attack XP (universal) AND magic XP (mage's
+	# boosted specialty) back to whoever cast it, on impact. the spell
+	# script itself still needs its own matching XP-grant call added —
+	# that part isn't done here, since it lives in target_circle_scene's
+	# script, not this one.
+	if "caster" in spell:
+		spell.caster = self
 
 
 # =============================================================================
-# LEVEL-UP SKILL BONUS
+# LEVEL-UP SKILL BONUS  (REMOVED)
 # =============================================================================
-
-func _apply_level_up_skill_bonus() -> void:
-	# mage skill bonus: +1 magic, +1 agility per level. these stack with
-	# XP-based skill growth and are NOT part of the recomputed stat pools.
-	magic   += 1
-	agility += 1
+# CHANGED: used to grant a flat +1 magic / +1 agility on every character
+# level-up. now that skill_proficiency exists (see _set_skill_proficiency()
+# above), magic climbs faster for mage through actual spell casts, not
+# just from leveling up via ANY combat. no override needed anymore; falls
+# back to player.gd's no-op base.
 
 
 # =============================================================================

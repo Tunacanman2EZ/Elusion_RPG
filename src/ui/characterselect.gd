@@ -27,10 +27,17 @@ const SLOT_CLASSES := ["warrior", "mage", "tank", "healer"]
 # =============================================================================
 
 func _ready() -> void:
-	# refresh save data from disk. CharacterData also loads on autoload init,
-	# but we reload here in case the player just logged out and saved progress
-	# during their last session.
-	CharacterData.load_data()
+	# CHANGED: removed the redundant CharacterData.load_data() call that
+	# used to run here. its original justification ("CharacterData also
+	# loads on autoload init") no longer applies — CharacterData._ready()
+	# doesn't load anything at boot anymore (see its class comment); it
+	# only loads via load_for_user(), which loginmenu.gd already calls
+	# right after a successful login, BEFORE this scene ever runs. by the
+	# time we get here, character_slots/account_data are already correct
+	# for the logged-in user. reloading again here was not just redundant
+	# but appeared to be actively re-triggering signature verification
+	# against a freshly round-tripped copy of the same data, which was
+	# resetting is_admin even without real tampering.
 	update_slot_labels()
 
 

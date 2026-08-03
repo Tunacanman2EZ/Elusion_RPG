@@ -30,6 +30,22 @@ var reviving: bool = false
 
 
 # =============================================================================
+# SCENE ARRIVAL  (NEW)
+# =============================================================================
+# same transient, in-memory-only philosophy as death_state/reviving above —
+# set by a portal/teleport trigger (see leavetown.gd's target_spawn_id)
+# just before changing scenes, so the new scene knows WHICH of its
+# (possibly multiple) named arrival points to place the player at — see
+# fieldportal.gd — instead of just wherever the player node happens to be
+# manually placed in the new scene's file. empty string means "no specific
+# arrival point requested," and the new scene falls back to its own
+# default placement. the reading scene is responsible for clearing this
+# back to "" once consumed, so it can't leak into a later, unrelated
+# scene load that never intended to use it.
+var next_spawn_id: String = ""
+
+
+# =============================================================================
 # GLOBAL STATE
 # =============================================================================
 

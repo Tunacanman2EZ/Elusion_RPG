@@ -1,64 +1,55 @@
 # lootbag.gd — world-placed loot container dropped by a slain enemy.
-# borrows bankchest's interaction grammar (walk into Area2D, press interact)
-# but holds its OWN one-time contents instead of toggling a shared UI.
+# sits on the ground; the player walks up and presses interact to OPEN a
+# draggable panel (lootbaginventory) showing the contents. this script owns
+# the world-side state: contents, ownership, the pet beam, and despawn timing.
 #
-# anti-abuse design (learned from Tibia's bag-arrangement griefing):
-# - KILLER-OWNED: only the player who killed the enemy can open it
-# - TIMED DESPAWN: auto-removes after despawn_seconds so bags can't persist
-#   and be arranged into shapes/words on the ground
+# lifecycle:
+# - spawned by baseenemy on death via set_contents / set_owner_player / set_has_pet
+# - beam shows immediately if the bag holds a pet (rare drop signal)
+# - interact (killer only) → hud.open_lootbag(self, player) shows the panel
+# - the panel syncs remaining contents back via set_contents as items are taken
+# - despawn: immediately when emptied (despawn_now), or after despawn_seconds
+#   if items remain (leftovers are lost — "loot it or lose it")
+# - NEW: walking out of range while the panel is open closes it automatically,
+#   via player_left_range signal (see AREA SIGNAL HANDLERS below). the bag
+#   itself doesn't know how to close the panel (it has no reference to it) —
+#   it just announces "player left" and lootbaginventory.gd, which DOES hold
+#   a reference to this bag while open, listens and closes itself.
 #
-# take mechanic (v1 — auto-transfer):
-# opening the bag dumps ALL contents into the player's inventory and despawns.
-# gold/lusion CURRENCY items convert to their pool via the inventory container's
-# converts_currency handling. a drag-out container UI can replace this later.
-#
-# pet signal:
-# if the bag contains a pet (set_has_pet true), a loot beam shoots up from the
-# bag to visually signal the rare drop from across the screen.
-#
-# contents format:
-# _contents is an Array of { "item_id": String, "quantity": int } dictionaries,
-# set by the spawning enemy via set_contents() right after instantiation.
+# anti-abuse: killer-owned (only the killer can open) + timed despawn (bags
+# can't persist and be arranged into shapes), the Tibia-griefing fix.
 extends Area2D
+
+
+# =============================================================================
+# SIGNALS
+# =============================================================================
+
+# emitted when the player who has this bag's panel open walks out of range.
+# only fires if the bag was actually open (_is_open) — a different player
+# wandering past a bag they never opened shouldn't trigger anything.
+signal player_left_range()
+
 
 # =============================================================================
 # CONSTANTS
 # =============================================================================
 
-# interaction is blocked briefly after spawn so a bag dropping under the player
-# doesn't instantly open from a held interact key (mirrors bankchest).
+# interaction blocked briefly after spawn so a bag dropping under the player
+# doesn't instantly open from a held interact key.
 const SPAWN_GRACE_PERIOD := 0.5
-
-
-# =============================================================================
-# EXPORTED SETTINGS
-# =============================================================================
-
-# how long the bag survives before auto-despawning (anti-arrangement rule).
-@export var despawn_seconds: float = 60.0
 
 
 # =============================================================================
 # STATE
 # =============================================================================
 
-# the rolled loot — array of { "item_id": String, "quantity": int }.
 var _contents: Array = []
-
-# the player allowed to open this bag (the killer). only this node can loot it.
 var _owner_player: Node = null
-
-# the player currently inside the detection area.
 var _player_nearby: Node = null
-
-# blocks interaction during the spawn grace window.
-var _spawn_timer: float = 0.0
-
-# guards against double-open.
-var _looted: bool = false
-
-# whether this bag holds a pet — drives the loot beam.
 var _has_pet: bool = false
+var _spawn_timer: float = 0.0
+var _is_open: bool = false
 
 
 # =============================================================================
@@ -83,17 +74,13 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 
-	# start the despawn countdown
 	if despawn_timer != null:
 		despawn_timer.one_shot = true
-		despawn_timer.wait_time = despawn_seconds
+		despawn_timer.wait_time = GameConstants.LOOT_BAG_DESPAWN_SECONDS
 		if not despawn_timer.timeout.is_connected(_on_despawn_timeout):
 			despawn_timer.timeout.connect(_on_despawn_timeout)
 		despawn_timer.start()
 
-	# beam starts hidden — turned on in set_has_pet if this is a pet bag.
-	# (set_has_pet may be called before OR after _ready depending on spawn
-	# order, so we re-apply the beam state here too.)
 	_apply_beam_state()
 
 
@@ -102,7 +89,7 @@ func _process(delta: float) -> void:
 		_spawn_timer -= delta
 		return
 
-	if _looted:
+	if _is_open:
 		return
 	if _player_nearby == null:
 		return
@@ -117,30 +104,27 @@ func _process(delta: float) -> void:
 # =============================================================================
 
 func set_contents(contents: Array) -> void:
-	# receives the rolled loot from the enemy.
 	_contents = contents
 
 
+func get_contents() -> Array:
+	return _contents
+
+
 func set_owner_player(player: Node) -> void:
-	# the killer — only this player may open the bag.
 	_owner_player = player
 
 
 func set_has_pet(has_pet: bool) -> void:
-	# flag whether this bag holds a pet; drives the loot beam. safe to call
-	# before or after _ready — _apply_beam_state is idempotent.
 	_has_pet = has_pet
 	_apply_beam_state()
 
 
 func _apply_beam_state() -> void:
-	# show the loot beam only if this bag holds a pet. null-guarded so a bag
-	# without a beam node still works.
 	if pet_beam == null:
 		return
 	if "visible" in pet_beam:
 		pet_beam.visible = _has_pet
-	# if the beam is a particle system, start/stop emission too
 	if pet_beam is GPUParticles2D:
 		pet_beam.emitting = _has_pet
 	elif pet_beam is CPUParticles2D:
@@ -148,59 +132,56 @@ func _apply_beam_state() -> void:
 
 
 # =============================================================================
-# OPEN / LOOT
+# OPEN
 # =============================================================================
 
 func _try_open() -> void:
-	# ownership gate — only the killer can loot. others are ignored silently.
+	# ownership gate — only the killer can open. others are ignored silently.
 	if _owner_player != null and _player_nearby != _owner_player:
-		return
-	_loot_all_to_player(_player_nearby)
-
-
-func _loot_all_to_player(player: Node) -> void:
-	# auto-transfer every item into the player's inventory, then despawn.
-	# CURRENCY items (gold) convert to the pool via the container's
-	# converts_currency handling. uses the same add_stack path debug gives use.
-	if _looted:
+		print("LOOTBAG: ownership check failed, ignoring")
 		return
 
-	var container: Node = _get_inventory_container()
-	if container == null:
-		push_warning("LootBag: could not find inventory container — loot not collected")
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	if hud == null or not hud.has_method("open_lootbag"):
+		push_warning("LootBag: HUD has no open_lootbag() — cannot open panel")
 		return
 
-	for entry in _contents:
-		var item_id: String = entry.get("item_id", "")
-		var qty: int = entry.get("quantity", 1)
-		if item_id == "":
-			continue
+	_is_open = true
 
-		var data: ItemData = ItemRegistry.get_item(item_id)
-		if data == null:
-			continue  # unknown id — skip (registry already warned)
+	# NEW: pause the despawn countdown while the panel is actively being
+	# viewed — fixes "bag disappears while I'm still looking at it."
+	# resumes (with whatever time was remaining) via notify_panel_closed()
+	# once the panel actually closes.
+	if despawn_timer != null and not despawn_timer.is_stopped():
+		despawn_timer.paused = true
 
-		var stack := ItemStack.new(data, qty)
-		container.add_stack(stack)
+	print("LOOTBAG: calling hud.open_lootbag with %d contents" % _contents.size())
+	hud.open_lootbag(self, _player_nearby)
 
-	_looted = true
 
-	# save after looting so picked-up items survive a crash
-	if player != null and CharacterData != null:
-		CharacterData.save_character_state(player)
+func notify_panel_closed() -> void:
+	# NEW: called by lootbaginventory.gd whenever ITS panel closes, for any
+	# reason — X button, walked away, or emptied. this is a second entry
+	# point alongside _on_body_exited() below, because closing via the X
+	# button while the player is STILL standing in range never triggers
+	# body_exited at all — without this, _is_open would stay stuck true
+	# forever in that case, silently blocking the bag from ever being
+	# re-opened. also resumes the despawn countdown that _try_open() paused.
+	_is_open = false
+	if despawn_timer != null and not despawn_timer.is_stopped():
+		despawn_timer.paused = false
 
+
+# =============================================================================
+# DESPAWN
+# =============================================================================
+
+func despawn_now() -> void:
 	queue_free()
 
 
-func _get_inventory_container() -> Node:
-	# resolve the live inventory container through the HUD, as the debug-give
-	# path does. returns null if anything's missing.
-	var hud: Node = get_tree().get_first_node_in_group("hud")
-	if hud == null:
-		return null
-	if hud.get("inventory_screen") == null:
-		return null
-	return hud.inventory_screen.get_node_or_null("%inventorycontainer")
+func _on_despawn_timeout() -> void:
+	queue_free()
 
 
 # =============================================================================
@@ -217,12 +198,10 @@ func _on_body_exited(body: Node) -> void:
 		return
 	_player_nearby = null
 
-
-# =============================================================================
-# DESPAWN
-# =============================================================================
-
-func _on_despawn_timeout() -> void:
-	# bag expired — remove it whether or not it was looted. the anti-arrangement
-	# rule: bags never persist on the ground indefinitely.
-	queue_free()
+	# NEW: only emit if the bag was actually open when the player left —
+	# otherwise a player who never opened this bag walking away would fire
+	# a pointless signal with nothing listening.
+	var was_open := _is_open
+	_is_open = false
+	if was_open:
+		player_left_range.emit()

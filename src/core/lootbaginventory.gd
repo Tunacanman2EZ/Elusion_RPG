@@ -86,6 +86,17 @@ func open_for_bag(world_bag: Node, player: Node) -> void:
 
 func _on_close_pressed() -> void:
 	_sync_back_to_bag()
+
+	# NEW: tell the bag we're closed, regardless of why (X button, walked
+	# away, etc.) — is_instance_valid guards against the bag already being
+	# freed (e.g. this fires as part of the empty-inventory despawn path
+	# too, where the bag is gone or about to be). see notify_panel_closed()
+	# in lootbag.gd for why this matters beyond just the despawn-pause: it's
+	# also the only thing that resets _is_open when closing via X while
+	# still standing in range, since that path never triggers body_exited.
+	if is_instance_valid(_world_bag) and _world_bag.has_method("notify_panel_closed"):
+		_world_bag.notify_panel_closed()
+
 	_disconnect_world_bag_signal()
 	visible = false
 	_world_bag = null

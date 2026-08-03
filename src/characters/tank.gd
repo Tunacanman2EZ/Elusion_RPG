@@ -7,7 +7,15 @@
 # - highest HP by far (the durability king), slowest mover, heavy frontline
 # - mana powers the AOE aura instead of casts
 # - aura is the ONLY attack — no direct strike, just radiating damage
-# - level-up grants +2 defense skill bonus on top of XP-based growth
+# - defense climbs faster than other classes via skill_proficiency (see
+#   SKILL PROFICIENCY below), through actually taking damage — not a flat
+#   per-level bonus. CORRECTED: this comment used to claim a flat +2
+#   defense on every character level-up, but no _apply_level_up_skill_bonus()
+#   override for that was ever actually in this file — the comment
+#   described intended design that was never coded. removed the claim
+#   rather than add the bonus now, matching the same "proficiency
+#   multiplier does this job, not a flat stack" decision made for
+#   warrior/mage/healer.
 #
 # stat curve (recompute-from-level, set in _set_stat_curve):
 #   HP   260 base / +22 per level   (steepest HP — earns it by standing in fire)
@@ -25,6 +33,17 @@
 # - drains mana_drain_cost mana every mana_drain_tick seconds
 # - damages enemies in $aura collision area every aura_tick seconds
 # - auto-deactivates when mana hits 0 OR tank dies
+#
+# XP ON HIT (NEW):
+# grants Attack XP (universal — see player.gd's gain_attack_xp()) per enemy
+# per aura tick, same place damage already applies in _deal_aura_damage().
+# WORTH WATCHING: unlike warrior's discrete swings, mage's discrete casts,
+# or healer's discrete shots, the aura is a CONTINUOUS tick (every
+# aura_tick seconds, for as long as it's active) — a tank parked in a
+# crowd could accumulate attack XP considerably faster than the other
+# classes' discrete-hit pattern. kept the same per-hit default (5) as
+# everywhere else rather than guess at a "corrected" lower value — tune
+# attack_xp_on_aura_tick down if playtesting shows it's too fast.
 extends "res://src/characters/player.gd"
 
 
@@ -37,6 +56,9 @@ extends "res://src/characters/player.gd"
 @export var mana_drain_tick: float = 0.5
 @export var mana_drain_cost: int = 2
 
+# NEW: see class comment's XP ON HIT section for the tick-rate caveat.
+@export var attack_xp_on_aura_tick: int = 5
+
 
 # =============================================================================
 # AURA STATE
@@ -45,6 +67,12 @@ extends "res://src/characters/player.gd"
 var aura_timer:       float = 0.0
 var mana_drain_timer: float = 0.0
 var aura_active: bool = false
+
+# NEW: tracks right-click press state for edge detection, same pattern
+# as warrior's/mage's _right_click_was_held. right-click is polled
+# privately here rather than added to the shared "attack" Input Map
+# action — see _physics_process below for why.
+var _right_click_was_held: bool = false
 
 
 # =============================================================================
@@ -57,6 +85,20 @@ func _set_stat_curve() -> void:
 	hp_base    = 260; hp_per_lvl   = 22
 	mana_base  = 200; mana_per_lvl = 10
 	stam_base  = 100; stam_per_lvl = 5
+
+
+# =============================================================================
+# SKILL PROFICIENCY  (NEW)
+# =============================================================================
+
+func _set_skill_proficiency() -> void:
+	# tank's specialty: defense climbs 50% faster than any other class
+	# taking the same damage. every class already gains SOME defense XP
+	# from taking damage at all (see player.gd's take_damage(), which was
+	# already universal before this system existed) — this is what keeps
+	# tank true to its "durability king" identity on top of that. starting
+	# value, tune to taste.
+	skill_proficiency["defense"] = 1.5
 
 
 # =============================================================================
@@ -79,11 +121,20 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# always sample right-click, even in branches that return early below —
+	# same reasoning as warrior/mage's _right_click_was_held: without this,
+	# a click held through death or an attack lockout could false-trigger
+	# the toggle the instant the block lifts, since the edge-detection
+	# would see "wasn't held a moment ago" even though it's been held the
+	# whole time.
+	var right_held_now: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+
 	# block all input/movement during death sequence so the death animation
 	# can play through without being overwritten by walk/idle animations.
 	if is_dying:
 		velocity = Vector2.ZERO
 		move_and_slide()
+		_right_click_was_held = right_held_now
 		return
 
 	_tick_aura(delta)
@@ -93,10 +144,20 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		move_and_slide()
 		_set_active()
+		_right_click_was_held = right_held_now
 		return
 
-	# attack button toggles the aura
-	if Input.is_action_just_pressed("attack"):
+	# NEW: attack button (spacebar) OR right-click toggles the aura — both
+	# call the same attack_action(), matching warrior/mage's dual-input
+	# pattern. right-click stays a private poll here rather than joining
+	# the shared "attack" Input Map action, since that action is inherited
+	# by every class — binding a mouse button onto it directly would give
+	# mage (which already uses right-click for its own cast) a second,
+	# colliding path to the same trigger.
+	var right_click_pressed_now: bool = right_held_now and not _right_click_was_held
+	_right_click_was_held = right_held_now
+
+	if Input.is_action_just_pressed("attack") or right_click_pressed_now:
 		attack_action()
 		return
 
@@ -256,17 +317,29 @@ func _deal_aura_damage() -> void:
 	if not has_node("aura"):
 		return
 
+	# CHANGED: was a flat aura_damage constant with no scaling at all —
+	# tank gained attack XP from every tick but it never affected the
+	# tank's own damage output. now scaled by get_damage_multiplier(),
+	# same shared function every class's damage uses (see player.gd).
+	# computed once here so the analytics emit below reflects the same
+	# actual scaled damage dealt, not the flat unscaled base.
+	var scaled_aura_damage: int = int(aura_damage * get_damage_multiplier())
+
 	for body in $aura.get_overlapping_bodies():
 		if not body.is_in_group("enemies"):
 			continue
 		if not body.has_method("take_damage"):
 			continue
-		body.take_damage(aura_damage)
+		body.take_damage(scaled_aura_damage)
 		GameState.aura_damage_dealt.emit(
 			get_instance_id(),
 			body.get_instance_id(),
-			aura_damage,
+			scaled_aura_damage,
 		)
+		# NEW: universal attack XP, granted right where damage already
+		# applies — see class comment's XP ON HIT section for the
+		# tick-rate caveat worth watching in practice.
+		gain_attack_xp(attack_xp_on_aura_tick)
 
 
 # =============================================================================

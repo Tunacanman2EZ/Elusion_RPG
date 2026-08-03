@@ -63,6 +63,18 @@ func _set_stat_curve() -> void:
 
 
 # =============================================================================
+# SKILL PROFICIENCY  (NEW)
+# =============================================================================
+
+func _set_skill_proficiency() -> void:
+	# healer's specialty: magic climbs 50% faster than any other class
+	# landing the same shots. attack XP is still gained from projectile
+	# hits too (universal now — see player.gd's gain_attack_xp()), just at
+	# the base 1.0 rate. starting value, tune to taste.
+	skill_proficiency["magic"] = 1.5
+
+
+# =============================================================================
 # LIFECYCLE
 # =============================================================================
 
@@ -166,19 +178,32 @@ func _spawn_projectile(direction: Vector2) -> void:
 	if "speed" in projectile:
 		projectile.speed = projectile_speed
 	if "damage" in projectile:
-		projectile.damage = magic * damage_per_magic
+		# CHANGED: was magic * damage_per_magic — same reinterpretation as
+		# mage's stalagmite: damage_per_magic is now a flat base, scaled by
+		# get_damage_multiplier() (folds in both magic and attack, shared
+		# across every class — see player.gd).
+		projectile.damage = int(damage_per_magic * get_damage_multiplier())
 	if "owner_group" in projectile:
 		projectile.owner_group = "player"
+	# NEW: identifies the healer for the projectile's XP-on-hit — same
+	# pattern as slashwave.gd's caster reference for warrior, and mage's
+	# equivalent addition to _spawn_stalagmite(). lets the projectile grant
+	# attack XP (universal) AND magic XP (healer's boosted specialty) back
+	# to whoever fired it, on impact. the projectile script itself still
+	# needs its own matching XP-grant call added — that part isn't done
+	# here, since it lives in projectile_scene's own script, not this one.
+	if "caster" in projectile:
+		projectile.caster = self
 
 
 # =============================================================================
-# LEVEL-UP SKILL BONUS
+# LEVEL-UP SKILL BONUS  (REMOVED)
 # =============================================================================
-
-func _apply_level_up_skill_bonus() -> void:
-	# healer skill bonus: +1 magic per level. stacks with XP-based skill
-	# growth and is NOT part of the recomputed stat pools.
-	magic += 1
+# CHANGED: used to grant a flat +1 magic on every character level-up. now
+# that skill_proficiency exists (see _set_skill_proficiency() above),
+# magic climbs faster for healer through actual landed shots, not just
+# from leveling up via ANY combat. no override needed anymore; falls back
+# to player.gd's no-op base.
 
 
 # =============================================================================

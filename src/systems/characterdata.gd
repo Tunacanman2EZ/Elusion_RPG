@@ -35,6 +35,16 @@
 #
 # level/skill caps (MAX_LEVEL, MIN/MAX_SKILL_LEVEL) below are placeholders —
 # confirm against your actual design before relying on them.
+#
+# SAVE SIGNING (NEW):
+# every save is now signed with a SHA-256 hash of its contents + a secret
+# key baked into this script (SAVE_SIGNING_KEY). verified on every load.
+# same philosophy as the sanity clamps: a mismatch is logged loudly, not
+# rejected — see _verify_signature()'s comment. this is obfuscation against
+# casual save-file editing, not real cryptographic security, since the key
+# ships inside the compiled game. a legacy save with no signature field
+# (from before this feature existed) is not treated as tampered — it just
+# gets signed starting with its next save.
 extends Node
 
 
@@ -67,6 +77,18 @@ const SAVEABLE_STATS := {
 	"magic":        1,
 	"fishing":      1,
 	"cooking":      1,
+	# NEW: skill XP progress toward each skill's NEXT level. these were
+	# missing entirely — only the skill LEVEL itself (attack/defense/etc.
+	# above) was ever saved, so progress within the current skill level
+	# silently reset to player.gd's class defaults (0/100) on every reload,
+	# regardless of how much had actually been earned. defaults here match
+	# player.gd's own class-level defaults for a fresh character.
+	"attack_xp":       0,   "attack_xp_next":  100,
+	"defense_xp":      0,   "defense_xp_next": 100,
+	"agility_xp":      0,   "agility_xp_next": 100,
+	"magic_xp":        0,   "magic_xp_next":   100,
+	"fishing_xp":      0,   "fishing_xp_next": 100,
+	"cooking_xp":      0,   "cooking_xp_next": 100,
 }
 
 # default account_data structure — used for fresh installs and migrations
@@ -74,6 +96,7 @@ const DEFAULT_ACCOUNT_DATA := {
 	"lusions":         0,    # account-shared, soulbound premium currency
 	"bank_gold":       0,    # account-shared, safe from death
 	"bank_inventory":  [],   # account-shared item array (50 slots)
+	"is_admin":        false,# NEW — see get_is_admin()/set_is_admin() below
 }
 
 # --- anti-tamper sanity ranges — PLACEHOLDERS, confirm against your design ---
@@ -85,13 +108,44 @@ const MAX_GOLD := 999999999
 # for why this can't be a precise per-class check.
 const MAX_STAT_POOL := 999999
 
+# NEW: growth factors for each skill's XP-to-next-level curve, used to
+# cross-check skill_xp/skill_xp_next the same way character-level xp/xp_next
+# is already cross-checked. MUST exactly match the factor argument each
+# gain_X_xp() function passes to xp_needed_for_skill(level, 100, factor)
+# in player.gd — if that ever gets rebalanced there, update it here too, or
+# this will start "correcting" perfectly legitimate skill XP against a
+# stale formula.
+const SKILL_GROWTH_FACTORS := {
+	"attack":  1.25,
+	"defense": 1.20,
+	"agility": 1.15,
+	"magic":   1.25,
+	"fishing": 1.12,
+	"cooking": 1.10,
+}
+
+# --- save signing ---
+# baked into the compiled game — this is OBFUSCATION, not real cryptographic
+# security (anyone who decompiles the build can extract it). the actual goal
+# is raising the bar past casual save-file editing (opening it in a text
+# editor and changing numbers), which is the realistic threat for a local
+# single-player save. swap this for your own random string if you want;
+# doesn't need to be memorable, just long and not reused elsewhere.
+const SAVE_SIGNING_KEY := "Elusion_9f3kD7mQ2xVh_SaveIntegrity_2026_zR8pL4wN"
+
 
 # =============================================================================
 # STATE
 # =============================================================================
 
-# storage backend — LocalStorage (file) for now, ServerStorage later
-var storage: LocalStorage = LocalStorage.new()
+# storage backend — LocalStorage (file) for now, ServerStorage later. NEW:
+# starts null — a distinct instance gets constructed per user in
+# load_for_user() below, rather than one shared instance at autoload boot.
+var storage: LocalStorage = null
+
+# NEW: which user is currently loaded, if any. empty string means no user
+# is logged in (fresh boot, or after clear_current_user()).
+var current_username: String = ""
 
 # 4 character slots, each a dictionary (or null if empty)
 var character_slots: Array = [null, null, null, null]
@@ -109,8 +163,92 @@ var account_data: Dictionary = DEFAULT_ACCOUNT_DATA.duplicate(true)
 
 func _ready() -> void:
 	print("=== CHARACTERDATA READY ===")
+	# CHANGED: no longer loads a save at boot — this autoload's _ready()
+	# fires before the login screen even exists, so there's no "current
+	# user" yet to load for. state stays at defaults until load_for_user()
+	# is called after a successful login (see loginmenu.gd).
 	_initialize_account_data()
-	load_data()
+
+
+# =============================================================================
+# PER-USER SESSION  (NEW)
+# =============================================================================
+# CharacterData used to load ONE global save at boot, before any login
+# system existed — every user, new or old, ended up sharing the exact same
+# character data regardless of who logged in. this section makes save data
+# genuinely scoped per username: a distinct LocalStorage instance (and
+# therefore a distinct file on disk) per user, constructed on demand here
+# rather than once at autoload _ready().
+
+func load_for_user(username: String) -> bool:
+	# call this right after a successful login, BEFORE transitioning to
+	# character select — see loginmenu.gd's _on_login_button_pressed().
+	# resets in-memory state first (via clear_current_user()) so a second
+	# user logging in during the same session can't briefly see whatever
+	# the previous user's data was.
+	clear_current_user()
+
+	current_username = username
+	storage = LocalStorage.new(_save_path_for_user(username))
+	return load_data()
+
+
+func clear_current_user() -> void:
+	# called on logout (see characterhud.gd's _on_logout_pressed()), AND
+	# internally by load_for_user() before switching to a new user. resets
+	# everything to fresh in-memory defaults — does NOT touch disk, this
+	# only clears state so nothing from the outgoing user can leak into
+	# whatever comes next (a different user logging in, or a fresh boot).
+	current_username = ""
+	storage = null
+	character_slots = [null, null, null, null]
+	active_character_index = 0
+	account_data = DEFAULT_ACCOUNT_DATA.duplicate(true)
+
+
+func _save_path_for_user(username: String) -> String:
+	# usernames are already restricted to [a-zA-Z0-9_] at registration
+	# (see loginmenu.gd's is_valid_input()), so they're already safe to
+	# use directly in a filename — no path-traversal risk from characters
+	# like '/' or '..'. this strip is defensive in case load_for_user()
+	# ever gets called from somewhere that skipped that validation.
+	var regex := RegEx.new()
+	regex.compile("[^a-zA-Z0-9_]")
+	var safe_username: String = regex.sub(username, "", true)
+	return "user://character_%s.save" % safe_username
+
+
+# =============================================================================
+# ADMIN — READ-ONLY SAVE VIEWING  (NEW)
+# =============================================================================
+
+func admin_peek_user_save(username: String) -> Dictionary:
+	# read-only view into ANOTHER user's save file, WITHOUT disturbing the
+	# admin's own currently-loaded session — unlike load_for_user(), which
+	# REPLACES the active session, this uses a throwaway LocalStorage
+	# instance scoped to just this one read. character_slots/account_data/
+	# storage on this autoload are never touched.
+	#
+	# FAIL-CLOSED: denies (returns {}) unless the CURRENTLY LOGGED IN user
+	# is an admin. this is the actual enforcement point — UI-level gating
+	# (hiding the admin panel from non-admins) is a nice-to-have on top of
+	# this, not a substitute for it.
+	if not get_is_admin():
+		push_warning("CharacterData: admin_peek_user_save() called without admin privileges — denying.")
+		return {}
+
+	var peek_storage := LocalStorage.new(_save_path_for_user(username))
+	var data: Dictionary = peek_storage.load()
+	if data.is_empty():
+		return {}
+
+	data = _migrate_save(data)
+	# still verify signature on the TARGET's save (useful admin info if
+	# their file was tampered with) — this only mutates the local `data`
+	# dict being returned, not any of our own instance state.
+	_verify_signature(data)
+
+	return data
 
 
 # =============================================================================
@@ -157,12 +295,18 @@ func _initialize_account_data() -> void:
 # ANTI-TAMPER / SANITY VALIDATION  (NEW)
 # =============================================================================
 
-func _sanitize_character_slot(slot) -> void:
+func _sanitize_character_slot(slot) -> bool:
 	# clamps/corrects one character slot in place (Dictionaries are
 	# reference types in GDScript, so mutating `slot` here mutates the
 	# actual entry inside character_slots — no reassignment needed).
+	# returns true if anything was actually changed, via a before/after
+	# snapshot comparison — Godot 4 Dictionaries do deep content comparison
+	# with !=, so this is simpler and less error-prone than tracking each
+	# field's change individually.
 	if slot == null or typeof(slot) != TYPE_DICTIONARY:
-		return
+		return false
+
+	var before: Dictionary = slot.duplicate(true)
 
 	# --- level ---
 	var level: int = clamp(int(slot.get("level", 1)), 1, MAX_LEVEL)
@@ -171,13 +315,28 @@ func _sanitize_character_slot(slot) -> void:
 	# --- xp / xp_next cross-check ---
 	# xp_next is fully deterministic from level (100, doubling each level —
 	# see player.gd's gain_xp()). recompute rather than trust the saved
-	# value. NOTE: this formula overflows a 64-bit int somewhere around
-	# level 58 — a pre-existing property of the doubling curve itself, not
-	# something this validation fixes. clamp xp below expected_xp_next,
-	# since gain_xp()'s while-loop guarantees that invariant on any
-	# legitimately-saved state (xp reaching xp_next always triggers an
-	# immediate level-up before saving).
-	var expected_xp_next: int = int(100 * pow(2, level - 1))
+	# value.
+	#
+	# OVERFLOW GUARD: 100 * 2^(level-1) exceeds a 64-bit int's range
+	# somewhere around level 58 — 2^98 (level 99's exponent) is roughly
+	# 3x10^29, versus int64's max of about 9.2x10^18. casting that
+	# overflowing float straight to int doesn't clamp gracefully; it wraps
+	# into garbage (this produced xp_next = -9223372036854775808, int64's
+	# minimum value, for a level-9999-then-clamped-to-99 test edit). capped
+	# below at exponent 56 (100 * 2^56 ≈ 7.2x10^18, safely inside int64)
+	# rather than the real exponential value beyond that point. NOTE: this
+	# only stops the SANITY CHECK from producing garbage — it doesn't fix
+	# the same overflow in player.gd's actual gain_xp() formula, which
+	# would hit this exact problem for any character that legitimately
+	# leveled that high, not just a tampered save. worth knowing if 99 is
+	# meant to be a real, reachable level cap rather than just a ceiling.
+	var exponent: int = level - 1
+	var expected_xp_next: int
+	if exponent > 56:
+		expected_xp_next = 999999999999999
+	else:
+		expected_xp_next = int(100 * pow(2, exponent))
+
 	var saved_xp_next: int = int(slot.get("xp_next", expected_xp_next))
 	if saved_xp_next != expected_xp_next:
 		push_warning("CharacterData: xp_next mismatch for level %d (had %d, expected %d) — correcting" % [
@@ -189,10 +348,30 @@ func _sanitize_character_slot(slot) -> void:
 	# --- gold (carry) ---
 	slot["gold"] = clamp(int(slot.get("gold", 0)), 0, MAX_GOLD)
 
-	# --- skills ---
-	for skill in ["attack", "defense", "agility", "magic", "fishing", "cooking"]:
-		var val: int = clamp(int(slot.get(skill, MIN_SKILL_LEVEL)), MIN_SKILL_LEVEL, MAX_SKILL_LEVEL)
-		slot[skill] = val
+	# --- skills + skill XP progress ---
+	# clamps each skill's LEVEL first, then uses that clamped level to
+	# recompute the expected xp_next for that skill's specific growth curve
+	# (see SKILL_GROWTH_FACTORS above) — same cross-check pattern as
+	# character-level xp/xp_next, just per-skill. clamps skill_xp below
+	# that threshold for the same reason: gain_X_xp()'s while-loop
+	# guarantees xp never legitimately reaches xp_next without triggering
+	# a skill level-up first.
+	for skill in SKILL_GROWTH_FACTORS:
+		var skill_level: int = clamp(int(slot.get(skill, MIN_SKILL_LEVEL)), MIN_SKILL_LEVEL, MAX_SKILL_LEVEL)
+		slot[skill] = skill_level
+
+		var factor: float = SKILL_GROWTH_FACTORS[skill]
+		var expected_skill_xp_next: int = int(100 * pow(factor, skill_level - 1))
+		var xp_key: String = skill + "_xp"
+		var xp_next_key: String = skill + "_xp_next"
+
+		var saved_skill_xp_next: int = int(slot.get(xp_next_key, expected_skill_xp_next))
+		if saved_skill_xp_next != expected_skill_xp_next:
+			push_warning("CharacterData: %s mismatch for %s level %d (had %d, expected %d) — correcting" % [
+				xp_next_key, skill, skill_level, saved_skill_xp_next, expected_skill_xp_next
+			])
+		slot[xp_next_key] = expected_skill_xp_next
+		slot[xp_key] = clamp(int(slot.get(xp_key, 0)), 0, max(expected_skill_xp_next - 1, 0))
 
 	# --- hp/mana/stamina + maxes — blunt defensive ceiling only, see notes above ---
 	for stat in ["hp", "max_hp", "mana", "max_mana", "stamina", "max_stamina"]:
@@ -205,16 +384,22 @@ func _sanitize_character_slot(slot) -> void:
 	if slot.has("inventory") and typeof(slot["inventory"]) == TYPE_ARRAY:
 		slot["inventory"] = _validate_item_array(slot["inventory"], "character inventory")
 
+	return slot != before
 
-func _sanitize_account_data() -> void:
+
+func _sanitize_account_data() -> bool:
 	# lusions/bank_gold already clamp >= 0 in their setters (below), but
 	# that doesn't help against a save file edited directly on disk and
 	# loaded straight in — clamp again here at load time to close that gap.
+	var before: Dictionary = account_data.duplicate(true)
+
 	account_data["lusions"] = max(int(account_data.get("lusions", 0)), 0)
 	account_data["bank_gold"] = max(int(account_data.get("bank_gold", 0)), 0)
 
 	if account_data.has("bank_inventory") and typeof(account_data["bank_inventory"]) == TYPE_ARRAY:
 		account_data["bank_inventory"] = _validate_item_array(account_data["bank_inventory"], "bank inventory")
+
+	return account_data != before
 
 
 func _is_item_registry_ready() -> bool:
@@ -255,6 +440,112 @@ func _validate_item_array(items: Array, context: String) -> Array:
 
 
 # =============================================================================
+# SAVE SIGNING  (NEW)
+# =============================================================================
+# see class comment for the threat model this covers and doesn't. the
+# signature is computed over a CANONICAL sub-dictionary built with fixed key
+# order every time — deliberately not just re-serializing whatever dict was
+# passed in, since that dict's own key order could vary (e.g. across
+# migration paths) even when the underlying data is identical, which would
+# make verification spuriously fail on legitimate saves.
+
+func _compute_signature(data: Dictionary) -> String:
+	var canonical_fields := {
+		"version":                data.get("version"),
+		"character_slots":        data.get("character_slots"),
+		"active_character_index": data.get("active_character_index"),
+		"account_data":           data.get("account_data"),
+		"saved_at":               data.get("saved_at"),
+	}
+	var canonical_string: String = _canonicalize_for_signing(canonical_fields)
+	return (canonical_string + SAVE_SIGNING_KEY).sha256_text()
+
+
+func _canonicalize_for_signing(value) -> String:
+	# hand-rolled serializer used ONLY for signature computation — the
+	# actual on-disk save format is still normal JSON via LocalStorage,
+	# untouched by this.
+	#
+	# WHY NOT JUST JSON.stringify(): Godot's JSON parser always returns
+	# numbers as float, even whole numbers that started as native int
+	# (level: 5 becomes 5.0 the moment it round-trips through disk).
+	# JSON.stringify() renders "5" vs "5.0" differently, so hashing
+	# freshly-in-memory data vs. freshly-loaded-from-disk data produced
+	# DIFFERENT canonical strings for IDENTICAL logical data — guaranteeing
+	# a spurious mismatch on every single reload, tampered or not, which
+	# completely defeated the point of signing (confirmed directly: two
+	# different signature strings for the same untampered account).
+	#
+	# this normalizes whole-number floats back to integer text, and sorts
+	# dictionary keys alphabetically so key-insertion-order differences
+	# (e.g. across migration paths) can't cause a mismatch either.
+	match typeof(value):
+		TYPE_DICTIONARY:
+			var d: Dictionary = value
+			var keys: Array = d.keys()
+			keys.sort()
+			var parts: Array = []
+			for key in keys:
+				parts.append("%s:%s" % [str(key), _canonicalize_for_signing(d[key])])
+			return "{" + ",".join(parts) + "}"
+		TYPE_ARRAY:
+			var parts2: Array = []
+			for item in value:
+				parts2.append(_canonicalize_for_signing(item))
+			return "[" + ",".join(parts2) + "]"
+		TYPE_FLOAT:
+			var f: float = value
+			if f == floor(f):
+				return str(int(f))
+			return str(f)
+		TYPE_BOOL:
+			return "true" if value else "false"
+		TYPE_STRING:
+			return "\"%s\"" % value
+		_:
+			return str(value)
+
+
+func _verify_signature(data: Dictionary) -> bool:
+	# does NOT reject or wipe on mismatch — same philosophy as the sanity
+	# clamps above. a false positive (from, say, a future migration edge
+	# case) shouldn't nuke a beta tester's save. this logs loudly so
+	# mismatches are visible if you ever want to act on them, and a
+	# legacy save (no signature field at all — predates this feature)
+	# is NOT treated as tampered, just gets signed going forward.
+	# returns true if load_data() should force an immediate resave —
+	# either to fix a bad signature, or simply because saving naturally
+	# refreshes saved_at to now, which self-corrects a future-timestamp
+	# anomaly too.
+	var stored_signature: String = data.get("signature", "")
+	if stored_signature == "":
+		return false
+
+	var expected_signature: String = _compute_signature(data)
+	var needs_resave: bool = stored_signature != expected_signature
+	if needs_resave:
+		push_warning("CharacterData: SAVE SIGNATURE MISMATCH — save data does not match its signature. Possible manual editing of the save file. Continuing to load (sanity clamps still apply), but flagging this loudly.")
+
+		# NEW: is_admin gets stricter treatment than other fields. everything
+		# else here just logs and continues, since a false positive
+		# shouldn't nuke a beta tester's progress. but handing out admin
+		# privileges because someone hand-edited is_admin: true into their
+		# save file is a categorically worse outcome than a stat being
+		# wrong — force it false on any mismatch, no exceptions.
+		var acct = data.get("account_data")
+		if typeof(acct) == TYPE_DICTIONARY and bool(acct.get("is_admin", false)):
+			push_warning("CharacterData: is_admin was true on a save with a signature mismatch — forcing false.")
+			acct["is_admin"] = false
+
+	var saved_at: float = float(data.get("saved_at", 0))
+	if saved_at > Time.get_unix_time_from_system():
+		push_warning("CharacterData: save file's saved_at timestamp is in the FUTURE — possible clock tampering or a corrupted save.")
+		needs_resave = true
+
+	return needs_resave
+
+
+# =============================================================================
 # SAVE / LOAD
 # =============================================================================
 
@@ -262,6 +553,13 @@ func save_data() -> bool:
 	# writes everything to disk via the storage backend. called from many
 	# places: any atomic write (gold pickup, XP gain, bank deposit, lusions
 	# change). the storage backend handles the actual file I/O.
+	# NEW: storage can legitimately be null if no user is currently loaded
+	# (before login, or after clear_current_user()) — guard rather than
+	# crash, since this function has many callsites throughout this file.
+	if storage == null:
+		push_warning("CharacterData: save_data() called with no user loaded — ignoring")
+		return false
+
 	_ensure_slot_array()
 	_ensure_account_data()
 	var payload := {
@@ -269,13 +567,29 @@ func save_data() -> bool:
 		"character_slots":         character_slots,
 		"active_character_index":  active_character_index,
 		"account_data":            account_data,
+		# CHANGED: truncated to whole seconds (int) instead of the raw
+		# microsecond-precision float. floats with many decimal digits
+		# aren't guaranteed to round-trip losslessly through JSON text —
+		# integers are. this was a real candidate for the persistent
+		# signature mismatch, since saved_at was the one genuinely
+		# non-whole-number float in the whole signed payload.
+		"saved_at":                int(Time.get_unix_time_from_system()),
 	}
+	payload["signature"] = _compute_signature(payload)
 	return storage.save(payload)
 
 
 func load_data() -> bool:
 	# reads from disk and reconstructs character + account state.
 	# empty data means fresh install — initialize defaults and return false.
+	# NEW: same null-storage guard as save_data() — load_for_user() always
+	# sets storage before calling this, but defensive here too.
+	if storage == null:
+		push_warning("CharacterData: load_data() called with no user loaded — ignoring")
+		_ensure_slot_array()
+		_ensure_account_data()
+		return false
+
 	var data := storage.load()
 	if data.is_empty():
 		_ensure_slot_array()
@@ -283,6 +597,12 @@ func load_data() -> bool:
 		return false
 
 	data = _migrate_save(data)
+
+	# NEW: verify signature on the data as actually loaded, before it gets
+	# torn apart into character_slots/account_data below. see
+	# _verify_signature()'s comment for why mismatches don't reject the load.
+	var needs_resave: bool = _verify_signature(data)
+
 	character_slots = data.get("character_slots", [null, null, null, null])
 	active_character_index = data.get("active_character_index", 0)
 	account_data = data.get("account_data", DEFAULT_ACCOUNT_DATA.duplicate(true))
@@ -294,8 +614,21 @@ func load_data() -> bool:
 	# whether the save was actually tampered with. see class-level comment
 	# for scope/limitations.
 	for slot in character_slots:
-		_sanitize_character_slot(slot)
-	_sanitize_account_data()
+		if _sanitize_character_slot(slot):
+			needs_resave = true
+	if _sanitize_account_data():
+		needs_resave = true
+
+	# NEW: if anything above actually changed the data (a sanity-clamp
+	# correction, or a signature/timestamp anomaly), persist the corrected
+	# version immediately rather than waiting for the next natural save
+	# trigger. otherwise the fix only exists in memory — if the game
+	# crashes or gets force-quit before anything else triggers a save, the
+	# uncorrected version is still what's on disk next launch, and this
+	# whole process just repeats without ever actually landing the fix.
+	if needs_resave:
+		push_warning("CharacterData: correction(s) applied on load — persisting corrected save immediately.")
+		save_data()
 
 	return true
 
@@ -400,6 +733,7 @@ func create_character(slot_idx: int, character_name: String) -> void:
 	for stat in SAVEABLE_STATS:
 		new_char[stat] = SAVEABLE_STATS[stat]
 	new_char["inventory"] = []
+	new_char["active_pet_id"] = ""  # NEW — fresh characters start with no pet
 	character_slots[slot_idx] = new_char
 	save_data()
 
@@ -429,6 +763,15 @@ func save_character_state(player: Node) -> void:
 	# to actually hit disk.
 	if "hotbar_assignments" in player:
 		character_slots[slot]["hotbar_assignments"] = player.hotbar_assignments
+
+	# NEW: same reasoning as hotbar_assignments above — active_pet_id is a
+	# String (an item_id), not part of the int-only SAVEABLE_STATS loop,
+	# so it's handled here explicitly. this is what actually makes a pet
+	# survive a scene transition: the pet NODE gets freed with the old
+	# scene, but this string persists and player.gd re-spawns from it on
+	# the next _ready().
+	if "active_pet_id" in player:
+		character_slots[slot]["active_pet_id"] = player.active_pet_id
 
 	save_data()
 
@@ -464,6 +807,13 @@ func load_character_state(player: Node) -> void:
 			player.hotbar_assignments = saved_hotbar
 		else:
 			player.hotbar_assignments = ["", "", "", "", "", "", "", "", ""]
+
+	# NEW: load active_pet_id — defaults to "" (no pet) if not in save,
+	# which covers both fresh characters and saves that predate this
+	# feature. player.gd's _ready() calls _restore_active_pet() right
+	# after this, which is what actually re-spawns the pet node.
+	if "active_pet_id" in player:
+		player.active_pet_id = str(slot.get("active_pet_id", ""))
 			
 func _capture_inventory(player: Node) -> Array:
 	# pulls the live inventory contents from the open inventory container if
@@ -506,6 +856,35 @@ func set_account_lusions(value: int) -> void:
 func add_account_lusions(amount: int) -> void:
 	_ensure_account_data()
 	account_data["lusions"] = max(int(account_data.get("lusions", 0)) + int(amount), 0)
+	save_data()
+
+
+# --- admin flag (account-shared, persisted) ---
+# NEW: persisted admin status, replacing the old hardcoded-username check
+# that used to run fresh on every login with no memory of it. granted once
+# — typically the first time ADMIN_USERNAME logs in, see loginmenu.gd's
+# _grant_admin_if_applicable() — then persists as part of THIS account's
+# own save data from then on, independent of the ADMIN_USERNAME constant.
+# that means additional admins could be granted later without hardcoding
+# more usernames, and it's what makes "memory of admin across logins" work
+# at all — see class comment for the signature-mismatch safeguard on this
+# specific field.
+#
+# FUTURE / ONLINE NOTE: deliberately modeled as "a flag on this account's
+# own data," not a client-side live check, so a later move to a real
+# server means is_admin becomes a server-side database flag instead of a
+# local-save flag — a migration, not a redesign. once there's an actual
+# server, don't grant real admin gameplay powers purely from client-side
+# state without server-side verification too.
+
+func get_is_admin() -> bool:
+	_ensure_account_data()
+	return bool(account_data.get("is_admin", false))
+
+
+func set_is_admin(value: bool) -> void:
+	_ensure_account_data()
+	account_data["is_admin"] = value
 	save_data()
 
 

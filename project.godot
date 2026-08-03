@@ -25,6 +25,7 @@ CharacterData="*uid://cvkrtide3lisi"
 GameState="*uid://cjruyiklfgr1l"
 ItemRegistry="*uid://dx6llg3mjckfx"
 GameConstants="*uid://wbhpk12dyjkn"
+SceneTransition="*uid://cvilb71enkgcb"
 
 [display]
 

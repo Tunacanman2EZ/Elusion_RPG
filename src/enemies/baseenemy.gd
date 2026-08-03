@@ -22,6 +22,17 @@
 #      pet (pet_drop_id). a won pet forces a bag to spawn to hold it.
 # gold is guaranteed in any bag.
 #
+# ITEM RARITY (CHANGED): item rolls were previously 8 independent chances
+# at 35% each (~2.8 expected items per bag, with real odds of 4-5+ landing
+# on the high end of variance) — enough noise that items stopped reading as
+# meaningful next to the pet-beam moment. cut to fewer, lower-odds rolls
+# (see max_item_slots/slot_fill_chance below), and the tier weighting
+# formula changed from linear to exponential so higher-tier items are
+# dramatically rarer relative to lower-tier ones instead of barely
+# differentiated. gold generation is untouched — already guaranteed on
+# every bag with no rarity gate, which is exactly the "currency flows,
+# items are scarce" split this was tuned toward.
+#
 # projectile spawning:
 # spawn_projectile_node() parents projectiles into the y-sorted "projectiles"
 # container so they depth-sort against characters. deferred to avoid the
@@ -41,7 +52,6 @@ const STACK_AVOID_DISTANCE := 24.0
 const STACK_AVOID_FORCE := 20.0
 const HOME_ARRIVAL_THRESHOLD := 4.0
 
-const BAG_ITEM_SLOTS := 8
 const LARGE_GOLD_THRESHOLD := 100
 const GOLD_SMALL_ID := "smallamountofgold"
 const GOLD_LARGE_ID := "largeamountofgold"
@@ -69,7 +79,18 @@ const GOLD_LARGE_ID := "largeamountofgold"
 
 @export var bag_drop_chance: float = 0.30
 @export var max_loot_tier: int = 1
-@export var slot_fill_chance: float = 0.35
+
+# CHANGED: was a hardcoded const (BAG_ITEM_SLOTS = 8), now exported so
+# tougher enemies can reasonably roll more item chances than a basic mob
+# without needing a second global constant. was 8, now 3 — see class
+# comment on ITEM RARITY for why.
+@export var max_item_slots: int = 3
+
+# CHANGED: was 0.35, now 0.15. combined with max_item_slots dropping from
+# 8 to 3, expected items per bag goes from ~2.8 down to ~0.45 — most bags
+# that drop will have zero or one item, two+ becomes a real rare moment.
+@export var slot_fill_chance: float = 0.15
+
 @export var pet_drop_id: String = ""
 
 
@@ -408,12 +429,16 @@ func _roll_pet() -> bool:
 func _build_bag_contents() -> Array:
 	var contents: Array = []
 
+	# gold: UNTOUCHED — guaranteed on every bag, no rarity gate. this is
+	# intentional and already matches the "currency flows freely, items
+	# are scarce" design goal — see class comment.
 	var gold_amount: int = randi_range(max_loot_tier, max_loot_tier * 25)
 	var gold_id: String = GOLD_LARGE_ID if gold_amount >= LARGE_GOLD_THRESHOLD else GOLD_SMALL_ID
 	if ItemRegistry.has_item(gold_id):
 		contents.append({ "item_id": gold_id, "quantity": gold_amount })
 
-	for i in range(BAG_ITEM_SLOTS):
+	# items: fewer, lower-odds rolls than before — see class comment.
+	for i in range(max_item_slots):
 		if randf() <= slot_fill_chance:
 			var picked_id: String = _pick_weighted_item_id(max_loot_tier)
 			if picked_id != "":
@@ -437,7 +462,21 @@ func _pick_weighted_item_id(max_tier: int) -> String:
 		if item.type == ItemData.Type.CURRENCY:
 			continue
 
-		var w: int = (max_tier - item.tier) + 1
+		# CHANGED: was linear (max_tier - item.tier) + 1, which barely
+		# differentiated tiers for low-max-tier enemies (a tier-1 mob's
+		# eligible items were nearly all tier 1 too, so weights clustered
+		# together with little real rarity feel). now exponential — each
+		# tier step DOUBLES the weight gap instead of adding a flat +1, so
+		# a tier-1 item is meaningfully more common than a tier-2 item
+		# even when both are eligible from the same enemy's max_loot_tier.
+		# NOTE: this still uses `tier` (a power/level-gating concept) as
+		# the rarity signal, since that's what's available here — if you
+		# want rarity to be its own concept independent of tier (e.g. a
+		# low-tier item that's ALSO just rare), that'd need a dedicated
+		# rarity field on ItemData, which I don't have visibility into
+		# from this file alone.
+		var tier_gap: int = max_tier - item.tier
+		var w: int = int(pow(2, max(tier_gap, 0)))
 		if w < 1:
 			w = 1
 

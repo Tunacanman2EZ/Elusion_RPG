@@ -16,12 +16,24 @@ extends CanvasLayer
 
 const DISCORD_URL := "https://discord.gg/4PEhh4Uu"
 const CHARACTER_SELECT_PATH := "res://scene/ui/menus/characterselect.tscn"
+# NEW: log out now goes all the way back to the login screen (true logout),
+# not just character select — see _on_logout_pressed(). CHARACTER_SELECT_PATH
+# is kept in case a separate "switch character" action (distinct from a full
+# logout) gets added later, even though nothing in this file uses it right
+# now.
+const LOGIN_MENU_PATH := "res://scene/ui/menus/loginmenu.tscn"
 
 # preloaded panel scenes
 const INVENTORY_SCENE     := preload("res://scene/ui/inventory/inventory.tscn")
 const STATSSCREEN_SCENE   := preload("res://scene/ui/statsscreen.tscn")
 const BANK_SCENE          := preload("res://scene/ui/bank/bankinventory.tscn")
 const LOOTBAG_PANEL_SCENE := preload("res://scene/ui/lootbag/lootbaginventory.tscn")
+# NEW: admin-only save-viewer panel (see adminpanel.gd). preload is fine
+# here even though most players will never see it — the panel itself
+# fails closed via CharacterData.get_is_admin(), so preloading the scene
+# doesn't expose anything, it's just an inert resource until an admin
+# actually toggles it with F8.
+const ADMIN_PANEL_SCENE   := preload("res://scene/ui/admin/adminpanel.tscn")
 
 
 # =============================================================================
@@ -36,11 +48,12 @@ var magicbar:   TextureProgressBar = null
 var staminabar: TextureProgressBar = null
 
 # panel references — inventory is eagerly created in set_active_character,
-# stats/bank/lootbag stay lazy.
+# stats/bank/lootbag/admin stay lazy.
 var inventory_screen: InventoryScreen = null
 var stats_screen:     Control         = null
 var bank_screen:      Control         = null
 var lootbag_panel:    Control         = null
+var admin_panel:      Control         = null
 
 # hotbar reference — resolved on _ready
 var hotbar: Hotbar = null
@@ -61,6 +74,26 @@ func _ready() -> void:
 	_resolve_hotbar()
 	_wire_nav_buttons()
 	_wire_hotbar()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Shift+A toggles the admin panel. non-admins pressing this get no
+	# response at all by design, not even an error — see
+	# _toggle_admin_panel()'s fail-closed check on CharacterData.get_is_admin().
+	if event is InputEventKey and event.pressed and event.keycode == KEY_A \
+			and event.shift_pressed:
+		_toggle_admin_panel()
+
+
+func _toggle_admin_panel() -> void:
+	if not CharacterData.get_is_admin():
+		return
+
+	if admin_panel == null:
+		admin_panel = ADMIN_PANEL_SCENE.instantiate()
+		add_child(admin_panel)
+
+	admin_panel.visible = not admin_panel.visible
 
 
 func _process(_delta: float) -> void:
@@ -121,13 +154,16 @@ func _wire_nav_buttons() -> void:
 			button.focus_mode = Control.FOCUS_NONE
 
 	var bindings := {
-		"inventorybutton": "_on_inventory_pressed",
-		"statsbutton":     "_on_stats_pressed",
-		"shopbutton":      "_on_shop_pressed",
-		"mapbutton":       "_on_map_pressed",
-		"optionsbutton":   "_on_options_pressed",
-		"discordbutton":   "_on_discord_pressed",
-		"logoutbutton":    "_on_logout_pressed",
+		"inventorybutton":         "_on_inventory_pressed",
+		"statsbutton":             "_on_stats_pressed",
+		"shopbutton":              "_on_shop_pressed",
+		"mapbutton":               "_on_map_pressed",
+		"optionsbutton":           "_on_options_pressed",
+		"discordbutton":           "_on_discord_pressed",
+		"logoutbutton":            "_on_logout_pressed",
+		# NEW: distinct from logout — returns to character select without
+		# clearing the logged-in session, so no re-entering a password.
+		"switchcharacterbutton":   "_on_switch_character_pressed",
 	}
 	for btn_name in bindings:
 		if nav.has_node(btn_name):
@@ -256,6 +292,10 @@ func _on_discord_pressed() -> void:
 
 
 func _on_logout_pressed() -> void:
+	# CHANGED: was sending to CHARACTER_SELECT_PATH, which only lets you pick
+	# a different character within the SAME already-authenticated session —
+	# not a real logout. now that there's an actual login screen, "Log Out"
+	# should mean returning all the way to it.
 	if active_character != null:
 		CharacterData.save_character_state(active_character)
 	active_character = null
@@ -264,6 +304,39 @@ func _on_logout_pressed() -> void:
 	if stats_screen:     stats_screen.queue_free()
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
+	if admin_panel:      admin_panel.queue_free()
+
+	# NEW: reset CharacterData's in-memory state too — logout was only ever
+	# clearing the UI panels, never actually telling CharacterData the user
+	# session ended. without this, a second user logging in during the same
+	# run would briefly (or permanently, if load_for_user() somehow didn't
+	# fire) see whatever the previous user's data was.
+	CharacterData.clear_current_user()
+
+	get_tree().change_scene_to_file(LOGIN_MENU_PATH)
+
+
+func _on_switch_character_pressed() -> void:
+	# "Switch Character" — return to character select WITHOUT a full
+	# logout. deliberately does NOT call CharacterData.clear_current_user():
+	# current_username and storage stay pointed at the same account, so
+	# nothing needs re-entering. this is exactly what CHARACTER_SELECT_PATH
+	# was kept around for after _on_logout_pressed() stopped using it — a
+	# genuinely distinct action, not the old logout behavior repurposed.
+	#
+	# the active pet (if any) doesn't need special handling here — leaving
+	# this scene frees it along with everything else, and whichever
+	# character gets picked next will have its OWN active_pet_id restored
+	# correctly when elusion.tscn reloads, same as any other scene change.
+	if active_character != null:
+		CharacterData.save_character_state(active_character)
+	active_character = null
+
+	if inventory_screen: inventory_screen.queue_free()
+	if stats_screen:     stats_screen.queue_free()
+	if bank_screen:      bank_screen.queue_free()
+	if lootbag_panel:    lootbag_panel.queue_free()
+	if admin_panel:      admin_panel.queue_free()
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
 
@@ -446,3 +519,6 @@ func is_panel_open() -> bool:
 	var stats_open: bool = stats_screen     != null and stats_screen.visible
 	var bank_open:  bool = bank_screen      != null and bank_screen.visible
 	return inv_open or stats_open or bank_open
+
+func _on_switchcharacterbutton_pressed() -> void:
+	pass # Replace with function body.

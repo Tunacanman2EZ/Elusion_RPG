@@ -172,6 +172,23 @@ func _find_nearest_enemy() -> Node:
 # ATTACK
 # =============================================================================
 
+func _get_scaled_damage() -> int:
+	# CHANGED: was pure level-based scaling. now reads the player's actual
+	# attack+magic damage multiplier — the same get_damage_multiplier()
+	# every class's own damage routes through (see player.gd) — at a flat
+	# 50%. a pet contributes real, growing damage as the player invests in
+	# attack/magic, but deliberately less than the player's own hits, so a
+	# pet stays a meaningful helper rather than a second character.
+	# computed live at fire time (not cached at spawn) so damage stays
+	# current as the player's stats keep growing, without needing to
+	# re-summon the pet. attack_cooldown (already exported, per-pet) is
+	# the lever for making a specific pet variant hit harder/faster than a
+	# regular enemy without touching this 50% ratio.
+	if player == null or not player.has_method("get_damage_multiplier"):
+		return projectile_damage
+	return int(projectile_damage * player.get_damage_multiplier() * 0.5)
+
+
 func _fire_at(target: Node) -> void:
 	if projectile_scene == null:
 		push_warning("Pet: projectile_scene not assigned")
@@ -216,7 +233,7 @@ func _fire_projectile(dir: Vector2) -> void:
 	projectile.set_deferred("global_position", spawn_pos)
 
 	if "damage" in projectile:
-		projectile.damage = projectile_damage
+		projectile.damage = _get_scaled_damage()
 
 	# NEW: deferred for the same reason as _fire_vine's fire() call below —
 	# see the DEFERRED SPAWN TIMING note at the top of this file. this
@@ -237,7 +254,7 @@ func _fire_vine(target: Node, dir: Vector2) -> void:
 	_parent_to_group(vine, "groundeffects")
 	vine.set_deferred("global_position", target.global_position)
 	if "damage" in vine:
-		vine.damage = projectile_damage
+		vine.damage = _get_scaled_damage()
 
 	# NEW: fire() must be deferred — _parent_to_group's add_child is itself
 	# deferred, so vine._ready() (and its @onready sprite assignment) hasn't

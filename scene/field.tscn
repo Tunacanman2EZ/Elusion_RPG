@@ -1,0 +1,73 @@
+[gd_scene format=3 uid="uid://be0elfwucuopu"]
+
+[ext_resource type="Script" uid="uid://hps7hjd7tu1i" path="res://src/core/field.gd" id="1_odcg7"]
+[ext_resource type="Texture2D" uid="uid://tmjenpld6v4b" path="res://art/Tiles/teleporter.png" id="3_ahwvv"]
+[ext_resource type="Script" uid="uid://blrs7e81o2jg4" path="res://src/world/fieldportal.gd" id="4_0d0g4"]
+[ext_resource type="PackedScene" uid="uid://cm0fcw1150850" path="res://scene/ui/floatinglabel.tscn" id="5_0si61"]
+[ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/characterhud.tscn" id="6_4lur4"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_c65tm"]
+size = Vector2(16.666668, 16.666668)
+
+[node name="field" type="Node2D" unique_id=1775886105]
+script = ExtResource("1_odcg7")
+
+[node name="water" type="TileMapLayer" parent="." unique_id=1476936095]
+z_index = -20
+
+[node name="ground" type="TileMapLayer" parent="." unique_id=118420148]
+z_index = -10
+
+[node name="grounddecals" type="TileMapLayer" parent="." unique_id=127232512]
+
+[node name="ysortworld" type="TileMapLayer" parent="." unique_id=1411142955]
+
+[node name="props" type="Node2D" parent="ysortworld" unique_id=1513320963]
+
+[node name="interactables" type="Node2D" parent="ysortworld" unique_id=369844446]
+
+[node name="fieldteleport" type="Area2D" parent="ysortworld/interactables" unique_id=168528503]
+scale = Vector2(1.5, 1.5)
+collision_layer = 16
+collision_mask = 4
+
+[node name="teleport" type="Sprite2D" parent="ysortworld/interactables/fieldteleport" unique_id=1729600057]
+texture_filter = 1
+texture = ExtResource("3_ahwvv")
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="ysortworld/interactables/fieldteleport" unique_id=784126217]
+texture_filter = 1
+position = Vector2(0.3333332, 0.33333382)
+shape = SubResource("RectangleShape2D_c65tm")
+
+[node name="destinationpoint" type="Marker2D" parent="ysortworld/interactables/fieldteleport" unique_id=312745586]
+texture_filter = 1
+position = Vector2(484, 1016)
+scale = Vector2(1, 0.99999994)
+
+[node name="arrivalmarker" type="Marker2D" parent="ysortworld/interactables/fieldteleport" unique_id=1245700490]
+position = Vector2(0, 8)
+script = ExtResource("4_0d0g4")
+portal_id = "field_entrance"
+
+[node name="enemies" type="Node2D" parent="ysortworld" unique_id=1953780950]
+
+[node name="groundeffects" type="Node2D" parent="ysortworld" unique_id=1708302954]
+
+[node name="projectiles" type="Node2D" parent="ysortworld" unique_id=951320896]
+
+[node name="lootbags" type="Node2D" parent="ysortworld" unique_id=542358684]
+
+[node name="pets" type="Node2D" parent="ysortworld" unique_id=1284941854]
+
+[node name="player" type="Node2D" parent="ysortworld" unique_id=74605721]
+
+[node name="aboveworld" type="Node2D" parent="ysortworld" unique_id=2088361805]
+
+[node name="floatinglabel" parent="." unique_id=1785796879 instance=ExtResource("5_0si61")]
+
+[node name="characterhud" parent="." unique_id=2045428837 instance=ExtResource("6_4lur4")]
+visible = false
+
+[connection signal="body_entered" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_entered"]
+[connection signal="body_exited" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_exited"]

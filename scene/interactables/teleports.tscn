@@ -1,6 +1,6 @@
-[gd_scene format=3 uid="uid://y7mjmefw8b0j"]
+[gd_scene format=3 uid="uid://dio18lod27066"]
 
-[ext_resource type="Script" uid="uid://dm0wvqr63gv05" path="res://src/world/teleporter_2.gd" id="1_wwtix"]
+[ext_resource type="Script" uid="uid://dm0wvqr63gv05" path="res://src/world/teleporter.gd" id="1_wwtix"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_impho"]
 radius = 38.3351

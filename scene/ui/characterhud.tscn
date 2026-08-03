@@ -107,6 +107,10 @@ layout_mode = 2
 focus_mode = 0
 text = "Logout"
 
+[node name="switchcharacterbutton" type="Button" parent="navhbox/navbuttons" unique_id=1320215097]
+layout_mode = 2
+text = "Characters"
+
 [node name="itemtooltip" parent="." unique_id=1631671194 instance=ExtResource("17_xinkp")]
 visible = true
 offset_left = 3.0
@@ -128,3 +132,4 @@ offset_bottom = 606.0
 [connection signal="pressed" from="navhbox/navbuttons/optionsbutton" to="." method="_on_optionsbutton_pressed"]
 [connection signal="pressed" from="navhbox/navbuttons/discordbutton" to="." method="_on_discordbutton_pressed"]
 [connection signal="pressed" from="navhbox/navbuttons/logoutbutton" to="." method="_on_logoutbutton_pressed"]
+[connection signal="pressed" from="navhbox/navbuttons/switchcharacterbutton" to="." method="_on_switchcharacterbutton_pressed"]

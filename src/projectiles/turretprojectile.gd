@@ -4,7 +4,7 @@
 #
 # usage:
 # - healer.gd._fire_projectile() spawns this scene
-# - sets direction (normalized), speed, damage, owner_group
+# - sets direction (normalized), speed, damage, owner_group, and caster (NEW)
 # - projectile flies until impact OR lifetime expiry
 #
 # sprite orientation:
@@ -19,6 +19,13 @@
 # healer shots, "enemies" for enemy-fired turrets if added later). projectiles
 # never damage anything in their owner's group, so a player can't be hit by
 # their own shots and enemies can't damage each other.
+#
+# XP ON HIT (NEW):
+# grants XP back to whoever fired this — see caster/_grant_caster_xp()
+# below, same pattern as slashwave.gd (warrior) and spelltargetcircle.gd
+# (mage). single-target and despawns immediately on its first hit, unlike
+# the stalagmite's AoE, so XP is granted exactly once per shot that lands —
+# no "per enemy" question here.
 extends Area2D
 
 
@@ -29,6 +36,12 @@ extends Area2D
 # how long (seconds) before the projectile auto-despawns if it never hits.
 # protects against projectiles flying off-map forever and leaking nodes.
 @export var max_lifetime: float = 2.0
+
+# NEW: XP granted to caster on a successful hit. attack XP is universal
+# (any class — see player.gd's gain_attack_xp()); magic XP is healer's
+# boosted specialty via skill_proficiency.
+@export var attack_xp_on_hit: int = 5
+@export var magic_xp_on_hit: int = 5
 
 
 # =============================================================================
@@ -50,6 +63,14 @@ var damage: int = 8
 # group name of the owner. used to prevent self-damage and same-team friendly
 # fire. "player" if shot by player, "enemies" if shot by an enemy turret.
 var owner_group: String = "player"
+
+# NEW: identifies who fired this projectile — set by healer.gd on spawn,
+# mirrors slashwave.gd's caster reference for warrior. used to grant XP
+# back to the caster on impact, see _grant_caster_xp() below. null-guarded
+# throughout in case something ever spawns this scene without setting it
+# (e.g. a future enemy-fired turret variant, which shouldn't grant player
+# skill XP at all).
+var caster: Node = null
 
 
 # =============================================================================
@@ -105,6 +126,7 @@ func _on_body_entered(body: Node) -> void:
 	# bodies even if they don't deal damage.
 	if body.is_in_group("enemies") and body.has_method("take_damage"):
 		body.take_damage(damage)
+		_grant_caster_xp()
 	queue_free()
 
 
@@ -125,4 +147,21 @@ func _on_area_entered(area: Area2D) -> void:
 	# without dying. only enemy-hurtbox hits despawn from this path.
 	if parent.is_in_group("enemies") and parent.has_method("take_damage"):
 		parent.take_damage(damage)
+		_grant_caster_xp()
 		queue_free()
+
+
+# =============================================================================
+# XP ON HIT  (NEW)
+# =============================================================================
+
+func _grant_caster_xp() -> void:
+	# see class comment for why this fires exactly once per shot. null-
+	# guarded since caster isn't guaranteed to be set (e.g. an enemy-fired
+	# turret variant shouldn't grant the player skill XP at all).
+	if caster == null:
+		return
+	if caster.has_method("gain_attack_xp"):
+		caster.gain_attack_xp(attack_xp_on_hit)
+	if caster.has_method("gain_magic_xp"):
+		caster.gain_magic_xp(magic_xp_on_hit)

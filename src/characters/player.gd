@@ -45,7 +45,22 @@ var character_name := "player"
 # LEVEL AND XP
 # =============================================================================
 
-var level: int = 1
+# NEW: setter added so max_hp/mana/stamina recompute whenever level changes
+# by ANY means — not just the natural level_up() flow below, but also
+# typing a new value directly into the Remote Inspector while the game is
+# running (e.g. testing "what does level 50 feel like against this boss")
+# or an admin tool setting it directly. previously max stats only
+# recomputed at _ready() and inside level_up() — manually editing level
+# any other way left max_hp/mana/stamina stale at whatever they were
+# before, not matching the new level at all. runs _recompute_max_stats()
+# during the class's own initial declaration too, before _set_stat_curve()
+# has set this class's real hp_base/hp_per_lvl/etc — harmless, since
+# _ready() calls both again right after in the correct order regardless.
+var level: int = 1:
+	set(value):
+		level = value
+		_recompute_max_stats()
+		_fill_all_resources()
 var xp: int = 0
 var xp_next: int = 100
 
@@ -125,8 +140,13 @@ var is_attacking := false
 
 @export var sprint_speed_multiplier: float = 2.0
 @export var sprint_stamina_drain_per_sec: float = 15.0
+# NEW: agility XP granted per second of actual sprinting. universal here
+# (not warrior-specific) since sprinting itself is shared base-class
+# movement, not tied to any one class's kit.
+@export var sprint_agility_xp_per_sec: float = 1.0
 
 var _sprint_drain_accumulator: float = 0.0
+var _sprint_agility_xp_accumulator: float = 0.0
 var _is_sprinting: bool = false
 
 
@@ -159,6 +179,13 @@ var _default_modulate: Color = Color.WHITE
 var inventory_data: Array = []
 var hotbar_assignments: Array = ["", "", "", "", "", "", "", "", ""]
 
+# NEW: which pet (an item_id, e.g. "petsniper") is currently active, if
+# any. "" means no active pet. a String, not a node reference — nodes
+# don't survive scene changes, this does, since it's handled specially in
+# CharacterData.gd's save/load (parallel to hotbar_assignments above,
+# outside the int-only SAVEABLE_STATS loop).
+var active_pet_id: String = ""
+
 
 # =============================================================================
 # UI REFERENCES
@@ -188,9 +215,18 @@ func _ready() -> void:
 	add_to_group("player")
 
 	_set_stat_curve()
+	_set_skill_proficiency()
 	CharacterData.load_character_state(self)
 	_recompute_max_stats()
 	_fill_all_resources()
+
+	# NEW: re-spawn the active pet (if any) on every scene load — this is
+	# what actually makes a pet survive a scene transition, since the old
+	# pet node itself gets freed along with the rest of the old scene.
+	# active_pet_id is just a string (an item_id), not a node reference,
+	# which is exactly why it CAN survive — see CharacterData.gd's
+	# save_character_state()/load_character_state() for where it persists.
+	_restore_active_pet()
 
 	if has_node("animatedsprite2d"):
 		$animatedsprite2d.play("idledown")
@@ -240,6 +276,18 @@ func _physics_process(_delta):
 				_sprint_drain_accumulator -= drain_amount
 				stamina = max(0, stamina - drain_amount)
 
+			# NEW: agility XP for actual sprinting, not just holding the
+			# sprint key — wants_sprint above already requires stamina > 0
+			# and the player to be moving, so standing still holding sprint
+			# grants nothing. same fractional-accumulator pattern as the
+			# stamina drain right above, since gain_agility_xp() takes an
+			# int and per-frame amounts are fractional at this rate.
+			_sprint_agility_xp_accumulator += sprint_agility_xp_per_sec * _delta
+			if _sprint_agility_xp_accumulator >= 1.0:
+				var xp_amount: int = int(_sprint_agility_xp_accumulator)
+				_sprint_agility_xp_accumulator -= xp_amount
+				gain_agility_xp(xp_amount)
+
 		# CHANGED: guard against stomping an in-progress attack animation,
 		# same as the idle guard below. previously this fired every physics
 		# frame while a movement key was held, which would immediately
@@ -261,6 +309,7 @@ func _physics_process(_delta):
 		velocity = Vector2.ZERO
 		_is_sprinting = false
 		_sprint_drain_accumulator = 0.0
+		_sprint_agility_xp_accumulator = 0.0
 		if has_node("animatedsprite2d") and not is_attacking:
 			$animatedsprite2d.play(get_idle_animation())
 			$animatedsprite2d.speed_scale = 1.0
@@ -282,6 +331,91 @@ func _physics_process(_delta):
 
 func _set_stat_curve() -> void:
 	pass
+
+
+# =============================================================================
+# SKILL PROFICIENCY  (NEW)
+# =============================================================================
+# every class can train every skill from the same universal triggers
+# (attack XP from any hit — melee or spell; defense XP from taking damage,
+# already true above in take_damage(); magic XP from any spell) — but each
+# class climbs its OWN specialty faster. base class = 1.0 (no bias) for all
+# six skills. subclasses override _set_skill_proficiency() to boost their
+# specialty: warrior -> attack, tank -> defense, mage/healer -> magic.
+# applied inside gain_attack_xp()/gain_defense_xp()/gain_magic_xp() below,
+# so every caller (existing or new) gets the right scaling automatically —
+# no call site needs to know or care which class it's running on.
+var skill_proficiency: Dictionary = {
+	"attack":  1.0,
+	"defense": 1.0,
+	"agility": 1.0,
+	"magic":   1.0,
+	"fishing": 1.0,
+	"cooking": 1.0,
+}
+
+func _set_skill_proficiency() -> void:
+	# base implementation: no class bias. subclasses override to boost
+	# their specialty — see warrior/tank/mage/healer for actual values.
+	pass
+
+
+# =============================================================================
+# DEFENSE TIERS  (NEW)
+# =============================================================================
+# tiered damage reduction based on the defense skill level. crossing into a
+# new tier is a real milestone (see _spawn_defense_tier_popup near
+# gain_defense_xp), not just a number ticking up invisibly — five tiers,
+# Novice through Unbreakable, capped at 50% reduction so a hit always still
+# matters no matter how defended you are.
+#
+# NOTE: "poise" (resistance to knockback/interrupt at higher tiers) was
+# discussed alongside this but deliberately isn't included — there's no
+# knockback or hit-interrupt system in the game for poise to resist yet,
+# so attaching a perk to a mechanic that doesn't exist isn't worth doing.
+# worth revisiting as its own real feature if a hit-reaction system ever
+# gets built.
+const DEFENSE_TIERS := [
+	{"min_level": 80, "name": "Unbreakable", "reduction": 0.50},
+	{"min_level": 60, "name": "Hardened",    "reduction": 0.40},
+	{"min_level": 40, "name": "Veteran",     "reduction": 0.30},
+	{"min_level": 20, "name": "Trained",     "reduction": 0.20},
+	{"min_level": 1,  "name": "Novice",      "reduction": 0.10},
+]
+
+
+func _get_defense_tier() -> Dictionary:
+	# returns the highest tier this character's current defense level
+	# qualifies for. DEFENSE_TIERS is ordered highest min_level first, so
+	# the first match walking top-down is always the correct (highest
+	# qualifying) tier.
+	for tier in DEFENSE_TIERS:
+		if defense >= tier["min_level"]:
+			return tier
+	return DEFENSE_TIERS[-1]  # fallback — unreachable since defense starts at 1
+
+
+# =============================================================================
+# COMBAT DAMAGE BONUSES  (NEW)
+# =============================================================================
+# +0.5% damage per point above 1 in the given stat, universal across every
+# class. every class keeps its OWN primary damage formula unchanged
+# (warrior stays attack-driven melee, mage/healer stay magic-driven
+# spells) — these are meant to be layered ON TOP of that, specifically for
+# whichever stat ISN'T already a class's primary driver, so attack and
+# magic both matter for everyone without double-counting a stat a class
+# already fully scales off of. e.g. warrior multiplies its existing
+# attack-based melee damage by get_magic_damage_bonus(); mage/healer
+# multiply their existing magic-based spell damage by
+# get_attack_damage_bonus(); tank (no clear primary stat) applies both to
+# its flat aura_damage.
+const DAMAGE_BONUS_PER_POINT := 0.005
+
+func get_attack_damage_bonus() -> float:
+	return 1.0 + (attack - 1) * DAMAGE_BONUS_PER_POINT
+
+func get_magic_damage_bonus() -> float:
+	return 1.0 + (magic - 1) * DAMAGE_BONUS_PER_POINT
 
 
 func _recompute_max_stats() -> void:
@@ -343,6 +477,21 @@ func _spawn_levelup_popup() -> void:
 	lbl.global_position = global_position + Vector2(0, -40)
 	if lbl.has_method("show_text"):
 		lbl.show_text("LEVEL UP!\n%d" % level, 3, 2.0, 1.5)
+
+
+func _spawn_defense_tier_popup(tier_name: String) -> void:
+	# NEW: crossing a defense tier gets the same visual weight as a
+	# character level-up (same color type, size, duration) — it's a bigger
+	# moment than a routine skill-up, worth treating that way.
+	if FLOATING_LABEL_SCENE == null:
+		return
+	var lbl = FLOATING_LABEL_SCENE.instantiate()
+	if lbl == null:
+		return
+	get_tree().current_scene.add_child(lbl)
+	lbl.global_position = global_position + Vector2(0, -45)
+	if lbl.has_method("show_text"):
+		lbl.show_text("DEFENSE TIER\n%s" % tier_name, 3, 2.0, 1.5)
 
 
 func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
@@ -427,10 +576,19 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 
 	_set_active()
 
-	hp = clamp(hp - amount, 0, max_hp)
-	took_damage.emit(amount, str(_type))
+	# NEW: tiered defense reduction — see DEFENSE_TIERS below. XP gain
+	# further down still uses the RAW incoming amount, not the reduced
+	# one, so higher defense doesn't also slow down future defense XP —
+	# that would create a self-limiting feedback loop nobody asked for.
+	# maxi(1, ...) guarantees chip damage always gets through — even at
+	# the 50% cap, a hit can never be reduced to zero.
+	var reduction: float = _get_defense_tier()["reduction"]
+	var reduced_amount: int = maxi(1, int(amount * (1.0 - reduction)))
 
-	_spawn_floating_label(amount, 0)
+	hp = clamp(hp - reduced_amount, 0, max_hp)
+	took_damage.emit(reduced_amount, str(_type))
+
+	_spawn_floating_label(reduced_amount, 0)
 
 	_play_hit_flash()
 
@@ -446,9 +604,19 @@ func _play_hit_flash() -> void:
 	if not has_node("animatedsprite2d"):
 		return
 	var sprite: AnimatedSprite2D = $animatedsprite2d
+	# NEW: flash duration scales down with the same reduction percentage
+	# already driving damage tiers (see DEFENSE_TIERS) — a Novice takes
+	# the full flash, an Unbreakable character's is noticeably brighter,
+	# briefer. this is what "poise" actually became once real knockback
+	# turned out to need new art this project doesn't have: not a
+	# gameplay-affecting resistance, just defense having a real, felt
+	# difference in how a hit LOOKS, using assets that already exist.
+	# maxf floor keeps it from ever going imperceptibly short.
+	var reduction: float = _get_defense_tier()["reduction"]
+	var scaled_duration: float = maxf(0.05, hit_flash_duration * (1.0 - reduction))
 	var tween := create_tween()
 	tween.tween_property(sprite, "modulate", Color(2.0, 2.0, 2.0, 1.0), 0.0)
-	tween.tween_property(sprite, "modulate", _default_modulate, hit_flash_duration)
+	tween.tween_property(sprite, "modulate", _default_modulate, scaled_duration)
 
 
 func heal(amount: int) -> void:
@@ -526,12 +694,23 @@ func _apply_level_up_skill_bonus() -> void:
 
 
 func gain_xp(amount: int) -> void:
+	# CHANGED: xp_next used to be `xp_next *= 2` — a raw doubling
+	# accumulator that overflows a 64-bit int somewhere around level 58
+	# (2^57 alone is already past int64's range). the sanity-check side of
+	# this got a safety clamp earlier, but that only stopped CharacterData's
+	# anti-tamper pass from producing garbage — it never fixed this, the
+	# ACTUAL formula every real level-up runs through. now recomputed fresh
+	# from the current level each time, same deterministic pattern already
+	# used for skill XP (xp_needed_for_skill below) — 1.15 is the same
+	# growth factor already proven safe there. at level 99 this needs
+	# ~240M total XP for that single level, well within int64's range with
+	# enormous headroom, instead of overflowing entirely.
 	xp += amount
 	xp_gained_signal.emit(amount)
 	while xp >= xp_next:
 		level_up()
 		xp -= xp_next
-		xp_next *= 2
+		xp_next = int(100 * pow(1.15, level - 1))
 	CharacterData.save_character_state(self)
 
 
@@ -540,11 +719,41 @@ func xp_needed_for_skill(skill_level: int, base := 100, factor := 1.18) -> int:
 
 
 # =============================================================================
+# UNIVERSAL DAMAGE SCALING  (NEW)
+# =============================================================================
+# attack AND magic both contribute a % damage bonus, for EVERY class's
+# every attack — melee or spell — not just whichever skill that class's
+# kit happens to use as its own primary scaling. this is what gives
+# attack/magic XP real payoff across the whole roster: tank/mage/healer
+# all gain attack XP now (see skill_proficiency), and without this, that
+# XP had zero effect on their own damage output at all — only warrior's
+# melee formula ever read it.
+#
+# each class still has its OWN base damage value (base_melee_damage,
+# damage_per_magic reinterpreted as a flat base rather than a per-point
+# multiplier, aura_damage) — this multiplier scales ON TOP of that base,
+# it doesn't replace class identity, just makes both stats matter
+# everywhere. starting percentages, tune to taste.
+const ATTACK_DAMAGE_PERCENT_PER_LEVEL: float = 0.01  # +1% damage per attack level
+const MAGIC_DAMAGE_PERCENT_PER_LEVEL:  float = 0.01  # +1% damage per magic level
+
+func get_damage_multiplier() -> float:
+	return 1.0 \
+		+ (attack - 1) * ATTACK_DAMAGE_PERCENT_PER_LEVEL \
+		+ (magic - 1) * MAGIC_DAMAGE_PERCENT_PER_LEVEL
+
+
+# =============================================================================
 # SKILL XP
 # =============================================================================
 
 func gain_attack_xp(amount: int) -> void:
-	attack_xp += amount
+	# NEW: scaled by skill_proficiency["attack"] — this is what makes
+	# attack XP universal (any class can call this) while still letting
+	# warrior climb it faster than everyone else. see SKILL PROFICIENCY
+	# section above.
+	var scaled_amount: int = maxi(1, int(amount * skill_proficiency.get("attack", 1.0)))
+	attack_xp += scaled_amount
 	while attack_xp >= attack_xp_next:
 		attack += 1
 		attack_xp -= attack_xp_next
@@ -554,12 +763,23 @@ func gain_attack_xp(amount: int) -> void:
 
 
 func gain_defense_xp(amount: int) -> void:
-	defense_xp += amount
+	# NEW: scaled by skill_proficiency["defense"] — take_damage() above
+	# already grants this universally to every class; this is what lets
+	# tank climb it faster without touching take_damage() at all.
+	var scaled_amount: int = maxi(1, int(amount * skill_proficiency.get("defense", 1.0)))
+	var tier_before: String = _get_defense_tier()["name"]
+	defense_xp += scaled_amount
 	while defense_xp >= defense_xp_next:
 		defense += 1
 		defense_xp -= defense_xp_next
 		defense_xp_next = xp_needed_for_skill(defense, 100, 1.20)
 		_spawn_skillup_popup("defense", defense)
+	# NEW: a tier crossing (Novice -> Trained -> ... -> Unbreakable) is a
+	# bigger moment than an ordinary skill level-up, so it gets its own,
+	# more prominent popup on top of the normal one above.
+	var tier_after: String = _get_defense_tier()["name"]
+	if tier_after != tier_before:
+		_spawn_defense_tier_popup(tier_after)
 	CharacterData.save_character_state(self)
 
 
@@ -574,7 +794,11 @@ func gain_agility_xp(amount: int) -> void:
 
 
 func gain_magic_xp(amount: int) -> void:
-	magic_xp += amount
+	# NEW: scaled by skill_proficiency["magic"] — this is what lets
+	# mage/healer climb magic faster than a class that only occasionally
+	# lands a spell hit.
+	var scaled_amount: int = maxi(1, int(amount * skill_proficiency.get("magic", 1.0)))
+	magic_xp += scaled_amount
 	while magic_xp >= magic_xp_next:
 		magic += 1
 		magic_xp -= magic_xp_next
@@ -653,6 +877,20 @@ func update_stats_labels(statspanel) -> void:
 # =============================================================================
 
 func _unhandled_input(event: InputEvent) -> void:
+	# NEW: gated behind OS.is_debug_build() — true in the editor and in a
+	# "Debug" export, false only in a real "Release" export. without this,
+	# EVERY key below (free items, free skill XP, instant pet spawns)
+	# would work exactly the same in a build handed to classmates as it
+	# does in the editor — anyone pressing F9 a few times becomes
+	# instantly overpowered, no decompiling required at all.
+	#
+	# IMPORTANT: this alone isn't enough — when you actually export for
+	# classmates, you must select the "Release" export template in the
+	# Export dialog, not "Debug". a debug-template export still reports
+	# is_debug_build() == true, and every key below would still work.
+	if not OS.is_debug_build():
+		return
+
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
 			KEY_F1: _debug_give_item("tinyhealthpotion", 5)
@@ -676,6 +914,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _debug_spawn_pet_fire() -> void:
 	# spawn a test fire pet next to the player to tune follow/attack behavior.
+	_despawn_current_pet()
 	var pet_scene: PackedScene = load("res://scene/pets/petfiresprite.tscn")
 	if pet_scene == null:
 		print("DEBUG: petfiresprite.tscn not found — check the path")
@@ -684,8 +923,11 @@ func _debug_spawn_pet_fire() -> void:
 	get_tree().current_scene.add_child(pet)
 	pet.global_position = global_position + Vector2(0, -40)
 	print("DEBUG: spawned fire pet")
+	active_pet_id = "petfiresprite"
+	CharacterData.save_character_state(self)
 
 func _debug_spawn_pet_electric() -> void:
+	_despawn_current_pet()
 	var pet_scene: PackedScene = load("res://scene/pets/petelectricsprite.tscn")
 	if pet_scene == null:
 		print("DEBUG: petelectricsprite.tscn not found — check the path")
@@ -694,9 +936,12 @@ func _debug_spawn_pet_electric() -> void:
 	get_tree().current_scene.add_child(pet)
 	pet.global_position = global_position + Vector2(0, 40)
 	print("DEBUG: spawned electric pet")
+	active_pet_id = "petelectricsprite"
+	CharacterData.save_character_state(self)
 
 func _debug_spawn_pet() -> void:
 	# spawn a test archer pet next to the player to tune follow/attack behavior.
+	_despawn_current_pet()
 	var pet_scene: PackedScene = load("res://scene/pets/petsniper.tscn")
 	if pet_scene == null:
 		print("DEBUG: petsniper.tscn not found — check the path")
@@ -705,10 +950,13 @@ func _debug_spawn_pet() -> void:
 	get_tree().current_scene.add_child(pet)
 	pet.global_position = global_position + Vector2(40, 0)
 	print("DEBUG: spawned pet")
+	active_pet_id = "petsniper"
+	CharacterData.save_character_state(self)
 
 
 func _debug_spawn_pet_mage() -> void:
 	# spawn a test mage pet next to the player to tune the vine attack.
+	_despawn_current_pet()
 	var pet_scene: PackedScene = load("res://scene/pets/petmage.tscn")
 	if pet_scene == null:
 		print("DEBUG: petmage.tscn not found — check the path")
@@ -717,6 +965,45 @@ func _debug_spawn_pet_mage() -> void:
 	get_tree().current_scene.add_child(pet)
 	pet.global_position = global_position + Vector2(-40, 0)
 	print("DEBUG: spawned mage pet")
+	active_pet_id = "petmage"
+	CharacterData.save_character_state(self)
+
+
+# =============================================================================
+# PET PERSISTENCE  (NEW)
+# =============================================================================
+
+func _despawn_current_pet() -> void:
+	# ensures only one active pet at a time, matching the single
+	# active_pet_id model — without this, pressing multiple debug pet keys
+	# in a row (or restoring after a scene change while an old one somehow
+	# still exists) would leave orphaned pets wandering around that aren't
+	# tracked by active_pet_id at all. pet.gd's own _ready() already calls
+	# add_to_group("pets"), so this just leans on that existing tag.
+	for pet in get_tree().get_nodes_in_group("pets"):
+		if is_instance_valid(pet):
+			pet.queue_free()
+
+
+func _restore_active_pet() -> void:
+	# re-spawns the active pet (if any) on scene load — see active_pet_id's
+	# comment for why a String survives scene changes when a node can't.
+	# looks up the pet's scene via ItemRegistry/ItemData.pet_scene, which
+	# already existed specifically for this purpose (see itemdata.gd) —
+	# just never wired up until now.
+	if active_pet_id == "":
+		return
+
+	var item_data := ItemRegistry.get_item(active_pet_id)
+	if item_data == null or item_data.pet_scene == null:
+		push_warning("Player: active_pet_id '%s' has no valid pet_scene in ItemRegistry — clearing" % active_pet_id)
+		active_pet_id = ""
+		return
+
+	var pet: Node = item_data.pet_scene.instantiate()
+	get_tree().current_scene.add_child(pet)
+	pet.global_position = global_position + Vector2(0, -40)
+	print("Player: restored active pet '%s'" % active_pet_id)
 
 
 func _debug_give_item(item_id: String, quantity: int) -> void:

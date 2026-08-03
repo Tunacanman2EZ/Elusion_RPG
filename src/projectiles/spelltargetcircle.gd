@@ -4,11 +4,13 @@
 #
 # spawn flow:
 # 1. mage casts → instantiates this scene at cursor position
-# 2. mage sets explosion_damage based on magic skill
+# 2. mage sets explosion_damage based on magic skill, and caster (NEW,
+#    see below) to itself
 # 3. _ready validates the animation, plays "fall", queues redraw of the
 #    targeting ring
 # 4. on frame 4 (visual impact), damage applies to all enemies inside the
-#    Area2D's collision shape
+#    Area2D's collision shape, and XP is granted back to caster per enemy
+#    hit (NEW)
 # 5. on animation_finished, the scene despawns
 #
 # why frame 4:
@@ -41,6 +43,22 @@ const IMPACT_FRAME := 4
 # damage dealt to enemies on impact frame — set by mage when spawning.
 # scales with the mage's magic skill (magic × damage_per_magic in mage.gd).
 var explosion_damage: int = 0
+
+# NEW: identifies who cast this spell — set by mage.gd on spawn, mirrors
+# slashwave.gd's caster reference for warrior. used to grant XP back to
+# the caster on impact, see _grant_caster_xp() below. null-guarded
+# throughout in case something ever spawns this scene without setting it.
+var caster: Node = null
+
+# NEW: XP granted PER ENEMY hit, not once per cast — matches warrior's
+# melee precedent (_try_damage() in warrior.gd grants XP per enemy inside
+# its cleave hitbox, not once per swing), so an AoE cast that catches 3
+# enemies grants 3x the XP of a single-target hit, same as landing 3
+# separate melee hits would. exported so both can be tuned independently
+# without touching code. attack XP is universal (any class — see
+# player.gd's gain_attack_xp()); magic XP is mage's boosted specialty.
+@export var attack_xp_on_hit: int = 5
+@export var magic_xp_on_hit: int = 5
 
 # visual radius of the target ring drawn on the ground.
 # does NOT control the actual damage area — that's the CollisionShape2D
@@ -140,6 +158,22 @@ func _apply_area_damage() -> void:
 		if not body.has_method("take_damage"):
 			continue
 		body.take_damage(explosion_damage)
+		_grant_caster_xp()
+
+
+func _grant_caster_xp() -> void:
+	# NEW: grants XP back to whoever cast this spell, once per enemy hit
+	# (see attack_xp_on_hit/magic_xp_on_hit above for why). attack XP is
+	# universal (any class, any hit — see player.gd's gain_attack_xp());
+	# magic XP is mage's boosted specialty via skill_proficiency. null-
+	# guarded since caster isn't guaranteed to be set if something spawns
+	# this scene without going through mage.gd's normal cast flow.
+	if caster == null:
+		return
+	if caster.has_method("gain_attack_xp"):
+		caster.gain_attack_xp(attack_xp_on_hit)
+	if caster.has_method("gain_magic_xp"):
+		caster.gain_magic_xp(magic_xp_on_hit)
 
 
 # =============================================================================

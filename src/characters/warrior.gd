@@ -39,21 +39,26 @@
 #   the same cast. Keeping warrior's right-click private avoids that.
 # - on trigger, we read get_global_mouse_position() and compute a direction
 #   vector from the warrior to the cursor. that direction drives:
-#     1. which attack animation plays (snapped to nearest cardinal, via the
-#        same get_attack_animation() helper player.gd already uses)
+#     1. which attack animation plays — snapped to the nearest of 8 equal
+#        45° wedges (4 cardinals + 4 diagonals) via _octant_from_direction(),
+#        NOT player.gd's get_attack_animation() (that one stays 4-way, since
+#        mage/tank/healer don't have diagonal art). falls back to a cardinal
+#        animation with a warning if the diagonal clip doesn't exist yet —
+#        remove that fallback once all 8 attack animations are in.
 #     2. which hitboxXXXX / wavespawnXXXX node is treated as "active" for
-#        this swing (also cardinal-snapped — see note below)
+#        this swing — STILL 4-way (see note below), independent of the
+#        animation's granularity.
 # - the SLASHWAVE now travels at a true 360 angle toward the cursor, via
 #   slashwave.gd's shoot_vector() (its animation still snaps to nearest
 #   cardinal internally — that part is unchanged, just the travel line).
-# - MELEE HIT DETECTION is still cardinal-snapped: hitboxleft/right/up/down
-#   are 4 fixed pre-placed Area2D nodes (not a single node we can freely
-#   rotate/reposition), so contact damage still picks whichever of the 4
-#   is closest to the cursor angle, same as the animation. what changed vs.
-#   before is that the snap now comes from cursor direction instead of last
-#   WASD direction. true continuous 360 melee hit detection would need a
-#   restructured single hitbox rotated at runtime — flagged as a possible
-#   follow-up, not done here.
+# - MELEE HIT DETECTION is still cardinal-snapped (4-way): hitboxleft/right/
+#   up/down are 4 fixed pre-placed Area2D nodes. the animation upgraded to
+#   8-way independently of this — if/when 4 more hitbox + wavespawn nodes
+#   get added for the diagonals, _get_active_hitbox() and _spawn_slashwave()
+#   can switch from _cardinal_from_direction() to _octant_from_direction()
+#   to match. not done here — pending a decision on whether that scene work
+#   is worth it, since a single rotating hitbox would be MORE precise than
+#   the 8-pose art can visually justify anyway.
 # - warrior no longer freezes movement during the swing (player.gd's
 #   attack_locks_movement is set false below), so you keep walking while
 #   attacking.
@@ -77,6 +82,14 @@ const SLASHWAVE_SCENE := preload("res://scene/projectiles/slashwave.tscn")
 # cardinal directions array — used by detection helpers to avoid 4x duplication
 const CARDINAL_DIRECTIONS := ["left", "right", "up", "down"]
 
+# NEW: 8 directions in angle order starting at 0° (right), going clockwise
+# in screen space (Y+ is down). index = round(angle / 45°), wrapped to 0-7.
+# used only for animation selection right now — see _octant_from_direction().
+const OCTANT_DIRECTIONS := [
+	"right", "downright", "down", "downleft",
+	"left", "upleft", "up", "upright"
+]
+
 
 # =============================================================================
 # EXPORTED SETTINGS — DAMAGE WINDOW
@@ -95,6 +108,15 @@ const CARDINAL_DIRECTIONS := ["left", "right", "up", "down"]
 @export var wave_damage_ratio: float = 0.75
 @export var slashwave_mana_cost: int = 10
 
+# NEW: how far in front of the warrior the slashwave spawns, along the exact
+# aim direction — replaces picking one of the 4 fixed wavespawnXXXX markers.
+# same muzzle-offset technique pet.gd already uses for its own projectile
+# spawning. this is what actually makes the slashwave full 360, not just its
+# travel direction (which shoot_vector() already handled) — the SPAWN POINT
+# now scales continuously with aim angle too, instead of always launching
+# from one of 4 fixed positions and flying off at an angle from there.
+@export var wave_muzzle_offset: float = 24.0
+
 # NEW: how fast the attack animation itself plays, independent of walk/sprint
 # speed. Doesn't change WHICH frames trigger damage/wave (contact_frame_start/
 # end and wave_spawn_frame are still frame-index based, not time-based) — it
@@ -103,7 +125,23 @@ const CARDINAL_DIRECTIONS := ["left", "right", "up", "down"]
 # to 45° off from your actual cursor aim while moving) — a faster swing means
 # that mismatched pose is visible for less time, even though it doesn't fix
 # the underlying snap.
-@export var attack_animation_speed: float = 2.0
+@export var attack_animation_speed: float = 1.5
+
+# NEW: safety-net backstop, separate from animation_finished. if an attack
+# animation's Loop property is ever accidentally left ON in the SpriteFrames
+# editor, animation_finished NEVER fires for it (looping animations don't
+# "finish"), which would leave is_attacking stuck true FOREVER — permanently
+# freezing the swing on screen and blocking all future attacks, since
+# attack_action() guards on `if is_attacking: return`. pet.gd already hit
+# this exact trap and worked around it the same way (see its
+# _release_attack_lock_after).
+#
+# CHANGED: this is now a MINIMUM floor rather than the actual timer value —
+# attack_action() computes the real animation duration from whichever clip
+# is actually playing and uses whichever is larger. only matters as a
+# fallback if that computation fails for some reason (missing animation,
+# zero FPS). you shouldn't need to tune this by hand anymore.
+@export var attack_lock_duration: float = 1.0
 
 
 # =============================================================================
@@ -112,6 +150,15 @@ const CARDINAL_DIRECTIONS := ["left", "right", "up", "down"]
 
 var _hit_this_swing: Array[Node] = []
 var _wave_spawned_this_swing: bool = false
+
+# NEW: increments every time a new swing starts. the safety-net timer
+# captures whatever ID was current when IT was scheduled — if a newer swing
+# has started by the time that timer actually fires, its captured ID won't
+# match _swing_id anymore, and it knows it's stale and does nothing instead
+# of reaching into whatever swing happens to be running now. fixes rapid
+# double/triple-clicking cancelling a LATER swing via a leftover timer from
+# an EARLIER one that already finished normally.
+var _swing_id: int = 0
 
 # NEW: the cursor-aim direction captured at the moment this swing started.
 # used instead of last_direction to pick the animation AND the active
@@ -162,6 +209,19 @@ func _set_stat_curve() -> void:
 	hp_base    = 180; hp_per_lvl   = 12
 	mana_base  = 180; mana_per_lvl = 10
 	stam_base  = 80;  stam_per_lvl = 5
+
+
+# =============================================================================
+# SKILL PROFICIENCY  (NEW)
+# =============================================================================
+
+func _set_skill_proficiency() -> void:
+	# warrior's specialty: attack climbs 50% faster than any other class
+	# landing the same hits. every class still gains SOME attack XP from
+	# any hit (see player.gd's gain_attack_xp()) — this is what keeps
+	# warrior true to its melee identity despite that being universal now.
+	# starting value, tune to taste.
+	skill_proficiency["attack"] = 1.5
 
 
 # =============================================================================
@@ -242,7 +302,12 @@ func _wire_animation_signal() -> void:
 # =============================================================================
 
 func _calculate_melee_damage() -> int:
-	return base_melee_damage + int((attack - 1) / 2)
+	# CHANGED: was base_melee_damage + int((attack - 1) / 2) — attack-only,
+	# linear, and specific to warrior's own formula. now routes through
+	# player.gd's get_damage_multiplier(), same shared function every
+	# class's damage uses — folds in magic too, and keeps warrior
+	# consistent with how tank/mage/healer's damage now works underneath.
+	return int(base_melee_damage * get_damage_multiplier())
 
 
 # =============================================================================
@@ -255,6 +320,8 @@ func attack_action() -> void:
 
 	_set_active()
 	is_attacking = true
+	_swing_id += 1
+	var this_swing_id: int = _swing_id
 
 	_hit_this_swing.clear()
 	_wave_spawned_this_swing = false
@@ -266,11 +333,69 @@ func attack_action() -> void:
 	var to_cursor: Vector2 = get_global_mouse_position() - global_position
 	_swing_aim_direction = to_cursor.normalized() if to_cursor.length() > 0.001 else last_direction
 
-	var anim: String = get_attack_animation(_swing_aim_direction)
-	if sprite != null and sprite.sprite_frames.has_animation(anim):
-		sprite.play(anim)
-		sprite.frame = 0
-		sprite.speed_scale = attack_animation_speed
+	# NEW: sync last_direction to the aim. without this, get_idle_animation()
+	# (called by player.gd once the swing animation finishes) reads
+	# last_direction — which is ONLY ever updated by actual WASD movement,
+	# never by this cursor-aim attack. that meant the swing itself would
+	# correctly face wherever you aimed, then immediately snap back to
+	# idle facing whatever direction you last WALKED the moment it
+	# finished — e.g. aiming right while your last move was leftward would
+	# show a rightward swing that instantly reverted to facing left.
+	last_direction = _swing_aim_direction
+
+	# NEW: 8-directional animation instead of player.gd's 4-way
+	# get_attack_animation(). falls back to the nearest cardinal (with a
+	# warning) if the diagonal clip isn't in the SpriteFrames yet — this
+	# lets code/testing proceed before all 8 attack animations exist.
+	# REMOVE the fallback once the artist delivers all 4 diagonals.
+	var anim: String = "attack" + _octant_from_direction(_swing_aim_direction)
+	if sprite != null:
+		if not sprite.sprite_frames.has_animation(anim):
+			push_warning("Warrior: missing animation '%s', falling back to cardinal" % anim)
+			anim = "attack" + _cardinal_from_direction(_swing_aim_direction)
+		if sprite.sprite_frames.has_animation(anim):
+			sprite.play(anim)
+			sprite.frame = 0
+			sprite.speed_scale = attack_animation_speed
+
+	# CHANGED: attack_lock_duration was a static guessed value — if the
+	# REAL animation (which varies by direction/frame count, especially
+	# now with 8-way animations coming from different sources) actually
+	# takes longer than that guess, this safety-net timer would fire
+	# BEFORE the animation naturally finished, forcibly interrupting the
+	# swing mid-play and snapping to idle early. this was a real
+	# cancellation bug, not just a facing mismatch. now: compute the real
+	# duration directly from whichever clip is actually playing (frame
+	# count ÷ FPS ÷ speed scale), and use whichever is LARGER between that
+	# and attack_lock_duration — so the timer is always comfortably longer
+	# than the real swing and can only ever fire as a true backstop (Loop
+	# accidentally left on), never during normal correct playback.
+	var lock_duration: float = attack_lock_duration
+	if sprite != null and sprite.sprite_frames != null and sprite.sprite_frames.has_animation(anim):
+		var frame_count: int = sprite.sprite_frames.get_frame_count(anim)
+		var fps: float = sprite.sprite_frames.get_animation_speed(anim)
+		if fps > 0.0 and attack_animation_speed > 0.0:
+			var real_duration: float = (float(frame_count) / fps) / attack_animation_speed
+			lock_duration = max(attack_lock_duration, real_duration + 0.2)
+
+	_release_attack_lock_after(lock_duration, this_swing_id)
+
+
+func _release_attack_lock_after(seconds: float, swing_id: int) -> void:
+	# see attack_lock_duration's comment above for why this exists, and
+	# _swing_id's comment for why the ID check below is necessary.
+	await get_tree().create_timer(seconds).timeout
+
+	# stale timer from an OLDER swing that already finished normally — a
+	# newer swing has started since this one was scheduled. do nothing;
+	# acting here would cancel whatever swing is ACTUALLY in progress now.
+	if swing_id != _swing_id:
+		return
+
+	if is_attacking:
+		is_attacking = false
+		if sprite != null:
+			sprite.play(get_idle_animation())
 
 
 func _on_frame_changed() -> void:
@@ -328,26 +453,26 @@ func _spawn_slashwave() -> void:
 	if mana < slashwave_mana_cost:
 		return
 
-	var dir: String = _cardinal_from_direction(_swing_aim_direction)
-	var spawn_node: Marker2D = wavespawns.get(dir)
-	if spawn_node == null:
-		return
-
 	mana -= slashwave_mana_cost
 
 	var wave: SlashWave = SLASHWAVE_SCENE.instantiate()
 	_parent_to_projectiles_container(wave)
 
-	wave.global_position = spawn_node.global_position
+	# CHANGED: spawn position is now computed directly from the aim vector
+	# (a small offset in front of the warrior, along the exact aimed
+	# direction) instead of picking one of 4 fixed wavespawnXXXX Marker2D
+	# nodes. this is what makes the slashwave genuinely full 360 — travel
+	# direction was already true 360 via shoot_vector() below, but the
+	# LAUNCH POINT was still snapping to one of 4 fixed spots and flying
+	# off at an angle from there, which could look slightly offset from
+	# the true aim on a diagonal swing. same muzzle-offset technique
+	# pet.gd already uses for its own projectile spawning.
+	wave.global_position = global_position + _swing_aim_direction * wave_muzzle_offset
 	wave.damage = int(_calculate_melee_damage() * wave_damage_ratio)
-
-	# NEW: fire at the true cursor angle (not cardinal-snapped) via
-	# shoot_vector(). the wave still snaps its OWN animation to the nearest
-	# cardinal internally (slashwave.gd handles that), but the travel
-	# direction is now full 360 — this is the "real" 360 aim piece the
-	# fixed 4-node melee hitboxes can't give us. spawn origin (spawn_node)
-	# stays cardinal-snapped since it's just a launch point on the warrior's
-	# body, not the direction of travel.
+	# NEW: identifies the warrior for slashwave.gd's magic-XP-on-hit — see
+	# that file's class comment for why the wave (not the swing) grants
+	# magic XP, while melee keeps granting attack XP as before.
+	wave.caster = self
 	wave.shoot_vector(_swing_aim_direction)
 
 
@@ -370,7 +495,10 @@ func _get_active_hitbox() -> Area2D:
 # CHANGED: generalized from _last_direction_to_cardinal() (which only ever
 # read last_direction) into a function that snaps ANY direction vector to
 # its nearest cardinal. warrior now calls this with _swing_aim_direction
-# (cursor-based) instead of last_direction (WASD-based).
+# (cursor-based) instead of last_direction (WASD-based). STILL USED for
+# hitbox/wavespawn selection (4-way) and as the fallback if a diagonal
+# animation is missing — see _octant_from_direction() below for the 8-way
+# version now used for animation selection.
 func _cardinal_from_direction(dir: Vector2) -> String:
 	if abs(dir.x) > abs(dir.y):
 		return "right" if dir.x > 0 else "left"
@@ -378,12 +506,29 @@ func _cardinal_from_direction(dir: Vector2) -> String:
 		return "down" if dir.y > 0 else "up"
 
 
-# =============================================================================
-# LEVEL-UP SKILL BONUS
-# =============================================================================
+# NEW: snaps a direction vector to the nearest of 8 equal 45° wedges
+# (4 cardinals + 4 diagonals), for the new 8-directional attack animations.
+# atan2(dir.y, dir.x) gives the angle in radians (-π to π); dividing by
+# PI/4 (45° in radians) and rounding lands on the nearest of 8 evenly-spaced
+# octant indices. the % handling normalizes negative results, since
+# GDScript's % on negatives doesn't wrap the way you'd want on its own
+# (e.g. -1 % 8 == -1, not 7).
+func _octant_from_direction(dir: Vector2) -> String:
+	if dir.length() < 0.001:
+		return "down"
+	var angle: float = atan2(dir.y, dir.x)
+	var octant: int = int(round(angle / (PI / 4.0)))
+	octant = ((octant % 8) + 8) % 8
+	return OCTANT_DIRECTIONS[octant]
 
-func _apply_level_up_skill_bonus() -> void:
-	# warrior skill bonus: +1 attack, +1 defense per level. these stack with
-	# XP-based skill growth and are NOT part of the recomputed stat pools.
-	attack  += 1
-	defense += 1
+
+# =============================================================================
+# LEVEL-UP SKILL BONUS  (REMOVED)
+# =============================================================================
+# CHANGED: used to grant a flat +1 attack / +1 defense on every character
+# level-up, regardless of how the level was earned. now that
+# skill_proficiency exists (see _set_skill_proficiency() above), that job
+# is handled more precisely — attack actually climbs faster for warrior
+# specifically because warrior is the one landing melee hits, not just
+# because the character leveled up from ANY combat. no override needed
+# here anymore; falls back to player.gd's no-op base.

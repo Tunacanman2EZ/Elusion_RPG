@@ -2,41 +2,97 @@
 
 [ext_resource type="Script" uid="uid://d0s6hf78g0e2i" path="res://src/world/sign.gd" id="1_1n35j"]
 [ext_resource type="Texture2D" uid="uid://bphblhjjc5u4o" path="res://art/Tiles/crossroadwalk.png" id="2_684r6"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_372dn"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_q3tny"]
 radius = 32.06244
 
+[sub_resource type="FontFile" id="FontFile_372dn"]
+cache/0/variation_coordinates = {}
+cache/0/face_index = 0
+cache/0/embolden = 0.0
+cache/0/transform = Transform2D(1, 0, 0, 1, 0, 0)
+cache/0/spacing_top = 0
+cache/0/spacing_bottom = 0
+cache/0/spacing_space = 0
+cache/0/spacing_glyph = 0
+cache/0/baseline_offset = 0.0
+cache/0/16/0/ascent = 0.0
+cache/0/16/0/descent = 0.0
+cache/0/16/0/underline_position = 0.0
+cache/0/16/0/underline_thickness = 0.0
+cache/0/16/0/scale = 1.0
+cache/0/15/0/ascent = 0.0
+cache/0/15/0/descent = 0.0
+cache/0/15/0/underline_position = 0.0
+cache/0/15/0/underline_thickness = 0.0
+cache/0/15/0/scale = 1.0
+cache/0/14/0/ascent = 0.0
+cache/0/14/0/descent = 0.0
+cache/0/14/0/underline_position = 0.0
+cache/0/14/0/underline_thickness = 0.0
+cache/0/14/0/scale = 1.0
+cache/0/13/0/ascent = 0.0
+cache/0/13/0/descent = 0.0
+cache/0/13/0/underline_position = 0.0
+cache/0/13/0/underline_thickness = 0.0
+cache/0/13/0/scale = 1.0
+cache/0/12/0/ascent = 0.0
+cache/0/12/0/descent = 0.0
+cache/0/12/0/underline_position = 0.0
+cache/0/12/0/underline_thickness = 0.0
+cache/0/12/0/scale = 1.0
+cache/0/11/0/ascent = 0.0
+cache/0/11/0/descent = 0.0
+cache/0/11/0/underline_position = 0.0
+cache/0/11/0/underline_thickness = 0.0
+cache/0/11/0/scale = 1.0
+cache/0/10/0/ascent = 0.0
+cache/0/10/0/descent = 0.0
+cache/0/10/0/underline_position = 0.0
+cache/0/10/0/underline_thickness = 0.0
+cache/0/10/0/scale = 1.0
+
+[sub_resource type="LabelSettings" id="LabelSettings_372dn"]
+line_spacing = 1.0
+font = SubResource("FontFile_372dn")
+font_size = 10
+
 [node name="area2d" type="Area2D" unique_id=1577598432]
 texture_filter = 1
-position = Vector2(0, -1)
 collision_layer = 16
 collision_mask = 4
 script = ExtResource("1_1n35j")
 
 [node name="sign" type="Sprite2D" parent="." unique_id=1431344393]
+texture_filter = 1
 texture = ExtResource("2_684r6")
 offset = Vector2(0, -8)
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=1223463512]
 shape = SubResource("CircleShape2D_q3tny")
 
-[node name="label" type="Label" parent="." unique_id=839999221]
-visible = false
+[node name="signpanel" type="PanelContainer" parent="." unique_id=455651290]
 texture_filter = 1
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = -83.0
-offset_top = -23.0
-offset_right = 83.0
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = -118.5
+offset_top = -130.0
+offset_right = 122.5
+offset_bottom = -2.0
 grow_horizontal = 2
-grow_vertical = 0
+theme = ExtResource("3_372dn")
+
+[node name="label" type="Label" parent="signpanel" unique_id=839999221]
+texture_filter = 1
+layout_mode = 2
 size_flags_horizontal = 4
-size_flags_vertical = 0
 theme_override_colors/font_color = Color(0.9037094, 0.82587767, 0.98370844, 1)
-text = "\"Welcome to Elusion\""
+text = "Each character has a unique attack pattern
+Each enemy is unique in its own way
+Enemies drop loog bags with a super
+rare chance to get a unique pet "
+label_settings = SubResource("LabelSettings_372dn")
 horizontal_alignment = 1
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]

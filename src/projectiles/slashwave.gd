@@ -6,6 +6,8 @@
 # - warrior instantiates the scene and calls add_child
 # - then calls shoot(direction_string) which sets direction + plays animation
 # - the wave moves in a straight line until hit, screen exit, or impact
+# - NEW: warrior also sets `caster` right after spawning, so a successful
+#   hit can grant magic XP back to whoever fired it (see MAGIC XP below).
 #
 # damage rules (different from arrow/fire/magic):
 # - damages enemies, NOT players (warrior wave is friendly fire-free)
@@ -17,6 +19,14 @@
 # the slash animation is played in shoot() rather than _ready() because
 # direction_name isn't known until shoot() is called by the warrior. _ready
 # fires at add_child time, BEFORE the warrior sets the direction.
+#
+# MAGIC XP ON HIT (NEW):
+# the slashwave is the ranged/magic-flavored half of warrior's kit — basic
+# melee swings already grant attack XP (see warrior.gd's _try_damage()).
+# a successful slashwave hit grants magic_xp_on_hit magic XP to `caster`,
+# if one was set. caster is optional and defensively checked (has_method)
+# so this scene doesn't hard-require a specific caller — if nothing sets
+# caster, hits just deal damage with no XP granted, same as before.
 extends Area2D
 class_name SlashWave
 
@@ -36,6 +46,11 @@ class_name SlashWave
 # resolution paths that run per-hit.
 @export var damage_type: StringName = &"physical"
 
+# NEW: magic XP granted to `caster` on a successful enemy hit. matches
+# melee's hardcoded gain_attack_xp(5) for parity — tune independently if
+# ranged/magic progression should feel faster or slower than melee.
+@export var magic_xp_on_hit: int = 5
+
 
 # =============================================================================
 # STATE
@@ -47,6 +62,11 @@ var direction: Vector2 = Vector2.ZERO
 # cardinal direction name for animation lookup ("left", "right", "up", "down").
 # kept in sync with `direction` so the animation matches the travel direction.
 var direction_name: String = "down"
+
+# NEW: whoever fired this wave — set by the caster right after instantiate,
+# e.g. warrior.gd's _spawn_slashwave() does `wave.caster = self`. optional;
+# defensively checked before use, so this scene works fine without one.
+var caster: Node = null
 
 
 # =============================================================================
@@ -127,6 +147,7 @@ func _on_body_entered(body: Node2D) -> void:
 	# - everything else (walls, props): despawn on contact
 	if body.is_in_group(&"enemies") and body.has_method(&"take_damage"):
 		body.take_damage(damage, damage_type)
+		_grant_caster_magic_xp()
 		destroy_wave()
 		return
 
@@ -146,6 +167,7 @@ func _on_area_entered(area: Area2D) -> void:
 		return
 	if target.is_in_group(&"enemies") and target.has_method(&"take_damage"):
 		target.take_damage(damage, damage_type)
+		_grant_caster_magic_xp()
 		destroy_wave()
 
 
@@ -153,6 +175,15 @@ func _on_visible_on_screen_notifier_2d_screen_exited() -> void:
 	# despawn when fully off-screen — prevents leaked waves from
 	# accumulating if a swing misses and the wave flies off the map.
 	destroy_wave()
+
+
+# =============================================================================
+# MAGIC XP
+# =============================================================================
+
+func _grant_caster_magic_xp() -> void:
+	if caster != null and caster.has_method("gain_magic_xp"):
+		caster.gain_magic_xp(magic_xp_on_hit)
 
 
 # =============================================================================
