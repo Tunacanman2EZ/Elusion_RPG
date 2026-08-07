@@ -1776,18 +1776,18 @@ texture = ExtResource("34_rqwqw")
 
 [node name="sign" parent="ysortworld/props" unique_id=1577598432 instance=ExtResource("34_8dv4p")]
 modulate = Color(0.9254902, 1, 1, 1)
-position = Vector2(-25, 58)
+position = Vector2(-1, -85)
 
 [node name="interactables" type="Node2D" parent="ysortworld" unique_id=1591820235]
 y_sort_enabled = true
 
 [node name="bankchest" parent="ysortworld/interactables" unique_id=1909775092 instance=ExtResource("32_om7sc")]
 y_sort_enabled = false
-position = Vector2(66, -69)
+position = Vector2(76, 54)
 collision_mask = 4
 
 [node name="firepit" parent="ysortworld/interactables" unique_id=258032866 instance=ExtResource("33_5cjof")]
-position = Vector2(-71, -69)
+position = Vector2(-82, 53)
 
 [node name="teleportnextarea" type="Area2D" parent="ysortworld/interactables" unique_id=1954027964]
 position = Vector2(-1, -94)

@@ -59,6 +59,14 @@ func _ready() -> void:
 	attack_range    = 280.0      # longer reach than bushsniper
 	flee_range      = 50.0
 
+	# NEW: pet_drop_id defaults to "" on every enemy (never set per-instance
+	# in the editor), which meant _roll_pet() always bailed out immediately
+	# before even rolling the dice — the entire triple-six pet-drop system
+	# was completely non-functional, not just rare. guarded so an explicit
+	# Inspector override still wins if one's ever set later.
+	if pet_drop_id == "":
+		pet_drop_id = "petelectricsprite"
+
 	super._ready()
 
 	# wire frame_changed so we can fire the orb on ORB_RELEASE_FRAME

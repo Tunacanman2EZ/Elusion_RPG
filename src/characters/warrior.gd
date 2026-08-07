@@ -115,7 +115,14 @@ const OCTANT_DIRECTIONS := [
 # travel direction (which shoot_vector() already handled) — the SPAWN POINT
 # now scales continuously with aim angle too, instead of always launching
 # from one of 4 fixed positions and flying off at an angle from there.
-@export var wave_muzzle_offset: float = 24.0
+#
+# CHANGED: reduced from 24 to 10 — confirmed the wave was spawning several
+# tiles away from the character, visually disconnected from the swing
+# itself. if it's STILL spawning far away after this, check the warrior
+# scene's Inspector for an explicit override on this exact field — as an
+# @export, a value set there takes precedence over whatever this script
+# declares as default.
+@export var wave_muzzle_offset: float = 10.0
 
 # NEW: how fast the attack animation itself plays, independent of walk/sprint
 # speed. Doesn't change WHICH frames trigger damage/wave (contact_frame_start/
@@ -125,7 +132,12 @@ const OCTANT_DIRECTIONS := [
 # to 45° off from your actual cursor aim while moving) — a faster swing means
 # that mismatched pose is visible for less time, even though it doesn't fix
 # the underlying snap.
-@export var attack_animation_speed: float = 1.5
+#
+# CHANGED: 1.5 -> 2.2 for a noticeably snappier swing. attack_lock_duration
+# (the recovery window before you can attack again) scales down
+# automatically with this too, since it's computed from the real animation
+# duration — you don't need to separately tune that to feel the difference.
+@export var attack_animation_speed: float = 3.5
 
 # NEW: safety-net backstop, separate from animation_finished. if an attack
 # animation's Loop property is ever accidentally left ON in the SpriteFrames
@@ -390,6 +402,18 @@ func _release_attack_lock_after(seconds: float, swing_id: int) -> void:
 	# newer swing has started since this one was scheduled. do nothing;
 	# acting here would cancel whatever swing is ACTUALLY in progress now.
 	if swing_id != _swing_id:
+		return
+
+	# NEW: if the player died mid-swing, this timer is STILL scheduled
+	# from before death — the death sequence never resets is_attacking
+	# itself, only is_dying. without this check, this timer would fire
+	# during the death animation and forcibly overwrite it with an idle
+	# pose via sprite.play(get_idle_animation()) below, before the death
+	# animation ever gets a chance to finish and fire animation_finished.
+	# that's exactly what silently skipped the game-over transition: the
+	# death animation plays for a moment, then gets stomped by this
+	# leftover timer, never actually completing.
+	if is_dying:
 		return
 
 	if is_attacking:

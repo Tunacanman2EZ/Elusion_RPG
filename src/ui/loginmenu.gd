@@ -29,11 +29,10 @@
 # anywhere in this scene — that whole block was dead code here. real
 # character selection lives in whatever scene char_select_scene points to.
 #
-# SIGNAL CONNECTIONS: _on_login_button_pressed and _on_exit_button_pressed
-# are wired to loginbutton/exitbutton's "pressed" signal via the editor
-# (Node > Signals), not via code. Godot doesn't automatically keep signal
-# connections in sync with node renames — if these stop firing, reconnect
-# them in the editor.
+# SIGNAL CONNECTIONS: all connected via code in _ready() below (not the
+# editor's Node > Signals panel) — a code connection always points at
+# whatever function currently has this name, with no separate stored link
+# that can go stale if a node gets renamed later.
 extends Control
 
 
@@ -73,7 +72,22 @@ func _ready() -> void:
 	if not %exitbutton.pressed.is_connected(_on_exit_button_pressed):
 		%exitbutton.pressed.connect(_on_exit_button_pressed)
 
+	# NEW: pressing Enter while either field is focused submits the form,
+	# same as clicking Login. LineEdit's text_submitted signal passes the
+	# field's text as an argument, which _on_login_button_pressed() doesn't
+	# take — the wrapper closures below just discard that argument and
+	# call the existing handler exactly as the button already does, rather
+	# than changing that function's signature to accommodate this.
+	if not %usernamelineedit.text_submitted.is_connected(_on_login_field_submitted):
+		%usernamelineedit.text_submitted.connect(_on_login_field_submitted)
+	if not %passwordlineedit.text_submitted.is_connected(_on_login_field_submitted):
+		%passwordlineedit.text_submitted.connect(_on_login_field_submitted)
+
 	load_remembered_user()
+
+
+func _on_login_field_submitted(_new_text: String) -> void:
+	_on_login_button_pressed()
 
 
 # =============================================================================

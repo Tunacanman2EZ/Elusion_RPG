@@ -52,54 +52,54 @@ theme_override_constants/margin_top = 25
 theme_override_constants/margin_right = 25
 theme_override_constants/margin_bottom = 25
 
-[node name="vBoxcontainer" type="VBoxContainer" parent="centercontainer/mainpanel/margincontainer" unique_id=1969327641]
+[node name="vboxcontainer" type="VBoxContainer" parent="centercontainer/mainpanel/margincontainer" unique_id=1969327641]
 layout_mode = 2
 theme_override_constants/separation = 15
 
-[node name="headerpanel" type="PanelContainer" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer" unique_id=466948465]
+[node name="headerpanel" type="PanelContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=466948465]
 layout_mode = 2
 theme_type_variation = &"PanelHeader"
 
-[node name="headerlabel" type="Label" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/headerpanel" unique_id=762769286]
+[node name="headerlabel" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/headerpanel" unique_id=762769286]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "ELUSION"
 horizontal_alignment = 1
 
-[node name="hseparator" type="HSeparator" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer" unique_id=1769956154]
+[node name="hseparator" type="HSeparator" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1769956154]
 layout_mode = 2
 
-[node name="loginform" type="VBoxContainer" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer" unique_id=1667337425]
+[node name="loginform" type="VBoxContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1667337425]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="usernamelineedit" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/loginform" unique_id=823585511]
+[node name="usernamelineedit" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=823585511]
 unique_name_in_owner = true
 layout_mode = 2
 placeholder_text = "Username"
 alignment = 1
 
-[node name="passwordlineedit" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/loginform" unique_id=2118952238]
+[node name="passwordlineedit" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=2118952238]
 unique_name_in_owner = true
 layout_mode = 2
 placeholder_text = "Password"
 alignment = 1
 secret = true
 
-[node name="rememberme" type="CheckBox" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/loginform" unique_id=2071452913]
+[node name="rememberme" type="CheckBox" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=2071452913]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
 text = "Remember me"
 
-[node name="loginbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/loginform" unique_id=121373850]
+[node name="loginbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=121373850]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(220, 45)
 layout_mode = 2
 size_flags_horizontal = 4
 text = "Enter Elysium"
 
-[node name="errorlabel" type="Label" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/loginform" unique_id=667489728]
+[node name="errorlabel" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=667489728]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(1, 0)
 layout_mode = 2
@@ -108,27 +108,27 @@ theme_override_font_sizes/font_size = 12
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="hseparator2" type="HSeparator" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer" unique_id=2078952930]
+[node name="hseparator2" type="HSeparator" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=2078952930]
 layout_mode = 2
 
-[node name="menubuttons" type="HBoxContainer" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer" unique_id=1470518291]
+[node name="menubuttons" type="HBoxContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1470518291]
 layout_mode = 2
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="shopbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/menubuttons" unique_id=324999331]
+[node name="shopbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/menubuttons" unique_id=324999331]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 38)
 layout_mode = 2
 text = "Shop"
 
-[node name="Settingsbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/menubuttons" unique_id=1577972604]
+[node name="Settingsbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/menubuttons" unique_id=1577972604]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 38)
 layout_mode = 2
 text = "Settings"
 
-[node name="exitbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vBoxcontainer/menubuttons" unique_id=1370688401]
+[node name="exitbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/menubuttons" unique_id=1370688401]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 38)
 layout_mode = 2

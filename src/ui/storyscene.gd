@@ -57,7 +57,15 @@ var _is_playing: bool = false
 # PUBLIC API
 # =============================================================================
 
-func play(blocks: Array) -> void:
+func play(blocks: Array, start_already_black: bool = false) -> void:
+	# NEW: start_already_black skips this screen's own fade-to-black
+	# entirely, appearing fully opaque from the first frame instead.
+	# WHY: when this plays immediately after a SceneTransition scene
+	# change, two INDEPENDENT fades were racing each other —
+	# SceneTransition's own fade-in (revealing the new scene) finished
+	# faster than this screen's fade TO black, leaving a real gap where
+	# the player was briefly visible underneath before this caught up
+	# and covered it. starting already-black removes the race entirely.
 	if blocks.is_empty():
 		finished.emit()
 		queue_free()
@@ -69,18 +77,22 @@ func play(blocks: Array) -> void:
 
 	layer = 100  # render above everything, HUD included — same as SceneTransition
 
-	_build_background()
+	_build_background(start_already_black)
 	_build_label()
-	_fade_in_screen()
+
+	if start_already_black:
+		_show_current_block()
+	else:
+		_fade_in_screen()
 
 
 # =============================================================================
 # BUILD
 # =============================================================================
 
-func _build_background() -> void:
+func _build_background(start_already_black: bool = false) -> void:
 	_background = ColorRect.new()
-	_background.color = Color(0, 0, 0, 0)  # starts transparent, fades to full black
+	_background.color = Color(0, 0, 0, 1.0 if start_already_black else 0.0)
 	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_background.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_background)

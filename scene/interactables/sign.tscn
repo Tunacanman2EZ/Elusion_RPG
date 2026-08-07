@@ -76,10 +76,10 @@ shape = SubResource("CircleShape2D_q3tny")
 texture_filter = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = -118.5
-offset_top = -130.0
-offset_right = 122.5
-offset_bottom = -2.0
+offset_left = -63.0
+offset_top = -55.0
+offset_right = 71.5
+offset_bottom = -25.0
 grow_horizontal = 2
 theme = ExtResource("3_372dn")
 
@@ -88,10 +88,7 @@ texture_filter = 1
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.9037094, 0.82587767, 0.98370844, 1)
-text = "Each character has a unique attack pattern
-Each enemy is unique in its own way
-Enemies drop loog bags with a super
-rare chance to get a unique pet "
+text = "Goal: slay the Beholder"
 label_settings = SubResource("LabelSettings_372dn")
 horizontal_alignment = 1
 

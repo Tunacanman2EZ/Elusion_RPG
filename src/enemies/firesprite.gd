@@ -16,7 +16,6 @@ const ORB_RELEASE_FRAME := 5
 # =============================================================================
 
 @onready var sprite: AnimatedSprite2D = $animatedsprite2d
-
 @onready var spawn_nodes: Dictionary = {
 	"left":  $orbspawnleft,
 	"right": $orbspawnright,
@@ -34,6 +33,14 @@ func _ready() -> void:
 	attack_cooldown = 2.0
 	attack_range    = 240.0
 	flee_range      = 50.0
+
+	# NEW: pet_drop_id defaults to "" on every enemy (never set per-instance
+	# in the editor), which meant _roll_pet() always bailed out immediately
+	# before even rolling the dice — the entire triple-six pet-drop system
+	# was completely non-functional, not just rare. guarded so an explicit
+	# Inspector override still wins if one's ever set later.
+	if pet_drop_id == "":
+		pet_drop_id = "petfiresprite"
 
 	super._ready()
 
@@ -55,16 +62,13 @@ func fire_projectile() -> void:
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
 	if spawn_node == null or player == null:
 		return
-
 	var orb: Node = FIRE_ORB_SCENE.instantiate()
-
 	# aim before spawning
 	if orb.has_method("shoot_vector"):
 		var to_player: Vector2 = player.global_position - spawn_node.global_position
 		orb.shoot_vector(to_player)
 	elif orb.has_method("shoot"):
 		orb.shoot(attack_direction)
-
 	spawn_projectile_node(orb, spawn_node.global_position)
 
 

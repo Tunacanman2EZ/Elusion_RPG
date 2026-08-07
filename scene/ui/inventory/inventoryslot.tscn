@@ -17,12 +17,13 @@ stretch_mode = 5
 
 [node name="quantitylabel" type="Label" parent="." unique_id=748400311]
 layout_mode = 2
-size_flags_horizontal = 10
+size_flags_horizontal = 4
 size_flags_vertical = 10
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 7
+text = "fdsa"
 horizontal_alignment = 2
 vertical_alignment = 2

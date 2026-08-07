@@ -17,7 +17,13 @@
 #
 # this differs from BaseEnemy._physics_process because bushmage uses
 # chase-and-hold positioning (target distance ~1 tile) rather than the
-# default flee/attack/idle state machine.
+# default flee/attack/idle state machine. IMPORTANT: because of this,
+# BaseEnemy._physics_process (and its navigation-agent chase logic) never
+# runs for this class at all — this class's own _move_toward_player()
+# below is the only thing that handles closing distance to the player,
+# which is why it needs its own explicit call into
+# _get_direction_to_player_via_navigation() (inherited from BaseEnemy)
+# rather than picking that up automatically.
 extends BaseEnemy
 class_name BushMage
 
@@ -67,6 +73,14 @@ func _ready() -> void:
 	attack_cooldown = 1.2
 	attack_range    = desired_distance + 8.0  # reach slightly past hold zone
 
+	# NEW: pet_drop_id defaults to "" on every enemy (never set per-instance
+	# in the editor), which meant _roll_pet() always bailed out immediately
+	# before even rolling the dice — the entire triple-six pet-drop system
+	# was completely non-functional, not just rare. guarded so an explicit
+	# Inspector override still wins if one's ever set later.
+	if pet_drop_id == "":
+		pet_drop_id = "petmage"
+
 	super._ready()
 
 	# wire frame_changed so we can spawn the vine on contact_frame
@@ -97,21 +111,43 @@ func _physics_process(_delta: float) -> void:
 	else:
 		_hold_and_attack()
 
-	# inherited stacking avoidance, staggered by instance id
-	if (Engine.get_physics_frames() + get_instance_id()) % 3 == 0:
-		_avoid_stacking_with_others()
-
 
 # =============================================================================
 # MOVEMENT MODES
 # =============================================================================
 
 func _move_toward_player() -> void:
-	# too far — chase the player in 4-directional line
-	var chase_dir: String = _get_direction_from_vec(player.global_position - global_position)
+	# CHANGED: routes toward this bushmage's claimed TILE around the
+	# player (see baseenemy.gd's SLOT SYSTEM section — now a real
+	# discrete grid, not a free-angle ring), instead of straight at the
+	# player directly — this is what spreads multiple bushmages out
+	# instead of all converging on the same spot.
+	#
+	# CHANGED AGAIN: the earlier "desired_distance * 3.0" fix was for the
+	# old free-angle ring system, where circumference (and therefore
+	# per-enemy spacing) shrank as more enemies packed onto the same
+	# radius. the grid system replacing it guarantees real tile-sized
+	# separation between adjacent slots regardless of enemy count, so
+	# just uses the default TILE_SIZE spacing now — no per-class
+	# multiplier needed to compensate for a shrinking ring anymore.
+	var slot_target: Vector2 = _get_slot_target_position()
+
+	# NEW: essentially arrived at the claimed slot — stop and hold
+	# instead of continuing to chase it. see baseenemy.gd's
+	# SLOT_ARRIVAL_THRESHOLD comment for why this is what actually stops
+	# the animation-flip jitter at close range.
+	if global_position.distance_to(slot_target) < SLOT_ARRIVAL_THRESHOLD:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		play_idle_animation(attack_direction)
+		return
+
+	var pos_before: Vector2 = global_position
+	var chase_dir: String = _get_direction_to_point_via_navigation(slot_target)
 	velocity = _vec_from_dir(chase_dir) * get_move_speed()
 	move_and_slide()
 	play_walk_animation(chase_dir)
+	_record_nav_movement_result(pos_before)
 
 
 func _back_off_from_player() -> void:

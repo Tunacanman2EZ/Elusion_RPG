@@ -23,7 +23,7 @@ extends Node2D
 
 var current_player: Node = null
 
-@onready var active_char_ui = $hudcontrol
+@onready var active_char_ui = get_node_or_null("hudcontrol")
 
 
 # =============================================================================
@@ -33,14 +33,42 @@ var current_player: Node = null
 func _ready() -> void:
 	spawn_player_from_selection()
 	_position_player_at_spawn()
+	_freeze_enemies()
 
 	var screen := StoryScreen.new()
 	add_child(screen)
+	screen.finished.connect(_unfreeze_enemies)
 	screen.play([
 		"Many heroes have reincarnated to a place of untold horror. And I am certain you will return to this spot again. Life is a gamble, but death certainly is a reality.",
 		"A solo developer game, used as my college portfolio for Maestro University — coming from zero coding experience. From the creator of Elusion Studios, I humbly present my demo of Elusion. Graphics inspired by Chrono Trigger, gameplay inspired by Darza's Dominion, RuneScape, and Diablo — with the potential to become online one day.",
 		"Artist: Ahvassa — https://ahvassa.itch.io/. Everything was handmade and paid for. Claude only helped me as an assistant to my degree, to learn faster.",
-	])
+	], true)
+
+
+# =============================================================================
+# ENEMY FREEZE  (NEW)
+# =============================================================================
+# nothing previously stopped enemies from freely chasing and converging
+# on the player's fixed arrival position for the whole duration of the
+# story screen — the black overlay only hides that visually, it doesn't
+# pause anything underneath. by the time it faded out, enemies placed
+# apart in the editor could have already bunched up around the player,
+# which is very likely what caused the "spawned on top of each other"
+# observation — they hadn't actually spawned that way, they'd just had
+# time to converge before the player ever saw the scene. set_physics_process
+# is the same built-in Node method used to freeze the player during the
+# earlier (since-removed) leavetown-triggered story sequence, just
+# applied to every enemy here instead.
+
+func _freeze_enemies() -> void:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		enemy.set_physics_process(false)
+
+
+func _unfreeze_enemies() -> void:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(enemy):
+			enemy.set_physics_process(true)
 
 
 # =============================================================================

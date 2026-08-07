@@ -44,7 +44,7 @@ func _on_body_entered(body):
 	if body and can_teleport and (body.name == "Player" or body.is_in_group("player")):
 		can_teleport = false
 		if destination_scene == null:
-			push_warning("LeaveTown: destination_scene not assigned in the Inspector")
+			push_warning("LeaveTown (%s): destination_scene not assigned in the Inspector" % name)
 			return
 		if target_spawn_id != "":
 			GameState.next_spawn_id = target_spawn_id

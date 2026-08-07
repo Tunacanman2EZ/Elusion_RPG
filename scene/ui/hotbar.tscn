@@ -30,7 +30,11 @@ layout_mode = 2
 texture = ExtResource("3_l23q4")
 
 [node name="quantitylabel" type="Label" parent="slot1" unique_id=1440662307]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
 
 [node name="slot2" type="PanelContainer" parent="." unique_id=398101357]
 layout_mode = 2
@@ -44,8 +48,12 @@ layout_mode = 2
 layout_mode = 2
 texture = ExtResource("4_l85tu")
 
-[node name="quantitylabel" type="Label" parent="slot2" unique_id=978305501]
+[node name="quantitylabel" type="Label" parent="slot2" unique_id=1052721436]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
 
 [node name="slot3" type="PanelContainer" parent="." unique_id=2080734021]
 layout_mode = 2
@@ -59,8 +67,12 @@ layout_mode = 2
 layout_mode = 2
 texture = ExtResource("5_bbprc")
 
-[node name="quantitylabel" type="Label" parent="slot3" unique_id=1973547528]
+[node name="quantitylabel" type="Label" parent="slot3" unique_id=773692579]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
 
 [node name="slot4" type="PanelContainer" parent="." unique_id=1496550858]
 layout_mode = 2
@@ -74,8 +86,12 @@ layout_mode = 2
 layout_mode = 2
 texture = ExtResource("6_q6w7q")
 
-[node name="quantitylabel" type="Label" parent="slot4" unique_id=178259076]
+[node name="quantitylabel" type="Label" parent="slot4" unique_id=1966561051]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
 
 [node name="slot5" type="PanelContainer" parent="." unique_id=1379908505]
 layout_mode = 2
@@ -89,8 +105,12 @@ layout_mode = 2
 layout_mode = 2
 texture = ExtResource("7_ve4ro")
 
-[node name="quantitylabel" type="Label" parent="slot5" unique_id=511868107]
+[node name="quantitylabel" type="Label" parent="slot5" unique_id=1272533200]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
 
 [node name="slot6" type="PanelContainer" parent="." unique_id=687518470]
 layout_mode = 2
@@ -104,8 +124,12 @@ layout_mode = 2
 layout_mode = 2
 texture = ExtResource("8_lhyyo")
 
-[node name="quantitylabel" type="Label" parent="slot6" unique_id=1291083648]
+[node name="quantitylabel" type="Label" parent="slot6" unique_id=946100508]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
 
 [node name="slot7" type="PanelContainer" parent="." unique_id=1179176134]
 layout_mode = 2
@@ -119,8 +143,12 @@ layout_mode = 2
 layout_mode = 2
 texture = ExtResource("9_elm0i")
 
-[node name="quantitylabel" type="Label" parent="slot7" unique_id=884846098]
+[node name="quantitylabel" type="Label" parent="slot7" unique_id=915986577]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
 
 [node name="slot8" type="PanelContainer" parent="." unique_id=2052893818]
 layout_mode = 2
@@ -134,8 +162,12 @@ layout_mode = 2
 layout_mode = 2
 texture = ExtResource("10_57ck0")
 
-[node name="quantitylabel" type="Label" parent="slot8" unique_id=923246582]
+[node name="quantitylabel" type="Label" parent="slot8" unique_id=892227751]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
 
 [node name="slot9" type="PanelContainer" parent="." unique_id=983498044]
 layout_mode = 2
@@ -149,5 +181,9 @@ layout_mode = 2
 layout_mode = 2
 texture = ExtResource("11_bnnwq")
 
-[node name="quantitylabel" type="Label" parent="slot9" unique_id=1012683382]
+[node name="quantitylabel" type="Label" parent="slot9" unique_id=1359698741]
+texture_filter = 1
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_font_sizes/font_size = 8
