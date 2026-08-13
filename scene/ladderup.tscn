@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://d377s2b0gefqn"]
+
+[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/Tiles/ladderchestlevertiles.png" id="1_gqbmj"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6uhhy"]
+atlas = ExtResource("1_gqbmj")
+region = Rect2(32, 0, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_sguu7"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6uhhy")
+}],
+"loop": true,
+"name": &"default",
+"speed": 5.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_6l1vr"]
+size = Vector2(14, 13)
+
+[node name="ladderup" type="Area2D" unique_id=1703870724]
+
+[node name="body" type="AnimatedSprite2D" parent="." unique_id=809707008]
+sprite_frames = SubResource("SpriteFrames_sguu7")
+
+[node name="bodyshape" type="CollisionShape2D" parent="." unique_id=1011912371]
+position = Vector2(0, 6)
+shape = SubResource("RectangleShape2D_6l1vr")

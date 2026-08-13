@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://biy8p8c42eisd"]
+
+[ext_resource type="Script" uid="uid://liyvr0aortjw" path="res://src/world/ladder.gd" id="1_iw5nh"]
+[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/Tiles/ladderchestlevertiles.png" id="1_wujek"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_w2xnx"]
+atlas = ExtResource("1_wujek")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_fvaof"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_w2xnx")
+}],
+"loop": false,
+"name": &"default",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_m2280"]
+radius = 16.0
+
+[node name="ladderdown" type="Area2D" unique_id=574274070]
+script = ExtResource("1_iw5nh")
+
+[node name="body" type="AnimatedSprite2D" parent="." unique_id=444878694]
+sprite_frames = SubResource("SpriteFrames_fvaof")
+
+[node name="bodyshape" type="CollisionShape2D" parent="." unique_id=1499302830]
+shape = SubResource("CircleShape2D_m2280")

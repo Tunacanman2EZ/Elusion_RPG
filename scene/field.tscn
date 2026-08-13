@@ -10,6 +10,8 @@
 [ext_resource type="Script" uid="uid://1vl7v33c5j3l" path="res://src/world/leavetown.gd" id="5_4lur4"]
 [ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/characterhud.tscn" id="6_4lur4"]
 [ext_resource type="PackedScene" uid="uid://de3b4cl5fjmyh" path="res://scene/enemy/bushmage.tscn" id="8_4lur4"]
+[ext_resource type="PackedScene" uid="uid://biy8p8c42eisd" path="res://scene/ladderdown.tscn" id="8_ogp8f"]
+[ext_resource type="PackedScene" uid="uid://d36qxata42fjy" path="res://scene/boss.tscn" id="9_63rou"]
 [ext_resource type="PackedScene" uid="uid://b6bj5cbyir0kt" path="res://scene/enemy/electricsprite.tscn" id="11_muev0"]
 [ext_resource type="PackedScene" uid="uid://bktr306f3g2o6" path="res://scene/enemy/firesprite.tscn" id="12_ogp8f"]
 [ext_resource type="PackedScene" uid="uid://bwgdfgnjn3fv" path="res://scene/enemy/bushsniper.tscn" id="13_muev0"]
@@ -992,15 +994,14 @@ texture_filter = 1
 position = Vector2(0.3333332, 0.33333382)
 shape = SubResource("RectangleShape2D_c65tm")
 
-[node name="destinationpoint" type="Marker2D" parent="ysortworld/interactables/fieldteleport" unique_id=312745586]
-texture_filter = 1
-position = Vector2(484, 1016)
-scale = Vector2(1, 0.99999994)
-
 [node name="arrivalmarker" type="Marker2D" parent="ysortworld/interactables/fieldteleport" unique_id=1245700490]
 position = Vector2(0, 8)
 script = ExtResource("4_0d0g4")
 portal_id = "field_entrance"
+
+[node name="ladderdown" parent="ysortworld/interactables" unique_id=574274070 instance=ExtResource("8_ogp8f")]
+position = Vector2(1471, 1143)
+destination_scene = ExtResource("9_63rou")
 
 [node name="enemies" type="Node2D" parent="ysortworld" unique_id=1953780950]
 

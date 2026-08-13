@@ -1856,7 +1856,6 @@ z_index = 90
 
 [node name="playerspawn" type="Marker2D" parent="." unique_id=406004618]
 texture_filter = 1
-position = Vector2(0, 16)
 
 [node name="hudcontrol" parent="." unique_id=1051031709 instance=ExtResource("29_dhdyt")]
 
