@@ -784,6 +784,7 @@ shape = SubResource("CircleShape2D_2o75m")
 debug_color = Color(0, 0, 0, 0.41960785)
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=690972520]
+process_callback = 0
 z_index = 10
 texture_filter = 1
 zoom = Vector2(3, 3)

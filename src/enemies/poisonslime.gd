@@ -451,7 +451,13 @@ func _split_into_smalls() -> void:
 # SPAWNING
 # =============================================================================
 
-func _spawn_slime(small: bool, spawn_position: Vector2) -> void:
+func _spawn_slime(small: bool, at_position: Vector2) -> void:
+	# NOTE the parameter name. This was `spawn_position`, which shadows
+	# BaseEnemy's own `spawn_position` — and that one means something quite
+	# different: the enemy's HOME, recorded in _ready() and used by
+	# _handle_return_home() to leash it back. Two unrelated meanings under
+	# one name inside a function that spawns things is a trap for whoever
+	# reads it next.
 	var scene: PackedScene = load(SELF_SCENE_PATH)
 	if scene == null:
 		push_error("PoisonSlime: could not load %s" % SELF_SCENE_PATH)
@@ -480,7 +486,7 @@ func _spawn_slime(small: bool, spawn_position: Vector2) -> void:
 
 	# position after the deferred add, for the same reason projectiles do:
 	# the node must be in the tree before global_position means anything.
-	slime.call_deferred("set", "global_position", spawn_position)
+	slime.call_deferred("set", "global_position", at_position)
 	slime.call_deferred("reset_physics_interpolation")
 
 

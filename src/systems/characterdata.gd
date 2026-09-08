@@ -394,8 +394,17 @@ func _sanitize_character_slot(slot) -> bool:
 	# --- inventory item validation ---
 	if slot.has("inventory") and typeof(slot["inventory"]) == TYPE_ARRAY:
 		slot["inventory"] = _validate_item_array(slot["inventory"], "character inventory")
- 
-	return slot != before
+
+	# NEW: say WHAT changed. This used to return a bare bool, so load_data()
+	# could only report "correction(s) applied" with no way to tell which
+	# field — and that warning fires on EVERY login, meaning some correction
+	# never sticks and the save is rewritten every single time. That is not
+	# diagnosable from a boolean.
+	_report_sanitizer_diff(before, slot, "character slot %s" % str(slot.get("character", "?")))
+
+	# CHANGED: was `slot != before`, which compared TYPE as well as value and
+	# so reported a correction on every single load. See _values_differ().
+	return _values_differ(before, slot)
  
  
 func _sanitize_account_data() -> bool:
@@ -409,8 +418,94 @@ func _sanitize_account_data() -> bool:
  
 	if account_data.has("bank_inventory") and typeof(account_data["bank_inventory"]) == TYPE_ARRAY:
 		account_data["bank_inventory"] = _validate_item_array(account_data["bank_inventory"], "bank inventory")
- 
-	return account_data != before
+
+	_report_sanitizer_diff(before, account_data, "account data")
+
+	# CHANGED: see _sanitize_character_slot() and _values_differ().
+	return _values_differ(before, account_data)
+
+
+func _values_differ(a: Variant, b: Variant) -> bool:
+	# Deep comparison that treats a number as a number regardless of whether
+	# it is stored as an int or a float.
+	#
+	# THIS FUNCTION EXISTS BECAUSE OF A PERMANENT RESAVE LOOP. JSON has no
+	# integer type, so Godot's JSON.parse_string() returns EVERY number as a
+	# float. The sanitizer then casts each one with int(). Godot's built-in
+	# Dictionary comparison is type-strict, so `slot != before` was true on
+	# every load, for every numeric field, on a save that was completely
+	# correct — level 4.0 became level 4, and that counted as a "correction".
+	#
+	# The consequence was not cosmetic. load_data() responds to a correction
+	# by immediately writing the save back to disk. So every login rewrote
+	# the entire save file, forever, over a difference that did not exist.
+	# With two game instances running (which the editor's multiple-instances
+	# setting quietly enabled) that is two processes racing to rewrite the
+	# same three files on startup.
+	#
+	# Genuine corrections — a clamped level, a recomputed xp_next, a dropped
+	# item — still register, because those change the VALUE.
+	var type_a: int = typeof(a)
+	var type_b: int = typeof(b)
+
+	var a_numeric: bool = type_a == TYPE_INT or type_a == TYPE_FLOAT
+	var b_numeric: bool = type_b == TYPE_INT or type_b == TYPE_FLOAT
+	if a_numeric and b_numeric:
+		return not is_equal_approx(float(a), float(b))
+
+	if type_a != type_b:
+		return true
+
+	if type_a == TYPE_DICTIONARY:
+		var dict_a: Dictionary = a
+		var dict_b: Dictionary = b
+		if dict_a.size() != dict_b.size():
+			return true
+		for key in dict_a:
+			if not dict_b.has(key):
+				return true
+			if _values_differ(dict_a[key], dict_b[key]):
+				return true
+		return false
+
+	if type_a == TYPE_ARRAY:
+		var array_a: Array = a
+		var array_b: Array = b
+		if array_a.size() != array_b.size():
+			return true
+		for i in range(array_a.size()):
+			if _values_differ(array_a[i], array_b[i]):
+				return true
+		return false
+
+	return a != b
+
+
+func _report_sanitizer_diff(before: Dictionary, after: Dictionary, context: String) -> void:
+	# Logs the specific keys the sanitizer altered.
+	#
+	# CHANGED: this used to flag a type change on its own, which is what
+	# exposed the resave loop — every numeric field reported
+	# "4.0 (float) -> 4 (int)" on every load. Now that _values_differ()
+	# treats those as equal, this reports the same way, so the warning only
+	# fires for corrections that actually changed something.
+	var changed: Array[String] = []
+
+	for key in after:
+		if not before.has(key):
+			changed.append("+%s = %s" % [key, str(after[key])])
+			continue
+		if _values_differ(before[key], after[key]):
+			changed.append("%s: %s -> %s" % [key, str(before[key]), str(after[key])])
+
+	for key in before:
+		if not after.has(key):
+			changed.append("-%s" % key)
+
+	if changed.is_empty():
+		return
+
+	push_warning("CharacterData: sanitizer changed %s — %s" % [context, ", ".join(changed)])
  
  
 func _is_item_registry_ready() -> bool:
@@ -910,22 +1005,56 @@ func load_character_state(player: Node) -> void:
 func _capture_inventory(player: Node) -> Array:
 	# pulls the live inventory contents from the open inventory container if
 	# available, otherwise falls back to the player's cached inventory_data.
+	#
+	# NEW: the fallback paths are normalised now. ItemStack.to_dict() writes
+	# `"quantity": int(quantity)`, so anything going through the container is
+	# clean — but player.inventory_data is assigned STRAIGHT from the parsed
+	# save (see load_character_state), so whatever type came out of JSON goes
+	# back in untouched. A quantity that ever became a float stays a float
+	# for the life of that save, because it never passes through to_dict()
+	# again. That is how this save ended up with a lone
+	# {"item_id": "tinyhealthpotion", "quantity": 16.0} among otherwise
+	# integer values.
 	var hud: Node = player.get_tree().get_first_node_in_group("hud")
 	if hud == null:
 		if "inventory_data" in player:
-			return player.inventory_data
+			return _normalise_item_array(player.inventory_data)
 		return []
- 
+
 	if hud.inventory_screen != null:
 		var container: Node = hud.inventory_screen.get_node_or_null("%inventorycontainer")
 		if container != null and container.has_method("to_save_array"):
 			return container.to_save_array()
  
 	if "inventory_data" in player:
-		return player.inventory_data
+		return _normalise_item_array(player.inventory_data)
 	return []
- 
- 
+
+
+func _normalise_item_array(items: Array) -> Array:
+	# NEW: forces quantity back to int on entries that never went through
+	# ItemStack.to_dict(). See _capture_inventory() for how a float gets in
+	# and why it then survives forever.
+	#
+	# Returns a NEW array and NEW entry dictionaries rather than mutating in
+	# place — player.inventory_data may be the same Array instance the save
+	# was loaded from, and rewriting it underneath its owner is the kind of
+	# aliasing bug that only shows up much later.
+	var normalised: Array = []
+
+	for entry in items:
+		if entry == null or typeof(entry) != TYPE_DICTIONARY:
+			normalised.append(null)
+			continue
+
+		var copy: Dictionary = (entry as Dictionary).duplicate()
+		if copy.has("quantity"):
+			copy["quantity"] = int(copy["quantity"])
+		normalised.append(copy)
+
+	return normalised
+
+
 # =============================================================================
 # ACCOUNT-LEVEL ACCESS
 # =============================================================================

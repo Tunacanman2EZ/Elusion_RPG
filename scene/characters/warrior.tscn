@@ -1047,6 +1047,7 @@ offset_right = 21.0
 offset_bottom = -20.0
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=749862179]
+process_callback = 0
 texture_filter = 1
 zoom = Vector2(2.5, 2.5)
 
