@@ -1,15 +1,15 @@
 [gd_scene format=4 uid="uid://d36qxata42fjy"]
 
 [ext_resource type="Script" uid="uid://d1lilxv0r0634" path="res://src/enemies/boss.gd" id="1_27m4v"]
-[ext_resource type="Texture2D" uid="uid://c33coinn5bl0b" path="res://art/Tiles/tiles7.png" id="2_b5yaj"]
-[ext_resource type="Texture2D" uid="uid://b3phdst3p5y1q" path="res://art/Tiles/tiles3.png" id="3_ar14e"]
-[ext_resource type="Texture2D" uid="uid://cjc5fr8lxhush" path="res://art/Tiles/tiles8.png" id="4_8yuaj"]
-[ext_resource type="Texture2D" uid="uid://clru34rpbm7dh" path="res://art/Tiles/underground.png" id="5_v8sps"]
+[ext_resource type="Texture2D" uid="uid://c33coinn5bl0b" path="res://art/tiles/tiles7.png" id="2_b5yaj"]
+[ext_resource type="Texture2D" uid="uid://b3phdst3p5y1q" path="res://art/tiles/tiles3.png" id="3_ar14e"]
+[ext_resource type="Texture2D" uid="uid://cjc5fr8lxhush" path="res://art/tiles/tiles8.png" id="4_8yuaj"]
+[ext_resource type="Texture2D" uid="uid://clru34rpbm7dh" path="res://art/tiles/underground.png" id="5_v8sps"]
 [ext_resource type="PackedScene" uid="uid://d377s2b0gefqn" path="res://scene/ladderup.tscn" id="6_mup4r"]
 [ext_resource type="Script" uid="uid://liyvr0aortjw" path="res://src/world/ladder.gd" id="7_btlh5"]
 [ext_resource type="Script" uid="uid://blrs7e81o2jg4" path="res://src/world/fieldportal.gd" id="9_nbucm"]
 [ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/characterhud.tscn" id="10_24v5s"]
-[ext_resource type="PackedScene" path="res://scene/enemy/bossenemy.tscn" id="11_bossenemy"]
+[ext_resource type="PackedScene" uid="uid://d0rq5big47ahs" path="res://scene/enemy/bossenemy.tscn" id="11_bossenemy"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_x2yxj"]
 texture = ExtResource("2_b5yaj")
@@ -447,12 +447,12 @@ target_spawn_id = "boss_ladder"
 
 [node name="arrivalmarker" type="Node2D" parent="yworldsort/inteactables" unique_id=1524091098]
 script = ExtResource("9_nbucm")
-metadata/_custom_type_script = "uid://blrs7e81o2jg4"
 portal_id = "boss_entrance"
+metadata/_custom_type_script = "uid://blrs7e81o2jg4"
 
 [node name="enemies" type="Node2D" parent="yworldsort" unique_id=1609630585]
 
-[node name="bossenemy" parent="yworldsort/enemies" instance=ExtResource("11_bossenemy")]
+[node name="bossenemy" parent="yworldsort/enemies" unique_id=1052022142 instance=ExtResource("11_bossenemy")]
 position = Vector2(-400, 100)
 
 [node name="groundeffects" type="Node2D" parent="yworldsort" unique_id=1296382153 groups=["groundeffects"]]

@@ -5,9 +5,9 @@ Flask account service. Four playable classes, six enemy types, collectable
 combat pets, and a complete run from town to final boss.
 
 <!-- TODO: put a screenshot here. This is the single highest-impact line in
-     the file — most people decide whether to keep reading from the image.
-     Something mid-combat with the HUD visible beats a title screen.
-     ![Elusion RPG](docs/screenshot.png)                                   -->
+	 the file — most people decide whether to keep reading from the image.
+	 Something mid-combat with the HUD visible beats a title screen.
+	 ![Elusion RPG](docs/screenshot.png)                                   -->
 
 ---
 
@@ -124,15 +124,15 @@ does not fall back to local accounts by design.
 The single-player build is complete and playable start to finish. Active work
 is on the multiplayer port toward a persistent online world, with a headless
 Godot instance as the authoritative server and Flask continuing to own accounts
-and persistence. `DEVLOG.md` records the architecture decisions and the
+and persistence. `devlog.md` records the architecture decisions and the
 reasoning behind them, including the ones that turned out to be wrong.
 
 ---
 
 ## License
 
-Code is MIT licensed — see `LICENSE`.
+Code is MIT licensed — see `license`.
 
 Art, graphics and audio are **not** covered by that license. See
-`ASSET_LICENSE.md`. If you'd like to contribute assets, read
-`ASSET_CONTRIBUTOR_AGREEMENT.md` first.
+`assetlicense.md`. If you'd like to contribute assets, read
+`docs/ASSET_CONTRIBUTOR_AGREEMENT.md` first.

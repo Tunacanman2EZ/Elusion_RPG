@@ -1,13 +1,16 @@
 [gd_scene format=3 uid="uid://ckeo71e74gs72"]
 
 [ext_resource type="Script" uid="uid://d0s6hf78g0e2i" path="res://src/world/sign.gd" id="1_1n35j"]
-[ext_resource type="Texture2D" uid="uid://bphblhjjc5u4o" path="res://art/Tiles/crossroadwalk.png" id="2_684r6"]
+[ext_resource type="Texture2D" uid="uid://bphblhjjc5u4o" path="res://art/tiles/crossroadwalk.png" id="2_684r6"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_372dn"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_q3tny"]
 radius = 32.06244
 
 [sub_resource type="FontFile" id="FontFile_372dn"]
+subpixel_positioning = 0
+msdf_pixel_range = 14
+msdf_size = 128
 cache/0/variation_coordinates = {}
 cache/0/face_index = 0
 cache/0/embolden = 0.0

@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://sc2553vue1ug"]
 
 [ext_resource type="Script" uid="uid://4dba2hu8o0rg" path="res://src/world/bankchest.gd" id="1_op8v8"]
-[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/Tiles/ladderchestlevertiles.png" id="2_nebis"]
+[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/tiles/ladderchestlevertiles.png" id="2_nebis"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_3pf1k"]
 atlas = ExtResource("2_nebis")

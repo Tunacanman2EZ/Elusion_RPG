@@ -5,7 +5,7 @@
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
 [ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventorycontainer.gd" id="3_x3yba"]
 [ext_resource type="Texture2D" uid="uid://ct1jb184ql10d" path="res://art/currency/lusions.png" id="4_a8y50"]
-[ext_resource type="Texture2D" uid="uid://y7ytomwyv8c6" path="res://art/Tiles/lootbag2.png" id="6_1hfxc"]
+[ext_resource type="Texture2D" uid="uid://y7ytomwyv8c6" path="res://art/tiles/lootbag2.png" id="6_1hfxc"]
 [ext_resource type="Script" uid="uid://blldfbqitghhi" path="res://src/ui/trashslot.gd" id="7_y42jl"]
 
 [node name="inventoryscreen" type="Control" unique_id=1169906003]
