@@ -153,7 +153,14 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if player == null:
+	# CHANGED: was `player == null`. A FREED node is not null — it's a
+	# dangling reference — so that check passed a dead player straight
+	# through to global_position below and threw "Attempt to call function on
+	# a previously freed instance". is_instance_valid() catches both null and
+	# freed, and re-resolving means an enemy whose target died or left picks
+	# up a new one instead of erroring every frame. This matters more with
+	# several players around than it did with one.
+	if not is_instance_valid(player):
 		_resolve_player()
 		return
 
@@ -323,7 +330,7 @@ var _last_released_slot: int = -1
 # real grid tile (TILE_SIZE); pass a larger value to hold further out
 # (e.g. for a ranged class), without changing the grid's actual shape.
 func _get_slot_target_position(tile_size: float = TILE_SIZE) -> Vector2:
-	if player == null:
+	if not is_instance_valid(player):
 		return global_position
 
 	_ensure_slot_claimed()
@@ -425,7 +432,7 @@ func _has_line_of_sight(target_pos: Vector2) -> bool:
 
 
 func _get_direction_to_player_via_navigation() -> String:
-	if player == null:
+	if not is_instance_valid(player):
 		return _get_direction_to_player()
 	return _get_direction_to_point_via_navigation(player.global_position)
 
@@ -476,9 +483,40 @@ func _record_nav_movement_result(pos_before: Vector2) -> void:
 # =============================================================================
 
 func _resolve_player() -> void:
+	# CHANGED: was players[0] — whichever player node happened to sit first
+	# in the group. With exactly one player that is always the right answer,
+	# so this changes NOTHING in single-player. With two it was an arbitrary
+	# pick, and once this is networked it could resolve to a different player
+	# on each client, so every machine would disagree about who an enemy is
+	# chasing. Nearest is a real rule; first-in-group was an accident.
+	#
+	# SCOPE: this is target ACQUISITION, not aggro. It doesn't re-evaluate
+	# while a target stays valid, so an enemy won't flip mid-fight to whoever
+	# steps closer. Real aggro — threat, taunts, switching — is a decision
+	# the server has to own, and inventing it here before that server exists
+	# would just be something to throw away later.
 	var players: Array = get_tree().get_nodes_in_group("player")
-	if players.size() > 0:
+	if players.is_empty():
+		player = null
+		return
+
+	if players.size() == 1:
 		player = players[0]
+		return
+
+	var nearest: Node = null
+	var nearest_dist: float = INF
+	for candidate in players:
+		if not is_instance_valid(candidate):
+			continue
+		# distance_squared_to: ordering by squared distance is identical to
+		# ordering by distance, and skips a sqrt per player per scan.
+		var d: float = global_position.distance_squared_to(candidate.global_position)
+		if d < nearest_dist:
+			nearest_dist = d
+			nearest = candidate
+
+	player = nearest
 
 
 func _wire_attack_timer() -> void:
@@ -679,7 +717,7 @@ func play_idle_animation(dir: String) -> void:
 # =============================================================================
 
 func _get_direction_to_player() -> String:
-	if player == null:
+	if not is_instance_valid(player):
 		return attack_direction
 	return _get_direction_from_vec(player.global_position - global_position)
 

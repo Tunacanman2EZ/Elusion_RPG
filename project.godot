@@ -14,7 +14,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="elusion_trial"
+config/name="ElusionRPG"
 run/main_scene="uid://lon8advnxgqx"
 config/features=PackedStringArray("4.6", "Mobile")
 run/flush_stdout_on_print=true
@@ -26,6 +26,7 @@ GameState="*uid://cjruyiklfgr1l"
 ItemRegistry="*uid://dx6llg3mjckfx"
 GameConstants="*uid://wbhpk12dyjkn"
 SceneTransition="*uid://cvilb71enkgcb"
+Api="*uid://dvmmf1ehsw12"
 
 [display]
 

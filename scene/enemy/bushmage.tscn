@@ -689,7 +689,9 @@ leash_range = 500.0
 texture_filter = 1
 position = Vector2(-1, 1)
 sprite_frames = SubResource("SpriteFrames_jm8lx")
-animation = &"attackup"
+animation = &"attackdown"
+frame = 8
+frame_progress = 1.0
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=30006892]
 texture_filter = 1

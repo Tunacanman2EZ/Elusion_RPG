@@ -183,6 +183,8 @@ func use_item(slot: InventorySlot) -> void:
 			_use_consumable(slot)
 		ItemData.Type.CURRENCY:
 			_use_currency_pile(slot)
+		ItemData.Type.PET:
+			_use_pet(slot)
 		_:
 			print("InventoryScreen: no use behavior for type of '%s'" % data.item_id)
 
@@ -211,6 +213,44 @@ func _use_currency_pile(slot: InventorySlot) -> void:
 		_use_lusions_pile(slot)
 	else:
 		_use_gold_pile(slot)
+
+
+# =============================================================================
+# ITEM USE — PETS
+# =============================================================================
+
+func _use_pet(slot: InventorySlot) -> void:
+	# NEW: summon the companion this item represents — or put it away if it's
+	# the one already out, so a single item is both the summon and the dismiss.
+	#
+	# DELIBERATELY DOES NOT CONSUME THE ITEM. a pet is a 1/216 drop, and
+	# ItemData carries pet_source_name specifically for a future pet-collection
+	# screen — both say a pet is a permanent collectible, not a single-use
+	# scroll. consuming it would make swapping pets a one-way door: put the
+	# sniper away to try the mage and the sniper is gone forever.
+	#
+	# if you'd rather they WERE consumable, add
+	#     _consume_one_from_stack(slot, slot.stack)
+	# after a successful summon below. nothing else has to change.
+	if slot == null or slot.is_empty() or player == null:
+		return
+
+	var data: ItemData = slot.stack.data
+
+	if not player.has_method("summon_pet"):
+		push_error("InventoryScreen: player has no summon_pet() method")
+		return
+
+	# already out? this is the dismiss. checked against active_pet_id rather
+	# than a node lookup because that string is the thing CharacterData
+	# persists — the node is just its current visible form.
+	if "active_pet_id" in player and player.active_pet_id == data.item_id:
+		if player.has_method("dismiss_pet"):
+			player.dismiss_pet()
+			print("Put away pet '%s'" % data.item_id)
+		return
+
+	player.summon_pet(data.item_id)
 
 
 # =============================================================================

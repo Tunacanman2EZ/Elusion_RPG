@@ -1,33 +1,45 @@
-# loginmenu.gd — local login screen, entry point before character select.
+# loginmenu.gd — login screen, entry point before character select.
 #
-# WHY: minimal local username/password gate before entering character
-# select. this is a fully local, no-server game — there's no real backend
-# to authenticate against, so this is closer to a local "profile" system
-# than true account security. passwords are still hashed rather than
-# stored in plaintext, since real players (beta testers) type real
-# credentials here and may reuse passwords elsewhere.
+# CHANGED: this used to be a fully local profile gate — usernames and
+# SHA-256 password hashes lived in user://users.cfg on the player's own
+# machine. Accounts are now real: the server owns them, hashes passwords
+# with a salt, and hands back a session token. See src/systems/api.gd.
+#
+# WHAT THIS MEANS FOR THE CODE HERE:
+# - _on_login_button_pressed() is now a coroutine. Every server call
+#   suspends until the response arrives, so the function can no longer
+#   just branch on a return value. This is why it awaits.
+# - the button is disabled while a request is in flight. Without that, an
+#   impatient double-click fires two registrations for the same account
+#   and the second one fails confusingly.
+# - the local account helpers (is_username_taken / save_new_user /
+#   check_user_password) are gone. Nothing reads user://users.cfg anymore.
+#   Old local accounts do NOT migrate — players register once against the
+#   server. There are few enough testers for that to be fine.
+#
+# ONE BUTTON, TWO OUTCOMES: the original screen logged you in if the
+# account existed and silently created it if not. That's preserved, but it
+# takes two calls now — the server deliberately returns the same error for
+# "no such user" and "wrong password" so the endpoint can't be used to
+# discover which usernames exist. The client therefore can't tell those
+# apart either, so it tries login first (the common case for a returning
+# player, one call) and only falls back to register on failure.
+#
+# ADMIN: no longer decided here. It used to be a hardcoded username
+# comparison running on the player's own machine, which anyone could patch
+# out or fake. It's a database column now, returned by the login response,
+# and mirrored into CharacterData so the rest of the game's existing
+# get_is_admin() calls keep working unchanged.
 #
 # SECURITY NOTES (read before touching):
-# - passwords are hashed (SHA-256) before ever touching disk, both when
-#   registering (save_new_user) and when checking login (check_user_password).
-#   never store or compare plaintext passwords here.
-# - "remember me" only remembers the USERNAME, not the password — a
-#   one-way hash can't be reversed to autofill a password field, and
-#   storing the plaintext password separately just for autofill would
-#   defeat the point of hashing. returning players retype their password;
-#   their username still prefills.
-# - ADMIN_USERNAME grants a hardcoded admin flag on login match — kept
-#   as-is, flagging its existence here since it's a meaningful
-#   access-control detail.
-# - this is still not real account security (no salt, no rate limiting) —
-#   fine for a local single-player login gate, not something to reuse
-#   anywhere server-facing.
-#
-# SCENE STRUCTURE NOTE: cleaned up to match ONLY the nodes that actually
-# exist in loginmenu.tscn. the previous version referenced
-# CharacterPanel/CharacterButton/ConfirmButton, none of which exist
-# anywhere in this scene — that whole block was dead code here. real
-# character selection lives in whatever scene char_select_scene points to.
+# - no password ever touches disk here. "remember me" stores the USERNAME
+#   and the session token — never the password.
+# - the token in user://session.cfg is a bearer credential. Anyone with
+#   the file can act as that account until it expires, same as a browser
+#   cookie. That's the accepted tradeoff for not retyping a password.
+# - client-side validation below is a courtesy so the player gets an
+#   instant error instead of a round trip. The server validates everything
+#   again and its answer is the one that counts.
 #
 # SIGNAL CONNECTIONS: all connected via code in _ready() below (not the
 # editor's Node > Signals panel) — a code connection always points at
@@ -40,8 +52,9 @@ extends Control
 # CONSTANTS
 # =============================================================================
 
-# grants a hardcoded admin flag on login — see class comment above.
-const ADMIN_USERNAME := "Tunacan"
+# mirrors the server's MIN_PASSWORD_LENGTH in app.py. Kept in sync by hand;
+# if they ever disagree the server wins and the player sees its message.
+const MIN_PASSWORD_LENGTH := 8
 
 
 # =============================================================================
@@ -55,6 +68,14 @@ const ADMIN_USERNAME := "Tunacan"
 # crash (wrong folder name/casing, plus a second hardcoded path that had
 # drifted out of sync with this one).
 @export var char_select_scene: PackedScene
+
+
+# =============================================================================
+# STATE
+# =============================================================================
+
+# guards against overlapping submissions while a request is in flight.
+var _request_in_flight: bool = false
 
 
 # =============================================================================
@@ -84,6 +105,7 @@ func _ready() -> void:
 		%passwordlineedit.text_submitted.connect(_on_login_field_submitted)
 
 	load_remembered_user()
+	await _try_resume_session()
 
 
 func _on_login_field_submitted(_new_text: String) -> void:
@@ -91,23 +113,52 @@ func _on_login_field_submitted(_new_text: String) -> void:
 
 
 # =============================================================================
+# AUTO-LOGIN
+# =============================================================================
+
+func _try_resume_session() -> void:
+	# NEW: if a token from a previous run is still valid, skip the form
+	# entirely. Api loads the cached token in its own _ready(), so by the
+	# time we get here it either has one or it doesn't.
+	if not Api.is_logged_in():
+		return
+
+	%errorlabel.text = "Resuming session..."
+	_set_busy(true)
+
+	var resumed: bool = await Api.resume_session()
+
+	_set_busy(false)
+
+	if resumed:
+		_complete_login(Api.username)
+	else:
+		# token expired or was revoked server-side — fall back to the form
+		# without alarming the player about it.
+		%errorlabel.text = ""
+
+
+# =============================================================================
 # LOGIN / REGISTER
 # =============================================================================
 
 func _on_login_button_pressed() -> void:
+	if _request_in_flight:
+		return
+
 	var username: String = %usernamelineedit.text.strip_edges()
 	var password: String = %passwordlineedit.text.strip_edges()
 	var error_label: Label = %errorlabel
 
-	# --- input validation ---
+	# --- input validation (courtesy only — the server validates too) ---
 	if username.is_empty() or password.is_empty():
 		error_label.text = "Please fill in both fields."
 		return
-	if not is_valid_input(username):
+	if not is_valid_username(username):
 		error_label.text = "Username: letters, numbers, and _ only."
 		return
-	if not is_valid_input(password):
-		error_label.text = "Password: letters, numbers, and _ only."
+	if password.length() < MIN_PASSWORD_LENGTH:
+		error_label.text = "Password must be at least %d characters." % MIN_PASSWORD_LENGTH
 		return
 
 	# --- remember me (username only — see class comment) ---
@@ -116,25 +167,79 @@ func _on_login_button_pressed() -> void:
 	else:
 		save_remembered_user("")
 
-	# --- login / register ---
-	if is_username_taken(username):
-		if check_user_password(username, password):
+	error_label.text = "Connecting..."
+	_set_busy(true)
+
+	# --- try to log in first ---
+	var res: Dictionary = await Api.login(username, password)
+
+	if res.ok:
+		_set_busy(false)
+		error_label.text = ""
+		_complete_login(username)
+		return
+
+	# a 401 means the credentials didn't match — but the server won't say
+	# whether that's a wrong password or an account that doesn't exist yet,
+	# so the only way to find out is to try creating it.
+	if res.status == 401:
+		var created: Dictionary = await Api.register(username, password)
+
+		_set_busy(false)
+
+		if created.ok:
 			error_label.text = ""
 			_complete_login(username)
-		else:
+			return
+
+		# 409 means the account DOES exist, so the original login failure
+		# was a genuinely wrong password.
+		if created.status == 409:
 			error_label.text = "Incorrect password."
-	else:
-		save_new_user(username, password)
-		error_label.text = "Account created! Logging in..."
-		_complete_login(username)
+		else:
+			error_label.text = created.error
+		return
+
+	# anything else — server down, validation rejection, unexpected status
+	_set_busy(false)
+	error_label.text = res.error
 
 
-func _complete_login(username: String) -> void:
-	# NEW: load THIS user's own character data FIRST — both the admin
-	# grant below and character select depend on it already being loaded.
+func _complete_login(typed_username: String) -> void:
+	# NEW: load THIS user's own character data FIRST — character select
+	# depends on it already being loaded.
 	# see CharacterData.load_for_user()'s comment for why this matters.
-	CharacterData.load_for_user(username)
-	_grant_admin_if_applicable(username)
+	#
+	# CHANGED: loads under the server's spelling of the name, not the one
+	# that was typed into the box. THIS IS NOT COSMETIC — it is the whole
+	# reason a save can appear to vanish:
+	#
+	#   - app.py declares `username TEXT ... UNIQUE COLLATE NOCASE`, so the
+	#     login query `WHERE username = ?` matches case-INSENSITIVELY.
+	#     typing "tunacan" successfully logs you into the account stored as
+	#     "Tunacan". the server is right to do this; people don't remember
+	#     capitalisation.
+	#   - but CharacterData._save_path_for_user() builds a FILENAME from the
+	#     name, and filenames keep their case: "Tunacan" is
+	#     character_Tunacan.save, "tunacan" is character_tunacan.save.
+	#
+	# so logging in with different capitalisation than you registered with
+	# used to hand you a real, authenticated session pointed at a save file
+	# that had never existed — every character gone, nothing actually lost,
+	# and no error anywhere to explain it. worse, creating a character then
+	# WOULD write that second file, quietly splitting one account's saves
+	# across two.
+	#
+	# the login response returns row["username"] — the canonical stored
+	# spelling — and Api.username holds it. that is the authority. the typed
+	# string is only a fallback for the case where the server somehow
+	# didn't send one back.
+	var canonical_username: String = typed_username
+	if Api.username != "":
+		canonical_username = Api.username
+
+	CharacterData.load_for_user(canonical_username)
+	_sync_admin_from_server()
 	_go_to_character_select()
 
 
@@ -145,20 +250,26 @@ func _go_to_character_select() -> void:
 	get_tree().change_scene_to_packed(char_select_scene)
 
 
-func _grant_admin_if_applicable(username: String) -> void:
-	# CHANGED: used to just print a message every login, nothing persisted.
-	# now actually writes to CharacterData.is_admin (only once — checked
-	# first so this doesn't call save_data() on every single admin login).
-	# see CharacterData.gd's comment on get_is_admin()/set_is_admin() for
-	# why this is modeled as a persisted flag rather than a live check.
-	if username == ADMIN_USERNAME:
-		if not CharacterData.get_is_admin():
-			CharacterData.set_is_admin(true)
-			print("Admin privileges granted and persisted.")
-		else:
-			print("Admin login (already persisted).")
-	else:
-		print("Standard user login.")
+func _sync_admin_from_server() -> void:
+	# CHANGED: was a hardcoded `username == ADMIN_USERNAME` check running on
+	# the player's machine. The flag now comes from the users table and
+	# arrives in the login response; this just mirrors it into CharacterData
+	# so existing get_is_admin() callers elsewhere keep working.
+	#
+	# Note this writes on every login rather than only on change — the
+	# server's answer is authoritative, so a revoked admin has to be able
+	# to drop back to false, not stay true because it was true once.
+	if CharacterData.get_is_admin() != Api.is_admin:
+		CharacterData.set_is_admin(Api.is_admin)
+
+
+func _set_busy(busy: bool) -> void:
+	# disables the form while a request is in flight, so a double-click
+	# can't fire two submissions.
+	_request_in_flight = busy
+	%loginbutton.disabled = busy
+	%usernamelineedit.editable = not busy
+	%passwordlineedit.editable = not busy
 
 
 func _on_exit_button_pressed() -> void:
@@ -169,9 +280,10 @@ func _on_exit_button_pressed() -> void:
 # VALIDATION
 # =============================================================================
 
-func is_valid_input(input_str: String) -> bool:
+func is_valid_username(input_str: String) -> bool:
+	# mirrors USERNAME_PATTERN in app.py.
 	var regex := RegEx.new()
-	regex.compile("^[a-zA-Z0-9_]+$")
+	regex.compile("^[a-zA-Z0-9_]{3,20}$")
 	return regex.search(input_str) != null
 
 
@@ -197,53 +309,3 @@ func load_remembered_user() -> void:
 		# regardless of the real box state. .button_pressed is the correct
 		# property for current toggle state.
 		%rememberme.button_pressed = remembered_user != ""
-
-
-# =============================================================================
-# LOCAL ACCOUNT STORAGE
-# =============================================================================
-# local-only "accounts" — no server involved. passwords are hashed
-# (SHA-256), never stored or compared as plaintext. NOTE: stored key
-# changed from "password" to "password_hash" — any account registered
-# under the old plaintext format will need to register again, since old
-# entries won't have a password_hash value to check against.
-
-func is_username_taken(username: String) -> bool:
-	var config := ConfigFile.new()
-	var err := config.load("user://users.cfg")
-	if err == OK:
-		return username in config.get_sections()
-	return false
-
-
-func save_new_user(username: String, password: String) -> void:
-	var config := ConfigFile.new()
-	config.load("user://users.cfg")
-	config.set_value(username, "password_hash", password.sha256_text())
-	config.save("user://users.cfg")
-
-
-func check_user_password(username: String, password: String) -> bool:
-	var config := ConfigFile.new()
-	var err := config.load("user://users.cfg")
-	if err != OK:
-		return false
-
-	var stored_hash: String = config.get_value(username, "password_hash", "")
-	if stored_hash != "":
-		return stored_hash == password.sha256_text()
-
-	# MIGRATION FALLBACK: this account was registered under the OLD
-	# plaintext-password format (before hashing was added), so it has no
-	# password_hash yet. check the legacy plaintext key instead — if it
-	# matches, silently upgrade the entry to the hashed format and remove
-	# the plaintext key, so this fallback only ever runs once per account
-	# and the plaintext password never gets trusted or stored again.
-	var legacy_plaintext: String = config.get_value(username, "password", "")
-	if legacy_plaintext != "" and legacy_plaintext == password:
-		config.set_value(username, "password_hash", password.sha256_text())
-		config.erase_section_key(username, "password")
-		config.save("user://users.cfg")
-		return true
-
-	return false

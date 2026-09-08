@@ -32,6 +32,26 @@ func _on_body_entered(body):
 	if body and can_teleport and (body.name == "Player" or body.is_in_group("player")):
 		can_teleport = false
 		body.global_position = destination_point.global_position
+
+		# NEW: kills the visible smear across the map during a teleport.
+		#
+		# This project runs with common/physics_interpolation=true, so the
+		# renderer draws every node blended between its PREVIOUS and CURRENT
+		# physics transforms. That's what makes normal movement smooth at any
+		# framerate — but a teleport isn't movement, it's a discontinuity.
+		# Without being told that, the renderer dutifully interpolates the
+		# player across the entire gap over one frame, which is exactly the
+		# graphic jump you see at the moment of teleport.
+		#
+		# reset_physics_interpolation() collapses previous and current to the
+		# same transform, so there is nothing left to blend. It MUST be called
+		# AFTER the position is set, never before.
+		#
+		# It propagates to children, so the camera2d inside the player scene
+		# is covered by this same call — without that the view would smear
+		# even if the sprite itself didn't.
+		body.reset_physics_interpolation()
+
 		print("Teleported", body.name, "to", destination_point.global_position)
 		_start_cooldown()
 

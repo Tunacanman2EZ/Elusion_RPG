@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://b756xxenwprr4"]
 
 [ext_resource type="Script" uid="uid://n4648r7ae2m5" path="res://src/ui/characterselect.gd" id="1_rpq25"]
-[ext_resource type="Texture2D" uid="uid://cpuw2jylt7xsm" path="res://art/images/treasure.png" id="1_sr2wn"]
+[ext_resource type="Texture2D" uid="uid://cn7roa0ysrtbx" path="res://art/menu/1920x1080.png" id="1_sr2wn"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
 
 [node name="characterselect" type="Control" unique_id=178383023]

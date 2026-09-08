@@ -125,11 +125,3 @@ offset_top = 566.0
 offset_right = 1234.0
 offset_bottom = 606.0
 
-[connection signal="pressed" from="navhbox/navbuttons/inventorybutton" to="." method="_on_inventorybutton_pressed"]
-[connection signal="pressed" from="navhbox/navbuttons/statsbutton" to="." method="_on_statsbutton_pressed"]
-[connection signal="pressed" from="navhbox/navbuttons/shopbutton" to="." method="_on_shopbutton_pressed"]
-[connection signal="pressed" from="navhbox/navbuttons/mapbutton" to="." method="_on_mapbutton_pressed"]
-[connection signal="pressed" from="navhbox/navbuttons/optionsbutton" to="." method="_on_optionsbutton_pressed"]
-[connection signal="pressed" from="navhbox/navbuttons/discordbutton" to="." method="_on_discordbutton_pressed"]
-[connection signal="pressed" from="navhbox/navbuttons/logoutbutton" to="." method="_on_logoutbutton_pressed"]
-[connection signal="pressed" from="navhbox/navbuttons/switchcharacterbutton" to="." method="_on_switchcharacterbutton_pressed"]

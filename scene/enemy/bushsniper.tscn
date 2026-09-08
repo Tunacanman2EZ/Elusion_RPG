@@ -676,7 +676,9 @@ leash_range = 500.0
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=2055609014]
 y_sort_enabled = true
 sprite_frames = SubResource("SpriteFrames_r0rwy")
-animation = &"attackup"
+animation = &"attackleft"
+frame = 8
+frame_progress = 1.0
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=253938158]
 texture_filter = 1

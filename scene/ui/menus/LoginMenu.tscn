@@ -2,16 +2,14 @@
 
 [ext_resource type="Script" uid="uid://csey5unhicv5r" path="res://src/ui/loginmenu.gd" id="1_u8sew"]
 [ext_resource type="PackedScene" uid="uid://b756xxenwprr4" path="res://scene/ui/menus/characterselect.tscn" id="2_hhelq"]
-[ext_resource type="Texture2D" uid="uid://bpu2av41q1t8g" path="res://art/images/skeleton.png" id="2_jmb1l"]
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_theme"]
+[ext_resource type="Texture2D" uid="uid://d2r3plsbsj4xy" path="res://art/menu/original size.png" id="4_mt8db"]
 
 [node name="loginmenu" type="Control" unique_id=848796310]
 layout_mode = 3
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("3_theme")
@@ -21,28 +19,32 @@ metadata/_edit_use_anchors_ = true
 
 [node name="texturerect" type="TextureRect" parent="." unique_id=464289615]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -640.0
-offset_top = -768.0
-offset_right = 643.0
-offset_bottom = 768.0
+anchors_preset = -1
+anchor_left = -0.9760001
+anchor_top = -0.762
+anchor_right = 1.524
+anchor_bottom = 1.7370001
+offset_left = 1248.28
+offset_top = 546.64
+offset_right = -668.7201
+offset_bottom = -528.64014
 grow_horizontal = 2
 grow_vertical = 2
-texture = ExtResource("2_jmb1l")
+texture = ExtResource("4_mt8db")
 
 [node name="centercontainer" type="CenterContainer" parent="." unique_id=2097526681]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
+anchors_preset = -1
+anchor_left = 0.5203125
+anchor_top = 0.13055553
+anchor_right = 0.871875
+anchor_bottom = 0.6944444
 grow_horizontal = 2
 grow_vertical = 2
 metadata/_edit_use_anchors_ = true
 
 [node name="mainpanel" type="PanelContainer" parent="centercontainer" unique_id=172146919]
-custom_minimum_size = Vector2(450, 400)
+custom_minimum_size = Vector2(300, 350)
 layout_mode = 2
 
 [node name="margincontainer" type="MarginContainer" parent="centercontainer/mainpanel" unique_id=1390455789]
@@ -62,8 +64,9 @@ theme_type_variation = &"PanelHeader"
 
 [node name="headerlabel" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/headerpanel" unique_id=762769286]
 layout_mode = 2
+size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 28
-text = "ELUSION"
+text = "ELUSION RPG"
 horizontal_alignment = 1
 
 [node name="hseparator" type="HSeparator" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1769956154]
@@ -90,6 +93,7 @@ secret = true
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
+size_flags_stretch_ratio = 0.0
 text = "Remember me"
 
 [node name="loginbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=121373850]
@@ -115,12 +119,6 @@ layout_mode = 2
 layout_mode = 2
 theme_override_constants/separation = 15
 alignment = 1
-
-[node name="shopbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/menubuttons" unique_id=324999331]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(110, 38)
-layout_mode = 2
-text = "Shop"
 
 [node name="Settingsbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/menubuttons" unique_id=1577972604]
 unique_name_in_owner = true

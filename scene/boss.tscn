@@ -7,9 +7,9 @@
 [ext_resource type="Texture2D" uid="uid://clru34rpbm7dh" path="res://art/Tiles/underground.png" id="5_v8sps"]
 [ext_resource type="PackedScene" uid="uid://d377s2b0gefqn" path="res://scene/ladderup.tscn" id="6_mup4r"]
 [ext_resource type="Script" uid="uid://liyvr0aortjw" path="res://src/world/ladder.gd" id="7_btlh5"]
-[ext_resource type="PackedScene" uid="uid://6lcp3nnqawlp" path="res://easteregg.tscn" id="8_rb7ca"]
 [ext_resource type="Script" uid="uid://blrs7e81o2jg4" path="res://src/world/fieldportal.gd" id="9_nbucm"]
 [ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/characterhud.tscn" id="10_24v5s"]
+[ext_resource type="PackedScene" path="res://scene/enemy/bossenemy.tscn" id="11_bossenemy"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_x2yxj"]
 texture = ExtResource("2_b5yaj")
@@ -439,14 +439,21 @@ tile_set = SubResource("TileSet_sit1d")
 [node name="inteactables" type="Node2D" parent="yworldsort" unique_id=456706097]
 
 [node name="ladderup" parent="yworldsort/inteactables" unique_id=1703870724 instance=ExtResource("6_mup4r")]
+collision_layer = 16
+collision_mask = 4
 script = ExtResource("7_btlh5")
-destination_scene = ExtResource("8_rb7ca")
+destination_scene_path = "res://scene/field.tscn"
+target_spawn_id = "boss_ladder"
 
 [node name="arrivalmarker" type="Node2D" parent="yworldsort/inteactables" unique_id=1524091098]
 script = ExtResource("9_nbucm")
 metadata/_custom_type_script = "uid://blrs7e81o2jg4"
+portal_id = "boss_entrance"
 
 [node name="enemies" type="Node2D" parent="yworldsort" unique_id=1609630585]
+
+[node name="bossenemy" parent="yworldsort/enemies" instance=ExtResource("11_bossenemy")]
+position = Vector2(-400, 100)
 
 [node name="groundeffects" type="Node2D" parent="yworldsort" unique_id=1296382153 groups=["groundeffects"]]
 
@@ -462,3 +469,6 @@ position = Vector2(-839, 138)
 [node name="aboveworld" type="TileMapLayer" parent="." unique_id=547591725]
 
 [node name="hudcontrol" parent="." unique_id=2045428837 instance=ExtResource("10_24v5s")]
+
+[connection signal="body_entered" from="yworldsort/inteactables/ladderup" to="yworldsort/inteactables/ladderup" method="_on_body_entered"]
+[connection signal="body_exited" from="yworldsort/inteactables/ladderup" to="yworldsort/inteactables/ladderup" method="_on_body_exited"]

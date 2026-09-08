@@ -141,8 +141,10 @@ script = ExtResource("1_op8v8")
 texture_filter = 1
 position = Vector2(0, 4)
 sprite_frames = SubResource("SpriteFrames_qycu1")
-animation = &"open"
-speed_scale = 2.5
+animation = &"closed"
+frame = 6
+frame_progress = 1.0
+speed_scale = 0.5
 offset = Vector2(0, -8)
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=2057434990]

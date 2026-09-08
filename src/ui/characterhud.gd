@@ -311,7 +311,17 @@ func _on_logout_pressed() -> void:
 	# session ended. without this, a second user logging in during the same
 	# run would briefly (or permanently, if load_for_user() somehow didn't
 	# fire) see whatever the previous user's data was.
+	# (this also flushes any pending debounced save — see CharacterData.)
 	CharacterData.clear_current_user()
+
+	# NEW: end the SERVER session too, and wait for it before leaving.
+	# Without this the cached token in user://session.cfg survives, the
+	# login screen's _try_resume_session() finds it still valid, and it
+	# sends you straight back to character select — making the login form
+	# unreachable. Awaiting matters: Api.logout() only clears the local
+	# token after the server call returns, so changing scene first would
+	# race the login screen's check against it.
+	await Api.logout()
 
 	get_tree().change_scene_to_file(LOGIN_MENU_PATH)
 
@@ -519,6 +529,3 @@ func is_panel_open() -> bool:
 	var stats_open: bool = stats_screen     != null and stats_screen.visible
 	var bank_open:  bool = bank_screen      != null and bank_screen.visible
 	return inv_open or stats_open or bank_open
-
-func _on_switchcharacterbutton_pressed() -> void:
-	pass # Replace with function body.

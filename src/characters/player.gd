@@ -900,6 +900,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)
+			# NEW: grants the pet ITEM rather than spawning the pet directly,
+			# so this exercises the real path — inventory -> use -> summon_pet()
+			# -> active_pet_id -> survives a scene change. KEY_P below skips
+			# all of that and drops a bare node in the scene, which is why it
+			# never caught that the pet items didn't exist.
+			#
+			# NOT F8: that's the editor's "Stop running project" shortcut and
+			# it kills the game even when the game window has focus. Y sits
+			# next to the U/I/O/P pet cluster instead, and is unbound in both
+			# the input map and every other script.
+			KEY_Y: _debug_give_item("petsniper", 1)
 			KEY_P: _debug_spawn_pet()
 			KEY_O: _debug_spawn_pet_mage()
 			KEY_I: _debug_spawn_pet_electric()
@@ -920,8 +931,7 @@ func _debug_spawn_pet_fire() -> void:
 		print("DEBUG: petfiresprite.tscn not found — check the path")
 		return
 	var pet: Node = pet_scene.instantiate()
-	get_tree().current_scene.add_child(pet)
-	pet.global_position = global_position + Vector2(0, -40)
+	_attach_pet(pet, Vector2(0, -40))
 	print("DEBUG: spawned fire pet")
 	active_pet_id = "petfiresprite"
 	CharacterData.save_character_state(self)
@@ -933,8 +943,7 @@ func _debug_spawn_pet_electric() -> void:
 		print("DEBUG: petelectricsprite.tscn not found — check the path")
 		return
 	var pet: Node = pet_scene.instantiate()
-	get_tree().current_scene.add_child(pet)
-	pet.global_position = global_position + Vector2(0, 40)
+	_attach_pet(pet, Vector2(0, 40))
 	print("DEBUG: spawned electric pet")
 	active_pet_id = "petelectricsprite"
 	CharacterData.save_character_state(self)
@@ -947,8 +956,7 @@ func _debug_spawn_pet() -> void:
 		print("DEBUG: petsniper.tscn not found — check the path")
 		return
 	var pet: Node = pet_scene.instantiate()
-	get_tree().current_scene.add_child(pet)
-	pet.global_position = global_position + Vector2(40, 0)
+	_attach_pet(pet, Vector2(40, 0))
 	print("DEBUG: spawned pet")
 	active_pet_id = "petsniper"
 	CharacterData.save_character_state(self)
@@ -962,8 +970,7 @@ func _debug_spawn_pet_mage() -> void:
 		print("DEBUG: petmage.tscn not found — check the path")
 		return
 	var pet: Node = pet_scene.instantiate()
-	get_tree().current_scene.add_child(pet)
-	pet.global_position = global_position + Vector2(-40, 0)
+	_attach_pet(pet, Vector2(-40, 0))
 	print("DEBUG: spawned mage pet")
 	active_pet_id = "petmage"
 	CharacterData.save_character_state(self)
@@ -985,6 +992,28 @@ func _despawn_current_pet() -> void:
 			pet.queue_free()
 
 
+func _attach_pet(pet: Node, offset: Vector2) -> void:
+	# NEW: the single place a pet gets put into the world. every spawn path
+	# (summon_pet, _restore_active_pet, and the four debug spawners) goes
+	# through here so none of them can forget the ownership line below.
+	#
+	# ORDER MATTERS: owner_player is claimed BEFORE add_child(), because
+	# add_child() runs the pet's _ready(), which is where it resolves who to
+	# follow. Set it afterwards and the pet has already fallen back to
+	# get_nodes_in_group("player")[0] — right by luck with one player,
+	# arbitrary with two — and nothing re-resolves it while that stays valid.
+	if pet is Pet:
+		pet.owner_player = self
+
+	get_tree().current_scene.add_child(pet)
+	pet.global_position = global_position + offset
+	# NEW: positioned AFTER entering the tree, so without this the pet gets
+	# interpolated from wherever it started toward the player on its first
+	# rendered frame. See teleporter.gd for why physics interpolation needs
+	# to be told about instant placement.
+	pet.reset_physics_interpolation()
+
+
 func _restore_active_pet() -> void:
 	# re-spawns the active pet (if any) on scene load — see active_pet_id's
 	# comment for why a String survives scene changes when a node can't.
@@ -1001,9 +1030,52 @@ func _restore_active_pet() -> void:
 		return
 
 	var pet: Node = item_data.pet_scene.instantiate()
-	get_tree().current_scene.add_child(pet)
-	pet.global_position = global_position + Vector2(0, -40)
+	_attach_pet(pet, Vector2(0, -40))
 	print("Player: restored active pet '%s'" % active_pet_id)
+
+
+func summon_pet(item_id: String) -> bool:
+	# NEW: the real summon path, called when a PET item is used from the
+	# inventory. the _debug_spawn_* functions below hardcode a res:// path
+	# each; this resolves the scene through ItemRegistry exactly the way
+	# _restore_active_pet() does, so there is one definition of "which scene
+	# is this pet" rather than one per call site.
+	#
+	# returns false WITHOUT changing anything if the item can't be summoned,
+	# so the caller can leave the item sitting in the inventory instead of
+	# consuming it for nothing. this is the whole reason it returns a bool.
+	var item_data := ItemRegistry.get_item(item_id)
+	if item_data == null:
+		push_warning("Player: no item '%s' in the registry — cannot summon" % item_id)
+		return false
+	if item_data.type != ItemData.Type.PET or item_data.pet_scene == null:
+		push_warning("Player: item '%s' is not a summonable pet" % item_id)
+		return false
+
+	# one pet at a time, matching the single active_pet_id model — summoning
+	# a second pet REPLACES the first rather than stacking companions.
+	_despawn_current_pet()
+
+	var pet: Node = item_data.pet_scene.instantiate()
+	_attach_pet(pet, Vector2(0, -40))
+
+	# set LAST, and only after everything above succeeded — _restore_active_pet()
+	# trusts this string to name a pet that actually resolves, and CharacterData
+	# persists it per character slot, so a bad value here would follow the save
+	# around and warn on every scene load.
+	active_pet_id = item_id
+	print("Player: summoned pet '%s'" % active_pet_id)
+	return true
+
+
+func dismiss_pet() -> void:
+	# NEW: despawn AND forget. distinct from _despawn_current_pet(), which
+	# only removes the node — that one is used when replacing a pet, where
+	# active_pet_id is about to be overwritten anyway. this one is for
+	# genuinely putting the pet away, so it must clear the id too or the pet
+	# reappears on the next scene load.
+	_despawn_current_pet()
+	active_pet_id = ""
 
 
 func _debug_give_item(item_id: String, quantity: int) -> void:

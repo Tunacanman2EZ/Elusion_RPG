@@ -760,7 +760,7 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_2o75m"]
-radius = 6.0
+radius = 4.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_qr5ri"]
 radius = 5.0
@@ -779,7 +779,7 @@ sprite_frames = SubResource("SpriteFrames_52ku1")
 animation = &"deathdown"
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=1342174490]
-position = Vector2(-1, -2)
+position = Vector2(-2, -3)
 shape = SubResource("CircleShape2D_2o75m")
 debug_color = Color(0, 0, 0, 0.41960785)
 
@@ -793,7 +793,7 @@ rotation_smoothing_enabled = true
 position = Vector2(0, -16)
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=1875370377]
-position = Vector2(-1, 4)
+position = Vector2(-2, 8)
 shape = SubResource("CapsuleShape2D_qr5ri")
 debug_color = Color(0.4397211, 0.59804714, 0.10347933, 0.41960785)
 

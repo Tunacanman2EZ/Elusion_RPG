@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Texture2D" uid="uid://b0e7kjx0rt13r" path="res://art/enemy/perfect bushmage.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="2_script"]
+[ext_resource type="PackedScene" uid="uid://3rtx3n7hyk2r" path="res://scene/pets/petmage.tscn" id="3_pet"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_peticon"]
+atlas = ExtResource("1_icon")
+region = Rect2(53, 490, 44, 44)
+
+[resource]
+script = ExtResource("2_script")
+item_id = "petmage"
+display_name = "Mage Companion"
+description = "A bush mage bound to your side. Throws vines at your enemies and asks for nothing in return."
+icon = SubResource("AtlasTexture_peticon")
+stackable = false
+max_stack = 1
+value = 2000
+tier = 5
+required_level = 1
+type = 5
+pet_scene = ExtResource("3_pet")
+pet_source_name = "Bush Mage"
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

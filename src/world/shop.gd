@@ -1,23 +1,23 @@
 extends Area2D
-
-@onready var interior = $"../Interior"
-@onready var exterior = $"../Exterior"
-
+ 
+@onready var interior = $"../shopinterior"
+@onready var exterior = $"../shopexterior"
+@onready var interior_furniture = $"../interiorfurniture"
+ 
 func _ready():
-	# Only show exterior at start, hide interior
-	if interior:
-		interior.visible = false
-	if exterior:
-		exterior.visible = true
-
+	if interior: interior.visible = false
+	if exterior: exterior.visible = true
+	if interior_furniture: interior_furniture.visible = false
+ 
 func _on_body_entered(body):
 	if body.is_in_group("player"):
-		print("Player near building: interior visible, exterior hidden.")
 		if interior: interior.visible = true
 		if exterior: exterior.visible = false
-
+		if interior_furniture: interior_furniture.visible = true
+ 
 func _on_body_exited(body):
 	if body.is_in_group("player"):
-		print("Player left: interior hidden, exterior visible.")
 		if interior: interior.visible = false
 		if exterior: exterior.visible = true
+		if interior_furniture: interior_furniture.visible = false
+ 

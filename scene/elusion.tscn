@@ -32,6 +32,7 @@
 [ext_resource type="PackedScene" uid="uid://cf7n3w3rl1pfp" path="res://scene/interactables/firepit.tscn" id="33_5cjof"]
 [ext_resource type="Texture2D" uid="uid://mbi6abi0ouy6" path="res://art/Tiles/redflower.png" id="33_xyqp5"]
 [ext_resource type="PackedScene" uid="uid://ckeo71e74gs72" path="res://scene/interactables/sign.tscn" id="34_8dv4p"]
+[ext_resource type="PackedScene" uid="uid://dshxbd3rf8u3v" path="res://scene/walls/shophouse.tscn" id="34_onj5f"]
 [ext_resource type="Texture2D" uid="uid://nqhgg6340427" path="res://art/Tiles/barrels.png" id="34_rqwqw"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_onj5f"]
@@ -1831,6 +1832,9 @@ texture_filter = 1
 position = Vector2(1, 392)
 scale = Vector2(1, 0.99999994)
 shape = SubResource("RectangleShape2D_tfn2f")
+
+[node name="shophouse" parent="ysortworld/interactables" unique_id=1896304923 instance=ExtResource("34_onj5f")]
+position = Vector2(-420, 823)
 
 [node name="groundeffects" type="Node2D" parent="ysortworld" unique_id=1843892162 groups=["groundeffects"]]
 y_sort_enabled = true

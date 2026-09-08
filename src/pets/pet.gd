@@ -56,15 +56,45 @@ enum AttackType { PROJECTILE, VINE }
 @export var teleport_distance: float = 600.0
 @export var scale_factor: float = 0.5
 
+# NEW: which frame of the attack animation actually releases the shot, the
+# same idea as bushsniper.gd's ARROW_RELEASE_FRAME. the projectile used to
+# spawn BEFORE the animation had played a single frame, so the pet fired and
+# then wound up.
+#
+# -1 means "fire immediately", which is the old behaviour — a pet whose
+# release frame hasn't been picked yet keeps working exactly as it did.
+# set it to the frame where the art visibly throws/looses/casts.
+@export var release_frame: int = -1
+
 
 # =============================================================================
 # STATE
 # =============================================================================
 
+# NEW: who this pet belongs to. set by whoever spawns it — see player.gd's
+# summon_pet() / _restore_active_pet() / the debug spawners — and set BEFORE
+# add_child(), so it's already in place when _ready() resolves the player.
+#
+# WHY THIS EXISTS AT ALL: _resolve_player() used to take
+# get_nodes_in_group("player")[0], i.e. whichever player node happens to sit
+# first in the group. With exactly one player that is always the right
+# answer. With two it is an arbitrary one — and once this is networked,
+# potentially a DIFFERENT one on each client, so your pet could visibly
+# follow someone else's character on their screen and yours on yours.
+# A pet's owner is a fact, not something to infer from tree order.
+var owner_player: Node = null
+
 var player: Node = null
 var _attack_ready: bool = true
 var _current_target: Node = null
 var _is_attacking: bool = false
+
+# NEW: an attack that's mid-animation, waiting for release_frame. the target
+# and direction are captured at the START of the swing rather than read again
+# at release, so the shot goes where the pet was aiming when it committed.
+var _awaiting_release: bool = false
+var _pending_target: Node = null
+var _pending_dir: Vector2 = Vector2.ZERO
 
 
 # =============================================================================
@@ -89,6 +119,9 @@ func _ready() -> void:
 			sprite.play("idledown")
 		if not sprite.animation_finished.is_connected(_on_sprite_animation_finished):
 			sprite.animation_finished.connect(_on_sprite_animation_finished)
+		# NEW: drives the release_frame shot — see _on_sprite_frame_changed().
+		if not sprite.frame_changed.is_connected(_on_sprite_frame_changed):
+			sprite.frame_changed.connect(_on_sprite_frame_changed)
 
 
 func _make_attack_timer() -> Timer:
@@ -118,6 +151,19 @@ func _physics_process(_delta: float) -> void:
 # =============================================================================
 
 func _resolve_player() -> void:
+	# CHANGED: prefer the explicit owner. see owner_player's comment for why
+	# the group lookup below is not good enough on its own.
+	#
+	# is_instance_valid() rather than != null: a freed node is NOT null, it's
+	# a dangling reference, and touching one throws "Attempt to call function
+	# on a previously freed instance". this matters here because the player
+	# gets freed on death and on every scene change.
+	if is_instance_valid(owner_player):
+		player = owner_player
+		return
+
+	# fallback for a pet nobody claimed — correct while there is exactly one
+	# player, arbitrary the moment there is more than one.
 	var players: Array = get_tree().get_nodes_in_group("player")
 	if players.size() > 0:
 		player = players[0]
@@ -133,6 +179,11 @@ func _update_follow() -> void:
 
 	if dist > teleport_distance:
 		global_position = player.global_position - to_player.normalized() * follow_distance
+		# NEW: same discontinuity as teleporter.gd — this is a teleport, not
+		# movement, so the renderer must not blend across the gap. Without
+		# this the pet visibly streaks the whole way when it catches up.
+		# See teleporter.gd's comment for the full explanation.
+		reset_physics_interpolation()
 		velocity = Vector2.ZERO
 		move_and_slide()
 		return
@@ -196,22 +247,73 @@ func _fire_at(target: Node) -> void:
 
 	var dir: Vector2 = (target.global_position - global_position).normalized()
 
-	match attack_type:
-		AttackType.PROJECTILE:
-			_fire_projectile(dir)
-		AttackType.VINE:
-			_fire_vine(target, dir)
-
+	# CHANGED: the animation now starts FIRST. the shot used to be spawned
+	# above this line, before _play_attack() had run a single frame — the pet
+	# fired and then wound up.
 	_is_attacking = true
-	_play_attack(dir)
+	var anim: String = _play_attack(dir)
 
 	_attack_ready = false
 	attack_timer.wait_time = attack_cooldown
 	attack_timer.start()
 
-	# release the attack animation lock after a short fixed window instead of
-	# relying on animation_finished (which never fires if the attack anim loops).
-	_release_attack_lock_after(0.4)
+	# with release_frame set, the shot leaves on the frame the art actually
+	# throws it on (see _on_sprite_frame_changed). left at -1, or with no
+	# attack animation to hang it on, it fires immediately as before.
+	if release_frame < 0 or anim == "":
+		_release_shot(target, dir)
+	else:
+		_pending_target = target
+		_pending_dir = dir
+		_awaiting_release = true
+
+	# CHANGED: was a hardcoded 0.4s. every attack animation in the game is
+	# longer than that — a 9-frame attack at 5 fps runs 1.8s — so the lock
+	# dropped at roughly 22% and _update_follow immediately stomped the
+	# attack with walk/idle. deriving it from the animation's own length
+	# means changing an animation's fps in the editor now moves the lock
+	# with it, instead of silently desyncing from it.
+	#
+	# NOTE this costs nothing in mobility: _update_follow() sets velocity and
+	# calls move_and_slide() unconditionally. _is_attacking only gates which
+	# ANIMATION plays, never whether the pet moves — so a pet holding its
+	# attack animation still follows you at full speed.
+	_release_attack_lock_after(_attack_anim_duration(anim))
+
+
+func _release_shot(target: Node, dir: Vector2) -> void:
+	# the actual spawn, shared by the fire-immediately and release_frame
+	# paths so there's one definition of what an attack does.
+	match attack_type:
+		AttackType.PROJECTILE:
+			_fire_projectile(dir)
+		AttackType.VINE:
+			# vines spawn AT the target, so a target that died during the
+			# wind-up has nowhere to put one.
+			if is_instance_valid(target):
+				_fire_vine(target, dir)
+
+
+func _attack_anim_duration(anim: String) -> float:
+	# how long the attack animation actually runs, in seconds.
+	#
+	# falls back to the old fixed window when there's nothing to measure: no
+	# animation, or a LOOPING one — a loop never ends, so it can't define a
+	# lock duration. that looping case is what the previous comment here was
+	# worried about, and it's still handled; it just no longer punishes the
+	# non-looping animations that every pet actually uses.
+	const FALLBACK := 0.4
+	if anim == "" or not has_node("animatedsprite2d"):
+		return FALLBACK
+	var sf: SpriteFrames = $animatedsprite2d.sprite_frames
+	if sf == null or not sf.has_animation(anim):
+		return FALLBACK
+	if sf.get_animation_loop(anim):
+		return FALLBACK
+	var fps: float = sf.get_animation_speed(anim)
+	if fps <= 0.0:
+		return FALLBACK
+	return float(sf.get_frame_count(anim)) / fps
 
 
 func _release_attack_lock_after(seconds: float) -> void:
@@ -294,8 +396,11 @@ func _play_walk(dir: Vector2) -> void:
 	_play_directional("walk", dir)
 
 
-func _play_attack(dir: Vector2) -> void:
-	_play_directional("attack", dir)
+func _play_attack(dir: Vector2) -> String:
+	# CHANGED: returns the animation it played so the caller can measure its
+	# length. force_restart is true because an attack must replay from frame
+	# 0 every time — see _play_directional().
+	return _play_directional("attack", dir, true)
 
 
 func _play_idle() -> void:
@@ -306,29 +411,72 @@ func _play_idle() -> void:
 				sprite.play("idledown")
 
 
-func _play_directional(prefix: String, dir: Vector2) -> void:
+func _play_directional(prefix: String, dir: Vector2, force_restart: bool = false) -> String:
+	# CHANGED: now returns the animation name it settled on ("" if there
+	# wasn't one), so _fire_at() can measure the attack's real duration.
 	if not has_node("animatedsprite2d"):
-		return
+		return ""
 	var sprite: AnimatedSprite2D = $animatedsprite2d
 	if sprite.sprite_frames == null:
-		return
+		return ""
 	var suffix: String
 	if abs(dir.x) > abs(dir.y):
 		suffix = "right" if dir.x > 0 else "left"
 	else:
 		suffix = "down" if dir.y > 0 else "up"
 	var anim := prefix + suffix
-	if sprite.sprite_frames.has_animation(anim) and sprite.animation != anim:
+	if not sprite.sprite_frames.has_animation(anim):
+		return ""
+
+	# NEW: force_restart exists for attacks. the `animation != anim` check
+	# alone meant a SECOND attack in the same direction never called play()
+	# again — the non-looping animation stayed parked on its final frame and
+	# that shot had no visible wind-up at all. walk/idle still use the cheap
+	# check, since restarting a loop every frame would freeze it on frame 0.
+	if force_restart:
 		sprite.play(anim)
+		sprite.set_frame_and_progress(0, 0.0)
+	elif sprite.animation != anim:
+		sprite.play(anim)
+
+	return anim
 
 
 # =============================================================================
 # ATTACK ANIMATION LOCK
 # =============================================================================
 
+func _on_sprite_frame_changed() -> void:
+	# NEW: releases the shot on release_frame, mirroring bushsniper.gd's
+	# _on_frame_changed(). uses >= rather than == so a frame skipped by a
+	# dropped physics frame doesn't swallow the attack entirely.
+	if not _awaiting_release:
+		return
+	if not has_node("animatedsprite2d"):
+		return
+	var sprite: AnimatedSprite2D = $animatedsprite2d
+	if not sprite.animation.begins_with("attack"):
+		return
+	if sprite.frame < release_frame:
+		return
+
+	_awaiting_release = false
+	_release_shot(_pending_target, _pending_dir)
+
+
 func _on_sprite_animation_finished() -> void:
 	if not has_node("animatedsprite2d"):
 		return
 	var sprite: AnimatedSprite2D = $animatedsprite2d
-	if sprite.animation.begins_with("attack"):
-		_is_attacking = false
+	if not sprite.animation.begins_with("attack"):
+		return
+
+	# NEW: failsafe. if release_frame was set past the last frame of the
+	# animation, the frame callback never fires and the shot would be
+	# silently swallowed — the pet would play a full attack and do nothing.
+	# fire it here rather than lose it.
+	if _awaiting_release:
+		_awaiting_release = false
+		_release_shot(_pending_target, _pending_dir)
+
+	_is_attacking = false

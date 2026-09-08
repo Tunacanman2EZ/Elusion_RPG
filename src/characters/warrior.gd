@@ -42,9 +42,12 @@
 #     1. which attack animation plays — snapped to the nearest of 8 equal
 #        45° wedges (4 cardinals + 4 diagonals) via _octant_from_direction(),
 #        NOT player.gd's get_attack_animation() (that one stays 4-way, since
-#        mage/tank/healer don't have diagonal art). falls back to a cardinal
-#        animation with a warning if the diagonal clip doesn't exist yet —
-#        remove that fallback once all 8 attack animations are in.
+#        mage/tank/healer don't have diagonal art). falls back silently to
+#        a cardinal animation if the diagonal clip doesn't exist yet. the
+#        four diagonals (attackupleft/upright/downleft/downright) are NOT
+#        in warrior.tscn — this is known and expected, not an oversight,
+#        which is why the fallback no longer warns about it. drop the
+#        fallback entirely once all 8 attack animations are in.
 #     2. which hitboxXXXX / wavespawnXXXX node is treated as "active" for
 #        this swing — STILL 4-way (see note below), independent of the
 #        animation's granularity.
@@ -356,14 +359,19 @@ func attack_action() -> void:
 	last_direction = _swing_aim_direction
 
 	# NEW: 8-directional animation instead of player.gd's 4-way
-	# get_attack_animation(). falls back to the nearest cardinal (with a
-	# warning) if the diagonal clip isn't in the SpriteFrames yet — this
-	# lets code/testing proceed before all 8 attack animations exist.
-	# REMOVE the fallback once the artist delivers all 4 diagonals.
+	# get_attack_animation(). falls back to the nearest cardinal if the
+	# diagonal clip isn't in the SpriteFrames yet — this lets code/testing
+	# proceed before all 8 attack animations exist.
+	#
+	# CHANGED: this fallback used to push_warning() every time it fired.
+	# Since the four diagonals genuinely aren't drawn yet, that meant a
+	# warning on essentially every swing — most mouse aims aren't perfectly
+	# cardinal — burying real warnings under known, expected noise. The
+	# missing clips are documented in the class comment above instead.
+	# REMOVE the fallback entirely once the artist delivers all 4 diagonals.
 	var anim: String = "attack" + _octant_from_direction(_swing_aim_direction)
 	if sprite != null:
 		if not sprite.sprite_frames.has_animation(anim):
-			push_warning("Warrior: missing animation '%s', falling back to cardinal" % anim)
 			anim = "attack" + _cardinal_from_direction(_swing_aim_direction)
 		if sprite.sprite_frames.has_animation(anim):
 			sprite.play(anim)
@@ -492,6 +500,15 @@ func _spawn_slashwave() -> void:
 	# the true aim on a diagonal swing. same muzzle-offset technique
 	# pet.gd already uses for its own projectile spawning.
 	wave.global_position = global_position + _swing_aim_direction * wave_muzzle_offset
+
+	# NEW: the wave is added to the tree ABOVE and positioned here, on the
+	# line before this one. With common/physics_interpolation=true that
+	# ordering means its first rendered frame is blended from wherever the
+	# node sat on entering the tree to the muzzle — so the wave visibly
+	# smears out of the container's origin instead of appearing at the
+	# sword. Same discontinuity as teleporter.gd; same one-line fix.
+	wave.reset_physics_interpolation()
+
 	wave.damage = int(_calculate_melee_damage() * wave_damage_ratio)
 	# NEW: identifies the warrior for slashwave.gd's magic-XP-on-hit — see
 	# that file's class comment for why the wave (not the swing) grants

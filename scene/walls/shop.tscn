@@ -1,4 +1,4 @@
-[gd_scene format=4 uid="uid://c60th10yefp37"]
+[gd_scene format=4 uid="uid://bexfvynhnt8ln"]
 
 [ext_resource type="Texture2D" uid="uid://wckilo02vwsc" path="res://art/Tiles/houses read to use.png" id="1_c53l5"]
 [ext_resource type="Script" uid="uid://cfk8y737aigyj" path="res://src/ui/roofswap.gd" id="2_gpptt"]
