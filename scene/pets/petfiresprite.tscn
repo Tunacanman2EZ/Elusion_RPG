@@ -698,7 +698,7 @@ animations = [{
 [node name="petfiresprite" type="CharacterBody2D" unique_id=736242394]
 y_sort_enabled = true
 texture_filter = 1
-collision_layer = 8
+collision_layer = 0
 collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_4b4yj")

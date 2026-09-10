@@ -1062,6 +1062,8 @@ shape = SubResource("CapsuleShape2D_iybb3")
 
 [node name="hitboxright" type="Area2D" parent="." unique_id=1186619930]
 position = Vector2(67, 25)
+collision_layer = 32
+collision_mask = 8
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hitboxright" unique_id=1302896671]
 position = Vector2(-51, -24)
@@ -1070,6 +1072,8 @@ shape = SubResource("CapsuleShape2D_qbecf")
 debug_color = Color(0.9131094, 0.21419215, 0.5101747, 0.41960785)
 
 [node name="hitboxup" type="Area2D" parent="." unique_id=2025225062]
+collision_layer = 32
+collision_mask = 8
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hitboxup" unique_id=1151075294]
 position = Vector2(2, -17)
@@ -1077,6 +1081,8 @@ rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_4w1p4")
 
 [node name="hitboxdown" type="Area2D" parent="." unique_id=514226487]
+collision_layer = 32
+collision_mask = 8
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hitboxdown" unique_id=2130232141]
 position = Vector2(4, 19)

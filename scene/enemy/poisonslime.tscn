@@ -2326,6 +2326,8 @@ radius = 5.0
 height = 10.0
 
 [node name="poisonslime" type="CharacterBody2D" unique_id=19799735]
+collision_layer = 8
+collision_mask = 3
 script = ExtResource("1_dqs0b")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1469034060]
