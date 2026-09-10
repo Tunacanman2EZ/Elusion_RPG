@@ -102,6 +102,16 @@ const MARKER_NAMES := {
 @export var small_attack_range: float = 220.0
 @export var small_move_speed: float = 70.0
 
+# The healthbar in the scene is authored for the LARGE slime — roughly 36px
+# wide, sitting 37px above the origin. A small slime is about half that size,
+# so on a small the same bar is wider than the sprite and floats well clear of
+# it. With eight smalls on screen the bars stop reading as "enemy health" and
+# start reading as free-floating UI, which is exactly how it looked in play.
+#
+# These only apply when is_small is true; the large keeps the scene values.
+@export var small_healthbar_scale: float = 0.55
+@export var small_healthbar_offset_y: float = -22.0
+
 
 # =============================================================================
 # EXPORTED SETTINGS — DUPLICATE
@@ -206,11 +216,51 @@ func _ready() -> void:
 
 	super._ready()
 
+	# after super._ready(), because BaseEnemy._wire_healthbar() runs in there
+	# and sets min/max/value. It never touches geometry, so the size and
+	# position fix has to happen here.
+	_fit_healthbar_to_form()
+
 	# frame-accurate firing, same as bushsniper.gd.
 	if has_node("animatedsprite2d"):
 		var sprite: AnimatedSprite2D = $animatedsprite2d
 		if not sprite.frame_changed.is_connected(_on_frame_changed):
 			sprite.frame_changed.connect(_on_frame_changed)
+
+
+# ONE SCENE, TWO FORMS — the healthbar is the one node that didn't get the
+# memo. Everything else keyed off `is_small` (stats, animation prefix,
+# projectile, loot), but the bar kept the geometry authored for the large
+# slime, so a small slime wore a bar wider than its own sprite, floating well
+# above it. Eight of those on screen at once is why the field looked like it
+# was covered in stray UI.
+#
+# Control.scale is used rather than resizing the box, because TextureProgressBar
+# draws its textures at their own size unless nine-patch stretching is turned
+# on — shrinking the rect alone would clip the bar instead of scaling it.
+func _fit_healthbar_to_form() -> void:
+	if not is_small:
+		return
+	if not has_node("healthbar"):
+		return
+
+	var bar: Control = $healthbar
+
+	# derive the authored size from the offsets rather than reading `size`,
+	# which isn't reliably laid out yet this early.
+	var authored: Vector2 = Vector2(
+		bar.offset_right - bar.offset_left,
+		bar.offset_bottom - bar.offset_top
+	)
+
+	# scale about the bar's own centre. Without this, Control.scale shrinks
+	# toward the top-left corner and the bar slides off the slime.
+	bar.pivot_offset = authored * 0.5
+	bar.scale = Vector2.ONE * small_healthbar_scale
+
+	# and bring it down to sit just above the much shorter small sprite.
+	bar.offset_top = small_healthbar_offset_y
+	bar.offset_bottom = small_healthbar_offset_y + authored.y
 
 
 func _physics_process(delta: float) -> void:
