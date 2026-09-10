@@ -133,6 +133,14 @@ var is_attacking := false
 # sense for the old fixed-4-direction swing.
 @export var attack_locks_movement: bool = true
 
+# NEW: how hard the player shoves an enemy it walks into, in pixels/sec.
+# Enemies are solid to us but we are not solid to them (no enemy masks the
+# player layer), so without this an enemy that presses into you pins you with
+# no way out. Keep this BELOW `speed` — an enemy should yield to a shove more
+# slowly than you walk, so it reads as resistance rather than a bulldozer.
+# 0.0 disables shoving entirely and restores the old pinning behaviour.
+@export var enemy_push_strength: float = 50.0
+
 
 # =============================================================================
 # SPRINT
@@ -315,6 +323,7 @@ func _physics_process(_delta):
 			$animatedsprite2d.speed_scale = 1.0
 
 	move_and_slide()
+	_shove_blocking_enemies(_delta)
 
 	_idle_timer += _delta
 	if _idle_timer >= idle_threshold:
@@ -323,6 +332,58 @@ func _physics_process(_delta):
 			var points: int = int(_regen_accumulator)
 			_regen_accumulator -= points
 			_regen_stats(points)
+
+
+# =============================================================================
+# ENEMY SHOVING
+# =============================================================================
+#
+# The collision relationship between the player and enemies is deliberately
+# one-way: the player's collision_mask includes the enemies layer, but no
+# enemy's mask includes the player layer. That makes enemies solid to you
+# while you are not solid to them.
+#
+# On its own that is a trap. An enemy walks into you, you are blocked by it,
+# it is not blocked by you, and its AI keeps pressing forward — so you are
+# pinned with nothing to push against. This was very visible with the poison
+# slime, which splits into eight bodies that all converge on the same spot.
+#
+# The fix is not to make collision mutual. Mutual collision means a pack of
+# slimes jams against itself as well as against you, and pathfinding fights
+# the physics. Instead the player explicitly shoves whatever it walks into:
+# enemies stay solid and still block you, but leaning into one slides it out
+# of the way.
+#
+# move_and_collide() is used on the enemy rather than assigning
+# global_position directly, so the shove still respects walls — an enemy
+# cannot be pushed through geometry, it just stops moving once it's pinned
+# against something solid.
+#
+# Anything that should be immovable (the boss, a scripted encounter) can be
+# added to the "unpushable" group and this will skip it.
+func _shove_blocking_enemies(delta: float) -> void:
+	if enemy_push_strength <= 0.0:
+		return
+
+	for i in get_slide_collision_count():
+		var collision := get_slide_collision(i)
+
+		# cast rather than `is` + call: `other` stays statically typed as
+		# CharacterBody2D, so is_in_group()/move_and_collide() resolve without
+		# the parser complaining about calling Node methods on Object.
+		var other := collision.get_collider() as CharacterBody2D
+		if other == null or not is_instance_valid(other):
+			continue
+		if not other.is_in_group("enemies"):
+			continue
+		if other.is_in_group("unpushable"):
+			continue
+
+		# get_normal() points OUT of the surface we collided with, i.e. back
+		# toward us. Negating it gives the direction that moves the enemy
+		# away from the player.
+		var push: Vector2 = -collision.get_normal() * enemy_push_strength * delta
+		other.move_and_collide(push)
 
 
 # =============================================================================
