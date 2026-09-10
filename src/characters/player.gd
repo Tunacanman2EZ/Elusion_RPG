@@ -513,6 +513,21 @@ func _regen_stats(amount: int) -> void:
 # FLOATING LABEL FEEDBACK
 # =============================================================================
 
+# Where damage/heal/level-up popups get parented.
+#
+# BaseEnemy._spawn_floating_label() already looked for a node in the
+# "floatinglabels" group — a dedicated, high-z_index, non-y-sorted layer so
+# numbers always draw over the world instead of being sorted behind a tree or
+# an enemy. The player's popups never used it and went straight to the scene
+# root, so the two halves of the same feedback system behaved differently.
+# This makes both take the same path.
+func _label_container() -> Node:
+	var container: Node = get_tree().get_first_node_in_group("floatinglabels")
+	if container != null:
+		return container
+	return get_tree().current_scene
+
+
 func _spawn_floating_label(amount: int, type: int) -> void:
 	if FLOATING_LABEL_SCENE == null:
 		push_warning("Player: FLOATING_LABEL_SCENE not loaded")
@@ -522,7 +537,7 @@ func _spawn_floating_label(amount: int, type: int) -> void:
 	if lbl == null:
 		return
 
-	get_tree().current_scene.add_child(lbl)
+	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -30)
 	if lbl.has_method("show_number"):
 		lbl.show_number(amount, type)
@@ -534,7 +549,7 @@ func _spawn_levelup_popup() -> void:
 	var lbl = FLOATING_LABEL_SCENE.instantiate()
 	if lbl == null:
 		return
-	get_tree().current_scene.add_child(lbl)
+	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -40)
 	if lbl.has_method("show_text"):
 		lbl.show_text("LEVEL UP!\n%d" % level, 3, 2.0, 1.5)
@@ -549,7 +564,7 @@ func _spawn_defense_tier_popup(tier_name: String) -> void:
 	var lbl = FLOATING_LABEL_SCENE.instantiate()
 	if lbl == null:
 		return
-	get_tree().current_scene.add_child(lbl)
+	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -45)
 	if lbl.has_method("show_text"):
 		lbl.show_text("DEFENSE TIER\n%s" % tier_name, 3, 2.0, 1.5)
@@ -562,7 +577,7 @@ func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
 	var lbl = FLOATING_LABEL_SCENE.instantiate()
 	if lbl == null:
 		return
-	get_tree().current_scene.add_child(lbl)
+	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -35)
 	if lbl.has_method("show_text"):
 		lbl.show_text("%s %d" % [display, new_level], 4, 1.2, 0.9)

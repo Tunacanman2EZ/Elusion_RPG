@@ -1855,7 +1855,7 @@ y_sort_enabled = true
 position = Vector2(684, 590)
 scale = Vector2(2.165, 2.165)
 
-[node name="floatinglabels" type="Node2D" parent="." unique_id=759395048]
+[node name="floatinglabels" type="Node2D" parent="." unique_id=759395048 groups=["floatinglabels"]]
 z_index = 90
 
 [node name="playerspawn" type="Marker2D" parent="." unique_id=406004618]

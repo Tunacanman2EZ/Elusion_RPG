@@ -57,6 +57,20 @@ enum Type {
 @export var horizontal_drift_range: float = 30.0
 @export var rotation_jitter_range: float = 0.15
 
+# IMMEDIATE spawn offset, in world pixels.
+#
+# horizontal_drift_range above only separates labels OVER TIME — it's a
+# velocity, so at t=0 every label spawned on the same frame sits at exactly
+# the same point, and that's precisely when they're fully opaque and most
+# readable. Two hits in one frame rendered as "79" and "10" stacked into an
+# unreadable "7910". This pushes each new label off the spawn point straight
+# away, so simultaneous popups are already separated on their first frame.
+@export var spawn_scatter_radius: float = 10.0
+
+# how much the scatter is squashed vertically. Damage numbers read better
+# fanned out sideways than stacked up a column, so this stays below 1.0.
+@export var spawn_scatter_vertical_bias: float = 0.45
+
 
 # =============================================================================
 # EXPORTED SETTINGS — COLORS
@@ -83,6 +97,13 @@ enum Type {
 var _elapsed: float = 0.0
 var _start_position: Vector2
 var _velocity: Vector2 = Vector2.ZERO
+
+# Shared across every label in the game. Each new popup takes the next index
+# and scatters along the golden angle, which is the classic way to place
+# points so that CONSECUTIVE ones never land near each other — random offsets
+# would still collide roughly as often as they don't. Wrapping the counter
+# keeps it from growing without bound over a long session.
+static var _spawn_index: int = 0
 
 # active lifetime for THIS instance — set per show call so level-up popups
 # can linger longer (or shorter) than the default numeric lifetime.
@@ -153,6 +174,17 @@ func _begin(text: String, type: Type, life: float) -> void:
 
 	_active_lifetime = life
 	_elapsed = 0.0
+
+	# fan out from the spawn point BEFORE caching the position, so labels that
+	# appear on the same frame are already separated rather than relying on
+	# drift velocity to pull them apart later.
+	if spawn_scatter_radius > 0.0:
+		_spawn_index = (_spawn_index + 1) % 1000
+		var angle: float = float(_spawn_index) * 2.3999632  # golden angle, radians
+		global_position += Vector2(
+			cos(angle),
+			sin(angle) * spawn_scatter_vertical_bias
+		) * spawn_scatter_radius
 
 	# cache position NOW — this is the spawner's intended location
 	_start_position = global_position

@@ -1406,6 +1406,9 @@ position = Vector2(244, 197)
 [node name="poisonslime3" parent="." unique_id=478919388 instance=ExtResource("16_skip5")]
 position = Vector2(222, 248)
 
+[node name="floatinglabels" type="Node2D" parent="." unique_id=759395050 groups=["floatinglabels"]]
+z_index = 90
+
 [connection signal="body_entered" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_exited"]
 [connection signal="body_entered" from="ysortworld/interactables/ladderdown" to="ysortworld/interactables/ladderdown" method="_on_body_entered"]
