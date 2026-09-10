@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[ext_resource type="Texture2D" uid="uid://c5vl8cqikb6ga" path="res://art/enemy/slime2.png" id="1_sheet"]
+[ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/projectiles/arrow.gd" id="2_script"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_greenarrow"]
+atlas = ExtResource("1_sheet")
+region = Rect2(0, 384, 48, 48)
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_greenarrow"]
+radius = 1.5
+height = 17.0
+
+[node name="poisonarrow" type="Area2D"]
+collision_layer = 64
+collision_mask = 4
+script = ExtResource("2_script")
+
+[node name="sprite2d" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = SubResource("AtlasTexture_greenarrow")
+
+[node name="attackrange" type="CollisionShape2D" parent="."]
+position = Vector2(1.5, 0.5)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_greenarrow")
+
+[node name="visableonscreennotifier2d" type="VisibleOnScreenNotifier2D" parent="."]
+position = Vector2(1.5, 0.5)
+rect = Rect2(-12, -4, 24, 8)

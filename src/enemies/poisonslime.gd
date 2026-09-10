@@ -47,7 +47,11 @@ class_name PoisonSlime
 const SELF_SCENE_PATH := "res://scene/enemy/poisonslime.tscn"
 
 const POISONBALL_SCENE := preload("res://scene/projectiles/poisonball.tscn")
-const ARROW_SCENE := preload("res://scene/projectiles/arrow.tscn")
+
+# the small slime's own green arrow, from slime2.png. NOT bushsniper's
+# arrow.tscn — that one is brown and belongs to a different enemy. Both run
+# the same arrow.gd; only the sprite and hitbox differ.
+const ARROW_SCENE := preload("res://scene/projectiles/poisonarrow.tscn")
 
 # directional spawn markers, named the same way the animations are: the
 # large form has no prefix, the small form takes a "small" one.
