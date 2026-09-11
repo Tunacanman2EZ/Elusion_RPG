@@ -134,7 +134,13 @@ func _make_attack_timer() -> Timer:
 
 
 func _physics_process(_delta: float) -> void:
-	if player == null:
+	# is_instance_valid(), NOT == null. A freed node is not null - it is a
+	# dangling reference, and touching one throws. _resolve_player() below
+	# already knew this and said so in its own comment; this guard, twenty
+	# lines above it, did not. The player is freed on death and on every scene
+	# change, so a stale reference here reached _update_follow() and touched a
+	# freed instance every physics tick.
+	if not is_instance_valid(player):
 		_resolve_player()
 		return
 
