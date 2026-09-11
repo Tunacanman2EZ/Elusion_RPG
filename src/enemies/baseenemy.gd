@@ -743,7 +743,24 @@ func _vec_from_dir(dir: String) -> Vector2:
 # DAMAGE AND DEATH
 # =============================================================================
 
+# NEW: has the death path already run for this enemy?
+#
+# queue_free() is DEFERRED to the end of the frame, so a dead enemy is still a
+# live node for the rest of that frame - and two things landing in the same
+# frame both reach take_damage(). Enemies carry several shapes on the enemies
+# layer at once (bushmage has a hurtbox plus four overlapping attack boxes), so
+# one shot genuinely can register twice.
+#
+# Without this, the second hit re-ran the whole death path: XP granted twice,
+# a second loot bag spawned, and a second INDEPENDENT pet roll - on the rarest
+# drop in the game.
+var _death_resolved: bool = false
+
+
 func take_damage(amount: int, _type: StringName = &"physical") -> void:
+	if _death_resolved:
+		return
+
 	hp = max(hp - amount, 0)
 	damaged.emit(amount)
 
@@ -760,6 +777,13 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 
 
 func _die() -> void:
+	# Second layer of the same guard. take_damage() is the usual route in, but
+	# anything holding a reference can call _die() directly, and the loot roll
+	# must not be reachable twice by any path.
+	if _death_resolved:
+		return
+	_death_resolved = true
+
 	_release_slot()
 
 	var killer: Node = player
