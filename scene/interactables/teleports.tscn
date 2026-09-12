@@ -14,7 +14,7 @@ texture_filter = 1
 scale = Vector2(0.928403, 0.135342)
 script = ExtResource("1_wwtix")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="teleporter" unique_id=1980648528]
+[node name="collisionshape2d" type="CollisionShape2D" parent="teleporter" unique_id=1980648528]
 modulate = Color(0, 0, 0, 1)
 self_modulate = Color(0.00184107, 0.00184107, 0.00184107, 1)
 z_index = 1
@@ -24,7 +24,7 @@ scale = Vector2(0.532251, -2.53758)
 shape = SubResource("CircleShape2D_impho")
 debug_color = Color(0.954221, 0.990519, 1, 0.42)
 
-[node name="DestinationPoint" type="Marker2D" parent="teleporter" unique_id=680847466]
+[node name="destinationpoint" type="Marker2D" parent="teleporter" unique_id=680847466]
 texture_filter = 1
 position = Vector2(510.55414, 7063.587)
 
