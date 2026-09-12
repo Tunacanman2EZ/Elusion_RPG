@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://qy7rh71t4jgb"]
 
 [ext_resource type="Script" uid="uid://cbngu4ostlmb" path="res://src/ui/menus/gameover.gd" id="1_pocqk"]
+[ext_resource type="Texture2D" uid="uid://c5o2yel3ffmjp" path="res://art/menu/game over.png" id="2_6xpx0"]
 
 [node name="gameover" type="Control" unique_id=285483500]
 layout_mode = 3
@@ -11,14 +12,11 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_pocqk")
 
-[node name="background" type="ColorRect" parent="." unique_id=139272576]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0, 0, 0.21176471, 0.003921569)
+[node name="TextureRect" type="TextureRect" parent="." unique_id=561673467]
+layout_mode = 0
+offset_right = 1283.0
+offset_bottom = 727.0
+texture = ExtResource("2_6xpx0")
 
 [node name="PanelContainer" type="PanelContainer" parent="." unique_id=1948850412]
 custom_minimum_size = Vector2(400, 300)
@@ -28,15 +26,17 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -20.0
-offset_top = -20.0
-offset_right = 20.0
-offset_bottom = 20.0
+offset_left = 99.0
+offset_top = -157.0
+offset_right = 499.0
+offset_bottom = 162.0
 grow_horizontal = 2
 grow_vertical = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="PanelContainer" unique_id=77582573]
 layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
 theme_override_constants/separation = 20
 alignment = 1
 
@@ -48,19 +48,19 @@ horizontal_alignment = 1
 
 [node name="flavortext1" type="Label" parent="PanelContainer/VBoxContainer" unique_id=1558198365]
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
-text = "Hopefully you are better,"
+theme_override_font_sizes/font_size = 16
+text = "Hopefully you are better"
 horizontal_alignment = 1
 
 [node name="flavortext2" type="Label" parent="PanelContainer/VBoxContainer" unique_id=627148165]
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
-text = "prepared in your next reincarnation."
+theme_override_font_sizes/font_size = 16
+text = "prepared, in your next reincarnation."
 horizontal_alignment = 1
 
 [node name="flavortext3" type="Label" parent="PanelContainer/VBoxContainer" unique_id=722156258]
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 16
 text = "Take a break come back stronger!"
 horizontal_alignment = 1
 
