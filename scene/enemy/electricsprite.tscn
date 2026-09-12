@@ -694,8 +694,8 @@ radius = 5.0
 height = 10.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_fy2rl"]
-radius = 5.0
-height = 10.0
+radius = 10.0
+height = 20.0
 
 [node name="electricsprite" type="CharacterBody2D" unique_id=289962471]
 y_sort_enabled = true

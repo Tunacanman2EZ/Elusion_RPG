@@ -230,8 +230,26 @@ func _physics_process(_delta: float) -> void:
 # instead of the old soft push-apart force — turning on the nav agent's
 # own avoidance too would mean two separate systems fighting over the
 # same job.
-const STUCK_DISTANCE_THRESHOLD := 2.0
-const STUCK_FRAMES_BEFORE_SWITCH := 5
+# CHANGED: "stuck" is now measured against how far this enemy SHOULD have
+# moved, and counted in seconds rather than frames.
+#
+# The old test was `moved_distance < 2.0` per physics frame. The project runs
+# at 180 physics ticks per second, and the fastest enemy in the game is the
+# small slime at 70 px/s - which is 0.39 px per frame. So a perfectly healthy
+# enemy moving at full speed was ALWAYS under the 2.0 threshold, the counter
+# incremented every single frame, and the else-branch that resets it was
+# unreachable during normal movement.
+#
+# The visible result: every enemy flipped to its secondary axis after 28ms and
+# called _release_slot() after 133ms, forever. Formation slots were dropped and
+# re-claimed about seven times a second, so enemies never settled into the ring
+# and bunched around the player instead - the exact thing the slot system was
+# built to prevent.
+#
+# A fraction of expected movement is both tick-rate independent and speed
+# independent, which the old constant was neither.
+const STUCK_MOVE_FRACTION := 0.25
+const STUCK_SECONDS_BEFORE_SWITCH := 0.08
 
 # NEW: if even the axis-swap fallback hasn't resolved things after this
 # much longer, the real problem likely isn't a static wall — it's another
@@ -241,10 +259,10 @@ const STUCK_FRAMES_BEFORE_SWITCH := 5
 # point the enemy gives up on its current slot entirely and claims a
 # different one — a bigger, more decisive move than nudging direction,
 # which is what actually breaks a two-enemy deadlock.
-const STUCK_FRAMES_BEFORE_RECLAIM := 24
+const STUCK_SECONDS_BEFORE_RECLAIM := 0.4
 
 var _prefer_secondary_axis: bool = false
-var _stuck_frame_count: int = 0
+var _stuck_time: float = 0.0
 
 func _setup_navigation() -> void:
 	nav_agent = NavigationAgent2D.new()
@@ -286,7 +304,24 @@ func _setup_navigation() -> void:
 # is a tunable value, adjust further if it still feels too spread out or
 # starts feeling cramped once you see it in motion.
 const TILE_SIZE := 20.0
-const FORMATION_RING_COUNT := 3  # generates 16 + 24 + 32 = 72 slots — comfortably more than any realistic simultaneous encounter
+const FORMATION_RING_COUNT := 3
+
+# Tiles between one slot and the next.
+#
+# WAS EFFECTIVELY 1, which is why enemies looked piled even when the formation
+# was working. A slot is 20px from its neighbour, but the large slime's sprite
+# is 31px wide - so two enemies standing in adjacent slots overlap by 11px, and
+# their collision bodies (radius 5, so 10px across) are far too small for
+# physics to push them apart. The art was three times wider than the thing
+# keeping them separated.
+#
+# A stride of 2 puts a full empty tile between every pair of neighbours: 40px
+# between centres against a 31px sprite, so roughly 9px of clear ground. That
+# is the "solid square apart" spacing.
+#
+# Ring 1 still sits 40px from the player, so no attack range changes.
+# Slot count goes 8 + 16 + 24 = 48, still more than any real encounter.
+const FORMATION_SLOT_STRIDE := 2
 
 # NEW: once within this many pixels of the claimed slot, stop and hold
 # an idle pose instead of continuing to chase it. WHY: right at the
@@ -308,9 +343,9 @@ static func _ensure_slot_defs_built() -> void:
 	if not SLOT_DEFS.is_empty():
 		return
 	for ring in range(1, FORMATION_RING_COUNT + 1):
-		var d: int = ring + 1
-		for dx in range(-d, d + 1):
-			for dy in range(-d, d + 1):
+		var d: int = ring * FORMATION_SLOT_STRIDE
+		for dx in range(-d, d + 1, FORMATION_SLOT_STRIDE):
+			for dy in range(-d, d + 1, FORMATION_SLOT_STRIDE):
 				if max(abs(dx), abs(dy)) == d:
 					SLOT_DEFS.append({"tile_offset": Vector2i(dx, dy)})
 
@@ -338,7 +373,14 @@ func _get_slot_target_position(tile_size: float = TILE_SIZE) -> Vector2:
 		return player.global_position
 
 	var offset: Vector2i = SLOT_DEFS[_claimed_slot]["tile_offset"]
-	return player.global_position + Vector2(offset.x, offset.y) * tile_size
+	var raw: Vector2 = player.global_position + Vector2(offset.x, offset.y) * tile_size
+
+	# CLAMPED, because a slot is just an arithmetic offset from the player and
+	# arithmetic knows nothing about walls. Stand the player against geometry
+	# and half the formation ring lands INSIDE it - enemies then path toward a
+	# point that does not exist, grind into the wall, and pile up at the
+	# nearest corner because they are all failing in the same direction.
+	return clamp_to_navigation(raw)
 
 
 func _ensure_slot_claimed() -> void:
@@ -349,15 +391,57 @@ func _ensure_slot_claimed() -> void:
 	if _claimed_slot != -1 and _slot_owners.get(_claimed_slot) == self:
 		return
 
+	# NEAREST free slot, not the first one in the list.
+	#
+	# SLOT_DEFS is built ring by ring in a fixed order, so taking the first
+	# free entry handed out tiles by index rather than by proximity. An enemy
+	# approaching from the south would happily claim a tile on the NORTH side
+	# and walk straight through the player to reach it - so chasers crossed
+	# each other's paths and bunched in transit, which is what the formation
+	# was supposed to stop. Picking the closest free tile means each enemy
+	# settles on its own side and paths stop intersecting.
+	if not is_instance_valid(player):
+		_claimed_slot = -1
+		return
+
+	var anchor: Vector2 = player.global_position
+
+	# Gather the free slots and sort by how close they are to US, then take the
+	# first one that is actually standable. Sorting before validating keeps the
+	# navmesh queries cheap - the nearest slot is usually fine, so this costs
+	# one or two lookups rather than one per slot.
+	var candidates: Array = []
 	for i in range(SLOT_DEFS.size()):
 		if i == _last_released_slot:
 			continue  # don't immediately re-claim the slot just given up on
+
 		var slot_owner = _slot_owners.get(i)
-		if slot_owner == null or not is_instance_valid(slot_owner):
-			_slot_owners[i] = self
-			_claimed_slot = i
-			_last_released_slot = -1
-			return
+		if slot_owner != null and is_instance_valid(slot_owner):
+			continue
+
+		var offset: Vector2i = SLOT_DEFS[i]["tile_offset"]
+		var slot_world: Vector2 = anchor + Vector2(offset.x, offset.y) * TILE_SIZE
+		candidates.append({
+			"index": i,
+			"world": slot_world,
+			"distance": global_position.distance_squared_to(slot_world),
+		})
+
+	candidates.sort_custom(func(a, b): return a["distance"] < b["distance"])
+
+	for candidate in candidates:
+		# A slot the navmesh has to drag more than half a tile to reach is a
+		# slot inside a wall. Claiming it means walking at geometry forever, so
+		# skip to the next nearest instead - which naturally spreads enemies
+		# onto the side of the player that is actually open.
+		var world: Vector2 = candidate["world"]
+		if clamp_to_navigation(world).distance_to(world) > TILE_SIZE * 0.5:
+			continue
+
+		_slot_owners[candidate["index"]] = self
+		_claimed_slot = candidate["index"]
+		_last_released_slot = -1
+		return
 
 	# every slot already taken by a still-valid enemy — none available
 	# right now (would need more than 28 simultaneous chasers).
@@ -396,7 +480,7 @@ func _get_direction_to_point_via_navigation(target_pos: Vector2) -> String:
 	# stacking-avoidance system (push apart, path back together, repeat).
 	if _has_line_of_sight(target_pos):
 		_prefer_secondary_axis = false
-		_stuck_frame_count = 0
+		_stuck_time = 0.0
 		return _get_direction_from_vec(target_pos - global_position)
 
 	if nav_agent == null:
@@ -457,24 +541,30 @@ func _get_secondary_direction_from_vec(vec: Vector2) -> String:
 # resets immediately the moment real movement resumes, on either axis.
 #
 # NEW: escalates further if the axis-swap alone still isn't working —
-# see STUCK_FRAMES_BEFORE_RECLAIM's comment above for why (most likely
+# see STUCK_SECONDS_BEFORE_RECLAIM's comment above for why (most likely
 # another enemy contesting a nearby slot, not a static wall). releasing
 # the slot here means the very next _get_slot_target_position call
 # (next frame) claims a different one automatically.
 func _record_nav_movement_result(pos_before: Vector2) -> void:
 	var moved_distance: float = global_position.distance_to(pos_before)
+	var delta: float = get_physics_process_delta_time()
 
-	if moved_distance < STUCK_DISTANCE_THRESHOLD:
-		_stuck_frame_count += 1
+	# What a clear, unobstructed frame of movement looks like for THIS enemy at
+	# THIS tick rate. Comparing against a fraction of it is what makes the test
+	# survive a change to either.
+	var expected_distance: float = get_move_speed() * delta
+
+	if moved_distance < expected_distance * STUCK_MOVE_FRACTION:
+		_stuck_time += delta
 	else:
-		_stuck_frame_count = 0
+		_stuck_time = 0.0
 		_prefer_secondary_axis = false
 
-	_prefer_secondary_axis = _stuck_frame_count >= STUCK_FRAMES_BEFORE_SWITCH
+	_prefer_secondary_axis = _stuck_time >= STUCK_SECONDS_BEFORE_SWITCH
 
-	if _stuck_frame_count >= STUCK_FRAMES_BEFORE_RECLAIM:
+	if _stuck_time >= STUCK_SECONDS_BEFORE_RECLAIM:
 		_release_slot()
-		_stuck_frame_count = 0
+		_stuck_time = 0.0
 		_prefer_secondary_axis = false
 
 

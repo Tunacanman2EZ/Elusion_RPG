@@ -2322,8 +2322,8 @@ radius = 8.0
 height = 16.0
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_7i1f5"]
-radius = 5.0
-height = 10.0
+radius = 10.0
+height = 20.0
 
 [node name="poisonslime" type="CharacterBody2D" unique_id=19799735]
 collision_layer = 8

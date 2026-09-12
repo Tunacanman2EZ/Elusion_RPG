@@ -1585,7 +1585,8 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_igatj"]
-height = 22.0
+height = 20.0
+radius = 10.0
 
 [node name="bossenemy" type="CharacterBody2D" unique_id=805374105]
 light_mask = 8
