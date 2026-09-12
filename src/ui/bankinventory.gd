@@ -27,7 +27,11 @@ class_name BankInventory
 # =============================================================================
 
 # emitted when the bank closes — close button OR walk-away from chest.
-# the HUD listens to this for cleanup hooks.
+#
+# NOTE: nothing is connected to this right now. the comment here used to claim
+# the HUD listens for cleanup hooks; it doesn't, and the inventory-hiding that
+# close_bank() does below is the cleanup that claim was describing. left in
+# place as a hook for anything that later needs to react to the bank closing.
 signal closed
 
 
@@ -131,6 +135,16 @@ func close_bank() -> void:
 	# alt-F4s right after this, the bank is already on disk).
 	_save_bank_contents()
 	visible = false
+
+	# open_bank() force-opens the carry inventory so items can be dragged
+	# between the two panels. that pairing has to be symmetrical: the bank
+	# opened it, so the bank puts it away. without this, walking away from the
+	# chest left the inventory sitting open on its own, with the thing it was
+	# opened to drag to already gone.
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	if hud != null and hud.has_method("hide_inventory"):
+		hud.hide_inventory()
+
 	closed.emit()
 
 
