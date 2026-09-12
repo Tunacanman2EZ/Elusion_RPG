@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://hps7hjd7tu1i" path="res://src/core/field.gd" id="1_odcg7"]
 [ext_resource type="Texture2D" uid="uid://b300c2ikysmls" path="res://art/tiles/tiles2.png" id="2_aw5uv"]
 [ext_resource type="Texture2D" uid="uid://clru34rpbm7dh" path="res://art/tiles/underground.png" id="3_0d0g4"]
-[ext_resource type="Texture2D" uid="uid://tmjenpld6v4b" path="res://art/tiles/teleporter.png" id="3_ahwvv"]
+[ext_resource type="SpriteFrames" path="res://art/teleport/teleportframes.tres" id="3_tpfrm"]
 [ext_resource type="Script" uid="uid://blrs7e81o2jg4" path="res://src/world/fieldportal.gd" id="4_0d0g4"]
 [ext_resource type="Texture2D" uid="uid://bqrdng62wxpnl" path="res://art/tiles/trees read to use.png" id="4_0si61"]
 [ext_resource type="PackedScene" uid="uid://cm0fcw1150850" path="res://scene/ui/floatinglabel.tscn" id="5_0si61"]
@@ -1234,9 +1234,10 @@ collision_mask = 4
 script = ExtResource("5_4lur4")
 vanish_after_first_use = true
 
-[node name="teleport" type="Sprite2D" parent="ysortworld/interactables/fieldteleport" unique_id=1729600057]
+[node name="teleport" type="AnimatedSprite2D" parent="ysortworld/interactables/fieldteleport" unique_id=1729600057]
 texture_filter = 1
-texture = ExtResource("3_ahwvv")
+sprite_frames = ExtResource("3_tpfrm")
+autoplay = "default"
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="ysortworld/interactables/fieldteleport" unique_id=784126217]
 texture_filter = 1

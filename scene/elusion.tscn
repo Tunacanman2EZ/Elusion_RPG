@@ -13,7 +13,7 @@
 [ext_resource type="Texture2D" uid="uid://b300c2ikysmls" path="res://art/tiles/tiles2.png" id="8_nivb4"]
 [ext_resource type="Texture2D" uid="uid://b3phdst3p5y1q" path="res://art/tiles/tiles3.png" id="10_k5s2q"]
 [ext_resource type="Script" uid="uid://dm0wvqr63gv05" path="res://src/world/teleporter.gd" id="17_8xafn"]
-[ext_resource type="Texture2D" uid="uid://tmjenpld6v4b" path="res://art/tiles/teleporter.png" id="17_tfn2f"]
+[ext_resource type="SpriteFrames" path="res://art/teleport/teleportframes.tres" id="17_tpfrm"]
 [ext_resource type="Texture2D" uid="uid://strclxayv16h" path="res://art/tiles/tiles4.png" id="20_ne5ey"]
 [ext_resource type="Texture2D" uid="uid://b80rjrtlrnpsf" path="res://art/tiles/font.png" id="22_a82r8"]
 [ext_resource type="Texture2D" uid="uid://0j521eqx26x0" path="res://art/tiles/tiles5.png" id="23_v7ajh"]
@@ -1796,11 +1796,12 @@ collision_layer = 16
 collision_mask = 4
 script = ExtResource("17_8xafn")
 
-[node name="teleporter" type="Sprite2D" parent="ysortworld/interactables/teleportnextarea" unique_id=1073445355]
+[node name="teleporter" type="AnimatedSprite2D" parent="ysortworld/interactables/teleportnextarea" unique_id=1073445355]
 texture_filter = 1
 position = Vector2(1, 391.00003)
 scale = Vector2(2.5, 2.2499998)
-texture = ExtResource("17_tfn2f")
+sprite_frames = ExtResource("17_tpfrm")
+autoplay = "default"
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="ysortworld/interactables/teleportnextarea" unique_id=2145867989]
 texture_filter = 1
@@ -1821,11 +1822,12 @@ script = ExtResource("31_qpfit")
 destination_scene = ExtResource("32_bqp1a")
 target_spawn_id = "field_entrance"
 
-[node name="teleporter" type="Sprite2D" parent="ysortworld/interactables/leavetown" unique_id=136317958]
+[node name="teleporter" type="AnimatedSprite2D" parent="ysortworld/interactables/leavetown" unique_id=136317958]
 texture_filter = 1
 position = Vector2(1, 391.00003)
 scale = Vector2(2.5, 2.2499998)
-texture = ExtResource("17_tfn2f")
+sprite_frames = ExtResource("17_tpfrm")
+autoplay = "default"
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="ysortworld/interactables/leavetown" unique_id=739431371]
 texture_filter = 1
