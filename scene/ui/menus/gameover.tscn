@@ -62,7 +62,7 @@ horizontal_alignment = 1
 [node name="flavortext2" type="Label" parent="PanelContainer/VBoxContainer" unique_id=627148165]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "prepared, in your next reincarnation."
+text = "prepared in your next reincarnation."
 horizontal_alignment = 1
 
 [node name="flavortext3" type="Label" parent="PanelContainer/VBoxContainer" unique_id=722156258]
