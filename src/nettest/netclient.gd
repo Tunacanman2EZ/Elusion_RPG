@@ -148,8 +148,11 @@ func fetch_status(slot: int) -> Dictionary:
 	if not res.ok:
 		return _local(_placeholder_status(slot), res.error)
 
-	var body: Dictionary = _dict(res.data)
-	return _live({
+	return _live(_normalise_status(_dict(res.data), slot))
+
+
+func _normalise_status(body: Dictionary, slot: int) -> Dictionary:
+	return {
 		"slot":        _as_int(body.get("slot"), slot),
 		"level":       _as_int(body.get("level"), 1),
 		"hp":          _as_int(body.get("hp"), 0),
@@ -161,7 +164,49 @@ func fetch_status(slot: int) -> Dictionary:
 		"gold":        _as_int(body.get("gold"), 0),
 		"xp":          _as_int(body.get("xp"), 0),
 		"xp_to_next":  _as_int(body.get("xp_to_next"), 1),
-	})
+	}
+
+
+# PUT /api/player/status — push current values up.
+#
+# PARTIAL BY DESIGN: only the keys in `fields` are sent, and the server only
+# writes the keys it receives. That means a caller that knows nothing about
+# stamina can push hp without silently zeroing it, and it keeps the request
+# small enough to send often.
+#
+# There is no local fallback here. A write that didn't reach the server did
+# not happen, and pretending otherwise would show the player a number that
+# exists nowhere but their own screen.
+func push_status(slot: int, fields: Dictionary) -> Dictionary:
+	if not Api.is_logged_in():
+		return _dead("Not logged in.")
+	if fields.is_empty():
+		return _dead("Nothing to push.")
+
+	var body: Dictionary = fields.duplicate()
+	body["slot"] = slot
+
+	var res: Dictionary = await Api.put("/api/player/status", body)
+	if not res.ok:
+		return _dead(res.error)
+
+	return _live(_normalise_status(_dict(res.data), slot))
+
+
+# PUT /api/save — write the character row itself (class, name, level, area).
+# Distinct from push_status: this is who you are, that is how you're doing.
+func push_save(slot: int, fields: Dictionary) -> Dictionary:
+	if not Api.is_logged_in():
+		return _dead("Not logged in.")
+
+	var body: Dictionary = fields.duplicate()
+	body["slot"] = slot
+
+	var res: Dictionary = await Api.put("/api/save", body)
+	if not res.ok:
+		return _dead(res.error)
+
+	return _live(_dict(res.data))
 
 
 func _placeholder_status(slot: int) -> Dictionary:
@@ -225,12 +270,37 @@ func _normalise_bank(body: Dictionary, slot: int) -> Dictionary:
 		})
 
 	return {
-		"slot":     _as_int(body.get("slot"), slot),
-		"gold":     _as_int(body.get("gold"), 0),
-		"capacity": _as_int(body.get("capacity"), 40),
-		"items":    items,
+		"slot":         _as_int(body.get("slot"), slot),
+		"gold":         _as_int(body.get("gold"), 0),
+		"carried_gold": _as_int(body.get("carried_gold"), 0),
+		"capacity":     _as_int(body.get("capacity"), 40),
+		"items":        items,
 	}
 
 
 func _placeholder_bank(slot: int) -> Dictionary:
-	return {"slot": slot, "gold": 0, "capacity": 40, "items": []}
+	return {"slot": slot, "gold": 0, "carried_gold": 0, "capacity": 40, "items": []}
+
+
+# POST /api/bank/gold — move gold between the character and the bank.
+#
+# A SEPARATE CALL FROM bank_op() ON PURPOSE. Items and gold look like the same
+# operation and aren't. Depositing an item is a one-sided write: the server has
+# no idea what's in your inventory, so it can only record what it was handed.
+# Gold is a TRANSFER, and the server holds both balances — so it can verify
+# that the total is conserved and refuse a deposit larger than you're carrying.
+# Collapsing them into one endpoint would throw that check away.
+func bank_gold_op(slot: int, op: String, amount: int) -> Dictionary:
+	if not Api.is_logged_in():
+		return _dead("Not logged in.")
+
+	var res: Dictionary = await Api.post("/api/bank/gold", {
+		"slot": slot,
+		"op": op,
+		"amount": amount,
+	})
+
+	if not res.ok:
+		return _dead(res.error)
+
+	return _live(_normalise_bank(_dict(res.data), slot))
