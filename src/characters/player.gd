@@ -1064,8 +1064,18 @@ func _despawn_current_pet() -> void:
 	# tracked by active_pet_id at all. pet.gd's own _ready() already calls
 	# add_to_group("pets"), so this just leans on that existing tag.
 	for pet in get_tree().get_nodes_in_group("pets"):
-		if is_instance_valid(pet):
-			pet.queue_free()
+		if not is_instance_valid(pet):
+			continue
+		# TYPE CHECK, not just the group. field.tscn had its pets CONTAINER
+		# tagged "pets" - the same group pets themselves join - so summoning a
+		# pet in the field deleted that container node out of the scene. The
+		# scene is fixed, but a loop that frees whatever a group hands it will
+		# do this again the next time a group is mistyped. A pet is a
+		# CharacterBody2D; a container is not.
+		if not (pet is CharacterBody2D):
+			push_warning("Node '%s' is in group 'pets' but isn't a pet - skipping." % pet.name)
+			continue
+		pet.queue_free()
 
 
 func _attach_pet(pet: Node, offset: Vector2) -> void:

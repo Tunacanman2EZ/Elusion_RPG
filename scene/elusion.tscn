@@ -1686,7 +1686,7 @@ size = Vector2(34, 35.999985)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_tfn2f"]
 size = Vector2(40, 37.999985)
 
-[node name="Elusion" type="Node2D" unique_id=371864451 groups=["lootbags", "pets_container", "projectiles"]]
+[node name="Elusion" type="Node2D" unique_id=371864451]
 y_sort_enabled = true
 texture_filter = 1
 script = ExtResource("1_epgb0")

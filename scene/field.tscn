@@ -1303,7 +1303,7 @@ position = Vector2(739, 190)
 
 [node name="lootbags" type="Node2D" parent="ysortworld" unique_id=542358684 groups=["lootbags"]]
 
-[node name="pets" type="Node2D" parent="ysortworld" unique_id=1284941854 groups=["pets"]]
+[node name="pets" type="Node2D" parent="ysortworld" unique_id=1284941854 groups=["pets_container"]]
 
 [node name="player" type="Node2D" parent="ysortworld" unique_id=74605721]
 

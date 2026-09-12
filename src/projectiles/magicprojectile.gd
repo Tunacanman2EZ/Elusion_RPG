@@ -28,6 +28,24 @@ var direction: Vector2 = Vector2.ZERO
 # LIFECYCLE
 # =============================================================================
 
+# NEW: has this projectile already dealt its damage?
+#
+# Godot's Area2D emits body_entered and area_entered as SEPARATE signals, and
+# every character in this game carries both a physics body and a hurtbox Area2D
+# on the same collision layer. So one hit fires two signals in the same physics
+# frame, and queue_free() is deferred to the end of the frame - it does not
+# stop the second handler from running.
+#
+# Without this latch the warrior and the tank took exactly DOUBLE damage from
+# every shot. The mage and healer were safe only by accident: their hurtbox
+# collision_layer was never set, so the area signal never fired for them.
+#
+# slashwave.gd solved the same problem with a list of instance IDs because it
+# pierces several enemies. This projectile only ever hits one thing, so a
+# single boolean is enough.
+var _spent: bool = false
+
+
 func _ready() -> void:
 	if has_node("animatedsprite2d"):
 		$animatedsprite2d.play("projectile")
@@ -92,11 +110,17 @@ func _check_initial_overlaps() -> void:
 # =============================================================================
 
 func _on_body_entered(body: Node2D) -> void:
+	if _spent:
+		return
+	_spent = true
 	_try_damage(body)
 	destroy_projectile()
 
 
 func _on_area_entered(area: Area2D) -> void:
+	if _spent:
+		return
+	_spent = true
 	_try_damage(area.get_parent())
 	destroy_projectile()
 
