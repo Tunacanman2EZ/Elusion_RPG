@@ -409,3 +409,24 @@ func _calculate_potion_restore(base: int) -> int:
 	# generic restore calculation — currently returns base unchanged.
 	# swap-point for future modifiers (tier multipliers, skill scaling, buffs).
 	return base
+
+
+# =============================================================================
+# DRAG AND DROP — PANEL BACKGROUND
+# =============================================================================
+# Same reasoning as BankInventory's copy of this: accepting a drag anywhere on
+# the window stops Godot flipping the pointer to the forbidden cursor over the
+# parts of the panel that aren't slots.
+#
+# Accept and do nothing. The drag carries a duplicate of the stack and the
+# source slot is only cleared by whoever actually takes the item, so a drop on
+# panel furniture leaves everything exactly where it started.
+
+func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	return typeof(data) == TYPE_DICTIONARY \
+		and data.has("stack") \
+		and data.has("source_slot")
+
+
+func _drop_data(_at_position: Vector2, _data: Variant) -> void:
+	pass

@@ -19,7 +19,7 @@ offset_bottom = 346.0
 grow_horizontal = 0
 size_flags_horizontal = 3
 size_flags_vertical = 3
-mouse_filter = 2
+mouse_filter = 1
 theme = ExtResource("3_theme")
 script = ExtResource("2_ncbfh")
 

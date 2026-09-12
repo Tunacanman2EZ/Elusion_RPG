@@ -63,6 +63,12 @@ var _last_hp:      int = -1
 var _last_mana:    int = -1
 var _last_stamina: int = -1
 
+# drag-cursor state — see _update_drag_cursor().
+# _mouse_mode_before_drag remembers what the pointer was doing before a drag
+# started, so ending one restores that rather than assuming it was visible.
+var _cursor_hidden_for_drag: bool = false
+var _mouse_mode_before_drag: int = Input.MOUSE_MODE_VISIBLE
+
 
 # =============================================================================
 # LIFECYCLE
@@ -97,6 +103,10 @@ func _toggle_admin_panel() -> void:
 
 
 func _process(_delta: float) -> void:
+	# runs before the active_character guard below on purpose — a drag can be
+	# in flight during a scene change, and the cursor still has to come back.
+	_update_drag_cursor()
+
 	if active_character == null:
 		return
 
@@ -112,6 +122,50 @@ func _process(_delta: float) -> void:
 
 	if stats_screen != null and stats_screen.visible:
 		stats_screen.update_display()
+
+
+# =============================================================================
+# DRAG CURSOR
+# =============================================================================
+
+func _update_drag_cursor() -> void:
+	# While an item is being dragged, the item icon IS the pointer — the
+	# system cursor is hidden entirely so nothing rides on top of it.
+	#
+	# This also removes the circle-with-a-slash for free. That shape is just
+	# the cursor in its CURSOR_FORBIDDEN state, which Godot picks whenever
+	# whatever sits under the pointer refuses the drag — panel headers, the
+	# gaps between slots, the game world between two windows. With no cursor
+	# drawn at all there is no shape left to switch to.
+	#
+	# MOUSE_MODE_HIDDEN only stops it being DRAWN. Position, motion and clicks
+	# all still work normally, unlike MOUSE_MODE_CAPTURED. The moment the drag
+	# ends the pointer comes straight back.
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return
+
+	var dragging: bool = viewport.gui_is_dragging()
+	if dragging == _cursor_hidden_for_drag:
+		return
+
+	if dragging:
+		# remember the real previous mode instead of hardcoding VISIBLE, so
+		# this can never be the thing that turns a hidden pointer back on.
+		_mouse_mode_before_drag = Input.mouse_mode
+		Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+	else:
+		Input.mouse_mode = _mouse_mode_before_drag
+
+	_cursor_hidden_for_drag = dragging
+
+
+func _exit_tree() -> void:
+	# a scene change mid-drag would otherwise leave the player with no cursor
+	# and no HUD left running to give it back.
+	if _cursor_hidden_for_drag:
+		Input.mouse_mode = _mouse_mode_before_drag
+		_cursor_hidden_for_drag = false
 
 
 # =============================================================================

@@ -377,3 +377,26 @@ func _refresh_player_currency_displays() -> void:
 		return
 	if hud.inventory_screen.has_method("_update_currency_labels"):
 		hud.inventory_screen._update_currency_labels()
+
+
+# =============================================================================
+# DRAG AND DROP — PANEL BACKGROUND
+# =============================================================================
+# Accepting a drag anywhere on this window keeps Godot from flipping the
+# pointer to the forbidden cursor over the header, the margins, the gold row
+# and the buttons — none of which are slots, but all of which sit between the
+# player and the slot they're aiming at.
+#
+# Accept and do nothing. The drag carries a duplicate of the stack and the
+# source slot is only cleared by whoever actually takes the item, so a drop
+# that lands on panel furniture leaves the item exactly where it started.
+# The slots and the bank grid still handle every real transfer.
+
+func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	return typeof(data) == TYPE_DICTIONARY \
+		and data.has("stack") \
+		and data.has("source_slot")
+
+
+func _drop_data(_at_position: Vector2, _data: Variant) -> void:
+	pass
