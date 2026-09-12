@@ -39,21 +39,22 @@ func _ready() -> void:
 	add_child(screen)
 	screen.finished.connect(_unfreeze_enemies)
 	screen.play([
-		"Welcome to Elusion explorers and developers; I am happy to show you my progress. I absolutely am so excited you are here with me, it means a lot to me; love you all",
-		"A Solo Developer Game, used as my college portfolio for Maestro the worlds first Native AI University — coming from zero coding experience, and never using Godot or any engine. From the creator of Elusion Studios, I humbly present my dedication of Elusion. Graphics inspired by Chrono Trigger, gameplay inspired by Darza's Dominion, Tibia, Mirage Realms.",
-		
+		"Welcome to Elusion, explorers and developers. I am happy to show you my progress. I am so excited that you are here with me; it means a lot. Love you all.",
+
+		"A solo-developed game, built as my college portfolio for Maestro, the world's first Native AI University. I started with zero coding experience, and I had never used Godot or any other engine. From the creator of Elusion Studios, I humbly present my dedication to Elusion. Graphics inspired by Chrono Trigger; gameplay inspired by Darza's Dominion, Tibia, and Mirage Realms.",
+
 		"I am using Claude as:\n"
-		+ "architect's assistant,\n"
-		+ "code reviewer,\n"
-		+ "design rubber duck,\n"
-		+ "and test-thinking partner.\n"
-		+ "And I am backing it all with:\n"
-		+ "Git history that explains my decisions,\n"
+		+ "an architect's assistant,\n"
+		+ "a code reviewer,\n"
+		+ "a design rubber duck,\n"
+		+ "and a test-thinking partner.\n"
+		+ "And I am backing it all up with:\n"
+		+ "a Git history that explains my decisions,\n"
 		+ "diffs I actually read,\n"
 		+ "and tests that prove things work.",
 
 		"Main Artist: Ahvassa — https://ahvassa.itch.io/\n"
-		+ "Icon Asset Pack From Artist: Caio — https://www.patreon.com/clockworkravenstudios\n"
+		+ "Icon Asset Pack: Caio — https://www.patreon.com/clockworkravenstudios\n"
 		+ "Thanks for checking out my game; I really appreciate you!",
 	], true)
 
