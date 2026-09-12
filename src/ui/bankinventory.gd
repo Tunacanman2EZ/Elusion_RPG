@@ -87,7 +87,7 @@ func _wire_buttons() -> void:
 func _wire_gold_input() -> void:
 	# gold input field gets two callbacks:
 	# - text_changed: strips non-digit chars as the player types
-	# - text_submitted: pressing enter defaults to deposit
+	# - text_submitted: pressing enter runs the transfer (see that handler)
 	if gold_input == null:
 		return
 	gold_input.text_changed.connect(_on_gold_input_changed)
@@ -190,15 +190,54 @@ func _on_gold_input_changed(new_text: String) -> void:
 	for i in range(new_text.length()):
 		if new_text[i] in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
 			clean_text += new_text[i]
-	if new_text != clean_text:
-		gold_input.text = clean_text
-		gold_input.caret_column = clean_text.length()
+	if new_text == clean_text:
+		return
+
+	# keep the caret where the player was typing rather than firing it to the
+	# end of the field. rejecting a character should cost them the character,
+	# not their place in the number — editing the middle of "1000" used to
+	# bounce the caret to the far right on every rejected keystroke.
+	var removed: int = new_text.length() - clean_text.length()
+	var caret: int = gold_input.caret_column - removed
+	gold_input.text = clean_text
+	gold_input.caret_column = clampi(caret, 0, clean_text.length())
 
 
 func _on_gold_input_submitted(_text: String) -> void:
-	# pressing enter in the input field defaults to deposit.
-	# (more common action — withdraw requires explicit button click.)
-	_on_deposit_pressed()
+	# ENTER IS THE ENTIRE KEYBOARD PATH THROUGH THIS PANEL, so it has to be
+	# able to reach both transfers. it used to call deposit unconditionally.
+	#
+	# that was the "type an amount, press enter, it turns into 0" bug. the
+	# usual reason to be typing at a bank is to take gold back OUT, which
+	# means carry gold is 0 at that exact moment. deposit clamped the typed
+	# amount down to the 0 being carried, wrote that 0 back into the field on
+	# the way past, and returned without moving anything. the typed amount was
+	# gone, no gold had moved, and the only recovery was to retype it and go
+	# click the withdraw button — the button press enter was supposed to save.
+	#
+	# the rule now is just "move the amount I typed, from wherever it is":
+	# whichever side actually holds that much gold is the side enter uses.
+	# deposit wins when both sides could cover it, which keeps enter's old
+	# meaning for the common bank-my-haul case.
+	var amount: int = _typed_amount()
+	if amount <= 0:
+		return
+
+	var carry: int = _carry_gold()
+	var banked: int = CharacterData.get_bank_gold()
+
+	if carry >= amount:
+		_on_deposit_pressed()
+	elif banked >= amount:
+		_on_withdraw_pressed()
+	else:
+		# neither side covers the full amount. move everything the fuller side
+		# has instead of doing nothing — the clamp inside each handler sizes
+		# it down, so "withdraw 9999" with 300 banked still hands over 300.
+		if banked > carry:
+			_on_withdraw_pressed()
+		else:
+			_on_deposit_pressed()
 
 
 # =============================================================================
@@ -210,17 +249,21 @@ func _on_deposit_pressed() -> void:
 	# clamps to actual carry gold so input field can't be exploited
 	# (typing 999999 when you only have 50 just transfers 50).
 	var p: Node = _get_player()
-	if p == null or gold_input.text.is_empty():
+	if p == null:
 		return
 
-	var amount: int = int(gold_input.text)
+	var amount: int = _typed_amount()
 	if amount <= 0:
 		return
 
-	var carry_gold: int = int(p.gold)
-	if amount > carry_gold:
-		amount = carry_gold
-		gold_input.text = str(amount)
+	# THE CLAMPED VALUE IS DELIBERATELY NOT WRITTEN BACK INTO THE FIELD.
+	# it used to be, and that one line is what made this panel need two
+	# presses. clamping to a carry gold of 0 put a literal "0" in the box, so
+	# the press did nothing AND destroyed what had been typed; the next press
+	# then read that "0" and also did nothing. clamp the local number, leave
+	# the player's text alone, and let a successful transfer be the only thing
+	# that clears the field.
+	amount = mini(amount, int(p.gold))
 	if amount <= 0:
 		return
 
@@ -231,19 +274,17 @@ func _on_deposit_pressed() -> void:
 
 func _on_withdraw_pressed() -> void:
 	# move gold from account-shared bank to carry pool.
-	# clamps to bank balance same way deposit clamps to carry gold.
+	# clamps to bank balance same way deposit clamps to carry gold, and for
+	# the same reason does not write that clamp back into the input field.
 	var p: Node = _get_player()
-	if p == null or gold_input.text.is_empty():
+	if p == null:
 		return
 
-	var amount: int = int(gold_input.text)
+	var amount: int = _typed_amount()
 	if amount <= 0:
 		return
 
-	var bank_balance: int = CharacterData.get_bank_gold()
-	if amount > bank_balance:
-		amount = bank_balance
-		gold_input.text = str(amount)
+	amount = mini(amount, CharacterData.get_bank_gold())
 	if amount <= 0:
 		return
 
@@ -256,10 +297,32 @@ func _on_withdraw_pressed() -> void:
 # HELPERS
 # =============================================================================
 
+func _typed_amount() -> int:
+	# the input field's contents as a number, or 0 when it's empty.
+	# _on_gold_input_changed() has already stripped everything that isn't a
+	# digit, so int() here can't silently swallow a "50g".
+	if gold_input == null or gold_input.text.is_empty():
+		return 0
+	return int(gold_input.text)
+
+
+func _carry_gold() -> int:
+	# gold in the player's pocket right now, 0 if there's no player to ask.
+	var p: Node = _get_player()
+	if p == null:
+		return 0
+	return int(p.gold)
+
+
 func _get_player() -> Node:
 	# resolve the player from group. cached on first call so we don't
 	# re-walk the tree on every deposit/withdraw click.
-	if player == null:
+	#
+	# is_instance_valid() re-resolves after a death or character swap frees the
+	# old node. without it the cache holds a freed instance, which is not null,
+	# so every later transfer would touch a dead object instead of the player
+	# standing at the chest.
+	if player == null or not is_instance_valid(player):
 		player = get_tree().get_first_node_in_group("player")
 	return player
 
