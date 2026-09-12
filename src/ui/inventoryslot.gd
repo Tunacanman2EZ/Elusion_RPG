@@ -224,6 +224,24 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	preview.texture = icon_rect.texture
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.custom_minimum_size = Vector2(40, 40)
+
+	# DRAW THE DRAGGED ICON ABOVE EVERY PANEL.
+	#
+	# set_drag_preview() parents the preview to the control it is called on —
+	# this slot. So the icon you drag lives inside whichever panel you picked
+	# it up from, and any panel drawn after that one covers it. The bank is
+	# added to the HUD after the inventory, so dragging inventory -> bank sent
+	# the icon behind the bank window for the whole trip.
+	#
+	# Every panel here is in the same CanvasLayer (characterhud, layer 0), so
+	# z_index settles the order. It has to be ABSOLUTE: z_index is added to
+	# the parent's by default, which would just offset it from whatever the
+	# source panel happens to be at. z_as_relative = false ignores the parent
+	# and 4096 is the engine's maximum, so the icon is on top of the whole UI
+	# no matter which panel the drag started in or where it is headed.
+	preview.z_as_relative = false
+	preview.z_index = 4096
+
 	set_drag_preview(preview)
 
 	return {

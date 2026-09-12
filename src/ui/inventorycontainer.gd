@@ -474,6 +474,64 @@ func sort_by_name() -> void:
 
 
 # =============================================================================
+# DRAG AND DROP — GRID BACKGROUND
+# =============================================================================
+# The slots accept drops; the grid they sit in did not. Godot shows the
+# forbidden cursor (the circle with a slash) whenever the control under the
+# pointer refuses the drag, and the gaps between slots, plus the padding
+# around the grid, are all container — not slot. So the cursor flickered to
+# "no" across most of the trip between two panels even though the drop was
+# perfectly legal the moment it landed on a slot.
+#
+# Accepting here does two things: the cursor stays sane over the whole grid,
+# and a drop that lands in a gap goes to the first free slot instead of
+# silently snapping back.
+
+func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	return typeof(data) == TYPE_DICTIONARY \
+		and data.has("stack") \
+		and data.has("source_slot")
+
+
+func _drop_data(_at_position: Vector2, data: Variant) -> void:
+	var incoming: ItemStack = data["stack"]
+	var source_slot: InventorySlot = data["source_slot"]
+
+	if source_slot == null or not is_instance_valid(source_slot):
+		return
+
+	# a hotbar slot only ever holds a reference to an item that really lives
+	# in an inventory. dropping it on open space breaks the link and must not
+	# move or copy anything — same rule as InventorySlot._drop_data()'s CASE A.
+	if source_slot is HotbarSlot:
+		source_slot.clear()
+		source_slot.slot_changed.emit(source_slot)
+		return
+
+	var target: InventorySlot = _first_empty_slot()
+
+	# nowhere to put it. leave the item exactly where it was rather than
+	# consuming the drop — a full bank must not eat what you dragged into it.
+	if target == null or target == source_slot:
+		return
+
+	target.set_stack(incoming)
+	source_slot.clear_stack()
+
+	# announce both halves. these reach _on_slot_changed() on each slot's own
+	# container, so a cross-panel move saves both sides.
+	target.slot_changed.emit(target)
+	source_slot.slot_changed.emit(source_slot)
+
+
+func _first_empty_slot() -> InventorySlot:
+	for slot in slots:
+		if slot.is_empty():
+			return slot
+	return null
+
+
+# =============================================================================
 # SIGNAL RELAY
 # =============================================================================
 
