@@ -622,13 +622,51 @@ func _handle_combat(dist_to_player: float) -> void:
 	_record_nav_movement_result(pos_before)
 
 
+# How far a navmesh snap is allowed to move a point before we refuse it.
+#
+# NavigationServer2D.map_get_closest_point() returns Vector2.ZERO on an empty
+# or unbaked map rather than reporting failure - which is exactly the "walks to
+# the world origin" bug this helper exists to prevent. So a snap that displaced
+# the point further than any legitimate correction is treated as a bad answer
+# and discarded.
+const NAV_SNAP_MAX_DISTANCE: float = 240.0
+
+
+# Pull a position onto the baked navigation mesh.
+#
+# The invariant this protects: nothing this enemy spawns or walks toward may
+# sit outside the walkable world. Physics collision alone does not give you
+# that - a body can be PLACED inside a wall, and move_and_slide() will happily
+# keep it there. The navmesh is the authority on where the world actually is.
+func clamp_to_navigation(pos: Vector2) -> Vector2:
+	var world: World2D = get_world_2d()
+	if world == null:
+		return pos
+
+	var map: RID = world.navigation_map
+	if not map.is_valid():
+		return pos
+
+	var snapped: Vector2 = NavigationServer2D.map_get_closest_point(map, pos)
+	if snapped.distance_to(pos) > NAV_SNAP_MAX_DISTANCE:
+		return pos
+
+	return snapped
+
+
 func _handle_return_home() -> void:
 	_release_slot()
 	var dist_from_spawn: float = global_position.distance_to(spawn_position)
 
 	if dist_from_spawn > HOME_ARRIVAL_THRESHOLD:
 		is_returning_home = true
-		var return_dir: String = _get_direction_from_vec(spawn_position - global_position)
+		# THROUGH NAVIGATION, not a straight line. This used to take the raw
+		# vector home and walk it cardinally, which meant an enemy leashing
+		# back across any wall ground straight into it - or, when spawn_position
+		# was wrong, marched clean off the playable area. The chase already had
+		# tested routing that falls back to a direct line when the way is clear;
+		# there was never a reason for the walk home to have its own worse copy.
+		var return_dir: String = _get_direction_to_point_via_navigation(spawn_position)
 		velocity = _vec_from_dir(return_dir) * get_move_speed()
 		move_and_slide()
 		play_walk_animation(return_dir)

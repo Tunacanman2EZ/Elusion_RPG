@@ -540,7 +540,34 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 
 	# position after the deferred add, for the same reason projectiles do:
 	# the node must be in the tree before global_position means anything.
-	slime.call_deferred("set", "global_position", at_position)
+	# SNAP ONTO THE NAVMESH FIRST. The split scatters four smalls at fixed
+	# offsets around the parent, and nothing about a fixed offset knows where
+	# the walls are - so a slime that dies with its back to a wall was placing
+	# children inside it, or past the edge of the map entirely. Physics will
+	# not push them out, because move_and_slide() only resists moving INTO a
+	# wall; it has no opinion about already being in one.
+	var safe_position: Vector2 = clamp_to_navigation(at_position)
+
+	slime.call_deferred("set", "global_position", safe_position)
+
+	# AND spawn_position explicitly, because _ready() already ran.
+	#
+	# add_child() runs the child's _ready() immediately, and BaseEnemy._ready()
+	# captures `spawn_position = global_position` - which at that instant is
+	# still (0,0), because the line above has not been applied yet. Every
+	# runtime-spawned slime therefore believed its home was the world origin.
+	#
+	# That matters because the leash at BaseEnemy._physics_process sends an
+	# enemy home once the player is further than leash_range, and
+	# _handle_return_home() walks a STRAIGHT CARDINAL LINE with no navigation.
+	# So getting 400px away from a split sent all four smalls plus the twin
+	# marching through the walls to the top-left corner of the map, where they
+	# idled forever - emptying the encounter.
+	#
+	# Deferred calls run in the order they are queued, so this lands after the
+	# position above and records the real home.
+	slime.call_deferred("set", "spawn_position", safe_position)
+
 	slime.call_deferred("reset_physics_interpolation")
 
 
