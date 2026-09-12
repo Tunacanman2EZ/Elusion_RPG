@@ -112,7 +112,7 @@ layout_mode = 2
 text = "Characters"
 
 [node name="itemtooltip" parent="." unique_id=1631671194 instance=ExtResource("17_xinkp")]
-visible = true
+visible = false
 offset_left = 3.0
 offset_top = 154.0
 offset_right = 203.0
