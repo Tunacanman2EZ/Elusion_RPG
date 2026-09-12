@@ -113,11 +113,30 @@ func _wire_bank_container() -> void:
 # =============================================================================
 
 func open_bank() -> void:
-	# fresh load from disk in case another character/session updated the bank
-	# between opens. without this, a player who swapped to another character,
-	# modified the bank, and swapped back would see stale data.
-	CharacterData.load_data()
-
+	# THIS USED TO CALL CharacterData.load_data() AND THAT WAS DESTRUCTIVE.
+	#
+	# The reasoning was "reload from disk in case another character updated
+	# the bank between opens." It doesn't hold: the bank lives in
+	# account_data, account_data is account-shared and held in memory by one
+	# autoload for the whole session, and nothing else writes that file while
+	# the game is running. The in-memory copy IS the current one. Swapping
+	# characters never made it stale, because both characters were reading the
+	# same object.
+	#
+	# What the reload actually did was replace live state with whatever was
+	# last flushed. load_data() overwrites character_slots AND
+	# active_character_index wholesale, and save_data() is debounced by
+	# SAVE_DEBOUNCE_SECONDS — so opening a chest inside that window threw away
+	# every unsaved thing the character had just done. Worse, _save_pending
+	# stayed true, so the debounce then wrote the stale reloaded values back
+	# out as if they were new. Kill a monster, walk to the bank, open it, and
+	# the XP was gone from memory and then gone from disk, silently.
+	#
+	# active_character_index snapping back to the on-disk value is the other
+	# half: every save_character_state() after that writes the live character
+	# into whichever slot the file named, which can be a DIFFERENT character.
+	#
+	# There is nothing to reload. Just open.
 	_load_bank_contents()
 	_update_gold_ui()
 	_center_window()
@@ -144,6 +163,14 @@ func close_bank() -> void:
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud != null and hud.has_method("hide_inventory"):
 		hud.hide_inventory()
+
+	# make the "already on disk" promise above actually true. set_bank_inventory()
+	# routes through save_data(), which is DEBOUNCED — so until this flush, the
+	# comment was describing a write that hadn't happened yet and a crash inside
+	# the debounce window would have taken the deposit with it. closing a bank is
+	# rare enough that an immediate write costs nothing, and it is exactly the
+	# moment a player believes their items are safe.
+	CharacterData.flush_save()
 
 	closed.emit()
 

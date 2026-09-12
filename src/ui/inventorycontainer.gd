@@ -100,12 +100,22 @@ func _create_slots() -> void:
 
 		slot_instance.slot_index = i
 
-		# connect each slot's signals to this container's relay handlers
+		# connect each slot's signals to this container's relay handlers.
+		#
+		# slot_changed was missing from this list, and it is the one that
+		# matters for persistence. InventorySlot._drop_data() announces every
+		# drag-and-drop by emitting slot_changed on both the source and target
+		# slot and nothing else — it never touches the container. with no
+		# listener, that announcement went nowhere, so a drag was the one kind
+		# of inventory change in the game that never reached a save.
+		#
+		# see _on_slot_changed() below for what that cost.
 		slot_instance.slot_clicked.connect(_on_slot_clicked)
 		slot_instance.slot_right_clicked.connect(_on_slot_right_clicked)
 		slot_instance.slot_double_clicked.connect(_on_slot_double_clicked)
 		slot_instance.slot_hovered.connect(_on_slot_hovered)
 		slot_instance.slot_unhovered.connect(_on_slot_unhovered)
+		slot_instance.slot_changed.connect(_on_slot_changed)
 
 		add_child(slot_instance)
 		slots.append(slot_instance)
@@ -485,3 +495,23 @@ func _on_slot_hovered(slot: InventorySlot) -> void:
 
 func _on_slot_unhovered(slot: InventorySlot) -> void:
 	slot_unhovered.emit(slot)
+
+
+func _on_slot_changed(_slot: InventorySlot) -> void:
+	# a slot's contents were changed directly, which in practice means a
+	# drag-and-drop. promote it to a container-level change so the save
+	# listeners hear about it.
+	#
+	# THIS IS WHAT WAS DUPLICATING BANK ITEMS. dragging a sword from carry
+	# into the bank moved it on screen and saved nothing. closing the bank
+	# then wrote the bank out WITH the sword, while the carry inventory's
+	# matching removal was still only in memory — so the copy on disk kept
+	# it. reload that character and the sword was in both places.
+	#
+	# a cross-container drag emits this on both containers, one per side, so
+	# both halves of the move are now persisted by their own owner: the bank
+	# container's listener saves the bank, the carry container's saves the
+	# character. a same-container move emits twice into one container, which
+	# is a duplicate save rather than a wrong one, and CharacterData's
+	# debounce collapses the pair before either reaches disk.
+	inventory_changed.emit()
