@@ -324,30 +324,18 @@ func _sanitize_character_slot(slot) -> bool:
 	slot["level"] = level
  
 	# --- xp / xp_next cross-check ---
-	# xp_next is fully deterministic from level (100, doubling each level —
-	# see player.gd's gain_xp()). recompute rather than trust the saved
-	# value.
+	# xp_next is fully deterministic from level, so the sanitizer recomputes it
+	# rather than trust a saved value that may have been edited.
 	#
-	# OVERFLOW GUARD: 100 * 2^(level-1) exceeds a 64-bit int's range
-	# somewhere around level 58 — 2^98 (level 99's exponent) is roughly
-	# 3x10^29, versus int64's max of about 9.2x10^18. casting that
-	# overflowing float straight to int doesn't clamp gracefully; it wraps
-	# into garbage (this produced xp_next = -9223372036854775808, int64's
-	# minimum value, for a level-9999-then-clamped-to-99 test edit). capped
-	# below at exponent 56 (100 * 2^56 ≈ 7.2x10^18, safely inside int64)
-	# rather than the real exponential value beyond that point. NOTE: this
-	# only stops the SANITY CHECK from producing garbage — it doesn't fix
-	# the same overflow in player.gd's actual gain_xp() formula, which
-	# would hit this exact problem for any character that legitimately
-	# leveled that high, not just a tampered save. worth knowing if 99 is
-	# meant to be a real, reachable level cap rather than just a ceiling.
-	var exponent: int = level - 1
-	var expected_xp_next: int
-	if exponent > 56:
-		expected_xp_next = 999999999999999
-	else:
-		expected_xp_next = int(100 * pow(2, exponent))
- 
+	# IT MUST USE THE SAME FUNCTION REAL PLAY USES. This block previously had
+	# its own copy of the formula, expecting the doubling curve. When gain_xp()
+	# moved to the 1.15 curve, this did not - so it treated every honest save as
+	# tampered and overwrote xp_next with a value the game never produces. At
+	# level 10 the player suddenly needed 51,200 XP instead of 351, and since the
+	# value genuinely changed, the save was marked dirty and rewritten on every
+	# load. Two copies of one rule is how that happens; there is now one.
+	var expected_xp_next: int = GameConstants.xp_needed_for_level(level)
+
 	var saved_xp_next: int = int(slot.get("xp_next", expected_xp_next))
 	if saved_xp_next != expected_xp_next:
 		push_warning("CharacterData: xp_next mismatch for level %d (had %d, expected %d) — correcting" % [

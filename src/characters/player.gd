@@ -786,7 +786,7 @@ func gain_xp(amount: int) -> void:
 	while xp >= xp_next:
 		level_up()
 		xp -= xp_next
-		xp_next = int(100 * pow(1.15, level - 1))
+		xp_next = GameConstants.xp_needed_for_level(level)
 	CharacterData.save_character_state(self)
 
 
