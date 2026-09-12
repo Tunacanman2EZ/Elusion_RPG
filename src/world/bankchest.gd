@@ -1,11 +1,13 @@
 # bankchest.gd — world-placed interactable that opens the bank UI.
 # player walks into the detection area, presses the interact key, and the
-# chest plays an open animation while the bank screen is toggled on.
+# chest plays an open animation, and the bank screen comes up partway
+# through it rather than instantly.
 #
 # flow:
 # 1. player walks into Area2D → player_nearby gets set
-# 2. player presses interact → animation plays, HUD.toggle_bank() called
-# 3. player walks out of Area2D → chest closes, bank screen auto-closes
+# 2. player presses interact → open animation plays
+# 3. animation reaches BANK_UI_FRAME → HUD.toggle_bank() called
+# 4. player walks out of Area2D → chest closes, bank screen auto-closes
 #
 # the bank UI itself is owned by the HUD (lazy-instantiated on first toggle).
 # this chest just signals when to open it; it doesn't manage the screen state.
@@ -20,6 +22,19 @@ extends Area2D
 # prevents the chest from instantly opening if the player spawns on top of it
 # while still holding the interact key from the previous scene.
 const SPAWN_GRACE_PERIOD := 1.0
+
+# frame of the "open" animation at which the bank panel appears.
+#
+# the panel used to pop up on the same frame the interact key was pressed,
+# while the lid was still visibly shut — the UI arrived before the thing it
+# belongs to had opened. now the animation drives it: the chest finishes
+# swinging open and the bank comes up with it.
+#
+# this is a frame index, not a delay, so retiming the animation moves the
+# panel with it instead of silently desyncing. _bank_ui_frame() clamps it to
+# the animation's real length, so shortening "open" can't leave the panel
+# waiting for a frame that never arrives.
+const BANK_UI_FRAME := 6
 
 
 # =============================================================================
@@ -87,11 +102,56 @@ func _process(delta: float) -> void:
 # =============================================================================
 
 func _open_chest() -> void:
-	# play the open animation and request the HUD show the bank screen.
-	# the HUD owns the bank UI instance — we just ask it to toggle.
+	# play the open animation. the bank screen is NOT shown here any more —
+	# we watch the animation and show it when it reaches BANK_UI_FRAME.
 	anim.play("open")
 	is_open = true
 
+	if not anim.frame_changed.is_connected(_on_open_frame_changed):
+		anim.frame_changed.connect(_on_open_frame_changed)
+
+	# the animation can already be sitting at or past the trigger frame if the
+	# player re-opens a chest whose reverse-close never ran to completion.
+	# frame_changed would never fire again in that case and the panel would
+	# wait forever, so check the current frame once immediately.
+	_on_open_frame_changed()
+
+
+func _on_open_frame_changed() -> void:
+	# fires on every frame step of whatever this sprite is playing, including
+	# the reverse close, so each of these guards is load-bearing:
+	#   is_open        — the player walked away; the close is running now
+	#   animation name — some other animation is playing
+	#   frame          — the lid is still on its way up
+	if not is_open:
+		return
+	if anim.animation != "open":
+		return
+	if anim.frame < _bank_ui_frame():
+		return
+
+	_stop_watching_open()
+	_show_bank_ui()
+
+
+func _bank_ui_frame() -> int:
+	# BANK_UI_FRAME clamped to the animation that actually exists, so the
+	# panel still appears (on the last frame) if "open" is ever shortened.
+	if anim == null or anim.sprite_frames == null:
+		return BANK_UI_FRAME
+	var last_frame: int = anim.sprite_frames.get_frame_count("open") - 1
+	if last_frame < 0:
+		return BANK_UI_FRAME
+	return clampi(BANK_UI_FRAME, 0, last_frame)
+
+
+func _stop_watching_open() -> void:
+	if anim != null and anim.frame_changed.is_connected(_on_open_frame_changed):
+		anim.frame_changed.disconnect(_on_open_frame_changed)
+
+
+func _show_bank_ui() -> void:
+	# the HUD owns the bank UI instance — we just ask it to toggle.
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud == null:
 		push_error("BankChest: CRITICAL — no node in the 'hud' group found")
@@ -107,6 +167,13 @@ func _close_chest_on_walk_away() -> void:
 	# play the open animation in reverse for a "closing" visual,
 	# then ask the bank screen to clean up and save.
 	is_open = false
+
+	# cancel any pending open. walking away mid-animation is now a real window
+	# (the lid takes a few frames to finish), and without this the reverse
+	# close would keep stepping frames past the trigger with the watch still
+	# live — the panel would be waiting to appear on a chest already shutting.
+	_stop_watching_open()
+
 	anim.play_backwards("open")
 
 	# tell the bank screen to close (saves bank state, hides the panel).

@@ -123,7 +123,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"open",
-"speed": 4.0
+"speed": 5.0
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_op8v8"]
@@ -141,10 +141,8 @@ script = ExtResource("1_op8v8")
 texture_filter = 1
 position = Vector2(0, 4)
 sprite_frames = SubResource("SpriteFrames_qycu1")
-animation = &"closed"
-frame = 6
-frame_progress = 1.0
-speed_scale = 0.5
+animation = &"open"
+speed_scale = 0.75
 offset = Vector2(0, -8)
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=2057434990]
