@@ -1,13 +1,40 @@
-# autoload global game state — persists across all scenes.
-# this is the central signal bus and shared-state container for the game.
-# any system that needs to react to gameplay events subscribes to the
-# signals here rather than coupling directly to the emitter.
+# autoload global game state — persists across all scenes. Shared-state
+# container, and the declared contract for a game-wide event bus.
 #
-# multiplayer-ready architecture:
-# the signals below carry instance_id parameters (player_id, enemy_id, etc.)
-# so when multiplayer is added in phase 3, the same signals forward across
-# the network without restructuring callers. single-player today uses
-# self-IDs only; multiplayer routes IDs to the right peer.
+# READ THIS BEFORE TRUSTING THE SIGNALS BELOW.
+#
+# NOTHING IN THE GAME CONNECTS TO ANY OF THEM. Not one. They are a designed
+# interface for multiplayer that has not been built yet, deliberately kept, and
+# they are documented as such rather than left to look finished.
+#
+# The signals carry instance_id parameters (player_id, enemy_id, ...) so that
+# when multiplayer arrives the same events can forward across the network
+# without restructuring callers. Single-player would use self-IDs; multiplayer
+# routes IDs to the right peer. That design still holds — it is just unbuilt.
+#
+# WHAT WAS REMOVED, AND WHY
+#
+# elusion.gd, field.gd and boss.gd each carried an identical ~35-line
+# _wire_player_signals() that bridged the player's own signals onto these ones.
+# Roughly 105 lines of relay, feeding an empty bus.
+#
+# The cost was not theoretical. player.gd emits `moved` on every physics frame
+# it is walking, so at 180 ticks/second player_moved meant 180 lambda
+# dispatches and 180 three-argument emissions a second, arriving nowhere.
+# A declared signal nobody emits costs nothing; an emitted signal nobody hears
+# costs CPU AND reads as working code. So the declarations stayed and the
+# relays went.
+#
+# TO WIRE IT BACK, in the world script that owns the player:
+#
+#     current_player.took_damage.connect(func(amount, type):
+#         GameState.damage_dealt.emit(0, current_player.get_instance_id(),
+#                                     amount, type))
+#
+# ...and the same shape for died -> player_died, xp_gained_signal -> xp_gained,
+# gold_changed_signal -> gold_changed, moved -> player_moved. Add the relay in
+# ONE place this time, not once per world scene, and only for the events
+# something is actually listening for.
 extends Node
 
 

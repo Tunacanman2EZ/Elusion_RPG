@@ -89,49 +89,23 @@ func spawn_player_from_selection() -> void:
 	spawn_parent.add_child(player)
 	current_player = player
 
-	_wire_player_signals()
 	_attach_player_to_hud()
 
 
 # =============================================================================
-# SIGNAL WIRING
+# GLOBAL EVENT RELAY  (REMOVED)
 # =============================================================================
-
-func _wire_player_signals() -> void:
-	# bridges the player's per-instance signals into GameState's global
-	# signals so any system (HUD, analytics, future multiplayer sync) can
-	# subscribe to game-wide events without coupling to the player node.
-	if current_player == null:
-		return
-
-	# combat damage taken
-	current_player.took_damage.connect(func(amount, type):
-		GameState.damage_dealt.emit(
-			0,
-			current_player.get_instance_id(),
-			amount,
-			type,
-		))
-
-	# player death
-	current_player.died.connect(func():
-		GameState.player_died.emit(current_player.get_instance_id()))
-
-	# XP gained from any source (kills, quests, etc.)
-	current_player.xp_gained_signal.connect(func(amount):
-		GameState.xp_gained.emit(current_player.get_instance_id(), amount))
-
-	# gold pickup or spend
-	current_player.gold_changed_signal.connect(func(amount):
-		GameState.gold_changed.emit(current_player.get_instance_id(), amount))
-
-	# position updates for movement tracking
-	current_player.moved.connect(func(pos, dir):
-		GameState.player_moved.emit(
-			current_player.get_instance_id(),
-			pos,
-			dir,
-		))
+# This file used to carry a _wire_player_signals() that bridged the player's
+# own signals onto GameState's global bus. It was deleted, along with the
+# identical copies in the other two world scripts, because NOTHING SUBSCRIBED
+# TO THAT BUS - see the note in gamestate.gd.
+#
+# The worst of it was player_moved: player.gd emits `moved` on every physics
+# frame it is walking, which at 180 ticks/second meant 180 lambda dispatches
+# and 180 three-argument signal emissions a second, all arriving nowhere.
+#
+# gamestate.gd still declares the signals, and its comment explains exactly how
+# to wire this back when there is something on the other end.
 
 
 func _attach_player_to_hud() -> void:
