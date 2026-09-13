@@ -29,11 +29,11 @@ grow_vertical = 2
 [node name="healthbar" type="TextureProgressBar" parent="barcontainer" unique_id=1719083138]
 texture_filter = 1
 layout_mode = 0
-offset_left = 905.0
+offset_left = 979.0
 offset_top = 611.0
-offset_right = 1053.0
+offset_right = 1127.0
 offset_bottom = 625.0
-scale = Vector2(2.5, 2.5)
+scale = Vector2(2, 2)
 value = 100.0
 texture_under = ExtResource("2_s3c7b")
 texture_progress = ExtResource("3_xinkp")
@@ -41,11 +41,11 @@ texture_progress = ExtResource("3_xinkp")
 [node name="magicbar" type="TextureProgressBar" parent="barcontainer" unique_id=758577933]
 texture_filter = 1
 layout_mode = 0
-offset_left = 905.0
+offset_left = 979.0
 offset_top = 644.0
-offset_right = 1053.0
+offset_right = 1127.0
 offset_bottom = 658.0
-scale = Vector2(2.5, 2.5)
+scale = Vector2(2, 2)
 value = 100.0
 texture_under = ExtResource("4_a33qf")
 texture_progress = ExtResource("5_p3m5x")
@@ -112,7 +112,6 @@ layout_mode = 2
 text = "Characters"
 
 [node name="itemtooltip" parent="." unique_id=1631671194 instance=ExtResource("17_xinkp")]
-visible = false
 offset_left = 3.0
 offset_top = 154.0
 offset_right = 203.0
@@ -120,8 +119,7 @@ offset_bottom = 310.0
 
 [node name="hotbar" parent="." unique_id=147410389 instance=ExtResource("10_manxm")]
 unique_name_in_owner = true
-offset_left = 914.0
-offset_top = 566.0
-offset_right = 1234.0
-offset_bottom = 606.0
-
+offset_left = 956.0
+offset_top = 569.0
+offset_right = 1276.0
+offset_bottom = 609.0

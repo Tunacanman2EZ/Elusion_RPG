@@ -130,7 +130,7 @@ sprint={
 
 [physics]
 
-common/physics_ticks_per_second=80
+common/physics_ticks_per_second=180
 2d/default_gravity=0.0
 common/physics_interpolation=true
 

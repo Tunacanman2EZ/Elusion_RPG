@@ -246,21 +246,18 @@ func _handle_idle() -> void:
 
 
 # =============================================================================
-# REGEN (DUPLICATED FROM PLAYER.GD)
+# REGEN  (DUPLICATE REMOVED)
 # =============================================================================
-
-func _tick_regen(delta: float) -> void:
-	# tank fully overrides _physics_process so the regen code from player.gd
-	# doesn't run automatically. duplicate the accumulator + trigger here.
-	# the _set_active() calls in movement/aura/attack reset the idle timer
-	# so regen only fires during TRUE idle.
-	_idle_timer += delta
-	if _idle_timer >= idle_threshold:
-		_regen_accumulator += regen_rate * delta
-		if _regen_accumulator >= 1.0:
-			var points: int = int(_regen_accumulator)
-			_regen_accumulator -= points
-			_regen_stats(points)
+# _tick_regen() used to be copied out here, with a comment saying so, because
+# the tank fully overrides _physics_process and therefore never runs player's.
+# The copy was right about the problem and wrong about the fix: it meant the
+# tank silently kept the old flat-rate regen when player.gd moved to a
+# percentage of maximum, and it would have kept diverging on every later
+# change.
+#
+# player.gd now owns _tick_regen() as a normal method, and the tank inherits
+# it — _handle_idle() and the movement paths still call it exactly as before,
+# they just reach the one real implementation instead of a stale twin.
 
 
 # =============================================================================

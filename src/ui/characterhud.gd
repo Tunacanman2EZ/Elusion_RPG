@@ -58,10 +58,41 @@ var admin_panel:      Control         = null
 # hotbar reference — resolved on _ready
 var hotbar: Hotbar = null
 
-# cached previous values so _process only updates bars when stats change
+# cached previous values so _process only re-reads targets when stats change
 var _last_hp:      int = -1
 var _last_mana:    int = -1
 var _last_stamina: int = -1
+
+
+# =============================================================================
+# BAR SMOOTHING
+# =============================================================================
+# The bars EASE toward their value instead of snapping to it, and the reason
+# is pixels rather than polish.
+#
+# A bar is 370 screen pixels wide. The warrior's hp at level 22 is 432. That
+# is fewer pixels than points, so one point of hp is 0.86 of a pixel — a
+# distance that cannot be drawn. Snapping the value meant the fill edge jumped
+# an un-drawable amount several times a second, so it moved one pixel on some
+# steps and none on others, in an irregular 0,1,1,0,1 pattern. That flutter is
+# what read as the bars "wobbling", and it got noticeable the moment regen
+# went from 1 point per second to seven.
+#
+# Easing makes the edge travel continuously instead. It still lands on whole
+# pixels, but it crosses them in an even rhythm rather than stuttering, and it
+# keeps working at any level — hp can grow to 5000 and the bar still moves
+# smoothly, where widening the bar only buys a level or two.
+#
+# Stamina never wobbled because its bar has 320 pixels for 185 points: nearly
+# two pixels per point, so every step was already a clean whole-pixel move.
+
+# How fast a bar catches up, in "fraction of the remaining gap per second".
+# Higher is snappier. 6.0 closes ~99.7% of a gap in a second.
+const BAR_FILL_SPEED: float = 6.0
+
+# Below this many points of difference, stop easing and just land on it.
+# Without it the bar approaches the target asymptotically and never arrives.
+const BAR_SNAP_THRESHOLD: float = 0.25
 
 # drag-cursor state — see _update_drag_cursor().
 # _mouse_mode_before_drag remembers what the pointer was doing before a drag
@@ -125,6 +156,10 @@ func _process(_delta: float) -> void:
 		_last_hp      = hp
 		_last_mana    = mana
 		_last_stamina = stamina
+
+	# EVERY frame, not just when a stat changed — the easing needs continuous
+	# ticks to move between the discrete points it is easing toward.
+	_animate_bars(_delta)
 
 	if stats_screen != null and stats_screen.visible:
 		stats_screen.update_display()
@@ -308,6 +343,10 @@ func get_active_character() -> Node:
 # =============================================================================
 
 func update_bars() -> void:
+	# Sets the RANGES and snaps every bar to the current value. Called when the
+	# active character changes, where easing would be wrong — switching
+	# characters should not show one character's bars sliding to another's.
+	# Ongoing movement is _animate_bars()' job.
 	if active_character == null:
 		return
 
@@ -324,6 +363,41 @@ func update_bars() -> void:
 		staminabar.value     = active_character.get("stamina")
 
 
+func _animate_bars(delta: float) -> void:
+	if active_character == null:
+		return
+
+	_ease_bar(healthbar,   active_character.get("hp"),      active_character.get("max_hp"),      delta)
+	_ease_bar(magicbar,    active_character.get("mana"),    active_character.get("max_mana"),    delta)
+	_ease_bar(staminabar,  active_character.get("stamina"), active_character.get("max_stamina"), delta)
+
+
+func _ease_bar(bar: TextureProgressBar, target: float, stat_max: float, delta: float) -> void:
+	if bar == null:
+		return
+
+	# keep the range current — max_hp changes on every level-up
+	bar.max_value = maxf(stat_max, 1.0)
+
+	# DROPS SNAP. Damage has to read instantly: a health bar that glides down
+	# after a hit tells you a moment late that you were hit, and in a fight
+	# that moment is the whole point of having a health bar. Only refilling
+	# eases, which is where the wobble lived anyway.
+	if target <= bar.value:
+		bar.value = target
+		return
+
+	if target - bar.value <= BAR_SNAP_THRESHOLD:
+		bar.value = target
+		return
+
+	# Exponential ease, framerate independent. Using exp() rather than a plain
+	# lerp(a, b, speed * delta) matters: the naive version moves a different
+	# fraction of the gap at 60fps than at 144, so the bars would fill at
+	# different speeds on different machines.
+	bar.value = lerpf(bar.value, target, 1.0 - exp(-BAR_FILL_SPEED * delta))
+
+
 # =============================================================================
 # NAV BUTTON HANDLERS
 # =============================================================================
@@ -336,23 +410,16 @@ func _on_stats_pressed() -> void:
 	toggle_stats()
 
 
-# the three stubs below are wired to real, clickable buttons. In a Release
-# build they used to answer a player's click by writing to a console the
-# player cannot see — so the button read as broken and said so to nobody.
-# Gated, they are now honest no-ops until the features exist.
 func _on_shop_pressed() -> void:
-	if OS.is_debug_build():
-		print("[UI]   shop pressed (not implemented)")
+	print("shop pressed (not yet implemented)")
 
 
 func _on_map_pressed() -> void:
-	if OS.is_debug_build():
-		print("[UI]   map pressed (not implemented)")
+	print("map pressed (not yet implemented)")
 
 
 func _on_options_pressed() -> void:
-	if OS.is_debug_build():
-		print("[UI]   options pressed (not implemented)")
+	print("options pressed (not yet implemented)")
 
 
 func _on_discord_pressed() -> void:

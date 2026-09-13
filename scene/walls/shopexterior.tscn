@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://bdnc0gfyhpgck"]
 
 [ext_resource type="Texture2D" uid="uid://c1syfn3tk2x70" path="res://art/shophouses/house.png" id="1_wdevc"]
+[ext_resource type="Texture2D" uid="uid://b6vef4nqm2fnf" path="res://Claude outputs/item0_shop.png" id="2_86swt"]
 
 [node name="shopexterior" type="Area2D" unique_id=527747368]
 y_sort_enabled = true
@@ -59,3 +60,8 @@ position = Vector2(0, 45.882828)
 texture = ExtResource("1_wdevc")
 region_enabled = true
 region_rect = Rect2(139.96631, 272.0041, 15.083435, 13.030304)
+
+[node name="Item0Shop" type="Sprite2D" parent="." unique_id=1675309226]
+position = Vector2(0.49741948, 76.21829)
+scale = Vector2(0.05495959, 0.055730537)
+texture = ExtResource("2_86swt")

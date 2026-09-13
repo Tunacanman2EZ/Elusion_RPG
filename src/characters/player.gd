@@ -172,11 +172,41 @@ var _is_sprinting: bool = false
 # REGEN
 # =============================================================================
 
-@export var regen_rate: float = 1.0
+# CHANGED: regen is a PERCENTAGE of each stat's own maximum per second, not a
+# flat points-per-second.
+#
+# WHY: regen_rate was a flat 1.0 while mana_per_lvl adds 16 every level. At
+# level 22 the mage had 586 max mana and recovered one point a second — nine
+# minutes and forty-six seconds for a full bar, and worse every single level
+# after. The pool kept growing; the tap never widened. A flat rate means the
+# game gets slower the longer you play it, which is the opposite of what
+# levelling is supposed to feel like.
+#
+# As a percentage, time-to-full is CONSTANT at every level: a level 1 mage and
+# a level 50 mage both fill in the same wall-clock time.
+#
+# 0.0167 ≈ 1/60, so empty to full is about a minute.
+@export var regen_percent_per_second: float = 0.0167
+
+# Floor for small pools. Set to the old flat rate, so nothing in the game
+# regenerates any slower than it did before this change — only faster.
+@export var regen_minimum_per_second: float = 1.0
+
 @export var idle_threshold: float = 1.0
 
 var _idle_timer: float = 0.0
-var _regen_accumulator: float = 0.0
+
+# One accumulator PER STAT, because they have different maximums and therefore
+# different rates. A single shared counter can only ever hand the same number
+# of points to a 586-mana pool and a 100-stamina pool, which is precisely the
+# flat-rate problem in miniature.
+#
+# They exist because regen is fractional per frame: at 9.8/sec and 80 ticks a
+# second each tick earns 0.12 of a point. Accumulating and spending whole
+# points keeps hp/mana/stamina as integers without rounding the regen away.
+var _regen_hp_accumulator: float = 0.0
+var _regen_mana_accumulator: float = 0.0
+var _regen_stamina_accumulator: float = 0.0
 
 
 # =============================================================================
@@ -342,13 +372,7 @@ func _physics_process(_delta):
 	move_and_slide()
 	_shove_blocking_enemies(_delta)
 
-	_idle_timer += _delta
-	if _idle_timer >= idle_threshold:
-		_regen_accumulator += regen_rate * _delta
-		if _regen_accumulator >= 1.0:
-			var points: int = int(_regen_accumulator)
-			_regen_accumulator -= points
-			_regen_stats(points)
+	_tick_regen(_delta)
 
 
 # =============================================================================
@@ -513,17 +537,51 @@ func _fill_all_resources() -> void:
 # =============================================================================
 
 func _set_active() -> void:
+	# Any action — moving, attacking, casting, taking a hit — restarts the
+	# idle wait AND discards part-earned points. Regen is strictly a
+	# between-fights mechanic; potions are what recover you during one.
 	_idle_timer = 0.0
-	_regen_accumulator = 0.0
+	_regen_hp_accumulator = 0.0
+	_regen_mana_accumulator = 0.0
+	_regen_stamina_accumulator = 0.0
 
 
-func _regen_stats(amount: int) -> void:
+# THE single regen implementation. tank.gd used to carry its own copy of this
+# loop, because it fully overrides _physics_process and so never ran player's
+# — its comment literally read "DUPLICATED FROM PLAYER.GD". It now calls this
+# instead, so a change here reaches every class instead of three of the four.
+func _tick_regen(delta: float) -> void:
+	_idle_timer += delta
+	if _idle_timer < idle_threshold:
+		return
+
 	if hp < max_hp:
-		hp = min(max_hp, hp + amount)
+		_regen_hp_accumulator += _regen_rate_for(max_hp) * delta
+		var points: int = int(_regen_hp_accumulator)
+		if points > 0:
+			_regen_hp_accumulator -= points
+			hp = min(max_hp, hp + points)
+
 	if mana < max_mana:
-		mana = min(max_mana, mana + amount)
+		_regen_mana_accumulator += _regen_rate_for(max_mana) * delta
+		var points: int = int(_regen_mana_accumulator)
+		if points > 0:
+			_regen_mana_accumulator -= points
+			mana = min(max_mana, mana + points)
+
 	if stamina < max_stamina:
-		stamina = min(max_stamina, stamina + amount)
+		_regen_stamina_accumulator += _regen_rate_for(max_stamina) * delta
+		var points: int = int(_regen_stamina_accumulator)
+		if points > 0:
+			_regen_stamina_accumulator -= points
+			stamina = min(max_stamina, stamina + points)
+
+
+func _regen_rate_for(stat_max: int) -> float:
+	# points per second for a pool of this size. The floor matters for classes
+	# with small pools — a warrior with 0 max mana or a 60-stamina pool would
+	# otherwise regenerate at a fraction of a point per second.
+	return maxf(regen_minimum_per_second, float(stat_max) * regen_percent_per_second)
 
 
 # =============================================================================
