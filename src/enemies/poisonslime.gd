@@ -212,17 +212,35 @@ func _ready() -> void:
 	# the four smalls it becomes — the same way its XP and its bag already
 	# are. One roll site, one number to tune, and nothing to keep in sync.
 	if is_small:
+		# TWO SLIME PETS, ONE OR THE OTHER.
+		#
+		# A winning roll awards the small companion most of the time and the
+		# large one occasionally — never both from the same kill. See
+		# BaseEnemy._pick_pet_id() for why it's one roll and then a pick
+		# rather than two independent rolls.
+		# These two strings must match the item_id INSIDE the .tres files
+		# exactly — not the filenames, though keeping them identical is the
+		# convention here and worth sticking to. ItemRegistry looks items up
+		# by item_id, and _roll_pet()'s has_item() check fails silently on a
+		# mismatch: no error, no drop, nothing to chase.
 		if pet_drop_id == "":
-			pet_drop_id = "petpoisonslime"
+			pet_drop_id = "petpoisonslimesmall"
+		if rare_pet_drop_id == "":
+			rare_pet_drop_id = "petpoisonslimelarge"
+
+		# 1 in 5 winning rolls gives the large companion instead of the small.
+		# Combined with pet_odds_override below, that's roughly 1 large pet
+		# per 1080 encounters against 1 small per 270.
+		rare_pet_chance = 0.20
 
 		# loot tier — 35 hp, the weakest thing in the game and the one you
 		# kill most of. gates which items can roll (nothing above this tier
 		# can drop) and scales gold.
 		#
-		# NOTE: petpoisonslime.tres does not exist yet, so _roll_pet()'s
-		# has_item() check fails and no slime pet can drop regardless of these
-		# odds. Authoring that resource is the only thing needed — no code
-		# change — and this is set up ready for it.
+		# NOTE: _roll_pet() checks has_item(pet_drop_id) and bails if the small
+		# pet isn't registered, so no slime pet drops at all until that one
+		# exists. _pick_pet_id() is gentler about the large: if only that one
+		# is missing, a winning roll awards the small rather than nothing.
 		max_loot_tier = 1
 
 		# Pet odds, overriding the tier default of 1 in 1296, because these

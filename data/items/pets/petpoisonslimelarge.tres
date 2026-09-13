@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://wa0yif6oc48a"]
+
+[ext_resource type="Texture2D" uid="uid://cr5tiqbe7gt43" path="res://art/enemy/slime.png" id="1_63vmi"]
+[ext_resource type="PackedScene" uid="uid://bx28h4q68iic2" path="res://scene/pets/petpoisonslimelarge.tscn" id="2_63vmi"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="3_tleiy"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_reoc6"]
+atlas = ExtResource("1_63vmi")
+region = Rect2(0, 576, 48, 48)
+
+[resource]
+script = ExtResource("3_tleiy")
+item_id = "petpoisonslimelarge"
+display_name = "Large Slime Companion"
+description = "Apple Kool-aid!"
+icon = SubResource("AtlasTexture_reoc6")
+max_stack = 1
+value = 2000
+tier = 5
+type = 5
+pet_scene = ExtResource("2_63vmi")
+pet_source_name = "Poison Slime"
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

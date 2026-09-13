@@ -680,7 +680,7 @@ attack_type = 1
 projectile_scene = ExtResource("2_ky2xd")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=919068649]
-modulate = Color(1, 0.3647059, 0.40784314, 1)
+modulate = Color(1, 0.28122702, 0.70062375, 1)
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_jm8lx")
 animation = &"attackdown"

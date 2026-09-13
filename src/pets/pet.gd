@@ -56,6 +56,19 @@ enum AttackType { PROJECTILE, VINE }
 @export var teleport_distance: float = 600.0
 @export var scale_factor: float = 0.5
 
+# Name prefix of the per-direction Marker2D children that say where a
+# projectile leaves this pet. The four suffixes are always top, bottom, left
+# and right — so "orbspawn" finds orbspawntop, orbspawnbottom, orbspawnleft
+# and orbspawnright, which is exactly how every pet scene already names them.
+#
+# Left EMPTY (the default) a pet keeps the old behaviour: the shot spawns
+# MUZZLE_OFFSET pixels from the pet's centre, straight toward the target.
+# That was the ONLY behaviour until now, which is why those orbspawn* and
+# arrowspawn* markers sat in the scenes entirely unread — nothing in this
+# script had ever looked a marker up. Set this on a pet and its markers start
+# mattering; leave it blank and nothing about that pet changes.
+@export var muzzle_marker_prefix: String = ""
+
 # NEW: which frame of the attack animation actually releases the shot, the
 # same idea as bushsniper.gd's ARROW_RELEASE_FRAME. the projectile used to
 # spawn BEFORE the animation had played a single frame, so the pet fired and
@@ -327,18 +340,54 @@ func _release_attack_lock_after(seconds: float) -> void:
 	_is_attacking = false
 
 
+const MUZZLE_OFFSET := 24.0
+
+
+func _muzzle_position(dir: Vector2) -> Vector2:
+	# Where a projectile is born. A directional Marker2D wins when the pet
+	# names one (muzzle_marker_prefix); otherwise fall back to a fixed offset
+	# from the pet's centre toward the target, which is what every pet did
+	# before markers were read at all.
+	#
+	# The fallback isn't a failure case — it's correct for a round pet whose
+	# shot leaves from the middle. Markers earn their keep when the art is
+	# off-centre, like a mouth on one side of the sprite, where a shot from
+	# the centre reads as coming out of nowhere.
+	if muzzle_marker_prefix != "":
+		var marker: Node = _find_muzzle_marker(dir)
+		if marker is Node2D:
+			return (marker as Node2D).global_position
+
+	return global_position + dir * MUZZLE_OFFSET
+
+
+func _find_muzzle_marker(dir: Vector2) -> Node:
+	# MARKERS ARE top/bottom/left/right. One spelling, every scene, no
+	# fallbacks — every pet scene in the project already names them this way
+	# (orbspawntop, arrowspawnbottom, ...), so there is nothing to be lenient
+	# about and a lenient lookup would only hide a typo.
+	#
+	# NOT to be confused with the ANIMATION suffixes, which are up/down/left/
+	# right (walkup, idledown). Those are a separate naming scheme baked into
+	# every SpriteFrames in the game and are not changing — see
+	# _play_directional(). Same four directions, two different vocabularies,
+	# because one names art and the other names nodes.
+	var suffix: String
+	if abs(dir.x) > abs(dir.y):
+		suffix = "right" if dir.x > 0 else "left"
+	else:
+		suffix = "bottom" if dir.y > 0 else "top"
+
+	return get_node_or_null(muzzle_marker_prefix + suffix)
+
+
 func _fire_projectile(dir: Vector2) -> void:
-	# flying projectile → parent to the "projectiles" group (Y-sorted),
-	# spawn at a small muzzle offset in front of the pet toward the target
-	# so the orb has clear space to render + travel even at point-blank,
-	# then aim.
+	# flying projectile → parent to the "projectiles" group (Y-sorted), spawn
+	# at this pet's muzzle for the direction it's facing, then aim.
 	var projectile: Node = projectile_scene.instantiate()
 	_parent_to_group(projectile, "projectiles")
 
-	# muzzle offset — tune MUZZLE_OFFSET to taste after testing
-	var muzzle_offset: float = 24.0
-	var spawn_pos: Vector2 = global_position + dir * muzzle_offset
-	projectile.set_deferred("global_position", spawn_pos)
+	projectile.set_deferred("global_position", _muzzle_position(dir))
 
 	if "damage" in projectile:
 		projectile.damage = _get_scaled_damage()

@@ -141,6 +141,18 @@ const PET_ODDS_FALLBACK := 1296
 
 @export var pet_drop_id: String = ""
 
+# Optional SECOND pet for the same enemy, awarded instead of pet_drop_id on
+# a winning roll — see _pick_pet_id(). Empty (the default) means this enemy
+# has exactly one pet and rare_pet_chance is ignored entirely.
+#
+# Used by the poison slime, which can give either the small or the large
+# slime companion from one kill, but never both.
+@export var rare_pet_drop_id: String = ""
+
+# Probability (0..1) that a winning pet roll awards rare_pet_drop_id rather
+# than pet_drop_id. Only consulted when rare_pet_drop_id is set.
+@export var rare_pet_chance: float = 0.25
+
 # Per-enemy override for the pet odds. 0 means "use PET_ODDS_BY_TIER".
 # Set this in the Inspector when one specific enemy should differ from every
 # other enemy at its tier.
@@ -990,9 +1002,32 @@ func _roll_and_spawn_loot(killer: Node) -> void:
 	var contents: Array = _build_bag_contents()
 
 	if pet_won:
-		contents.append({ "item_id": pet_drop_id, "quantity": 1 })
+		# _roll_pet() decided THAT a pet drops; _pick_pet_id() decides WHICH.
+		# An enemy with two pets awards one or the other, never both.
+		contents.append({ "item_id": _pick_pet_id(), "quantity": 1 })
 
 	_spawn_loot_bag(contents, killer, pet_won)
+
+
+func _pick_pet_id() -> String:
+	# Most enemies have exactly one pet and this just returns it.
+	#
+	# An enemy that sets rare_pet_drop_id has two, and a winning roll awards
+	# ONE of them — the rare one with probability rare_pet_chance, otherwise
+	# the common one. Deliberately NOT two independent rolls: that would let a
+	# single kill hand over both pets at once, which would make the rarer one
+	# feel worthless the moment it happened.
+	#
+	# Falling back to pet_drop_id when the rare item doesn't exist keeps a
+	# half-authored second pet from silently swallowing drops — you'd get the
+	# common pet rather than nothing at all.
+	if rare_pet_drop_id == "":
+		return pet_drop_id
+	if not ItemRegistry.has_item(rare_pet_drop_id):
+		return pet_drop_id
+	if randf() < rare_pet_chance:
+		return rare_pet_drop_id
+	return pet_drop_id
 
 
 func get_pet_odds() -> int:
@@ -1091,25 +1126,59 @@ func _spawn_loot_bag(contents: Array, killer: Node, has_pet: bool) -> void:
 	var bag: Node = LOOTBAG_SCENE.instantiate()
 	bag.global_position = global_position
 
-	call_deferred("_finish_spawn_loot_bag", bag, contents, killer, has_pet)
+	# NEVER DEFER ONTO THE CORPSE.
+	#
+	# This used to be call_deferred("_finish_spawn_loot_bag", ...) on SELF, and
+	# _die() calls queue_free() on the very next line. Godot silently drops a
+	# deferred call whose target object has been freed before the message queue
+	# flushes, so whether the bag appeared came down to whether this enemy
+	# happened to survive until the next flush.
+	#
+	# For every normal enemy it did: _die() runs synchronously inside
+	# take_damage(), during physics, and the flush comes after. The small poison
+	# slime is the one enemy that AWAITS its death animation first, so its
+	# super._die() resumes from a SceneTreeTimer instead — the free landed
+	# before the flush and the call went in the bin. Smalls never dropped a
+	# single bag while every other enemy dropped them fine.
+	#
+	# The container and the bag both outlive this node, so deferring onto THEM
+	# is safe no matter what kills us or when. Deferred calls flush in the order
+	# they were queued, so add_child still lands before the setters, which is
+	# what gives lootbag.gd's _ready() a chance to resolve its @onready nodes
+	# before set_contents() touches them.
+	var container: Node = _resolve_loot_container()
+	if container == null:
+		push_warning("BaseEnemy: no container for the loot bag — not spawned")
+		bag.queue_free()
+		return
+
+	container.call_deferred("add_child", bag)
+
+	if bag.has_method("set_contents"):
+		bag.call_deferred("set_contents", contents)
+	if bag.has_method("set_owner_player"):
+		bag.call_deferred("set_owner_player", killer)
+	if bag.has_method("set_has_pet"):
+		bag.call_deferred("set_has_pet", has_pet)
 
 
-func _finish_spawn_loot_bag(bag: Node, contents: Array, killer: Node, has_pet: bool) -> void:
+func _resolve_loot_container() -> Node:
 	# parent loot bags into the y-sorted world so they sort with characters.
 	# prefer a "lootbags" container, fall back to "projectiles", then scene root.
+	#
+	# Resolved HERE, while this enemy is still in the tree, rather than inside
+	# a deferred callback — get_tree() returns null once a node has left the
+	# tree, and the whole point of the change above is that this node may be
+	# gone by the time the deferred work runs.
+	if not is_inside_tree():
+		return null
+
 	var container: Node = get_tree().get_first_node_in_group("lootbags")
 	if container == null:
 		container = get_tree().get_first_node_in_group("projectiles")
 	if container == null:
 		container = get_tree().current_scene
-	container.add_child(bag)
-
-	if bag.has_method("set_contents"):
-		bag.set_contents(contents)
-	if bag.has_method("set_owner_player"):
-		bag.set_owner_player(killer)
-	if bag.has_method("set_has_pet"):
-		bag.set_has_pet(has_pet)
+	return container
 
 
 # =============================================================================

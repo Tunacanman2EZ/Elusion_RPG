@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="ItemData" format=3]
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cx7jyx2ecih2k"]
 
 [ext_resource type="Texture2D" uid="uid://db7fkgqqydvh7" path="res://art/enemy/electricsprite.png" id="1_icon"]
 [ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="2_script"]
@@ -14,11 +14,9 @@ item_id = "petelectricsprite"
 display_name = "Electric Sprite Companion"
 description = "A caged storm, and it seems happy about it. Strikes at range while you close the distance."
 icon = SubResource("AtlasTexture_peticon")
-stackable = false
 max_stack = 1
 value = 2000
 tier = 5
-required_level = 1
 type = 5
 pet_scene = ExtResource("3_pet")
 pet_source_name = "Electric Sprite"
