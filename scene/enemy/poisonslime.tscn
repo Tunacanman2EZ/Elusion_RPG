@@ -1384,7 +1384,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"hitflashleft",
-"speed": 5.0
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -1470,7 +1470,7 @@ animations = [{
 }],
 "loop": true,
 "name": &"idleleft",
-"speed": 5.0
+"speed": 6.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -1496,7 +1496,7 @@ animations = [{
 }],
 "loop": true,
 "name": &"idleright",
-"speed": 10.0
+"speed": 6.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -1858,7 +1858,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"smalldeathleft",
-"speed": 5.0
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
