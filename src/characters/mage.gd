@@ -189,6 +189,28 @@ func _spawn_stalagmite() -> void:
 	var spell = target_circle_scene.instantiate()
 	get_tree().current_scene.add_child(spell)
 	spell.global_position = get_global_mouse_position()
+
+	# FIXED: the target circle used to SLIDE into place instead of appearing
+	# at the cursor.
+	#
+	# This project runs physics_interpolation, so the renderer draws every
+	# node blended between its previous and current physics transforms. A node
+	# that has just entered the tree has no meaningful previous transform, so
+	# its first rendered frame is a blend from wherever it was born toward
+	# where we just put it — visible as a short slide across the screen.
+	#
+	# reset_physics_interpolation() collapses previous and current to the same
+	# value, leaving nothing to blend. It MUST come AFTER global_position is
+	# set, never before. Same call and same reason as warrior.gd's slashwave,
+	# _attach_pet(), the splitting slime, the poison puddle and teleporter.gd
+	# — this was the one spawn path in the game that was missing it.
+	#
+	# WHY IT ONLY SHOWED UP NOW: the slide has always been here, but it lasts
+	# exactly one physics tick. At the old 180 ticks/second that was 5.6ms and
+	# invisible. Dropping to 80 made the same tick 12.5ms, and 12.5ms of
+	# movement is something an eye catches. The tick rate change did not cause
+	# this bug, it just stopped hiding it.
+	spell.reset_physics_interpolation()
 	# CHANGED: was magic * damage_per_magic — magic-only, and damage_per_magic
 	# was acting as a "per point" multiplier rather than a flat base. now
 	# damage_per_magic is a flat base damage value, scaled by
