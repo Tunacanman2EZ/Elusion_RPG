@@ -18,6 +18,7 @@ config/name="ElusionRPG"
 run/main_scene="uid://lon8advnxgqx"
 config/features=PackedStringArray("4.6", "Mobile")
 run/flush_stdout_on_print=true
+run/max_fps=60
 
 [autoload]
 
@@ -27,6 +28,7 @@ ItemRegistry="*uid://dx6llg3mjckfx"
 GameConstants="*uid://wbhpk12dyjkn"
 SceneTransition="*uid://cvilb71enkgcb"
 Api="*uid://dvmmf1ehsw12"
+Audio="*uid://ce1yh8jyak16p"
 
 [display]
 
@@ -128,7 +130,7 @@ sprint={
 
 [physics]
 
-common/physics_ticks_per_second=180
+common/physics_ticks_per_second=80
 2d/default_gravity=0.0
 common/physics_interpolation=true
 

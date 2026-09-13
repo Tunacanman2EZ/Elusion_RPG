@@ -45,7 +45,11 @@ var player_in_range: Node = null
 
 # tracks whether the fire is currently lit. starts lit by default — set
 # to false in the editor for firepits that should start extinguished.
-var is_lit: bool = true
+#
+# FIXED: this is @export now. The comment above has always said "set it in the
+# editor", but a plain var never appears in the inspector, so there was no way
+# to do what the documentation described. An unlit firepit was unbuildable.
+@export var is_lit: bool = true
 
 # counts down from SPAWN_GRACE_PERIOD, blocks interaction while > 0
 var spawn_timer: float = 0.0
@@ -57,17 +61,52 @@ var spawn_timer: float = 0.0
 
 @onready var anim: AnimatedSprite2D = $animatedsprite2d
 
+# the crackle loop. An AudioStreamPlayer2D living IN this scene rather than a
+# call through the Audio autoload, and that is deliberate: the autoload exists
+# for one-shots that must outlive whatever triggered them (a death sound has
+# to survive the thing that died). This is the opposite case — a continuous
+# loop that should stop the moment the firepit stops existing, and should get
+# louder as you walk toward it. Both of those come free from a player parented
+# to the object making the noise.
+@onready var audio: AudioStreamPlayer2D = $audio
+
 
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
 
 func _ready() -> void:
-	# start with the fire lit and playing the lit animation
-	anim.play("lit")
+	# FIXED: was an unconditional anim.play("lit"), which meant a firepit
+	# placed as unlit lit itself the instant the scene loaded. is_lit was
+	# being read everywhere EXCEPT the one place that decides what you see.
+	if is_lit:
+		light_fire()
+	else:
+		extinguish_fire()
 
 	# start the grace period — interaction blocked until this counts down
 	spawn_timer = SPAWN_GRACE_PERIOD
+
+
+func _start_fire_sound() -> void:
+	# Starts the loop at a RANDOM POINT rather than the beginning.
+	#
+	# Two firepits in one room, both starting their identical 11-second loop
+	# on the same frame, stay locked together forever — and two copies of the
+	# same waveform in sync do not sound like two fires, they sound like one
+	# fire with a strange metallic edge (that edge is comb filtering). A random
+	# offset per instance costs nothing and they never line up.
+	#
+	# Same reasoning as randomising torch animation phase — identical things
+	# animating in lockstep is one of the most reliable tells of a fake world.
+	if audio == null or audio.stream == null:
+		return  # no sound file assigned yet: silent, not broken
+	audio.play(randf() * audio.stream.get_length())
+
+
+func _stop_fire_sound() -> void:
+	if audio != null:
+		audio.stop()
 
 
 func _process(delta: float) -> void:
@@ -117,15 +156,19 @@ func _toggle_fire() -> void:
 
 
 func light_fire() -> void:
-	# transition to lit state. plays the flame animation.
+	# transition to lit state. plays the flame animation and starts the crackle.
 	is_lit = true
 	anim.play("lit")
+	_start_fire_sound()
 
 
 func extinguish_fire() -> void:
-	# transition to extinguished state. plays the smoke/dead animation.
+	# transition to extinguished state. plays the smoke/dead animation and
+	# stops the crackle — an extinguished fire that still crackles is worse
+	# than one that never made a sound at all.
 	is_lit = false
 	anim.play("unlit")
+	_stop_fire_sound()
 
 
 # =============================================================================

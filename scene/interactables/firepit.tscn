@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://o1ieolp4omhx" path="res://src/world/firepit.gd" id="1_vtlr4"]
 [ext_resource type="Texture2D" uid="uid://cvqrs53gyvut" path="res://art/images/firepit.png" id="2_73cew"]
+[ext_resource type="AudioStream" uid="uid://kyapsy143va3" path="res://audio/ambience/firepit.ogg" id="3_firesound"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_w8sbj"]
 atlas = ExtResource("2_73cew")
@@ -98,6 +99,13 @@ animation = &"unlit"
 [node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=1528466811]
 position = Vector2(1, 2)
 shape = SubResource("CircleShape2D_k5h5w")
+
+[node name="audio" type="AudioStreamPlayer2D" parent="." unique_id=2023864863]
+stream = ExtResource("3_firesound")
+volume_db = -6.0
+max_distance = 400.0
+panning_strength = 0.5
+bus = &"SFX"
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
 [connection signal="body_exited" from="." to="." method="_on_body_exited"]
