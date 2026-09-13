@@ -10,10 +10,11 @@
 # scene's tree yet, regardless of anything else. this fixes that by
 # instantiating the correct class scene here too, same as town does.
 #
-# NOTE: uses "yworldsort" as the Y-sort container name, matching what's
-# actually shown in this project's own scene trees — elusion.gd itself
-# looks for "ysortworld" instead, which doesn't match and is worth
-# checking separately; not touched here since that's a different file.
+# NOTE: the Y-sort container is "ysortworld". This file used to look up
+# "yworldsort" and carried a note blaming elusion.gd for the mismatch. That
+# had it backwards — field.tscn and elusion.tscn both say ysortworld, and
+# elusion.gd was right all along. (boss.tscn genuinely does use yworldsort,
+# and boss.gd matches it; that pair is consistent and correct.)
 extends Node2D
 
 
@@ -118,7 +119,17 @@ func spawn_player_from_selection() -> void:
 		return
 
 	var spawn_parent: Node = self
-	var y_world: Node = get_node_or_null("yworldsort")
+	# "ysortworld", not "yworldsort". field.tscn names this container
+	# ysortworld in all 31 places it appears; this lookup had the middle two
+	# syllables swapped, so get_node_or_null() quietly returned null and the
+	# player was added to the scene ROOT instead — outside the Y-sort space.
+	# That is what drew the player in front of every tree, wall and enemy in
+	# the field no matter where they were standing.
+	#
+	# get_node_or_null() is why this was never reported as an error: the
+	# fallback below is a real working path, so the typo degraded silently
+	# into wrong-looking depth instead of anything that would get chased.
+	var y_world: Node = get_node_or_null("ysortworld")
 	if y_world != null:
 		var player_container: Node = y_world.get_node_or_null("player")
 		spawn_parent = player_container if player_container != null else y_world
@@ -177,7 +188,7 @@ func _position_player_at_spawn() -> void:
 	# target_spawn_id before it transitioned here) and moves the player
 	# to whichever FieldPortal marker matches that id. if nothing was
 	# set, the player just stays wherever spawn_player_from_selection()
-	# left them (added into yworldsort/player with no explicit position,
+	# left them (added into ysortworld/player with no explicit position,
 	# so effectively (0,0) local to that container).
 	if GameState.next_spawn_id == "":
 		return

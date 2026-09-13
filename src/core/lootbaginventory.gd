@@ -214,8 +214,21 @@ func _sync_back_to_bag() -> void:
 
 
 func _is_container_empty() -> bool:
+	# THIS COULD NEVER RETURN TRUE.
+	#
+	# to_save_array() is fixed-length: it appends null for every empty slot
+	# rather than omitting it, so the array is always exactly as long as the
+	# grid and is_empty() was always false. The bag therefore never despawned
+	# when the player took the last item, and the panel never auto-closed —
+	# you had to close it by hand and the empty bag sat on the ground until
+	# its despawn timer ran out.
+	#
+	# "Empty" means no slot holds anything, not "the array has no entries".
 	var arr: Array = loot_container.to_save_array()
-	return arr.is_empty()
+	for entry in arr:
+		if entry is Dictionary and entry.get("item_id", "") != "":
+			return false
+	return true
 
 
 # =============================================================================
@@ -231,9 +244,28 @@ func _player_owns_pet(pet_id: String) -> bool:
 		if inv != null and inv.has_method("find_first_index_of"):
 			if inv.find_first_index_of(pet_id) != -1:
 				return true
+	# THE null GUARD HERE IS THE WHOLE BUG.
+	#
+	# get_bank_inventory() returns a FIXED-LENGTH array padded to
+	# BANK_MAX_SLOTS, with null standing in for every empty slot — so
+	# entry.get(...) hit "Nonexistent function 'get' in base 'Nil'" on the
+	# first empty bank slot. This only runs when a PET drops, which is why it
+	# looked like pets specifically broke the loot panel.
+	#
+	# _load_contents() above already guards the identical case, with a comment
+	# describing this exact crash. This copy of the loop never got it.
+	#
+	# The damage went past the one bag: this is called from _load_contents(),
+	# which runs between `_loading = true` and `_loading = false` in
+	# open_for_bag(). A crash there aborts before the flag is lowered, and
+	# _on_container_changed() returns early while _loading is true — so loot
+	# taken after that point silently stopped saving until a bag opened
+	# cleanly again.
 	var bank: Array = CharacterData.get_bank_inventory()
 	if bank != null:
 		for entry in bank:
+			if not (entry is Dictionary):
+				continue
 			if entry.get("item_id", "") == pet_id:
 				return true
 	return false

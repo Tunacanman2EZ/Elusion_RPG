@@ -35,9 +35,25 @@ class_name BushMage
 # damage dealt by the vine effect (passed to the spawned vine instance)
 @export var attack_power: int = 8
 
-# preferred distance from player — bushmage chases/backs off to hold this
-@export var desired_distance:   float = 32.0  # ~1 tile
-@export var distance_tolerance: float = 4.0   # dead zone to prevent jitter
+# preferred distance from player — bushmage chases/backs off to hold this.
+#
+# RETUNED TO MATCH THE SLOT GRID, WHICH IS WHY THIS NEVER CAST.
+#
+# These were set for the old free-angle ring, where an enemy ended up roughly
+# `desired_distance` from the player. The grid that replaced it parks enemies
+# on ring-1 tiles instead: TILE_SIZE (20) * FORMATION_SLOT_STRIDE (2) = 40px
+# on the axes, and 40 * sqrt(2) = ~56.6px on the diagonals.
+#
+# The old band was 32 +/- 4, i.e. 28..36px. Ring 1 is 40..56.6px. The two
+# never overlapped, so _physics_process below always took the "too far"
+# branch, _move_toward_player() found it was already standing on its slot,
+# and it idled there forever. The bush mage wasn't failing to cast — it was
+# never reaching the code that casts.
+#
+# 48 +/- 12 spans 36..60, which covers an axis slot and a diagonal one with
+# margin either side.
+@export var desired_distance:   float = 48.0  # ring-1 axis..diagonal midpoint
+@export var distance_tolerance: float = 12.0  # wide enough to cover both
 
 # frame of the bushmage attack animation where the vine spawns
 @export var contact_frame: int = 3
@@ -104,6 +120,19 @@ func _physics_process(_delta: float) -> void:
 
 	var dist: float = global_position.distance_to(player.global_position)
 
+	# LEASH.
+	#
+	# BaseEnemy._physics_process does this check, but this class replaces that
+	# method wholesale rather than extending it — so bush mages had no leash
+	# at all. They followed the player across the entire map and never went
+	# home, which is also why they ended up far from the bushes they spawn in.
+	# Every other enemy respects leash_range; this one silently opted out by
+	# overriding the only place it was enforced.
+	if dist > leash_range:
+		_handle_return_home()
+		return
+	is_returning_home = false
+
 	if dist > desired_distance + distance_tolerance:
 		_move_toward_player()
 	elif dist < desired_distance - distance_tolerance:
@@ -137,9 +166,18 @@ func _move_toward_player() -> void:
 	# SLOT_ARRIVAL_THRESHOLD comment for why this is what actually stops
 	# the animation-flip jitter at close range.
 	if global_position.distance_to(slot_target) < SLOT_ARRIVAL_THRESHOLD:
+		# ARRIVED — cast from here rather than standing idle.
+		#
+		# This branch used to idle unconditionally, which made the hold band
+		# above the ONLY route to an attack. Any slot geometry that put the
+		# enemy outside that band meant it stood at its slot doing nothing
+		# forever, which is exactly what happened. Retuning the band fixed
+		# today's numbers; this makes the class stop depending on them being
+		# right, so a future change to TILE_SIZE or the ring count can't
+		# silently disarm the bush mage again.
 		velocity = Vector2.ZERO
 		move_and_slide()
-		play_idle_animation(attack_direction)
+		_hold_and_attack()
 		return
 
 	var pos_before: Vector2 = global_position
