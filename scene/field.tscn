@@ -1296,7 +1296,7 @@ position = Vector2(368, 143)
 attack_power = 15
 
 [node name="bushmage2" parent="ysortworld/enemies" unique_id=1523661935 instance=ExtResource("8_4lur4")]
-position = Vector2(739, 190)
+position = Vector2(734, 158)
 
 [node name="groundeffects" type="Node2D" parent="ysortworld" unique_id=1708302954 groups=["groundeffects"]]
 
