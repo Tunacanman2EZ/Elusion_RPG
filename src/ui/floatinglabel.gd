@@ -12,6 +12,9 @@
 #   MANA    (blue)  — mana restored
 #   LEVELUP (gold)  — character level-up: big, long linger, celebratory
 #   SKILLUP (cyan)  — skill level-up: smaller, shorter, frequent + informative
+#   NOTICE  (amber) — "you can't do that": health full, no mana, bag full.
+#                     spawn these through Player.show_notice(), which
+#                     de-duplicates repeats so a held key can't stack them.
 #
 # motion (physics-feel arc):
 # labels shoot upward with initial velocity, gravity decelerates them at the
@@ -27,12 +30,17 @@ extends Node2D
 # TYPE ENUM
 # =============================================================================
 
+# APPEND NEW TYPES AT THE END, never in the middle. Callers pass these as
+# plain ints (this script has no class_name, so player.gd cannot write
+# FloatingLabel.Type.LEVELUP and passes 3 instead) — inserting a value would
+# silently repaint every existing popup in the game.
 enum Type {
 	DAMAGE,
 	HEAL,
 	MANA,
 	LEVELUP,
 	SKILLUP,
+	NOTICE,
 }
 
 
@@ -81,6 +89,11 @@ enum Type {
 @export var mana_color:    Color = Color(0.3, 0.5, 1.0, 1.0)  # blue
 @export var levelup_color: Color = Color(1.0, 0.84, 0.0, 1.0) # gold
 @export var skillup_color: Color = Color(0.3, 0.9, 1.0, 1.0)  # cyan
+
+# NOTICE (amber) — "you can't do that right now": health already full, not
+# enough mana, inventory full. Deliberately NOT damage red, which in this game
+# means hp went down and would read as being hurt by your own potion.
+@export var notice_color:  Color = Color(1.0, 0.76, 0.28, 1.0)  # amber
 
 
 # =============================================================================
@@ -204,3 +217,4 @@ func _begin(text: String, type: Type, life: float) -> void:
 		Type.MANA:    label.modulate = mana_color
 		Type.LEVELUP: label.modulate = levelup_color
 		Type.SKILLUP: label.modulate = skillup_color
+		Type.NOTICE:  label.modulate = notice_color

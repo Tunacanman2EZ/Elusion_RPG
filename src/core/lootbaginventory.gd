@@ -33,6 +33,13 @@ var _player: Node = null
 var _loading: bool = false
 
 
+func _notify(message: String) -> void:
+	# mirrors inventoryscreen.gd's funnel. _player is whoever opened this bag
+	# (set by open_for_bag), and it is null whenever the panel is closed.
+	if _player != null and _player.has_method("show_notice"):
+		_player.show_notice(message)
+
+
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
@@ -164,17 +171,14 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 
 		if moved <= 0:
 			# "your inventory is full" is the single most useful thing this
-			# panel could tell a player, and it has been telling the console
-			# instead. Gated for now; belongs on screen.
-			if OS.is_debug_build():
-				print("[LOOT] inventory full — nothing moved")
+			# panel can tell a player, and it used to tell the console.
+			_notify("Inventory full")
 			return
 
 		loot_container.remove_quantity_at(slot.slot_index, moved)
 	else:
 		if not inv_container.can_add_stack(full_stack):
-			if OS.is_debug_build():
-				print("[LOOT] inventory full — nothing moved")
+			_notify("Inventory full")
 			return
 		if inv_container.add_stack(full_stack):
 			loot_container.remove_quantity_at(slot.slot_index, full_stack.quantity)

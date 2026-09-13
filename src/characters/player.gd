@@ -24,6 +24,16 @@ extends CharacterBody2D
 
 const FLOATING_LABEL_SCENE := preload("res://scene/ui/floatinglabel.tscn")
 
+# FloatingLabel.Type.NOTICE. Written as a bare int because floatinglabel.gd
+# has no class_name, so its enum is not reachable by name from here — the
+# existing popup calls in this file pass a literal 3 for LEVELUP for the same
+# reason. Named here so there is exactly one place to change if the enum
+# order ever shifts (floatinglabel.gd's comment says to append, not insert).
+const NOTICE_LABEL_TYPE: int = 5
+
+# how long an IDENTICAL notice is suppressed for, in milliseconds.
+const NOTICE_REPEAT_COOLDOWN_MS: int = 750
+
 const SKILL_DISPLAY_NAMES := {
 	"attack":  "Attack",
 	"defense": "Defence",
@@ -548,6 +558,60 @@ func _spawn_floating_label(amount: int, type: int) -> void:
 	lbl.global_position = global_position + Vector2(0, -30)
 	if lbl.has_method("show_number"):
 		lbl.show_number(amount, type)
+
+
+# de-duplication state for show_notice(). Kept next to its only user rather
+# than up with the stat block, because it is bookkeeping for one function and
+# means nothing outside it.
+var _last_notice_text: String = ""
+var _last_notice_at_ms: int = 0
+
+
+# PUBLIC. The single way to tell the player "you can't do that right now".
+#
+# WHY THIS EXISTS: refusals like "health is already full", "not enough mana"
+# and "inventory full" were written as print() calls. From the player's side
+# that is no feedback at all — the click just does nothing and no reason is
+# given. They were console messages wearing the costume of a feature.
+#
+# Callers are inventoryscreen.gd, lootbaginventory.gd, tank.gd and mage.gd.
+# The UI scripts reach it through their player reference; the character
+# classes extend this file and call it on self.
+func show_notice(message: String) -> void:
+	if message == "":
+		return
+
+	# DE-DUPLICATION IS THE LOAD-BEARING PART.
+	#
+	# Every caller is a click or key handler, and those fire far faster than
+	# anyone can read. Refusing to cast with no mana while the attack button
+	# is held would otherwise stack a fresh label every frame — the same
+	# mistake as emitting player_moved 180 times a second, except this one
+	# is visible and covers the screen.
+	#
+	# Only an IDENTICAL message is suppressed, so two different refusals in
+	# quick succession both still appear.
+	var now_ms: int = Time.get_ticks_msec()
+	if message == _last_notice_text:
+		if now_ms - _last_notice_at_ms < NOTICE_REPEAT_COOLDOWN_MS:
+			return
+	_last_notice_text = message
+	_last_notice_at_ms = now_ms
+
+	if FLOATING_LABEL_SCENE == null:
+		push_warning("Player: FLOATING_LABEL_SCENE not loaded")
+		return
+
+	var lbl = FLOATING_LABEL_SCENE.instantiate()
+	if lbl == null:
+		return
+
+	# higher than damage numbers (-30) and the level-up popup (-40) so a
+	# refusal never lands on top of a number that appeared the same frame.
+	_label_container().add_child(lbl)
+	lbl.global_position = global_position + Vector2(0, -52)
+	if lbl.has_method("show_text"):
+		lbl.show_text(message, NOTICE_LABEL_TYPE, 1.2, 0.9)
 
 
 func _spawn_levelup_popup() -> void:

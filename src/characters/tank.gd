@@ -278,10 +278,10 @@ func attack_action() -> void:
 
 func _activate_aura() -> void:
 	if mana <= 0:
-		# another one the player should be told about on screen rather than
-		# in a console — see the note in inventoryscreen.gd's potion refusal.
-		if OS.is_debug_build():
-			print("[TANK] aura refused — no mana")
+		# show_notice() comes from player.gd, which this class extends —
+		# no reference to look up, and the de-duplication there means
+		# mashing the aura key with an empty bar shows one label, not forty.
+		show_notice("Not enough mana")
 		return
 
 	# toggling aura on counts as activity

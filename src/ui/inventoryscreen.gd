@@ -33,6 +33,15 @@ var player: Node = null
 var _container: Node = null
 
 
+func _notify(message: String) -> void:
+	# one funnel for every player-facing refusal in this screen. has_method()
+	# rather than a direct call because `player` is typed Node and is null
+	# until set_player() runs — an unopened or detached screen must not crash
+	# on a refusal it can't display.
+	if player != null and player.has_method("show_notice"):
+		player.show_notice(message)
+
+
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
@@ -314,15 +323,11 @@ func _use_health_potion(slot: InventorySlot) -> void:
 
 	if "hp" in player and "max_hp" in player:
 		if player.hp >= player.max_hp:
-			# THESE THREE ARE THE WRONG CHANNEL, not just the wrong build.
-			# "your health is already full" is feedback for the PLAYER, and
-			# it has been going to a console they cannot see — so from their
-			# side, clicking the potion simply does nothing and no reason is
-			# given. Gating stops it leaking into Release; the actual fix is
-			# a floating label (floatinglabel.gd already exists) or a HUD
-			# toast. Left as a print so the intent stays findable.
-			if OS.is_debug_build():
-				print("[ITEM] potion refused — HP already full")
+			# routed to the player, not the console. These three refusals
+			# used to print, which from the player's side is no feedback at
+			# all — the click did nothing and said nothing. show_notice()
+			# de-duplicates, so double-clicking a potion shows one label.
+			_notify("Health already full")
 			return
 
 	var stack: ItemStack = slot.stack
@@ -350,10 +355,7 @@ func _use_mana_potion(slot: InventorySlot) -> void:
 
 	if "mana" in player and "max_mana" in player:
 		if player.mana >= player.max_mana:
-			# see the note in _use_health_potion — player-facing text in the
-			# wrong channel.
-			if OS.is_debug_build():
-				print("[ITEM] potion refused — mana already full")
+			_notify("Mana already full")
 			return
 
 	var stack: ItemStack = slot.stack
@@ -383,10 +385,7 @@ func _use_stamina_potion(slot: InventorySlot) -> void:
 
 	if "stamina" in player and "max_stamina" in player:
 		if player.stamina >= player.max_stamina:
-			# see the note in _use_health_potion — player-facing text in the
-			# wrong channel.
-			if OS.is_debug_build():
-				print("[ITEM] potion refused — stamina already full")
+			_notify("Stamina already full")
 			return
 
 	var stack: ItemStack = slot.stack

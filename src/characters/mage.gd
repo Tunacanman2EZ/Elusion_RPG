@@ -131,10 +131,11 @@ func _cast_stalagmite_drop() -> void:
 	if is_casting:
 		return
 	if mana < spell_mana_cost:
-		# player-facing refusal in a console channel, same as the tank aura
-		# and the potions — worth surfacing on screen eventually.
-		if OS.is_debug_build():
-			print("[MAGE] cast refused — mana %d/%d" % [mana, spell_mana_cost])
+		# THE ONE THAT MOST NEEDED THE COOLDOWN IN show_notice(). Attack is
+		# held down, not tapped, so an out-of-mana mage runs this branch on
+		# every input poll — without de-duplication it would bury the screen
+		# in labels for as long as the button was down.
+		show_notice("Not enough mana")
 		return
 	if target_circle_scene == null:
 		push_warning("Mage: target_circle_scene not assigned in inspector")
