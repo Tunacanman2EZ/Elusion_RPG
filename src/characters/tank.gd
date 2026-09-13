@@ -68,11 +68,10 @@ var aura_timer:       float = 0.0
 var mana_drain_timer: float = 0.0
 var aura_active: bool = false
 
-# NEW: tracks right-click press state for edge detection, same pattern
-# as warrior's/mage's _right_click_was_held. right-click is polled
-# privately here rather than added to the shared "attack" Input Map
-# action — see _physics_process below for why.
-var _right_click_was_held: bool = false
+# right-click edge detection moved to Player — see its ATTACK INPUT section.
+# tank still needs its own _physics_process (it replaces the base loop rather
+# than extending it), so it calls the inherited _poll_attack_pressed() below
+# instead of keeping a private tracker.
 
 
 # =============================================================================
@@ -121,20 +120,18 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	# always sample right-click, even in branches that return early below —
-	# same reasoning as warrior/mage's _right_click_was_held: without this,
-	# a click held through death or an attack lockout could false-trigger
-	# the toggle the instant the block lifts, since the edge-detection
-	# would see "wasn't held a moment ago" even though it's been held the
-	# whole time.
-	var right_held_now: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	# Sampled FIRST, before every early return below, because the edge
+	# detector has to see each frame — a click held through death or an attack
+	# lockout must not read as a fresh press the instant that block lifts.
+	# Tank replaces the base loop rather than extending it, so it calls the
+	# inherited poll explicitly; every other class gets this from super().
+	var attack_pressed: bool = _poll_attack_pressed()
 
 	# block all input/movement during death sequence so the death animation
 	# can play through without being overwritten by walk/idle animations.
 	if is_dying:
 		velocity = Vector2.ZERO
 		move_and_slide()
-		_right_click_was_held = right_held_now
 		return
 
 	_tick_aura(delta)
@@ -144,20 +141,11 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		move_and_slide()
 		_set_active()
-		_right_click_was_held = right_held_now
 		return
 
-	# NEW: attack button (spacebar) OR right-click toggles the aura — both
-	# call the same attack_action(), matching warrior/mage's dual-input
-	# pattern. right-click stays a private poll here rather than joining
-	# the shared "attack" Input Map action, since that action is inherited
-	# by every class — binding a mouse button onto it directly would give
-	# mage (which already uses right-click for its own cast) a second,
-	# colliding path to the same trigger.
-	var right_click_pressed_now: bool = right_held_now and not _right_click_was_held
-	_right_click_was_held = right_held_now
-
-	if Input.is_action_just_pressed("attack") or right_click_pressed_now:
+	# spacebar OR right-click toggles the aura — both land on attack_action(),
+	# same as every other class.
+	if attack_pressed:
 		attack_action()
 		return
 

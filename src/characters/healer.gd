@@ -120,8 +120,12 @@ func _can_fire() -> bool:
 
 
 func _is_attack_input_held() -> bool:
-	return Input.is_action_pressed("attack") \
-		or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	# healer fires continuously while the input is HELD, so this stays a hold
+	# check rather than the edge-detected _poll_attack_pressed() every other
+	# class uses. right_click_attack_held() is the shared version of the mouse
+	# half, and it is what stops a right-click the inventory already consumed
+	# from reading as "player is holding attack" and draining their mana.
+	return Input.is_action_pressed("attack") or right_click_attack_held()
 
 
 # =============================================================================

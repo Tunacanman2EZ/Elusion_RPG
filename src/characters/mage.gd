@@ -50,9 +50,10 @@ extends "res://src/characters/player.gd"
 # independent from parent's is_attacking — blocks new casts until cooldown ends.
 var is_casting: bool = false
 
-# tracks right-click press state for edge detection so each click casts once
-# instead of every frame held.
-var _right_click_was_held: bool = false
+# right-click edge detection moved to Player — see its ATTACK INPUT section.
+# mage doesn't need a private copy: attack_action() below already IS the
+# stalagmite cast, so the shared right-click path lands on exactly the spell
+# this class used to poll for itself.
 
 
 # =============================================================================
@@ -95,27 +96,15 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	# parent handles movement (WASD), spacebar attack dispatch, animation
-	# switching, universal regen, and universal sprint. we layer right-click
-	# casting on top.
+	# parent handles movement (WASD), attack dispatch from BOTH spacebar and
+	# right-click, animation switching, universal regen, and universal sprint.
+	# both inputs land on attack_action(), which is the stalagmite cast, so
+	# mage adds nothing to the input path any more.
+	#
+	# the is_casting cooldown that used to be checked here is still enforced —
+	# _cast_stalagmite_drop() guards on it itself, which is what made this
+	# second check redundant.
 	super._physics_process(delta)
-
-	# always update the held tracker even while blocked, so we don't false-
-	# trigger when the block lifts mid-hold (e.g. right-click held through
-	# a cast cooldown then released — should NOT trigger another cast)
-	var right_held_now: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-
-	# block right-click cast during death OR during active cooldown.
-	# we DO allow casting while moving — that's the kite-while-casting design.
-	if is_casting or is_dying:
-		_right_click_was_held = right_held_now
-		return
-
-	# press-edge detection: fires once on press, not every frame held
-	if right_held_now and not _right_click_was_held:
-		_cast_stalagmite_drop()
-
-	_right_click_was_held = right_held_now
 
 
 # =============================================================================

@@ -29,14 +29,11 @@
 # - mana regenerates via the universal regen in player.gd
 #
 # CURSOR-AIM ATTACK (NEW):
-# - triggered by EITHER the shared "attack" input action (spacebar) OR a
-#   right-click, polled privately inside warrior's own _physics_process
-#   (see _right_click_was_held). right-click is intentionally NOT added to
-#   the shared "attack" Input Map action, because that action is inherited
-#   by every class — including mage, whose attack_action() override IS its
-#   right-click stalagmite cast via a separate direct poll. Adding a mouse
-#   button to the shared action would give mage two independent paths to
-#   the same cast. Keeping warrior's right-click private avoids that.
+# - triggered by EITHER spacebar OR right-click, both dispatched by
+#   player.gd's _poll_attack_pressed() for every class alike. warrior used to
+#   poll right-click privately to avoid colliding with mage's separate
+#   right-click cast; that collision was imaginary, since mage's
+#   attack_action() IS that cast, so all four copies of the poll are gone.
 # - on trigger, we read get_global_mouse_position() and compute a direction
 #   vector from the warrior to the cursor. that direction drives:
 #     1. which attack animation plays — snapped to the nearest of 8 equal
@@ -181,16 +178,12 @@ var _swing_id: int = 0
 # doesn't change which hitbox is "live" partway through.
 var _swing_aim_direction: Vector2 = Vector2.DOWN
 
-# NEW: tracks right-click press state for edge detection, same pattern as
-# mage's _right_click_was_held. kept PRIVATE to warrior — right-click is
-# polled directly here rather than being added to the shared "attack"
-# Input Map action, because that action is inherited by every class
-# including mage, whose own attack_action() override IS its right-click
-# stalagmite cast. binding a mouse button onto the shared action would
-# give mage two independent paths to the same cast (the action AND its own
-# direct poll), racing each other. polling right-click privately here
-# avoids that entirely — mage's right-click stays untouched by any of this.
-var _right_click_was_held: bool = false
+# right-click attack now lives in Player (see its ATTACK INPUT section).
+# the private tracker that used to sit here is gone, along with the reasoning
+# about avoiding a collision with mage's cast — that collision was never real.
+# mage's attack_action() IS its stalagmite cast, so routing right-click to
+# attack_action() for everyone gives mage exactly the same cast it already had,
+# through one path instead of two.
 
 
 # =============================================================================
@@ -263,28 +256,10 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	# parent handles movement (WASD), spacebar attack dispatch via the
-	# shared "attack" action, animation switching, universal regen, and
-	# universal sprint. we layer right-click attack on top, polled directly
-	# (NOT via the "attack" action) so it stays private to warrior — see
-	# note on _right_click_was_held above for why.
+	# parent handles movement (WASD), attack dispatch from BOTH spacebar and
+	# right-click, animation switching, universal regen, and universal sprint.
+	# warrior adds nothing to the input path any more.
 	super._physics_process(delta)
-
-	var right_held_now: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-
-	# block right-click attack during death, same as mage blocks its cast.
-	# we do NOT block on is_attacking here — attack_action() already guards
-	# against re-triggering mid-swing, so this just needs to not double-fire
-	# on the same held click.
-	if is_dying:
-		_right_click_was_held = right_held_now
-		return
-
-	# press-edge detection: fires once on press, not every frame held
-	if right_held_now and not _right_click_was_held:
-		attack_action()
-
-	_right_click_was_held = right_held_now
 
 
 # =============================================================================

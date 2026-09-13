@@ -46,7 +46,12 @@ const XP_BASE: float = 100.0
 const XP_GROWTH: float = 1.15
 
 
-static func xp_needed_for_level(level: int) -> int:
+# NOT static, deliberately. Both callers reach this through the GameConstants
+# AUTOLOAD — an instance — and calling a static function on an instance makes
+# Godot warn on every reload. This file only ever exists as that one autoload,
+# so an instance method is the honest signature and the warning goes away
+# without either caller changing.
+func xp_needed_for_level(level: int) -> int:
 	# Level 1 needs XP_BASE; each level after multiplies by XP_GROWTH.
 	# At level 99 this is roughly 89 million for that single level — large, but
 	# comfortably inside int64, which the old doubling curve was not.

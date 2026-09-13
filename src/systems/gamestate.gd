@@ -57,6 +57,23 @@ var player_position: Vector2 = Vector2()
 # empty string means anonymous/offline mode.
 var logged_in_username: String = ""
 
+# true while a right-click that the UI already consumed is still held down.
+#
+# set by inventoryslot.gd when a slot handles a right-click; read by
+# player.gd's right_click_attack_held(), which clears it the moment the
+# button comes back up.
+#
+# WHY THIS HAS TO BE GLOBAL: accept_event() stops an event travelling through
+# the scene tree, but the character classes read the mouse with
+# Input.is_mouse_button_pressed(), which asks the hardware and knows nothing
+# about what a Control consumed. So right-clicking a potion to drink it also
+# swung the player's weapon. This flag is the handshake between the two.
+#
+# it lives here rather than as a static on player.gd because that needed a
+# class_name, and a class_name only exists once Godot has rescanned the file —
+# which is a bootstrapping problem the autoload simply doesn't have.
+var ui_absorbed_right_click: bool = false
+
 
 # =============================================================================
 # MOVEMENT AND COMBAT SIGNALS

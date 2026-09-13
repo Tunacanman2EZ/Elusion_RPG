@@ -243,6 +243,13 @@ func _ready() -> void:
 
 
 func _physics_process(_delta):
+	# Sampled FIRST, before any early return below, because the right-click
+	# edge detector has to see every frame. If it only ran when the player was
+	# alive and idle, a click held through a death or an attack lockout would
+	# look like a fresh press the instant that block lifted. Every class used
+	# to carry its own copy of this comment and its own copy of the tracker.
+	var attack_pressed: bool = _poll_attack_pressed()
+
 	if is_dying:
 		velocity = Vector2.ZERO
 		move_and_slide()
@@ -257,7 +264,7 @@ func _physics_process(_delta):
 		_set_active()
 		return
 
-	if Input.is_action_just_pressed("attack"):
+	if attack_pressed:
 		attack_action()
 		return
 
@@ -624,6 +631,48 @@ func _on_animatedsprite2d_animation_finished() -> void:
 
 
 # =============================================================================
+# ATTACK INPUT — SPACE + RIGHT CLICK
+# =============================================================================
+# Attack fires on the "attack" action (spacebar) OR right mouse, for every
+# class. Right-click used to be polled privately by warrior, mage and tank,
+# each with its own held-tracker and its own edge detection, because binding
+# a mouse button onto the shared action would have collided with mage's
+# separate right-click cast. That collision no longer exists — mage's
+# attack_action() already IS the stalagmite cast — so the four copies are
+# gone and this is the one place right-click is read.
+
+# Right-click hold state from the previous physics frame, for edge detection.
+var _right_click_was_held: bool = false
+
+
+func right_click_attack_held() -> bool:
+	# Right mouse as an ATTACK input: held, and NOT part of a click the UI
+	# already consumed. Public because healer polls it for continuous fire.
+	#
+	# Input.is_mouse_button_pressed() reads the hardware, not the scene tree,
+	# so a click a Control already handled with accept_event() is still
+	# "pressed" as far as this loop is concerned. That is why right-clicking
+	# an item in the inventory to drink a potion ALSO swung the weapon.
+	# inventoryslot.gd raises GameState.ui_absorbed_right_click when it takes
+	# a click; this clears it the moment the button physically comes back up,
+	# so the suppression covers exactly that one click and no longer.
+	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+		GameState.ui_absorbed_right_click = false
+		return false
+	return not GameState.ui_absorbed_right_click
+
+
+func _poll_attack_pressed() -> bool:
+	# One frame's worth of attack input, edge-detected so a held right button
+	# fires once rather than every frame. MUST be called exactly once per
+	# physics frame, unconditionally — see the call site in _physics_process.
+	var right_now: bool = right_click_attack_held()
+	var right_edge: bool = right_now and not _right_click_was_held
+	_right_click_was_held = right_now
+	return Input.is_action_just_pressed("attack") or right_edge
+
+
+# =============================================================================
 # COMBAT
 # =============================================================================
 
@@ -673,6 +722,11 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 		_start_death_sequence()
 		return
 
+	# integer division on purpose — defense XP is half the damage taken,
+	# rounded down, and maxi() guarantees a 1-damage hit still trains it.
+	# spelled with @warning_ignore so the intent is on the record rather
+	# than the editor flagging it as a possible accident every reload.
+	@warning_ignore("integer_division")
 	gain_defense_xp(maxi(1, amount / 2))
 
 

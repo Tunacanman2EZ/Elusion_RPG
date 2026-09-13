@@ -34,6 +34,16 @@ signal slot_double_clicked(slot: InventorySlot)
 
 
 # =============================================================================
+# CONSTANTS
+# =============================================================================
+
+# on-screen size of the icon that follows the pointer during a drag.
+# see make_drag_preview() — it is centred on the pointer, so this is also
+# what decides how far the icon is offset from it.
+const DRAG_PREVIEW_SIZE := Vector2(40, 40)
+
+
+# =============================================================================
 # EXPORTED SETTINGS
 # =============================================================================
 
@@ -170,6 +180,16 @@ func _gui_input(event: InputEvent) -> void:
 				slot_clicked.emit(self)
 			accept_event()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			# Tell the player this click belongs to the UI.
+			#
+			# accept_event() below stops the event propagating through the
+			# scene tree, but the character classes read the mouse with
+			# Input.is_mouse_button_pressed(), which asks the HARDWARE and
+			# knows nothing about what a Control consumed. So right-clicking
+			# a potion to drink it also swung your weapon. This marks the
+			# click as spoken for; player.gd clears it when the button is
+			# released. See GameState for why the flag lives on the autoload.
+			GameState.ui_absorbed_right_click = true
 			slot_right_clicked.emit(self)
 			accept_event()
 
@@ -214,35 +234,60 @@ func _hide_tooltip() -> void:
 # DRAG AND DROP — SOURCE
 # =============================================================================
 
+func make_drag_preview(texture: Texture2D) -> Control:
+	# Builds the icon that follows the pointer during a drag. Shared with
+	# HotbarSlot so both kinds of slot drag identically — they used to keep
+	# separate copies of this and could drift apart.
+	#
+	# CENTRED ON THE POINTER, WHICH IT PREVIOUSLY WAS NOT.
+	#
+	# set_drag_preview() puts the preview's TOP-LEFT CORNER at the mouse, so
+	# the icon hung down and to the right of the real drop point by its full
+	# size. You were aiming with the middle of the icon while the drop was
+	# being tested ~20px up and left of that — which reads as "the item won't
+	# go in the slot" when the slot is only 32px across. It went unnoticed
+	# while the system cursor was drawn, because the arrow showed the true
+	# point; hiding the cursor during drags removed that reference and left
+	# only the icon, which was lying about where the pointer was.
+	#
+	# A zero-sized wrapper sits exactly on the pointer, and the icon inside is
+	# offset by half its size, so what you see centred under your hand IS the
+	# point being tested.
+	var root := Control.new()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	# DRAW ABOVE EVERY PANEL. set_drag_preview() parents the preview to the
+	# control it is called on, so the icon lives inside whichever panel you
+	# picked it up from and any panel drawn after that one covers it — that's
+	# what sent the icon behind the bank window on the way over.
+	#
+	# Every panel is in the same CanvasLayer (characterhud, layer 0), so
+	# z_index settles it, and it has to be ABSOLUTE: z_index is added to the
+	# parent's by default, which would only offset it from whatever the source
+	# panel is at. 4096 is the engine maximum. The child inherits this
+	# ordering, so setting it on the wrapper covers both.
+	root.z_as_relative = false
+	root.z_index = 4096
+
+	var icon := TextureRect.new()
+	icon.texture = texture
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.size = DRAG_PREVIEW_SIZE
+	icon.position = -DRAG_PREVIEW_SIZE * 0.5
+	root.add_child(icon)
+
+	return root
+
+
 func _get_drag_data(_at_position: Vector2) -> Variant:
 	if is_empty():
 		return null
 
 	_hide_tooltip()
 
-	var preview: TextureRect = TextureRect.new()
-	preview.texture = icon_rect.texture
-	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	preview.custom_minimum_size = Vector2(40, 40)
-
-	# DRAW THE DRAGGED ICON ABOVE EVERY PANEL.
-	#
-	# set_drag_preview() parents the preview to the control it is called on —
-	# this slot. So the icon you drag lives inside whichever panel you picked
-	# it up from, and any panel drawn after that one covers it. The bank is
-	# added to the HUD after the inventory, so dragging inventory -> bank sent
-	# the icon behind the bank window for the whole trip.
-	#
-	# Every panel here is in the same CanvasLayer (characterhud, layer 0), so
-	# z_index settles the order. It has to be ABSOLUTE: z_index is added to
-	# the parent's by default, which would just offset it from whatever the
-	# source panel happens to be at. z_as_relative = false ignores the parent
-	# and 4096 is the engine's maximum, so the icon is on top of the whole UI
-	# no matter which panel the drag started in or where it is headed.
-	preview.z_as_relative = false
-	preview.z_index = 4096
-
-	set_drag_preview(preview)
+	set_drag_preview(make_drag_preview(icon_rect.texture))
 
 	return {
 		"stack":       stack.duplicate_stack(),
