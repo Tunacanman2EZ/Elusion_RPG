@@ -790,6 +790,7 @@ script = ExtResource("1_kxuj4")
 projectile_scene = ExtResource("2_lqnrr")
 projectile_damage = 6
 muzzle_marker_prefix = "projectile"
+release_frame = 5
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=392472798]
 modulate = Color(0.13333334, 0.4117647, 0.5686275, 1)

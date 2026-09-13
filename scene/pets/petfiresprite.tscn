@@ -704,6 +704,7 @@ motion_mode = 1
 script = ExtResource("1_4b4yj")
 projectile_scene = ExtResource("2_8rek3")
 projectile_damage = 6
+release_frame = 5
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=392472798]
 modulate = Color(0.41568628, 1, 1, 1)

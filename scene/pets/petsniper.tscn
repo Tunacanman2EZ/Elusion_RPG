@@ -663,6 +663,7 @@ collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_qunwq")
 projectile_scene = ExtResource("2_1thn1")
+release_frame = 5
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=2055609014]
 modulate = Color(0.10980392, 0.9607843, 0.9411765, 1)
