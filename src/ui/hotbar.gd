@@ -68,7 +68,13 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	# number keys 1-9 trigger the corresponding hotbar slot.
 	# KEY_1 through KEY_9 map directly to slot indices 0-8.
-	if not (event is InputEventKey) or not event.pressed:
+	#
+	# is_echo() rejects the OS key-repeat stream. Holding a number key made
+	# the operating system resend the same press every ~30ms once the repeat
+	# delay elapsed, and each one was a real InputEventKey with pressed=true —
+	# so leaning on "1" drank your entire stack of potions in about a second.
+	# A hotbar slot should fire on the press, never on the repeat.
+	if not (event is InputEventKey) or not event.pressed or event.is_echo():
 		return
 
 	var key_to_slot_index: int = -1
@@ -183,10 +189,14 @@ func _on_slot_right_clicked(slot: HotbarSlot) -> void:
 	item_used.emit(slot.get_item_id())
 
 
-func _on_slot_changed(_slot: HotbarSlot) -> void:
+func _on_slot_changed(slot: HotbarSlot) -> void:
 	# a drag-drop modified a slot's assignment — enforce uniqueness,
 	# persist atomically, and update inventory tinting.
-	_enforce_unique_assignments()
+	#
+	# the changed slot is passed through now. it used to be discarded as
+	# `_slot`, which is what made dropping onto the hotbar feel unreliable —
+	# see _enforce_unique_assignments().
+	_enforce_unique_assignments(slot)
 	_save_assignments_to_player()
 	refresh_all_slots()
 	_push_linked_ids_to_inventory()
@@ -218,21 +228,48 @@ func _use_slot(slot_index: int) -> void:
 # UNIQUENESS ENFORCEMENT
 # =============================================================================
 
-func _enforce_unique_assignments() -> void:
+func _enforce_unique_assignments(just_changed: HotbarSlot = null) -> void:
 	# walk the slots and ensure each item_id appears at most once.
-	# if a duplicate is found, the EARLIER slot is cleared so the most
-	# recent assignment wins (matches drag-drop user intent).
+	#
+	# THIS IS WHY ITEMS SEEMED TO REFUSE TO DROP ONTO THE HOTBAR.
+	#
+	# The rule was "walk in reverse so the LATEST slot keeps the assignment",
+	# and the comment claimed that matched drag-drop intent. It doesn't:
+	# reverse order keeps the HIGHEST-NUMBERED slot, which has nothing to do
+	# with which slot the player just dropped into.
+	#
+	# So dragging a potion from your inventory onto slot 2 while that same
+	# potion was already sitting in slot 7 did this: slot 2 took the item,
+	# this pass then walked 9 -> 1, met slot 7 first, and cleared slot 2 as
+	# the "older" duplicate. The drop was accepted and then immediately undone,
+	# one frame later, with no feedback. Aiming at a HIGHER slot number than
+	# the existing copy worked fine — which is exactly why it felt flaky
+	# rather than broken, and why it got worse the more slots were filled.
+	#
+	# just_changed is the slot the player actually acted on. It claims its
+	# item before the scan starts and is skipped by the scan, so it can never
+	# be the one cleared. Index order still decides every other tie, which
+	# keeps behaviour stable for calls that aren't from a drop.
 	var seen_ids: Dictionary = {}
 
-	# walk in reverse so the LATEST slot keeps the assignment
+	var protected: bool = just_changed != null \
+		and is_instance_valid(just_changed) \
+		and just_changed.is_assigned()
+	if protected:
+		seen_ids[just_changed.get_item_id()] = true
+
+	# walk in reverse so that, among the slots NOT just touched, the highest
+	# numbered one keeps the assignment.
 	for i in range(slots.size() - 1, -1, -1):
 		var slot: HotbarSlot = slots[i]
 		if slot == null or not slot.is_assigned():
 			continue
+		if protected and slot == just_changed:
+			continue
 
 		var item_id: String = slot.get_item_id()
 		if seen_ids.has(item_id):
-			# duplicate — clear this older slot
+			# duplicate — clear it, so the item lives in exactly one slot
 			slot.set_item_id("")
 		else:
 			seen_ids[item_id] = true

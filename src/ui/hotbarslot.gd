@@ -207,11 +207,11 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 
 	_hide_tooltip()
 
-	var preview: TextureRect = TextureRect.new()
-	preview.texture = icon_rect.texture
-	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	preview.custom_minimum_size = Vector2(40, 40)
-	set_drag_preview(preview)
+	# shared with InventorySlot so the hotbar drags exactly like the inventory
+	# does — centred on the pointer and drawn above every panel. this used to
+	# be a second hand-rolled copy of the preview, which is how it ended up
+	# uncentred in both places at once.
+	set_drag_preview(make_drag_preview(icon_rect.texture))
 
 	return {
 		"stack":         stack.duplicate_stack(),
