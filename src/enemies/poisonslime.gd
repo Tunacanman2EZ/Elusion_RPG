@@ -204,13 +204,44 @@ func _ready() -> void:
 		attack_cooldown = large_attack_cooldown
 		attack_range = large_attack_range
 
-	# only the smalls carry loot. The large never dies, so it would never
-	# get the chance to drop anything anyway — being explicit here means
-	# nobody later wonders why a large slime's bag never appears.
+	# ONLY THE SMALLS ROLL — INCLUDING FOR THE LARGE.
+	#
+	# The large never dies: _die() routes it into _begin_split() and it is
+	# consumed, so it has no death to drop anything from. Rather than bolt a
+	# special-case roll onto the split, the large's pet chance is carried by
+	# the four smalls it becomes — the same way its XP and its bag already
+	# are. One roll site, one number to tune, and nothing to keep in sync.
 	if is_small:
 		if pet_drop_id == "":
 			pet_drop_id = "petpoisonslime"
+
+		# loot tier — 35 hp, the weakest thing in the game and the one you
+		# kill most of. gates which items can roll (nothing above this tier
+		# can drop) and scales gold.
+		#
+		# NOTE: petpoisonslime.tres does not exist yet, so _roll_pet()'s
+		# has_item() check fails and no slime pet can drop regardless of these
+		# odds. Authoring that resource is the only thing needed — no code
+		# change — and this is set up ready for it.
+		max_loot_tier = 1
+
+		# Pet odds, overriding the tier default of 1 in 1296, because these
+		# smalls are carrying the large's share as well as their own.
+		#
+		# 864 is exactly 4 x 216, which is the whole point: a large slime
+		# always becomes four smalls, so clearing one encounter is four rolls
+		# at 1 in 864, and
+		#   1 - (863/864)^4  =  1 in 216
+		# That lands a full large-slime fight on the same odds as a single
+		# bush mage kill — fair, given it's 220 hp plus four 35 hp smalls.
+		#
+		# Tuning: this is the only pet knob for slimes. Raising it makes the
+		# pet rarer; the per-encounter figure stays at roughly a quarter of
+		# whatever you set.
+		pet_odds_override = 864
 	else:
+		# LARGE: no bag, no XP, no pet roll. It is consumed by the split and
+		# everything it is worth is now walking around as four smalls.
 		bag_drop_chance = 0.0
 		pet_drop_id = ""
 
@@ -486,8 +517,9 @@ func _begin_split() -> void:
 
 	_split_into_smalls()
 
-	# the large is consumed by the split — no death animation, no loot, no
-	# XP. Everything it was worth is now walking around as four smalls.
+	# the large is consumed by the split — no death animation, no bag, no XP,
+	# no pet roll. Everything it was worth is now walking around as four
+	# smalls, the pet chance included (see the pet_odds_override in _ready).
 	queue_free()
 
 

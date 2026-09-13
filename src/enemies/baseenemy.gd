@@ -62,6 +62,40 @@ const GOLD_LARGE_ID := "largeamountofgold"
 
 
 # =============================================================================
+# PET DROP ODDS BY LOOT TIER
+# =============================================================================
+# "one in N per kill", keyed by the enemy's max_loot_tier. An enemy only ever
+# drops its OWN pet variant (pet_drop_id), so this number is literally how
+# many of that specific enemy you expect to kill for that specific pet — it is
+# not competing with any other pet in a shared pool.
+#
+# ANCHORED ON THE DICE THIS REPLACES. The old _roll_pet() rolled 3d6 and
+# required all three sixes: exactly 1 in 216. Tier 3 keeps that number, so the
+# enemies that already felt right are unchanged, and the other tiers are tuned
+# around it rather than invented from nothing.
+#
+# Powers of six alone are too coarse to tune across four tiers (the next step
+# down from 216 is 1296 — a 6x jump), so these are plain "1 in N" integers.
+# Change any number here and only that tier moves.
+#
+#   tier 1 -> 1 in 1296   weakest trash; you kill a great many of them
+#   tier 2 -> 1 in 648    mid-tier
+#   tier 3 -> 1 in 216    unchanged from the original triple-six
+#   tier 4 -> 1 in 108    reserved for the boss
+const PET_ODDS_BY_TIER := {
+	1: 1296,
+	2: 648,
+	3: 216,
+	4: 108,
+}
+
+# Used when max_loot_tier isn't in the table above (a tier 5+ enemy added
+# later, or a corrupted value). Deliberately on the stingy side: a missing
+# entry should never accidentally make a pet common.
+const PET_ODDS_FALLBACK := 1296
+
+
+# =============================================================================
 # EXPORTED SETTINGS
 # =============================================================================
 
@@ -82,6 +116,16 @@ const GOLD_LARGE_ID := "largeamountofgold"
 # =============================================================================
 
 @export var bag_drop_chance: float = 0.30
+
+# How good this enemy's drops can get. Gates item rolls (nothing above this
+# tier can appear — see _pick_weighted_item_id), scales gold, and now sets the
+# pet odds via PET_ODDS_BY_TIER below.
+#
+# EVERY ENEMY LEFT THIS AT 1 UNTIL NOW, which had a consequence nobody would
+# have guessed from reading it: _pick_weighted_item_id() skips any item whose
+# tier exceeds max_tier, so tinyhealthpotion (tier 2) could not drop from
+# ANYTHING in the game. It wasn't rare, it was unreachable. Each subclass sets
+# this in _ready() now, next to its max_hp.
 @export var max_loot_tier: int = 1
 
 # CHANGED: was a hardcoded const (BAG_ITEM_SLOTS = 8), now exported so
@@ -96,6 +140,11 @@ const GOLD_LARGE_ID := "largeamountofgold"
 @export var slot_fill_chance: float = 0.15
 
 @export var pet_drop_id: String = ""
+
+# Per-enemy override for the pet odds. 0 means "use PET_ODDS_BY_TIER".
+# Set this in the Inspector when one specific enemy should differ from every
+# other enemy at its tier.
+@export var pet_odds_override: int = 0
 
 
 # =============================================================================
@@ -946,16 +995,34 @@ func _roll_and_spawn_loot(killer: Node) -> void:
 	_spawn_loot_bag(contents, killer, pet_won)
 
 
+func get_pet_odds() -> int:
+	# "one in N" chance of this enemy dropping its pet. See PET_ODDS_BY_TIER.
+	if pet_odds_override > 0:
+		return pet_odds_override
+	return int(PET_ODDS_BY_TIER.get(max_loot_tier, PET_ODDS_FALLBACK))
+
+
 func _roll_pet() -> bool:
 	if pet_drop_id == "":
 		return false
+
+	# has_item() is why the large slime could never drop a pet: poisonslime.gd
+	# sets pet_drop_id = "petpoisonslime", but no such .tres exists yet, so
+	# this returns false every time and the roll never happens. That starts
+	# working on its own the moment the resource is authored — nothing here
+	# needs to change for it.
 	if not ItemRegistry.has_item(pet_drop_id):
 		return false
 
-	var d1: int = randi_range(1, 6)
-	var d2: int = randi_range(1, 6)
-	var d3: int = randi_range(1, 6)
-	return d1 == 6 and d2 == 6 and d3 == 6
+	# WAS a hardcoded 3d6-all-sixes, i.e. a flat 1 in 216 for every enemy in
+	# the game regardless of how hard it was to kill. Now the odds come from
+	# the enemy's loot tier, so a slime and a bush mage aren't equally likely
+	# to hand over a pet. Tier 3 still evaluates to exactly 1 in 216, so the
+	# feel of the original roll is preserved where it was already tuned.
+	var odds: int = get_pet_odds()
+	if odds <= 0:
+		return false
+	return randi_range(1, odds) == odds
 
 
 func _build_bag_contents() -> Array:

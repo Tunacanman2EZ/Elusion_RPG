@@ -89,6 +89,11 @@ func _ready() -> void:
 	attack_cooldown = 1.2
 	attack_range    = desired_distance + 8.0  # reach slightly past hold zone
 
+	# loot tier — 80 hp ranged caster, joint-toughest field mob. gates which
+	# items can roll (nothing above this tier can drop), scales gold, and sets
+	# the pet odds via BaseEnemy.PET_ODDS_BY_TIER (tier 3 = 1 in 216).
+	max_loot_tier   = 3
+
 	# NEW: pet_drop_id defaults to "" on every enemy (never set per-instance
 	# in the editor), which meant _roll_pet() always bailed out immediately
 	# before even rolling the dice — the entire triple-six pet-drop system

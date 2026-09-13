@@ -34,6 +34,11 @@ func _ready() -> void:
 	attack_range    = 240.0
 	flee_range      = 50.0
 
+	# loot tier — 70 hp caster. gates which items can roll (nothing above this
+	# tier can drop), scales gold, and sets the pet odds via
+	# BaseEnemy.PET_ODDS_BY_TIER (tier 2 = 1 in 648).
+	max_loot_tier   = 2
+
 	# NEW: pet_drop_id defaults to "" on every enemy (never set per-instance
 	# in the editor), which meant _roll_pet() always bailed out immediately
 	# before even rolling the dice — the entire triple-six pet-drop system
