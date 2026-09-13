@@ -117,6 +117,12 @@ var _is_attacking: bool = false
 # NEW: an attack that's mid-animation, waiting for release_frame. the target
 # and direction are captured at the START of the swing rather than read again
 # at release, so the shot goes where the pet was aiming when it committed.
+#
+# _pending_target IS EXPECTED TO GO STALE. release_frame deliberately puts
+# several frames between committing to an attack and the shot leaving, and an
+# enemy can die inside that window — usually to this pet's own previous shot.
+# Nothing here holds a reference that keeps it alive, so by release time it can
+# be a freed Object. Always read it through _consume_pending_target().
 var _awaiting_release: bool = false
 var _pending_target: Node = null
 var _pending_dir: Vector2 = Vector2.ZERO
@@ -346,9 +352,37 @@ func _fire_at(target: Node) -> void:
 	_release_attack_lock_after(_attack_anim_duration(anim))
 
 
+func _consume_pending_target() -> Node:
+	# Reads _pending_target once, downgrading a freed object to null, and
+	# clears it so a stale reference can never be read twice.
+	#
+	# WHY A CALLER-SIDE CHECK, when _release_shot() already calls
+	# is_instance_valid() on its argument: GDScript validates a TYPED
+	# parameter at the call boundary, before the function body runs. Passing a
+	# freed object to `target: Node` raises
+	#
+	#   Invalid type in function '_release_shot' ... the Object-derived class
+	#   of argument 1 (previously freed) is not a subclass of the expected
+	#   argument class
+	#
+	# and the guard inside never gets the chance to execute. A guard in the
+	# callee cannot protect the callee's own signature. null, by contrast, is
+	# a perfectly legal value for a typed Node parameter — so converting here
+	# is what lets the existing check downstream do its job.
+	var target: Node = _pending_target if is_instance_valid(_pending_target) else null
+	_pending_target = null
+	return target
+
+
 func _release_shot(target: Node, dir: Vector2) -> void:
 	# the actual spawn, shared by the fire-immediately and release_frame
 	# paths so there's one definition of what an attack does.
+	#
+	# `target` may legitimately be null here — see _consume_pending_target().
+	# That is not a reason to abandon the shot: a PROJECTILE flies along the
+	# `dir` captured when the pet committed, so it still fires where it was
+	# aiming even though whatever it aimed at is gone. Only a VINE, which
+	# spawns AT the target, has nothing left to act on.
 	match attack_type:
 		AttackType.PROJECTILE:
 			_fire_projectile(dir)
@@ -562,7 +596,7 @@ func _on_sprite_frame_changed() -> void:
 		return
 
 	_awaiting_release = false
-	_release_shot(_pending_target, _pending_dir)
+	_release_shot(_consume_pending_target(), _pending_dir)
 
 
 func _on_sprite_animation_finished() -> void:
@@ -578,6 +612,6 @@ func _on_sprite_animation_finished() -> void:
 	# fire it here rather than lose it.
 	if _awaiting_release:
 		_awaiting_release = false
-		_release_shot(_pending_target, _pending_dir)
+		_release_shot(_consume_pending_target(), _pending_dir)
 
 	_is_attacking = false
