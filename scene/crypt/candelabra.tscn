@@ -24,7 +24,9 @@ energy = 1.1
 texture = ExtResource("2_lightgrad")
 texture_scale = 0.72
 script = ExtResource("3_flicker")
-flicker_amount = 0.13
+swell_amount = 0.24
+swell_speed = 0.45
+flicker_amount = 0.16
 flicker_speed = 5.0
 
 [node name="body" type="StaticBody2D" parent="."]

@@ -9,11 +9,13 @@
 [ext_resource type="Script" uid="uid://1vl7v33c5j3l" path="res://src/world/leavetown.gd" id="5_4lur4"]
 [ext_resource type="Texture2D" uid="uid://7qrbst14610w" path="res://art/floordecoration/floorwalls.png" id="5_63rou"]
 [ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/characterhud.tscn" id="6_4lur4"]
+[ext_resource type="PackedScene" path="res://scene/crypt/lantern.tscn" id="6_22eus"]
 [ext_resource type="PackedScene" uid="uid://de3b4cl5fjmyh" path="res://scene/enemy/bushmage.tscn" id="8_4lur4"]
 [ext_resource type="PackedScene" uid="uid://biy8p8c42eisd" path="res://scene/ladderdown.tscn" id="8_ogp8f"]
 [ext_resource type="PackedScene" uid="uid://b6bj5cbyir0kt" path="res://scene/enemy/electricsprite.tscn" id="11_muev0"]
 [ext_resource type="PackedScene" uid="uid://bktr306f3g2o6" path="res://scene/enemy/firesprite.tscn" id="12_ogp8f"]
 [ext_resource type="PackedScene" uid="uid://bwgdfgnjn3fv" path="res://scene/enemy/bushsniper.tscn" id="13_muev0"]
+[ext_resource type="PackedScene" path="res://scene/crypt/candelabra.tscn" id="16_22eus"]
 [ext_resource type="PackedScene" uid="uid://dtffi4janv50h" path="res://scene/enemy/poisonslime.tscn" id="16_skip5"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ahwvv"]
@@ -579,6 +581,16 @@ navigation_polygon = SubResource("NavigationPolygon_ogp8f")
 [node name="ysortworld" type="TileMapLayer" parent="." unique_id=1411142955]
 
 [node name="props" type="Node2D" parent="ysortworld" unique_id=1513320963]
+y_sort_enabled = true
+
+[node name="candelabra" parent="ysortworld/props" unique_id=1683283107 instance=ExtResource("16_22eus")]
+position = Vector2(189, 116)
+
+[node name="candelabra2" parent="ysortworld/props" unique_id=1011849373 instance=ExtResource("16_22eus")]
+position = Vector2(190, 190)
+
+[node name="lantern" parent="ysortworld/props" unique_id=893634828 instance=ExtResource("6_22eus")]
+position = Vector2(-37, 177)
 
 [node name="interactables" type="Node2D" parent="ysortworld" unique_id=369844446]
 

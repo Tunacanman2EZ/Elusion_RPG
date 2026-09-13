@@ -8,21 +8,14 @@ layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 2.0
-offset_top = -2.0
-offset_right = 2.0
-offset_bottom = -2.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_pocqk")
 
 [node name="TextureRect" type="TextureRect" parent="." unique_id=561673467]
-texture_filter = 1
 layout_mode = 0
-offset_left = -2.0
-offset_top = 5.0
-offset_right = 1275.0
-offset_bottom = 721.0
+offset_right = 1283.0
+offset_bottom = 727.0
 texture = ExtResource("2_6xpx0")
 
 [node name="PanelContainer" type="PanelContainer" parent="." unique_id=1948850412]
@@ -53,23 +46,21 @@ theme_override_font_sizes/font_size = 32
 text = "GAME - OVER"
 horizontal_alignment = 1
 
-[node name="flavortext1" type="Label" parent="PanelContainer/VBoxContainer" unique_id=1558198365]
+[node name="flavortext" type="Label" parent="PanelContainer/VBoxContainer" unique_id=1558198365]
+custom_minimum_size = Vector2(340, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "Hopefully you are better"
+text = "Hopefully you will be better prepared in your next reincarnation."
 horizontal_alignment = 1
+autowrap_mode = 3
 
-[node name="flavortext2" type="Label" parent="PanelContainer/VBoxContainer" unique_id=627148165]
+[node name="encouragement" type="Label" parent="PanelContainer/VBoxContainer" unique_id=722156258]
+custom_minimum_size = Vector2(340, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "prepared in your next reincarnation."
+text = "Take a break. Come back stronger."
 horizontal_alignment = 1
-
-[node name="flavortext3" type="Label" parent="PanelContainer/VBoxContainer" unique_id=722156258]
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Take a break come back stronger!"
-horizontal_alignment = 1
+autowrap_mode = 3
 
 [node name="lusionslabel" type="Label" parent="PanelContainer/VBoxContainer" unique_id=610427437]
 unique_name_in_owner = true
