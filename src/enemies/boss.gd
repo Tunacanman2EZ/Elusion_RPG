@@ -58,7 +58,12 @@ func spawn_player_from_selection() -> void:
 		return
 
 	var spawn_parent: Node = self
-	var y_world: Node = get_node_or_null("yworldsort")
+	# "ysortworld" — renamed in boss.tscn so all three world scenes agree.
+	# This lookup and the scene must always be changed together: the fallback
+	# below is a working path, so a mismatch doesn't error, it just parents
+	# the player to the scene root outside the Y-sort space and draws them in
+	# front of everything. That is exactly how the same typo hid in field.gd.
+	var y_world: Node = get_node_or_null("ysortworld")
 	if y_world != null:
 		var player_container: Node = y_world.get_node_or_null("player")
 		spawn_parent = player_container if player_container != null else y_world

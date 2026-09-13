@@ -432,43 +432,43 @@ tile_set = SubResource("TileSet_sit1d")
 
 [node name="grounddecals" type="TileMapLayer" parent="." unique_id=1160374073]
 
-[node name="yworldsort" type="TileMapLayer" parent="." unique_id=1316159479]
+[node name="ysortworld" type="TileMapLayer" parent="." unique_id=1316159479]
 
-[node name="props" type="Node2D" parent="yworldsort" unique_id=1523927589]
+[node name="props" type="Node2D" parent="ysortworld" unique_id=1523927589]
 
-[node name="inteactables" type="Node2D" parent="yworldsort" unique_id=456706097]
+[node name="inteactables" type="Node2D" parent="ysortworld" unique_id=456706097]
 
-[node name="ladderup" parent="yworldsort/inteactables" unique_id=1703870724 instance=ExtResource("6_mup4r")]
+[node name="ladderup" parent="ysortworld/inteactables" unique_id=1703870724 instance=ExtResource("6_mup4r")]
 collision_layer = 16
 collision_mask = 4
 script = ExtResource("7_btlh5")
 destination_scene_path = "res://scene/field.tscn"
 target_spawn_id = "boss_ladder"
 
-[node name="arrivalmarker" type="Node2D" parent="yworldsort/inteactables" unique_id=1524091098]
+[node name="arrivalmarker" type="Node2D" parent="ysortworld/inteactables" unique_id=1524091098]
 script = ExtResource("9_nbucm")
 portal_id = "boss_entrance"
 metadata/_custom_type_script = "uid://blrs7e81o2jg4"
 
-[node name="enemies" type="Node2D" parent="yworldsort" unique_id=1609630585]
+[node name="enemies" type="Node2D" parent="ysortworld" unique_id=1609630585]
 
-[node name="bossenemy" parent="yworldsort/enemies" unique_id=1052022142 instance=ExtResource("11_bossenemy")]
+[node name="bossenemy" parent="ysortworld/enemies" unique_id=1052022142 instance=ExtResource("11_bossenemy")]
 position = Vector2(-400, 100)
 
-[node name="groundeffects" type="Node2D" parent="yworldsort" unique_id=1296382153 groups=["groundeffects"]]
+[node name="groundeffects" type="Node2D" parent="ysortworld" unique_id=1296382153 groups=["groundeffects"]]
 
-[node name="projectiles" type="Node2D" parent="yworldsort" unique_id=427315668 groups=["projectiles"]]
+[node name="projectiles" type="Node2D" parent="ysortworld" unique_id=427315668 groups=["projectiles"]]
 
-[node name="lootbags" type="Node2D" parent="yworldsort" unique_id=334477619 groups=["lootbags"]]
+[node name="lootbags" type="Node2D" parent="ysortworld" unique_id=334477619 groups=["lootbags"]]
 
-[node name="pets" type="Node2D" parent="yworldsort" unique_id=663608375 groups=["pets"]]
+[node name="pets" type="Node2D" parent="ysortworld" unique_id=663608375 groups=["pets"]]
 
-[node name="player" type="Node2D" parent="yworldsort" unique_id=1243556648]
+[node name="player" type="Node2D" parent="ysortworld" unique_id=1243556648]
 position = Vector2(-839, 138)
 
 [node name="aboveworld" type="TileMapLayer" parent="." unique_id=547591725]
 
 [node name="hudcontrol" parent="." unique_id=2045428837 instance=ExtResource("10_24v5s")]
 
-[connection signal="body_entered" from="yworldsort/inteactables/ladderup" to="yworldsort/inteactables/ladderup" method="_on_body_entered"]
-[connection signal="body_exited" from="yworldsort/inteactables/ladderup" to="yworldsort/inteactables/ladderup" method="_on_body_exited"]
+[connection signal="body_entered" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_entered"]
+[connection signal="body_exited" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_exited"]
