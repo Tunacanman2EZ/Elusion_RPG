@@ -1,0 +1,14 @@
+[gd_resource type="GradientTexture2D" load_steps=2 format=3]
+
+[sub_resource type="Gradient" id="Gradient_falloff"]
+offsets = PackedFloat32Array(0, 0.25, 0.5, 0.75, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.62, 1, 1, 1, 0.32, 1, 1, 1, 0.11, 1, 1, 1, 0)
+
+[resource]
+resource_name = "lightgradient"
+width = 256
+height = 256
+gradient = SubResource("Gradient_falloff")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)

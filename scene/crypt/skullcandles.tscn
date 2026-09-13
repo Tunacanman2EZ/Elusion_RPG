@@ -1,6 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Texture2D" uid="uid://7qrbst14610w" path="res://art/floordecoration/floorwalls.png" id="1_tex"]
+[ext_resource type="Texture2D" path="res://scene/crypt/lightgradient.tres" id="2_lightgrad"]
+[ext_resource type="Script" path="res://src/world/lightflicker.gd" id="3_flicker"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_art"]
 atlas = ExtResource("1_tex")
@@ -11,3 +13,13 @@ region = Rect2(178, 203, 15, 17)
 [node name="sprite" type="Sprite2D" parent="."]
 texture = SubResource("AtlasTexture_art")
 offset = Vector2(0, -8.5)
+
+[node name="light" type="PointLight2D" parent="."]
+position = Vector2(0, -14)
+color = Color(1, 0.71, 0.41, 1)
+energy = 0.85
+texture = ExtResource("2_lightgrad")
+texture_scale = 0.5
+script = ExtResource("3_flicker")
+flicker_amount = 0.16
+flicker_speed = 6.0
