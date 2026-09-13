@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Texture2D" uid="uid://7qrbst14610w" path="res://art/floordecoration/floorwalls.png" id="1_tex"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_art"]
+atlas = ExtResource("1_tex")
+region = Rect2(126, 167, 17, 20)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
+size = Vector2(17, 8)
+
+[node name="crateopen" type="Node2D"]
+
+[node name="sprite" type="Sprite2D" parent="."]
+texture = SubResource("AtlasTexture_art")
+offset = Vector2(0, -10)
+
+[node name="body" type="StaticBody2D" parent="."]
+
+[node name="collision" type="CollisionShape2D" parent="body"]
+position = Vector2(0, -4)
+shape = SubResource("RectangleShape2D_base")
