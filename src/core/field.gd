@@ -137,6 +137,20 @@ func spawn_player_from_selection() -> void:
 	spawn_parent.add_child(player)
 	current_player = player
 
+	if OS.is_debug_build():
+		# names the container the player ACTUALLY landed in. Given the comment
+		# above, this scene has already paid for that typo once — this line is
+		# what makes the same mistake visible on the launch it happens, rather
+		# than after the depth-sorting looks wrong for a while.
+		var fallback_note: String = ""
+		if spawn_parent == self:
+			fallback_note = "  (FALLBACK — no ysortworld, Y-sorting is OFF)"
+		print("[WORLD] field — %s into %s%s" % [
+			player.name,
+			spawn_parent.name,
+			fallback_note,
+		])
+
 	_attach_player_to_hud()
 
 
@@ -178,17 +192,20 @@ func _position_player_at_spawn() -> void:
 	var target_id: String = GameState.next_spawn_id
 	GameState.next_spawn_id = ""  # consume it — don't let it leak into a later, unrelated scene load
 
+	# the print/push_warning pairs here used to say the same sentence twice,
+	# once to stdout and once to the debugger. Only the warning is kept: a
+	# spawn that cannot be resolved is a defect, and a defect should be loud
+	# in one place rather than half-loud in two.
 	var player: Node = get_tree().get_first_node_in_group("player")
 	if player == null:
-		print("field.gd: no player found in group 'player' — can't position at spawn")
-		push_warning("field.gd: no player found in group 'player' — can't position at spawn")
+		push_warning("field.gd: no player in group 'player' — can't position at spawn '%s'" % target_id)
 		return
 
 	for portal in get_tree().get_nodes_in_group("fieldportals"):
 		if "portal_id" in portal and portal.portal_id == target_id:
 			player.global_position = portal.global_position
-			print("field.gd: positioned player at spawn '%s' -> %s" % [target_id, portal.global_position])
+			if OS.is_debug_build():
+				print("[WORLD] field — spawn '%s' -> %s" % [target_id, portal.global_position])
 			return
 
-	print("field.gd: no FieldPortal found matching id '%s'" % target_id)
-	push_warning("field.gd: no FieldPortal found matching id '%s'" % target_id)
+	push_warning("field.gd: no FieldPortal matching id '%s' — player left at default position" % target_id)

@@ -111,7 +111,11 @@ func _on_revive_pressed() -> void:
 
 	var current_lusions: int = CharacterData.get_account_lusions()
 	if current_lusions < revive_cost:
-		print("gameover: insufficient lusions for revive")
+		# the revive button should be disabled or labelled when the player
+		# cannot afford it. Until it is, this at least stops the refusal
+		# going only to a console in a Release build.
+		if OS.is_debug_build():
+			print("[DEATH] revive refused — %d lusions, need %d" % [current_lusions, revive_cost])
 		return
 
 	var char_name: String = death_state.get("character_name", "")
@@ -191,4 +195,5 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# write back to disk — atomic save protects against force-quit exploits
 	CharacterData.save_character_slot(char_name, slot_data)
 
-	print("gameover: '%s' lost carry items and carry gold (declined revive)" % char_name)
+	if OS.is_debug_build():
+		print("[DEATH] '%s' declined revive — carry items and gold cleared" % char_name)

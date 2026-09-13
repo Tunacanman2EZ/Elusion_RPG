@@ -798,11 +798,15 @@ func clamp_to_navigation(pos: Vector2) -> Vector2:
 	if not map.is_valid():
 		return pos
 
-	var snapped: Vector2 = NavigationServer2D.map_get_closest_point(map, pos)
-	if snapped.distance_to(pos) > NAV_SNAP_MAX_DISTANCE:
+	# named nav_point, not snapped — snapped() is a global GDScript function
+	# (it rounds a value to the nearest multiple of a step). A local of that
+	# name shadows it for the rest of this function, so any later call to the
+	# real snapped() here would silently resolve to a Vector2 instead.
+	var nav_point: Vector2 = NavigationServer2D.map_get_closest_point(map, pos)
+	if nav_point.distance_to(pos) > NAV_SNAP_MAX_DISTANCE:
 		return pos
 
-	return snapped
+	return nav_point
 
 
 func _handle_return_home() -> void:

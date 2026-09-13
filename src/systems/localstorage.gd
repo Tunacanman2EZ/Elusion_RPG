@@ -136,7 +136,12 @@ func load() -> Dictionary:
 		push_warning("main save unavailable, attempting to load backup")
 		data = _load_file(backup_path)
 		if not data.is_empty():
-			print("recovered from backup save file")
+			# NOT debug-gated, and promoted from print to push_warning.
+			# Falling back to the backup means the main save was unreadable
+			# and the player has silently lost whatever happened between the
+			# two writes. It is the quietest serious thing this file can do,
+			# and it needs to be visible in the build it happens in.
+			push_warning("LocalStorage: main save was unreadable — recovered from backup (progress since the last backup is lost)")
 
 	# critical: save file exists but couldn't be parsed AND no backup
 	if data.is_empty() and FileAccess.file_exists(save_path):

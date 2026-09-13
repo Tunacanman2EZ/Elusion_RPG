@@ -138,7 +138,11 @@ func _apply_beam_state() -> void:
 func _try_open() -> void:
 	# ownership gate — only the killer can open. others are ignored silently.
 	if _owner_player != null and _player_nearby != _owner_player:
-		print("LOOTBAG: ownership check failed, ignoring")
+		# a normal, expected outcome — somebody walked onto a bag that is not
+		# theirs. The comment above already says "ignored silently"; the print
+		# made it anything but.
+		if OS.is_debug_build():
+			print("[LOOT] bag not owned by this player — ignoring")
 		return
 
 	var hud: Node = get_tree().get_first_node_in_group("hud")
@@ -155,7 +159,8 @@ func _try_open() -> void:
 	if despawn_timer != null and not despawn_timer.is_stopped():
 		despawn_timer.paused = true
 
-	print("LOOTBAG: calling hud.open_lootbag with %d contents" % _contents.size())
+	if OS.is_debug_build():
+		print("[LOOT] opening bag with %d contents" % _contents.size())
 	hud.open_lootbag(self, _player_nearby)
 
 

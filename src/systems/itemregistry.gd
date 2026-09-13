@@ -36,6 +36,22 @@ var _items: Dictionary = {}
 # other systems can poll is_loaded() if they need to wait.
 var _is_loaded: bool = false
 
+# how many ItemData resources the scan actually found on disk, counted
+# BEFORE the item_id validation below can reject any of them.
+#
+# WHY THIS EXISTS: the boot line used to report only _items.size(), and a
+# count on its own cannot tell you anything is wrong — it just reads as a
+# smaller number. petpoisonslimesmall.tres shipped with a copy-pasted
+# item_id once, got rejected as a duplicate, and the log said "loaded 13"
+# as confidently as it had said 14 the launch before. Reporting found and
+# registered side by side makes the gap self-evident without anyone having
+# to remember what the number is supposed to be.
+#
+# It counts ItemData specifically, not every .tres, so unrelated resource
+# types living under data/items/ (themes, palettes) can never look like a
+# skipped item.
+var _item_files_seen: int = 0
+
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
@@ -44,7 +60,21 @@ func _ready() -> void:
 	# ITEMS_PATH get loaded and indexed by item_id.
 	_scan_folder(ITEMS_PATH)
 	_is_loaded = true
-	print("=== ITEMREGISTRY READY: loaded %d items ===" % _items.size())
+
+	var loaded: int = _items.size()
+	if OS.is_debug_build():
+		print("[BOOT] ItemRegistry: scanned %d, loaded %d" % [_item_files_seen, loaded])
+
+	# deliberately NOT gated on is_debug_build(). Every other startup print is
+	# routine chatter and has no business in a Release build, but this one only
+	# ever fires when an item the game expects to exist is missing from the
+	# lookup table — which is a real defect, and one the player would otherwise
+	# meet as an item that silently fails to appear.
+	if loaded != _item_files_seen:
+		push_warning(
+			"ItemRegistry: %d of %d item resources were rejected — see the errors above for which and why."
+			% [_item_files_seen - loaded, _item_files_seen]
+		)
 
 # =============================================================================
 # FILESYSTEM SCAN
@@ -87,6 +117,12 @@ func _load_item(path: String) -> void:
 		return
 
 	var item: ItemData = resource
+
+	# counted here rather than in _scan_folder: at this point we know the file
+	# IS an item, and we have not yet judged whether it is a valid one. Every
+	# return below this line is a rejection, and every rejection is the gap
+	# the boot line reports.
+	_item_files_seen += 1
 
 	# item_id is required as the registry key
 	if item.item_id == "":

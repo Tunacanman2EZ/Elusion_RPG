@@ -278,7 +278,10 @@ func attack_action() -> void:
 
 func _activate_aura() -> void:
 	if mana <= 0:
-		print("CANNOT ACTIVATE AURA: no mana")
+		# another one the player should be told about on screen rather than
+		# in a console — see the note in inventoryscreen.gd's potion refusal.
+		if OS.is_debug_build():
+			print("[TANK] aura refused — no mana")
 		return
 
 	# toggling aura on counts as activity
@@ -301,7 +304,14 @@ func _deactivate_aura() -> void:
 
 func _deal_aura_damage() -> void:
 	# damage all enemies currently inside the $aura collision area.
-	# emits GameState.aura_damage_dealt for analytics / multiplayer sync.
+	#
+	# REMOVED: this used to also emit GameState.aura_damage_dealt on every
+	# hit, described as being "for analytics / multiplayer sync." Neither
+	# exists — nothing in the game connects to that signal, or to any of the
+	# others on GameState (see the note at the top of gamestate.gd). It fired
+	# once per enemy per aura tick into an empty bus, which is the most
+	# expensive place in this file to do nothing. The declaration is still
+	# there for when multiplayer is real; put the emit back then.
 	if not has_node("aura"):
 		return
 
@@ -309,8 +319,8 @@ func _deal_aura_damage() -> void:
 	# tank gained attack XP from every tick but it never affected the
 	# tank's own damage output. now scaled by get_damage_multiplier(),
 	# same shared function every class's damage uses (see player.gd).
-	# computed once here so the analytics emit below reflects the same
-	# actual scaled damage dealt, not the flat unscaled base.
+	# computed once outside the loop so every enemy in range takes the same
+	# scaled number and the multiplier is not recomputed per body.
 	var scaled_aura_damage: int = int(aura_damage * get_damage_multiplier())
 
 	for body in $aura.get_overlapping_bodies():
@@ -319,11 +329,6 @@ func _deal_aura_damage() -> void:
 		if not body.has_method("take_damage"):
 			continue
 		body.take_damage(scaled_aura_damage)
-		GameState.aura_damage_dealt.emit(
-			get_instance_id(),
-			body.get_instance_id(),
-			scaled_aura_damage,
-		)
 		# NEW: universal attack XP, granted right where damage already
 		# applies — see class comment's XP ON HIT section for the
 		# tick-rate caveat worth watching in practice.

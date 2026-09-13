@@ -66,8 +66,14 @@ var _last_stamina: int = -1
 # drag-cursor state — see _update_drag_cursor().
 # _mouse_mode_before_drag remembers what the pointer was doing before a drag
 # started, so ending one restores that rather than assuming it was visible.
+#
+# It is typed Input.MouseMode, not int. Input.mouse_mode IS that enum, and
+# assigning a plain int back into it makes Godot warn that an integer is being
+# used where an enum is expected — the value is right, the type just throws
+# away which enum it belongs to. Declaring the enum keeps the round-trip
+# honest in both directions.
 var _cursor_hidden_for_drag: bool = false
-var _mouse_mode_before_drag: int = Input.MOUSE_MODE_VISIBLE
+var _mouse_mode_before_drag: Input.MouseMode = Input.MOUSE_MODE_VISIBLE
 
 
 # =============================================================================
@@ -184,11 +190,12 @@ func _resolve_bar_references() -> void:
 	if staminabar == null:
 		push_warning("HUD: staminabar not found at barcontainer/staminabar")
 
-	print("HUD INIT: healthbar=%s, magicbar=%s, staminabar=%s" % [
-		"OK" if healthbar else "NULL",
-		"OK" if magicbar else "NULL",
-		"OK" if staminabar else "NULL",
-	])
+	if OS.is_debug_build():
+		print("[HUD]  healthbar %s, magicbar %s, staminabar %s" % [
+			"OK" if healthbar else "MISSING",
+			"OK" if magicbar else "MISSING",
+			"OK" if staminabar else "MISSING",
+		])
 
 
 func _resolve_hotbar() -> void:
@@ -329,16 +336,23 @@ func _on_stats_pressed() -> void:
 	toggle_stats()
 
 
+# the three stubs below are wired to real, clickable buttons. In a Release
+# build they used to answer a player's click by writing to a console the
+# player cannot see — so the button read as broken and said so to nobody.
+# Gated, they are now honest no-ops until the features exist.
 func _on_shop_pressed() -> void:
-	print("shop pressed (not yet implemented)")
+	if OS.is_debug_build():
+		print("[UI]   shop pressed (not implemented)")
 
 
 func _on_map_pressed() -> void:
-	print("map pressed (not yet implemented)")
+	if OS.is_debug_build():
+		print("[UI]   map pressed (not implemented)")
 
 
 func _on_options_pressed() -> void:
-	print("options pressed (not yet implemented)")
+	if OS.is_debug_build():
+		print("[UI]   options pressed (not implemented)")
 
 
 func _on_discord_pressed() -> void:

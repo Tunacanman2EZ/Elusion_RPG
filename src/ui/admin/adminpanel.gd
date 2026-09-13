@@ -52,7 +52,8 @@ func _on_view_pressed() -> void:
 
 	var data: Dictionary = CharacterData.admin_peek_user_save(username)
 	if data.is_empty():
-		print("ADMIN: no save found for user '%s'" % username)
+		if OS.is_debug_build():
+			print("ADMIN: no save found for user '%s'" % username)
 		return
 
 	_print_save_summary(username, data)
@@ -63,6 +64,17 @@ func _on_view_pressed() -> void:
 # =============================================================================
 
 func _print_save_summary(username: String, data: Dictionary) -> void:
+	# one guard for the whole dump rather than a dozen — everything below is
+	# a single block of console output and either all of it runs or none does.
+	#
+	# Gating loses nothing real: this panel already writes to stdout instead
+	# of into its own UI, and a player running a Release build from a desktop
+	# icon has no console to read it in. The actual fix is to render this into
+	# the panel — the class comment's "for now" has been load-bearing for a
+	# while — at which point this guard comes out along with the prints.
+	if not OS.is_debug_build():
+		return
+
 	print("========== ADMIN VIEW: %s ==========" % username)
 	print("version: %s" % str(data.get("version")))
 	print("saved_at: %s" % str(data.get("saved_at")))

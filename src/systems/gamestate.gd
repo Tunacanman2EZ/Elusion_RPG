@@ -35,6 +35,18 @@
 # gold_changed_signal -> gold_changed, moved -> player_moved. Add the relay in
 # ONE place this time, not once per world scene, and only for the events
 # something is actually listening for.
+#
+# ABOUT THE @warning_ignore LINES
+#
+# Every declaration below carries @warning_ignore("unused_signal"). Godot is
+# correct that they are unused - that is the whole point of this file's
+# comment, and the warning is not being hidden because it is wrong. It is
+# annotated per-signal rather than switched off project-wide so that an
+# unused signal ANYWHERE ELSE in the codebase still warns loudly. These
+# thirteen are the known, deliberate exceptions; nothing else gets a pass.
+#
+# When you wire one up for real, delete its annotation. If the warning does
+# not come back, the signal still is not reaching anything.
 extends Node
 
 
@@ -107,15 +119,19 @@ var ui_absorbed_right_click: bool = false
 # =============================================================================
 
 # emitted every time the player moves — sends position and direction
+@warning_ignore("unused_signal")
 signal player_moved(player_id: int, position: Vector2, direction: String)
 
 # emitted when any damage is dealt — source, target, amount, and type
+@warning_ignore("unused_signal")
 signal damage_dealt(source_id: int, target_id: int, amount: int, type: String)
 
 # emitted when a player dies — used to trigger death handling server-side
+@warning_ignore("unused_signal")
 signal player_died(player_id: int)
 
 # emitted when an enemy dies — tracks who killed it for XP and loot
+@warning_ignore("unused_signal")
 signal enemy_died(enemy_id: int, killer_id: int)
 
 
@@ -124,9 +140,11 @@ signal enemy_died(enemy_id: int, killer_id: int)
 # =============================================================================
 
 # emitted when a player gains XP — server validates and updates leaderboard
+@warning_ignore("unused_signal")
 signal xp_gained(player_id: int, amount: int)
 
 # emitted when a player's gold amount changes
+@warning_ignore("unused_signal")
 signal gold_changed(player_id: int, amount: int)
 
 
@@ -135,12 +153,15 @@ signal gold_changed(player_id: int, amount: int)
 # =============================================================================
 
 # emitted when a player picks up an item from the world
+@warning_ignore("unused_signal")
 signal item_picked_up(player_id: int, item_id: String)
 
 # emitted when a player uses an item from their inventory
+@warning_ignore("unused_signal")
 signal item_used(player_id: int, item_id: String)
 
 # emitted when a player activates a skill from the hotbar
+@warning_ignore("unused_signal")
 signal skill_used(player_id: int, skill_id: String, target_pos: Vector2)
 
 
@@ -149,9 +170,11 @@ signal skill_used(player_id: int, skill_id: String, target_pos: Vector2)
 # =============================================================================
 
 # emitted when the tank's aura deals damage to a nearby enemy
+@warning_ignore("unused_signal")
 signal aura_damage_dealt(tank_id: int, enemy_id: int, amount: int)
 
 # emitted when the tank activates their taunt skill (phase 2 ability)
+@warning_ignore("unused_signal")
 signal taunt_activated(tank_id: int, duration: float)
 
 
@@ -160,9 +183,11 @@ signal taunt_activated(tank_id: int, duration: float)
 # =============================================================================
 
 # emitted when a player deposits an item into the bank chest
+@warning_ignore("unused_signal")
 signal bank_deposited(player_id: int, item_id: String, amount: int)
 
 # emitted when a player withdraws an item from the bank chest
+@warning_ignore("unused_signal")
 signal bank_withdrawn(player_id: int, item_id: String, amount: int)
 
 

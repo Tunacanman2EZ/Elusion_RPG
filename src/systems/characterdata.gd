@@ -166,7 +166,12 @@ var account_data: Dictionary = DEFAULT_ACCOUNT_DATA.duplicate(true)
 # =============================================================================
  
 func _ready() -> void:
-	print("=== CHARACTERDATA READY ===")
+	# every startup print in this project is gated on OS.is_debug_build() and
+	# tagged [BOOT]/[CHAR]/[HUD]/[WORLD]/[PET], so the boot log is greppable
+	# and an exported Release build stays silent. is_debug_build() is true in
+	# the editor and in a Debug export, false in a Release export.
+	if OS.is_debug_build():
+		print("[BOOT] CharacterData ready")
 	# CHANGED: no longer loads a save at boot — this autoload's _ready()
 	# fires before the login screen even exists, so there's no "current
 	# user" yet to load for. state stays at defaults until load_for_user()
@@ -817,7 +822,12 @@ func _migrate_save(data: Dictionary) -> Dictionary:
 	# safe to call on already-current saves (no-op if version is up to date).
 	var version: int = data.get("version", 0)
 	if version < SAVE_VERSION:
-		print("migrating save from version %d to %d" % [version, SAVE_VERSION])
+		# push_warning rather than a gated print, deliberately: a migration
+		# rewrites the player's save. It is expected and not an error, but if
+		# a save ever comes out wrong, the one thing you want in the log is
+		# evidence of which version it was migrated from — and a debug-gated
+		# print would not be there in the build that broke it.
+		push_warning("CharacterData: migrating save from version %d to %d" % [version, SAVE_VERSION])
  
 	# version 0 -> 1: legacy saves without version field. no field changes.
  

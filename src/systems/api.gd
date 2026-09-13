@@ -61,6 +61,39 @@ func is_logged_in() -> bool:
 func _ready() -> void:
 	_load_session()
 
+	# deliberately NOT awaited. _ready() stays an ordinary function and no
+	# other autoload's initialisation waits on a network round trip; the log
+	# line just lands a moment later than the rest of the boot output.
+	_log_server_reachability()
+
+
+func _log_server_reachability() -> void:
+	# DEBUG ONLY, and purely informational — this never touches token,
+	# username or is_admin. resume_session() is the function that judges a
+	# cached session and clears it on rejection; this one only reports.
+	#
+	# WHY IT EXISTS: nothing at boot said whether the server was up. "My save
+	# didn't load" and "I lost my character" are nearly always just app.py not
+	# running, and there was no way to tell that apart from a real bug without
+	# going and checking by hand.
+	if not OS.is_debug_build():
+		return
+
+	# /api/auth/session is the probe because it already exists, is a GET, and
+	# has no side effects. What matters is whether ANY HTTP response comes
+	# back — a 401 from a missing or expired token still proves the server is
+	# answering. Only status 0 means the request never left the machine.
+	var res: Dictionary = await get_json("/api/auth/session")
+
+	if int(res.get("status", 0)) == 0:
+		print("[BOOT] Api: OFFLINE at %s — %s" % [BASE_URL, res.get("error", "")])
+		return
+
+	var session_note: String = "no cached session"
+	if token != "":
+		session_note = "cached session valid" if res.get("ok", false) else "cached session REJECTED"
+	print("[BOOT] Api: reachable at %s (%s)" % [BASE_URL, session_note])
+
 
 # =============================================================================
 # REQUESTS

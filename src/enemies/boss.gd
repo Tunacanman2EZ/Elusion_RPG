@@ -71,6 +71,18 @@ func spawn_player_from_selection() -> void:
 	spawn_parent.add_child(player)
 	current_player = player
 
+	if OS.is_debug_build():
+		# names the container the player ACTUALLY landed in — see the comment
+		# above for why a silent fallback here is worth one line of log.
+		var fallback_note: String = ""
+		if spawn_parent == self:
+			fallback_note = "  (FALLBACK — no ysortworld, Y-sorting is OFF)"
+		print("[WORLD] boss — %s into %s%s" % [
+			player.name,
+			spawn_parent.name,
+			fallback_note,
+		])
+
 	_attach_player_to_hud()
 
 
@@ -106,17 +118,18 @@ func _position_player_at_spawn() -> void:
 	var target_id: String = GameState.next_spawn_id
 	GameState.next_spawn_id = ""
 
+	# same as field.gd: the duplicated print/push_warning pairs collapsed into
+	# a single warning per failure.
 	var player: Node = get_tree().get_first_node_in_group("player")
 	if player == null:
-		print("boss.gd: no player found in group 'player' — can't position at spawn")
-		push_warning("boss.gd: no player found in group 'player' — can't position at spawn")
+		push_warning("boss.gd: no player in group 'player' — can't position at spawn '%s'" % target_id)
 		return
 
 	for portal in get_tree().get_nodes_in_group("fieldportals"):
 		if "portal_id" in portal and portal.portal_id == target_id:
 			player.global_position = portal.global_position
-			print("boss.gd: positioned player at spawn '%s' -> %s" % [target_id, portal.global_position])
+			if OS.is_debug_build():
+				print("[WORLD] boss — spawn '%s' -> %s" % [target_id, portal.global_position])
 			return
 
-	print("boss.gd: no FieldPortal found matching id '%s'" % target_id)
-	push_warning("boss.gd: no FieldPortal found matching id '%s'" % target_id)
+	push_warning("boss.gd: no FieldPortal matching id '%s' — player left at default position" % target_id)

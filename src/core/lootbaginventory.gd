@@ -163,13 +163,18 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 		var moved: int = slot.stack.quantity - leftover
 
 		if moved <= 0:
-			print("LootBagInventory: inventory full — nothing moved")
+			# "your inventory is full" is the single most useful thing this
+			# panel could tell a player, and it has been telling the console
+			# instead. Gated for now; belongs on screen.
+			if OS.is_debug_build():
+				print("[LOOT] inventory full — nothing moved")
 			return
 
 		loot_container.remove_quantity_at(slot.slot_index, moved)
 	else:
 		if not inv_container.can_add_stack(full_stack):
-			print("LootBagInventory: inventory full — nothing moved")
+			if OS.is_debug_build():
+				print("[LOOT] inventory full — nothing moved")
 			return
 		if inv_container.add_stack(full_stack):
 			loot_container.remove_quantity_at(slot.slot_index, full_stack.quantity)

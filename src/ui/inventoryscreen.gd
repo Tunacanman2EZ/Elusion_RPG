@@ -186,7 +186,10 @@ func use_item(slot: InventorySlot) -> void:
 		ItemData.Type.PET:
 			_use_pet(slot)
 		_:
-			print("InventoryScreen: no use behavior for type of '%s'" % data.item_id)
+			# push_warning, not print, and not debug-gated: reaching this
+			# branch means an item exists that the game has no idea how to
+			# use. The player meets that as a click that does nothing.
+			push_warning("InventoryScreen: '%s' has no use behavior for its item type" % data.item_id)
 
 
 func _use_consumable(slot: InventorySlot) -> void:
@@ -201,7 +204,10 @@ func _use_consumable(slot: InventorySlot) -> void:
 		ItemData.RestoreTarget.STAMINA:
 			_use_stamina_potion(slot)
 		_:
-			print("InventoryScreen: consumable '%s' has no restore_target set" % data.item_id)
+			# same reasoning: a consumable with no restore_target is a .tres
+			# that was filled in incompletely, and it fails silently at the
+			# moment the player tries to drink it.
+			push_warning("InventoryScreen: consumable '%s' has no restore_target set" % data.item_id)
 
 
 func _use_currency_pile(slot: InventorySlot) -> void:
@@ -247,7 +253,8 @@ func _use_pet(slot: InventorySlot) -> void:
 	if "active_pet_id" in player and player.active_pet_id == data.item_id:
 		if player.has_method("dismiss_pet"):
 			player.dismiss_pet()
-			print("Put away pet '%s'" % data.item_id)
+			if OS.is_debug_build():
+				print("[PET]  put away '%s'" % data.item_id)
 		return
 
 	player.summon_pet(data.item_id)
@@ -291,7 +298,8 @@ func _use_lusions_pile(slot: InventorySlot) -> void:
 	slot.clear_stack()
 	_emit_container_changed()
 
-	print("Used lusions pile: +%d lusions (now %d total)" % [total, player.lusions])
+	if OS.is_debug_build():
+		print("[ITEM] lusions pile: +%d (now %d)" % [total, player.lusions])
 
 
 # =============================================================================
@@ -306,7 +314,15 @@ func _use_health_potion(slot: InventorySlot) -> void:
 
 	if "hp" in player and "max_hp" in player:
 		if player.hp >= player.max_hp:
-			print("Cannot use potion: HP is already full")
+			# THESE THREE ARE THE WRONG CHANNEL, not just the wrong build.
+			# "your health is already full" is feedback for the PLAYER, and
+			# it has been going to a console they cannot see — so from their
+			# side, clicking the potion simply does nothing and no reason is
+			# given. Gating stops it leaking into Release; the actual fix is
+			# a floating label (floatinglabel.gd already exists) or a HUD
+			# toast. Left as a print so the intent stays findable.
+			if OS.is_debug_build():
+				print("[ITEM] potion refused — HP already full")
 			return
 
 	var stack: ItemStack = slot.stack
@@ -334,7 +350,10 @@ func _use_mana_potion(slot: InventorySlot) -> void:
 
 	if "mana" in player and "max_mana" in player:
 		if player.mana >= player.max_mana:
-			print("Cannot use potion: mana is already full")
+			# see the note in _use_health_potion — player-facing text in the
+			# wrong channel.
+			if OS.is_debug_build():
+				print("[ITEM] potion refused — mana already full")
 			return
 
 	var stack: ItemStack = slot.stack
@@ -364,7 +383,10 @@ func _use_stamina_potion(slot: InventorySlot) -> void:
 
 	if "stamina" in player and "max_stamina" in player:
 		if player.stamina >= player.max_stamina:
-			print("Cannot use potion: stamina is already full")
+			# see the note in _use_health_potion — player-facing text in the
+			# wrong channel.
+			if OS.is_debug_build():
+				print("[ITEM] potion refused — stamina already full")
 			return
 
 	var stack: ItemStack = slot.stack

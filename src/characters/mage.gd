@@ -131,7 +131,10 @@ func _cast_stalagmite_drop() -> void:
 	if is_casting:
 		return
 	if mana < spell_mana_cost:
-		print("Mage: not enough mana (%d/%d)" % [mana, spell_mana_cost])
+		# player-facing refusal in a console channel, same as the tank aura
+		# and the potions — worth surfacing on screen eventually.
+		if OS.is_debug_build():
+			print("[MAGE] cast refused — mana %d/%d" % [mana, spell_mana_cost])
 		return
 	if target_circle_scene == null:
 		push_warning("Mage: target_circle_scene not assigned in inspector")
@@ -146,7 +149,8 @@ func _cast_stalagmite_drop() -> void:
 	# but the spell still fires correctly because spawn is immediate.
 	mana -= spell_mana_cost
 	is_casting = true
-	print("Mage: casting stalagmite (mana now %d)" % mana)
+	if OS.is_debug_build():
+		print("[MAGE] casting stalagmite (mana now %d)" % mana)
 
 	_play_cast_animation()
 	_spawn_stalagmite()
@@ -170,7 +174,10 @@ func _play_cast_animation() -> void:
 	if sprite.sprite_frames.has_animation(cast_anim):
 		sprite.play(cast_anim)
 	else:
-		print("Mage: no animation named '%s'" % cast_anim)
+		# a missing animation is a scene defect, not a runtime condition —
+		# the cast still fires, it just plays nothing, which looks like the
+		# spell failed. push_warning so it is not lost in the boot chatter.
+		push_warning("Mage: animatedsprite2d has no animation named '%s'" % cast_anim)
 
 
 func _spawn_stalagmite() -> void:

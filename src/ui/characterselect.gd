@@ -135,10 +135,29 @@ func _select_character(idx: int) -> void:
 	# the freshly instanced player.
 	var slot = CharacterData.character_slots[idx]
 	if not _is_slot_valid(slot):
-		print("no character in slot %d to select!" % [idx + 1])
+		if OS.is_debug_build():
+			print("[CHAR] slot %d is empty — nothing to select" % [idx + 1])
 		return
 
-	print("selected %s in slot %d" % [slot["character"], idx + 1])
+	if OS.is_debug_build():
+		# summarises what was actually loaded, not just which slot was clicked.
+		# "selected warrior in slot 1" told you the click landed; it could not
+		# tell you the save came back with the right level, gold or inventory,
+		# which is the thing that actually goes wrong after a save-format
+		# change. Reading it here means a bad load is visible at the character
+		# screen instead of surfacing later as a confused "where did my stuff
+		# go" in the world.
+		var inventory: Variant = slot.get("inventory", [])
+		var item_count: int = 0
+		if inventory is Array:
+			item_count = (inventory as Array).size()
+		print("[CHAR] %s slot %d — lv %d, %d gold, %d items" % [
+			slot["character"],
+			idx + 1,
+			int(slot.get("level", 1)),
+			int(slot.get("gold", 0)),
+			item_count,
+		])
 
 	# mark this slot as the active character and persist before scene change.
 	# without saving here, a crash between scene transitions could lose the

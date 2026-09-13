@@ -49,7 +49,19 @@ enum AttackType { PROJECTILE, VINE }
 @export var attack_type: AttackType = AttackType.PROJECTILE
 @export var projectile_scene: PackedScene = null
 @export var projectile_damage: int = 5
-@export var aggro_range: float = 250.0
+# How far a pet will look for a target, measured from ITSELF.
+#
+# 280 matches the longest-ranged enemy in the game (electricsprite.gd), and it
+# is set here rather than per-scene because no pet scene overrides it — one
+# number, one place.
+#
+# WHY IT HAS TO EXCEED THE ENEMY'S, not merely equal it: this is measured from
+# the pet, and a pet trails the player by follow_distance (60). An enemy that
+# opens fire from 260 away from the PLAYER is 320 away from a pet sitting
+# behind them, so a pet matched at 280 would sit and watch its owner get shot.
+# The gap between 280 and the enemies' 200-280 spread is what buys back that
+# trailing distance.
+@export var aggro_range: float = 280.0
 @export var attack_cooldown: float = 2.0
 @export var move_speed: float = 100.0
 @export var follow_distance: float = 60.0
@@ -256,7 +268,41 @@ func _get_scaled_damage() -> int:
 	# regular enemy without touching this 50% ratio.
 	if player == null or not player.has_method("get_damage_multiplier"):
 		return projectile_damage
-	return int(projectile_damage * player.get_damage_multiplier() * 0.5)
+	return int(projectile_damage * player.get_damage_multiplier() * PET_STAT_SHARE)
+
+
+# Fraction of the player's stat bonus a pet receives. Damage has always used
+# this ratio; attack speed now uses the same one, so "a pet is half as good at
+# this as you are" is one rule rather than two numbers that can drift apart.
+const PET_STAT_SHARE: float = 0.5
+
+# A pet can never attack faster than this, whatever the player's agility.
+# attack_timer drives the attack ANIMATION as well as the shot, so a cooldown
+# shorter than the animation would restart it every time and the pet would
+# twitch on frame 0 forever instead of ever showing a throw.
+const MIN_ATTACK_COOLDOWN: float = 0.35
+
+
+func _get_scaled_cooldown() -> float:
+	# Seconds between this pet's attacks, shortened by the player's agility.
+	#
+	# Read live at fire time, exactly like _get_scaled_damage() above, so a pet
+	# keeps up as the player levels without needing to be re-summoned.
+	#
+	# HALF THE BONUS, NOT HALF THE SPEED. The player's multiplier is reduced to
+	# its bonus (mult - 1), halved, then re-applied — so at agility 1 a pet is
+	# exactly its authored attack_cooldown rather than being penalised for the
+	# player having no agility yet. Dividing the cooldown by a half-multiplier
+	# instead would make every pet permanently twice as slow as its own tuning.
+	if player == null or not player.has_method("get_attack_speed_multiplier"):
+		return attack_cooldown
+
+	var bonus: float = player.get_attack_speed_multiplier() - 1.0
+	var effective: float = 1.0 + bonus * PET_STAT_SHARE
+	if effective <= 0.0:
+		return attack_cooldown
+
+	return maxf(MIN_ATTACK_COOLDOWN, attack_cooldown / effective)
 
 
 func _fire_at(target: Node) -> void:
@@ -273,7 +319,7 @@ func _fire_at(target: Node) -> void:
 	var anim: String = _play_attack(dir)
 
 	_attack_ready = false
-	attack_timer.wait_time = attack_cooldown
+	attack_timer.wait_time = _get_scaled_cooldown()
 	attack_timer.start()
 
 	# with release_frame set, the shot leaves on the frame the art actually

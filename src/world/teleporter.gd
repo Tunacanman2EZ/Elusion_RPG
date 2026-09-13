@@ -52,7 +52,8 @@ func _on_body_entered(body):
 		# even if the sprite itself didn't.
 		body.reset_physics_interpolation()
 
-		print("Teleported", body.name, "to", destination_point.global_position)
+		if OS.is_debug_build():
+			print("[WORLD] teleported %s to %s" % [body.name, destination_point.global_position])
 		_start_cooldown()
 
 func _start_cooldown() -> void:

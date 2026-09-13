@@ -777,7 +777,8 @@ func _start_death_sequence() -> void:
 		has_active_revive = false
 		_fill_all_resources()
 		is_dying = false
-		print("Revive token consumed — instant revive at full resources")
+		if OS.is_debug_build():
+			print("[PLR]  revive token consumed — full resources")
 		return
 
 	var death_anim: String = _get_death_animation()
@@ -816,7 +817,10 @@ func level_up() -> void:
 	_fill_all_resources()
 	_apply_level_up_skill_bonus()
 	_spawn_levelup_popup()
-	print("%s leveled up to %d" % [character_name, level])
+	# the player already sees this — _spawn_levelup_popup() just put it on
+	# screen. The print is only for reading the progression curve in a log.
+	if OS.is_debug_build():
+		print("[PLR]  %s reached level %d" % [character_name, level])
 
 
 func _apply_level_up_skill_bonus() -> void:
@@ -871,6 +875,30 @@ func get_damage_multiplier() -> float:
 	return 1.0 \
 		+ (attack - 1) * ATTACK_DAMAGE_PERCENT_PER_LEVEL \
 		+ (magic - 1) * MAGIC_DAMAGE_PERCENT_PER_LEVEL
+
+
+# AGILITY DRIVES ATTACK SPEED.
+#
+# Until now agility did exactly one thing: move_speed = speed + (agility-1)*10.
+# It was the only one of the four skills with no combat effect at all, so
+# sprinting to level it up bought movement and nothing else. This gives it a
+# second job without touching the movement formula.
+#
+# The CAP is the important part. This is a multiplier something else divides a
+# cooldown by, and an uncapped stat eventually divides by a large enough number
+# to make that cooldown effectively zero — an attack every frame, which breaks
+# animations, spawns projectiles faster than they despawn, and is nobody's idea
+# of a fun build. 2.0 means "at best, twice as fast as base", reached at
+# agility 101 and never exceeded.
+const AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL: float = 0.01  # +1% speed per agility level
+const MAX_ATTACK_SPEED_MULTIPLIER: float = 2.0
+
+
+func get_attack_speed_multiplier() -> float:
+	# How much faster than base this character attacks. 1.0 at agility 1.
+	# Divide a cooldown by this; don't multiply a rate by it and forget the cap.
+	var multiplier: float = 1.0 + (agility - 1) * AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL
+	return clampf(multiplier, 1.0, MAX_ATTACK_SPEED_MULTIPLIER)
 
 
 # =============================================================================
@@ -1053,7 +1081,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F11: gain_agility_xp(30)
 			KEY_F12: gain_magic_xp(30)
 
+
+# EVERY _debug_* function below opens with its own is_debug_build() guard.
+#
+# They are already unreachable in a Release build, because the only thing
+# that calls them is _unhandled_input(), which returns early — but that is a
+# fact about a different function two hundred lines up, and it stops being
+# true the moment anyone wires one of these to a button, a console command or
+# a test. These grant free items, free levels and free pets; they should each
+# refuse on their own authority rather than inherit safety from their caller.
+#
+# The guard is what makes them safe. The prints inside are incidental.
 func _debug_spawn_pet_fire() -> void:
+	if not OS.is_debug_build():
+		return
 	# spawn a test fire pet next to the player to tune follow/attack behavior.
 	_despawn_current_pet()
 	var pet_scene: PackedScene = load("res://scene/pets/petfiresprite.tscn")
@@ -1067,6 +1108,8 @@ func _debug_spawn_pet_fire() -> void:
 	CharacterData.save_character_state(self)
 
 func _debug_spawn_pet_electric() -> void:
+	if not OS.is_debug_build():
+		return
 	_despawn_current_pet()
 	var pet_scene: PackedScene = load("res://scene/pets/petelectricsprite.tscn")
 	if pet_scene == null:
@@ -1079,6 +1122,8 @@ func _debug_spawn_pet_electric() -> void:
 	CharacterData.save_character_state(self)
 
 func _debug_spawn_pet() -> void:
+	if not OS.is_debug_build():
+		return
 	# spawn a test archer pet next to the player to tune follow/attack behavior.
 	_despawn_current_pet()
 	var pet_scene: PackedScene = load("res://scene/pets/petsniper.tscn")
@@ -1093,6 +1138,8 @@ func _debug_spawn_pet() -> void:
 
 
 func _debug_spawn_pet_mage() -> void:
+	if not OS.is_debug_build():
+		return
 	# spawn a test mage pet next to the player to tune the vine attack.
 	_despawn_current_pet()
 	var pet_scene: PackedScene = load("res://scene/pets/petmage.tscn")
@@ -1171,7 +1218,8 @@ func _restore_active_pet() -> void:
 
 	var pet: Node = item_data.pet_scene.instantiate()
 	_attach_pet(pet, Vector2(0, -40))
-	print("Player: restored active pet '%s'" % active_pet_id)
+	if OS.is_debug_build():
+		print("[PET]  restored '%s'" % active_pet_id)
 
 
 func summon_pet(item_id: String) -> bool:
@@ -1204,7 +1252,8 @@ func summon_pet(item_id: String) -> bool:
 	# persists it per character slot, so a bad value here would follow the save
 	# around and warn on every scene load.
 	active_pet_id = item_id
-	print("Player: summoned pet '%s'" % active_pet_id)
+	if OS.is_debug_build():
+		print("[PET]  summoned '%s'" % active_pet_id)
 	return true
 
 
@@ -1219,6 +1268,8 @@ func dismiss_pet() -> void:
 
 
 func _debug_give_item(item_id: String, quantity: int) -> void:
+	if not OS.is_debug_build():
+		return
 	var data := ItemRegistry.get_item(item_id)
 	if data == null:
 		print("DEBUG: item '%s' not found in registry" % item_id)
@@ -1247,5 +1298,7 @@ func _debug_give_item(item_id: String, quantity: int) -> void:
 
 
 func _debug_give_lusions(amount: int) -> void:
+	if not OS.is_debug_build():
+		return
 	add_lusions(amount)
 	print("DEBUG: gave %d lusions (now %d total)" % [amount, lusions])

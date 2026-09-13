@@ -29,7 +29,10 @@ var current_player: Node = null
 # =============================================================================
 
 func _ready() -> void:
-	print("ELUSION READY CALLED")
+	# no "ELUSION READY CALLED" line here any more. It only ever said that a
+	# function had started, which the [WORLD] line in spawn_player_from_selection()
+	# already implies — and that one also says whether the spawn actually
+	# worked, which is the part worth reading.
 	spawn_player_from_selection()
 
 
@@ -88,6 +91,24 @@ func spawn_player_from_selection() -> void:
 	player.global_position = spawn.global_position
 	spawn_parent.add_child(player)
 	current_player = player
+
+	if OS.is_debug_build():
+		# names the container the player ACTUALLY landed in, not the one we
+		# hoped for. This is the line that would have caught the ysortworld
+		# typo in a single launch: a misspelled node name does not raise
+		# anything, get_node_or_null just returns null and the fallback above
+		# quietly parents the player to the scene root. The only symptom is
+		# the player drawing over everything instead of sorting against it,
+		# which is easy to mistake for a z-index problem and hunt in the
+		# wrong file for an hour.
+		var fallback_note: String = ""
+		if spawn_parent == self:
+			fallback_note = "  (FALLBACK — no ysortworld, Y-sorting is OFF)"
+		print("[WORLD] elusion — %s into %s%s" % [
+			player.name,
+			spawn_parent.name,
+			fallback_note,
+		])
 
 	_attach_player_to_hud()
 
