@@ -1122,21 +1122,31 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)
-			# NEW: grants the pet ITEM rather than spawning the pet directly,
-			# so this exercises the real path — inventory -> use -> summon_pet()
-			# -> active_pet_id -> survives a scene change. KEY_P below skips
-			# all of that and drops a bare node in the scene, which is why it
-			# never caught that the pet items didn't exist.
+			# PETS — the P O I U Y T row, one key per pet, reading leftward.
+			#
+			# Every one of these grants the pet ITEM. None of them spawns a pet
+			# directly, and that is the entire point: the key puts the item in
+			# your bag and you use it from the inventory, which runs the real
+			# path — inventory -> use -> summon_pet() -> active_pet_id ->
+			# persisted by CharacterData -> restored on the next scene load.
+			#
+			# P O I U used to call _debug_spawn_pet*(), which assembled a pet
+			# node by hand from a hardcoded res:// path and set active_pet_id
+			# itself. That bypassed summon_pet() and ItemRegistry completely,
+			# so pets always tested fine while the pet ITEMS were broken —
+			# including the stretch where petpoisonslimesmall.tres carried a
+			# copy-pasted item_id and was being silently rejected at load.
+			# Four debug helpers that could not fail were standing in front of
+			# the one path that could. They are gone.
 			#
 			# NOT F8: that's the editor's "Stop running project" shortcut and
-			# it kills the game even when the game window has focus. Y sits
-			# next to the U/I/O/P pet cluster instead, and is unbound in both
-			# the input map and every other script.
-			KEY_Y: _debug_give_item("petsniper", 1)
-			KEY_P: _debug_spawn_pet()
-			KEY_O: _debug_spawn_pet_mage()
-			KEY_I: _debug_spawn_pet_electric()
-			KEY_U: _debug_spawn_pet_fire()
+			# it kills the game even when the game window has focus.
+			KEY_P: _debug_give_item("petsniper", 1)
+			KEY_O: _debug_give_item("petmage", 1)
+			KEY_I: _debug_give_item("petelectricsprite", 1)
+			KEY_U: _debug_give_item("petfiresprite", 1)
+			KEY_Y: _debug_give_item("petpoisonslimesmall", 1)
+			KEY_T: _debug_give_item("petpoisonslimelarge", 1)
 			KEY_M:
 				mana = max(mana - 30, 0)
 				print("DEBUG: drained 30 mana (now %d)" % mana)
@@ -1146,75 +1156,23 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F12: gain_magic_xp(30)
 
 
-# EVERY _debug_* function below opens with its own is_debug_build() guard.
+# =============================================================================
+# DIRECT PET SPAWNING  (REMOVED)
+# =============================================================================
+# _debug_spawn_pet(), _debug_spawn_pet_mage(), _debug_spawn_pet_electric() and
+# _debug_spawn_pet_fire() used to live here — one per pet, each loading a
+# hardcoded res:// scene path, calling _attach_pet() and assigning
+# active_pet_id by hand.
 #
-# They are already unreachable in a Release build, because the only thing
-# that calls them is _unhandled_input(), which returns early — but that is a
-# fact about a different function two hundred lines up, and it stops being
-# true the moment anyone wires one of these to a button, a console command or
-# a test. These grant free items, free levels and free pets; they should each
-# refuse on their own authority rather than inherit safety from their caller.
+# They were four near-identical copies of a worse summon_pet(). Worse because
+# they never touched ItemRegistry, so they proved nothing about whether the
+# pet's .tres existed, carried the right item_id, or pointed at the right
+# scene — the three things that actually broke. A pet could spawn perfectly
+# on KEY_P while its item was unobtainable in the real game.
 #
-# The guard is what makes them safe. The prints inside are incidental.
-func _debug_spawn_pet_fire() -> void:
-	if not OS.is_debug_build():
-		return
-	# spawn a test fire pet next to the player to tune follow/attack behavior.
-	_despawn_current_pet()
-	var pet_scene: PackedScene = load("res://scene/pets/petfiresprite.tscn")
-	if pet_scene == null:
-		print("DEBUG: petfiresprite.tscn not found — check the path")
-		return
-	var pet: Node = pet_scene.instantiate()
-	_attach_pet(pet, Vector2(0, -40))
-	print("DEBUG: spawned fire pet")
-	active_pet_id = "petfiresprite"
-	CharacterData.save_character_state(self)
-
-func _debug_spawn_pet_electric() -> void:
-	if not OS.is_debug_build():
-		return
-	_despawn_current_pet()
-	var pet_scene: PackedScene = load("res://scene/pets/petelectricsprite.tscn")
-	if pet_scene == null:
-		print("DEBUG: petelectricsprite.tscn not found — check the path")
-		return
-	var pet: Node = pet_scene.instantiate()
-	_attach_pet(pet, Vector2(0, 40))
-	print("DEBUG: spawned electric pet")
-	active_pet_id = "petelectricsprite"
-	CharacterData.save_character_state(self)
-
-func _debug_spawn_pet() -> void:
-	if not OS.is_debug_build():
-		return
-	# spawn a test archer pet next to the player to tune follow/attack behavior.
-	_despawn_current_pet()
-	var pet_scene: PackedScene = load("res://scene/pets/petsniper.tscn")
-	if pet_scene == null:
-		print("DEBUG: petsniper.tscn not found — check the path")
-		return
-	var pet: Node = pet_scene.instantiate()
-	_attach_pet(pet, Vector2(40, 0))
-	print("DEBUG: spawned pet")
-	active_pet_id = "petsniper"
-	CharacterData.save_character_state(self)
-
-
-func _debug_spawn_pet_mage() -> void:
-	if not OS.is_debug_build():
-		return
-	# spawn a test mage pet next to the player to tune the vine attack.
-	_despawn_current_pet()
-	var pet_scene: PackedScene = load("res://scene/pets/petmage.tscn")
-	if pet_scene == null:
-		print("DEBUG: petmage.tscn not found — check the path")
-		return
-	var pet: Node = pet_scene.instantiate()
-	_attach_pet(pet, Vector2(-40, 0))
-	print("DEBUG: spawned mage pet")
-	active_pet_id = "petmage"
-	CharacterData.save_character_state(self)
+# The P O I U Y T keys now grant the pet item instead and the pet is summoned
+# through the same path a player uses. If you need a pet in front of you fast,
+# press the key and use the item; it is two keystrokes and it tests something.
 
 
 # =============================================================================
@@ -1331,6 +1289,14 @@ func dismiss_pet() -> void:
 	active_pet_id = ""
 
 
+# BOTH _debug_* functions below open with their own is_debug_build() guard.
+#
+# They are already unreachable in a Release build, because the only thing that
+# calls them is _unhandled_input(), which returns early — but that is a fact
+# about a different function two hundred lines up, and it stops being true the
+# moment anyone wires one of these to a button, a console command or a test.
+# These hand out free items, free pets and free lusions; they should refuse on
+# their own authority rather than inherit safety from their caller.
 func _debug_give_item(item_id: String, quantity: int) -> void:
 	if not OS.is_debug_build():
 		return
