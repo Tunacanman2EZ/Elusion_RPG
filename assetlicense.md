@@ -37,19 +37,45 @@ contents of:
 The category governs, not the folder list: any item or icon art added later
 belongs here too.
 
-Art by Caio Carlos of Clockwork Raven Studios.
+Art by **Caio Carlos** of **Clockwork Raven Studios**.
 
-- https://clockworkraven.itch.io/
-- https://www.patreon.com/clockworkravenstudios
+- Website: https://www.clockworkravenstudios.com/
+- Asset store: https://clockworkraven.itch.io/
+- Patreon: https://www.patreon.com/clockworkravenstudios
 
-Used in this project under licence. **The intellectual property in these files
-remains with Clockwork Raven Studios.** Elusion Studios claims no ownership of
-them and did not create them.
+### What the licence permits
 
-They may not be extracted from this project and used or redistributed as
-assets, and they may not be used to train any machine learning or AI system
-that produces derivative or visually similar work. If you want to use them in
-your own project, buy the pack from the links above.
+These assets were purchased from Clockwork Raven Studios under their standard
+asset licence. Under it, Elusion Studios **may**:
+
+- use the art in this game, commercially and non-commercially
+- modify it for use within this project
+
+and **may not**:
+
+- claim ownership of the artwork — the intellectual property remains with
+  Clockwork Raven Studios, who created it. Elusion Studios did not.
+- sell or distribute the assets as a separate product, asset pack, or
+  standalone download
+- use the assets to train any machine learning or AI system that produces
+  derivative or visually similar work
+
+Those terms apply to anyone reading this repository, not only to Elusion
+Studios. This art is here because it is part of this game; it is not offered
+for reuse, and a copy taken from this repository is not a licensed copy. If
+you want these assets for your own project, buy them from the store link
+above — that is what supports the artist who made them.
+
+### Permission for this repository
+
+This source repository is public with the artist's written consent. Asked
+directly whether publishing it counted as redistribution, Caio Carlos replied
+in September 2026:
+
+> Hey Robert, congrats on the project and thanks for acquiring my assets. If
+> you clearly state the license usage and my website, that is enough for me.
+
+This section is that statement.
 
 ## Source code — MIT
 
