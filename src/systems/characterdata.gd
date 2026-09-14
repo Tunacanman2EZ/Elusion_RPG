@@ -784,6 +784,12 @@ func load_data() -> bool:
 		_ensure_account_data()
 		return false
  
+	# @warning_ignore because the analyser types `storage` as SaveStorage, whose
+	# load() is not a coroutine — so it reports this await as redundant. It is
+	# not: ServerStorage.load() waits on HTTP. await resolves dynamically at
+	# runtime and is correct for either backend; only the static check cannot
+	# see which one is in the variable.
+	@warning_ignore("redundant_await")
 	var data: Dictionary = await storage.load()
 	if data.is_empty():
 		_ensure_slot_array()
@@ -814,13 +820,33 @@ func load_data() -> bool:
 	_ensure_slot_array()
 	_ensure_account_data()
  
-	# NEW: sanity/anti-tamper pass — runs on every load regardless of
-	# whether the save was actually tampered with. see class-level comment
-	# for scope/limitations.
+	# Sanity pass — runs on every load regardless of whether the save was
+	# actually tampered with. See the class comment for scope and limitations.
+	var corrected: bool = false
 	for slot in character_slots:
 		if _sanitize_character_slot(slot):
-			needs_resave = true
+			corrected = true
 	if _sanitize_account_data():
+		corrected = true
+
+	# A CORRECTION ON AUTHORITATIVE DATA IS NOT A REASON TO WRITE BACK.
+	#
+	# The sanitizer has two jobs tangled together: it CLAMPS values that may
+	# have been edited, and it FILLS IN fields fully derived from other fields.
+	# Only the first is evidence of tampering, and only the first is a reason to
+	# persist anything.
+	#
+	# ServerStorage deliberately does not send the per-skill xp_next values.
+	# They are entirely determined by the skill level, and sending them would be
+	# a third copy of the growth curve to keep in step with player.gd and the
+	# block above. So every login arrived, the sanitizer added six derived keys,
+	# and this marked the save dirty — producing exactly the "corrections
+	# applied, persisting immediately" warning on every single load that this
+	# project has already chased down twice.
+	#
+	# The values are still filled in; that is what they are for. What stops is
+	# treating a recomputation as a change worth writing back to the server.
+	if corrected and not storage.is_authoritative:
 		needs_resave = true
  
 	# NEW: if anything above actually changed the data (a sanity-clamp

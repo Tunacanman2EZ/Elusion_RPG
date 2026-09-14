@@ -29,6 +29,16 @@ extends Node
 
 const LOOTBAG_SCENE := preload("res://scene/interactables/lootbag.tscn")
 
+# Shorter than Api.TIMEOUT (10s), longer than Api.PROBE_TIMEOUT (3s).
+#
+# A kill report is a request the player made — they swung, something died, and
+# they are waiting to see what they got — so it deserves more patience than a
+# background probe. But ten seconds of "did I get anything?" per kill is not
+# patience, it is a broken-feeling game. With the server down, every kill spent
+# the full ten seconds before saying so, and each one held an HTTPRequest node
+# open for the duration.
+const KILL_TIMEOUT := 4.0
+
 
 # =============================================================================
 # PUBLIC API
@@ -44,8 +54,28 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 	if enemy_id == "":
 		return
 
+	# Collapsed here because this runs before any await, but the enemy can
+	# already hold a freed player reference by the time it dies — and a freed
+	# object cannot be passed to a typed Node parameter at all.
+	var immediate: Node = killer if is_instance_valid(killer) else null
+
 	if not Api.is_logged_in():
-		_notify(killer, "Not connected — no reward.")
+		_notify(immediate, "Not connected — no reward.")
+		return
+
+	# ALREADY KNOWN TO BE DOWN — refuse now rather than in four seconds.
+	#
+	# Api tracks reachability from every request the game makes, so once one has
+	# failed there is nothing to learn from making nine more and waiting out
+	# each timeout. is_known_offline() is false until something has actually
+	# asked, so this cannot refuse kills on a fresh boot that has not probed.
+	#
+	# It self-heals: any successful request flips the flag back, and the login
+	# screen's connection banner is driven by the same signal.
+	if Api.is_known_offline():
+		_notify(immediate, "Server offline — no reward.")
+		if OS.is_debug_build():
+			print("[KILL] %s skipped — server known offline" % enemy_id)
 		return
 
 	var slot: int = CharacterData.active_character_index
@@ -53,22 +83,39 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 	var res: Dictionary = await Api.post("/api/combat/kill", {
 		"slot": slot,
 		"enemy_id": enemy_id,
-	})
+	}, KILL_TIMEOUT)
+
+	# THE PLAYER MAY HAVE BEEN FREED WHILE WE WAITED, and a freed object cannot
+	# be passed to a typed Node parameter — not even to a function whose first
+	# line checks is_instance_valid(). GDScript validates argument types AT THE
+	# CALL BOUNDARY, before the body runs, so the guard never gets a turn:
+	#
+	#   Invalid type in function '_notify' in base 'Node (combat.gd)'.
+	#   The Object-derived class of argument 1 (previously freed) is not a
+	#   subclass of the expected argument class.
+	#
+	# null IS legal for a typed Node parameter. A freed object is not. So the
+	# reference is collapsed to null HERE, once, and every call below is safe.
+	#
+	# Same fix and same reasoning as pet.gd's _consume_pending_target(). It bites
+	# here because a failed request waits out the full timeout, and ten seconds
+	# is long enough to die, teleport, or return to character select.
+	var target: Node = killer if is_instance_valid(killer) else null
 
 	if not res.get("ok", false):
 		# NO FALLBACK ROLL. Rolling locally when the server cannot be reached
 		# would hand the entire exploit back: a client that can produce its own
 		# loot only has to make the request fail. A kill the server did not
 		# record is a kill that did not pay, and the player is told so.
-		_notify(killer, _refusal_text(res))
+		_notify(target, _refusal_text(res))
 		if OS.is_debug_build():
 			print("[KILL] %s refused — %s" % [enemy_id, res.get("error", "")])
 		return
 
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 
-	_apply_xp(killer, data)
-	_spawn_loot_bag(data, killer, at_position)
+	_apply_xp(target, data)
+	_spawn_loot_bag(data, target, at_position)
 
 	if OS.is_debug_build():
 		print("[KILL] %s — %d xp, %d item(s)%s" % [
@@ -83,6 +130,8 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 # REWARDS
 # =============================================================================
 
+# killer must already be valid-or-null — see report_kill(). A freed object
+# cannot reach this function's body at all.
 func _apply_xp(killer: Node, data: Dictionary) -> void:
 	# THE CLIENT RE-RUNS THE LEVEL-UP LOCALLY, AND THAT IS NOT A CONTRADICTION.
 	#
@@ -178,6 +227,10 @@ func _refusal_text(res: Dictionary) -> String:
 
 
 func _notify(killer: Node, message: String) -> void:
+	# The is_instance_valid() check here is NOT what protects this function —
+	# by the time it runs, a freed argument has already failed the type check at
+	# the call boundary. Callers must collapse a freed reference to null before
+	# calling. This only handles the null they pass.
 	if is_instance_valid(killer) and killer.has_method("show_notice"):
 		killer.show_notice(message)
 

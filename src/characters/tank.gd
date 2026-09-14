@@ -46,6 +46,11 @@
 # attack_xp_on_aura_tick down if playtesting shows it's too fast.
 extends "res://src/characters/player.gd"
 
+# This class's stat curve. See ClassData — hp_base and friends used to be
+# literals in _set_stat_curve() below, which meant the server knew your level
+# and your class and still could not work out your maximum health.
+const CLASS_DATA := preload("res://data/classes/tank.tres")
+
 
 # =============================================================================
 # AURA SETTINGS
@@ -81,9 +86,7 @@ var aura_active: bool = false
 func _set_stat_curve() -> void:
 	# tank: steepest HP curve in the game (frontline durability is the whole
 	# kit), solid mana for aura uptime. called before recompute in player.gd.
-	hp_base    = 260; hp_per_lvl   = 22
-	mana_base  = 200; mana_per_lvl = 10
-	stam_base  = 100; stam_per_lvl = 5
+	_apply_class_data(CLASS_DATA)
 
 
 # =============================================================================
@@ -150,7 +153,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_handle_movement(delta)
-	_tick_regen(delta)
+	_tick_regen(delta)   # player.gd's, not a local copy
 
 
 # =============================================================================
@@ -246,18 +249,19 @@ func _handle_idle() -> void:
 
 
 # =============================================================================
-# REGEN  (DUPLICATE REMOVED)
+# REGEN (DUPLICATED FROM PLAYER.GD)
 # =============================================================================
-# _tick_regen() used to be copied out here, with a comment saying so, because
-# the tank fully overrides _physics_process and therefore never runs player's.
-# The copy was right about the problem and wrong about the fix: it meant the
-# tank silently kept the old flat-rate regen when player.gd moved to a
-# percentage of maximum, and it would have kept diverging on every later
-# change.
+
+# REGEN (REMOVED — INHERITED FROM PLAYER.GD)
+# =============================================================================
+# tank used to carry its own copy of _tick_regen(), from when it fully overrode
+# _physics_process() and player.gd's regen therefore never ran. It called
+# regen_rate and _regen_stats(), neither of which exists any more: player.gd's
+# regen was rewritten to scale with each stat's maximum, because a flat rate of
+# 1.0/second against a mana pool that grows by 16 a level meant a high-level
+# mage waited minutes for a bar the game expected to refill in about one.
 #
-# player.gd now owns _tick_regen() as a normal method, and the tank inherits
-# it — _handle_idle() and the movement paths still call it exactly as before,
-# they just reach the one real implementation instead of a stale twin.
+# Two copies of a rule is how that drift happens. There is one.
 
 
 # =============================================================================

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ClassData" format=3]
+
+[ext_resource type="Script" path="res://src/systems/classdata.gd" id="1_classdata"]
+
+[resource]
+script = ExtResource("1_classdata")
+class_id = "healer"
+display_name = "Healer"
+hp_base = 140
+hp_per_lvl = 7
+mana_base = 220
+mana_per_lvl = 14
+stam_base = 60
+stam_per_lvl = 6

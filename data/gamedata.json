@@ -1,4 +1,46 @@
 {
+	"classes": [
+		{
+			"class_id": "healer",
+			"display_name": "Healer",
+			"hp_base": 140,
+			"hp_per_lvl": 7,
+			"mana_base": 220,
+			"mana_per_lvl": 14,
+			"stam_base": 60,
+			"stam_per_lvl": 6
+		},
+		{
+			"class_id": "mage",
+			"display_name": "Mage",
+			"hp_base": 110,
+			"hp_per_lvl": 5,
+			"mana_base": 250,
+			"mana_per_lvl": 16,
+			"stam_base": 40,
+			"stam_per_lvl": 7
+		},
+		{
+			"class_id": "tank",
+			"display_name": "Tank",
+			"hp_base": 260,
+			"hp_per_lvl": 22,
+			"mana_base": 200,
+			"mana_per_lvl": 10,
+			"stam_base": 100,
+			"stam_per_lvl": 5
+		},
+		{
+			"class_id": "warrior",
+			"display_name": "Warrior",
+			"hp_base": 180,
+			"hp_per_lvl": 12,
+			"mana_base": 180,
+			"mana_per_lvl": 10,
+			"stam_base": 80,
+			"stam_per_lvl": 5
+		}
+	],
 	"constants": {
 		"bank_capacity": 50,
 		"dupe_pet_lusions": 20,
@@ -126,7 +168,7 @@
 			"xp_reward": 20
 		}
 	],
-	"generated_at": 1789357918,
+	"generated_at": 1789362824,
 	"items": [
 		{
 			"display_name": "Bush Amulet",

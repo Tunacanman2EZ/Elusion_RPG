@@ -100,16 +100,51 @@ func load() -> Dictionary:
 	if not account.get("ok", false):
 		push_warning("ServerStorage: could not load account data — %s" % account.get("error", ""))
 
+	var account_data: Dictionary = _account_from_server(_dict(account.get("data", {})))
+
+	# WHAT WE JUST READ IS, BY DEFINITION, WHAT THE SERVER HOLDS.
+	#
+	# Without this the first save after every login re-sent all of it: fourteen
+	# requests echoing back data fetched three seconds earlier, because
+	# _last_pushed started empty and so everything looked changed.
+	#
+	# A later push still fires the moment anything genuinely moves — the
+	# fingerprints are of the same bodies a push would send, built by the same
+	# functions, so a real change produces a different hash and goes out.
+	_seed_fingerprints(slots, account_data)
+
 	return {
 		"version": PAYLOAD_VERSION,
 		"character_slots": slots,
 		"active_character_index": 0,
-		"account_data": _account_from_server(_dict(account.get("data", {}))),
+		"account_data": account_data,
 		"saved_at": int(Time.get_unix_time_from_system()),
 		# NO SIGNATURE, deliberately. Signing exists to detect a locally edited
 		# file; there is nothing to detect when the bytes came from the server.
 		# CharacterData skips verification when storage.is_authoritative.
 	}
+
+
+func _seed_fingerprints(slots: Array, account: Dictionary) -> void:
+	# Records what a push WOULD have sent for the state just loaded, without
+	# sending any of it.
+	#
+	# NOTE it runs before CharacterData's sanitizer does. That is correct: the
+	# sanitizer only recomputes derived fields, none of which appear in these
+	# bodies. If it ever does clamp something real — a value the server holds
+	# that the client considers impossible — the fingerprint will not match and
+	# the correction gets pushed, which is exactly what should happen.
+	for index in slots.size():
+		var slot = slots[index]
+		if not (slot is Dictionary):
+			continue
+		_last_pushed["save:%d" % index] = JSON.stringify(_save_body(index, slot))
+		_last_pushed["status:%d" % index] = JSON.stringify(_status_body(index, slot))
+		_last_pushed["inventory:%d" % index] = JSON.stringify(_inventory_body(index, slot))
+		_last_pushed["skills:%d" % index] = JSON.stringify(_skills_body(index, slot))
+
+	_last_pushed["lusions"] = JSON.stringify(_lusions_body(account))
+	_last_pushed["bank"] = JSON.stringify(_bank_body(account))
 
 
 func _slot_from_server(data: Dictionary) -> Dictionary:
@@ -216,24 +251,27 @@ func _push(payload: Dictionary) -> void:
 	_pushing = false
 
 
-func _push_slot(index: int, slot: Dictionary) -> void:
-	var class_id: String = str(slot.get("character", ""))
-	if class_id == "":
-		# A slot with no class is one the server would reject anyway — it
-		# validates class_id against the four it knows.
-		push_warning("ServerStorage: slot %d has no character class — not pushed." % index)
-		return
+# THE REQUEST BODIES LIVE IN ONE PLACE EACH.
+#
+# They are built by two callers: _push_slot() below, which sends them, and
+# _seed_fingerprints() after a load, which only hashes them. If those two ever
+# constructed the bodies separately the seed would compare against something the
+# push never sends, and the optimisation would silently do nothing — or worse,
+# suppress a push that was genuinely needed.
 
-	await _put_if_changed("save:%d" % index, "/api/save", {
+func _save_body(index: int, slot: Dictionary) -> Dictionary:
+	return {
 		"slot": index,
-		"class_id": class_id,
+		"class_id": str(slot.get("character", "")),
 		# The client has no separate display name; a character IS its class.
-		"name": class_id,
+		"name": str(slot.get("character", "")),
 		"level": _int(slot.get("level", 1), 1),
 		"active_pet_id": str(slot.get("active_pet_id", "")),
-	})
+	}
 
-	await _put_if_changed("status:%d" % index, "/api/player/status", {
+
+func _status_body(index: int, slot: Dictionary) -> Dictionary:
+	return {
 		"slot": index,
 		"level":       _int(slot.get("level", 1), 1),
 		"hp":          _int(slot.get("hp", 0)),
@@ -245,32 +283,50 @@ func _push_slot(index: int, slot: Dictionary) -> void:
 		"gold":        _int(slot.get("gold", 0)),
 		"xp":          _int(slot.get("xp", 0)),
 		"xp_to_next":  _int(slot.get("xp_next", 100), 100),
-	})
+	}
 
-	await _put_if_changed("inventory:%d" % index, "/api/character/inventory", {
+
+func _inventory_body(index: int, slot: Dictionary) -> Dictionary:
+	return {
 		"slot": index,
 		"inventory": _items_to_server(_array(slot.get("inventory", []))),
-	})
+	}
 
+
+func _skills_body(index: int, slot: Dictionary) -> Dictionary:
 	var skills: Dictionary = {}
 	for skill_id in SKILL_IDS:
 		skills[skill_id] = {
 			"level": _int(slot.get(skill_id, 1), 1),
 			"xp":    _int(slot.get(skill_id + "_xp", 0)),
 		}
-	await _put_if_changed("skills:%d" % index, "/api/character/skills", {
-		"slot": index,
-		"skills": skills,
-	})
+	return {"slot": index, "skills": skills}
+
+
+func _lusions_body(account: Dictionary) -> Dictionary:
+	return {"lusions": _int(account.get("lusions", 0))}
+
+
+func _bank_body(account: Dictionary) -> Dictionary:
+	return {"bank_inventory": _items_to_server(_array(account.get("bank_inventory", [])))}
+
+
+func _push_slot(index: int, slot: Dictionary) -> void:
+	if str(slot.get("character", "")) == "":
+		# A slot with no class is one the server would reject anyway — it
+		# validates class_id against the four it knows.
+		push_warning("ServerStorage: slot %d has no character class — not pushed." % index)
+		return
+
+	await _put_if_changed("save:%d" % index, "/api/save", _save_body(index, slot))
+	await _put_if_changed("status:%d" % index, "/api/player/status", _status_body(index, slot))
+	await _put_if_changed("inventory:%d" % index, "/api/character/inventory", _inventory_body(index, slot))
+	await _put_if_changed("skills:%d" % index, "/api/character/skills", _skills_body(index, slot))
 
 
 func _push_account(account: Dictionary) -> void:
-	await _put_if_changed("lusions", "/api/account/lusions", {
-		"lusions": _int(account.get("lusions", 0)),
-	})
-	await _put_if_changed("bank", "/api/account/bank", {
-		"bank_inventory": _items_to_server(_array(account.get("bank_inventory", []))),
-	})
+	await _put_if_changed("lusions", "/api/account/lusions", _lusions_body(account))
+	await _put_if_changed("bank", "/api/account/bank", _bank_body(account))
 	# bank_gold is NOT pushed. It only ever moves through /api/bank/gold, which
 	# is the one endpoint that can verify anything here — it holds both balances
 	# and conserves the total. Letting a blanket save overwrite it would throw

@@ -29,6 +29,11 @@
 #   the parent's single-shot attack animation interrupting held-fire
 extends "res://src/characters/player.gd"
 
+# This class's stat curve. See ClassData — hp_base and friends used to be
+# literals in _set_stat_curve() below, which meant the server knew your level
+# and your class and still could not work out your maximum health.
+const CLASS_DATA := preload("res://data/classes/healer.tres")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -57,9 +62,7 @@ var _is_firing: bool = false
 func _set_stat_curve() -> void:
 	# healer: fragile but above the mage's floor, deep mana for sustained
 	# projectile spam. called before recompute in player.gd.
-	hp_base    = 140; hp_per_lvl   = 7
-	mana_base  = 220; mana_per_lvl = 14
-	stam_base  = 60;  stam_per_lvl = 6
+	_apply_class_data(CLASS_DATA)
 
 
 # =============================================================================

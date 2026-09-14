@@ -24,6 +24,11 @@
 # - right-click polled in _physics_process (UI can absorb InputEvent otherwise)
 extends "res://src/characters/player.gd"
 
+# This class's stat curve. See ClassData — hp_base and friends used to be
+# literals in _set_stat_curve() below, which meant the server knew your level
+# and your class and still could not work out your maximum health.
+const CLASS_DATA := preload("res://data/classes/mage.tres")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -63,9 +68,7 @@ var is_casting: bool = false
 func _set_stat_curve() -> void:
 	# mage: lowest HP (squishy), deepest mana pool (spell spam is its whole
 	# kit), high stamina for kiting. called before recompute in player.gd.
-	hp_base    = 110; hp_per_lvl   = 5
-	mana_base  = 250; mana_per_lvl = 16
-	stam_base  = 40;  stam_per_lvl = 7
+	_apply_class_data(CLASS_DATA)
 
 
 # =============================================================================
@@ -193,23 +196,19 @@ func _spawn_stalagmite() -> void:
 	# FIXED: the target circle used to SLIDE into place instead of appearing
 	# at the cursor.
 	#
-	# This project runs physics_interpolation, so the renderer draws every
-	# node blended between its previous and current physics transforms. A node
-	# that has just entered the tree has no meaningful previous transform, so
-	# its first rendered frame is a blend from wherever it was born toward
-	# where we just put it — visible as a short slide across the screen.
+	# This project runs physics_interpolation, so the renderer draws every node
+	# blended between its previous and current physics transforms. A node that
+	# has just entered the tree has no meaningful previous transform, so its
+	# first rendered frame is a blend from wherever it was born toward where we
+	# just put it — visible as a short slide across the screen.
 	#
 	# reset_physics_interpolation() collapses previous and current to the same
 	# value, leaving nothing to blend. It MUST come AFTER global_position is
-	# set, never before. Same call and same reason as warrior.gd's slashwave,
-	# _attach_pet(), the splitting slime, the poison puddle and teleporter.gd
-	# — this was the one spawn path in the game that was missing it.
+	# set, never before.
 	#
-	# WHY IT ONLY SHOWED UP NOW: the slide has always been here, but it lasts
-	# exactly one physics tick. At the old 180 ticks/second that was 5.6ms and
-	# invisible. Dropping to 80 made the same tick 12.5ms, and 12.5ms of
-	# movement is something an eye catches. The tick rate change did not cause
-	# this bug, it just stopped hiding it.
+	# WHY IT ONLY SHOWED UP WHEN IT DID: the slide lasts exactly one physics
+	# tick. At 180 ticks/second that was 5.6ms and invisible. At 80 it is
+	# 12.5ms, and 12.5ms of movement is something an eye catches.
 	spell.reset_physics_interpolation()
 	# CHANGED: was magic * damage_per_magic — magic-only, and damage_per_magic
 	# was acting as a "per point" multiplier rather than a flat base. now

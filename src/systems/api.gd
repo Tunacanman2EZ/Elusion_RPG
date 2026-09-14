@@ -65,6 +65,20 @@ signal connection_changed(online: bool)
 # state before the first request rather than an optimistic guess.
 var server_online: bool = false
 
+# Whether server_online means anything yet.
+#
+# WITHOUT THIS, server_online IS AMBIGUOUS: false means both "we asked and it is
+# down" and "we have not asked". A caller that skips work when the server is
+# down would then skip it forever in a Release build, where nothing probes at
+# startup — _log_server_reachability() is debug-only. Kills silently never
+# reporting is a far worse bug than the wasted requests this exists to avoid.
+var reachability_known: bool = false
+
+
+func is_known_offline() -> bool:
+	# True only when something has actually asked and got no answer.
+	return reachability_known and not server_online
+
 
 # =============================================================================
 # SESSION STATE
@@ -135,8 +149,8 @@ func get_json(path: String, timeout_override: float = 0.0) -> Dictionary:
 	return await _request(HTTPClient.METHOD_GET, path, {}, timeout_override)
 
 
-func post(path: String, body: Dictionary) -> Dictionary:
-	return await _request(HTTPClient.METHOD_POST, path, body)
+func post(path: String, body: Dictionary, timeout_override: float = 0.0) -> Dictionary:
+	return await _request(HTTPClient.METHOD_POST, path, body, timeout_override)
 
 
 func put(path: String, body: Dictionary) -> Dictionary:
@@ -323,6 +337,10 @@ func _set_online(state: bool) -> void:
 	# the game would fire a connection_changed carrying the same value it
 	# already had, and any listener that does real work on it — a banner
 	# animation, a reconnect attempt — would run on every call.
+	# Set even when the state has not changed: the first ANSWER is what makes
+	# the flag meaningful, and the first answer is very often "still false".
+	reachability_known = true
+
 	if server_online == state:
 		return
 	server_online = state

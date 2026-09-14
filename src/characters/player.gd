@@ -520,6 +520,28 @@ func get_magic_damage_bonus() -> float:
 	return 1.0 + (magic - 1) * DAMAGE_BONUS_PER_POINT
 
 
+func _apply_class_data(data: ClassData) -> void:
+	# Copies a class's curve onto this player. Called from each subclass's
+	# _set_stat_curve(), which runs before _recompute_max_stats() below.
+	#
+	# The fields stay as plain vars rather than being read through `data`
+	# everywhere, so every existing reference keeps working — this changes where
+	# the numbers COME FROM, not how they are used. Same shape as
+	# BaseEnemy._apply_enemy_data().
+	if data == null:
+		# Loud, because the failure is otherwise invisible: the character works,
+		# it fights, and it quietly has 20 hp and no mana at every level.
+		push_warning("%s: no ClassData — falling back to Player defaults (20 hp, no mana)." % character_name)
+		return
+
+	hp_base      = data.hp_base
+	hp_per_lvl   = data.hp_per_lvl
+	mana_base    = data.mana_base
+	mana_per_lvl = data.mana_per_lvl
+	stam_base    = data.stam_base
+	stam_per_lvl = data.stam_per_lvl
+
+
 func _recompute_max_stats() -> void:
 	max_hp      = hp_base   + (level - 1) * hp_per_lvl
 	max_mana    = mana_base + (level - 1) * mana_per_lvl

@@ -51,6 +51,7 @@ extends EditorScript
 
 const ITEMS_PATH := "res://data/items/"
 const ENEMIES_PATH := "res://data/enemies/"
+const CLASSES_PATH := "res://data/classes/"
 const OUTPUT_PATH := "res://data/gamedata.json"
 
 # Bump this when the SHAPE of the JSON changes — a renamed key, a removed
@@ -76,12 +77,16 @@ func _run() -> void:
 	var constants: Dictionary = _export_constants()
 	var items: Array = _export_items()
 	var enemies: Array = _export_enemies(constants)
+	var classes: Array = _export_classes()
 
 	if items.is_empty():
 		push_error("exportgamedata: found no items under %s — refusing to write an empty catalogue." % ITEMS_PATH)
 		return
 	if enemies.is_empty():
 		push_error("exportgamedata: found no enemy profiles under %s — refusing to write an empty roster." % ENEMIES_PATH)
+		return
+	if classes.is_empty():
+		push_error("exportgamedata: found no class curves under %s — refusing to write. The server would fall back to trusting the client's max_hp." % CLASSES_PATH)
 		return
 
 	var payload: Dictionary = {
@@ -90,6 +95,7 @@ func _run() -> void:
 		"constants": constants,
 		"items": items,
 		"enemies": enemies,
+		"classes": classes,
 	}
 
 	if not _validate(constants, items, enemies):
@@ -107,13 +113,22 @@ func _run() -> void:
 	file.store_string(JSON.stringify(payload, "\t", true))
 	file.close()
 
-	print("exportgamedata: wrote %s — %d items, %d enemies" % [OUTPUT_PATH, items.size(), enemies.size()])
+	print("exportgamedata: wrote %s — %d items, %d enemies, %d classes" % [
+		OUTPUT_PATH, items.size(), enemies.size(), classes.size(),
+	])
 
 	# Printed so the numbers can be eyeballed against the scenes before any of
 	# this reaches the server. A placeholder instance reads properties fine and
 	# fails only on method calls, but "fine" is worth one glance: an enemy
 	# showing 0 xp and 0.0 drop chance means the read did not resolve and the
 	# server would silently grant nothing for that kill.
+	for cls in classes:
+		print("    %-10s hp %d/+%-2d   mana %d/+%-2d   stam %d/+%d" % [
+			cls["class_id"], cls["hp_base"], cls["hp_per_lvl"],
+			cls["mana_base"], cls["mana_per_lvl"],
+			cls["stam_base"], cls["stam_per_lvl"],
+		])
+
 	for enemy in enemies:
 		if not enemy["grants_rewards"]:
 			print("    %-18s hp %-5d (awards nothing — never killed)" % [
@@ -277,6 +292,44 @@ func _export_enemies(constants: Dictionary) -> Array:
 		})
 
 	out.sort_custom(func(a, b): return a["enemy_id"] < b["enemy_id"])
+	return out
+
+
+func _export_classes() -> Array:
+	# Same shape as _export_items(). A class's curve is the last thing the client
+	# gets to assert about a character: the server knows your level and your
+	# class, and until this existed it still could not work out your maximum
+	# health, because hp_base and hp_per_lvl were literals inside
+	# warrior.gd's _set_stat_curve().
+	var out: Array = []
+	var seen: Dictionary = {}
+
+	for path in _find_files(CLASSES_PATH, ".tres"):
+		var res: Resource = ResourceLoader.load(path)
+		if res == null or not (res is ClassData):
+			continue
+
+		var cls: ClassData = res
+		if cls.class_id == "":
+			push_warning("exportgamedata: %s has an empty class_id — skipped." % path)
+			continue
+		if seen.has(cls.class_id):
+			push_error("exportgamedata: duplicate class_id '%s' in %s and %s" % [cls.class_id, seen[cls.class_id], path])
+			continue
+		seen[cls.class_id] = path
+
+		out.append({
+			"class_id":     cls.class_id,
+			"display_name": cls.display_name,
+			"hp_base":      cls.hp_base,
+			"hp_per_lvl":   cls.hp_per_lvl,
+			"mana_base":    cls.mana_base,
+			"mana_per_lvl": cls.mana_per_lvl,
+			"stam_base":    cls.stam_base,
+			"stam_per_lvl": cls.stam_per_lvl,
+		})
+
+	out.sort_custom(func(a, b): return a["class_id"] < b["class_id"])
 	return out
 
 

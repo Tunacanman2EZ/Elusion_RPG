@@ -71,6 +71,11 @@
 # 4. each enemy can only be hit ONCE per swing (cleave, no multi-tick)
 extends "res://src/characters/player.gd"
 
+# This class's stat curve. See ClassData — hp_base and friends used to be
+# literals in _set_stat_curve() below, which meant the server knew your level
+# and your class and still could not work out your maximum health.
+const CLASS_DATA := preload("res://data/classes/warrior.tres")
+
 
 # =============================================================================
 # CONSTANTS
@@ -214,9 +219,7 @@ var wavespawns: Dictionary = {
 func _set_stat_curve() -> void:
 	# warrior: balanced HP, moderate mana for slashwave uptime, solid stamina.
 	# called by player.gd._ready BEFORE recompute, so these drive max stats.
-	hp_base    = 180; hp_per_lvl   = 12
-	mana_base  = 180; mana_per_lvl = 10
-	stam_base  = 80;  stam_per_lvl = 5
+	_apply_class_data(CLASS_DATA)
 
 
 # =============================================================================
