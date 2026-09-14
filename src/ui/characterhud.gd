@@ -28,12 +28,12 @@ const INVENTORY_SCENE     := preload("res://scene/ui/inventory/inventory.tscn")
 const STATSSCREEN_SCENE   := preload("res://scene/ui/statsscreen.tscn")
 const BANK_SCENE          := preload("res://scene/ui/bank/bankinventory.tscn")
 const LOOTBAG_PANEL_SCENE := preload("res://scene/ui/lootbag/lootbaginventory.tscn")
-# NEW: admin-only save-viewer panel (see adminpanel.gd). preload is fine
+# Owner-only save-viewer panel (see ownerpanel.gd). preload is fine
 # here even though most players will never see it — the panel itself
-# fails closed via CharacterData.get_is_admin(), so preloading the scene
-# doesn't expose anything, it's just an inert resource until an admin
-# actually toggles it with F8.
-const ADMIN_PANEL_SCENE   := preload("res://scene/ui/admin/adminpanel.tscn")
+# fails closed via Api.is_owner, so preloading the scene
+# doesn't expose anything, it's just an inert resource until the owner
+# actually toggles it with the backquote key.
+const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
 
 
 # =============================================================================
@@ -48,12 +48,12 @@ var magicbar:   TextureProgressBar = null
 var staminabar: TextureProgressBar = null
 
 # panel references — inventory is eagerly created in set_active_character,
-# stats/bank/lootbag/admin stay lazy.
+# stats/bank/lootbag/owner stay lazy.
 var inventory_screen: InventoryScreen = null
 var stats_screen:     Control         = null
 var bank_screen:      Control         = null
 var lootbag_panel:    Control         = null
-var admin_panel:      Control         = null
+var owner_panel:      Control         = null
 
 # hotbar reference — resolved on _ready
 var hotbar: Hotbar = null
@@ -120,23 +120,39 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Shift+A toggles the admin panel. non-admins pressing this get no
-	# response at all by design, not even an error — see
-	# _toggle_admin_panel()'s fail-closed check on CharacterData.get_is_admin().
-	if event is InputEventKey and event.pressed and event.keycode == KEY_A \
-			and event.shift_pressed:
-		_toggle_admin_panel()
+	# Backquote / tilde toggles the owner panel. Anyone who is not the owner
+	# gets no response at all by design, not even an error — see
+	# _toggle_owner_panel().
+	#
+	# The whole function row was already spoken for. F1-F7 and F9-F12 are
+	# player.gd's debug keys, and F8 is Godot's own "stop the running
+	# project" shortcut, so binding to it closed the game. Backquote is the
+	# conventional dev-console key and collides with nothing here.
+	#
+	# It was Shift+A before that, which collided with normal play: `interact`
+	# is Shift and `move_left` is A, so interacting while walking left
+	# toggled the panel.
+	if event is InputEventKey and event.pressed and event.keycode == KEY_QUOTELEFT:
+		_toggle_owner_panel()
 
 
-func _toggle_admin_panel() -> void:
-	if not CharacterData.get_is_admin():
+func _toggle_owner_panel() -> void:
+	# THE OWNER, not merely an admin. is_admin is a database column that a
+	# future mod or dev could hold; the owner is named in the server's
+	# environment and is the one account that cannot be granted. Read straight
+	# from Api rather than through CharacterData, because that flag is never
+	# persisted — there is no file holding it to edit.
+	#
+	# Cosmetic either way. The server is what actually refuses; this only
+	# decides whether the panel opens.
+	if not Api.is_owner:
 		return
 
-	if admin_panel == null:
-		admin_panel = ADMIN_PANEL_SCENE.instantiate()
-		add_child(admin_panel)
+	if owner_panel == null:
+		owner_panel = OWNER_PANEL_SCENE.instantiate()
+		add_child(owner_panel)
 
-	admin_panel.visible = not admin_panel.visible
+	owner_panel.visible = not owner_panel.visible
 
 
 func _process(_delta: float) -> void:
@@ -439,7 +455,7 @@ func _on_logout_pressed() -> void:
 	if stats_screen:     stats_screen.queue_free()
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
-	if admin_panel:      admin_panel.queue_free()
+	if owner_panel:      owner_panel.queue_free()
 
 	# NEW: reset CharacterData's in-memory state too — logout was only ever
 	# clearing the UI panels, never actually telling CharacterData the user
@@ -481,7 +497,7 @@ func _on_switch_character_pressed() -> void:
 	if stats_screen:     stats_screen.queue_free()
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
-	if admin_panel:      admin_panel.queue_free()
+	if owner_panel:      owner_panel.queue_free()
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
 

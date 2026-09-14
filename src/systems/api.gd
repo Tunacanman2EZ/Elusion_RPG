@@ -91,6 +91,17 @@ var token: String = ""
 var username: String = ""
 var is_admin: bool = false
 
+# Whether this account is the server's OWNER, as the server understands it.
+#
+# Held only in memory and never written to session.cfg, unlike is_admin, which
+# CharacterData mirrors into account_data and therefore into the save. A
+# permission that lives in a file is a permission that can be edited; this one
+# has to come from a login response every time.
+#
+# It is still only good for hiding buttons. The server decides for real - see
+# require_owner in app.py.
+var is_owner: bool = false
+
 
 func is_logged_in() -> bool:
 	return token != ""
@@ -287,6 +298,7 @@ func probe_and_resume() -> Dictionary:
 	if res.get("ok", false):
 		username = res.data.get("username", username)
 		is_admin = bool(res.data.get("is_admin", false))
+		is_owner = bool(res.data.get("is_owner", false))
 		return {"online": true, "resumed": true}
 
 	# Reached the server and it said no — the token expired or was revoked.
@@ -301,8 +313,12 @@ func probe_and_resume() -> Dictionary:
 func _adopt_session(data: Dictionary) -> void:
 	token = data.get("token", "")
 	username = data.get("username", "")
-	# register() doesn't echo is_admin — a brand new account never has it.
 	is_admin = bool(data.get("is_admin", false))
+	is_owner = bool(data.get("is_owner", false))
+
+	# _save_session() writes the token and username only. is_owner is
+	# deliberately not among them — it is re-read from the server on every
+	# login and resume, so there is nothing on disk to tamper with.
 	_save_session()
 
 
@@ -310,6 +326,7 @@ func _clear_session() -> void:
 	token = ""
 	username = ""
 	is_admin = false
+	is_owner = false
 	DirAccess.remove_absolute(SESSION_PATH)
 
 
