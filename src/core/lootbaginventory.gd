@@ -285,13 +285,13 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 	# moved on the server by then, so the grant has to be applied to the player
 	# who asked for it rather than to whoever _player happens to be now.
 	var bag_id: String = _bag_id
-	var position: int = slot.slot_index
+	var cell: int = slot.slot_index
 	var player: Node = _player if is_instance_valid(_player) else null
 
 	_taking = true
 	var res: Dictionary = await Api.post("/api/loot/take", {
 		"bag_id": bag_id,
-		"position": position,
+		"position": cell,
 	}, TAKE_TIMEOUT)
 	_taking = false
 
@@ -299,20 +299,20 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 	player = player if is_instance_valid(player) else null
 
 	if not res.get("ok", false):
-		_handle_refusal(res, player, bag_id, position)
+		_handle_refusal(res, player, bag_id, cell)
 		return
 
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 
 	_apply_grant(player, data)
-	_clear_cell(bag_id, position)
+	_clear_cell(bag_id, cell)
 
 	if bool(data.get("bag_empty", false)):
 		_close_emptied_bag(bag_id)
 
 	if OS.is_debug_build():
 		print("[LOOT] took cell %d — %d x %s → %s" % [
-			position,
+			cell,
 			int(data.get("granted_quantity", 0)),
 			str(data.get("granted_item_id", "")),
 			str(data.get("credited", "")),
@@ -416,7 +416,7 @@ func _apply_inventory(data: Dictionary) -> bool:
 	return true
 
 
-func _clear_cell(bag_id: String, position: int) -> void:
+func _clear_cell(bag_id: String, cell: int) -> void:
 	# ONLY IF THE PANEL IS STILL ON THIS BAG. After the await it may be showing
 	# a different one, and clearing cell 2 of the bag in front of the player
 	# because cell 2 of a bag they walked away from was taken is exactly what
@@ -427,13 +427,13 @@ func _clear_cell(bag_id: String, position: int) -> void:
 	# _loading around it so _on_container_changed() does not also fire a mirror
 	# mid-removal; the mirror below is the one that should happen.
 	_loading = true
-	loot_container.remove_stack_at(position)
+	loot_container.remove_stack_at(cell)
 	_loading = false
 
 	_mirror_to_bag()
 
 
-func _handle_refusal(res: Dictionary, player: Node, bag_id: String, position: int) -> void:
+func _handle_refusal(res: Dictionary, player: Node, bag_id: String, cell: int) -> void:
 	var code: int = int(res.get("status", 0))
 
 	match code:
@@ -442,7 +442,7 @@ func _handle_refusal(res: Dictionary, player: Node, bag_id: String, position: in
 			# is the answer that makes a duplicate request harmless. Clear the
 			# cell, because the grid was showing something the bag does not
 			# have.
-			_clear_cell(bag_id, position)
+			_clear_cell(bag_id, cell)
 			_notify_player(player, "That's already gone.")
 		409:
 			_notify_player(player, "Inventory full")

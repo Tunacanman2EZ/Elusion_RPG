@@ -132,7 +132,21 @@ var cooking: int = 1;  var cooking_xp: int = 0;  var cooking_xp_next: int = 100
 # MOVEMENT
 # =============================================================================
 
-@export var speed := 75
+# WAS 75, WHICH WAS SLOWER THAN SIX OF THE SEVEN ENEMIES.
+#
+# Enemy move speeds run 45 (large poison slime) to 90 (electric sprite), with
+# most between 75 and 85. At 75 the player could never break contact with
+# anything but the large slime, so every fight was stand-and-trade or spend
+# stamina — no repositioning, no kiting, no backing off to heal. For a game
+# with a 110 HP mage that is not a difficulty choice, it is a missing verb.
+#
+# 90 is parity with the fastest thing in the game and above the other six. The
+# electric sprite keeps its identity as the one enemy that can run you down;
+# everything else can be walked away from.
+#
+# The real speed is this plus (agility - 1) * 10. That term used to be
+# decorative — see the agility block in _handle_movement() for why.
+@export var speed := 90
 var last_direction := Vector2.DOWN
 var is_attacking := false
 
@@ -143,13 +157,38 @@ var is_attacking := false
 # sense for the old fixed-4-direction swing.
 @export var attack_locks_movement: bool = true
 
-# NEW: how hard the player shoves an enemy it walks into, in pixels/sec.
+# HOW HARD THE PLAYER SHOVES AN ENEMY IT WALKS INTO.
+#
 # Enemies are solid to us but we are not solid to them (no enemy masks the
-# player layer), so without this an enemy that presses into you pins you with
-# no way out. Keep this BELOW `speed` — an enemy should yield to a shove more
-# slowly than you walk, so it reads as resistance rather than a bulldozer.
-# 0.0 disables shoving entirely and restores the old pinning behaviour.
+# player layer), so without a shove an enemy that presses into you pins you
+# with no way out.
+#
+# THIS USED TO BE A FLAT 50 px/sec, AND THE OLD COMMENT SAID TO KEEP IT BELOW
+# `speed` so an enemy "yields more slowly than you walk". That is the wrong
+# comparison, and it is why the shove never worked. The number a shove
+# competes against is not how fast the PLAYER walks — it is how fast the ENEMY
+# walks back in. At 50 against chase speeds of 70 to 90, the shove lost to
+# every enemy in the game except the large poison slime, which is the one that
+# felt fine. Being pushed at 50 while pathing at 80 is a net 30 px/sec toward
+# you, forever.
+#
+# So the push is derived from the enemy's own move speed instead of being a
+# constant. A ratio above 1.0 always wins, and it keeps winning for any enemy
+# added later without anyone remembering to retune a magic number.
+@export var enemy_push_ratio: float = 1.6
+
+# Floor for anything that does not report a get_move_speed() — a prop, a
+# scripted body, a future enemy that moves some other way. 0.0 for both this
+# and the ratio disables shoving entirely and restores the old pinning.
 @export var enemy_push_strength: float = 50.0
+
+# HOW MUCH OF THE SHOVE GOES SIDEWAYS, as a fraction of the straight-away push.
+#
+# -collision.get_normal() points directly away from the contact, which for a
+# head-on walk is exactly your travel direction — so even a shove that wins
+# just pushes the enemy ahead of you like a box, and you never get PAST it.
+# A tangential component makes it slip to one side instead.
+@export var enemy_push_sidestep: float = 0.6
 
 
 # =============================================================================
@@ -163,8 +202,31 @@ var is_attacking := false
 # movement, not tied to any one class's kit.
 @export var sprint_agility_xp_per_sec: float = 1.0
 
+# AGILITY XP FOR ORDINARY MOVEMENT, per 1000 pixels travelled.
+#
+# Sprinting was the ONLY source of agility XP in the whole codebase, and
+# agility 2 costs 100 XP at 1 XP/sec. With a warrior's 80 stamina draining at
+# 15/sec, one full bar buys 5.3 seconds of sprint — so a single agility level
+# was about nineteen complete stamina bars of pure running, and a mage's 40
+# stamina made it thirty-eight. Nobody was ever going to do that.
+#
+# Which meant (agility - 1) * 10 was permanently zero and the player's real
+# speed was the base, forever. The stat existed, was displayed, was saved, and
+# did nothing.
+#
+# At 90 px/sec this is roughly one point every eleven seconds of walking —
+# slow enough to still be a reward, fast enough to actually arrive. Sprinting
+# earns this AND the per-second rate above, which is the right shape: running
+# hard should train running.
+@export var agility_xp_per_1000_px: int = 3
+
 var _sprint_drain_accumulator: float = 0.0
 var _sprint_agility_xp_accumulator: float = 0.0
+
+# Banked in pixels, spent in thousands. Batched rather than awarded per frame
+# because gain_agility_xp() calls save_character_state() every time — a
+# per-frame award would be a save every frame.
+var _agility_distance_accumulator: float = 0.0
 var _is_sprinting: bool = false
 
 
@@ -369,10 +431,45 @@ func _physics_process(_delta):
 			$animatedsprite2d.play(get_idle_animation())
 			$animatedsprite2d.speed_scale = 1.0
 
+	# Captured BEFORE the move so agility can be paid on ground actually
+	# covered — see _accrue_agility_from_travel() below.
+	var position_before: Vector2 = global_position
+
 	move_and_slide()
 	_shove_blocking_enemies(_delta)
 
+	_accrue_agility_from_travel(global_position.distance_to(position_before))
+
 	_tick_regen(_delta)
+
+
+# =============================================================================
+# AGILITY FROM COVERING GROUND
+# =============================================================================
+
+func _accrue_agility_from_travel(distance: float) -> void:
+	# MEASURED FROM THE POSITION DELTA, not from velocity * delta.
+	#
+	# Those are the same number right up until something is in the way, and
+	# then they are not: holding a key against a wall sets a velocity every
+	# frame and moves you nowhere. Paying on intent rather than travel would
+	# make standing in a corner the fastest way to train agility in the game.
+	#
+	# It also means a shove you are losing pays less, which is correct — you
+	# did not get anywhere.
+	if agility_xp_per_1000_px <= 0 or distance <= 0.0:
+		return
+
+	_agility_distance_accumulator += distance
+	if _agility_distance_accumulator < 1000.0:
+		return
+
+	# Batched. gain_agility_xp() calls save_character_state() on every call,
+	# so awarding per frame would be a save per frame — the 2 second debounce
+	# would absorb it, but only by throwing almost all of them away.
+	var thousands: int = int(_agility_distance_accumulator / 1000.0)
+	_agility_distance_accumulator -= float(thousands) * 1000.0
+	gain_agility_xp(thousands * agility_xp_per_1000_px)
 
 
 # =============================================================================
@@ -403,7 +500,7 @@ func _physics_process(_delta):
 # Anything that should be immovable (the boss, a scripted encounter) can be
 # added to the "unpushable" group and this will skip it.
 func _shove_blocking_enemies(delta: float) -> void:
-	if enemy_push_strength <= 0.0:
+	if enemy_push_strength <= 0.0 and enemy_push_ratio <= 0.0:
 		return
 
 	for i in get_slide_collision_count():
@@ -420,11 +517,41 @@ func _shove_blocking_enemies(delta: float) -> void:
 		if other.is_in_group("unpushable"):
 			continue
 
+		# THE SHOVE HAS TO OUTRUN THE CHASE, and only the enemy knows how fast
+		# that is. An enemy pushed at 50 while pathing toward you at 80 is not
+		# being shoved, it is closing more slowly.
+		var chase_speed: float = 0.0
+		if other.has_method("get_move_speed"):
+			chase_speed = float(other.get_move_speed())
+		var push_speed: float = maxf(chase_speed * enemy_push_ratio, enemy_push_strength)
+
 		# get_normal() points OUT of the surface we collided with, i.e. back
 		# toward us. Negating it gives the direction that moves the enemy
 		# away from the player.
-		var push: Vector2 = -collision.get_normal() * enemy_push_strength * delta
-		other.move_and_collide(push)
+		var away: Vector2 = -collision.get_normal()
+
+		# PUSH IT ASIDE, NOT JUST AHEAD.
+		#
+		# Which side: whichever one the enemy is already leaning toward, so a
+		# body slightly to your left gets nudged further left and you walk
+		# through the gap that opens.
+		var tangent: Vector2 = away.orthogonal()
+		var side: float = tangent.dot(other.global_position - global_position)
+
+		# Dead centre. Either side is equally good, but CHOOSING ONE PER FRAME
+		# would flip-flop and cancel itself out, so it is pinned to the enemy's
+		# instance id — arbitrary, and stable for as long as that enemy lives.
+		if absf(side) < 0.001:
+			side = 1.0 if int(other.get_instance_id()) % 2 == 0 else -1.0
+
+		if side < 0.0:
+			tangent = -tangent
+
+		# move_and_collide() rather than assigning global_position, so the
+		# shove still respects walls — an enemy cannot be pushed through
+		# geometry, it just stops once it is pinned against something solid.
+		var push: Vector2 = (away + tangent * enemy_push_sidestep).normalized()
+		other.move_and_collide(push * push_speed * delta)
 
 
 # =============================================================================

@@ -484,6 +484,19 @@ func _values_differ(a: Variant, b: Variant) -> bool:
 	return a != b
 
 
+func _is_derived_key(key: String) -> bool:
+	# Keys the sanitizer COMPUTES rather than loads, so their absence from a
+	# loaded slot is normal rather than a missing field.
+	#
+	# Derived from SKILL_GROWTH_FACTORS rather than listed literally, so adding
+	# a seventh skill cannot leave a stale hardcoded list behind — the whole
+	# reason these are computed in the first place is to have one copy of the
+	# curve, and a hand-written list here would quietly become a second one.
+	if not key.ends_with("_xp_next"):
+		return false
+	return SKILL_GROWTH_FACTORS.has(key.trim_suffix("_xp_next"))
+
+
 func _report_sanitizer_diff(before: Dictionary, after: Dictionary, context: String) -> void:
 	# Logs the specific keys the sanitizer altered.
 	#
@@ -496,6 +509,25 @@ func _report_sanitizer_diff(before: Dictionary, after: Dictionary, context: Stri
 
 	for key in after:
 		if not before.has(key):
+			# A KEY THAT WAS NEVER STORED IS NOT A CORRECTION.
+			#
+			# This fired on every boot, for every slot, listing all six skill
+			# xp_next values as additions — because serverstorage.gd
+			# deliberately does not send them. Its comment is right that it
+			# should not: they are a pure function of the skill level, and
+			# shipping a derived number would be a second copy of the growth
+			# curve to keep in step with this one.
+			#
+			# So the sanitizer filling them in IS the mechanism working, and
+			# announcing it as "sanitizer changed character slot warrior" every
+			# login taught you to ignore a warning that is supposed to mean
+			# something is wrong with a save.
+			#
+			# A stored value that DISAGREES with the curve is still reported —
+			# louder and more precisely — by the per-skill mismatch warning in
+			# _sanitize_character_slot().
+			if _is_derived_key(key):
+				continue
 			changed.append("+%s = %s" % [key, str(after[key])])
 			continue
 		if _values_differ(before[key], after[key]):

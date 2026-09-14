@@ -147,38 +147,52 @@ func _select_character(idx: int) -> void:
 		# change. Reading it here means a bad load is visible at the character
 		# screen instead of surfacing later as a confused "where did my stuff
 		# go" in the world.
-		# COUNTING, CAREFULLY. The saved inventory is one entry per SLOT, not
+		# COUNTING, CAREFULLY. The saved inventory is one entry per CELL, not
 		# per item — InventoryContainer.to_save_array() appends null for every
-		# empty slot to keep positions stable across a save/load. So .size()
-		# is the bag's capacity and never changes; reporting it as "items"
-		# said "20 items" with one potion in the bag, and would have said it
-		# forever.
+		# empty cell to keep positions stable across a save/load. Reporting
+		# .size() as "items" said "20 items" with one potion in the bag.
 		#
-		# Occupied slots are the non-null entries. Item count is the sum of
+		# Occupied cells are the non-null entries. Item count is the sum of
 		# their quantities, because one entry can be a stack of 16.
+		#
+		# BUT .size() IS NOT THE BAG'S CAPACITY, which is what this used to
+		# claim. An empty ARRAY and a bag of twenty empty CELLS are different
+		# saves, and both are normal: gameover.gd assigns [] outright when you
+		# decline a revive, and a fresh character starts the same way. So a
+		# perfectly healthy load printed "0 items in 0/0 slots", which reads
+		# like the bag evaporated — on the death-and-reselect path, which is
+		# the one you walk through most while testing.
+		#
+		# The real capacity is grid_width * grid_height on the container, and
+		# the container does not exist yet at this screen. So this reports what
+		# it can actually see, and names the empty case rather than dressing it
+		# up as a ratio.
 		#
 		# quantity goes through int() rather than being read raw: a quantity
 		# that once became a float stays a float for the life of that save
 		# (see _capture_inventory in characterdata.gd).
 		var inventory: Variant = slot.get("inventory", [])
-		var slots_total: int = 0
-		var slots_used: int = 0
+		var cells_saved: int = 0
+		var cells_used: int = 0
 		var item_count: int = 0
 		if inventory is Array:
 			var entries: Array = inventory
-			slots_total = entries.size()
+			cells_saved = entries.size()
 			for entry in entries:
 				if entry is Dictionary:
-					slots_used += 1
+					cells_used += 1
 					item_count += int(entry.get("quantity", 1))
-		print("[CHAR] %s slot %d — lv %d, %d gold, %d items in %d/%d slots" % [
+
+		var bag: String = "empty bag"
+		if cells_saved > 0:
+			bag = "%d items in %d/%d cells" % [item_count, cells_used, cells_saved]
+
+		print("[CHAR] %s slot %d — lv %d, %d gold, %s" % [
 			slot["character"],
 			idx + 1,
 			int(slot.get("level", 1)),
 			int(slot.get("gold", 0)),
-			item_count,
-			slots_used,
-			slots_total,
+			bag,
 		])
 
 	# mark this slot as the active character and persist before scene change.
