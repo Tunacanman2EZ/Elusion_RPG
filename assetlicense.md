@@ -6,9 +6,12 @@ this to work out what you may do with these files.
 
 ## Original art — © 2026 Elusion Studios
 
-Everything under `/art` and `/assets` **except** the files listed in the next
-section. Commissioned from Ahvassa (https://ahvassa.itch.io/) with rights
-assigned to Elusion Studios, plus original work by Robert Ashley Clear.
+Everything under `/art` and `/assets` **except** the item and icon artwork
+described in the next section. This includes characters, enemies, tilesets,
+buildings, interiors, doors, teleporters and menu art.
+
+Commissioned from Ahvassa (https://ahvassa.itch.io/) with rights assigned to
+Elusion Studios, plus original work by Robert Ashley Clear.
 
 Provided here for demonstration and development purposes as part of this game
 project. It may **not** be used, copied, redistributed, or incorporated into
@@ -20,9 +23,19 @@ for purchase or reuse under separate terms.
 
 Asset licensing enquiries: elusionrpg@gmail.com
 
-## Icon assets — © Clockwork Raven Studios
+## Item and icon art — © Clockwork Raven Studios
 
-`/art/icons`
+All item and icon artwork in this project. At the time of writing that is the
+contents of:
+
+- `/art/amulets`
+- `/art/consumables`
+- `/art/currency`
+- `/art/icons`
+- `/art/weapons`
+
+The category governs, not the folder list: any item or icon art added later
+belongs here too.
 
 Art by Caio Carlos of Clockwork Raven Studios.
 
