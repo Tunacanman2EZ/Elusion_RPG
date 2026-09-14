@@ -164,16 +164,45 @@ func _spawn_loot_bag(data: Dictionary, killer: Node, at_position: Vector2) -> vo
 	if contents.is_empty():
 		return
 
+	# NO BAG ID, NO BAG. The node is a picture of rows the server owns, and
+	# without the id there is nothing for the panel to ask against — so the bag
+	# would sit on the ground refusing every take. Spawning nothing and saying
+	# why in the log is the honest version of that.
+	#
+	# This should be unreachable: /api/combat/kill returns an id whenever it
+	# returns contents. It is here because the alternative failure mode is a
+	# player standing over loot they cannot pick up, with no explanation.
+	var bag_id: String = str(data.get("bag_id", ""))
+	if bag_id == "":
+		push_warning("Combat: kill returned contents with no bag_id — nothing spawned")
+		return
+
+	# POSITION-ALIGNED, NOT PACKED. The server stamps a position on every entry
+	# and that position is the only thing /api/loot/take accepts. Appending in
+	# arrival order happens to agree with it today and would stop agreeing the
+	# first time an entry was skipped — and it would stop agreeing as "the
+	# player took a different item than the one they clicked", silently.
+	#
 	# Quantities arrive as JSON numbers, which Godot parses as floats — 5 comes
 	# back as 5.0, and an item stack of 5.0 is not an item stack of 5. Coerced
 	# here rather than trusting whatever the bag does with it.
 	var cleaned: Array = []
 	for entry in contents:
-		if entry is Dictionary:
-			cleaned.append({
-				"item_id":  str(entry.get("item_id", "")),
-				"quantity": maxi(_int(entry.get("quantity", 1), 1), 1),
-			})
+		if not (entry is Dictionary):
+			continue
+		var cell: int = _int(entry.get("position", -1), -1)
+		if cell < 0:
+			push_warning("Combat: a loot entry arrived with no position — skipped")
+			continue
+		if cell >= cleaned.size():
+			cleaned.resize(cell + 1)
+		cleaned[cell] = {
+			"item_id":  str(entry.get("item_id", "")),
+			"quantity": maxi(_int(entry.get("quantity", 1), 1), 1),
+		}
+
+	if cleaned.is_empty():
+		return
 
 	var bag: Node = LOOTBAG_SCENE.instantiate()
 	bag.global_position = at_position
@@ -191,6 +220,11 @@ func _spawn_loot_bag(data: Dictionary, killer: Node, at_position: Vector2) -> vo
 	# same physics-interpolation artifact as every projectile in the game.
 	bag.reset_physics_interpolation()
 
+	# BEFORE set_contents, deliberately. The id is what makes the contents mean
+	# anything — a bag holding items with no id to ask against is the one state
+	# the panel cannot do anything useful with.
+	if bag.has_method("set_bag_id"):
+		bag.set_bag_id(bag_id)
 	if bag.has_method("set_contents"):
 		bag.set_contents(cleaned)
 	if bag.has_method("set_owner_player"):
@@ -222,6 +256,10 @@ func _refusal_text(res: Dictionary) -> String:
 	# spike. Saying "too fast" to someone who was not going fast is worse than
 	# saying nothing useful, so it gets its own wording.
 	if _int(res.get("status", 0)) == 429:
+		# The server's kill bucket. A player should essentially never see this —
+		# it holds fifty and refills five a second, which is well past any rate
+		# a real fight produces. If it starts appearing during normal play the
+		# bucket is mis-sized, not the player.
 		return "Kill not registered — try again."
 	return "No connection — no reward."
 

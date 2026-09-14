@@ -1,13 +1,39 @@
 # lootbag.gd — world-placed loot container dropped by a slain enemy.
 # sits on the ground; the player walks up and presses interact to OPEN a
 # draggable panel (lootbaginventory) showing the contents. this script owns
-# the world-side state: contents, ownership, the pet beam, and despawn timing.
+# the world-side state: ownership, the pet beam, and despawn timing.
+#
+# THE CONTENTS HERE ARE A PICTURE. THE BAG LIVES ON THE SERVER.
+# -------------------------------------------------------------
+# This node used to BE the bag: it held the items, handed them over on pickup,
+# and the next save simply told the server what the player was now carrying. The
+# server rolled a potion and had no idea whether you took it, left it, or
+# invented forty more — which is why `gold` sat on the client-asserted list.
+#
+# Now /api/combat/kill stores the roll in loot_bags / loot_bag_items and returns
+# a bag_id. This node renders a COPY of those rows, and taking anything out is a
+# request against them (see lootbaginventory.gd). _contents is kept only so the
+# panel can be re-opened without another round trip.
+#
+# THE INDEX OF EACH ENTRY IS THE SERVER'S POSITION. That is why it is a
+# fixed-length array with null in the taken cells rather than a list that
+# compacts: "take cell 2" has to mean the same cell on both sides, and a list
+# that closed its gaps would start meaning a different one the moment anything
+# was taken out of the middle.
+#
+# An empty _bag_id means the server never registered this bag. That should not
+# happen — Combat only spawns a node when the kill response carried an id — and
+# if it does, the panel refuses to take rather than falling back to handing
+# items over locally. A client that can produce loot by making a request fail is
+# the exploit this whole change exists to close.
 #
 # lifecycle:
-# - spawned by baseenemy on death via set_contents / set_owner_player / set_has_pet
+# - spawned by Combat on a kill via set_bag_id / set_contents / set_owner_player
+#   / set_has_pet
 # - beam shows immediately if the bag holds a pet (rare drop signal)
 # - interact (killer only) → hud.open_lootbag(self, player) shows the panel
-# - the panel syncs remaining contents back via set_contents as items are taken
+# - the panel mirrors what is left back via set_contents as items are taken, so
+#   re-opening shows the right thing without asking the server again
 # - despawn: immediately when emptied (despawn_now), or after despawn_seconds
 #   if items remain (leftovers are lost — "loot it or lose it")
 # - NEW: walking out of range while the panel is open closes it automatically,
@@ -44,7 +70,13 @@ const SPAWN_GRACE_PERIOD := 0.5
 # STATE
 # =============================================================================
 
+# The server's id for this bag. Everything the panel does goes through it.
+var _bag_id: String = ""
+
+# A COPY of what the server's rows held when this bag was spawned, position-
+# aligned: index == the server's position, null where a cell has been taken.
 var _contents: Array = []
+
 var _owner_player: Node = null
 var _player_nearby: Node = null
 var _has_pet: bool = false
@@ -100,10 +132,20 @@ func _process(delta: float) -> void:
 
 
 # =============================================================================
-# SETUP — called by the spawning enemy
+# SETUP — called by Combat when the kill response lands
 # =============================================================================
 
+func set_bag_id(bag_id: String) -> void:
+	_bag_id = bag_id
+
+
+func get_bag_id() -> String:
+	return _bag_id
+
+
 func set_contents(contents: Array) -> void:
+	# Position-aligned, nulls included. The panel writes back through here too,
+	# and it deliberately hands over an array that is still the full length.
 	_contents = contents
 
 
@@ -160,7 +202,11 @@ func _try_open() -> void:
 		despawn_timer.paused = true
 
 	if OS.is_debug_build():
-		print("[LOOT] opening bag with %d contents" % _contents.size())
+		var held: int = 0
+		for entry in _contents:
+			if entry is Dictionary and str(entry.get("item_id", "")) != "":
+				held += 1
+		print("[LOOT] opening bag %s with %d item(s)" % [_bag_id, held])
 	hud.open_lootbag(self, _player_nearby)
 
 

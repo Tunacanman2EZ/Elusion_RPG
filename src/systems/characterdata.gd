@@ -36,15 +36,17 @@
 # level/skill caps (MAX_LEVEL, MIN/MAX_SKILL_LEVEL) below are placeholders —
 # confirm against your actual design before relying on them.
 #
-# SAVE SIGNING (NEW):
-# every save is now signed with a SHA-256 hash of its contents + a secret
-# key baked into this script (SAVE_SIGNING_KEY). verified on every load.
-# same philosophy as the sanity clamps: a mismatch is logged loudly, not
-# rejected — see _verify_signature()'s comment. this is obfuscation against
-# casual save-file editing, not real cryptographic security, since the key
-# ships inside the compiled game. a legacy save with no signature field
-# (from before this feature existed) is not treated as tampered — it just
-# gets signed starting with its next save.
+# WHERE SAVES LIVE NOW:
+# not in user://. storage is a SaveStorage — ServerStorage in practice — and a
+# character is rows in the server's database, reached with a bearer token. The
+# save signing this class used to do is gone with the file it protected; see
+# SAVE SIGNING (REMOVED) further down.
+#
+# The sanity clamps below stayed. They are no longer an anti-tamper measure —
+# the server validates what it stores — but they still do the other half of
+# their job, which is recomputing values that are fully derived from others
+# (xp_next from level, each skill's xp_next from its skill level) so that no
+# caller has to.
 extends Node
  
  
@@ -128,14 +130,8 @@ const SKILL_GROWTH_FACTORS := {
 	"cooking": 1.10,
 }
  
-# --- save signing ---
-# baked into the compiled game — this is OBFUSCATION, not real cryptographic
-# security (anyone who decompiles the build can extract it). the actual goal
-# is raising the bar past casual save-file editing (opening it in a text
-# editor and changing numbers), which is the realistic threat for a local
-# single-player save. swap this for your own random string if you want;
-# doesn't need to be memorable, just long and not reused elsewhere.
-const SAVE_SIGNING_KEY := "Elusion_9f3kD7mQ2xVh_SaveIntegrity_2026_zR8pL4wN"
+# SAVE_SIGNING_KEY removed — see SAVE SIGNING (REMOVED) further down. It signed
+# a local file that no longer exists.
  
  
 # =============================================================================
@@ -266,18 +262,19 @@ func admin_peek_user_save(username: String) -> Dictionary:
 		push_warning("CharacterData: admin_peek_user_save() called without admin privileges — denying.")
 		return {}
  
-	var peek_storage := LocalStorage.new(_save_path_for_user(username))
-	var data: Dictionary = peek_storage.load()
-	if data.is_empty():
-		return {}
- 
-	data = _migrate_save(data)
-	# still verify signature on the TARGET's save (useful admin info if
-	# their file was tampered with) — this only mutates the local `data`
-	# dict being returned, not any of our own instance state.
-	_verify_signature(data)
- 
-	return data
+	# NEEDS A SERVER ENDPOINT, AND SAYS SO RATHER THAN LYING.
+	#
+	# This used to open user://character_<name>.save with a throwaway
+	# LocalStorage and hand back the parsed dictionary. Those files are not
+	# written any more — a character is rows in the server's database — so the
+	# read would find nothing and this would return {} on every call, which the
+	# admin panel would render as "that user has no characters".
+	#
+	# An admin being quietly told the wrong thing is worse than an admin being
+	# told the feature is not built. It needs a GET /api/admin/user/<name>
+	# behind the users.is_admin column, and until that exists this refuses.
+	push_warning("CharacterData: admin_peek_user_save('%s') needs a server endpoint — saves are no longer local files. Not implemented." % username)
+	return {}
  
  
 # =============================================================================
@@ -552,111 +549,26 @@ func _validate_item_array(items: Array, context: String) -> Array:
  
  
 # =============================================================================
-# SAVE SIGNING  (NEW)
+# SAVE SIGNING  (REMOVED)
 # =============================================================================
-# see class comment for the threat model this covers and doesn't. the
-# signature is computed over a CANONICAL sub-dictionary built with fixed key
-# order every time — deliberately not just re-serializing whatever dict was
-# passed in, since that dict's own key order could vary (e.g. across
-# migration paths) even when the underlying data is identical, which would
-# make verification spuriously fail on legitimate saves.
- 
-func _compute_signature(data: Dictionary) -> String:
-	var canonical_fields := {
-		"version":                data.get("version"),
-		"character_slots":        data.get("character_slots"),
-		"active_character_index": data.get("active_character_index"),
-		"account_data":           data.get("account_data"),
-		"saved_at":               data.get("saved_at"),
-	}
-	var canonical_string: String = _canonicalize_for_signing(canonical_fields)
-	return (canonical_string + SAVE_SIGNING_KEY).sha256_text()
- 
- 
-func _canonicalize_for_signing(value) -> String:
-	# hand-rolled serializer used ONLY for signature computation — the
-	# actual on-disk save format is still normal JSON via LocalStorage,
-	# untouched by this.
-	#
-	# WHY NOT JUST JSON.stringify(): Godot's JSON parser always returns
-	# numbers as float, even whole numbers that started as native int
-	# (level: 5 becomes 5.0 the moment it round-trips through disk).
-	# JSON.stringify() renders "5" vs "5.0" differently, so hashing
-	# freshly-in-memory data vs. freshly-loaded-from-disk data produced
-	# DIFFERENT canonical strings for IDENTICAL logical data — guaranteeing
-	# a spurious mismatch on every single reload, tampered or not, which
-	# completely defeated the point of signing (confirmed directly: two
-	# different signature strings for the same untampered account).
-	#
-	# this normalizes whole-number floats back to integer text, and sorts
-	# dictionary keys alphabetically so key-insertion-order differences
-	# (e.g. across migration paths) can't cause a mismatch either.
-	match typeof(value):
-		TYPE_DICTIONARY:
-			var d: Dictionary = value
-			var keys: Array = d.keys()
-			keys.sort()
-			var parts: Array = []
-			for key in keys:
-				parts.append("%s:%s" % [str(key), _canonicalize_for_signing(d[key])])
-			return "{" + ",".join(parts) + "}"
-		TYPE_ARRAY:
-			var parts2: Array = []
-			for item in value:
-				parts2.append(_canonicalize_for_signing(item))
-			return "[" + ",".join(parts2) + "]"
-		TYPE_FLOAT:
-			var f: float = value
-			if f == floor(f):
-				return str(int(f))
-			return str(f)
-		TYPE_BOOL:
-			return "true" if value else "false"
-		TYPE_STRING:
-			return "\"%s\"" % value
-		_:
-			return str(value)
- 
- 
-func _verify_signature(data: Dictionary) -> bool:
-	# does NOT reject or wipe on mismatch — same philosophy as the sanity
-	# clamps above. a false positive (from, say, a future migration edge
-	# case) shouldn't nuke a beta tester's save. this logs loudly so
-	# mismatches are visible if you ever want to act on them, and a
-	# legacy save (no signature field at all — predates this feature)
-	# is NOT treated as tampered, just gets signed going forward.
-	# returns true if load_data() should force an immediate resave —
-	# either to fix a bad signature, or simply because saving naturally
-	# refreshes saved_at to now, which self-corrects a future-timestamp
-	# anomaly too.
-	var stored_signature: String = data.get("signature", "")
-	if stored_signature == "":
-		return false
- 
-	var expected_signature: String = _compute_signature(data)
-	var needs_resave: bool = stored_signature != expected_signature
-	if needs_resave:
-		push_warning("CharacterData: SAVE SIGNATURE MISMATCH — save data does not match its signature. Possible manual editing of the save file. Continuing to load (sanity clamps still apply), but flagging this loudly.")
- 
-		# NEW: is_admin gets stricter treatment than other fields. everything
-		# else here just logs and continues, since a false positive
-		# shouldn't nuke a beta tester's progress. but handing out admin
-		# privileges because someone hand-edited is_admin: true into their
-		# save file is a categorically worse outcome than a stat being
-		# wrong — force it false on any mismatch, no exceptions.
-		var acct = data.get("account_data")
-		if typeof(acct) == TYPE_DICTIONARY and bool(acct.get("is_admin", false)):
-			push_warning("CharacterData: is_admin was true on a save with a signature mismatch — forcing false.")
-			acct["is_admin"] = false
- 
-	var saved_at: float = float(data.get("saved_at", 0))
-	if saved_at > Time.get_unix_time_from_system():
-		push_warning("CharacterData: save file's saved_at timestamp is in the FUTURE — possible clock tampering or a corrupted save.")
-		needs_resave = true
- 
-	return needs_resave
- 
- 
+# _compute_signature(), _canonicalize_for_signing() and _verify_signature() are
+# gone, along with SAVE_SIGNING_KEY.
+#
+# They existed to detect a save file edited in a text editor: sign the payload
+# with a key baked into the build, check it on load, and force is_admin false on
+# a mismatch. Honest obfuscation for a LOCAL file, and the class comment always
+# said so — anyone who decompiled the game could extract the key.
+#
+# There is no local file any more. Characters live in the server's database,
+# reached with a bearer token, and the bytes that arrive at load_data() came off
+# the wire rather than off the player's disk. Signing them would be signing our
+# own request and checking our own signature.
+#
+# is_admin is the one thing that mattered most here, and it is better protected
+# now than signing ever made it: it is a column on the users table, returned by
+# the login response, and ServerStorage reads it from Api.is_admin rather than
+# from anything the save payload says. There is nothing to edit.
+
 # =============================================================================
 # SAVE / LOAD
 # =============================================================================
@@ -687,7 +599,6 @@ func _write_save_now() -> bool:
 		# non-whole-number float in the whole signed payload.
 		"saved_at":                int(Time.get_unix_time_from_system()),
 	}
-	payload["signature"] = _compute_signature(payload)
 	_save_pending = false
 	_save_countdown = 0.0
 	return storage.save(payload)
@@ -798,20 +709,10 @@ func load_data() -> bool:
  
 	data = _migrate_save(data)
  
-	# NEW: verify signature on the data as actually loaded, before it gets
-	# torn apart into character_slots/account_data below. see
-	# _verify_signature()'s comment for why mismatches don't reject the load.
-	# SKIPPED when the backend is authoritative. Signing exists to detect a save
-	# file edited in a text editor; bytes that came from the server have nothing
-	# to detect, and a payload with no signature would be reported as tampered
-	# on every single login.
-	#
-	# This is the first piece of the anti-tamper machinery to go quiet. The rest
-	# follows it once the server has been the source of truth long enough to
-	# trust — see savestorage.gd's is_authoritative.
+	# The signature check that used to live here is gone entirely — see SAVE
+	# SIGNING (REMOVED) below. Nothing verifies the payload because nothing
+	# signs it: it came from the server.
 	var needs_resave: bool = false
-	if not storage.is_authoritative:
-		needs_resave = _verify_signature(data)
  
 	character_slots = data.get("character_slots", [null, null, null, null])
 	active_character_index = data.get("active_character_index", 0)

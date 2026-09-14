@@ -49,6 +49,13 @@ const DRAG_PREVIEW_SIZE := Vector2(40, 40)
 
 @export var slot_type: String = "inventory"
 
+# The one slot_type the drag handlers actually branch on. Loot slots render a
+# bag the SERVER owns, so nothing may be dragged out of one or into one — see
+# _get_drag_data() and _can_drop_data() below. Set at runtime by
+# lootbaginventory.gd via InventoryContainer.set_slot_type(), not in the scene,
+# because the slots are instantiated by the container.
+const LOOT_SLOT_TYPE := "lootbag"
+
 
 # =============================================================================
 # STATE
@@ -285,6 +292,20 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	if is_empty():
 		return null
 
+	# A LOOT BAG BELONGS TO THE SERVER, AND A DRAG IS NOT A REQUEST.
+	#
+	# Dragging moves a stack between containers synchronously, here, with
+	# nothing told to anyone. That was fine while the client owned the bag. Now
+	# that /api/loot/take decides what leaves one, a drag out would be a
+	# duplication bug in two clicks: drag the potion into the backpack, then
+	# double-click the cell it came from and be handed it a second time, because
+	# the server still has the row.
+	#
+	# lootbaginventory.gd marks its slots "lootbag" in open_for_bag(). Double-
+	# click is how items leave a bag.
+	if slot_type == LOOT_SLOT_TYPE:
+		return null
+
 	_hide_tooltip()
 
 	set_drag_preview(make_drag_preview(icon_rect.texture))
@@ -301,6 +322,13 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 # =============================================================================
 
 func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	# And nothing goes INTO a loot bag either. There is no endpoint for it, so
+	# anything dropped in would sit in a grid the server does not know about and
+	# be gone the moment the panel closed — which looks exactly like the game
+	# eating an item.
+	if slot_type == LOOT_SLOT_TYPE:
+		return false
+
 	return typeof(data) == TYPE_DICTIONARY \
 		and data.has("stack") \
 		and data.has("source_slot")

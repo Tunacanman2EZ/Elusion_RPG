@@ -1155,6 +1155,23 @@ func add_gold(amount: int) -> void:
 	CharacterData.save_character_state(self)
 
 
+func set_gold(total: int) -> void:
+	# THE SERVER'S NUMBER, NOT A DELTA.
+	#
+	# /api/loot/take credits gold against its own row and hands the BALANCE back.
+	# Adding the amount here instead would mean this client is keeping its own
+	# running total, and it still pushes `gold` on every save — so one response
+	# lost to a timeout would overwrite the server's figure with a stale one on
+	# the very next save, and the loss would look like nothing at all.
+	#
+	# Landing on the total means a missed response is corrected by the next one
+	# that arrives rather than compounding.
+	gold = maxi(total, 0)
+	gold_changed_signal.emit(gold)
+	update_gold_label()
+	CharacterData.save_character_state(self)
+
+
 func update_gold_label() -> void:
 	if gold_label:
 		gold_label.text = "gold: " + str(gold)
@@ -1162,6 +1179,18 @@ func update_gold_label() -> void:
 
 func add_lusions(amount: int) -> void:
 	CharacterData.add_account_lusions(amount)
+	lusions_changed_signal.emit(CharacterData.get_account_lusions())
+	update_lusions_label()
+
+
+func set_lusions(total: int) -> void:
+	# Same reasoning as set_gold() above: the loot endpoint hands back the
+	# balance it landed on, and applying that rather than the amount means a
+	# response this client never saw is corrected by the next one it does.
+	#
+	# Goes through CharacterData because lusions are account-shared — the
+	# `lusions` property on this class is a view of that pool, not a field.
+	CharacterData.set_account_lusions(maxi(total, 0))
 	lusions_changed_signal.emit(CharacterData.get_account_lusions())
 	update_lusions_label()
 

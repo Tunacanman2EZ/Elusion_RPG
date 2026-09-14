@@ -317,6 +317,18 @@ func clear_inventory() -> void:
 	inventory_changed.emit()
 
 
+func set_slot_type(type_name: String) -> void:
+	# Stamps every slot in this grid with a context name. Only "lootbag" changes
+	# behaviour: InventorySlot refuses to start a drag from one or accept a drop
+	# onto one, because a loot bag belongs to the server and a drag is not a
+	# request. See lootbaginventory.gd's header.
+	#
+	# Applied here rather than in the scene because the slots are instantiated
+	# by _create_slots() at runtime, so there is nothing in the .tscn to set.
+	for slot in slots:
+		slot.slot_type = type_name
+
+
 # =============================================================================
 # QUERIES
 # =============================================================================
@@ -488,6 +500,13 @@ func sort_by_name() -> void:
 # silently snapping back.
 
 func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	# The gaps BETWEEN slots are this container, not a slot — which is the whole
+	# reason this override exists (see the comment above). So the loot-bag
+	# refusal has to be repeated here, or a drop that landed in a gap would slip
+	# into a bag that InventorySlot had already refused.
+	if not slots.is_empty() and slots[0].slot_type == InventorySlot.LOOT_SLOT_TYPE:
+		return false
+
 	return typeof(data) == TYPE_DICTIONARY \
 		and data.has("stack") \
 		and data.has("source_slot")
