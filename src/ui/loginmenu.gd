@@ -56,6 +56,13 @@ extends Control
 # if they ever disagree the server wins and the player sees its message.
 const MIN_PASSWORD_LENGTH := 8
 
+# Colours for the connection banner. Deliberately NOT the red that %errorlabel
+# uses: "the server is down" is a statement about the world, not a complaint
+# about what the player typed, and colouring it like a validation error makes
+# people retype a password that was never wrong.
+const STATUS_WORKING := Color(0.75, 0.72, 0.62)   # muted grey — "checking"
+const STATUS_OFFLINE := Color(1.0, 0.65, 0.25)    # amber — "something is up"
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -104,38 +111,84 @@ func _ready() -> void:
 	if not %passwordlineedit.text_submitted.is_connected(_on_login_field_submitted):
 		%passwordlineedit.text_submitted.connect(_on_login_field_submitted)
 
+	# NEW: the banner follows reachability for as long as this screen is open,
+	# not just at startup. If the player leaves the game sitting here and
+	# starts the server, the next request that succeeds clears the warning on
+	# its own.
+	if not Api.connection_changed.is_connected(_on_connection_changed):
+		Api.connection_changed.connect(_on_connection_changed)
+
 	load_remembered_user()
-	await _try_resume_session()
+	await _check_connection_and_resume()
 
 
 func _on_login_field_submitted(_new_text: String) -> void:
 	_on_login_button_pressed()
 
 
+func _on_connection_changed(online: bool) -> void:
+	# Only ever CLEARS the banner. A request failing mid-login already writes
+	# its own message into %errorlabel with more detail than this has, and
+	# two lines saying the same thing in different colours reads as two
+	# separate problems.
+	if online:
+		_set_status("", STATUS_WORKING)
+	else:
+		_set_status(Api.describe_offline(), STATUS_OFFLINE)
+
+
 # =============================================================================
 # AUTO-LOGIN
 # =============================================================================
 
-func _try_resume_session() -> void:
-	# NEW: if a token from a previous run is still valid, skip the form
-	# entirely. Api loads the cached token in its own _ready(), so by the
-	# time we get here it either has one or it doesn't.
-	if not Api.is_logged_in():
-		return
+func _check_connection_and_resume() -> void:
+	# Runs once on open. One request answers both questions: is the server
+	# there, and is a cached token still good?
+	#
+	# FIXED — THE TYPING DELAY. This used to call _set_busy(true), which sets
+	# `editable = false` on BOTH text fields, and then waited on a request
+	# with the normal ten-second budget. With the server down, the first ten
+	# seconds after the login screen appeared were spent with the username and
+	# password boxes silently refusing input. They looked completely normal —
+	# the caret sat in the field, the player typed, and nothing came out.
+	#
+	# Two things were wrong and both are fixed:
+	#   1. The fields are no longer locked. _set_busy's second argument leaves
+	#      them editable; only the submit button is disabled, which is all the
+	#      double-click guard ever actually needed here.
+	#   2. The probe now uses Api.PROBE_TIMEOUT (3s) instead of TIMEOUT (10s),
+	#      because nobody asked for this request and nobody is watching it.
+	#
+	# This ran even with no cached token, because _log_server_reachability()
+	# in api.gd was firing its own copy at the same time — so the delay showed
+	# up on a fresh install too, with nothing to resume.
+	_set_status("Checking server...", STATUS_WORKING)
+	_set_busy(true, false)
 
-	%errorlabel.text = "Resuming session..."
-	_set_busy(true)
-
-	var resumed: bool = await Api.resume_session()
+	var probe: Dictionary = await Api.probe_and_resume()
 
 	_set_busy(false)
 
-	if resumed:
-		_complete_login(Api.username)
-	else:
-		# token expired or was revoked server-side — fall back to the form
-		# without alarming the player about it.
-		%errorlabel.text = ""
+	if not probe.get("online", false):
+		_set_status(Api.describe_offline(), STATUS_OFFLINE)
+		return
+
+	_set_status("", STATUS_WORKING)
+
+	if not probe.get("resumed", false):
+		# Either there was no cached token, or the server rejected it. Neither
+		# is worth a message — the form is right there.
+		return
+
+	# A valid session came back. But DON'T steal the screen from someone who
+	# has already started typing: a player entering a password is telling us
+	# they want a specific account, quite possibly not the remembered one.
+	# Jumping to character select mid-keystroke would be the single most
+	# jarring thing this screen could do.
+	if %passwordlineedit.text != "":
+		return
+
+	await _complete_login(Api.username)
 
 
 # =============================================================================
@@ -174,9 +227,10 @@ func _on_login_button_pressed() -> void:
 	var res: Dictionary = await Api.login(username, password)
 
 	if res.ok:
+		error_label.text = "Loading characters..."
+		await _complete_login(username)
 		_set_busy(false)
 		error_label.text = ""
-		_complete_login(username)
 		return
 
 	# a 401 means the credentials didn't match — but the server won't say
@@ -188,8 +242,9 @@ func _on_login_button_pressed() -> void:
 		_set_busy(false)
 
 		if created.ok:
+			error_label.text = "Loading characters..."
+			await _complete_login(username)
 			error_label.text = ""
-			_complete_login(username)
 			return
 
 		# 409 means the account DOES exist, so the original login failure
@@ -205,6 +260,10 @@ func _on_login_button_pressed() -> void:
 	error_label.text = res.error
 
 
+# COROUTINE — callers must await. CharacterData.load_for_user() fetches every
+# character from the server now, so this no longer returns before the data
+# exists. Navigating to character select without awaiting would show four empty
+# slots to a player who has four characters.
 func _complete_login(typed_username: String) -> void:
 	# NEW: load THIS user's own character data FIRST — character select
 	# depends on it already being loaded.
@@ -238,7 +297,11 @@ func _complete_login(typed_username: String) -> void:
 	if Api.username != "":
 		canonical_username = Api.username
 
-	CharacterData.load_for_user(canonical_username)
+	# await, because load_for_user() now fetches every character from the server
+	# instead of reading a local file. Without it, character select would open
+	# against empty slots and the data would arrive after the screen had already
+	# decided there were no characters.
+	await CharacterData.load_for_user(canonical_username)
 	_sync_admin_from_server()
 	_go_to_character_select()
 
@@ -263,13 +326,45 @@ func _sync_admin_from_server() -> void:
 		CharacterData.set_is_admin(Api.is_admin)
 
 
-func _set_busy(busy: bool) -> void:
-	# disables the form while a request is in flight, so a double-click
-	# can't fire two submissions.
+func _set_busy(busy: bool, lock_fields: bool = true) -> void:
+	# Disables the form while a request is in flight, so a double-click can't
+	# fire two submissions.
+	#
+	# lock_fields distinguishes the two kinds of wait this screen has, which
+	# were previously treated as one:
+	#
+	#   SUBMIT (lock_fields = true) — the player pressed Login and is watching.
+	#     Freezing the fields is correct: editing the username while it is
+	#     being checked would leave the box disagreeing with the request.
+	#
+	#   BACKGROUND (lock_fields = false) — the startup probe. The player never
+	#     asked for it and has no idea it is happening. Locking the fields here
+	#     is what made the screen swallow keystrokes with the server down.
+	#
+	# The button is disabled either way; that is what the double-submit guard
+	# actually requires.
 	_request_in_flight = busy
 	%loginbutton.disabled = busy
-	%usernamelineedit.editable = not busy
-	%passwordlineedit.editable = not busy
+	if lock_fields:
+		%usernamelineedit.editable = not busy
+		%passwordlineedit.editable = not busy
+	elif not busy:
+		# Releasing a background wait must never leave a field disabled, even
+		# if a submit locked them in the meantime.
+		%usernamelineedit.editable = true
+		%passwordlineedit.editable = true
+
+
+func _set_status(message: String, color: Color) -> void:
+	# The connection banner, separate from %errorlabel. Guarded with
+	# has_node so an older copy of loginmenu.tscn without the node keeps
+	# working instead of crashing on a missing unique name.
+	if not has_node("%statuslabel"):
+		return
+	var label: Label = $"%statuslabel"
+	label.text = message
+	label.add_theme_color_override("font_color", color)
+	label.visible = message != ""
 
 
 func _on_exit_button_pressed() -> void:

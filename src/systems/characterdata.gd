@@ -142,10 +142,10 @@ const SAVE_SIGNING_KEY := "Elusion_9f3kD7mQ2xVh_SaveIntegrity_2026_zR8pL4wN"
 # STATE
 # =============================================================================
  
-# storage backend — LocalStorage (file) for now, ServerStorage later. NEW:
-# starts null — a distinct instance gets constructed per user in
+# Storage backend. Typed as the INTERFACE, not either implementation — see
+# savestorage.gd. Starts null; a distinct instance is constructed per user in
 # load_for_user() below, rather than one shared instance at autoload boot.
-var storage: LocalStorage = null
+var storage: SaveStorage = null
  
 # NEW: which user is currently loaded, if any. empty string means no user
 # is logged in (fresh boot, or after clear_current_user()).
@@ -189,6 +189,7 @@ func _ready() -> void:
 # therefore a distinct file on disk) per user, constructed on demand here
 # rather than once at autoload _ready().
  
+# COROUTINE — callers must await. See the storage swap inside.
 func load_for_user(username: String) -> bool:
 	# call this right after a successful login, BEFORE transitioning to
 	# character select — see loginmenu.gd's _on_login_button_pressed().
@@ -198,8 +199,20 @@ func load_for_user(username: String) -> bool:
 	clear_current_user()
  
 	current_username = username
-	storage = LocalStorage.new(_save_path_for_user(username))
-	return load_data()
+
+	# THE CUTOVER. This was LocalStorage.new(_save_path_for_user(username)) — a
+	# file in user:// that the player could open in a text editor.
+	#
+	# Everything else in this file is unchanged by that swap, which is the whole
+	# reason savestorage.gd exists: 29 save_data() callers, the debounce, the
+	# atomic-write guarantees at the call sites, none of them know or care which
+	# backend is underneath.
+	#
+	# await, because ServerStorage.load() has to wait for HTTP. Awaiting a
+	# function that is not a coroutine just returns its value, so this line is
+	# correct for a file read too.
+	storage = ServerStorage.new()
+	return await load_data()
  
  
 func clear_current_user() -> void:
@@ -760,7 +773,8 @@ func _notification(what: int) -> void:
  
  
 func load_data() -> bool:
-	# reads from disk and reconstructs character + account state.
+	# COROUTINE — callers must await. storage.load() reaches the network now.
+	# reads from the backend and reconstructs character + account state.
 	# empty data means fresh install — initialize defaults and return false.
 	# NEW: same null-storage guard as save_data() — load_for_user() always
 	# sets storage before calling this, but defensive here too.
@@ -770,7 +784,7 @@ func load_data() -> bool:
 		_ensure_account_data()
 		return false
  
-	var data := storage.load()
+	var data: Dictionary = await storage.load()
 	if data.is_empty():
 		_ensure_slot_array()
 		_ensure_account_data()
@@ -781,7 +795,17 @@ func load_data() -> bool:
 	# NEW: verify signature on the data as actually loaded, before it gets
 	# torn apart into character_slots/account_data below. see
 	# _verify_signature()'s comment for why mismatches don't reject the load.
-	var needs_resave: bool = _verify_signature(data)
+	# SKIPPED when the backend is authoritative. Signing exists to detect a save
+	# file edited in a text editor; bytes that came from the server have nothing
+	# to detect, and a payload with no signature would be reported as tampered
+	# on every single login.
+	#
+	# This is the first piece of the anti-tamper machinery to go quiet. The rest
+	# follows it once the server has been the source of truth long enough to
+	# trust — see savestorage.gd's is_authoritative.
+	var needs_resave: bool = false
+	if not storage.is_authoritative:
+		needs_resave = _verify_signature(data)
  
 	character_slots = data.get("character_slots", [null, null, null, null])
 	active_character_index = data.get("active_character_index", 0)

@@ -1,0 +1,343 @@
+# serverstorage.gd — CharacterData's save backend, talking to the Flask API.
+#
+# Implements the same two methods LocalStorage does, so swapping it in is one
+# line in CharacterData.load_for_user(). Everything else in that file, and all
+# 29 of its save_data() callers, are untouched.
+#
+# THE SHAPE MISMATCH THIS EXISTS TO BRIDGE
+# ----------------------------------------
+# CharacterData thinks in one blob: four character slots, an account_data dict,
+# a version and a signature. The server thinks relationally — a row per
+# character, a row per bank cell, a row per skill — because that is what lets
+# it validate anything at all. A server that stored the blob could not tell you
+# whether your gold was plausible.
+#
+# So this file is the translation, and it is the only place in the game that
+# knows both shapes.
+#
+# INTEGERS
+# --------
+# Godot's JSON.parse_string() returns EVERY number as a float — there is no
+# integer type in JSON and Godot does not infer one. The server's 88 arrives as
+# 88.0, and Godot compares type-strictly, so 88.0 != 88.
+#
+# This already cost this project a day once: CharacterData's sanitizer cast to
+# int, compared against the parsed float, concluded all 112 fields had changed,
+# and rewrote the save on every load. Every integer crossing this boundary goes
+# through _int(). No exceptions. netclient.gd learned this the hard way first.
+class_name ServerStorage
+extends SaveStorage
+
+
+# The skills the server knows, matching VALID_SKILLS in app.py and
+# SKILL_GROWTH_FACTORS in characterdata.gd. All three spell it "defense".
+const SKILL_IDS := ["attack", "defense", "agility", "magic", "fishing", "cooking"]
+
+# Mirrors the client's own SAVE_VERSION. Stamped onto loaded payloads so
+# CharacterData's migration path sees a current save rather than a versionless
+# one it would try to upgrade.
+const PAYLOAD_VERSION := 3
+
+
+# What was last successfully pushed, per endpoint, as JSON text.
+#
+# WHY: save() runs on a two-second debounce during play, and a full push is four
+# requests per character plus two for the account. With four characters that is
+# eighteen requests every two seconds, almost all of them re-sending bytes the
+# server already has. Comparing against the last push turns a quiet minute into
+# zero requests instead of five hundred and forty.
+var _last_pushed: Dictionary = {}
+
+# True while a push is in flight, so a debounce tick landing mid-push does not
+# start a second overlapping one and interleave its writes.
+var _pushing: bool = false
+
+
+func _init() -> void:
+	# The server is the authority — see SaveStorage.is_authoritative.
+	is_authoritative = true
+
+
+# =============================================================================
+# LOAD
+# =============================================================================
+
+func load() -> Dictionary:
+	# Rebuilds the blob CharacterData expects out of however many calls it
+	# takes. Returns {} on failure, which CharacterData already treats as
+	# "fresh install" — and that is the correct reading here too, because a
+	# player who cannot reach the server has no characters to show.
+	if not Api.is_logged_in():
+		push_warning("ServerStorage: load() with no session — returning empty.")
+		return {}
+
+	var listing: Dictionary = await Api.get_json("/api/save")
+	if not listing.get("ok", false):
+		push_warning("ServerStorage: could not list characters — %s" % listing.get("error", ""))
+		return {}
+
+	var slots: Array = [null, null, null, null]
+	var listed: Array = _array(_dict(listing.get("data", {})).get("slots", []))
+
+	for entry in listed:
+		if not (entry is Dictionary):
+			continue
+		var index: int = _int(entry.get("slot", -1), -1)
+		if index < 0 or index >= slots.size():
+			continue
+
+		# One call per character rather than four — /api/character returns
+		# identity, vitals, backpack and skills together, because they are all
+		# keyed on the same (user, slot) and none is useful without the others.
+		var res: Dictionary = await Api.get_json("/api/character?slot=%d" % index)
+		if not res.get("ok", false):
+			push_warning("ServerStorage: slot %d failed to load — %s" % [index, res.get("error", "")])
+			continue
+
+		slots[index] = _slot_from_server(_dict(res.get("data", {})))
+
+	var account: Dictionary = await Api.get_json("/api/account")
+	if not account.get("ok", false):
+		push_warning("ServerStorage: could not load account data — %s" % account.get("error", ""))
+
+	return {
+		"version": PAYLOAD_VERSION,
+		"character_slots": slots,
+		"active_character_index": 0,
+		"account_data": _account_from_server(_dict(account.get("data", {}))),
+		"saved_at": int(Time.get_unix_time_from_system()),
+		# NO SIGNATURE, deliberately. Signing exists to detect a locally edited
+		# file; there is nothing to detect when the bytes came from the server.
+		# CharacterData skips verification when storage.is_authoritative.
+	}
+
+
+func _slot_from_server(data: Dictionary) -> Dictionary:
+	var status: Dictionary = _dict(data.get("status", {}))
+
+	var slot: Dictionary = {
+		# The client identifies a character by its CLASS — slot["character"] is
+		# "warrior", and get_character_by_name() searches on it. The server
+		# calls the same thing class_id.
+		"character":     str(data.get("class_id", "")),
+		"active_pet_id": str(data.get("active_pet_id", "")),
+
+		"level":       _int(status.get("level", 1), 1),
+		"xp":          _int(status.get("xp", 0)),
+		# The server's xp_to_next is the client's xp_next. Different name for
+		# the same number; the sanitizer recomputes it from level anyway.
+		"xp_next":     _int(status.get("xp_to_next", 100), 100),
+		"gold":        _int(status.get("gold", 0)),
+
+		"hp":          _int(status.get("hp", 0)),
+		"max_hp":      _int(status.get("max_hp", 0)),
+		"mana":        _int(status.get("mana", 0)),
+		"max_mana":    _int(status.get("max_mana", 0)),
+		"stamina":     _int(status.get("stamina", 0)),
+		"max_stamina": _int(status.get("max_stamina", 0)),
+
+		"inventory":   _items_from_server(_array(data.get("inventory", []))),
+	}
+
+	# Skills arrive as {"attack": {"level": 12, "xp": 340}} and live on the slot
+	# as three flat keys each. xp_next is not sent: it is fully derived from the
+	# level, and the sanitizer recomputes it. Sending a derived value would just
+	# be a second copy of the growth curve to keep in step.
+	var skills: Dictionary = _dict(data.get("skills", {}))
+	for skill_id in SKILL_IDS:
+		var entry: Dictionary = _dict(skills.get(skill_id, {}))
+		slot[skill_id] = _int(entry.get("level", 1), 1)
+		slot[skill_id + "_xp"] = _int(entry.get("xp", 0))
+
+	return slot
+
+
+func _account_from_server(data: Dictionary) -> Dictionary:
+	return {
+		"lusions":        _int(data.get("lusions", 0)),
+		"bank_gold":      _int(data.get("bank_gold", 0)),
+		"bank_inventory": _items_from_server(_array(data.get("bank_inventory", []))),
+		# NOT from the account payload. is_admin is a column on `users` and
+		# arrives with the login response — Api.is_admin holds the server's
+		# answer, and that is the only one that counts.
+		"is_admin":       Api.is_admin,
+	}
+
+
+func _items_from_server(cells: Array) -> Array:
+	# Positional in, positional out. A null cell stays null; the server already
+	# returns a full-length array with gaps, so the shape matches what the
+	# inventory UI expects without any repacking.
+	var out: Array = []
+	for cell in cells:
+		if cell is Dictionary and str(cell.get("item_id", "")) != "":
+			out.append({
+				"item_id":  str(cell.get("item_id", "")),
+				"quantity": _int(cell.get("quantity", 1), 1),
+			})
+		else:
+			out.append(null)
+	return out
+
+
+# =============================================================================
+# SAVE
+# =============================================================================
+
+func save(payload: Dictionary) -> bool:
+	# Starts the push and returns. Nothing waits on a save during play, and
+	# blocking a physics frame on HTTP would be far worse than a save landing a
+	# few hundred milliseconds later.
+	if not Api.is_logged_in():
+		push_warning("ServerStorage: save() with no session — dropped.")
+		return false
+	if _pushing:
+		# A debounce tick arriving mid-push. Dropping it is safe: the push in
+		# flight is sending current state, and CharacterData will mark itself
+		# dirty again on the next change. Queueing a second one would interleave
+		# writes to the same rows for no benefit.
+		return true
+
+	_push(payload)          # coroutine, deliberately not awaited
+	return true
+
+
+func _push(payload: Dictionary) -> void:
+	_pushing = true
+
+	var slots: Array = _array(payload.get("character_slots", []))
+	for index in slots.size():
+		var slot = slots[index]
+		if slot is Dictionary:
+			await _push_slot(index, slot)
+
+	await _push_account(_dict(payload.get("account_data", {})))
+
+	_pushing = false
+
+
+func _push_slot(index: int, slot: Dictionary) -> void:
+	var class_id: String = str(slot.get("character", ""))
+	if class_id == "":
+		# A slot with no class is one the server would reject anyway — it
+		# validates class_id against the four it knows.
+		push_warning("ServerStorage: slot %d has no character class — not pushed." % index)
+		return
+
+	await _put_if_changed("save:%d" % index, "/api/save", {
+		"slot": index,
+		"class_id": class_id,
+		# The client has no separate display name; a character IS its class.
+		"name": class_id,
+		"level": _int(slot.get("level", 1), 1),
+		"active_pet_id": str(slot.get("active_pet_id", "")),
+	})
+
+	await _put_if_changed("status:%d" % index, "/api/player/status", {
+		"slot": index,
+		"level":       _int(slot.get("level", 1), 1),
+		"hp":          _int(slot.get("hp", 0)),
+		"max_hp":      _int(slot.get("max_hp", 0)),
+		"mana":        _int(slot.get("mana", 0)),
+		"max_mana":    _int(slot.get("max_mana", 0)),
+		"stamina":     _int(slot.get("stamina", 0)),
+		"max_stamina": _int(slot.get("max_stamina", 0)),
+		"gold":        _int(slot.get("gold", 0)),
+		"xp":          _int(slot.get("xp", 0)),
+		"xp_to_next":  _int(slot.get("xp_next", 100), 100),
+	})
+
+	await _put_if_changed("inventory:%d" % index, "/api/character/inventory", {
+		"slot": index,
+		"inventory": _items_to_server(_array(slot.get("inventory", []))),
+	})
+
+	var skills: Dictionary = {}
+	for skill_id in SKILL_IDS:
+		skills[skill_id] = {
+			"level": _int(slot.get(skill_id, 1), 1),
+			"xp":    _int(slot.get(skill_id + "_xp", 0)),
+		}
+	await _put_if_changed("skills:%d" % index, "/api/character/skills", {
+		"slot": index,
+		"skills": skills,
+	})
+
+
+func _push_account(account: Dictionary) -> void:
+	await _put_if_changed("lusions", "/api/account/lusions", {
+		"lusions": _int(account.get("lusions", 0)),
+	})
+	await _put_if_changed("bank", "/api/account/bank", {
+		"bank_inventory": _items_to_server(_array(account.get("bank_inventory", []))),
+	})
+	# bank_gold is NOT pushed. It only ever moves through /api/bank/gold, which
+	# is the one endpoint that can verify anything here — it holds both balances
+	# and conserves the total. Letting a blanket save overwrite it would throw
+	# that away and make the bank as forgeable as everything else.
+
+
+func _items_to_server(cells: Array) -> Array:
+	# Positional, nulls preserved. The server keys these on their index, so
+	# packing out the gaps here would silently move every item left.
+	var out: Array = []
+	for cell in cells:
+		if cell is Dictionary and str(cell.get("item_id", "")) != "":
+			out.append({
+				"item_id":  str(cell.get("item_id", "")),
+				"quantity": maxi(_int(cell.get("quantity", 1), 1), 1),
+			})
+		else:
+			out.append(null)
+	return out
+
+
+# =============================================================================
+# CHANGE DETECTION
+# =============================================================================
+
+func _put_if_changed(key: String, path: String, body: Dictionary) -> void:
+	# Takes the PATH and the BODY, not a started request — so an unchanged
+	# section costs nothing at all rather than costing a round trip whose reply
+	# we then ignore.
+	#
+	# JSON.stringify is the comparison because it is stable for the dictionaries
+	# built above: every one is assembled in the same literal order, from the
+	# same keys, every time. It would not be safe against dictionaries built by
+	# arbitrary code in arbitrary order, and this is the only place it is used.
+	var fingerprint: String = JSON.stringify(body)
+	if _last_pushed.get(key, "") == fingerprint:
+		return
+
+	var res: Dictionary = await Api.put(path, body)
+	if not res.get("ok", false):
+		# NOT recorded as pushed. A rejected section stays dirty, so the next
+		# save retries it rather than deciding it is already up to date — which
+		# is exactly how a failed write becomes silent data loss.
+		push_warning("ServerStorage: %s rejected — %s" % [key, res.get("error", "")])
+		return
+
+	_last_pushed[key] = fingerprint
+
+
+func _int(value: Variant, fallback: int = 0) -> int:
+	# THE ONE PLACE INTEGERS CROSS THE BOUNDARY. See the header: JSON has no
+	# integer type, so every number Godot parses is a float, and 88.0 != 88
+	# under strict comparison.
+	match typeof(value):
+		TYPE_INT:
+			return value
+		TYPE_FLOAT:
+			return int(value)
+		TYPE_STRING:
+			return int(value) if value.is_valid_int() else fallback
+		_:
+			return fallback
+
+
+func _dict(value: Variant) -> Dictionary:
+	return value if value is Dictionary else {}
+
+
+func _array(value: Variant) -> Array:
+	return value if value is Array else []

@@ -17,7 +17,7 @@
 # to swap for a different storage backend (e.g. server-based for MMO),
 # write a new class with the same save() and load() methods.
 class_name LocalStorage
-extends RefCounted
+extends SaveStorage
 
 
 # =============================================================================
