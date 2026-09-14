@@ -36,6 +36,14 @@
 extends BaseEnemy
 class_name PoisonSlime
 
+# TWO PROFILES, ONE SCENE. This is the clearest case for making rewards data:
+# poisonslime.tscn is a 35 hp mob that drops loot and carries both slime pets,
+# AND a 220 hp one that drops nothing at all because it never dies — _die()
+# routes it into _begin_split() and it is consumed. The server has to be able to
+# tell those apart, and a name is the only way it ever will.
+const SMALL_DATA := preload("res://data/enemies/poisonslimesmall.tres")
+const LARGE_DATA := preload("res://data/enemies/poisonslimelarge.tres")
+
 
 # =============================================================================
 # CONSTANTS
@@ -92,12 +100,15 @@ const MARKER_NAMES := {
 # Applied in _ready() BEFORE super._ready(), because BaseEnemy._ready() does
 # `hp = max_hp` and would otherwise start every slime on the wrong pool.
 
-@export var large_max_hp: int = 220
+# REMOVED: large_max_hp / small_max_hp. Both were read only by _ready(), and
+# both values now live in poisonslimelarge.tres and poisonslimesmall.tres. A
+# leftover export here would look authoritative in the Inspector and be read by
+# nothing, which is a worse state than not having it.
 @export var large_attack_cooldown: float = 2.2
 @export var large_attack_range: float = 240.0
 @export var large_move_speed: float = 45.0
 
-@export var small_max_hp: int = 35
+
 @export var small_attack_cooldown: float = 2.6
 @export var small_attack_range: float = 220.0
 @export var small_move_speed: float = 70.0
@@ -193,14 +204,18 @@ var _is_resolving: bool = false
 # =============================================================================
 
 func _ready() -> void:
-	# stat block FIRST — BaseEnemy._ready() sets hp = max_hp, so max_hp has
-	# to be correct before that runs.
+	# THE VARIANT IS PICKED HERE, ONCE, AND EVERYTHING ELSE FOLLOWS FROM IT.
+	# enemy_data carries max_hp, so BaseEnemy._apply_enemy_data() fills the
+	# health pool from whichever profile this is — the assignment that used to
+	# happen on the next line.
+	if enemy_data == null:
+		enemy_data = SMALL_DATA if is_small else LARGE_DATA
+
+	# Combat tuning stays here; only the reward profile moved.
 	if is_small:
-		max_hp = small_max_hp
 		attack_cooldown = small_attack_cooldown
 		attack_range = small_attack_range
 	else:
-		max_hp = large_max_hp
 		attack_cooldown = large_attack_cooldown
 		attack_range = large_attack_range
 
@@ -209,59 +224,20 @@ func _ready() -> void:
 	# The large never dies: _die() routes it into _begin_split() and it is
 	# consumed, so it has no death to drop anything from. Rather than bolt a
 	# special-case roll onto the split, the large's pet chance is carried by
-	# the four smalls it becomes — the same way its XP and its bag already
-	# are. One roll site, one number to tune, and nothing to keep in sync.
-	if is_small:
-		# TWO SLIME PETS, ONE OR THE OTHER.
-		#
-		# A winning roll awards the small companion most of the time and the
-		# large one occasionally — never both from the same kill. See
-		# BaseEnemy._pick_pet_id() for why it's one roll and then a pick
-		# rather than two independent rolls.
-		# These two strings must match the item_id INSIDE the .tres files
-		# exactly — not the filenames, though keeping them identical is the
-		# convention here and worth sticking to. ItemRegistry looks items up
-		# by item_id, and _roll_pet()'s has_item() check fails silently on a
-		# mismatch: no error, no drop, nothing to chase.
-		if pet_drop_id == "":
-			pet_drop_id = "petpoisonslimesmall"
-		if rare_pet_drop_id == "":
-			rare_pet_drop_id = "petpoisonslimelarge"
-
-		# 1 in 5 winning rolls gives the large companion instead of the small.
-		# Combined with pet_odds_override below, that's roughly 1 large pet
-		# per 1080 encounters against 1 small per 270.
-		rare_pet_chance = 0.20
-
-		# loot tier — 35 hp, the weakest thing in the game and the one you
-		# kill most of. gates which items can roll (nothing above this tier
-		# can drop) and scales gold.
-		#
-		# NOTE: _roll_pet() checks has_item(pet_drop_id) and bails if the small
-		# pet isn't registered, so no slime pet drops at all until that one
-		# exists. _pick_pet_id() is gentler about the large: if only that one
-		# is missing, a winning roll awards the small rather than nothing.
-		max_loot_tier = 1
-
-		# Pet odds, overriding the tier default of 1 in 1296, because these
-		# smalls are carrying the large's share as well as their own.
-		#
-		# 864 is exactly 4 x 216, which is the whole point: a large slime
-		# always becomes four smalls, so clearing one encounter is four rolls
-		# at 1 in 864, and
-		#   1 - (863/864)^4  =  1 in 216
-		# That lands a full large-slime fight on the same odds as a single
-		# bush mage kill — fair, given it's 220 hp plus four 35 hp smalls.
-		#
-		# Tuning: this is the only pet knob for slimes. Raising it makes the
-		# pet rarer; the per-encounter figure stays at roughly a quarter of
-		# whatever you set.
-		pet_odds_override = 864
-	else:
-		# LARGE: no bag, no XP, no pet roll. It is consumed by the split and
-		# everything it is worth is now walking around as four smalls.
-		bag_drop_chance = 0.0
-		pet_drop_id = ""
+	# the four smalls it becomes — the same way its XP and its bag already are.
+	# One roll site, one number to tune, and nothing to keep in sync.
+	#
+	# Unchanged behaviour; it just lives in the two .tres files now:
+	#
+	#   poisonslimesmall.tres  both slime pets, rare_pet_chance 0.20,
+	#                          pet_odds_override 864, loot tier 1
+	#   poisonslimelarge.tres  grants_rewards false, no bag, no pet, no XP
+	#
+	# The 864 is exactly 4 x 216, and that is the whole point: a large slime
+	# always becomes four smalls, so clearing one encounter is four rolls at
+	# 1 in 864, and 1 - (863/864)^4 = 1 in 216. That lands a full slime fight
+	# on the same odds as a single bush mage kill — fair, given it is 220 hp
+	# plus four 35 hp smalls. Retune it in the .tres, not here.
 
 	super._ready()
 

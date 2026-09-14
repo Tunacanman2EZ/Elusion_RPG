@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://src/systems/enemydata.gd" id="1_enemydata"]
+
+[resource]
+script = ExtResource("1_enemydata")
+enemy_id = "bushsniper"
+display_name = "Bush Sniper"
+grants_rewards = true
+xp_reward = 20
+attack_xp_reward = 5
+bag_drop_chance = 0.3
+max_loot_tier = 3
+max_item_slots = 3
+slot_fill_chance = 0.15
+pet_drop_id = "petsniper"
+rare_pet_drop_id = ""
+rare_pet_chance = 0.25
+pet_odds_override = 0
+max_hp = 80

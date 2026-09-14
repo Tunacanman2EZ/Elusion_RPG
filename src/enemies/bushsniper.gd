@@ -2,6 +2,9 @@
 extends BaseEnemy
 class_name BushSniper
 
+# This enemy's reward profile — see BaseEnemy.enemy_data.
+const ENEMY_DATA := preload("res://data/enemies/bushsniper.tres")
+
 
 # =============================================================================
 # CONSTANTS
@@ -29,23 +32,13 @@ const ARROW_RELEASE_FRAME := 5
 # =============================================================================
 
 func _ready() -> void:
-	max_hp          = 80
+	if enemy_data == null:
+		enemy_data = ENEMY_DATA
+
+	# Combat tuning only — the reward profile lives in the .tres now.
 	attack_cooldown = 2.0
 	attack_range    = 200.0
 	flee_range      = 50.0
-
-	# loot tier — 80 hp, longest-lived of the field mobs. gates which items can roll (nothing above this
-	# tier can drop), scales gold, and sets the pet odds via
-	# BaseEnemy.PET_ODDS_BY_TIER (tier 3 = 1 in 216).
-	max_loot_tier   = 3
-
-	# NEW: pet_drop_id defaults to "" on every enemy (never set per-instance
-	# in the editor), which meant _roll_pet() always bailed out immediately
-	# before even rolling the dice — the entire triple-six pet-drop system
-	# was completely non-functional, not just rare. guarded so an explicit
-	# Inspector override still wins if one's ever set later.
-	if pet_drop_id == "":
-		pet_drop_id = "petsniper"
 
 	super._ready()
 

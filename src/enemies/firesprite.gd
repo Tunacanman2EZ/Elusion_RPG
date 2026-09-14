@@ -2,6 +2,9 @@
 extends BaseEnemy
 class_name FireSprite
 
+# This enemy's reward profile — see BaseEnemy.enemy_data.
+const ENEMY_DATA := preload("res://data/enemies/firesprite.tres")
+
 
 # =============================================================================
 # CONSTANTS
@@ -29,23 +32,13 @@ const ORB_RELEASE_FRAME := 5
 # =============================================================================
 
 func _ready() -> void:
-	max_hp          = 70
+	if enemy_data == null:
+		enemy_data = ENEMY_DATA
+
+	# Combat tuning only — the reward profile lives in the .tres now.
 	attack_cooldown = 2.0
 	attack_range    = 240.0
 	flee_range      = 50.0
-
-	# loot tier — 70 hp caster. gates which items can roll (nothing above this
-	# tier can drop), scales gold, and sets the pet odds via
-	# BaseEnemy.PET_ODDS_BY_TIER (tier 2 = 1 in 648).
-	max_loot_tier   = 2
-
-	# NEW: pet_drop_id defaults to "" on every enemy (never set per-instance
-	# in the editor), which meant _roll_pet() always bailed out immediately
-	# before even rolling the dice — the entire triple-six pet-drop system
-	# was completely non-functional, not just rare. guarded so an explicit
-	# Inspector override still wins if one's ever set later.
-	if pet_drop_id == "":
-		pet_drop_id = "petfiresprite"
 
 	super._ready()
 
