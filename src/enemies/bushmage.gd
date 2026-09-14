@@ -27,6 +27,10 @@
 extends BaseEnemy
 class_name BushMage
 
+# This enemy's reward profile. See BaseEnemy.enemy_data — the hp, xp, loot tier
+# and pet that used to be assigned in _ready() below all live in this file now.
+const ENEMY_DATA := preload("res://data/enemies/bushmage.tres")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -85,22 +89,15 @@ var _vine_spawned_this_attack: bool = false
 func _ready() -> void:
 	# class-specific stat overrides BEFORE super._ready() so BaseEnemy
 	# wires the healthbar and attack timer with the right values
-	max_hp          = 80
+	# Guarded so a per-placement override set in the Inspector still wins.
+	if enemy_data == null:
+		enemy_data = ENEMY_DATA
+
+	# COMBAT TUNING STAYS HERE. Only the reward profile moved to the .tres.
+	# attack_range in particular could not move: it is derived from this
+	# enemy's hold distance, so it is not a number you can put in a file.
 	attack_cooldown = 1.2
 	attack_range    = desired_distance + 8.0  # reach slightly past hold zone
-
-	# loot tier — 80 hp ranged caster, joint-toughest field mob. gates which
-	# items can roll (nothing above this tier can drop), scales gold, and sets
-	# the pet odds via BaseEnemy.PET_ODDS_BY_TIER (tier 3 = 1 in 216).
-	max_loot_tier   = 3
-
-	# NEW: pet_drop_id defaults to "" on every enemy (never set per-instance
-	# in the editor), which meant _roll_pet() always bailed out immediately
-	# before even rolling the dice — the entire triple-six pet-drop system
-	# was completely non-functional, not just rare. guarded so an explicit
-	# Inspector override still wins if one's ever set later.
-	if pet_drop_id == "":
-		pet_drop_id = "petmage"
 
 	super._ready()
 
@@ -284,3 +281,8 @@ func _spawn_vine() -> void:
 	vine.global_position = global_position
 	vine.damage = attack_power
 	vine.fire(attack_direction)
+	# AFTER fire(), not before: fire() sets the vine's facing, and rotation is
+	# part of the transform being interpolated. Resetting first would collapse
+	# the position blend and leave the rotation one to spin the vine into place.
+	# See BaseEnemy.spawn_projectile_node() for why any of this is needed.
+	vine.reset_physics_interpolation()

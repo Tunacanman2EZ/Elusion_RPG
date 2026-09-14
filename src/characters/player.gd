@@ -614,6 +614,9 @@ func _spawn_floating_label(amount: int, type: int) -> void:
 
 	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -30)
+	# Without this the label is drawn once at the world origin and streaks
+	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
+	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_number"):
 		lbl.show_number(amount, type)
 
@@ -668,6 +671,9 @@ func show_notice(message: String) -> void:
 	# refusal never lands on top of a number that appeared the same frame.
 	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -52)
+	# Without this the label is drawn once at the world origin and streaks
+	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
+	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_text"):
 		lbl.show_text(message, NOTICE_LABEL_TYPE, 1.2, 0.9)
 
@@ -680,6 +686,9 @@ func _spawn_levelup_popup() -> void:
 		return
 	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -40)
+	# Without this the label is drawn once at the world origin and streaks
+	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
+	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_text"):
 		lbl.show_text("LEVEL UP!\n%d" % level, 3, 2.0, 1.5)
 
@@ -695,6 +704,9 @@ func _spawn_defense_tier_popup(tier_name: String) -> void:
 		return
 	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -45)
+	# Without this the label is drawn once at the world origin and streaks
+	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
+	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_text"):
 		lbl.show_text("DEFENSE TIER\n%s" % tier_name, 3, 2.0, 1.5)
 
@@ -708,6 +720,9 @@ func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
 		return
 	_label_container().add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -35)
+	# Without this the label is drawn once at the world origin and streaks
+	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
+	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_text"):
 		lbl.show_text("%s %d" % [display, new_level], 4, 1.2, 0.9)
 

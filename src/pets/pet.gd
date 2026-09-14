@@ -483,6 +483,17 @@ func _fire_projectile(dir: Vector2) -> void:
 	if projectile.has_method("shoot_vector"):
 		projectile.call_deferred("shoot_vector", dir)
 
+	# LAST IN THE QUEUE ON PURPOSE. Deferred calls flush in the order they were
+	# queued, so by the time this runs the projectile is in the tree, at its
+	# muzzle position, and pointed the right way — and rotation is part of the
+	# transform being interpolated, so resetting before shoot_vector() would
+	# leave the projectile spinning into its heading over one frame.
+	#
+	# Without it the shot is drawn once at the world origin and streaks to the
+	# muzzle, through whatever walls are in between. See
+	# BaseEnemy.spawn_projectile_node() for the full explanation.
+	projectile.call_deferred("reset_physics_interpolation")
+
 
 func _fire_vine(target: Node, dir: Vector2) -> void:
 	# ground-rooted vine → parent to the "groundeffects" group (Y-sorted),
@@ -504,6 +515,9 @@ func _fire_vine(target: Node, dir: Vector2) -> void:
 	# end-of-frame flush, in queue order — so sprite is guaranteed set.
 	if vine.has_method("fire"):
 		vine.call_deferred("fire", _dir_to_cardinal(dir))
+
+	# Queued last, after fire(), for the same reason as _fire_projectile above.
+	vine.call_deferred("reset_physics_interpolation")
 
 
 func _parent_to_group(node: Node, group_name: String) -> void:

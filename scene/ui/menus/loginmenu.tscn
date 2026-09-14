@@ -72,6 +72,16 @@ horizontal_alignment = 1
 [node name="hseparator" type="HSeparator" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1769956154]
 layout_mode = 2
 
+[node name="statuslabel" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1204471803]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.72, 0.62, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+autowrap_mode = 3
+
 [node name="loginform" type="VBoxContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1667337425]
 layout_mode = 2
 theme_override_constants/separation = 12

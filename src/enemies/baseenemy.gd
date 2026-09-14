@@ -99,6 +99,20 @@ const PET_ODDS_FALLBACK := 1296
 # EXPORTED SETTINGS
 # =============================================================================
 
+# THE ENEMY'S REWARD PROFILE — everything that decides what a kill is worth.
+#
+# Subclasses assign this from a .tres in data/enemies/ at the top of their
+# _ready(), and _apply_enemy_data() below copies it into the fields underneath.
+#
+# WHY IT IS A RESOURCE AND NOT A BLOCK OF ASSIGNMENTS:
+# these numbers used to be statements inside each subclass's _ready(), executed
+# at spawn time on the player's machine. That works only while the CLIENT
+# decides what a kill is worth. The server cannot read a statement — the export
+# tool proved it, instantiating every enemy scene and writing out five identical
+# enemies with the defaults below, because no script had run. As data it can be
+# read by Godot and by Python, from one authored file.
+@export var enemy_data: EnemyData
+
 @export var max_hp:           int   = 50
 
 @export var attack_cooldown:  float = 2.0
@@ -189,6 +203,11 @@ var nav_agent: NavigationAgent2D = null
 # =============================================================================
 
 func _ready() -> void:
+	# FIRST, before anything reads these fields — `hp = max_hp` on the very next
+	# line would otherwise fill the health pool from BaseEnemy's default of 50
+	# rather than this enemy's real maximum.
+	_apply_enemy_data()
+
 	hp = max_hp
 	add_to_group("enemies")
 	spawn_position = global_position
@@ -870,6 +889,28 @@ func spawn_projectile_node(projectile: Node, spawn_pos: Vector2) -> void:
 	container.add_child.call_deferred(projectile)
 	projectile.set_deferred("global_position", spawn_pos)
 
+	# FIXED: EVERY ENEMY PROJECTILE IN THE GAME FLASHED AT THE WORLD ORIGIN
+	# before appearing at the muzzle — a streak across the room and straight
+	# through walls, one frame long.
+	#
+	# This project runs physics interpolation, so the renderer draws each node
+	# blended between its previous and current physics transforms. A node that
+	# has just entered the tree has no meaningful previous transform: it is
+	# whatever the projectile scene was authored at, which is (0, 0). So the
+	# first rendered frame is a blend from the world origin toward the muzzle.
+	#
+	# reset_physics_interpolation() collapses previous and current to the same
+	# value, leaving nothing to blend. It has to run AFTER global_position is
+	# set, which is why it is deferred too — deferred calls flush in the order
+	# they were queued, so this lands after the set above rather than before it.
+	#
+	# WHY IT ONLY SHOWS UP NOW: the streak has always been here, but it lasts
+	# exactly one physics tick. At 180 ticks/second that was 5.6ms and invisible.
+	# At 80 it is 12.5ms, and 12.5ms of movement is something an eye catches.
+	# Identical cause to the mage's sliding spell circle — this is the same bug
+	# in the one place every enemy projectile passes through.
+	projectile.call_deferred("reset_physics_interpolation")
+
 
 # =============================================================================
 # ANIMATION HELPERS
@@ -950,6 +991,43 @@ func _vec_from_dir(dir: String) -> Vector2:
 var _death_resolved: bool = false
 
 
+func get_enemy_id() -> String:
+	# The name this enemy reports to the server when it is killed. Empty means
+	# "not a payable enemy" — either no profile was assigned, or this variant
+	# deliberately awards nothing, like the large slime that splits instead of
+	# dying. Either way the server has nothing to look up and no reason to pay.
+	if enemy_data == null:
+		return ""
+	if not enemy_data.grants_rewards:
+		return ""
+	return enemy_data.enemy_id
+
+
+func _apply_enemy_data() -> void:
+	# Copies the profile onto this node. The fields stay as @export vars rather
+	# than being read through enemy_data everywhere, so every existing reference
+	# in this class and its subclasses keeps working unchanged — this is a change
+	# of where the numbers COME FROM, not of how they are used.
+	if enemy_data == null:
+		# Loud, because the failure is otherwise invisible: the enemy works, it
+		# fights, it dies, and it quietly pays out BaseEnemy's placeholder
+		# defaults instead of its own.
+		push_warning("%s: no enemy_data assigned — using BaseEnemy defaults (50 hp, 20 xp, tier 1). Assign one from data/enemies/." % name)
+		return
+
+	max_hp            = enemy_data.max_hp
+	xp_reward         = enemy_data.xp_reward
+	attack_xp_reward  = enemy_data.attack_xp_reward
+	bag_drop_chance   = enemy_data.bag_drop_chance
+	max_loot_tier     = enemy_data.max_loot_tier
+	max_item_slots    = enemy_data.max_item_slots
+	slot_fill_chance  = enemy_data.slot_fill_chance
+	pet_drop_id       = enemy_data.pet_drop_id
+	rare_pet_drop_id  = enemy_data.rare_pet_drop_id
+	rare_pet_chance   = enemy_data.rare_pet_chance
+	pet_odds_override = enemy_data.pet_odds_override
+
+
 func take_damage(amount: int, _type: StringName = &"physical") -> void:
 	if _death_resolved:
 		return
@@ -979,14 +1057,19 @@ func _die() -> void:
 
 	_release_slot()
 
-	var killer: Node = player
-
-	if killer and killer.has_method("gain_xp"):
-		killer.gain_xp(xp_reward)
-		if killer.has_method("gain_attack_xp"):
-			killer.gain_attack_xp(attack_xp_reward)
-
-	_roll_and_spawn_loot(killer)
+	# THE SERVER DECIDES WHAT THIS KILL WAS WORTH.
+	#
+	# This used to grant the XP and roll the loot right here, on the player's
+	# machine — which meant a modified client could award itself every pet in
+	# the game. Combat.report_kill() posts the enemy's id and renders whatever
+	# comes back.
+	#
+	# NOT AWAITED, and it must not be: queue_free() is two lines down, and a
+	# coroutine suspended on a freed node is silently dropped by Godot. Combat
+	# is an autoload, so it outlives this corpse and can wait for the network.
+	# Position is passed by value for the same reason — global_position will not
+	# exist by the time the bag is spawned.
+	Combat.report_kill(get_enemy_id(), global_position, player)
 
 	died.emit()
 	queue_free()
@@ -996,193 +1079,34 @@ func _die() -> void:
 # DROPS
 # =============================================================================
 
-func _roll_and_spawn_loot(killer: Node) -> void:
-	var pet_won: bool = _roll_pet()
-	var bag_drops: bool = randf() <= bag_drop_chance
-
-	if not bag_drops and not pet_won:
-		return
-
-	var contents: Array = _build_bag_contents()
-
-	if pet_won:
-		# _roll_pet() decided THAT a pet drops; _pick_pet_id() decides WHICH.
-		# An enemy with two pets awards one or the other, never both.
-		contents.append({ "item_id": _pick_pet_id(), "quantity": 1 })
-
-	_spawn_loot_bag(contents, killer, pet_won)
-
-
-func _pick_pet_id() -> String:
-	# Most enemies have exactly one pet and this just returns it.
-	#
-	# An enemy that sets rare_pet_drop_id has two, and a winning roll awards
-	# ONE of them — the rare one with probability rare_pet_chance, otherwise
-	# the common one. Deliberately NOT two independent rolls: that would let a
-	# single kill hand over both pets at once, which would make the rarer one
-	# feel worthless the moment it happened.
-	#
-	# Falling back to pet_drop_id when the rare item doesn't exist keeps a
-	# half-authored second pet from silently swallowing drops — you'd get the
-	# common pet rather than nothing at all.
-	if rare_pet_drop_id == "":
-		return pet_drop_id
-	if not ItemRegistry.has_item(rare_pet_drop_id):
-		return pet_drop_id
-	if randf() < rare_pet_chance:
-		return rare_pet_drop_id
-	return pet_drop_id
+# =============================================================================
+# LOOT ROLLING  (REMOVED — THE SERVER DOES THIS NOW)
+# =============================================================================
+# _roll_and_spawn_loot(), _roll_pet(), _pick_pet_id(), get_pet_odds(),
+# _build_bag_contents() and _pick_weighted_item_id() used to live here: about
+# 120 lines deciding, on the player's own machine, how much gold dropped, which
+# items rolled, and whether the 1-in-864 pet came up.
+#
+# They are ports in gamedata.py now, rolled with the server's SystemRandom.
+# Nothing the client does can make that roll come up more often than it should,
+# because the client never runs it.
+#
+# PET_ODDS_BY_TIER and the GOLD_* constants above stay. They are not used by
+# this class any more — exportgamedata.gd reads them out of it, so this file is
+# still where those numbers are authored, and gamedata.json is the copy the
+# server reads.
 
 
-func get_pet_odds() -> int:
-	# "one in N" chance of this enemy dropping its pet. See PET_ODDS_BY_TIER.
-	if pet_odds_override > 0:
-		return pet_odds_override
-	return int(PET_ODDS_BY_TIER.get(max_loot_tier, PET_ODDS_FALLBACK))
-
-
-func _roll_pet() -> bool:
-	if pet_drop_id == "":
-		return false
-
-	# has_item() is why the large slime could never drop a pet: poisonslime.gd
-	# sets pet_drop_id = "petpoisonslime", but no such .tres exists yet, so
-	# this returns false every time and the roll never happens. That starts
-	# working on its own the moment the resource is authored — nothing here
-	# needs to change for it.
-	if not ItemRegistry.has_item(pet_drop_id):
-		return false
-
-	# WAS a hardcoded 3d6-all-sixes, i.e. a flat 1 in 216 for every enemy in
-	# the game regardless of how hard it was to kill. Now the odds come from
-	# the enemy's loot tier, so a slime and a bush mage aren't equally likely
-	# to hand over a pet. Tier 3 still evaluates to exactly 1 in 216, so the
-	# feel of the original roll is preserved where it was already tuned.
-	var odds: int = get_pet_odds()
-	if odds <= 0:
-		return false
-	return randi_range(1, odds) == odds
-
-
-func _build_bag_contents() -> Array:
-	var contents: Array = []
-
-	# gold: UNTOUCHED — guaranteed on every bag, no rarity gate. this is
-	# intentional and already matches the "currency flows freely, items
-	# are scarce" design goal — see class comment.
-	var gold_amount: int = randi_range(max_loot_tier, max_loot_tier * 25)
-	var gold_id: String = GOLD_LARGE_ID if gold_amount >= LARGE_GOLD_THRESHOLD else GOLD_SMALL_ID
-	if ItemRegistry.has_item(gold_id):
-		contents.append({ "item_id": gold_id, "quantity": gold_amount })
-
-	# items: fewer, lower-odds rolls than before — see class comment.
-	for i in range(max_item_slots):
-		if randf() <= slot_fill_chance:
-			var picked_id: String = _pick_weighted_item_id(max_loot_tier)
-			if picked_id != "":
-				contents.append({ "item_id": picked_id, "quantity": 1 })
-
-	return contents
-
-
-func _pick_weighted_item_id(max_tier: int) -> String:
-	var candidates: Array = []
-	var weights: Array = []
-	var total_weight: int = 0
-
-	for item in ItemRegistry.get_all_items():
-		if item.tier > max_tier:
-			continue
-		if item.type == ItemData.Type.PET:
-			continue
-		if item.type == ItemData.Type.QUEST:
-			continue
-		if item.type == ItemData.Type.CURRENCY:
-			continue
-
-		var tier_gap: int = max_tier - item.tier
-		var w: int = int(pow(2, max(tier_gap, 0)))
-		if w < 1:
-			w = 1
-
-		candidates.append(item.item_id)
-		weights.append(w)
-		total_weight += w
-
-	if candidates.is_empty() or total_weight <= 0:
-		return ""
-
-	var roll: int = randi() % total_weight
-	var cumulative: int = 0
-	for i in range(candidates.size()):
-		cumulative += weights[i]
-		if roll < cumulative:
-			return candidates[i]
-
-	return candidates[candidates.size() - 1]
-
-
-func _spawn_loot_bag(contents: Array, killer: Node, has_pet: bool) -> void:
-	if LOOTBAG_SCENE == null:
-		push_warning("BaseEnemy: LOOTBAG_SCENE not loaded — no bag spawned")
-		return
-
-	var bag: Node = LOOTBAG_SCENE.instantiate()
-	bag.global_position = global_position
-
-	# NEVER DEFER ONTO THE CORPSE.
-	#
-	# This used to be call_deferred("_finish_spawn_loot_bag", ...) on SELF, and
-	# _die() calls queue_free() on the very next line. Godot silently drops a
-	# deferred call whose target object has been freed before the message queue
-	# flushes, so whether the bag appeared came down to whether this enemy
-	# happened to survive until the next flush.
-	#
-	# For every normal enemy it did: _die() runs synchronously inside
-	# take_damage(), during physics, and the flush comes after. The small poison
-	# slime is the one enemy that AWAITS its death animation first, so its
-	# super._die() resumes from a SceneTreeTimer instead — the free landed
-	# before the flush and the call went in the bin. Smalls never dropped a
-	# single bag while every other enemy dropped them fine.
-	#
-	# The container and the bag both outlive this node, so deferring onto THEM
-	# is safe no matter what kills us or when. Deferred calls flush in the order
-	# they were queued, so add_child still lands before the setters, which is
-	# what gives lootbag.gd's _ready() a chance to resolve its @onready nodes
-	# before set_contents() touches them.
-	var container: Node = _resolve_loot_container()
-	if container == null:
-		push_warning("BaseEnemy: no container for the loot bag — not spawned")
-		bag.queue_free()
-		return
-
-	container.call_deferred("add_child", bag)
-
-	if bag.has_method("set_contents"):
-		bag.call_deferred("set_contents", contents)
-	if bag.has_method("set_owner_player"):
-		bag.call_deferred("set_owner_player", killer)
-	if bag.has_method("set_has_pet"):
-		bag.call_deferred("set_has_pet", has_pet)
-
-
-func _resolve_loot_container() -> Node:
-	# parent loot bags into the y-sorted world so they sort with characters.
-	# prefer a "lootbags" container, fall back to "projectiles", then scene root.
-	#
-	# Resolved HERE, while this enemy is still in the tree, rather than inside
-	# a deferred callback — get_tree() returns null once a node has left the
-	# tree, and the whole point of the change above is that this node may be
-	# gone by the time the deferred work runs.
-	if not is_inside_tree():
-		return null
-
-	var container: Node = get_tree().get_first_node_in_group("lootbags")
-	if container == null:
-		container = get_tree().get_first_node_in_group("projectiles")
-	if container == null:
-		container = get_tree().current_scene
-	return container
+# _spawn_loot_bag() and _resolve_loot_container() moved to combat.gd.
+#
+# They had to. The long comment they carried was about NEVER DEFERRING ONTO THE
+# CORPSE — a deferred call onto the dying enemy worked for every enemy except
+# the small poison slime, which awaits its death animation, so smalls never
+# dropped a bag. Waiting on a network round trip makes that far worse: the
+# enemy is certainly gone by the time the response lands.
+#
+# An autoload is always in the tree, so Combat can hold the position, wait as
+# long as it takes, and still resolve a container afterwards.
 
 
 # =============================================================================
@@ -1198,4 +1122,7 @@ func _spawn_floating_label(amount: int, type: int) -> void:
 		container = get_tree().current_scene
 	container.add_child(lbl)
 	lbl.global_position = global_position + Vector2(0, -30)
+	# Damage numbers streak from the world origin without this — see
+	# spawn_projectile_node() for the mechanism.
+	lbl.reset_physics_interpolation()
 	lbl.show_number(amount, type, 0.5)

@@ -29,6 +29,7 @@ GameConstants="*uid://wbhpk12dyjkn"
 SceneTransition="*uid://cvilb71enkgcb"
 Api="*uid://dvmmf1ehsw12"
 Audio="*uid://ce1yh8jyak16p"
+Combat="*res://src/systems/combat.gd"
 
 [display]
 
@@ -130,7 +131,7 @@ sprint={
 
 [physics]
 
-common/physics_ticks_per_second=180
+common/physics_ticks_per_second=80
 2d/default_gravity=0.0
 common/physics_interpolation=true
 
