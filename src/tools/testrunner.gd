@@ -64,6 +64,7 @@ func _run_all() -> void:
 	_test_enemy_constants()
 	_test_player_stats()
 	_test_facing()
+	_test_formation()
 	_test_pet_controller()
 	_test_itemstack()
 	_test_ranks()
@@ -605,6 +606,100 @@ func _test_player_stats() -> void:
 	check("an empty pool still returns the floor, not zero",
 		is_equal_approx(PlayerStats.regen_rate_for(0, 0.0167, 1.0), 1.0),
 		PlayerStats.regen_rate_for(0, 0.0167, 1.0))
+
+
+# =============================================================================
+# FORMATION — the ring of tiles enemies surround a player on
+# =============================================================================
+# Pure geometry, so all of it is checkable without a world. Which matters more
+# than usual here: the formation is the thing that stops enemies piling into one
+# spot, and "it looks about right when I fight three slimes" is the only test it
+# has ever had.
+
+func _test_formation() -> void:
+	section("FORMATION")
+
+	var offsets: Array[Vector2i] = Formation.slot_offsets()
+
+	# 8 + 16 + 24 = 48. The arithmetic was written in a comment in baseenemy.gd
+	# and never checked. Ring N is the PERIMETER at Chebyshev distance
+	# N * SLOT_STRIDE, so its size is (2N+1)^2 - (2N-1)^2 = 8N.
+	check("three rings produce 48 slots", offsets.size() == 48, offsets.size())
+	check("slot_count agrees with the array",
+		Formation.slot_count() == offsets.size(), Formation.slot_count())
+
+	var per_ring: Dictionary = {}
+	for offset in offsets:
+		var chebyshev: int = maxi(absi(offset.x), absi(offset.y))
+		per_ring[chebyshev] = int(per_ring.get(chebyshev, 0)) + 1
+	check("ring 1 holds 8", int(per_ring.get(2, 0)) == 8, per_ring)
+	check("ring 2 holds 16", int(per_ring.get(4, 0)) == 16, per_ring)
+	check("ring 3 holds 24", int(per_ring.get(6, 0)) == 24, per_ring)
+	check("and there is no fourth ring", per_ring.size() == 3, per_ring)
+
+	# NO DUPLICATES. Two slots at one offset means two enemies standing in each
+	# other, which is the exact failure the formation exists to prevent - and it
+	# would look like a physics bug rather than a geometry one.
+	var seen: Dictionary = {}
+	var duplicates: int = 0
+	for offset in offsets:
+		if seen.has(offset):
+			duplicates += 1
+		seen[offset] = true
+	check("no two slots share an offset", duplicates == 0, "%d duplicates" % duplicates)
+
+	# NOTHING STANDS ON THE PLAYER.
+	check("no slot sits on the anchor", not seen.has(Vector2i.ZERO), offsets.slice(0, 8))
+
+	# SYMMETRY. An asymmetric ring means enemies crowd one side of the player,
+	# which reads in play as "they always come from the left".
+	var asymmetric: int = 0
+	for offset in offsets:
+		if not seen.has(-offset):
+			asymmetric += 1
+	check("every slot has an opposite", asymmetric == 0,
+		"%d slots with no mirror" % asymmetric)
+
+	# EVERY SLOT IS ON THE STRIDE. A slot off the stride sits half a tile from
+	# its neighbours, which is the spacing that made enemies look piled.
+	var off_stride: int = 0
+	for offset in offsets:
+		if offset.x % Formation.SLOT_STRIDE != 0 or offset.y % Formation.SLOT_STRIDE != 0:
+			off_stride += 1
+	check("every slot lands on the stride", off_stride == 0,
+		"%d off-grid" % off_stride)
+
+	# --- world placement ----------------------------------------------------
+	var anchor := Vector2(100, 200)
+	check("an invalid slot puts you on the anchor itself",
+		Formation.world_position(anchor, -1) == anchor,
+		Formation.world_position(anchor, -1))
+	check("and so does one past the end",
+		Formation.world_position(anchor, 9999) == anchor)
+
+	# RING 1 IS 40px OUT: TILE_SIZE 20 * SLOT_STRIDE 2. That number is load
+	# bearing - the comment in baseenemy.gd says "no attack range changes"
+	# because of it, so attack_range is tuned against it.
+	var nearest: float = INF
+	for i in range(Formation.slot_count()):
+		var d: float = anchor.distance_to(Formation.world_position(anchor, i))
+		nearest = minf(nearest, d)
+	check("the closest slot is one stride out, 40px",
+		is_equal_approx(nearest, Formation.TILE_SIZE * Formation.SLOT_STRIDE),
+		nearest)
+
+	# A bigger tile_size holds further out without changing the grid's shape -
+	# that parameter exists for ranged classes.
+	check("a larger tile size scales the ring, not its shape",
+		is_equal_approx(
+			anchor.distance_to(Formation.world_position(anchor, 0, Formation.TILE_SIZE * 2)),
+			anchor.distance_to(Formation.world_position(anchor, 0)) * 2.0),
+		Formation.world_position(anchor, 0, Formation.TILE_SIZE * 2))
+
+	# The offsets are shared, static and built once. Handing out a reference
+	# that a caller can append to would corrupt the formation for every enemy.
+	check("asking twice gives the same slots",
+		Formation.slot_offsets().size() == 48, Formation.slot_offsets().size())
 
 
 # =============================================================================

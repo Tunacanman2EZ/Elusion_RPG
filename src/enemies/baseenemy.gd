@@ -383,52 +383,20 @@ func _setup_navigation() -> void:
 # CHANGED: reduced from 32 to 20 for a tighter, closer formation — this
 # is a tunable value, adjust further if it still feels too spread out or
 # starts feeling cramped once you see it in motion.
-const TILE_SIZE := 20.0
-const FORMATION_RING_COUNT := 3
+# The SHAPE of the formation lives in Formation. These four names stay here
+# because subclasses inherit them - bushmage.gd reads TILE_SIZE,
+# FORMATION_SLOT_STRIDE and SLOT_ARRIVAL_THRESHOLD - and an alias costs nothing
+# while a rename would touch every subclass for no gain.
+const TILE_SIZE := Formation.TILE_SIZE
+const FORMATION_RING_COUNT := Formation.RING_COUNT
+const FORMATION_SLOT_STRIDE := Formation.SLOT_STRIDE
+const SLOT_ARRIVAL_THRESHOLD := Formation.ARRIVAL_THRESHOLD
 
-# Tiles between one slot and the next.
-#
-# WAS EFFECTIVELY 1, which is why enemies looked piled even when the formation
-# was working. A slot is 20px from its neighbour, but the large slime's sprite
-# is 31px wide - so two enemies standing in adjacent slots overlap by 11px, and
-# their collision bodies (radius 5, so 10px across) are far too small for
-# physics to push them apart. The art was three times wider than the thing
-# keeping them separated.
-#
-# A stride of 2 puts a full empty tile between every pair of neighbours: 40px
-# between centres against a 31px sprite, so roughly 9px of clear ground. That
-# is the "solid square apart" spacing.
-#
-# Ring 1 still sits 40px from the player, so no attack range changes.
-# Slot count goes 8 + 16 + 24 = 48, still more than any real encounter.
-const FORMATION_SLOT_STRIDE := 2
-
-# NEW: once within this many pixels of the claimed slot, stop and hold
-# an idle pose instead of continuing to chase it. WHY: right at the
-# point of essentially arriving, tiny positional noise (from collision
-# resolution against another enemy, or the player themselves shifting
-# slightly) can still flip which axis "wins" in the cardinal direction
-# picker every frame — even though the enemy isn't meaningfully moving
-# anymore. that's what looked like animations "flipping out" despite the
-# formation itself being correctly shaped.
-const SLOT_ARRIVAL_THRESHOLD := 6.0
-
-# built once, lazily on first use — each entry is {"tile_offset": Vector2i}.
-# ring N (1-indexed) = every tile at Chebyshev distance (N+1) from the
-# player's own tile, i.e. ring 1 is the 16-tile perimeter just outside
-# the 3x3 player footprint, ring 2 the next perimeter out, etc.
-static var SLOT_DEFS: Array = []
-
-static func _ensure_slot_defs_built() -> void:
-	if not SLOT_DEFS.is_empty():
-		return
-	for ring in range(1, FORMATION_RING_COUNT + 1):
-		var d: int = ring * FORMATION_SLOT_STRIDE
-		for dx in range(-d, d + 1, FORMATION_SLOT_STRIDE):
-			for dy in range(-d, d + 1, FORMATION_SLOT_STRIDE):
-				if max(abs(dx), abs(dy)) == d:
-					SLOT_DEFS.append({"tile_offset": Vector2i(dx, dy)})
-
+# WHO holds which slot, as opposed to where the slots are. Shared across every
+# enemy instance, which is the whole mechanism: a slot claimed by one enemy is
+# unavailable to the rest, so they spread out instead of stacking. Stays here
+# rather than in Formation because it is live scene state - the values are node
+# references, and they go stale when an enemy dies.
 static var _slot_owners: Dictionary = {}  # slot_index (int) -> enemy instance
 
 var _claimed_slot: int = -1
@@ -452,8 +420,8 @@ func _get_slot_target_position(tile_size: float = TILE_SIZE) -> Vector2:
 	if _claimed_slot == -1:
 		return player.global_position
 
-	var offset: Vector2i = SLOT_DEFS[_claimed_slot]["tile_offset"]
-	var raw: Vector2 = player.global_position + Vector2(offset.x, offset.y) * tile_size
+	var raw: Vector2 = Formation.world_position(
+		player.global_position, _claimed_slot, tile_size)
 
 	# CLAMPED, because a slot is just an arithmetic offset from the player and
 	# arithmetic knows nothing about walls. Stand the player against geometry
@@ -464,8 +432,6 @@ func _get_slot_target_position(tile_size: float = TILE_SIZE) -> Vector2:
 
 
 func _ensure_slot_claimed() -> void:
-	_ensure_slot_defs_built()
-
 	# already own a valid slot — keep it. reshuffling every frame would
 	# just make enemies constantly swap places instead of settling.
 	if _claimed_slot != -1 and _slot_owners.get(_claimed_slot) == self:
@@ -473,8 +439,8 @@ func _ensure_slot_claimed() -> void:
 
 	# NEAREST free slot, not the first one in the list.
 	#
-	# SLOT_DEFS is built ring by ring in a fixed order, so taking the first
-	# free entry handed out tiles by index rather than by proximity. An enemy
+	# Formation builds its slots ring by ring in a fixed order, so taking the
+	# first free entry handed out tiles by index rather than by proximity. An enemy
 	# approaching from the south would happily claim a tile on the NORTH side
 	# and walk straight through the player to reach it - so chasers crossed
 	# each other's paths and bunched in transit, which is what the formation
@@ -491,7 +457,7 @@ func _ensure_slot_claimed() -> void:
 	# navmesh queries cheap - the nearest slot is usually fine, so this costs
 	# one or two lookups rather than one per slot.
 	var candidates: Array = []
-	for i in range(SLOT_DEFS.size()):
+	for i in range(Formation.slot_count()):
 		if i == _last_released_slot:
 			continue  # don't immediately re-claim the slot just given up on
 
@@ -499,8 +465,7 @@ func _ensure_slot_claimed() -> void:
 		if slot_owner != null and is_instance_valid(slot_owner):
 			continue
 
-		var offset: Vector2i = SLOT_DEFS[i]["tile_offset"]
-		var slot_world: Vector2 = anchor + Vector2(offset.x, offset.y) * TILE_SIZE
+		var slot_world: Vector2 = Formation.world_position(anchor, i)
 		candidates.append({
 			"index": i,
 			"world": slot_world,
