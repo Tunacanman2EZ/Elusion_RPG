@@ -1,0 +1,476 @@
+# testrunner.gd — the game side's test suite. Run it headless:
+#
+#     godot --headless --path . res://scene/tests/tests.tscn
+#
+# Exits 0 if everything passes, 1 if anything fails, so it can gate a commit the
+# same way test_api.py does.
+#
+# WHY THIS EXISTS
+# ---------------
+# Every one of the 367 tests in this project is on the Flask side. The Godot half
+# has only ever been verified by booting it and reading the log, which is how an
+# owner panel bound to a key that closes the game, a dead revive branch that
+# could never be reached, and a README describing a deleted file all survived.
+# None of those were carelessness. They were the absence of anything that fails.
+#
+# WHAT BELONGS IN HERE
+# --------------------
+# Logic that can be checked without playing the game: curves, arithmetic, save
+# round trips, and above all THE NUMBERS THAT MUST AGREE WITH THE SERVER. Those
+# are the ones where drift is silent and expensive — the XP curve once lived in
+# two places, disagreed, and rewrote every save on load for a day before anyone
+# worked out why.
+#
+# What does NOT belong: anything needing a player in a world, a physics frame, or
+# a rendered scene. That is what booting the game is for.
+extends Node
+
+
+var passed: int = 0
+var failed: int = 0
+var failures: PackedStringArray = []
+
+
+func _ready() -> void:
+	print("")
+	_run_all()
+	_report()
+
+
+func _run_all() -> void:
+	_test_curve_agreement()
+	_test_shared_constants()
+	_test_class_curves()
+	_test_player_stats()
+	_test_itemstack()
+	_test_ranks()
+
+
+# =============================================================================
+# HARNESS
+# =============================================================================
+
+func check(label: String, condition: bool, detail: Variant = "") -> void:
+	if condition:
+		passed += 1
+		print("  pass  %s" % label)
+	else:
+		failed += 1
+		failures.append(label)
+		print("  FAIL  %s   %s" % [label, str(detail)])
+
+
+func section(title: String) -> void:
+	print("\n" + title)
+	print("-".repeat(title.length()))
+
+
+func _report() -> void:
+	print("\n" + "=".repeat(60))
+	print("  %d passed, %d failed" % [passed, failed])
+	if failed > 0:
+		print("\n  failing checks:")
+		# `label`, not `name` — Node.name exists and shadowing it warns at parse.
+		for label in failures:
+			print("    - " + label)
+	print("=".repeat(60) + "\n")
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+func _load_gamedata() -> Dictionary:
+	# The exported contract both sides read. If this is missing or stale the
+	# server is running on different numbers than the game, which is the single
+	# most expensive kind of drift in this project.
+	var file := FileAccess.open("res://data/gamedata.json", FileAccess.READ)
+	if file == null:
+		return {}
+	var json := JSON.new()
+	if json.parse(file.get_as_text()) != OK:
+		return {}
+	return json.data if json.data is Dictionary else {}
+
+
+# =============================================================================
+# THE CURVE THE SERVER ALSO USES
+# =============================================================================
+
+func _test_curve_agreement() -> void:
+	section("XP CURVE — GAME vs EXPORTED CONTRACT")
+
+	var data := _load_gamedata()
+	check("data/gamedata.json loads", not data.is_empty(),
+		"missing or unparseable — re-run src/tools/exportgamedata.gd")
+	if data.is_empty():
+		return
+
+	var constants: Dictionary = data.get("constants", {})
+
+	check("the exported xp_base matches GameConstants",
+		is_equal_approx(float(constants.get("xp_base", -1.0)), GameConstants.XP_BASE),
+		"exported %s, game %s" % [constants.get("xp_base"), GameConstants.XP_BASE])
+
+	check("the exported xp_growth matches GameConstants",
+		is_equal_approx(float(constants.get("xp_growth", -1.0)), GameConstants.XP_GROWTH),
+		"exported %s, game %s" % [constants.get("xp_growth"), GameConstants.XP_GROWTH])
+
+	# THE ACTUAL CURVE, not just its inputs. The server recomputes from these two
+	# numbers; if its formula ever differs from ours, matching constants would
+	# hide it. Same arithmetic, same answers, at the levels people play.
+	var base: float = float(constants.get("xp_base", GameConstants.XP_BASE))
+	var growth: float = float(constants.get("xp_growth", GameConstants.XP_GROWTH))
+	for level in [1, 2, 5, 10, 25, 50, 99]:
+		var expected: int = int(base * pow(growth, max(level - 1, 0)))
+		check("level %d needs the same XP on both sides" % level,
+			GameConstants.xp_needed_for_level(level) == expected,
+			"game %d, contract %d" % [GameConstants.xp_needed_for_level(level), expected])
+
+	# Level 1 is the boundary the -1 in the formula exists for, and a corrupted
+	# level of 0 or below must not produce a fractional power.
+	check("level 1 costs exactly the base",
+		GameConstants.xp_needed_for_level(1) == int(GameConstants.XP_BASE),
+		GameConstants.xp_needed_for_level(1))
+	check("level 0 does not go below the base",
+		GameConstants.xp_needed_for_level(0) == int(GameConstants.XP_BASE),
+		GameConstants.xp_needed_for_level(0))
+	check("a negative level does not either",
+		GameConstants.xp_needed_for_level(-5) == int(GameConstants.XP_BASE),
+		GameConstants.xp_needed_for_level(-5))
+
+	# The overflow this curve replaced. The old formula doubled, which leaves
+	# int64 somewhere around level 58 — so the guard is that a high level stays
+	# a sane positive number rather than a wrapped one.
+	check("level 99 stays inside int64",
+		GameConstants.xp_needed_for_level(99) > 0
+		and GameConstants.xp_needed_for_level(99) < 9223372036854775807,
+		GameConstants.xp_needed_for_level(99))
+
+
+func _test_shared_constants() -> void:
+	section("SHARED CONSTANTS — GameConstants vs EXPORTED CONTRACT")
+
+	var data := _load_gamedata()
+	if data.is_empty():
+		check("gamedata.json needed for the constants comparison", false, "see above")
+		return
+
+	var constants: Dictionary = data.get("constants", {})
+
+	# Both of these are quoted at the player — the game-over screen prices a
+	# revive, and a duplicate pet pays out. If the exporter has not been re-run
+	# since one was tuned, the server's idea of the price and the number on the
+	# button disagree, and the player is the one who finds out.
+	check("revive_cost matches",
+		int(constants.get("revive_cost", -1)) == GameConstants.REVIVE_COST,
+		"contract %s, game %d" % [constants.get("revive_cost"), GameConstants.REVIVE_COST])
+
+	check("dupe_pet_lusions matches",
+		int(constants.get("dupe_pet_lusions", -1)) == GameConstants.DUPE_PET_LUSIONS,
+		"contract %s, game %d" % [constants.get("dupe_pet_lusions"), GameConstants.DUPE_PET_LUSIONS])
+
+	# Deliberately equal — a dupe pet is exactly one free revive. The two
+	# constants above can each match the contract while that relationship has
+	# quietly been broken, so it gets its own check.
+	check("a dupe pet is still worth exactly one revive",
+		GameConstants.DUPE_PET_LUSIONS == GameConstants.REVIVE_COST,
+		"%d vs %d" % [GameConstants.DUPE_PET_LUSIONS, GameConstants.REVIVE_COST])
+
+
+func _test_class_curves() -> void:
+	section("CLASS STAT CURVES — .tres vs EXPORTED CONTRACT")
+
+	var data := _load_gamedata()
+	if data.is_empty():
+		check("gamedata.json needed for the class comparison", false, "see above")
+		return
+
+	var exported: Dictionary = {}
+	for entry in data.get("classes", []):
+		if entry is Dictionary:
+			exported[str(entry.get("class_id", ""))] = entry
+
+	check("the contract carries classes", not exported.is_empty(), data.get("classes"))
+
+	var dir := DirAccess.open("res://data/classes")
+	if dir == null:
+		check("res://data/classes can be opened", false, "folder missing")
+		return
+
+	var found: int = 0
+	for filename in dir.get_files():
+		# Godot renames .tres to .tres.remap in an exported build. Both are
+		# loadable by the un-suffixed path.
+		if not filename.ends_with(".tres") and not filename.ends_with(".tres.remap"):
+			continue
+		var path := "res://data/classes/" + filename.trim_suffix(".remap")
+		var res: Resource = load(path)
+		if res == null or not (res is ClassData):
+			check("%s loads as ClassData" % filename, false, path)
+			continue
+
+		found += 1
+		var cls: ClassData = res
+		var row: Dictionary = exported.get(cls.class_id, {})
+
+		check("%s is in the exported contract" % cls.class_id, not row.is_empty(),
+			"re-run src/tools/exportgamedata.gd")
+		if row.is_empty():
+			continue
+
+		# THE SERVER COMPUTES max_hp FROM THESE. If a .tres is edited and the
+		# exporter is not re-run, the server hands out maxima from the old curve
+		# and then disagrees with the client about how much health you have.
+		#
+		# cls.get(field) is Object.get() — ONE argument, no default. Passing a
+		# second is a parse error, not a fallback.
+		for field in ["hp_base", "hp_per_lvl", "mana_base", "mana_per_lvl",
+					  "stam_base", "stam_per_lvl"]:
+			check("%s.%s matches" % [cls.class_id, field],
+				int(row.get(field, -1)) == int(cls.get(field)),
+				"contract %s, resource %s" % [row.get(field), cls.get(field)])
+
+	check("every class resource was checked", found >= 4, "found %d" % found)
+
+
+# =============================================================================
+# PLAYERSTATS — the arithmetic lifted out of player.gd
+# =============================================================================
+# EXPECTED VALUES ARE WRITTEN OUT BY HAND, NOT DERIVED.
+#
+# `1.0 + (level - 1) * PlayerStats.DAMAGE_BONUS_PER_POINT` as an expectation
+# would pass no matter what that constant became, because it is the same
+# expression the function evaluates. These are the numbers the formulas produced
+# before the split, computed separately. Change a constant deliberately and you
+# change the number here too — that edit is the point.
+
+func _test_player_stats() -> void:
+	section("PLAYERSTATS")
+
+	# --- pool maxima -------------------------------------------------------
+	# Healer's real curve: hp_base 140, hp_per_lvl 7.
+	check("level 1 gets exactly the base", PlayerStats.max_for(140, 7, 1) == 140,
+		PlayerStats.max_for(140, 7, 1))
+	check("level 10 gets base + 9 steps", PlayerStats.max_for(140, 7, 10) == 203,
+		PlayerStats.max_for(140, 7, 10))
+	check("level 99 gets base + 98 steps", PlayerStats.max_for(140, 7, 99) == 826,
+		PlayerStats.max_for(140, 7, 99))
+	check("a flat curve never grows", PlayerStats.max_for(20, 0, 50) == 20,
+		PlayerStats.max_for(20, 0, 50))
+
+	# --- defense tiers -----------------------------------------------------
+	# The BOUNDARIES, not the middles. An off-by-one in the comparison would
+	# leave every mid-tier level right and only the threshold wrong, which is
+	# exactly the bug nobody notices while playing.
+	check("defense 1 is Novice", PlayerStats.defense_tier(1)["name"] == "Novice")
+	check("defense 19 is still Novice", PlayerStats.defense_tier(19)["name"] == "Novice")
+	check("defense 20 is Trained", PlayerStats.defense_tier(20)["name"] == "Trained")
+	check("defense 39 is still Trained", PlayerStats.defense_tier(39)["name"] == "Trained")
+	check("defense 40 is Veteran", PlayerStats.defense_tier(40)["name"] == "Veteran")
+	check("defense 60 is Hardened", PlayerStats.defense_tier(60)["name"] == "Hardened")
+	check("defense 80 is Unbreakable", PlayerStats.defense_tier(80)["name"] == "Unbreakable")
+	check("defense 999 is still only Unbreakable",
+		PlayerStats.defense_tier(999)["name"] == "Unbreakable")
+
+	# Reduction is capped at 50% on purpose — a hit always has to still matter.
+	# This would catch a sixth tier being added above Unbreakable without the
+	# consequence being thought through.
+	for tier in PlayerStats.DEFENSE_TIERS:
+		check("the %s tier reduces by at most half" % tier["name"],
+			float(tier["reduction"]) <= 0.50, tier["reduction"])
+
+	# The table is ordered highest-first and defense_tier() takes the first
+	# match walking down. Re-order it and everyone silently gets Novice.
+	var previous: int = 1 << 30
+	for tier in PlayerStats.DEFENSE_TIERS:
+		check("DEFENSE_TIERS is still ordered highest-first at %s" % tier["name"],
+			int(tier["min_level"]) < previous,
+			"%s came after %d" % [tier["min_level"], previous])
+		previous = int(tier["min_level"])
+
+	# --- damage ------------------------------------------------------------
+	check("attack 1 is no bonus",
+		is_equal_approx(PlayerStats.attack_damage_bonus(1), 1.0),
+		PlayerStats.attack_damage_bonus(1))
+	check("attack 101 is +50%",
+		is_equal_approx(PlayerStats.attack_damage_bonus(101), 1.5),
+		PlayerStats.attack_damage_bonus(101))
+	check("magic uses the same rate as attack",
+		is_equal_approx(PlayerStats.magic_damage_bonus(101),
+			PlayerStats.attack_damage_bonus(101)),
+		PlayerStats.magic_damage_bonus(101))
+
+	check("a level 1 character has no damage multiplier",
+		is_equal_approx(PlayerStats.damage_multiplier(1, 1), 1.0),
+		PlayerStats.damage_multiplier(1, 1))
+	check("attack 51 and magic 51 doubles damage",
+		is_equal_approx(PlayerStats.damage_multiplier(51, 51), 2.0),
+		PlayerStats.damage_multiplier(51, 51))
+	check("attack and magic contribute independently",
+		is_equal_approx(PlayerStats.damage_multiplier(51, 1), 1.5)
+		and is_equal_approx(PlayerStats.damage_multiplier(1, 51), 1.5),
+		"%s / %s" % [PlayerStats.damage_multiplier(51, 1),
+			PlayerStats.damage_multiplier(1, 51)])
+
+	# --- attack speed, and THE CAP ----------------------------------------
+	# Callers DIVIDE a cooldown by this. Without the ceiling a high enough
+	# agility divides the cooldown to nothing: an attack every frame, spawning
+	# projectiles faster than they despawn. The cap is the only thing between
+	# the game and that, so it gets tested at and well past the boundary.
+	check("agility 1 attacks at base speed",
+		is_equal_approx(PlayerStats.attack_speed_multiplier(1), 1.0),
+		PlayerStats.attack_speed_multiplier(1))
+	check("agility 51 is +50% speed",
+		is_equal_approx(PlayerStats.attack_speed_multiplier(51), 1.5),
+		PlayerStats.attack_speed_multiplier(51))
+	check("agility 101 reaches the ceiling",
+		is_equal_approx(PlayerStats.attack_speed_multiplier(101), 2.0),
+		PlayerStats.attack_speed_multiplier(101))
+	check("agility 500 does NOT exceed it",
+		is_equal_approx(PlayerStats.attack_speed_multiplier(500), 2.0),
+		PlayerStats.attack_speed_multiplier(500))
+	check("and a cooldown divided by it never reaches zero",
+		PlayerStats.attack_speed_multiplier(999999) > 0.0
+		and PlayerStats.attack_speed_multiplier(999999) <= 2.0,
+		PlayerStats.attack_speed_multiplier(999999))
+	check("nor does it ever drop below base speed",
+		is_equal_approx(PlayerStats.attack_speed_multiplier(0), 1.0),
+		PlayerStats.attack_speed_multiplier(0))
+
+	# --- skill XP ----------------------------------------------------------
+	check("skill level 1 costs the base", PlayerStats.xp_needed_for_skill(1) == 100,
+		PlayerStats.xp_needed_for_skill(1))
+	check("skill level 2 costs 118", PlayerStats.xp_needed_for_skill(2) == 118,
+		PlayerStats.xp_needed_for_skill(2))
+	check("skill level 10 costs 443", PlayerStats.xp_needed_for_skill(10) == 443,
+		PlayerStats.xp_needed_for_skill(10))
+	check("skill level 50 costs 332826", PlayerStats.xp_needed_for_skill(50) == 332826,
+		PlayerStats.xp_needed_for_skill(50))
+
+	# The skill curve is steeper than the character curve on purpose — six
+	# skills compete for the same play time. If they ever converge, someone has
+	# edited one without the other.
+	check("the skill curve is steeper than the character curve",
+		PlayerStats.SKILL_XP_FACTOR > GameConstants.XP_GROWTH,
+		"skill %s vs character %s" % [PlayerStats.SKILL_XP_FACTOR, GameConstants.XP_GROWTH])
+
+	# --- regen -------------------------------------------------------------
+	check("a big pool regenerates by percentage",
+		is_equal_approx(PlayerStats.regen_rate_for(1000, 0.0167, 1.0), 16.7),
+		PlayerStats.regen_rate_for(1000, 0.0167, 1.0))
+	check("a small pool is carried by the floor",
+		is_equal_approx(PlayerStats.regen_rate_for(20, 0.0167, 1.0), 1.0),
+		PlayerStats.regen_rate_for(20, 0.0167, 1.0))
+	check("an empty pool still returns the floor, not zero",
+		is_equal_approx(PlayerStats.regen_rate_for(0, 0.0167, 1.0), 1.0),
+		PlayerStats.regen_rate_for(0, 0.0167, 1.0))
+
+
+# =============================================================================
+# ITEMSTACK
+# =============================================================================
+
+func _test_itemstack() -> void:
+	section("ITEMSTACK")
+
+	var item: ItemData = _any_stackable_item()
+	if item == null:
+		check("a stackable item exists to test with", false,
+			"no stackable ItemData under data/items")
+		return
+
+	var stack := ItemStack.new(item, 1)
+	check("a new stack holds what it was given", stack.quantity == 1, stack.quantity)
+	check("and is not empty", not stack.is_empty())
+
+	# add_to_stack returns the LEFTOVER, which is the part that matters: a caller
+	# that ignores it silently destroys items.
+	var leftover: int = stack.add_to_stack(item.max_stack)
+	check("filling past max_stack returns the overflow",
+		leftover == 1, "leftover %d from max_stack %d" % [leftover, item.max_stack])
+	check("and the stack sits exactly at the ceiling",
+		stack.quantity == item.max_stack, stack.quantity)
+	check("a full stack says so", stack.is_full())
+
+	var removed: int = stack.remove_quantity(item.max_stack + 50)
+	check("removing more than is there removes only what is there",
+		removed == item.max_stack, "removed %d" % removed)
+	check("and leaves it empty", stack.quantity == 0, stack.quantity)
+
+	# THE SAVE ROUND TRIP. Saves store {item_id, quantity} and rehydrate against
+	# the registry — if this ever stops being lossless, every save is wrong.
+	var original := ItemStack.new(item, 3)
+	var rebuilt := ItemStack.from_dict(original.to_dict())
+	check("a stack survives to_dict/from_dict", rebuilt != null, original.to_dict())
+	if rebuilt != null:
+		check("with the same item", rebuilt.data.item_id == item.item_id, rebuilt.data.item_id)
+		check("and the same quantity", rebuilt.quantity == 3, rebuilt.quantity)
+
+	# JSON has no integer type, so a quantity that has been through a server
+	# round trip arrives as 3.0. from_dict has to coerce it; without the int()
+	# cast the assignment to a typed int field is what would fail.
+	var floaty := ItemStack.from_dict({"item_id": item.item_id, "quantity": 3.0})
+	check("a float quantity rehydrates as an int 3",
+		floaty != null and floaty.quantity == 3 and typeof(floaty.quantity) == TYPE_INT,
+		"got %s" % (floaty.quantity if floaty != null else "null"))
+
+	# An unknown id must never produce a stack CLAIMING to be that item.
+	#
+	# Not "returns null": ItemRegistry.get_item() substitutes FALLBACK_ITEM_ID
+	# when error_item.tres exists. It does not exist today, so from_dict returns
+	# null — but asserting null would mean this check silently stopped testing
+	# anything the day someone added the fallback item.
+	var ghost := ItemStack.from_dict({"item_id": "notarealitem", "quantity": 1})
+	check("an unknown item_id never rehydrates as that item",
+		ghost == null or ghost.data.item_id != "notarealitem",
+		ghost.data.item_id if ghost != null else "null")
+
+	check("a dict missing quantity rehydrates as null",
+		ItemStack.from_dict({"item_id": item.item_id}) == null)
+
+
+func _any_stackable_item() -> ItemData:
+	# get_all_items(), not get_all_ids() — the registry returns the resources.
+	for item in ItemRegistry.get_all_items():
+		if item != null and item.stackable and item.max_stack > 1:
+			return item
+	return null
+
+
+# =============================================================================
+# RANKS — the client's half of the server's ordering
+# =============================================================================
+
+func _test_ranks() -> void:
+	section("RANKS")
+
+	var saved_role: String = Api.role
+
+	Api.role = "player"
+	check("a player is at least a player", Api.role_at_least("player"))
+	check("but not a mod", not Api.role_at_least("mod"))
+
+	Api.role = "mod"
+	check("a mod is at least a mod", Api.role_at_least("mod"))
+	check("and outranks a player", Api.role_at_least("player"))
+	check("but is not a dev", not Api.role_at_least("dev"))
+
+	Api.role = "dev"
+	check("a dev outranks a mod", Api.role_at_least("mod"))
+	check("but is not the owner", not Api.role_at_least("owner"))
+
+	Api.role = "owner"
+	check("the owner outranks everything", Api.role_at_least("dev"))
+
+	# FAILS LOW, BOTH WAYS. A response from a newer server naming a rank this
+	# build has never heard of must not read as more privilege than the player
+	# has — and asking about a rank that does not exist must deny, not crash.
+	Api.role = "superuser"
+	check("an unknown rank grants nothing", not Api.role_at_least("player"), Api.role)
+
+	Api.role = "owner"
+	check("an unknown requirement denies", not Api.role_at_least("wizard"))
+
+	# There is no admin rank. The server sends is_admin meaning "dev or above"
+	# for older clients; asking role_at_least("admin") must not quietly pass.
+	check("there is still no admin rank", not Api.role_at_least("admin"))
+
+	Api.role = saved_role

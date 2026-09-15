@@ -31,6 +31,7 @@ var can_teleport := true
 func _on_body_entered(body):
 	if body and can_teleport and (body.name == "Player" or body.is_in_group("player")):
 		can_teleport = false
+		Audio.play("teleport")
 		body.global_position = destination_point.global_position
 
 		# NEW: kills the visible smear across the map during a teleport.

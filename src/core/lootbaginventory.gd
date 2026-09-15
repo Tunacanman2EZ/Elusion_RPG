@@ -342,6 +342,7 @@ func _apply_grant(player: Node, data: Dictionary) -> void:
 				player.set_gold(int(status["gold"]))
 			elif player.has_method("add_gold"):
 				player.add_gold(granted_qty)
+			Audio.play("coin")
 			_notify_player(player, "+%d gold" % granted_qty)
 
 		"lusions":
@@ -350,6 +351,8 @@ func _apply_grant(player: Node, data: Dictionary) -> void:
 			elif player.has_method("add_lusions"):
 				player.add_lusions(granted_qty)
 
+			Audio.play("coin")
+
 			if bool(data.get("duplicate_pet", false)):
 				_notify_player(player, "Already owned — +%d lusions" % granted_qty)
 			else:
@@ -357,6 +360,7 @@ func _apply_grant(player: Node, data: Dictionary) -> void:
 
 		"inventory":
 			var applied: bool = _apply_inventory(data)
+			Audio.play("item_pickup")
 			var item: ItemData = ItemRegistry.get_item(granted_id)
 			var label: String = item.display_name if item != null else granted_id
 			_notify_player(player, ("+%d %s" % [granted_qty, label]) if granted_qty > 1 else label)
@@ -445,6 +449,9 @@ func _handle_refusal(res: Dictionary, player: Node, bag_id: String, cell: int) -
 			_clear_cell(bag_id, cell)
 			_notify_player(player, "That's already gone.")
 		409:
+			# The refusal has its own sound. A take that does nothing and says
+			# nothing audible is indistinguishable from a click that missed.
+			Audio.play("refused")
 			_notify_player(player, "Inventory full")
 		410:
 			_notify_player(player, "That bag is gone.")

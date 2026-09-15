@@ -102,6 +102,31 @@ var is_admin: bool = false
 # require_owner in app.py.
 var is_owner: bool = false
 
+# This account's rank, as the server understands it. The chain of command runs
+# owner > dev > mod > player. Same rules as is_owner - memory only, re-read on every login and
+# resume, never written to session.cfg.
+#
+# is_admin above is a COMPATIBILITY ALIAS. There is no admin rank; the server
+# sends that key meaning "dev or above" because existing client code reads it.
+# New code should read `role` and use role_at_least().
+var role: String = "player"
+
+
+func role_at_least(minimum: String) -> bool:
+	# Mirrors role_at_least() in app.py, and for the same reason: "mod or
+	# above" should be one comparison rather than an expression repeated at
+	# every call site.
+	#
+	# An unrecognised rank sorts as the LOWEST, never the highest. A response
+	# from a newer server naming a rank this build has never heard of must not
+	# be read as more privilege than the player has.
+	var order: PackedStringArray = ["player", "mod", "dev", "owner"]
+	var mine: int = order.find(role)
+	var needed: int = order.find(minimum)
+	if mine < 0 or needed < 0:
+		return false
+	return mine >= needed
+
 
 func is_logged_in() -> bool:
 	return token != ""
@@ -299,6 +324,7 @@ func probe_and_resume() -> Dictionary:
 		username = res.data.get("username", username)
 		is_admin = bool(res.data.get("is_admin", false))
 		is_owner = bool(res.data.get("is_owner", false))
+		role = str(res.data.get("role", "player"))
 		return {"online": true, "resumed": true}
 
 	# Reached the server and it said no — the token expired or was revoked.
@@ -315,6 +341,7 @@ func _adopt_session(data: Dictionary) -> void:
 	username = data.get("username", "")
 	is_admin = bool(data.get("is_admin", false))
 	is_owner = bool(data.get("is_owner", false))
+	role = str(data.get("role", "player"))
 
 	# _save_session() writes the token and username only. is_owner is
 	# deliberately not among them — it is re-read from the server on every
@@ -327,6 +354,7 @@ func _clear_session() -> void:
 	username = ""
 	is_admin = false
 	is_owner = false
+	role = "player"
 	DirAccess.remove_absolute(SESSION_PATH)
 
 

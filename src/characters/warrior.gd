@@ -313,6 +313,12 @@ func attack_action() -> void:
 
 	_set_active()
 	is_attacking = true
+
+	# The swing itself, not the connect. attack_hit fires separately from
+	# BaseEnemy.take_damage() when it lands, so a miss still sounds like a
+	# swing and a hit sounds like both.
+	Audio.play("attack_swing")
+
 	_swing_id += 1
 	var this_swing_id: int = _swing_id
 

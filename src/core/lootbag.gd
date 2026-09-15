@@ -207,6 +207,10 @@ func _try_open() -> void:
 			if entry is Dictionary and str(entry.get("item_id", "")) != "":
 				held += 1
 		print("[LOOT] opening bag %s with %d item(s)" % [_bag_id, held])
+	# Non-positional. You are standing on it, and the panel opening is an event
+	# about you rather than about the world.
+	Audio.play("bag_open")
+
 	hud.open_lootbag(self, _player_nearby)
 
 

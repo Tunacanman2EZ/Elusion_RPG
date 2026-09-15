@@ -285,6 +285,7 @@ func _use_gold_pile(slot: InventorySlot) -> void:
 	if player.has_method("add_gold"):
 		player.add_gold(total)
 
+	Audio.play("coin")
 	slot.clear_stack()
 	_emit_container_changed()
 
@@ -410,6 +411,11 @@ func _use_stamina_potion(slot: InventorySlot) -> void:
 # =============================================================================
 
 func _consume_one_from_stack(slot: InventorySlot, stack: ItemStack) -> void:
+	# The shared funnel for all three potion types, which is why the sound
+	# lives here rather than three times over. The pet path deliberately does
+	# not consume and so never reaches this.
+	Audio.play("potion")
+
 	if _container != null and _container.has_method("remove_quantity_at"):
 		_container.remove_quantity_at(slot.slot_index, 1)
 		return

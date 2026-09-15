@@ -107,6 +107,11 @@ func _open_chest() -> void:
 	anim.play("open")
 	is_open = true
 
+	# With the animation, not with the panel. The panel appears several frames
+	# later at BANK_UI_FRAME, and a chest whose lid creaks open after it has
+	# already opened reads as lag.
+	Audio.play("bank_open")
+
 	if not anim.frame_changed.is_connected(_on_open_frame_changed):
 		anim.frame_changed.connect(_on_open_frame_changed)
 

@@ -282,11 +282,17 @@ func _activate_aura() -> void:
 		# show_notice() comes from player.gd, which this class extends —
 		# no reference to look up, and the de-duplication there means
 		# mashing the aura key with an empty bar shows one label, not forty.
+		Audio.play("refused")
 		show_notice("Not enough mana")
 		return
 
 	# toggling aura on counts as activity
 	_set_active()
+
+	# Below the mana guard — an aura that refused to start should not announce
+	# itself. There is no matching id for switching it off; if that turns out
+	# to want one, it is a new entry in audio.gd rather than a change here.
+	Audio.play("aura_on")
 
 	aura_active      = true
 	aura_timer       = 0.0

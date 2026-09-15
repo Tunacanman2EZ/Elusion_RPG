@@ -56,6 +56,13 @@ func _on_body_entered(body):
 			return
 		if target_spawn_id != "":
 			GameState.next_spawn_id = target_spawn_id
+
+		# Below the two failure returns above, so a ladder with a missing or
+		# unloadable destination stays silent instead of promising a trip it
+		# cannot make. Through the autoload rather than a player on this node,
+		# which is about to be freed by the scene change.
+		Audio.play("door")
+
 		SceneTransition.change_scene(destination_scene)
  
  

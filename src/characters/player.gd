@@ -590,61 +590,29 @@ func _set_skill_proficiency() -> void:
 
 
 # =============================================================================
-# DEFENSE TIERS  (NEW)
+# DEFENSE TIERS
 # =============================================================================
-# tiered damage reduction based on the defense skill level. crossing into a
-# new tier is a real milestone (see _spawn_defense_tier_popup near
-# gain_defense_xp), not just a number ticking up invisibly — five tiers,
-# Novice through Unbreakable, capped at 50% reduction so a hit always still
-# matters no matter how defended you are.
-#
-# NOTE: "poise" (resistance to knockback/interrupt at higher tiers) was
-# discussed alongside this but deliberately isn't included — there's no
-# knockback or hit-interrupt system in the game for poise to resist yet,
-# so attaching a perk to a mechanic that doesn't exist isn't worth doing.
-# worth revisiting as its own real feature if a hit-reaction system ever
-# gets built.
-const DEFENSE_TIERS := [
-	{"min_level": 80, "name": "Unbreakable", "reduction": 0.50},
-	{"min_level": 60, "name": "Hardened",    "reduction": 0.40},
-	{"min_level": 40, "name": "Veteran",     "reduction": 0.30},
-	{"min_level": 20, "name": "Trained",     "reduction": 0.20},
-	{"min_level": 1,  "name": "Novice",      "reduction": 0.10},
-]
+# The tier table and the lookup now live in PlayerStats. These two lines are
+# aliases so `Player.DEFENSE_TIERS` keeps resolving for anything outside this
+# file that reads it — the stats screen does.
+const DEFENSE_TIERS := PlayerStats.DEFENSE_TIERS
 
 
 func _get_defense_tier() -> Dictionary:
-	# returns the highest tier this character's current defense level
-	# qualifies for. DEFENSE_TIERS is ordered highest min_level first, so
-	# the first match walking top-down is always the correct (highest
-	# qualifying) tier.
-	for tier in DEFENSE_TIERS:
-		if defense >= tier["min_level"]:
-			return tier
-	return DEFENSE_TIERS[-1]  # fallback — unreachable since defense starts at 1
+	return PlayerStats.defense_tier(defense)
 
 
 # =============================================================================
-# COMBAT DAMAGE BONUSES  (NEW)
+# COMBAT DAMAGE BONUSES
 # =============================================================================
-# +0.5% damage per point above 1 in the given stat, universal across every
-# class. every class keeps its OWN primary damage formula unchanged
-# (warrior stays attack-driven melee, mage/healer stay magic-driven
-# spells) — these are meant to be layered ON TOP of that, specifically for
-# whichever stat ISN'T already a class's primary driver, so attack and
-# magic both matter for everyone without double-counting a stat a class
-# already fully scales off of. e.g. warrior multiplies its existing
-# attack-based melee damage by get_magic_damage_bonus(); mage/healer
-# multiply their existing magic-based spell damage by
-# get_attack_damage_bonus(); tank (no clear primary stat) applies both to
-# its flat aura_damage.
-const DAMAGE_BONUS_PER_POINT := 0.005
+# See PlayerStats for what these mean and which class applies which.
+const DAMAGE_BONUS_PER_POINT := PlayerStats.DAMAGE_BONUS_PER_POINT
 
 func get_attack_damage_bonus() -> float:
-	return 1.0 + (attack - 1) * DAMAGE_BONUS_PER_POINT
+	return PlayerStats.attack_damage_bonus(attack)
 
 func get_magic_damage_bonus() -> float:
-	return 1.0 + (magic - 1) * DAMAGE_BONUS_PER_POINT
+	return PlayerStats.magic_damage_bonus(magic)
 
 
 func _apply_class_data(data: ClassData) -> void:
@@ -670,9 +638,9 @@ func _apply_class_data(data: ClassData) -> void:
 
 
 func _recompute_max_stats() -> void:
-	max_hp      = hp_base   + (level - 1) * hp_per_lvl
-	max_mana    = mana_base + (level - 1) * mana_per_lvl
-	max_stamina = stam_base + (level - 1) * stam_per_lvl
+	max_hp      = PlayerStats.max_for(hp_base,   hp_per_lvl,   level)
+	max_mana    = PlayerStats.max_for(mana_base, mana_per_lvl, level)
+	max_stamina = PlayerStats.max_for(stam_base, stam_per_lvl, level)
 
 
 func _fill_all_resources() -> void:
@@ -727,10 +695,7 @@ func _tick_regen(delta: float) -> void:
 
 
 func _regen_rate_for(stat_max: int) -> float:
-	# points per second for a pool of this size. The floor matters for classes
-	# with small pools — a warrior with 0 max mana or a 60-stamina pool would
-	# otherwise regenerate at a fraction of a point per second.
-	return maxf(regen_minimum_per_second, float(stat_max) * regen_percent_per_second)
+	return PlayerStats.regen_rate_for(stat_max, regen_percent_per_second, regen_minimum_per_second)
 
 
 # =============================================================================
@@ -861,6 +826,11 @@ func _spawn_defense_tier_popup(tier_name: String) -> void:
 
 
 func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
+	# ABOVE the early return. The skill level went up whether or not there is a
+	# label scene to announce it with, and a missing scene should not silence
+	# the event as well as hiding it.
+	Audio.play("skill_up")
+
 	if FLOATING_LABEL_SCENE == null:
 		return
 	var display: String = SKILL_DISPLAY_NAMES.get(skill_code, skill_code.capitalize())
@@ -967,6 +937,12 @@ func attack_action() -> void:
 		return
 	_set_active()
 	is_attacking = true
+
+	# The base swing. Every class overrides attack_action() and none of them
+	# call super(), so this fires only for a class that has not replaced it —
+	# which is why warrior, mage, tank and healer each carry their own call.
+	Audio.play("attack_swing")
+
 	var anim := get_attack_animation(last_direction)
 	if has_node("animatedsprite2d"):
 		var sprite: AnimatedSprite2D = $animatedsprite2d
@@ -1007,6 +983,10 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 		died.emit()
 		_start_death_sequence()
 		return
+
+	# Survival only — the death sound belongs to _start_death_sequence(), which
+	# is the one that knows whether a revive token is about to cancel the death.
+	Audio.play("player_hurt")
 
 	# integer division on purpose — defense XP is half the damage taken,
 	# rounded down, and maxi() guarantees a 1-damage hit still trains it.
@@ -1067,6 +1047,11 @@ func _start_death_sequence() -> void:
 			print("[PLR]  revive token consumed — full resources")
 		return
 
+	# BELOW the revive branch on purpose. A consumed revive token is not a
+	# death, and playing the death sound before checking would make the most
+	# dramatic sound in the game fire for something that did not happen.
+	Audio.play("player_death")
+
 	var death_anim: String = _get_death_animation()
 	if has_node("animatedsprite2d"):
 		var sprite: AnimatedSprite2D = $animatedsprite2d
@@ -1099,6 +1084,7 @@ func _change_to_game_over() -> void:
 
 func level_up() -> void:
 	level += 1
+	Audio.play("level_up")
 	_recompute_max_stats()
 	_fill_all_resources()
 	_apply_level_up_skill_bonus()
@@ -1135,56 +1121,32 @@ func gain_xp(amount: int) -> void:
 
 
 func xp_needed_for_skill(skill_level: int, base := 100, factor := 1.18) -> int:
-	return int(base * pow(factor, skill_level - 1))
+	# Defaults repeated here rather than referencing PlayerStats.SKILL_XP_BASE,
+	# because a default argument is part of this method's public signature and
+	# several callers pass their own. PlayerStats holds the same two numbers.
+	return PlayerStats.xp_needed_for_skill(skill_level, base, factor)
 
 
 # =============================================================================
-# UNIVERSAL DAMAGE SCALING  (NEW)
+# UNIVERSAL DAMAGE SCALING
 # =============================================================================
-# attack AND magic both contribute a % damage bonus, for EVERY class's
-# every attack — melee or spell — not just whichever skill that class's
-# kit happens to use as its own primary scaling. this is what gives
-# attack/magic XP real payoff across the whole roster: tank/mage/healer
-# all gain attack XP now (see skill_proficiency), and without this, that
-# XP had zero effect on their own damage output at all — only warrior's
-# melee formula ever read it.
-#
-# each class still has its OWN base damage value (base_melee_damage,
-# damage_per_magic reinterpreted as a flat base rather than a per-point
-# multiplier, aura_damage) — this multiplier scales ON TOP of that base,
-# it doesn't replace class identity, just makes both stats matter
-# everywhere. starting percentages, tune to taste.
-const ATTACK_DAMAGE_PERCENT_PER_LEVEL: float = 0.01  # +1% damage per attack level
-const MAGIC_DAMAGE_PERCENT_PER_LEVEL:  float = 0.01  # +1% damage per magic level
+# Aliases. The formulas and the reasoning behind both of these — including why
+# the attack-speed multiplier is capped — are in PlayerStats.
+const ATTACK_DAMAGE_PERCENT_PER_LEVEL := PlayerStats.ATTACK_DAMAGE_PERCENT_PER_LEVEL
+const MAGIC_DAMAGE_PERCENT_PER_LEVEL  := PlayerStats.MAGIC_DAMAGE_PERCENT_PER_LEVEL
 
 func get_damage_multiplier() -> float:
-	return 1.0 \
-		+ (attack - 1) * ATTACK_DAMAGE_PERCENT_PER_LEVEL \
-		+ (magic - 1) * MAGIC_DAMAGE_PERCENT_PER_LEVEL
+	return PlayerStats.damage_multiplier(attack, magic)
 
 
-# AGILITY DRIVES ATTACK SPEED.
-#
-# Until now agility did exactly one thing: move_speed = speed + (agility-1)*10.
-# It was the only one of the four skills with no combat effect at all, so
-# sprinting to level it up bought movement and nothing else. This gives it a
-# second job without touching the movement formula.
-#
-# The CAP is the important part. This is a multiplier something else divides a
-# cooldown by, and an uncapped stat eventually divides by a large enough number
-# to make that cooldown effectively zero — an attack every frame, which breaks
-# animations, spawns projectiles faster than they despawn, and is nobody's idea
-# of a fun build. 2.0 means "at best, twice as fast as base", reached at
-# agility 101 and never exceeded.
-const AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL: float = 0.01  # +1% speed per agility level
-const MAX_ATTACK_SPEED_MULTIPLIER: float = 2.0
+const AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL := PlayerStats.AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL
+const MAX_ATTACK_SPEED_MULTIPLIER := PlayerStats.MAX_ATTACK_SPEED_MULTIPLIER
 
 
 func get_attack_speed_multiplier() -> float:
 	# How much faster than base this character attacks. 1.0 at agility 1.
-	# Divide a cooldown by this; don't multiply a rate by it and forget the cap.
-	var multiplier: float = 1.0 + (agility - 1) * AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL
-	return clampf(multiplier, 1.0, MAX_ATTACK_SPEED_MULTIPLIER)
+	# DIVIDE a cooldown by this; don't multiply a rate by it and forget the cap.
+	return PlayerStats.attack_speed_multiplier(agility)
 
 
 # =============================================================================
@@ -1525,6 +1487,11 @@ func summon_pet(item_id: String) -> bool:
 	# persists it per character slot, so a bad value here would follow the save
 	# around and warn on every scene load.
 	active_pet_id = item_id
+
+	# On the success path only. Every return above leaves the world unchanged,
+	# and a summon sound for a pet that never appeared is worse than silence.
+	Audio.play("pet_summon")
+
 	if OS.is_debug_build():
 		print("[PET]  summoned '%s'" % active_pet_id)
 	return true

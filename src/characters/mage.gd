@@ -138,6 +138,7 @@ func _cast_stalagmite_drop() -> void:
 		# held down, not tapped, so an out-of-mana mage runs this branch on
 		# every input poll — without de-duplication it would bury the screen
 		# in labels for as long as the button was down.
+		Audio.play("refused")
 		show_notice("Not enough mana")
 		return
 	if target_circle_scene == null:
@@ -153,6 +154,10 @@ func _cast_stalagmite_drop() -> void:
 	# but the spell still fires correctly because spawn is immediate.
 	mana -= spell_mana_cost
 	is_casting = true
+
+	# Below every guard, so a cast refused for mana or a missing scene stays
+	# silent. show_notice() already tells the player why.
+	Audio.play("spell_cast")
 	if OS.is_debug_build():
 		print("[MAGE] casting stalagmite (mana now %d)" % mana)
 

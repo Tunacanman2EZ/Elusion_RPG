@@ -1043,8 +1043,28 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 			bar.max_value = max_hp
 		bar.value = hp
 
+	# TWO SOUNDS FOR ONE EVENT, AND THAT IS DELIBERATE.
+	#
+	# "attack_hit" is YOUR feedback that you connected — non-positional,
+	# because the question it answers is "did that land?", which is about you
+	# rather than about where in the world it happened. "enemy_hurt" is the
+	# thing out there reacting, so it attenuates with distance.
+	#
+	# Nothing in this game damages an enemy except the player and their pet, so
+	# "an enemy took damage" and "you connected" are the same event. If that
+	# ever stops being true, this needs a source argument.
+	#
+	# Either id can be left empty in audio.gd's registry and the other still
+	# works. That is the point of calling by id rather than by stream.
+	Audio.play("attack_hit")
+
 	if hp <= 0:
 		_die()
+		return
+
+	# Survival only. A killing blow gets the death sound instead — otherwise
+	# you hear the thing grunt and die in the same frame.
+	Audio.play_at("enemy_hurt", global_position)
 
 
 func _die() -> void:
@@ -1070,6 +1090,17 @@ func _die() -> void:
 	# Position is passed by value for the same reason — global_position will not
 	# exist by the time the bag is spawned.
 	Combat.report_kill(get_enemy_id(), global_position, player)
+
+	# BEFORE queue_free(), and through the autoload rather than a player node
+	# on this enemy. audio.gd's header is about exactly this case: a player
+	# parented to the thing making the sound dies with it, so an enemy playing
+	# its own death sound gets freed mid-playback. The one sound in the game
+	# guaranteed to be cut off would be the one marking a death.
+	#
+	# global_position is read here rather than passed to a deferred call for
+	# the same reason the kill report reads it here — it will not exist in a
+	# frame's time.
+	Audio.play_at("enemy_death", global_position)
 
 	died.emit()
 	queue_free()

@@ -1,6 +1,6 @@
 # adminpanel.gd — minimal admin-only debug tool for viewing another
 # player's save data without disturbing the admin's own active session.
-# toggled via F8 in characterhud.gd, gated behind CharacterData.get_is_admin()
+# toggled via the backquote key in characterhud.gd, gated behind Api.is_owner
 # — non-admins pressing F8 get nothing, not even a hint this panel exists.
 #
 # v1 deliberately keeps this simple: results print to the Output console
@@ -41,7 +41,7 @@ func _on_view_pressed() -> void:
 	# enforcement lives in CharacterData.admin_peek_user_save() itself
 	# (fail-closed if the current session isn't actually an admin) — this
 	# UI-level check is just a friendlier early exit, not the real gate.
-	if not CharacterData.get_is_admin():
+	if not Api.is_owner:
 		return
 
 	if username_input == null:

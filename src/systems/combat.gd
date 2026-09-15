@@ -215,6 +215,11 @@ func _spawn_loot_bag(data: Dictionary, killer: Node, at_position: Vector2) -> vo
 
 	container.add_child(bag)
 
+	# Positional: a bag landing across the field should not be as loud as one
+	# at your feet. Fires whether or not the player ever walks over to it —
+	# it is the sound of something hitting the ground, not of you collecting it.
+	Audio.play_at("bag_drop", at_position)
+
 	# AFTER the position is set, so there is nothing to blend from. Without it
 	# the bag is drawn once at the world origin and streaks to the corpse — the
 	# same physics-interpolation artifact as every projectile in the game.

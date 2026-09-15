@@ -149,6 +149,12 @@ func _fire_projectile() -> void:
 		return
 
 	_set_active()
+
+	# The healer's attack IS the projectile, so this is the cast rather than a
+	# swing. Below the projectile_scene guard above, which returns on a
+	# misconfigured inspector.
+	Audio.play("spell_cast")
+
 	mana -= mana_cost_per_shot
 
 	var direction: Vector2 = _get_direction_to_cursor()
