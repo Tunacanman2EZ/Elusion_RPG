@@ -602,16 +602,10 @@ func _get_direction_to_player_via_navigation() -> String:
 
 
 func _get_secondary_direction_from_vec(vec: Vector2) -> String:
-	# the OPPOSITE axis choice from _get_direction_from_vec — the
-	# wall-slide fallback described above.
-	if abs(vec.x) > abs(vec.y):
-		if vec.y == 0:
-			return ""
-		return "down" if vec.y > 0 else "up"
-	else:
-		if vec.x == 0:
-			return ""
-		return "right" if vec.x > 0 else "left"
+	# the OPPOSITE axis choice from _get_direction_from_vec - the wall-slide
+	# fallback described above. The arithmetic lives in Facing now; this stays
+	# as a name the navigation code already calls.
+	return Facing.secondary_from_vec(vec)
 
 
 # called after move_and_slide() by any caller using navigation-routed
@@ -957,20 +951,14 @@ func _get_direction_to_player() -> String:
 
 
 func _get_direction_from_vec(vec: Vector2) -> String:
-	if abs(vec.x) > abs(vec.y):
-		return "right" if vec.x > 0 else "left"
-	elif abs(vec.y) > 0:
-		return "down" if vec.y > 0 else "up"
-	return ""
+	# Returns "" for a zero vector, which navigation relies on: "no heading" is
+	# a real answer and must not be coerced into a direction. The animation code
+	# in player.gd wants the opposite - see Facing.from_vec_total().
+	return Facing.from_vec(vec)
 
 
 func _vec_from_dir(dir: String) -> Vector2:
-	match dir:
-		"left":  return Vector2.LEFT
-		"right": return Vector2.RIGHT
-		"up":    return Vector2.UP
-		"down":  return Vector2.DOWN
-	return Vector2.ZERO
+	return Facing.to_vec(dir)
 
 
 # =============================================================================

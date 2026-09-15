@@ -61,7 +61,9 @@ func _run_all() -> void:
 	_test_curve_agreement()
 	_test_shared_constants()
 	_test_class_curves()
+	_test_enemy_constants()
 	_test_player_stats()
+	_test_facing()
 	_test_pet_controller()
 	_test_itemstack()
 	_test_ranks()
@@ -288,6 +290,188 @@ func _test_class_curves() -> void:
 				"contract %s, resource %s" % [row.get(field), cls.get(field)])
 
 	check("every class resource was checked", found >= 4, "found %d" % found)
+
+
+# =============================================================================
+# ENEMY DROP CONSTANTS — BaseEnemy vs EXPORTED CONTRACT
+# =============================================================================
+# THE SERVER ROLLS THE LOOT. These constants are authored in baseenemy.gd,
+# exported into data/gamedata.json by src/tools/exportgamedata.gd, and read by
+# Flask when it decides what a kill pays out.
+#
+# So a number edited here without re-running the exporter does not produce a
+# disagreement anyone can see - it produces a server quietly rolling yesterday's
+# drop rates while the code says otherwise. Same failure as the XP curve, on
+# numbers nobody can eyeball because they are 1-in-1296 events.
+
+func _test_enemy_constants() -> void:
+	section("ENEMY DROP RATES — BaseEnemy vs EXPORTED CONTRACT")
+
+	var data := _load_gamedata()
+	if data.is_empty():
+		check("gamedata.json needed for the enemy comparison", false, "see above")
+		return
+
+	var constants: Dictionary = data.get("constants", {})
+
+	check("large_gold_threshold matches",
+		int(constants.get("large_gold_threshold", -1)) == BaseEnemy.LARGE_GOLD_THRESHOLD,
+		"contract %s, game %d" % [constants.get("large_gold_threshold"),
+			BaseEnemy.LARGE_GOLD_THRESHOLD])
+	check("gold_small_id matches",
+		str(constants.get("gold_small_id", "")) == BaseEnemy.GOLD_SMALL_ID,
+		"contract %s, game %s" % [constants.get("gold_small_id"), BaseEnemy.GOLD_SMALL_ID])
+	check("gold_large_id matches",
+		str(constants.get("gold_large_id", "")) == BaseEnemy.GOLD_LARGE_ID,
+		"contract %s, game %s" % [constants.get("gold_large_id"), BaseEnemy.GOLD_LARGE_ID])
+
+	# Both gold ids have to name items that exist, or a kill pays out nothing.
+	check("the small gold item exists", ItemRegistry.has_item(BaseEnemy.GOLD_SMALL_ID),
+		BaseEnemy.GOLD_SMALL_ID)
+	check("the large gold item exists", ItemRegistry.has_item(BaseEnemy.GOLD_LARGE_ID),
+		BaseEnemy.GOLD_LARGE_ID)
+
+	check("pet_odds_fallback matches",
+		int(constants.get("pet_odds_fallback", -1)) == BaseEnemy.PET_ODDS_FALLBACK,
+		"contract %s, game %d" % [constants.get("pet_odds_fallback"),
+			BaseEnemy.PET_ODDS_FALLBACK])
+
+	# JSON HAS NO INTEGER KEYS EITHER. The tier numbers come back as the strings
+	# "1".."4", so this compares int(key) rather than key - the same coercion
+	# every number crossing this boundary needs.
+	var exported_odds: Dictionary = constants.get("pet_odds_by_tier", {})
+	check("the contract carries pet odds per tier", not exported_odds.is_empty(),
+		exported_odds)
+
+	for tier in BaseEnemy.PET_ODDS_BY_TIER:
+		var mine: int = int(BaseEnemy.PET_ODDS_BY_TIER[tier])
+		var theirs: int = int(exported_odds.get(str(tier), -1))
+		check("tier %d drops a pet at the same rate on both sides" % tier,
+			mine == theirs, "game 1-in-%d, contract 1-in-%s" % [mine, theirs])
+
+	check("no tier was exported that the game does not define",
+		exported_odds.size() == BaseEnemy.PET_ODDS_BY_TIER.size(),
+		"contract %d tiers, game %d" % [exported_odds.size(),
+			BaseEnemy.PET_ODDS_BY_TIER.size()])
+
+	# A rarer tier should never be more generous than a commoner one. This is
+	# the check that catches a tuning edit typed into the wrong line - the
+	# numbers are "1 in N", so they must DESCEND as the tier climbs.
+	var previous: int = 1 << 30
+	for tier in [1, 2, 3, 4]:
+		if not BaseEnemy.PET_ODDS_BY_TIER.has(tier):
+			continue
+		var odds: int = int(BaseEnemy.PET_ODDS_BY_TIER[tier])
+		check("tier %d is not rarer than the tier below it" % tier, odds < previous,
+			"tier %d is 1-in-%d, previous was 1-in-%d" % [tier, odds, previous])
+		previous = odds
+
+	# Tier 3 is 1 in 216 on purpose: the original roll was 3d6 needing all
+	# three sixes. Every other tier was tuned around that anchor, so if this
+	# one moves, the others were tuned against something that no longer exists.
+	check("tier 3 is still the original triple-six, 1 in 216",
+		int(BaseEnemy.PET_ODDS_BY_TIER.get(3, -1)) == 216,
+		BaseEnemy.PET_ODDS_BY_TIER.get(3))
+
+
+# =============================================================================
+# FACING — the four-direction rule, formerly written out ten times
+# =============================================================================
+
+func _test_facing() -> void:
+	section("FACING")
+
+	check("a clear right", Facing.from_vec(Vector2(10, 1)) == Facing.RIGHT)
+	check("a clear left", Facing.from_vec(Vector2(-10, 1)) == Facing.LEFT)
+	check("a clear down", Facing.from_vec(Vector2(1, 10)) == Facing.DOWN)
+	check("a clear up", Facing.from_vec(Vector2(1, -10)) == Facing.UP)
+
+	# THE BOUNDARY. `abs(x) > abs(y)` is false when they are equal, so a perfect
+	# diagonal resolves vertically. Not obviously right or wrong - but it is a
+	# decision, and an undocumented decision is one somebody "fixes" later.
+	check("a perfect diagonal goes vertical, not horizontal",
+		Facing.from_vec(Vector2(1, 1)) == Facing.DOWN, Facing.from_vec(Vector2(1, 1)))
+	check("and the same upward", Facing.from_vec(Vector2(-1, -1)) == Facing.UP)
+
+	# THE DISAGREEMENT THIS CLASS EXISTS TO SETTLE. The enemy copies returned ""
+	# here; the player and class copies returned "up". Both are now reachable,
+	# by name, from one place.
+	check("a zero vector has no direction", Facing.from_vec(Vector2.ZERO) == Facing.NONE)
+	check("...unless the caller needs one",
+		Facing.from_vec_total(Vector2.ZERO) == Facing.UP,
+		Facing.from_vec_total(Vector2.ZERO))
+	check("and the caller can pick a different one",
+		Facing.from_vec_total(Vector2.ZERO, Facing.DOWN) == Facing.DOWN)
+	check("a total answer still prefers the real direction when there is one",
+		Facing.from_vec_total(Vector2(10, 1)) == Facing.RIGHT)
+
+	# --- the perpendicular fallback ----------------------------------------
+	check("the secondary axis is the one the primary did not take",
+		Facing.secondary_from_vec(Vector2(10, 1)) == Facing.DOWN)
+	check("and vice versa",
+		Facing.secondary_from_vec(Vector2(1, 10)) == Facing.RIGHT)
+	check("there is no secondary when that axis is flat",
+		Facing.secondary_from_vec(Vector2(10, 0)) == Facing.NONE)
+	check("nor on the other axis",
+		Facing.secondary_from_vec(Vector2(0, 10)) == Facing.NONE)
+
+	# The two must never agree - a wall-slide that returns the direction you
+	# are already stuck against is not a fallback, it is a loop.
+	for v in [Vector2(10, 3), Vector2(-7, 2), Vector2(3, 10), Vector2(2, -9)]:
+		var primary: String = Facing.from_vec(v)
+		var secondary: String = Facing.secondary_from_vec(v)
+		check("primary and secondary differ for %s" % v, primary != secondary,
+			"both %s" % primary)
+
+	# --- round trip ---------------------------------------------------------
+	for dir in Facing.ALL:
+		check("%s survives word -> vector -> word" % dir,
+			Facing.from_vec(Facing.to_vec(dir)) == dir, Facing.to_vec(dir))
+
+	check("an unknown word has no vector", Facing.to_vec("sideways") == Vector2.ZERO)
+	check("and an empty one does not either", Facing.to_vec("") == Vector2.ZERO)
+
+	check("the four words are the only directions",
+		Facing.is_direction("up") and Facing.is_direction("down")
+		and Facing.is_direction("left") and Facing.is_direction("right"))
+	check("and nothing else is",
+		not Facing.is_direction("") and not Facing.is_direction("sideways")
+		and not Facing.is_direction("UP"))
+
+	# --- EQUIVALENCE WITH THE CODE THIS REPLACED ---------------------------
+	# _legacy_walk_animation() below is the exact body that lived in player.gd,
+	# tank.gd, mage.gd, warrior.gd, healer.gd and pet.gd before Facing existed.
+	# Keeping it HERE, in the test, is what turns "this refactor changed
+	# nothing" from a claim into something that fails when it stops being true.
+	#
+	# It is the only copy of that code left in the project, and it is the only
+	# place it belongs: a reference implementation exists to be disagreed with.
+	var samples: Array[Vector2] = [
+		Vector2(10, 1), Vector2(-10, 1), Vector2(1, 10), Vector2(1, -10),
+		Vector2(1, 1), Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1),
+		Vector2(5, 0), Vector2(-5, 0), Vector2(0, 5), Vector2(0, -5),
+		Vector2.ZERO, Vector2(0.001, 0.002), Vector2(-0.5, 0.5),
+		Vector2(1000, 999), Vector2(999, 1000),
+	]
+	var mismatches: int = 0
+	for v in samples:
+		if "walk" + Facing.from_vec_total(v) != _legacy_walk_animation(v):
+			mismatches += 1
+			check("MISMATCH at %s" % v, false,
+				"Facing gave %s, the old code gave %s"
+				% ["walk" + Facing.from_vec_total(v), _legacy_walk_animation(v)])
+	check("Facing agrees with the code it replaced, on %d vectors" % samples.size(),
+		mismatches == 0, "%d disagreed" % mismatches)
+
+
+func _legacy_walk_animation(dir: Vector2) -> String:
+	# DO NOT "TIDY" THIS INTO A CALL TO FACING. It is deliberately the old
+	# duplicated body, character for character, and the moment it delegates to
+	# the thing it is checking, it checks nothing.
+	if abs(dir.x) > abs(dir.y):
+		return "walkright" if dir.x > 0 else "walkleft"
+	else:
+		return "walkdown" if dir.y > 0 else "walkup"
 
 
 # =============================================================================

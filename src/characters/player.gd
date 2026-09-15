@@ -850,25 +850,25 @@ func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
 # ANIMATION HELPERS
 # =============================================================================
 
+# An animation name is a prefix plus one of Facing's four words: "walk" + "left"
+# is "walkleft", which is what every SpriteFrames in the project is named. The
+# axis rule that picks the word lives in Facing now - it was written out
+# thirteen times across this file, the four class scripts, pet.gd and
+# baseenemy.gd, and the copies had already stopped agreeing.
+#
+# from_vec_total, not from_vec: there is no "no animation" to play, so a zero
+# vector still has to resolve to something. It resolves to UP, because that is
+# what the code these replaced returned.
 func get_walk_animation(dir: Vector2) -> String:
-	if abs(dir.x) > abs(dir.y):
-		return "walkright" if dir.x > 0 else "walkleft"
-	else:
-		return "walkdown" if dir.y > 0 else "walkup"
+	return "walk" + Facing.from_vec_total(dir)
 
 
 func get_idle_animation() -> String:
-	if abs(last_direction.x) > abs(last_direction.y):
-		return "idleright" if last_direction.x > 0 else "idleleft"
-	else:
-		return "idledown" if last_direction.y > 0 else "idleup"
+	return "idle" + Facing.from_vec_total(last_direction)
 
 
 func get_attack_animation(dir: Vector2) -> String:
-	if abs(dir.x) > abs(dir.y):
-		return "attackright" if dir.x > 0 else "attackleft"
-	else:
-		return "attackdown" if dir.y > 0 else "attackup"
+	return "attack" + Facing.from_vec_total(dir)
 
 
 func _on_animatedsprite2d_animation_finished() -> void:
@@ -1063,10 +1063,7 @@ func _start_death_sequence() -> void:
 
 
 func _get_death_animation() -> String:
-	if abs(last_direction.x) > abs(last_direction.y):
-		return "deathright" if last_direction.x > 0 else "deathleft"
-	else:
-		return "deathdown" if last_direction.y > 0 else "deathup"
+	return "death" + Facing.from_vec_total(last_direction)
 
 
 func _change_to_game_over() -> void:

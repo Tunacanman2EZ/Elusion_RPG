@@ -43,14 +43,16 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 134 checks at the time of writing; if that number and the one in this
+failure. 177 checks at the time of writing; if that number and the one in this
 file disagree, this file is the stale one. It covers what can be checked without playing: the XP curve, the shared
 constants and class stat curves, `ItemStack`'s save round trip, and the rank
 ordering.
 
-**Most of it checks agreement, not correctness.** `.tres` files and
-`GameConstants` are the source of truth; `data/gamedata.json` is the copy Flask
-reads. Edit one, forget to re-run `src/tools/exportgamedata.gd`, and the two
+**Most of it checks agreement, not correctness.** `.tres` files,
+`GameConstants` and `baseenemy.gd`'s drop constants are the source of truth;
+`data/gamedata.json` is the copy Flask reads — and Flask is what actually rolls
+the loot, so a pet rate edited without re-running the exporter means the server
+pays out the old odds on a 1-in-1296 event nobody could notice by playing. Edit one, forget to re-run `src/tools/exportgamedata.gd`, and the two
 sides quietly disagree about your max HP or the price of a revive — the suite
 exists to make that loud. Add a check here whenever you add a number both sides
 need.
@@ -163,6 +165,30 @@ Before deleting a function because nothing seems to call it, check all three:
   entries with no corresponding code.
 - **Engine virtuals.** `_ready`, `_process`, `_drop_data`,
   `_get_drag_data`, and EditorScript's `_run` are called by Godot.
+
+### Seven copies of the four-direction rule are still out there
+
+`Facing` (in `src/shared/`) owns the rule that turns a Vector2 into "up",
+"down", "left" or "right". `baseenemy.gd` uses it. **`player.gd`, `warrior.gd`,
+`mage.gd`, `tank.gd`, `healer.gd` and `pet.gd` still have their own copies** —
+seven in total, all spelled `if abs(dir.x) > abs(dir.y)`.
+
+They have already drifted, and it is worth knowing which way. The enemy version
+returns `""` for `Vector2.ZERO`; the player and class versions fall through to
+their `else` and return `"up"`. A still enemy faces nowhere, a still character
+faces up, and nobody chose that.
+
+Both behaviours are right for their caller, which is why `Facing` has two
+entry points rather than one winner:
+
+- `from_vec()` — `NONE` when there is no direction. Navigation needs "no
+  heading" to be a real answer rather than a coerced `"down"`.
+- `from_vec_total()` — always a direction. There is no "no animation" to play,
+  so a still sprite has to idle facing somewhere.
+
+The remaining seven are animation-name mapping (`"walk" + direction`), so
+converting them is an eight-file change through code that has no tests. Worth
+doing; not worth doing by accident.
 
 ### The debug keys are staff-only, and that is a rule, not a defence
 
@@ -388,6 +414,7 @@ src/ui/             characterhud, hotbar, statsscreen, floatinglabel, storyscene
 src/ui/bank/        src/ui/inventory/   src/ui/lootbag/   src/ui/menus/
 src/ui/owner/       owner-only tooling, gated on Api.is_owner
 src/world/          levels (elusion, field), interactables, lootbag, roofswap
+src/shared/         pure helpers used across characters, enemies and pets
 src/tools/          the gamedata exporter and the test runner — neither ships
 scene/tests/        tests.tscn, the headless entry point for the test runner
 data/items/         ItemData      data/enemies/  EnemyData

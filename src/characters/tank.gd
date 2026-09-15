@@ -346,20 +346,14 @@ func _deal_aura_damage() -> void:
 # ANIMATION OVERRIDES
 # =============================================================================
 
-func get_walk_animation(dir: Vector2) -> String:
-	if abs(dir.x) > abs(dir.y):
-		return "walkright" if dir.x > 0 else "walkleft"
-	else:
-		return "walkdown" if dir.y > 0 else "walkup"
-
-
-func get_idle_animation() -> String:
-	if abs(last_direction.x) > abs(last_direction.y):
-		return "idleright" if last_direction.x > 0 else "idleleft"
-	else:
-		return "idledown" if last_direction.y > 0 else "idleup"
-
-
+# get_walk_animation() and get_idle_animation() used to be overridden here with
+# code CHARACTER FOR CHARACTER IDENTICAL to Player's. They are deleted rather
+# than converted: an override that does exactly what it overrides is a place for
+# the two to drift apart, and that already happened once in this file with the
+# regen loop, whose own comment read "DUPLICATED FROM PLAYER.GD".
+#
+# get_attack_animation below is a real override - the tank has no attack
+# animation and holds its idle pose - so it stays.
 func get_attack_animation(_dir: Vector2) -> String:
 	# tank has no direct attack — toggling the aura doesn't play an
 	# attack animation. fall back to idle so the player sprite stays
@@ -368,11 +362,9 @@ func get_attack_animation(_dir: Vector2) -> String:
 
 
 func _get_dir_string() -> String:
-	# returns the cardinal string matching last_direction.
-	# used for hitflash animation lookup (hitflashleft / right / up / down).
-	if abs(last_direction.x) > abs(last_direction.y):
-		return "right" if last_direction.x > 0 else "left"
-	return "down" if last_direction.y > 0 else "up"
+	# The cardinal matching last_direction, for hitflash animation lookup
+	# (hitflashleft / right / up / down).
+	return Facing.from_vec_total(last_direction)
 
 
 # =============================================================================

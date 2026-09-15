@@ -441,6 +441,18 @@ func _muzzle_position(dir: Vector2) -> Vector2:
 	return global_position + dir * MUZZLE_OFFSET
 
 
+# Marker NODES are named top/bottom/left/right. Animations are named
+# up/down/left/right. Same four directions, two vocabularies, because one names
+# art and the other names nodes - see _find_muzzle_marker() for why neither is
+# changing. This is the only place the two are mapped onto each other.
+const MARKER_SUFFIX := {
+	Facing.UP:    "top",
+	Facing.DOWN:  "bottom",
+	Facing.LEFT:  "left",
+	Facing.RIGHT: "right",
+}
+
+
 func _find_muzzle_marker(dir: Vector2) -> Node:
 	# MARKERS ARE top/bottom/left/right. One spelling, every scene, no
 	# fallbacks — every pet scene in the project already names them this way
@@ -452,13 +464,11 @@ func _find_muzzle_marker(dir: Vector2) -> Node:
 	# every SpriteFrames in the game and are not changing — see
 	# _play_directional(). Same four directions, two different vocabularies,
 	# because one names art and the other names nodes.
-	var suffix: String
-	if abs(dir.x) > abs(dir.y):
-		suffix = "right" if dir.x > 0 else "left"
-	else:
-		suffix = "bottom" if dir.y > 0 else "top"
-
-	return get_node_or_null(muzzle_marker_prefix + suffix)
+	# Facing decides the AXIS; MARKER_SUFFIX translates its word into this
+	# vocabulary. The decision is shared, the spelling is not - which is the
+	# honest shape of "same four directions, two different names for them".
+	return get_node_or_null(
+		muzzle_marker_prefix + MARKER_SUFFIX[Facing.from_vec_total(dir)])
 
 
 func _fire_projectile(dir: Vector2) -> void:
@@ -532,9 +542,7 @@ func _parent_to_group(node: Node, group_name: String) -> void:
 
 
 func _dir_to_cardinal(dir: Vector2) -> String:
-	if abs(dir.x) > abs(dir.y):
-		return "right" if dir.x > 0 else "left"
-	return "down" if dir.y > 0 else "up"
+	return Facing.from_vec_total(dir)
 
 
 # =============================================================================
@@ -568,12 +576,7 @@ func _play_directional(prefix: String, dir: Vector2, force_restart: bool = false
 	var sprite: AnimatedSprite2D = $animatedsprite2d
 	if sprite.sprite_frames == null:
 		return ""
-	var suffix: String
-	if abs(dir.x) > abs(dir.y):
-		suffix = "right" if dir.x > 0 else "left"
-	else:
-		suffix = "down" if dir.y > 0 else "up"
-	var anim := prefix + suffix
+	var anim: String = prefix + Facing.from_vec_total(dir)
 	if not sprite.sprite_frames.has_animation(anim):
 		return ""
 

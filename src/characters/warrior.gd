@@ -525,10 +525,7 @@ func _get_active_hitbox() -> Area2D:
 # animation is missing — see _octant_from_direction() below for the 8-way
 # version now used for animation selection.
 func _cardinal_from_direction(dir: Vector2) -> String:
-	if abs(dir.x) > abs(dir.y):
-		return "right" if dir.x > 0 else "left"
-	else:
-		return "down" if dir.y > 0 else "up"
+	return Facing.from_vec_total(dir)
 
 
 # NEW: snaps a direction vector to the nearest of 8 equal 45° wedges

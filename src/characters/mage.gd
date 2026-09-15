@@ -248,9 +248,6 @@ func _spawn_stalagmite() -> void:
 # =============================================================================
 
 func _direction_to_string(dir: Vector2) -> String:
-	# snap a Vector2 to one of 4 cardinals for animation name lookup.
-	# matches the convention used by warrior/tank in player.gd.
-	if abs(dir.x) > abs(dir.y):
-		return "right" if dir.x > 0 else "left"
-	else:
-		return "down" if dir.y > 0 else "up"
+	# Snap a Vector2 to one of four cardinals for animation name lookup. The same
+	# rule every other class uses - see Facing.
+	return Facing.from_vec_total(dir)

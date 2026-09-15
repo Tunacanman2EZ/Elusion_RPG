@@ -224,7 +224,4 @@ func _spawn_projectile(direction: Vector2) -> void:
 # =============================================================================
 
 func _direction_to_string(dir: Vector2) -> String:
-	if abs(dir.x) > abs(dir.y):
-		return "right" if dir.x > 0 else "left"
-	else:
-		return "down" if dir.y > 0 else "up"
+	return Facing.from_vec_total(dir)
