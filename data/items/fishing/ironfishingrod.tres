@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Texture2D" path="res://art/pack/fishing/ironfishingrod.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "ironfishingrod"
+display_name = "Iron Fishing Rod"
+description = "A iron-fitted rod. Heavier line, better catches."
+value = 60
+tier = 1
+required_level = 1
+equip_slot = 1
+damage = 2
+type = 1
+icon = ExtResource("1_icon")
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

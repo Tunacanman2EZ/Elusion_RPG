@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Texture2D" path="res://art/pack/fishing/cookedmarshcarp.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "cookedmarshcarp"
+display_name = "Cooked Marsh Carp"
+description = "Marsh Carp, grilled through. Restores 40 health."
+stackable = true
+max_stack = 20
+value = 43
+tier = 2
+required_level = 10
+type = 0
+restore_amount = 40
+restore_target = 1
+icon = ExtResource("1_icon")
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

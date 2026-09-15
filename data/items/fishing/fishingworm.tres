@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Texture2D" path="res://art/pack/fishing/fishingworm.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "fishingworm"
+display_name = "Worm"
+description = "Wriggling bait. Fish are not fussy."
+stackable = true
+max_stack = 99
+value = 2
+tier = 1
+type = 3
+icon = ExtResource("1_icon")
+metadata/_custom_type_script = "uid://ccaysp573wbjk"
