@@ -65,4 +65,16 @@ func xp_needed_for_level(level: int) -> int:
 
 # how long a loot bag survives on the ground before auto-despawning, if it
 # still has items left in it after the player took some.
-const LOOT_BAG_DESPAWN_SECONDS: float = 20.0
+#
+# WAS 20.0, which is shorter than a fight. A pull that ran long meant the bags
+# worth opening - the two and three item ones dropped early - timed out while
+# the single-coin bags dropped last survived, so what you actually collected
+# was biased toward whatever died most recently rather than what dropped best.
+#
+# HARD CEILING IS THE SERVER'S LOOT_BAG_TTL_SECONDS (600), and this must stay
+# well under it. The server deletes the row past its TTL and answers a take
+# with a 410, so a client that outlived it would leave a bag sitting there,
+# openable, that errors the moment you touch it. Losing a bag to the despawn
+# animation is fair; losing it to a phantom is not. Raise both together if 45
+# is still not enough.
+const LOOT_BAG_DESPAWN_SECONDS: float = 45.0
