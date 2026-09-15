@@ -441,6 +441,49 @@ func to_save_array() -> Array:
 	return result
 
 
+func load_server_array(cells: Array) -> void:
+	# THE SERVER'S LAYOUT, APPLIED AS-IS.
+	#
+	# Endpoints that change the backpack - /api/loot/take, /api/staff/grant -
+	# return the WHOLE array, built the way this container would build it: an
+	# existing stack topped up before a new cell is opened. Applying that rather
+	# than calling add_stack() locally is what stops the two laying the same
+	# pickup out differently, which is what happened the first time a potion
+	# landed on a part-used stack.
+	#
+	# The coercion is the reason this is a method rather than a line at each call
+	# site. JSON HAS NO INTEGER TYPE, so every quantity arrives as a float, and
+	# ItemStack.from_dict() building a stack of 5.0 is not a stack of 5. There
+	# were two places doing this the moment /api/staff/grant existed; now there
+	# is one.
+	#
+	# AN EMPTY ARRAY IS NOT AN EMPTY BACKPACK, and applying one would be data
+	# loss. inventory_payload() always returns CARRY_CAPACITY cells with null in
+	# the gaps, so a genuinely empty bag arrives as [null, null, ...] of length 20.
+	# A ZERO-LENGTH array means the key was missing - a malformed reply, a 500
+	# body, a renamed field - and load_save_array() opens with clear_inventory().
+	# Doing nothing is the only safe reading of "the server told me nothing".
+	if cells.is_empty():
+		push_warning("InventoryContainer: server sent no inventory array - leaving the bag alone")
+		return
+
+	var cleaned: Array = []
+	cleaned.resize(cells.size())
+	for i in range(cells.size()):
+		var cell = cells[i]
+		if not (cell is Dictionary):
+			continue
+		var item_id: String = str(cell.get("item_id", ""))
+		if item_id == "":
+			continue
+		cleaned[i] = {
+			"item_id": item_id,
+			"quantity": maxi(int(cell.get("quantity", 1)), 1),
+		}
+
+	load_save_array(cleaned)
+
+
 func load_save_array(save_array: Array) -> void:
 	clear_inventory()
 

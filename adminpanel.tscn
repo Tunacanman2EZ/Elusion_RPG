@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://dit88ltaag158"]
+
+[ext_resource type="Script" uid="uid://bos6ilrriqa0v" path="res://src/ui/owner/ownerpanel.gd" id="1_33so0"]
+
+[node name="adminpanel" type="Control" unique_id=1800928466]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_33so0")
+
+[node name="usernameinput" type="LineEdit" parent="." unique_id=1354814840]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 132.0
+offset_bottom = 31.0
+
+[node name="viewbutton" type="Button" parent="." unique_id=1644512135]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 8.0
+offset_bottom = 8.0

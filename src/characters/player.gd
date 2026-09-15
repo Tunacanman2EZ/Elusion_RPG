@@ -1473,33 +1473,66 @@ func dismiss_pet() -> void:
 # out free items, free pets and free lusions; they should refuse on their own
 # authority rather than inherit safety from their caller.
 func _debug_give_item(item_id: String, quantity: int) -> void:
+	# THE SERVER GRANTS IT. THIS DOES NOT.
+	#
+	# This used to build an ItemStack and push it into the local grid, then save -
+	# so the item existed because the client said so, and the rank check that
+	# guarded the key lived in the client too. A patched build set Api.role to
+	# "owner" and had the keys back; it did not even need to, since it could write
+	# the item straight into the array it was about to send.
+	#
+	# POST /api/staff/grant is @require_role("mod") on the server, writes
+	# carry_items itself, and records the grant in staff_actions. The decision is
+	# now on the side of the wire the player does not control, and every staff
+	# item has a line in the audit log next to the bans.
+	#
+	# _staff_debug_allowed() stays as the early exit. It stops an honest player
+	# firing a request that would be refused; it is not what does the refusing.
 	if not _staff_debug_allowed():
 		return
-	var data := ItemRegistry.get_item(item_id)
-	if data == null:
-		print("DEBUG: item '%s' not found in registry" % item_id)
+
+	var res: Dictionary = await Api.post("/api/staff/grant", {
+		"slot": CharacterData.active_character_index,
+		"item_id": item_id,
+		"quantity": quantity,
+	})
+
+	# PAST AN AWAIT. If this player was freed while the request was in flight
+	# Godot drops the coroutine here and nothing below runs, which is the correct
+	# outcome - but it means anything after this point must not assume the world
+	# is as it was. Re-find the grid rather than holding a reference across it.
+	if not res.get("ok", false):
+		var status: int = int(res.get("status", 0))
+		if status == 404:
+			print("DEBUG: refused - not staff on the server, or no character in this slot")
+		elif status == 409:
+			print("DEBUG: refused - backpack full")
+		elif status == 0:
+			print("DEBUG: refused - server unreachable (%s)" % res.get("error", ""))
+		else:
+			print("DEBUG: refused - %d %s" % [status, res.get("error", "")])
 		return
 
-	var stack := ItemStack.new(data, quantity)
+	var container: Node = _debug_inventory_container()
+	if container == null:
+		# The server HAS granted it. Saying so matters: the item is real and will
+		# be there on the next load, and "nothing happened" would be a lie.
+		print("DEBUG: granted %d x %s - reopen the inventory to see it" % [quantity, item_id])
+		return
+
+	container.load_server_array(res.data.get("inventory", []))
+	print("DEBUG: granted %d x %s" % [quantity, item_id])
+
+
+func _debug_inventory_container() -> Node:
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud == null:
 		print("DEBUG: HUD not found in 'hud' group")
-		return
-
+		return null
 	if hud.inventory_screen == null:
 		print("DEBUG: open the inventory at least once before using debug keys")
-		return
-
-	var container: Node = hud.inventory_screen.get_node_or_null("%inventorycontainer")
-	if container == null:
-		print("DEBUG: inventorycontainer not found in inventory_screen")
-		return
-
-	if container.add_stack(stack):
-		print("DEBUG: gave %d x %s" % [quantity, data.display_name])
-		CharacterData.save_character_state(self)
-	else:
-		print("DEBUG: inventory full or partial fit — couldn't add full quantity")
+		return null
+	return hud.inventory_screen.get_node_or_null("%inventorycontainer")
 
 
 func _debug_give_lusions(amount: int) -> void:

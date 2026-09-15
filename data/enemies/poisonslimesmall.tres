@@ -1,18 +1,11 @@
-[gd_resource type="Resource" script_class="EnemyData" format=3]
+[gd_resource type="Resource" script_class="EnemyData" format=3 uid="uid://bg1ms0jppi2x4"]
 
-[ext_resource type="Script" path="res://src/types/enemydata.gd" id="1_enemydata"]
+[ext_resource type="Script" uid="uid://bbmcaokoqjh1i" path="res://src/types/enemydata.gd" id="1_enemydata"]
 
 [resource]
 script = ExtResource("1_enemydata")
 enemy_id = "poisonslimesmall"
 display_name = "Poison Slime"
-grants_rewards = true
-xp_reward = 20
-attack_xp_reward = 5
-bag_drop_chance = 0.3
-max_loot_tier = 1
-max_item_slots = 3
-slot_fill_chance = 0.15
 pet_drop_id = "petpoisonslimesmall"
 rare_pet_drop_id = "petpoisonslimelarge"
 rare_pet_chance = 0.2

@@ -400,23 +400,10 @@ func _apply_inventory(data: Dictionary) -> bool:
 		push_warning("LootBagInventory: player inventory not found — the server has the item, this screen does not")
 		return false
 
-	# Quantities arrive as JSON floats. load_save_array() builds an ItemStack
-	# out of each entry, and a stack of 5.0 is not a stack of 5.
-	var cleaned: Array = []
-	cleaned.resize(cells.size())
-	for i in range(cells.size()):
-		var cell = cells[i]
-		if not (cell is Dictionary):
-			continue
-		var item_id: String = str(cell.get("item_id", ""))
-		if item_id == "":
-			continue
-		cleaned[i] = {
-			"item_id": item_id,
-			"quantity": maxi(int(cell.get("quantity", 1)), 1),
-		}
-
-	inv_container.load_save_array(cleaned)
+	# The coercion and the load both live on the container now - /api/staff/grant
+	# needed the identical thing, and two copies of "parse the server's array"
+	# is how they stop agreeing.
+	inv_container.load_server_array(cells)
 	return true
 
 
