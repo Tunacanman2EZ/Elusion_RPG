@@ -84,31 +84,26 @@ func is_known_offline() -> bool:
 # SESSION STATE
 # =============================================================================
 
-# set by login()/register(), cleared by logout(). the token is the only
-# thing that proves who this client is — is_admin and username are
-# conveniences echoed by the server, never something we decide locally.
+# set by login()/register(), cleared by logout(). the token is the only thing
+# that proves who this client is — username and role are conveniences echoed by
+# the server, never something we decide locally.
 var token: String = ""
 var username: String = ""
-var is_admin: bool = false
 
 # Whether this account is the server's OWNER, as the server understands it.
 #
-# Held only in memory and never written to session.cfg, unlike is_admin, which
-# CharacterData mirrors into account_data and therefore into the save. A
-# permission that lives in a file is a permission that can be edited; this one
-# has to come from a login response every time.
+# Held only in memory and never written to session.cfg. A permission that lives
+# in a file is a permission that can be edited; this one has to come from a
+# login response every time.
 #
 # It is still only good for hiding buttons. The server decides for real - see
 # require_owner in app.py.
 var is_owner: bool = false
 
 # This account's rank, as the server understands it. The chain of command runs
-# owner > dev > mod > player. Same rules as is_owner - memory only, re-read on every login and
-# resume, never written to session.cfg.
-#
-# is_admin above is a COMPATIBILITY ALIAS. There is no admin rank; the server
-# sends that key meaning "dev or above" because existing client code reads it.
-# New code should read `role` and use role_at_least().
+# owner > dev > mod > player, and there is no fifth rank. Same rules as is_owner
+# - memory only, re-read on every login and resume, never written to
+# session.cfg.
 var role: String = "player"
 
 
@@ -147,7 +142,7 @@ func _ready() -> void:
 
 func _log_server_reachability() -> void:
 	# DEBUG ONLY, and purely informational — this never touches token,
-	# username or is_admin. resume_session() is the function that judges a
+	# username or role. resume_session() is the function that judges a
 	# cached session and clears it on rejection; this one only reports.
 	#
 	# WHY IT EXISTS: nothing at boot said whether the server was up. "My save
@@ -322,7 +317,6 @@ func probe_and_resume() -> Dictionary:
 
 	if res.get("ok", false):
 		username = res.data.get("username", username)
-		is_admin = bool(res.data.get("is_admin", false))
 		is_owner = bool(res.data.get("is_owner", false))
 		role = str(res.data.get("role", "player"))
 		return {"online": true, "resumed": true}
@@ -339,7 +333,6 @@ func probe_and_resume() -> Dictionary:
 func _adopt_session(data: Dictionary) -> void:
 	token = data.get("token", "")
 	username = data.get("username", "")
-	is_admin = bool(data.get("is_admin", false))
 	is_owner = bool(data.get("is_owner", false))
 	role = str(data.get("role", "player"))
 
@@ -352,7 +345,6 @@ func _adopt_session(data: Dictionary) -> void:
 func _clear_session() -> void:
 	token = ""
 	username = ""
-	is_admin = false
 	is_owner = false
 	role = "player"
 	DirAccess.remove_absolute(SESSION_PATH)

@@ -25,11 +25,11 @@
 # apart either, so it tries login first (the common case for a returning
 # player, one call) and only falls back to register on failure.
 #
-# ADMIN: no longer decided here. It used to be a hardcoded username
-# comparison running on the player's own machine, which anyone could patch
-# out or fake. It's a database column now, returned by the login response,
-# and mirrored into CharacterData so the rest of the game's existing
-# get_is_admin() calls keep working unchanged.
+# RANK: not decided here, and never mirrored into a save. It used to be a
+# hardcoded username comparison running on the player's own machine, which
+# anyone could patch out or fake. The server decides it, returns it with the
+# login response, and Api.role holds it in memory for as long as the session
+# lasts. owner > dev > mod > player, and nothing on disk has a say.
 #
 # SECURITY NOTES (read before touching):
 # - no password ever touches disk here. "remember me" stores the USERNAME
@@ -302,7 +302,6 @@ func _complete_login(typed_username: String) -> void:
 	# against empty slots and the data would arrive after the screen had already
 	# decided there were no characters.
 	await CharacterData.load_for_user(canonical_username)
-	_sync_admin_from_server()
 	_go_to_character_select()
 
 
@@ -311,19 +310,6 @@ func _go_to_character_select() -> void:
 		push_warning("LoginMenu: char_select_scene not assigned in the Inspector — cannot continue")
 		return
 	get_tree().change_scene_to_packed(char_select_scene)
-
-
-func _sync_admin_from_server() -> void:
-	# CHANGED: was a hardcoded `username == ADMIN_USERNAME` check running on
-	# the player's machine. The flag now comes from the users table and
-	# arrives in the login response; this just mirrors it into CharacterData
-	# so existing get_is_admin() callers elsewhere keep working.
-	#
-	# Note this writes on every login rather than only on change — the
-	# server's answer is authoritative, so a revoked admin has to be able
-	# to drop back to false, not stay true because it was true once.
-	if CharacterData.get_is_admin() != Api.is_admin:
-		CharacterData.set_is_admin(Api.is_admin)
 
 
 func _set_busy(busy: bool, lock_fields: bool = true) -> void:

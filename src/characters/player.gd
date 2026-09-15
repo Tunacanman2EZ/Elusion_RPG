@@ -59,7 +59,7 @@ var character_name := "player"
 # by ANY means — not just the natural level_up() flow below, but also
 # typing a new value directly into the Remote Inspector while the game is
 # running (e.g. testing "what does level 50 feel like against this boss")
-# or an admin tool setting it directly. previously max stats only
+# or a debug key setting it directly. previously max stats only
 # recomputed at _ready() and inside level_up() — manually editing level
 # any other way left max_hp/mana/stamina stale at whatever they were
 # before, not matching the new level at all. runs _recompute_max_stats()

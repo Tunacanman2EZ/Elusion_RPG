@@ -102,7 +102,6 @@ const DEFAULT_ACCOUNT_DATA := {
 	"lusions":         0,    # account-shared, soulbound premium currency
 	"bank_gold":       0,    # account-shared, safe from death
 	"bank_inventory":  [],   # account-shared item array (50 slots)
-	"is_admin":        false,# NEW — see get_is_admin()/set_is_admin() below
 }
  
 # --- anti-tamper sanity ranges — PLACEHOLDERS, confirm against your design ---
@@ -244,40 +243,6 @@ func _save_path_for_user(username: String) -> String:
  
  
 # =============================================================================
-# ADMIN — READ-ONLY SAVE VIEWING  (NEW)
-# =============================================================================
- 
-func admin_peek_user_save(username: String) -> Dictionary:
-	# read-only view into ANOTHER user's save file, WITHOUT disturbing the
-	# admin's own currently-loaded session — unlike load_for_user(), which
-	# REPLACES the active session, this uses a throwaway LocalStorage
-	# instance scoped to just this one read. character_slots/account_data/
-	# storage on this autoload are never touched.
-	#
-	# FAIL-CLOSED: denies (returns {}) unless the CURRENTLY LOGGED IN user
-	# is an admin. this is the actual enforcement point — UI-level gating
-	# (hiding the admin panel from non-admins) is a nice-to-have on top of
-	# this, not a substitute for it.
-	if not get_is_admin():
-		push_warning("CharacterData: admin_peek_user_save() called without admin privileges — denying.")
-		return {}
- 
-	# NEEDS A SERVER ENDPOINT, AND SAYS SO RATHER THAN LYING.
-	#
-	# This used to open user://character_<name>.save with a throwaway
-	# LocalStorage and hand back the parsed dictionary. Those files are not
-	# written any more — a character is rows in the server's database — so the
-	# read would find nothing and this would return {} on every call, which the
-	# admin panel would render as "that user has no characters".
-	#
-	# An admin being quietly told the wrong thing is worse than an admin being
-	# told the feature is not built. It needs a GET /api/admin/user/<name>
-	# behind the users.is_admin column, and until that exists this refuses.
-	push_warning("CharacterData: admin_peek_user_save('%s') needs a server endpoint — saves are no longer local files. Not implemented." % username)
-	return {}
- 
- 
-# =============================================================================
 # DEFENSIVE INITIALIZATION
 # =============================================================================
  
@@ -301,6 +266,11 @@ func _ensure_account_data() -> void:
 	for key in DEFAULT_ACCOUNT_DATA:
 		if not account_data.has(key):
 			account_data[key] = DEFAULT_ACCOUNT_DATA[key]
+
+	# Leftover from the removed admin flag. Nothing reads it, but a key left in
+	# the payload is a key that outlives everyone who knows what it meant.
+	# Ranks live on the server now — Api.role, owner > dev > mod > player.
+	account_data.erase("is_admin")
  
 	# ensure bank_inventory is exactly BANK_MAX_SLOTS long with nulls for empty
 	var bank: Array = account_data.get("bank_inventory", [])
@@ -587,8 +557,8 @@ func _validate_item_array(items: Array, context: String) -> Array:
 # gone, along with SAVE_SIGNING_KEY.
 #
 # They existed to detect a save file edited in a text editor: sign the payload
-# with a key baked into the build, check it on load, and force is_admin false on
-# a mismatch. Honest obfuscation for a LOCAL file, and the class comment always
+# with a key baked into the build, check it on load, and revoke any elevated
+# permission on a mismatch. Honest obfuscation for a LOCAL file, and the class comment always
 # said so — anyone who decompiled the game could extract the key.
 #
 # There is no local file any more. Characters live in the server's database,
@@ -596,10 +566,9 @@ func _validate_item_array(items: Array, context: String) -> Array:
 # the wire rather than off the player's disk. Signing them would be signing our
 # own request and checking our own signature.
 #
-# is_admin is the one thing that mattered most here, and it is better protected
-# now than signing ever made it: it is a column on the users table, returned by
-# the login response, and ServerStorage reads it from Api.is_admin rather than
-# from anything the save payload says. There is nothing to edit.
+# Rank was the one thing that mattered most here, and it is better protected now
+# than signing ever made it: the server decides it, returns it with the login
+# response, and the client holds it in memory only. There is nothing to edit.
 
 # =============================================================================
 # SAVE / LOAD
@@ -1058,35 +1027,6 @@ func set_account_lusions(value: int) -> void:
 func add_account_lusions(amount: int) -> void:
 	_ensure_account_data()
 	account_data["lusions"] = max(int(account_data.get("lusions", 0)) + int(amount), 0)
-	save_data()
- 
- 
-# --- admin flag (account-shared, persisted) ---
-# NEW: persisted admin status, replacing the old hardcoded-username check
-# that used to run fresh on every login with no memory of it. granted once
-# — typically the first time ADMIN_USERNAME logs in, see loginmenu.gd's
-# _grant_admin_if_applicable() — then persists as part of THIS account's
-# own save data from then on, independent of the ADMIN_USERNAME constant.
-# that means additional admins could be granted later without hardcoding
-# more usernames, and it's what makes "memory of admin across logins" work
-# at all — see class comment for the signature-mismatch safeguard on this
-# specific field.
-#
-# FUTURE / ONLINE NOTE: deliberately modeled as "a flag on this account's
-# own data," not a client-side live check, so a later move to a real
-# server means is_admin becomes a server-side database flag instead of a
-# local-save flag — a migration, not a redesign. once there's an actual
-# server, don't grant real admin gameplay powers purely from client-side
-# state without server-side verification too.
- 
-func get_is_admin() -> bool:
-	_ensure_account_data()
-	return bool(account_data.get("is_admin", false))
- 
- 
-func set_is_admin(value: bool) -> void:
-	_ensure_account_data()
-	account_data["is_admin"] = value
 	save_data()
  
  

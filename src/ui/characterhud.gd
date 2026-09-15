@@ -137,11 +137,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _toggle_owner_panel() -> void:
-	# THE OWNER, not merely an admin. is_admin is a database column that a
-	# future mod or dev could hold; the owner is named in the server's
-	# environment and is the one account that cannot be granted. Read straight
-	# from Api rather than through CharacterData, because that flag is never
-	# persisted — there is no file holding it to edit.
+	# THE OWNER SPECIFICALLY, not any rank that can be handed out. A mod or a
+	# dev is granted and can be revoked; the owner is named in the server's
+	# environment and is the one account that cannot be either. Read straight
+	# from Api because rank is never persisted — there is no file holding it
+	# to edit.
 	#
 	# Cosmetic either way. The server is what actually refuses; this only
 	# decides whether the panel opens.

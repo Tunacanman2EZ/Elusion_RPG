@@ -37,7 +37,7 @@ func _ready() -> void:
 	# for the logged-in user. reloading again here was not just redundant
 	# but appeared to be actively re-triggering signature verification
 	# against a freshly round-tripped copy of the same data, which was
-	# resetting is_admin even without real tampering.
+	# revoking permissions even without real tampering.
 	update_slot_labels()
 
 

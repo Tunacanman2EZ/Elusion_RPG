@@ -192,10 +192,6 @@ func _account_from_server(data: Dictionary) -> Dictionary:
 		"lusions":        _int(data.get("lusions", 0)),
 		"bank_gold":      _int(data.get("bank_gold", 0)),
 		"bank_inventory": _items_from_server(_array(data.get("bank_inventory", []))),
-		# NOT from the account payload. is_admin is a column on `users` and
-		# arrives with the login response — Api.is_admin holds the server's
-		# answer, and that is the only one that counts.
-		"is_admin":       Api.is_admin,
 	}
 
 

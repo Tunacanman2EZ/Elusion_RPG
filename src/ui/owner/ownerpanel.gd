@@ -5,11 +5,10 @@
 # Anyone who is not the owner gets no response at all, not even a hint the
 # panel exists.
 #
-# OWNER, not admin, and the distinction is the point. is_admin is a database
-# column a future mod or dev could hold; the owner is named in the server's
-# environment (ELUSION_OWNER) and is the one account that cannot be granted or
-# revoked. This panel reads other people's saves, so it belongs to the narrower
-# of the two.
+# THE OWNER SPECIFICALLY, not "staff". A mod or a dev is a rank the owner hands
+# out and can take back; the owner is named in the server's environment
+# (ELUSION_OWNER) and is the one account that cannot be granted or revoked.
+# Reading other people's saves belongs to the narrowest of the four.
 #
 # v1 deliberately keeps this simple: results print to the Output console
 # rather than a dedicated display widget, matching this project's existing
@@ -46,9 +45,8 @@ func _ready() -> void:
 # =============================================================================
 
 func _on_view_pressed() -> void:
-	# enforcement lives in CharacterData.admin_peek_user_save() itself
-	# (fail-closed if the current session isn't actually an admin) — this
-	# UI-level check is just a friendlier early exit, not the real gate.
+	# Api.is_owner only hides the button. The server is the gate, and it has to
+	# be, because this client is the thing an attacker controls.
 	if not Api.is_owner:
 		return
 
@@ -58,13 +56,20 @@ func _on_view_pressed() -> void:
 	if username == "":
 		return
 
-	var data: Dictionary = CharacterData.admin_peek_user_save(username)
-	if data.is_empty():
-		if OS.is_debug_build():
-			print("ADMIN: no save found for user '%s'" % username)
-		return
-
-	_print_save_summary(username, data)
+	# NOT BUILT, AND SAYS SO RATHER THAN LYING.
+	#
+	# This used to call CharacterData.admin_peek_user_save(), which read
+	# user://character_<name>.save through a throwaway LocalStorage. Those files
+	# stopped existing when characters moved into the server's database, so the
+	# read found nothing and the panel rendered "that user has no characters"
+	# for every name you typed. Being told the wrong thing confidently is worse
+	# than being told the feature is missing.
+	#
+	# It needs a GET /api/staff/user/<name> behind require_role("mod"), and
+	# _print_save_summary() below is the display half waiting for it.
+	push_warning("OwnerPanel: viewing another player's save needs a server endpoint (GET /api/staff/user/<name>). Not built yet.")
+	if OS.is_debug_build():
+		print("[OWNER] save viewing is not implemented - no server endpoint yet")
 
 
 # =============================================================================
@@ -83,7 +88,7 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 	if not OS.is_debug_build():
 		return
 
-	print("========== ADMIN VIEW: %s ==========" % username)
+	print("========== OWNER VIEW: %s ==========" % username)
 	print("version: %s" % str(data.get("version")))
 	print("saved_at: %s" % str(data.get("saved_at")))
 
@@ -91,7 +96,6 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 	print("--- account_data ---")
 	print("  lusions: %s" % str(account.get("lusions")))
 	print("  bank_gold: %s" % str(account.get("bank_gold")))
-	print("  is_admin: %s" % str(account.get("is_admin")))
 
 	var slots: Array = data.get("character_slots", [])
 	print("--- character_slots ---")

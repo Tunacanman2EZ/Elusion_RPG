@@ -528,8 +528,21 @@ func _test_ranks() -> void:
 	Api.role = "owner"
 	check("an unknown requirement denies", not Api.role_at_least("wizard"))
 
-	# There is no admin rank. The server sends is_admin meaning "dev or above"
-	# for older clients; asking role_at_least("admin") must not quietly pass.
-	check("there is still no admin rank", not Api.role_at_least("admin"))
+	# There are exactly four ranks and nothing else is one. This is the check
+	# that fails if a fifth is ever added to app.py without being added here -
+	# a client that does not know a rank must treat it as no privilege at all,
+	# and the only way that stays true is if the two lists agree.
+	# Every real rank is at least a player, so this passes for all four and
+	# fails for anything role_at_least() does not recognise.
+	var expected: PackedStringArray = ["player", "mod", "dev", "owner"]
+	for rank in expected:
+		Api.role = rank
+		check("%s is a rank this build knows" % rank, Api.role_at_least("player"), rank)
+
+	# ...and the owner outranks or equals every one of them.
+	Api.role = "owner"
+	for rank in expected:
+		check("the owner satisfies a %s requirement" % rank,
+			Api.role_at_least(rank), rank)
 
 	Api.role = saved_role

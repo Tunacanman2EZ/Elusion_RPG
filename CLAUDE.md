@@ -23,7 +23,7 @@ repository — run this from *its* folder, not from this one:
 .\venv\Scripts\python.exe test_api.py
 ```
 
-262 checks, exits non-zero on any failure. It uses a throwaway database in your
+365 checks, exits non-zero on any failure. It uses a throwaway database in your
 temp folder and never touches `elusion.db`.
 
 No relative path is given on purpose. The two repositories are separate
@@ -43,7 +43,8 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. It covers what can be checked without playing: the XP curve, the shared
+failure. 120 checks at the time of writing; if that number and the one in this
+file disagree, this file is the stale one. It covers what can be checked without playing: the XP curve, the shared
 constants and class stat curves, `ItemStack`'s save round trip, and the rank
 ordering.
 
