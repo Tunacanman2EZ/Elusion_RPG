@@ -80,7 +80,15 @@ var _contents: Array = []
 var _owner_player: Node = null
 var _player_nearby: Node = null
 var _has_pet: bool = false
-var _spawn_timer: float = 0.0
+# A DEADLINE, NOT A COUNTDOWN.
+#
+# It used to be a float ticked down in _process(), which meant every bag on the
+# ground had to run a frame callback purely to subtract from a number - and
+# because the countdown had to keep running whether or not anyone was near, the
+# bag could never turn processing off. A deadline needs nothing to tick it, so
+# _process() can be switched off entirely until a player is actually standing
+# in range. See _set_listening().
+var _spawn_deadline_msec: int = 0
 var _is_open: bool = false
 
 
@@ -101,7 +109,13 @@ func _ready() -> void:
 	if anim != null and anim.sprite_frames != null and anim.sprite_frames.has_animation("idle"):
 		anim.play("idle")
 
-	_spawn_timer = SPAWN_GRACE_PERIOD
+	_spawn_deadline_msec = Time.get_ticks_msec() + int(SPAWN_GRACE_PERIOD * 1000.0)
+
+	# NOTHING TO DO UNTIL SOMEONE WALKS UP. The only thing _process() does is
+	# poll one key, which cannot matter to a bag with no player in range - and
+	# a pile of bags each polling it every frame is a pile of frame callbacks
+	# doing nothing. _on_body_entered/_on_body_exited turn it back on.
+	set_process(false)
 
 	# So bags can see each other - _is_nearest_candidate() needs to enumerate
 	# the others to decide which one a press belongs to.
@@ -120,9 +134,9 @@ func _ready() -> void:
 	_apply_beam_state()
 
 
-func _process(delta: float) -> void:
-	if _spawn_timer > 0.0:
-		_spawn_timer -= delta
+func _process(_delta: float) -> void:
+	# Only runs while a player is standing in range - see _set_listening().
+	if _in_spawn_grace():
 		return
 
 	if _is_open:
@@ -183,7 +197,7 @@ func _is_nearest_candidate() -> bool:
 
 		# A bag still inside its spawn grace period cannot be opened yet, so
 		# letting it compete would just block the bag the player meant.
-		if float(bag.get("_spawn_timer")) > 0.0:
+		if bag.has_method("_in_spawn_grace") and bag.call("_in_spawn_grace"):
 			continue
 
 		if bag.global_position.distance_squared_to(_player_nearby.global_position) < my_distance:
@@ -304,15 +318,35 @@ func _on_despawn_timeout() -> void:
 # AREA SIGNAL HANDLERS
 # =============================================================================
 
+func _in_spawn_grace() -> bool:
+	# Blocks the interact key for a moment after the bag lands, so a bag
+	# dropping under a player who is holding interact does not open instantly.
+	return Time.get_ticks_msec() < _spawn_deadline_msec
+
+
+func _set_listening(listening: bool) -> void:
+	# The bag's whole per-frame cost is polling one key. A bag nobody is
+	# standing on cannot act on that key, so it should not be asking.
+	#
+	# Worth being clear about the size of this: it is a handful of early
+	# returns per bag per frame, not a bottleneck anybody would find in a
+	# profile. It is here because a node that provably cannot do anything
+	# should not be scheduled, and because bags accumulate - the despawn is
+	# 45 seconds now, and a long fight leaves a lot of them lying around.
+	set_process(listening)
+
+
 func _on_body_entered(body: Node) -> void:
 	if body.is_in_group("player"):
 		_player_nearby = body
+		_set_listening(true)
 
 
 func _on_body_exited(body: Node) -> void:
 	if body != _player_nearby:
 		return
 	_player_nearby = null
+	_set_listening(false)
 
 	# NEW: only emit if the bag was actually open when the player left —
 	# otherwise a player who never opened this bag walking away would fire
