@@ -107,6 +107,47 @@ func _wire_bank_container() -> void:
 	if not bank_container.inventory_changed.is_connected(_on_bank_changed):
 		bank_container.inventory_changed.connect(_on_bank_changed)
 
+	# Marks every slot in this grid as a bank slot, which is what
+	# InventorySlot._drop_data() branches on to tell a rearrange from a
+	# transfer. Set here rather than in the scene because the container
+	# instantiates its own slots.
+	if bank_container.has_method("set_slot_type"):
+		bank_container.set_slot_type(InventorySlot.BANK_SLOT_TYPE)
+
+	if not bank_container.transfer_requested.is_connected(_on_transfer_requested):
+		bank_container.transfer_requested.connect(_on_transfer_requested)
+	if not bank_container.slot_double_clicked.is_connected(_on_bank_slot_double_clicked):
+		bank_container.slot_double_clicked.connect(_on_bank_slot_double_clicked)
+
+
+func _wire_carry_container(connected: bool) -> void:
+	# THE BACKPACK HALF, CONNECTED ONLY WHILE THE BANK IS OPEN.
+	#
+	# A transfer can be aimed either way, and the container that relays the
+	# request is whichever one the drag LANDED on - so dragging out of the bank
+	# is announced by the backpack, not by us. Double-click is the same story in
+	# reverse: double-clicking a backpack slot has to mean "deposit" here and
+	# must go back to meaning nothing the moment the chest closes, or the first
+	# potion anyone double-clicks in the field disappears into the bank.
+	var carry: Node = _get_player_inventory_container()
+	if carry == null:
+		return
+	if not carry.has_signal("transfer_requested") or not carry.has_signal("slot_double_clicked"):
+		push_warning("BankInventory: carry grid has no transfer signals — drag and double-click will not reach the server")
+		return
+
+	if connected:
+		if not carry.transfer_requested.is_connected(_on_transfer_requested):
+			carry.transfer_requested.connect(_on_transfer_requested)
+		if not carry.slot_double_clicked.is_connected(_on_carry_slot_double_clicked):
+			carry.slot_double_clicked.connect(_on_carry_slot_double_clicked)
+		return
+
+	if carry.transfer_requested.is_connected(_on_transfer_requested):
+		carry.transfer_requested.disconnect(_on_transfer_requested)
+	if carry.slot_double_clicked.is_connected(_on_carry_slot_double_clicked):
+		carry.slot_double_clicked.disconnect(_on_carry_slot_double_clicked)
+
 
 # =============================================================================
 # PUBLIC API — OPEN / CLOSE
@@ -148,8 +189,17 @@ func open_bank() -> void:
 	if hud != null and hud.has_method("show_inventory"):
 		hud.show_inventory()
 
+	# AFTER show_inventory(), not before - the container has to exist before it
+	# can be connected to.
+	_wire_carry_container(true)
+
 
 func close_bank() -> void:
+	# BEFORE ANYTHING ELSE. hide_inventory() below may free the backpack
+	# container, and a connection left on a freed node is the "double-clicking a
+	# potion deposited it into a bank I closed ten minutes ago" bug.
+	_wire_carry_container(false)
+
 	# persist bank state before hiding (crash-safe — even if the player
 	# alt-F4s right after this, the bank is already on disk).
 	_save_bank_contents()
@@ -208,7 +258,205 @@ func _save_bank_contents() -> void:
 func _on_bank_changed() -> void:
 	# fired on every drag/drop into or out of a bank slot.
 	# saves immediately so a crash can never lose more than the last swap.
+	#
+	# THIS ALSO FIRES WHEN _apply_grids() PAINTS THE SERVER'S ARRAY, AND IT MUST.
+	#
+	# It looks wrong in the Flask log - a POST /api/bank/items answered by a PUT
+	# /api/account/bank a moment later, the client asserting a whole array right
+	# after asking the server to author one. It was briefly suppressed for that
+	# reason and that was a data-loss bug:
+	#
+	#   set_bank_inventory() is what updates CharacterData's IN-MEMORY bank, and
+	#   save_data() is debounced. Skip it here and the grid holds the server's
+	#   post-transfer array while CharacterData still holds the PRE-transfer one
+	#   - then the next flush, from anywhere, writes that stale array over the
+	#   server's bank_items and the deposit is gone from both sides.
+	#
+	# The echo is harmless because the array being written is the server's own.
+	# lootbaginventory.gd:376 saves after a grant for exactly this reason. What
+	# actually removes these writes is making PUT /api/account/bank refuse
+	# anything that is not a permutation of what it already holds, so a client
+	# cannot assert contents at all - see docs/inventoryauthority.md. Until
+	# then, keeping memory and server in step beats a tidier log.
 	_save_bank_contents()
+
+
+# =============================================================================
+# ITEM TRANSFERS — THE SERVER OWNS BOTH GRIDS
+# =============================================================================
+#
+# Gold already worked this way: /api/bank/gold is an op, because the server
+# holds both balances and can conserve the total. Items now do too.
+#
+# What this replaces: a drag moved the stack between the two containers
+# locally, then each container saved its own whole array. Nothing tied those
+# two writes together, so the server saw one array claiming 5 potions fewer and
+# another claiming 5 more, with no way to tell that pair from a pair that did
+# not add up. Whole-array writes cannot conserve anything.
+#
+# Rearranging INSIDE one grid still saves the whole array, and that is fine for
+# now because no items cross a boundary - but it is the last place the client
+# still asserts a container's contents. Closing it means validating the PUT as
+# a permutation of what is stored. See docs/inventoryauthority.md.
+
+const TRANSFER_TIMEOUT := 4.0
+
+var _transferring: bool = false
+
+
+func request_transfer(op: String, item_id: String, quantity: int) -> void:
+	if item_id == "" or quantity <= 0:
+		return
+
+	if _transferring:
+		# Silent. The player acted twice inside the time one request takes,
+		# which is not a mistake worth a message - and the request already out
+		# is about to redraw both grids underneath them anyway.
+		return
+
+	if not Api.is_logged_in():
+		# NO LOCAL FALLBACK. Moving the item because the server could not be
+		# asked is the whole exploit: a client that can move items by making a
+		# request fail does not need permission for anything.
+		_notify("Not connected — can't move that.")
+		return
+
+	# Captured before the await. Four seconds is long enough to close the panel,
+	# swap characters or die, and the item has already moved on the server by
+	# the time the response lands.
+	var character_slot: int = CharacterData.active_character_index
+
+	# NOT named `player` - that is a member on this panel, and shadowing it here
+	# would mean the post-await notify could quietly read the live one instead
+	# of the captured one, which is the whole point of capturing it.
+	var acting_player: Node = _get_player()
+	if not is_instance_valid(acting_player):
+		acting_player = null
+
+	_transferring = true
+	var res: Dictionary = await Api.post("/api/bank/items", {
+		"slot": character_slot,
+		"op": op,
+		"item_id": item_id,
+		"quantity": quantity,
+	}, TRANSFER_TIMEOUT)
+	_transferring = false
+
+	if not res.get("ok", false):
+		_handle_transfer_refusal(res, acting_player)
+		return
+
+	_apply_grids(res.get("data", {}))
+	_update_gold_ui()
+
+
+func _apply_grids(data: Dictionary) -> void:
+	# BOTH SIDES FROM ONE RESPONSE.
+	#
+	# The server decided which cell the stack landed in, on both grids, using
+	# the same placement rule it uses for loot. Applying its arrays rather than
+	# moving the stack where the player dropped it is what stops the client and
+	# the server laying the same transfer out differently - and a disagreement
+	# about layout becomes a disagreement about contents the next time the
+	# client saves.
+	#
+	# load_server_array() ignores an empty array rather than emptying the grid,
+	# because a missing key and an empty bag are not the same thing.
+	#
+	# Each load fires inventory_changed, and the savers listening to it are
+	# SUPPOSED to run - that is what carries the server's array into
+	# CharacterData's in-memory copy. See _on_bank_changed().
+	if bank_container != null:
+		var bank_cells: Variant = data.get("bank_inventory", [])
+		if bank_cells is Array:
+			bank_container.load_server_array(bank_cells as Array)
+
+	var carry: Node = _get_player_inventory_container()
+	if carry != null and carry.has_method("load_server_array"):
+		var carry_cells: Variant = data.get("inventory", [])
+		if carry_cells is Array:
+			carry.load_server_array(carry_cells as Array)
+	else:
+		# THE DANGEROUS ONE, and the reason this is a warning rather than a
+		# shrug. The server has already moved the item. If the carry grid never
+		# took the new array, it is now holding the PRE-transfer layout, and the
+		# next save_character_state() captures the backpack from that same grid
+		# and pushes it over the server's carry_items - turning "this screen
+		# could not show it" into "this item no longer exists". Same trap
+		# lootbaginventory.gd guards with its `applied` check.
+		push_warning("BankInventory: carry grid not found — the server moved the item, this screen did not")
+		_notify("Reopen your bag — it's out of step with the server.")
+
+
+func _handle_transfer_refusal(res: Dictionary, player: Node) -> void:
+	# NOTHING MOVED ON EITHER SIDE. The endpoint removes from the source, adds
+	# to the destination, and rolls back if the add does not fit - so a refusal
+	# always leaves the item exactly where it started, and the grids are already
+	# correct. There is nothing to repair here, only something to say.
+	var code: int = int(res.get("status", 0))
+
+	match code:
+		400:
+			_notify_player(player, "You don't have that many.")
+		404:
+			_notify_player(player, "That character isn't loaded.")
+		409:
+			Audio.play("refused")
+			_notify_player(player, "No room for that.")
+		_:
+			_notify_player(player, "No connection — try again.")
+
+	if OS.is_debug_build():
+		print("[BANK] transfer refused (%d) — %s" % [code, res.get("error", "")])
+
+
+func _on_transfer_requested(source_slot: InventorySlot, _target_slot: InventorySlot) -> void:
+	# The direction is decided by where the stack came FROM, not by which
+	# container relayed the signal - a drag out of the bank is announced by the
+	# backpack, because the backpack is what it landed on.
+	if source_slot == null or source_slot.is_empty():
+		return
+
+	var op: String = "withdraw" if source_slot.slot_type == InventorySlot.BANK_SLOT_TYPE else "deposit"
+	request_transfer(op, source_slot.stack.data.item_id, source_slot.stack.quantity)
+
+
+func _on_bank_slot_double_clicked(slot: InventorySlot) -> void:
+	if not visible or slot == null or slot.is_empty():
+		return
+	request_transfer("withdraw", slot.stack.data.item_id, slot.stack.quantity)
+
+
+func _on_carry_slot_double_clicked(slot: InventorySlot) -> void:
+	# The visibility guard is belt and braces - _wire_carry_container(false)
+	# already disconnects this on close - but a stale connection here means
+	# items vanishing into the bank from the field, so it is worth two lines.
+	if not visible or slot == null or slot.is_empty():
+		return
+	request_transfer("deposit", slot.stack.data.item_id, slot.stack.quantity)
+
+
+func _notify(message: String) -> void:
+	_notify_player(_get_player(), message)
+
+
+func _notify_player(player: Node, message: String) -> void:
+	# Against a CAPTURED reference, for use after an await where the player may
+	# have been freed. The caller collapses a freed reference to null first:
+	# GDScript checks argument types at the call boundary, so a freed object
+	# fails before this function's body gets a turn.
+	if is_instance_valid(player) and player.has_method("show_notice"):
+		player.show_notice(message)
+
+
+func _get_player_inventory_container() -> Node:
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	if hud == null:
+		return null
+	var inv_screen: Node = hud.get("inventory_screen") if "inventory_screen" in hud else null
+	if inv_screen == null:
+		return null
+	return inv_screen.get_node_or_null("%inventorycontainer")
 
 
 # =============================================================================

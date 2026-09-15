@@ -32,6 +32,13 @@ signal slot_unhovered(slot: InventorySlot)
 signal slot_changed(slot: InventorySlot)
 signal slot_double_clicked(slot: InventorySlot)
 
+# A DROP THIS SLOT REFUSES TO PERFORM ITSELF.
+#
+# Emitted instead of moving anything when a drag crosses between the bank and
+# the backpack. Relayed by InventoryContainer and answered by bankinventory.gd,
+# which turns it into one POST /api/bank/items. See _drop_data().
+signal transfer_requested(source_slot: InventorySlot, target_slot: InventorySlot)
+
 
 # =============================================================================
 # CONSTANTS
@@ -55,6 +62,13 @@ const DRAG_PREVIEW_SIZE := Vector2(40, 40)
 # lootbaginventory.gd via InventoryContainer.set_slot_type(), not in the scene,
 # because the slots are instantiated by the container.
 const LOOT_SLOT_TYPE := "lootbag"
+
+# The other slot_type the drag handlers branch on. A bank grid is server-owned
+# the same way a loot bag is, but the rule is softer: rearranging WITHIN the
+# bank is layout and stays local, while anything crossing between the bank and
+# the backpack is a transfer and has to be a request. Set at runtime by
+# bankinventory.gd via InventoryContainer.set_slot_type().
+const BANK_SLOT_TYPE := "bank"
 
 
 # =============================================================================
@@ -347,6 +361,31 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	if source_slot is HotbarSlot:
 		source_slot.clear()
 		source_slot.slot_changed.emit(source_slot)
+		return
+
+	# CASE T — THE DRAG CROSSES BETWEEN THE BANK AND THE BACKPACK.
+	#
+	# Same principle as the loot bag rule in _get_drag_data(): a drag is not a
+	# request, and the server owns both of these grids. Moving the stack here
+	# and letting each container save its own array afterwards is two
+	# independent whole-array writes that the server cannot tell are two halves
+	# of one transfer - two arrays that do not add up look exactly like two that
+	# do. So nothing moves locally; bankinventory.gd turns this into one
+	# POST /api/bank/items and repaints BOTH grids from the response.
+	#
+	# XOR, not "either is a bank slot": bank-to-bank is a rearrange and falls
+	# through to the normal cases below, because layout inside one container
+	# moves no items and is nobody's business but the client's.
+	#
+	# The cell the player aimed at is deliberately ignored. The endpoint takes
+	# an item and a quantity, not a position - the server merges onto an
+	# existing stack and then takes the first free cell, the same placement rule
+	# _add_to_backpack() already uses for loot. Honouring the drop position
+	# would mean a second placement rule that disagrees with the first the
+	# moment a stack is part-used.
+	var source_type: String = str(data.get("source_type", ""))
+	if (source_type == BANK_SLOT_TYPE) != (slot_type == BANK_SLOT_TYPE):
+		transfer_requested.emit(source_slot, self)
 		return
 
 	# B1: empty target — move incoming here, clear source

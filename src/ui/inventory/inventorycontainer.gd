@@ -44,6 +44,11 @@ signal slot_unhovered(slot: InventorySlot)
 # emitted whenever the inventory contents change — used to sync with save system
 signal inventory_changed()
 
+# relayed from a slot that refused to perform a drop itself because the drag
+# crossed between the bank and the backpack. bankinventory.gd answers it with a
+# single POST /api/bank/items. See InventorySlot._drop_data(), CASE T.
+signal transfer_requested(source_slot: InventorySlot, target_slot: InventorySlot)
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -113,6 +118,7 @@ func _create_slots() -> void:
 		slot_instance.slot_clicked.connect(_on_slot_clicked)
 		slot_instance.slot_right_clicked.connect(_on_slot_right_clicked)
 		slot_instance.slot_double_clicked.connect(_on_slot_double_clicked)
+		slot_instance.transfer_requested.connect(_on_slot_transfer_requested)
 		slot_instance.slot_hovered.connect(_on_slot_hovered)
 		slot_instance.slot_unhovered.connect(_on_slot_unhovered)
 		slot_instance.slot_changed.connect(_on_slot_changed)
@@ -607,6 +613,10 @@ func _on_slot_right_clicked(slot: InventorySlot) -> void:
 
 func _on_slot_double_clicked(slot: InventorySlot) -> void:
 	slot_double_clicked.emit(slot)
+
+
+func _on_slot_transfer_requested(source_slot: InventorySlot, target_slot: InventorySlot) -> void:
+	transfer_requested.emit(source_slot, target_slot)
 
 
 func _on_slot_hovered(slot: InventorySlot) -> void:
