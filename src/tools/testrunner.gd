@@ -26,13 +26,33 @@
 extends Node
 
 
+# WHERE THE RESULTS GO
+# --------------------
+# Every line is printed AND kept, and the whole transcript is written to
+# res://test_results.txt at the end.
+#
+# The file is not a convenience. Running this from the Godot editor with F6
+# should put the prints in the Output panel, and running it from a terminal
+# should put them on stdout - and on Windows both have failed, for unrelated
+# reasons, on the machine this was written for. A test suite whose results can
+# vanish depending on how it was launched is not a test suite. The file is
+# always there afterwards, and it is the same text either way.
+const RESULTS_PATH := "res://test_results.txt"
+
 var passed: int = 0
 var failed: int = 0
 var failures: PackedStringArray = []
+var _log: PackedStringArray = []
 
 
 func _ready() -> void:
-	print("")
+	# Wait one frame before doing anything. Calling get_tree().quit() from inside
+	# _ready(), while the tree and the autoloads are still coming up, is what
+	# produces "ObjectDB instances leaked at exit" on the way out. Nothing is
+	# actually wrong when that appears, which is the problem: a suite that prints
+	# a warning on every green run teaches you to skim past warnings.
+	await get_tree().process_frame
+	_say("")
 	_run_all()
 	_report()
 
@@ -50,31 +70,69 @@ func _run_all() -> void:
 # HARNESS
 # =============================================================================
 
+func _say(line: String) -> void:
+	print(line)
+	_log.append(line)
+
+
 func check(label: String, condition: bool, detail: Variant = "") -> void:
 	if condition:
 		passed += 1
-		print("  pass  %s" % label)
+		_say("  pass  %s" % label)
 	else:
 		failed += 1
 		failures.append(label)
-		print("  FAIL  %s   %s" % [label, str(detail)])
+		_say("  FAIL  %s   %s" % [label, str(detail)])
 
 
 func section(title: String) -> void:
-	print("\n" + title)
-	print("-".repeat(title.length()))
+	_say("")
+	_say(title)
+	_say("-".repeat(title.length()))
+
+
+func _environment() -> void:
+	# Written into the results file because the first three attempts to run this
+	# suite all failed at "which binary is Godot and where does its output go",
+	# and none of those questions had an answer visible from inside the project.
+	_say("Godot %s" % Engine.get_version_info().get("string", "unknown"))
+	_say("executable: %s" % OS.get_executable_path())
+	_say("project:    %s" % ProjectSettings.globalize_path("res://"))
+	_say("results:    %s" % ProjectSettings.globalize_path(RESULTS_PATH))
 
 
 func _report() -> void:
-	print("\n" + "=".repeat(60))
-	print("  %d passed, %d failed" % [passed, failed])
+	_say("")
+	_say("=".repeat(60))
+	_say("  %d passed, %d failed" % [passed, failed])
 	if failed > 0:
-		print("\n  failing checks:")
-		# `label`, not `name` — Node.name exists and shadowing it warns at parse.
+		_say("")
+		_say("  failing checks:")
+		# `label`, not `name` - Node.name exists and shadowing it warns at parse.
 		for label in failures:
-			print("    - " + label)
-	print("=".repeat(60) + "\n")
+			_say("    - " + label)
+	_say("=".repeat(60))
+	_environment()
+	_say("")
+
+	_write_results()
 	get_tree().quit(1 if failed > 0 else 0)
+
+
+func _write_results() -> void:
+	# Before quit(), not after. quit() is deferred to the end of the frame so
+	# either order happens to work, but "write the file, then ask to exit" is
+	# the order that stays correct if that ever changes.
+	var file := FileAccess.open(RESULTS_PATH, FileAccess.WRITE)
+	if file == null:
+		# res:// is writable when running from the editor and read-only inside an
+		# exported build. This suite is a development tool, so that is fine - but
+		# say so rather than silently producing no file.
+		print("  (could not write %s: %s)"
+			% [RESULTS_PATH, error_string(FileAccess.get_open_error())])
+		return
+	file.store_string("\n".join(_log) + "\n")
+	file.close()
 
 
 func _load_gamedata() -> Dictionary:
@@ -418,6 +476,7 @@ func _test_itemstack() -> void:
 	# when error_item.tres exists. It does not exist today, so from_dict returns
 	# null — but asserting null would mean this check silently stopped testing
 	# anything the day someone added the fallback item.
+	_say("  ...the ItemRegistry warning below is expected, the next check causes it")
 	var ghost := ItemStack.from_dict({"item_id": "notarealitem", "quantity": 1})
 	check("an unknown item_id never rehydrates as that item",
 		ghost == null or ghost.data.item_id != "notarealitem",

@@ -55,6 +55,11 @@ Claude outputs/
 # does NOT match project.godot itself.
 project-*.godot
 
+# the test suite's transcript, rewritten on every run. The suite writes it
+# because neither the editor's Output panel nor a Windows terminal could be
+# relied on to show its results — see src/tools/testrunner.gd.
+test_results.txt
+
 
 # =============================================================================
 # OS CRUFT
