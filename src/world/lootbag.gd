@@ -103,6 +103,10 @@ func _ready() -> void:
 
 	_spawn_timer = SPAWN_GRACE_PERIOD
 
+	# So bags can see each other - _is_nearest_candidate() needs to enumerate
+	# the others to decide which one a press belongs to.
+	add_to_group(&"lootbags")
+
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 
@@ -128,7 +132,64 @@ func _process(delta: float) -> void:
 	if not Input.is_action_just_pressed("interact"):
 		return
 
+	# NEAREST BAG WINS, not whichever one Godot calls _process() on first.
+	#
+	# Input.is_action_just_pressed() is a global state query, not a consumable
+	# event - every node that polls it on the press frame sees true. Bags from
+	# several kills land on the same corpse pile, so the player stands in more
+	# than one radius at once and a single press ran _try_open() on all of them.
+	# Without this gate the bag you actually got was decided by scene tree
+	# order, so pressing interact between two bags could open the far one.
+	if not _is_nearest_candidate():
+		return
+
+	# Belt and braces for two bags at exactly equal distance: whichever claims
+	# the frame first is the only one that acts.
+	var frame: int = Engine.get_process_frames()
+	if _press_claimed_frame == frame:
+		return
+	_press_claimed_frame = frame
+
 	_try_open()
+
+
+# Shared by every bag. See the comment in _process() for what it guards.
+#
+# The damage from the old behaviour was not the duplicate log lines. Every bag
+# that opened also PAUSED ITS DESPAWN TIMER, and only the one whose panel the
+# HUD actually showed ever received notify_panel_closed() to unpause it. The
+# others sat un-openable until the player walked out of range, and never
+# despawned at all - "loot it or lose it" quietly stopped applying to them.
+static var _press_claimed_frame: int = -1
+
+
+# True when no other bag this same player is standing in sits closer.
+func _is_nearest_candidate() -> bool:
+	var my_distance: float = global_position.distance_squared_to(_player_nearby.global_position)
+
+	for other in get_tree().get_nodes_in_group(&"lootbags"):
+		if other == self or not is_instance_valid(other):
+			continue
+		var bag := other as Node2D
+		if bag == null:
+			continue
+
+		# Only bags THIS player is standing in compete. One across the room is
+		# not a candidate however the distance maths comes out.
+		if bag.get("_player_nearby") != _player_nearby:
+			continue
+		if bool(bag.get("_is_open")):
+			continue
+
+		# A bag still inside its spawn grace period cannot be opened yet, so
+		# letting it compete would just block the bag the player meant.
+		if float(bag.get("_spawn_timer")) > 0.0:
+			continue
+
+		if bag.global_position.distance_squared_to(_player_nearby.global_position) < my_distance:
+			return false
+
+	return true
 
 
 # =============================================================================
@@ -258,5 +319,16 @@ func _on_body_exited(body: Node) -> void:
 	# a pointless signal with nothing listening.
 	var was_open := _is_open
 	_is_open = false
+
+	# RESUME THE COUNTDOWN _try_open() PAUSED.
+	#
+	# notify_panel_closed() does this too, but it only ever reaches the bag
+	# whose panel the HUD is showing. Any bag that set _is_open without getting
+	# a panel stayed paused forever and never despawned. The nearest-wins gate
+	# in _process() should mean that no longer happens, but a despawn timer that
+	# can leak into never firing is worth closing from both ends.
+	if despawn_timer != null and not despawn_timer.is_stopped():
+		despawn_timer.paused = false
+
 	if was_open:
 		player_left_range.emit()
