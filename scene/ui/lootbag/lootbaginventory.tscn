@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://dhmeaa2k7w4v6"]
 
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_cgy0d"]
-[ext_resource type="Script" uid="uid://bph1evilrpgbw" path="res://src/core/lootbaginventory.gd" id="2_cgy0d"]
-[ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventorycontainer.gd" id="3_qlwm7"]
+[ext_resource type="Script" uid="uid://bph1evilrpgbw" path="res://src/ui/lootbag/lootbaginventory.gd" id="2_cgy0d"]
+[ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventory/inventorycontainer.gd" id="3_qlwm7"]
 
 [node name="lootbaginventory" type="Control" unique_id=1169906003]
 layout_mode = 3

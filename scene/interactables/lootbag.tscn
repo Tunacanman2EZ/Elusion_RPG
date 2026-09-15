@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://k5iomcwkdim4"]
 
-[ext_resource type="Script" path="res://src/core/lootbag.gd" id="2_lootbagscript"]
+[ext_resource type="Script" path="res://src/world/lootbag.gd" id="2_lootbagscript"]
 [ext_resource type="Texture2D" uid="uid://7qrbst14610w" path="res://art/floordecoration/floorwalls.png" id="3_cryptsheet"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_sack"]

@@ -2,7 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://cr5tiqbe7gt43" path="res://art/enemy/slime.png" id="1_18yxc"]
 [ext_resource type="PackedScene" uid="uid://v7afre8oxg7r" path="res://scene/pets/petpoisonslimesmall.tscn" id="2_fvrrx"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_xggk7"]
 atlas = ExtResource("1_18yxc")

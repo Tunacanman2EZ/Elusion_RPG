@@ -1,6 +1,6 @@
 [gd_scene format=4 uid="uid://be0elfwucuopu"]
 
-[ext_resource type="Script" uid="uid://hps7hjd7tu1i" path="res://src/core/field.gd" id="1_odcg7"]
+[ext_resource type="Script" uid="uid://hps7hjd7tu1i" path="res://src/world/field.gd" id="1_odcg7"]
 [ext_resource type="Texture2D" uid="uid://b300c2ikysmls" path="res://art/tiles/tiles2.png" id="2_aw5uv"]
 [ext_resource type="Texture2D" uid="uid://clru34rpbm7dh" path="res://art/tiles/underground.png" id="3_0d0g4"]
 [ext_resource type="SpriteFrames" path="res://art/teleport/teleportframes.tres" id="3_tpfrm"]

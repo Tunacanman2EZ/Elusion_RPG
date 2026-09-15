@@ -34,8 +34,13 @@ who read it to a folder that does not exist.
 **The game has a test suite too. Run it from this folder:**
 
 ```
-godot --headless --path . res://scene/tests/tests.tscn
+.\run_tests.ps1
 ```
+
+It finds the Godot binary itself, waits for it to actually exit, and writes the
+full transcript to `test_results.txt` as well as printing it - because on
+Windows neither the editor's Output panel nor the terminal could be relied on to
+show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
 failure. It covers what can be checked without playing: the XP curve, the shared
@@ -192,6 +197,33 @@ will.
 Scenes are worse: there are 25 `preload("res://scene/...")` paths. That is the
 reason `src/` was reorganised to mirror `scene/` and not the other way round.
 
+### Moving a script leaves Godot's caches lying about where it is
+
+`.godot/global_script_class_cache.cfg` maps every `class_name` to the path it
+was last seen at, and `.godot/uid_cache.bin` maps every uid to a path. **Neither
+is updated when a file moves**, whether you moved it with `git mv` or anything
+else outside the editor.
+
+What you get is a wall of errors that looks like the move destroyed the project:
+
+```
+Parse Error: Could not parse global class "ItemData" from "res://src/systems/itemdata.gd"
+Failed to instantiate an autoload, script ... does not inherit from 'Node'
+Attempt to open script 'res://src/core/scenetransition.gd' ... 'File not found'
+```
+
+Every one of those paths is the OLD path. The files are fine. Delete the two
+cache files and reopen:
+
+```
+Remove-Item ".godot\global_script_class_cache.cfg", ".godot\uid_cache.bin"
+```
+
+They are rebuilt by the **editor's** filesystem scan, so open the editor before
+running anything headless -- a headless run only reads them, and starting one
+with them missing is no better than starting one with them stale. Deleting all
+of `.godot/` works too and costs a full reimport of every texture.
+
 ### Keep helper .ps1 files pure ASCII
 
 Windows PowerShell 5.1 reads a `.ps1` with no BOM as CP1252, not UTF-8. A UTF-8
@@ -316,21 +348,35 @@ produce its own loot only has to make the request fail.
 ## Layout
 
 ```
-src/characters/    player base + warrior, mage, tank, healer
-src/enemies/       BaseEnemy and its six subclasses
-src/pets/          the companion system
-src/projectiles/   arrows, acid, vines, slash waves, ground hazards
-src/systems/       autoloads: save/load, item registry, API client, audio, combat
-src/ui/            HUD, inventory, bank, character select, login
-src/ui/owner/      owner-only tooling, gated on Api.is_owner
-src/world/         ladders, portals, shops, interactables
-src/core/          scene transition, area controllers, loot bags
-src/tools/         the gamedata exporter and the test runner — neither ships
-scene/tests/       tests.tscn, the headless entry point for the test runner
-data/items/        ItemData      data/enemies/  EnemyData
-data/classes/      ClassData     data/gamedata.json  the exported contract
+src/characters/     player.gd, playerstats.gd, and warrior/mage/tank/healer
+src/enemies/        BaseEnemy and its six subclasses
+src/pets/           the companion system
+src/projectiles/    arrows, acid, vines, slash waves, ground hazards
+src/systems/        the autoloads — api, audio, characterdata, combat,
+                    gameconstants, gamestate, itemregistry, scenetransition —
+                    plus the save/load storage layer
+src/types/          ClassData, EnemyData, ItemData, ItemStack. The Resource TYPE
+                    definitions only; data/ at the project root holds the .tres
+                    instances authored from them.
+src/ui/             characterhud, hotbar, statsscreen, floatinglabel, storyscene
+src/ui/bank/        src/ui/inventory/   src/ui/lootbag/   src/ui/menus/
+src/ui/owner/       owner-only tooling, gated on Api.is_owner
+src/world/          levels (elusion, field), interactables, lootbag, roofswap
+src/tools/          the gamedata exporter and the test runner — neither ships
+scene/tests/        tests.tscn, the headless entry point for the test runner
+data/items/         ItemData      data/enemies/  EnemyData
+data/classes/       ClassData     data/gamedata.json  the exported contract
 docs/apicontract.md   what the client and server promise each other
 ```
+
+**`src/` mirrors `scene/` folder for folder.** A script lives beside where its
+scene lives, so `scene/ui/menus/loginmenu.tscn` is driven by
+`src/ui/menus/loginmenu.gd`. Keep it that way when you add things.
+
+When the two disagreed, `src/` was the half that moved, and that was not a
+preference: 25 `preload()` calls name a path under `scene/`, against 3 that name
+one under `src/`. Reorganising the other direction would have meant editing
+twenty-five string literals that nothing checks until they run.
 
 `src/enemies/baseenemy.gd` and `src/systems/characterdata.gd` carry most of the
 complexity and are the best places to start reading.
@@ -352,5 +398,11 @@ complexity and are the best places to start reading.
   rather than "null" on purpose.
 - The test suite covers agreement and arithmetic, nothing that moves.
   `player.gd`, `baseenemy.gd` and the whole UI layer are still boot-and-read.
-  `player.gd` is 66KB, `characterdata.gd` 52KB and `baseenemy.gd` 48KB; each
-  wants splitting, and the tests exist first so that splitting them is safe.
+  `player.gd` is 63KB, `characterdata.gd` 52KB and `baseenemy.gd` 48KB. The pure
+  stat maths came out into `PlayerStats`; the pet system and the floating-label
+  feedback are the next two seams, and both touch the scene tree, so they need
+  more care than the first cut did.
+- **`ObjectDB instances leaked at exit` on every test run is expected** and has
+  not been chased. The suite quits a whole project from a bare scene while the
+  autoloads are mid-flight. It is noise, not a failure — but it is noise on a
+  green run, which is exactly the kind of thing that trains you to skim.

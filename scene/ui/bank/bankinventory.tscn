@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://d04rvh8u33jbl"]
 
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_2vgm5"]
-[ext_resource type="Script" uid="uid://drsoebtbbsv8h" path="res://src/ui/bankinventory.gd" id="2_2qeky"]
-[ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventorycontainer.gd" id="3_2qeky"]
+[ext_resource type="Script" uid="uid://drsoebtbbsv8h" path="res://src/ui/bank/bankinventory.gd" id="2_2qeky"]
+[ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventory/inventorycontainer.gd" id="3_2qeky"]
 
 [node name="bankinventory" type="Control" unique_id=1169906003]
 layout_mode = 3

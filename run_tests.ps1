@@ -108,6 +108,29 @@ if (-not $Godot -or -not (Test-Path $Godot -PathType Leaf)) {
     exit 1
 }
 
+# Godot's class index has to exist before a headless run means anything.
+#
+# .godot/global_script_class_cache.cfg is what maps ItemData, ItemStack,
+# PlayerStats and every other class_name to a file. It is written by the
+# EDITOR's filesystem scan. A headless run only reads it, so with the file
+# missing every global type is unknown and the suite fails to parse with dozens
+# of "Identifier not declared in the current scope" errors that have nothing to
+# do with the tests.
+#
+# That is indistinguishable, from the output alone, from having genuinely broken
+# something - which is exactly the confusion this check exists to prevent.
+$classCache = Join-Path $root ".godot\global_script_class_cache.cfg"
+if (-not (Test-Path $classCache -PathType Leaf)) {
+    Write-Host "Godot's class index is missing:" -ForegroundColor Yellow
+    Write-Host "  $classCache"
+    Write-Host ""
+    Write-Host "Open the Godot EDITOR on this project once and let it finish scanning."
+    Write-Host "That is what writes this file. Running headless without it reports every"
+    Write-Host "class_name in the project as undeclared, which looks like a broken project"
+    Write-Host "and is not one."
+    exit 1
+}
+
 Write-Host "Godot: $Godot" -ForegroundColor DarkGray
 Write-Host ""
 

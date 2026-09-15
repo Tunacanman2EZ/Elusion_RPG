@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cdvapwwwsyka3"]
 
-[ext_resource type="Script" uid="uid://beoo2gt4m041f" path="res://src/ui/inventoryslot.gd" id="1_wle7a"]
+[ext_resource type="Script" uid="uid://beoo2gt4m041f" path="res://src/ui/inventory/inventoryslot.gd" id="1_wle7a"]
 
 [node name="inventoryslot" type="PanelContainer" unique_id=720517784]
 custom_minimum_size = Vector2(48, 48)

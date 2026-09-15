@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cx7jyx2ecih2k"]
 
 [ext_resource type="Texture2D" uid="uid://db7fkgqqydvh7" path="res://art/enemy/electricsprite.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/systems/itemdata.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 [ext_resource type="PackedScene" uid="uid://dpsjkm45e2b7e" path="res://scene/pets/petelectricsprite.tscn" id="3_pet"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_peticon"]
