@@ -545,12 +545,19 @@ func _get_direction_to_point_via_navigation(target_pos: Vector2) -> String:
 # "do I even need pathfinding right now" gate, separate from the actual
 # routing logic above.
 #
-# NOTE: collision_mask is set to layer 1 below, the most common default
-# for world/ground geometry — but I don't have visibility into this
-# project's actual collision layer setup. if walls live on a different
-# layer, or if this raycast is incorrectly hitting other enemies/the
-# player themselves, adjust the mask value to match whatever layer your
-# wall collision actually uses.
+# MASK 1 IS CORRECT HERE, AND THAT IS WORTH STATING because the layer is
+# misleadingly named. Layer 1 reads as "ground" in Project Settings, but it
+# is the layer every TileMap in this project puts its collision on - shop
+# walls, building exteriors and the crypt all use it. Layer 2, named
+# "walls", is used only by Area2Ds (prop triggers). So a raycast for
+# geometry masks 1, not 2.
+#
+# It cannot hit enemies or the player: they are on layers 8 and 4, which
+# this mask excludes. The only things that block a line here are the same
+# things a fired projectile now dies on - see the mask on arrow.tscn and
+# friends. Change one and you must change the other, or enemies will hold
+# fire at things their shots would have passed, or shoot at things their
+# shots cannot cross.
 func _has_line_of_sight(target_pos: Vector2) -> bool:
 	var space_state := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(global_position, target_pos)
@@ -716,7 +723,23 @@ func _handle_combat(dist_to_player: float) -> void:
 		_record_nav_movement_result(flee_pos_before)
 		return
 
-	if dist_to_player < attack_range:
+	# BEING IN RANGE IS NOT THE SAME AS BEING ABLE TO SHOOT.
+	#
+	# Every fired projectile now masks the ground layer and dies on geometry,
+	# so an enemy that opens fire through a wall deletes its own arrow against
+	# the masonry and then stands there doing it again on every cooldown. Range
+	# decides whether attacking is worth trying; line of sight decides whether
+	# it is possible at all.
+	#
+	# NO LINE MEANS FALL THROUGH TO THE CHASE BELOW, not stop and idle. An enemy
+	# that cannot see you should come around and find you - that is what makes a
+	# wall cover rather than a permanent shield.
+	#
+	# Same raycast and same mask as the navigation gate in
+	# _get_direction_to_point_via_navigation(), deliberately: "I can path
+	# straight to you" and "I can shoot you" are one question, and asking it
+	# twice is how the two answers start disagreeing.
+	if dist_to_player < attack_range and _has_line_of_sight(player.global_position):
 		velocity = Vector2.ZERO
 		if attack_ready:
 			_trigger_attack()
@@ -810,6 +833,20 @@ func _handle_return_home() -> void:
 
 
 func _trigger_attack() -> void:
+	# THE BACKSTOP FOR SUBCLASSES THAT NEVER CALL _handle_combat().
+	#
+	# BushMage and PoisonSlime run their own _physics_process and reach an
+	# attack through their own branches, so the sight check in _handle_combat()
+	# never runs for them. This is the point every path funnels through, so the
+	# rule is enforced here too rather than being copied into each subclass -
+	# and a future enemy with its own movement gets it for free.
+	#
+	# Returns WITHOUT consuming attack_ready or starting the cooldown timer, so
+	# the shot lands the instant the line opens instead of after another full
+	# cooldown. Stepping out of cover should be punished immediately.
+	if is_instance_valid(player) and not _has_line_of_sight(player.global_position):
+		return
+
 	attack_ready = false
 	is_attacking = true
 	if has_node("attacktimer"):

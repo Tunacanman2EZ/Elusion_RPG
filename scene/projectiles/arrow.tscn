@@ -10,7 +10,7 @@ height = 16.0
 [node name="arrow" type="Area2D" unique_id=393929235]
 position = Vector2(0, -4)
 collision_layer = 64
-collision_mask = 4
+collision_mask = 5
 script = ExtResource("1_yspra")
 
 [node name="sprite2d" type="Sprite2D" parent="." unique_id=428680932]
