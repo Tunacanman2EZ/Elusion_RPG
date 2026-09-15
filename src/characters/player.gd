@@ -157,38 +157,52 @@ var is_attacking := false
 # sense for the old fixed-4-direction swing.
 @export var attack_locks_movement: bool = true
 
-# HOW HARD THE PLAYER SHOVES AN ENEMY IT WALKS INTO.
+# WADING THROUGH ENEMIES.
 #
-# Enemies are solid to us but we are not solid to them (no enemy masks the
-# player layer), so without a shove an enemy that presses into you pins you
-# with no way out.
+# The player is NOT solid to enemies and enemies are NOT solid to the player -
+# no mask on either side names the other's layer. You walk through them. What
+# stops that feeling like walking through fog is the two knobs below: being
+# inside a body slows you down, and bodies you walk into get displaced.
 #
-# THIS USED TO BE A FLAT 50 px/sec, AND THE OLD COMMENT SAID TO KEEP IT BELOW
-# `speed` so an enemy "yields more slowly than you walk". That is the wrong
-# comparison, and it is why the shove never worked. The number a shove
-# competes against is not how fast the PLAYER walks — it is how fast the ENEMY
-# walks back in. At 50 against chase speeds of 70 to 90, the shove lost to
-# every enemy in the game except the large poison slime, which is the one that
-# felt fine. Being pushed at 50 while pathing at 80 is a net 30 px/sec toward
-# you, forever.
-#
-# So the push is derived from the enemy's own move speed instead of being a
-# constant. A ratio above 1.0 always wins, and it keeps winning for any enemy
-# added later without anyone remembering to retune a magic number.
-@export var enemy_push_ratio: float = 1.6
+# THIS REPLACED A SHOVE THAT CAUSED THE THING IT WAS MEANT TO PREVENT.
+# Enemies used to be solid to the player one-way, so an enemy could stand in
+# your space while you could not move through it, and _shove_blocking_enemies()
+# compensated by pushing it at 1.6x ITS OWN CHASE SPEED - explicitly tuned to
+# always win the race. Walking into an enemy therefore shoved it clear, freed
+# the space, let you advance, and shoved again: that stop-start loop was the
+# "latching", and riding a body being moved faster than you walk was the free
+# speed. The arms race only existed because a losing push meant being pinned.
+# Nothing here can pin you, so nothing here has to win.
 
-# Floor for anything that does not report a get_move_speed() — a prop, a
-# scripted body, a future enemy that moves some other way. 0.0 for both this
-# and the ratio disables shoving entirely and restores the old pinning.
-@export var enemy_push_strength: float = 50.0
+# HOW MUCH SPEED THE FIRST BODY COSTS YOU, as a fraction. This is the weight.
+@export var enemy_wade_drag: float = 0.30
 
-# HOW MUCH OF THE SHOVE GOES SIDEWAYS, as a fraction of the straight-away push.
-#
-# -collision.get_normal() points directly away from the contact, which for a
-# head-on walk is exactly your travel direction — so even a shove that wins
-# just pushes the enemy ahead of you like a box, and you never get PAST it.
-# A tangential component makes it slip to one side instead.
-@export var enemy_push_sidestep: float = 0.6
+# ...and each additional body you are standing inside on top of that. A poison
+# slime splits into eight, and walking into all eight should feel like walking
+# into all eight.
+@export var enemy_wade_drag_per_extra: float = 0.10
+
+# The floor, so a crowd slows you rather than trapping you. Pinning is the one
+# failure mode this whole approach exists to rule out.
+@export var enemy_wade_min_speed: float = 0.45
+
+# HOW FAST A BODY YOU ARE INSIDE GETS PUSHED ASIDE, as a fraction of YOUR
+# current speed - never of the enemy's, which is the mistake the old shove made.
+# Below 1.0 means you always out-pace what you displace, so there is nothing to
+# ride. It can afford to lose to an enemy walking back in, because losing just
+# means you wade past it instead of being stopped by it.
+@export var enemy_wade_push_ratio: float = 0.6
+
+# A trickle of push while you are standing still, so a pack converging on you
+# settles into a ring instead of stacking eight sprites on one pixel.
+@export var enemy_wade_idle_push: float = 18.0
+
+# How much of the push goes sideways rather than straight away, so bodies part
+# around your shoulders instead of being bulldozed along in front of you.
+@export var enemy_wade_sidestep: float = 0.5
+
+# How wide the "inside a body" test is, in pixels, measured from your origin.
+@export var enemy_wade_radius: float = 14.0
 
 
 # =============================================================================
@@ -431,12 +445,18 @@ func _physics_process(_delta):
 			$animatedsprite2d.play(get_idle_animation())
 			$animatedsprite2d.speed_scale = 1.0
 
+	# WHO AM I STANDING INSIDE. Sampled once and reused for both halves of the
+	# wade, so the bodies that slow you down are exactly the bodies you displace.
+	var wading: Array[CharacterBody2D] = _enemies_overlapping()
+	if not wading.is_empty():
+		velocity *= _wade_drag_factor(wading.size())
+
 	# Captured BEFORE the move so agility can be paid on ground actually
 	# covered — see _accrue_agility_from_travel() below.
 	var position_before: Vector2 = global_position
 
 	move_and_slide()
-	_shove_blocking_enemies(_delta)
+	_displace_wading_enemies(wading, _delta)
 
 	_accrue_agility_from_travel(global_position.distance_to(position_before))
 
@@ -473,85 +493,122 @@ func _accrue_agility_from_travel(distance: float) -> void:
 
 
 # =============================================================================
-# ENEMY SHOVING
+# WADING THROUGH ENEMIES
 # =============================================================================
 #
-# The collision relationship between the player and enemies is deliberately
-# one-way: the player's collision_mask includes the enemies layer, but no
-# enemy's mask includes the player layer. That makes enemies solid to you
-# while you are not solid to them.
+# Neither side is solid to the other: the player's mask does not name the
+# enemies layer and no enemy's mask names the player layer. You walk through
+# them, and none of the weight below comes from the physics response, because
+# there is no collision to respond to.
 #
-# On its own that is a trap. An enemy walks into you, you are blocked by it,
-# it is not blocked by you, and its AI keeps pressing forward — so you are
-# pinned with nothing to push against. This was very visible with the poison
-# slime, which splits into eight bodies that all converge on the same spot.
+# THAT IS WHY THIS IS A QUERY AND NOT A COLLISION CALLBACK. The function this
+# replaced looped over get_slide_collision(), which reports nothing once the
+# masks stopped overlapping - so it had quietly become a no-op that still ran
+# every frame. Enemies felt like fog, and the code responsible for their weight
+# was present, called, and doing nothing. A no-op is harder to notice than a
+# crash.
 #
-# The fix is not to make collision mutual. Mutual collision means a pack of
-# slimes jams against itself as well as against you, and pathfinding fights
-# the physics. Instead the player explicitly shoves whatever it walks into:
-# enemies stay solid and still block you, but leaning into one slides it out
-# of the way.
-#
-# move_and_collide() is used on the enemy rather than assigning
-# global_position directly, so the shove still respects walls — an enemy
-# cannot be pushed through geometry, it just stops moving once it's pinned
-# against something solid.
-#
-# Anything that should be immovable (the boss, a scripted encounter) can be
-# added to the "unpushable" group and this will skip it.
-func _shove_blocking_enemies(delta: float) -> void:
-	if enemy_push_strength <= 0.0 and enemy_push_ratio <= 0.0:
+# Anything that should not be shoved - the boss, a scripted encounter - goes in
+# the "unpushable" group and is skipped.
+
+# Physics layer 4, "enemies" in Project Settings. Layers are 1-indexed in the
+# inspector and 0-indexed as bits, so layer 4 is bit 3 is value 8.
+const ENEMY_PHYSICS_LAYER := 8
+
+# Built once and mutated. A CircleShape2D is a Resource with a shape on the
+# physics server behind it; allocating one per physics frame is 80 a second.
+var _wade_shape: CircleShape2D = null
+var _wade_query: PhysicsShapeQueryParameters2D = null
+
+
+func _enemies_overlapping() -> Array[CharacterBody2D]:
+	var found: Array[CharacterBody2D] = []
+	if enemy_wade_radius <= 0.0:
+		return found
+
+	if _wade_query == null:
+		_wade_shape = CircleShape2D.new()
+		_wade_query = PhysicsShapeQueryParameters2D.new()
+		_wade_query.shape = _wade_shape
+		_wade_query.collision_mask = ENEMY_PHYSICS_LAYER
+		_wade_query.collide_with_bodies = true
+		_wade_query.collide_with_areas = false
+		# Typed so the assignment does not go through a Variant conversion -
+		# exclude is Array[RID] and an untyped literal warns.
+		var excluded: Array[RID] = [get_rid()]
+		_wade_query.exclude = excluded
+
+	# Only written when it actually changes, so the export stays live-tunable
+	# in the remote inspector without a server round trip every frame.
+	if not is_equal_approx(_wade_shape.radius, enemy_wade_radius):
+		_wade_shape.radius = enemy_wade_radius
+	_wade_query.transform = Transform2D(0.0, global_position)
+
+	# THE GROUP CHECK IS NOT REDUNDANT WITH THE MASK. Anything sharing the
+	# enemies layer comes back from this query, including a pet that ends up on
+	# the wrong layer, and only things actually in the "enemies" group should
+	# weigh you down or be pushed aside.
+	for hit in get_world_2d().direct_space_state.intersect_shape(_wade_query, 16):
+		var body := hit.get("collider") as CharacterBody2D
+		if body == null or not is_instance_valid(body):
+			continue
+		if not body.is_in_group("enemies"):
+			continue
+		if body.is_in_group("unpushable"):
+			continue
+		found.append(body)
+	return found
+
+
+func _wade_drag_factor(body_count: int) -> float:
+	var drag: float = enemy_wade_drag + enemy_wade_drag_per_extra * float(body_count - 1)
+	return clampf(1.0 - drag, enemy_wade_min_speed, 1.0)
+
+
+func _displace_wading_enemies(bodies: Array[CharacterBody2D], delta: float) -> void:
+	# FROM YOUR SPEED, NOT THEIRS - see enemy_wade_push_ratio. A ratio below 1.0
+	# means you always out-pace what you displace, so there is nothing to ride,
+	# and it can afford to lose to an enemy walking back in because losing means
+	# wading past it rather than being stopped by it.
+	var push_speed: float = maxf(velocity.length() * enemy_wade_push_ratio, enemy_wade_idle_push)
+	if push_speed <= 0.0:
 		return
 
-	for i in get_slide_collision_count():
-		var collision := get_slide_collision(i)
+	var travel: Vector2 = velocity.normalized()
 
-		# cast rather than `is` + call: `other` stays statically typed as
-		# CharacterBody2D, so is_in_group()/move_and_collide() resolve without
-		# the parser complaining about calling Node methods on Object.
-		var other := collision.get_collider() as CharacterBody2D
-		if other == null or not is_instance_valid(other):
-			continue
-		if not other.is_in_group("enemies"):
-			continue
-		if other.is_in_group("unpushable"):
+	for body in bodies:
+		# move_and_slide() ran between the query and here, and queue_free() is
+		# deferred, so something killed this frame is still in this array and
+		# still passes is_instance_valid() until the frame ends.
+		if not is_instance_valid(body):
 			continue
 
-		# THE SHOVE HAS TO OUTRUN THE CHASE, and only the enemy knows how fast
-		# that is. An enemy pushed at 50 while pathing toward you at 80 is not
-		# being shoved, it is closing more slowly.
-		var chase_speed: float = 0.0
-		if other.has_method("get_move_speed"):
-			chase_speed = float(other.get_move_speed())
-		var push_speed: float = maxf(chase_speed * enemy_push_ratio, enemy_push_strength)
+		var away: Vector2 = body.global_position - global_position
 
-		# get_normal() points OUT of the surface we collided with, i.e. back
-		# toward us. Negating it gives the direction that moves the enemy
-		# away from the player.
-		var away: Vector2 = -collision.get_normal()
+		# Dead centre, which happens constantly with a pack converging on one
+		# point. Choosing a direction per frame would flip-flop and cancel
+		# itself out, so it is pinned to the instance id - arbitrary, and stable
+		# for as long as that body lives.
+		if away.length_squared() < 0.0001:
+			var angle: float = float(int(body.get_instance_id()) % 360) * (PI / 180.0)
+			away = Vector2.RIGHT.rotated(angle)
+		away = away.normalized()
 
-		# PUSH IT ASIDE, NOT JUST AHEAD.
-		#
-		# Which side: whichever one the enemy is already leaning toward, so a
-		# body slightly to your left gets nudged further left and you walk
-		# through the gap that opens.
-		var tangent: Vector2 = away.orthogonal()
-		var side: float = tangent.dot(other.global_position - global_position)
+		# PART AROUND THE SHOULDERS, DO NOT BULLDOZE. Straight-away push from a
+		# head-on walk points along your own travel direction, which shoves the
+		# body ahead of you and keeps it in front the whole way. The sideways
+		# component sends it to whichever side it is already leaning toward.
+		var tangent := Vector2.ZERO
+		if travel != Vector2.ZERO:
+			tangent = travel.orthogonal()
+			if tangent.dot(away) < 0.0:
+				tangent = -tangent
 
-		# Dead centre. Either side is equally good, but CHOOSING ONE PER FRAME
-		# would flip-flop and cancel itself out, so it is pinned to the enemy's
-		# instance id — arbitrary, and stable for as long as that enemy lives.
-		if absf(side) < 0.001:
-			side = 1.0 if int(other.get_instance_id()) % 2 == 0 else -1.0
-
-		if side < 0.0:
-			tangent = -tangent
-
-		# move_and_collide() rather than assigning global_position, so the
-		# shove still respects walls — an enemy cannot be pushed through
-		# geometry, it just stops once it is pinned against something solid.
-		var push: Vector2 = (away + tangent * enemy_push_sidestep).normalized()
-		other.move_and_collide(push * push_speed * delta)
+		# move_and_collide() rather than assigning global_position, so a pushed
+		# body still respects walls - it cannot be shoved through geometry, it
+		# just stops once it is pinned against something solid.
+		var push: Vector2 = (away + tangent * enemy_wade_sidestep).normalized()
+		body.move_and_collide(push * push_speed * delta)
 
 
 # =============================================================================

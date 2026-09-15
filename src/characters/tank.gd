@@ -204,7 +204,20 @@ func _handle_movement(delta: float) -> void:
 	else:
 		_handle_idle()
 
+	# THE SAME WADE AS EVERY OTHER CLASS, WIRED BY HAND.
+	#
+	# Tank replaces player.gd's _physics_process instead of extending it, so it
+	# inherits these functions but not the call to them - anything added to the
+	# base loop has to be repeated here or tank silently does without it. The
+	# shove this replaced was never wired here at all, and tank's mask has
+	# excluded the enemies layer since well before that, so tank has been
+	# walking through enemies with no weight and no latch this entire time.
+	var wading: Array[CharacterBody2D] = _enemies_overlapping()
+	if not wading.is_empty():
+		velocity *= _wade_drag_factor(wading.size())
+
 	move_and_slide()
+	_displace_wading_enemies(wading, delta)
 
 
 func _handle_moving(direction: Vector2, delta: float) -> void:
