@@ -6,6 +6,7 @@
 [ext_resource type="Texture2D" uid="uid://d2r3plsbsj4xy" path="res://art/menu/original size.png" id="4_mt8db"]
 
 [node name="loginmenu" type="Control" unique_id=848796310]
+visible = false
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

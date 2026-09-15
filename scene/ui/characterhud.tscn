@@ -7,11 +7,13 @@
 [ext_resource type="Texture2D" uid="uid://dvycuh1mibifp" path="res://art/images/manafull.png" id="5_p3m5x"]
 [ext_resource type="Texture2D" uid="uid://bcusdsabfo3re" path="res://art/images/staminaempty.png" id="6_xinkp"]
 [ext_resource type="Texture2D" uid="uid://bawnet1v7qvbg" path="res://art/images/staminafull.png" id="7_a33qf"]
+[ext_resource type="Script" uid="uid://bus5md8lbkyyf" path="res://src/ui/inventory/itemtooltip.gd" id="9_manxm"]
 [ext_resource type="PackedScene" uid="uid://bqw1e521x7ngr" path="res://scene/ui/hotbar.tscn" id="10_manxm"]
 [ext_resource type="PackedScene" uid="uid://cjnng780ylcn6" path="res://scene/ui/inventory/itemtooltip.tscn" id="17_xinkp"]
 
 [node name="characterhud" type="CanvasLayer" unique_id=2045428837]
 layer = 0
+visible = false
 script = ExtResource("1_s3c7b")
 
 [node name="barcontainer" type="Control" parent="." unique_id=1885492825]
@@ -116,6 +118,7 @@ offset_left = 3.0
 offset_top = 154.0
 offset_right = 203.0
 offset_bottom = 310.0
+script = ExtResource("9_manxm")
 
 [node name="hotbar" parent="." unique_id=147410389 instance=ExtResource("10_manxm")]
 unique_name_in_owner = true

@@ -90,6 +90,19 @@ var _request_in_flight: bool = false
 # =============================================================================
 
 func _ready() -> void:
+	# HIDDEN IN THE SCENE FILE, SHOWN HERE.
+	#
+	# Both this and the player HUD are CanvasLayers, so the 2D editor draws them
+	# over the map at a fixed screen position that does not scale with zoom -
+	# which makes laying tiles at 30% zoom impossible. They are saved with
+	# visible = false so the editor shows the world, and turned on here the
+	# moment they enter the tree at runtime.
+	#
+	# THIS LINE IS WHAT MAKES THAT SAFE. Hiding them without it means they are
+	# hidden in the game too, with no error and nothing in the log - the HUD just
+	# is not there. If you ever see that, this is the line that went missing.
+	visible = true
+
 	# NEW: connect via code rather than relying on editor-made signal
 	# connections (Node > Signals panel) — those don't automatically stay
 	# in sync with node renames, which is what caused the confusion here.

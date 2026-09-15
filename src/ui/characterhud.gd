@@ -112,6 +112,19 @@ var _mouse_mode_before_drag: Input.MouseMode = Input.MOUSE_MODE_VISIBLE
 # =============================================================================
 
 func _ready() -> void:
+	# HIDDEN IN THE SCENE FILE, SHOWN HERE.
+	#
+	# Both this and the login menu are CanvasLayers, so the 2D editor draws them
+	# over the map at a fixed screen position that does not scale with zoom -
+	# which makes laying tiles at 30% zoom impossible. They are saved with
+	# visible = false so the editor shows the world, and turned on here the
+	# moment they enter the tree at runtime.
+	#
+	# THIS LINE IS WHAT MAKES THAT SAFE. Hiding them without it means they are
+	# hidden in the game too, with no error and nothing in the log - the HUD just
+	# is not there. If you ever see that, this is the line that went missing.
+	visible = true
+
 	add_to_group("hud")
 	_resolve_bar_references()
 	_resolve_hotbar()

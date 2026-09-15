@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventory/inventorycontainer.gd" id="3_2qeky"]
 
 [node name="bankinventory" type="Control" unique_id=1169906003]
+visible = false
 layout_mode = 3
 anchors_preset = 8
 anchor_left = 0.5
