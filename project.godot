@@ -15,20 +15,20 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="ElusionRPG"
-run/main_scene="uid://lon8advnxgqx"
+run/main_scene="res://scene/ui/menus/loginmenu.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 run/flush_stdout_on_print=true
 run/max_fps=60
 
 [autoload]
 
-CharacterData="*uid://cvkrtide3lisi"
-GameState="*uid://cjruyiklfgr1l"
-ItemRegistry="*uid://dx6llg3mjckfx"
-GameConstants="*uid://wbhpk12dyjkn"
-SceneTransition="*uid://cvilb71enkgcb"
-Api="*uid://dvmmf1ehsw12"
-Audio="*uid://ce1yh8jyak16p"
+CharacterData="*res://src/systems/characterdata.gd"
+GameState="*res://src/systems/gamestate.gd"
+ItemRegistry="*res://src/systems/itemregistry.gd"
+GameConstants="*res://src/systems/gameconstants.gd"
+SceneTransition="*res://src/systems/scenetransition.gd"
+Api="*res://src/systems/api.gd"
+Audio="*res://src/systems/audio.gd"
 Combat="*res://src/systems/combat.gd"
 
 [display]
