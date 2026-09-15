@@ -1,15 +1,20 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b48rky73i4fpe"]
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bnv4wqxk2mtlr"]
 
-[ext_resource type="Texture2D" uid="uid://odam5n8hq578" path="res://art/weapons/a5425.png" id="1_ibhhg"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="1_npjud"]
+[ext_resource type="Texture2D" path="res://art/weapons/ironsword.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
 
 [resource]
-script = ExtResource("1_npjud")
+script = ExtResource("2_itemdata")
 item_id = "ironsword"
 display_name = "Iron Sword"
 description = "Forged in the bushlands, where iron is rare and warriors rarer. Lifts heavy in your hand."
-icon = ExtResource("1_ibhhg")
+icon = ExtResource("1_icon")
 max_stack = 1
 value = 25
+tier = 1
+required_level = 1
 type = 1
+equip_slot = 1
+required_classes = Array[String](["warrior"])
+damage = 20
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaachprurjtg2"]
+
+[ext_resource type="Texture2D" path="res://art/armour/cobalthelm.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "cobalthelm"
+display_name = "Cobalt Helm"
+description = "Cold on the brow long after you take it off."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 190
+tier = 3
+required_level = 10
+type = 2
+equip_slot = 2
+required_classes = Array[String](["warrior", "tank"])
+armor_value = 11
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

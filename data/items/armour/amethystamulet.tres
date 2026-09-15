@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaab8aayeh2sh"]
+
+[ext_resource type="Texture2D" path="res://art/armour/amethystamulet.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "amethystamulet"
+display_name = "Amethyst Amulet"
+description = "Cut so fine the chain looks like the heavy part."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 740
+tier = 4
+required_level = 16
+type = 2
+equip_slot = 8
+armor_value = 6
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

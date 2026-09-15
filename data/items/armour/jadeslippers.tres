@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bc8g5agu6g"]
+
+[ext_resource type="Texture2D" path="res://art/armour/jadeslippers.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "jadeslippers"
+display_name = "Jade Slippers"
+description = "Green leather, no heel, no sound. Bushland make."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 48
+tier = 2
+required_level = 5
+type = 2
+equip_slot = 6
+required_classes = Array[String](["mage", "healer"])
+armor_value = 3
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

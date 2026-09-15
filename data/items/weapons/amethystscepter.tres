@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://byyh3asslp"]
+
+[ext_resource type="Texture2D" path="res://art/weapons/amethystscepter.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "amethystscepter"
+display_name = "Amethyst Scepter"
+description = "Rings once when someone nearby is about to need you."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 520
+tier = 4
+required_level = 16
+type = 1
+equip_slot = 1
+required_classes = Array[String](["healer"])
+damage = 49
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

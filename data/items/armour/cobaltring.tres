@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaaabf20ui2l8"]
+
+[ext_resource type="Texture2D" path="res://art/armour/cobaltring.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "cobaltring"
+display_name = "Cobalt Ring"
+description = "Blue stone in an iron setting. It goes cold before a fight."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 300
+tier = 3
+required_level = 10
+type = 2
+equip_slot = 7
+armor_value = 4
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

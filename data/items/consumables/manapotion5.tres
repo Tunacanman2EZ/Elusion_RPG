@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://c4xnlpxatvbjr"]
+
+[ext_resource type="Texture2D" uid="uid://bqljgwbilraei" path="res://art/consumables/a1589.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "manapotion5"
+display_name = "Mana Potion V"
+description = "A bottle of cobalt tonic. Restores 110 mana."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 420
+tier = 5
+type = 0
+restore_amount = 110
+restore_target = 2
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

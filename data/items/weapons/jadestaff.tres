@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://ba5xkyl416"]
+
+[ext_resource type="Texture2D" path="res://art/weapons/jadestaff.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "jadestaff"
+display_name = "Jade Staff"
+description = "The green stone drinks light on the way in and gives none back."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 90
+tier = 2
+required_level = 5
+type = 1
+equip_slot = 1
+required_classes = Array[String](["mage"])
+damage = 29
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

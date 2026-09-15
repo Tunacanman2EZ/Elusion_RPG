@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dw2nqxk8vmtrb"]
+
+[ext_resource type="Texture2D" path="res://art/weapons/cobaltsword.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "cobaltsword"
+display_name = "Cobalt Sword"
+description = "Cold to the grip in any weather. The blue runs all the way through, not just across."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 240
+tier = 3
+required_level = 10
+type = 1
+equip_slot = 1
+required_classes = Array[String](["warrior"])
+damage = 48
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

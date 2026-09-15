@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://ct8mwxq4vnblr"]
+
+[ext_resource type="Texture2D" path="res://art/weapons/embersword.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "embersword"
+display_name = "Ember Sword"
+description = "The metal never finished cooling. Smiths who know it will not name the one who made it."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 1100
+tier = 5
+required_level = 22
+type = 1
+equip_slot = 1
+required_classes = Array[String](["warrior"])
+damage = 100
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

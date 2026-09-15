@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaabdt7i643yu"]
+
+[ext_resource type="Texture2D" path="res://art/armour/cobaltamulet.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "cobaltamulet"
+display_name = "Cobalt Amulet"
+description = "It hangs colder than the air around it."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 340
+tier = 3
+required_level = 10
+type = 2
+equip_slot = 8
+armor_value = 4
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

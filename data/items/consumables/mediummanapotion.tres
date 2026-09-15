@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cq8mrxw2vhnbf"]
+
+[ext_resource type="Texture2D" path="res://art/consumables/mediummanapotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "mediummanapotion"
+display_name = "Medium Mana Potion"
+description = "Tastes of storm air and old libraries. Restores 40 MP."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 150
+tier = 3
+type = 0
+restore_amount = 40
+restore_target = 2
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

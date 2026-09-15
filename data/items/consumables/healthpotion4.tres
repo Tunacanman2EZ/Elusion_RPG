@@ -1,19 +1,19 @@
 [gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b8vhkrp2cxtdm"]
 
-[ext_resource type="Texture2D" uid="uid://bmxvvu6hwqokk" path="res://art/consumables/smallhealthpotion.png" id="1_icon"]
+[ext_resource type="Texture2D" uid="uid://bqwkw0vgi2jk8" path="res://art/consumables/a1508.png" id="1_icon"]
 [ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
 
 [resource]
 script = ExtResource("2_itemdata")
-item_id = "smallhealthpotion"
-display_name = "Small Health Potion"
-description = "The bushland standard. Bitter, warm, and just enough to finish a fight. Restores 20 HP."
+item_id = "healthpotion4"
+display_name = "Health Potion IV"
+description = "A bottle of crimson tonic. Restores 70 HP."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 60
-tier = 2
+value = 260
+tier = 4
 type = 0
-restore_amount = 20
+restore_amount = 70
 restore_target = 1
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaacgrkplvwhw"]
+
+[ext_resource type="Texture2D" path="res://art/armour/jadehelm.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "jadehelm"
+display_name = "Jade Helm"
+description = "Green glass over the eyes, and somehow you still see out."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 70
+tier = 2
+required_level = 5
+type = 2
+equip_slot = 2
+required_classes = Array[String](["warrior", "tank"])
+armor_value = 7
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

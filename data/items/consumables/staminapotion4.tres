@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b7vqkxn3mrdtw"]
+
+[ext_resource type="Texture2D" uid="uid://dwry3wew3liou" path="res://art/consumables/a1604.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "staminapotion4"
+display_name = "Stamina Potion IV"
+description = "A bottle of amber tonic. Restores 70 stamina."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 260
+tier = 4
+type = 0
+restore_amount = 70
+restore_target = 3
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

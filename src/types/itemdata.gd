@@ -97,6 +97,65 @@ enum RestoreTarget {
 
 
 # =============================================================================
+# EQUIPMENT
+# =============================================================================
+# WHICH SLOT THIS OCCUPIES, and the reason Type.ARMOR is not enough on its own.
+#
+# Type says what an item IS. It cannot say where it goes: boots, a helm, a ring
+# and a shield are all Type.ARMOR, so nothing could enforce "one helm AND one
+# chest" rather than "two helms". The slot has to be its own axis.
+#
+# RING IS DELIBERATELY ONE SLOT, not two. Two ring slots is a balance decision
+# that doubles the strongest stat stacking in the game, and it is far easier to
+# add a second slot later than to take one away from players already wearing it.
+enum EquipSlot {
+	NONE,     # not equippable — every consumable, material and pet
+	WEAPON,
+	HELM,
+	CHEST,
+	LEGS,
+	BOOTS,
+	SHIELD,
+	RING,
+	AMULET,
+}
+
+@export var equip_slot: EquipSlot = EquipSlot.NONE
+
+# WHICH CLASSES MAY EQUIP THIS. Empty means anyone, which is the right default:
+# rings and amulets are shared by everybody.
+#
+# AN ARRAY, NOT A SINGLE STRING, and that is not over-engineering. Plate is worn
+# by the warrior AND the tank; robes by the mage AND the healer. A single string
+# cannot express either, which is exactly the wall the first version of this
+# field hit the moment armour got split by class.
+#
+# Strings matching each class resource's own id (warrior / mage / tank /
+# healer), NOT an enum, so adding a fifth class is a new .tres in data/classes/
+# rather than an edit here plus a migration of every saved item.
+@export var required_classes: Array[String] = []
+
+# WHAT AN EQUIPPED WEAPON HITS FOR, before scaling.
+#
+# Named to slot straight into the hole warrior.gd:21 already describes: "when
+# the equipment system is built, base_melee_damage should be replaced by the
+# equipped weapon's damage". warrior.gd currently does
+#     int(base_melee_damage * get_damage_multiplier())
+# with base_melee_damage exported at 20, so a tier 1 sword carrying damage = 20
+# reproduces today's balance exactly and the ladder climbs from there.
+#
+# 0 on anything that is not a weapon, which is every item in the game today
+# except the swords. Meaningless until an equipped slot exists - see the note
+# on armor_value below, which has the same status.
+@export var damage: int = 0
+
+# The defensive mirror of damage, for Type.ARMOR. Nothing wears armour yet and
+# there is no armour item, but the field exists so the two halves of equipment
+# are designed together rather than one being retrofitted around the other.
+@export var armor_value: int = 0
+
+
+# =============================================================================
 # TYPE AND BEHAVIOR
 # =============================================================================
 # the item type — determines behavior when used

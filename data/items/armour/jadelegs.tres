@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaaa2374c0gf6"]
+
+[ext_resource type="Texture2D" path="res://art/armour/jadelegs.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "jadelegs"
+display_name = "Jade Greaves"
+description = "Green plates that click softly with every stride."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 105
+tier = 2
+required_level = 5
+type = 2
+equip_slot = 4
+required_classes = Array[String](["warrior", "tank"])
+armor_value = 10
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://5rvls2uqt"]
+
+[ext_resource type="Texture2D" path="res://art/weapons/ironmaul.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "ironmaul"
+display_name = "Iron Maul"
+description = "Two hands, no finesse, and a head that has flattened better things than you."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 30
+tier = 1
+required_level = 1
+type = 1
+equip_slot = 1
+required_classes = Array[String](["tank"])
+damage = 24
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

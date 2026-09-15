@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaaayvtojkyyk"]
+
+[ext_resource type="Texture2D" path="res://art/armour/jadechest.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "jadechest"
+display_name = "Jade Cuirass"
+description = "Panels of green glass that should shatter and refuse to."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 140
+tier = 2
+required_level = 5
+type = 2
+equip_slot = 3
+required_classes = Array[String](["warrior", "tank"])
+armor_value = 14
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

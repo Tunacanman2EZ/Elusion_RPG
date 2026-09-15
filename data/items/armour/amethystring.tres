@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaacf84ggr3ik"]
+
+[ext_resource type="Texture2D" path="res://art/armour/amethystring.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "amethystring"
+display_name = "Amethyst Ring"
+description = "The cut stone shows a room you are not standing in."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 650
+tier = 4
+required_level = 16
+type = 2
+equip_slot = 7
+armor_value = 6
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

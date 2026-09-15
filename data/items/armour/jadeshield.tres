@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaabjhlvnvrpj"]
+
+[ext_resource type="Texture2D" path="res://art/armour/jadeshield.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "jadeshield"
+display_name = "Jade Shield"
+description = "Green and translucent. You can watch the blow coming through it."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 90
+tier = 2
+required_level = 5
+type = 2
+equip_slot = 6
+required_classes = Array[String](["warrior", "tank"])
+armor_value = 9
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

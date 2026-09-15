@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cn2wjxq5vbtlm"]
+
+[ext_resource type="Texture2D" path="res://art/consumables/tinystaminapotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "tinystaminapotion"
+display_name = "Tiny Stamina Potion"
+description = "A capful of amber. Buys you the run to the next tree. Restores 10 stamina."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 25
+tier = 1
+type = 0
+restore_amount = 10
+restore_target = 3
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaach1pm2o1sq"]
+
+[ext_resource type="Texture2D" path="res://art/armour/cobaltshield.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "cobaltshield"
+display_name = "Cobalt Shield"
+description = "Blue to the rim. Arrows come off it at angles they should not."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 240
+tier = 3
+required_level = 10
+type = 2
+equip_slot = 6
+required_classes = Array[String](["warrior", "tank"])
+armor_value = 14
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

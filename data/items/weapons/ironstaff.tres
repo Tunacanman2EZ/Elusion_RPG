@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://gfqmcgyrn"]
+
+[ext_resource type="Texture2D" path="res://art/weapons/ironstaff.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "ironstaff"
+display_name = "Iron Staff"
+description = "An iron rod and a dull stone. Every mage starts with worse."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 25
+tier = 1
+required_level = 1
+type = 1
+equip_slot = 1
+required_classes = Array[String](["mage"])
+damage = 18
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

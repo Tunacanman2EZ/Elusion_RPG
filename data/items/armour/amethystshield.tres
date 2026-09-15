@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaabxnnqto6tp"]
+
+[ext_resource type="Texture2D" path="res://art/armour/amethystshield.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "amethystshield"
+display_name = "Amethyst Shield"
+description = "Struck once and it hums for a count of three."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 520
+tier = 4
+required_level = 16
+type = 2
+equip_slot = 6
+required_classes = Array[String](["warrior", "tank"])
+armor_value = 20
+metadata/_custom_type_script = "uid://ccaysp573wbjk"
