@@ -89,6 +89,8 @@ const SOUNDS: Dictionary = {
 	"bank_open":      "",  # the chest opening
 	"teleport":       "",  # stepping through a portal
 	"door":           "",  # ladders, doors
+	"lever":          "",  # a wall lever being thrown
+	"spikes":         "",  # spike door rising or lowering
 
 	# --- music (played through play_music, Music bus) ---
 	"music_menu":     "",

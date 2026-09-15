@@ -17,6 +17,7 @@
 [ext_resource type="PackedScene" uid="uid://bwgdfgnjn3fv" path="res://scene/enemy/bushsniper.tscn" id="13_muev0"]
 [ext_resource type="PackedScene" path="res://scene/crypt/candelabra.tscn" id="16_22eus"]
 [ext_resource type="PackedScene" uid="uid://dtffi4janv50h" path="res://scene/enemy/poisonslime.tscn" id="16_skip5"]
+[ext_resource type="PackedScene" uid="uid://b7mqtx4vhjs2e" path="res://scene/world/enemyrespawner.tscn" id="17_respawner"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ahwvv"]
 texture = ExtResource("2_aw5uv")
@@ -776,6 +777,8 @@ position = Vector2(222, 248)
 
 [node name="floatinglabels" type="Node2D" parent="." unique_id=759395050 groups=["floatinglabels"]]
 z_index = 90
+
+[node name="enemyrespawner" parent="." unique_id=1607884213 instance=ExtResource("17_respawner")]
 
 [connection signal="body_entered" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_exited"]

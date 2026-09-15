@@ -1,0 +1,83 @@
+[gd_scene format=3 uid="uid://cq8vbnx2lrpme"]
+
+[ext_resource type="Script" path="res://src/world/lever.gd" id="1_lever"]
+[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/tiles/ladderchestlevertiles.png" id="2_sheet"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_leveroff"]
+atlas = ExtResource("2_sheet")
+region = Rect2(0, 96, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_levermid"]
+atlas = ExtResource("2_sheet")
+region = Rect2(32, 96, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_leveron"]
+atlas = ExtResource("2_sheet")
+region = Rect2(64, 96, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_lever"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_leveroff")
+}],
+"loop": true,
+"name": &"off",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_leveron")
+}],
+"loop": true,
+"name": &"on",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_leveroff")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_levermid")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_leveron")
+}],
+"loop": false,
+"name": &"throwon",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_leveron")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_levermid")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_leveroff")
+}],
+"loop": false,
+"name": &"throwoff",
+"speed": 10.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_leverzone"]
+radius = 24.0
+
+[node name="lever" type="Area2D"]
+texture_filter = 1
+collision_layer = 16
+collision_mask = 4
+script = ExtResource("1_lever")
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+sprite_frames = SubResource("SpriteFrames_lever")
+animation = &"off"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_leverzone")
+
+[connection signal="body_entered" from="." to="." method="_on_body_entered"]
+[connection signal="body_exited" from="." to="." method="_on_body_exited"]

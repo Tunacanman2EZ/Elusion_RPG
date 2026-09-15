@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://blrs7e81o2jg4" path="res://src/world/fieldportal.gd" id="9_nbucm"]
 [ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/characterhud.tscn" id="10_24v5s"]
 [ext_resource type="PackedScene" uid="uid://d0rq5big47ahs" path="res://scene/enemy/bossenemy.tscn" id="11_bossenemy"]
+[ext_resource type="PackedScene" uid="uid://b7mqtx4vhjs2e" path="res://scene/world/enemyrespawner.tscn" id="12_respawner"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_x2yxj"]
 texture = ExtResource("2_b5yaj")
@@ -469,6 +470,11 @@ position = Vector2(-839, 138)
 [node name="aboveworld" type="TileMapLayer" parent="." unique_id=547591725]
 
 [node name="hudcontrol" parent="." unique_id=2045428837 instance=ExtResource("10_24v5s")]
+
+[node name="enemyrespawner" parent="." unique_id=1744201955 instance=ExtResource("12_respawner")]
+respawn_seconds = 120.0
+respawn_jitter = 0.0
+min_player_distance = 400.0
 
 [connection signal="body_entered" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_exited"]
