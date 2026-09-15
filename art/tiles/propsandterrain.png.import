@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://3d0lc40x5iui"
-path="res://.godot/imported/gate1.png-5d1083968159c2e0f6e15665e7e88844.ctex"
+uid="uid://djxbgfx0w07ls"
+path="res://.godot/imported/propsandterrain.png-7c4ce0f2f91f8957b825557a0f46551a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/doors/gate1.png"
-dest_files=["res://.godot/imported/gate1.png-5d1083968159c2e0f6e15665e7e88844.ctex"]
+source_file="res://art/tiles/propsandterrain.png"
+dest_files=["res://.godot/imported/propsandterrain.png-7c4ce0f2f91f8957b825557a0f46551a.ctex"]
 
 [params]
 

@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dqnlcnd22e511"]
 
-[ext_resource type="Texture2D" uid="uid://dasrnuni7e4cp" path="res://art/amulets/bushamulet.png" id="1_slpxg"]
+[ext_resource type="Texture2D" uid="uid://dasrnuni7e4cp" path="res://art/pack/amulets/bushamulet.png" id="1_slpxg"]
 [ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_36ceh"]
 
 [resource]

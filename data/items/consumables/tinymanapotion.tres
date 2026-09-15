@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://c4xnlpw8tvbjr"]
 
-[ext_resource type="Texture2D" uid="uid://dsjyokpu0oq0a" path="res://art/consumables/tinymanapotion.png" id="1_icon"]
+[ext_resource type="Texture2D" uid="uid://dsjyokpu0oq0a" path="res://art/pack/consumables/tinymanapotion.png" id="1_icon"]
 [ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
 
 [resource]

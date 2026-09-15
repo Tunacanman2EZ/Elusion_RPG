@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://co1fbovbrsqxx"
-path="res://.godot/imported/animated cyclops wall.png 17-21-48-422.png-f37aa595200291fd5a166a88f8f9c221.ctex"
+uid="uid://3d0lc40x5iui"
+path="res://.godot/imported/spikesup.png-9807d3d8515ae26691642f0ee4f6127c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tiles/animated cyclops wall.png 17-21-48-422.png"
-dest_files=["res://.godot/imported/animated cyclops wall.png 17-21-48-422.png-f37aa595200291fd5a166a88f8f9c221.ctex"]
+source_file="res://art/doors/spikesup.png"
+dest_files=["res://.godot/imported/spikesup.png-9807d3d8515ae26691642f0ee4f6127c.ctex"]
 
 [params]
 

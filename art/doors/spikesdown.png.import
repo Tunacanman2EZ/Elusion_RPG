@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dry13a7qaup62"
-path="res://.godot/imported/New Piskel-2.png (1).png-8baf8bb47895a4d01a4690c3bbdc5289.ctex"
+uid="uid://b8trx3yur7l7x"
+path="res://.godot/imported/spikesdown.png-fcb4d3986157a354ad77ca0289eb400e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/doors/New Piskel-2.png (1).png"
-dest_files=["res://.godot/imported/New Piskel-2.png (1).png-8baf8bb47895a4d01a4690c3bbdc5289.ctex"]
+source_file="res://art/doors/spikesdown.png"
+dest_files=["res://.godot/imported/spikesdown.png-fcb4d3986157a354ad77ca0289eb400e.ctex"]
 
 [params]
 

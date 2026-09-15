@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b8trx3yur7l7x"
-path="res://.godot/imported/gate3.png-164e5b4adcd861718c916217cb635752.ctex"
+uid="uid://6lwpeowg18ls"
+path="res://.godot/imported/lavatile.png-ab110bd9711b1dbbc7e9603e3160538a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/doors/gate3.png"
-dest_files=["res://.godot/imported/gate3.png-164e5b4adcd861718c916217cb635752.ctex"]
+source_file="res://art/tiles/lavatile.png"
+dest_files=["res://.godot/imported/lavatile.png-ab110bd9711b1dbbc7e9603e3160538a.ctex"]
 
 [params]
 

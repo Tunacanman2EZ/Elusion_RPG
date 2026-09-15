@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dnq4x1mwbveti"]
 
-[ext_resource type="Texture2D" uid="uid://c1u8fjls2o8rj" path="res://art/consumables/tinyhealthpotion.png" id="1_icon"]
+[ext_resource type="Texture2D" uid="uid://c1u8fjls2o8rj" path="res://art/pack/consumables/tinyhealthpotion.png" id="1_icon"]
 [ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
 
 [resource]

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://wckilo02vwsc"
-path="res://.godot/imported/houses read to use.png-8cc59659106d02e38012a907c7844b5f.ctex"
+uid="uid://co1fbovbrsqxx"
+path="res://.godot/imported/cyclopswallanimated.png-b4f0c4f782f758b82903263bdb4e8ea8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tiles/houses read to use.png"
-dest_files=["res://.godot/imported/houses read to use.png-8cc59659106d02e38012a907c7844b5f.ctex"]
+source_file="res://art/tiles/cyclopswallanimated.png"
+dest_files=["res://.godot/imported/cyclopswallanimated.png-b4f0c4f782f758b82903263bdb4e8ea8.ctex"]
 
 [params]
 

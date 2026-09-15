@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://djxbgfx0w07ls"
-path="res://.godot/imported/ladderchestlevertiles.png-0dab6d87ae00758bd70edbc6daa9b434.ctex"
+uid="uid://wckilo02vwsc"
+path="res://.godot/imported/houses read to use.png-6f35717c3411b2ab5614a03c7ace055f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tiles/ladderchestlevertiles.png"
-dest_files=["res://.godot/imported/ladderchestlevertiles.png-0dab6d87ae00758bd70edbc6daa9b434.ctex"]
+source_file="res://art/thirdparty/houses read to use.png"
+dest_files=["res://.godot/imported/houses read to use.png-6f35717c3411b2ab5614a03c7ace055f.ctex"]
 
 [params]
 

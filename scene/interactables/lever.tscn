@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://cq8vbnx2lrpme"]
 
 [ext_resource type="Script" path="res://src/world/lever.gd" id="1_lever"]
-[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/tiles/ladderchestlevertiles.png" id="2_sheet"]
+[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/tiles/propsandterrain.png" id="2_sheet"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_leveroff"]
 atlas = ExtResource("2_sheet")

@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaach1pm2o1sq"]
 
-[ext_resource type="Texture2D" path="res://art/armour/cobaltshield.png" id="1_icon"]
+[ext_resource type="Texture2D" path="res://art/pack/armour/cobaltshield.png" id="1_icon"]
 [ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
 
 [resource]

@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://aaaa2374c0gf6"]
 
-[ext_resource type="Texture2D" path="res://art/armour/jadelegs.png" id="1_icon"]
+[ext_resource type="Texture2D" path="res://art/pack/armour/jadelegs.png" id="1_icon"]
 [ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
 
 [resource]

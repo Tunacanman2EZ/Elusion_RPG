@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://gfwleprj1o3l"
-path="res://.godot/imported/middle brick wall-1.png.png-acf38e89eebac7be085131947265348f.ctex"
+uid="uid://dgd2b0qy3d1md"
+path="res://.godot/imported/spikeshalf.png-06ca4f7f0985650bc1b5060338853e5e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tiles/middle brick wall-1.png.png"
-dest_files=["res://.godot/imported/middle brick wall-1.png.png-acf38e89eebac7be085131947265348f.ctex"]
+source_file="res://art/doors/spikeshalf.png"
+dest_files=["res://.godot/imported/spikeshalf.png-06ca4f7f0985650bc1b5060338853e5e.ctex"]
 
 [params]
 

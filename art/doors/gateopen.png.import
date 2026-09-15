@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://07k2b5nj7otp"
-path="res://.godot/imported/New Piskel-1 copy.png.png-7ee963448da0cc7b547337aa1c4bb07f.ctex"
+uid="uid://dry13a7qaup62"
+path="res://.godot/imported/gateopen.png-a4e55fe60425ec2524a0694323f5b37d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/doors/New Piskel-1 copy.png.png"
-dest_files=["res://.godot/imported/New Piskel-1 copy.png.png-7ee963448da0cc7b547337aa1c4bb07f.ctex"]
+source_file="res://art/doors/gateopen.png"
+dest_files=["res://.godot/imported/gateopen.png-a4e55fe60425ec2524a0694323f5b37d.ctex"]
 
 [params]
 

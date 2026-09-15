@@ -6,7 +6,7 @@
 [ext_resource type="Texture2D" uid="uid://bea6xx5ev4sxh" path="res://art/tiles/c125.png" id="3_vxp2q"]
 [ext_resource type="Texture2D" uid="uid://cee7dyl4prmn0" path="res://art/tiles/c92.png" id="4_e1pj8"]
 [ext_resource type="Texture2D" uid="uid://bcflwguhpaljt" path="res://art/tiles/c122.png" id="5_2vkol"]
-[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/tiles/ladderchestlevertiles.png" id="5_akpem"]
+[ext_resource type="Texture2D" uid="uid://djxbgfx0w07ls" path="res://art/tiles/propsandterrain.png" id="5_akpem"]
 [ext_resource type="Texture2D" uid="uid://brt3h3mgdwuxh" path="res://art/tiles/cyclops wall with eyes.png" id="7_yumjd"]
 [ext_resource type="Texture2D" uid="uid://b300c2ikysmls" path="res://art/tiles/tiles2.png" id="8_nivb4"]
 [ext_resource type="Texture2D" uid="uid://b3phdst3p5y1q" path="res://art/tiles/tiles3.png" id="10_k5s2q"]
