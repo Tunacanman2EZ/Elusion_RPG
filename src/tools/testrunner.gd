@@ -62,6 +62,7 @@ func _run_all() -> void:
 	_test_shared_constants()
 	_test_class_curves()
 	_test_player_stats()
+	_test_pet_controller()
 	_test_itemstack()
 	_test_ranks()
 
@@ -423,6 +424,86 @@ func _test_player_stats() -> void:
 
 
 # =============================================================================
+# PETCONTROLLER
+# =============================================================================
+# This one touches the scene tree, unlike everything above it. That is allowed
+# because it needs a tree and nothing else - no player, no world, no physics
+# frame. Nodes created here are added to the same tree this suite runs in.
+
+func _test_pet_controller() -> void:
+	section("PETCONTROLLER")
+
+	# --- the lookup --------------------------------------------------------
+	var pet_id: String = _any_pet_item_id()
+	check("a pet item exists to test with", pet_id != "", "no PET-type ItemData")
+	if pet_id != "":
+		check("a real pet item resolves to a scene",
+			PetController.pet_scene_for(pet_id) != null, pet_id)
+
+	check("an empty id resolves to nothing, and warns about nothing",
+		PetController.pet_scene_for("") == null)
+
+	_say("  ...expected warnings follow - each rejected lookup explains itself")
+
+	# A potion is not a pet. THIS IS THE CHECK THE SPLIT WAS FOR: the restore
+	# path used to accept any item carrying a pet_scene without asking whether
+	# it was a PET, so the two summon paths disagreed about what counts.
+	var potion: ItemData = _any_item_of_type(ItemData.Type.CONSUMABLE)
+	if potion != null:
+		check("a consumable is not summonable as a pet",
+			PetController.pet_scene_for(potion.item_id) == null, potion.item_id)
+
+	check("an unknown id is not summonable",
+		PetController.pet_scene_for("notarealpet") == null)
+
+	# --- despawning --------------------------------------------------------
+	# A REGRESSION TEST WITH A STORY. field.tscn had its pets CONTAINER in the
+	# "pets" group, the same group the pets themselves join, so summoning a pet
+	# in the field deleted the container out of the scene. The scene was fixed;
+	# this is what stops the next mistyped group doing it again.
+	var fake_pet := CharacterBody2D.new()
+	fake_pet.name = "FakePet"
+	fake_pet.add_to_group("pets")
+	add_child(fake_pet)
+
+	var not_a_pet := Node2D.new()
+	not_a_pet.name = "PetsContainer"
+	not_a_pet.add_to_group("pets")
+	add_child(not_a_pet)
+
+	_say("  ...one more expected warning: the container below is meant to be skipped")
+	var freed: int = PetController.despawn_all(get_tree())
+
+	check("despawn_all frees the pet", freed == 1, "freed %d" % freed)
+	check("and the pet is actually going away",
+		fake_pet.is_queued_for_deletion(), "not queued")
+	check("but a non-pet in the pets group SURVIVES",
+		is_instance_valid(not_a_pet) and not not_a_pet.is_queued_for_deletion(),
+		"the field's pets container was deleted this way once")
+
+	not_a_pet.queue_free()
+
+	check("despawning an empty world frees nothing",
+		PetController.despawn_all(get_tree()) == 0)
+	check("and a null tree is survivable rather than a crash",
+		PetController.despawn_all(null) == 0)
+
+
+func _any_pet_item_id() -> String:
+	for item in ItemRegistry.get_all_items():
+		if item != null and item.type == ItemData.Type.PET and item.pet_scene != null:
+			return item.item_id
+	return ""
+
+
+func _any_item_of_type(wanted: ItemData.Type) -> ItemData:
+	for item in ItemRegistry.get_all_items():
+		if item != null and item.type == wanted:
+			return item
+	return null
+
+
+# =============================================================================
 # ITEMSTACK
 # =============================================================================
 
@@ -544,5 +625,22 @@ func _test_ranks() -> void:
 	for rank in expected:
 		check("the owner satisfies a %s requirement" % rank,
 			Api.role_at_least(rank), rank)
+
+	# THE DEBUG KEYS ARE STAFF-ONLY. They hand out gear, pets, lusions and skill
+	# XP - all things a player is meant to earn, and a pet in particular is loot.
+	#
+	# Asserted against Api.DEBUG_KEYS_MIN_ROLE rather than the literal "mod", so
+	# this tests the policy player.gd actually applies instead of a second copy
+	# of it that can drift.
+	#
+	# This is a rule, not a defence. The gate is client-side and the backpack
+	# ledger is client-asserted, so it stops an honest player in a debug build
+	# and nothing more. See _staff_debug_allowed() in player.gd.
+	Api.role = "player"
+	check("a player cannot use the debug keys",
+		not Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE), Api.DEBUG_KEYS_MIN_ROLE)
+	for rank in ["mod", "dev", "owner"]:
+		Api.role = rank
+		check("a %s can" % rank, Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE), rank)
 
 	Api.role = saved_role

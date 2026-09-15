@@ -96,9 +96,9 @@ enum AttackType { PROJECTILE, VINE }
 # STATE
 # =============================================================================
 
-# NEW: who this pet belongs to. set by whoever spawns it — see player.gd's
-# summon_pet() / _restore_active_pet() / the debug spawners — and set BEFORE
-# add_child(), so it's already in place when _ready() resolves the player.
+# Who this pet belongs to. Set by PetController.attach(), the single place a pet
+# enters the world, and set BEFORE add_child() so it is already in place when
+# _ready() resolves the player.
 #
 # WHY THIS EXISTS AT ALL: _resolve_player() used to take
 # get_nodes_in_group("player")[0], i.e. whichever player node happens to sit

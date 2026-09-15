@@ -1311,19 +1311,31 @@ func update_stats_labels(statspanel) -> void:
 # DEBUG
 # =============================================================================
 
+# TWO GATES, AND NEITHER IS A SECURITY BOUNDARY. Read the second paragraph
+# before relying on either.
+#
+# is_debug_build() keeps these keys out of a Release export. It is not enough on
+# its own: a DEBUG-template export reports is_debug_build() as true, and picking
+# the wrong template in the Export dialog is a single mis-click. So the rank is
+# checked too, and an ordinary player holding a debug build gets nothing.
+#
+# WHAT THIS DOES NOT DO: stop a modified client. Api.role is client memory set
+# from a login response, so a patched build sets it to "owner" and these keys
+# work again. It would not even need to - the keys add items to the LOCAL
+# inventory and the client pushes that to the server on save, and the backpack
+# ledger is still client-asserted (see Known gaps in CLAUDE.md). Anyone able to
+# edit the client can grant themselves items with or without this function.
+#
+# WHAT IT DOES BUY: an honest player in a debug build cannot press P and own a
+# pet. Pets are loot. Every key below hands out something a player is supposed
+# to earn - gear, currency, skill XP - so the gate is on the whole block rather
+# than the pet row alone.
+func _staff_debug_allowed() -> bool:
+	return OS.is_debug_build() and Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	# NEW: gated behind OS.is_debug_build() — true in the editor and in a
-	# "Debug" export, false only in a real "Release" export. without this,
-	# EVERY key below (free items, free skill XP, instant pet spawns)
-	# would work exactly the same in a build handed to classmates as it
-	# does in the editor — anyone pressing F9 a few times becomes
-	# instantly overpowered, no decompiling required at all.
-	#
-	# IMPORTANT: this alone isn't enough — when you actually export for
-	# classmates, you must select the "Release" export template in the
-	# Export dialog, not "Debug". a debug-template export still reports
-	# is_debug_build() == true, and every key below would still work.
-	if not OS.is_debug_build():
+	if not _staff_debug_allowed():
 		return
 
 	if event is InputEventKey and event.pressed:
@@ -1374,8 +1386,8 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================================
 # _debug_spawn_pet(), _debug_spawn_pet_mage(), _debug_spawn_pet_electric() and
 # _debug_spawn_pet_fire() used to live here — one per pet, each loading a
-# hardcoded res:// scene path, calling _attach_pet() and assigning
-# active_pet_id by hand.
+# hardcoded res:// scene path, attaching the node and assigning active_pet_id
+# by hand.
 #
 # They were four near-identical copies of a worse summon_pet(). Worse because
 # they never touched ItemRegistry, so they proved nothing about whether the
@@ -1389,107 +1401,56 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 # =============================================================================
-# PET PERSISTENCE  (NEW)
+# PETS
 # =============================================================================
-
-func _despawn_current_pet() -> void:
-	# ensures only one active pet at a time, matching the single
-	# active_pet_id model — without this, pressing multiple debug pet keys
-	# in a row (or restoring after a scene change while an old one somehow
-	# still exists) would leave orphaned pets wandering around that aren't
-	# tracked by active_pet_id at all. pet.gd's own _ready() already calls
-	# add_to_group("pets"), so this just leans on that existing tag.
-	for pet in get_tree().get_nodes_in_group("pets"):
-		if not is_instance_valid(pet):
-			continue
-		# TYPE CHECK, not just the group. field.tscn had its pets CONTAINER
-		# tagged "pets" - the same group pets themselves join - so summoning a
-		# pet in the field deleted that container node out of the scene. The
-		# scene is fixed, but a loop that frees whatever a group hands it will
-		# do this again the next time a group is mistyped. A pet is a
-		# CharacterBody2D; a container is not.
-		if not (pet is CharacterBody2D):
-			push_warning("Node '%s' is in group 'pets' but isn't a pet - skipping." % pet.name)
-			continue
-		pet.queue_free()
-
-
-func _attach_pet(pet: Node, offset: Vector2) -> void:
-	# NEW: the single place a pet gets put into the world. every spawn path
-	# (summon_pet, _restore_active_pet, and the four debug spawners) goes
-	# through here so none of them can forget the ownership line below.
-	#
-	# ORDER MATTERS: owner_player is claimed BEFORE add_child(), because
-	# add_child() runs the pet's _ready(), which is where it resolves who to
-	# follow. Set it afterwards and the pet has already fallen back to
-	# get_nodes_in_group("player")[0] — right by luck with one player,
-	# arbitrary with two — and nothing re-resolves it while that stays valid.
-	if pet is Pet:
-		pet.owner_player = self
-
-	get_tree().current_scene.add_child(pet)
-	pet.global_position = global_position + offset
-	# NEW: positioned AFTER entering the tree, so without this the pet gets
-	# interpolated from wherever it started toward the player on its first
-	# rendered frame. See teleporter.gd for why physics interpolation needs
-	# to be told about instant placement.
-	pet.reset_physics_interpolation()
-
+# The mechanics live in PetController. What stays here is the state and the
+# decisions: active_pet_id is persisted per character slot by CharacterData, so
+# it belongs to the character rather than to the system that spawns things.
 
 func _restore_active_pet() -> void:
-	# re-spawns the active pet (if any) on scene load — see active_pet_id's
-	# comment for why a String survives scene changes when a node can't.
-	# looks up the pet's scene via ItemRegistry/ItemData.pet_scene, which
-	# already existed specifically for this purpose (see itemdata.gd) —
-	# just never wired up until now.
+	# Re-spawns the active pet on scene load. See active_pet_id's comment for
+	# why a String survives a scene change when a node reference cannot.
+	#
+	# No despawn first, deliberately: the previous pet was freed along with the
+	# previous scene, so there is nothing left to remove.
 	if active_pet_id == "":
 		return
 
-	var item_data := ItemRegistry.get_item(active_pet_id)
-	if item_data == null or item_data.pet_scene == null:
-		push_warning("Player: active_pet_id '%s' has no valid pet_scene in ItemRegistry — clearing" % active_pet_id)
+	var scene: PackedScene = PetController.pet_scene_for(active_pet_id)
+	if scene == null:
+		# The warning naming the reason already came from pet_scene_for().
+		# Clearing matters: left set, this would warn on every scene load for
+		# the rest of the character's life.
 		active_pet_id = ""
 		return
 
-	var pet: Node = item_data.pet_scene.instantiate()
-	_attach_pet(pet, Vector2(0, -40))
+	PetController.attach(self, scene.instantiate(), PetController.SUMMON_OFFSET)
 	if OS.is_debug_build():
 		print("[PET]  restored '%s'" % active_pet_id)
 
 
 func summon_pet(item_id: String) -> bool:
-	# NEW: the real summon path, called when a PET item is used from the
-	# inventory. the _debug_spawn_* functions below hardcode a res:// path
-	# each; this resolves the scene through ItemRegistry exactly the way
-	# _restore_active_pet() does, so there is one definition of "which scene
-	# is this pet" rather than one per call site.
+	# Called when a PET item is used from the inventory.
 	#
-	# returns false WITHOUT changing anything if the item can't be summoned,
-	# so the caller can leave the item sitting in the inventory instead of
-	# consuming it for nothing. this is the whole reason it returns a bool.
-	var item_data := ItemRegistry.get_item(item_id)
-	if item_data == null:
-		push_warning("Player: no item '%s' in the registry — cannot summon" % item_id)
-		return false
-	if item_data.type != ItemData.Type.PET or item_data.pet_scene == null:
-		push_warning("Player: item '%s' is not a summonable pet" % item_id)
+	# RETURNS FALSE WITHOUT CHANGING ANYTHING if the item cannot be summoned,
+	# so the caller can leave it sitting in the inventory rather than consuming
+	# it for nothing. That is the whole reason this returns a bool.
+	var scene: PackedScene = PetController.pet_scene_for(item_id)
+	if scene == null:
 		return false
 
-	# one pet at a time, matching the single active_pet_id model — summoning
-	# a second pet REPLACES the first rather than stacking companions.
-	_despawn_current_pet()
+	# One pet at a time, matching the single active_pet_id model - summoning a
+	# second REPLACES the first rather than stacking companions.
+	PetController.despawn_all(get_tree())
+	PetController.attach(self, scene.instantiate(), PetController.SUMMON_OFFSET)
 
-	var pet: Node = item_data.pet_scene.instantiate()
-	_attach_pet(pet, Vector2(0, -40))
-
-	# set LAST, and only after everything above succeeded — _restore_active_pet()
-	# trusts this string to name a pet that actually resolves, and CharacterData
-	# persists it per character slot, so a bad value here would follow the save
-	# around and warn on every scene load.
+	# Set LAST, and only once everything above succeeded. _restore_active_pet()
+	# trusts this string to name a pet that resolves, and CharacterData persists
+	# it, so a bad value here would follow the save around.
 	active_pet_id = item_id
 
-	# On the success path only. Every return above leaves the world unchanged,
-	# and a summon sound for a pet that never appeared is worse than silence.
+	# Success path only. A summon sound for a pet that never appeared is worse
+	# than silence.
 	Audio.play("pet_summon")
 
 	if OS.is_debug_build():
@@ -1498,25 +1459,24 @@ func summon_pet(item_id: String) -> bool:
 
 
 func dismiss_pet() -> void:
-	# NEW: despawn AND forget. distinct from _despawn_current_pet(), which
-	# only removes the node — that one is used when replacing a pet, where
-	# active_pet_id is about to be overwritten anyway. this one is for
-	# genuinely putting the pet away, so it must clear the id too or the pet
-	# reappears on the next scene load.
-	_despawn_current_pet()
+	# Despawn AND forget. The despawn on its own is what summon_pet() does when
+	# replacing a pet, where active_pet_id is about to be overwritten anyway.
+	# This is for genuinely putting the pet away, so it has to clear the id too
+	# or the pet reappears on the next scene load.
+	PetController.despawn_all(get_tree())
 	active_pet_id = ""
 
 
-# BOTH _debug_* functions below open with their own is_debug_build() guard.
+# BOTH _debug_* functions below repeat the gate rather than trusting it.
 #
-# They are already unreachable in a Release build, because the only thing that
-# calls them is _unhandled_input(), which returns early — but that is a fact
-# about a different function two hundred lines up, and it stops being true the
-# moment anyone wires one of these to a button, a console command or a test.
-# These hand out free items, free pets and free lusions; they should refuse on
-# their own authority rather than inherit safety from their caller.
+# They are already unreachable for a player, because the only thing that calls
+# them is _unhandled_input(), which returns early - but that is a fact about a
+# different function two hundred lines up, and it stops being true the moment
+# anyone wires one of these to a button, a console command or a test. These hand
+# out free items, free pets and free lusions; they should refuse on their own
+# authority rather than inherit safety from their caller.
 func _debug_give_item(item_id: String, quantity: int) -> void:
-	if not OS.is_debug_build():
+	if not _staff_debug_allowed():
 		return
 	var data := ItemRegistry.get_item(item_id)
 	if data == null:
@@ -1546,7 +1506,7 @@ func _debug_give_item(item_id: String, quantity: int) -> void:
 
 
 func _debug_give_lusions(amount: int) -> void:
-	if not OS.is_debug_build():
+	if not _staff_debug_allowed():
 		return
 	add_lusions(amount)
 	print("DEBUG: gave %d lusions (now %d total)" % [amount, lusions])

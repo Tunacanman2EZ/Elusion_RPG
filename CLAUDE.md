@@ -43,7 +43,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 120 checks at the time of writing; if that number and the one in this
+failure. 134 checks at the time of writing; if that number and the one in this
 file disagree, this file is the stale one. It covers what can be checked without playing: the XP curve, the shared
 constants and class stat curves, `ItemStack`'s save round trip, and the rank
 ordering.
@@ -54,6 +54,11 @@ reads. Edit one, forget to re-run `src/tools/exportgamedata.gd`, and the two
 sides quietly disagree about your max HP or the price of a revive — the suite
 exists to make that loud. Add a check here whenever you add a number both sides
 need.
+
+**It covers one thing that needs the scene tree**, and only one:
+`PetController.despawn_all()`, which needs a tree and nothing else. The suite
+builds a fake pet and a fake container, both in the `pets` group, and asserts
+the pet is freed and the container is not.
 
 **It deliberately does not cover** anything needing a player in a world, a
 physics frame or a rendered scene — movement, collision, the enemy shove, the
@@ -158,6 +163,26 @@ Before deleting a function because nothing seems to call it, check all three:
   entries with no corresponding code.
 - **Engine virtuals.** `_ready`, `_process`, `_drop_data`,
   `_get_drag_data`, and EditorScript's `_run` are called by Godot.
+
+### The debug keys are staff-only, and that is a rule, not a defence
+
+F1-F7, F9-F12, M and the P O I U Y T pet row hand out gear, currency, pets and
+skill XP. They are gated on `_staff_debug_allowed()` in `player.gd`:
+`OS.is_debug_build()` **and** `Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)`.
+
+`is_debug_build()` alone was not enough, because a **Debug-template export
+reports it as true** and choosing the wrong template in the Export dialog is one
+mis-click. The rank check is what stops an ordinary player holding such a build
+from pressing P and owning a pet. Pets are loot.
+
+**It stops an honest player and nothing else.** `Api.role` is client memory set
+from a login response, so a patched build sets it to `owner`. It would not even
+need to: these keys add items to the LOCAL inventory and the client pushes that
+to the server on save, and the backpack ledger is still client-asserted. Anyone
+able to edit the client can grant themselves items with or without this gate.
+
+The threshold lives in `api.gd` as `DEBUG_KEYS_MIN_ROLE` so the test suite
+asserts the policy itself rather than a second copy of it.
 
 ### Some resources point at their script by path, with no uid
 
@@ -399,10 +424,12 @@ complexity and are the best places to start reading.
   rather than "null" on purpose.
 - The test suite covers agreement and arithmetic, nothing that moves.
   `player.gd`, `baseenemy.gd` and the whole UI layer are still boot-and-read.
-  `player.gd` is 63KB, `characterdata.gd` 52KB and `baseenemy.gd` 48KB. The pure
-  stat maths came out into `PlayerStats`; the pet system and the floating-label
-  feedback are the next two seams, and both touch the scene tree, so they need
-  more care than the first cut did.
+  `player.gd` is 60KB, `characterdata.gd` 52KB and `baseenemy.gd` 48KB. The
+  pure stat maths came out into `PlayerStats` and the pet mechanics into
+  `PetController`; the floating-label feedback is the next seam. `player.gd`
+  still owns `active_pet_id`, because CharacterData persists it per slot and
+  ServerStorage puts it on the wire — moving it would mean changing the save
+  format to tidy a file.
 - **`ObjectDB instances leaked at exit` on every test run is expected** and has
   not been chased. The suite quits a whole project from a bare scene while the
   autoloads are mid-flight. It is noise, not a failure — but it is noise on a

@@ -107,6 +107,15 @@ var is_owner: bool = false
 var role: String = "player"
 
 
+# The rank the in-game debug shortcuts require. Defined here rather than in
+# player.gd so there is ONE statement of the policy - the test suite asserts
+# against this constant, and a rule with two copies is a rule that drifts.
+#
+# Pets, gear, lusions and skill XP are things a player earns. Staff get the
+# shortcut because staff have to test what players do the slow way.
+const DEBUG_KEYS_MIN_ROLE := "mod"
+
+
 func role_at_least(minimum: String) -> bool:
 	# Mirrors role_at_least() in app.py, and for the same reason: "mod or
 	# above" should be one comparison rather than an expression repeated at
