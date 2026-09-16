@@ -1,20 +1,20 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/cookedgoldenperch.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://cxai7u0rlcf0w" path="res://art/pack/fishing/cookedgoldenperch.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "cookedgoldenperch"
-display_name = "Cooked Goldenperch"
-description = "Goldenperch, grilled through. Restores 150 health."
+display_name = "Cooked Golden Perch"
+description = "Worth more than most people's boots. Restores 72 HP."
+icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 270
-tier = 4
-required_level = 45
+value = 170
+tier = 6
 type = 0
-restore_amount = 150
+droppable = false
+restore_amount = 72
 restore_target = 1
-icon = ExtResource("1_icon")
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

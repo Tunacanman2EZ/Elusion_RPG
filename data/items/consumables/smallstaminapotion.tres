@@ -1,19 +1,19 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dw8kqxn4mvtbj"]
+[gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/consumables/smallstaminapotion.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://jsg8xpa04mtw" path="res://art/pack/consumables/smallstaminapotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "smallstaminapotion"
 display_name = "Small Stamina Potion"
-description = "Sharp, sweet, and gone before you finish tasting it. Restores 20 stamina."
+description = "A vial of amber tonic. Restores 45 stamina."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
 value = 60
 tier = 2
 type = 0
-restore_amount = 20
+restore_amount = 45
 restore_target = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,19 +1,19 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bmq7wvx3jkdfc"]
+[gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/consumables/greaterhealthpotion.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://qcpv451rprq3" path="res://art/pack/consumables/greaterhealthpotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "greaterhealthpotion"
 display_name = "Greater Health Potion"
-description = "Crimson dark enough to drink the light. One bottle, one second chance. Restores 110 HP."
+description = "A decanter of crimson tonic. Restores 260 HP."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 420
+value = 600
 tier = 5
 type = 0
-restore_amount = 110
+restore_amount = 260
 restore_target = 1
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

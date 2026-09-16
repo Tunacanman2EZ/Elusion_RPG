@@ -1,19 +1,19 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dp2vkxq8wrhtn"]
+[gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/consumables/largehealthpotion.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://bnr587gh7er8v" path="res://art/pack/consumables/largehealthpotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "largehealthpotion"
 display_name = "Large Health Potion"
-description = "Sealed with red wax and a prayer. The brewers price it by the wound. Restores 70 HP."
+description = "A bottle of crimson tonic. Restores 160 HP."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 260
+value = 300
 tier = 4
 type = 0
-restore_amount = 70
+restore_amount = 160
 restore_target = 1
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

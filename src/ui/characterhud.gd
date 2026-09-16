@@ -28,6 +28,7 @@ const INVENTORY_SCENE     := preload("res://scene/ui/inventory/inventory.tscn")
 const STATSSCREEN_SCENE   := preload("res://scene/ui/statsscreen.tscn")
 const BANK_SCENE          := preload("res://scene/ui/bank/bankinventory.tscn")
 const LOOTBAG_PANEL_SCENE := preload("res://scene/ui/lootbag/lootbaginventory.tscn")
+const COOKING_PANEL_SCENE := preload("res://scene/ui/cooking/cookingscreen.tscn")
 # Owner-only save-viewer panel (see ownerpanel.gd). preload is fine
 # here even though most players will never see it — the panel itself
 # fails closed via Api.is_owner, so preloading the scene
@@ -53,6 +54,7 @@ var inventory_screen: InventoryScreen = null
 var stats_screen:     Control         = null
 var bank_screen:      Control         = null
 var lootbag_panel:    Control         = null
+var cooking_panel:    Control         = null
 var owner_panel:      Control         = null
 
 # hotbar reference — resolved on _ready
@@ -468,6 +470,7 @@ func _on_logout_pressed() -> void:
 	if stats_screen:     stats_screen.queue_free()
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
+	if cooking_panel:    cooking_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
 
 	# NEW: reset CharacterData's in-memory state too — logout was only ever
@@ -510,6 +513,7 @@ func _on_switch_character_pressed() -> void:
 	if stats_screen:     stats_screen.queue_free()
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
+	if cooking_panel:    cooking_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
@@ -674,6 +678,22 @@ func open_lootbag(world_bag: Node, player: Node) -> void:
 		lootbag_panel.open_for_bag(world_bag, player)
 
 
+func open_cooking(firepit: Node, player: Node) -> void:
+	# Lazy-instantiated on first use and then kept, exactly like the loot bag
+	# panel above — a firepit is a thing most players walk past, so the scene is
+	# not built until someone actually cooks at one.
+	#
+	# The HUD does not set .visible here. The panel owns its own visibility, the
+	# same split open_lootbag() uses: this function's whole job is to make sure
+	# the panel exists and to point it at the right firepit.
+	if cooking_panel == null:
+		cooking_panel = COOKING_PANEL_SCENE.instantiate()
+		add_child(cooking_panel)
+
+	if cooking_panel.has_method("open_for_firepit"):
+		cooking_panel.open_for_firepit(firepit, player)
+
+
 # =============================================================================
 # PANEL STATE QUERIES
 # =============================================================================
@@ -692,4 +712,5 @@ func is_panel_open() -> bool:
 	var inv_open:   bool = inventory_screen != null and inventory_screen.visible
 	var stats_open: bool = stats_screen     != null and stats_screen.visible
 	var bank_open:  bool = bank_screen      != null and bank_screen.visible
-	return inv_open or stats_open or bank_open
+	var cook_open:  bool = cooking_panel    != null and cooking_panel.visible
+	return inv_open or stats_open or bank_open or cook_open

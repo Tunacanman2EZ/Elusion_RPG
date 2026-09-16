@@ -1,19 +1,19 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dnq4x1mwbveti"]
+[gd_resource type="Resource" script_class="ItemData" format=3]
 
 [ext_resource type="Texture2D" uid="uid://c1u8fjls2o8rj" path="res://art/pack/consumables/tinyhealthpotion.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "tinyhealthpotion"
 display_name = "Tiny Health Potion"
-description = "A thimble of crimson, corked with wax. More hope than medicine. Restores 10 HP."
+description = "A thimble of crimson tonic. Restores 20 HP."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
 value = 25
 tier = 1
 type = 0
-restore_amount = 10
+restore_amount = 20
 restore_target = 1
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

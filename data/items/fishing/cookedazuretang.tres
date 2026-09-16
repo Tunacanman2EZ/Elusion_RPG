@@ -1,20 +1,20 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/cookedazuretang.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://da61orqefk0rn" path="res://art/pack/fishing/cookedazuretang.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "cookedazuretang"
 display_name = "Cooked Azure Tang"
-description = "Azure Tang, grilled through. Restores 85 health."
+description = "Deep water. Deeper pockets. Restores 92 HP."
+icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 117
-tier = 3
-required_level = 26
+value = 260
+tier = 7
 type = 0
-restore_amount = 85
+droppable = false
+restore_amount = 92
 restore_target = 1
-icon = ExtResource("1_icon")
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

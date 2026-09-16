@@ -1,18 +1,16 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/emberfishingrod.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://br74xfdf6pkfd" path="res://art/pack/fishing/emberfishingrod.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "emberfishingrod"
 display_name = "Ember Fishing Rod"
-description = "A ember-fitted rod. Heavier line, better catches."
-value = 2400
-tier = 5
-required_level = 50
-equip_slot = 1
-damage = 6
-type = 1
+description = "Warm to the touch. Nothing in the water is out of its reach. Requires fishing level 75."
 icon = ExtResource("1_icon")
+max_stack = 1
+value = 12000
+tier = 5
+type = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

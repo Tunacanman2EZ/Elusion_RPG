@@ -1,20 +1,20 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/cookedreefclown.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://dxgwcxxgw2irc" path="res://art/pack/fishing/cookedreefclown.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "cookedreefclown"
 display_name = "Cooked Reef Clown"
-description = "Reef Clown, grilled through. Restores 190 health."
+description = "Nobody agrees on where these come from. Restores 115 HP."
+icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 396
-tier = 5
-required_level = 55
+value = 400
+tier = 8
 type = 0
-restore_amount = 190
+droppable = false
+restore_amount = 115
 restore_target = 1
-icon = ExtResource("1_icon")
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

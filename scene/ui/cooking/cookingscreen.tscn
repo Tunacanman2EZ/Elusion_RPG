@@ -1,0 +1,100 @@
+[gd_scene format=3]
+
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://src/ui/cooking/cookingscreen.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventory/inventorycontainer.gd" id="3_invcontainer"]
+
+[node name="cookingscreen" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_script")
+
+[node name="mainpanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
+layout_mode = 2
+
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 20
+text = "Cooking"
+horizontal_alignment = 1
+
+[node name="skilllabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.72, 0.55, 1)
+theme_override_font_sizes/font_size = 14
+text = "Cooking 1"
+vertical_alignment = 1
+
+[node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
+theme_override_colors/font_hover_color = Color(1, 0.5, 0.4, 1)
+theme_override_font_sizes/font_size = 18
+text = "×"
+flat = true
+
+[node name="fishgrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 6
+script = ExtResource("3_invcontainer")
+grid_width = 6
+grid_height = 2
+metadata/_custom_type_script = "uid://dfssy5oqbqqkh"
+
+[node name="statuslabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
+theme_override_font_sizes/font_size = 14
+text = "Select a fish."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="cookbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+disabled = true
+text = "Cook"

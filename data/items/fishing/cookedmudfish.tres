@@ -1,20 +1,20 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/cookedmudfish.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://ccnx578re7hgv" path="res://art/pack/fishing/cookedmudfish.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "cookedmudfish"
 display_name = "Cooked Mudfish"
-description = "Mudfish, grilled through. Restores 15 health."
+description = "Bottom-feeder. Bones like needles. Restores 10 HP."
+icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 14
+value = 12
 tier = 1
-required_level = 1
 type = 0
-restore_amount = 15
+droppable = false
+restore_amount = 10
 restore_target = 1
-icon = ExtResource("1_icon")
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

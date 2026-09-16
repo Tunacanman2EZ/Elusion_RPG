@@ -6,6 +6,7 @@
 script = ExtResource("1_enemydata")
 enemy_id = "poisonslimesmall"
 display_name = "Poison Slime"
+max_loot_tier = 2
 pet_drop_id = "petpoisonslimesmall"
 rare_pet_drop_id = "petpoisonslimelarge"
 rare_pet_chance = 0.2

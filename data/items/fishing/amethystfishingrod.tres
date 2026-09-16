@@ -1,18 +1,16 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/amethystfishingrod.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://bjog130yxbeyy" path="res://art/pack/fishing/amethystfishingrod.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "amethystfishingrod"
 display_name = "Amethyst Fishing Rod"
-description = "A amethyst-fitted rod. Heavier line, better catches."
-value = 1100
-tier = 4
-required_level = 35
-equip_slot = 1
-damage = 5
-type = 1
+description = "Something in the stone draws fish that should know better. Requires fishing level 50."
 icon = ExtResource("1_icon")
+max_stack = 1
+value = 5000
+tier = 4
+type = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

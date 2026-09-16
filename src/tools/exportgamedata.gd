@@ -63,8 +63,16 @@ const SCHEMA_VERSION := 1
 # Python side can read `"type_name": "PET"` instead of hard-coding that PET
 # happens to be 5 — an enum reordered in Godot would otherwise silently
 # repoint every type check on the server.
+#
+# NOT A SCHEMA BUMP when a name is APPENDED here. SCHEMA_VERSION is about the
+# shape of the JSON — a renamed key, a removed field — and a new enum member
+# changes neither. Bumping it would make the server refuse to start against
+# every gamedata.json already deployed, to announce a value it would have read
+# correctly anyway. _type_name() below is what catches a genuine drift between
+# this list and ItemData.Type, and it does so loudly.
 const TYPE_NAMES := [
 	"CONSUMABLE", "WEAPON", "ARMOR", "MATERIAL", "QUEST", "PET", "CURRENCY",
+	"FISH",
 ]
 
 
@@ -225,6 +233,25 @@ func _export_items() -> Array:
 			"stackable": item.stackable,
 			"max_stack": item.max_stack,
 			"required_level": item.required_level,
+
+			# Whether an enemy may roll it at all, independent of its tier.
+			# pick_weighted_item_id() has to skip a false here or a cooked fish
+			# drops off a slime — see the field's own comment in itemdata.gd.
+			"droppable": item.droppable,
+
+			# THE COOKING RECIPE, because /api/cooking/cook is the thing that
+			# decides what a raw fish becomes and it cannot be trusted to the
+			# client - see docs/inventoryauthority.md. Exported for every item
+			# rather than only for FISH: a uniform row shape means the Python
+			# side reads item["cooks_into"] without first asking what type it is
+			# holding, and "" is a perfectly good "not cookable".
+			"cooks_into": item.cooks_into,
+			"cook_level": item.cook_level,
+			"cook_xp": item.cook_xp,
+			"cook_mastery_level": item.cook_mastery_level,
+
+			# What landing this fish is worth, read by /api/fishing/catch.
+			"fishing_xp": item.fishing_xp,
 		})
 
 	out.sort_custom(func(a, b): return a["item_id"] < b["item_id"])
@@ -381,6 +408,10 @@ func _export_constants() -> Dictionary:
 		"xp_growth":            float(game_consts.get("XP_GROWTH", 1.15)),
 		"dupe_pet_lusions":     int(game_consts.get("DUPE_PET_LUSIONS", 20)),
 		"revive_cost":          int(game_consts.get("REVIVE_COST", 20)),
+		"cook_burn_max":        float(game_consts.get("COOK_BURN_MAX", 0.40)),
+		"fishing_tier_per_level": int(game_consts.get("FISHING_TIER_PER_LEVEL", 20)),
+		"skill_xp_base":        int(game_consts.get("SKILL_XP_BASE", 100)),
+		"skill_xp_growth":      game_consts.get("SKILL_XP_GROWTH", {}),
 
 		# The bank's size. Exported because the server has to agree with it:
 		# it stores the bank as a positional array and rejects one that is

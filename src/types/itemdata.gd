@@ -32,6 +32,20 @@ enum Type {
 	QUEST,       # quest items — cannot be dropped or traded
 	PET,         # companion items — activated to summon a following pet
 	CURRENCY,    # gold and lusions — converts to a pool on use/pickup
+
+	# RAW FISH. Its own type rather than MATERIAL, and the reason is loot:
+	# gamedata.py picks mob drops with pick_weighted_item_id(), which excludes
+	# by TYPE NAME and lets every MATERIAL through. Filed as MATERIAL, a tier 8
+	# Reef Clown became a legal drop from any high-tier enemy — free from a
+	# slime, which is the whole point of the fishing skill handed out for
+	# nothing. FISH is in EXCLUDED_FROM_LOOT server-side, so fish come out of
+	# water and nowhere else.
+	#
+	# COOKED fish are NOT this type. They are CONSUMABLE with a restore_target
+	# of HP, because that is exactly what they do and the use-handler already
+	# knows how to route it. Raw is an ingredient, cooked is food; one type
+	# covering both would need the use-handler to ask which it was holding.
+	FISH,
 }
 
 
@@ -94,6 +108,27 @@ enum RestoreTarget {
 
 # minimum character level required to use or equip this item
 @export var required_level: int = 1
+
+# Whether an enemy may ever roll this as loot.
+#
+# TIER IS NOT ENOUGH ON ITS OWN, and cooked fish are the case that proved it.
+# The server excludes PET, QUEST, CURRENCY and FISH from drops by TYPE, which
+# covers raw fish — but a cooked fish is a Type.CONSUMABLE, exactly like a
+# potion, because that is what it does when you use it. So the moment mobs could
+# roll tier 1 and 2, a slime started dropping cooked mudfish and cooked marsh
+# carp. Every fish the player could be bothered to catch and cook was also
+# falling out of the nearest slime, which takes the point out of the skill.
+#
+# The alternatives were both worse. Making cooked fish their own type costs them
+# the restore_target routing the use-handler already does for free. Pushing
+# their tier above every ceiling breaks the correspondence with the raw fish
+# they come from, and is a trick rather than a statement.
+#
+# SO IT IS ITS OWN AXIS: tier says how rare a thing is WHEN it drops, and this
+# says whether it drops at all. It is also the switch to reach for when content
+# outruns the tier ladder — anything finished but not ready to appear can be
+# held back here without moving files or inventing an enemy to gate it.
+@export var droppable: bool = true
 
 
 # =============================================================================
@@ -169,6 +204,62 @@ enum EquipSlot {
 # health potions, MANA on mana potions, STAMINA on stamina potions. the
 # use-handler routes by this field, so no item_id matching is needed.
 @export var restore_target: RestoreTarget = RestoreTarget.NONE
+
+
+# =============================================================================
+# COOKING (only meaningful when type == Type.FISH)
+# =============================================================================
+# THE RECIPE LIVES ON THE INGREDIENT, not in a table somewhere else.
+#
+# The obvious alternative was to derive it from the id — every raw fish is
+# "raw<name>" and every cooked one is "cooked<name>", so a string swap would
+# work today and cost nothing. It is not written that way because it would make
+# the naming convention load-bearing: the first ingredient that is not a fish,
+# or the first cooked item whose name is not its raw name with a different
+# prefix, silently stops cooking with nothing anywhere to say why.
+#
+# THE SERVER READS THESE, via exportgamedata.gd. /api/cooking/cook decides what
+# a raw fish becomes, whether the player is skilled enough to attempt it, and
+# whether it burned - so these four numbers have to reach it as DATA rather than
+# being restated in Python. gamedata.py's header is explicit that it restates
+# nothing that lives in the game.
+
+# item_id of what this becomes when cooked. "" means it is not cookable.
+@export var cooks_into: String = ""
+
+# Cooking level needed to attempt it at all. Below this the firepit refuses.
+@export var cook_level: int = 1
+
+# Cooking XP granted per fish successfully cooked. Burning grants nothing —
+# there has to be a cost to cooking above your level or the burn chance is
+# just a slower way to the same place.
+@export var cook_xp: int = 0
+
+# Cooking level at which this stops burning entirely.
+#
+# BURN CHANCE RIDES BETWEEN cook_level AND THIS. At cook_level it is at its
+# worst, at cook_mastery_level it is zero, and it slides linearly between them —
+# so a fish you have just unlocked is a gamble and one you have outgrown is
+# free. Setting this at or below cook_level means "never burns".
+@export var cook_mastery_level: int = 1
+
+
+# =============================================================================
+# FISHING (only meaningful when type == Type.FISH)
+# =============================================================================
+# Fishing XP awarded for landing one of these.
+#
+# ON THE FISH, FOR THE SAME REASON THE COOKING RECIPE IS ON THE INGREDIENT.
+# /api/fishing/catch decides what was caught and has to know what it was worth,
+# and gamedata.py's own header forbids it inventing the number: "Nothing in here
+# restates a number that lives in the game; if a value is not in the JSON, that
+# is a bug in the exporter." Deriving it from tier in Python would be exactly
+# that - a balance curve living on the server where nobody editing the game
+# would think to look for it.
+#
+# SEPARATE FROM cook_xp, because catching a fish and cooking it are two
+# different skills being trained by two different actions.
+@export var fishing_xp: int = 0
 
 
 # =============================================================================

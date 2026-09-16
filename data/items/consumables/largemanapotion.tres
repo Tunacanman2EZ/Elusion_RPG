@@ -1,19 +1,19 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dx4tbnm8wqjlv"]
+[gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/consumables/largemanapotion.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://cqtpv6o8mkdmx" path="res://art/pack/consumables/largemanapotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "largemanapotion"
 display_name = "Large Mana Potion"
-description = "The blue shifts on its own when nobody is watching it. Restores 70 MP."
+description = "A bottle of cobalt tonic. Restores 160 mana."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 260
+value = 300
 tier = 4
 type = 0
-restore_amount = 70
+restore_amount = 160
 restore_target = 2
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

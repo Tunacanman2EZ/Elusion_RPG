@@ -1,19 +1,19 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dk7nwxq2vtlmb"]
+[gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/consumables/greaterstaminapotion.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://c5m1q5jxfj6e8" path="res://art/pack/consumables/greaterstaminapotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "greaterstaminapotion"
 display_name = "Greater Stamina Potion"
-description = "Drink it and the ground seems to help. The reckoning comes tomorrow. Restores 110 stamina."
+description = "A decanter of amber tonic. Restores 260 stamina."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 420
+value = 600
 tier = 5
 type = 0
-restore_amount = 110
+restore_amount = 260
 restore_target = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

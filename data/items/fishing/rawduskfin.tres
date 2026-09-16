@@ -1,18 +1,22 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/rawduskfin.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://bay0u21sopqba" path="res://art/pack/fishing/rawduskfin.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "rawduskfin"
 display_name = "Raw Duskfin"
-description = "A duskfin straight from the water. Inedible until cooked."
-stackable = true
-max_stack = 50
-value = 100
-tier = 3
-required_level = 35
-type = 3
+description = "Only rises after the light goes. Cook it at a firepit."
 icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 48
+tier = 5
+type = 7
+cooks_into = "cookedduskfin"
+cook_level = 30
+cook_xp = 68
+cook_mastery_level = 55
+fishing_xp = 58
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

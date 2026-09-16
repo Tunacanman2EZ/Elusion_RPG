@@ -78,3 +78,52 @@ func xp_needed_for_level(level: int) -> int:
 # animation is fair; losing it to a phantom is not. Raise both together if 45
 # is still not enough.
 const LOOT_BAG_DESPAWN_SECONDS: float = 45.0
+
+
+# =============================================================================
+# FISHING AND COOKING
+# =============================================================================
+# THESE TWO LIVE HERE BECAUSE THE SERVER DECIDES WITH THEM.
+#
+# /api/fishing/catch and /api/cooking/cook own the rolls - a client that decided
+# its own catch or its own burn would simply never fail. But gamedata.py's
+# header is equally clear that it restates nothing: "if a value is not in the
+# JSON, that is a bug in the exporter, not something to paper over with a
+# default." A burn curve invented in Python is a balance number living where
+# nobody editing the game would look for it.
+#
+# So they are authored here, exported by exportgamedata.gd, and read by both
+# sides. cookingscreen.gd shows the player the chance; the server rolls it.
+
+# Chance a fish burns when cooked at exactly its cook_level, sliding to zero at
+# its cook_mastery_level. The whole reason the cooking skill has teeth.
+const COOK_BURN_MAX: float = 0.40
+
+# Fishing levels needed to reach one fish tier beyond what the rod alone allows.
+# The rod sets the floor, the skill raises it: an iron rod at fishing 60 reaches
+# the same water as a cobalt rod at fishing 20.
+const FISHING_TIER_PER_LEVEL: int = 20
+
+# Per-skill XP curve, mirroring the six calls in player.gd's gain_*_xp():
+# attack 1.25, defense 1.20, agility 1.15, magic 1.25, fishing 1.12,
+# cooking 1.10, all on a base of 100.
+#
+# EXPORTED BECAUSE THE SERVER LEVELS TWO OF THEM NOW. /api/fishing/catch and
+# /api/cooking/cook grant XP against rows the server owns, so they need the same
+# thresholds the client draws its bars from. The other four are still granted
+# client-side and are here for completeness — when they move, the curve is
+# already where the server can read it.
+#
+# EACH SKILL HAS ITS OWN FACTOR, and that is the whole reason this is a
+# dictionary rather than one number. Cooking at 1.10 climbs noticeably faster
+# than attack at 1.25; a single shared growth would flatten six deliberate
+# pacing decisions into one.
+const SKILL_XP_BASE: int = 100
+const SKILL_XP_GROWTH: Dictionary = {
+	"attack": 1.25,
+	"defense": 1.20,
+	"agility": 1.15,
+	"magic": 1.25,
+	"fishing": 1.12,
+	"cooking": 1.10,
+}

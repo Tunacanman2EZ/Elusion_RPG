@@ -1,18 +1,16 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/jadefishingrod.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://bnjqsb0uowr5h" path="res://art/pack/fishing/jadefishingrod.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "jadefishingrod"
 display_name = "Jade Fishing Rod"
-description = "A jade-fitted rod. Heavier line, better catches."
-value = 180
-tier = 2
-required_level = 10
-equip_slot = 1
-damage = 3
-type = 1
+description = "The jade collar keeps the line from fraying on rock. Requires fishing level 30."
 icon = ExtResource("1_icon")
+max_stack = 1
+value = 1800
+tier = 2
+type = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

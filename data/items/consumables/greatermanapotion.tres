@@ -1,19 +1,19 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b7vqkxn3mrdtw"]
+[gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/consumables/greatermanapotion.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://bm0k7dfnvc8u7" path="res://art/pack/consumables/greatermanapotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "greatermanapotion"
 display_name = "Greater Mana Potion"
-description = "Distilled from a sprite's last spark. It hums against the teeth. Restores 110 MP."
+description = "A decanter of cobalt tonic. Restores 260 mana."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 420
+value = 600
 tier = 5
 type = 0
-restore_amount = 110
+restore_amount = 260
 restore_target = 2
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

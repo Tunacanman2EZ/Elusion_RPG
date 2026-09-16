@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/world/fishingspot.gd" id="1_fishspot"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_fishspot"]
+radius = 22.0
+
+[node name="fishingspot" type="Area2D"]
+texture_filter = 1
+collision_layer = 16
+collision_mask = 4
+script = ExtResource("1_fishspot")
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_fishspot")
+
+[connection signal="body_entered" from="." to="." method="_on_body_entered"]
+[connection signal="body_exited" from="." to="." method="_on_body_exited"]

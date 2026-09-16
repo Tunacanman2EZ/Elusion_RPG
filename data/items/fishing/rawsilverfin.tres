@@ -1,18 +1,22 @@
 [gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/fishing/rawsilverfin.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://co0opg40qn1qv" path="res://art/pack/fishing/rawsilverfin.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "rawsilverfin"
 display_name = "Raw Silverfin"
-description = "A silverfin straight from the water. Inedible until cooked."
-stackable = true
-max_stack = 50
-value = 14
-tier = 1
-required_level = 5
-type = 3
+description = "Fast, and it knows it. Cook it at a firepit."
 icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 30
+tier = 4
+type = 7
+cooks_into = "cookedsilverfin"
+cook_level = 20
+cook_xp = 46
+cook_mastery_level = 42
+fishing_xp = 40
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,19 +1,19 @@
-[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cw3jfqx7mnbla"]
+[gd_resource type="Resource" script_class="ItemData" format=3]
 
-[ext_resource type="Texture2D" path="res://art/pack/consumables/mediumhealthpotion.png" id="1_icon"]
-[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+[ext_resource type="Texture2D" uid="uid://i5q3i7beci2g" path="res://art/pack/consumables/mediumhealthpotion.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
 
 [resource]
-script = ExtResource("2_itemdata")
+script = ExtResource("2_script")
 item_id = "mediumhealthpotion"
 display_name = "Medium Health Potion"
-description = "Thick as syrup and twice as slow going down. Knits what the slimes opened. Restores 40 HP."
+description = "A flask of crimson tonic. Restores 90 HP."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20
-value = 150
+value = 140
 tier = 3
 type = 0
-restore_amount = 40
+restore_amount = 90
 restore_target = 1
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

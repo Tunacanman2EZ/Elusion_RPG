@@ -6,6 +6,7 @@
 script = ExtResource("1_enemydata")
 enemy_id = "poisonslimelarge"
 display_name = "Large Poison Slime"
+max_loot_tier = 2
 grants_rewards = false
 xp_reward = 0
 attack_xp_reward = 0
