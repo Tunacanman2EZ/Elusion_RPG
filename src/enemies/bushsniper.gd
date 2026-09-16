@@ -38,6 +38,12 @@ func _ready() -> void:
 	# Combat tuning only — the reward profile lives in the .tres now.
 	attack_cooldown = 2.0
 	attack_range    = 200.0
+
+	# THE KITE BAND. Inside 50 the archer backs off; BaseEnemy's flee hysteresis
+	# then carries it out to 90 (flee_range * FLEE_RELEASE_FACTOR) before it
+	# stops, turns and shoots again. Both numbers sit well inside attack_range,
+	# so it is never retreating out of its own reach - it is making room, which
+	# is what an archer is for.
 	flee_range      = 50.0
 
 	super._ready()
@@ -52,6 +58,19 @@ func _ready() -> void:
 
 func get_move_speed() -> float:
 	return 80.0
+
+
+func get_flee_speed() -> float:
+	# FASTER THAN THE PLAYER (base 90), and this is the whole reason the archer
+	# never appeared to run away. It advances at 80, and it was retreating at 80
+	# too - so a player simply walking toward it closed ten pixels every second
+	# no matter what the archer did. It was fleeing the entire time and losing.
+	#
+	# Deliberately only a little faster: 105 opens a gap over a couple of
+	# seconds rather than instantly, so the player can still corner it by
+	# cutting it off rather than by out-running it. Kept under the bush mage's
+	# 115 charge speed, so a mage still closes on an archer's position.
+	return 105.0
 
 
 func fire_projectile() -> void:

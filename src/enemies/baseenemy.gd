@@ -121,6 +121,18 @@ const PET_ODDS_FALLBACK := 1296
 
 @export var leash_range:      float = 400.0
 
+# How much further than flee_range an enemy retreats once it has STARTED
+# fleeing. See the hysteresis note in _handle_combat() for why a bare threshold
+# produces a twitch instead of a retreat. 1.8 means an archer with a flee_range
+# of 50 backs off to 90 before it turns and shoots again, which is a real kite
+# rather than a flinch.
+#
+# ONLY APPLIES TO ENEMIES THAT OVERRIDE get_flee_speed() ABOVE THEIR CHASE
+# SPEED. Everything else keeps the plain flee_range threshold - see the gate in
+# _handle_combat() for why giving this to an enemy slower than the player
+# stops it ever fighting again.
+const FLEE_RELEASE_FACTOR := 1.8
+
 @export var xp_reward:        int = 20
 @export var attack_xp_reward: int = 5
 
@@ -191,8 +203,19 @@ var attack_direction: String = "down"
 var attack_ready: bool = true
 var is_attacking: bool = false
 var current_anim: String = ""
+
+# The direction the WALK animation is facing, kept apart from attack_direction
+# so it can carry hysteresis. Navigation returns a cardinal that alternates axis
+# on a diagonal path; feeding that straight to the sprite strobed it. This holds
+# the last steady facing and only turns when the heading clearly changes - see
+# where it is set in the chase block, and Facing.from_vec_stable().
+var _walk_facing: String = "down"
 var spawn_position: Vector2 = Vector2.ZERO
 var is_returning_home: bool = false
+
+# Latched while backing away, so the retreat runs to a real distance instead of
+# stopping the instant flee_range is crossed. See _handle_combat().
+var _is_fleeing: bool = false
 
 # NEW: see NAVIGATION section below.
 var nav_agent: NavigationAgent2D = null
@@ -227,7 +250,17 @@ func _ready() -> void:
 	_wire_attack_timer()
 	_wire_healthbar()
 	_wire_animated_sprite()
+
+	# AFTER the sprite is wired, so the tint a placed instance was authored with
+	# is what a hit flash restores to. See _default_modulate.
+	if has_node("animatedsprite2d"):
+		_default_modulate = ($animatedsprite2d as AnimatedSprite2D).modulate
+
 	_setup_navigation()
+	# AFTER the mask is set above, not before - the separation query reads the
+	# enemies layer this enemy was just added to, and it needs get_rid() to
+	# exclude itself, which only exists once the node is in the tree.
+	_setup_separation()
 
 	play_idle_animation("down")
 
@@ -248,13 +281,19 @@ func _physics_process(_delta: float) -> void:
 		attack_direction = _get_direction_to_player()
 
 	if is_attacking:
-		velocity = Vector2.ZERO
+		# Frozen mid-attack, EXCEPT for easing out from under the player. The
+		# attack is not interrupted; see _standoff_velocity().
+		velocity = _standoff_velocity()
 		move_and_slide()
 		return
 
 	var dist_to_player: float = global_position.distance_to(player.global_position)
 
 	if dist_to_player > leash_range:
+		# Cleared here rather than left latched: an enemy that leashed out mid
+		# retreat should come back as a fresh chaser, not resume a retreat from
+		# a player who is no longer anywhere near it.
+		_is_fleeing = false
 		_handle_return_home()
 		return
 
@@ -353,6 +392,491 @@ func _setup_navigation() -> void:
 
 
 # =============================================================================
+# LOCAL AVOIDANCE  (NEW)
+# =============================================================================
+# WHY COLLISION ALONE IS NOT ENOUGH, and why enemies queued up behind each
+# other before this existed.
+#
+# Collision stops enemies OVERLAPPING. It does nothing about them QUEUEING.
+# Two enemies walking toward the same point meet body to body, move_and_slide()
+# simply refuses the frame for the one behind, and it keeps pressing into the
+# back of the one in front for as long as they both want that spot. That is the
+# "stuck behind each other" symptom exactly, and no amount of collision-shape
+# tuning fixes it, because collision is the thing CAUSING it. The enemy at the
+# back is not confused about where to go - it is doing the right thing into an
+# obstacle it has no rule for going around.
+#
+# So give it that rule. It is TWO separate mechanisms, and keeping them apart is
+# the point - the first version of this section tried to do both jobs with one
+# and did neither:
+#
+#   1. SPREADING (_separation_push). A soft push away from nearby neighbours,
+#      blended into the heading. This biases a pack to fan out on the approach
+#      so fewer of them end up in single file to begin with. It is a nudge, and
+#      it is only ever a nudge.
+#
+#   2. UNSTICKING (_is_step_blocked + _pick_detour). Before committing to a
+#      step, look at the space that step moves into. If a neighbour is standing
+#      there, turn a quarter and take that step instead, and hold that turn long
+#      enough to actually get past. This is a DECISION, not a blend, and it is
+#      the part that breaks a queue.
+#
+# Mechanism 2 exists because mechanism 1 cannot do its job here, for a reason
+# that is pure arithmetic rather than tuning: movement snaps to a cardinal, and
+# a blend of "mostly forward, somewhat sideways" always snaps back to forward.
+# The note on SEPARATION_WEIGHT works the numbers through.
+#
+# Three properties worth knowing before touching any of it:
+#
+#   * WITH NO NEIGHBOURS NEARBY, _steered_direction_to returns the plain
+#     navigation answer and nothing here runs. A lone enemy moves precisely as
+#     it did before this section existed - this cannot change single combat.
+#   * Movement stays strictly 4-directional. The heading bends and the step can
+#     turn a corner, but every step is still up/down/left/right.
+#   * Only neighbours actually IN THE WAY block anything - ahead, within a body
+#     length, and close to the line of travel. In a pack nearly every enemy has
+#     somebody near it, and treating all of them as obstacles would freeze the
+#     whole fight.
+#
+# This does NOT replace the formation slots or the stuck-reclaim escalation.
+# Slots decide WHERE each enemy is headed; this decides how it gets there when
+# something is in the way. Both still run.
+
+# WHY A BLENDED PUSH ALONE DOES NOTHING HERE, which is worth writing down
+# because the first version of this section was exactly that and it did not
+# work at all.
+#
+# Movement snaps to a cardinal. Take the actual failure case: enemy A directly
+# behind enemy B, both walking right. A's heading is (1, 0); the push away from
+# B is (-1, 0), swung a quarter turn to (0, 1) so it reads as "go around" - and
+# the blended steer is (1, 0.9). Then the snap picks the dominant axis, |1| beats
+# |0.9|, and the answer is "right". Into B. Again.
+#
+# The sideways nudge can never win that comparison while the weight is under
+# 1.0, and raising it over 1.0 only means the enemy sidesteps when it is already
+# touching. The blend is the wrong shape of tool: a vector sum expresses
+# "mostly forward, a bit sideways", and then the snap throws away the "bit".
+#
+# So the push below is kept ONLY for what it is genuinely good at - biasing an
+# approaching pack to fan out before anyone is blocked - and the actual
+# unsticking is a decision, not a blend: look at the tile ahead, and if a
+# neighbour is standing in it, turn a quarter and take that step instead. See
+# _is_step_blocked() and _pick_detour().
+const SEPARATION_WEIGHT := 0.9
+
+# How far away another enemy still registers at all.
+#
+# SIZED FROM THE ACTUAL BODY, not from the sprite. The body shape in every enemy
+# scene is a CapsuleShape2D of radius 10, so an enemy is 20px wide and two of
+# them touch when their centres are 20px apart. The first version of this used
+# 26, which left six pixels of warning before contact at a closing speed of over
+# 100px/s - the neighbour was effectively never seen until it was already being
+# shoved. Two body widths gives the steering room to act.
+const SEPARATION_RADIUS := 40.0
+
+# The step-ahead test. LOOKAHEAD is how far down the intended step to care about
+# (a bit over one body width, so a blocker is seen just before contact rather
+# than after). HALF_WIDTH is how far to either side still counts as being in the
+# way.
+#
+# HALF_WIDTH WAS 20.0 AND THAT NUMBER MADE ENEMIES PACE ON THE SPOT. It was set
+# to the exact distance at which two radius-10 bodies collide, which sounds
+# correct and is a trap: adjacent slots on ring 1 are 20.28px apart. So every
+# enemy standing peacefully in formation had its neighbours sitting 0.28px from
+# the blocked threshold, and sub-pixel jitter flipped the answer between
+# "blocked" and "clear" from one frame to the next - detour sideways, step
+# forward, detour back, forever. The test was not wrong about geometry; it was
+# being asked a question whose answer was a coin flip.
+#
+# 14 is comfortably inside the 20.28px formation spacing, so a neighbour standing
+# beside this enemy never registers, while somebody genuinely planted in front of
+# it still does. Grazing contact is left to collision sliding, which is what
+# collision is good at - this test is only for "there is a body in my way and I
+# should go around it".
+const AVOID_LOOKAHEAD := 26.0
+const AVOID_HALF_WIDTH := 14.0
+
+# Inside this distance of the target, the detour machinery switches off.
+#
+# An enemy this close is PARKING, not navigating - and parking is exactly where
+# the block test is least reliable, because arriving in formation means coming
+# to rest with neighbours a body's width away on either side. Let the separation
+# push and ordinary collision settle the last few pixels; they do it without
+# ever changing their minds.
+const AVOID_DISABLE_RANGE := 24.0
+
+# Once an enemy commits to going around something, it holds that turn for this
+# long before reconsidering.
+#
+# WITHOUT THIS IT SHUFFLES AND GETS NOWHERE. Step aside once and the forward
+# path is instantly clear again, so next frame it steps forward, so it is
+# blocked again, so it steps aside - at 180 physics ticks a second. That is not
+# a detour, it is a vibration. A fifth of a second is long enough to actually
+# clear the obstacle at any enemy speed in the game.
+const DETOUR_COMMIT_SECONDS := 0.2
+
+# How long after the last block an enemy keeps going around things the SAME way.
+#
+# Long enough to cover the gaps between blocks while circling a crowd - step
+# aside, move freely for a moment, get blocked by the next body along, and it is
+# still the same detour as far as this enemy is concerned. Short enough that an
+# enemy which genuinely got clear picks a fresh side next time rather than
+# orbiting a memory. One second is several body lengths at any enemy speed.
+const DETOUR_SIDE_MEMORY := 1.0
+
+# =============================================================================
+# PLAYER STANDOFF
+# =============================================================================
+# STOPS THE PLAYER STANDING ON TOP OF AN ENEMY, without taking away the ability
+# to walk through a pack.
+#
+# The player's collision mask deliberately excludes the enemies layer - you wade
+# through a crowd instead of being walled in by it, which was a decision made on
+# purpose. The consequence nobody asked for is that NOTHING pushes an enemy out
+# from under you: walk onto a mage holding position and the two sprites simply
+# occupy the same pixels.
+#
+# So the enemy yields instead. Not by fleeing, and not by interrupting whatever
+# it is doing - it keeps casting or shooting throughout. It just declines to
+# stand inside you.
+#
+# SIZED FROM BOTH BODIES: the enemy's is a capsule of radius 10 and the player's
+# is a circle of radius 7, so 17px between centres is exactly touching. This is
+# the point of contact, not a comfortable distance - the intent is no overlap,
+# not personal space.
+const PLAYER_STANDOFF := 17.0
+
+# Slow on purpose. Being eased out from under the player should read as being
+# shouldered aside, not as backing away - a fast standoff is indistinguishable
+# from the kiting that bush mages were explicitly rebuilt to stop doing.
+const STANDOFF_SPEED := 40.0
+
+
+# The velocity that eases this enemy out from under the player. Vector2.ZERO
+# whenever they are not actually overlapping, which is almost always - so every
+# "hold position" site below can use it unconditionally in place of
+# Vector2.ZERO and behave exactly as it did before when there is no overlap.
+func _standoff_velocity() -> Vector2:
+	if not is_instance_valid(player):
+		return Vector2.ZERO
+
+	var away: Vector2 = global_position - player.global_position
+	var d: float = away.length()
+	if d >= PLAYER_STANDOFF:
+		return Vector2.ZERO
+
+	if d <= 0.01:
+		# Dead centre on the player, so there is no "away" to compute. Back out
+		# along the way this enemy came, which is the direction it is facing.
+		away = -Facing.to_vec(_walk_facing)
+		if away == Vector2.ZERO:
+			away = Vector2.DOWN
+		d = 1.0
+
+	# Scaled by how deep the overlap is, so it eases out and settles at the
+	# contact point rather than popping to it and jittering there.
+	var depth: float = (PLAYER_STANDOFF - d) / PLAYER_STANDOFF
+	return (away / d) * STANDOFF_SPEED * depth
+
+# Bit VALUE of the enemies layer, not its number. Enemies sit on layer 4, and a
+# mask is a bitmask, so layer 4 is 2^(4-1) = 8. Getting this wrong does not
+# error - it silently queries the wrong layer and the push is always zero.
+const SEPARATION_MASK := 8
+
+# Enough neighbours to steer sensibly in a crowd without paying for a query
+# that returns the whole pack. Past this many bodies at once, the extra ones
+# barely move the summed direction anyway.
+const SEPARATION_MAX_NEIGHBOURS := 8
+
+# Built once and reused every frame. A fresh CircleShape2D and query object per
+# physics frame per enemy is pure garbage generation for a value that never
+# changes - only the transform moves.
+var _separation_query: PhysicsShapeQueryParameters2D = null
+
+# The detour currently committed to, and how long is left on it.
+var _detour_dir: String = ""
+var _detour_time: float = 0.0
+
+# WHICH WAY this enemy is going around things: -1 left, +1 right, 0 no detour in
+# progress. Held across separate blocks so the turns add up to an arc rather
+# than cancelling out - see _pick_detour() for the pacing bug this fixes.
+var _detour_side: int = 0
+var _detour_side_time: float = 0.0
+
+
+func _setup_separation() -> void:
+	var shape := CircleShape2D.new()
+	shape.radius = SEPARATION_RADIUS
+
+	_separation_query = PhysicsShapeQueryParameters2D.new()
+	_separation_query.shape = shape
+	_separation_query.collision_mask = SEPARATION_MASK
+	_separation_query.collide_with_bodies = true
+	# Areas are OFF deliberately. bushmage carries four attack Area2Ds on the
+	# enemies layer, and counting those as traffic would leave every mage
+	# permanently convinced it was surrounded by its own hitboxes.
+	_separation_query.collide_with_areas = false
+	# Excluded by RID, so this enemy never repels itself. Typed explicitly
+	# because `exclude` is an Array[RID] and an untyped literal has to be
+	# converted on assignment.
+	var ignore_self: Array[RID] = [get_rid()]
+	_separation_query.exclude = ignore_self
+
+
+# Where the nearby enemies are, as offsets FROM this enemy TO each of them.
+# Empty when alone, which is what every caller below keys off.
+func _nearby_enemy_offsets() -> Array[Vector2]:
+	var offsets: Array[Vector2] = []
+	if _separation_query == null:
+		return offsets
+
+	_separation_query.transform = Transform2D(0.0, global_position)
+	var space_state := get_world_2d().direct_space_state
+	var hits: Array[Dictionary] = space_state.intersect_shape(
+		_separation_query, SEPARATION_MAX_NEIGHBOURS)
+	if hits.is_empty():
+		return offsets
+
+	# ONE ENTRY PER ENEMY, not one per collision shape. intersect_shape reports
+	# every overlapping SHAPE, and these bodies carry more than one on this
+	# layer, so without this a single neighbour standing there would count
+	# several times over.
+	var counted: Dictionary = {}
+
+	for hit in hits:
+		var other: Object = hit.get("collider")
+		if other == null or not is_instance_valid(other):
+			continue
+		if other == self or not (other is Node2D):
+			continue
+
+		var id: int = other.get_instance_id()
+		if counted.has(id):
+			continue
+		counted[id] = true
+
+		offsets.append((other as Node2D).global_position - global_position)
+
+	return offsets
+
+
+# The summed push away from nearby enemies. Length at most 1.0.
+#
+# This is the SPREADING half of the system, not the unsticking half - it biases
+# an approaching pack apart so fewer of them end up in single file to begin
+# with. It cannot turn an enemy out of a queue on its own; see the note on
+# SEPARATION_WEIGHT for the arithmetic on why.
+func _separation_push(offsets: Array[Vector2]) -> Vector2:
+	var push: Vector2 = Vector2.ZERO
+
+	for o in offsets:
+		var d: float = o.length()
+
+		if d <= 0.01:
+			# EXACTLY STACKED. There is no "away" to compute, and handing both
+			# enemies the same default direction would keep them stacked
+			# forever. The instance id picks a stable per-enemy angle, so two
+			# bodies in one spot pull apart different ways and stay apart.
+			push += Vector2.RIGHT.rotated(float(get_instance_id() % 360) * 0.0174532925)
+			continue
+
+		if d >= SEPARATION_RADIUS:
+			continue
+
+		push += (-o / d) * (1.0 - d / SEPARATION_RADIUS)
+
+	return push.limit_length(1.0)
+
+
+# Is another enemy standing in the space this step moves into?
+#
+# A neighbour counts only if it is AHEAD along the step, within one body length,
+# and close enough to the line of travel that the two bodies would actually
+# touch. Anything beside or behind this enemy blocks nothing - which matters,
+# because in a pack almost every enemy has somebody near it, and treating all of
+# them as obstacles would leave nobody able to move at all.
+func _is_step_blocked(dir_vec: Vector2, offsets: Array[Vector2]) -> bool:
+	if dir_vec == Vector2.ZERO:
+		return false
+
+	var side: Vector2 = Vector2(-dir_vec.y, dir_vec.x)
+	for o in offsets:
+		var along: float = o.dot(dir_vec)
+		if along <= 0.0 or along > AVOID_LOOKAHEAD:
+			continue
+		if absf(o.dot(side)) < AVOID_HALF_WIDTH:
+			return true
+	return false
+
+
+# The quarter turn: given a blocked step, which way to go around.
+# Returns "" when both sides are blocked too.
+#
+# WHY THE SIDE IS REMEMBERED, and the bug that made it necessary.
+#
+# The first version chose the side fresh each time, preferring whichever one
+# pointed more toward the target. That sounds right and produces pacing. Watch
+# it: a mage below the player is blocked going up, so it steps right - and now
+# the player is up and to its LEFT, so the moment it re-decides it steps back
+# left, which puts the player up and to its right again. Left, right, left,
+# right, forever, a few pixels from where it started. The rule that was supposed
+# to make the detour efficient is exactly the rule that prevented it finishing.
+#
+# So the side is chosen ONCE and held for DETOUR_SIDE_MEMORY after the last time
+# this enemy was blocked. Turning the same way relative to travel, over and over,
+# traces an arc - so a blocked enemy circles whatever is in its way instead of
+# rocking against it, and around a crowded player that reads as the pack
+# swarming for an opening rather than milling about.
+func _pick_detour(blocked_dir: String, heading: Vector2, offsets: Array[Vector2]) -> String:
+	var forward: Vector2 = Facing.to_vec(blocked_dir)
+	if forward == Vector2.ZERO:
+		return ""
+
+	var left:  Vector2 = Vector2(forward.y, -forward.x)
+	var right: Vector2 = Vector2(-forward.y, forward.x)
+
+	var first:  Vector2 = left
+	var second: Vector2 = right
+	var first_side: int = -1
+
+	if _detour_side != 0:
+		# ALREADY GOING AROUND SOMETHING. Keep turning the same way. This is
+		# what turns a sequence of quarter turns into an arc instead of a
+		# wobble, and it is the whole point of the memory.
+		if _detour_side > 0:
+			first = right
+			second = left
+			first_side = 1
+	else:
+		# FIRST BLOCK OF THIS DETOUR. Prefer the side that still makes progress
+		# toward the target; if the target is dead ahead both are equally good,
+		# so split by instance id - stable per enemy, and it stops two enemies
+		# in one jam both dodging the same way and staying jammed.
+		var left_score:  float = heading.dot(left)
+		var right_score: float = heading.dot(right)
+		if right_score > left_score:
+			first = right
+			second = left
+			first_side = 1
+		elif is_equal_approx(left_score, right_score) and get_instance_id() % 2 == 0:
+			first = right
+			second = left
+			first_side = 1
+
+	if not _is_step_blocked(first, offsets):
+		_detour_side = first_side
+		return Facing.from_vec(first)
+
+	# Preferred side blocked too - take the other one, and REMEMBER that, so the
+	# arc continues that way from here rather than flipping back next block.
+	if not _is_step_blocked(second, offsets):
+		_detour_side = -first_side
+		return Facing.from_vec(second)
+
+	# Both sides blocked. The memory is left exactly as it was: no turn was
+	# taken, so there is nothing to record, and clearing it here would throw
+	# away the direction of an arc this enemy is halfway through.
+	return ""
+
+
+# The heading this enemy would take with nobody in the way: the raw vector the
+# navigation logic wants to move along, BEFORE it is snapped to a cardinal.
+#
+# Split out of _get_direction_to_point_via_navigation() so avoidance can bend
+# the heading while it is still a vector. Snapping first and steering after
+# would mean choosing between four answers, which cannot express "go around".
+func _heading_vector_to(target_pos: Vector2) -> Vector2:
+	if _has_line_of_sight(target_pos):
+		_prefer_secondary_axis = false
+		_stuck_time = 0.0
+		return target_pos - global_position
+
+	if nav_agent == null:
+		return target_pos - global_position
+
+	nav_agent.target_position = target_pos
+	return nav_agent.get_next_path_position() - global_position
+
+
+# What moving code should call: the cardinal step toward target_pos, routed
+# around walls by navigation and around other enemies by the rules above.
+func _steered_direction_to(target_pos: Vector2) -> String:
+	var heading: Vector2 = _heading_vector_to(target_pos)
+	var offsets: Array[Vector2] = _nearby_enemy_offsets()
+
+	# The side memory ages out on its own. It is refreshed below every time this
+	# enemy is actually blocked, so it only expires once it has genuinely been
+	# travelling freely for DETOUR_SIDE_MEMORY.
+	_detour_side_time -= get_physics_process_delta_time()
+	if _detour_side_time <= 0.0:
+		_detour_side_time = 0.0
+		_detour_side = 0
+
+	# NOBODY NEARBY. Byte for byte the plain navigation answer, wall-slide
+	# fallback included. This is the guarantee that everything in this section
+	# is invisible to an enemy fighting alone.
+	if offsets.is_empty():
+		_detour_dir = ""
+		_detour_time = 0.0
+		return _snap_heading(heading)
+
+	# The heading, biased away from neighbours. Spreads an approaching pack;
+	# does not by itself unstick anything.
+	var steer: Vector2 = heading.normalized() + _separation_push(offsets) * SEPARATION_WEIGHT
+	var preferred: String = _snap_heading(steer)
+
+	# ARRIVING, NOT NAVIGATING. Close to the target, the detour logic is off -
+	# see AVOID_DISABLE_RANGE. The separation push above still runs, so enemies
+	# still ease apart as they settle; they just stop asking a yes/no question
+	# whose answer flips on sub-pixel noise.
+	if global_position.distance_to(target_pos) <= AVOID_DISABLE_RANGE:
+		_detour_dir = ""
+		_detour_time = 0.0
+		return preferred
+
+	# HOLD A DETOUR ALREADY IN PROGRESS, unless it has itself become blocked.
+	if _detour_time > 0.0:
+		_detour_time -= get_physics_process_delta_time()
+		if Facing.is_direction(_detour_dir) \
+				and not _is_step_blocked(Facing.to_vec(_detour_dir), offsets):
+			return _detour_dir
+		_detour_dir = ""
+		_detour_time = 0.0
+
+	if not _is_step_blocked(Facing.to_vec(preferred), offsets):
+		return preferred
+
+	# BLOCKED, so refresh the side memory. Everything from here down is one
+	# continuous detour as far as this enemy is concerned, even with stretches
+	# of clear ground between the blocks - that is what makes a run of quarter
+	# turns come out as an arc around the crowd rather than a rocking motion.
+	_detour_side_time = DETOUR_SIDE_MEMORY
+
+	var detour: String = _pick_detour(preferred, heading, offsets)
+	if detour == "":
+		# BOXED IN ON THREE SIDES. Keep pressing forward and let the existing
+		# escalation handle it: _record_nav_movement_result() flips the axis
+		# after 0.08s of no progress and drops the formation slot entirely
+		# after 0.4s, which re-targets this enemy somewhere else in the ring.
+		return preferred
+
+	_detour_dir = detour
+	_detour_time = DETOUR_COMMIT_SECONDS
+	return detour
+
+
+# The cardinal snap, honouring the wall-slide fallback.
+#
+# Read _prefer_secondary_axis AFTER _heading_vector_to and never before: a clear
+# line of sight clears that flag inside it, so checking first acts on the
+# previous frame's answer.
+func _snap_heading(vec: Vector2) -> String:
+	if _prefer_secondary_axis:
+		return _get_secondary_direction_from_vec(vec)
+	return _get_direction_from_vec(vec)
+
+
+# =============================================================================
 # SLOT SYSTEM  (NEW)
 # =============================================================================
 # instead of every enemy pathing directly toward the player's raw
@@ -383,13 +907,17 @@ func _setup_navigation() -> void:
 # CHANGED: reduced from 32 to 20 for a tighter, closer formation — this
 # is a tunable value, adjust further if it still feels too spread out or
 # starts feeling cramped once you see it in motion.
-# The SHAPE of the formation lives in Formation. These four names stay here
-# because subclasses inherit them - bushmage.gd reads TILE_SIZE,
-# FORMATION_SLOT_STRIDE and SLOT_ARRIVAL_THRESHOLD - and an alias costs nothing
-# while a rename would touch every subclass for no gain.
-const TILE_SIZE := Formation.TILE_SIZE
+# The SHAPE of the formation lives in Formation. These names stay here as
+# aliases because subclasses inherit them and an alias costs nothing.
+#
+# TILE_SIZE AND FORMATION_SLOT_STRIDE ARE GONE, not renamed. They described a
+# square grid of whole tiles, and the formation is now a ring of angular wedges
+# with no tiles and no stride in it - see the header of formation.gd. Keeping
+# the old names pointed at something else would be worse than removing them:
+# anything still reading them was reasoning about a grid that no longer exists,
+# and should fail loudly rather than quietly get a number that means something
+# different. Nothing in the project referenced either one.
 const FORMATION_RING_COUNT := Formation.RING_COUNT
-const FORMATION_SLOT_STRIDE := Formation.SLOT_STRIDE
 const SLOT_ARRIVAL_THRESHOLD := Formation.ARRIVAL_THRESHOLD
 
 # WHO holds which slot, as opposed to where the slots are. Shared across every
@@ -401,6 +929,19 @@ static var _slot_owners: Dictionary = {}  # slot_index (int) -> enemy instance
 
 var _claimed_slot: int = -1
 
+# How often an enemy reconsiders which slot it holds. See _ensure_slot_claimed().
+const SLOT_REVIEW_SECONDS := 0.4
+var _slot_review_time: float = 0.0
+
+# How much better a slot has to be before an enemy will abandon the one it has.
+#
+# Its job is to stop enemies trading places over trivia. With bearing priced per
+# degree it no longer blocks same-ring moves outright, and that is deliberate:
+# 500 is worth about 62 degrees of arc, so an enemy WILL take a slot on its own
+# ring that is a long way nearer to where it actually stands - which cancels a
+# pointless hike rather than causing one - and will not shuffle one seat over.
+const SLOT_SWITCH_MARGIN := 500.0
+
 # NEW: excluded from the very next claim attempt, so releasing a
 # genuinely blocked slot (see STUCK-RECLAIM in _record_nav_movement_result
 # below) doesn't just immediately re-claim that same slot again if
@@ -410,9 +951,14 @@ var _last_released_slot: int = -1
 
 # returns the world-space position this enemy should actually path
 # toward — its claimed tile around the player. tile_size defaults to one
-# real grid tile (TILE_SIZE); pass a larger value to hold further out
-# (e.g. for a ranged class), without changing the grid's actual shape.
-func _get_slot_target_position(tile_size: float = TILE_SIZE) -> Vector2:
+# wedge on the ring around the player.
+#
+# THE TILE_SIZE PARAMETER IS GONE, and its absence is the point. It let a caller
+# ask to "hold further out" by scaling the grid, which in the wedge model is not
+# a thing you can do without changing how many enemies fit - the radius and the
+# count are the same fact stated two ways. A class that wants to stand further
+# back belongs on an outer ring, not on a stretched copy of the inner one.
+func _get_slot_target_position() -> Vector2:
 	if not is_instance_valid(player):
 		return global_position
 
@@ -420,8 +966,7 @@ func _get_slot_target_position(tile_size: float = TILE_SIZE) -> Vector2:
 	if _claimed_slot == -1:
 		return player.global_position
 
-	var raw: Vector2 = Formation.world_position(
-		player.global_position, _claimed_slot, tile_size)
+	var raw: Vector2 = Formation.world_position(player.global_position, _claimed_slot)
 
 	# CLAMPED, because a slot is just an arithmetic offset from the player and
 	# arithmetic knows nothing about walls. Stand the player against geometry
@@ -431,62 +976,127 @@ func _get_slot_target_position(tile_size: float = TILE_SIZE) -> Vector2:
 	return clamp_to_navigation(raw)
 
 
-func _ensure_slot_claimed() -> void:
-	# already own a valid slot — keep it. reshuffling every frame would
-	# just make enemies constantly swap places instead of settling.
-	if _claimed_slot != -1 and _slot_owners.get(_claimed_slot) == self:
-		return
+# How good a slot is for THIS enemy. Lower is better.
+#
+# RING FIRST, BEARING SECOND, AND THAT ORDER IS THE WHOLE POINT.
+#
+# This used to score by raw distance, and raw distance cannot build a circle.
+# Work it: an enemy approaching from the east, inner ring full on the east side.
+# A free ring-2 slot to its east is 145px away; the free ring-1 slot on the WEST
+# side is 208px away. Distance picks the ring-2 slot every time - so the pack
+# stacks up in outer rings on whichever side it came from and the far half of
+# the inner ring stays empty forever. That is the "all bunched on one side"
+# screenshot, and no amount of steering fixes it, because the enemies were
+# walking exactly where they were told to.
+#
+# RING PRIORITY IS STRONG BUT NOT ABSOLUTE, and the difference is visible.
+#
+# It WAS absolute - every ring-1 slot beat every ring-2 slot however far around
+# the player it sat. That closes the circle perfectly and looks like the enemies
+# have lost interest in you: an enemy standing at your shoulder abandons its spot
+# and hikes the entire way around your back to take a marginally better one. From
+# the player's side that is indistinguishable from wandering off.
+#
+# So bearing is now priced per degree: one ring inward is worth 1000, and arc
+# around the player costs a weight per degree.
+#
+# THE WEIGHT IS NOT CONSTANT, AND THAT IS THE ACTUAL INSIGHT. Wandering is
+# something only a NEARBY enemy can do. An enemy a hundred pixels out that angles
+# round to the far side is not wandering, it is walking in - the arc costs it
+# nothing it was not about to spend anyway, and it arrives having spread the pack
+# evenly. An enemy already at the player's shoulder that sets off around their
+# back for a marginally better slot is the thing that looks broken, because from
+# the player's side it simply stopped attacking and left.
+#
+# So arc is nearly free far out and expensive on arrival. Far away: take the best
+# place on the ring, wherever it is. Up close: stay and fight from where you are.
+# A single flat weight cannot express that - tuning one trades trekking against
+# how many enemies reach the inner ring, and every value is wrong somewhere.
+const BEARING_WEIGHT_FAR  := 6.0      # break-even ~165 degrees: go where you like
+const BEARING_WEIGHT_NEAR := 40.0     # break-even ~25 degrees: hold your ground
+const BEARING_WEIGHT_FALLOFF := 120.0 # distance past the ring over which it climbs
 
-	# NEAREST free slot, not the first one in the list.
-	#
-	# Formation builds its slots ring by ring in a fixed order, so taking the
-	# first free entry handed out tiles by index rather than by proximity. An enemy
-	# approaching from the south would happily claim a tile on the NORTH side
-	# and walk straight through the player to reach it - so chasers crossed
-	# each other's paths and bunched in transit, which is what the formation
-	# was supposed to stop. Picking the closest free tile means each enemy
-	# settles on its own side and paths stop intersecting.
+
+func _bearing_weight(dist_to_anchor: float) -> float:
+	var t: float = clampf(
+		1.0 - (dist_to_anchor - Formation.RING_RADIUS) / BEARING_WEIGHT_FALLOFF, 0.0, 1.0)
+	return lerpf(BEARING_WEIGHT_FAR, BEARING_WEIGHT_NEAR, t)
+
+
+func _slot_score(slot: int, my_bearing: float, bearing_weight: float) -> float:
+	var ring: float = float(Formation.ring_of(slot))
+	var off_by: float = rad_to_deg(absf(angle_difference(my_bearing, Formation.bearing_of(slot))))
+	return ring * 1000.0 + off_by * bearing_weight
+
+
+func _ensure_slot_claimed() -> void:
 	if not is_instance_valid(player):
 		_claimed_slot = -1
 		return
 
-	var anchor: Vector2 = player.global_position
+	var holds: bool = _claimed_slot != -1 and _slot_owners.get(_claimed_slot) == self
 
-	# Gather the free slots and sort by how close they are to US, then take the
-	# first one that is actually standable. Sorting before validating keeps the
-	# navmesh queries cheap - the nearest slot is usually fine, so this costs
-	# one or two lookups rather than one per slot.
+	# REVIEWED ON A TIMER RATHER THAN NEVER, and on a timer rather than every
+	# frame. Never re-checking left an enemy marooned on ring 3 for the rest of
+	# the fight after the enemy in front of it died; re-checking every frame at
+	# 180Hz would have the whole pack trading places continuously.
+	if holds:
+		_slot_review_time -= get_physics_process_delta_time()
+		if _slot_review_time > 0.0:
+			return
+	_slot_review_time = SLOT_REVIEW_SECONDS
+
+	var anchor: Vector2 = player.global_position
+	var to_anchor: Vector2 = global_position - anchor
+	var my_bearing: float = to_anchor.angle()
+	var bearing_weight: float = _bearing_weight(to_anchor.length())
+
+	var current_score: float = INF
+	if holds:
+		current_score = _slot_score(_claimed_slot, my_bearing, bearing_weight)
+
 	var candidates: Array = []
 	for i in range(Formation.slot_count()):
 		if i == _last_released_slot:
 			continue  # don't immediately re-claim the slot just given up on
+		if i == _claimed_slot:
+			continue  # scored separately, above
 
 		var slot_owner = _slot_owners.get(i)
 		if slot_owner != null and is_instance_valid(slot_owner):
 			continue
 
-		var slot_world: Vector2 = Formation.world_position(anchor, i)
 		candidates.append({
 			"index": i,
-			"world": slot_world,
-			"distance": global_position.distance_squared_to(slot_world),
+			"world": Formation.world_position(anchor, i),
+			"score": _slot_score(i, my_bearing, bearing_weight),
 		})
 
-	candidates.sort_custom(func(a, b): return a["distance"] < b["distance"])
+	candidates.sort_custom(func(a, b): return a["score"] < b["score"])
 
 	for candidate in candidates:
-		# A slot the navmesh has to drag more than half a tile to reach is a
+		# Sorted ascending, so the first candidate that fails to clear the margin
+		# means nothing after it will either. See SLOT_SWITCH_MARGIN.
+		if candidate["score"] > current_score - SLOT_SWITCH_MARGIN:
+			break
+
+		# A slot the navmesh has to drag further than the enemy is wide is a
 		# slot inside a wall. Claiming it means walking at geometry forever, so
-		# skip to the next nearest instead - which naturally spreads enemies
-		# onto the side of the player that is actually open.
+		# skip to the next best instead - which naturally spreads enemies onto
+		# the side of the player that is actually open.
 		var world: Vector2 = candidate["world"]
-		if clamp_to_navigation(world).distance_to(world) > TILE_SIZE * 0.5:
+		if clamp_to_navigation(world).distance_to(world) > Formation.BODY_RADIUS:
 			continue
 
+		if holds and _slot_owners.get(_claimed_slot) == self:
+			_slot_owners.erase(_claimed_slot)
 		_slot_owners[candidate["index"]] = self
 		_claimed_slot = candidate["index"]
 		_last_released_slot = -1
 		return
+
+	if not holds:
+		_claimed_slot = -1
 
 	# every slot already taken by a still-valid enemy — none available
 	# right now (would need more than 28 simultaneous chasers).
@@ -523,21 +1133,22 @@ func _get_direction_to_point_via_navigation(target_pos: Vector2) -> String:
 	# chasing the same target through the same narrow navmesh converge
 	# onto nearly the same path, fighting against the existing
 	# stacking-avoidance system (push apart, path back together, repeat).
-	if _has_line_of_sight(target_pos):
-		_prefer_secondary_axis = false
-		_stuck_time = 0.0
-		return _get_direction_from_vec(target_pos - global_position)
-
-	if nav_agent == null:
-		return _get_direction_from_vec(target_pos - global_position)
-
-	nav_agent.target_position = target_pos
-	var next_point: Vector2 = nav_agent.get_next_path_position()
-	var to_waypoint: Vector2 = next_point - global_position
-
+	# REWRITTEN AS A THIN WRAPPER, same answer. The body moved to
+	# _heading_vector_to() (see LOCAL AVOIDANCE above) so the steering code can
+	# get at the heading as a VECTOR before it is snapped to a cardinal. This
+	# function is the no-avoidance version and stays for callers that genuinely
+	# want it - fleeing and walking home, where dodging other enemies is not
+	# the point.
+	#
+	# ONE DIFFERENCE, stated rather than hidden: the old nav_agent == null
+	# branch forced the primary axis even when the wall-slide fallback was
+	# active. It now honours the fallback like every other path through here.
+	# nav_agent is created in _ready() and is never null in practice, so this
+	# is a change to an unreachable line.
+	var heading: Vector2 = _heading_vector_to(target_pos)
 	if _prefer_secondary_axis:
-		return _get_secondary_direction_from_vec(to_waypoint)
-	return _get_direction_from_vec(to_waypoint)
+		return _get_secondary_direction_from_vec(heading)
+	return _get_direction_from_vec(heading)
 
 
 # raycasts through PHYSICS collision (walls) to check for a clear line to
@@ -700,7 +1311,34 @@ func _on_animation_finished() -> void:
 # =============================================================================
 
 func _handle_combat(dist_to_player: float) -> void:
-	if dist_to_player < flee_range:
+	# FLEE, WITH HYSTERESIS AND ITS OWN SPEED. Both halves are needed before an
+	# archer actually backs off rather than appearing to.
+	#
+	# HYSTERESIS: the old test was a bare `dist < flee_range`. Cross that line by
+	# one pixel and the enemy stops fleeing, so the player - who is still walking
+	# forward - is immediately inside it again. The result is a dither on the
+	# boundary at 180 ticks a second, which does not read as retreating; it reads
+	# as twitching in place. Once fleeing, keep fleeing until a real gap exists.
+	# GATED ON THIS ENEMY ACTUALLY BEING ABLE TO COMPLETE A RETREAT, which is
+	# not a detail - ungated, this hysteresis breaks every enemy in the game
+	# except the archer.
+	#
+	# The player moves at 90. The boss moves at 45, the fire sprite at 85, the
+	# electric sprite at exactly 90, and none of them override get_flee_speed().
+	# Widening their release distance means they must reach a gap they are
+	# physically incapable of opening against a player who is simply walking
+	# forward - so they would retreat forever and never attack again. The old
+	# bare threshold was right for them: back off a step, hit the line, turn and
+	# fight.
+	#
+	# An enemy that overrides get_flee_speed() upward has opted into kiting and
+	# can actually make the distance, so it gets the wider band.
+	var flee_threshold: float = flee_range
+	if _is_fleeing and get_flee_speed() > get_move_speed():
+		flee_threshold = flee_range * FLEE_RELEASE_FACTOR
+
+	if flee_range > 0.0 and dist_to_player < flee_threshold:
+		_is_fleeing = true
 		_release_slot()
 		# CHANGED: was a naive straight-line flee direction with zero
 		# wall-awareness. if that direction happened to point into a wall
@@ -716,12 +1354,17 @@ func _handle_combat(dist_to_player: float) -> void:
 		# alternate route instead of pushing into a wall forever.
 		var flee_target: Vector2 = global_position + (global_position - player.global_position).normalized() * 100.0
 		var flee_pos_before: Vector2 = global_position
-		var flee_dir: String = _get_direction_to_point_via_navigation(flee_target)
-		velocity = _vec_from_dir(flee_dir) * get_move_speed()
+		# STEERED, so a retreating archer goes around whatever is behind it
+		# instead of reversing into its own back line and stopping dead.
+		var flee_dir: String = _steered_direction_to(flee_target)
+		velocity = _vec_from_dir(flee_dir) * get_flee_speed()
 		move_and_slide()
-		play_walk_animation(flee_dir)
+		_walk_facing = Facing.from_vec_stable(flee_target - global_position, _walk_facing)
+		play_walk_animation(_walk_facing)
 		_record_nav_movement_result(flee_pos_before)
 		return
+
+	_is_fleeing = false
 
 	# BEING IN RANGE IS NOT THE SAME AS BEING ABLE TO SHOOT.
 	#
@@ -740,20 +1383,18 @@ func _handle_combat(dist_to_player: float) -> void:
 	# straight to you" and "I can shoot you" are one question, and asking it
 	# twice is how the two answers start disagreeing.
 	if dist_to_player < attack_range and _has_line_of_sight(player.global_position):
-		velocity = Vector2.ZERO
+		velocity = _standoff_velocity()
+		move_and_slide()
 		if attack_ready:
 			_trigger_attack()
 		else:
 			play_idle_animation(attack_direction)
 		return
 
-	# CHANGED: routes toward this enemy's claimed tile around the player
-	# (see SLOT SYSTEM section above) instead of the player's raw
-	# position directly — this is what actually spreads multiple enemies
-	# out into a real surrounding formation instead of all converging on
-	# the same spot. uses the default TILE_SIZE spacing (real grid tiles,
-	# not attack_range-scaled) since the grid's spacing is now tied to
-	# the actual world tile size, not this enemy's attack range.
+	# Routes toward this enemy's claimed WEDGE on the ring around the player
+	# (see SLOT SYSTEM above and the header of formation.gd) rather than at the
+	# player's raw position — which is what spreads a pack into a circle around
+	# you instead of a scrum on the side they happened to come from.
 	var slot_target: Vector2 = _get_slot_target_position()
 
 	# NEW: essentially arrived at the claimed slot — stop and hold
@@ -761,16 +1402,25 @@ func _handle_combat(dist_to_player: float) -> void:
 	# comment above for why this is what actually stops the
 	# animation-flip jitter at close range.
 	if global_position.distance_to(slot_target) < SLOT_ARRIVAL_THRESHOLD:
-		velocity = Vector2.ZERO
+		velocity = _standoff_velocity()
 		move_and_slide()
 		play_idle_animation(attack_direction)
 		return
 
 	var pos_before: Vector2 = global_position
-	var to_player: String = _get_direction_to_point_via_navigation(slot_target)
+	# STEERED, not raw. Same navigation underneath, plus a push around any enemy
+	# standing in the way - see LOCAL AVOIDANCE. With nobody near it returns the
+	# identical heading, so an enemy chasing alone behaves exactly as before.
+	var to_player: String = _steered_direction_to(slot_target)
 	velocity = _vec_from_dir(to_player) * get_move_speed()
 	move_and_slide()
-	play_walk_animation(to_player)
+	# MOVE by the nav heading, FACE toward the target. The nav heading flips axis
+	# frame to frame on a diagonal (that is the "flipping"); the vector to the
+	# slot is steady, and the hysteresis keeps even a slow pass through 45 degrees
+	# from strobing the sprite. Movement is unchanged - only what the walk
+	# animation shows.
+	_walk_facing = Facing.from_vec_stable(slot_target - global_position, _walk_facing)
+	play_walk_animation(_walk_facing)
 	_record_nav_movement_result(pos_before)
 
 
@@ -799,6 +1449,24 @@ func clamp_to_navigation(pos: Vector2) -> Vector2:
 	if not map.is_valid():
 		return pos
 
+	# A VALID MAP WITH NOTHING BAKED INTO IT IS THE DANGEROUS CASE, and it is
+	# not the same as an invalid one. Every scene has a navigation map; a scene
+	# with no NavigationRegion2D just has an EMPTY one - and
+	# map_get_closest_point() answers an empty map with Vector2.ZERO, the world
+	# origin, rather than reporting failure.
+	#
+	# The distance guard below was supposed to catch that, and it only catches
+	# it when the query happens to be far from the origin. The boss room has no
+	# navmesh and its floor spans the origin, so fighting within 240px of (0, 0)
+	# there silently collapsed EVERY point passed through here onto that one
+	# spot: a thirty-five pillar wall became one pillar stacked on itself, and
+	# every formation slot in the room was rejected as unreachable.
+	#
+	# Asking whether the map has any regions is the question that was actually
+	# meant. No regions means nothing to clamp to, so nothing is clamped.
+	if NavigationServer2D.map_get_regions(map).is_empty():
+		return pos
+
 	# named nav_point, not snapped — snapped() is a global GDScript function
 	# (it rounds a value to the nearest multiple of a step). A local of that
 	# name shadows it for the rest of this function, so any later call to the
@@ -825,7 +1493,8 @@ func _handle_return_home() -> void:
 		var return_dir: String = _get_direction_to_point_via_navigation(spawn_position)
 		velocity = _vec_from_dir(return_dir) * get_move_speed()
 		move_and_slide()
-		play_walk_animation(return_dir)
+		_walk_facing = Facing.from_vec_stable(spawn_position - global_position, _walk_facing)
+		play_walk_animation(_walk_facing)
 	else:
 		is_returning_home = false
 		velocity = Vector2.ZERO
@@ -860,6 +1529,20 @@ func _trigger_attack() -> void:
 
 func get_move_speed() -> float:
 	return 80.0
+
+
+func get_flee_speed() -> float:
+	# HOW FAST THIS ENEMY BACKS OFF, kept separate from how fast it advances.
+	#
+	# An archer that retreats at its chase speed cannot retreat. The player's
+	# base speed is 90 and the sniper's is 80, so "run away" resolved to "get
+	# walked down while facing the wrong way and not shooting" - it was trying
+	# the whole time and losing the race by ten pixels a second. A class whose
+	# entire job is holding range has to be able to open it.
+	#
+	# Defaults to the chase speed, so this changes nothing for any enemy that
+	# does not override it.
+	return get_move_speed()
 
 
 func fire_projectile() -> void:
@@ -927,6 +1610,149 @@ func _set_animation(new_anim: String) -> void:
 	sprite.play(new_anim)
 
 
+# Does this enemy's sheet carry this animation?
+#
+# Checked BEFORE calling _set_animation() for anything optional, because that
+# function warns about a missing animation - correct when a walk cycle is
+# absent, noise when the answer is "this enemy simply has no hit flash", which
+# is true of most of them.
+func _has_animation(anim_name: String) -> bool:
+	if anim_name == "" or not has_node("animatedsprite2d"):
+		return false
+	var frames: SpriteFrames = ($animatedsprite2d as AnimatedSprite2D).sprite_frames
+	return frames != null and frames.has_animation(anim_name)
+
+
+# How long an animation actually runs, in seconds.
+#
+# READ OFF THE ART rather than written down next to it. A death animation that
+# is held for a hardcoded duration goes wrong the moment the sheet is re-timed
+# or a frame is added, and it goes wrong SILENTLY - either the corpse vanishes
+# mid-dissolve or it lies there after the animation ended. Per-frame durations
+# are summed rather than assumed equal, because SpriteFrames allows them to
+# differ and this project's own art pipeline notes warn that they drift.
+func _animation_seconds(anim_name: String) -> float:
+	if not _has_animation(anim_name):
+		return 0.0
+	var frames: SpriteFrames = ($animatedsprite2d as AnimatedSprite2D).sprite_frames
+	var speed: float = frames.get_animation_speed(anim_name)
+	if speed <= 0.0:
+		return 0.0
+	var total: float = 0.0
+	for i in range(frames.get_frame_count(anim_name)):
+		total += frames.get_frame_duration(anim_name, i)
+	return total / speed
+
+
+# The direction word to build an animation name from. attack_direction is kept
+# pointed at the player every frame, which is the right way for a corpse or a
+# flinch to face; the fallback only matters before a player has been resolved.
+func _facing_for_animation() -> String:
+	if Facing.is_direction(attack_direction):
+		return attack_direction
+	return Facing.DOWN
+
+
+# THE HIT FLASH IS DRAWN OVER WHATEVER FRAME IS ALREADY ON SCREEN, which is why
+# it never interrupts anything.
+#
+# WHAT THE ART ALREADY TOLD US. hitflashdown on the boss sheet is three frames:
+# the normal pose, the SAME pose blanked to pure white, then the normal pose
+# again. It was never a flinch animation - it is a hand-drawn white-out, which
+# is exactly the effect below, just baked into frames.
+#
+# So the first version of this played those frames, and that was the mistake.
+# Swapping the animation does not just flash the enemy, it also throws away the
+# pose it was holding: a boss hit mid-cast snapped out of its cast, the vine or
+# the spike keyed to a frame of that animation never spawned, and for the boss
+# the _on_animation_finished() that clears is_attacking never fired, freezing it
+# for good. To avoid all that the flash had to be suppressed during attacks -
+# and since the boss casts for 1.0s of every 1.5s, about two hits in three
+# landed with a damage number and no flash at all. That is the "not syncing".
+#
+# Recolouring the pixels has none of those problems. The pose is untouched, so a
+# boss flashes white MID-SWING and keeps swinging, and every hit lands its own
+# flash because there is no animation state to collide with.
+#
+# THE SAME MECHANISM THE PLAYER USES, deliberately, after a detour through a
+# shader that was a mistake.
+#
+# That version attached a ShaderMaterial to every enemy sprite and mixed the
+# pixels toward white. It flashed correctly, but it changed the thing it was
+# supposed to leave alone: the enemy now rendered through a custom shader at all
+# times, and it carried a state that could get STUCK. flash_amount lives on the
+# material, so a tween killed part-way - by a scene change, a pause, anything
+# that stops tweens - leaves the sprite permanently part-white with nothing to
+# put it back. A washed-out boss that never recovers is a far worse bug than a
+# flash that is a little subtle on a dark sprite.
+#
+# A modulate tween cannot get stuck in the same way: modulate is a plain
+# property with a known resting value, every flash ends by tweening back to it,
+# and with no material attached the sprite renders exactly as authored.
+#
+# HOW FAST, AND WHY THIS NUMBER. The player's flash is
+# maxf(0.05, hit_flash_duration * (1.0 - reduction)), so a character actually
+# flashes somewhere between 0.150s undefended and 0.075s at the defence cap.
+# Enemies were pinned at 0.150 - the SLOWEST a character ever flashes, and twice
+# as slow as a well-defended one. Side by side in the same fight, the enemy
+# flash visibly lagged the player's. 0.08 sits with a defended character, which
+# is what the player spends most of the game being.
+@export var hit_flash_duration: float = 0.08
+
+# Brighter than white, so it overexposes rather than merely whitening. Exactly
+# the value player.gd flashes to.
+const HIT_FLASH_COLOR := Color(2.0, 2.0, 2.0, 1.0)
+
+# CAPTURED AT READY RATHER THAN ASSUMED WHITE. bushmage3 in field.tscn is placed
+# with a red modulate, and there will be more tinted variants - restoring to a
+# hardcoded white would strip a variant's colour the first time it was hit and
+# never give it back.
+var _default_modulate: Color = Color.WHITE
+
+# Held so a second hit can cancel the tween still running from the first.
+# Without this the older tween keeps writing modulate on its own schedule and
+# drags the new flash back toward default early.
+var _hit_flash_tween: Tween = null
+
+
+func play_hit_flash() -> void:
+	if _dying or not has_node("animatedsprite2d"):
+		return
+	var sprite: AnimatedSprite2D = $animatedsprite2d
+
+	if _hit_flash_tween != null and _hit_flash_tween.is_valid():
+		_hit_flash_tween.kill()
+
+	# Snap ON, ease OFF - that shape is what reads as an impact rather than a
+	# pulse. Same two-step tween as player.gd::_play_hit_flash().
+	_hit_flash_tween = create_tween()
+	_hit_flash_tween.tween_property(sprite, "modulate", HIT_FLASH_COLOR, 0.0)
+	_hit_flash_tween.tween_property(sprite, "modulate", _default_modulate, hit_flash_duration)
+
+
+func _stop_acting() -> void:
+	# Freeze an enemy that is playing out a death or some other resolution: no
+	# movement, no further hits landing on it, no colliding with the player
+	# while it finishes.
+	#
+	# LIFTED FROM poisonslime.gd, which had the only copy. It was never
+	# slime-specific - every line of it is guarded by has_node - and the boss
+	# needs exactly the same thing to play its death. A second identical copy
+	# is how the four direction-picker implementations in this project drifted
+	# apart (see the header of facing.gd), so it moved instead of being cloned.
+	set_physics_process(false)
+	velocity = Vector2.ZERO
+	is_attacking = false
+
+	if has_node("hurtbox"):
+		$hurtbox.set_deferred("monitoring", false)
+		$hurtbox.set_deferred("monitorable", false)
+	if has_node("bodyshape"):
+		$bodyshape.set_deferred("disabled", true)
+	if has_node("attacktimer"):
+		$attacktimer.stop()
+
+
 func play_walk_animation(dir: String) -> void:
 	if dir != "":
 		_set_animation("walk" + dir)
@@ -980,6 +1806,14 @@ func _vec_from_dir(dir: String) -> Vector2:
 # drop in the game.
 var _death_resolved: bool = false
 
+# True from the moment a death animation STARTS PLAYING until the frame the
+# death actually resolves. Distinct from _death_resolved on purpose: the loot
+# roll and the kill report must still be reachable exactly once AFTER the
+# animation, so the resolved flag cannot be set early — but nothing should be
+# able to damage, move or re-kill the enemy while the corpse plays out either.
+var _dying: bool = false
+
+
 
 func get_enemy_id() -> String:
 	# The name this enemy reports to the server when it is killed. Empty means
@@ -1019,7 +1853,10 @@ func _apply_enemy_data() -> void:
 
 
 func take_damage(amount: int, _type: StringName = &"physical") -> void:
-	if _death_resolved:
+	# _dying as well as _death_resolved: a corpse playing out its death
+	# animation is still a live node for about a second, and without this it
+	# would keep taking hits, spawning damage numbers and re-entering _die().
+	if _death_resolved or _dying:
 		return
 
 	hp = max(hp - amount, 0)
@@ -1052,8 +1889,10 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 		_die()
 		return
 
-	# Survival only. A killing blow gets the death sound instead — otherwise
-	# you hear the thing grunt and die in the same frame.
+	# Survival only, both of them, and for the same reason. A killing blow gets
+	# the death sound and the death animation instead — otherwise you hear the
+	# thing grunt and die in the same frame, and the flash cuts off the death.
+	play_hit_flash()
 	Audio.play_at("enemy_hurt", global_position)
 
 
@@ -1061,8 +1900,9 @@ func _die() -> void:
 	# Second layer of the same guard. take_damage() is the usual route in, but
 	# anything holding a reference can call _die() directly, and the loot roll
 	# must not be reachable twice by any path.
-	if _death_resolved:
+	if _death_resolved or _dying:
 		return
+
 	_death_resolved = true
 
 	_release_slot()
@@ -1093,6 +1933,44 @@ func _die() -> void:
 	Audio.play_at("enemy_death", global_position)
 
 	died.emit()
+
+	# THE DEATH ANIMATION PLAYS LAST, AFTER EVERYTHING THAT MATTERS HAS ALREADY
+	# HAPPENED, and the ordering is the whole point.
+	#
+	# The obvious build is to animate first and resolve afterwards. It is wrong:
+	# the kill report, the XP and the loot would then sit behind a one-second
+	# await on a node that can be freed at any moment — leave the scene or die
+	# yourself while the boss is dissolving and is_instance_valid() comes back
+	# false, the function returns, and the kill silently pays nothing. A boss
+	# kill is the worst possible thing to lose to a timing accident.
+	#
+	# So the kill is fully resolved above and the corpse is then free to take as
+	# long as it likes. If it does get freed mid-animation, nothing is lost;
+	# only the dissolve was cut short.
+	#
+	# THE HOLD IS THE ANIMATION'S OWN LENGTH, read off the SpriteFrames rather
+	# than written down here, so re-timing the art cannot leave a corpse
+	# lingering or cut it off halfway.
+	#
+	# Enemies whose sheet has no death* frames — which is all of them except the
+	# boss right now — skip straight to queue_free() exactly as before.
+	#
+	# THE NAME IS DELIBERATELY UNPREFIXED. poisonslime.gd has an _anim_prefix()
+	# that turns its small form's clips into smallwalkdown, smallidleleft and so
+	# on, and routing this through it would find smalldeathdown — then play it a
+	# SECOND time, because poisonslime._die() has already shown its own death and
+	# awaited it before handing control up. Leaving this unprefixed is what keeps
+	# that override authoritative: _has_animation("death" + dir) is false for
+	# both slime forms, so neither reaches this branch at all.
+	var death_anim: String = "death" + _facing_for_animation()
+	if _has_animation(death_anim):
+		_dying = true
+		_stop_acting()
+		_set_animation(death_anim)
+		await get_tree().create_timer(_animation_seconds(death_anim)).timeout
+		if not is_instance_valid(self):
+			return
+
 	queue_free()
 
 

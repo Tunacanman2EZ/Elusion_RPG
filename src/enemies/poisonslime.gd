@@ -597,21 +597,3 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	slime.call_deferred("reset_physics_interpolation")
 
 
-# =============================================================================
-# SHARED TEARDOWN
-# =============================================================================
-
-func _stop_acting() -> void:
-	# freeze a slime that's mid-split or mid-death: no movement, no further
-	# hits landing on it, no colliding with the player while it plays out.
-	set_physics_process(false)
-	velocity = Vector2.ZERO
-	is_attacking = false
-
-	if has_node("hurtbox"):
-		$hurtbox.set_deferred("monitoring", false)
-		$hurtbox.set_deferred("monitorable", false)
-	if has_node("bodyshape"):
-		$bodyshape.set_deferred("disabled", true)
-	if has_node("attacktimer"):
-		$attacktimer.stop()

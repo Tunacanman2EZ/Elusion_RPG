@@ -1,6 +1,7 @@
-# bushmage enemy — ranged caster that summons a stationary vine attack
-# in front of itself, stretching toward the player. holds at roughly 1 tile
-# away and casts when the player is in range.
+# bushmage enemy — caster that summons a stationary vine attack in front of
+# itself, stretching toward the player. Presses in to its wedge on the ring
+# around the player (Formation.RING_RADIUS, 36px) and casts from there. It never
+# retreats.
 #
 # attack flow:
 # 1. bushmage plays directional attack animation (attackleft/right/up/down)
@@ -15,15 +16,16 @@
 # even if the attack animation loops or frame_changed fires extra times.
 # the flag resets at the start of each new _trigger_attack call.
 #
-# this differs from BaseEnemy._physics_process because bushmage uses
-# chase-and-hold positioning (target distance ~1 tile) rather than the
-# default flee/attack/idle state machine. IMPORTANT: because of this,
-# BaseEnemy._physics_process (and its navigation-agent chase logic) never
-# runs for this class at all — this class's own _move_toward_player()
-# below is the only thing that handles closing distance to the player,
-# which is why it needs its own explicit call into
-# _get_direction_to_player_via_navigation() (inherited from BaseEnemy)
-# rather than picking that up automatically.
+# WHY THIS CLASS STILL REPLACES BaseEnemy._physics_process. It uses the same
+# formation slots every other enemy does, so the reason is no longer positioning
+# - it is that BaseEnemy's state machine can flee and hold fire, and this one
+# must do neither. A mage that backs off is the exact bug this class was rebuilt
+# to remove, and a mage that stops to check attack_range before casting would
+# hold position outside a reach it is already well inside.
+#
+# The cost of overriding is real and has bitten before: BaseEnemy grows a rule,
+# this class does not get it. The leash below is the scar from the last time.
+# Anything added to BaseEnemy._physics_process needs a decision about this file.
 extends BaseEnemy
 class_name BushMage
 
@@ -39,25 +41,28 @@ const ENEMY_DATA := preload("res://data/enemies/bushmage.tres")
 # damage dealt by the vine effect (passed to the spawned vine instance)
 @export var attack_power: int = 8
 
-# preferred distance from player — bushmage chases/backs off to hold this.
+# WHERE THE MAGE CASTS FROM: its wedge on the ring, at Formation.RING_RADIUS.
 #
-# RETUNED TO MATCH THE SLOT GRID, WHICH IS WHY THIS NEVER CAST.
+# desired_distance and distance_tolerance USED TO LIVE HERE and are gone. They
+# held the mage at 24px from the player, and 24px is a number with a consequence
+# nobody had worked out: only SEVEN bodies of radius 10 fit shoulder to shoulder
+# on a circle that small. Mage eight onward had nowhere to stand, so they pressed
+# against the ones already there and circled looking for a gap that could not
+# exist. The ring radius is 36, where exactly eleven fit - so the eighth, ninth,
+# tenth and eleventh mages now have a place to be, and the twelfth is the first
+# one left outside.
 #
-# These were set for the old free-angle ring, where an enemy ended up roughly
-# `desired_distance` from the player. The grid that replaced it parks enemies
-# on ring-1 tiles instead: TILE_SIZE (20) * FORMATION_SLOT_STRIDE (2) = 40px
-# on the axes, and 40 * sqrt(2) = ~56.6px on the diagonals.
+# The vine damages a 150x149 box centred where it spawns, reaching about 75px in
+# every direction, so casting from 36px lands comfortably. Standing on the ring
+# is not standing back.
+
+# How close to the PLAYER a mage has to be before it will cast.
 #
-# The old band was 32 +/- 4, i.e. 28..36px. Ring 1 is 40..56.6px. The two
-# never overlapped, so _physics_process below always took the "too far"
-# branch, _move_toward_player() found it was already standing on its slot,
-# and it idled there forever. The bush mage wasn't failing to cast — it was
-# never reaching the code that casts.
-#
-# 48 +/- 12 spans 36..60, which covers an axis slot and a diagonal one with
-# margin either side.
-@export var desired_distance:   float = 48.0  # ring-1 axis..diagonal midpoint
-@export var distance_tolerance: float = 12.0  # wide enough to cover both
+# Set past ring 2 (56px) on purpose, so the mages that could not fit on the
+# inner ring still fight instead of standing behind the front rank watching.
+# Still well inside the vine's ~75px reach, so every cast this permits is a cast
+# that can actually connect.
+const CAST_RANGE := Formation.RING_RADIUS + 24.0
 
 # frame of the bushmage attack animation where the vine spawns
 @export var contact_frame: int = 3
@@ -94,10 +99,19 @@ func _ready() -> void:
 		enemy_data = ENEMY_DATA
 
 	# COMBAT TUNING STAYS HERE. Only the reward profile moved to the .tres.
-	# attack_range in particular could not move: it is derived from this
-	# enemy's hold distance, so it is not a number you can put in a file.
+	# attack_range in particular could not move: it is derived from the ring
+	# geometry, so it is not a number you can write down in a data file.
 	attack_cooldown = 1.2
-	attack_range    = desired_distance + 8.0  # reach slightly past hold zone
+	# Kept EQUAL to CAST_RANGE rather than near it. This class decides its own
+	# casts from CAST_RANGE, but inherited code still reads attack_range, and two
+	# numbers that mean "close enough to fight" will eventually disagree.
+	attack_range    = CAST_RANGE
+
+	# COMMIT TO THE CHASE. The default leash is 400, so the mage gave up and
+	# walked home the moment the player got that far - which is exactly why the
+	# mages in the field sat at the edge casting into empty space. A rush-in
+	# caster pursues across the room instead of guarding a spot.
+	leash_range = 1500.0
 
 	super._ready()
 
@@ -114,9 +128,11 @@ func _physics_process(_delta: float) -> void:
 
 	attack_direction = _get_direction_to_player()
 
-	# while attacking, freeze in place and let the animation play out
+	# while attacking, freeze in place and let the animation play out - except
+	# for easing out from under the player, which does not interrupt the cast.
+	# See BaseEnemy._standoff_velocity().
 	if is_attacking:
-		velocity = Vector2.ZERO
+		velocity = _standoff_velocity()
 		move_and_slide()
 		return
 
@@ -135,10 +151,43 @@ func _physics_process(_delta: float) -> void:
 		return
 	is_returning_home = false
 
-	if dist > desired_distance + distance_tolerance:
-		_move_toward_player()
-	elif dist < desired_distance - distance_tolerance:
-		_back_off_from_player()
+	# TAKE A PLACE ON THE RING AND CAST FROM IT.
+	#
+	# THIS IS A RETURN TO THE FORMATION, AND THE HISTORY MATTERS because the last
+	# time mages used it they cast from across the room. Two causes, both dealt
+	# with rather than worked around:
+	#
+	#   * They BACKED OFF when the player closed. That kiting branch is gone and
+	#     is not coming back - a mage never retreats now.
+	#   * Their slot sat on a square grid whose ring was 40 to 60px out, tuned by
+	#     a stride constant that moved the radius and the spacing together. Now
+	#     the ring is a fixed 36px, which is inside the vine's reach with room to
+	#     spare, and the count is derived from it instead of fighting it.
+	#
+	# What the formation buys that charging the player does not: eleven mages get
+	# eleven DIFFERENT places to stand, all of them in casting range, spread the
+	# whole way around. Charging one point means they all want the same pixel and
+	# the ones behind spend the fight circling for a gap.
+	var slot_target: Vector2 = _get_slot_target_position()
+
+	# CAST WHEN THE SPELL CAN REACH, not when standing exactly on the wedge.
+	#
+	# Slot arrival is a 6px window around a point that moves with the player, and
+	# movement here is cardinal-only - so a mage chasing a player who is actually
+	# running would keep just missing that window and never fire a single vine.
+	# Whether a vine lands is a question about range to the PLAYER, so ask that
+	# instead, and keep walking to the wedge the rest of the time. The result is
+	# a mage that closes and casts on the way in rather than casting only once
+	# parked, which is the aggression the formation was supposed to add to, not
+	# replace.
+	if attack_ready and dist <= CAST_RANGE and _has_line_of_sight(player.global_position):
+		velocity = _standoff_velocity()
+		move_and_slide()
+		_trigger_attack()
+		return
+
+	if global_position.distance_to(slot_target) > Formation.ARRIVAL_THRESHOLD:
+		_press_to(slot_target)
 	else:
 		_hold_and_attack()
 
@@ -147,60 +196,34 @@ func _physics_process(_delta: float) -> void:
 # MOVEMENT MODES
 # =============================================================================
 
-func _move_toward_player() -> void:
-	# CHANGED: routes toward this bushmage's claimed TILE around the
-	# player (see baseenemy.gd's SLOT SYSTEM section — now a real
-	# discrete grid, not a free-angle ring), instead of straight at the
-	# player directly — this is what spreads multiple bushmages out
-	# instead of all converging on the same spot.
+func _press_to(slot_target: Vector2) -> void:
+	# PUSH IN AND TAKE THE SPOT. _steered_direction_to takes a clear line when
+	# there is one, routes around walls when there is not, and goes AROUND other
+	# enemies in the way rather than into them - which is what lets a mage work
+	# its way through the crowd already standing on the ring instead of jamming
+	# behind them.
 	#
-	# CHANGED AGAIN: the earlier "desired_distance * 3.0" fix was for the
-	# old free-angle ring system, where circumference (and therefore
-	# per-enemy spacing) shrank as more enemies packed onto the same
-	# radius. the grid system replacing it guarantees real tile-sized
-	# separation between adjacent slots regardless of enemy count, so
-	# just uses the default TILE_SIZE spacing now — no per-class
-	# multiplier needed to compensate for a shrinking ring anymore.
-	var slot_target: Vector2 = _get_slot_target_position()
-
-	# NEW: essentially arrived at the claimed slot — stop and hold
-	# instead of continuing to chase it. see baseenemy.gd's
-	# SLOT_ARRIVAL_THRESHOLD comment for why this is what actually stops
-	# the animation-flip jitter at close range.
-	if global_position.distance_to(slot_target) < SLOT_ARRIVAL_THRESHOLD:
-		# ARRIVED — cast from here rather than standing idle.
-		#
-		# This branch used to idle unconditionally, which made the hold band
-		# above the ONLY route to an attack. Any slot geometry that put the
-		# enemy outside that band meant it stood at its slot doing nothing
-		# forever, which is exactly what happened. Retuning the band fixed
-		# today's numbers; this makes the class stop depending on them being
-		# right, so a future change to TILE_SIZE or the ring count can't
-		# silently disarm the bush mage again.
-		velocity = Vector2.ZERO
-		move_and_slide()
-		_hold_and_attack()
-		return
-
+	# MOVE by the steered heading, FACE toward the player. The heading turns
+	# corners while going around people and would spin the sprite with it; what
+	# the player should see is a mage bearing down on them the whole time.
 	var pos_before: Vector2 = global_position
-	var chase_dir: String = _get_direction_to_point_via_navigation(slot_target)
-	velocity = _vec_from_dir(chase_dir) * get_move_speed()
+	var step: String = _steered_direction_to(slot_target)
+	velocity = _vec_from_dir(step) * get_move_speed()
 	move_and_slide()
-	play_walk_animation(chase_dir)
+	_walk_facing = Facing.from_vec_stable(player.global_position - global_position, _walk_facing)
+	play_walk_animation(_walk_facing)
 	_record_nav_movement_result(pos_before)
 
 
-func _back_off_from_player() -> void:
-	# too close — back off toward open space
-	var back_dir: String = _get_direction_from_vec(global_position - player.global_position)
-	velocity = _vec_from_dir(back_dir) * get_move_speed()
-	move_and_slide()
-	play_walk_animation(back_dir)
-
-
 func _hold_and_attack() -> void:
-	# in the sweet spot — stop and cast when ready, otherwise idle
-	velocity = Vector2.ZERO
+	# in the sweet spot — stop and cast when ready, otherwise idle.
+	#
+	# NOT QUITE STOPPED: the standoff still runs, so a mage the player walks
+	# onto slides out from underneath instead of being stood on. It is zero
+	# whenever there is no overlap, which is nearly always, so this is the same
+	# "hold still and cast" it has always been.
+	velocity = _standoff_velocity()
+	move_and_slide()
 	if attack_ready:
 		_trigger_attack()
 	else:
@@ -224,7 +247,11 @@ func _trigger_attack() -> void:
 # =============================================================================
 
 func get_move_speed() -> float:
-	return 75.0
+	# FASTER THAN THE PLAYER (base 90) on purpose. A caster that means to rush in
+	# and cast at close range cannot be slower than the thing it is chasing, or
+	# it never closes the gap - it just trails the player to its leash limit and
+	# gives up. This is the other half of why the mages hung back.
+	return 115.0
 
 
 # bushmage doesn't use the BaseEnemy fire_projectile hook because we spawn
