@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://cesjpcss2hn7o"]
 
 [ext_resource type="Texture2D" uid="uid://djeltmsl4xet5" path="res://art/enemy/boss.png" id="1_exjlv"]
+[ext_resource type="Script" uid="uid://bo0omw53ic1f" path="res://src/projectiles/bossprojectile.gd" id="2_erupt"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_tvuw3"]
 atlas = ExtResource("1_exjlv")
@@ -28,7 +29,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_tvuw3")
 }, {
-"duration": 1.0,
+"duration": 4.0,
 "texture": SubResource("AtlasTexture_n65sy")
 }, {
 "duration": 1.0,
@@ -40,13 +41,24 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_xg042")
 }],
-"loop": true,
+"loop": false,
 "name": &"projectile",
-"speed": 5.0
+"speed": 10.0
 }]
 
-[node name="bossprojectile" type="Area2D" unique_id=1313883842]
+[sub_resource type="CircleShape2D" id="CircleShape2D_erupt"]
+radius = 20.0
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=195951246]
+[node name="bossprojectile" type="Area2D" unique_id=1313883842]
+texture_filter = 1
+collision_layer = 64
+collision_mask = 4
+script = ExtResource("2_erupt")
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=195951246]
+position = Vector2(0, -20)
 sprite_frames = SubResource("SpriteFrames_cjumu")
 animation = &"projectile"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=1313883843]
+shape = SubResource("CircleShape2D_erupt")

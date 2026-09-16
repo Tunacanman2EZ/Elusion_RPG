@@ -434,10 +434,13 @@ tile_set = SubResource("TileSet_sit1d")
 [node name="grounddecals" type="TileMapLayer" parent="." unique_id=1160374073]
 
 [node name="ysortworld" type="TileMapLayer" parent="." unique_id=1316159479]
+y_sort_enabled = true
 
 [node name="props" type="Node2D" parent="ysortworld" unique_id=1523927589]
+y_sort_enabled = true
 
 [node name="inteactables" type="Node2D" parent="ysortworld" unique_id=456706097]
+y_sort_enabled = true
 
 [node name="ladderup" parent="ysortworld/inteactables" unique_id=1703870724 instance=ExtResource("6_mup4r")]
 collision_layer = 16
@@ -452,19 +455,25 @@ portal_id = "boss_entrance"
 metadata/_custom_type_script = "uid://blrs7e81o2jg4"
 
 [node name="enemies" type="Node2D" parent="ysortworld" unique_id=1609630585]
+y_sort_enabled = true
 
 [node name="bossenemy" parent="ysortworld/enemies" unique_id=1052022142 instance=ExtResource("11_bossenemy")]
 position = Vector2(-400, 100)
 
 [node name="groundeffects" type="Node2D" parent="ysortworld" unique_id=1296382153 groups=["groundeffects"]]
+y_sort_enabled = true
 
 [node name="projectiles" type="Node2D" parent="ysortworld" unique_id=427315668 groups=["projectiles"]]
+y_sort_enabled = true
 
 [node name="lootbags" type="Node2D" parent="ysortworld" unique_id=334477619 groups=["lootbags"]]
+y_sort_enabled = true
 
 [node name="pets" type="Node2D" parent="ysortworld" unique_id=663608375 groups=["pets"]]
+y_sort_enabled = true
 
 [node name="player" type="Node2D" parent="ysortworld" unique_id=1243556648]
+y_sort_enabled = true
 position = Vector2(-839, 138)
 
 [node name="aboveworld" type="TileMapLayer" parent="." unique_id=547591725]

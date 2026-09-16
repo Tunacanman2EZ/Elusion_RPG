@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://vkv1a5xrxkt5" path="res://art/enemy/boss2.png" id="2_2gop8"]
 [ext_resource type="Texture2D" uid="uid://sg0txnvbqnar" path="res://art/images/bosshpempty.png" id="2_hpempty"]
 [ext_resource type="Texture2D" uid="uid://2vhpeq0m7qx1" path="res://art/images/bosshpfull.png" id="3_hpfull"]
+[ext_resource type="Script" path="res://src/enemies/bossenemy.gd" id="4_bossenemy"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_y4dna"]
 atlas = ExtResource("1_bosspng")
@@ -1140,7 +1141,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"deathdown",
-"speed": 10.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -1175,7 +1176,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"deathleft",
-"speed": 10.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -1210,7 +1211,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"deathright",
-"speed": 10.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -1245,7 +1246,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"deathup",
-"speed": 10.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -1588,6 +1589,10 @@ animations = [{
 height = 20.0
 radius = 10.0
 
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_hurtbox"]
+height = 26.0
+radius = 13.0
+
 [node name="bossenemy" type="CharacterBody2D" unique_id=805374105]
 light_mask = 8
 visibility_layer = 11
@@ -1595,6 +1600,7 @@ texture_filter = 1
 collision_layer = 8
 collision_mask = 11
 motion_mode = 1
+script = ExtResource("4_bossenemy")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=504623339]
 texture_filter = 1
@@ -1620,3 +1626,22 @@ value = 100.0
 fill_mode = 1
 texture_under = ExtResource("2_hpempty")
 texture_progress = ExtResource("3_hpfull")
+
+[node name="attacktimer" type="Timer" parent="." unique_id=805374106]
+wait_time = 0.5
+
+[node name="hurtbox" type="Area2D" parent="." unique_id=805374107]
+texture_filter = 1
+position = Vector2(-1, 2)
+collision_layer = 8
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=805374108]
+position = Vector2(0, 3)
+shape = SubResource("CapsuleShape2D_hurtbox")
+debug_color = Color(0.4397211, 0.59804714, 0.10347933, 0.41960785)
+
+[node name="damagerecievedlabel" type="Label" parent="." unique_id=805374109]
+offset_left = -19.0
+offset_top = -55.0
+offset_right = 21.0
+offset_bottom = -32.0

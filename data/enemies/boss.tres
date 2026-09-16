@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" uid="uid://bbmcaokoqjh1i" path="res://src/types/enemydata.gd" id="1_enemydata"]
+
+[resource]
+script = ExtResource("1_enemydata")
+enemy_id = "boss"
+display_name = "The Crowned"
+max_hp = 600
+xp_reward = 400
+attack_xp_reward = 60
+bag_drop_chance = 1.0
+max_loot_tier = 3
+max_item_slots = 4
+slot_fill_chance = 0.9
