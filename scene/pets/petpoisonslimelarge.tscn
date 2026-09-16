@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bx28h4q68iic2"]
 
 [ext_resource type="Script" uid="uid://bidlcwge43m60" path="res://src/pets/pet.gd" id="1_kxuj4"]
-[ext_resource type="PackedScene" uid="uid://c5uotay88ujv3" path="res://scene/projectiles/poisonball.tscn" id="2_lqnrr"]
+[ext_resource type="PackedScene" path="res://scene/pets/petprojectiles/petpoisonball.tscn" id="2_lqnrr"]
 [ext_resource type="Texture2D" uid="uid://cr5tiqbe7gt43" path="res://art/enemy/slime.png" id="3_lqnrr"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_q7ytw"]

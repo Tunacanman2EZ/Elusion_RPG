@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://v7afre8oxg7r"]
 
 [ext_resource type="Script" uid="uid://bidlcwge43m60" path="res://src/pets/pet.gd" id="1_jokcq"]
-[ext_resource type="PackedScene" path="res://scene/projectiles/poisonarrow.tscn" id="2_541mq"]
+[ext_resource type="PackedScene" path="res://scene/pets/petprojectiles/petpoisonball.tscn" id="2_541mq"]
 [ext_resource type="Texture2D" uid="uid://cr5tiqbe7gt43" path="res://art/enemy/slime.png" id="3_1v7d7"]
 [ext_resource type="Texture2D" uid="uid://c5vl8cqikb6ga" path="res://art/enemy/slime2.png" id="3_541mq"]
 
@@ -707,7 +707,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attackdown",
-"speed": 5.0
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -781,7 +781,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attackleft",
-"speed": 5.0
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -855,7 +855,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attackright",
-"speed": 5.0
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -929,7 +929,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attackup",
-"speed": 5.0
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,

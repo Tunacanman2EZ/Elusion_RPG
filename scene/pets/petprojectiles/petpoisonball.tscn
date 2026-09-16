@@ -1,0 +1,36 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://ffskorujk4sm" path="res://src/projectiles/petarrow.gd" id="1_petpoison"]
+[ext_resource type="Texture2D" uid="uid://cr5tiqbe7gt43" path="res://art/enemy/slime.png" id="2_slimeart"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_petpoison"]
+atlas = ExtResource("2_slimeart")
+region = Rect2(0, 240, 48, 48)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_petpoison"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_petpoison")
+}],
+"loop": true,
+"name": &"projectile",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_petpoison"]
+radius = 4.1231055
+
+[node name="petpoisonball" type="Area2D"]
+texture_filter = 1
+collision_layer = 4
+collision_mask = 8
+script = ExtResource("1_petpoison")
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="."]
+sprite_frames = SubResource("SpriteFrames_petpoison")
+animation = &"projectile"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="."]
+position = Vector2(1.4508018, 0.3897791)
+shape = SubResource("CircleShape2D_petpoison")

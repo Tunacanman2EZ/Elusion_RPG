@@ -123,6 +123,28 @@ var _is_attacking: bool = false
 # enemy can die inside that window — usually to this pet's own previous shot.
 # Nothing here holds a reference that keeps it alive, so by release time it can
 # be a freed Object. Always read it through _consume_pending_target().
+# WHICH ATTACK THE LOCK BELONGS TO.
+#
+# _release_attack_lock_after() awaits a timer sized to the attack animation and
+# then clears _is_attacking. One of those is started per attack, and they run
+# CONCURRENTLY — so when a new attack begins before the previous one's timer has
+# expired, the OLD timer fires in the middle of the NEW attack and unlocks it.
+# _update_follow() then plays walk or idle over the top, the sprite stops
+# showing an attack animation, and _on_sprite_frame_changed() can no longer
+# reach its release frame.
+#
+# That is not a race - it is guaranteed whenever the cooldown is shorter than
+# the animation, which is every pet in the game. Simulated against the small
+# slime's real frame data: attack #2 begins at 2.03s and is stomped at 2.33s on
+# frame 2, every single time, and the pet fires exactly ONE shot and then never
+# attacks again because _awaiting_release is left true forever.
+#
+# Tagging each lock with the attack that started it means only the newest one
+# can clear the flag. Same fix, same reason, as _consume_pending_target()
+# guarding against a stale target: an older operation must not act on newer
+# state.
+var _attack_generation: int = 0
+
 var _awaiting_release: bool = false
 var _pending_target: Node = null
 var _pending_dir: Vector2 = Vector2.ZERO
@@ -179,8 +201,47 @@ func _physics_process(_delta: float) -> void:
 
 	_current_target = _find_nearest_enemy()
 
-	if _current_target != null and _attack_ready:
+	# NOT WHILE A SHOT IS STILL ON ITS WAY OUT. _play_attack() force-restarts
+	# the animation from frame 0 every time, so a second attack starting before
+	# the first has reached its release_frame throws the pending shot away and
+	# begins a new wind-up that will be thrown away in its turn.
+	#
+	# THIS IS WHAT "THE PET DOES NOT ATTACK" LOOKED LIKE. The small poison
+	# slime's attack animation runs 4.60s and releases on frame 14, at 2.80s,
+	# against a 2.0s attack_cooldown — so it re-fired 0.8s before the shot
+	# would have left, every time, forever. It wound up constantly and threw
+	# nothing. The animation never finished either, so the failsafe in
+	# _on_sprite_animation_finished() never got a turn.
+	#
+	# _get_scaled_cooldown() below now refuses to return a cooldown shorter
+	# than the release, which fixes the pacing properly. This guard is the belt
+	# to those braces and costs one bool.
+	# A PENDING SHOT CAN NEVER OUTLIVE ITS ANIMATION.
+	#
+	# _awaiting_release is cleared in exactly two places, and both require the
+	# sprite to still be playing an attack animation. Anything that switches the
+	# animation away mid-attack therefore strands the flag set, and the guard
+	# below then blocks this pet from ever attacking again - a permanent, silent
+	# death from a transient event.
+	#
+	# The generation-tagged lock removes the cause that was actually happening
+	# (see _attack_generation). This makes the whole class of it impossible: if
+	# the flag is set and the animation is not an attack, the shot was earned
+	# and is fired rather than lost. It did not trigger once in simulation after
+	# the lock was fixed, which is the point - it is here so a future path that
+	# changes the animation cannot brick the pet.
+	if _awaiting_release and not _attack_anim_playing():
+		_awaiting_release = false
+		_release_shot(_consume_pending_target(), _pending_dir)
+
+	if _current_target != null and _attack_ready and not _awaiting_release:
 		_fire_at(_current_target)
+
+
+func _attack_anim_playing() -> bool:
+	if not has_node("animatedsprite2d"):
+		return false
+	return ($animatedsprite2d as AnimatedSprite2D).animation.begins_with("attack")
 
 
 # =============================================================================
@@ -286,10 +347,61 @@ const PET_STAT_SHARE: float = 0.5
 # attack_timer drives the attack ANIMATION as well as the shot, so a cooldown
 # shorter than the animation would restart it every time and the pet would
 # twitch on frame 0 forever instead of ever showing a throw.
+#
+# THIS FLOOR DESCRIBED THE RIGHT BUG AND WAS THE WRONG SHAPE. A fixed 0.35s
+# cannot protect an animation whose release frame lands at 2.80s, and the small
+# poison slime's does — so the failure it was written to prevent happened
+# anyway, permanently, on a pet shipped in the game. The real floor is not a
+# constant at all: it is however long THIS animation takes to reach ITS release
+# frame, which _release_delay() measures off the art. This value survives as the
+# floor for pets that release immediately (release_frame < 0), where there is no
+# animation deadline to derive one from.
 const MIN_ATTACK_COOLDOWN: float = 0.35
 
+# Breathing room after the attack animation ENDS, before the next one may start.
+#
+# EVERY FRAME OF AN ATTACK GETS SHOWN. Without this the next attack begins on
+# the exact tick the last frame is completing, and whichever of the two lands
+# first that physics frame decides whether the player ever sees it. Measured on
+# the small slime's 23-frame attack, the tail was being cut on frame 20 of 22
+# on most attacks and frame 22 of 22 on the rest.
+#
+# 0.05 was enough to take both slimes to zero cut animations in simulation.
+# 0.10 is what ships because it costs nothing — the shot count over 20 seconds
+# is identical at 0.05 and at 0.20 — and leaves room for a frame-rate dip.
+const ATTACK_FOLLOW_THROUGH: float = 0.10
 
-func _get_scaled_cooldown() -> float:
+
+# How long this attack animation takes to reach its release frame, in seconds.
+#
+# MEASURED OFF THE SPRITEFRAMES, not written down, for the same reason
+# _attack_anim_duration() below is: per-frame durations and animation speed are
+# both editor-authored and both change without anyone thinking about this file.
+# The boss's hazards learned the same lesson — see _measure_impact_delay() in
+# bossprojectile.gd, which does this exact sum for the same exact reason.
+#
+# Returns 0.0 when there is no release to wait for, which makes it a harmless
+# floor for the fire-immediately path.
+func _release_delay(anim: String) -> float:
+	if release_frame < 0 or anim == "" or not has_node("animatedsprite2d"):
+		return 0.0
+	var sf: SpriteFrames = $animatedsprite2d.sprite_frames
+	if sf == null or not sf.has_animation(anim):
+		return 0.0
+	var fps: float = sf.get_animation_speed(anim)
+	if fps <= 0.0:
+		return 0.0
+
+	# Summed rather than assumed equal: SpriteFrames allows a per-frame
+	# duration and nothing stops an artist using one.
+	var upto: int = mini(release_frame, sf.get_frame_count(anim))
+	var total: float = 0.0
+	for i in range(upto):
+		total += sf.get_frame_duration(anim, i)
+	return total / fps
+
+
+func _get_scaled_cooldown(anim: String = "") -> float:
 	# Seconds between this pet's attacks, shortened by the player's agility.
 	#
 	# Read live at fire time, exactly like _get_scaled_damage() above, so a pet
@@ -300,15 +412,35 @@ func _get_scaled_cooldown() -> float:
 	# exactly its authored attack_cooldown rather than being penalised for the
 	# player having no agility yet. Dividing the cooldown by a half-multiplier
 	# instead would make every pet permanently twice as slow as its own tuning.
+	# THE FLOOR IS THE ART'S, NOT A CONSTANT. A cooldown shorter than the time
+	# this animation needs to reach its release frame restarts the wind-up
+	# before the shot leaves, and the pet never attacks at all. See
+	# MIN_ATTACK_COOLDOWN and _release_delay(). This also protects every OTHER
+	# pet as the player's agility climbs: the large slime releases at 1.00s and
+	# would have hit the same wall the moment a halved cooldown went under it.
+	# THE WHOLE ANIMATION, not just the part up to the throw. A cooldown that
+	# only clears the release frame lets the next attack restart the sprite
+	# partway through the follow-through, so the last frames of the art are
+	# never seen — the small slime was losing frames 21 and 22 of 23 on every
+	# attack that way.
+	#
+	# BOTH MEASUREMENTS, because neither covers the other. _attack_anim_duration
+	# falls back to 0.4 for a LOOPING attack animation, which would be shorter
+	# than the release on any real one and would put back the bug that stopped
+	# the small slime attacking at all. _release_delay knows nothing about the
+	# frames after the throw. The larger of the two is the only safe floor.
+	var anim_seconds: float = maxf(_attack_anim_duration(anim), _release_delay(anim))
+	var floor_seconds: float = maxf(MIN_ATTACK_COOLDOWN, anim_seconds + ATTACK_FOLLOW_THROUGH)
+
 	if player == null or not player.has_method("get_attack_speed_multiplier"):
-		return attack_cooldown
+		return maxf(floor_seconds, attack_cooldown)
 
 	var bonus: float = player.get_attack_speed_multiplier() - 1.0
 	var effective: float = 1.0 + bonus * PET_STAT_SHARE
 	if effective <= 0.0:
-		return attack_cooldown
+		return maxf(floor_seconds, attack_cooldown)
 
-	return maxf(MIN_ATTACK_COOLDOWN, attack_cooldown / effective)
+	return maxf(floor_seconds, attack_cooldown / effective)
 
 
 func _fire_at(target: Node) -> void:
@@ -318,6 +450,11 @@ func _fire_at(target: Node) -> void:
 
 	var dir: Vector2 = (target.global_position - global_position).normalized()
 
+	# Claimed before anything else, so the lock started at the bottom of this
+	# function can tell whether it is still the current attack when it expires.
+	_attack_generation += 1
+	var generation: int = _attack_generation
+
 	# CHANGED: the animation now starts FIRST. the shot used to be spawned
 	# above this line, before _play_attack() had run a single frame — the pet
 	# fired and then wound up.
@@ -325,7 +462,8 @@ func _fire_at(target: Node) -> void:
 	var anim: String = _play_attack(dir)
 
 	_attack_ready = false
-	attack_timer.wait_time = _get_scaled_cooldown()
+	# The animation it actually played decides the floor — see _release_delay().
+	attack_timer.wait_time = _get_scaled_cooldown(anim)
 	attack_timer.start()
 
 	# with release_frame set, the shot leaves on the frame the art actually
@@ -349,7 +487,13 @@ func _fire_at(target: Node) -> void:
 	# calls move_and_slide() unconditionally. _is_attacking only gates which
 	# ANIMATION plays, never whether the pet moves — so a pet holding its
 	# attack animation still follows you at full speed.
-	_release_attack_lock_after(_attack_anim_duration(anim))
+	# THE ANIMATION FINISHING IS WHAT UNLOCKS, NORMALLY. This timer is sized a
+	# follow-through longer than the animation so animation_finished gets there
+	# first and _update_follow() cannot play walk or idle over the final frame.
+	# It stays as the failsafe for the cases that never emit that signal: a
+	# looping attack animation, or none at all.
+	_release_attack_lock_after(
+		_attack_anim_duration(anim) + ATTACK_FOLLOW_THROUGH, generation)
 
 
 func _consume_pending_target() -> Node:
@@ -415,8 +559,15 @@ func _attack_anim_duration(anim: String) -> float:
 	return float(sf.get_frame_count(anim)) / fps
 
 
-func _release_attack_lock_after(seconds: float) -> void:
+func _release_attack_lock_after(seconds: float, generation: int) -> void:
 	await get_tree().create_timer(seconds).timeout
+
+	# ONLY THE ATTACK THAT STARTED THIS LOCK MAY CLEAR IT. See
+	# _attack_generation for what an older timer did to a newer attack, and why
+	# it happened every time rather than occasionally.
+	if generation != _attack_generation:
+		return
+
 	_is_attacking = false
 
 
