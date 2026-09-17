@@ -14,6 +14,7 @@ item_id = "petelectricsprite"
 display_name = "Electric Sprite Companion"
 description = "A caged storm, and it seems happy about it. Strikes at range while you close the distance."
 icon = SubResource("AtlasTexture_peticon")
+icon_tint = Color(0.4019608, 0.9372549, 0.15294118, 1)
 max_stack = 1
 value = 2000
 tier = 5

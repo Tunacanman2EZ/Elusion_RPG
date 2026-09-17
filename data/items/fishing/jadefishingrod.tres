@@ -7,10 +7,11 @@
 script = ExtResource("2_script")
 item_id = "jadefishingrod"
 display_name = "Jade Fishing Rod"
-description = "The jade collar keeps the line from fraying on rock. Requires fishing level 30."
+description = "The jade collar keeps the line from fraying on rock. Requires fishing level 15."
 icon = ExtResource("1_icon")
 max_stack = 1
-value = 1800
+value = 600
 tier = 2
+droppable = false
 type = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

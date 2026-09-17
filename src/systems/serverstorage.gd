@@ -52,6 +52,11 @@ var _last_pushed: Dictionary = {}
 # start a second overlapping one and interleave its writes.
 var _pushing: bool = false
 
+# The one save held back while _pushing is true. See save() for why holding it
+# beats dropping it, and _push() for how it is drained.
+var _queued_payload: Dictionary = {}
+var _has_queued: bool = false
+
 
 func _init() -> void:
 	# The server is the authority — see SaveStorage.is_authoritative.
@@ -223,10 +228,24 @@ func save(payload: Dictionary) -> bool:
 		push_warning("ServerStorage: save() with no session — dropped.")
 		return false
 	if _pushing:
-		# A debounce tick arriving mid-push. Dropping it is safe: the push in
-		# flight is sending current state, and CharacterData will mark itself
-		# dirty again on the next change. Queueing a second one would interleave
-		# writes to the same rows for no benefit.
+		# A debounce tick arriving mid-push. It is HELD, not dropped.
+		#
+		# THIS USED TO RETURN true AND THROW THE PAYLOAD AWAY, on the reasoning
+		# that "CharacterData will mark itself dirty again on the next change".
+		# That is true only if there IS a next change. Picking up 500 gold while
+		# a slow push is in flight, then standing still and logging out, lost the
+		# gold outright: _write_save_now() had already cleared _save_pending, this
+		# returned true, and flush_save() on the way out saw nothing pending and
+		# did nothing. Silent, and exactly as large as whatever happened during
+		# the push.
+		#
+		# One slot is enough. A newer payload is a strict superset of an older
+		# one — it is the whole save, not a delta — so a second arrival simply
+		# replaces the first and _push() drains whatever is there when it
+		# finishes. The interleaving the old comment worried about is what the
+		# queue prevents, not what it causes.
+		_queued_payload = payload
+		_has_queued = true
 		return true
 
 	_push(payload)          # coroutine, deliberately not awaited
@@ -234,15 +253,30 @@ func save(payload: Dictionary) -> bool:
 
 
 func _push(payload: Dictionary) -> void:
+	# Drains the queue in a LOOP rather than by calling itself. A save arriving
+	# during the final await of one push would otherwise start a nested coroutine
+	# frame, and a steady stream of them would nest without bound.
 	_pushing = true
+	var current: Dictionary = payload
 
-	var slots: Array = _array(payload.get("character_slots", []))
-	for index in slots.size():
-		var slot = slots[index]
-		if slot is Dictionary:
-			await _push_slot(index, slot)
+	while true:
+		var slots: Array = _array(current.get("character_slots", []))
+		for index in slots.size():
+			var slot = slots[index]
+			if slot is Dictionary:
+				await _push_slot(index, slot)
 
-	await _push_account(_dict(payload.get("account_data", {})))
+		await _push_account(_dict(current.get("account_data", {})))
+
+		if not _has_queued:
+			break
+
+		# Taken and cleared BEFORE the next round, so a save arriving during
+		# THAT round queues cleanly behind it rather than being overwritten by
+		# the one already in hand.
+		current = _queued_payload
+		_queued_payload = {}
+		_has_queued = false
 
 	_pushing = false
 

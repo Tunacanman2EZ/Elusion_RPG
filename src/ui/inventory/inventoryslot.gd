@@ -175,11 +175,16 @@ func refresh_display() -> void:
 
 	if is_empty():
 		icon_rect.texture = null
+		# Reset with the texture. modulate belongs to the NODE, not the texture,
+		# so a tinted item leaving a slot would otherwise leave its colour
+		# behind on whatever lands there next.
+		icon_rect.modulate = Color.WHITE
 		quantity_label.text = ""
 		_update_style()
 		return
 
 	icon_rect.texture = stack.data.icon
+	icon_rect.modulate = stack.data.icon_tint
 	if stack.quantity > 1:
 		quantity_label.text = str(stack.quantity)
 	else:
@@ -255,7 +260,7 @@ func _hide_tooltip() -> void:
 # DRAG AND DROP — SOURCE
 # =============================================================================
 
-func make_drag_preview(texture: Texture2D) -> Control:
+func make_drag_preview(texture: Texture2D, tint: Color = Color.WHITE) -> Control:
 	# Builds the icon that follows the pointer during a drag. Shared with
 	# HotbarSlot so both kinds of slot drag identically — they used to keep
 	# separate copies of this and could drift apart.
@@ -292,6 +297,9 @@ func make_drag_preview(texture: Texture2D) -> Control:
 
 	var icon := TextureRect.new()
 	icon.texture = texture
+	# Defaulted so HotbarSlot's call site keeps working unchanged; it passes its
+	# own icon_rect.modulate, which is the same value by construction.
+	icon.modulate = tint
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -322,7 +330,7 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 
 	_hide_tooltip()
 
-	set_drag_preview(make_drag_preview(icon_rect.texture))
+	set_drag_preview(make_drag_preview(icon_rect.texture, icon_rect.modulate))
 
 	return {
 		"stack":       stack.duplicate_stack(),

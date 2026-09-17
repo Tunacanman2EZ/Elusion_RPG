@@ -43,16 +43,16 @@ animations = [{
 radius = 4.1231055
 
 [node name="petelectricprojectile" type="Area2D" unique_id=1414126183]
-modulate = Color(0.7117874, 0.25014624, 0.14438316, 1)
-self_modulate = Color(0.89452136, 0.9198862, 0.5425783, 1)
 texture_filter = 1
-collision_layer = 64
-collision_mask = 10
+collision_layer = 32
+collision_mask = 8
 script = ExtResource("1_c0fdo")
 speed = 20.0
 damage = 10
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1352338978]
+modulate = Color(0.69820833, 0.9801536, 0.6419733, 1)
+self_modulate = Color(0.5756518, 0.9571151, 0.23517159, 1)
 sprite_frames = SubResource("SpriteFrames_b88wd")
 animation = &"projectile"
 

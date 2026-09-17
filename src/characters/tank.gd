@@ -34,16 +34,18 @@
 # - damages enemies in $aura collision area every aura_tick seconds
 # - auto-deactivates when mana hits 0 OR tank dies
 #
-# XP ON HIT (NEW):
+# XP ON HIT:
 # grants Attack XP (universal — see player.gd's gain_attack_xp()) per enemy
 # per aura tick, same place damage already applies in _deal_aura_damage().
 # WORTH WATCHING: unlike warrior's discrete swings, mage's discrete casts,
 # or healer's discrete shots, the aura is a CONTINUOUS tick (every
 # aura_tick seconds, for as long as it's active) — a tank parked in a
-# crowd could accumulate attack XP considerably faster than the other
-# classes' discrete-hit pattern. kept the same per-hit default (5) as
-# everywhere else rather than guess at a "corrected" lower value — tune
-# attack_xp_on_aura_tick down if playtesting shows it's too fast.
+# crowd accumulates attack XP considerably faster than the other classes'
+# discrete-hit pattern. The per-hit default (5) is the same as everywhere
+# else rather than a guessed-at "corrected" lower value — tune
+# attack_xp_on_aura_tick down if playtesting shows it's too fast. That is a
+# balance dial and nothing else: the rate here has never been changed to
+# make the code cheaper, only the number of times it is written down.
 extends "res://src/characters/player.gd"
 
 # This class's stat curve. See ClassData — hp_base and friends used to be
@@ -56,13 +58,39 @@ const CLASS_DATA := preload("res://data/classes/tank.tres")
 # AURA SETTINGS
 # =============================================================================
 
-@export var aura_damage: int = 4
+@export var aura_damage: int = 9
 @export var aura_tick: float = 0.25
 @export var mana_drain_tick: float = 0.5
 @export var mana_drain_cost: int = 2
 
-# NEW: see class comment's XP ON HIT section for the tick-rate caveat.
-@export var attack_xp_on_aura_tick: int = 5
+# Attack XP per enemy per aura tick. See the class comment's XP ON HIT
+# section for the tick-rate caveat.
+#
+# LOWERED FROM 5 TO MATCH THE OTHER CLASSES, and the old comment above it
+# predicted exactly this. Warrior pays 5 attack XP per enemy per swing and
+# swings about every 0.6s — 8.3 XP/sec against one target. The aura ticks four
+# times a second, so 5 per tick was 20 XP/sec against one target and four times
+# that in a pack of four. 2 brings a single target to 8 XP/sec, level with
+# warrior, and leaves the pack bonus as the tank's genuine advantage rather
+# than a multiplier on top of an already-higher rate.
+@export var attack_xp_on_aura_tick: int = 2
+
+
+# =============================================================================
+# NODE REFERENCES
+# =============================================================================
+# Resolved once at _ready() instead of looked up by name every time they are
+# touched. has_node("x") followed by $x walked the tree twice to answer one
+# question, and tank did that on nine sites — two of them in _handle_moving()
+# and _handle_idle(), which run EVERY FRAME, and one in _deal_aura_damage(),
+# which runs four times a second for as long as the aura is up.
+#
+# get_node_or_null() rather than $x so a scene without the optional firering
+# still loads; every use site checks for null exactly as the old has_node()
+# guards did.
+@onready var _sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
+@onready var _aura: Area2D = get_node_or_null("aura")
+@onready var _firering: AnimatedSprite2D = get_node_or_null("firering")
 
 
 # =============================================================================
@@ -117,9 +145,9 @@ func _ready() -> void:
 	super._ready()
 
 	# preload the aura sprite but keep it hidden until aura activates
-	if has_node("firering"):
-		$firering.play("firering")
-		$firering.visible = false
+	if _firering != null:
+		_firering.play("firering")
+		_firering.visible = false
 
 
 func _physics_process(delta: float) -> void:
@@ -243,9 +271,9 @@ func _handle_moving(direction: Vector2, delta: float) -> void:
 			stamina = max(0, stamina - drain_amount)
 
 	# animation + speed scale for sprint visual polish
-	if has_node("animatedsprite2d"):
-		$animatedsprite2d.play(get_walk_animation(direction))
-		$animatedsprite2d.speed_scale = sprint_speed_multiplier if _is_sprinting else 1.0
+	if _sprite != null:
+		_sprite.play(get_walk_animation(direction))
+		_sprite.speed_scale = sprint_speed_multiplier if _is_sprinting else 1.0
 
 	last_direction = direction
 	take_step()
@@ -256,9 +284,9 @@ func _handle_idle() -> void:
 	velocity = velocity.lerp(Vector2.ZERO, 0.3)
 	_is_sprinting = false
 	_sprint_drain_accumulator = 0.0
-	if has_node("animatedsprite2d"):
-		$animatedsprite2d.play(get_idle_animation())
-		$animatedsprite2d.speed_scale = 1.0
+	if _sprite != null:
+		_sprite.play(get_idle_animation())
+		_sprite.speed_scale = 1.0
 
 
 # =============================================================================
@@ -311,48 +339,65 @@ func _activate_aura() -> void:
 	aura_timer       = 0.0
 	mana_drain_timer = 0.0
 
-	if has_node("firering"):
-		$firering.visible = true
-		$firering.play("firering")
+	if _firering != null:
+		_firering.visible = true
+		_firering.play("firering")
 
 
 func _deactivate_aura() -> void:
 	aura_active = false
-	if has_node("firering"):
-		$firering.visible = false
+	if _firering != null:
+		_firering.visible = false
 
 
 func _deal_aura_damage() -> void:
 	# damage all enemies currently inside the $aura collision area.
 	#
-	# REMOVED: this used to also emit GameState.aura_damage_dealt on every
-	# hit, described as being "for analytics / multiplayer sync." Neither
-	# exists — nothing in the game connects to that signal, or to any of the
-	# others on GameState (see the note at the top of gamestate.gd). It fired
-	# once per enemy per aura tick into an empty bus, which is the most
-	# expensive place in this file to do nothing. The declaration is still
-	# there for when multiplayer is real; put the emit back then.
-	if not has_node("aura"):
+	# This used to also emit GameState.aura_damage_dealt on every hit,
+	# described as being "for analytics / multiplayer sync." Neither exists —
+	# nothing in the game connects to that signal, or to any of the others on
+	# GameState (see the note at the top of gamestate.gd). It fired once per
+	# enemy per aura tick into an empty bus, which is the most expensive place
+	# in this file to do nothing. The declaration is still there for when
+	# multiplayer is real; put the emit back then.
+	if _aura == null:
 		return
 
-	# CHANGED: was a flat aura_damage constant with no scaling at all —
-	# tank gained attack XP from every tick but it never affected the
-	# tank's own damage output. now scaled by get_damage_multiplier(),
-	# same shared function every class's damage uses (see player.gd).
-	# computed once outside the loop so every enemy in range takes the same
-	# scaled number and the multiplier is not recomputed per body.
+	# Scaled by get_damage_multiplier(), the same shared function every class's
+	# damage uses (see player.gd). It was a flat aura_damage constant with no
+	# scaling at all, so the tank gained attack XP from every tick while that
+	# skill never affected the tank's own output. Computed once outside the
+	# loop: every enemy in range takes the same number, and the multiplier is
+	# not recomputed per body.
 	var scaled_aura_damage: int = int(aura_damage * get_damage_multiplier())
 
-	for body in $aura.get_overlapping_bodies():
+	# ONE XP GRANT PER TICK, NOT ONE PER ENEMY.
+	#
+	# gain_attack_xp() ends in CharacterData.save_character_state(), which
+	# looks up the HUD by group and serialises the whole inventory into fresh
+	# dictionaries before handing off to the debounced save. This loop ran that
+	# once per enemy, four times a second (aura_tick = 0.25), for as long as
+	# the aura was up — so standing in a pack of six meant twenty-four full
+	# inventory walks every second, to record one number. It is the same
+	# mistake warrior.gd's _deal_melee_damage() made, in a far hotter loop:
+	# warrior paid it per swing, tank paid it per tick, forever.
+	#
+	# The XP is identical, not merely close. The proficiency multiplier
+	# truncates to an int, which is what made warrior's batched total differ
+	# slightly from its per-hit one — but tank boosts "defense", not "attack",
+	# so attack sits at 1.0 here and n * int(5 * 1.0) == int(5n * 1.0).
+	var hits: int = 0
+
+	for body in _aura.get_overlapping_bodies():
 		if not body.is_in_group("enemies"):
 			continue
 		if not body.has_method("take_damage"):
 			continue
 		body.take_damage(scaled_aura_damage)
-		# NEW: universal attack XP, granted right where damage already
-		# applies — see class comment's XP ON HIT section for the
-		# tick-rate caveat worth watching in practice.
-		gain_attack_xp(attack_xp_on_aura_tick)
+		hits += 1
+
+	if hits > 0:
+		gain_attack_xp(attack_xp_on_aura_tick * hits)
 
 
 # =============================================================================
@@ -394,8 +439,8 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 	# play tank-specific hitflash ONLY if still alive after the hit.
 	# without this guard, hitflash would overwrite the death animation
 	# that parent's _start_death_sequence just started playing.
-	if has_node("animatedsprite2d") and hp > 0 and not is_dying:
-		$animatedsprite2d.play("hitflash" + _get_dir_string())
+	if _sprite != null and hp > 0 and not is_dying:
+		_sprite.play("hitflash" + _get_dir_string())
 
 	# deactivate aura if tank just died so it doesn't keep ticking damage
 	# during the death animation
@@ -407,14 +452,43 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 # PHASE 2 ABILITY STUB
 # =============================================================================
 
+# TRUE while an expand is running. See the note in activate_expand().
+var _expanding: bool = false
+
+
 func activate_expand() -> void:
 	# 4-second sprite scale-up. costs 25 mana.
+	#
+	# NOTHING CALLS THIS YET - it is the Phase 2 stub. The two guards below are
+	# here anyway, because the bug they prevent is invisible while the function
+	# is unreachable and lands on whoever wires it up.
+	#
+	# FOUR SECONDS IS A LONG AWAIT ON A TANK. This is the class built to stand
+	# in damage, so dying during the hold is the expected case, not the edge
+	# one - and a death takes the scene with it. Resuming here on a freed node
+	# and assigning `scale` is an error, and the shrink never happens.
+	#
+	# AND IT MUST NOT OVERLAP ITSELF. Two presses inside four seconds used to
+	# start two timers; the first to fire shrank the sprite while the second
+	# hold was still paid for and supposedly running. The player loses the
+	# ability they just spent 25 mana on.
+	if _expanding:
+		return
 	if mana >= 25:
+		_expanding = true
 		mana = clamp(mana - 25, 0, max_mana)
 		scale = Vector2(1.5, 1.5)
-		if has_node("firering"):
-			$firering.scale = Vector2(1.5, 1.5)
+		if _firering != null:
+			_firering.scale = Vector2(1.5, 1.5)
 		await get_tree().create_timer(4.0).timeout
+		# PAST AN AWAIT - same guard and same reason as fishingspot.gd and
+		# characterhud.gd. Nothing below is safe on a node that has been freed.
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+		_expanding = false
 		scale = Vector2(1.0, 1.0)
-		if has_node("firering"):
-			$firering.scale = Vector2(1.0, 1.0)
+		# is_instance_valid rather than a null check, uniquely here: this is the
+		# far side of a four-second await, and a cached reference to a freed
+		# node is non-null while has_node() would have returned false.
+		if is_instance_valid(_firering):
+			_firering.scale = Vector2(1.0, 1.0)

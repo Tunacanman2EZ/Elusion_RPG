@@ -743,17 +743,17 @@ position = Vector2(0, -5)
 shape = SubResource("CapsuleShape2D_fy2rl")
 debug_color = Color(0, 0, 0, 0.41960785)
 
-[node name="orbspawnbottom" type="Marker2D" parent="." unique_id=789231567]
+[node name="projectilebottom" type="Marker2D" parent="." unique_id=789231567]
 position = Vector2(-8, -17)
 
-[node name="orbspawntop" type="Marker2D" parent="." unique_id=178644070]
+[node name="projectiletop" type="Marker2D" parent="." unique_id=178644070]
 texture_filter = 1
 position = Vector2(9, -17)
 
-[node name="orbspawnright" type="Marker2D" parent="." unique_id=440801007]
+[node name="projectileright" type="Marker2D" parent="." unique_id=440801007]
 position = Vector2(-15, -19)
 
-[node name="orbspawnleft" type="Marker2D" parent="." unique_id=726293116]
+[node name="projectileleft" type="Marker2D" parent="." unique_id=726293116]
 position = Vector2(14, -19)
 
 [node name="damagerecievedlabel" type="Label" parent="." unique_id=1735176927]

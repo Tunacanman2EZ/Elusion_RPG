@@ -192,35 +192,19 @@ signal bank_withdrawn(player_id: int, item_id: String, amount: int)
 
 
 # =============================================================================
-# ELEMENT TYPES
+# ELEMENT TYPES  (MOVED)
 # =============================================================================
-
-# enum of all elemental damage types used in combat and dungeons.
-# NONE is index 0 for "no element / physical damage" — keep this as the
-# default for any non-elemental hit.
-enum Element {
-	NONE,   # physical / no element
-	DARK,
-	LIGHT,
-	ICE,
-	WIND,
-	EARTH,
-	FIRE,
-	WATER,
-}
-
-
-func get_element_name(element: int) -> String:
-	# converts an Element enum value to a readable lowercase string.
-	# used by UI, damage labels, and debug output. the default branch
-	# catches both NONE and any invalid out-of-range value, returning
-	# "none" so callers never get a crash from a bad enum.
-	match element:
-		Element.DARK:  return "dark"
-		Element.LIGHT: return "light"
-		Element.ICE:   return "ice"
-		Element.WIND:  return "wind"
-		Element.EARTH: return "earth"
-		Element.FIRE:  return "fire"
-		Element.WATER: return "water"
-		_:             return "none"
+# The enum and get_element_name() that used to live here are now in
+# src/shared/element.gd, as `Element.Type` and `Element.name_for()`.
+#
+# THEY WERE UNREACHABLE HERE. This file is an autoload with no class_name — it
+# cannot have one, because that would collide with the autoload's own name —
+# and without a class_name `GameState.Element` cannot be written in a type
+# position. Not as an @export on a Resource, not as a parameter type. So the
+# enum could only ever be compared against as a bare int, which is why it went
+# ten thousand lines without a single reference.
+#
+# Element also carries each element's COLOUR, which is what makes the enum
+# worth reaching for: EnemyData.element and EnemyData.body_tint are authored
+# from it, and a palette-swap variant is then a .tres rather than a pile of
+# modulates stacked on nodes.

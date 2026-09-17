@@ -7,10 +7,11 @@
 script = ExtResource("2_script")
 item_id = "cobaltfishingrod"
 display_name = "Cobalt Fishing Rod"
-description = "A blued steel tip with real spring in it. Reaches deeper water. Requires fishing level 15."
+description = "A blued steel tip with real spring in it. Reaches deeper water. Requires fishing level 30."
 icon = ExtResource("1_icon")
 max_stack = 1
-value = 600
+value = 1800
 tier = 3
+droppable = false
 type = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

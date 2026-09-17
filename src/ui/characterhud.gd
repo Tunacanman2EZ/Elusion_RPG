@@ -457,7 +457,19 @@ func _on_discord_pressed() -> void:
 	OS.shell_open(DISCORD_URL)
 
 
+var _logging_out: bool = false
+
+
 func _on_logout_pressed() -> void:
+	# ONE LOGOUT AT A TIME. The await below can sit for the full request
+	# timeout against an unreachable server, and the button stays clickable the
+	# whole time. A second press re-ran all of this: freeing panels that were
+	# already queued for deletion, clearing an already-cleared session, and
+	# racing a second change_scene_to_file() against the first.
+	if _logging_out:
+		return
+	_logging_out = true
+
 	# CHANGED: was sending to CHARACTER_SELECT_PATH, which only lets you pick
 	# a different character within the SAME already-authenticated session —
 	# not a real logout. now that there's an actual login screen, "Log Out"
@@ -489,6 +501,14 @@ func _on_logout_pressed() -> void:
 	# token after the server call returns, so changing scene first would
 	# race the login screen's check against it.
 	await Api.logout()
+
+	# PAST AN AWAIT. Up to the request timeout has passed, and this node can be
+	# gone by now - the player died and the game-over screen took the scene with
+	# it, or something else changed scenes while the server was not answering.
+	# get_tree() on a freed node errors, and the logout never finishes. Same
+	# guard and same reason as fishingspot.gd and cookingscreen.gd.
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
 
 	get_tree().change_scene_to_file(LOGIN_MENU_PATH)
 

@@ -21,7 +21,7 @@ class_name FireProjectile
 # =============================================================================
 
 @export var speed: float = 300.0
-@export var damage: int = 12
+@export var damage: int = 13
 @export var damage_type: StringName = &"fire"
 
 # auto-despawn time in seconds — failsafe if orb flies off into empty space.

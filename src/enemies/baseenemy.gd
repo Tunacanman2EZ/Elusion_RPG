@@ -1562,6 +1562,22 @@ func spawn_projectile_node(projectile: Node, spawn_pos: Vector2) -> void:
 	# "can't change state while flushing queries" physics error when a
 	# projectile spawns during a collision, and deferred position ensures
 	# global_position is applied AFTER the node is actually in the tree.
+	# THE SHOT WEARS ITS CASTER'S ELEMENT. Applied here, in the one function
+	# every enemy's projectile passes through, rather than on each projectile
+	# scene — which is how the pets ended up with a rust-tinted root cancelling
+	# a green sprite. An elemental variant recoloured through its .tres gets a
+	# matching shot for free, with nothing to keep in sync.
+	#
+	# WHITE IS A NO-OP, so every enemy that has not been given a tint fires
+	# exactly what its scene authored.
+	if enemy_data != null and enemy_data.body_tint != Color.WHITE and projectile is CanvasItem:
+		(projectile as CanvasItem).modulate = enemy_data.body_tint
+
+	# Same shape for the damage: 0 leaves the projectile scene's own number
+	# alone, so nothing that has not opted in changes.
+	if enemy_data != null and enemy_data.projectile_damage > 0 and "damage" in projectile:
+		projectile.damage = enemy_data.projectile_damage
+
 	var container: Node = get_tree().get_first_node_in_group("projectiles")
 	if container == null:
 		container = get_tree().current_scene
@@ -1838,6 +1854,11 @@ func _apply_enemy_data() -> void:
 		# defaults instead of its own.
 		push_warning("%s: no enemy_data assigned — using BaseEnemy defaults (50 hp, 20 xp, tier 1). Assign one from data/enemies/." % name)
 		return
+
+	# Applied to the enemy ITSELF rather than to a sprite, so it covers every
+	# visual the scene carries — sprite, health bar, any effect node — the same
+	# way a pet's root modulate does. See EnemyData.body_tint.
+	modulate          = enemy_data.body_tint
 
 	max_hp            = enemy_data.max_hp
 	xp_reward         = enemy_data.xp_reward

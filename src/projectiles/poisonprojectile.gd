@@ -12,7 +12,7 @@ extends Area2D
 const PUDDLE_SCENE := preload("res://scene/projectiles/acidpuddle.tscn")
 
 @export var speed: float = 260.0
-@export var damage: int = 8
+@export var damage: int = 7
 @export var damage_type: StringName = &"poison"
 
 # NEW: whether a hit leaves an acid puddle behind. Exported so a variant

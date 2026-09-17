@@ -9,10 +9,11 @@
 # - cursor-aim projectile spam (10 shots/sec at base cooldown)
 # - support archetype — fragile but sustained DPS through volume
 #
-# stat curve (recompute-from-level, set in _set_stat_curve):
-#   HP   140 base / +7  per level   (above mage, below frontliners)
-#   Mana 220 base / +14 per level   (deep pool for sustained spam)
-#   Stam  60 base / +6  per level
+# THE STAT CURVE IS NOT WRITTEN DOWN HERE ON PURPOSE. It lives in
+# data/classes/healer.tres and nowhere else. It used to be listed here too,
+# which is a second copy nobody can check against the first — the moment the
+# .tres is retuned the comment is a lie that reads like documentation.
+# CLASS_DATA below is the one source.
 #
 # combat model:
 # - hold spacebar OR right-click to fire continuously
@@ -42,9 +43,16 @@ const CLASS_DATA := preload("res://data/classes/healer.tres")
 @export var projectile_scene: PackedScene
 @export var mana_cost_per_shot: int = 1
 @export var shot_cooldown: float = 0.1
-@export var damage_per_magic: int = 8
+@export var damage_per_magic: int = 3
 @export var projectile_speed: float = 200.0
 @export var projectile_tint: Color = Color(0.3, 1.0, 0.4, 1.0)
+
+
+# A cursor delta shorter than this counts as "no direction at all" — see
+# _get_direction_to_cursor(). Compared against length_squared() so the check
+# costs no sqrt on a path that runs ten times a second: this is 0.001 squared,
+# the same threshold warrior uses for the same question.
+const AIM_EPSILON_SQUARED: float = 0.000001
 
 
 # =============================================================================
@@ -52,7 +60,13 @@ const CLASS_DATA := preload("res://data/classes/healer.tres")
 # =============================================================================
 
 var _shot_timer: float = 0.0
-var _is_firing: bool = false
+
+# _is_firing USED TO LIVE HERE. It was assigned true on every shot and false on
+# every frame between shots, and read by absolutely nothing — not by this file,
+# not by player.gd, not by the HUD. Deleted rather than left as a hook for a
+# future feature: a variable that is maintained but never consulted looks
+# exactly like one that is load-bearing, right up until someone deletes the
+# wrong one.
 
 
 # =============================================================================
@@ -66,7 +80,7 @@ func _set_stat_curve() -> void:
 
 
 # =============================================================================
-# SKILL PROFICIENCY  (NEW)
+# SKILL PROFICIENCY
 # =============================================================================
 
 func _set_skill_proficiency() -> void:
@@ -74,6 +88,9 @@ func _set_skill_proficiency() -> void:
 	# landing the same shots. attack XP is still gained from projectile
 	# hits too (universal now — see player.gd's gain_attack_xp()), just at
 	# the base 1.0 rate. starting value, tune to taste.
+	#
+	# This replaced a flat +1 magic granted on every character level-up, which
+	# paid out however the level was earned. This only pays for landed shots.
 	skill_proficiency["magic"] = 1.5
 
 
@@ -103,9 +120,6 @@ func _physics_process(delta: float) -> void:
 	if _can_fire():
 		_fire_projectile()
 		_shot_timer = shot_cooldown
-		_is_firing = true
-	else:
-		_is_firing = false
 
 
 # =============================================================================
@@ -165,15 +179,31 @@ func _fire_projectile() -> void:
 
 
 func _get_direction_to_cursor() -> Vector2:
-	var mouse_pos: Vector2 = get_global_mouse_position()
-	return (mouse_pos - global_position).normalized()
+	# ALWAYS A REAL DIRECTION. Vector2.normalized() on a zero-length vector
+	# returns Vector2.ZERO, not an error — and the cursor sitting exactly on the
+	# character makes it zero-length.
+	#
+	# That fed two things at once. last_direction went to ZERO, which is what
+	# every idle and walk animation lookup reads, and the projectile was handed
+	# direction = ZERO, so it spawned and then sat perfectly still until its
+	# lifetime ran out. At ten shots a second that is a growing pile of
+	# motionless orbs on top of the player. Falling back to the last real facing
+	# fires the shot the way the player is already looking, which is the only
+	# answer that isn't a guess.
+	var to_cursor: Vector2 = get_global_mouse_position() - global_position
+	if to_cursor.length_squared() <= AIM_EPSILON_SQUARED:
+		return last_direction
+	return to_cursor.normalized()
 
 
 func _play_cast_animation(direction: Vector2) -> void:
-	if not has_node("animatedsprite2d"):
+	# get_node_or_null() rather than has_node() then $node, which walked the
+	# same path twice to answer one question. sprite_frames is checked too:
+	# has_animation() on a null SpriteFrames is a crash, not a false.
+	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
+	if sprite == null or sprite.sprite_frames == null:
 		return
 
-	var sprite: AnimatedSprite2D = $animatedsprite2d
 	var anim_name: String = "attack" + _direction_to_string(direction)
 	if sprite.sprite_frames.has_animation(anim_name):
 		sprite.play(anim_name)
@@ -184,6 +214,23 @@ func _spawn_projectile(direction: Vector2) -> void:
 	get_tree().current_scene.add_child(projectile)
 
 	projectile.global_position = global_position
+
+	# THE ONLY SPAWNER IN THE PROJECT THAT WAS MISSING THIS. mage.gd, warrior.gd,
+	# pet.gd, petcontroller.gd, baseenemy.gd, bossenemy.gd, bushmage.gd,
+	# poisonslime.gd, poisonprojectile.gd, combat.gd and teleporter.gd all call
+	# it; healer.gd did not.
+	#
+	# The project runs common/physics_interpolation, so the renderer draws every
+	# node blended between its previous and current physics transforms. A node
+	# that has just entered the tree has no meaningful previous transform, so its
+	# first rendered frame is a blend from the scene origin toward wherever it
+	# was just placed — the shot visibly smears in from off-screen instead of
+	# leaving the staff. mage.gd's _spawn_stalagmite() has the long-form version
+	# of this explanation.
+	#
+	# It MUST come after global_position is set, never before.
+	projectile.reset_physics_interpolation()
+
 	projectile.modulate = projectile_tint
 
 	if "direction" in projectile:
@@ -191,14 +238,14 @@ func _spawn_projectile(direction: Vector2) -> void:
 	if "speed" in projectile:
 		projectile.speed = projectile_speed
 	if "damage" in projectile:
-		# CHANGED: was magic * damage_per_magic — same reinterpretation as
-		# mage's stalagmite: damage_per_magic is now a flat base, scaled by
-		# get_damage_multiplier() (folds in both magic and attack, shared
-		# across every class — see player.gd).
+		# damage_per_magic is a flat base scaled by get_damage_multiplier(),
+		# which folds in both magic and attack and is shared across every class
+		# (see player.gd). It was magic * damage_per_magic — the same
+		# reinterpretation mage's stalagmite went through.
 		projectile.damage = int(damage_per_magic * get_damage_multiplier())
 	if "owner_group" in projectile:
 		projectile.owner_group = "player"
-	# NEW: identifies the healer for the projectile's XP-on-hit — same
+	# Identifies the healer for the projectile's XP-on-hit — same
 	# pattern as slashwave.gd's caster reference for warrior, and mage's
 	# equivalent addition to _spawn_stalagmite(). lets the projectile grant
 	# attack XP (universal) AND magic XP (healer's boosted specialty) back
@@ -207,16 +254,6 @@ func _spawn_projectile(direction: Vector2) -> void:
 	# here, since it lives in projectile_scene's own script, not this one.
 	if "caster" in projectile:
 		projectile.caster = self
-
-
-# =============================================================================
-# LEVEL-UP SKILL BONUS  (REMOVED)
-# =============================================================================
-# CHANGED: used to grant a flat +1 magic on every character level-up. now
-# that skill_proficiency exists (see _set_skill_proficiency() above),
-# magic climbs faster for healer through actual landed shots, not just
-# from leveling up via ANY combat. no override needed anymore; falls back
-# to player.gd's no-op base.
 
 
 # =============================================================================

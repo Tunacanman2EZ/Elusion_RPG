@@ -669,7 +669,6 @@ size = Vector2(108, 67)
 size = Vector2(108.25, 66.5)
 
 [node name="petmage" type="CharacterBody2D" unique_id=709913725]
-self_modulate = Color(1, 0.89504117, 0.5686987, 1)
 texture_filter = 1
 scale = Vector2(0.5, 0.5)
 collision_layer = 0
@@ -678,10 +677,10 @@ motion_mode = 1
 script = ExtResource("1_y0thv")
 attack_type = 1
 projectile_scene = ExtResource("2_ky2xd")
+projectile_damage = 36
 release_frame = 3
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=919068649]
-modulate = Color(1, 0.28122702, 0.70062375, 1)
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_jm8lx")
 animation = &"attackdown"

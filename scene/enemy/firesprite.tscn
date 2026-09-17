@@ -736,17 +736,17 @@ texture_progress = ExtResource("4_5bmra")
 position = Vector2(1, 1)
 shape = SubResource("CapsuleShape2D_tik12")
 
-[node name="orbspawnbottom" type="Marker2D" parent="." unique_id=1888128203]
+[node name="projectilebottom" type="Marker2D" parent="." unique_id=1888128203]
 texture_filter = 1
 position = Vector2(-8, -24)
 
-[node name="orbspawnleft" type="Marker2D" parent="." unique_id=43002805]
+[node name="projectileleft" type="Marker2D" parent="." unique_id=43002805]
 position = Vector2(22, -24)
 
-[node name="orbspawnright" type="Marker2D" parent="." unique_id=471911215]
+[node name="projectileright" type="Marker2D" parent="." unique_id=471911215]
 position = Vector2(-22, -24)
 
-[node name="orbspawntop" type="Marker2D" parent="." unique_id=1675768830]
+[node name="projectiletop" type="Marker2D" parent="." unique_id=1675768830]
 position = Vector2(9, -24)
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=1155883984]

@@ -1088,15 +1088,3 @@ collision_mask = 8
 position = Vector2(4, 19)
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_4rile")
-
-[node name="wavespawnleft" type="Marker2D" parent="." unique_id=501535175]
-position = Vector2(-36, -1)
-
-[node name="wavespawnright" type="Marker2D" parent="." unique_id=1645835551]
-position = Vector2(36, -1)
-
-[node name="wavespawnup" type="Marker2D" parent="." unique_id=1382551829]
-position = Vector2(1, -35)
-
-[node name="wavespawndown" type="Marker2D" parent="." unique_id=1371355413]
-position = Vector2(1, 30)

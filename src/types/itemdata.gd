@@ -84,6 +84,23 @@ enum RestoreTarget {
 # the icon texture displayed in the inventory slot. swappable art layer.
 @export var icon: Texture2D = null
 
+# Colour multiplied over `icon` wherever it is drawn — the slot, the hotbar and
+# the drag preview. WHITE, the default, means "draw the art as authored", so
+# every existing item is unaffected and no .tres has to mention this.
+#
+# WHY IT HAS TO EXIST AT ALL. A pet's colour lives in its SCENE, as a modulate
+# on the root: the electric sprite companion is green while the enemy it drops
+# from is the untinted blue-grey of the shared sheet. The icon is an
+# AtlasTexture pointing into that same sheet, and AtlasTexture carries no
+# colour, so the inventory showed the enemy's blue for a pet that is green in
+# the world — two pictures of the same creature that disagreed, with nothing
+# in either file to say which was right.
+#
+# Keep this equal to the pet scene's root modulate. They are the same fact
+# written twice, which is not ideal, but the alternative is instantiating a
+# PackedScene to draw an inventory square.
+@export var icon_tint: Color = Color.WHITE
+
 
 # =============================================================================
 # STACKING

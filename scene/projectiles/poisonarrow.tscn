@@ -15,6 +15,7 @@ height = 17.0
 collision_layer = 64
 collision_mask = 5
 script = ExtResource("2_script")
+damage = 7
 
 [node name="sprite2d" type="Sprite2D" parent="."]
 texture_filter = 1

@@ -12,5 +12,6 @@ icon = ExtResource("1_icon")
 max_stack = 1
 value = 12000
 tier = 5
+droppable = false
 type = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

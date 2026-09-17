@@ -13,7 +13,7 @@ extends Area2D
 # =============================================================================
 
 @export var speed: float = 300.0
-@export var damage: int = 10
+@export var damage: int = 11
 @export var damage_type: StringName = &"magic"
 
 

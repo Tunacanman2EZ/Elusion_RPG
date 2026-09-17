@@ -197,7 +197,7 @@
 			"xp_reward": 20
 		}
 	],
-	"generated_at": 1789544665,
+	"generated_at": 1789623027,
 	"items": [
 		{
 			"cook_level": 1,
@@ -256,7 +256,7 @@
 			"cook_xp": 0,
 			"cooks_into": "",
 			"display_name": "Amethyst Fishing Rod",
-			"droppable": true,
+			"droppable": false,
 			"fishing_xp": 0,
 			"item_id": "amethystfishingrod",
 			"max_stack": 1,
@@ -545,7 +545,7 @@
 			"cook_xp": 0,
 			"cooks_into": "",
 			"display_name": "Cobalt Fishing Rod",
-			"droppable": true,
+			"droppable": false,
 			"fishing_xp": 0,
 			"item_id": "cobaltfishingrod",
 			"max_stack": 1,
@@ -953,7 +953,7 @@
 			"cook_xp": 0,
 			"cooks_into": "",
 			"display_name": "Ember Fishing Rod",
-			"droppable": true,
+			"droppable": false,
 			"fishing_xp": 0,
 			"item_id": "emberfishingrod",
 			"max_stack": 1,
@@ -1565,7 +1565,7 @@
 			"cook_xp": 0,
 			"cooks_into": "",
 			"display_name": "Jade Fishing Rod",
-			"droppable": true,
+			"droppable": false,
 			"fishing_xp": 0,
 			"item_id": "jadefishingrod",
 			"max_stack": 1,

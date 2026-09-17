@@ -8,13 +8,11 @@ radius = 5.8999996
 height = 49.999996
 
 [node name="area2d" type="Area2D" unique_id=1860504771]
-collision_layer = 4
+collision_layer = 32
 collision_mask = 8
 script = ExtResource("1_nmr24")
 
 [node name="sprite2d" type="Sprite2D" parent="." unique_id=1713686155]
-modulate = Color(0.14140752, 0.91318846, 0.8260631, 1)
-self_modulate = Color(0.5019608, 0.6901961, 1, 1)
 texture_filter = 1
 position = Vector2(0, -0.5)
 scale = Vector2(0.5, 0.5)

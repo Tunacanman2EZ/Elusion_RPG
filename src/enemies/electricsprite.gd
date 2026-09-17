@@ -43,10 +43,10 @@ const ORB_RELEASE_FRAME := 5
 # spawn markers per direction — orbs emerge from the correct side of the
 # spirit's sprite based on facing direction.
 @onready var spawn_nodes: Dictionary = {
-	"left":  $orbspawnleft,
-	"right": $orbspawnright,
-	"up":    $orbspawntop,
-	"down":  $orbspawnbottom,
+	"left":  $projectileleft,
+	"right": $projectileright,
+	"up":    $projectiletop,
+	"down":  $projectilebottom,
 }
 
 

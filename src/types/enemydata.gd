@@ -135,3 +135,69 @@ class_name EnemyData
 # moment it owns enemy health, and because it is genuinely constant per variant
 # — unlike attack_range, which some enemies derive.
 @export var max_hp: int = 50
+
+
+# =============================================================================
+# ELEMENT
+# =============================================================================
+
+# What this creature's damage IS. See src/shared/element.gd.
+#
+# NONE (0) is physical and is the right answer for anything that hits you with
+# an object rather than a force — the bush sniper's arrow is not an element.
+#
+# THE COLOUR BELOW SHOULD MATCH THIS. Element.colour_for() is the authored
+# answer for every type, and body_tint is what actually gets drawn; they are
+# kept as two fields rather than one so a creature CAN sit off-palette on
+# purpose (a rare variant, a boss), but a normal enemy whose tint disagrees
+# with its element is a bug and the test suite says so.
+@export var element: Element.Type = Element.Type.NONE
+
+
+# =============================================================================
+# APPEARANCE
+# =============================================================================
+
+# Colour multiplied over the whole enemy at spawn. WHITE, the default, means
+# "draw the art as authored", so every existing enemy is unaffected.
+#
+# THIS IS WHAT A PALETTE-SWAP VARIANT IS MADE OF. The point of this resource is
+# that one scene can be several enemies — poisonslime.tscn is already two — and
+# a tougher version of a creature is the classic way to add one: same art, same
+# behaviour, more health, better loot, a different colour so the player can see
+# which one they are fighting BEFORE it reaches them. That last part is why the
+# colour belongs here beside max_hp rather than in the scene: a variant that
+# looks identical to the common one is a trap, not a tier.
+#
+# IT IS ONE COLOUR ON PURPOSE. The pets reached this stage with two and three
+# modulates stacked on different nodes, and modulate MULTIPLIES down the tree —
+# so three tints are not three dials, they are one unpredictable product. The
+# electric sprite's shot was authored green twice and rendered #493C06, a
+# brown. One value on the root is the only version anyone can reason about.
+#
+# WHAT IT CANNOT DO. Multiplying darkens and filters; it cannot move a hue. Art
+# that is already strongly coloured — the slimes measure 0.6 saturated green —
+# goes darker and duller under any tint, never blue. For those a variant reads
+# best as a deeper or more acidic version of the same element, which is also
+# the more honest signal: a poison slime that is more poisonous.
+@export var body_tint: Color = Color.WHITE
+
+
+# =============================================================================
+# THREAT
+# =============================================================================
+
+# Damage this enemy's projectile deals. 0 means "whatever the projectile scene
+# already says", so every existing enemy is unaffected and the four projectile
+# scripts keep their own defaults as the baseline.
+#
+# IT HAS TO BE HERE FOR A VARIANT TO MEAN ANYTHING. The enemy scripts
+# instantiate a projectile and never touch its damage — electricsprite.gd
+# spawns its orb, aims it and fires, and the number comes from
+# magicprojectile.gd's export. So two enemies sharing a projectile scene hit
+# for the same amount however different their health and rewards are, and a
+# "tougher variant" would be a damage sponge that hits like the common one.
+#
+# Applied in BaseEnemy.spawn_projectile_node(), beside the tint, for the same
+# reason: one place that every enemy's shot already passes through.
+@export var projectile_damage: int = 0

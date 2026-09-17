@@ -18,7 +18,7 @@ extends Area2D
 # =============================================================================
 
 # damage dealt to the player on the impact frame
-@export var damage: int = 8
+@export var damage: int = 9
 
 # frame of the vine animation where damage is dealt.
 # tune to match the visual peak of the vine reaching the player.

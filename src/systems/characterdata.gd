@@ -63,6 +63,13 @@ const BANK_MAX_SLOTS := 50
 # how long to wait after the last change before actually writing to disk.
 # see save_data() below for why this exists.
 const SAVE_DEBOUNCE_SECONDS := 2.0
+
+# How long to wait before trying again after the backend REFUSED a save, as
+# opposed to after a change. Shorter than the debounce because nothing new has
+# happened — this is a retry, not a coalescing window, and the thing it is
+# waiting on (a push finishing, a session returning) usually clears in well
+# under a second.
+const SAVE_RETRY_SECONDS: float = 0.5
  
 # central definition of all stats that get saved per character.
 # LUSIONS REMOVED — now stored in account_data (account-shared).
@@ -600,9 +607,23 @@ func _write_save_now() -> bool:
 		# non-whole-number float in the whole signed payload.
 		"saved_at":                int(Time.get_unix_time_from_system()),
 	}
-	_save_pending = false
-	_save_countdown = 0.0
-	return storage.save(payload)
+	# THE FLAG IS CLEARED ONLY IF THE BACKEND TOOK IT.
+	#
+	# It used to be cleared on the line before the call, unconditionally, and
+	# the return value was thrown away. So a save the backend refused — no
+	# session, or a push already in flight — left the game believing it was
+	# clean. Nothing retried, flush_save() on logout saw nothing pending, and
+	# whatever had changed was gone with no error anywhere.
+	#
+	# Staying dirty costs one more attempt. Clearing it wrongly costs the
+	# player's progress.
+	var accepted: bool = storage.save(payload)
+	if accepted:
+		_save_pending = false
+		_save_countdown = 0.0
+	else:
+		_save_countdown = SAVE_RETRY_SECONDS
+	return accepted
  
  
 # =============================================================================

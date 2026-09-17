@@ -27,9 +27,87 @@ extends Node
 # CONFIGURATION
 # =============================================================================
 
-# Point this at the Flask dev server while building. Swap to
-# "https://www.elusionrpg.com" once it's deployed — nothing else changes.
-const BASE_URL := "http://127.0.0.1:5000"
+# WHERE THE SERVER IS. Resolved once at startup, in this order:
+#
+#   1. --server=https://host  on the command line
+#   2. ELUSION_SERVER         in the environment
+#   3. user://server.cfg      a one-line override beside the save data
+#   4. DEFAULT_BASE_URL       the local dev server
+#
+# IT USED TO BE A `const`, AND THAT WAS A SHIPPING BUG WAITING TO HAPPEN. A
+# const cannot be changed without a rebuild, so an exported build carried
+# "127.0.0.1" with it: every player who ran it would have the client quietly
+# try THEIR OWN machine, find nothing, and show "can't reach the server" with
+# no hint that the address was the problem. The one thing that must differ
+# between a dev run and a real build was the one thing that could not.
+#
+# THE FILE OVERRIDE IS THE IMPORTANT ONE. Command line and environment are for
+# development; user://server.cfg is how an already-exported build gets pointed
+# somewhere new - moving host, or standing up a test server - without asking
+# anyone to rebuild or reinstall. It holds the URL and nothing else.
+const DEFAULT_BASE_URL := "http://127.0.0.1:5000"
+const SERVER_OVERRIDE_FILE := "user://server.cfg"
+
+static var BASE_URL: String = DEFAULT_BASE_URL
+
+
+static func _resolve_base_url() -> String:
+	for argument in OS.get_cmdline_args():
+		if argument.begins_with("--server="):
+			# CHECKED LIKE THE OTHER TWO. A bare `--server=` with nothing after
+			# it used to return "" straight out of here, which is the one
+			# outcome this whole function must not produce: an empty BASE_URL
+			# makes every request a malformed address, and the game reports it
+			# as "cannot reach the server" rather than as a bad argument.
+			var from_args: String = argument.substr("--server=".length()).strip_edges()
+			if from_args != "":
+				return _clean_base_url(from_args)
+
+	var from_env: String = OS.get_environment("ELUSION_SERVER").strip_edges()
+	if from_env != "":
+		return _clean_base_url(from_env)
+
+	if FileAccess.file_exists(SERVER_OVERRIDE_FILE):
+		var handle := FileAccess.open(SERVER_OVERRIDE_FILE, FileAccess.READ)
+		if handle != null:
+			var line: String = handle.get_line().strip_edges()
+			handle.close()
+			# A blank or commented file means "no override" rather than an empty
+			# URL - an empty BASE_URL would make every request fail with a
+			# malformed address instead of falling back to the default.
+			if line != "" and not line.begins_with("#"):
+				return _clean_base_url(line)
+
+	return DEFAULT_BASE_URL
+
+
+static func _clean_base_url(raw: String) -> String:
+	"""Normalise an override, or refuse it and fall back.
+
+	TWO MISTAKES THAT LOOK LIKE AN OUTAGE. Both produce a client that cannot
+	reach anything while reporting only that the server is down, so both are
+	worth catching where the value enters rather than where a request fails.
+
+	A MISSING SCHEME - `--server=example.com` - is not a URL HTTPRequest can
+	use, and the failure surfaces as a connection error indistinguishable from
+	the host being offline. Refused, with a line saying why, and the default
+	kept so the game still starts.
+
+	A TRAILING SLASH is harmless-looking and produces `https://host//api/...`
+	on every call, because every path in this file already begins with one.
+	Most servers forgive it; a proxy matching on exact paths may not.
+	"""
+	var url: String = raw.strip_edges()
+	while url.ends_with("/"):
+		url = url.substr(0, url.length() - 1)
+
+	if not (url.begins_with("http://") or url.begins_with("https://")):
+		push_warning("Api: ignoring server override %s - it needs http:// or https://" % raw)
+		print("[BOOT] Api: ignoring server override %s (no scheme); using %s"
+			% [raw, DEFAULT_BASE_URL])
+		return DEFAULT_BASE_URL
+
+	return url
 
 # how long to wait before giving up on a request, in seconds. This is the
 # budget for a request the PLAYER ASKED FOR — they pressed Login and are
@@ -141,6 +219,11 @@ func is_logged_in() -> bool:
 # =============================================================================
 
 func _ready() -> void:
+	# Resolved before anything can make a request. Printed because a client
+	# pointed at the wrong server looks exactly like a server that is down.
+	BASE_URL = _resolve_base_url()
+	if BASE_URL != DEFAULT_BASE_URL:
+		print("[BOOT] Api: server override in effect — %s" % BASE_URL)
 	_load_session()
 
 	# deliberately NOT awaited. _ready() stays an ordinary function and no

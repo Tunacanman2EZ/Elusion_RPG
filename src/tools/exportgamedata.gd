@@ -95,6 +95,10 @@ const TYPE_NAMES := [
 var _errors: int = 0
 var _warnings: int = 0
 
+# Items whose icon did not resolve. Collected during the item pass, where the
+# ItemData is open, and reported once at the end - see _check_icon().
+var _iconless: Array = []
+
 
 func _fail(message: String) -> void:
 	push_error("exportgamedata: " + message)
@@ -114,6 +118,7 @@ func _run() -> void:
 	# Constants first: _export_enemies() needs the pet-odds table out of them.
 	_errors = 0
 	_warnings = 0
+	_iconless.clear()
 	var constants: Dictionary = _export_constants()
 	var items: Array = _export_items()
 	var enemies: Array = _export_enemies(constants)
@@ -201,6 +206,8 @@ func _run() -> void:
 	# put it above the "wrote ..." line, which read like a complaint about the
 	# export instead of a note about the catalogue.
 	_report_reachability(items, enemies)
+	_report_unplaced_enemies()
+	_report_iconless()
 
 	# THE VERDICT, IN THE PANE YOU ARE READING. Errors cannot be non-zero here —
 	# _validate() would have returned before the write — so this line is really
@@ -362,6 +369,79 @@ func _validate_skill_curves(constants: Dictionary) -> void:
 		_fail("constants.fishing_tier_per_level must be at least 1.")
 
 
+func _report_iconless() -> void:
+	if _iconless.is_empty():
+		return
+	_iconless.sort()
+	var shown := PackedStringArray()
+	for item_id in _iconless.slice(0, 8):
+		shown.append(String(item_id))
+	var line: String = "      " + ", ".join(shown)
+	if _iconless.size() > shown.size():
+		line += ", ..."
+	print("    %d item(s) have no icon and will render as an empty cell:" % _iconless.size())
+	print(line)
+
+
+func _report_unplaced_enemies() -> void:
+	# AN ENEMY NOBODY CAN MEET IS A PET NOBODY CAN GET.
+	#
+	# _report_reachability() above counts items shelved above every drop ceiling.
+	# This is the other half of the same question, one step further back: an item
+	# can be perfectly reachable in the loot table and still unobtainable because
+	# the ENEMY that carries it is not placed in any scene. The pets are the case
+	# that matters - each one is carried by exactly one enemy, so an unplaced
+	# enemy silently removes a collectable from the game with nothing anywhere
+	# reporting it.
+	#
+	# BY SCENE PATH, NOT BY enemy_id, and that is deliberate. Nothing connects an
+	# enemy .tscn to its EnemyData as data - the scene names a script, the script
+	# knows the resource - so mapping one to the other would mean a hand-written
+	# table here, which is the same duplicated-decision antipattern this file
+	# exists to prevent. Comparing paths needs no map and cannot drift.
+	#
+	# A WARNING, NEVER AN ERROR. An enemy spawned from GDScript at runtime is
+	# invisible to this check: it only reads scenes. The poison slime duplicates
+	# itself through a path in its own script, and a future spawner could place
+	# anything. So this reports a suspicion for a human to confirm, not a verdict.
+	var enemy_scenes: Array = _find_files("res://scene/enemy/", ".tscn")
+	if enemy_scenes.is_empty():
+		return
+
+	# Every .tscn in the project EXCEPT the enemy scenes themselves. An enemy
+	# referenced only by another enemy is still worth flagging - a boss summoning
+	# a stalker is real, but so is a leftover reference in a scene nothing loads.
+	var referenced: Dictionary = {}
+	for scene_path in _find_files("res://scene/", ".tscn"):
+		if scene_path.begins_with("res://scene/enemy/"):
+			continue
+		var file := FileAccess.open(scene_path, FileAccess.READ)
+		if file == null:
+			continue
+		var text: String = file.get_as_text()
+		file.close()
+		for enemy_scene in enemy_scenes:
+			if text.find(enemy_scene) != -1:
+				referenced[enemy_scene] = true
+
+	var unplaced: Array = []
+	for enemy_scene in enemy_scenes:
+		if not referenced.has(enemy_scene):
+			unplaced.append(String(enemy_scene).get_file())
+
+	if unplaced.is_empty():
+		return
+
+	unplaced.sort()
+	var names := PackedStringArray()
+	for scene_name in unplaced:
+		names.append(String(scene_name))
+	print("    %d enemy scene(s) are placed in no world scene: %s"
+		% [unplaced.size(), ", ".join(names)])
+	print("      Anything they alone drop - pets especially - cannot be obtained.")
+	print("      Runtime spawning from GDScript is invisible here; confirm before acting.")
+
+
 func _report_reachability(items: Array, enemies: Array) -> void:
 	# NOT A FAILURE — A HEADCOUNT. Shelving content by putting it above every
 	# enemy's ceiling is a deliberate move here (the jade rod and the large
@@ -432,6 +512,7 @@ func _export_items() -> Array:
 			continue
 		seen[item.item_id] = path
 		_check_restores(item, path)
+		_check_icon(item)
 
 		out.append({
 			"item_id": item.item_id,
@@ -466,6 +547,26 @@ func _export_items() -> Array:
 
 	out.sort_custom(func(a, b): return a["item_id"] < b["item_id"])
 	return out
+
+
+func _check_icon(item: ItemData) -> void:
+	# AN ITEM WITH NO ICON IS AN EMPTY-LOOKING CELL.
+	#
+	# ItemData.icon is a Texture2D, and a .tres pointing at art that is not
+	# there loads with it null rather than failing - so the item exists, drops,
+	# stacks and is worth gold, and renders as nothing. In a grid of slots that
+	# are ALSO empty, the difference between "no item" and "an item with no
+	# picture" is invisible.
+	#
+	# CHECKED HERE RATHER THAN OVER THE EXPORTED ROWS because the icon is not in
+	# them - the server has no use for a texture. This is the only pass with the
+	# resource open, the same reason _check_restores() lives beside it.
+	#
+	# A WARNING, NOT AN ERROR. Art arrives in batches and a placeholder-less item
+	# is a normal state mid-pipeline; refusing to export would block the server
+	# on a missing PNG it does not read.
+	if item.icon == null:
+		_iconless.append(item.item_id)
 
 
 func _check_restores(item: ItemData, path: String) -> void:

@@ -705,17 +705,17 @@ fill_mode = 1
 texture_under = ExtResource("3_tc7da")
 texture_progress = ExtResource("4_05sle")
 
-[node name="arrowspawntop" type="Marker2D" parent="." unique_id=396773774]
+[node name="projectiletop" type="Marker2D" parent="." unique_id=396773774]
 texture_filter = 1
 position = Vector2(-1, -5)
 
-[node name="arrowspawnbottom" type="Marker2D" parent="." unique_id=1215470933]
+[node name="projectilebottom" type="Marker2D" parent="." unique_id=1215470933]
 position = Vector2(-1, 6)
 
-[node name="arrowspawnleft" type="Marker2D" parent="." unique_id=1437178937]
+[node name="projectileleft" type="Marker2D" parent="." unique_id=1437178937]
 position = Vector2(-11, 1)
 
-[node name="arrowspawnright" type="Marker2D" parent="." unique_id=511084021]
+[node name="projectileright" type="Marker2D" parent="." unique_id=511084021]
 position = Vector2(9, 1)
 
 [node name="attacktimer" type="Timer" parent="." unique_id=20487573]

@@ -703,11 +703,11 @@ collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_4b4yj")
 projectile_scene = ExtResource("2_8rek3")
-projectile_damage = 6
+projectile_damage = 44
 release_frame = 5
+muzzle_marker_prefix = "orbspawn"
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=392472798]
-modulate = Color(0.41568628, 1, 1, 1)
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_et1wx")
 animation = &"attackdown"

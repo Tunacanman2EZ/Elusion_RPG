@@ -20,10 +20,10 @@ const ORB_RELEASE_FRAME := 5
 
 @onready var sprite: AnimatedSprite2D = $animatedsprite2d
 @onready var spawn_nodes: Dictionary = {
-	"left":  $orbspawnleft,
-	"right": $orbspawnright,
-	"up":    $orbspawntop,
-	"down":  $orbspawnbottom,
+	"left":  $projectileleft,
+	"right": $projectileright,
+	"up":    $projectiletop,
+	"down":  $projectilebottom,
 }
 
 

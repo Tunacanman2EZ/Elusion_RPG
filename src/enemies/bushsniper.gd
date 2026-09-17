@@ -20,10 +20,10 @@ const ARROW_RELEASE_FRAME := 5
 
 @onready var sprite: AnimatedSprite2D = $animatedsprite2d
 @onready var spawn_nodes: Dictionary = {
-	"left":  $arrowspawnleft,
-	"right": $arrowspawnright,
-	"up":    $arrowspawntop,
-	"down":  $arrowspawnbottom,
+	"left":  $projectileleft,
+	"right": $projectileright,
+	"up":    $projectiletop,
+	"down":  $projectilebottom,
 }
 
 

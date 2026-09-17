@@ -147,6 +147,11 @@ func _show_empty_state() -> void:
 	if icon_rect == null:
 		return
 	icon_rect.texture = empty_icon
+	# The empty art is not tinted. Without this, a slot that last held a
+	# colour-tinted item (see ItemData.icon_tint) renders its "empty" icon in
+	# that item's colour — modulate is a property of the node, and nothing else
+	# on this path clears it.
+	icon_rect.modulate = Color.WHITE
 	if quantity_label != null:
 		quantity_label.text = ""
 	_update_style()
@@ -211,7 +216,7 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	# does — centred on the pointer and drawn above every panel. this used to
 	# be a second hand-rolled copy of the preview, which is how it ended up
 	# uncentred in both places at once.
-	set_drag_preview(make_drag_preview(icon_rect.texture))
+	set_drag_preview(make_drag_preview(icon_rect.texture, icon_rect.modulate))
 
 	return {
 		"stack":         stack.duplicate_stack(),

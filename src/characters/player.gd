@@ -1243,6 +1243,31 @@ func xp_needed_for_skill(skill_level: int, base := 100, factor := 1.18) -> int:
 	return PlayerStats.xp_needed_for_skill(skill_level, base, factor)
 
 
+func xp_needed_for_skill_id(skill_id: String, skill_level: int) -> int:
+	# THE FACTOR COMES FROM THE TABLE, NOT FROM THE CALL SITE.
+	#
+	# Each gain_*_xp() below used to pass its own literal - 1.25 for attack,
+	# 1.12 for fishing, and so on - while GameConstants.SKILL_XP_GROWTH held the
+	# same six numbers and was the copy exported to the server. Two hand-kept
+	# copies of one pacing decision, with nothing checking they agreed.
+	#
+	# That is the exact shape of the bug this project has already paid for once:
+	# gameconstants.gd's own header records the character XP formula living in
+	# two places, drifting, and the sanitizer rewriting honest saves - 1,636 XP
+	# became 52 million at level 20. The skill curves had quietly grown the same
+	# problem, and it got worse the moment the server started granting attack,
+	# fishing and cooking: a literal drifting here would make the bar the player
+	# watches disagree with the level the server actually stores.
+	#
+	# The fallback is PlayerStats.SKILL_XP_FACTOR, which is also what
+	# gamedata.py falls back to for an unlisted skill, so an id missing from the
+	# table is paced identically on both sides rather than two different ways.
+	return PlayerStats.xp_needed_for_skill(
+		skill_level,
+		GameConstants.SKILL_XP_BASE,
+		float(GameConstants.SKILL_XP_GROWTH.get(skill_id, PlayerStats.SKILL_XP_FACTOR)))
+
+
 # =============================================================================
 # UNIVERSAL DAMAGE SCALING
 # =============================================================================
@@ -1279,7 +1304,7 @@ func gain_attack_xp(amount: int) -> void:
 	while attack_xp >= attack_xp_next:
 		attack += 1
 		attack_xp -= attack_xp_next
-		attack_xp_next = xp_needed_for_skill(attack, 100, 1.25)
+		attack_xp_next = xp_needed_for_skill_id("attack", attack)
 		_spawn_skillup_popup("attack", attack)
 	CharacterData.save_character_state(self)
 
@@ -1294,7 +1319,7 @@ func gain_defense_xp(amount: int) -> void:
 	while defense_xp >= defense_xp_next:
 		defense += 1
 		defense_xp -= defense_xp_next
-		defense_xp_next = xp_needed_for_skill(defense, 100, 1.20)
+		defense_xp_next = xp_needed_for_skill_id("defense", defense)
 		_spawn_skillup_popup("defense", defense)
 	# NEW: a tier crossing (Novice -> Trained -> ... -> Unbreakable) is a
 	# bigger moment than an ordinary skill level-up, so it gets its own,
@@ -1310,7 +1335,7 @@ func gain_agility_xp(amount: int) -> void:
 	while agility_xp >= agility_xp_next:
 		agility += 1
 		agility_xp -= agility_xp_next
-		agility_xp_next = xp_needed_for_skill(agility, 100, 1.15)
+		agility_xp_next = xp_needed_for_skill_id("agility", agility)
 		_spawn_skillup_popup("agility", agility)
 	CharacterData.save_character_state(self)
 
@@ -1324,7 +1349,7 @@ func gain_magic_xp(amount: int) -> void:
 	while magic_xp >= magic_xp_next:
 		magic += 1
 		magic_xp -= magic_xp_next
-		magic_xp_next = xp_needed_for_skill(magic, 100, 1.25)
+		magic_xp_next = xp_needed_for_skill_id("magic", magic)
 		_spawn_skillup_popup("magic", magic)
 	CharacterData.save_character_state(self)
 
@@ -1334,7 +1359,7 @@ func gain_fishing_xp(amount: int) -> void:
 	while fishing_xp >= fishing_xp_next:
 		fishing += 1
 		fishing_xp -= fishing_xp_next
-		fishing_xp_next = xp_needed_for_skill(fishing, 100, 1.12)
+		fishing_xp_next = xp_needed_for_skill_id("fishing", fishing)
 		_spawn_skillup_popup("fishing", fishing)
 	CharacterData.save_character_state(self)
 
@@ -1344,7 +1369,7 @@ func gain_cooking_xp(amount: int) -> void:
 	while cooking_xp >= cooking_xp_next:
 		cooking += 1
 		cooking_xp -= cooking_xp_next
-		cooking_xp_next = xp_needed_for_skill(cooking, 100, 1.10)
+		cooking_xp_next = xp_needed_for_skill_id("cooking", cooking)
 		_spawn_skillup_popup("cooking", cooking)
 	CharacterData.save_character_state(self)
 

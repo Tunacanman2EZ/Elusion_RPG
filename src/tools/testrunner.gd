@@ -59,6 +59,7 @@ func _ready() -> void:
 
 func _run_all() -> void:
 	_test_curve_agreement()
+	_test_skill_curves()
 	_test_shared_constants()
 	_test_class_curves()
 	_test_enemy_constants()
@@ -68,6 +69,7 @@ func _run_all() -> void:
 	_test_pet_controller()
 	_test_itemstack()
 	_test_ranks()
+	_test_collision_contract()
 
 
 # =============================================================================
@@ -205,6 +207,82 @@ func _test_curve_agreement() -> void:
 		GameConstants.xp_needed_for_level(99) > 0
 		and GameConstants.xp_needed_for_level(99) < 9223372036854775807,
 		GameConstants.xp_needed_for_level(99))
+
+
+func _test_skill_curves() -> void:
+	section("SKILL XP CURVES — GAME vs EXPORTED CONTRACT")
+
+	# WHY THIS EXISTS. The character curve above already has this test because
+	# that formula once lived in two places, drifted, and the sanitizer rewrote
+	# honest saves. The SIX SKILL curves had grown the same problem quietly:
+	# GameConstants.SKILL_XP_GROWTH is the copy exported to the server, and
+	# player.gd's gain_*_xp() functions each passed their own literal factor.
+	#
+	# It matters more now than it did. attack, fishing and cooking are granted
+	# BY THE SERVER, so the client no longer decides those levels - it only
+	# draws the bar. If the client's threshold disagreed with the server's, the
+	# bar would fill to a level the server never reaches, or jump past one it
+	# already stored, and nothing would report it.
+
+	var data := _load_gamedata()
+	if data.is_empty():
+		check("gamedata.json needed for the skill-curve comparison", false, "see above")
+		return
+
+	var constants: Dictionary = data.get("constants", {})
+	var exported: Dictionary = constants.get("skill_xp_growth", {})
+
+	check("the contract carries a skill_xp_growth table",
+		not exported.is_empty(), "re-run src/tools/exportgamedata.gd")
+
+	check("the exported skill_xp_base matches GameConstants",
+		int(constants.get("skill_xp_base", -1)) == GameConstants.SKILL_XP_BASE,
+		"contract %s, game %d" % [constants.get("skill_xp_base"), GameConstants.SKILL_XP_BASE])
+
+	# EVERY skill, both directions. A one-way loop would pass while the contract
+	# carried a seventh skill the game has never heard of.
+	for skill_id in GameConstants.SKILL_XP_GROWTH:
+		check("the contract knows about '%s'" % skill_id, exported.has(skill_id), exported.keys())
+		if exported.has(skill_id):
+			check("'%s' grows at the same rate on both sides" % skill_id,
+				is_equal_approx(float(exported[skill_id]),
+					float(GameConstants.SKILL_XP_GROWTH[skill_id])),
+				"contract %s, game %s" % [exported[skill_id], GameConstants.SKILL_XP_GROWTH[skill_id]])
+
+	for skill_id in exported:
+		check("the game knows about the contract's '%s'" % skill_id,
+			GameConstants.SKILL_XP_GROWTH.has(skill_id), GameConstants.SKILL_XP_GROWTH.keys())
+
+	# THE ACTUAL THRESHOLDS, not just the inputs - same reasoning as the
+	# character curve above. The server recomputes from base and factor; if its
+	# arithmetic ever differs from PlayerStats', matching constants hide it.
+	for skill_id in GameConstants.SKILL_XP_GROWTH:
+		var factor: float = float(GameConstants.SKILL_XP_GROWTH[skill_id])
+		for level in [1, 2, 10, 50]:
+			var expected: int = int(GameConstants.SKILL_XP_BASE * pow(factor, max(level - 1, 0)))
+			var actual: int = PlayerStats.xp_needed_for_skill(
+				level, GameConstants.SKILL_XP_BASE, factor)
+			check("%s level %d costs the same on both sides" % [skill_id, level],
+				actual == expected, "game %d, contract %d" % [actual, expected])
+
+	# A FALLBACK BOTH SIDES SHARE. gamedata.py answers 1.18 for a skill the
+	# table does not list; PlayerStats.SKILL_XP_FACTOR is the client's. An
+	# unlisted skill must be paced identically, not two different ways.
+	check("the unlisted-skill fallback matches the server's 1.18",
+		is_equal_approx(PlayerStats.SKILL_XP_FACTOR, 1.18),
+		PlayerStats.SKILL_XP_FACTOR)
+
+	# The two gathering numbers the server reads out of the same contract.
+	check("cook_burn_max matches GameConstants",
+		is_equal_approx(float(constants.get("cook_burn_max", -1.0)), GameConstants.COOK_BURN_MAX),
+		"contract %s, game %s" % [constants.get("cook_burn_max"), GameConstants.COOK_BURN_MAX])
+	check("cook_burn_max is a probability",
+		GameConstants.COOK_BURN_MAX >= 0.0 and GameConstants.COOK_BURN_MAX <= 1.0,
+		GameConstants.COOK_BURN_MAX)
+	check("fishing_tier_per_level matches GameConstants",
+		int(constants.get("fishing_tier_per_level", -1)) == GameConstants.FISHING_TIER_PER_LEVEL,
+		"contract %s, game %d" % [constants.get("fishing_tier_per_level"),
+			GameConstants.FISHING_TIER_PER_LEVEL])
 
 
 func _test_shared_constants() -> void:
@@ -923,3 +1001,117 @@ func _test_ranks() -> void:
 		check("a %s can" % rank, Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE), rank)
 
 	Api.role = saved_role
+
+
+# =============================================================================
+# COLLISION CONTRACT
+# =============================================================================
+
+# THE TEST THAT WOULD HAVE CAUGHT THE FIRE PET ON DAY ONE.
+#
+# petfireprojectile.tscn shipped with collision_mask = 4 ("player"), copied from
+# the ENEMY fire sprite's projectile, where that is correct. Enemies sit on layer
+# 8. Godot reports a contact only when `area.mask & body.layer` is non-zero, and
+# 4 & 8 is 0 — so body_entered never fired, _try_damage() was never called, and
+# the pet's orb flew through everything it was aimed at. The script was right the
+# whole time. Nothing logged. Nothing errored. The pet simply did nothing, which
+# is indistinguishable from a pet that is missing its target.
+#
+# A mask is two numbers in a .tscn with no natural place to be wrong out loud.
+# This is that place.
+const PLAYER_PROJECTILE_SCENES := [
+	"res://scene/projectiles/slashwave.tscn",
+	"res://scene/projectiles/turretprojectile.tscn",
+	"res://scene/projectiles/spelltargetcircle.tscn",
+	"res://scene/pets/petprojectiles/petarrow.tscn",
+	"res://scene/pets/petprojectiles/petfireprojectile.tscn",
+	"res://scene/pets/petprojectiles/petmagicprojectile.tscn",
+	"res://scene/pets/petprojectiles/petpoisonball.tscn",
+	"res://scene/pets/petprojectiles/petvine.tscn",
+]
+
+const ENEMY_PROJECTILE_SCENES := [
+	"res://scene/projectiles/arrow.tscn",
+	"res://scene/projectiles/poisonarrow.tscn",
+	"res://scene/projectiles/poisonball.tscn",
+	"res://scene/projectiles/fireprojectile.tscn",
+	"res://scene/projectiles/magicprojectile.tscn",
+	"res://scene/projectiles/bossprojectile.tscn",
+	"res://scene/projectiles/secondbossprojectile.tscn",
+	"res://scene/projectiles/acidpuddle.tscn",
+	"res://scene/projectiles/vine.tscn",
+]
+
+# Bit VALUES, not indices: layer N in the Project Settings list is 1 << (N - 1).
+const LAYER_PLAYER := 4            # layer 3
+const LAYER_ENEMIES := 8           # layer 4
+const LAYER_PLAYERPROJECTILE := 32 # layer 6
+const LAYER_ENEMYPROJECTILE := 64  # layer 7
+
+
+func _test_collision_contract() -> void:
+	section("COLLISION CONTRACT — can each projectile see what it damages?")
+
+	# EVERY NUMBER BELOW IS A BIT POSITION, and bit positions mean nothing on
+	# their own. Reordering the layer list in Project Settings renames the bits
+	# without touching a single scene, so every mask in the project would keep
+	# its value and quietly change its meaning. Check the names first, so a
+	# reorder fails here rather than in combat.
+	_check_layer_name(3, "player")
+	_check_layer_name(4, "enemies")
+	_check_layer_name(6, "playerprojectile")
+	_check_layer_name(7, "enemyprojectile")
+
+	for path in PLAYER_PROJECTILE_SCENES:
+		_check_projectile(path, LAYER_PLAYERPROJECTILE, "playerprojectile",
+			LAYER_ENEMIES, "enemies")
+
+	for path in ENEMY_PROJECTILE_SCENES:
+		_check_projectile(path, LAYER_ENEMYPROJECTILE, "enemyprojectile",
+			LAYER_PLAYER, "player")
+
+
+func _check_layer_name(index: int, expected: String) -> void:
+	var key: String = "layer_names/2d_physics/layer_%d" % index
+	var actual: String = str(ProjectSettings.get_setting(key, ""))
+	check("physics layer %d is still '%s'" % [index, expected],
+		actual == expected, "project settings say '%s'" % actual)
+
+
+func _check_projectile(path: String, want_layer: int, layer_name: String,
+		want_mask_bit: int, target_name: String) -> void:
+	var file_name: String = path.get_file()
+
+	if not ResourceLoader.exists(path):
+		check("%s exists" % file_name, false, path)
+		return
+
+	var packed: PackedScene = load(path) as PackedScene
+	if packed == null:
+		check("%s loads as a PackedScene" % file_name, false, path)
+		return
+
+	# instantiate() builds the node without entering the tree, so _ready() does
+	# not run and nothing this touches has side effects. free() rather than
+	# queue_free() because there is no tree to queue against.
+	var node: Node = packed.instantiate()
+	var area := node as CollisionObject2D
+	if area == null:
+		check("%s root is a CollisionObject2D" % file_name, false,
+			"got %s" % node.get_class())
+		node.free()
+		return
+
+	var layer: int = area.collision_layer
+	var mask: int = area.collision_mask
+	node.free()
+
+	check("%s lives on %s" % [file_name, layer_name],
+		layer == want_layer, "layer is %d, expected %d" % [layer, want_layer])
+
+	# THE ONE THAT MATTERS. A projectile whose mask misses its target's layer
+	# never receives a collision signal at all, so no amount of correct script
+	# below it will ever run.
+	check("%s can see %s" % [file_name, target_name],
+		(mask & want_mask_bit) != 0,
+		"mask %d does not include %d" % [mask, want_mask_bit])

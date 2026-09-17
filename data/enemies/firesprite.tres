@@ -8,4 +8,6 @@ enemy_id = "firesprite"
 display_name = "Fire Sprite"
 max_loot_tier = 2
 pet_drop_id = "petfiresprite"
-max_hp = 70
+xp_reward = 55
+attack_xp_reward = 12
+max_hp = 150

@@ -6,6 +6,8 @@
 script = ExtResource("1_enemydata")
 enemy_id = "bushmage"
 display_name = "Bush Mage"
+xp_reward = 65
+attack_xp_reward = 14
 max_loot_tier = 2
 pet_drop_id = "petmage"
-max_hp = 80
+max_hp = 175

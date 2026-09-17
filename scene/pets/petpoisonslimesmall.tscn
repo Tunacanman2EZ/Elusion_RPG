@@ -1180,12 +1180,11 @@ collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_jokcq")
 projectile_scene = ExtResource("2_541mq")
-projectile_damage = 6
+projectile_damage = 46
 muzzle_marker_prefix = "projectile"
 release_frame = 14
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=392472798]
-modulate = Color(0.41568628, 1, 1, 1)
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_et1wx")
 animation = &"attackup"

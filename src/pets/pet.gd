@@ -70,15 +70,22 @@ enum AttackType { PROJECTILE, VINE }
 
 # Name prefix of the per-direction Marker2D children that say where a
 # projectile leaves this pet. The four suffixes are always top, bottom, left
-# and right — so "orbspawn" finds orbspawntop, orbspawnbottom, orbspawnleft
-# and orbspawnright, which is exactly how every pet scene already names them.
+# and right — so "projectile" finds projectiletop, projectilebottom,
+# projectileleft and projectileright.
 #
-# Left EMPTY (the default) a pet keeps the old behaviour: the shot spawns
-# MUZZLE_OFFSET pixels from the pet's centre, straight toward the target.
-# That was the ONLY behaviour until now, which is why those orbspawn* and
-# arrowspawn* markers sat in the scenes entirely unread — nothing in this
-# script had ever looked a marker up. Set this on a pet and its markers start
-# mattering; leave it blank and nothing about that pet changes.
+# "projectile" IS THE PROJECT'S ONE SPELLING, and it was not always. The
+# sprites named their markers orbspawn*, the sniper arrowspawn*, and only the
+# slimes projectile* — three vocabularies for one idea, so every new scene was
+# a guess. A guess here fails SILENTLY: the lookup is exact and a miss just
+# falls back to the centre offset. They are all projectile* now, in the enemy
+# scenes as well as the pets.
+#
+# Left EMPTY (the default) a pet keeps the offset behaviour: the shot spawns
+# MUZZLE_OFFSET pixels from the pet's centre, straight toward the target. That
+# is correct for a pet with no muzzle — petmage spawns a vine at the player
+# rather than firing and has no markers at all. It is a BUG for a pet that does
+# have them: three of them carried four correctly-placed markers that nothing
+# read, because this was blank.
 @export var muzzle_marker_prefix: String = ""
 
 # NEW: which frame of the attack animation actually releases the shot, the
@@ -398,7 +405,25 @@ func _release_delay(anim: String) -> float:
 	var total: float = 0.0
 	for i in range(upto):
 		total += sf.get_frame_duration(anim, i)
-	return total / fps
+	# Scaled for the same reason as _attack_anim_duration() above.
+	return (total / fps) / _attack_speed_factor()
+
+
+func _attack_speed_factor() -> float:
+	# How much faster than its authored pacing this pet attacks right now.
+	#
+	# HALF THE BONUS, NOT HALF THE SPEED. The player's multiplier is reduced to
+	# its bonus (mult - 1), halved, then re-applied — so at agility 1 a pet runs
+	# at exactly its authored attack_cooldown rather than being penalised for the
+	# player having no agility yet. Multiplying by a half-multiplier instead
+	# would make every pet permanently twice as slow as its own tuning.
+	#
+	# Read live rather than cached, so a pet keeps up as the player levels
+	# without needing to be re-summoned.
+	if player == null or not player.has_method("get_attack_speed_multiplier"):
+		return 1.0
+	var bonus: float = player.get_attack_speed_multiplier() - 1.0
+	return maxf(0.01, 1.0 + bonus * PET_STAT_SHARE)
 
 
 func _get_scaled_cooldown(anim: String = "") -> float:
@@ -429,18 +454,22 @@ func _get_scaled_cooldown(anim: String = "") -> float:
 	# than the release on any real one and would put back the bug that stopped
 	# the small slime attacking at all. _release_delay knows nothing about the
 	# frames after the throw. The larger of the two is the only safe floor.
+	# THE FLOOR MOVES NOW, WHICH IS THE WHOLE POINT.
+	#
+	# This floor is the time the art needs, and for most pets it sat ABOVE the
+	# agility-shortened cooldown — so agility bought nothing. Measured before
+	# this changed: the small slime went from 2.40s at agility 1 to 2.40s at
+	# agility 99, completely inert, because its 23-frame attack at 10fps is 2.3s
+	# long on its own. The sniper and large slime gained 0.10s over ninety-eight
+	# levels. Only the electric and fire sprites saw as much as half a second.
+	#
+	# The animation is played faster too (see _play_attack), so its duration now
+	# shrinks by the same factor the cooldown does — _attack_anim_duration() and
+	# _release_delay() both return the scaled time. The floor follows the art
+	# down instead of pinning every pet to the art's authored length.
 	var anim_seconds: float = maxf(_attack_anim_duration(anim), _release_delay(anim))
 	var floor_seconds: float = maxf(MIN_ATTACK_COOLDOWN, anim_seconds + ATTACK_FOLLOW_THROUGH)
-
-	if player == null or not player.has_method("get_attack_speed_multiplier"):
-		return maxf(floor_seconds, attack_cooldown)
-
-	var bonus: float = player.get_attack_speed_multiplier() - 1.0
-	var effective: float = 1.0 + bonus * PET_STAT_SHARE
-	if effective <= 0.0:
-		return maxf(floor_seconds, attack_cooldown)
-
-	return maxf(floor_seconds, attack_cooldown / effective)
+	return maxf(floor_seconds, attack_cooldown / _attack_speed_factor())
 
 
 func _fire_at(target: Node) -> void:
@@ -556,7 +585,11 @@ func _attack_anim_duration(anim: String) -> float:
 	var fps: float = sf.get_animation_speed(anim)
 	if fps <= 0.0:
 		return FALLBACK
-	return float(sf.get_frame_count(anim)) / fps
+	# Divided by the speed factor because _play_attack() sets speed_scale to it:
+	# this reports how long the clip will ACTUALLY take, not how long it was
+	# authored to take. Both callers want the real one — the cooldown floor, and
+	# the attack lock in _fire_at().
+	return (float(sf.get_frame_count(anim)) / fps) / _attack_speed_factor()
 
 
 func _release_attack_lock_after(seconds: float, generation: int) -> void:
@@ -605,9 +638,10 @@ const MARKER_SUFFIX := {
 
 
 func _find_muzzle_marker(dir: Vector2) -> Node:
-	# MARKERS ARE top/bottom/left/right. One spelling, every scene, no
-	# fallbacks — every pet scene in the project already names them this way
-	# (orbspawntop, arrowspawnbottom, ...), so there is nothing to be lenient
+	# MARKERS ARE projectiletop / projectilebottom / projectileleft /
+	# projectileright. One spelling, every scene, no fallbacks — a lenient
+	# lookup would only hide a typo, and the prefix is what varies, not the
+	# four suffixes.
 	# about and a lenient lookup would only hide a typo.
 	#
 	# NOT to be confused with the ANIMATION suffixes, which are up/down/left/
@@ -701,6 +735,10 @@ func _dir_to_cardinal(dir: Vector2) -> String:
 # =============================================================================
 
 func _play_walk(dir: Vector2) -> void:
+	# Back to authored speed. speed_scale belongs to the sprite, not to the clip,
+	# so an attack that sped it up leaves it sped up — a pet would walk and idle
+	# at attack pace for the rest of its life.
+	_reset_anim_speed()
 	_play_directional("walk", dir)
 
 
@@ -708,15 +746,32 @@ func _play_attack(dir: Vector2) -> String:
 	# CHANGED: returns the animation it played so the caller can measure its
 	# length. force_restart is true because an attack must replay from frame
 	# 0 every time — see _play_directional().
-	return _play_directional("attack", dir, true)
+	#
+	# THE ANIMATION HAS TO KEEP UP WITH THE COOLDOWN. Shortening the gap between
+	# attacks without shortening the attack itself only means the next one
+	# interrupts the last — which is the failure _get_scaled_cooldown()'s floor
+	# exists to prevent, and the reason that floor made agility inert for pets.
+	# The player's own warrior has scaled its swing from the start
+	# (attack_animation_speed); pets never touched speed_scale at all, so their
+	# art always played at its authored rate however fast they were meant to go.
+	var anim: String = _play_directional("attack", dir, true)
+	if anim != "" and has_node("animatedsprite2d"):
+		($animatedsprite2d as AnimatedSprite2D).speed_scale = _attack_speed_factor()
+	return anim
 
 
 func _play_idle() -> void:
+	_reset_anim_speed()
 	if has_node("animatedsprite2d"):
 		var sprite: AnimatedSprite2D = $animatedsprite2d
 		if sprite.sprite_frames != null and sprite.sprite_frames.has_animation("idledown"):
 			if sprite.animation != "idledown":
 				sprite.play("idledown")
+
+
+func _reset_anim_speed() -> void:
+	if has_node("animatedsprite2d"):
+		($animatedsprite2d as AnimatedSprite2D).speed_scale = 1.0
 
 
 func _play_directional(prefix: String, dir: Vector2, force_restart: bool = false) -> String:

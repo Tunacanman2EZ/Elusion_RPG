@@ -663,11 +663,11 @@ collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_qunwq")
 projectile_scene = ExtResource("2_1thn1")
+projectile_damage = 38
 release_frame = 5
+muzzle_marker_prefix = "arrowspawn"
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=2055609014]
-modulate = Color(0.10980392, 0.9607843, 0.9411765, 1)
-self_modulate = Color(0.84313726, 0.41960785, 1, 1)
 y_sort_enabled = true
 sprite_frames = SubResource("SpriteFrames_r0rwy")
 animation = &"attackup"

@@ -1,10 +1,22 @@
+# mage character — glass-cannon caster that drops AOE damage at the cursor.
+#
+# THIS COMMENT USED TO START MID-SENTENCE. The opening lines were lost at some
+# point and the file began "# - high stamina growth", a bullet belonging to a
+# list whose heading no longer existed. Nothing breaks when a header goes
+# missing, which is why it stayed missing.
+#
+# class identity:
+# - lowest HP in the game (squishy floor) and the deepest mana pool
 # - high stamina growth — kiting survival fuel, not flee
 # - 1 ability: stalagmite drop, drops at cursor for AOE damage
+# - magic skill climbs 50% faster than for any other class (see
+#   _set_skill_proficiency)
 #
-# stat curve (recompute-from-level, set in _set_stat_curve):
-#   HP   110 base / +5  per level   (squishy floor)
-#   Mana 250 base / +16 per level   (deepest pool — mana IS the power budget)
-#   Stam  40 base / +7  per level   (kite survival)
+# THE STAT CURVE IS NOT WRITTEN DOWN HERE ON PURPOSE. It lives in
+# data/classes/mage.tres and nowhere else. It used to be listed here too, which
+# is a second copy nobody can check against the first — the moment the .tres is
+# retuned the comment is a lie that reads like documentation. CLASS_DATA below
+# is the one source.
 #
 # animation flow:
 # - mage plays directional cast animation (attackdown/up/left/right) with
@@ -20,8 +32,10 @@
 # the cast animation visually, the stalagmite still drops correctly.
 #
 # input model:
-# - spacebar (attack action) → parent calls attack_action() → delegates to cast
-# - right-click polled in _physics_process (UI can absorb InputEvent otherwise)
+# - spacebar OR right-click → player.gd's _poll_attack_pressed() → this class's
+#   attack_action() → the cast. mage used to poll right-click privately; that
+#   copy is gone, because attack_action() IS the cast and the shared path lands
+#   on exactly the spell the private poll was reaching for.
 extends "res://src/characters/player.gd"
 
 # This class's stat curve. See ClassData — hp_base and friends used to be
@@ -38,13 +52,13 @@ const CLASS_DATA := preload("res://data/classes/mage.tres")
 @export var target_circle_scene: PackedScene
 
 # mana drained per stalagmite cast
-@export var spell_mana_cost: int = 15
+@export var spell_mana_cost: int = 11
 
 # cooldown between casts (seconds). prevents spell spam beyond animation duration.
 @export var spell_cooldown: float = 0.45
 
 # damage scales with magic skill: total = magic × damage_per_magic
-@export var damage_per_magic: int = 25
+@export var damage_per_magic: int = 42
 
 
 # =============================================================================
@@ -72,7 +86,7 @@ func _set_stat_curve() -> void:
 
 
 # =============================================================================
-# SKILL PROFICIENCY  (NEW)
+# SKILL PROFICIENCY
 # =============================================================================
 
 func _set_skill_proficiency() -> void:
@@ -81,6 +95,10 @@ func _set_skill_proficiency() -> void:
 	# hits too (universal now — see player.gd's gain_attack_xp()), just at
 	# the base 1.0 rate, unlike warrior's boosted melee. starting value,
 	# tune to taste.
+	#
+	# This replaced a flat +1 magic / +1 agility granted on every character
+	# level-up, which paid out however the level was earned — a mage who
+	# levelled on fishing XP got spell power for it. This only pays for casting.
 	skill_proficiency["magic"] = 1.5
 
 
@@ -126,9 +144,9 @@ func attack_action() -> void:
 # =============================================================================
 
 func _cast_stalagmite_drop() -> void:
-	# core cast function. called from attack_action (spacebar) AND from
-	# _physics_process (right-click). validates state, deducts mana, plays
-	# animation, spawns spell at cursor, then starts the cooldown.
+	# The cast. Reached from attack_action(), which both spacebar and
+	# right-click dispatch to. Validates state, deducts mana, plays the
+	# animation, spawns the spell at the cursor, then holds the cooldown.
 
 	# guards: already casting, not enough mana, missing scene reference
 	if is_casting:
@@ -164,10 +182,18 @@ func _cast_stalagmite_drop() -> void:
 	_play_cast_animation()
 	_spawn_stalagmite()
 
-	# cooldown unlocks casting after spell_cooldown seconds. this is the
-	# only way is_casting clears — no animation_finished hook needed since
-	# we don't gate on is_attacking.
+	# Cooldown unlocks casting after spell_cooldown seconds. This is the ONLY
+	# way is_casting clears — there is no animation_finished hook, because the
+	# cast deliberately doesn't gate on is_attacking.
+	#
+	# WHICH MAKES THE GUARD BELOW LOAD-BEARING, not defensive decoration. The
+	# line after the await writes a member of `self`, and a mage who dies or
+	# leaves the scene inside those 0.45 seconds is freed while this timer keeps
+	# running. Same await hazard, same guard, as warrior's attack lock and
+	# tank's activate_expand.
 	await get_tree().create_timer(spell_cooldown).timeout
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
 	is_casting = false
 
 
@@ -175,10 +201,13 @@ func _play_cast_animation() -> void:
 	# play directional cast animation matching last_direction.
 	# walk animation will override visually if the player moves during the
 	# cast — acceptable tradeoff for kite-while-casting gameplay.
-	if not has_node("animatedsprite2d"):
+	# get_node_or_null() rather than has_node() then $node, which walked the
+	# same path twice to answer one question. sprite_frames is checked too:
+	# has_animation() on a null SpriteFrames is a crash, not a false.
+	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
+	if sprite == null or sprite.sprite_frames == null:
 		return
 
-	var sprite: AnimatedSprite2D = $animatedsprite2d
 	var cast_anim: String = "attack" + _direction_to_string(last_direction)
 	if sprite.sprite_frames.has_animation(cast_anim):
 		sprite.play(cast_anim)
@@ -194,12 +223,12 @@ func _spawn_stalagmite() -> void:
 	# (not to mage) so the spell stays at cursor location if mage moves
 	# during the fall animation. spell.tscn plays its own 8-frame fall
 	# animation and damages on impact frame (frame 4).
-	var spell = target_circle_scene.instantiate()
+	var spell: Node = target_circle_scene.instantiate()
 	get_tree().current_scene.add_child(spell)
 	spell.global_position = get_global_mouse_position()
 
-	# FIXED: the target circle used to SLIDE into place instead of appearing
-	# at the cursor.
+	# The target circle used to SLIDE into place instead of appearing at the
+	# cursor.
 	#
 	# This project runs physics_interpolation, so the renderer draws every node
 	# blended between its previous and current physics transforms. A node that
@@ -215,14 +244,17 @@ func _spawn_stalagmite() -> void:
 	# tick. At 180 ticks/second that was 5.6ms and invisible. At 80 it is
 	# 12.5ms, and 12.5ms of movement is something an eye catches.
 	spell.reset_physics_interpolation()
-	# CHANGED: was magic * damage_per_magic — magic-only, and damage_per_magic
-	# was acting as a "per point" multiplier rather than a flat base. now
-	# damage_per_magic is a flat base damage value, scaled by
-	# get_damage_multiplier() — the same shared function every class's
-	# damage uses (see player.gd), which already folds magic in, plus
-	# attack too. same export, same default (25), reinterpreted role.
-	spell.explosion_damage = int(damage_per_magic * get_damage_multiplier())
-	# NEW: identifies the mage for spelltargetcircle.gd's XP-on-hit — same
+	# damage_per_magic is a flat base damage value scaled by
+	# get_damage_multiplier(), the shared function every class's damage uses
+	# (see player.gd), which folds in magic AND attack. It was magic *
+	# damage_per_magic — magic-only, with damage_per_magic acting as a "per
+	# point" multiplier. Same export, same default (25), reinterpreted role.
+	# Guarded the same way `caster` is, two lines down. Assigning a property a
+	# scene may not have is a hard error, and the two assignments had no reason
+	# to disagree about how careful to be.
+	if "explosion_damage" in spell:
+		spell.explosion_damage = int(damage_per_magic * get_damage_multiplier())
+	# Identifies the mage for spelltargetcircle.gd's XP-on-hit — same
 	# pattern as slashwave.gd's caster reference for warrior. this is what
 	# lets the spell grant attack XP (universal) AND magic XP (mage's
 	# boosted specialty) back to whoever cast it, on impact. the spell
@@ -231,16 +263,6 @@ func _spawn_stalagmite() -> void:
 	# script, not this one.
 	if "caster" in spell:
 		spell.caster = self
-
-
-# =============================================================================
-# LEVEL-UP SKILL BONUS  (REMOVED)
-# =============================================================================
-# CHANGED: used to grant a flat +1 magic / +1 agility on every character
-# level-up. now that skill_proficiency exists (see _set_skill_proficiency()
-# above), magic climbs faster for mage through actual spell casts, not
-# just from leveling up via ANY combat. no override needed anymore; falls
-# back to player.gd's no-op base.
 
 
 # =============================================================================

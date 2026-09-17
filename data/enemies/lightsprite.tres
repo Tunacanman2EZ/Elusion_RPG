@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" uid="uid://bbmcaokoqjh1i" path="res://src/types/enemydata.gd" id="1_enemydata"]
+
+[resource]
+script = ExtResource("1_enemydata")
+enemy_id = "lightsprite"
+display_name = "Light Sprite"
+element = 2
+body_tint = Color(0.99215686, 0.9019608, 0.5411765, 1)
+projectile_damage = 10
+max_hp = 115
+xp_reward = 40
+attack_xp_reward = 9
+bag_drop_chance = 0.35
+max_loot_tier = 2
+max_item_slots = 3
+slot_fill_chance = 0.18
+metadata/_custom_type_script = "uid://bbmcaokoqjh1i"

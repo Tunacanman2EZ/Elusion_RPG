@@ -656,7 +656,7 @@ animations = [{
 }]
 
 [node name="petelectricsprite" type="CharacterBody2D" unique_id=289962471]
-modulate = Color(0.05490196, 0.30980393, 1, 1)
+modulate = Color(0.4019608, 0.9372549, 0.15294118, 1)
 y_sort_enabled = true
 texture_filter = 1
 scale = Vector2(0.5, 0.5)
@@ -665,7 +665,9 @@ collision_mask = 3
 motion_mode = 1
 script = ExtResource("1_5c5lp")
 projectile_scene = ExtResource("2_lnesc")
+projectile_damage = 40
 release_frame = 5
+muzzle_marker_prefix = "orbspawn"
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1382034932]
 sprite_frames = SubResource("SpriteFrames_1up8b")

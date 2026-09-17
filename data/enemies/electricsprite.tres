@@ -8,4 +8,6 @@ enemy_id = "electricsprite"
 display_name = "Electric Sprite"
 max_loot_tier = 2
 pet_drop_id = "petelectricsprite"
-max_hp = 60
+xp_reward = 45
+attack_xp_reward = 10
+max_hp = 130

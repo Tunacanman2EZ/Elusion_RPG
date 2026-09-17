@@ -14,6 +14,7 @@ item_id = "petpoisonslimelarge"
 display_name = "Large Slime Companion"
 description = "Apple Kool-aid!"
 icon = SubResource("AtlasTexture_reoc6")
+icon_tint = Color(0.7137255, 1, 0.3019608, 1)
 max_stack = 1
 value = 2000
 tier = 5

@@ -1,13 +1,26 @@
 # slashwave.gd — sword-wave projectile fired by the warrior on every attack swing.
-# uses 4 separate directional animations (slashleft / slashright / slashup /
-# slashdown) so no sprite rotation is needed — each direction has its own art.
+#
+# FIRES AT ANY ANGLE. The warrior aims at the cursor, so there are not four
+# directions here, there are 360 degrees of them, and three separate things
+# have to agree about that:
+#
+#   spawn point   warrior.gd offsets it along the exact aim vector    360
+#   travel        `direction` keeps the exact vector, unrounded        360
+#   hitbox        one box, rotated onto the travel angle               360
+#   animation     snapped to the nearest of 4, because 4 were drawn      4
+#
+# Only the last one snaps, and it is the only one a player cannot feel: a
+# diagonal wave shows the leftward slash sprite while flying and cutting
+# up-left. When the diagonal art arrives, `direction_name` gains four cases
+# and nothing else in this file changes.
 #
 # usage:
 # - warrior instantiates the scene and calls add_child
-# - then calls shoot(direction_string) which sets direction + plays animation
+# - then calls shoot_vector(aim) which sets direction, animation and hitbox
+#   (shoot(name) is the cardinal-only convenience form, unused by warrior)
 # - the wave moves in a straight line until hit, screen exit, or impact
-# - NEW: warrior also sets `caster` right after spawning, so a successful
-#   hit can grant magic XP back to whoever fired it (see MAGIC XP below).
+# - warrior also sets `caster` right after spawning, so a successful hit can
+#   grant magic XP back to whoever fired it (see MAGIC XP below).
 #
 # damage rules (different from arrow/fire/magic):
 # - damages enemies, NOT players (warrior wave is friendly fire-free)
@@ -18,12 +31,12 @@
 # - despawns on any other body (walls, props)
 # - despawns when fully off-screen via VisibleOnScreenNotifier2D
 #
-# animation timing:
-# the slash animation is played in shoot() rather than _ready() because
-# direction_name isn't known until shoot() is called by the warrior. _ready
-# fires at add_child time, BEFORE the warrior sets the direction.
+# animation and hitbox timing:
+# both are set from the firing call rather than _ready(), because neither the
+# direction nor the angle is known until the warrior makes it. _ready() fires
+# at add_child time, BEFORE the warrior has said which way this wave is going.
 #
-# MAGIC XP ON HIT (NEW):
+# MAGIC XP ON HIT:
 # the slashwave is the ranged/magic-flavored half of warrior's kit — basic
 # melee swings already grant attack XP (see warrior.gd's _try_damage()).
 # a successful slashwave hit grants magic_xp_on_hit magic XP to `caster`,
@@ -37,61 +50,64 @@ class_name SlashWave
 # =============================================================================
 # HITBOX GEOMETRY
 # =============================================================================
-# NEW: per-direction hitbox, measured from the actual visible pixels of each
-# slash sprite.
+# ONE hitbox, defined relative to the direction of travel and rotated onto it.
+# Not four axis-aligned boxes chosen by cardinal name.
 #
-# THE BUG THIS FIXES: the scene ships a single CircleShape2D with radius 32 —
-# a 64x64 hit area — used for all four directions. But the art is a thin
-# directional slash: 50x17 horizontally, 39x29 vertically, drawn off-centre
-# on a 64x64 canvas. So the hitbox stuck out well past the visible wave,
-# worst of all PERPENDICULAR to the slash, where a horizontal wave was
-# nearly four times taller in collision than in pixels.
+# HOW THIS ARRIVED HERE, because the shape of the mistake matters twice:
 #
-# The symptom was the wave appearing to vanish before reaching an enemy
-# while the enemy still took damage — which is exactly right, because the
-# hit was real. The oversized circle touched the enemy, dealt damage and
-# despawned the wave, all while the art was still short of the target.
+# 1. The scene ships a single CircleShape2D of radius 32 — a 64x64 hit area
+#    for every direction. The art is a thin directional slash: 50x17
+#    horizontally, 39x29 vertically, drawn off-centre on a 64x64 canvas. So
+#    the hitbox stuck out well past the visible wave, worst of all
+#    PERPENDICULAR to the slash, where a horizontal wave was nearly four
+#    times taller in collision than in pixels. The symptom was the wave
+#    appearing to vanish before reaching an enemy while the enemy still took
+#    damage — correct behaviour, in fact: the oversized circle really did
+#    touch, damage and despawn while the art was still short of the target.
 #
-# Sizes and offsets are in the Area2D's own space, i.e. sprite-local pixels
-# recentred on the 64x64 canvas plus the (0, 8) offset both the sprite and
-# the collision node already carry in the scene.
-# CHANGED AGAIN: these were briefly pixel-exact to each sprite's bounding
-# box, which was wrong for a different reason. A slash wave is an AREA
-# sweep, and what decides how many enemies it catches is its extent
-# PERPENDICULAR to travel — how wide a swathe the blade covers — not its
-# bounding box.
+# 2. Replacing it with four per-direction rects fixed that for the four
+#    cardinals and broke it everywhere else, because the wave does not
+#    travel in four directions. shoot_vector() takes any angle, and an
+#    axis-aligned box on a diagonal wave sits up to 17px to the SIDE of the
+#    line the wave is actually flying along — nearly half a wave-width, on a
+#    38px wave. Same failure as the circle, opposite sign: the art sweeps
+#    through an enemy and the hitbox misses it.
 #
-# Measured off the art, that perpendicular sweep was wildly asymmetric:
+# So the box is described once, in the wave's own frame of reference, and put
+# where the wave is going:
 #
-#     slashup / slashdown      38px sweep   (a proper wide crescent)
-#     slashleft / slashright   16px sweep   (a thin flat streak, mostly tail)
+#     THICKNESS   along travel        — how deep the cutting edge is
+#     SWEEP       across travel       — how wide a swathe it cleaves
+#     REACH       ahead of the origin — where the crescent sits
 #
-# So swinging vertically cleaved a swathe more than TWICE as wide as
-# swinging horizontally — same ability, same mana, less than half the
-# coverage depending on which way you happened to face. That's an art
-# asymmetry, not a code one, but it plays as a bug.
+# SWEEP is 38 for every direction on purpose. Measured off the art it wasn't:
+# slashup/slashdown are proper 38px crescents while slashleft/slashright are
+# 16px flat streaks that are mostly tail, so swinging vertically cleaved a
+# swathe more than twice as wide as swinging horizontally — same ability,
+# same mana, less than half the coverage depending on which way you happened
+# to be facing. That is an art asymmetry rather than a code one, but it plays
+# as a bug, so the code refuses to reproduce it.
 #
-# These rects give all four directions the same 38px sweep (the width the
-# vertical arcs already had) and anchor the box on the CRESCENT — the
-# leading edge that does the cutting — rather than on the trailing streak,
-# which shouldn't damage anything.
+# KNOWN TRADEOFF, unchanged from when the rects did this: the horizontal art
+# really is only ~17px tall, so its hitbox is taller than its visible pixels.
+# Deliberate — it buys consistent coverage — but a left/right wave can catch
+# an enemy slightly above or below the visible streak. The proper fix is
+# redrawing slashleft/slashright as full crescents; then these numbers
+# describe the art exactly.
 #
-# KNOWN TRADEOFF: because the horizontal art really is only ~17px tall, its
-# hitbox is now taller than its visible pixels. That is deliberate — it
-# buys consistent coverage — but it means a left/right wave can catch an
-# enemy slightly above or below the visible streak. The proper fix is
-# redrawing slashleft/slashright as full crescents to match slashup and
-# slashdown; then these numbers describe the art exactly.
-#
-# Sizes and offsets are in the Area2D's own space: sprite-local pixels
-# recentred on the 64x64 canvas, plus the (0, 8) offset the sprite and
-# collision nodes already carry in the scene.
-const HITBOX_RECTS := {
-	"right": { "size": Vector2(18, 38), "offset": Vector2( 13.0,  12.5) },
-	"left":  { "size": Vector2(18, 38), "offset": Vector2(-19.0,  12.5) },
-	"up":    { "size": Vector2(38, 18), "offset": Vector2( -0.5,  -7.0) },
-	"down":  { "size": Vector2(38, 18), "offset": Vector2( -0.5,  20.0) },
-}
+# REACH is the average of the four distances the per-direction rects used
+# (13, 19, 12, 15). Any single number has to be, now that one box serves every
+# angle — the individual values differed because the four sprites are drawn
+# off-centre by different amounts, not because the ability reaches further
+# to the left.
+const HITBOX_THICKNESS: float = 18.0
+const HITBOX_SWEEP: float = 38.0
+const HITBOX_REACH: float = 15.0
+
+# The wave's visual centre inside this Area2D. The sprite and the authored
+# CollisionShape2D both carry this offset in slashwave.tscn, so the hitbox is
+# placed from here rather than from the node origin.
+const SPRITE_CENTRE := Vector2(0, 8)
 
 
 # =============================================================================
@@ -210,8 +226,11 @@ func _physics_process(delta: float) -> void:
 # =============================================================================
 
 func shoot(dir: String) -> void:
-	# cardinal-direction interface — primary path used by warrior.gd.
-	# sets direction vector + name, then plays the matching animation.
+	# Cardinal-direction convenience interface. NOT the path warrior takes —
+	# warrior calls shoot_vector() with the raw cursor aim — but kept because
+	# every other projectile in the project offers the same pair, and a future
+	# caller that genuinely only knows "left" shouldn't have to build a vector
+	# to say so.
 	direction_name = dir
 	match dir:
 		"left":  direction = Vector2.LEFT
@@ -223,9 +242,18 @@ func shoot(dir: String) -> void:
 
 
 func shoot_vector(dir: Vector2) -> void:
-	# arbitrary-angle interface for future warrior abilities (rotational
-	# strike, follow-up combo waves, etc.). snaps the angle to nearest
-	# cardinal for animation lookup since we only have 4 directional sprites.
+	# The real entry point: warrior aims at the cursor, so this takes any angle.
+	#
+	# TRAVEL AND HITBOX ARE FULL 360. ANIMATION IS NOT, and that split is the
+	# whole design. `direction` keeps the exact angle and drives both the
+	# straight-line motion in _physics_process() and the rotated collision box
+	# in _apply_directional_hitbox(). `direction_name` snaps to the nearest of
+	# four purely to pick a sprite, because only four were drawn.
+	#
+	# So a wave fired up-left flies up-left and cuts up-left, while showing the
+	# leftward slash art. The remaining mismatch is what a viewer sees, not
+	# what the game does — it closes when the diagonal sprites are drawn, and
+	# nothing here has to change when they are.
 	direction = dir.normalized()
 	if abs(direction.x) > abs(direction.y):
 		direction_name = "right" if direction.x > 0 else "left"
@@ -254,15 +282,17 @@ func _play_directional_animation() -> void:
 
 
 func _apply_directional_hitbox() -> void:
-	# NEW: resize the collision shape to match the slash art for whichever
-	# direction this wave is travelling. See HITBOX_RECTS above for why the
-	# single 64x64 circle in the scene was wrong.
+	# Build the collision shape for the angle this wave is actually flying at.
+	# See HITBOX GEOMETRY above for why it is one rotated box rather than four
+	# fixed ones, and why the scene's 64x64 circle was wrong before either.
 	var shape_node: CollisionShape2D = get_node_or_null("CollisionShape2D")
 	if shape_node == null:
 		return
 
-	var spec: Dictionary = HITBOX_RECTS.get(direction_name, {})
-	if spec.is_empty():
+	# direction is normalized by shoot()/shoot_vector() before this runs. A
+	# zero vector would have no angle to rotate onto, so leave the authored
+	# shape alone rather than installing a box pointing at 0°.
+	if direction == Vector2.ZERO:
 		return
 
 	# A FRESH shape per wave, deliberately. Shapes are Resources, and the one
@@ -270,12 +300,20 @@ func _apply_directional_hitbox() -> void:
 	# mutating it in place would resize every other wave currently in flight,
 	# and the change would persist into the next one spawned.
 	var rect := RectangleShape2D.new()
-	rect.size = spec["size"] * hitbox_scale
+	rect.size = Vector2(HITBOX_THICKNESS, HITBOX_SWEEP) * hitbox_scale
 
 	shape_node.shape = rect
-	# the offset scales too, so growing the hitbox keeps it centred on the
-	# crescent instead of drifting back toward the wave's origin.
-	shape_node.position = spec["offset"] * hitbox_scale
+
+	# ROTATION IS WHAT MAKES THE SIZE MEAN ANYTHING. The rect is authored with
+	# its x axis along travel and its y axis across it; turning the node so
+	# local +x points down the travel line is what turns "18 thick, 38 wide"
+	# from a claim about the screen into a claim about the wave.
+	shape_node.rotation = direction.angle()
+
+	# Centred on the wave's visual middle, pushed forward along the exact aim
+	# angle. The reach scales with hitbox_scale so growing the box keeps it on
+	# the crescent instead of letting it drift back toward the origin.
+	shape_node.position = SPRITE_CENTRE + direction * (HITBOX_REACH * hitbox_scale)
 
 
 # =============================================================================
