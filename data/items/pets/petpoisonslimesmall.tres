@@ -17,6 +17,7 @@ icon = SubResource("AtlasTexture_xggk7")
 max_stack = 1
 value = 2000
 tier = 5
+droppable = false
 type = 5
 pet_scene = ExtResource("2_fvrrx")
 pet_source_name = "Poison Slime"

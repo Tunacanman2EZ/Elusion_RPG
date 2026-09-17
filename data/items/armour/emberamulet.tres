@@ -12,6 +12,7 @@ icon = ExtResource("1_icon")
 max_stack = 1
 value = 1550
 tier = 5
+droppable = false
 required_level = 22
 type = 2
 equip_slot = 8

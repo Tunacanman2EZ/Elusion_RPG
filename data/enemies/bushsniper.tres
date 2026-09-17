@@ -6,6 +6,7 @@
 script = ExtResource("1_enemydata")
 enemy_id = "bushsniper"
 display_name = "Bush Sniper"
+element = 0
 xp_reward = 65
 attack_xp_reward = 14
 max_loot_tier = 2

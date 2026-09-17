@@ -6,10 +6,11 @@
 script = ExtResource("1_enemydata")
 enemy_id = "boss"
 display_name = "The Crowned"
+element = 1
 xp_reward = 700
 attack_xp_reward = 90
 bag_drop_chance = 1.0
-max_loot_tier = 3
+max_loot_tier = 5
 max_item_slots = 4
 slot_fill_chance = 0.9
 max_hp = 1300

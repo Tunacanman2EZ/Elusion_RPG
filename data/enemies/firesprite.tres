@@ -6,6 +6,7 @@
 script = ExtResource("1_enemydata")
 enemy_id = "firesprite"
 display_name = "Fire Sprite"
+element = 6
 max_loot_tier = 2
 pet_drop_id = "petfiresprite"
 xp_reward = 55
