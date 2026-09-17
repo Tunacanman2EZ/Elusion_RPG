@@ -644,6 +644,18 @@ func _export_enemies(constants: Dictionary) -> Array:
 			"display_name":      enemy.display_name,
 			"resource":          path,
 			"grants_rewards":    enemy.grants_rewards,
+			# The server does not use this YET. It is here because elemental
+			# damage is a design commitment rather than a maybe, and the moment
+			# the server resolves a resistance it needs to know what hit the
+			# player — at which point a field that has been in the contract all
+			# along costs nothing, and one that has not means every deployed
+			# client is sending kills the server cannot price.
+			#
+			# body_tint and projectile_damage are deliberately NOT here. A
+			# colour is how the player recognises an element and a projectile's
+			# damage is client simulation; neither helps the server decide what
+			# a kill is worth, which is the line this file draws.
+			"element":           enemy.element,
 			"max_hp":            enemy.max_hp,
 			"xp_reward":         enemy.xp_reward,
 			"attack_xp_reward":  enemy.attack_xp_reward,
