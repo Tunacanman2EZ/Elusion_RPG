@@ -75,6 +75,36 @@ const TYPE_NAMES := [
 	"FISH",
 ]
 
+# Everything _fail() and _warn() have said this run.
+#
+# WHY COUNTERS AND NOT JUST push_error(). Two reasons, and the second is the
+# one that actually bit.
+#
+# First, restore_amount / restore_target are checked in _export_items(), where
+# the ItemData is still open, because they are not in the exported rows - the
+# server does not read them. A verdict found there has to reach _validate(),
+# which is the thing that decides whether to write.
+#
+# Second, and worse: push_error() and push_warning() render in the DEBUGGER
+# panel, while print() renders in OUTPUT. The export summary is printed, so a
+# clean-looking Output pane says nothing whatsoever about whether the checks
+# passed - the boss's decorative pet odds were flagged on the very first run
+# and went unread, because the warning was in a tab nobody had open. A check
+# that reports somewhere you are not looking is not a check. So the verdict is
+# printed alongside the summary, in the pane that is actually being read.
+var _errors: int = 0
+var _warnings: int = 0
+
+
+func _fail(message: String) -> void:
+	push_error("exportgamedata: " + message)
+	_errors += 1
+
+
+func _warn(message: String) -> void:
+	push_warning("exportgamedata: " + message)
+	_warnings += 1
+
 
 # =============================================================================
 # ENTRY POINT
@@ -82,19 +112,21 @@ const TYPE_NAMES := [
 
 func _run() -> void:
 	# Constants first: _export_enemies() needs the pet-odds table out of them.
+	_errors = 0
+	_warnings = 0
 	var constants: Dictionary = _export_constants()
 	var items: Array = _export_items()
 	var enemies: Array = _export_enemies(constants)
 	var classes: Array = _export_classes()
 
 	if items.is_empty():
-		push_error("exportgamedata: found no items under %s — refusing to write an empty catalogue." % ITEMS_PATH)
+		_fail("found no items under %s — refusing to write an empty catalogue." % ITEMS_PATH)
 		return
 	if enemies.is_empty():
-		push_error("exportgamedata: found no enemy profiles under %s — refusing to write an empty roster." % ENEMIES_PATH)
+		_fail("found no enemy profiles under %s — refusing to write an empty roster." % ENEMIES_PATH)
 		return
 	if classes.is_empty():
-		push_error("exportgamedata: found no class curves under %s — refusing to write. The server would fall back to trusting the client's max_hp." % CLASSES_PATH)
+		_fail("found no class curves under %s — refusing to write. The server would fall back to trusting the client's max_hp." % CLASSES_PATH)
 		return
 
 	var payload: Dictionary = {
@@ -107,12 +139,16 @@ func _run() -> void:
 	}
 
 	if not _validate(constants, items, enemies):
+		# Printed as well as pushed, for the same reason the verdict below is:
+		# an export that refuses to write and says so only in the Debugger looks
+		# from Output like an export that simply did not run.
+		print("exportgamedata: REFUSED TO WRITE — %d error(s), %d warning(s). Open Debugger > Errors." % [_errors, _warnings])
 		push_error("exportgamedata: validation failed — nothing written. Fix the errors above and run again.")
 		return
 
 	var file := FileAccess.open(OUTPUT_PATH, FileAccess.WRITE)
 	if file == null:
-		push_error("exportgamedata: could not open %s for writing (%d)" % [OUTPUT_PATH, FileAccess.get_open_error()])
+		_fail("could not open %s for writing (%d)" % [OUTPUT_PATH, FileAccess.get_open_error()])
 		return
 
 	# Sorted keys and an indent so the file diffs cleanly in git. Without
@@ -143,11 +179,37 @@ func _run() -> void:
 				enemy["enemy_id"], enemy["max_hp"],
 			])
 			continue
+		# An empty pet_drop_id printed as-is is just trailing whitespace, which
+		# looks identical to a pet whose name happens to be off the end of the
+		# line. Say it.
+		var pet_label: String = String(enemy["pet_drop_id"])
+		if pet_label == "":
+			pet_label = "(no pet — odds unused)"
+		elif String(enemy["rare_pet_drop_id"]) != "":
+			pet_label += " / %s @ %.0f%%" % [
+				enemy["rare_pet_drop_id"], enemy["rare_pet_chance"] * 100.0,
+			]
+
 		print("    %-18s hp %-5d xp %-5d bag %.0f%%  tier %d  pet 1/%-5d %s" % [
 			enemy["enemy_id"], enemy["max_hp"], enemy["xp_reward"],
 			enemy["bag_drop_chance"] * 100.0, enemy["max_loot_tier"],
-			enemy["pet_odds"], enemy["pet_drop_id"],
+			enemy["pet_odds"], pet_label,
 		])
+
+	# Last, and after the write, because it is a headcount rather than a verdict
+	# — it reports on data that just passed. Printing it from inside _validate()
+	# put it above the "wrote ..." line, which read like a complaint about the
+	# export instead of a note about the catalogue.
+	_report_reachability(items, enemies)
+
+	# THE VERDICT, IN THE PANE YOU ARE READING. Errors cannot be non-zero here —
+	# _validate() would have returned before the write — so this line is really
+	# about the warnings, which are the ones that do not stop anything and are
+	# therefore the ones that get missed.
+	if _warnings == 0:
+		print("    validation: clean.")
+	else:
+		print("    validation: %d warning(s) — open Debugger > Errors to read them." % _warnings)
 
 
 # =============================================================================
@@ -171,16 +233,32 @@ func _validate(constants: Dictionary, items: Array, enemies: Array) -> bool:
 	for item in items:
 		known[item["item_id"]] = true
 
-	var ok: bool = true
-
 	for enemy in enemies:
 		for field in ["pet_drop_id", "rare_pet_drop_id"]:
 			var item_id: String = String(enemy.get(field, ""))
 			if item_id == "":
 				continue          # no pet is a normal, valid state
 			if not known.has(item_id):
-				push_error("exportgamedata: enemy '%s' has %s = '%s', but no item with that item_id exists. That pet can never drop." % [enemy["enemy_id"], field, item_id])
-				ok = false
+				_fail("enemy '%s' has %s = '%s', but no item with that item_id exists. That pet can never drop." % [enemy["enemy_id"], field, item_id])
+
+		# ODDS WITH NOTHING BEHIND THEM. roll_pet() reads pet_drop_id FIRST and
+		# returns false on an empty one, before it ever looks at pet_odds — so an
+		# enemy that grants rewards, carries a pet rate, and names no pet has a
+		# roll that cannot pay out. Nothing is broken; the number is simply
+		# decorative, and the export line reads "pet 1/216" as though it were not.
+		#
+		# A WARNING RATHER THAN AN ERROR because "no pet authored yet" is a real
+		# and temporary state — it is exactly where the boss sits today, and
+		# refusing to export over it would block the game on an item that has not
+		# been drawn. The moment the .tres exists this goes quiet on its own.
+		#
+		# Skipped for an enemy that grants no rewards at all: the large slime
+		# splits rather than dying, so none of its reward fields mean anything and
+		# saying so every export would be noise.
+		if bool(enemy.get("grants_rewards", false)) \
+				and int(enemy.get("pet_odds", 0)) > 0 \
+				and String(enemy.get("pet_drop_id", "")) == "":
+			_warn("enemy '%s' has pet odds of 1/%d but no pet_drop_id — roll_pet() returns false before it reads the odds, so that rate is decorative." % [enemy["enemy_id"], int(enemy.get("pet_odds", 0))])
 
 	# Gold is appended to every bag by id, through the same has_item() gate. A
 	# missing one does not break the drop — it silently removes gold from every
@@ -188,10 +266,141 @@ func _validate(constants: Dictionary, items: Array, enemies: Array) -> bool:
 	for key in ["gold_small_id", "gold_large_id"]:
 		var gold_id: String = String(constants.get(key, ""))
 		if gold_id == "" or not known.has(gold_id):
-			push_error("exportgamedata: constants.%s = '%s' names no existing item. Loot bags would contain no gold." % [key, gold_id])
-			ok = false
+			_fail("constants.%s = '%s' names no existing item. Loot bags would contain no gold." % [key, gold_id])
 
-	return ok
+	_validate_recipes(items, known)
+	_validate_skill_curves(constants)
+
+	# Every check above reports through _fail(), including the restore checks
+	# run back in _export_items(). One counter, one verdict.
+	return _errors == 0
+
+
+func _validate_recipes(items: Array, known: Dictionary) -> void:
+	# THE COOKING RECIPES, CHECKED THE SAME WAY THE PET IDS ARE, because they
+	# fail the same way: /api/cooking/cook looks cooks_into up in ITEMS and
+	# answers "that cannot be cooked" when it is missing. The fish is still
+	# catchable, still sits in the bag, and simply has no use — with nothing
+	# anywhere saying why. Five characters in an item_id is an entire branch of
+	# the fishing skill nobody can finish.
+
+	var by_id: Dictionary = {}
+	for item in items:
+		by_id[item["item_id"]] = item
+
+	for item in items:
+		var recipe: String = String(item.get("cooks_into", ""))
+		var is_fish: bool = String(item.get("type_name", "")) == "FISH"
+
+		if recipe == "":
+			# Not cookable. Fine for everything that is not a fish; for a fish
+			# it is probably an oversight, but a deliberately useless catch is a
+			# legitimate design so this warns rather than refusing.
+			if is_fish:
+				_warn("FISH '%s' has no cooks_into — it can be caught but never cooked." % item["item_id"])
+			continue
+
+		if not known.has(recipe):
+			_fail("'%s' cooks into '%s', but no item with that item_id exists. That fish can never be cooked." % [item["item_id"], recipe])
+			continue
+
+		# WHAT IT COOKS INTO HAS TO BE EDIBLE. The whole point of the raw/cooked
+		# split is that the cooked one is a Type.CONSUMABLE the use-handler can
+		# route by restore_target. Cooking a fish into another FISH, or into a
+		# MATERIAL, produces something that goes in the bag and does nothing.
+		var output: Dictionary = by_id[recipe]
+		if String(output.get("type_name", "")) != "CONSUMABLE":
+			_fail("'%s' cooks into '%s', which is %s rather than CONSUMABLE. The result would be inedible." % [item["item_id"], recipe, output.get("type_name", "?")])
+
+		# A COOKED FISH MUST NOT BE MOB LOOT. The FISH type keeps the raw ones
+		# out of the drop tables, but a cooked fish is a CONSUMABLE exactly like
+		# a potion and the type filter cannot see it — that is what droppable is
+		# for. Left true, every fish worth catching also falls out of the nearest
+		# slime and the skill has no point. See ItemData.droppable.
+		if bool(output.get("droppable", true)):
+			_warn("'%s' is a cooking output but still droppable — mobs will drop it, which undercuts fishing. Set droppable = false on it." % recipe)
+
+		# BURN CHANCE SLIDES FROM cook_level TO cook_mastery_level. Inverted, the
+		# span is negative and burn_chance() answers 0.0 for every level, so the
+		# fish silently never burns and the cooking skill stops mattering for it.
+		var floor_level: int = int(item.get("cook_level", 1))
+		var mastery: int = int(item.get("cook_mastery_level", 1))
+		if mastery < floor_level:
+			_fail("'%s' has cook_mastery_level %d below cook_level %d. It would never burn." % [item["item_id"], mastery, floor_level])
+
+		if is_fish and int(item.get("fishing_xp", 0)) <= 0:
+			_fail("FISH '%s' awards no fishing_xp. It can be caught but trains nothing." % item["item_id"])
+
+
+func _validate_skill_curves(constants: Dictionary) -> void:
+	# THE SERVER LEVELS THESE TWO NOW, off this table. A missing entry does not
+	# throw — gamedata.py falls back to 1.18 — so the skill quietly climbs on a
+	# curve nobody chose, and the client's own bar disagrees with the level the
+	# server hands back.
+	var growth: Dictionary = constants.get("skill_xp_growth", {})
+
+	for skill in ["fishing", "cooking"]:
+		if not growth.has(skill):
+			_fail("constants.skill_xp_growth has no '%s'. The server would level it on a fallback curve." % skill)
+
+	# A factor at or below 1 makes each level cost the same or LESS than the
+	# last, so one grant can cascade through dozens of levels. apply_xp() caps
+	# the loop at 200 to stop the worker spinning, which turns a data mistake
+	# into a player at level 200 rather than an error.
+	for skill in growth.keys():
+		if float(growth[skill]) <= 1.0:
+			_fail("skill_xp_growth['%s'] is %s. A factor at or below 1.0 makes levels cheaper as you climb." % [skill, growth[skill]])
+
+	if int(constants.get("skill_xp_base", 0)) <= 0:
+		_fail("constants.skill_xp_base must be positive.")
+
+	var burn: float = float(constants.get("cook_burn_max", -1.0))
+	if burn < 0.0 or burn > 1.0:
+		_fail("constants.cook_burn_max is %s — it is a probability and must be 0..1." % burn)
+
+	if int(constants.get("fishing_tier_per_level", 0)) < 1:
+		_fail("constants.fishing_tier_per_level must be at least 1.")
+
+
+func _report_reachability(items: Array, enemies: Array) -> void:
+	# NOT A FAILURE — A HEADCOUNT. Shelving content by putting it above every
+	# enemy's ceiling is a deliberate move here (the jade rod and the large
+	# potions are waiting on a boss that does not exist yet), so this cannot
+	# refuse. But "finished and unreachable" and "finished and forgotten" look
+	# identical in the data, and printing the number once an export is the
+	# cheapest way to tell them apart.
+	var ceiling: int = 0
+	for enemy in enemies:
+		ceiling = maxi(ceiling, int(enemy.get("max_loot_tier", 1)))
+
+	var excluded := ["PET", "QUEST", "CURRENCY", "FISH"]
+	var shelved: Array = []
+	for item in items:
+		if not bool(item.get("droppable", true)):
+			continue
+		if String(item.get("type_name", "")) in excluded:
+			continue
+		if int(item.get("tier", 1)) > ceiling:
+			shelved.append(item["item_id"])
+
+	if shelved.is_empty():
+		return
+
+	shelved.sort()
+
+	# PackedStringArray explicitly: String.join() takes one, and handing it a
+	# plain Array leans on an implicit conversion to do the right thing with
+	# Variants. Not worth finding out mid-export.
+	var sample := PackedStringArray()
+	for item_id in shelved.slice(0, 8):
+		sample.append(String(item_id))
+	var line: String = "      " + ", ".join(sample)
+	if shelved.size() > sample.size():
+		line += ", ..."
+
+	print("    %d droppable items sit above every enemy ceiling (tier %d) and cannot drop:"
+		% [shelved.size(), ceiling])
+	print(line)
 
 
 # =============================================================================
@@ -212,16 +421,17 @@ func _export_items() -> Array:
 		var item: ItemData = res
 
 		if item.item_id == "":
-			push_warning("exportgamedata: %s has an empty item_id — skipped." % path)
+			_warn("%s has an empty item_id — skipped." % path)
 			continue
 
 		# A duplicate item_id is a real defect, not a cosmetic one: the server
 		# would index by id and one of the two would simply vanish from every
 		# loot table with no error anywhere.
 		if seen.has(item.item_id):
-			push_error("exportgamedata: duplicate item_id '%s' in %s and %s" % [item.item_id, seen[item.item_id], path])
+			_fail("duplicate item_id '%s' in %s and %s" % [item.item_id, seen[item.item_id], path])
 			continue
 		seen[item.item_id] = path
+		_check_restores(item, path)
 
 		out.append({
 			"item_id": item.item_id,
@@ -258,12 +468,41 @@ func _export_items() -> Array:
 	return out
 
 
+func _check_restores(item: ItemData, path: String) -> void:
+	# A POTION THAT RESTORES NOTHING IS THE QUIETEST BUG IN THE CATALOGUE. The
+	# use-handler routes by restore_target and applies restore_amount; if either
+	# half is missing it takes the item, plays the sound, restores zero and says
+	# nothing. The player reads that as the potion "not working" and there is no
+	# error anywhere to disagree with them.
+	#
+	# The two halves fail differently, so they are reported differently:
+
+	# AMOUNT WITH NO TARGET is always a mistake. There is no reading of
+	# "restores 140 of nothing" that anyone intended.
+	if item.restore_amount > 0 and item.restore_target == ItemData.RestoreTarget.NONE:
+		_fail("'%s' restores %d but has restore_target = NONE — the restore goes nowhere. (%s)" % [item.item_id, item.restore_amount, path])
+		return
+
+	# TARGET WITH NO AMOUNT is the same mistake wearing the other shoe.
+	if item.restore_target != ItemData.RestoreTarget.NONE and item.restore_amount <= 0:
+		_fail("'%s' has a restore_target set but restore_amount = %d — using it does nothing. (%s)" % [item.item_id, item.restore_amount, path])
+		return
+
+	# NEITHER HALF SET, on a CONSUMABLE, is only PROBABLY wrong. RestoreTarget's
+	# own comment reserves NONE for "food that does something else", and nothing
+	# does something else yet — so this warns and lets the export through rather
+	# than blocking the first item that uses the door the enum deliberately left
+	# open.
+	if item.type == ItemData.Type.CONSUMABLE and item.restore_target == ItemData.RestoreTarget.NONE:
+		_warn("CONSUMABLE '%s' restores nothing — using it will consume it with no effect." % item.item_id)
+
+
 func _type_name(type_index: int) -> String:
 	if type_index < 0 or type_index >= TYPE_NAMES.size():
 		# An enum value with no name means ItemData.Type gained an entry that
 		# TYPE_NAMES above did not. Say so loudly — a silent "UNKNOWN" would
 		# end up in a loot filter on the server.
-		push_error("exportgamedata: ItemData.Type value %d has no name in TYPE_NAMES — update this script." % type_index)
+		_fail("ItemData.Type value %d has no name in TYPE_NAMES — update this script." % type_index)
 		return "UNKNOWN_%d" % type_index
 	return TYPE_NAMES[type_index]
 
@@ -288,14 +527,14 @@ func _export_enemies(constants: Dictionary) -> Array:
 		var enemy: EnemyData = res
 
 		if enemy.enemy_id == "":
-			push_warning("exportgamedata: %s has an empty enemy_id — skipped." % path)
+			_warn("%s has an empty enemy_id — skipped." % path)
 			continue
 
 		# A duplicate id is a hard error for the same reason it is with items:
 		# the server indexes by id, so one of the two would simply vanish from
 		# the roster with nothing anywhere to say it had.
 		if seen.has(enemy.enemy_id):
-			push_error("exportgamedata: duplicate enemy_id '%s' in %s and %s" % [enemy.enemy_id, seen[enemy.enemy_id], path])
+			_fail("duplicate enemy_id '%s' in %s and %s" % [enemy.enemy_id, seen[enemy.enemy_id], path])
 			continue
 		seen[enemy.enemy_id] = path
 
@@ -338,10 +577,10 @@ func _export_classes() -> Array:
 
 		var cls: ClassData = res
 		if cls.class_id == "":
-			push_warning("exportgamedata: %s has an empty class_id — skipped." % path)
+			_warn("%s has an empty class_id — skipped." % path)
 			continue
 		if seen.has(cls.class_id):
-			push_error("exportgamedata: duplicate class_id '%s' in %s and %s" % [cls.class_id, seen[cls.class_id], path])
+			_fail("duplicate class_id '%s' in %s and %s" % [cls.class_id, seen[cls.class_id], path])
 			continue
 		seen[cls.class_id] = path
 
@@ -431,7 +670,7 @@ func _find_files(root: String, extension: String) -> Array:
 	var found: Array = []
 	var dir := DirAccess.open(root)
 	if dir == null:
-		push_error("exportgamedata: cannot open %s" % root)
+		_fail("cannot open %s" % root)
 		return found
 
 	dir.list_dir_begin()

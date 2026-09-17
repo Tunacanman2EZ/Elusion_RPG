@@ -26,6 +26,7 @@
 [ext_resource type="PackedScene" uid="uid://be0elfwucuopu" path="res://scene/field.tscn" id="32_bqp1a"]
 [ext_resource type="PackedScene" uid="uid://sc2553vue1ug" path="res://scene/interactables/bankchest.tscn" id="32_om7sc"]
 [ext_resource type="Texture2D" uid="uid://cabt4t5hlrs4v" path="res://art/tiles/whiteflower.png" id="32_onj5f"]
+[ext_resource type="PackedScene" path="res://scene/interactables/fishingspot.tscn" id="32_qpfit"]
 [ext_resource type="PackedScene" uid="uid://cf7n3w3rl1pfp" path="res://scene/interactables/firepit.tscn" id="33_5cjof"]
 [ext_resource type="Texture2D" uid="uid://mbi6abi0ouy6" path="res://art/tiles/redflower.png" id="33_xyqp5"]
 [ext_resource type="PackedScene" uid="uid://ckeo71e74gs72" path="res://scene/interactables/sign.tscn" id="34_8dv4p"]
@@ -914,6 +915,10 @@ position = Vector2(-1, -85)
 
 [node name="interactables" type="Node2D" parent="ysortworld" unique_id=1591820235]
 y_sort_enabled = true
+
+[node name="fishingspot" parent="ysortworld/interactables" unique_id=787396516 instance=ExtResource("32_qpfit")]
+z_index = -1
+position = Vector2(540, 772)
 
 [node name="bankchest" parent="ysortworld/interactables" unique_id=1909775092 instance=ExtResource("32_om7sc")]
 y_sort_enabled = false

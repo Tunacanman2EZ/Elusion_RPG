@@ -24,6 +24,11 @@ extends CharacterBody2D
 
 const FLOATING_LABEL_SCENE := preload("res://scene/ui/floatinglabel.tscn")
 
+# The soft light the player carries in dark scenes. One scene, tuned in one
+# place, instanced onto every class rather than copied into four .tscn files.
+const PLAYER_LIGHT_SCENE := preload("res://scene/characters/playerlight.tscn")
+var _carried_light: PointLight2D = null
+
 # FloatingLabel.Type.NOTICE. Written as a bare int because floatinglabel.gd
 # has no class_name, so its enum is not reachable by name from here — the
 # existing popup calls in this file pass a literal 3 for LEVELUP for the same
@@ -356,6 +361,63 @@ func _ready() -> void:
 		$animatedsprite2d.play("idledown")
 		if not $animatedsprite2d.animation_finished.is_connected(_on_animatedsprite2d_animation_finished):
 			$animatedsprite2d.animation_finished.connect(_on_animatedsprite2d_animation_finished)
+
+	_setup_carried_light()
+
+
+# =============================================================================
+# CARRIED LIGHT  (a torch that follows the player through dark scenes)
+# =============================================================================
+#
+# ATTACHED IN CODE, NOT IN THE FOUR CLASS SCENES, on purpose. warrior, mage,
+# tank and healer are separate .tscn files; a light placed in each is four
+# copies of one decision, and the first tuning pass would drift three of them.
+# Here it is instanced once and every class inherits it.
+#
+# ON ONLY IN DARK SCENES, decided automatically. A scene that wants to be dark
+# darkens itself with a CanvasModulate (the crypt's cryptambience, and now the
+# field). If the current scene has one, the player lights their surroundings;
+# if it does not, the light stays off so a fully-lit town is not washed out by
+# an additive light nobody asked for. No per-scene wiring, nothing to keep in
+# sync - add a CanvasModulate to a new dark room and the player is lit there too.
+
+func _setup_carried_light() -> void:
+	if not is_instance_valid(_carried_light):
+		_carried_light = PLAYER_LIGHT_SCENE.instantiate()
+		add_child(_carried_light)
+	_carried_light.enabled = false
+	# The scene's CanvasModulate may not be in the tree the same frame this
+	# player is added to it, so decide one idle frame later, once the world
+	# scene is fully built. Each world scene spawns a fresh player, so this
+	# re-runs on every scene change - which is exactly what re-checks the dark.
+	_update_carried_light.call_deferred()
+
+
+func set_carried_light(on: bool) -> void:
+	# Public override for anything that should force the light regardless of the
+	# scene - a torch item, a scripted beat. Leave it unused and scenes decide.
+	if is_instance_valid(_carried_light):
+		_carried_light.enabled = on
+
+
+func _update_carried_light() -> void:
+	if is_instance_valid(_carried_light):
+		_carried_light.enabled = _scene_is_dark()
+
+
+func _scene_is_dark() -> bool:
+	var scene: Node = get_tree().current_scene
+	return scene != null and _first_canvas_modulate(scene) != null
+
+
+func _first_canvas_modulate(node: Node) -> CanvasModulate:
+	if node is CanvasModulate:
+		return node
+	for child in node.get_children():
+		var found: CanvasModulate = _first_canvas_modulate(child)
+		if found != null:
+			return found
+	return null
 
 
 func _physics_process(_delta):

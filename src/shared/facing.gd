@@ -91,6 +91,34 @@ static func secondary_from_vec(vec: Vector2) -> String:
 	return RIGHT if vec.x > 0.0 else LEFT
 
 
+static func from_vec_stable(vec: Vector2, current: String, margin: float = 1.4) -> String:
+	# HYSTERESIS. from_vec() picks the dominant axis, so a heading that wanders
+	# across the 45-degree line - a near-diagonal chase, a slot that is almost
+	# corner-on - flips the answer between two cardinals on tiny frame-to-frame
+	# changes, and the walk animation strobes. This keeps the CURRENT facing
+	# unless the other axis beats it by `margin`, so the sprite only turns when
+	# the new direction has clearly, steadily won. Larger margin = stickier.
+	#
+	# It needs to be told the current facing because a single vector cannot know
+	# what it is turning away from - that state lives with the caller.
+	if not is_direction(current):
+		return from_vec_total(vec)
+	var ax: float = absf(vec.x)
+	var ay: float = absf(vec.y)
+	if current == LEFT or current == RIGHT:
+		if ay > ax * margin:
+			return DOWN if vec.y > 0.0 else UP
+		if ax > 0.0:
+			return RIGHT if vec.x > 0.0 else LEFT
+		return current
+	# currently vertical (or a zero vector holds the last heading)
+	if ax > ay * margin:
+		return RIGHT if vec.x > 0.0 else LEFT
+	if ay > 0.0:
+		return DOWN if vec.y > 0.0 else UP
+	return current
+
+
 # =============================================================================
 # WORD TO VECTOR
 # =============================================================================

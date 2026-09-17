@@ -45,7 +45,7 @@ animations = [{
 radius = 32.0
 
 [node name="slashwave" type="Area2D" unique_id=1677445553]
-collision_layer = 64
+collision_layer = 32
 collision_mask = 11
 script = ExtResource("1_qoyg7")
 

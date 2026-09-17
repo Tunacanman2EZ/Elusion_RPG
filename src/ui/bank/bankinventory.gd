@@ -110,7 +110,7 @@ func _wire_bank_container() -> void:
 	# Marks every slot in this grid as a bank slot, which is what
 	# InventorySlot._drop_data() branches on to tell a rearrange from a
 	# transfer. Set here rather than in the scene because the container
-	# instantiates its own slots.
+	# instantiates its own slots.s
 	if bank_container.has_method("set_slot_type"):
 		bank_container.set_slot_type(InventorySlot.BANK_SLOT_TYPE)
 
@@ -388,7 +388,7 @@ func _apply_grids(data: Dictionary) -> void:
 		_notify("Reopen your bag — it's out of step with the server.")
 
 
-func _handle_transfer_refusal(res: Dictionary, player: Node) -> void:
+func _handle_transfer_refusal(res: Dictionary, captured_player: Node) -> void:
 	# NOTHING MOVED ON EITHER SIDE. The endpoint removes from the source, adds
 	# to the destination, and rolls back if the add does not fit - so a refusal
 	# always leaves the item exactly where it started, and the grids are already
@@ -397,14 +397,14 @@ func _handle_transfer_refusal(res: Dictionary, player: Node) -> void:
 
 	match code:
 		400:
-			_notify_player(player, "You don't have that many.")
+			_notify_player(captured_player, "You don't have that many.")
 		404:
-			_notify_player(player, "That character isn't loaded.")
+			_notify_player(captured_player, "That character isn't loaded.")
 		409:
 			Audio.play("refused")
-			_notify_player(player, "No room for that.")
+			_notify_player(captured_player, "No room for that.")
 		_:
-			_notify_player(player, "No connection — try again.")
+			_notify_player(captured_player, "No connection — try again.")
 
 	if OS.is_debug_build():
 		print("[BANK] transfer refused (%d) — %s" % [code, res.get("error", "")])
@@ -440,13 +440,13 @@ func _notify(message: String) -> void:
 	_notify_player(_get_player(), message)
 
 
-func _notify_player(player: Node, message: String) -> void:
+func _notify_player(captured_player: Node, message: String) -> void:
 	# Against a CAPTURED reference, for use after an await where the player may
 	# have been freed. The caller collapses a freed reference to null first:
 	# GDScript checks argument types at the call boundary, so a freed object
 	# fails before this function's body gets a turn.
-	if is_instance_valid(player) and player.has_method("show_notice"):
-		player.show_notice(message)
+	if is_instance_valid(captured_player) and captured_player.has_method("show_notice"):
+		captured_player.show_notice(message)
 
 
 func _get_player_inventory_container() -> Node:

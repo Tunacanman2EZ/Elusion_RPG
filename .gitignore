@@ -62,6 +62,34 @@ test_results.txt
 
 
 # =============================================================================
+# HISTORY-REWRITE SCRATCH
+# =============================================================================
+
+# Working files from the git-filter-repo pass that moved the art pack out of
+# this repo's history: path inventories, object-id dumps, before/after diffs.
+# About 2MB of them, and they are what the rewrite CONSUMED, not what it
+# produced - the rewritten history is the output and it is already in .git.
+#
+# LISTED INDIVIDUALLY rather than as *.txt, because a blanket rule would also
+# swallow a real notes file someone adds later and nobody would notice until
+# it was missing.
+#
+# Checked before ignoring: none of them name a .db, a .env, a password or a
+# token - they are art paths and SHAs. Ignoring here does NOT untrack them;
+# see the note in README/DEVLOG for the `git rm --cached` that does.
+current-all.txt
+current-all2.txt
+current-art.txt
+historical-paths.txt
+historical-paths-raw.txt
+objects.txt
+pack-files.txt
+packshas.txt
+purge-paths.txt
+remaining-raw.txt
+
+
+# =============================================================================
 # OS CRUFT
 # =============================================================================
 

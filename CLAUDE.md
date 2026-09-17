@@ -349,9 +349,19 @@ Do not "fix" these.
 - **`savestorage.gd` has one implementation.** `is_authoritative` is read by
   `characterdata.gd` to skip the anti-tamper passes, so the base class is
   load-bearing even though `LocalStorage` is gone.
-- **`cook()`, `gain_cooking_xp()`, `gain_fishing_xp()`, `set_bus_volume()`,
-  `get_bus_volume()` and `play_music()` are uncalled on purpose.** They are the
-  cooking system and the Options screen, built ahead of their consumers.
+- **`set_bus_volume()`, `get_bus_volume()` and `play_music()` are uncalled on
+  purpose.** They are the Options screen, built ahead of its consumer.
+- **`firepit.cook()` is superseded, not waiting.** It predates the cooking
+  screen, which goes through `cook_requested` -> `cookingscreen.gd` ->
+  `POST /api/cooking/cook` instead. The firepit's own comments still describe
+  it as the entry point; they are stale. Nothing calls it, and nothing should -
+  it would be a client-side cook, which is exactly what the wire rule forbids.
+- **`player.gain_cooking_xp()` and `player.gain_fishing_xp()` are DEAD, not
+  early.** The server owns both skills now: `/api/cooking/cook` and
+  `/api/fishing/catch` grant the XP, and `PUT /api/character/skills` drops those
+  two rows from anything the client sends. A client-side grant could only ever
+  be overwritten on the next sync. Delete them rather than wiring them up, and
+  if a display needs the number, read it back from the server.
 - **The owner panel is bound to backquote, not a function key.** F1-F7 and
   F9-F12 are `player.gd`'s debug keys and F8 is Godot's own stop-the-project
   shortcut, which closed the game. It was Shift+A before that, which collided

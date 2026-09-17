@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://scene/crypt/lightgradient.tres" id="1_grad"]
+[ext_resource type="Script" path="res://src/world/lightflicker.gd" id="2_flicker"]
+
+[node name="playerlight" type="PointLight2D"]
+position = Vector2(0, -8)
+enabled = false
+color = Color(1, 0.85, 0.6, 1)
+energy = 1.1
+texture = ExtResource("1_grad")
+texture_scale = 2.3
+script = ExtResource("2_flicker")
+swell_amount = 0.14
+swell_speed = 0.4
+flicker_amount = 0.08
+flicker_speed = 4.0

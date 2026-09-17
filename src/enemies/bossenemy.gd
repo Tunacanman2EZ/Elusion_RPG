@@ -87,7 +87,12 @@ const PLAYER_PHYSICS_LAYER := 4
 @export var eruption_telegraph: float = 0.52
 
 # Prints the pattern chosen on every cast. See the note in _build_pattern().
-@export var debug_patterns: bool = true
+#
+# OFF BY DEFAULT. It is the right tool while tuning a pattern and pure noise
+# during play: the two attack tracks cast independently, so a normal fight
+# prints a line every second or so and buries anything else in the console.
+# Tick it in the inspector for a tuning session rather than shipping it on.
+@export var debug_patterns: bool = false
 
 # FOUR NESTED RINGS, 65 PILLARS. Read innermost first; the three arrays are one
 # table split in three and must stay the same length.
