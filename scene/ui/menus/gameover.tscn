@@ -68,6 +68,12 @@ layout_mode = 2
 text = "Lusions: 0"
 horizontal_alignment = 1
 
+[node name="scorelabel" type="Label" parent="PanelContainer/VBoxContainer" unique_id=1774031562]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Score: 0"
+horizontal_alignment = 1
+
 [node name="revivebutton" type="Button" parent="PanelContainer/VBoxContainer" unique_id=1886812273]
 unique_name_in_owner = true
 layout_mode = 2

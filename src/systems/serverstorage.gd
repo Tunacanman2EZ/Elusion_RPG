@@ -225,6 +225,11 @@ func _account_from_server(data: Dictionary) -> Dictionary:
 	return {
 		"lusions":        _int(data.get("lusions", 0)),
 		"bank_gold":      _int(data.get("bank_gold", 0)),
+		# WHAT DYING HAS COST THIS ACCOUNT, read-only on this side. The server
+		# is the only thing that ever adds to it - /api/character/revive, in
+		# the same transaction as the payment - so there is no matching PUT
+		# and nothing here should ever write it.
+		"score":          _int(data.get("score", 0)),
 		"bank_inventory": _items_from_server(_array(data.get("bank_inventory", []))),
 	}
 

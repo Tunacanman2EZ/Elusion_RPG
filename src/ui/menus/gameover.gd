@@ -82,6 +82,15 @@ func _wire_buttons() -> void:
 # DISPLAY
 # =============================================================================
 
+func _get_current_score() -> int:
+	# Mirrors _get_current_lusions(), through the public accessor rather than
+	# reaching into account_data and calling a private method on the autoload.
+	# The first draft of this did the latter, which works and is the wrong
+	# shape - the lusions path next door has had a getter for exactly this
+	# reason since it was written.
+	return CharacterData.get_account_score()
+
+
 func _update_display() -> void:
 	# refresh the lusions label and the revive button state/text.
 	# if the player can't afford a revive, the button is disabled so they
@@ -90,6 +99,21 @@ func _update_display() -> void:
 
 	if has_node("%lusionslabel"):
 		$"%lusionslabel".text = "Lusions: %d" % current_lusions
+
+	# THE SCORE, WHICH IS THE ONE NUMBER THAT GOES UP WHEN YOU LOSE.
+	#
+	# READ-ONLY HERE, and deliberately not refreshed after a revive completes:
+	# the figure on this screen is what death has cost you UP TO this death,
+	# and the price of the one you are looking at is printed on the buttons
+	# below it. Showing the post-payment total would answer a question nobody
+	# is asking while they decide.
+	#
+	# SERVER-OWNED. /api/character/revive adds to it in the same transaction as
+	# the payment; nothing on this side ever writes it, and serverstorage.gd
+	# has no PUT for it. A client that could set its own score would be E-8
+	# with a different column name.
+	if has_node("%scorelabel"):
+		$"%scorelabel".text = "Score: %d" % _get_current_score()
 
 	if has_node("%revivebutton"):
 		var btn: Button = $"%revivebutton"

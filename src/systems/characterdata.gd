@@ -134,6 +134,7 @@ const DEFAULT_ACCOUNT_DATA := {
 	"lusions":         0,    # account-shared, soulbound premium currency
 	"bank_gold":       0,    # account-shared, safe from death
 	"bank_inventory":  [],   # account-shared item array (50 slots)
+	"score":           0,    # account-shared; what dying has cost, server-owned
 }
  
 # --- anti-tamper sanity ranges — PLACEHOLDERS, confirm against your design ---
@@ -1339,6 +1340,19 @@ func get_account_lusions() -> int:
 	return int(account_data.get("lusions", 0))
  
  
+func get_account_score() -> int:
+	# WHAT DYING HAS COST THIS ACCOUNT. Mirrors get_account_lusions(), and
+	# there is deliberately no set_account_score() to mirror the setter below.
+	#
+	# THE SERVER OWNS IT. /api/character/revive adds to it in the same
+	# transaction that takes the payment, and serverstorage.gd has no PUT for
+	# it. A client able to write its own score would be E-8 with a different
+	# column name - a currency-shaped field the server stored because it was
+	# asked to. The only way this number moves is by dying.
+	_ensure_account_data()
+	return int(account_data.get("score", 0))
+
+
 func set_account_lusions(value: int) -> void:
 	_ensure_account_data()
 	account_data["lusions"] = max(int(value), 0)
