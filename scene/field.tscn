@@ -77,6 +77,8 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/windfiresprite.tscn" id="75_wy1fy"]
 [ext_resource type="PackedScene" path="res://scene/enemy/windslime.tscn" id="76_ttjmy"]
 [ext_resource type="PackedScene" path="res://scene/enemy/windsprite.tscn" id="77_x0ngg"]
+[ext_resource type="PackedScene" uid="uid://de3b4cl5fjmyh" path="res://scene/enemy/bushmage.tscn" id="78_jmfuw"]
+[ext_resource type="PackedScene" uid="uid://bwgdfgnjn3fv" path="res://scene/enemy/bushsniper.tscn" id="79_oemvn"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_3va64"]
 texture = ExtResource("2_7i1jy")
@@ -651,6 +653,12 @@ y_sort_enabled = true
 z_index = 90
 
 [node name="enemyrespawner" parent="." unique_id=1607884213 instance=ExtResource("17_respawner")]
+
+[node name="bushmage" parent="." unique_id=709913725 instance=ExtResource("78_jmfuw")]
+position = Vector2(1403, 891)
+
+[node name="bushsniper" parent="." unique_id=1073679386 instance=ExtResource("79_oemvn")]
+position = Vector2(1295, 943)
 
 [connection signal="body_entered" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_exited"]

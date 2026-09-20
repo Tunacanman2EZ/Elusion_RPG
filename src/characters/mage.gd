@@ -58,7 +58,18 @@ const CLASS_DATA := preload("res://data/classes/mage.tres")
 @export var spell_cooldown: float = 0.45
 
 # damage scales with magic skill: total = magic × damage_per_magic
-@export var damage_per_magic: int = 25
+#
+# NINE, NOT TWENTY-FIVE. Base damage divided by attack period is a class's dps
+# floor before any weapon, and at 25 over a 0.45s cast that floor was 55.6/s
+# against the warrior's 24/s — so the mage out-damaged the melee class by
+# 2.3x at every single gear tier, identically, because the weapon ladder is
+# scaled to each class's own base and carried the imbalance forward instead
+# of correcting it.
+#
+# The mage attacks from range and the stalagmite is an explosion, so its
+# single-target number should sit BELOW the warrior's, not above it: 0.85x is
+# the target, and 9 over 0.45s gives 20/s against 24/s.
+@export var damage_per_magic: int = 9
 
 
 # =============================================================================
@@ -142,7 +153,8 @@ func attack_period() -> float:
 	# reads this and why it is asked of the live character rather than looked
 	# up in a table. The dps it gives is single-target; the stalagmite is an
 	# explosion, so a crowded cast is worth more than the number shown.
-	return spell_cooldown
+	# hasten() applies agility, so this is the rate actually delivered.
+	return hasten(spell_cooldown)
 
 
 func attack_action() -> void:
@@ -204,7 +216,11 @@ func _cast_stalagmite_drop() -> void:
 	# leaves the scene inside those 0.45 seconds is freed while this timer keeps
 	# running. Same await hazard, same guard, as warrior's attack lock and
 	# tank's activate_expand.
-	await get_tree().create_timer(spell_cooldown).timeout
+	# hasten() applies agility. Read once, here, rather than after the await:
+	# the timer's length is decided when it is created, and re-reading a stat
+	# on the far side of a 0.45 second wait would be asking a different
+	# question than the one that set the timer.
+	await get_tree().create_timer(hasten(spell_cooldown)).timeout
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	is_casting = false

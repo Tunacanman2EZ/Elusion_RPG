@@ -43,7 +43,13 @@ const CLASS_DATA := preload("res://data/classes/healer.tres")
 @export var projectile_scene: PackedScene
 @export var mana_cost_per_shot: int = 1
 @export var shot_cooldown: float = 0.1
-@export var damage_per_magic: int = 3
+# TWO, NOT THREE. See mage.gd's note on damage_per_magic for the arithmetic:
+# base over attack period is the dps floor, and 3 across a 0.1s cooldown was
+# 30/s against the warrior's 24/s — a ranged class beating a melee one before
+# either picked up a weapon. 2 gives 20/s, which is the 0.80x this class is
+# aimed at. One point of base damage is a big proportional step at ten shots
+# a second, which is why this line is 2 and not 2.4.
+@export var damage_per_magic: int = 2
 @export var projectile_speed: float = 200.0
 @export var projectile_tint: Color = Color(0.3, 1.0, 0.4, 1.0)
 
@@ -119,7 +125,12 @@ func _physics_process(delta: float) -> void:
 
 	if _can_fire():
 		_fire_projectile()
-		_shot_timer = shot_cooldown
+		# hasten() applies agility. At ten shots a second the base cooldown is
+		# already 0.1, so this is the class where the multiplier does the most
+		# in absolute terms — and the one where forgetting it would be least
+		# visible, because a shot every 0.05s and one every 0.1s both read as
+		# "a stream".
+		_shot_timer = hasten(shot_cooldown)
 
 
 # =============================================================================
@@ -163,7 +174,8 @@ func attack_period() -> float:
 	# is tiny — 3 at iron, 13 at ember — precisely BECAUSE of this 0.1, and a
 	# player comparing it to a 100-damage sword without the division would
 	# reasonably conclude the healer had been abandoned.
-	return shot_cooldown
+	# hasten() applies agility, so this is the rate actually delivered.
+	return hasten(shot_cooldown)
 
 
 func attack_action() -> void:

@@ -510,6 +510,13 @@ func _first_canvas_modulate(node: Node) -> CanvasModulate:
 
 
 func _physics_process(_delta):
+	# WAS ANYONE THERE THIS FRAME. Stamped before every early return, for the
+	# same reason the attack poll below is: a question about the player, not
+	# about the character, and dying or being locked out does not make someone
+	# leave the keyboard.
+	if Input.is_anything_pressed():
+		_last_input_ms = Time.get_ticks_msec()
+
 	# Sampled FIRST, before any early return below, because the right-click
 	# edge detector has to see every frame. If it only ran when the player was
 	# alive and idle, a click held through a death or an attack lockout would
@@ -1370,6 +1377,13 @@ func _apply_level_up_skill_bonus() -> void:
 
 
 func gain_xp(amount: int) -> void:
+	# THE ONE THAT MATTERS MOST for the AFK guard, and the easiest to miss:
+	# combat.gd grants character XP and attack XP from the same kill, in two
+	# lines, and gating only the skill one would have left levelling wide open.
+	# See _xp_is_earned() for what this is protecting against.
+	if not _xp_is_earned():
+		return
+
 	# CHANGED: xp_next used to be `xp_next *= 2` — a raw doubling
 	# accumulator that overflows a 64-bit int somewhere around level 58
 	# (2^57 alone is already past int64's range). the sanity-check side of
@@ -1444,11 +1458,99 @@ func get_attack_speed_multiplier() -> float:
 	return PlayerStats.attack_speed_multiplier(agility)
 
 
+func hasten(seconds: float) -> float:
+	# A COOLDOWN, SHORTENED BY AGILITY — and the only place that division
+	# happens, which is the whole reason it exists.
+	#
+	# get_attack_speed_multiplier() was defined, unit tested, and called by
+	# nothing on the player. pet.gd found it and used it, so agility made your
+	# PET attack faster while you attacked at exactly the base rate. The stat
+	# sold one thing and delivered it to somebody else.
+	#
+	# Four classes gate their attacks on four different exported values —
+	# attack_lock_duration, spell_cooldown, shot_cooldown, aura_tick — so the
+	# obvious fix is four divisions in four files, which is four chances to
+	# forget one and no way to notice which. They all come through here.
+	#
+	# GUARDED AGAINST A ZERO MULTIPLIER. It cannot be zero today, because
+	# attack_speed_multiplier() clamps to at least 1.0 — but dividing by a stat
+	# is not the place to depend on someone else's clamp holding forever.
+	var multiplier: float = get_attack_speed_multiplier()
+	if multiplier <= 0.0:
+		return seconds
+	return seconds / multiplier
+
+
 # =============================================================================
 # SKILL XP
 # =============================================================================
 
+# =============================================================================
+# THE AFK GUARD
+# =============================================================================
+# WHAT THIS CLOSES. Summon a pet, walk into a corner of the navmesh where
+# enemies can reach you but cannot surround you, and leave. The pet keeps
+# killing; combat.gd grants the kill's attack XP to its owner; the enemies
+# keep hitting you and take_damage() grants defense XP for each hit; and
+# percentage-based regen refills the chip damage between swings. Nothing about
+# that loop needs a person in the chair, and it runs until the client is
+# closed.
+#
+# THE REGEN IS NOT THE BUG, which is worth saying because it looks like it.
+# take_damage() calls _set_active(), so being hit already stops regen dead and
+# discards part-earned points — regen is strictly a between-fights mechanic and
+# it behaves like one. It just happens that an enemy landing a hit every couple
+# of seconds leaves gaps longer than the one-second idle threshold, and a
+# character with several hundred max HP refills faster in those gaps than a
+# low-level enemy empties it. Tightening that would make ordinary combat harsher
+# for everyone in order to punish something only the AFK case does.
+#
+# So the guard is on the REWARD, not on the survival. Skill XP stops accruing
+# once nobody has touched an input for a while. It changes nothing for anyone
+# playing — three minutes without a single keypress is not a lull in a fight,
+# it is an empty chair — and the pet still fights, the loot still drops, and
+# the character still survives. You simply stop levelling for being absent.
+#
+# HONEST ABOUT WHAT IT DOES NOT STOP: a weight on a key, or an autoclicker,
+# still reads as input. That is a much higher bar than walking away, and the
+# real answer for it is server-side kill validation, which this client cannot
+# do alone — see the note about unverified kill events in the server work.
+const AFK_XP_CUTOFF_SECONDS: float = 180.0
+
+var _last_input_ms: int = 0
+var _afk_notified: bool = false
+
+
+func seconds_since_input() -> float:
+	# Time.get_ticks_msec() starts at 0, and so does _last_input_ms, so a
+	# character who has genuinely never pressed anything reads as idle from
+	# the moment the game has been open longer than the cutoff. That is the
+	# correct answer rather than an edge case to paper over.
+	return float(Time.get_ticks_msec() - _last_input_ms) / 1000.0
+
+
+func is_afk() -> bool:
+	return seconds_since_input() >= AFK_XP_CUTOFF_SECONDS
+
+
+func _xp_is_earned() -> bool:
+	# Called by all three gain_*_xp() functions. Says so once and then stays
+	# quiet: a notice every time an enemy hit an absent player would be its own
+	# kind of spam, and the one line is for the person who comes back and
+	# wonders why nothing moved.
+	if not is_afk():
+		_afk_notified = false
+		return true
+
+	if not _afk_notified:
+		_afk_notified = true
+		show_notice("Away — no skill XP")
+	return false
+
+
 func gain_attack_xp(amount: int) -> void:
+	if not _xp_is_earned():
+		return
 	# NEW: scaled by skill_proficiency["attack"] — this is what makes
 	# attack XP universal (any class can call this) while still letting
 	# warrior climb it faster than everyone else. see SKILL PROFICIENCY
@@ -1464,6 +1566,8 @@ func gain_attack_xp(amount: int) -> void:
 
 
 func gain_defense_xp(amount: int) -> void:
+	if not _xp_is_earned():
+		return
 	# NEW: scaled by skill_proficiency["defense"] — take_damage() above
 	# already grants this universally to every class; this is what lets
 	# tank climb it faster without touching take_damage() at all.
@@ -1485,6 +1589,13 @@ func gain_defense_xp(amount: int) -> void:
 
 
 func gain_agility_xp(amount: int) -> void:
+	# Gated like the rest, for consistency rather than because this one is
+	# exploitable: agility XP comes from sprinting, which means holding a key,
+	# which is already the thing is_afk() measures. Left ungated it would be
+	# the one skill that still climbed while away, which is the kind of
+	# inconsistency that later reads as an oversight rather than a decision.
+	if not _xp_is_earned():
+		return
 	agility_xp += amount
 	while agility_xp >= agility_xp_next:
 		agility += 1
@@ -1495,6 +1606,8 @@ func gain_agility_xp(amount: int) -> void:
 
 
 func gain_magic_xp(amount: int) -> void:
+	if not _xp_is_earned():
+		return
 	# NEW: scaled by skill_proficiency["magic"] — this is what lets
 	# mage/healer climb magic faster than a class that only occasionally
 	# lands a spell hit.
@@ -1886,7 +1999,17 @@ func weapon_damage_roll() -> int:
 	# It also has no sensible answer for the tank, whose damage is an aura
 	# ticking four times a second, or the healer, who fires ten shots a second
 	# — a weapon's damage is one number and those are not one kind of hit.
-	var data: ItemData = ItemRegistry.get_item(equipped_id("weapon"))
+	# ASKED ONLY WHEN THERE IS SOMETHING TO ASK ABOUT. An empty weapon slot is
+	# the normal state of a character who has not found a sword yet, not a
+	# lookup failure — but ItemRegistry.get_item("") cannot tell those apart
+	# and warns about an unknown item_id, once per swing. At one swing a
+	# second that is a warning per second, through a push_warning that carries
+	# a full stack trace, for a character doing nothing wrong.
+	var worn: String = equipped_id("weapon")
+	if worn == "":
+		return 0
+
+	var data: ItemData = ItemRegistry.get_item(worn)
 	if data == null:
 		return 0
 	return PlayerStats.roll_weapon_damage(data.damage, data.damage_spread)
@@ -1942,13 +2065,15 @@ func attack_period() -> float:
 	# copy of the four cooldowns to drift out of step with the four @exports
 	# that actually govern them.
 	#
-	# AGILITY IS NOT FOLDED IN, and that is not an oversight here so much as an
-	# accurate report of somewhere else: get_attack_speed_multiplier() is
-	# defined above, has unit tests, and is called by nothing. No class divides
-	# its cooldown by it, so agility currently buys movement and nothing else —
-	# exactly what PlayerStats' comment says it was changed to stop doing.
-	# Folding it in here would make the tooltip promise a rate the game does
-	# not deliver.
+	# AGILITY IS FOLDED IN, because it is now actually delivered. Each override
+	# returns hasten(its own cooldown), so the dps this feeds is the rate the
+	# character really attacks at rather than the rate it would attack at with
+	# no agility.
+	#
+	# This comment used to say the opposite, and said so accurately: the
+	# multiplier existed, was tested, and nothing called it. The tooltip
+	# deliberately under-promised rather than advertise a speed the game did
+	# not deliver. Both halves are fixed together — see Player.hasten().
 	return 0.0
 
 

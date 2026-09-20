@@ -133,6 +133,20 @@ ALLOWED = {
         "multiplayer and deliberately unconnected. Reviewed and kept.",
 }
 
+# A SINGLE FINDING, rather than a whole section. Same idea as ALLOWED above and
+# the same rule: the reason is printed at the end, so this stays a decision
+# rather than a way of making a number go down.
+ALLOWED_ROWS = {
+    "src/projectiles/fireprojectile.gd: "
+    "_on_visible_on_screen_notifier_2d_screen_exited() runs nothing":
+        "Deliberately empty and says so. The notifier fired screen_exited when "
+        "the orb scrolled off-camera as the player moved, killing live "
+        "projectiles, so despawn moved to a lifetime timer. The function is "
+        "kept only so the .tscn's signal wiring still resolves — and the same "
+        "connection exists in eight elemental variants of the scene, so "
+        "deleting it is a scene edit in nine files rather than a code fix.",
+}
+
 FINDINGS = []
 SUPPRESSED = []
 
@@ -141,7 +155,16 @@ def report(section, why, rows, severity="warn", allow_key=None):
     if allow_key and allow_key in ALLOWED and rows:
         SUPPRESSED.append((section, len(rows), ALLOWED[allow_key]))
         rows = []
-    FINDINGS.append((section, why, rows, severity))
+
+    # Individually cleared rows drop out here, each still named at the end.
+    kept = []
+    for row in rows:
+        if row in ALLOWED_ROWS:
+            SUPPRESSED.append((section, 1, ALLOWED_ROWS[row]))
+        else:
+            kept.append(row)
+
+    FINDINGS.append((section, why, kept, severity))
 
 
 def emit():
@@ -410,12 +433,34 @@ report("UNIQUE NAMES NOTHING LOOKS UP",
 # 7. GROUPS THAT ONLY GO ONE WAY
 # =============================================================================
 
-added = set(re.findall(r'add_to_group\(\s*"([^"]+)"', ALL_CODE))
-added |= set(re.findall(r'groups\s*=\s*\[([^\]]*)\]', scene_text)
-             and re.findall(r'"([^"]+)"', " ".join(
-                 re.findall(r'groups\s*=\s*\[([^\]]*)\]', scene_text))) or [])
-queried = set(re.findall(r'in_group\(\s*"([^"]+)"', ALL_CODE))
-queried |= set(re.findall(r'get_nodes_in_group\(\s*"([^"]+)"', ALL_CODE))
+# NAMED CONSTANTS COUNT AS JOINING, which they did not until this line existed.
+#
+# vendor.gd says `const VENDOR_GROUP := &"vendors"` and then
+# `add_to_group(VENDOR_GROUP)`. The literal "vendors" never appears beside an
+# add_to_group( call, so a check matching only quoted strings concluded the
+# group was queried by the HUD and joined by nobody — which was exactly wrong,
+# and reported both of this project's group constants as defects.
+#
+# Naming a group constant is good practice; a check that punishes it teaches
+# people to inline the string instead.
+GROUP_CONSTS = dict(re.findall(
+    r'^const\s+(\w+)\s*(?::\s*StringName\s*)?:?=\s*&?"([^"]+)"', ALL_CODE, re.M))
+
+
+def _group_names(pattern, text):
+    """Group names from calls like add_to_group("x") and add_to_group(CONST)."""
+    names = set(re.findall(pattern % r'"([^"]+)"', text))
+    for ident in re.findall(pattern % r'([A-Z_][A-Z0-9_]*)', text):
+        if ident in GROUP_CONSTS:
+            names.add(GROUP_CONSTS[ident])
+    return names
+
+
+added = _group_names(r'add_to_group\(\s*%s', ALL_CODE)
+added |= set(re.findall(r'"([^"]+)"', " ".join(
+    re.findall(r'groups\s*=\s*\[([^\]]*)\]', scene_text))))
+queried = _group_names(r'in_group\(\s*%s', ALL_CODE)
+queried |= _group_names(r'get_nodes_in_group\(\s*%s', ALL_CODE)
 
 rows = ["queried but never joined: %s" % g for g in sorted(queried - added)]
 rows += ["joined but never queried: %s" % g for g in sorted(added - queried)]
@@ -819,15 +864,89 @@ SHADOW_DECL = re.compile(r"^\s*(?:var|const)\s+(\w+)\b"
                          r"|^\s*func\s+\w+\s*\((.*)\)")
 SHADOW_PARAM = re.compile(r"(?:^|,)\s*(\w+)\s*(?::|=|$)")
 
+# THE PROJECT'S OWN BASE SCRIPTS, NOT ONLY THE ENGINE'S CLASSES.
+#
+# This check first shipped knowing SHADOW_BASES and nothing else, so it could
+# say that `var size` shadows Control.size but had no idea that `var speed` in
+# warrior.gd shadows `@export var speed` in player.gd, which warrior extends.
+# Godot reports both; this only reported one, and the one it missed is the more
+# dangerous kind — an engine property is at least documented somewhere, while
+# a shadowed @export is a tuning value that silently stops being readable.
+#
+# So every script that declares a class_name contributes its own member names,
+# and a subclass is checked against the whole chain it extends.
+CLASS_MEMBERS = {}          # class_name -> set of member names it declares
+CLASS_PARENT = {}           # class_name -> what it extends
+# ANCHORED AT COLUMN ZERO, which is what makes it a MEMBER. GDScript members
+# are declared at the top level of the file; anything indented is a local
+# inside a function. The first version of this allowed leading whitespace, so
+# every local in a base script became an inherited "member" and the check
+# reported that `delta` in poisonslime.gd shadowed `BaseEnemy.delta` — which
+# is a parameter name in _physics_process and not a member of anything.
+#
+# Annotations sit on the same line for the ones that matter here: @export var,
+# @onready var, @export_range(...) var.
+MEMBER_DECL = re.compile(r"^(?:@\w+(?:\([^)]*\))?\s+)*(?:var|const)\s+(\w+)", re.M)
+
+# INDEXED BY BOTH NAMES A SCRIPT CAN BE EXTENDED BY.
+#
+# GDScript has two forms, and this project uses both:
+#
+#     extends BaseEnemy                              a class_name
+#     extends "res://src/characters/player.gd"       a path
+#
+# player.gd declares no class_name at all and every character class extends it
+# by path, which is precisely the chain the `speed` shadow lived in — so a
+# check that only understood class names could not see the project's most
+# inherited-from script. Each script is registered under its class_name when
+# it has one AND under its res:// path always.
+EXTENDS_RE = re.compile(r'^extends\s+(?:"([^"]+)"|([\w\.]+))', re.M)
+
+
+def _base_key(text):
+    m = EXTENDS_RE.search(text)
+    if not m:
+        return ""
+    return m.group(1) if m.group(1) else m.group(2).split(".")[-1]
+
+
+for rel, text in SCRIPTS.items():
+    members = set(MEMBER_DECL.findall(text))
+    parent = _base_key(text)
+
+    keys = ["res://" + rel]
+    named = re.search(r"^class_name\s+(\w+)", text, re.M)
+    if named:
+        keys.append(named.group(1))
+
+    for key in keys:
+        CLASS_MEMBERS[key] = members
+        CLASS_PARENT[key] = parent
+
+
+def inherited_names(base, _seen=None):
+    # Everything a script extending `base` inherits, engine properties included.
+    _seen = _seen or set()
+    if base in _seen:
+        return set()        # a cycle is a project bug, not this check's problem
+    _seen.add(base)
+    names = set(SHADOW_BASES.get(base, set()))
+    names |= CLASS_MEMBERS.get(base, set())
+    parent = CLASS_PARENT.get(base, "")
+    if parent:
+        names |= inherited_names(parent, _seen)
+    return names
+
+
 shadow_rows = []
 for rel, text in SCRIPTS.items():
-    base_match = re.search(r"^extends\s+([\w\.]+)", text, re.M)
-    if not base_match:
+    base = _base_key(text)
+    if not base:
         continue
-    base = base_match.group(1).split(".")[-1]
-    props = SHADOW_BASES.get(base)
+    props = inherited_names(base)
     if not props:
         continue
+    own = set(MEMBER_DECL.findall(text))
     for number, line in enumerate(text.splitlines(), 1):
         code = line.split("#")[0]
         if not code.strip():
@@ -842,7 +961,11 @@ for rel, text in SCRIPTS.items():
         else:
             names = [p for p in SHADOW_PARAM.findall(found_decl.group(3)) if p]
         for local in names:
-            if local in props:
+            # A script REDECLARING an inherited member at its own top level is
+            # a different thing — an override, usually deliberate — and Godot
+            # does not warn about it. Only locals, loop variables and
+            # parameters are shadowing.
+            if local in props and not (local in own and found_decl.group(1)):
                 shadow_rows.append("%s:%d  '%s' shadows %s.%s"
                                    % (rel, number, local, base, local))
 

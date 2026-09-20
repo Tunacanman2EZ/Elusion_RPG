@@ -92,8 +92,25 @@ func _populate_window_sizes() -> void:
 	window_size.clear()
 	# `option`, not `size` — this script extends Control, which already has a
 	# `size` property, and the loop variable would shadow it.
+	# THE MULTIPLIER IS THE POINT, not decoration. With integer scaling these
+	# sizes are the only ones that fill their window edge to edge, and saying
+	# "2x" beside 2560x1440 explains why the list skips 1600x900 and 1920x1080
+	# rather than leaving it looking like an oversight.
+	var base_height: int = int(ProjectSettings.get_setting(
+		"display/window/size/viewport_height", 720))
 	for option in Settings.WINDOW_SIZES:
-		window_size.add_item("%d x %d" % [option.x, option.y])
+		# Integer division on purpose: every entry in WINDOW_SIZES is a whole
+		# multiple of the viewport by construction, so there is no remainder to
+		# lose. The guard below catches the case where someone adds one that
+		# isn't, rather than printing a rounded-down lie.
+		@warning_ignore("integer_division")
+		var factor: int = (option.y / base_height) if base_height > 0 else 0
+		if base_height <= 0 or factor * base_height != option.y:
+			factor = 0
+		if factor > 0:
+			window_size.add_item("%d x %d   (%dx)" % [option.x, option.y, factor])
+		else:
+			window_size.add_item("%d x %d" % [option.x, option.y])
 
 
 func _connect_controls() -> void:

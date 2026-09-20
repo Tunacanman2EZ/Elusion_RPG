@@ -140,6 +140,23 @@ func _load_item(path: String) -> void:
 # =============================================================================
 func get_item(item_id: String) -> ItemData:
 	# returns the ItemData for the given id, or a safe fallback if not found.
+
+	# AN EMPTY ID IS "NOTHING", NOT "NOT FOUND", and the difference is the
+	# difference between a defect and an ordinary Tuesday.
+	#
+	# Empty slots are everywhere in this game: a weapon slot before you find a
+	# sword, eight armour slots on a new character, a hotbar square nobody has
+	# filled. Every one of those reads its id and asks here. Treating "" as an
+	# unknown item meant a push_warning — with a full stack trace attached —
+	# once per melee swing for an unarmed warrior, which is once a second, for
+	# a character doing nothing wrong.
+	#
+	# The fallback item exists so a TYPO or a renamed item shows up as a
+	# visible error item instead of vanishing. "" is neither; nobody mistyped
+	# it, it means the slot is empty, and the callers all null-check already.
+	if item_id == "":
+		return null
+
 	if not _items.has(item_id):
 		push_warning("ItemRegistry: requested unknown item_id '%s'. Reverting to fallback." % item_id)
 		

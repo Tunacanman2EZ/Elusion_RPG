@@ -581,7 +581,46 @@ func _on_stats_pressed() -> void:
 
 
 func _on_shop_pressed() -> void:
-	print("shop pressed (not yet implemented)")
+	# WHAT THIS USED TO BE, in full:
+	#
+	#     print("shop pressed (not yet implemented)")
+	#
+	# The last of the three handlers tools/audit.py found under "handlers wired
+	# to nothing". The shop itself was never missing — vendor.gd has called
+	# open_shop() on this node since it was written, and walking up to a vendor
+	# and pressing interact has always worked. Only the button was dead.
+	#
+	# THE SHOP IS A PLACE, NOT A SCREEN, which is why this cannot simply open a
+	# panel the way Inventory and Stats do. There is no such thing as "the"
+	# shop: each vendor carries its own ShopData, and which catalogue you get
+	# depends on whose counter you are standing at.
+	#
+	# So the button does what the player means by pressing it — open the shop
+	# I am standing in front of — and says so plainly when there isn't one.
+	# Silence was the original bug; replacing a print with a different silence
+	# would not be a fix.
+	var nearby: Node = null
+	for vendor in get_tree().get_nodes_in_group("vendors"):
+		if vendor.has_method("can_open_for_player") and vendor.can_open_for_player():
+			nearby = vendor
+			break
+
+	if nearby == null:
+		_notify("There is no shop here.")
+		return
+
+	nearby.open_for_player()
+
+
+func _notify(message: String) -> void:
+	# Routed through the player because that is where show_notice() lives and
+	# where the floating label is spawned — see player.gd's note on why those
+	# refusals stopped being print() calls. The HUD has no label of its own and
+	# should not grow one for this.
+	if active_character != null and active_character.has_method("show_notice"):
+		active_character.show_notice(message)
+	elif OS.is_debug_build():
+		print("[HUD]  %s" % message)
 
 
 func _on_trade_pressed() -> void:
@@ -1066,8 +1105,18 @@ func open_cooking(firepit: Node, player: Node) -> void:
 # =============================================================================
 
 func hide_panel() -> void:
-	if inventory_screen != null:
-		inventory_screen.hide_inventory()
+	# hide_inventory() — THIS node's, not inventory_screen's.
+	#
+	# The two are one line apart in spelling and a whole panel apart in effect.
+	# inventory_screen.hide_inventory() closes the backpack. hide_inventory()
+	# here closes the backpack AND the equipment doll, which is the rule every
+	# other path in this file already follows: "One panel that is only useful
+	# next to another is not two panels", as the section below says.
+	#
+	# This line called the inner one, so Escape shut the bag and left the doll
+	# hanging there on its own — the only way in the game to get one without
+	# the other, and reachable by the most-pressed key on the keyboard.
+	hide_inventory()
 	if stats_screen != null:
 		stats_screen.visible = false
 	if bank_screen != null and bank_screen.visible:
@@ -1108,9 +1157,13 @@ func _any_panel_visible() -> bool:
 	# Escape OPENING the options panel. Without it, pressing Escape at a
 	# vendor would stack options on top of the shop, because is_panel_open()
 	# would answer false about a panel that is plainly on screen.
-	for panel in [inventory_screen, stats_screen, bank_screen, lootbag_panel,
-			cooking_panel, shop_panel, kingdom_panel, trade_panel,
-			owner_panel, options_screen, map_screen]:
+	# equipment_panel is in the list even though it never appears without the
+	# inventory. That pairing is a rule this file enforces, not a fact about
+	# the node — and a list that says EVERY panel and then leaves one out is
+	# how the pairing quietly stops being true.
+	for panel in [inventory_screen, equipment_panel, stats_screen, bank_screen,
+			lootbag_panel, cooking_panel, shop_panel, kingdom_panel,
+			trade_panel, owner_panel, options_screen, map_screen]:
 		if panel != null and panel.visible:
 			return true
 	return false

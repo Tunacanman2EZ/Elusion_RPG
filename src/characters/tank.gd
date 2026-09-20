@@ -58,7 +58,12 @@ const CLASS_DATA := preload("res://data/classes/tank.tres")
 # AURA SETTINGS
 # =============================================================================
 
-@export var aura_damage: int = 9
+# FOUR, NOT NINE. See mage.gd's note on damage_per_magic. 9 across a 0.25s
+# tick was 36/s per enemy against the warrior's 24/s — and this number lands
+# on EVERYTHING in range, so a tank in a pack of six was already dealing six
+# times it. 4 gives 16/s per enemy, the 0.70x this class is aimed at, and the
+# pack multiplier is what the tank is actually paid in.
+@export var aura_damage: int = 4
 @export var aura_tick: float = 0.25
 @export var mana_drain_tick: float = 0.5
 @export var mana_drain_cost: int = 2
@@ -207,9 +212,11 @@ func _tick_aura(delta: float) -> void:
 			_deactivate_aura()
 			return
 
-	# damage tick
+	# damage tick. hasten() applies agility — read per tick rather than cached,
+	# because agility can go up mid-fight on a skill-up and the aura is the one
+	# attack in the game that is already running when that happens.
 	aura_timer += delta
-	if aura_timer >= aura_tick:
+	if aura_timer >= hasten(aura_tick):
 		aura_timer = 0.0
 		_deal_aura_damage()
 
@@ -447,7 +454,8 @@ func attack_period() -> float:
 	# The dps it produces is PER ENEMY IN RANGE, not total. A tank standing in
 	# a pack of six is dealing six times the number the tooltip shows, which is
 	# the tank's entire point and not something one figure can say.
-	return aura_tick
+	# hasten() applies agility, so this is the rate actually delivered.
+	return hasten(aura_tick)
 
 
 func _get_dir_string() -> String:

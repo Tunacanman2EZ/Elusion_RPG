@@ -22,6 +22,13 @@ const SPAWN_GRACE_PERIOD := 1.0
 # pointers at each other across a scene change.
 const OPEN_VENDOR_GROUP := &"openvendor"
 
+# EVERY vendor, for its whole life — which is what makes it different from
+# OPEN_VENDOR_GROUP above. That one is joined only while a shop is open, so the
+# panel's lookup finds at most one and never has to guess. This one answers
+# "is there a shop here at all", which is the question the HUD's Shop button
+# has to ask before it can do anything useful.
+const VENDOR_GROUP := &"vendors"
+
 
 # The catalogue this vendor sells. Assign in the Inspector.
 #
@@ -44,6 +51,8 @@ func _ready() -> void:
 
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+
+	add_to_group(VENDOR_GROUP)
 
 	# LOUD, EARLY, AND ONLY IN A DEBUG BUILD. A vendor with no catalogue is a
 	# shop that cannot sell anything, and the symptom later would be an empty
@@ -94,6 +103,25 @@ func _on_body_exited(body: Node) -> void:
 # =============================================================================
 # OPEN / CLOSE
 # =============================================================================
+
+# PUBLIC, for the HUD's Shop button. Walking up and pressing interact is the
+# primary way in and always will be — this is the second door, for a player who
+# is standing at the counter and reaches for the button instead.
+#
+# It answers rather than acts when there is nobody here, so the button can tell
+# the player why nothing happened. A button that silently does nothing is the
+# bug this whole handler was filed under.
+func can_open_for_player() -> bool:
+	return (_player_nearby != null
+		and not _is_open
+		and shop_data != null
+		and shop_data.shop_id != "")
+
+
+func open_for_player() -> void:
+	if can_open_for_player():
+		_open_shop()
+
 
 func _open_shop() -> void:
 	if shop_data == null or shop_data.shop_id == "":

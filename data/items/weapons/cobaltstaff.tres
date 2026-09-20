@@ -16,5 +16,5 @@ required_level = 10
 type = 1
 equip_slot = 1
 required_classes = Array[String](["mage"])
-damage = 50
+damage = 18
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

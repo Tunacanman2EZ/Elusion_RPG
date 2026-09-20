@@ -253,9 +253,38 @@ func _log_server_reachability() -> void:
 	# it used to hold an HTTPRequest node open for ten seconds for the sake of
 	# one print statement.
 	var res: Dictionary = await get_json("/api/auth/session", PROBE_TIMEOUT)
+	var status: int = int(res.get("status", 0))
 
-	if int(res.get("status", 0)) == 0:
+	if status == 0:
 		print("[BOOT] Api: OFFLINE at %s — %s" % [BASE_URL, res.get("error", "")])
+		return
+
+	# ANSWERING IS NOT THE SAME AS BEING OURS, and this line used to conflate
+	# them. "What matters is whether ANY HTTP response comes back" is true for
+	# the question "is something listening" and false for the question the
+	# player actually has, which is "why can I not log in".
+	#
+	# THE CASE IT COST AN EVENING. Flask's app.run() defaults to port 5000 and
+	# so does DEFAULT_BASE_URL, so any other Flask project on this machine
+	# takes the port Elusion wants. It then answers 404 to every path here -
+	# which is an HTTP response, so this printed "reachable", and the 404 is
+	# not a 2xx, so it also printed "cached session REJECTED". Both lines were
+	# true and the conclusion they invited - "the server is up, my account is
+	# broken" - was exactly wrong.
+	#
+	# 404 IS UNAMBIGUOUS. This endpoint exists on every version of the server
+	# and answers 401 without a token, never 404. A 404 here means whatever
+	# holds this port is not Elusion. 405 means the same thing from a server
+	# that has the path but not the method.
+	if status == 404 or status == 405:
+		print("[BOOT] Api: WRONG SERVER at %s" % BASE_URL)
+		print("       Something is listening there and it is not Elusion: HTTP %d"
+			% status)
+		print("       on /api/auth/session, a route this server always answers.")
+		print("       Flask's app.run() defaults to port 5000 and so does this")
+		print("       client, so another project of yours has probably taken it.")
+		print("       Stop that one, or move Elusion with --server=,")
+		print("       ELUSION_SERVER, or user://server.cfg.")
 		return
 
 	var session_note: String = "no cached session"
@@ -512,5 +541,21 @@ func _describe_api_error(data: Variant, status: int) -> String:
 			return str(message[0])
 		if message is String and message != "":
 			return message
+
+	# NO PARSEABLE MESSAGE, and for 404 that is itself the diagnosis.
+	#
+	# Every 404 this server raises on purpose - an unknown account, a staff
+	# route hiding from a non-staff caller - carries {"error", "message"} and
+	# is answered above. Reaching here with a 404 means the body was HTML or
+	# empty, which our error handler never produces. Something else is on the
+	# port: Flask's app.run() defaults to 5000 and so does this client, so any
+	# other Flask project running on this machine takes it and answers 404 to
+	# every path here.
+	#
+	# The old text was "Something went wrong (HTTP 404)", which is true, says
+	# nothing, and points at the account rather than at the port.
+	if status == 404:
+		return ("No Elusion server at %s — something else is answering on that "
+			+ "address. Another local server may have taken the port.") % BASE_URL
 
 	return "Something went wrong (HTTP %d)." % status

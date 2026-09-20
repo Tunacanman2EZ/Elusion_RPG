@@ -34,6 +34,40 @@ extends Control
 @onready var username_input: LineEdit = %usernameinput
 @onready var view_button: Button = %viewbutton
 
+# THE SANCTION BUTTONS ARE OPTIONAL, and every one of them is null-guarded.
+#
+# This script is committed from outside the editor and the scene is not, so a
+# hard @onready on a node that does not exist yet would make the whole panel
+# fail to load - taking the working view button with it. Absent buttons simply
+# do nothing, which means the scene can gain them one at a time.
+#
+# SCENE SETUP (editor work, same as the input and view button above):
+#   a Button with unique name "kickbutton"      - sign out everywhere
+#   a Button with unique name "banbutton"       - ban, using the days field
+#   a Button with unique name "unbanbutton"     - lift a ban
+#   a LineEdit with unique name "daysinput"     - blank or 0 means permanent
+#   a LineEdit with unique name "reasoninput"   - required by the server for a ban
+@onready var kick_button: Button = get_node_or_null("%kickbutton")
+@onready var ban_button: Button = get_node_or_null("%banbutton")
+@onready var unban_button: Button = get_node_or_null("%unbanbutton")
+@onready var days_input: LineEdit = get_node_or_null("%daysinput")
+@onready var reason_input: LineEdit = get_node_or_null("%reasoninput")
+
+# ARMED-THEN-CONFIRMED, because a ban is one click from a typo.
+#
+# A ConfirmationDialog is the obvious answer and it is scene work this script
+# cannot do. This needs no new nodes: the first press arms the button and
+# renames it, the second within ARM_SECONDS performs it, and anything else -
+# a different button, the timer running out, a new lookup - disarms it.
+#
+# The window is short on purpose. A button that stays armed is a button that
+# gets pressed later by somebody who has forgotten what it was armed for.
+const ARM_SECONDS := 4.0
+
+var _armed_action: String = ""
+var _armed_label: String = ""
+var _armed_until: float = 0.0
+
 
 # =============================================================================
 # LIFECYCLE
@@ -43,6 +77,20 @@ func _ready() -> void:
 	visible = false
 	if view_button != null and not view_button.pressed.is_connected(_on_view_pressed):
 		view_button.pressed.connect(_on_view_pressed)
+
+	# bind(), so one handler serves all three and the action name travels with
+	# the press rather than being inferred from which button is disabled.
+	for pair in [[kick_button, "kick"], [ban_button, "ban"], [unban_button, "unban"]]:
+		var button: Button = pair[0]
+		if button != null and not button.pressed.is_connected(_on_sanction_pressed):
+			button.pressed.connect(_on_sanction_pressed.bind(String(pair[1])))
+
+
+func _process(_delta: float) -> void:
+	# Disarm on a timer rather than on the next click. A button left reading
+	# "Confirm ban?" is a trap for whoever looks at this panel next.
+	if _armed_action != "" and Time.get_ticks_msec() / 1000.0 > _armed_until:
+		_disarm()
 
 
 # =============================================================================
@@ -97,6 +145,109 @@ func _on_view_pressed() -> void:
 		_print_save_summary(username, data)
 	else:
 		_say("[OWNER] unexpected response shape for '%s'" % username)
+
+
+# =============================================================================
+# SANCTIONS
+# =============================================================================
+
+func _button_for(action: String) -> Button:
+	match action:
+		"kick":
+			return kick_button
+		"ban":
+			return ban_button
+		"unban":
+			return unban_button
+	return null
+
+
+func _disarm() -> void:
+	var button: Button = _button_for(_armed_action)
+	if button != null and _armed_label != "":
+		button.text = _armed_label
+	_armed_action = ""
+	_armed_label = ""
+	_armed_until = 0.0
+
+
+func _on_sanction_pressed(action: String) -> void:
+	# THE CLIENT GATE IS A COURTESY. require_role("mod") on the server is the
+	# real one, and it has to be - this client is the thing an attacker
+	# controls. Checking here only keeps an ordinary player from firing a
+	# request that was always going to be refused.
+	#
+	# STAFF, NOT OWNER. Reading another player's save stayed owner-only because
+	# that is what this panel was built as. Sanctions are different: a mod who
+	# cannot act has no reason to have the panel at all, and the server already
+	# decides who may act on whom via can_act_on().
+	if Api.role != "mod" and Api.role != "dev" and not Api.is_owner:
+		return
+
+	var username: String = "" if username_input == null else username_input.text.strip_edges()
+	if username == "":
+		_say("[GM] type a username first.")
+		return
+
+	var button: Button = _button_for(action)
+
+	# FIRST PRESS ARMS. See ARM_SECONDS for why this is not a dialog.
+	if _armed_action != action:
+		_disarm()
+		_armed_action = action
+		_armed_until = Time.get_ticks_msec() / 1000.0 + ARM_SECONDS
+		if button != null:
+			_armed_label = button.text
+			button.text = "Confirm %s?" % action
+		_say("[GM] %s '%s'? press again within %d seconds." % [action, username, int(ARM_SECONDS)])
+		return
+
+	_disarm()
+
+	var body: Dictionary = {"username": username}
+	var reason: String = "" if reason_input == null else reason_input.text.strip_edges()
+	if reason != "":
+		body["reason"] = reason
+
+	if action == "ban":
+		# BLANK OR ZERO MEANS PERMANENT, matching the endpoint. Sent as an
+		# explicit `permanent` rather than by omitting days, so the intent is
+		# in the request instead of being inferred from what is missing.
+		var days_text: String = "" if days_input == null else days_input.text.strip_edges()
+		var days: int = int(days_text) if days_text.is_valid_int() else 0
+		if days > 0:
+			body["days"] = days
+		else:
+			body["permanent"] = true
+
+	if button != null:
+		button.disabled = true
+	var res: Dictionary = await Api.post("/api/staff/%s" % action, body)
+	if button != null:
+		button.disabled = false
+
+	if not res.get("ok", false):
+		var status: int = int(res.get("status", 0))
+		if status == 0:
+			_say("[GM] could not reach the server: %s" % str(res.get("error", "")))
+		elif status == 404:
+			# The same two answers the view button gets, and for the same
+			# reason - require_role() hides itself behind "Not found", and so
+			# does a target you cannot act on. Do not guess which.
+			_say("[GM] no account called '%s' - or it is out of your reach." % username)
+		else:
+			_say("[GM] %s refused (%d): %s" % [action, status, str(res.get("error", ""))])
+		return
+
+	var data = res.get("data", {})
+	if action == "kick" and data is Dictionary:
+		# The count is the useful part: zero means they were already gone.
+		_say("[GM] signed '%s' out of %s place(s)." % [username, str(data.get("sessions_ended", 0))])
+	else:
+		_say("[GM] %s ok: %s" % [action, str(data)])
+
+	# Re-read, so the panel shows the result rather than the state before it.
+	_on_view_pressed()
 
 
 func _say(line: String) -> void:
@@ -175,6 +326,59 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 					str(attempt.get("reason", "")),
 					str(attempt.get("ip", "")),
 				])
+
+	# WHERE THEY ARE SIGNED IN RIGHT NOW, which is the number that decides
+	# between a kick and a ban - and the one this panel could not show at all
+	# until the endpoint carried it. login_attempts answers "who has been
+	# trying"; this answers "who is holding a key".
+	#
+	# No token is printed because none is sent. The server omits it rather than
+	# masking it, so there is nothing here to leak.
+	var sessions = data.get("sessions", {})
+	if sessions is Dictionary:
+		var live: int = int(sessions.get("active", 0))
+		_say("--- signed in now (%d) ---" % live)
+		if live == 0:
+			_say("  nowhere - a kick would do nothing")
+		for entry in sessions.get("list", []):
+			if entry is Dictionary:
+				# Days remaining rather than a date: against a fixed token ttl
+				# that is also how OLD the session is, which is the reading
+				# that matters. Nearly the full ttl means it just signed in.
+				_say("  expires %s  (%d day(s) left)" % [
+					_when(int(entry.get("expires_at", 0))),
+					int(entry.get("expires_in", 0)) / 86400,
+				])
+
+	# OTHER ACCOUNTS ON THE SAME ADDRESSES. Surfaced, never acted on - see
+	# _linked_accounts() in app.py for why a link is reported with its strength
+	# instead of as a verdict. A crowded address links strangers.
+	var linked = data.get("linked_accounts", {})
+	if linked is Dictionary:
+		var accounts: Array = linked.get("accounts", [])
+		if not linked.get("visible", false):
+			_say("--- linked accounts ---")
+			_say("  (withheld - you cannot act on this account)")
+		elif accounts.is_empty():
+			_say("--- linked accounts (0) ---")
+		else:
+			_say("--- linked accounts (%d%s) ---" % [
+				accounts.size(), ", more exist" if linked.get("truncated", false) else "",
+			])
+			for entry in accounts:
+				if entry is Dictionary:
+					var banned = entry.get("ban")
+					_say("  %-18s %-6s %s%s" % [
+						str(entry.get("username")),
+						str(entry.get("strength")),
+						"shares %s address(es), quietest holds %s" % [
+							str(entry.get("shared_addresses")),
+							str(entry.get("quietest_address_accounts")),
+						],
+						"  [BANNED]" if banned is Dictionary else "",
+					])
+			_say("  'weak' means the shared address is crowded - a carrier or a")
+			_say("  campus links strangers. Read it, do not act on it alone.")
 
 	var kills: Array = data.get("kills", [])
 	_say("--- kills reported (%d kinds) ---" % kills.size())

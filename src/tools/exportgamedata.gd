@@ -121,8 +121,27 @@ const EQUIP_SLOT_NAMES := [
 # and went unread, because the warning was in a tab nobody had open. A check
 # that reports somewhere you are not looking is not a check. So the verdict is
 # printed alongside the summary, in the pane that is actually being read.
+#
+# AND THE COUNT IS NOT THE MESSAGE. The paragraph above was written after the
+# tally went unread, and it only moved the TALLY. The text stayed in the
+# Debugger, and the summary line ended "open Debugger > Errors to read them" -
+# which sent someone to a panel that, for a @tool script run from the editor,
+# is EMPTY. Godot fills Debugger > Errors from a running game session;
+# push_warning() out of an editor tool does not appear there. So the run
+# reported "8 warning(s)" and there was nowhere to read the eight.
+#
+# That is the same mistake one layer along, and worse than the original: the
+# first version pointed at nothing, this one pointed at nothing CONFIDENTLY.
+# The messages are now kept and printed with the summary. push_warning() stays
+# because it is correct when this runs with a debugger attached, but nothing
+# depends on anyone seeing it.
 var _errors: int = 0
 var _warnings: int = 0
+
+# The text of every verdict this run, in the order it was reached, already
+# prefixed for printing. Kept rather than counted so the summary can show what
+# was actually wrong - see the note above about where the messages went.
+var _verdicts: Array[String] = []
 
 # Items whose icon did not resolve. Collected during the item pass, where the
 # ItemData is open, and reported once at the end - see _check_icon().
@@ -132,11 +151,41 @@ var _iconless: Array = []
 func _fail(message: String) -> void:
 	push_error("exportgamedata: " + message)
 	_errors += 1
+	_verdicts.append("      ERROR    " + message)
 
 
 func _warn(message: String) -> void:
 	push_warning("exportgamedata: " + message)
 	_warnings += 1
+	_verdicts.append("      warning  " + message)
+
+
+func _print_verdicts() -> void:
+	# Wrapped, because the Output pane does not soft-wrap: a long verdict runs
+	# off the side, and the end of the sentence is the half that says what to do
+	# about it. 84 characters of message, 99 with the 15-character prefix, which
+	# fits without the pane scrolling sideways at a normal editor width.
+	#
+	# Continuations are indented under the message rather than to the left
+	# margin, so a wrapped verdict still reads as one entry instead of as two.
+	for line in _verdicts:
+		var indent: String = "               "
+		var prefix: String = line.substr(0, 15)
+		var body: String = line.substr(15)
+		var out: String = prefix
+		var width: int = 0
+		for word in body.split(" ", false):
+			if width > 0 and width + word.length() + 1 > 84:
+				print(out)
+				out = indent
+				width = 0
+			if width > 0:
+				out += " "
+				width += 1
+			out += word
+			width += word.length()
+		if width > 0 or out.strip_edges() != "":
+			print(out)
 
 
 # =============================================================================
@@ -147,10 +196,15 @@ func _run() -> void:
 	# Constants first: _export_enemies() needs the pet-odds table out of them.
 	_errors = 0
 	_warnings = 0
+	_verdicts.clear()
 	_iconless.clear()
 	var constants: Dictionary = _export_constants()
 	var items: Array = _export_items()
 	var enemies: Array = _export_enemies(constants)
+	# After the rows exist, because resolving a scene to an enemy needs the list
+	# of enemy_ids that were actually exported - a scene whose name matches no
+	# real enemy must resolve to nothing rather than to a guess.
+	_annotate_placement(enemies)
 	var classes: Array = _export_classes()
 	var shops: Array = _export_shops(items)
 
@@ -178,7 +232,9 @@ func _run() -> void:
 		# Printed as well as pushed, for the same reason the verdict below is:
 		# an export that refuses to write and says so only in the Debugger looks
 		# from Output like an export that simply did not run.
-		print("exportgamedata: REFUSED TO WRITE — %d error(s), %d warning(s). Open Debugger > Errors." % [_errors, _warnings])
+		print("exportgamedata: REFUSED TO WRITE — %d error(s), %d warning(s):" % [_errors, _warnings])
+		_print_verdicts()
+		print("exportgamedata: nothing written. Fix the errors above and run again.")
 		push_error("exportgamedata: validation failed — nothing written. Fix the errors above and run again.")
 		return
 
@@ -247,7 +303,8 @@ func _run() -> void:
 	if _warnings == 0:
 		print("    validation: clean.")
 	else:
-		print("    validation: %d warning(s) — open Debugger > Errors to read them." % _warnings)
+		print("    validation: %d warning(s) — each one below." % _warnings)
+		_print_verdicts()
 
 
 # =============================================================================
@@ -270,6 +327,13 @@ func _validate(constants: Dictionary, items: Array, enemies: Array, classes: Arr
 	var known: Dictionary = {}
 	for item in items:
 		known[item["item_id"]] = true
+
+	# Collected across the loop and reported as ONE line — see the note at the
+	# emit site below for why this is not seven.
+	#
+	# PackedStringArray rather than Array[String] because String.join() takes a
+	# PackedStringArray, and an Array[String] is not one.
+	var odds_without_pet := PackedStringArray()
 
 	for enemy in enemies:
 		for field in ["pet_drop_id", "rare_pet_drop_id"]:
@@ -296,7 +360,24 @@ func _validate(constants: Dictionary, items: Array, enemies: Array, classes: Arr
 		if bool(enemy.get("grants_rewards", false)) \
 				and int(enemy.get("pet_odds", 0)) > 0 \
 				and String(enemy.get("pet_drop_id", "")) == "":
-			_warn("enemy '%s' has pet odds of 1/%d but no pet_drop_id — roll_pet() returns false before it reads the odds, so that rate is decorative." % [enemy["enemy_id"], int(enemy.get("pet_odds", 0))])
+			odds_without_pet.append(String(enemy["enemy_id"]))
+
+	# ONE LINE FOR ALL OF THEM, NOT ONE EACH, and the count is the reason.
+	#
+	# Every boss in the game is in this state — seven of them — so emitted per
+	# enemy this check produced seven of the run's eight warnings. A tally that
+	# is seven-eighths one known, accepted, already-reported fact trains you to
+	# ignore the tally, which is precisely how the FIRST instance of this went
+	# unread. A check that drowns out the other checks is not doing its job
+	# either.
+	#
+	# Already-reported is meant literally: the enemy table printed above each
+	# run ends "(no pet — odds unused)" on exactly these rows, so the detail is
+	# on screen already and this line only needs to say how many and which.
+	if not odds_without_pet.is_empty():
+		_warn("%d enemies carry pet odds with no pet_drop_id, so roll_pet() returns before it reads the rate and the odds are decorative: %s. Harmless while the pets are unauthored; each goes quiet when its .tres exists." % [
+			odds_without_pet.size(), ", ".join(odds_without_pet),
+		])
 
 	# Gold is appended to every bag by id, through the same has_item() gate. A
 	# missing one does not break the drop — it silently removes gold from every
@@ -489,6 +570,215 @@ func _report_iconless() -> void:
 		line += ", ..."
 	print("    %d item(s) have no icon and will render as an empty cell:" % _iconless.size())
 	print(line)
+
+
+func _annotate_placement(enemies: Array) -> void:
+	# Write placed_count onto every exported enemy row.
+	#
+	# WHAT THE SERVER DOES WITH IT. /api/combat/kill cannot see the fight, so the
+	# only honest question left is whether this many kills could physically have
+	# happened: an enemy that exists three times, on a respawner, cannot be
+	# killed more than three times per respawn however loudly a client insists.
+	# That ceiling is the world's, not a number somebody picked, and only Godot
+	# can see the world - which is why it is computed here and shipped rather
+	# than guessed at server-side.
+	#
+	# AN UNDERCOUNT REFUSES HONEST PLAYERS; an overcount only loosens the
+	# ceiling. Every fallback below therefore errs towards counting MORE, and
+	# anything that cannot be resolved at all is left at zero, which the server
+	# reads as "do not judge this one" rather than as "impossible".
+	#
+	# TWO WAYS TO NAME AN ENEMY SCENE, because this project has two shapes of
+	# them. The thin elemental variants (fireboss.tscn and its thirty-odd
+	# siblings) name their EnemyData directly, which is exact. The five original
+	# full scenes - bushmage, bushsniper, electricsprite, firesprite, poisonslime
+	# - name a SCRIPT and no resource at all, which is what the note on
+	# _report_unplaced_enemies() means by nothing connecting a scene to its data.
+	# For those the filename is used, and only when it matches an enemy_id that
+	# was actually exported, so a typo resolves to nothing instead of to the
+	# wrong enemy.
+	#
+	# Validated against this project before it was written: the two paths
+	# together resolve 40 of 42 enemy scenes and find 35 placed instances, which
+	# is exactly the number of enemy nodes in field.tscn counted independently.
+	# The two that do not resolve are bossenemy.tscn, a base other scenes inherit
+	# from and nothing places directly, and poisonslime.tscn, whose enemy_id is
+	# poisonslimelarge - and that one awards nothing, so its count is never read.
+	var known: Dictionary = {}
+	for row in enemies:
+		known[String(row.get("enemy_id", ""))] = true
+
+	var enemy_scenes: Array = _find_files("res://scene/enemy/", ".tscn")
+	var scene_to_enemy: Dictionary = {}
+	var unresolved: Array = []
+
+	for scene_path in enemy_scenes:
+		var file := FileAccess.open(scene_path, FileAccess.READ)
+		if file == null:
+			continue
+		var text: String = file.get_as_text()
+		file.close()
+
+		var enemy_id: String = ""
+
+		# 1. The EnemyData the scene names, when it names one.
+		var marker: String = "res://data/enemies/"
+		var at: int = text.find(marker)
+		if at != -1:
+			var tres_at: int = text.find(".tres", at)
+			if tres_at != -1:
+				enemy_id = text.substr(at + marker.length(), tres_at - at - marker.length())
+
+		# 2. Otherwise the SCRIPT's ENEMY_DATA constant, which is how the five
+		#    original full scenes name their data - bossenemy.gd line 38 is
+		#    `const ENEMY_DATA := preload("res://data/enemies/boss.tres")`, and
+		#    BaseEnemy falls back to it when the scene leaves enemy_data null.
+		#
+		#    THE CONSTANT, NOT THE FIRST PATH IN THE FILE. poisonslime.gd
+		#    preloads SMALL_DATA and LARGE_DATA, in that order, so "the first
+		#    res://data/enemies/ in the script" would resolve the LARGE slime's
+		#    scene to the SMALL slime's id and put the ceiling on the wrong
+		#    enemy. Anchoring to ENEMY_DATA leaves that scene unresolved, which
+		#    is the correct answer for it.
+		#
+		#    This is what the filename alone got wrong: bossenemy.tscn holds
+		#    the enemy whose id is "boss", so the base boss - 700 xp, the
+		#    highest in the field set - was counted as placed nowhere and
+		#    therefore exempted from the ceiling entirely.
+		if not known.has(enemy_id):
+			enemy_id = _enemy_id_from_scripts(text, known)
+
+		# 3. Otherwise the filename, and only if it names a real enemy.
+		if not known.has(enemy_id):
+			var stem: String = String(scene_path).get_file().get_basename()
+			enemy_id = stem if known.has(stem) else ""
+
+		if enemy_id == "":
+			unresolved.append(String(scene_path).get_file())
+		else:
+			scene_to_enemy[scene_path] = enemy_id
+
+	# Every .tscn that is not itself an enemy, counted for instances of each.
+	var counts: Dictionary = {}
+	for world_path in _find_files("res://scene/", ".tscn"):
+		if world_path.begins_with("res://scene/enemy/"):
+			continue
+		var world := FileAccess.open(world_path, FileAccess.READ)
+		if world == null:
+			continue
+		var world_text: String = world.get_as_text()
+		world.close()
+
+		for scene_path in scene_to_enemy.keys():
+			var n: int = _count_instances(world_text, String(scene_path))
+			if n > 0:
+				var eid: String = String(scene_to_enemy[scene_path])
+				counts[eid] = int(counts.get(eid, 0)) + n
+
+	for row in enemies:
+		row["placed_count"] = int(counts.get(String(row.get("enemy_id", "")), 0))
+
+	var total: int = 0
+	for eid in counts.keys():
+		total += int(counts[eid])
+	print("    placement: %d enemy instances across %d types (the server's kill ceiling)"
+		% [total, counts.size()])
+	if not unresolved.is_empty():
+		unresolved.sort()
+		var names := PackedStringArray()
+		for scene_name in unresolved:
+			names.append(String(scene_name))
+		# Not a warning: both known cases are benign and saying so every export
+		# would train you to skip the line. It is printed because an entry here
+		# that is NOT one of those two is an enemy the ceiling cannot protect.
+		print("      (%d scene(s) map to no enemy_id, so they are left uncounted: %s)"
+			% [unresolved.size(), ", ".join(names)])
+
+
+func _enemy_id_from_scripts(scene_text: String, known: Dictionary) -> String:
+	# The enemy_id named by the ENEMY_DATA constant of any script this scene
+	# attaches, or "" when there is not exactly one answer.
+	#
+	# Reads the .gd as TEXT rather than loading it. Loading would run the class
+	# through the parser during an export, and a script that does not currently
+	# compile would take the whole export down with it - which is the opposite
+	# of what a tool that exists to REPORT problems should do.
+	var marker: String = "res://data/enemies/"
+	var found: String = ""
+
+	var search_from: int = 0
+	while true:
+		var at: int = scene_text.find("res://src/", search_from)
+		if at == -1:
+			break
+		var end: int = scene_text.find(".gd", at)
+		search_from = at + 10
+		if end == -1:
+			continue
+		var script_path: String = scene_text.substr(at, end - at + 3)
+
+		var file := FileAccess.open(script_path, FileAccess.READ)
+		if file == null:
+			continue
+		var code: String = file.get_as_text()
+		file.close()
+
+		var const_at: int = code.find("ENEMY_DATA")
+		if const_at == -1:
+			continue
+		var path_at: int = code.find(marker, const_at)
+		if path_at == -1:
+			continue
+		var tres_at: int = code.find(".tres", path_at)
+		if tres_at == -1:
+			continue
+		var candidate: String = code.substr(
+			path_at + marker.length(), tres_at - path_at - marker.length())
+		if not known.has(candidate):
+			continue
+
+		# TWO DIFFERENT ANSWERS IS NOT AN ANSWER. A scene attaching two scripts
+		# that each name a different enemy is ambiguous, and guessing would put
+		# the ceiling on the wrong one - which under-counts the other and
+		# exempts it. Returning "" leaves both alone.
+		if found != "" and found != candidate:
+			return ""
+		found = candidate
+
+	return found
+
+
+func _count_instances(world_text: String, scene_path: String) -> int:
+	# How many nodes in this world are instances of that scene.
+	#
+	# A .tscn names each external resource once, with an id, and every node instanced
+	# from it repeats that id - so the id is found once and its instance lines
+	# counted. Bounded to the ext_resource's own line, because the path also
+	# appears in other places and only that line carries the id.
+	var at: int = world_text.find(scene_path)
+	if at == -1:
+		return 0
+	var line_end: int = world_text.find("\n", at)
+	if line_end == -1:
+		line_end = world_text.length()
+	var id_at: int = world_text.find("id=\"", at)
+	if id_at == -1 or id_at > line_end:
+		return 0
+	id_at += 4
+	var id_end: int = world_text.find("\"", id_at)
+	if id_end == -1:
+		return 0
+
+	var needle: String = "instance=ExtResource(\"%s\")" % world_text.substr(id_at, id_end - id_at)
+	var count: int = 0
+	var search_from: int = 0
+	while true:
+		var hit: int = world_text.find(needle, search_from)
+		if hit == -1:
+			break
+		count += 1
+		search_from = hit + needle.length()
+	return count
 
 
 func _report_unplaced_enemies() -> void:

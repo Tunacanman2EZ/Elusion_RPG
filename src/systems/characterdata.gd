@@ -70,6 +70,31 @@ const SAVE_DEBOUNCE_SECONDS := 2.0
 # waiting on (a push finishing, a session returning) usually clears in well
 # under a second.
 const SAVE_RETRY_SECONDS: float = 0.5
+
+# THE CEILING ON COALESCING, and the bug it closes.
+#
+# SAVE_DEBOUNCE_SECONDS is a TRAILING debounce: every save_data() pushes the
+# countdown back out to two seconds. That is exactly right for a burst — twenty
+# calls about the same gold pickup become one write — and it is wrong for
+# activity that does not stop, because the countdown never reaches zero.
+#
+# The healer fires ten shots a second and every landed hit grants attack XP and
+# magic XP, so save_data() is reached about twenty times a second for as long
+# as the fight lasts. Simulated against that trace: a five-minute grind with no
+# pause produced ONE write, at the very end. A crash at minute four lost four
+# minutes of XP, gold and loot, and nothing anywhere reported it — the game
+# believed it had saved, because it had queued.
+#
+# So the debounce now has a maximum. Ten seconds after the FIRST unsaved
+# change, the write happens whether or not the player has stopped. Loss is
+# bounded at ten seconds instead of at "however long you played".
+#
+# IT COSTS NOTHING AT THE SERVER. Sustained combat writes at 0.1/sec/player
+# under this ceiling; ordinary intermittent play already peaks at 0.5/sec
+# through the two-second debounce. The ceiling lowers the worst case rather
+# than raising it — it only ever converts a write that never happened into one
+# that did.
+const SAVE_MAX_DELAY_SECONDS: float = 10.0
  
 # central definition of all stats that get saved per character.
 # LUSIONS REMOVED — now stored in account_data (account-shared).
@@ -639,8 +664,15 @@ func _write_save_now() -> bool:
 	if accepted:
 		_save_pending = false
 		_save_countdown = 0.0
+		# The batch is closed, so the ceiling's clock starts again from the
+		# next change rather than carrying this batch's age into it.
+		_save_age = 0.0
+		_save_retrying = false
 	else:
 		_save_countdown = SAVE_RETRY_SECONDS
+		# _save_age is NOT reset. The data is still unsaved and still ageing —
+		# pretending otherwise is how a refused save became invisible before.
+		_save_retrying = true
 	return accepted
  
  
@@ -670,8 +702,23 @@ func _write_save_now() -> bool:
  
 var _save_pending: bool = false
 var _save_countdown: float = 0.0
- 
- 
+
+# Seconds since the FIRST change in the current unsaved batch, which is the
+# thing SAVE_MAX_DELAY_SECONDS is measured against. Not the same as the
+# countdown: the countdown restarts on every change and this one does not.
+var _save_age: float = 0.0
+
+# True when the last write was REFUSED by the backend rather than accepted.
+#
+# It exists to keep the ceiling from turning a refusal into a spin. Once
+# _save_age is past SAVE_MAX_DELAY_SECONDS the ceiling wants to write on every
+# frame, and against a backend that is saying no — no session, a push already
+# in flight — that is sixty attempts a second at something that will not
+# succeed. While this is set, only SAVE_RETRY_SECONDS decides when to try
+# again. It clears on the first write the backend takes.
+var _save_retrying: bool = false
+
+
 func save_data() -> bool:
 	# Queues a save rather than performing one. Returns true when the save
 	# was accepted — NOT when it has hit the disk. No caller has ever used
@@ -681,6 +728,13 @@ func save_data() -> bool:
 		push_warning("CharacterData: save_data() called with no user loaded — ignoring")
 		return false
  
+	# THE AGE CLOCK STARTS ON THE FIRST CHANGE OF A BATCH, not on every one.
+	# Resetting it here unconditionally would make it a second copy of the
+	# countdown and the ceiling would never be reached — which is the bug it
+	# exists to close.
+	if not _save_pending:
+		_save_age = 0.0
+
 	_save_pending = true
 	_save_countdown = SAVE_DEBOUNCE_SECONDS
 	return true
@@ -708,7 +762,21 @@ func _process(delta: float) -> void:
 		return
  
 	_save_countdown -= delta
+	_save_age += delta
+
 	if _save_countdown <= 0.0:
+		_write_save_now()
+		return
+
+	# THE CEILING. The player has not stopped, so the countdown keeps being
+	# pushed out — write anyway once the oldest unsaved change reaches
+	# SAVE_MAX_DELAY_SECONDS. Without this a fight that never pauses never
+	# saves; see that constant for the measurement.
+	#
+	# Skipped while retrying, because past the ceiling this branch is true on
+	# every frame and a refusing backend would get sixty attempts a second.
+	# There, SAVE_RETRY_SECONDS is the only clock that should be running.
+	if not _save_retrying and _save_age >= SAVE_MAX_DELAY_SECONDS:
 		_write_save_now()
  
  
@@ -985,7 +1053,25 @@ func save_character_state(player: Node) -> void:
 	character_slots[slot]["explored_rev"] = WorldMap.save_revision()
 
 	if "equipped" in player:
-		var worn: Dictionary = prune_equipment(player.equipped, bag)
+		# PRUNED ONLY AGAINST A BAG WE ACTUALLY READ. This is what "the game
+		# doesn't remember what I had equipped" turned out to be.
+		#
+		# _capture_inventory() reads the live container when the inventory
+		# panel exists and otherwise falls back to player.inventory_data —
+		# which is assigned once at load and never updated, as the note above
+		# says. So: find a sword, equip it, close the inventory, and let
+		# anything at all trigger a save. The fallback bag is the one from
+		# login, it does not contain the sword, and prune_equipment() dutifully
+		# concludes you are wearing something you do not own and clears the
+		# slot. The gear was not failing to save. It was being deleted on the
+		# way out, by the reconciliation that exists to handle selling it.
+		#
+		# A stale bag is harmless for the inventory itself — the next pickup
+		# rewrites it — so the capture is still saved either way. It is only
+		# the prune that must not run on a guess.
+		var worn: Dictionary = player.equipped
+		if _inventory_capture_was_live:
+			worn = prune_equipment(player.equipped, bag)
 		player.equipped = worn
 		# DUPLICATED INTO THE SLOT, not aliased into it. The player keeps
 		# wearing `worn`; if the slot held the same instance, equipping one more
@@ -1067,6 +1153,20 @@ func load_character_state(player: Node) -> void:
 		else:
 			player.equipped = {}
 			
+# TRUE ONLY IF THE LAST _capture_inventory() READ THE REAL BAG.
+#
+# Valid for exactly as long as it takes save_character_state() to look at it,
+# which is the line after the call. It is a return value that could not be one
+# without changing the signature every caller uses.
+#
+# It exists because the difference matters enormously to equipment and not at
+# all to anything else: a stale bag saved as the inventory is a save that
+# loses a pickup, which the next pickup fixes. A stale bag used to PRUNE
+# equipment throws away gear the player is still wearing, permanently, and
+# looks exactly like "the game doesn't remember what I had equipped".
+var _inventory_capture_was_live: bool = false
+
+
 func _capture_inventory(player: Node) -> Array:
 	# pulls the live inventory contents from the open inventory container if
 	# available, otherwise falls back to the player's cached inventory_data.
@@ -1080,6 +1180,8 @@ func _capture_inventory(player: Node) -> Array:
 	# again. That is how this save ended up with a lone
 	# {"item_id": "tinyhealthpotion", "quantity": 16.0} among otherwise
 	# integer values.
+	_inventory_capture_was_live = false
+
 	var hud: Node = player.get_tree().get_first_node_in_group("hud")
 	if hud == null:
 		if "inventory_data" in player:
@@ -1089,8 +1191,10 @@ func _capture_inventory(player: Node) -> Array:
 	if hud.inventory_screen != null:
 		var container: Node = hud.inventory_screen.get_node_or_null("%inventorycontainer")
 		if container != null and container.has_method("to_save_array"):
+			# The only path that reads what the player is actually carrying.
+			_inventory_capture_was_live = true
 			return container.to_save_array()
- 
+
 	if "inventory_data" in player:
 		return _normalise_item_array(player.inventory_data)
 	return []

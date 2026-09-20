@@ -17,5 +17,5 @@ required_level = 16
 type = 1
 equip_slot = 1
 required_classes = Array[String](["tank"])
-damage = 26
+damage = 12
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

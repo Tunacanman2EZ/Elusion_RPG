@@ -366,10 +366,12 @@ func base_attack_damage() -> int:
 
 func attack_period() -> float:
 	# One swing per lock. See player.gd's attack_period() for what reads this.
-	# attack_lock_duration rather than _attack_lock_duration(), which measures
+	# attack_lock_duration rather than _swing_lock_duration(), which measures
 	# the real animation and needs a sprite in the tree — a tooltip is hovered
 	# while standing still, and the exported value is the number being tuned.
-	return attack_lock_duration
+	# hasten() applies agility, so the dps this feeds is the rate actually
+	# being delivered rather than the base one.
+	return hasten(attack_lock_duration)
 
 
 # =============================================================================
@@ -424,7 +426,7 @@ func attack_action() -> void:
 	if anim != "":
 		sprite.play(anim)
 		sprite.frame = 0
-		sprite.speed_scale = attack_animation_speed
+		sprite.speed_scale = _agile_animation_speed()
 
 	_release_attack_lock_after(_swing_lock_duration(anim), this_swing_id)
 
@@ -480,6 +482,23 @@ func _resolve_wave_frame(anim: String) -> int:
 	return mini(wave_spawn_frame, last_frame)
 
 
+func _agile_animation_speed() -> float:
+	# THE SWING HAS TO PLAY AS FAST AS IT LANDS, which is why agility is
+	# applied to the animation here and not only to the cooldown.
+	#
+	# _swing_lock_duration() below takes maxf(attack_lock_duration, the real
+	# animation duration). So shortening only the exported cooldown would do
+	# nothing at all past a modest agility: the animation length would win the
+	# maxf and the warrior would keep swinging at the base rate no matter how
+	# high the stat went. Speeding the clip up shortens the real duration by
+	# the same factor, so both halves of that maxf scale together.
+	#
+	# It also keeps the swing looking like what it is. A warrior attacking
+	# twice as often with a swing that still takes a full second to play would
+	# have the second swing start before the first had visibly finished.
+	return attack_animation_speed * get_attack_speed_multiplier()
+
+
 func _swing_lock_duration(anim: String) -> float:
 	# attack_lock_duration was once a static guessed value — and if the REAL
 	# animation (which varies by direction and frame count, especially with
@@ -493,16 +512,25 @@ func _swing_lock_duration(anim: String) -> float:
 	# is then always comfortably longer than the real swing and can only fire
 	# as a true backstop (Loop accidentally left on), never during normal
 	# correct playback.
-	if anim == "" or attack_animation_speed <= 0.0:
-		return attack_lock_duration
+	# BOTH HALVES OF THE maxf ARE HASTENED BY AGILITY, or neither is. The floor
+	# is hasten(attack_lock_duration) and the real duration is computed from
+	# the same sped-up clip that is actually playing, so a fast warrior does
+	# not get held by a backstop meant for a slow one.
+	# `swing_speed`, not `speed` — player.gd declares `speed` as the movement
+	# stat and this script extends it, so a local by that name shadows it for
+	# the rest of the function. Nothing here reads movement speed, which is
+	# exactly why it would have gone unnoticed.
+	var swing_speed: float = _agile_animation_speed()
+	if anim == "" or swing_speed <= 0.0:
+		return hasten(attack_lock_duration)
 
 	var fps: float = sprite.sprite_frames.get_animation_speed(anim)
 	if fps <= 0.0:
-		return attack_lock_duration
+		return hasten(attack_lock_duration)
 
 	var frame_count: int = sprite.sprite_frames.get_frame_count(anim)
-	var real_duration: float = (float(frame_count) / fps) / attack_animation_speed
-	return maxf(attack_lock_duration, real_duration + 0.2)
+	var real_duration: float = (float(frame_count) / fps) / swing_speed
+	return maxf(hasten(attack_lock_duration), real_duration + 0.2)
 
 
 func _release_attack_lock_after(seconds: float, swing_id: int) -> void:

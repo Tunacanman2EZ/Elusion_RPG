@@ -190,6 +190,36 @@ const PET_ODDS_FALLBACK := 1296
 
 @export var leash_range:      float = 400.0
 
+# HELD BEHIND A GATE: immune, motionless, and not attacking.
+#
+# WHAT IT IS FOR. The boss arena runs a gauntlet - one boss, then two, then
+# three - and the ones whose turn has not come stand behind gates. Without a
+# single flag for that state they would have to be spawned on cue instead,
+# which means a boss appearing out of nothing in a room the player is already
+# standing in, and no way to see what is coming.
+#
+# IMMUNE AS WELL AS STILL, and the immunity is the load-bearing half. A boss
+# that cannot move but can be shot is a free kill: the player stands outside
+# its attack range and empties the whole gauntlet through the bars. Holding
+# still without immunity is worse than no gate at all.
+#
+# ONE FLAG, TWO GUARDS - take_damage() and _physics_process(). Anything else
+# that should pause while gated goes through one of those two, so there is one
+# place to look rather than a set of booleans that can disagree.
+#
+# CLIENT-SIDE, AND THAT IS A KNOWN LIMIT. A modified client can clear this and
+# shoot a caged boss, exactly as it can claim a kill it never made - the same
+# root as E-3 in SECURITY_NOTES.md. The honest fix is server-owned encounter
+# state; until then the gate is a rule the game follows, not one it enforces.
+@export var gated: bool = false:
+	set(value):
+		gated = value
+		# Stop dead rather than drifting on with whatever velocity the last
+		# frame left behind. A gate that closes on a moving boss should look
+		# like a wall, not like a slow brake.
+		if gated:
+			velocity = Vector2.ZERO
+
 # How much further than flee_range an enemy retreats once it has STARTED
 # fleeing. See the hysteresis note in _handle_combat() for why a bare threshold
 # produces a twitch instead of a retreat. 1.8 means an archer with a flee_range
@@ -335,6 +365,13 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	# HELD BEHIND A GATE: no chase, no attack, no drift. Before the player
+	# lookup, because a gated boss has no business resolving a target - it
+	# should not even be facing them until its gate opens.
+	if gated:
+		velocity = Vector2.ZERO
+		return
+
 	# CHANGED: was `player == null`. A FREED node is not null — it's a
 	# dangling reference — so that check passed a dead player straight
 	# through to global_position below and threw "Attempt to call function on
@@ -2313,6 +2350,16 @@ func _apply_enemy_data() -> void:
 
 
 func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
+	# IMMUNE WHILE GATED. Checked before _dying, because a gated boss is not
+	# dying and the two states are unrelated - ordering them the other way
+	# would read as if one implied the other.
+	#
+	# Returns silently: no damage number, no flash, no health bar move. A
+	# zero floating up off a caged boss would read as a bug in the damage
+	# maths rather than as "not yet".
+	if gated:
+		return
+
 	# _dying as well as _death_resolved: a corpse playing out its death
 	# animation is still a live node for about a second, and without this it
 	# would keep taking hits, spawning damage numbers and re-entering _die().

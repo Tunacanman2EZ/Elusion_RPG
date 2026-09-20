@@ -17,5 +17,5 @@ required_level = 22
 type = 1
 equip_slot = 1
 required_classes = Array[String](["healer"])
-damage = 13
+damage = 8
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

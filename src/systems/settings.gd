@@ -97,14 +97,25 @@ const DEFAULTS := {
 	"damage_numbers": true,
 }
 
-# The window sizes the options screen offers. All 16:9, all at or above the
-# project's 1280x720 viewport, so nothing here ever scales the UI DOWN — see
-# the note in optionsscreen.gd about why that matters for text.
+# WHOLE MULTIPLES OF THE VIEWPORT, AND NOTHING ELSE.
+#
+# project.godot sets stretch/scale_mode="integer", so the canvas is only ever
+# drawn at 1x, 2x, 3x and the remainder becomes a border. That makes every
+# other size in this list a lie: at 1600x900 the game still renders at 1x —
+# identical pixels to 1280x720 — inside a window with 160px of black down each
+# side. The player picks a bigger number and gets the same picture with more
+# letterbox, which reads as the option doing nothing.
+#
+# 1920x1080 is the one worth naming, because it is the most common monitor
+# there is and it is NOT a whole multiple of 1280x720 (it is 1.5x). Anyone on
+# a 1080p screen wants fullscreen, which letterboxes honestly, rather than a
+# windowed 1920x1080 that is 1x with a thick frame.
+#
+# So: 1x, 2x, 3x. The options screen prints the multiplier beside each one.
 const WINDOW_SIZES := [
-	Vector2i(1280, 720),
-	Vector2i(1600, 900),
-	Vector2i(1920, 1080),
-	Vector2i(2560, 1440),
+	Vector2i(1280, 720),    # 1x
+	Vector2i(2560, 1440),   # 2x
+	Vector2i(3840, 2160),   # 3x
 ]
 
 
@@ -129,7 +140,127 @@ func _ready() -> void:
 	# made from a pause menu — which is exactly where options screens live in
 	# most games, and where this one may end up.
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_enforce_minimum_window()
 	load_settings()
+	match_frame_cap_to_display()
+
+
+# PUBLIC, because the right cap depends on which monitor the window is on and
+# that can change while the game is running.
+func match_frame_cap_to_display() -> void:
+	# 59.94 Hz IS A REAL REFRESH RATE AND IT IS NOT 60.
+	#
+	# It is the NTSC rate, and a great many monitors report it rather than a
+	# round 60 — including the one this was found on, a Samsung reporting
+	# "1920 x 1080, 59.94 Hz" in Windows' own display information.
+	#
+	# project.godot asked for max_fps = 60. Against a 59.94 Hz panel the game
+	# hands over 0.06 more frames every second than the display can show, so
+	# the tear seam advances six hundredths of a screen height per second and
+	# sweeps top to bottom once every 16.7 seconds. That is far too slow to
+	# read as tearing. It reads as a band of noise drifting steadily upward —
+	# which is how it was reported, and why it survived days of looking for a
+	# rendering bug. Nothing was being drawn wrong. The game was simply
+	# producing frames slightly faster than the screen could take them.
+	#
+	# ONE BELOW THE PANEL, DELIBERATELY — and not merely floor(refresh).
+	#
+	# An earlier version of this used floor(), which gives 59 on a 59.94 Hz
+	# panel and fixed the reported band. But it gives 60 on a panel reporting
+	# a round 60, and MATCHING the refresh rate exactly is the worst setting
+	# available, not the best one.
+	#
+	# Without vsync pacing, the seam sits wherever the buffer swap lands in the
+	# scan. How fast it moves is the difference between the two rates:
+	#
+	#   60 fps on 59.94 Hz   0.06 apart   sweeps every 16.7 s   a visible band
+	#   60 fps on 60.00 Hz   ~0 apart     barely moves at all   worse
+	#   59 fps on 60.00 Hz   1.00 apart   sweeps every 1.0 s    imperceptible
+	#
+	# The seam does not disappear when the rates differ. It moves too fast to
+	# read as an object. Being close to the refresh rate is what makes it slow
+	# enough for an eye to follow, so the goal is to be reliably about a frame
+	# away rather than as near as possible.
+	#
+	# ceil() - 1 lands one below whether the panel reports 59.94 or 60.0, which
+	# floor() does not: floor(60.0) is 60 and puts the seam back.
+	#
+	# All of this would be moot if vsync were pacing the frames, and on most
+	# machines it is. It was not here: with the cap removed the game ran at
+	# 2625 fps on a 60 Hz screen, which is what proved the cap was doing all
+	# of the work and vsync none of it.
+	var screen: int = DisplayServer.window_get_current_screen()
+	var refresh: float = DisplayServer.screen_get_refresh_rate(screen)
+
+	# A rate of 0 or -1 means the platform would not say. Leaving max_fps at
+	# whatever project.godot set is better than guessing at it.
+	if refresh <= 0.0:
+		return
+
+	var cap: int = int(ceil(refresh)) - 1
+	if cap < 30:
+		return
+
+	if Engine.max_fps != cap:
+		Engine.max_fps = cap
+
+	_capped_screen = screen
+
+
+# The screen the current cap was calculated for. Dragging the window to a
+# monitor with a different refresh rate has to recalculate, and there is no
+# signal for that — see _process().
+var _capped_screen: int = -1
+var _screen_check_accum: float = 0.0
+const SCREEN_CHECK_SECONDS := 1.0
+
+
+func _process(delta: float) -> void:
+	# ONCE A SECOND, NOT ONCE A FRAME. This exists because a window can be
+	# dragged from a 59.94 Hz panel to a 144 Hz one and the correct frame cap
+	# changes underneath the game with nothing announcing it. A whole second of
+	# the wrong cap is imperceptible; sixty DisplayServer queries a second to
+	# avoid it would not be a trade worth making.
+	_screen_check_accum += delta
+	if _screen_check_accum < SCREEN_CHECK_SECONDS:
+		return
+	_screen_check_accum = 0.0
+
+	if DisplayServer.window_get_current_screen() != _capped_screen:
+		match_frame_cap_to_display()
+
+
+func _enforce_minimum_window() -> void:
+	# THE WINDOW MAY NEVER BE SMALLER THAN THE CANVAS IT DRAWS.
+	#
+	# project.godot runs stretch/scale_mode="integer", which only ever draws at
+	# 1x, 2x, 3x — there is no 0.9x. So in a window below 1280x720 the canvas
+	# is still rendered at full size and simply does not fit: the picture is
+	# cropped and the HUD, which is anchored to the bottom right, goes off the
+	# edge of the window entirely.
+	#
+	# That is not a hypothetical. The editor's embedded Game view sizes itself
+	# to whatever space the panel has — 1159x652 in one case — and produced
+	# exactly that: a cropped world and no hotbar or health bars.
+	#
+	# A minimum size makes the window physically unable to enter that state.
+	# It does NOT cover the editor's embedded view, which the editor sizes
+	# itself and which this cannot reach; running un-embedded is the answer
+	# there, and it is the better way to look at the game anyway.
+	var minimum := Vector2i(
+		int(ProjectSettings.get_setting("display/window/size/viewport_width", 1280)),
+		int(ProjectSettings.get_setting("display/window/size/viewport_height", 720)))
+	if minimum.x <= 0 or minimum.y <= 0:
+		return
+
+	DisplayServer.window_set_min_size(minimum)
+
+	# And grow it if it is already too small, because a minimum applies to what
+	# the user drags next, not to the size the window happens to start at.
+	var current: Vector2i = DisplayServer.window_get_size()
+	if current.x < minimum.x or current.y < minimum.y:
+		DisplayServer.window_set_size(Vector2i(
+			maxi(current.x, minimum.x), maxi(current.y, minimum.y)))
 
 
 # =============================================================================

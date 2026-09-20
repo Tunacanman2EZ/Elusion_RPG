@@ -15,6 +15,7 @@ xp_reward = 756
 attack_xp_reward = 97
 bag_drop_chance = 1.0
 max_loot_tier = 5
+pet_drop_id = "petboss"
 max_item_slots = 4
 slot_fill_chance = 0.9
 metadata/_custom_type_script = "uid://bbmcaokoqjh1i"
