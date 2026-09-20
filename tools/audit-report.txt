@@ -1,0 +1,105 @@
+========================================================================
+  ELUSION PROJECT AUDIT — /home/claude/audit/proj
+  87 scripts, 107 scenes, 174 resources
+========================================================================
+
+!!  HANDLERS WIRED TO NOTHING  (3)
+    A control the player can press, connected to a function whose whole body
+    is pass or a print. This is what the Options button was for months.
+      src/projectiles/fireprojectile.gd: _on_visible_on_screen_notifier_2d_screen_exited() runs nothing
+      src/ui/characterhud.gd: _on_map_pressed() runs nothing
+      src/ui/characterhud.gd: _on_shop_pressed() runs nothing
+
+!!  res:// PATHS THAT DO NOT EXIST  (12)
+    A script or scene referencing a file that is not on disk. Godot resolves
+    by UID first, so a wrong path can sit here for months without failing.
+      (207 of 207 references miss, and whole folders are absent — this looks
+       like an incomplete copy of the project rather than broken links.
+       Re-run from a full checkout before believing this section.)
+      res://art/pack/amulets — 1 reference(s), and the folder itself is not here
+      res://art/pack/armour — 55 reference(s), and the folder itself is not here
+      res://art/pack/currency — 4 reference(s), and the folder itself is not here
+      res://art/pack/icons — 1 reference(s), and the folder itself is not here
+      res://art/pack/tiles — 1 reference(s), and the folder itself is not here
+      res://art/placeholder — 1 reference(s), and the folder itself is not here
+      res://data/shops — 1 reference(s), and the folder itself is not here
+      res://scene/ui/trade — 1 reference(s), and the folder itself is not here
+      res://src/ui/admin — 1 reference(s), and the folder itself is not here
+
+ok  AUDIO BUSES THAT DO NOT EXIST  (0)
+    A bus name assigned in code with no matching entry in the layout. Audio
+    on a missing bus still plays, on Master, so nothing sounds wrong.
+
+--  FUNCTIONS NOTHING CALLS  (12)
+    Defined once, called nowhere, not referenced by name in any scene. Some
+    are deliberate API kept for later; each should be a decision.
+      src/characters/tank.gd: activate_expand()
+      src/characters/player.gd: equipped_weapon_damage()
+      src/characters/player.gd: equipped_weapon_range()
+      src/systems/audio.gd: get_bus_volume()
+      src/systems/itemregistry.gd: get_items_by_type()
+      src/systems/itemregistry.gd: is_loaded()
+      src/world/lever.gd: is_on()
+      src/ui/characterhud.gd: open_shop()
+      src/systems/audio.gd: play_music()
+      src/characters/player.gd: set_carried_light()
+      src/characters/player.gd: slot_name_for_item()
+      src/world/firepit.gd: toggle_fire()
+
+--  ENUMS NOTHING CAN NAME  (1)
+    A script with an enum and no class_name. Callers have to pass bare
+    integers, and reordering the enum silently repoints every one of them.
+      src/world/fishingspot.gd: enum State unreachable — no class_name
+
+--  UNIQUE NAMES NOTHING LOOKS UP  (2)
+    A node marked unique_name_in_owner that no script ever asks for. Either
+    the control is dead, or the script forgot it.
+      scene/ui/inventory/itemtooltip.tscn: %tooltipicon
+      scene/ui/statsscreen.tscn: %attackrow
+
+--  GROUPS THAT ONLY GO ONE WAY  (3)
+    A group looked up by nobody who joins it, or joined by nobody who looks.
+    A lookup that finds nothing returns null and the caller quietly does less.
+      queried but never joined: openvendor
+      queried but never joined: unpushable
+      joined but never queried: pets_container
+
+ok  SIGNALS NOTHING CONNECTS OR EMITS  (0)
+    Declared and never used in either direction. gamestate.gd keeps a set of
+    these on purpose for multiplayer; the rest are worth a look.
+
+--  INPUT ACTIONS NOTHING READS  (1)
+    Bound in project.godot, never named in a script. The key does nothing and
+    the binding screen would offer the player a control that is not wired.
+      minimap_toggle
+
+ok  ITEMS WITH NO ICON  (0)
+    Owned, sold, dropped and invisible — an empty cell among empty cells.
+    This is the list to hand an artist.
+
+--  SCENES NOTHING PLACES OR PRELOADS  (3)
+    An enemy, pet or projectile scene that no other scene instances and no
+    script loads. Anything it alone drops cannot be obtained.
+      scene/enemy/bushmage.tscn
+      scene/enemy/bushsniper.tscn
+      scene/enemy/waterboss.tscn
+
+ok  AUTOLOADS NOTHING USES  (0)
+    Registered as a singleton, never referenced. It is loaded at boot and
+    costs whatever its _ready() costs.
+
+ok  ANIMATION SETS MISSING A DIRECTION  (0)
+    Three of four directions drawn. The fourth plays nothing and the sprite
+    holds its last frame. This is the list to hand an artist.
+
+ok  ANIMATIONS THAT CHANGE SPEED WHEN THEY TURN  (0)
+    One direction of a set running at a different rate from its siblings —
+    usually a new animation left at Godot's default 5.0 beside three that
+    were tuned. The character visibly changes pace as it turns.
+
+silenced by ALLOWED:
+    SIGNALS NOTHING CONNECTS OR EMITS (11) — gamestate.gd's own header says the signal set is declared ahead of multiplayer and deliberately unconnected. Reviewed and kept.
+
+========================================================================
+  37 finding(s) across 14 checks
+========================================================================

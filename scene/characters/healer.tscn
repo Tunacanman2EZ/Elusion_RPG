@@ -785,10 +785,7 @@ debug_color = Color(0, 0, 0, 0.41960785)
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=690972520]
 process_callback = 0
-z_index = 10
-texture_filter = 1
 zoom = Vector2(3, 3)
-rotation_smoothing_enabled = true
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=1273821703]
 position = Vector2(0, -16)

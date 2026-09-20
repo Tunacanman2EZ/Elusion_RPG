@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" uid="uid://bktr306f3g2o6" path="res://scene/enemy/firesprite.tscn" id="1_base"]
+[ext_resource type="Resource" path="res://data/enemies/icefiresprite.tres" id="2_data"]
+
+[node name="icefiresprite" instance=ExtResource("1_base")]
+enemy_data = ExtResource("2_data")

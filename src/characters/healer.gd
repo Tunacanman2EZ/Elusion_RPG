@@ -149,6 +149,23 @@ func _is_attack_input_held() -> bool:
 # ATTACK ACTION OVERRIDE
 # =============================================================================
 
+func base_attack_damage() -> int:
+	# See player.gd's base_attack_damage(). Three, which is small because this
+	# fires ten times a second — the number only means anything next to
+	# attack_period() below.
+	return damage_per_magic
+
+
+func attack_period() -> float:
+	# Ten shots a second. See player.gd's attack_period() for what reads this.
+	#
+	# This is the class the whole dps row exists for: a scepter's damage number
+	# is tiny — 3 at iron, 13 at ember — precisely BECAUSE of this 0.1, and a
+	# player comparing it to a 100-damage sword without the division would
+	# reasonably conclude the healer had been abandoned.
+	return shot_cooldown
+
+
 func attack_action() -> void:
 	return
 
@@ -242,7 +259,19 @@ func _spawn_projectile(direction: Vector2) -> void:
 		# which folds in both magic and attack and is shared across every class
 		# (see player.gd). It was magic * damage_per_magic — the same
 		# reinterpretation mage's stalagmite went through.
-		projectile.damage = int(damage_per_magic * get_damage_multiplier())
+		#
+		# NEW: THE EQUIPPED SCEPTER, ADDED RATHER THAN SUBSTITUTED. The scepter
+		# ladder is small on purpose — 3 at iron, 13 at ember — because this
+		# fires ten times a second. A scepter carrying the sword's 20 would
+		# have given the healer 170 dps at tier 1 and 1,370 at ember, against a
+		# warrior's 233. It adds the same PROPORTION of the healer's own damage
+		# that a sword adds of the warrior's; the dps it buys is identical.
+		#
+		# roundi rather than int matters most here. A base of 3 truncated at a
+		# 1.16 multiplier is still 3 — the healer was the class paying most for
+		# a rounding mode nobody chose.
+		projectile.damage = roundi(
+			(damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
 	if "owner_group" in projectile:
 		projectile.owner_group = "player"
 	# Identifies the healer for the projectile's XP-on-hit — same

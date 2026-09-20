@@ -1,0 +1,39 @@
+[gd_scene format=3]
+
+[ext_resource type="Texture2D" uid="uid://c0gh7dy3ajnwo" path="res://art/enemy/arrow.png" id="1_rufgg"]
+[ext_resource type="Script" uid="uid://drp7usecov5ea" path="res://src/projectiles/arrow.gd" id="1_yspra"]
+[ext_resource type="Shader" path="res://src/shared/element_recolour.gdshader" id="9_elshader"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_yspra"]
+radius = 1.05
+height = 16.8
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_eltint"]
+shader = ExtResource("9_elshader")
+shader_parameter/element_hue = 0.6034
+shader_parameter/amount = 1.0
+shader_parameter/saturation_scale = 1.6
+shader_parameter/grey_threshold = 0.08
+
+[node name="waterarrow" type="Area2D"]
+position = Vector2(0, -4)
+collision_layer = 64
+collision_mask = 5
+script = ExtResource("1_yspra")
+element = 7
+speed = 360.0
+
+[node name="sprite2d" type="Sprite2D" parent="."]
+scale = Vector2(1.05, 1.05)
+material = SubResource("ShaderMaterial_eltint")
+texture_filter = 1
+texture = ExtResource("1_rufgg")
+
+[node name="attackrange" type="CollisionShape2D" parent="."]
+position = Vector2(1, 2)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_yspra")
+
+[node name="visableonscreennotifier2d" type="VisibleOnScreenNotifier2D" parent="."]
+position = Vector2(1, 0)
+rect = Rect2(-10, -3, 20, 9)

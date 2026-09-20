@@ -81,7 +81,7 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_k5h5w"]
-radius = 14.035668
+radius = 27.0
 
 [node name="firepit" type="Area2D" unique_id=258032866]
 texture_filter = 1
@@ -97,7 +97,7 @@ sprite_frames = SubResource("SpriteFrames_wqhum")
 animation = &"unlit"
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="." unique_id=1528466811]
-position = Vector2(1, 2)
+position = Vector2(2, 0)
 shape = SubResource("CircleShape2D_k5h5w")
 
 [node name="audio" type="AudioStreamPlayer2D" parent="." unique_id=2023864863]

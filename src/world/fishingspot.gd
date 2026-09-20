@@ -62,7 +62,6 @@ const BITE_WINDOW := 0.9
 const RECAST_DELAY := 0.6
 
 # Float geometry, in pixels from this node's origin.
-const FLOAT_DISTANCE := 20.0
 const FLOAT_RADIUS := 3.0
 const RIPPLE_RADIUS := 9.0
 const BOB_HEIGHT := 1.5
@@ -108,6 +107,67 @@ const IDLE_FADE_SPEED := 4.0
 
 
 # =============================================================================
+# THE FISH — shapes under the surface, drawn for the same reason the rings are
+# =============================================================================
+# Rings say something moved. Fish say what. The rings alone were enough to find
+# a spot and not enough to want to stand at one, because a ripple is ambiguous
+# and a shape crossing under the water is not.
+#
+# DRAWN, NOT AUTHORED, and that is a constraint this file already set for
+# itself — see the header: the whole scene is art-free so one spot scene works
+# over any tileset, pond, river or coastline without a sprite that has to match
+# the water underneath it. A silhouette obeys that where a fish sprite would
+# not: it is a hole in the light, so it reads against any colour.
+
+# How many fish circle a spot. Three is enough to look like a shoal and few
+# enough that you can follow one, which is what makes you stop and watch.
+const FISH_COUNT := 3
+
+# The circuits they swim, in pixels. Spread so they cross each other's paths
+# rather than running as concentric rings, which reads as a machine.
+# The inner circuit has to be wider than a fish is long, or the innermost one
+# turns on the spot instead of swimming — which is what 5.5 against a 7.5 body
+# looked like when this was first drawn.
+const FISH_ORBIT_MIN := 8.0
+const FISH_ORBIT_MAX := 15.0
+
+# Radians per second, before each fish's own variation. Slow: a fish that keeps
+# pace with a ripple looks like it is being dragged.
+const FISH_SPEED := 0.55
+
+# Body size. At this scale the silhouette is about seven pixels long, which is
+# the smallest a fish shape stays a fish shape rather than a dash.
+const FISH_LENGTH := 7.0
+const FISH_WIDTH := 2.9
+
+# THE CIRCUIT IS SQUASHED VERTICALLY. A true circle reads as a hoop standing up
+# out of the water; flattening it lays the path down onto the surface, which is
+# the same trick every shadow in this game uses.
+const FISH_ORBIT_SQUASH := 0.55
+
+# How far a fish sways off its path as it swims, in pixels. This is the whole
+# difference between something swimming and something orbiting.
+const FISH_WAG := 0.8
+const FISH_WAG_SPEED := 5.5
+
+# Same near/far treatment as the rings: visible enough to notice from a
+# distance, clearer once you are standing there.
+const FISH_ALPHA_FAR := 0.20
+const FISH_ALPHA_NEAR := 0.45
+
+
+# =============================================================================
+# THE CATCH — what `caught` looks like
+# =============================================================================
+# How long the fish that came out stays on screen, and how far it rises in that
+# time. It is the item's own icon, so the player sees the thing that just went
+# into their bag rather than a generic sparkle.
+const CATCH_SHOW_SECONDS := 1.25
+const CATCH_RISE := 20.0
+const CATCH_ICON_SIZE := 16.0
+
+
+# =============================================================================
 # STATE MACHINE
 # =============================================================================
 # IDLE     nothing happening; interact casts
@@ -142,7 +202,43 @@ signal cast_failed(reason: String)
 # Drawn while a cast is in progress. Kept as exports rather than constants so a
 # murky pond and a clear river can look different without a second scene.
 @export var float_color: Color = Color(0.92, 0.25, 0.22, 1.0)
+
+# How far from this node's origin the float lands, in pixels, along
+# cast_direction.
+#
+# ZERO, AND THAT IS THE FIX FOR "IT RAISES UP WHEN I START FISHING".
+#
+# It was 20. The idle ripples are drawn at the origin — which is where the 22px
+# interact trigger is — but every cast-state visual (the float, its ripple, the
+# bite ring, the catch splash) was drawn at origin + 20px along cast_direction,
+# which defaults to UP. So the marker sat on the spot until you cast and then
+# jumped a whole tile north. Two positions for one object, and the one you
+# aimed at was never the one that mattered.
+#
+# At zero the float lands on the spot: idle, cast, bite and catch all share the
+# trigger's centre, and nothing moves when the state changes.
+#
+# PER SPOT, so a pond that genuinely wants the float thrown out from the bank
+# can have it — but then the spot's own marker and its trigger are the things
+# to keep together, not the float.
+@export var float_distance: float = 0.0
+
+# Whether to draw the red "your float lands here" ring while standing in range.
+#
+# FALSE, because it marked a point twenty pixels from the spot in the loudest
+# colour on screen and the spot itself is a pale ripple. See _draw_idle() for
+# the full account — briefly, the player aimed at the preview instead of the
+# spot and the interact never fired.
+#
+# Turn it on per spot when cast_direction is something the player picked rather
+# than a fixed export they cannot see.
+@export var show_cast_preview: bool = false
 @export var ripple_color: Color = Color(0.85, 0.95, 1.0, 0.45)
+
+# The fish. Nearly black and slightly blue, because this is a silhouette seen
+# through water rather than a fish seen in air — it is the absence of light,
+# which is why it reads over any tileset without knowing what is underneath.
+@export var fish_color: Color = Color(0.04, 0.10, 0.16, 1.0)
 
 # What this spot takes as bait, one per fish landed.
 #
@@ -174,6 +270,13 @@ var _idle_phase: float = 0.0
 # a fade instead of a snap.
 var _near: float = 0.0
 
+# The catch currently being shown, if any. Set from the `caught` signal and
+# counted down in _process; zero means nothing is on screen.
+var _catch_icon: Texture2D = null
+var _catch_tint: Color = Color.WHITE
+var _catch_timer: float = 0.0
+var _catch_levelled: bool = false
+
 
 # =============================================================================
 # LIFECYCLE
@@ -194,6 +297,20 @@ func _ready() -> void:
 	# a random offset.
 	_idle_phase = randf() * IDLE_RIPPLE_PERIOD
 
+	# LISTENING TO ITS OWN ANNOUNCEMENT, on purpose.
+	#
+	# `caught` already existed and nothing anywhere connected to it, so landing a
+	# fish looked identical to losing one — the item appeared in the bag and the
+	# water carried on rippling. The fix is not to call a draw function from
+	# _land_catch(); it is to make the signal the thing that drives the visual,
+	# so the announcement and the reaction cannot drift apart. If the emit ever
+	# moves, or grows a condition, what the player sees moves with it.
+	#
+	# It also means this is now a worked example rather than a dead signal: a
+	# quest, an achievement or the HUD connects to exactly the same line.
+	if not caught.is_connected(_on_caught):
+		caught.connect(_on_caught)
+
 
 func _process(delta: float) -> void:
 	# BEFORE THE GRACE PERIOD RETURNS. The rings are not an interaction, so
@@ -202,6 +319,13 @@ func _process(delta: float) -> void:
 	_idle_phase += delta
 	_near = move_toward(_near, 1.0 if player_in_range != null else 0.0,
 		delta * IDLE_FADE_SPEED)
+
+	# Counted here rather than on a timer so it ticks with the same clock as the
+	# rings and the fish, and so a paused tree pauses the catch with everything
+	# else instead of it expiring behind a menu.
+	if _catch_timer > 0.0:
+		_catch_timer = maxf(_catch_timer - delta, 0.0)
+
 	queue_redraw()
 
 	if _spawn_timer > 0.0:
@@ -275,10 +399,12 @@ func _begin_cast() -> void:
 	# order they need it.
 	if _best_rod_tier() <= 0:
 		cast_failed.emit("You need a fishing rod.")
+		_notify("You need a fishing rod.")
 		return
 
 	if _bait_count() <= 0:
 		cast_failed.emit("You need worms for bait.")
+		_notify("You need worms for bait.")
 		return
 
 	_bob_phase = 0.0
@@ -298,8 +424,26 @@ func _bait_count() -> int:
 	return int(backpack.get_quantity_of(String(bait_item_id)))
 
 
+# TELLING THE PLAYER, as well as announcing it.
+#
+# cast_failed and caught were emitted into nothing — no .gd and no .tscn in the
+# project connects either one, and this file's own header claims "the HUD
+# listens for this". It did not. A player with no rod pressed interact at the
+# pond and got no float, no sound and no text: indistinguishable from the key
+# not being bound.
+#
+# The signals stay, because a quest or a tutorial is exactly the kind of thing
+# that should be able to hear a catch without this script knowing about it.
+# They are just no longer the ONLY thing that happens — the same "signal as
+# well as the direct call" shape firepit.gd uses for cook_requested.
+func _notify(message: String) -> void:
+	if player_in_range != null and player_in_range.has_method("show_notice"):
+		player_in_range.show_notice(message)
+
+
 func _fail(reason: String) -> void:
 	cast_failed.emit(reason)
+	_notify(reason)
 	_set_state(State.SPENT, RECAST_DELAY)
 
 
@@ -332,10 +476,15 @@ func _land_catch() -> void:
 	# next save, and the loss would look like nothing at all.
 	_apply_inventory(data.get("inventory", []))
 
-	caught.emit(
-		str(data.get("item_id", "")),
-		int(data.get("quantity", 0)),
-		bool(data.get("levelled_up", false)))
+	var caught_id: String = str(data.get("item_id", ""))
+	var caught_qty: int = int(data.get("quantity", 0))
+
+	# EVERYTHING THE PLAYER SEES HANGS OFF THIS LINE. The notice used to be
+	# written out here, below the emit, which meant the signal was decorative —
+	# it announced something that had already been handled. _on_caught() now
+	# owns the notice, the icon, the splash and the sound, and it gets them the
+	# same way any other listener would.
+	caught.emit(caught_id, caught_qty, bool(data.get("levelled_up", false)))
 
 	_set_state(State.SPENT, RECAST_DELAY)
 
@@ -383,22 +532,36 @@ func _best_rod_tier() -> int:
 
 	var best: int = 0
 	for stack in container.get_all_stacks():
-		if stack == null:
+		# is_valid() rather than a null check: it is `data != null and
+		# quantity > 0`, and every line below reads stack.data.
+		if stack == null or not stack.is_valid():
 			continue
 
-		# SUFFIX FIRST, THEN THE LOOKUP, and the order is not cosmetic:
-		# ItemRegistry.get_item() push_warning()s on an id it does not know and
-		# hands back a fallback item. Asking it about every potion in the bag on
-		# every cast would either fill the log with warnings or, worse, score the
-		# fallback's tier as a rod.
-		if not stack.item_id.ends_with("fishingrod"):
-			continue
-		if not ItemRegistry.has_item(stack.item_id):
+		# stack.data.item_id, NOT stack.item_id.
+		#
+		# ItemStack holds `data` (the ItemData) and `quantity`. It has no
+		# item_id of its own — the id lives on the data. Reading it off the
+		# stack raised
+		#
+		#   Invalid access to property or key 'item_id' on a base object of
+		#   type 'Resource (ItemStack)'
+		#
+		# on the first cast anyone ever made while actually holding a rod. The
+		# loop had run plenty of times before that and never reached this line,
+		# because `continue` on an empty bag is not an error — the bug needed a
+		# rod in the backpack to be reachable at all, and until the debug key
+		# existed nobody had one.
+		if not stack.data.item_id.ends_with("fishingrod"):
 			continue
 
-		var data: ItemData = ItemRegistry.get_item(stack.item_id)
-		if data != null:
-			best = maxi(best, data.tier)
+		# THE REGISTRY LOOKUP IS GONE, and removing it is a fix rather than a
+		# tidy-up. It asked ItemRegistry for the ItemData that the stack was
+		# already holding: has_item() then get_item() then read .tier, three
+		# calls to arrive back at stack.data. The old comment here explained
+		# how to order those calls so get_item() would not push_warning() on a
+		# potion and hand back a fallback whose tier could be scored as a rod's.
+		# None of that can happen to a value that was never looked up.
+		best = maxi(best, stack.data.tier)
 	return best
 
 
@@ -422,6 +585,16 @@ func _backpack() -> Node:
 # =============================================================================
 
 func _draw() -> void:
+	# TWO LAYERS, and the split is why this is a wrapper. _draw_state() is the
+	# original function unchanged, early returns and all; the catch has to draw
+	# over whatever state is showing, and a catch lands in SPENT, which returns
+	# from the first branch. Adding it inside would have meant unpicking every
+	# return.
+	_draw_state()
+	_draw_catch()
+
+
+func _draw_state() -> void:
 	if _state == State.IDLE or _state == State.SPENT:
 		_draw_idle()
 		return
@@ -429,7 +602,7 @@ func _draw() -> void:
 	var dir: Vector2 = cast_direction.normalized()
 	if dir == Vector2.ZERO:
 		dir = Vector2.UP
-	var at: Vector2 = dir * FLOAT_DISTANCE
+	var at: Vector2 = dir * float_distance
 
 	if _state == State.BITING:
 		# UNDER. The float is gone and so are the ripples, which is the tell —
@@ -448,11 +621,166 @@ func _draw() -> void:
 	# WAITING: the float rides up and down, with a ripple that breathes against
 	# it. Nothing about this says how long is left, on purpose — a countdown
 	# would let the player look away until it finished.
+	#
+	# The fish keep swimming through the wait. They stop at BITING, which is the
+	# branch above — the existing design already uses absence as the tell there,
+	# and fish vanishing the instant the float goes under says "one of them has
+	# it" without a single new shape on screen.
+	_draw_fish()
+
 	var bob: Vector2 = Vector2(0.0, sin(_bob_phase) * BOB_HEIGHT)
 	var ripple: Color = ripple_color
 	ripple.a = ripple_color.a * (0.55 + 0.45 * absf(cos(_bob_phase)))
 	draw_arc(at + bob, RIPPLE_RADIUS, 0.0, TAU, 20, ripple, 1.0, true)
 	draw_circle(at + bob, FLOAT_RADIUS, float_color)
+
+
+# =============================================================================
+# THE FISH
+# =============================================================================
+
+func _draw_fish() -> void:
+	var alpha: float = lerpf(FISH_ALPHA_FAR, FISH_ALPHA_NEAR, _near)
+	if alpha <= 0.01:
+		return
+
+	var body: Color = fish_color
+	body.a = fish_color.a * alpha
+
+	for i in range(FISH_COUNT):
+		# EVERY FISH GETS ITS OWN EVERYTHING, derived from its index rather than
+		# randomised, so a spot looks the same every time you come back to it
+		# and two spots still do not match. A shoal where all three share a
+		# speed reads as one object with three parts.
+		var f: float = float(i)
+		var spread: float = f / float(maxi(FISH_COUNT - 1, 1))
+		var orbit: float = lerpf(FISH_ORBIT_MIN, FISH_ORBIT_MAX, spread)
+
+		# Alternating direction. Three fish all going one way is a carousel.
+		var way: float = -1.0 if i % 2 == 1 else 1.0
+		var rate: float = FISH_SPEED * way * (1.0 - 0.22 * spread)
+		var angle: float = _idle_phase * rate + f * TAU / float(FISH_COUNT)
+
+		var along: Vector2 = Vector2(cos(angle), sin(angle) * FISH_ORBIT_SQUASH)
+		var pos: Vector2 = along * orbit
+
+		# Heading is the tangent to the squashed circuit, not to a circle — take
+		# it from the circle and the fish swims visibly sideways at the top and
+		# bottom of every lap.
+		var heading: Vector2 = Vector2(
+			-sin(angle), cos(angle) * FISH_ORBIT_SQUASH).normalized()
+		if heading == Vector2.ZERO:
+			heading = Vector2.RIGHT
+		heading *= way
+
+		var side: Vector2 = Vector2(-heading.y, heading.x)
+
+		# The sway. Offsetting the whole body across its own path is a cheap
+		# stand-in for a tail, and at seven pixels it is the only one that
+		# reads — an actual animated tail is two pixels moving one pixel.
+		pos += side * sin(_idle_phase * FISH_WAG_SPEED + f * 2.1) * FISH_WAG
+
+		draw_colored_polygon(_fish_points(pos, heading, side), body)
+
+
+func _fish_points(pos: Vector2, heading: Vector2, side: Vector2) -> PackedVector2Array:
+	# A nose, two shoulders, and a forked tail. Eight points is the fewest that
+	# still says "fish" rather than "leaf" at this size, and the fork is the part
+	# doing that work — drop it and the shape becomes a seed.
+	var l: float = FISH_LENGTH
+	var w: float = FISH_WIDTH
+	return PackedVector2Array([
+		pos + heading * (l * 0.50),
+		pos + heading * (l * 0.10) + side * (w * 0.50),
+		pos - heading * (l * 0.28) + side * (w * 0.34),
+		pos - heading * (l * 0.50) + side * (w * 0.52),
+		pos - heading * (l * 0.34),
+		pos - heading * (l * 0.50) - side * (w * 0.52),
+		pos - heading * (l * 0.28) - side * (w * 0.34),
+		pos + heading * (l * 0.10) - side * (w * 0.50),
+	])
+
+
+# =============================================================================
+# THE CATCH
+# =============================================================================
+
+func _on_caught(item_id: String, quantity: int, levelled_up: bool) -> void:
+	# THE ITEM'S OWN ICON, looked up rather than passed. The signal carries an
+	# id because that is what the server said and what every other listener will
+	# want; resolving it to a texture is this node's business alone.
+	#
+	# has_item() rather than a null check on get_item(): the registry hands back
+	# an error_item placeholder for an unknown id, so a plain null test passes
+	# and the player gets a question mark rising out of the water.
+	_catch_levelled = levelled_up
+	_catch_timer = CATCH_SHOW_SECONDS
+	_catch_icon = null
+	_catch_tint = Color.WHITE
+
+	# The item's display name, not its id — "rawsilverfin" is a database key and
+	# the player never agreed to read one.
+	var shown: String = item_id
+	if item_id != "" and ItemRegistry.has_item(item_id):
+		var data: ItemData = ItemRegistry.get_item(item_id)
+		if data != null:
+			_catch_icon = data.icon
+			_catch_tint = data.icon_tint
+			shown = data.display_name
+
+	if shown != "":
+		_notify("Caught %s x%d" % [shown, quantity] if quantity > 1 else "Caught %s" % shown)
+
+	Audio.play("skill_up" if levelled_up else "item_pickup")
+
+
+func _draw_catch() -> void:
+	if _catch_timer <= 0.0:
+		return
+
+	# 0 at the moment it lands, 1 as it disappears.
+	var t: float = 1.0 - clampf(_catch_timer / CATCH_SHOW_SECONDS, 0.0, 1.0)
+
+	var dir: Vector2 = cast_direction.normalized()
+	if dir == Vector2.ZERO:
+		dir = Vector2.UP
+	var at: Vector2 = dir * float_distance
+
+	# The splash, thrown at the moment of the catch and spent within the first
+	# third of the animation — water settles faster than a held fish falls.
+	if t < 0.34:
+		var burst: float = t / 0.34
+		var splash: Color = ripple_color
+		splash.a = ripple_color.a * (1.0 - burst)
+		draw_arc(at, RIPPLE_RADIUS + 14.0 * burst, 0.0, TAU, 20,
+			splash, lerpf(2.0, 0.6, burst), true)
+
+	# LEVELLING UP GETS A SECOND RING, not a different one. The catch still
+	# reads as a catch; the extra ring is the part that says something else
+	# happened, which is how the skill-up popup elsewhere in this game works.
+	if _catch_levelled:
+		var gold: Color = Color(1.0, 0.85, 0.42, 0.9 * (1.0 - t))
+		draw_arc(at, 6.0 + 22.0 * t, 0.0, TAU, 24, gold, lerpf(2.0, 0.5, t), true)
+
+	if _catch_icon == null:
+		return
+
+	# EASED OUT, so it leaves the water fast and then hangs. Linear looked like
+	# the fish was being winched.
+	var rise: float = CATCH_RISE * (1.0 - pow(1.0 - t, 2.0))
+	var half: float = CATCH_ICON_SIZE * 0.5
+	var centre: Vector2 = at + Vector2(0.0, -rise)
+
+	var tint: Color = _catch_tint
+	# Holds full opacity for the first half and then goes. Fading from the start
+	# means the clearest frame of the fish is the one nobody is looking at yet.
+	tint.a = _catch_tint.a * clampf((1.0 - t) * 2.0, 0.0, 1.0)
+
+	draw_texture_rect(
+		_catch_icon,
+		Rect2(centre - Vector2(half, half), Vector2(CATCH_ICON_SIZE, CATCH_ICON_SIZE)),
+		false,
+		tint)
 
 
 # =============================================================================
@@ -485,6 +813,11 @@ func _draw_idle() -> void:
 	# icon, and why it is drawn rather than authored as art.
 	var strength: float = lerpf(IDLE_ALPHA_FAR, IDLE_ALPHA_NEAR, _near)
 
+	# FIRST, so the rings draw over them. The fish are under the surface and the
+	# ripples are on it; painting them the other way round puts a fish on top of
+	# the water it is supposed to be beneath.
+	_draw_fish()
+
 	for i in range(IDLE_RIPPLE_COUNT):
 		# Each ring is the same animation offset by its share of the period, so
 		# one is always leaving as another arrives and there is no moment where
@@ -502,17 +835,34 @@ func _draw_idle() -> void:
 		draw_arc(Vector2.ZERO, 2.0 + IDLE_RIPPLE_MAX * t, 0.0, TAU, 20,
 			ring, lerpf(1.6, 0.6, t), true)
 
-	if _near <= 0.01:
+	if _near <= 0.01 or not show_cast_preview:
 		return
 
 	# IN RANGE, SO SHOW WHERE THE FLOAT WILL LAND. This is the only cue the
 	# player gets about cast_direction, which is a per-spot export and is
 	# otherwise invisible until they have already committed to a cast. It also
 	# doubles as the "you can fish here now" confirmation.
+	#
+	# AND IT IS HALF OF WHY THE SPOT FELT MISALIGNED. It draws at
+	# float_distance along cast_direction — which was a hard 20px — in a
+	# saturated red, over blue water. The actual spot is at Vector2.ZERO: that
+	# is where the 22px trigger is centred and where the idle ripples are drawn.
+	# Red at full alpha outranks a pale ripple at 45% every time, so the eye
+	# picks the preview as the target, walks to it, and the interact does not
+	# fire. Two circles were drawn and only the quieter one was real.
+	#
+	# The other half was the same offset applied to the cast-state visuals, so
+	# the marker also JUMPED 20px the moment you started fishing. float_distance
+	# is 0 now and both halves are gone; this stays off as well, because a
+	# preview of a direction the player did not choose is a second target on
+	# screen whatever distance it sits at.
+	#
+	# OFF BY DEFAULT rather than deleted, because the cue is worth having once
+	# the player is the one choosing where to cast.
 	var dir: Vector2 = cast_direction.normalized()
 	if dir == Vector2.ZERO:
 		dir = Vector2.UP
 
 	var target: Color = float_color
 	target.a = float_color.a * _near * 0.55
-	draw_arc(dir * FLOAT_DISTANCE, FLOAT_RADIUS + 1.5, 0.0, TAU, 16, target, 1.0, true)
+	draw_arc(dir * float_distance, FLOAT_RADIUS + 1.5, 0.0, TAU, 16, target, 1.0, true)

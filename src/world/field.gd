@@ -204,6 +204,19 @@ func _position_player_at_spawn() -> void:
 	for portal in get_tree().get_nodes_in_group("fieldportals"):
 		if "portal_id" in portal and portal.portal_id == target_id:
 			player.global_position = portal.global_position
+			# THE WHOLE SCREEN SMEARS WITHOUT THIS, not just the player.
+			#
+			# spawn_player_from_selection() adds the player with no explicit
+			# position — see the comment at the top of this function, which
+			# says so — so they enter the tree at (0, 0) and this line is what
+			# puts them at the arrival portal. That is a move AFTER add_child()
+			# reset interpolation, which is the streak teleporter.gd already
+			# handles for in-world teleports. Arriving from another scene took
+			# a different path here and never got the same call.
+			#
+			# It reads as the entire view sliding into place because the camera
+			# is parented to the player and inherits the blend.
+			player.reset_physics_interpolation()
 			if OS.is_debug_build():
 				print("[WORLD] field — spawn '%s' -> %s" % [target_id, portal.global_position])
 			return

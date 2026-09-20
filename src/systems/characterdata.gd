@@ -375,6 +375,15 @@ func _sanitize_character_slot(slot) -> bool:
 	if slot.has("inventory") and typeof(slot["inventory"]) == TYPE_ARRAY:
 		slot["inventory"] = _validate_item_array(slot["inventory"], "character inventory")
 
+	# --- equipment, reconciled against the bag ABOVE ---
+	#
+	# AFTER the inventory validation on purpose, not beside it. That line can
+	# remove an item — an id the registry no longer knows, a malformed entry —
+	# and a slot pointing at one of those has to go with it. Pruning first
+	# would check the gear against a bag that was about to shrink.
+	if slot.has("equipment"):
+		slot["equipment"] = prune_equipment(slot["equipment"], slot.get("inventory", []))
+
 	# NEW: say WHAT changed. This used to return a bare bool, so load_data()
 	# could only report "correction(s) applied" with no way to tell which
 	# field — and that warning fires on EVERY login, meaning some correction
@@ -549,7 +558,16 @@ func _validate_item_array(items: Array, context: String) -> Array:
 			validated.append(null)
 			continue
 		var item_id: String = str(entry.get("item_id", ""))
-		if item_id == "" or ItemRegistry.get_item(item_id) == null:
+		# has_item(), NOT get_item() == null.
+		#
+		# get_item() deliberately returns the error_item fallback for an unknown
+		# id and only returns null when error_item itself is missing — so this
+		# check works TODAY purely because error_item.tres does not exist. The
+		# day someone adds it (its id is already a named constant), every
+		# fabricated item_id in a save starts validating clean and silently
+		# becomes the error item in the player's backpack and bank.
+		# fishingspot.gd uses has_item() for exactly this reason.
+		if item_id == "" or not ItemRegistry.has_item(item_id):
 			push_warning("CharacterData: %s references unknown item_id '%s' — dropping" % [context, item_id])
 			validated.append(null)
 			continue
@@ -892,6 +910,8 @@ func create_character(slot_idx: int, character_name: String) -> void:
 		new_char[stat] = SAVEABLE_STATS[stat]
 	new_char["inventory"] = []
 	new_char["active_pet_id"] = ""  # NEW — fresh characters start with no pet
+	new_char["equipment"] = {}      # and wearing nothing
+	new_char["explored"] = {}       # and having seen nowhere
 	character_slots[slot_idx] = new_char
 	save_data()
  
@@ -914,14 +934,15 @@ func save_character_state(player: Node) -> void:
 		if stat in player:
 			character_slots[slot][stat] = int(player.get(stat))
  
-	character_slots[slot]["inventory"] = _capture_inventory(player)
- 
+	var bag: Array = _capture_inventory(player)
+	character_slots[slot]["inventory"] = bag
+
 	# save hotbar assignments alongside the int stats.
 	# must happen BEFORE save_data() or the assignments wait one save cycle
 	# to actually hit disk.
 	if "hotbar_assignments" in player:
 		character_slots[slot]["hotbar_assignments"] = player.hotbar_assignments
- 
+
 	# NEW: same reasoning as hotbar_assignments above — active_pet_id is a
 	# String (an item_id), not part of the int-only SAVEABLE_STATS loop,
 	# so it's handled here explicitly. this is what actually makes a pet
@@ -930,7 +951,49 @@ func save_character_state(player: Node) -> void:
 	# the next _ready().
 	if "active_pet_id" in player:
 		character_slots[slot]["active_pet_id"] = player.active_pet_id
- 
+
+	# EQUIPMENT IS RECONCILED AGAINST THE BAG, HERE, and this is the one place
+	# in the running game where that can honestly be done.
+	#
+	# A slot holds an item_id, not an item — see player.gd's note on `equipped`
+	# for why that shape was chosen. The price of it is that a slot can name
+	# something you no longer own: you sold the sword you were swinging, banked
+	# it, dropped it, or lost it on death. Nothing about that throws. The slot
+	# simply points at nothing and, once combat reads equipment, quietly stops
+	# paying out.
+	#
+	# WHY NOT IN player.gd. Because the player does not know what is in its own
+	# bag. `inventory_data` is assigned once at load and never updated after —
+	# the live contents live in the HUD's inventory container, which is what
+	# _capture_inventory() above just read. A prune written on the player would
+	# check a list that went stale the first time anything was picked up.
+	#
+	# `bag` rather than character_slots[slot]["inventory"] deliberately: the
+	# same array, but naming the local says this reads what was JUST captured
+	# rather than whatever the slot held a moment ago.
+	# THE MAP YOU HAVE UNCOVERED, asked of WorldMap rather than of the player.
+	# It is per character but it is not a property of the character node — the
+	# autoload owns it, because it has to survive the scene change that frees
+	# the player when you walk from the town to the field.
+	character_slots[slot]["explored"] = WorldMap.to_save()
+
+	# THE REVISION IS NOT SENT ANYWHERE — it exists so ServerStorage can tell
+	# "the map has changed enough to be worth a round trip" from "the map has
+	# changed at all". Without it, /api/save fired every few seconds of
+	# walking, because the map differs from the last pushed copy almost
+	# constantly. See WorldMap.SAVE_REVISION_SECONDS.
+	character_slots[slot]["explored_rev"] = WorldMap.save_revision()
+
+	if "equipped" in player:
+		var worn: Dictionary = prune_equipment(player.equipped, bag)
+		player.equipped = worn
+		# DUPLICATED INTO THE SLOT, not aliased into it. The player keeps
+		# wearing `worn`; if the slot held the same instance, equipping one more
+		# thing would edit the saved copy without a save ever happening — and
+		# then NOT edit it, once the next load handed the player a fresh
+		# dictionary. Same reasoning as _normalise_item_array() above.
+		character_slots[slot]["equipment"] = worn.duplicate()
+
 	save_data()
  
  
@@ -940,9 +1003,18 @@ func load_character_state(player: Node) -> void:
 	_ensure_slot_array()
 	_ensure_account_data()
  
-	var slot: Dictionary = character_slots[active_character_index]
-	if slot == null:
+	# TESTED BEFORE IT IS BOUND, because the guard below it could never run.
+	#
+	# Dictionary is not nullable, so assigning a null element to a typed
+	# Dictionary raises "Trying to assign value of type 'Nil'" and the function
+	# aborts on the assignment — one line ABOVE the check written to prevent
+	# exactly that. save_character_state() forty lines up does this correctly
+	# by testing the untyped element first; this was the copy that did not.
+	var raw_slot = character_slots[active_character_index]
+	if raw_slot == null or typeof(raw_slot) != TYPE_DICTIONARY:
 		return
+
+	var slot: Dictionary = raw_slot
  
 	for stat in SAVEABLE_STATS:
 		if stat in player:
@@ -972,6 +1044,28 @@ func load_character_state(player: Node) -> void:
 	# after this, which is what actually re-spawns the pet node.
 	if "active_pet_id" in player:
 		player.active_pet_id = str(slot.get("active_pet_id", ""))
+
+	# EQUIPMENT — empty for a fresh character and for any save written before
+	# gear existed, which is every save on disk today.
+	#
+	# PRUNED ON THE WAY IN AS WELL AS ON THE WAY OUT. The sanitizer a few
+	# hundred lines up already does this for the slot's own copy, so in the
+	# ordinary case this second pass finds nothing to do. It is here for the
+	# case the sanitizer cannot cover: a slot loaded straight from the server,
+	# where the bag and the gear were written by two different requests and
+	# could in principle disagree. Pruning twice costs one dictionary walk;
+	# trusting once costs a phantom sword.
+	# Restored before the player's _ready() finishes, so _prepare_world_map()'s
+	# deferred call finds the bits already in place and does not reveal a
+	# starting position into a map it is about to overwrite.
+	WorldMap.from_save(slot.get("explored", {}))
+
+	if "equipped" in player:
+		var saved_equipment = slot.get("equipment", {})
+		if typeof(saved_equipment) == TYPE_DICTIONARY:
+			player.equipped = prune_equipment(saved_equipment, slot.get("inventory", []))
+		else:
+			player.equipped = {}
 			
 func _capture_inventory(player: Node) -> Array:
 	# pulls the live inventory contents from the open inventory container if
@@ -1000,6 +1094,108 @@ func _capture_inventory(player: Node) -> Array:
 	if "inventory_data" in player:
 		return _normalise_item_array(player.inventory_data)
 	return []
+
+
+func prune_equipment(equipment, inventory) -> Dictionary:
+	# THE ONE RULE, WRITTEN ONCE: a slot survives only if it names an item you
+	# are holding, that item exists, and that item is actually worn in that
+	# slot. Everything else falls out of those three — an invented slot name
+	# can never match a real item's slot, and an item the registry has never
+	# heard of has no slot to match.
+	#
+	# Called from three places for three different reasons. save_character_state()
+	# runs it against the bag it has just captured, which is the only moment the
+	# running game knows what the player is really carrying.
+	# _sanitize_character_slot() runs it over a slot read off disk, where a save
+	# may have been hand-edited or may predate an item being renamed.
+	# load_character_state() runs it once more over a slot that may have come
+	# from the server, where the bag and the gear were written by two separate
+	# requests.
+	#
+	# RETURNS A NEW DICTIONARY, never mutating the one passed in. The callers
+	# hand in things they do not own — a slot dictionary, the player's live
+	# `equipped` — and rewriting one underneath its owner mid-iteration is how
+	# this would go wrong in a way nobody could reproduce.
+	#
+	# SILENT. A cleared slot is not a defect to report: selling your sword is a
+	# normal thing to do, and a warning on every sale would train everyone to
+	# ignore the log. The sanitizer's own before/after diff still reports it
+	# when it happens to a save on disk, which is the case where it IS news.
+	var cleaned: Dictionary = {}
+	if typeof(equipment) != TYPE_DICTIONARY:
+		return cleaned
+
+	var held: Dictionary = {}
+	if typeof(inventory) == TYPE_ARRAY:
+		for entry in inventory:
+			if entry == null or typeof(entry) != TYPE_DICTIONARY:
+				continue
+			var entry_id: String = str(entry.get("item_id", ""))
+			if entry_id != "":
+				held[entry_id] = true
+
+	for slot_name in equipment:
+		var item_id: String = str(equipment[slot_name])
+		if item_id == "" or not held.has(item_id):
+			continue
+		var data: ItemData = ItemRegistry.get_item(item_id)
+		if data == null:
+			continue
+		if ItemData.slot_name(int(data.equip_slot)) != str(slot_name):
+			continue
+		cleaned[str(slot_name)] = item_id
+
+	return cleaned
+
+
+func equip_item(player: Node, item_id: String) -> bool:
+	# CHANGE WHAT IS WORN, AND PERSIST IT. One function, because there are two
+	# ways to equip something — dropping it on a square of the paper doll, and
+	# right-clicking it in the backpack — and they must not be two rules.
+	#
+	# IT LIVES HERE RATHER THAN ON EITHER PANEL because the second half is
+	# save_character_state(), which is this file's job, and a UI panel that
+	# owned the only copy of "equip then save" would mean the backpack had to
+	# either duplicate it or refuse to work while that panel was closed.
+	#
+	# The player decides WHETHER — player.equip() runs the same three checks
+	# the server does, and returns false without changing anything if the
+	# answer is no. This decides what happens next, which is that it sticks.
+	if player == null or not player.has_method("equip"):
+		return false
+	if not player.equip(item_id):
+		return false
+	save_character_state(player)
+	return true
+
+
+func unequip_slot(player: Node, slot_name: String) -> String:
+	# The mirror. Returns the item_id that came off, or "" if the slot was
+	# already empty — in which case nothing is saved, because nothing changed
+	# and a save costs a whole-inventory walk.
+	if player == null or not player.has_method("unequip"):
+		return ""
+	var was: String = str(player.unequip(slot_name))
+	if was == "":
+		return ""
+	save_character_state(player)
+	return was
+
+
+func active_class_id() -> String:
+	# WHAT CLASS THE ACTIVE CHARACTER IS, as the server spells it.
+	#
+	# The client has no separate class field: a character IS its class, so
+	# slot["character"] is "warrior" and ServerStorage sends that same string
+	# as class_id. This exists so player.gd's equip_check() can ask the
+	# question without reaching into character_slots itself — required_classes
+	# is the only thing stopping a warrior wearing a mage's robe for its
+	# armour, and that gate needs one place to read the answer from.
+	_ensure_slot_array()
+	var slot = character_slots[active_character_index]
+	if slot == null or typeof(slot) != TYPE_DICTIONARY:
+		return ""
+	return str(slot.get("character", ""))
 
 
 func _normalise_item_array(items: Array) -> Array:
@@ -1056,20 +1252,22 @@ func add_account_lusions(amount: int) -> void:
 func get_bank_gold() -> int:
 	_ensure_account_data()
 	return int(account_data.get("bank_gold", 0))
- 
- 
+
+
 func set_bank_gold(value: int) -> void:
+	# THE SERVER'S FIGURE, COPIED IN — not a way for the client to decide what
+	# it holds. Written for the revive that pays in gold: the server takes the
+	# price from the carry purse first and the bank for the remainder, and this
+	# is how the answer it sends back reaches the local copy.
+	#
+	# Every real change to this balance happens server-side — a deposit, a
+	# withdrawal, a revive — so there is nothing to compute here, and nothing
+	# that should be.
 	_ensure_account_data()
-	account_data["bank_gold"] = max(int(value), 0)
+	account_data["bank_gold"] = maxi(int(value), 0)
 	save_data()
- 
- 
-func add_bank_gold(amount: int) -> void:
-	_ensure_account_data()
-	account_data["bank_gold"] = max(int(account_data.get("bank_gold", 0)) + int(amount), 0)
-	save_data()
- 
- 
+
+
 # --- bank inventory (account-shared, fixed-size) ---
  
 func get_bank_inventory() -> Array:
@@ -1129,40 +1327,6 @@ func withdraw_gold_from_bank(amount: int, player: Node) -> bool:
 	return true
  
  
-# =============================================================================
-# DEATH CLEANUP
-# =============================================================================
-# called from player.gd when the player dies WITHOUT a revive.
-# clears carry items + carry gold. bank gold + bank inventory + lusions persist.
- 
-func clear_carry_on_death(player: Node) -> void:
-	# zero out carry gold
-	if "gold" in player:
-		player.set("gold", 0)
- 
-	# clear live inventory container if open
-	var hud: Node = player.get_tree().get_first_node_in_group("hud")
-	if hud != null and hud.inventory_screen != null:
-		var container: Node = hud.inventory_screen.get_node_or_null("%inventorycontainer")
-		if container != null and container.has_method("clear_inventory"):
-			container.clear_inventory()
- 
-	# clear stored inventory_data (used when no inventory screen exists)
-	if "inventory_data" in player:
-		player.inventory_data = []
- 
-	# clear hotbar assignments on true death — matches the carry-loss design.
-	# revive path does NOT call this function, so hotbar survives revive.
-	if "hotbar_assignments" in player:
-		player.hotbar_assignments = ["", "", "", "", "", "", "", "", ""]
- 
-	# also reset the live hotbar UI if it exists, so the visual matches the data.
-	# null-guarded — hotbar may not exist yet during early scene setup.
-	if hud != null and hud.hotbar != null:
-		hud.hotbar.clear_all()
- 
-	# persist immediately — anti-cheat / anti-relog-restore
-	save_character_state(player)
 # =============================================================================
 # CHARACTER LOOKUP (DEATH/REVIVE SYSTEM)
 # =============================================================================

@@ -72,6 +72,11 @@ func _on_body_exited(body: Node) -> void:
 # FADE
 # =============================================================================
 
+# The fade currently running, kept so the next one can cancel it rather than
+# race it. See _fade_panel().
+var _fade_tween: Tween = null
+
+
 func _fade_panel(show_panel: bool) -> void:
 	if fade_duration <= 0.0:
 		# instant toggle instead of a fade, if fade_duration is set to 0
@@ -82,7 +87,17 @@ func _fade_panel(show_panel: bool) -> void:
 	if show_panel:
 		panel.visible = true
 
+	# KILL THE PREVIOUS FADE FIRST. Enter and exit each start a tween, and the
+	# exit one ends with `panel.visible = false` unconditionally. Step out of
+	# range and back in within fade_duration (0.2s by default) and the old exit
+	# tween finishes DURING the new fade-in and hides a panel that is now at
+	# full alpha — invisible text for the whole approach, until you leave and
+	# come back slowly.
+	if _fade_tween != null and _fade_tween.is_valid():
+		_fade_tween.kill()
+
 	var tween := create_tween()
+	_fade_tween = tween
 	var target_alpha: float = 1.0 if show_panel else 0.0
 	tween.tween_property(panel, "modulate:a", target_alpha, fade_duration)
 

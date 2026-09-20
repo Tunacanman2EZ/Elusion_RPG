@@ -25,6 +25,25 @@
 # global_position. capturing on show ensures the cached position is correct.
 extends Node2D
 
+# REGISTERED AS A GLOBAL CLASS so the enum below is reachable by name.
+#
+# It was not, and the cost is written out in player.gd:
+#
+#     "Written as a bare int because floatinglabel.gd has no class_name, so
+#      its enum is not reachable by name from here — the existing popup calls
+#      in this file pass a literal 3 for LEVELUP for the same reason."
+#
+# So every caller in the project passes 0, 1, 2 or 3 to a parameter named
+# `type`, and the meaning of those numbers lives in one file that none of them
+# can see. The enum's own comment says to append rather than insert precisely
+# because inserting would silently repoint every one of those literals — which
+# is a rule enforced by a comment, on a file nobody editing the callers has
+# open.
+#
+# One line fixes it. FloatingLabel.Type.DAMAGE now works from anywhere, and
+# the literals can be replaced as each one is next touched.
+class_name FloatingLabel
+
 
 # =============================================================================
 # TYPE ENUM

@@ -7,13 +7,13 @@
 [ext_resource type="Texture2D" uid="uid://dvycuh1mibifp" path="res://art/images/manafull.png" id="5_p3m5x"]
 [ext_resource type="Texture2D" uid="uid://bcusdsabfo3re" path="res://art/images/staminaempty.png" id="6_xinkp"]
 [ext_resource type="Texture2D" uid="uid://bawnet1v7qvbg" path="res://art/images/staminafull.png" id="7_a33qf"]
-[ext_resource type="Script" uid="uid://bus5md8lbkyyf" path="res://src/ui/inventory/itemtooltip.gd" id="9_manxm"]
 [ext_resource type="PackedScene" uid="uid://bqw1e521x7ngr" path="res://scene/ui/hotbar.tscn" id="10_manxm"]
 [ext_resource type="PackedScene" uid="uid://cjnng780ylcn6" path="res://scene/ui/inventory/itemtooltip.tscn" id="17_xinkp"]
 
+[sub_resource type="FontVariation" id="FontVariation_readout"]
+variation_embolden = 0.35
+
 [node name="characterhud" type="CanvasLayer" unique_id=2045428837]
-layer = 0
-visible = false
 script = ExtResource("1_s3c7b")
 
 [node name="barcontainer" type="Control" parent="." unique_id=1885492825]
@@ -40,6 +40,20 @@ value = 100.0
 texture_under = ExtResource("2_s3c7b")
 texture_progress = ExtResource("3_xinkp")
 
+[node name="healthvalue" type="Label" parent="barcontainer/healthbar" unique_id=2057721818]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 296.0
+offset_bottom = 28.0
+scale = Vector2(0.5, 0.5)
+theme_override_colors/font_color = Color(1, 0.96, 0.9, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = SubResource("FontVariation_readout")
+theme_override_font_sizes/font_size = 15
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="magicbar" type="TextureProgressBar" parent="barcontainer" unique_id=758577933]
 texture_filter = 1
 layout_mode = 0
@@ -52,17 +66,52 @@ value = 100.0
 texture_under = ExtResource("4_a33qf")
 texture_progress = ExtResource("5_p3m5x")
 
+[node name="manavalue" type="Label" parent="barcontainer/magicbar" unique_id=1002866723]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 296.0
+offset_bottom = 28.0
+scale = Vector2(0.5, 0.5)
+theme_override_colors/font_color = Color(1, 0.96, 0.9, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = SubResource("FontVariation_readout")
+theme_override_font_sizes/font_size = 15
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="staminabar" type="TextureProgressBar" parent="barcontainer" unique_id=1448665782]
 texture_filter = 1
 layout_mode = 1
-offset_left = 1099.0
-offset_top = 676.0
-offset_right = 1259.0
-offset_bottom = 708.0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 459.0
+offset_top = 317.0
+offset_right = 547.0
+offset_bottom = 331.0
+grow_horizontal = 2
+grow_vertical = 2
 scale = Vector2(2, 2)
 value = 100.0
 texture_under = ExtResource("6_xinkp")
 texture_progress = ExtResource("7_a33qf")
+
+[node name="staminavalue" type="Label" parent="barcontainer/staminabar" unique_id=574132394]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 176.0
+offset_bottom = 28.0
+scale = Vector2(0.5, 0.5)
+theme_override_colors/font_color = Color(1, 0.96, 0.9, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = SubResource("FontVariation_readout")
+theme_override_font_sizes/font_size = 15
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="navhbox" type="VBoxContainer" parent="." unique_id=440246108]
 offset_left = 12.0
@@ -88,6 +137,16 @@ text = "Stats"
 layout_mode = 2
 focus_mode = 0
 text = "Shop"
+
+[node name="kingdombutton" type="Button" parent="navhbox/navbuttons" unique_id=1699508882]
+layout_mode = 2
+focus_mode = 0
+text = "Kingdom"
+
+[node name="tradebutton" type="Button" parent="navhbox/navbuttons" unique_id=478330591]
+layout_mode = 2
+focus_mode = 0
+text = "Trade"
 
 [node name="mapbutton" type="Button" parent="navhbox/navbuttons" unique_id=1039820360]
 layout_mode = 2
@@ -118,7 +177,6 @@ offset_left = 3.0
 offset_top = 154.0
 offset_right = 203.0
 offset_bottom = 310.0
-script = ExtResource("9_manxm")
 
 [node name="hotbar" parent="." unique_id=147410389 instance=ExtResource("10_manxm")]
 unique_name_in_owner = true

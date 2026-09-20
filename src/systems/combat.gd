@@ -57,7 +57,7 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 	# Collapsed here because this runs before any await, but the enemy can
 	# already hold a freed player reference by the time it dies — and a freed
 	# object cannot be passed to a typed Node parameter at all.
-	var immediate: Node = killer if is_instance_valid(killer) else null
+	var immediate: Node = _reward_target(killer)
 
 	if not Api.is_logged_in():
 		_notify(immediate, "Not connected — no reward.")
@@ -100,7 +100,7 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 	# Same fix and same reasoning as pet.gd's _consume_pending_target(). It bites
 	# here because a failed request waits out the full timeout, and ten seconds
 	# is long enough to die, teleport, or return to character select.
-	var target: Node = killer if is_instance_valid(killer) else null
+	var target: Node = _reward_target(killer)
 
 	if not res.get("ok", false):
 		# NO FALLBACK ROLL. Rolling locally when the server cannot be reached
@@ -260,13 +260,72 @@ func _refusal_text(res: Dictionary) -> String:
 	# A 429 is the kill rate limit, which an honest player can hit on a lag
 	# spike. Saying "too fast" to someone who was not going fast is worse than
 	# saying nothing useful, so it gets its own wording.
-	if _int(res.get("status", 0)) == 429:
+	var status: int = _int(res.get("status", 0))
+	if status == 429:
 		# The server's kill bucket. A player should essentially never see this —
 		# it holds fifty and refills five a second, which is well past any rate
 		# a real fight produces. If it starts appearing during normal play the
 		# bucket is mis-sized, not the player.
 		return "Kill not registered — try again."
+
+	# A REPLY IS NOT A CONNECTION FAILURE, and calling it one cost real time.
+	#
+	# Every non-429 refusal used to read "No connection — no reward.", including
+	# the case where the server answered perfectly and said exactly what was
+	# wrong. Thirty-six enemies existed as .tres files that gamedata.json had
+	# never been regenerated for, so every kill came back
+	#
+	#     400  Unknown enemy_id 'darkslime'. Is gamedata.json current?
+	#
+	# which names its own fix — and this function threw it away and pointed at
+	# the network instead. A status at all means we were heard.
+	if status > 0:
+		if OS.is_debug_build():
+			# The server's own words, in a dev build. This is the one place that
+			# sentence can reach whoever can act on it.
+			var err: String = String(res.get("error", "")).strip_edges()
+			if err != "":
+				return "Kill refused (%d) — %s" % [status, err]
+		return "Kill not registered — no reward."
+
+	# Status 0 means the request never completed: no reply, nothing to report.
 	return "No connection — no reward."
+
+
+# WHO THIS KILL PAYS, when the corpse no longer knows.
+#
+# THE PROBLEM THIS SOLVES. Everything a kill is worth on the client hangs off
+# one reference: BaseEnemy.player, handed to report_kill() by _die(). That
+# field is the enemy's TARGET, resolved from the "player" group — it is not a
+# record of who dealt the killing blow, and nothing sets it when a pet does the
+# fighting. It is null on an enemy whose _ready() ran before the player joined
+# the group, and it is null again for any frame where _resolve_player() found
+# an empty group (a scene change, a death, a return to character select).
+#
+# WHY THAT WAS INVISIBLE AND EXPENSIVE. Every consumer of the reference fails
+# SILENTLY and SEPARATELY: _apply_xp() returns early so the bar never moves,
+# _notify() drops the message so nothing explains why, and _spawn_loot_bag()
+# hands the bag a null owner. Meanwhile /api/combat/kill has ALREADY been
+# posted and the server has ALREADY granted the XP — so the reward exists in
+# the database and shows up after a relog, which reads as "pet kills pay
+# nothing" rather than as a missing reference.
+#
+# THE RULE. There is exactly one player on this client, and a kill anywhere in
+# their world is theirs however it landed — by their hand, by their pet, by a
+# hazard the pet left on the floor. So when the passed reference is gone, the
+# group is asked directly rather than the reward being dropped.
+#
+# This does NOT decide how much; the server already did. It only decides which
+# node on this machine is shown the result.
+func _reward_target(killer: Node) -> Node:
+	if is_instance_valid(killer):
+		return killer
+
+	for candidate in get_tree().get_nodes_in_group("player"):
+		if is_instance_valid(candidate):
+			return candidate
+
+	return null
 
 
 func _notify(killer: Node, message: String) -> void:

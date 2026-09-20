@@ -300,7 +300,27 @@ func _spawn_vine() -> void:
 		push_warning("BushMage: vine_scene not assigned")
 		return
 
-	var vine: Node2D = vine_scene.instantiate()
+	# THE ELEMENT PICKS THE VINE — see bushsniper.gd. The plain bush mage is
+	# EARTH and has no variant, so it gets vine_scene back and the artist's own
+	# green. vine_scene is @export, so anything pointed at a custom scene is not
+	# in the table and comes back untouched.
+	var vine: Node2D = Projectiles.variant_of(vine_scene, current_element()).instantiate()
+
+	# STAMPED HERE BECAUSE THE VINE DOES NOT GO THROUGH spawn_projectile_node().
+	#
+	# It is a ground effect, not a shot: it parents into "groundeffects" so it
+	# draws under characters, which means it skips the one function that stamps
+	# the caster's element onto everything else an enemy throws. Nothing noticed,
+	# because vine.gd defaults to EARTH and the original bush mage IS earth — so
+	# it looked right for exactly one of the seven mages and every elemental
+	# variant's vine has been dealing earth damage since the day they existed.
+	#
+	# BEFORE add_child, which is what runs _ready(). vine.gd does not read
+	# element there today; _spawn_one_eruption() in bossenemy.gd is the cautionary
+	# tale for what happens when that changes and the assignment is a line late.
+	if "element" in vine:
+		vine.element = current_element()
+
 	var container: Node = get_tree().get_first_node_in_group("groundeffects")
 	if container == null:
 		container = get_tree().current_scene

@@ -1,0 +1,50 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://binvby1a7p0a3" path="res://src/projectiles/poisonprojectile.gd" id="1_avf7k"]
+[ext_resource type="Texture2D" uid="uid://cr5tiqbe7gt43" path="res://art/enemy/slime.png" id="1_eyumr"]
+[ext_resource type="Shader" path="res://src/shared/element_recolour.gdshader" id="9_elshader"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_avf7k"]
+atlas = ExtResource("1_eyumr")
+region = Rect2(0, 240, 48, 48)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_xgf1e"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_avf7k")
+}],
+"loop": true,
+"name": &"projectile",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_eyumr"]
+radius = 3.2985
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_eltint"]
+shader = ExtResource("9_elshader")
+shader_parameter/element_hue = 0.4232
+shader_parameter/amount = 1.0
+shader_parameter/saturation_scale = 1.0
+shader_parameter/grey_threshold = 0.08
+
+[node name="windpoisonball" type="Area2D"]
+texture_filter = 1
+collision_layer = 64
+collision_mask = 5
+script = ExtResource("1_avf7k")
+element = 4
+speed = 338.0
+lifetime = 1.85
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="."]
+scale = Vector2(0.8, 0.8)
+material = SubResource("ShaderMaterial_eltint")
+sprite_frames = SubResource("SpriteFrames_xgf1e")
+animation = &"projectile"
+frame_progress = 0.8026893
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="."]
+position = Vector2(1.4508018, 0.3897791)
+shape = SubResource("CircleShape2D_eyumr")

@@ -933,9 +933,7 @@ frame_progress = 1.0
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=1489667327]
 process_callback = 0
-texture_filter = 1
 zoom = Vector2(3, 3)
-position_smoothing_enabled = true
 
 [node name="firering" type="AnimatedSprite2D" parent="." unique_id=1899786570]
 texture_filter = 1

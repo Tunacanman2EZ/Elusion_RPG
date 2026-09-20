@@ -14,7 +14,27 @@ extends Area2D
 
 @export var speed: float = 300.0
 @export var damage: int = 11
-@export var damage_type: StringName = &"magic"
+# The element this projectile deals. Element.Type is an int, not the
+# StringName this used to be: an enum is checked when the file is parsed,
+# and &"posion" was only ever going to be found by someone wondering why a
+# resistance did nothing.
+#
+# Overwritten at spawn for anything an enemy fires — see
+# BaseEnemy.spawn_projectile_node(), which stamps the caster's element on
+# it so a water slime's shot IS water without a second scene existing.
+#
+# LIGHTNING, NOT WIND, and this is the third instalment of the same correction.
+#
+# The enum had no LIGHTNING when this was written, so the electric sprite was
+# filed under WIND and its orb followed — Element.Type's own comment tells the
+# story. The enum was fixed and electricsprite.tres became LIGHTNING; this line
+# was not, and nothing caught it, because electricsprite.gd never routed its orb
+# through spawn_projectile_node() and so nothing ever overwrote this default.
+# Every orb the electric sprite has fired has dealt WIND damage.
+#
+# Same shape as poisonprojectile.gd's EARTH -> POISON: the art was always the
+# creature's, the label was borrowed, and the label is what moved.
+@export var element: int = Element.Type.LIGHTNING
 
 
 # =============================================================================
@@ -137,7 +157,7 @@ func _try_damage(target: Node) -> void:
 	if target == null:
 		return
 	if target.is_in_group(&"player") and target.has_method(&"take_damage"):
-		target.take_damage(damage, damage_type)
+		target.take_damage(damage, element)
 
 
 # =============================================================================

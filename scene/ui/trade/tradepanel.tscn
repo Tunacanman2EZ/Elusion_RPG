@@ -1,0 +1,262 @@
+[gd_scene format=3]
+
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://src/ui/trade/tradepanel.gd" id="2_script"]
+
+[node name="tradepanel" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_script")
+
+[node name="mainpanel" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(520, 440)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
+layout_mode = 2
+
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 20
+text = "Trade"
+horizontal_alignment = 1
+
+[node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
+theme_override_colors/font_hover_color = Color(1, 0.5, 0.4, 1)
+theme_override_font_sizes/font_size = 18
+text = "×"
+flat = true
+
+[node name="startbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="startlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/startbox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "Looking for anyone here…"
+horizontal_alignment = 1
+
+[node name="nearbyscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/startbox"]
+custom_minimum_size = Vector2(0, 230)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="nearbylist" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/startbox/nearbyscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="orlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/startbox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = "or type a name, if they are somewhere else"
+horizontal_alignment = 1
+
+[node name="starthbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/startbox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="usernameedit" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/startbox/starthbox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+placeholder_text = "their account name"
+max_length = 32
+
+[node name="offerbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/startbox/starthbox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 30)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Open trade"
+
+[node name="tradebox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="columns" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="youpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSub"
+
+[node name="youvbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="youheader" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.9, 0.7, 1)
+theme_override_font_sizes/font_size = 13
+text = "You"
+horizontal_alignment = 1
+
+[node name="youscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="youlist" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox/youscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="goldrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="goldcaption" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox/goldrow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
+theme_override_font_sizes/font_size = 12
+text = "Gold"
+
+[node name="goldspin" type="SpinBox" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox/goldrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 0.0
+step = 1.0
+allow_greater = false
+
+[node name="youtax" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="thempanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSub"
+
+[node name="themvbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="themheader" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 13
+text = "Them"
+horizontal_alignment = 1
+
+[node name="themscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="themlist" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox/themscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="themgold" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
+theme_override_font_sizes/font_size = 12
+text = "Gold 0"
+horizontal_alignment = 1
+
+[node name="themtax" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="buttonrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="confirmbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tradebox/buttonrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+text = "Accept"
+
+[node name="cancelbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tradebox/buttonrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+text = "Cancel"
+
+[node name="noticelabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2

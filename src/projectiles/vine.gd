@@ -20,6 +20,11 @@ extends Area2D
 # damage dealt to the player on the impact frame
 @export var damage: int = 9
 
+# See fireprojectile.gd for why this is an int. Stamped by the caster at
+# spawn, so this default only applies to one fired from a script that
+# does not go through BaseEnemy.spawn_projectile_node().
+@export var element: int = Element.Type.EARTH
+
 # frame of the vine animation where damage is dealt.
 # tune to match the visual peak of the vine reaching the player.
 @export var impact_frame: int = 4
@@ -87,7 +92,7 @@ func _apply_damage_to_overlapping_players() -> void:
 	# damage any player-grouped body that exposes take_damage.
 	for body in get_overlapping_bodies():
 		if body.is_in_group("player") and body.has_method("take_damage"):
-			body.take_damage(damage)
+			body.take_damage(damage, element)
 
 
 # =============================================================================

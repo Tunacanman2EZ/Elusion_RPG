@@ -1,0 +1,271 @@
+# optionsscreen.gd — the options panel, opened from the HUD's Options button
+# or by pressing Escape with nothing else open.
+# attached to res://scene/ui/menus/optionsscreen.tscn.
+#
+# =============================================================================
+# THE PANEL IS A VIEW OF Settings, WHICH IS THE ONE THAT DECIDES ANYTHING
+# =============================================================================
+# Nothing here stores a preference, applies one, or writes a file. Every
+# control does the same two things: read its value out of Settings when the
+# panel opens, and hand a new one back when the player moves it. Settings
+# coerces it, applies it, saves it and says so.
+#
+# That is why there is no OK or Cancel. A slider that only takes effect when
+# you press a button is a slider you have to audition twice — once by ear and
+# once by memory. Everything here is live, and "Reset to defaults" is the undo.
+#
+# =============================================================================
+# WHAT WAS HERE BEFORE
+# =============================================================================
+# The HUD's Options button has existed the whole time, wired to a handler that
+# read, in full:
+#
+#     func _on_options_pressed() -> void:
+#         print("options pressed (not yet implemented)")
+#
+# and the login screen carried a styled "Settings" button connected to nothing
+# at all. That one is gone — a button that has never done anything is worse
+# than no button, because a player who presses it concludes the game is broken
+# rather than that the feature is absent.
+extends Control
+
+
+# =============================================================================
+# SIGNALS
+# =============================================================================
+
+signal closed
+
+
+# =============================================================================
+# NODE REFERENCES
+# =============================================================================
+
+@onready var close_button:  Button       = get_node_or_null("%optionsclosebutton")
+@onready var reset_button:  Button       = get_node_or_null("%optionsresetbutton")
+
+@onready var master_slider: HSlider      = get_node_or_null("%mastervolume")
+@onready var music_slider:  HSlider      = get_node_or_null("%musicvolume")
+@onready var sfx_slider:    HSlider      = get_node_or_null("%sfxvolume")
+
+@onready var master_value:  Label        = get_node_or_null("%mastervalue")
+@onready var music_value:   Label        = get_node_or_null("%musicvalue")
+@onready var sfx_value:     Label        = get_node_or_null("%sfxvalue")
+
+@onready var fullscreen_toggle: CheckButton = get_node_or_null("%fullscreentoggle")
+@onready var vsync_toggle:      CheckButton = get_node_or_null("%vsynctoggle")
+@onready var window_size:       OptionButton = get_node_or_null("%windowsize")
+@onready var damage_toggle:     CheckButton = get_node_or_null("%damagenumbers")
+
+
+# =============================================================================
+# STATE
+# =============================================================================
+
+# True while refresh() is writing values INTO the controls. Every control's
+# changed signal fires whether a human moved it or a line of code did, so
+# without this, opening the panel would write all eight settings straight back
+# to Settings — harmless, but it would save the file on every open and emit a
+# `changed` at anything listening.
+var _refreshing: bool = false
+
+
+# =============================================================================
+# LIFECYCLE
+# =============================================================================
+
+func _ready() -> void:
+	_populate_window_sizes()
+	_connect_controls()
+
+	# Nothing here runs per frame; this is for the day the options panel is
+	# reachable from a paused state. A panel whose sliders stop responding
+	# because the tree is paused is a bad way to find that out.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+	visible = false
+
+
+func _populate_window_sizes() -> void:
+	if window_size == null:
+		return
+	window_size.clear()
+	# `option`, not `size` — this script extends Control, which already has a
+	# `size` property, and the loop variable would shadow it.
+	for option in Settings.WINDOW_SIZES:
+		window_size.add_item("%d x %d" % [option.x, option.y])
+
+
+func _connect_controls() -> void:
+	# value_changed FIRES CONTINUOUSLY WHILE DRAGGING, which is what makes a
+	# volume slider usable at all — you hear the result while your hand is
+	# still on it. Settings.set_value() returns early when the value has not
+	# actually changed, so a drag that crosses the same step twice does not
+	# write the file twice.
+	if master_slider != null:
+		master_slider.value_changed.connect(_on_master_changed)
+	if music_slider != null:
+		music_slider.value_changed.connect(_on_music_changed)
+	if sfx_slider != null:
+		sfx_slider.value_changed.connect(_on_sfx_changed)
+
+	if fullscreen_toggle != null:
+		fullscreen_toggle.toggled.connect(_on_fullscreen_toggled)
+	if vsync_toggle != null:
+		vsync_toggle.toggled.connect(_on_vsync_toggled)
+	if window_size != null:
+		window_size.item_selected.connect(_on_window_size_selected)
+	if damage_toggle != null:
+		damage_toggle.toggled.connect(_on_damage_numbers_toggled)
+
+	if close_button != null:
+		close_button.pressed.connect(close)
+	if reset_button != null:
+		reset_button.pressed.connect(_on_reset_pressed)
+
+
+# =============================================================================
+# OPENING AND CLOSING
+# =============================================================================
+
+func open() -> void:
+	# REFRESHED ON EVERY OPEN, not once in _ready(). Settings can change from
+	# somewhere else — a reset, a future keybind screen, a value corrected on
+	# load — and a panel showing what was true the first time it was built is
+	# how a UI starts lying.
+	refresh()
+	visible = true
+
+
+func close() -> void:
+	visible = false
+	closed.emit()
+
+
+func refresh() -> void:
+	_refreshing = true
+
+	if master_slider != null:
+		master_slider.value = float(Settings.get_value("volume_master"))
+	if music_slider != null:
+		music_slider.value = float(Settings.get_value("volume_music"))
+	if sfx_slider != null:
+		sfx_slider.value = float(Settings.get_value("volume_sfx"))
+
+	_update_volume_labels()
+
+	if fullscreen_toggle != null:
+		fullscreen_toggle.button_pressed = bool(Settings.get_value("fullscreen"))
+	if vsync_toggle != null:
+		vsync_toggle.button_pressed = bool(Settings.get_value("vsync"))
+	if damage_toggle != null:
+		damage_toggle.button_pressed = bool(Settings.get_value("damage_numbers"))
+
+	if window_size != null:
+		var current := Vector2i(int(Settings.get_value("window_width")),
+								int(Settings.get_value("window_height")))
+		var index: int = Settings.WINDOW_SIZES.find(current)
+		# A SIZE THE LIST DOES NOT HAVE selects nothing rather than snapping to
+		# the first entry. The player may have dragged the window corner, and
+		# silently reporting 1280x720 at that point would be the panel telling
+		# them something they can see is untrue.
+		window_size.selected = index
+
+	_update_window_size_enabled()
+
+	_refreshing = false
+
+
+func _update_volume_labels() -> void:
+	# PERCENTAGES, NOT 0.00 - 1.00. The stored value is linear gain because
+	# that is what the mixer wants; nobody thinks in linear gain.
+	if master_value != null and master_slider != null:
+		master_value.text = "%d%%" % roundi(master_slider.value * 100.0)
+	if music_value != null and music_slider != null:
+		music_value.text = "%d%%" % roundi(music_slider.value * 100.0)
+	if sfx_value != null and sfx_slider != null:
+		sfx_value.text = "%d%%" % roundi(sfx_slider.value * 100.0)
+
+
+func _update_window_size_enabled() -> void:
+	# GREYED OUT WHILE FULLSCREEN, because it does nothing there and a control
+	# that does nothing is worse than one that is visibly unavailable. The
+	# stored preference is untouched — it takes effect on the way back out.
+	if window_size == null:
+		return
+	window_size.disabled = bool(Settings.get_value("fullscreen"))
+
+
+# =============================================================================
+# CONTROL HANDLERS
+# =============================================================================
+
+func _on_master_changed(value: float) -> void:
+	_update_volume_labels()
+	if _refreshing:
+		return
+	Settings.set_value("volume_master", value)
+
+
+func _on_music_changed(value: float) -> void:
+	_update_volume_labels()
+	if _refreshing:
+		return
+	Settings.set_value("volume_music", value)
+
+
+func _on_sfx_changed(value: float) -> void:
+	_update_volume_labels()
+	if _refreshing:
+		return
+	Settings.set_value("volume_sfx", value)
+
+	# A SLIDER YOU CANNOT HEAR IS A SLIDER YOU CANNOT SET. Music is playing
+	# already, so the music slider proves itself; sound effects only happen
+	# when something happens, and setting their volume in a quiet menu would
+	# otherwise be done entirely by faith.
+	Audio.play("ui_click")
+
+
+func _on_fullscreen_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("fullscreen", pressed)
+	_update_window_size_enabled()
+
+
+func _on_vsync_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("vsync", pressed)
+
+
+func _on_window_size_selected(index: int) -> void:
+	if _refreshing:
+		return
+	if index < 0 or index >= Settings.WINDOW_SIZES.size():
+		return
+	# `chosen`, not `size` — Control already has a `size` property and a local
+	# by that name shadows it.
+	var chosen: Vector2i = Settings.WINDOW_SIZES[index]
+	# WIDTH THEN HEIGHT, two set_value() calls, and the resize happens twice.
+	# It is a window resize, not a render pass, and the alternative is a
+	# compound "window_size" key that Settings would have to special-case
+	# through its coercion, its file and its apply dispatch to save one frame
+	# of flicker that nobody will see.
+	Settings.set_value("window_width", chosen.x)
+	Settings.set_value("window_height", chosen.y)
+
+
+func _on_damage_numbers_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("damage_numbers", pressed)
+
+
+func _on_reset_pressed() -> void:
+	# THE UNDO FOR A PANEL WITH NO CANCEL. Everything here applies live, so
+	# this is what a player reaches for after turning something off and losing
+	# track of what it was.
+	Settings.reset()
+	refresh()

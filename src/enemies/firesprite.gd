@@ -60,7 +60,9 @@ func fire_projectile() -> void:
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
 	if spawn_node == null or player == null:
 		return
-	var orb: Node = FIRE_ORB_SCENE.instantiate()
+	# The element picks the orb — see bushsniper.gd for the full note. The fire
+	# sprite itself is FIRE and has no variant, so it fires the artist's own art.
+	var orb: Node = Projectiles.variant_of(FIRE_ORB_SCENE, current_element()).instantiate()
 	# aim before spawning
 	if orb.has_method("shoot_vector"):
 		var to_player: Vector2 = player.global_position - spawn_node.global_position

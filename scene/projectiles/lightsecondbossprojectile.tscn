@@ -1,0 +1,68 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://bo0omw53ic1f" path="res://src/projectiles/bossprojectile.gd" id="1_mgcyw"]
+[ext_resource type="Texture2D" uid="uid://cjspd2txmgway" path="res://art/doors/spikegate.png" id="2_mgcyw"]
+[ext_resource type="Shader" path="res://src/shared/hearth_warm.gdshader" id="9_elshader"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ibpng"]
+atlas = ExtResource("2_mgcyw")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_t051w"]
+atlas = ExtResource("2_mgcyw")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5st3t"]
+atlas = ExtResource("2_mgcyw")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hlsi8"]
+atlas = ExtResource("2_mgcyw")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_cjumu"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ibpng")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_t051w")
+}, {
+"duration": 4.0,
+"texture": SubResource("AtlasTexture_5st3t")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hlsi8")
+}],
+"loop": false,
+"name": &"projectile",
+"speed": 6.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_erupt"]
+radius = 20.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_eltint"]
+shader = ExtResource("9_elshader")
+shader_parameter/warmth = 1.0
+shader_parameter/warm_tint = Color(0.99215686, 0.9019608, 0.5411765, 1)
+shader_parameter/lift = 0.3
+shader_parameter/stone_threshold = 0.35
+
+[node name="lightsecondbossprojectile" type="Area2D"]
+texture_filter = 1
+collision_layer = 64
+collision_mask = 4
+script = ExtResource("1_mgcyw")
+impact_frame = 2
+element = 2
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="."]
+material = SubResource("ShaderMaterial_eltint")
+position = Vector2(0, -20)
+sprite_frames = SubResource("SpriteFrames_cjumu")
+animation = &"projectile"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_erupt")

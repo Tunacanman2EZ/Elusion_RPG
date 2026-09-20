@@ -162,10 +162,45 @@ func _show_bank_ui() -> void:
 		push_error("BankChest: CRITICAL — no node in the 'hud' group found")
 		return
 
-	if hud.has_method("toggle_bank"):
-		hud.toggle_bank()
-	else:
+	if not hud.has_method("toggle_bank"):
 		push_error("BankChest: HUD found, but it is missing toggle_bank()")
+		return
+
+	hud.toggle_bank()
+
+	# LISTEN FOR THE PANEL CLOSING ITSELF.
+	#
+	# is_open was cleared in exactly one place — _close_chest_on_walk_away(),
+	# reached only from _on_body_exited. Click the panel's X while still
+	# standing on the chest and body_exited never fires, so is_open stayed true,
+	# _process()'s `if is_open: return` swallowed every further interact press,
+	# and the chest was a permanently-open prop until you walked fully out of
+	# its Area2D and back in.
+	#
+	# BankInventory has emitted `closed` for exactly this the whole time and
+	# nothing listened — its own comment at the signal says so. This is the
+	# same shape lootbag.gd solved with notify_panel_closed().
+	var panel: Node = hud.get("bank_screen")
+	if panel != null and panel.has_signal("closed") \
+			and not panel.closed.is_connected(notify_panel_closed):
+		panel.closed.connect(notify_panel_closed)
+
+
+func notify_panel_closed() -> void:
+	# The panel shut itself — X button, or the HUD tearing it down. Mirrors
+	# LootBag.notify_panel_closed() and FirePit.notify_panel_closed(), and
+	# exists for the same reason both of those do.
+	#
+	# Guarded on is_open because `closed` also fires on the walk-away path,
+	# which has already run _close_chest_on_walk_away() by then — without this
+	# the chest would run its closing animation twice.
+	if not is_open:
+		return
+
+	is_open = false
+	_stop_watching_open()
+	if anim != null and anim.animation == "open":
+		anim.play_backwards("open")
 
 
 func _close_chest_on_walk_away() -> void:

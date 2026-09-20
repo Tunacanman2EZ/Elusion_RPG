@@ -369,7 +369,22 @@ func _deal_aura_damage() -> void:
 	# skill never affected the tank's own output. Computed once outside the
 	# loop: every enemy in range takes the same number, and the multiplier is
 	# not recomputed per body.
-	var scaled_aura_damage: int = int(aura_damage * get_damage_multiplier())
+	# NEW: THE EQUIPPED MAUL, ADDED TO THE AURA RATHER THAN REPLACING IT.
+	#
+	# A weapon's damage is one number and an aura tick is not one kind of hit —
+	# this one lands four times a second on everything in range, which is why
+	# aura_damage is 9 where the warrior's swing is 24. The maul ladder is
+	# scaled to that: 8 at iron rather than the 24 it was authored with, so a
+	# maul adds the same PROPORTION of the tank's damage that a sword adds of
+	# the warrior's. Authored flat, an ember maul would have put 120 on a tick
+	# that fires four times a second and made the tank do 968 dps to the
+	# warrior's 233.
+	#
+	# ROLLED ONCE PER TICK AND SHARED, not once per enemy. A tick is a single
+	# event that happens to touch several things — the whole ring pulses with
+	# one value, and rolling per body would make a crowd look like static.
+	var scaled_aura_damage: int = roundi(
+		(aura_damage + weapon_damage_roll()) * get_damage_multiplier())
 
 	# ONE XP GRANT PER TICK, NOT ONE PER ENEMY.
 	#
@@ -419,6 +434,22 @@ func get_attack_animation(_dir: Vector2) -> String:
 	return get_idle_animation()
 
 
+func base_attack_damage() -> int:
+	# See player.gd's base_attack_damage(). The aura's per-tick damage, which
+	# lands on everything in range rather than on one target.
+	return aura_damage
+
+
+func attack_period() -> float:
+	# The aura's tick, four times a second. See player.gd's attack_period()
+	# for what reads this and why it is asked of the live character.
+	#
+	# The dps it produces is PER ENEMY IN RANGE, not total. A tank standing in
+	# a pack of six is dealing six times the number the tooltip shows, which is
+	# the tank's entire point and not something one figure can say.
+	return aura_tick
+
+
 func _get_dir_string() -> String:
 	# The cardinal matching last_direction, for hitflash animation lookup
 	# (hitflashleft / right / up / down).
@@ -429,12 +460,12 @@ func _get_dir_string() -> String:
 # DAMAGE HANDLING OVERRIDE
 # =============================================================================
 
-func take_damage(amount: int, _type: StringName = &"physical") -> void:
+func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	# wraps player.take_damage with tank-specific behavior:
 	# - plays a directional hitflash animation if still alive
 	# - deactivates the aura if the hit killed the tank
 	var was_alive: bool = hp > 0
-	super.take_damage(amount, _type)
+	super.take_damage(amount, element)
 
 	# play tank-specific hitflash ONLY if still alive after the hit.
 	# without this guard, hitflash would overwrite the death animation

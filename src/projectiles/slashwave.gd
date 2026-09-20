@@ -120,10 +120,15 @@ const SPRITE_CENTRE := Vector2(0, 8)
 # damage dealt to enemies on contact
 @export var damage: int = 15
 
-# damage type for the elemental system. StringName literals (&"physical") are
-# faster than regular Strings for equality checks — important for damage
-# resolution paths that run per-hit.
-@export var damage_type: StringName = &"physical"
+# The element this projectile deals. Element.Type is an int, not the
+# StringName this used to be: an enum is checked when the file is parsed,
+# and &"posion" was only ever going to be found by someone wondering why a
+# resistance did nothing.
+#
+# Overwritten at spawn for anything an enemy fires — see
+# BaseEnemy.spawn_projectile_node(), which stamps the caster's element on
+# it so a water slime's shot IS water without a second scene existing.
+@export var element: int = Element.Type.NONE
 
 # NEW: magic XP granted to `caster` on a successful enemy hit. matches
 # melee's hardcoded gain_attack_xp(5) for parity — tune independently if
@@ -380,7 +385,7 @@ func _try_hit(target: Node) -> void:
 		return
 	_hit_targets.append(target_id)
 
-	target.take_damage(damage, damage_type)
+	target.take_damage(damage, element)
 	_grant_caster_magic_xp()
 	_play_hit_pulse()
 

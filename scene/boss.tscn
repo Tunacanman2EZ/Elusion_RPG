@@ -1,4 +1,4 @@
-[gd_scene format=4 uid="uid://d36qxata42fjy"]
+[gd_scene format=4 uid="uid://djkq2mnld2t4u"]
 
 [ext_resource type="Script" uid="uid://d1lilxv0r0634" path="res://src/enemies/boss.gd" id="1_27m4v"]
 [ext_resource type="Texture2D" uid="uid://c33coinn5bl0b" path="res://art/tiles/tiles7.png" id="2_b5yaj"]
@@ -417,6 +417,7 @@ texture = ExtResource("5_v8sps")
 5:13/0 = 0
 
 [sub_resource type="TileSet" id="TileSet_sit1d"]
+physics_layer_0/collision_layer = 1
 sources/1 = SubResource("TileSetAtlasSource_x2yxj")
 sources/2 = SubResource("TileSetAtlasSource_kv6pe")
 sources/3 = SubResource("TileSetAtlasSource_3ic3x")

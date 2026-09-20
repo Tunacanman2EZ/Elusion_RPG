@@ -1047,9 +1047,8 @@ offset_right = 21.0
 offset_bottom = -20.0
 
 [node name="camera2d" type="Camera2D" parent="." unique_id=749862179]
-texture_filter = 1
-zoom = Vector2(3, 3)
 process_callback = 0
+zoom = Vector2(3, 3)
 
 [node name="hitboxleft" type="Area2D" parent="." unique_id=1858165833]
 collision_layer = 32

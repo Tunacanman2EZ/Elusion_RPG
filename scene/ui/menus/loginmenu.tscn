@@ -131,12 +131,6 @@ layout_mode = 2
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="Settingsbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/menubuttons" unique_id=1577972604]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(110, 38)
-layout_mode = 2
-text = "Settings"
-
 [node name="exitbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/menubuttons" unique_id=1370688401]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 38)

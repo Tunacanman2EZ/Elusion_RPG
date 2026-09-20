@@ -30,6 +30,45 @@ extends Area2D
 # are expected to use repeatedly.
 @export var vanish_after_first_use: bool = false
 
+# WHAT TO FADE, when the portal vanishes. Empty means this node, which fades
+# its own children with it.
+#
+# THIS EXISTS BECAUSE THE OBVIOUS ASSUMPTION WAS WRONG, silently, for as long
+# as the feature has been in. _vanish() tweens modulate and its comment said
+# that carried "the gate sprite" along, because CanvasItem modulate is
+# inherited by children. It is - but field.tscn's portal sprite is not a child.
+# The trigger lives at ysortworld/interactables/fieldteleport and the animated
+# portal at ysortworld/props/teleport: siblings in different branches, so that
+# Area2D has no visual under it at all. The fade ran correctly on every arrival
+# and there was nothing beneath it to fade, which is why the portal never went
+# away and nothing anywhere reported a problem.
+#
+# AN EXPORTED PATH RATHER THAN REPARENTING THE SPRITE. Moving it under the
+# trigger would make the code work untouched, but it also moves it between
+# y-sort branches and multiplies its scale by the trigger's own 1.5 - a visual
+# change to fix an invisible one. Naming the target makes the coupling explicit
+# instead of resting on a tree shape somebody can break by dragging a node.
+@export var visual: NodePath
+
+# This trigger is a DOOR IN, not a way out: it exists to be landed on and then
+# to fade, and it is supposed to have no destination_scene.
+#
+# WHY IT NEEDS SAYING. field.tscn's fieldteleport is exactly that. The player
+# arrives from town standing inside it, which fires _on_body_entered on the
+# first frame they exist — so the null-destination warning below went off on
+# every single trip into the field, naming a node that was configured
+# correctly. A warning that cries wolf on a working scene is worse than no
+# warning, because it trains you to scroll past the ones that matter.
+#
+# It is also the only thing keeping that portal from looping: elusion.tscn's
+# leavetown sends the player to "field_entrance", which is this node's own
+# arrival marker. Give it a destination back to town and arriving in the field
+# would immediately bounce the player back, forever.
+#
+# Left FALSE, an unassigned destination_scene still warns, because on any
+# portal that is a real misconfiguration.
+@export var arrival_only: bool = false
+
 # NEW: if set, stored on GameState right before transitioning, so the
 # destination scene knows which of its (possibly multiple) named arrival
 # points — see fieldportal.gd — to place the player at. leave empty to
@@ -44,7 +83,11 @@ func _on_body_entered(body):
 	if body and can_teleport and (body.name == "Player" or body.is_in_group("player")):
 		can_teleport = false
 		if destination_scene == null:
-			push_warning("LeaveTown (%s): destination_scene not assigned in the Inspector" % name)
+			# Silent for an arrival-only trigger — that one has no destination
+			# BY DESIGN, see arrival_only above. Still warns on every other
+			# portal, where an unset destination really is a broken exit.
+			if not arrival_only:
+				push_warning("LeaveTown (%s): destination_scene not assigned in the Inspector" % name)
 			return
 		if target_spawn_id != "":
 			GameState.next_spawn_id = target_spawn_id
@@ -70,12 +113,30 @@ func _vanish() -> void:
 	# fades out visually, then disables interaction entirely. doesn't
 	# free/delete the node — keeps it (now invisible, inert) in the tree
 	# rather than removing it outright, in case anything ever needs to
-	# reference it. modulate on the Area2D root fades any child visual
-	# (the gate sprite) along with it, since CanvasItem modulate is
-	# inherited by children by default.
+	# reference it.
+	var target: CanvasItem = _visual_target()
 	var tween := create_tween()
-	tween.tween_property(self, "modulate:a", 0.0, 1.0)
+	tween.tween_property(target, "modulate:a", 0.0, 1.0)
 	tween.tween_callback(_disable_after_vanish)
+
+
+func _visual_target() -> CanvasItem:
+	# Falls back to self, so a portal whose sprite really is a child keeps
+	# working with nothing set — and so a path that has gone stale fades
+	# something rather than throwing on a null.
+	if visual.is_empty():
+		return self
+
+	var node: Node = get_node_or_null(visual)
+	if node is CanvasItem:
+		return node
+
+	# LOUD, because the symptom otherwise is a portal that quietly stays put
+	# and a player who thinks the level is broken. That is exactly the failure
+	# this export was added to end, and a typo in the path would reproduce it
+	# perfectly.
+	push_warning("leavetown (%s): visual path '%s' is not a CanvasItem — fading the trigger instead, which may have nothing under it" % [name, visual])
+	return self
 
 
 func _disable_after_vanish() -> void:

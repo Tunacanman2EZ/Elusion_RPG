@@ -48,6 +48,14 @@ enum Type {
 	EARTH,
 	FIRE,
 	WATER,
+	# APPENDED AFTER THE ART EXISTED, which is the right way round. The artist
+	# had already drawn an electric sprite and a poison slime, and neither had
+	# an element — so the electric sprite was filed under WIND and the slimes
+	# under EARTH, and the recolour shader dutifully turned a blue lightning
+	# creature mint green and a green slime brown. The enum was missing two
+	# types the game already had creatures for. See COLOURS.
+	LIGHTNING,
+	POISON,
 }
 
 
@@ -64,6 +72,8 @@ const NAMES := {
 	Type.EARTH: "earth",
 	Type.FIRE:  "fire",
 	Type.WATER: "water",
+	Type.LIGHTNING: "lightning",
+	Type.POISON:    "poison",
 }
 
 
@@ -99,7 +109,69 @@ const COLOURS := {
 	Type.EARTH: Color(0.6313726, 0.38431373, 0.02745098),   # #A16207  ochre
 	Type.FIRE:  Color(1.0, 0.41568628, 0.12156863),         # #FF6A1F  ember
 	Type.WATER: Color(0.23137255, 0.50980395, 0.9647059),   # #3B82F6  blue
+
+	# THESE TWO ARE MEASURED FROM THE ART, NOT PICKED. Every colour above was
+	# chosen on a palette; these two were sampled out of the artist's own
+	# sheets — the saturation-weighted mean hue of every chromatic pixel in
+	# electricsprite.png and slime.png. The creature came first and the element
+	# is named after it, so the element's colour is the creature's colour by
+	# definition rather than by luck.
+	#
+	# LIGHTNING SITS BETWEEN ICE AND WATER, at 0.564 against 0.519 and 0.603.
+	# That is tight for three colours a player has to tell apart on a floating
+	# damage number, and it is deliberate: the electric sprite IS that blue and
+	# moving it to make the palette tidier would be inventing a colour for a
+	# creature that already has one. If the labels ever need separating, change
+	# how labels are drawn, not what the artist painted.
+	Type.LIGHTNING: Color(0.32268293, 0.59910947, 0.77315128),  # #5299C5  electricsprite.png
+	Type.POISON:    Color(0.18372081, 0.61082840, 0.12159075),  # #2F9C1F  slime.png
 }
+
+
+# The same palette expressed as a hue, 0-1, for element_recolour.gdshader.
+#
+# DERIVED FROM COLOURS ABOVE, not chosen separately — each of these is that
+# colour's own hue. Two numbers for one fact is how a palette drifts, so if you
+# retune a colour, run its hue again rather than nudging this by eye.
+const HUES := {
+	Type.NONE:  0.5909,
+	Type.DARK:  0.7316,
+	Type.LIGHT: 0.1333,
+	Type.ICE:   0.5194,
+	Type.WIND:  0.4232,
+	Type.EARTH: 0.0985,
+	Type.FIRE:  0.0558,
+	Type.WATER: 0.6034,
+	Type.LIGHTNING: 0.5644,
+	Type.POISON:    0.3122,
+}
+
+
+static func hue_for(element: int) -> float:
+	return HUES.get(element, HUES[Type.NONE])
+
+
+# How much to push saturation for a given sheet, so a pale creature recolours
+# with the same conviction as a vivid one.
+#
+# THE SHEETS ARE NOT EQUALLY COLOURED, and a hue rotation preserves saturation
+# by design — which means a 0.28-saturation electric sprite turned to fire
+# looks washed out beside a 0.66-saturation slime turned to fire.
+#
+# MEASURED SHEET SATURATIONS, for whoever authors the next elemental family:
+#
+#     busharcher      0.18     needs the most push, roughly 1.6
+#     electricsprite  0.28     1.6
+#     bushmage        0.40     1.3
+#     firesprite      0.59     1.0
+#     slime           0.66     needs none
+#
+# ONLY DERIVED VARIANTS EVER SEE THIS. An original sheet is drawn exactly as
+# authored — see EnemyData.recolour_to_element — so these numbers apply to the
+# copies made FROM a sheet, never to the sheet itself.
+#
+# The scale is authored per creature on its own material rather than computed,
+# because "how vivid should this creature be" is art direction, not arithmetic.
 
 
 static func colour_for(element: int) -> Color:
@@ -108,20 +180,10 @@ static func colour_for(element: int) -> Color:
 	return COLOURS.get(element, COLOURS[Type.NONE])
 
 
-# =============================================================================
-# ITERATION
-# =============================================================================
-
-static func all() -> Array:
-	# Every element including NONE, in enum order. For building a bestiary, a
-	# resistance table, or the loop that authored the elemental enemy set.
-	return Type.values()
-
-
-static func all_elemental() -> Array:
-	# Every element EXCEPT NONE — the seven that are actually an element.
-	# "Deal 20% more damage against one random element" wants this one; picking
-	# "physical" out of that hat is not an elemental effect.
-	var out: Array = Type.values()
-	out.erase(Type.NONE)
-	return out
+# NOTHING HERE ITERATES THE ENUM, AND NOTHING RESISTS ANYTHING YET. all(),
+# all_elemental() and a flat resistance() stub all lived here and had no
+# callers; `Type.values()` is what they wrapped. When the resistance table is
+# actually designed it belongs in this file, taking attacker and defender
+# elements and returning a multiplier — the three call sites that would need it
+# (player.take_damage, BaseEnemy.take_damage, the projectile scripts) already
+# carry an element each, which was the hard part and is done.

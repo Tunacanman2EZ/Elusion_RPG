@@ -336,7 +336,40 @@ func _calculate_melee_damage() -> int:
 	# warrior consistent with how tank/mage/healer's damage works underneath.
 	# It replaced base_melee_damage + int((attack - 1) / 2), which was
 	# attack-only, linear, and warrior's private formula.
-	return int(base_melee_damage * get_damage_multiplier())
+	#
+	# NEW: THE EQUIPPED WEAPON, ADDED RATHER THAN SUBSTITUTED. The note at the
+	# top of this file asked for a substitution — "base_melee_damage should be
+	# replaced by the equipped weapon's damage" — and that is not what happens,
+	# deliberately. Replacing makes an unarmed warrior deal nothing, which turns
+	# the first sword into a power switch rather than an upgrade; and the same
+	# rule has to serve the tank, whose damage is an aura tick, and the healer,
+	# who fires ten shots a second. Adding is the rule all four can share.
+	#
+	# ROLLED HERE, WHICH IS ONCE PER ENEMY. _try_damage() calls this per target,
+	# so a five-target cleave rolls five times and the numbers that pop off the
+	# five enemies differ — which is right, and is what the spread is for.
+	#
+	# roundi RATHER THAN int, which is a truncation this formula never should
+	# have had: int() always rounds toward zero, so every multiplier below a
+	# whole number lost a fraction of a point on every single hit. It cost the
+	# healer most — 3 base damage truncated at a 1.16 multiplier is still 3 —
+	# and it cost everyone something.
+	return roundi((base_melee_damage + weapon_damage_roll()) * get_damage_multiplier())
+
+
+func base_attack_damage() -> int:
+	# See player.gd's base_attack_damage(). The warrior's is the one the other
+	# three are scaled against — the weapon ladder is authored as a proportion
+	# of this 24.
+	return base_melee_damage
+
+
+func attack_period() -> float:
+	# One swing per lock. See player.gd's attack_period() for what reads this.
+	# attack_lock_duration rather than _attack_lock_duration(), which measures
+	# the real animation and needs a sprite in the tree — a tooltip is hovered
+	# while standing still, and the exported value is the number being tuned.
+	return attack_lock_duration
 
 
 # =============================================================================

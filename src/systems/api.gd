@@ -234,7 +234,7 @@ func _ready() -> void:
 
 func _log_server_reachability() -> void:
 	# DEBUG ONLY, and purely informational — this never touches token,
-	# username or role. resume_session() is the function that judges a
+	# username or role. probe_and_resume() is the function that judges a
 	# cached session and clears it on rejection; this one only reports.
 	#
 	# WHY IT EXISTS: nothing at boot said whether the server was up. "My save
@@ -375,15 +375,6 @@ func logout() -> void:
 	if token != "":
 		await post("/api/auth/logout", {})
 	_clear_session()
-
-
-func resume_session() -> bool:
-	# called at startup when a cached token exists. returns true if the
-	# server still accepts it, false if it expired or was revoked.
-	if token == "":
-		return false
-	var probe: Dictionary = await probe_and_resume()
-	return bool(probe.get("resumed", false))
 
 
 func probe_and_resume() -> Dictionary:

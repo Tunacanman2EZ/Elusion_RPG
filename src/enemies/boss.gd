@@ -128,6 +128,10 @@ func _position_player_at_spawn() -> void:
 	for portal in get_tree().get_nodes_in_group("fieldportals"):
 		if "portal_id" in portal and portal.portal_id == target_id:
 			player.global_position = portal.global_position
+			# Same as field.gd — see the longer note there. The player was
+			# added at (0, 0) and is moved here, after add_child() already
+			# reset interpolation, so the camera smears in with them.
+			player.reset_physics_interpolation()
 			if OS.is_debug_build():
 				print("[WORLD] boss — spawn '%s' -> %s" % [target_id, portal.global_position])
 			return

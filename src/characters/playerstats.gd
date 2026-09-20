@@ -122,6 +122,86 @@ static func damage_multiplier(attack_level: int, magic_level: int) -> float:
 
 
 # =============================================================================
+# WHAT A WEAPON ADDS
+# =============================================================================
+# A WEAPON ADDS TO THE CLASS'S OWN DAMAGE RATHER THAN REPLACING IT. Unarmed is
+# still a real state with a real number, which is what makes the first weapon
+# feel like something rather than like the game finally switching on.
+#
+# THE SPREAD IS THE POINT, not decoration. A number that is the same every
+# swing reads as arithmetic; a number that moves reads as a hit landing well or
+# badly, and it is the thing that makes an affix roll legible later — a loot
+# system that rolls a weapon's damage is rolling the middle of this band, and
+# nothing downstream has to change to accommodate it.
+#
+# ROLLED PER HIT, NOT PER SWING, and that falls out of where it is called from:
+# warrior._try_damage() asks once per enemy it cleaves, so five targets get five
+# rolls. The tank's aura rolls once per tick and shares it, because a tick is
+# one event that happens to touch several things.
+static func roll_weapon_damage(damage: int, spread: float) -> int:
+	# A NON-WEAPON RETURNS 0 rather than 1. Every caller adds this to a class
+	# base, so a floor of 1 would quietly hand a damage point to anyone holding
+	# nothing at all, and the difference between unarmed and armed is exactly
+	# what this is here to express.
+	if damage <= 0:
+		return 0
+
+	var band: float = clampf(spread, 0.0, 0.9)
+	var low: int = maxi(1, floori(float(damage) * (1.0 - band)))
+	var high: int = maxi(low, ceili(float(damage) * (1.0 + band)))
+	return randi_range(low, high)
+
+
+static func weapon_damage_range(damage: int, spread: float) -> Vector2i:
+	# The same band without rolling it, for a tooltip that wants to say
+	# "15 - 25" rather than a number the player never actually sees.
+	if damage <= 0:
+		return Vector2i.ZERO
+	var band: float = clampf(spread, 0.0, 0.9)
+	var low: int = maxi(1, floori(float(damage) * (1.0 - band)))
+	return Vector2i(low, maxi(low, ceili(float(damage) * (1.0 + band))))
+
+
+# =============================================================================
+# WHAT ARMOUR TAKES OFF
+# =============================================================================
+# A PERCENTAGE WITH DIMINISHING RETURNS, not a flat subtraction, and the
+# numbers are why. A full ember kit is 167 armour and the hardest thing in the
+# game hits for 35 — flat subtraction would make an end-game character
+# immortal, and the only way to stop that is to inflate enemy damage until an
+# under-geared player is deleted by the same attack.
+#
+#     reduction = armour / (armour + ARMOUR_HALF_POINT)
+#
+# The constant is the armour value at which incoming damage is HALVED, which is
+# what makes it a number anyone can reason about. At 200 the ladder reads:
+#
+#     iron plate     28 ->  12%      iron cloth     15 ->   7%
+#     jade plate     49 ->  20%      jade cloth     25 ->  11%
+#     cobalt plate   79 ->  28%      cobalt cloth   43 ->  18%
+#     amethyst      116 ->  37%      amethyst       62 ->  24%
+#     ember plate   167 ->  45%      ember cloth    90 ->  31%
+#
+# Cloth sits at a little over half of plate the whole way up, which is the
+# ladder the .tres files were already authored to — this constant did not
+# invent that relationship, it just gives it a scale.
+#
+# IT STACKS MULTIPLICATIVELY WITH THE DEFENSE TIER above, not additively. Two
+# additive percentages reach 100% and a character stops taking damage at all;
+# multiplying them means each one removes a share of what is LEFT, so an ember
+# warrior at Trained defense takes 0.80 x 0.55 = 44% of an incoming hit and no
+# combination of the two ever reaches zero. take_damage()'s maxi(1, ...) floor
+# is still there underneath as a last guarantee.
+const ARMOUR_HALF_POINT: float = 200.0
+
+
+static func armour_reduction(armour_value: int) -> float:
+	if armour_value <= 0:
+		return 0.0
+	return float(armour_value) / (float(armour_value) + ARMOUR_HALF_POINT)
+
+
+# =============================================================================
 # AGILITY DRIVES ATTACK SPEED
 # =============================================================================
 # Agility used to do exactly one thing: move_speed = speed + (agility-1)*10. It
@@ -165,8 +245,44 @@ static func xp_needed_for_skill(skill_level: int, base: int = SKILL_XP_BASE,
 # REGEN
 # =============================================================================
 
-static func regen_rate_for(stat_max: int, percent_per_second: float,
-		minimum_per_second: float) -> float:
+# THE THREE NUMBERS THAT DECIDE HOW FAST YOU RECOVER, and they live here rather
+# than as bare literals on player.gd's exports because the SERVER now needs
+# them.
+#
+# PUT /api/player/status reconciles any rise in hp, mana or stamina against
+# what regeneration could plausibly have produced since the last write - see
+# _report_unexplained_heals() in app.py. To do that it has to know the rate,
+# and until these were constants the only way to get it was to retype 0.0167
+# into Python and hope. This project already has that scar: the XP formula
+# lived in two places, they drifted, and the sanitiser started overwriting
+# honest saves with garbage. gameconstants.gd exists because of it.
+#
+# So: constants here, player.gd's exports default to them, exportgamedata.gd
+# carries them to the server. One number, three readers, no copies.
+#
+# 0.0167 is about 1/60, so an empty bar fills in roughly a minute at any level.
+const REGEN_PERCENT_PER_SECOND: float = 0.0167
+
+# Floor for small pools, set to the old flat rate so nothing regenerates slower
+# than it did before percentages replaced it - only faster.
+const REGEN_MINIMUM_PER_SECOND: float = 1.0
+
+# Seconds of doing NOTHING before regeneration starts; any action resets it.
+# Regen is strictly a between-fights mechanic - potions are what recover you
+# during one. See player.gd::_set_active().
+#
+# THE SERVER CANNOT USE THIS YET, and that is worth stating. It has no idea
+# whether you stood still, so it allows regeneration for the whole elapsed
+# window: the most generous reading, and therefore the safe one for a check
+# that must never fire on honest play. Exported anyway, because the moment the
+# server can see movement this is the number that makes the allowance tight
+# rather than merely correct.
+const REGEN_IDLE_THRESHOLD: float = 1.0
+
+
+static func regen_rate_for(stat_max: int,
+		percent_per_second: float = REGEN_PERCENT_PER_SECOND,
+		minimum_per_second: float = REGEN_MINIMUM_PER_SECOND) -> float:
 	# Points per second for a pool of this size. The floor matters for classes
 	# with small pools — a warrior with 0 max mana, or a 60-stamina pool, would
 	# otherwise regenerate a fraction of a point per second and look broken.

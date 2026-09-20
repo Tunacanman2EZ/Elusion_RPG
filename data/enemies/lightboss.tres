@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" uid="uid://bbmcaokoqjh1i" path="res://src/types/enemydata.gd" id="1_enemydata"]
+
+[resource]
+script = ExtResource("1_enemydata")
+enemy_id = "lightboss"
+display_name = "Light The Crowned"
+element = 2
+recolour_to_element = true
+saturation_scale = 1.0
+projectile_damage = 19
+max_hp = 4576
+xp_reward = 616
+attack_xp_reward = 79
+bag_drop_chance = 1.0
+max_loot_tier = 5
+max_item_slots = 4
+slot_fill_chance = 0.9
+metadata/_custom_type_script = "uid://bbmcaokoqjh1i"

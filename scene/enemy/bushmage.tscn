@@ -701,15 +701,11 @@ debug_color = Color(0, 0, 0, 0.41960785)
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=48577092]
 texture_filter = 1
-offset_left = -11.0
-offset_top = -36.0
-offset_right = 149.0
-offset_bottom = -4.0
-scale = Vector2(0.5, 0.5)
-min_value = 40.0
-max_value = 40.0
-value = 40.0
-fill_mode = 1
+offset_left = -18.0
+offset_top = -42.0
+offset_right = 18.0
+offset_bottom = -34.0
+value = 100.0
 texture_under = ExtResource("4_wldbk")
 texture_progress = ExtResource("5_nhtsg")
 

@@ -80,7 +80,12 @@ func fire_projectile() -> void:
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
 	if spawn_node == null or player == null:
 		return
-	var arrow: Node = ARROW_SCENE.instantiate()
+	# THE ELEMENT PICKS THE ARROW. An ice sniper fires icearrow.tscn, which is
+	# this same scene with an authored material on it — so the shot is blue
+	# because the file is blue, not because something built a Material for this
+	# one arrow on its way out of the bow. The plain sniper is NONE and has no
+	# variant, so it gets ARROW_SCENE back untouched.
+	var arrow: Node = Projectiles.variant_of(ARROW_SCENE, current_element()).instantiate()
 	# aim BEFORE spawning — shoot_vector just sets velocity + rotation, which
 	# don't require the node to be in the tree yet.
 	var to_player: Vector2 = player.global_position - spawn_node.global_position

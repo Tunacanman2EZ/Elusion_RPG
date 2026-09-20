@@ -1,0 +1,205 @@
+[gd_scene load_steps=3 format=3 uid="uid://dm4xqt7v0brny"]
+
+[ext_resource type="Script" path="res://src/ui/equipment/equipmentpanel.gd" id="1_eqpanel"]
+[ext_resource type="PackedScene" uid="uid://b3qk8vn2eqwla" path="res://scene/ui/equipment/equipmentslot.tscn" id="2_eqslot"]
+
+[node name="equipmentpanel" type="Control"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -501.0
+offset_top = 27.0
+offset_right = -291.0
+offset_bottom = 373.0
+grow_horizontal = 0
+script = ExtResource("1_eqpanel")
+
+[node name="mainpanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
+layout_mode = 2
+
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 13
+text = "Equipment"
+vertical_alignment = 1
+
+[node name="equipclosebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+text = "x"
+
+[node name="hseparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="dollcenter" type="CenterContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="dollgrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/dollcenter"]
+layout_mode = 2
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
+columns = 3
+
+[node name="padtopleft" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="helm" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+equip_slot_name = "helm"
+empty_hint = "Helm"
+
+[node name="padtopright" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="weapon" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+equip_slot_name = "weapon"
+empty_hint = "Weapon"
+
+[node name="chest" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+equip_slot_name = "chest"
+empty_hint = "Chest"
+
+[node name="shield" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+equip_slot_name = "shield"
+empty_hint = "Off hand"
+
+[node name="ring" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+equip_slot_name = "ring"
+empty_hint = "Ring"
+
+[node name="legs" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+equip_slot_name = "legs"
+empty_hint = "Legs"
+
+[node name="amulet" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+equip_slot_name = "amulet"
+empty_hint = "Amulet"
+
+[node name="padbottomleft" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="boots" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+equip_slot_name = "boots"
+empty_hint = "Boots"
+
+[node name="padbottomright" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="summary" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="damagerow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary"]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/damagerow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 10
+text = "Damage:"
+
+[node name="equipdamagevalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/damagerow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 10
+text = "-"
+horizontal_alignment = 2
+
+[node name="speedrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary"]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/speedrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 10
+text = "Damage per second:"
+
+[node name="equipspeedvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/speedrow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 10
+text = "-"
+horizontal_alignment = 2
+
+[node name="armourrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary"]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/armourrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 10
+text = "Armour:"
+
+[node name="equiparmourvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/armourrow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 10
+text = "0"
+horizontal_alignment = 2
+
+[node name="soakrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary"]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/soakrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 10
+text = "Damage taken:"
+
+[node name="equipsoakvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/soakrow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 10
+text = "0% less"
+horizontal_alignment = 2

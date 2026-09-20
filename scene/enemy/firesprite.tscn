@@ -719,14 +719,12 @@ animation = &"attackup"
 offset = Vector2(0, -16)
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=387788377]
+texture_filter = 1
 offset_left = -18.0
-offset_top = -46.0
-offset_right = 142.0
-offset_bottom = -6.0
-min_value = 40.0
-max_value = 40.0
-value = 40.0
-fill_mode = 1
+offset_top = -55.0
+offset_right = 18.0
+offset_bottom = -47.0
+value = 100.0
 texture_under = ExtResource("3_tik12")
 texture_progress = ExtResource("4_5bmra")
 

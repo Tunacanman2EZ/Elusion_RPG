@@ -62,6 +62,44 @@ const GOLD_LARGE_ID := "largeamountofgold"
 
 
 # =============================================================================
+# THE GOLD CURVE
+# =============================================================================
+# How much gold one bag holds: randint(unit, unit * GOLD_SPREAD), where `unit`
+# steps by GOLD_TIER_RATIO for each loot tier.
+#
+# WHY THIS IS GEOMETRIC, AND WHY THAT MATTERS MORE THAN THE NUMBERS. The roll
+# used to be randint(max_loot_tier, max_loot_tier * 25) — LINEAR in tier. Every
+# price in the game is geometric: ItemData.value climbs x2.6 per tier for gear
+# and x2.4 for potions. Linear income against geometric prices means purchasing
+# power DECAYS as you climb:
+#
+#     tier 1:  13 gold/kill,  a potion costs  25  ->   1.9 kills
+#     tier 5:  65 gold/kill,  a potion costs 830  ->  12.8 kills
+#
+# A tier-5 player was nearly seven times poorer in real terms than a tier-1
+# player. Two things follow, and the second is the serious one: progression
+# feels like getting poorer, and THE OPTIMAL GOLD FARM BECOMES THE STARTING
+# ZONE — best income-to-cost ratio and the fastest kills. Any player who works
+# that out stops playing the rest of the game.
+#
+# Matching the ratio to the price curve holds kills-per-purchase flat at every
+# tier, so relative prices stop depending on where you are. Tune the economy
+# once instead of per tier, forever.
+#
+# TIER 1 IS UNCHANGED ON PURPOSE. unit = 1 there, so the roll is still
+# randint(1, 25) and the early game plays exactly as it did.
+const GOLD_TIER_RATIO := 2.6
+
+# The tier-1 unit. The mean roll is this x (1 + GOLD_SPREAD) / 2, so 1 here
+# means 13 gold from a tier-1 kill.
+const GOLD_BASE_UNIT := 1.0
+
+# Width of the roll, as a multiple of the unit. Was the bare 25 in the old
+# expression; named so the spread and the curve can be tuned separately.
+const GOLD_SPREAD := 25
+
+
+# =============================================================================
 # PET DROP ODDS BY LOOT TIER
 # =============================================================================
 # "one in N per kill", keyed by the enemy's max_loot_tier. An enemy only ever
@@ -81,17 +119,48 @@ const GOLD_LARGE_ID := "largeamountofgold"
 #   tier 1 -> 1 in 1296   weakest trash; you kill a great many of them
 #   tier 2 -> 1 in 648    mid-tier
 #   tier 3 -> 1 in 216    unchanged from the original triple-six
-#   tier 4 -> 1 in 108    reserved for the boss
+#   tier 4 -> 1 in 108    was "reserved for the boss"
+#   tier 5 -> 1 in 72     the ember tier and the bosses that unlock it
+#   tier 6 -> 1 in 54
+#   tier 7 -> 1 in 36
+#   tier 8 -> 1 in 27     the highest tier any item is authored at
+#
+# THE TABLE HAS TO COVER EVERY TIER AN ITEM EXISTS AT, and it did not.
+#
+# max_loot_tier does two unrelated jobs: it caps which item tiers may drop, and
+# it keys this table. Ember gear is tier 5, so unlocking it for the bosses meant
+# raising them to tier 5 and 6 — which walked them straight off the end of a
+# table that stopped at 4, into PET_ODDS_FALLBACK. All seven bosses were sitting
+# on 1 in 1296, the WORST odds in the game, while a tier 3 elemental had 1 in
+# 216. The line above used to read "reserved for the boss" and meant the exact
+# opposite of what was happening.
+#
+# Nothing errored, nothing warned. The fallback did precisely what it promises
+# and the promise was the problem. Items are authored up to tier 8, so the table
+# now runs to 8 and the same trap cannot spring again on the next tier.
+#
+# The curve past 4 deliberately FLATTENS rather than continuing to halve: 72,
+# 54, 36, 27. A boss you kill a handful of times a session does not need the
+# same steepness as trash you kill hundreds of.
 const PET_ODDS_BY_TIER := {
 	1: 1296,
 	2: 648,
 	3: 216,
 	4: 108,
+	5: 72,
+	6: 54,
+	7: 36,
+	8: 27,
 }
 
-# Used when max_loot_tier isn't in the table above (a tier 5+ enemy added
-# later, or a corrupted value). Deliberately on the stingy side: a missing
-# entry should never accidentally make a pet common.
+# Used when max_loot_tier isn't in the table above (a tier 9+ enemy added later,
+# or a corrupted value). Deliberately on the stingy side: a missing entry should
+# never accidentally make a pet common.
+#
+# It should now be genuinely unreachable for authored content — see the note
+# above. If you find yourself hitting it, extend the table rather than leaning
+# on this, because landing here silently makes your BEST enemy your WORST pet
+# source and nothing anywhere will tell you.
 const PET_ODDS_FALLBACK := 1296
 
 
@@ -1286,7 +1355,247 @@ func _wire_healthbar() -> void:
 	bar.min_value = 0
 	bar.max_value = max_hp
 	bar.step      = 1
-	bar.value     = hp
+	bar.value     = _bar_displayable(bar, hp)
+	_wire_health_readout(bar)
+
+
+func _bar_displayable(bar: Range, amount: float) -> float:
+	"""What to DRAW for this amount: the amount, or the smallest sliver the bar
+	can actually render, whichever is larger. Zero draws zero.
+
+	EMPTY HAS TO MEAN DEAD, and on these bars it did not by a wide margin. A
+	TextureProgressBar fills a fraction of its progress texture, and these
+	textures are tiny - monsterhpfull.png is 36px, bosshpfull.png is 64px. A
+	fireboss has 2054 hit points, so one point is 0.03 of a pixel and the last
+	THIRTY-TWO of them round away to nothing: the bar reads empty, the boss is
+	still alive, and every hit after that looks like damage landing on a corpse.
+	On an ordinary slime it is the last one or two, which is a moment; on a boss
+	it is a stretch of the fight long enough to make it feel broken.
+
+	CEILING, NOT JUST A FLOOR, because _wire_healthbar() sets step = 1: a Range
+	snaps its value to whole multiples, so a fractional minimum would round back
+	down and vanish again. Rounding up guarantees the sliver survives the snap.
+
+	The same fix as characterhud.gd's _displayable(), with that one extra
+	wrinkle. Both measure off the texture rather than hard-coding a width, so a
+	bar with different art gets the floor its own art deserves."""
+	if bar == null or amount <= 0.0:
+		return 0.0
+
+	var width: float = 100.0
+	if bar is TextureProgressBar:
+		var texture: Texture2D = (bar as TextureProgressBar).texture_progress
+		if texture != null:
+			width = float(texture.get_width())
+
+	return maxf(amount, ceilf(bar.max_value / maxf(width, 1.0)))
+
+
+# =============================================================================
+# HEALTH READOUT — the number printed on the bar
+# =============================================================================
+#
+# WHY A NUMBER AND NOT JUST A BAR. A bar answers "roughly how much is left",
+# which is the wrong question against a boss with 2054 hit points: the
+# difference between a fight you are winning and one you are losing is about
+# forty points a swing, and forty points is half a pixel of a 64-pixel texture.
+# _bar_displayable() above makes the bar stop LYING about the last few points.
+# This makes it stop being VAGUE about all the rest.
+#
+# BUILT IN CODE, NOT IN THE SCENES. Six enemy scenes carry a healthbar node of
+# their own and four more inherit or instance one of those, and every one of
+# them authored its bar differently — three at scale 1, two at 0.5, the small
+# slime at 0.55, offsets that centre on the sprite to within seven pixels. A
+# label added by hand to each would be ten chances to get the counter-scale
+# wrong and ten places to fix it when the camera zoom changes. Added here it
+# lands on every enemy that has a bar at all, including the inherited ones,
+# which is the whole set by definition.
+const HEALTH_READOUT_NAME := "healthvalue"
+
+# The camera zoom to assume when there is no camera to ask — every player class
+# is authored at 3, and _ready() can run a frame before the player's camera
+# becomes current. _layout_health_readout() re-reads the live zoom on the
+# deferred pass and on every write, so this value is a starting guess, not a
+# setting.
+const HEALTH_READOUT_FALLBACK_ZOOM := 3.0
+
+# Font size in SCREEN pixels, as a fraction of how tall the bar actually DRAWS.
+# A monster bar is 8 art pixels seen at zoom 3, so 24 on screen, so 13pt text; a
+# boss bar draws 30 and gets 17. That is the same proportion the player's HUD
+# uses, and it is the PROPORTION rather than the number that is worth keeping —
+# a fixed size would stop matching the bar the first time the camera zoom moves.
+#
+# THE FLOOR IS THE WHOLE POINT OF THE CLAMP. A small poison slime's bar draws at
+# 0.55 scale and the fraction would hand it 7pt text: proportionate, and
+# unreadable, which is not a trade worth making for something you still have to
+# fight.
+const HEALTH_READOUT_FONT_RATIO := 0.55
+const HEALTH_READOUT_FONT_MIN := 12
+const HEALTH_READOUT_FONT_MAX := 20
+
+# How much wider than the bar the label's BOX is. The box is invisible; all it
+# does is guarantee the text never hits the Control's minimum size, because a
+# Label whose text outgrows its rect grows rightward and downward from its own
+# top-left and the centring silently stops being centred. Three times the bar
+# holds "2054 / 2054" on the narrowest bar in the game with room to spare.
+const HEALTH_READOUT_BOX_FACTOR := 3.0
+
+const HEALTH_READOUT_COLOUR := Color(1, 0.96, 0.9)
+
+# THE NUMBER IS PRINTED ON A BRIGHT RED BAR, over whatever the world happens to
+# put behind it. Plain white text on that reads fine in a screenshot and
+# disappears in motion, which was the complaint. Three things fix it together
+# and none of them does it alone: the size above, a synthetic bold, and an
+# outline thick enough to put a hard dark edge between every stroke and the red
+# underneath. FULLY OPAQUE, because at 0.85 the red showed through the outline
+# and the edge it exists to draw went soft exactly where the contrast was worst.
+const HEALTH_READOUT_OUTLINE_COLOUR := Color(0, 0, 0, 1)
+const HEALTH_READOUT_EMBOLDEN := 0.35
+
+# A QUARTER OF THE FONT, AND NOT MORE. Godot draws the outline OUTWARD from the
+# glyph, so at 13pt — where the stems are under two pixels — a 4px outline is
+# thicker than the letter it is outlining, and the digits stop being shapes and
+# become black blobs with a white core. Thicker is not clearer past this point;
+# it was the size and the weight that were wrong, not the edge.
+const HEALTH_READOUT_OUTLINE_RATIO := 0.25
+const HEALTH_READOUT_OUTLINE_MIN := 3
+const HEALTH_READOUT_OUTLINE_MAX := 5
+
+
+# ONE FontVariation FOR EVERY ENEMY IN THE GAME. A field holds thirty creatures
+# and a boss room spawns more; each one building its own Font resource would be
+# thirty copies of one object, rebuilt on every spawn and thrown away on every
+# death.
+#
+# base_font IS LEFT UNSET ON PURPOSE. FontVariation falls back to the theme's
+# own font when it has no base, so this emboldens whatever the project's font
+# turns out to be rather than pinning today's default into this script — and if
+# a real font is ever added to the theme, the readout picks it up with no edit
+# here.
+static var _readout_font_cache: FontVariation = null
+
+
+static func _readout_font() -> FontVariation:
+	if _readout_font_cache == null:
+		_readout_font_cache = FontVariation.new()
+		_readout_font_cache.variation_embolden = HEALTH_READOUT_EMBOLDEN
+	return _readout_font_cache
+
+
+func _wire_health_readout(bar: Range) -> void:
+	if bar == null:
+		return
+
+	var label: Label = bar.get_node_or_null(HEALTH_READOUT_NAME) as Label
+	if label == null:
+		label = Label.new()
+		label.name = HEALTH_READOUT_NAME
+		# The bar sits over a creature that can be clicked and attacked; a label
+		# that ate the click would make enemies wearing a full health bar
+		# unselectable across the top half of their own sprite.
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.add_theme_color_override("font_color", HEALTH_READOUT_COLOUR)
+		label.add_theme_color_override("font_outline_color", HEALTH_READOUT_OUTLINE_COLOUR)
+		label.add_theme_font_override("font", _readout_font())
+		bar.add_child(label)
+
+	_layout_health_readout(bar, label)
+	_write_health_readout()
+
+	# DEFERRED, because a subclass can still move the bar after this returns.
+	# poisonslime.gd::_fit_healthbar_to_form() rescales the bar for the small
+	# form in its own _ready(), AFTER super._ready() has run this — and the
+	# counter-scale below is computed FROM that scale, so laid out once here the
+	# eight smalls of a split would each wear a number 1.8x too big. A deferred
+	# call runs at the end of the frame, by which time every _ready() in the
+	# chain has had its say.
+	_layout_health_readout.call_deferred(bar, label)
+
+
+func _layout_health_readout(bar: Range, label: Label) -> void:
+	"""Counter-scale the label so its text renders at one screen pixel per font
+	pixel, and centre it on the bar's ART.
+
+	THE MATHS, ONCE, BECAUSE IT IS THE ONLY SUBTLE PART. A label under a parent
+	whose global scale is g, seen through a camera zoomed z, draws each of its
+	own local units at s * g * z screen pixels, where s is the label's own
+	scale. Set s = 1 / (g * z) and that product is exactly 1: a font_size of N
+	lands on N screen pixels, on the pixel grid, crisp. Any other value resamples
+	the glyphs and is the blurry text the shop panel had.
+
+	CENTRED ON THE TEXTURE, NOT ON THE RECT. A TextureProgressBar draws its
+	textures at their own size from its top-left corner and ignores the rest of
+	its rect unless nine-patch stretching is on — and these rects are junk left
+	over from authoring, 160 and even 480 units wide around a 36-unit texture.
+	Centring on `bar.size` would put the number a long way off to the right of
+	the bar it belongs to."""
+	# BOTH CHECKED, because this also runs deferred: an enemy killed in the same
+	# frame it spawned frees its bar between the call being queued and the queue
+	# being drained, and a freed Object is not `null`.
+	if not is_instance_valid(bar) or not is_instance_valid(label):
+		return
+
+	var art := Vector2(36.0, 8.0)
+	if bar is TextureProgressBar:
+		var texture: Texture2D = (bar as TextureProgressBar).texture_progress
+		if texture != null:
+			art = Vector2(texture.get_size())
+
+	# Screen pixels per unit of the bar's own local space.
+	#
+	# THE GLOBAL SCALE, NOT bar.scale. They are the same number today — every
+	# enemy root sits at scale 1 — and reading the local one would keep working
+	# right up until somebody scales an enemy to make a bigger variant, at which
+	# point the bar would grow and the number on it would not.
+	var render: float = maxf(absf(bar.get_global_transform().get_scale().x), 0.01) * _camera_zoom()
+
+	# Sized off the bar's DRAWN height — art.y is in the bar's own units, art.y *
+	# render is what the player actually sees — so the number keeps its
+	# proportion to the bar at any zoom or bar scale.
+	var font_px: int = clampi(
+		roundi(art.y * render * HEALTH_READOUT_FONT_RATIO),
+		HEALTH_READOUT_FONT_MIN,
+		HEALTH_READOUT_FONT_MAX)
+	label.add_theme_font_size_override("font_size", font_px)
+	label.add_theme_constant_override("outline_size", clampi(
+		roundi(float(font_px) * HEALTH_READOUT_OUTLINE_RATIO),
+		HEALTH_READOUT_OUTLINE_MIN,
+		HEALTH_READOUT_OUTLINE_MAX))
+
+	label.scale = Vector2.ONE / render
+
+	var box: Vector2 = art * render * HEALTH_READOUT_BOX_FACTOR
+	label.size = box
+	# box / render is the box's size expressed in the bar's local units, which is
+	# what has to be centred against the art.
+	label.position = (art - box / render) * 0.5
+
+
+func _write_health_readout() -> void:
+	"""Print the REAL health, never bar.value.
+
+	bar.value is the DISPLAYABLE health — _bar_displayable() lifts it to the
+	smallest sliver the texture can draw, so a boss on its last 12 points shows
+	a value of 33 there. Printing that would take the one honest number on
+	screen and make it agree with the rounding it exists to expose."""
+	if not has_node("healthbar"):
+		return
+	var bar: Range = $healthbar
+	var label: Label = bar.get_node_or_null(HEALTH_READOUT_NAME) as Label
+	if label == null:
+		return
+	label.text = "%d / %d" % [maxi(hp, 0), maxi(max_hp, 1)]
+
+
+func _camera_zoom() -> float:
+	var viewport: Viewport = get_viewport()
+	if viewport != null:
+		var camera: Camera2D = viewport.get_camera_2d()
+		if camera != null:
+			return maxf(absf(camera.zoom.x), 0.01)
+	return HEALTH_READOUT_FALLBACK_ZOOM
 
 
 func _wire_animated_sprite() -> void:
@@ -1553,6 +1862,120 @@ func fire_projectile() -> void:
 # PROJECTILE SPAWNING
 # =============================================================================
 
+const ELEMENT_SHADER := preload("res://src/shared/element_recolour.gdshader")
+
+
+# An element set on THIS INSTANCE, overriding whatever its EnemyData says.
+# -1 means "no override — use the resource".
+#
+# THIS EXISTS FOR THINGS THAT SPAWN OTHER THINGS. The large poison slime bursts
+# into four smalls, and _spawn_slime() hands each child `is_small` and nothing
+# else — so a child resolves its own EnemyData in _ready() and is born with the
+# SMALL profile's element whatever its parent was. A water slime bursting into
+# four earth slimes is the kind of thing nobody notices in code and everybody
+# notices on screen.
+#
+# An override rather than writing to enemy_data, because EnemyData is a shared
+# Resource: mutating it would recolour every slime already on the map, and the
+# next one to spawn would inherit whatever the last one decided.
+var element_override: int = -1
+
+
+func current_element() -> int:
+	# The element this instance actually is. Prefer the per-instance override,
+	# fall back to the resource, and treat "no data at all" as physical.
+	if element_override >= 0:
+		return element_override
+	if enemy_data == null:
+		return Element.Type.NONE
+	return enemy_data.element
+
+
+func _should_recolour() -> bool:
+	# TWO GATES, AND THE FIRST ONE IS THE IMPORTANT ONE.
+	#
+	# recolour_to_element is opt-in, so an original sheet is drawn as the artist
+	# drew it unless a resource explicitly asks to be a palette swap. Read
+	# EnemyData.recolour_to_element for what went wrong when this was the other
+	# way round. element_override is the runtime escape hatch and counts as
+	# asking, because nothing sets it by accident.
+	if enemy_data == null or not enemy_data.recolour_to_element:
+		if element_override < 0:
+			return false
+
+	# NONE IS NOT A RECOLOUR. Physical is steel — near-grey — so rotating a
+	# sprite onto it would drain the art rather than characterise it.
+	return current_element() != Element.Type.NONE
+
+
+func _apply_element_recolour() -> void:
+	# Rotates this creature's art to its element's hue. See
+	# element_recolour.gdshader for why this is a shader and not a modulate:
+	# multiplying cannot move a hue, and three of the five creature sheets in
+	# this project are saturated enough that a tint only ever darkens them.
+	#
+	# THIS IS FOR DERIVED VARIANTS ONLY. The whole point of the shader is
+	# turning ONE sheet into a family of creatures; pointed at the sheet it was
+	# derived from, it overwrites the original with a recolour of itself.
+	if not _should_recolour():
+		return
+
+	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
+	if sprite == null:
+		return
+
+	# A FRESH MATERIAL PER ENEMY, for the same reason slashwave.gd builds a
+	# fresh shape: a Material is a Resource, and one shared between instances
+	# would mean the last slime to spawn decided the colour of every slime
+	# already on screen.
+	var mat := ShaderMaterial.new()
+	mat.shader = ELEMENT_SHADER
+	mat.set_shader_parameter("element_hue", Element.hue_for(current_element()))
+	mat.set_shader_parameter("saturation_scale", enemy_data.saturation_scale)
+	sprite.material = mat
+
+
+func _recolour_projectile(projectile: Node) -> void:
+	# The sprite may be the projectile itself or a child of it — the scenes in
+	# this project do both — so try the node first and then look for one.
+	#
+	# SAME GATE AS THE BODY, and for the same reason. The poison slime's shot is
+	# drawn green because it is poison; recolouring it to match an element the
+	# creature was only filed under would throw away a deliberate piece of art
+	# and, worse, do it inconsistently with the creature throwing it.
+	if not _should_recolour():
+		return
+
+	var target: CanvasItem = projectile as CanvasItem
+	for child in projectile.get_children():
+		if child is AnimatedSprite2D or child is Sprite2D:
+			target = child as CanvasItem
+			break
+	if target == null:
+		return
+
+	# THE SCENE WINS, AND FOR ALMOST EVERY SHOT THE SCENE IS WHAT GOT HERE.
+	#
+	# Projectiles.variant_of() hands each family's spawner a scene that already
+	# carries an authored ShaderMaterial in the right hue — one Resource shared
+	# by every instance of icearrow.tscn rather than a fresh one per arrow. This
+	# guard is what stops the line below throwing that away and going back to
+	# allocating per bullet.
+	#
+	# WHAT IS LEFT BELOW IS THE FALLBACK, and it is worth keeping: an element in
+	# the roster with no variant scene built for it yet still comes out the right
+	# colour, just at the old cost. A missing file degrades, it does not break.
+	if target.material != null:
+		return
+
+	var mat := ShaderMaterial.new()
+	mat.shader = ELEMENT_SHADER
+	mat.set_shader_parameter("element_hue", Element.hue_for(current_element()))
+	mat.set_shader_parameter("saturation_scale",
+		enemy_data.saturation_scale if enemy_data != null else 1.0)
+	target.material = mat
+
+
 func spawn_projectile_node(projectile: Node, spawn_pos: Vector2) -> void:
 	# parent a projectile into the y-sorted "projectiles" container so it
 	# depth-sorts correctly against characters. falls back to the scene root
@@ -1577,6 +2000,20 @@ func spawn_projectile_node(projectile: Node, spawn_pos: Vector2) -> void:
 	# alone, so nothing that has not opted in changes.
 	if enemy_data != null and enemy_data.projectile_damage > 0 and "damage" in projectile:
 		projectile.damage = enemy_data.projectile_damage
+
+	# THE SHOT INHERITS THE CASTER'S ELEMENT, which is what makes six recoloured
+	# slimes six DIFFERENT enemies rather than one enemy in six coats of paint.
+	# A water slime's poison ball deals water damage because the slime is water,
+	# not because a second poisonball scene exists.
+	#
+	# current_element() rather than enemy_data.element, so a slime split off a
+	# water parent passes its water down with it — see element_override.
+	if "element" in projectile:
+		projectile.element = current_element()
+
+	# And the shot LOOKS like it too. Same shader, same hue, so the orb leaving
+	# a water slime is the blue the slime is.
+	_recolour_projectile(projectile)
 
 	var container: Node = get_tree().get_first_node_in_group("projectiles")
 	if container == null:
@@ -1860,6 +2297,8 @@ func _apply_enemy_data() -> void:
 	# way a pet's root modulate does. See EnemyData.body_tint.
 	modulate          = enemy_data.body_tint
 
+	_apply_element_recolour()
+
 	max_hp            = enemy_data.max_hp
 	xp_reward         = enemy_data.xp_reward
 	attack_xp_reward  = enemy_data.attack_xp_reward
@@ -1873,7 +2312,7 @@ func _apply_enemy_data() -> void:
 	pet_odds_override = enemy_data.pet_odds_override
 
 
-func take_damage(amount: int, _type: StringName = &"physical") -> void:
+func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 	# _dying as well as _death_resolved: a corpse playing out its death
 	# animation is still a live node for about a second, and without this it
 	# would keep taking hits, spawning damage numbers and re-entering _die().
@@ -1889,7 +2328,8 @@ func take_damage(amount: int, _type: StringName = &"physical") -> void:
 		var bar: Range = $healthbar
 		if bar.max_value != max_hp:
 			bar.max_value = max_hp
-		bar.value = hp
+		bar.value = _bar_displayable(bar, hp)
+		_write_health_readout()
 
 	# TWO SOUNDS FOR ONE EVENT, AND THAT IS DELIBERATE.
 	#
@@ -2034,6 +2474,13 @@ func _die() -> void:
 # =============================================================================
 
 func _spawn_floating_label(amount: int, type: int) -> void:
+	# TURNED OFF BY THE OPTIONS SCREEN, if the player asked. This is the side
+	# that produces most of them — one per hit per enemy, and a warrior
+	# cleaving five at once produces five — which is exactly why the switch
+	# exists. Only DAMAGE is gated; see player.gd's copy of this guard.
+	if type == FloatingLabel.Type.DAMAGE and not Settings.get_value("damage_numbers"):
+		return
+
 	# damage numbers go to the FloatingLabels container (always-on-top,
 	# not y-sorted) if it exists, else fall back to the scene root.
 	var lbl: Node = FLOATING_LABEL_SCENE.instantiate()

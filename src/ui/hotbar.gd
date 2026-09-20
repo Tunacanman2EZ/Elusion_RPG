@@ -163,15 +163,6 @@ func refresh_all_slots() -> void:
 			slot.refresh_from_inventory(inventory_container)
 
 
-func clear_all() -> void:
-	# wipe all 9 slot assignments. called on death cleanup.
-	for slot in slots:
-		if slot != null:
-			slot.clear()
-	_save_assignments_to_player()
-	_push_linked_ids_to_inventory()
-
-
 # =============================================================================
 # SIGNAL HANDLERS
 # =============================================================================
@@ -283,9 +274,16 @@ func _push_linked_ids_to_inventory() -> void:
 	# tell the inventory container which item_ids are currently assigned to
 	# hotbar slots. the container uses this to apply gold borders to matching
 	# inventory items, visually showing the inventory-to-hotbar link.
+	# TEMPORARY DIAGNOSTIC — delete alongside the one in inventorycontainer.gd.
+	# If the gold border never appears AND [HOTBARLINK] never prints, one of
+	# these two early returns is why.
 	if inventory_container == null:
+		if OS.is_debug_build():
+			print("[HOTBARLINK] push skipped — inventory_container is null")
 		return
 	if not inventory_container.has_method("set_linked_item_ids"):
+		if OS.is_debug_build():
+			print("[HOTBARLINK] push skipped — container has no set_linked_item_ids")
 		return
 
 	var ids: Array = []

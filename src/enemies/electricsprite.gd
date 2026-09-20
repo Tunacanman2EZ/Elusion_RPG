@@ -81,25 +81,24 @@ func get_move_speed() -> float:
 
 func fire_projectile() -> void:
 	# spawn an orb at the directional spawn marker, aimed at the player's
-	# position at the moment of release.
-	#
-	# parents the orb under the "projectiles" group (the Y-sorted Projectiles
-	# container) so it depth-sorts against characters. uses call_deferred so
-	# we don't mutate the scene tree mid-physics-frame.
+	# position at the moment of release. Parenting, the element stamp, the
+	# damage override and the interpolation reset all belong to
+	# BaseEnemy.spawn_projectile_node() — see the note at the bottom of this
+	# function for what happened while they did not.
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
 	if spawn_node == null or player == null:
 		return
 
-	var orb: Node = ELECTRIC_ORB_SCENE.instantiate()
-	_parent_to_projectiles_container(orb)
-
-	# defer the position set too — the orb isn't in the tree until the
-	# deferred add_child runs, so set global_position deferred to match.
-	orb.set_deferred("global_position", spawn_node.global_position)
+	# THE ELEMENT PICKS THE ORB — see bushsniper.gd. The plain electric sprite
+	# is LIGHTNING and has no variant, so it fires the artist's own blue.
+	var orb: Node = Projectiles.variant_of(ELECTRIC_ORB_SCENE, current_element()).instantiate()
 
 	# aim at the player's current position. orb won't track after firing —
 	# if the player dodges between release and impact, the orb misses
 	# (intentional gameplay risk, matches arrow behavior).
+	#
+	# BEFORE SPAWNING, like every other family: shoot_vector only sets velocity
+	# and rotation, neither of which needs the node to be in the tree.
 	if orb.has_method("shoot_vector"):
 		var to_player: Vector2 = player.global_position - spawn_node.global_position
 		orb.shoot_vector(to_player)
@@ -107,20 +106,29 @@ func fire_projectile() -> void:
 		# fallback for orb implementations that only support cardinals
 		orb.shoot(attack_direction)
 
-
-# =============================================================================
-# PROJECTILE PARENTING
-# =============================================================================
-
-func _parent_to_projectiles_container(orb: Node) -> void:
-	# parent orbs under the "projectiles" group node (Y-sorted Projectiles
-	# container inside YSortWorld). falls back to the current scene root if
-	# the group node is missing. call_deferred defers the add_child until
-	# the physics step ends, avoiding mid-frame scene-tree mutation errors.
-	var projectiles: Node = get_tree().get_first_node_in_group("projectiles")
-	if projectiles == null:
-		projectiles = get_tree().current_scene
-	projectiles.add_child.call_deferred(orb)
+	# THROUGH THE SHARED SPAWNER, and this is a bug fix, not a tidy-up.
+	#
+	# This function used to parent the orb itself, through a private helper that
+	# did the deferred add_child and the deferred position and stopped there. It
+	# looked like a local copy of BaseEnemy.spawn_projectile_node(). It was a
+	# copy of a QUARTER of it, and the missing three quarters were:
+	#
+	#   element      — so every orb dealt magicprojectile.gd's default, and all
+	#                  six elemental sprites fired the same damage type as the
+	#                  original. That default was WIND, which is a separate
+	#                  correction; see magicprojectile.gd.
+	#   damage       — so EnemyData.projectile_damage did nothing here, and an
+	#                  ice sprite's orb hit for the base 11 rather than its tier's
+	#                  number, on every variant.
+	#   interpolation— so every orb still streaked in from the world origin on
+	#                  its first frame. spawn_projectile_node() carries the long
+	#                  note about that bug and says it fixed it "in the one place
+	#                  every enemy projectile passes through". This family did
+	#                  not pass through it.
+	#
+	# A helper that duplicates part of a shared function is worse than no helper,
+	# because it silently stops inheriting the fixes made to the original.
+	spawn_projectile_node(orb, spawn_node.global_position)
 
 
 # =============================================================================

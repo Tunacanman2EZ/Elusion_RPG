@@ -340,6 +340,16 @@ func request_transfer(op: String, item_id: String, quantity: int) -> void:
 		"item_id": item_id,
 		"quantity": quantity,
 	}, TRANSFER_TIMEOUT)
+
+	# PAST A FOUR-SECOND AWAIT. Everything this function needs was captured
+	# before it — character_slot, acting_player — but nothing checked that THIS
+	# PANEL still exists. Logout frees it (characterhud.gd queue_frees every
+	# panel) and a ladder or teleporter changes the scene out from under it,
+	# and the server has already moved the item by then. Same guard, same
+	# reason, as cookingscreen.gd two files over.
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+
 	_transferring = false
 
 	if not res.get("ok", false):

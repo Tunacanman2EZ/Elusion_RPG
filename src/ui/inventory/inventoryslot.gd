@@ -27,8 +27,6 @@ class_name InventorySlot
 
 signal slot_clicked(slot: InventorySlot)
 signal slot_right_clicked(slot: InventorySlot)
-signal slot_hovered(slot: InventorySlot)
-signal slot_unhovered(slot: InventorySlot)
 signal slot_changed(slot: InventorySlot)
 signal slot_double_clicked(slot: InventorySlot)
 
@@ -227,14 +225,12 @@ func _gui_input(event: InputEvent) -> void:
 func _on_mouse_entered() -> void:
 	is_hovered = true
 	_update_style()
-	slot_hovered.emit(self)
 	_show_tooltip()
 
 
 func _on_mouse_exited() -> void:
 	is_hovered = false
 	_update_style()
-	slot_unhovered.emit(self)
 	_hide_tooltip()
 
 

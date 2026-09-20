@@ -90,74 +90,27 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 3
 
-[node name="valuestat" type="PanelContainer" parent="margincontainer/vboxcontainer/statscontainer" unique_id=1059976007]
+[node name="stattemplate" type="PanelContainer" parent="margincontainer/vboxcontainer/statscontainer" unique_id=1059976007]
+unique_name_in_owner = true
+visible = false
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
 
-[node name="hboxcontainer" type="HBoxContainer" parent="margincontainer/vboxcontainer/statscontainer/valuestat" unique_id=1653171658]
+[node name="hboxcontainer" type="HBoxContainer" parent="margincontainer/vboxcontainer/statscontainer/stattemplate" unique_id=1653171658]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="label" type="Label" parent="margincontainer/vboxcontainer/statscontainer/valuestat/hboxcontainer" unique_id=1458482699]
+[node name="statlabel" type="Label" parent="margincontainer/vboxcontainer/statscontainer/stattemplate/hboxcontainer" unique_id=1458482699]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
 theme_override_font_sizes/font_size = 10
 text = "Value:"
 
-[node name="tooltipvalue" type="Label" parent="margincontainer/vboxcontainer/statscontainer/valuestat/hboxcontainer" unique_id=577688876]
-unique_name_in_owner = true
+[node name="statvalue" type="Label" parent="margincontainer/vboxcontainer/statscontainer/stattemplate/hboxcontainer" unique_id=577688876]
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 theme_override_font_sizes/font_size = 10
 text = "100"
-horizontal_alignment = 2
-
-[node name="tierstat" type="PanelContainer" parent="margincontainer/vboxcontainer/statscontainer" unique_id=68538157]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
-
-[node name="hboxcontainer" type="HBoxContainer" parent="margincontainer/vboxcontainer/statscontainer/tierstat" unique_id=1705588073]
-layout_mode = 2
-mouse_filter = 2
-
-[node name="label" type="Label" parent="margincontainer/vboxcontainer/statscontainer/tierstat/hboxcontainer" unique_id=1843910073]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
-text = "Tier:"
-
-[node name="tooltipter" type="Label" parent="margincontainer/vboxcontainer/statscontainer/tierstat/hboxcontainer" unique_id=979677084]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 10
-text = "1"
-horizontal_alignment = 2
-
-[node name="levelstat" type="PanelContainer" parent="margincontainer/vboxcontainer/statscontainer" unique_id=1672673117]
-layout_mode = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_stat_bg")
-
-[node name="hboxcontainer" type="HBoxContainer" parent="margincontainer/vboxcontainer/statscontainer/levelstat" unique_id=2079953157]
-layout_mode = 2
-mouse_filter = 2
-
-[node name="label" type="Label" parent="margincontainer/vboxcontainer/statscontainer/levelstat/hboxcontainer" unique_id=1713405171]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
-text = "Required Level:"
-
-[node name="tooltiplevel" type="Label" parent="margincontainer/vboxcontainer/statscontainer/levelstat/hboxcontainer" unique_id=1076410284]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 10
-text = "1"
 horizontal_alignment = 2

@@ -22,6 +22,11 @@ extends Area2D
 
 @export var speed: float = 400.0
 @export var damage: int = 12
+
+# See fireprojectile.gd for why this is an int. Stamped by the caster at
+# spawn, so this default only applies to one fired from a script that
+# does not go through BaseEnemy.spawn_projectile_node().
+@export var element: int = Element.Type.NONE
 @export var lifetime: float = 10.0
 
 
@@ -138,4 +143,4 @@ func _try_damage(target: Node) -> void:
 	if target == null:
 		return
 	if target.is_in_group("player") and target.has_method("take_damage"):
-		target.take_damage(damage)
+		target.take_damage(damage, element)

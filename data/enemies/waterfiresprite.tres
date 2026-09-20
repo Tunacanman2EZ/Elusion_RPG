@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" uid="uid://bbmcaokoqjh1i" path="res://src/types/enemydata.gd" id="1_enemydata"]
+
+[resource]
+script = ExtResource("1_enemydata")
+enemy_id = "waterfiresprite"
+display_name = "Water Fire Sprite"
+element = 7
+recolour_to_element = true
+saturation_scale = 1.0
+projectile_damage = 14
+max_hp = 162
+xp_reward = 59
+attack_xp_reward = 13
+bag_drop_chance = 0.3
+max_loot_tier = 2
+pet_drop_id = "petfiresprite"
+max_item_slots = 3
+slot_fill_chance = 0.15
+metadata/_custom_type_script = "uid://bbmcaokoqjh1i"

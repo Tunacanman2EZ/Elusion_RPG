@@ -3,6 +3,121 @@
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://src/ui/cooking/cookingscreen.gd" id="2_script"]
 [ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventory/inventorycontainer.gd" id="3_invcontainer"]
+[ext_resource type="Texture2D" uid="uid://cvqrs53gyvut" path="res://art/images/firepit.png" id="4_firepit"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lit0"]
+atlas = ExtResource("4_firepit")
+region = Rect2(224, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lit1"]
+atlas = ExtResource("4_firepit")
+region = Rect2(192, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lit2"]
+atlas = ExtResource("4_firepit")
+region = Rect2(160, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lit3"]
+atlas = ExtResource("4_firepit")
+region = Rect2(128, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lit4"]
+atlas = ExtResource("4_firepit")
+region = Rect2(96, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lit5"]
+atlas = ExtResource("4_firepit")
+region = Rect2(64, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lit6"]
+atlas = ExtResource("4_firepit")
+region = Rect2(32, 0, 32, 32)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lit7"]
+atlas = ExtResource("4_firepit")
+region = Rect2(0, 0, 32, 32)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_hearth"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lit0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lit1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lit2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lit3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lit4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lit5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lit6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lit7")
+}],
+"loop": true,
+"name": &"lit",
+"speed": 5.0
+}]
+
+[sub_resource type="Gradient" id="Gradient_spark"]
+offsets = PackedFloat32Array(0, 0.45, 1)
+colors = PackedColorArray(1, 0.86, 0.45, 1, 1, 0.45, 0.13, 0.75, 0.55, 0.13, 0.05, 0)
+
+[sub_resource type="Curve" id="Curve_spark"]
+_data = [Vector2(0, 0.35), 0.0, 0.0, 0, 0, Vector2(0.25, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Gradient" id="Gradient_glow"]
+offsets = PackedFloat32Array(0, 0.42, 1)
+colors = PackedColorArray(1, 0.6, 0.22, 0.34, 0.85, 0.36, 0.12, 0.13, 0.3, 0.12, 0.04, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_glow"]
+gradient = SubResource("Gradient_glow")
+width = 96
+height = 96
+fill = 1
+fill_from = Vector2(0.5, 0.62)
+fill_to = Vector2(1, 0.62)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_recess"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.055, 0.043, 0.035, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.3, 0.25, 0.17, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_riskbg"]
+bg_color = Color(0.09, 0.07, 0.055, 0.9)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_riskfill"]
+bg_color = Color(1, 0.45, 0.16, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
 
 [node name="cookingscreen" type="Control"]
 visible = false
@@ -30,14 +145,14 @@ grow_vertical = 2
 
 [node name="margincontainer" type="MarginContainer" parent="mainpanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 12
+theme_override_constants/margin_left = 14
 theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
 
 [node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 10
 
 [node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 layout_mode = 2
@@ -72,29 +187,114 @@ theme_override_font_sizes/font_size = 18
 text = "×"
 flat = true
 
+[node name="firebox" type="Panel" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(324, 184)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_recess")
+
+[node name="glow" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/firebox"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 42.0
+offset_top = 12.0
+offset_right = 282.0
+offset_bottom = 182.0
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_glow")
+expand_mode = 1
+
+[node name="firepit" type="AnimatedSprite2D" parent="mainpanel/margincontainer/vboxcontainer/firebox"]
+unique_name_in_owner = true
+texture_filter = 1
+position = Vector2(162, 122)
+scale = Vector2(3.4, 3.4)
+sprite_frames = SubResource("SpriteFrames_hearth")
+animation = &"lit"
+autoplay = "lit"
+
+[node name="sparks" type="CPUParticles2D" parent="mainpanel/margincontainer/vboxcontainer/firebox"]
+unique_name_in_owner = true
+position = Vector2(162, 104)
+amount = 22
+lifetime = 1.6
+preprocess = 1.2
+local_coords = false
+emission_shape = 3
+emission_rect_extents = Vector2(22, 4)
+direction = Vector2(0, -1)
+spread = 24.0
+gravity = Vector2(0, -34)
+initial_velocity_min = 16.0
+initial_velocity_max = 46.0
+angular_velocity_min = -90.0
+angular_velocity_max = 90.0
+scale_amount_min = 1.2
+scale_amount_max = 2.6
+scale_amount_curve = SubResource("Curve_spark")
+color_ramp = SubResource("Gradient_spark")
+
+[node name="cookicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/firebox"]
+unique_name_in_owner = true
+texture_filter = 1
+layout_mode = 0
+offset_left = 134.0
+offset_top = 30.0
+offset_right = 190.0
+offset_bottom = 86.0
+pivot_offset = Vector2(28, 28)
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="riskbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/firebox"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 62.0
+offset_top = 92.0
+offset_right = 262.0
+offset_bottom = 99.0
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_riskbg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_riskfill")
+value = 0.0
+show_percentage = false
+
+[node name="flash" type="Label" parent="mainpanel/margincontainer/vboxcontainer/firebox"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 8.0
+offset_top = 6.0
+offset_right = 316.0
+offset_bottom = 26.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.86, 0.62, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="catchlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/firebox"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 8.0
+offset_top = 160.0
+offset_right = 316.0
+offset_bottom = 178.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.72, 0.64, 0.5, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="fishgrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 4
 columns = 6
 script = ExtResource("3_invcontainer")
 grid_width = 6
 grid_height = 2
 metadata/_custom_type_script = "uid://dfssy5oqbqqkh"
-
-[node name="statuslabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(300, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
-theme_override_font_sizes/font_size = 14
-text = "Select a fish."
-horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="cookbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 34)
-layout_mode = 2
-disabled = true
-text = "Cook"

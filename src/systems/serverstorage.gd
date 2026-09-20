@@ -33,6 +33,13 @@ extends SaveStorage
 # SKILL_GROWTH_FACTORS in characterdata.gd. All three spell it "defense".
 const SKILL_IDS := ["attack", "defense", "agility", "magic", "fishing", "cooking"]
 
+# The hotbar is nine keys, because the HUD draws nine. The server pads and
+# trims to the same number rather than refusing a body of the wrong length —
+# an older client sending seven is not lying about anything, it just predates
+# two of the keys, and 400-ing an otherwise honest save over the shape of a
+# convenience feature would stop that client saving at all.
+const HOTBAR_SIZE := 9
+
 # Mirrors the client's own SAVE_VERSION. Stamped onto loaded payloads so
 # CharacterData's migration path sees a current save rather than a versionless
 # one it would try to upgrade.
@@ -143,7 +150,10 @@ func _seed_fingerprints(slots: Array, account: Dictionary) -> void:
 		var slot = slots[index]
 		if not (slot is Dictionary):
 			continue
-		_last_pushed["save:%d" % index] = JSON.stringify(_save_body(index, slot))
+		# _save_fingerprint, NOT _save_body — the seed has to hash the same
+		# shape the push compares against, or the very first save of the
+		# session would always look changed and always push.
+		_last_pushed["save:%d" % index] = JSON.stringify(_save_fingerprint(index, slot))
 		_last_pushed["status:%d" % index] = JSON.stringify(_status_body(index, slot))
 		_last_pushed["inventory:%d" % index] = JSON.stringify(_inventory_body(index, slot))
 		_last_pushed["skills:%d" % index] = JSON.stringify(_skills_body(index, slot))
@@ -161,6 +171,25 @@ func _slot_from_server(data: Dictionary) -> Dictionary:
 		# calls the same thing class_id.
 		"character":     str(data.get("class_id", "")),
 		"active_pet_id": str(data.get("active_pet_id", "")),
+
+		# GEAR AND THE HOTBAR, read back under the names CharacterData uses.
+		#
+		# The hotbar is the reason this pair exists at all. It lived only in the
+		# local slot dictionary, so it survived a scene change and did not
+		# survive a re-login — the pet came back, because active_pet_id has a
+		# column, and the hotbar did not, because it had none. Nobody decided
+		# that; it was simply never wired, and equipment would have inherited
+		# the same hole on its first day.
+		#
+		# "hotbar" on the wire, "hotbar_assignments" in the slot. The client's
+		# name predates the column, and renaming a saved key would cost a
+		# migration to fix a spelling.
+		"equipment":          _dict(data.get("equipment", {})),
+		"hotbar_assignments": _string_array(data.get("hotbar", []), HOTBAR_SIZE),
+
+		# The map you have uncovered. Opaque here on purpose — WorldMap knows
+		# what the bytes mean and this layer does not need to.
+		"explored":           _dict(data.get("explored", {})),
 
 		"level":       _int(status.get("level", 1), 1),
 		"xp":          _int(status.get("xp", 0)),
@@ -290,7 +319,7 @@ func _push(payload: Dictionary) -> void:
 # suppress a push that was genuinely needed.
 
 func _save_body(index: int, slot: Dictionary) -> Dictionary:
-	return {
+	var body: Dictionary = {
 		"slot": index,
 		"class_id": str(slot.get("character", "")),
 		# The client has no separate display name; a character IS its class.
@@ -298,6 +327,51 @@ func _save_body(index: int, slot: Dictionary) -> Dictionary:
 		"level": _int(slot.get("level", 1), 1),
 		"active_pet_id": str(slot.get("active_pet_id", "")),
 	}
+
+	# OMITTED MEANS "LEAVE IT ALONE", and that is the server's rule, not a
+	# convenience here. /api/save keeps whatever the row holds for any of these
+	# three keys the body does not mention — so a slot that has never had gear
+	# must not send `{}`, which is the explicit "take everything off".
+	#
+	# The distinction is only load-bearing for one case, and it is the case
+	# that would hurt: a save file written before equipment existed has no such
+	# key, and the first save after upgrading would otherwise undress a
+	# character the server had already dressed.
+	if slot.has("equipment"):
+		body["equipment"] = _dict(slot["equipment"])
+	if slot.has("hotbar_assignments"):
+		body["hotbar"] = _string_array(slot["hotbar_assignments"], HOTBAR_SIZE)
+	if slot.has("explored"):
+		body["explored"] = _dict(slot["explored"])
+
+	return body
+
+
+func _save_fingerprint(index: int, slot: Dictionary) -> Dictionary:
+	# WHAT IS COMPARED, WHICH IS NOT WHAT IS SENT — and this is the one place
+	# in this file where those differ, so it is worth being explicit about why.
+	#
+	# The explored map changes every few steps. Comparing it directly meant a
+	# player walking in a straight line pushed /api/save every three or four
+	# seconds, forever, to record fog:
+	#
+	#     16:51:21 "PUT /api/save HTTP/1.1" 200
+	#     16:51:26 "PUT /api/save HTTP/1.1" 200
+	#     16:51:30 "PUT /api/save HTTP/1.1" 200
+	#
+	# So the map is replaced here by WorldMap's revision counter, which moves
+	# at most once every forty-five seconds and only when something has
+	# actually been uncovered. The BODY still carries the real map, so a push
+	# triggered by anything else — a level, a pet, a piece of gear — takes the
+	# current map with it for free.
+	#
+	# The net effect is that the map costs at most one request a minute while
+	# walking and none at all while standing still.
+	var body: Dictionary = _save_body(index, slot)
+	if body.has("explored"):
+		body.erase("explored")
+		body["explored_rev"] = _int(slot.get("explored_rev", 0))
+	return body
 
 
 func _status_body(index: int, slot: Dictionary) -> Dictionary:
@@ -348,7 +422,8 @@ func _push_slot(index: int, slot: Dictionary) -> void:
 		push_warning("ServerStorage: slot %d has no character class — not pushed." % index)
 		return
 
-	await _put_if_changed("save:%d" % index, "/api/save", _save_body(index, slot))
+	await _put_if_changed("save:%d" % index, "/api/save", _save_body(index, slot),
+		_save_fingerprint(index, slot))
 	await _put_if_changed("status:%d" % index, "/api/player/status", _status_body(index, slot))
 	await _put_if_changed("inventory:%d" % index, "/api/character/inventory", _inventory_body(index, slot))
 	await _put_if_changed("skills:%d" % index, "/api/character/skills", _skills_body(index, slot))
@@ -382,7 +457,8 @@ func _items_to_server(cells: Array) -> Array:
 # CHANGE DETECTION
 # =============================================================================
 
-func _put_if_changed(key: String, path: String, body: Dictionary) -> void:
+func _put_if_changed(key: String, path: String, body: Dictionary,
+		compare: Dictionary = {}) -> void:
 	# Takes the PATH and the BODY, not a started request — so an unchanged
 	# section costs nothing at all rather than costing a round trip whose reply
 	# we then ignore.
@@ -391,7 +467,11 @@ func _put_if_changed(key: String, path: String, body: Dictionary) -> void:
 	# built above: every one is assembled in the same literal order, from the
 	# same keys, every time. It would not be safe against dictionaries built by
 	# arbitrary code in arbitrary order, and this is the only place it is used.
-	var fingerprint: String = JSON.stringify(body)
+	# `compare` is the body for everything but the save, where a field that
+	# changes constantly is swapped for one that does not — see
+	# _save_fingerprint(). Empty means "compare the body itself", which is what
+	# every other section wants.
+	var fingerprint: String = JSON.stringify(body if compare.is_empty() else compare)
 	if _last_pushed.get(key, "") == fingerprint:
 		return
 
@@ -427,3 +507,19 @@ func _dict(value: Variant) -> Dictionary:
 
 func _array(value: Variant) -> Array:
 	return value if value is Array else []
+
+
+func _string_array(value: Variant, size: int) -> Array:
+	# A fixed-length array of plain Strings, padded with "" and trimmed to fit.
+	#
+	# BOTH DIRECTIONS USE THIS, which is the point: the hotbar arrives from the
+	# server and leaves for it in the same shape, so one function is all that
+	# is needed and there is no pair of half-matching converters to drift. The
+	# length is forced because the HUD indexes the array directly — a short one
+	# is an out-of-range read on the eighth key, and a long one silently drops
+	# whatever is past the end.
+	var out: Array = []
+	var source: Array = _array(value)
+	for index in size:
+		out.append(str(source[index]) if index < source.size() else "")
+	return out

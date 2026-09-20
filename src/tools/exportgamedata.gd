@@ -52,6 +52,7 @@ extends EditorScript
 const ITEMS_PATH := "res://data/items/"
 const ENEMIES_PATH := "res://data/enemies/"
 const CLASSES_PATH := "res://data/classes/"
+const SHOPS_PATH := "res://data/shops/"
 const OUTPUT_PATH := "res://data/gamedata.json"
 
 # Bump this when the SHAPE of the JSON changes — a renamed key, a removed
@@ -73,6 +74,34 @@ const SCHEMA_VERSION := 1
 const TYPE_NAMES := [
 	"CONSUMABLE", "WEAPON", "ARMOR", "MATERIAL", "QUEST", "PET", "CURRENCY",
 	"FISH",
+]
+
+# ItemData.RestoreTarget, in its own order. Same job as TYPE_NAMES: the server
+# reads the NAME, so inserting a value into that enum renumbers the integers
+# and this list is the thing that has to be updated with it. _restore_target_name()
+# fails loudly rather than inventing an "UNKNOWN" that would sail into a heal
+# comparison and quietly stop matching anything.
+const RESTORE_TARGET_NAMES := [
+	"NONE", "HP", "MANA", "STAMINA",
+]
+
+# ItemData.EquipSlot, in its own order, for the third time and for the same
+# reason — with one extra motive, because this one had already gone wrong
+# before the list existed.
+#
+# app.py was written against a slot vocabulary typed from memory: weapon, helm,
+# chest, ROBE, legs, shield, ring, amulet. That has a slot the enum has never
+# had and is missing BOOTS, which it does. Nothing would have errored; the
+# server would simply have refused every pair of boots in the game and happily
+# stored a "robe" no client could ever ask for.
+#
+# So the names are EXPORTED now. There is one list, it lives next to the enum
+# it mirrors, and _equip_slot_name() below refuses the export if ItemData gains
+# a slot this does not know — rather than letting a server hold a private copy
+# that drifts in silence.
+const EQUIP_SLOT_NAMES := [
+	"NONE", "WEAPON", "HELM", "CHEST", "LEGS", "BOOTS", "SHIELD", "RING",
+	"AMULET",
 ]
 
 # Everything _fail() and _warn() have said this run.
@@ -123,6 +152,7 @@ func _run() -> void:
 	var items: Array = _export_items()
 	var enemies: Array = _export_enemies(constants)
 	var classes: Array = _export_classes()
+	var shops: Array = _export_shops(items)
 
 	if items.is_empty():
 		_fail("found no items under %s — refusing to write an empty catalogue." % ITEMS_PATH)
@@ -141,9 +171,10 @@ func _run() -> void:
 		"items": items,
 		"enemies": enemies,
 		"classes": classes,
+		"shops": shops,
 	}
 
-	if not _validate(constants, items, enemies):
+	if not _validate(constants, items, enemies, classes):
 		# Printed as well as pushed, for the same reason the verdict below is:
 		# an export that refuses to write and says so only in the Debugger looks
 		# from Output like an export that simply did not run.
@@ -223,7 +254,7 @@ func _run() -> void:
 # VALIDATION
 # =============================================================================
 
-func _validate(constants: Dictionary, items: Array, enemies: Array) -> bool:
+func _validate(constants: Dictionary, items: Array, enemies: Array, classes: Array) -> bool:
 	# EVERY ITEM ID AN ENEMY NAMES MUST ACTUALLY EXIST.
 	#
 	# This is here because the failure it catches is completely silent at
@@ -277,10 +308,75 @@ func _validate(constants: Dictionary, items: Array, enemies: Array) -> bool:
 
 	_validate_recipes(items, known)
 	_validate_skill_curves(constants)
+	_validate_equipment(items, classes)
 
 	# Every check above reports through _fail(), including the restore checks
 	# run back in _export_items(). One counter, one verdict.
 	return _errors == 0
+
+
+func _validate_equipment(items: Array, classes: Array) -> void:
+	# THE GEAR CHECKS EXIST BECAUSE EVERY ONE OF THEM FAILS WITHOUT A SOUND.
+	#
+	# Equipment is a slot name pointing at a bag item. Nothing about that throws:
+	# a weapon with no damage equips, a piece gated on a class that does not
+	# exist can never be worn by anybody, and a helmet filed under CHEST simply
+	# occupies the wrong square. The player's only symptom is that their gear
+	# does nothing, or that a slot they can see refuses everything they own.
+	#
+	# The one that actually happened: the whole cloth line — hood, robe,
+	# trousers, slippers, five tiers each — was authored one slot too high, so a
+	# mage's hood was a chest piece, their robe was leg armour and their
+	# slippers were a shield. Twenty files, no error anywhere, and it would have
+	# surfaced as "mages cannot wear helmets" long after anyone remembered why.
+	var class_ids: Dictionary = {}
+	for cls in classes:
+		class_ids[String(cls.get("class_id", ""))] = true
+
+	for item in items:
+		var item_id: String = String(item.get("item_id", ""))
+		var slot: String = String(item.get("equip_slot_name", "NONE"))
+		var type_name: String = String(item.get("type_name", ""))
+
+		# A CLASS GATE NAMING NO CLASS locks the item away from everyone. There
+		# is no fallback reading — an empty list already means "anyone", so a
+		# non-empty one that matches nobody cannot have been intended.
+		for class_id in item.get("required_classes", []):
+			if not class_ids.has(String(class_id)):
+				_fail("'%s' requires class '%s', which no .tres under %s defines. Nobody can ever equip it." % [
+					item_id, String(class_id), CLASSES_PATH,
+				])
+
+		if slot == "NONE":
+			# TYPED AS GEAR, WEARABLE NOWHERE. Warned rather than failed: a
+			# trophy filed as ARMOR to keep it out of the loot tables is a real
+			# thing to want, and bushamulet is exactly that today.
+			if type_name in ["WEAPON", "ARMOR"]:
+				_warn("'%s' is a %s with no equip_slot — it can be owned and sold, never worn." % [item_id, type_name])
+			continue
+
+		# A WEAPON THAT HITS FOR NOTHING. Once combat reads the equipped
+		# weapon's damage, a zero here is indistinguishable from being unarmed,
+		# and the player has just paid for it.
+		if slot == "WEAPON":
+			if int(item.get("damage", 0)) <= 0:
+				_fail("'%s' occupies the WEAPON slot with damage = %d — equipping it would be the same as holding nothing." % [
+					item_id, int(item.get("damage", 0)),
+				])
+		elif int(item.get("armor_value", 0)) <= 0:
+			# The defensive half of the same mistake. A warning, because a
+			# cosmetic or utility piece with no armour is a legitimate design
+			# and this is the door it would come through.
+			_warn("'%s' occupies the %s slot but has armor_value = 0 — wearing it changes nothing." % [item_id, slot])
+
+		# GEAR THAT IS NOT TYPED AS GEAR. type drives the loot filters and the
+		# consume handler; a slotted item typed MATERIAL would be equippable and
+		# also a crafting ingredient, which is not a combination anything here
+		# is built to survive.
+		if not (type_name in ["WEAPON", "ARMOR"]):
+			_fail("'%s' occupies the %s slot but is type %s — only WEAPON and ARMOR are equipment." % [
+				item_id, slot, type_name,
+			])
 
 
 func _validate_recipes(items: Array, known: Dictionary) -> void:
@@ -367,6 +463,18 @@ func _validate_skill_curves(constants: Dictionary) -> void:
 
 	if int(constants.get("fishing_tier_per_level", 0)) < 1:
 		_fail("constants.fishing_tier_per_level must be at least 1.")
+
+	# A RATE OF ZERO IS NOT A VALID TUNING, IT IS A DISABLED SINK. There would
+	# then be nothing in the game destroying gold, and supply would climb
+	# without bound with nothing in the export to say it had stopped. If the tax
+	# is ever meant to be switched off that should be a deliberate edit here,
+	# not a 0.0 that reads like any other number.
+	var tax: float = float(constants.get("kingdom_tax_rate", -1.0))
+	if tax <= 0.0 or tax >= 1.0:
+		_fail("constants.kingdom_tax_rate is %s — it is a fraction and must be above 0 and below 1." % tax)
+
+	if int(constants.get("kingdom_tax_minimum", 0)) < 1:
+		_fail("constants.kingdom_tax_minimum must be at least 1, or small trades are untaxed and splitting a big one avoids the sink entirely.")
 
 
 func _report_iconless() -> void:
@@ -514,6 +622,16 @@ func _export_items() -> Array:
 		_check_restores(item, path)
 		_check_icon(item)
 
+		# COPIED OUT ELEMENT BY ELEMENT rather than handed over as-is.
+		# ItemData.required_classes is an Array[String] belonging to a Resource
+		# that stays loaded; putting it straight in the row would export a
+		# reference to the live array and hand a TYPED array to the JSON
+		# writer. A plain Array of plain Strings is what the file should
+		# contain and what _validate_equipment() below reads back.
+		var required_classes: Array = []
+		for class_id in item.required_classes:
+			required_classes.append(String(class_id))
+
 		out.append({
 			"item_id": item.item_id,
 			"display_name": item.display_name,
@@ -525,10 +643,82 @@ func _export_items() -> Array:
 			"max_stack": item.max_stack,
 			"required_level": item.required_level,
 
+			# THE SKILL GATE, exported even though nothing on the server reads
+			# it yet. It is the half of the requirement that cannot be a
+			# character level — see itemdata.gd's comment on required_skill —
+			# and the trade endpoint is where it has to be enforced, so it has
+			# to reach the JSON before that endpoint can be written. Same
+			# uniform row shape as the cooking fields below: exported for every
+			# item, with "" meaning no requirement, so the Python side never has
+			# to ask what type it is holding first.
+			"required_skill": item.required_skill,
+			"required_skill_level": item.required_skill_level,
+
+			# WHAT DRINKING IT ACTUALLY DOES. Exported because the server now
+			# has two reasons to know, and neither existed when these fields
+			# were client-only.
+			#
+			# /api/character/consume destroys the item, so it ought to be able
+			# to say what it authorised rather than only that something
+			# happened. And _report_unexplained_heals() compares a rise in hp
+			# against what regeneration plus authorised potions could account
+			# for - without an amount, ANY potion inside the window explains
+			# ANY rise, which is a check with a hole the width of one cheap
+			# potion.
+			#
+			# EXPORTED FOR EVERY ITEM, with target 0 (NONE) and amount 0 for
+			# things that restore nothing, so the Python side never has to ask
+			# what type it is holding before reading the fields.
+			#
+			# The NAME sits beside the integer for the same reason type_name
+			# does: ItemData.RestoreTarget is an ordered enum, and inserting a
+			# value at the top would renumber every one below it while a server
+			# filtering on `== 1` carried on silently doing the wrong thing.
+			"restore_target": int(item.restore_target),
+			"restore_target_name": _restore_target_name(int(item.restore_target)),
+			"restore_amount": item.restore_amount,
+
 			# Whether an enemy may roll it at all, independent of its tier.
 			# pick_weighted_item_id() has to skip a false here or a cooked fish
 			# drops off a slime — see the field's own comment in itemdata.gd.
 			"droppable": item.droppable,
+
+			# WHAT WEARING IT MEANS. The save endpoint stores a character's
+			# equipment as {slot_name: item_id}, and until these shipped it
+			# could check only that the id named SOME item — so
+			# {"helm": "embersword"} was a legal save and the player wore a
+			# sword on their head with the server's blessing.
+			#
+			# required_classes is here for the same reason and is the sharper
+			# one: it is the only gate stopping a warrior wearing a mage's robe
+			# for its armour, and a gate the client alone enforces is a
+			# suggestion.
+			#
+			# EXPORTED FOR EVERY ITEM — slot NONE, no classes, zero damage,
+			# zero armour on a health potion — so the server reads the fields
+			# without first asking what type it is holding. Same uniform row
+			# shape as the cooking and restore blocks above.
+			"equip_slot": int(item.equip_slot),
+			"equip_slot_name": _equip_slot_name(int(item.equip_slot)),
+			"required_classes": required_classes,
+
+			# The numbers combat reads. `damage` is the MIDDLE of a band rather
+			# than a fixed hit - damage_spread is how far either side of it a
+			# roll can land, so an iron sword at 20 with a spread of 0.25 hits
+			# for somewhere in 15-25.
+			#
+			# THE SPREAD IS EXPORTED EVEN THOUGH NOTHING ON THE SERVER ROLLS
+			# ANYTHING. It is the only thing that can answer "could that hit
+			# have come from that weapon", and the day the server starts
+			# checking damage - or a second player watches the numbers pop off
+			# an enemy - the band is what makes the question answerable.
+			#
+			# Authored per class, not per tier alone: a scepter fires ten times
+			# a second and a sword swings once, so equal numbers would not be
+			# equal weapons. See mage.gd and healer.gd on why the ladders differ.
+			"damage": item.damage,
+			"damage_spread": item.damage_spread,
+			"armor_value": item.armor_value,
 
 			# THE COOKING RECIPE, because /api/cooking/cook is the thing that
 			# decides what a raw fish becomes and it cannot be trusted to the
@@ -608,6 +798,27 @@ func _type_name(type_index: int) -> String:
 	return TYPE_NAMES[type_index]
 
 
+func _restore_target_name(target_index: int) -> String:
+	if target_index < 0 or target_index >= RESTORE_TARGET_NAMES.size():
+		# Same reasoning as _type_name() above. A silent "UNKNOWN" here would
+		# reach the server's healing reconciler, match no stat, and turn every
+		# potion of that kind into an unexplained heal in the log.
+		_fail("ItemData.RestoreTarget value %d has no name in RESTORE_TARGET_NAMES — update this script." % target_index)
+		return "UNKNOWN_%d" % target_index
+	return RESTORE_TARGET_NAMES[target_index]
+
+
+func _equip_slot_name(slot_index: int) -> String:
+	if slot_index < 0 or slot_index >= EQUIP_SLOT_NAMES.size():
+		# Same reasoning as the two above, with a worse landing. The server
+		# validates a save's equipment against this vocabulary, so an
+		# "UNKNOWN_9" would name a slot no client can send and every attempt to
+		# wear the new piece would come back 400 with nothing to say why.
+		_fail("ItemData.EquipSlot value %d has no name in EQUIP_SLOT_NAMES — update this script." % slot_index)
+		return "UNKNOWN_%d" % slot_index
+	return EQUIP_SLOT_NAMES[slot_index]
+
+
 # =============================================================================
 # ENEMIES
 # =============================================================================
@@ -671,6 +882,75 @@ func _export_enemies(constants: Dictionary) -> Array:
 		})
 
 	out.sort_custom(func(a, b): return a["enemy_id"] < b["enemy_id"])
+	return out
+
+
+func _export_shops(items: Array) -> Array:
+	# Reads data/shops/*.tres. Structurally the same as _export_items() above.
+	#
+	# WHY SHOPS ARE EXPORTED AT ALL. The buy happens on the server, so the
+	# server has to know what each vendor stocks — otherwise the client would
+	# send "I bought this" and be believed, which is the one thing
+	# ShopData.gd's header exists to prevent. The catalogue is authored in
+	# Godot because that is where the items are; it crosses to Python the same
+	# way everything else does.
+	#
+	# NOT FATAL WHEN EMPTY, unlike items and enemies. A project with no shops
+	# yet is a valid project, and refusing to write the whole catalogue over a
+	# missing vendor would be a worse failure than the one it prevents.
+	var out: Array = []
+	var seen: Dictionary = {}
+
+	# Built once rather than per stock row: every id is checked against it, and
+	# a linear scan of the catalogue per row would be quadratic on a big shop.
+	var known: Dictionary = {}
+	for row in items:
+		known[String(row.get("item_id", ""))] = true
+
+	for path in _find_files(SHOPS_PATH, ".tres"):
+		var res: Resource = ResourceLoader.load(path)
+		if res == null or not (res is ShopData):
+			continue
+
+		var shop: ShopData = res
+
+		if shop.shop_id == "":
+			_warn("%s has an empty shop_id — skipped." % path)
+			continue
+
+		if seen.has(shop.shop_id):
+			_fail("duplicate shop_id '%s' in %s and %s" % [shop.shop_id, seen[shop.shop_id], path])
+			continue
+		seen[shop.shop_id] = path
+
+		# A stock id naming no item is a row the player can click and not
+		# receive. Hard error for the same reason a bad gold_small_id is: the
+		# failure is silent and only shows up as a vendor that takes money and
+		# hands over nothing.
+		var stock: Array = []
+		for entry in shop.stock:
+			var item_id: String = String(entry)
+			if item_id == "":
+				continue
+			if not known.has(item_id):
+				_fail("shop '%s' stocks '%s', which names no item." % [shop.shop_id, item_id])
+				continue
+			if stock.has(item_id):
+				_warn("shop '%s' lists '%s' twice — kept once." % [shop.shop_id, item_id])
+				continue
+			stock.append(item_id)
+
+		if stock.is_empty():
+			_warn("shop '%s' stocks nothing — it will open empty." % shop.shop_id)
+
+		out.append({
+			"shop_id":          shop.shop_id,
+			"display_name":     shop.display_name,
+			"stock":            stock,
+			"price_multiplier": float(shop.price_multiplier),
+			"restock_seconds":  float(shop.restock_seconds),
+		})
+
 	return out
 
 
@@ -741,10 +1021,23 @@ func _export_constants() -> Dictionary:
 	var game_consts: Dictionary = (load("res://src/systems/gameconstants.gd") as GDScript).get_script_constant_map()
 	var char_consts: Dictionary = (load("res://src/systems/characterdata.gd") as GDScript).get_script_constant_map()
 
+	# playerstats.gd, for the regen rates. Read from the script that DEFINES
+	# them rather than from the player scene, because they are constants there
+	# now precisely so this line can exist - see the note above
+	# PlayerStats.REGEN_PERCENT_PER_SECOND.
+	var stat_consts: Dictionary = (load("res://src/characters/playerstats.gd") as GDScript).get_script_constant_map()
+
 	return {
 		"large_gold_threshold": int(enemy_consts.get("LARGE_GOLD_THRESHOLD", 100)),
 		"gold_small_id":        String(enemy_consts.get("GOLD_SMALL_ID", "smallamountofgold")),
 		"gold_large_id":        String(enemy_consts.get("GOLD_LARGE_ID", "largeamountofgold")),
+
+		# THE GOLD CURVE. Read off baseenemy.gd for the same reason the three
+		# lines above are: the server rolls the gold, the constant lives with the
+		# enemy, and a second copy of 2.6 in Python is a number that drifts.
+		"gold_tier_ratio":      float(enemy_consts.get("GOLD_TIER_RATIO", 2.6)),
+		"gold_base_unit":       float(enemy_consts.get("GOLD_BASE_UNIT", 1.0)),
+		"gold_spread":          int(enemy_consts.get("GOLD_SPREAD", 25)),
 		"pet_odds_fallback":    int(enemy_consts.get("PET_ODDS_FALLBACK", 1296)),
 		"pet_odds_by_tier":     enemy_consts.get("PET_ODDS_BY_TIER", {}),
 
@@ -760,10 +1053,49 @@ func _export_constants() -> Dictionary:
 		"xp_growth":            float(game_consts.get("XP_GROWTH", 1.15)),
 		"dupe_pet_lusions":     int(game_consts.get("DUPE_PET_LUSIONS", 20)),
 		"revive_cost":          int(game_consts.get("REVIVE_COST", 20)),
+
+		# The gold alternative to that lusion price. A share rather than a
+		# figure, so the server computes it against a balance it owns rather
+		# than being told what the revive should cost.
+		"revive_gold_rate":     float(game_consts.get("REVIVE_GOLD_RATE", 0.80)),
+
+		# HOW FAST A CHARACTER RECOVERS ON ITS OWN, which the server needs in
+		# order to tell an honest rise in health from an invented one. Without
+		# these it was measuring against two numbers retyped into app.py, and
+		# a copied constant in this project has form: the XP formula lived in
+		# two places, drifted, and the sanitiser began rewriting honest saves.
+		#
+		# The idle threshold goes across even though the server cannot act on
+		# it - it has no idea whether you stood still, so it allows regen for
+		# the whole window. It is here for the day presence exists, and so the
+		# number is not discovered twice.
+		"regen_percent_per_second": float(stat_consts.get("REGEN_PERCENT_PER_SECOND", 0.0167)),
+		"regen_minimum_per_second": float(stat_consts.get("REGEN_MINIMUM_PER_SECOND", 1.0)),
+		"regen_idle_threshold":     float(stat_consts.get("REGEN_IDLE_THRESHOLD", 1.0)),
+
+		# WHAT ARMOUR TAKES OFF, as the armour value at which incoming damage
+		# is halved. Nothing on the server reads it: damage to the PLAYER is
+		# applied client-side, which is the one direction the server has never
+		# needed to police, because a client that lies about how much it was
+		# hurt is only cheating itself out of a death.
+		#
+		# Exported anyway, for the same reason regen_idle_threshold is. The day
+		# a second player can see your health bar, this is the number that says
+		# whether what they are seeing is possible, and it should not have to
+		# be discovered twice.
+		"armour_half_point":    float(stat_consts.get("ARMOUR_HALF_POINT", 200.0)),
 		"cook_burn_max":        float(game_consts.get("COOK_BURN_MAX", 0.40)),
 		"fishing_tier_per_level": int(game_consts.get("FISHING_TIER_PER_LEVEL", 20)),
 		"skill_xp_base":        int(game_consts.get("SKILL_XP_BASE", 100)),
 		"skill_xp_growth":      game_consts.get("SKILL_XP_GROWTH", {}),
+
+		# THE KINGDOM TAX. The server is the only thing that may charge it -
+		# a client that computed its own tax would be a client that charged
+		# itself nothing - but the RATE is a balance decision and belongs with
+		# the rest of them, here, where somebody tuning the economy will look.
+		# The trade panel shows the player the same number the server takes.
+		"kingdom_tax_rate":     float(game_consts.get("KINGDOM_TAX_RATE", 0.05)),
+		"kingdom_tax_minimum":  int(game_consts.get("KINGDOM_TAX_MINIMUM", 1)),
 
 		# The bank's size. Exported because the server has to agree with it:
 		# it stores the bank as a positional array and rejects one that is

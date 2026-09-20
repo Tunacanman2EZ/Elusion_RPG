@@ -670,7 +670,7 @@ size = Vector2(108.25, 66.5)
 
 [node name="petmage" type="CharacterBody2D" unique_id=709913725]
 texture_filter = 1
-scale = Vector2(0.5, 0.5)
+scale = Vector2(0.666667, 0.666667)
 collision_layer = 0
 collision_mask = 3
 motion_mode = 1

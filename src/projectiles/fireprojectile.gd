@@ -22,7 +22,15 @@ class_name FireProjectile
 
 @export var speed: float = 300.0
 @export var damage: int = 13
-@export var damage_type: StringName = &"fire"
+# The element this projectile deals. Element.Type is an int, not the
+# StringName this used to be: an enum is checked when the file is parsed,
+# and &"posion" was only ever going to be found by someone wondering why a
+# resistance did nothing.
+#
+# Overwritten at spawn for anything an enemy fires — see
+# BaseEnemy.spawn_projectile_node(), which stamps the caster's element on
+# it so a water slime's shot IS water without a second scene existing.
+@export var element: int = Element.Type.FIRE
 
 # auto-despawn time in seconds — failsafe if orb flies off into empty space.
 @export var lifetime: float = 10.0
@@ -166,7 +174,7 @@ func _try_damage(target: Node) -> void:
 	if not _is_player_target(target):
 		return
 	if target.has_method(&"take_damage"):
-		target.take_damage(damage, damage_type)
+		target.take_damage(damage, element)
 
 
 # =============================================================================

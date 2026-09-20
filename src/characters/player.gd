@@ -29,12 +29,14 @@ const FLOATING_LABEL_SCENE := preload("res://scene/ui/floatinglabel.tscn")
 const PLAYER_LIGHT_SCENE := preload("res://scene/characters/playerlight.tscn")
 var _carried_light: PointLight2D = null
 
-# FloatingLabel.Type.NOTICE. Written as a bare int because floatinglabel.gd
-# has no class_name, so its enum is not reachable by name from here — the
-# existing popup calls in this file pass a literal 3 for LEVELUP for the same
-# reason. Named here so there is exactly one place to change if the enum
-# order ever shifts (floatinglabel.gd's comment says to append, not insert).
-const NOTICE_LABEL_TYPE: int = 5
+# FloatingLabel.Type.NOTICE.
+#
+# This used to be a bare int with a comment explaining that floatinglabel.gd
+# had no class_name, so its enum could not be reached by name from here. It
+# has one now — see the note beside it — so the constant is written as what it
+# means. The literal 0/1/2/3 in the popup calls further down this file are the
+# same workaround and can go the same way as each is next touched.
+const NOTICE_LABEL_TYPE: int = FloatingLabel.Type.NOTICE
 
 # how long an IDENTICAL notice is suppressed for, in milliseconds.
 const NOTICE_REPEAT_COOLDOWN_MS: int = 750
@@ -267,13 +269,24 @@ var _is_sprinting: bool = false
 # a level 50 mage both fill in the same wall-clock time.
 #
 # 0.0167 ≈ 1/60, so empty to full is about a minute.
-@export var regen_percent_per_second: float = 0.0167
+#
+# THE DEFAULTS COME FROM PlayerStats NOW, and are no longer literals here. The
+# server reconciles healing against these rates (see _report_unexplained_heals
+# in app.py), exportgamedata.gd carries them across, and a second copy of
+# 0.0167 in this file would be exactly the drift gameconstants.gd was created
+# to stop — the XP formula lived in two places, they disagreed, and the
+# sanitiser started rewriting honest saves.
+#
+# Still exports, so a scene can still tune them. Nothing does today, and
+# anything that did would be tuning away from the number the server checks
+# against — which is worth knowing before you do it.
+@export var regen_percent_per_second: float = PlayerStats.REGEN_PERCENT_PER_SECOND
 
 # Floor for small pools. Set to the old flat rate, so nothing in the game
 # regenerates any slower than it did before this change — only faster.
-@export var regen_minimum_per_second: float = 1.0
+@export var regen_minimum_per_second: float = PlayerStats.REGEN_MINIMUM_PER_SECOND
 
-@export var idle_threshold: float = 1.0
+@export var idle_threshold: float = PlayerStats.REGEN_IDLE_THRESHOLD
 
 var _idle_timer: float = 0.0
 
@@ -315,6 +328,36 @@ var hotbar_assignments: Array = ["", "", "", "", "", "", "", "", ""]
 # outside the int-only SAVEABLE_STATS loop).
 var active_pet_id: String = ""
 
+# WHAT THIS CHARACTER IS WEARING: {slot_name: item_id}, e.g.
+# {"weapon": "ironsword", "helm": "ironhelm"}. An absent key is an empty slot;
+# there is no "" placeholder, because a dictionary already has a word for that.
+#
+# A SLOT POINTS AT A BAG ITEM. IT DOES NOT HOLD ONE.
+#
+# The alternative — moving the item out of the backpack into an equipment
+# container — was considered and rejected, and the reason is that it creates a
+# second place an item can be. Every path that touches the bag then has to
+# remember the other one: selling, banking, dropping, trading, the death
+# penalty, the save. Miss one and the item is in both places or neither, which
+# is the duplication bug this genre ships at least once.
+#
+# Holding only the id means there is nothing to keep in step. Your sword is in
+# your bag whether or not you are swinging it. Equipping is one assignment,
+# unequipping is one erase, and swapping moves nothing at all.
+#
+# THE PRICE, PAID IN ONE PLACE. A slot can name an item you no longer have —
+# you sold the sword you were holding. CharacterData is where that is
+# reconciled, in save_character_state() and in the sanitizer, because those are
+# the two moments the bag is actually known: player.inventory_data is assigned
+# once at load and never updated, since the live bag lives in the HUD's
+# inventory container. A prune written here would read a stale list.
+#
+# Persisted per character slot by CharacterData, and forwarded to the server's
+# saves.equipment column by ServerStorage — the same treatment active_pet_id
+# gets above, for the same reason: it is a String map, not an int stat, so it
+# falls outside the SAVEABLE_STATS loop and has to be handled explicitly.
+var equipped: Dictionary = {}
+
 
 # =============================================================================
 # UI REFERENCES
@@ -346,8 +389,49 @@ func _ready() -> void:
 	_set_stat_curve()
 	_set_skill_proficiency()
 	CharacterData.load_character_state(self)
+
+	# WHAT THIS USED TO BE, AND WHY IT WAS WRONG:
+	#
+	#     CharacterData.load_character_state(self)
+	#     _recompute_max_stats()
+	#     _fill_all_resources()          # hp = max_hp, unconditionally
+	#
+	# The load read your saved health and the next line but one threw it away.
+	# _ready() runs on every scene load, so walking from town to the field at
+	# 1 hp put you in the field at full — and characterdata.gd's own comment
+	# had already noticed, in passing, that the saved values have "zero live
+	# effect". It was an ordering accident, not a design.
+	#
+	# It made three other things meaningless at once: potions, because a door
+	# heals better; the death penalty, because dying is only expensive if
+	# damage persists; and the server's stored hp, which /api/player/status now
+	# reconciles against regeneration and authorised potions — a check that
+	# cannot mean anything while the client refills on a loading screen.
+	#
+	# THE RULE THAT REPLACES IT: what was full stays full, what was hurt stays
+	# hurt.
+	#
+	# It has to be "was it full", not "is there a save", because a brand new
+	# character is not a blank slot — characterdata.gd seeds one from
+	# SAVEABLE_STATS with hp 100 and max_hp 100, and _recompute_max_stats()
+	# below is about to raise that ceiling to whatever the class curve says.
+	# Testing for a saved value would start every new warrior on 100 of 180.
+	# Testing for fullness gets them to 180, keeps a wounded character's exact
+	# number, and survives a levelled-up or rebalanced maximum for free.
+	var was_full_hp: bool = hp >= max_hp
+	var was_full_mana: bool = mana >= max_mana
+	var was_full_stamina: bool = stamina >= max_stamina
+
 	_recompute_max_stats()
-	_fill_all_resources()
+
+	# ZERO IS THE ONE VALUE THAT CANNOT BE HONOURED. A character who took the
+	# true-death path is saved at 0 and would otherwise spawn as a corpse that
+	# dies again on its first frame. The penalty for dying is carried by the
+	# death flow — lost carry gold, lost items, a revive that costs lusions —
+	# not by refusing to let you stand up.
+	hp = max_hp if (was_full_hp or hp <= 0) else clampi(hp, 0, max_hp)
+	mana = max_mana if (was_full_mana or mana < 0) else clampi(mana, 0, max_mana)
+	stamina = max_stamina if (was_full_stamina or stamina < 0) else clampi(stamina, 0, max_stamina)
 
 	# NEW: re-spawn the active pet (if any) on every scene load — this is
 	# what actually makes a pet survive a scene transition, since the old
@@ -356,6 +440,11 @@ func _ready() -> void:
 	# which is exactly why it CAN survive — see CharacterData.gd's
 	# save_character_state()/load_character_state() for where it persists.
 	_restore_active_pet()
+
+	# THE MAP FILLS IN AS YOU WALK. Deferred because current_scene is not
+	# necessarily set while a child's _ready() is running, and WorldMap reads
+	# it to work out which area this is.
+	_prepare_world_map.call_deferred()
 
 	if has_node("animatedsprite2d"):
 		$animatedsprite2d.play("idledown")
@@ -711,27 +800,13 @@ func _set_skill_proficiency() -> void:
 # =============================================================================
 # DEFENSE TIERS
 # =============================================================================
-# The tier table and the lookup now live in PlayerStats. These two lines are
-# aliases so `Player.DEFENSE_TIERS` keeps resolving for anything outside this
-# file that reads it — the stats screen does.
-const DEFENSE_TIERS := PlayerStats.DEFENSE_TIERS
-
-
+# The tier table and the lookup live in PlayerStats. A `const DEFENSE_TIERS`
+# alias used to sit here so `Player.DEFENSE_TIERS` would resolve for outside
+# readers; the comment claimed the stats screen was one, and it is not —
+# statsscreen.gd computes its own combat rows and never touched it. Nothing
+# read the alias, so it is gone. Read PlayerStats.DEFENSE_TIERS directly.
 func _get_defense_tier() -> Dictionary:
 	return PlayerStats.defense_tier(defense)
-
-
-# =============================================================================
-# COMBAT DAMAGE BONUSES
-# =============================================================================
-# See PlayerStats for what these mean and which class applies which.
-const DAMAGE_BONUS_PER_POINT := PlayerStats.DAMAGE_BONUS_PER_POINT
-
-func get_attack_damage_bonus() -> float:
-	return PlayerStats.attack_damage_bonus(attack)
-
-func get_magic_damage_bonus() -> float:
-	return PlayerStats.magic_damage_bonus(magic)
 
 
 func _apply_class_data(data: ClassData) -> void:
@@ -836,7 +911,60 @@ func _label_container() -> Node:
 	return get_tree().current_scene
 
 
-func _spawn_floating_label(amount: int, type: int) -> void:
+# =============================================================================
+# THE MAP
+# =============================================================================
+
+# The last tile the map was told about. reveal_around() walks a 15x15 block,
+# and `moved` fires every physics frame while a key is held — so it is only
+# worth calling when the character has actually crossed into a new tile, which
+# at walking pace is a few times a second rather than sixty.
+#
+# Deliberately a coordinate no world contains, so the first step after a load
+# always counts as a change.
+var _map_last_tile: Vector2i = Vector2i(-2147483648, -2147483648)
+
+
+func _prepare_world_map() -> void:
+	if not WorldMap.ensure_built():
+		return
+
+	# REVEALED WHERE YOU ARE STANDING, before taking a step. Otherwise a player
+	# who logs in and opens the map immediately sees a black rectangle and
+	# concludes it is broken.
+	WorldMap.reveal_around(global_position)
+	_map_last_tile = WorldMap.tile_at(WorldMap.area_id(), global_position)
+
+	# `moved` was declared, emitted every frame of movement, and connected to
+	# nothing at all — tools/audit.py lists it under signals nothing connects.
+	# This is its first listener.
+	if not moved.is_connected(_on_moved_for_map):
+		moved.connect(_on_moved_for_map)
+
+
+func _on_moved_for_map(at: Vector2, _direction: String) -> void:
+	var area: String = WorldMap.area_id()
+	if area == "":
+		return
+	var tile: Vector2i = WorldMap.tile_at(area, at)
+	if tile == _map_last_tile:
+		return
+	_map_last_tile = tile
+	WorldMap.reveal_around(at, area)
+
+
+func _spawn_floating_label(amount: int, type: int, element: int = Element.Type.NONE) -> void:
+	# DAMAGE NUMBERS ONLY, and only the damage ones.
+	#
+	# A player who turns these off is asking not to see a screen full of red
+	# numbers while being hit by six things. They are not asking to stop being
+	# told they levelled up, or that a potion healed them for 140 — those come
+	# through this same function as LEVELUP, SKILLUP, HEAL and NOTICE, and
+	# silencing them with the same switch would turn a preference into a
+	# feature being taken away.
+	if type == FloatingLabel.Type.DAMAGE and not Settings.get_value("damage_numbers"):
+		return
+
 	if FLOATING_LABEL_SCENE == null:
 		push_warning("Player: FLOATING_LABEL_SCENE not loaded")
 		return
@@ -850,6 +978,11 @@ func _spawn_floating_label(amount: int, type: int) -> void:
 	# Without this the label is drawn once at the world origin and streaks
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
 	lbl.reset_physics_interpolation()
+	# Tint before showing, so the first rendered frame is already the right
+	# colour rather than flicking from white on the second.
+	if element != Element.Type.NONE and lbl is CanvasItem:
+		(lbl as CanvasItem).modulate = Element.colour_for(element)
+
 	if lbl.has_method("show_number"):
 		lbl.show_number(amount, type)
 
@@ -1076,25 +1209,46 @@ func take_step() -> void:
 	pass
 
 
-func take_damage(amount: int, _type: StringName = &"physical") -> void:
+func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	if is_dying:
 		return
 
 	_set_active()
 
-	# NEW: tiered defense reduction — see DEFENSE_TIERS below. XP gain
+	# NEW: tiered defense reduction — see PlayerStats.DEFENSE_TIERS. XP gain
 	# further down still uses the RAW incoming amount, not the reduced
 	# one, so higher defense doesn't also slow down future defense XP —
 	# that would create a self-limiting feedback loop nobody asked for.
 	# maxi(1, ...) guarantees chip damage always gets through — even at
 	# the 50% cap, a hit can never be reduced to zero.
+	# NEW: ARMOUR, ON TOP OF THE DEFENSE TIER AND MULTIPLIED WITH IT.
+	#
+	# Two percentages that ADD reach 100% and a character stops taking damage.
+	# Two that MULTIPLY each remove a share of what is left, so an ember-plated
+	# warrior at Trained defense takes 0.80 x 0.55 = 44% of an incoming hit and
+	# no amount of gear ever reaches zero. The maxi(1, ...) below is still the
+	# last guarantee underneath both.
+	#
+	# The defense tier is what you EARN by being hit; armour is what you BUY or
+	# find. Keeping them as separate factors is what lets either be tuned
+	# without silently retuning the other — see PlayerStats.ARMOUR_HALF_POINT
+	# for the scale, and note that enemy damage was deliberately NOT raised to
+	# compensate: a geared player taking less is the entire point of armour.
 	var reduction: float = _get_defense_tier()["reduction"]
-	var reduced_amount: int = maxi(1, int(amount * (1.0 - reduction)))
+	var armour: float = PlayerStats.armour_reduction(equipped_armor_value())
+	var reduced_amount: int = maxi(1, int(amount * (1.0 - reduction) * (1.0 - armour)))
 
 	hp = clamp(hp - reduced_amount, 0, max_hp)
-	took_damage.emit(reduced_amount, str(_type))
+	took_damage.emit(reduced_amount, Element.name_for(element))
 
-	_spawn_floating_label(reduced_amount, 0)
+	# THE NUMBER WEARS THE ELEMENT THAT CAUSED IT, which is the whole point of
+	# carrying one this far. A player standing in a field of six recoloured
+	# slimes needs to know which of them is actually hurting, and a white "12"
+	# tells them nothing that a blue "12" does not tell them instantly.
+	#
+	# Physical stays the label's own default colour — an unremarkable hit
+	# should look unremarkable.
+	_spawn_floating_label(reduced_amount, 0, element)
 
 	_play_hit_flash()
 
@@ -1120,7 +1274,7 @@ func _play_hit_flash() -> void:
 		return
 	var sprite: AnimatedSprite2D = $animatedsprite2d
 	# NEW: flash duration scales down with the same reduction percentage
-	# already driving damage tiers (see DEFENSE_TIERS) — a Novice takes
+	# already driving damage tiers (PlayerStats.DEFENSE_TIERS) — a Novice takes
 	# the full flash, an Unbreakable character's is noticeably brighter,
 	# briefer. this is what "poise" actually became once real knockback
 	# turned out to need new art this project doesn't have: not a
@@ -1354,26 +1508,6 @@ func gain_magic_xp(amount: int) -> void:
 	CharacterData.save_character_state(self)
 
 
-func gain_fishing_xp(amount: int) -> void:
-	fishing_xp += amount
-	while fishing_xp >= fishing_xp_next:
-		fishing += 1
-		fishing_xp -= fishing_xp_next
-		fishing_xp_next = xp_needed_for_skill_id("fishing", fishing)
-		_spawn_skillup_popup("fishing", fishing)
-	CharacterData.save_character_state(self)
-
-
-func gain_cooking_xp(amount: int) -> void:
-	cooking_xp += amount
-	while cooking_xp >= cooking_xp_next:
-		cooking += 1
-		cooking_xp -= cooking_xp_next
-		cooking_xp_next = xp_needed_for_skill_id("cooking", cooking)
-		_spawn_skillup_popup("cooking", cooking)
-	CharacterData.save_character_state(self)
-
-
 # =============================================================================
 # CURRENCY
 # =============================================================================
@@ -1431,24 +1565,6 @@ func update_lusions_label() -> void:
 
 
 # =============================================================================
-# UI HELPERS
-# =============================================================================
-
-func update_stats_labels(statspanel) -> void:
-	statspanel.get_node("levellabel").text   = "level: " + str(level)
-	statspanel.get_node("hplabel").text      = "hp: " + str(hp) + "/" + str(max_hp)
-	statspanel.get_node("staminalabel").text = "stamina: " + str(stamina) + "/" + str(max_stamina)
-	statspanel.get_node("manalabel").text    = "mana: " + str(mana) + "/" + str(max_mana)
-	statspanel.get_node("attacklabel").text  = "attack: " + str(attack)
-	statspanel.get_node("defenselabel").text = "defense: " + str(defense)
-	statspanel.get_node("agilitylabel").text = "agility: " + str(agility)
-	statspanel.get_node("magiclabel").text   = "magic: " + str(magic)
-	statspanel.get_node("fishinglabel").text = "fishing: " + str(fishing)
-	statspanel.get_node("cookinglabel").text = "cooking: " + str(cooking)
-	statspanel.get_node("xplabel").text      = "total xp: " + str(xp)
-
-
-# =============================================================================
 # DEBUG
 # =============================================================================
 
@@ -1488,7 +1604,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)
-			# PETS — the P O I U Y T row, one key per pet, reading leftward.
+			# PETS — the P O I U Y T row, one key per pet, reading leftward,
+			# plus B for the boss pet (see below).
 			#
 			# Every one of these grants the pet ITEM. None of them spawns a pet
 			# directly, and that is the entire point: the key puts the item in
@@ -1513,6 +1630,46 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_U: _debug_give_item("petfiresprite", 1)
 			KEY_Y: _debug_give_item("petpoisonslimesmall", 1)
 			KEY_T: _debug_give_item("petpoisonslimelarge", 1)
+			# B FOR BOSS, deliberately off the row. The row above reads
+			# leftward from P and stops at T because R is already the fishing
+			# kit, so there is no seventh key to continue it with. Shuffling
+			# six bindings that are already in muscle memory to gain one slot
+			# is a worse trade than giving the newest pet a mnemonic of its
+			# own.
+			#
+			# Same rule as the rest of the row: this grants the ITEM, not a
+			# pet node. petboss is the first pet whose .tres, .tscn and
+			# projectile were all authored at once, so it is exactly the case
+			# a direct-spawn helper would have hidden — if the item is
+			# missing from ItemRegistry, this key does nothing and says so.
+			KEY_B: _debug_give_item("petboss", 1)
+			# R FOR ROD — the whole gathering loop from one key.
+			#
+			# A rod alone tests nothing: fishingspot.gd checks the rod FIRST and
+			# the bait second, so without worms you get as far as "You need worms
+			# for bait" and stop. The two items are one tool, so they are one key.
+			#
+			# The iron rod specifically, because it is tier 1 and usable at
+			# fishing level 1 — a fresh character can cast with it immediately.
+			# The other four (jade, cobalt, amethyst, ember) are the tier ladder
+			# and gate which fish bite; grant those by id when testing the ladder
+			# rather than the loop.
+			#
+			# THIS IS THE WHOLE COOKING TEST TOO. Cooking has no debug key of its
+			# own and does not need one: raw fish only exist as something you
+			# caught, so the honest way to get one into a firepit is to fish it
+			# out first. Same reasoning as the pet row above — the key grants the
+			# item and the real path does the rest.
+			KEY_R: _debug_give_fishing_kit()
+			# K FOR COOKED — three Mudfish and three Reef Clowns, which is the
+			# cooking gate's easy case and its hardest one side by side.
+			#
+			# Granting a finished fish is not a hole in the gate, it is the hole
+			# the gate was built for: a cooked fish arriving in a bag without
+			# having been cooked there is exactly what a trade looks like. The
+			# key stops at the bag; right-clicking is still the real path, and
+			# _meets_requirements() gets the same look at it either way.
+			KEY_K: _debug_give_cooked_fish()
 			KEY_M:
 				mana = max(mana - 30, 0)
 				print("DEBUG: drained 30 mana (now %d)" % mana)
@@ -1608,6 +1765,206 @@ func dismiss_pet() -> void:
 	active_pet_id = ""
 
 
+# =============================================================================
+# EQUIPMENT
+# =============================================================================
+# THE SLOT NAMES ARE NOT WRITTEN OUT HERE. ItemData.slot_name() derives them
+# from ItemData.EquipSlot itself, which is the only place on the client that
+# knows what a slot is called — see the long note beside that function for why
+# a second copy is a bug waiting rather than a convenience.
+
+static func slot_name_for_item(item_id: String) -> String:
+	# Which slot an item is worn in, or "" if it is not equipment at all.
+	var data: ItemData = ItemRegistry.get_item(item_id)
+	if data == null:
+		return ""
+	return ItemData.slot_name(int(data.equip_slot))
+
+
+func equipped_id(slot_name: String) -> String:
+	return str(equipped.get(slot_name, ""))
+
+
+func equip_check(item_id: String) -> Dictionary:
+	# MAY THIS CHARACTER WEAR THIS? The same three questions gamedata.py's
+	# equip_check() asks, in the same order, returning the same shape:
+	#
+	#     {"ok": false, "reason": "unknown"}                  no such item
+	#     {"ok": false, "reason": "notgear"}                  not equipment
+	#     {"ok": false, "reason": "class", "allowed": [...]}  wrong class
+	#     {"ok": false, "reason": "level", "needs": N}        too low
+	#     {"ok": true,  "slot": "helm"}
+	#
+	# TWO COPIES OF ONE RULE, DELIBERATELY, and the same arrangement
+	# inventoryscreen.gd already uses for consumables: the client refusing is a
+	# courtesy — it greys the slot out and says why — and the server refusing
+	# is the rule. If these two ever disagree the server wins, and the symptom
+	# is a save that comes back 400 rather than a stat nobody earned.
+	#
+	# THE SLOT ITSELF IS NOT A QUESTION HERE. The server checks that a sword
+	# was not sent for the helm slot because it receives both halves and has to
+	# assume neither. This function derives the slot FROM the item, so there is
+	# nothing to disagree with.
+	var data: ItemData = ItemRegistry.get_item(item_id)
+	if data == null:
+		return {"ok": false, "reason": "unknown"}
+
+	var slot_name: String = ItemData.slot_name(int(data.equip_slot))
+	if slot_name == "":
+		return {"ok": false, "reason": "notgear"}
+
+	# AN EMPTY required_classes MEANS ANYONE. Rings and amulets are shared by
+	# every class, so emptiness is tested before membership — reading an empty
+	# list as "nobody" would take all the jewellery away from everybody.
+	if not data.required_classes.is_empty():
+		var class_id: String = CharacterData.active_class_id()
+		if not data.required_classes.has(class_id):
+			return {"ok": false, "reason": "class", "allowed": data.required_classes}
+
+	if level < data.required_level:
+		return {"ok": false, "reason": "level", "needs": data.required_level}
+
+	return {"ok": true, "slot": slot_name}
+
+
+func equip(item_id: String) -> bool:
+	# Wearing something is one assignment. WHAT WAS THERE IS NOT PUT ANYWHERE,
+	# because it never left the bag to begin with: a slot holds an item_id, not
+	# the item, so swapping a sword for a better sword moves nothing and the
+	# old one is still sitting where it was.
+	#
+	# That is the whole reason the "slots point at a bag item" shape was chosen
+	# over moving items into an equipment container. There is no second place
+	# for an item to be, so there is no way for one to be in both or neither —
+	# which is the bug every inventory system in this genre ships at least once.
+	var verdict: Dictionary = equip_check(item_id)
+	if not verdict["ok"]:
+		return false
+	equipped[str(verdict["slot"])] = item_id
+	return true
+
+
+func unequip(slot_name: String) -> String:
+	# Returns what came off, or "" if the slot was already empty. Nothing is
+	# given back because nothing was taken.
+	var was: String = equipped_id(slot_name)
+	if was != "":
+		equipped.erase(slot_name)
+	return was
+
+
+func equipped_weapon_damage() -> int:
+	# THE MIDDLE OF THE BAND, not a hit. For tooltips and for anything that
+	# wants to compare two weapons without rolling dice at them.
+	var data: ItemData = ItemRegistry.get_item(equipped_id("weapon"))
+	if data == null:
+		return 0
+	return data.damage
+
+
+func equipped_weapon_range() -> Vector2i:
+	# What a tooltip should print: "15 - 25", the band a hit actually lands in.
+	var data: ItemData = ItemRegistry.get_item(equipped_id("weapon"))
+	if data == null:
+		return Vector2i.ZERO
+	return PlayerStats.weapon_damage_range(data.damage, data.damage_spread)
+
+
+func weapon_damage_roll() -> int:
+	# ONE HIT'S WORTH OF WEAPON, rolled fresh. 0 when nothing is equipped,
+	# which is what makes the class's own base damage a real floor rather than
+	# a formality — see PlayerStats.roll_weapon_damage().
+	#
+	# ADDED TO THE CLASS BASE BY ITS CALLER, never substituted for it. All four
+	# classes read this the same way:
+	#
+	#     roundi((own_base + weapon_damage_roll()) * get_damage_multiplier())
+	#
+	# WHY ADDING RATHER THAN REPLACING, since warrior.gd's own comment used to
+	# ask for a replacement: replacing means an unarmed character deals nothing,
+	# which turns the first weapon into a power switch rather than an upgrade.
+	# It also has no sensible answer for the tank, whose damage is an aura
+	# ticking four times a second, or the healer, who fires ten shots a second
+	# — a weapon's damage is one number and those are not one kind of hit.
+	var data: ItemData = ItemRegistry.get_item(equipped_id("weapon"))
+	if data == null:
+		return 0
+	return PlayerStats.roll_weapon_damage(data.damage, data.damage_spread)
+
+
+func base_attack_damage() -> int:
+	# WHAT THIS CLASS HITS FOR WITH ITS HANDS EMPTY. Overridden by all four;
+	# the base answers 0, which reads as "this class has no attack".
+	#
+	# It exists so that nothing outside the class scripts has to know whether
+	# the number is called base_melee_damage, damage_per_magic or aura_damage.
+	# The equipment panel wants to print what the character actually hits for,
+	# and asking it that question directly is better than teaching a UI panel
+	# three different field names and which class uses which.
+	return 0
+
+
+func attack_damage_range() -> Vector2i:
+	# WHAT ONE HIT ACTUALLY LANDS FOR, low and high, weapon and skills folded
+	# in — the same arithmetic the four classes do at the moment they swing:
+	#
+	#     roundi((own_base + weapon_damage_roll()) * get_damage_multiplier())
+	#
+	# with the roll's two extremes in place of the roll. So the pair of numbers
+	# the equipment panel prints are the pair a player will actually see pop
+	# off an enemy, rather than a separate estimate that drifts the first time
+	# one of the four is tuned.
+	var low: int = base_attack_damage()
+	var high: int = low
+
+	var data: ItemData = ItemRegistry.get_item(equipped_id("weapon"))
+	if data != null and data.damage > 0:
+		var band: Vector2i = PlayerStats.weapon_damage_range(data.damage, data.damage_spread)
+		low += band.x
+		high += band.y
+
+	var mult: float = get_damage_multiplier()
+	return Vector2i(roundi(float(low) * mult), roundi(float(high) * mult))
+
+
+func attack_period() -> float:
+	# SECONDS BETWEEN ONE HIT AND THE NEXT, for this class. Overridden by all
+	# four; the base answers 0.0, which every caller reads as "do not know".
+	#
+	# IT EXISTS FOR THE TOOLTIP, and for the reason the tooltip needs it: an
+	# ember scepter carries 13 damage and an ember sword carries 100, for
+	# almost the same gold, because one fires ten times a second and the other
+	# swings once. Per-hit numbers make that pair look like a swindle and a
+	# bargain. Damage per second makes them look like what they are, and this
+	# is the number the division needs.
+	#
+	# ASKED OF THE LIVE CHARACTER rather than read from a table, so there is no
+	# copy of the four cooldowns to drift out of step with the four @exports
+	# that actually govern them.
+	#
+	# AGILITY IS NOT FOLDED IN, and that is not an oversight here so much as an
+	# accurate report of somewhere else: get_attack_speed_multiplier() is
+	# defined above, has unit tests, and is called by nothing. No class divides
+	# its cooldown by it, so agility currently buys movement and nothing else —
+	# exactly what PlayerStats' comment says it was changed to stop doing.
+	# Folding it in here would make the tooltip promise a rate the game does
+	# not deliver.
+	return 0.0
+
+
+func equipped_armor_value() -> int:
+	# The defensive half, summed across every worn piece — read by take_damage()
+	# through PlayerStats.armour_reduction(). A weapon contributes 0 and is
+	# summed anyway rather than skipped: the day a sword carries armour, this
+	# should not be the line that has to remember.
+	var total: int = 0
+	for slot_name in equipped:
+		var data: ItemData = ItemRegistry.get_item(str(equipped[slot_name]))
+		if data != null:
+			total += data.armor_value
+	return total
+
+
 # BOTH _debug_* functions below repeat the gate rather than trusting it.
 #
 # They are already unreachable for a player, because the only thing that calls
@@ -1616,6 +1973,45 @@ func dismiss_pet() -> void:
 # anyone wires one of these to a button, a console command or a test. These hand
 # out free items, free pets and free lusions; they should refuse on their own
 # authority rather than inherit safety from their caller.
+func _debug_give_fishing_kit() -> void:
+	# AWAITED ONE AFTER THE OTHER, NOT FIRED TOGETHER.
+	#
+	# _debug_give_item() is a coroutine: it POSTs to /api/staff/grant and the
+	# SERVER rewrites carry_items. Starting both without awaiting puts two grants
+	# in flight against the same slot, and the two read-modify-writes can
+	# interleave — both read the bag as it was, both append their own item, and
+	# the second write lands on top of the first. You would get the worms and no
+	# rod, intermittently, in a way that looks like the grant endpoint is flaky.
+	#
+	# The await makes the second request start after the first has been recorded.
+	# Two round trips instead of one, for a debug key nobody presses in a loop.
+	await _debug_give_item("ironfishingrod", 1)
+	await _debug_give_item("fishingworm", 25)
+
+
+func _debug_give_cooked_fish() -> void:
+	# BOTH ENDS OF THE COOKING GATE IN ONE KEY, and it has to be both.
+	#
+	# A key that only granted the Reef Clown would prove a refusal happened; it
+	# could not tell you whether the gate was reading cooking level or had simply
+	# broken eating altogether. The Mudfish is the control: same type, same
+	# handler, same restore_target, gate satisfied at cooking 1. If the Clown
+	# refuses and the Mudfish heals, the gate is reading the number. If BOTH
+	# refuse, _meets_requirements() is wrong and the log will say which check.
+	#
+	# WHY THIS DOES NOT BREAK KEY_R's RULE two hundred lines up. That comment says
+	# cooking needs no debug key because raw fish should be fished for - and it is
+	# right, for testing the cooking LOOP. This is not the loop. It hands over a
+	# FINISHED fish, exactly as a trade would, which is the one way into the
+	# player's bag that the gate exists to answer. Earning it would take fishing
+	# 60 and cooking 70 and would test the gate no better.
+	#
+	# Awaited in sequence for the same reason as the fishing kit above: two
+	# grants in flight against one slot can interleave and lose one.
+	await _debug_give_item("cookedmudfish", 3)
+	await _debug_give_item("cookedreefclown", 3)
+
+
 func _debug_give_item(item_id: String, quantity: int) -> void:
 	# THE SERVER GRANTS IT. THIS DOES NOT.
 	#

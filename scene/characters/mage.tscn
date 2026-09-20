@@ -977,7 +977,6 @@ debug_color = Color(0, 0, 0, 0.41960785)
 [node name="camera2d" type="Camera2D" parent="." unique_id=1098989592]
 process_callback = 0
 zoom = Vector2(3, 3)
-position_smoothing_enabled = true
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=639143865]
 texture_filter = 1

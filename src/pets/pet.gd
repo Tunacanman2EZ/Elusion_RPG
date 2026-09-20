@@ -49,6 +49,21 @@ enum AttackType { PROJECTILE, VINE }
 @export var attack_type: AttackType = AttackType.PROJECTILE
 @export var projectile_scene: PackedScene = null
 @export var projectile_damage: int = 5
+
+# Degrees per second a fired projectile may turn to keep following its target.
+# 0 makes pets fire straight again, which is what they did before this existed.
+#
+# 180 IS A TURNING CIRCLE, NOT A GUARANTEE. Turn radius is speed / rate, so a
+# 300 px/s orb at 180 deg/s sweeps a circle about 95px across. It tracks a
+# walking enemy without visibly curving, arcs noticeably after one that runs,
+# and cleanly misses one that is already beside it — and then keeps going,
+# because Homing latches off once the shot is past. Raise it toward 360 to make
+# pets close to unmissable; drop it to 90 for a shot that only nudges.
+#
+# Only the PROJECTILE attack type uses this. A vine spawns on top of its target
+# and has nothing to steer.
+@export var homing_turn_rate: float = 180.0
+
 # How far a pet will look for a target, measured from ITSELF.
 #
 # 280 matches the longest-ranged enemy in the game (electricsprite.gd), and it
@@ -65,6 +80,12 @@ enum AttackType { PROJECTILE, VINE }
 @export var attack_cooldown: float = 2.0
 @export var move_speed: float = 100.0
 @export var follow_distance: float = 60.0
+
+# Below this closing speed the pet is settling, not walking, and should idle.
+# In px/s, deliberately well under any real follow speed: the point is to catch
+# the last fraction of a pixel as a pet comes to rest, not to be a second
+# movement threshold.
+const WALK_ANIMATION_SPEED := 5.0
 @export var teleport_distance: float = 600.0
 @export var scale_factor: float = 0.5
 
@@ -118,6 +139,11 @@ var owner_player: Node = null
 
 var player: Node = null
 var _attack_ready: bool = true
+# The heading this pet is currently drawn at, kept so Facing.from_vec_stable()
+# has a previous value to be sticky about. Empty until the first frame it
+# animates, which resolves through from_vec_total() like before.
+var _facing: String = ""
+
 var _current_target: Node = null
 var _is_attacking: bool = false
 
@@ -193,7 +219,7 @@ func _make_attack_timer() -> Timer:
 	return t
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	# is_instance_valid(), NOT == null. A freed node is not null - it is a
 	# dangling reference, and touching one throws. _resolve_player() below
 	# already knew this and said so in its own comment; this guard, twenty
@@ -204,7 +230,7 @@ func _physics_process(_delta: float) -> void:
 		_resolve_player()
 		return
 
-	_update_follow()
+	_update_follow(delta)
 
 	_current_target = _find_nearest_enemy()
 
@@ -278,7 +304,7 @@ func _resolve_player() -> void:
 # FOLLOW MOVEMENT
 # =============================================================================
 
-func _update_follow() -> void:
+func _update_follow(delta: float) -> void:
 	var to_player: Vector2 = player.global_position - global_position
 	var dist: float = to_player.length()
 
@@ -293,13 +319,43 @@ func _update_follow() -> void:
 		move_and_slide()
 		return
 
-	if dist > follow_distance:
-		velocity = to_player.normalized() * move_speed
-		if not _is_attacking:
-			_play_walk(to_player)
+	# CLOSE THE GAP, NEVER OVERSHOOT IT — and this is the whole fix for a pet
+	# that shook whenever its owner walked.
+	#
+	# THE OLD RULE WAS BINARY: past follow_distance run at move_speed, inside it
+	# stop dead. A pet is FASTER than a player (100 against 90), so it always
+	# reached the leash and stopped — then the player's next step reopened the
+	# gap by 1.5px and it ran again for one tick. Move, stop, move, stop, sixty
+	# times a second.
+	#
+	# The position wobble was the smaller half. The visible damage was to the
+	# ANIMATION: walk and idle alternated every tick, and _play_directional()
+	# plays a clip whenever the name changes, so both restarted from frame 0
+	# forever. The pet was not animating at all - it was flickering between two
+	# first frames. That is what "jittery when the player moves" was.
+	#
+	# gap / delta IS THE SPEED THAT ARRIVES EXACTLY ON THE LEASH THIS TICK, so
+	# capping move_speed with it removes overshoot by construction rather than
+	# by a tolerance somebody has to tune. It also self-corrects: trailing a
+	# player at 90, the pet settles a hair past follow_distance where
+	# gap / delta == 90, and simply matches their speed. No threshold is
+	# crossed, so nothing oscillates.
+	var gap: float = dist - follow_distance
+	if gap > 0.0 and dist > 0.0:
+		var closing: float = move_speed
+		if delta > 0.0:
+			closing = minf(move_speed, gap / delta)
+		velocity = to_player.normalized() * closing
 	else:
 		velocity = Vector2.ZERO
-		if not _is_attacking:
+
+	# DECIDED ON SPEED, NOT ON DISTANCE. A distance test is the threshold this
+	# function just stopped using; asking "am I actually moving" cannot
+	# disagree with the velocity set two lines above it.
+	if not _is_attacking:
+		if velocity.length() > WALK_ANIMATION_SPEED:
+			_play_walk(to_player)
+		else:
 			_play_idle()
 
 	move_and_slide()
@@ -309,7 +365,35 @@ func _update_follow() -> void:
 # TARGETING
 # =============================================================================
 
+# How far past aggro_range a target may drift before the pet gives it up.
+# 1.15 is a 15% hysteresis band: wide enough that an enemy loitering on the
+# edge is not dropped and re-acquired every other frame, narrow enough that one
+# genuinely walking away is released promptly. See _find_nearest_enemy().
+const TARGET_KEEP_SLACK := 1.15
+
 func _find_nearest_enemy() -> Node:
+	# STICKY, AND THAT IS THE OTHER HALF OF "BAD AIM".
+	#
+	# This runs every physics frame. The old version re-ran a pure nearest-wins
+	# search each time, so two enemies within a pixel of the same distance made
+	# the pet alternate between them sixty times a second — its facing jittered,
+	# and _fire_at() committed to whichever one happened to win the frame the
+	# cooldown expired. A pet cannot lock onto anything if it re-decides what it
+	# is looking at every tick.
+	#
+	# So the current target keeps the slot while it is alive and still roughly
+	# in range. THE SLACK IS WHY THIS DOES NOT FLICKER AT THE BOUNDARY: without
+	# it, an enemy hovering exactly at aggro_range would be dropped and instantly
+	# re-acquired, which is the same oscillation one step further out.
+	#
+	# The cost is that the pet will not abandon its target for a closer one that
+	# wanders past. That is a deliberate trade — committing to a kill is what a
+	# lock-on IS, and the alternative is the flapping above.
+	if is_instance_valid(_current_target) and _current_target is Node2D:
+		var held: float = global_position.distance_to(_current_target.global_position)
+		if held <= aggro_range * TARGET_KEEP_SLACK:
+			return _current_target
+
 	var nearest: Node = null
 	var nearest_dist: float = aggro_range
 
@@ -556,9 +640,28 @@ func _release_shot(target: Node, dir: Vector2) -> void:
 	# `dir` captured when the pet committed, so it still fires where it was
 	# aiming even though whatever it aimed at is gone. Only a VINE, which
 	# spawns AT the target, has nothing left to act on.
+	# RE-AIMED HERE, NOT AT COMMIT — and this is half of why pets missed.
+	#
+	# _fire_at() captured `dir` when the wind-up STARTED, and release_frame can
+	# be most of a second later; the small poison slime releases on frame 14 of
+	# a 5fps animation, which is 2.80s after it committed. The shot left along a
+	# direction that was almost three seconds stale, so a pet reliably hit the
+	# patch of ground an enemy had walked away from.
+	#
+	# Homing could recover from that, but only by spending its entire turning
+	# budget undoing a known-wrong start. Fixing the launch angle first means
+	# the turn rate is spent on what the enemy does NEXT, which is what it is
+	# for. `dir` stays the fallback for a target that died mid-wind-up — see
+	# _consume_pending_target().
+	var aim: Vector2 = dir
+	if is_instance_valid(target) and target is Node2D:
+		var fresh: Vector2 = (target.global_position - global_position).normalized()
+		if fresh != Vector2.ZERO:
+			aim = fresh
+
 	match attack_type:
 		AttackType.PROJECTILE:
-			_fire_projectile(dir)
+			_fire_projectile(aim, target)
 		AttackType.VINE:
 			# vines spawn AT the target, so a target that died during the
 			# wind-up has nowhere to put one.
@@ -656,7 +759,7 @@ func _find_muzzle_marker(dir: Vector2) -> Node:
 		muzzle_marker_prefix + MARKER_SUFFIX[Facing.from_vec_total(dir)])
 
 
-func _fire_projectile(dir: Vector2) -> void:
+func _fire_projectile(dir: Vector2, target: Node = null) -> void:
 	# flying projectile → parent to the "projectiles" group (Y-sorted), spawn
 	# at this pet's muzzle for the direction it's facing, then aim.
 	var projectile: Node = projectile_scene.instantiate()
@@ -666,6 +769,19 @@ func _fire_projectile(dir: Vector2) -> void:
 
 	if "damage" in projectile:
 		projectile.damage = _get_scaled_damage()
+
+	# HANDED THE TARGET, NOT A PREDICTED POINT. The projectile steers toward
+	# wherever the enemy IS each frame, so it stays correct however the enemy
+	# moves — a lead computed here would only be right if the enemy kept doing
+	# exactly what it was doing at the instant of the shot.
+	#
+	# has_method() rather than an assumption: petvine has no home_on(), and
+	# neither will anything else a pet scene is later pointed at. A projectile
+	# that does not know about homing simply flies straight, which is the old
+	# behaviour rather than an error.
+	if projectile.has_method("home_on"):
+		var follow: Node2D = target as Node2D if is_instance_valid(target) else null
+		projectile.home_on(follow, homing_turn_rate)
 
 	# NEW: deferred for the same reason as _fire_vine's fire() call below —
 	# see the DEFERRED SPAWN TIMING note at the top of this file. this
@@ -782,7 +898,26 @@ func _play_directional(prefix: String, dir: Vector2, force_restart: bool = false
 	var sprite: AnimatedSprite2D = $animatedsprite2d
 	if sprite.sprite_frames == null:
 		return ""
-	var anim: String = prefix + Facing.from_vec_total(dir)
+	# from_vec_stable(), NOT from_vec_total(), and pets were the last thing in
+	# the game still using the raw one.
+	#
+	# from_vec() picks the dominant axis on a knife-edge. A pet trails directly
+	# behind its owner, so the vector handed in here points exactly along the
+	# direction of travel - and walking diagonally parks it on that boundary. It
+	# flipped thirteen times a second in simulation, and because the branch
+	# below plays a clip whenever the NAME changes, both clips restarted from
+	# frame 0 forever. The pet never animated; it alternated between two first
+	# frames.
+	#
+	# baseenemy.gd has called from_vec_stable() for this exact reason since
+	# before pets existed - its own comment says "the walk animation strobes".
+	# Enemies were fixed and pets were not, which is why this looked like a pet
+	# problem rather than a shared one.
+	#
+	# _facing is remembered across calls because hysteresis needs somewhere to
+	# hold "what I was doing" - that is the whole mechanism.
+	_facing = Facing.from_vec_stable(dir, _facing)
+	var anim: String = prefix + _facing
 	if not sprite.sprite_frames.has_animation(anim):
 		return ""
 

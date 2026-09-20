@@ -1,0 +1,259 @@
+[gd_scene load_steps=2 format=3 uid="uid://cw8yr2mnl6qtb"]
+
+[ext_resource type="Script" path="res://src/ui/menus/optionsscreen.gd" id="1_options"]
+
+[node name="optionsscreen" type="Control"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -215.0
+offset_right = 180.0
+offset_bottom = 215.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_options")
+
+[node name="mainpanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
+layout_mode = 2
+
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 15
+text = "Options"
+vertical_alignment = 1
+
+[node name="optionsclosebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+text = "x"
+
+[node name="audioheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "AUDIO"
+
+[node name="masterrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/masterrow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Master"
+vertical_alignment = 1
+
+[node name="mastervolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/masterrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="mastervalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/masterrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(42, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="musicrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/musicrow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Music"
+vertical_alignment = 1
+
+[node name="musicvolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/musicrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+value = 0.7
+
+[node name="musicvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/musicrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(42, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "70%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="sfxrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/sfxrow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Sound effects"
+vertical_alignment = 1
+
+[node name="sfxvolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/sfxrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="sfxvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/sfxrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(42, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="hseparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="displayheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "DISPLAY"
+
+[node name="fullscreenrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/fullscreenrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Fullscreen"
+vertical_alignment = 1
+
+[node name="fullscreentoggle" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/fullscreenrow"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="vsyncrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/vsyncrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Vertical sync"
+vertical_alignment = 1
+
+[node name="vsynctoggle" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/vsyncrow"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="windowrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/windowrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Window size"
+vertical_alignment = 1
+
+[node name="windowsize" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/windowrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(124, 26)
+layout_mode = 2
+
+[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="gameheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "GAME"
+
+[node name="damagerow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/damagerow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Damage numbers"
+vertical_alignment = 1
+
+[node name="damagenumbers" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/damagerow"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="spacer" type="Control" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="hseparator3" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="footerrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+alignment = 2
+
+[node name="optionsresetbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/footerrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(130, 28)
+layout_mode = 2
+text = "Reset to defaults"

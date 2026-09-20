@@ -4,17 +4,23 @@
 #
 # architecture:
 # - one InventorySlot scene per grid cell, instanced in _ready
-# - slot signals (click, right-click, double-click, hover) relay up to
+# - slot signals (click, right-click, double-click) relay up to
 #   whoever owns this container
 # - save format is item_id + quantity per slot — small + MMO-ready
-# - add_stack handles stackable consolidation + max_stack overflow splitting
 # - linked_item_ids tracks which items are referenced by hotbar slots so
 #   matching inventory items can be tinted gold to show the connection
+#
+# THIS CONTAINER NO LONGER DECIDES WHERE AN ITEM GOES. It had a full local
+# placement API — add_stack, add_stack_partial, add_stack_at, can_add_stack,
+# has_space, remove_quantity_by_id, sort_by_name, resize — and every one of
+# them is gone, because the server owns the layout now. load_server_array()
+# applies the array an endpoint hands back; see its own comment for the bug
+# that made this the rule. If you need a bag to change, ask an endpoint.
 #
 # common usage flow:
 # 1. parent scene places InventoryContainer in its tree
 # 2. _ready instantiates slots based on grid_width × grid_height
-# 3. parent calls add_stack / remove_quantity_at as items move
+# 3. an endpoint answers, and the parent calls load_server_array()
 # 4. inventory_changed signal fires on every mutation for save sync
 # 5. hotbar calls set_linked_item_ids to keep inventory tinting in sync
 extends GridContainer
@@ -34,12 +40,6 @@ signal slot_right_clicked(slot: InventorySlot)
 # emitted when a slot is double-clicked (LMB double-click) — used for
 # quick-transfer flows like "double-click loot to send to inventory"
 signal slot_double_clicked(slot: InventorySlot)
-
-# emitted when the mouse enters a slot — used for tooltip display
-signal slot_hovered(slot: InventorySlot)
-
-# emitted when the mouse leaves a slot — used to hide tooltip
-signal slot_unhovered(slot: InventorySlot)
 
 # emitted whenever the inventory contents change — used to sync with save system
 signal inventory_changed()
@@ -119,134 +119,10 @@ func _create_slots() -> void:
 		slot_instance.slot_right_clicked.connect(_on_slot_right_clicked)
 		slot_instance.slot_double_clicked.connect(_on_slot_double_clicked)
 		slot_instance.transfer_requested.connect(_on_slot_transfer_requested)
-		slot_instance.slot_hovered.connect(_on_slot_hovered)
-		slot_instance.slot_unhovered.connect(_on_slot_unhovered)
 		slot_instance.slot_changed.connect(_on_slot_changed)
 
 		add_child(slot_instance)
 		slots.append(slot_instance)
-
-
-func resize(w: int, h: int) -> Array[ItemStack]:
-	var existing_stacks: Array[ItemStack] = []
-	for slot in slots:
-		if not slot.is_empty():
-			existing_stacks.append(slot.stack.duplicate_stack())
-
-	grid_width = w
-	grid_height = h
-	columns = grid_width
-	_create_slots()
-
-	var overflow: Array[ItemStack] = []
-	for stack in existing_stacks:
-		if not add_stack(stack):
-			overflow.append(stack)
-
-	inventory_changed.emit()
-	return overflow
-
-
-# =============================================================================
-# CORE INVENTORY OPERATIONS — ADD
-# =============================================================================
-
-func add_stack(stack: ItemStack) -> bool:
-	if stack == null or not stack.is_valid():
-		return false
-
-	var working: ItemStack = stack.duplicate_stack()
-
-	if working.data.stackable:
-		for slot in slots:
-			if working.quantity <= 0:
-				break
-			if slot.is_empty():
-				continue
-			if slot.stack.can_stack_with(working):
-				var leftover: int = slot.stack.add_to_stack(working.quantity)
-				working.quantity = leftover
-				slot.refresh_display()
-
-	while working.quantity > 0:
-		var found_empty: bool = false
-		for slot in slots:
-			if slot.is_empty():
-				var to_place: int = min(working.quantity, working.data.max_stack)
-				var new_stack: ItemStack = working.duplicate_stack()
-				new_stack.quantity = to_place
-				slot.set_stack(new_stack)
-				working.quantity -= to_place
-				found_empty = true
-				break
-		if not found_empty:
-			break
-
-	inventory_changed.emit()
-	return working.quantity == 0
-
-
-func add_stack_partial(stack: ItemStack) -> int:
-	# add as much of `stack` as fits, return how many units DID NOT fit.
-	# same logic as add_stack, but returns the leftover count so callers can
-	# put the remainder back where it came from (loot bag partial-take flow).
-	if stack == null or not stack.is_valid():
-		return 0
-
-	var working: ItemStack = stack.duplicate_stack()
-
-	if working.data.stackable:
-		for slot in slots:
-			if working.quantity <= 0:
-				break
-			if slot.is_empty():
-				continue
-			if slot.stack.can_stack_with(working):
-				var leftover: int = slot.stack.add_to_stack(working.quantity)
-				working.quantity = leftover
-				slot.refresh_display()
-
-	while working.quantity > 0:
-		var found_empty: bool = false
-		for slot in slots:
-			if slot.is_empty():
-				var to_place: int = min(working.quantity, working.data.max_stack)
-				var new_stack: ItemStack = working.duplicate_stack()
-				new_stack.quantity = to_place
-				slot.set_stack(new_stack)
-				working.quantity -= to_place
-				found_empty = true
-				break
-		if not found_empty:
-			break
-
-	inventory_changed.emit()
-	return working.quantity
-
-
-func add_stack_at(index: int, stack: ItemStack) -> bool:
-	if stack == null or not stack.is_valid():
-		return false
-	if index < 0 or index >= slots.size():
-		return false
-
-	var slot: InventorySlot = slots[index]
-
-	if slot.is_empty():
-		var to_place: int = min(stack.quantity, stack.data.max_stack)
-		var new_stack: ItemStack = stack.duplicate_stack()
-		new_stack.quantity = to_place
-		slot.set_stack(new_stack)
-		inventory_changed.emit()
-		return to_place == stack.quantity
-
-	if slot.stack.can_stack_with(stack):
-		var leftover: int = slot.stack.add_to_stack(stack.quantity)
-		slot.refresh_display()
-		inventory_changed.emit()
-		return leftover == 0
-
-	return false
 
 
 # =============================================================================
@@ -285,36 +161,6 @@ func remove_quantity_at(index: int, amount: int) -> int:
 	if removed > 0:
 		inventory_changed.emit()
 	return removed
-
-
-func remove_quantity_by_id(item_id: String, amount: int) -> int:
-	if item_id == "" or amount <= 0:
-		return 0
-
-	var remaining: int = amount
-	var any_removed: bool = false
-
-	for slot in slots:
-		if remaining <= 0:
-			break
-		if slot.is_empty():
-			continue
-		if slot.stack.data.item_id != item_id:
-			continue
-
-		var to_remove: int = min(remaining, slot.stack.quantity)
-		slot.stack.remove_quantity(to_remove)
-		remaining -= to_remove
-		any_removed = true
-
-		if slot.stack.quantity <= 0:
-			slot.clear_stack()
-		else:
-			slot.refresh_display()
-
-	if any_removed:
-		inventory_changed.emit()
-	return amount - remaining
 
 
 func clear_inventory() -> void:
@@ -359,35 +205,6 @@ func get_all_stacks() -> Array[ItemStack]:
 	return result
 
 
-func has_space() -> bool:
-	for slot in slots:
-		if slot.is_empty():
-			return true
-	return false
-
-
-func can_add_stack(stack: ItemStack) -> bool:
-	if stack == null or not stack.is_valid():
-		return false
-
-	if stack.data.stackable:
-		var remaining: int = stack.quantity
-		for slot in slots:
-			if not slot.is_empty() and slot.stack.can_stack_with(stack):
-				remaining -= (slot.stack.data.max_stack - slot.stack.quantity)
-				if remaining <= 0:
-					return true
-
-		for slot in slots:
-			if slot.is_empty():
-				remaining -= stack.data.max_stack
-				if remaining <= 0:
-					return true
-		return false
-
-	return has_space()
-
-
 func get_quantity_of(item_id: String) -> int:
 	if item_id == "":
 		return 0
@@ -422,6 +239,30 @@ func set_linked_item_ids(item_ids: Array) -> void:
 
 	_refresh_all_slot_styles()
 
+	# TEMPORARY DIAGNOSTIC — delete once the gold border is confirmed working.
+	#
+	# Every link in this chain reads correctly: the hotbar pushes ids here, this
+	# repopulates and restyles, the slot asks is_item_linked() and the gold
+	# stylebox has a real 4px border. Static reading cannot say which link is
+	# actually failing, so this prints all three at once.
+	#
+	# WHAT THE LINE TELLS YOU:
+	#   never printed          set_linked_item_ids() is not being reached
+	#   hotbar says []         nothing assigned, or get_item_id() returns ""
+	#   ids and bag disagree   the strings do not match (case, prefix, suffix)
+	#   matches > 0, no gold   the logic is right and it is purely visual
+	if OS.is_debug_build():
+		var bag: PackedStringArray = []
+		var hits: int = 0
+		for slot in slots:
+			if slot != null and slot.stack != null and slot.stack.is_valid():
+				var id: String = slot.stack.data.item_id
+				bag.append(id)
+				if linked_item_ids.has(id):
+					hits += 1
+		print("[HOTBARLINK] hotbar says %s | bag holds %s | matches %d"
+			% [str(linked_item_ids.keys()), str(bag), hits])
+
 
 func is_item_linked(item_id: String) -> bool:
 	return linked_item_ids.has(item_id)
@@ -453,9 +294,9 @@ func load_server_array(cells: Array) -> void:
 	# Endpoints that change the backpack - /api/loot/take, /api/staff/grant -
 	# return the WHOLE array, built the way this container would build it: an
 	# existing stack topped up before a new cell is opened. Applying that rather
-	# than calling add_stack() locally is what stops the two laying the same
-	# pickup out differently, which is what happened the first time a potion
-	# landed on a part-used stack.
+	# than placing the item locally is what stops the two laying the same pickup
+	# out differently, which is what happened the first time a potion landed on
+	# a part-used stack. add_stack() was the local version; it is why it is gone.
 	#
 	# The coercion is the reason this is a method rather than a line at each call
 	# site. JSON HAS NO INTEGER TYPE, so every quantity arrives as a float, and
@@ -514,27 +355,6 @@ func load_save_array(save_array: Array) -> void:
 
 
 # =============================================================================
-# SORTING
-# =============================================================================
-
-func sort_by_name() -> void:
-	var stacks: Array[ItemStack] = []
-	for slot in slots:
-		if not slot.is_empty():
-			stacks.append(slot.stack.duplicate_stack())
-
-	for slot in slots:
-		slot.clear_stack()
-
-	stacks.sort_custom(func(a: ItemStack, b: ItemStack) -> bool:
-		return a.data.display_name.to_lower() < b.data.display_name.to_lower()
-	)
-
-	for stack in stacks:
-		add_stack(stack)
-
-
-# =============================================================================
 # DRAG AND DROP — GRID BACKGROUND
 # =============================================================================
 # The slots accept drops; the grid they sit in did not. Godot shows the
@@ -574,6 +394,29 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	if source_slot is HotbarSlot:
 		source_slot.clear()
 		source_slot.slot_changed.emit(source_slot)
+		return
+
+	# THE BANK RULE HAS TO BE REPEATED HERE, exactly like the loot-bag one in
+	# _can_drop_data() above, and for exactly the same reason: the gaps between
+	# slots are this container, not a slot, so a drop that lands in one never
+	# reaches InventorySlot._drop_data() and never meets its CASE T.
+	#
+	# WITHOUT THIS, RELEASING A BANK STACK OVER THE 4px GAP BETWEEN TWO CARRY
+	# SLOTS MOVED IT LOCALLY. No POST /api/bank/items was ever sent; both
+	# containers then wrote their whole arrays, so the item existed in the
+	# backpack save and not in the bank one — two independent writes the server
+	# cannot tell are two halves of one transfer. Aiming at a slot behaved
+	# correctly, which made it read as intermittent duplication rather than as
+	# a rule with a hole in it.
+	#
+	# XOR, matching CASE T: bank-to-bank is a rearrange and moves no items.
+	var source_type: String = str(data.get("source_type", ""))
+	var here_is_bank: bool = not slots.is_empty() \
+		and slots[0].slot_type == InventorySlot.BANK_SLOT_TYPE
+	if (source_type == InventorySlot.BANK_SLOT_TYPE) != here_is_bank:
+		# target_slot is ignored by the handler — the endpoint takes an item and
+		# a quantity, not a position — so there is nothing to name here.
+		transfer_requested.emit(source_slot, null)
 		return
 
 	var target: InventorySlot = _first_empty_slot()
@@ -617,14 +460,6 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 
 func _on_slot_transfer_requested(source_slot: InventorySlot, target_slot: InventorySlot) -> void:
 	transfer_requested.emit(source_slot, target_slot)
-
-
-func _on_slot_hovered(slot: InventorySlot) -> void:
-	slot_hovered.emit(slot)
-
-
-func _on_slot_unhovered(slot: InventorySlot) -> void:
-	slot_unhovered.emit(slot)
 
 
 func _on_slot_changed(_slot: InventorySlot) -> void:

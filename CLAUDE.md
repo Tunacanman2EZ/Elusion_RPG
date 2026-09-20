@@ -16,6 +16,54 @@ session — immediately before. Working from a copy read twenty minutes ago has
 silently reverted finished work in this project more than once, and two of those
 three reverts produced no error at all, just quietly missing fixes.
 
+**If you are an agent working through a copy of this repo, re-fetch before you
+write to a file — and before you conclude anything about one.** This is the same
+rule and it is the single most expensive mistake available in this project, so it
+gets its own paragraph.
+
+**Reading counts.** The write half of this rule is easy to follow because a
+write feels consequential. The read half is where it actually goes wrong: you
+grep a copy pulled forty minutes ago, find something alarming, and report a bug
+that was fixed before you looked. That has now happened twice in one session —
+a licence file claiming ownership it had not claimed for weeks, and four scripts
+"stranded" on a vocabulary they had already been migrated off. Both were
+confident, both were specific, both were wrong, and a wrong bug report costs the
+same attention as a real one.
+
+A stale read is more dangerous than a stale write, because a stale write gets
+caught by the modification-time guard and a stale read gets caught by nothing.
+If you are about to tell someone their code is broken, re-fetch the file first
+and read the current bytes. Every time.
+
+Diff the *content*, not the byte count. A size comparison catches most drift and
+quietly misses the rest: moving a `scale` line from one node to another and
+editing a radius from `1.0` to `0.8` changed four scene files without changing
+their length at all. Sizes are a cheap smoke test, not the check.
+
+A copy pulled at the start of a session is a photograph, not a window. It goes
+stale the moment anything is written — including by you, earlier in the same
+session. Three separate near-misses in one afternoon: a 19,957-byte copy of
+`fishingspot.gd` that would have deleted `_notify()` and four call sites, and
+twice a copy from before an edit that had already landed. Every one was caught
+by comparing byte counts, and byte counts are cheap.
+
+The rule, in order:
+
+0. Re-fetch before you draw a conclusion from a file, not only before you edit
+   it. "I already read this" is not a reason to skip it; it is the reason to do
+   it.
+1. Re-fetch the file right before you edit it.
+2. Diff it against whatever you were about to write. Every difference should be
+   a change you recognise as yours. One you do not recognise is the user's work
+   and you are about to destroy it.
+3. Write back with the modification time you just fetched, so the write is
+   refused rather than silently winning if the file moved underneath you.
+4. If a write is refused for that reason, re-fetch and redo the edit. Never
+   force it.
+
+The failure mode is not an error message. It is a file that looks fine and is
+quietly missing an afternoon's work.
+
 **The API has a test suite. Run it before and after.** The API is a separate
 repository — run this from *its* folder, not from this one:
 
@@ -294,6 +342,158 @@ scripts in ASCII, or save them as UTF-8 **with** a BOM.
 parameter `position` shadows it and Godot warns at parse time. In a grid, the
 word you want is `cell` — it is also more accurate.
 
+### An invalid property assignment aborts the whole function
+
+GDScript does not skip a bad assignment and carry on. It raises, and everything
+below that line in the function never runs.
+
+`bossenemy._spawn_one_eruption()` set `leaves_puddle` on a script that did not
+have it. The error appeared on every pillar of every cast, and the three
+statements *below* it — the radius scale, the per-spike telegraph, and the
+interpolation reset — silently never executed. For months every spike used the
+default 0.9s telegraph, the staggered patterns never rolled outward, and each
+one slid in from the corner of the map on its first frame. None of that looked
+like a missing property.
+
+Guard an assignment onto anything whose script you do not control:
+
+```gdscript
+if "leaves_puddle" in eruption:
+    eruption.leaves_puddle = true
+```
+
+### add_child() runs _ready(), so configure the node before you add it
+
+Anything a node computes in `_ready()` from its own exported values is computed
+at `add_child()`. Set those values afterwards and `_ready()` has already run on
+the defaults — typically multiplying a profile against numbers that were not
+there yet.
+
+Both `bossenemy._spawn_one_eruption()` and `poisonslime._spawn_slime()` set
+every property first and add last, on purpose. Keep that order.
+
+### A Material is a Resource, so one instance is shared by everybody
+
+`sprite.material = mat` does not copy anything. Hand the same `ShaderMaterial`
+to two nodes and the second one to set a parameter decides the colour of both —
+so the last slime to spawn repaints every slime already on screen.
+
+The two correct answers, and which one applies is the whole design decision:
+
+- **Authored in a scene.** Every instance of `icearrow.tscn` shares one
+  material, and that is right, because every ice arrow is the same colour. Zero
+  allocation per shot. This is what the 48 elemental scenes are for.
+- **Built at runtime.** Only when instances of the *same* scene must differ.
+  Costs a Resource per node, which in a bullet-hell is a cost in the wrong place.
+
+The runtime path is still in `BaseEnemy._recolour_projectile()` and
+`AcidPuddle._apply_element_recolour()` as a fallback, and both now return early
+if the sprite already carries a material, so an authored scene always wins.
+
+### CPUParticles2D and ParticleProcessMaterial take different resource types
+
+Same-named properties, incompatible types, and the error only appears when the
+scene is opened:
+
+| node | colour ramp | scale curve |
+|---|---|---|
+| `CPUParticles2D` | `Gradient` | `Curve` |
+| `ParticleProcessMaterial` (GPU) | `GradientTexture1D` | `CurveTexture` |
+
+Handing a `GradientTexture1D` to a `CPUParticles2D` is a parse error, not a
+warning. It shipped twice in `cookingscreen.tscn` and would have failed the
+moment anyone opened a firepit.
+
+### A helper that copies part of a shared function stops inheriting its fixes
+
+`electricsprite.gd` had a private `_parent_to_projectiles_container()`. It
+looked like a local copy of `BaseEnemy.spawn_projectile_node()`. It was a copy
+of about a quarter of it, and the missing three quarters were the element stamp,
+`EnemyData.projectile_damage`, and the interpolation reset. So that one family
+fired orbs with the wrong damage type, ignored its own tier's damage, and still
+streaked in from the world origin — a bug whose fix carries a long comment
+saying it was applied "in the one place every enemy projectile passes through."
+That family did not pass through it.
+
+Nothing errored. Nothing logged. It was invisible for as long as nobody compared
+two enemies side by side.
+
+**If a shot, a spawn or a hazard needs to reach the world, route it through the
+shared function.** If the shared function does not fit, change it — do not grow
+a second one beside it. Check `bushmage.gd` and `bossstalker.gd` first when
+something elemental behaves oddly; both reach the world by a different door for
+real reasons, and both needed their element stamped by hand because of it.
+
+### Scale the sprite, size the shape — never scale a collision node
+
+Two separate pieces of documented guidance, and between them they rule out both
+of the obvious approaches:
+
+> Be careful to never scale your collision shapes in the editor. The "Scale"
+> property in the Inspector should remain `(1, 1)`. [...] Scaling a shape can
+> result in unexpected collision behavior.
+
+> [...] avoid translating, rotating, or scaling CollisionShapes to benefit from
+> the physics engine's internal optimizations.
+
+A `CollisionShape2D` inherits its parent's transform, so scaling the `Area2D`
+root is scaling the shape — the warning applies to both. The second quote is the
+one that matters at bullet-hell volumes: an untransformed shape lets the broad
+phase discard cheaply, and a scaled one gives that up on every projectile in
+flight.
+
+**The obvious fix is the other trap.** Resizing `CircleShape2D.radius` on an
+instance looks right and is worse: a shape declared as a sub-resource is shared
+by every instance of that scene, so resizing one pool resizes every pool on the
+floor. Same shape as the Material trap above. `bossenemy.gd`'s "SCALED, NOT
+RESIZED" comment is about exactly this and was correct for the case it was
+written for.
+
+**What actually works, when the scene is its own file:**
+
+1. Put the visual scale on the **sprite** — a `CanvasItem`, no physics involved.
+2. Put the size in the **shape resource**, in that scene's own copy of it.
+3. Leave `scale` at `(1, 1)` on the `Area2D` and on the `CollisionShape2D`.
+
+That is what all 48 elemental projectiles and all 9 puddles do. It only works
+because each is a full copy owning its own sub-resources — nothing is shared
+with the base scene, so writing `radius = 11.25` into `icepuddle.tscn` affects
+ice and nothing else.
+
+**Still outstanding:** `bossenemy._spawn_one_eruption()` and
+`bossstalker._drop_pillar()` both set `eruption.scale` at runtime, because the
+per-pattern spike radius is not known until the pattern is chosen. Fixing those
+properly means `resource_local_to_scene = true` on the spike's shape, or a
+`duplicate()` per spike, and both change how a load-bearing fight behaves. It is
+written down here rather than done.
+
+### Two .tscn facts that changed in Godot 4.6
+
+- **`load_steps` is deprecated.** "This attribute is now deprecated and should be
+  ignored if present." Do not add it to a generated scene.
+- **`unique_id` on a `[node]` is optional.** It is "only present in scenes saved
+  with Godot 4.6 or later [...] not guaranteed to be present", it is per-scene-file,
+  and the engine regenerates it on save. A scene written from outside the editor
+  can leave it out. Copying a scene, do **strip** it rather than duplicating the
+  original's — names stay primary and the ids are only a refactoring fallback,
+  but two files claiming the same id is a question nobody should have to answer.
+
+### Enum values are written into .tres as bare integers
+
+`element = 3` in a resource file is ICE only because ICE is fourth in
+`Element.Type`. Insert a value anywhere but the end and every `.tres`, every
+`.tscn` and every saved game silently means something else.
+
+`Element.Type` is **append only**. `LIGHTNING` and `POISON` are at the bottom
+for exactly this reason, even though the tidy place for them was in the middle.
+
+### Mixed tabs and spaces inside one indent is a parse error
+
+Godot's parser rejects a line indented with tabs and then padded with spaces —
+including alignment spaces inside a `const` table, which is where it is hardest
+to see. This project is tabs only. Alignment *after* the first non-space
+character is fine; leading whitespace must be tabs and nothing else.
+
 ## Traps on the server side
 
 ### CREATE TABLE IF NOT EXISTS does nothing to an existing table
@@ -351,17 +551,13 @@ Do not "fix" these.
   load-bearing even though `LocalStorage` is gone.
 - **`set_bus_volume()`, `get_bus_volume()` and `play_music()` are uncalled on
   purpose.** They are the Options screen, built ahead of its consumer.
-- **`firepit.cook()` is superseded, not waiting.** It predates the cooking
-  screen, which goes through `cook_requested` -> `cookingscreen.gd` ->
-  `POST /api/cooking/cook` instead. The firepit's own comments still describe
-  it as the entry point; they are stale. Nothing calls it, and nothing should -
-  it would be a client-side cook, which is exactly what the wire rule forbids.
-- **`player.gain_cooking_xp()` and `player.gain_fishing_xp()` are DEAD, not
-  early.** The server owns both skills now: `/api/cooking/cook` and
-  `/api/fishing/catch` grant the XP, and `PUT /api/character/skills` drops those
-  two rows from anything the client sends. A client-side grant could only ever
-  be overwritten on the next sync. Delete them rather than wiring them up, and
-  if a display needs the number, read it back from the server.
+- **`firepit.cook()`, `player.gain_cooking_xp()` and `player.gain_fishing_xp()`
+  are gone.** They were all client-side versions of something the server now
+  owns: `POST /api/cooking/cook` and `POST /api/fishing/catch` decide what was
+  cooked or caught and grant the XP, and `PUT /api/character/skills` drops the
+  cooking and fishing rows from anything the client sends. A client-side grant
+  could only ever be overwritten on the next sync, so there was nothing to wire
+  them to. If a display needs either number, read it back from the server.
 - **The owner panel is bound to backquote, not a function key.** F1-F7 and
   F9-F12 are `player.gd`'s debug keys and F8 is Godot's own stop-the-project
   shortcut, which closed the game. It was Shift+A before that, which collided
@@ -371,6 +567,97 @@ Do not "fix" these.
   rank; the ranks are owner > dev > mod > player. The server still sends that
   key, meaning "dev or above", because existing client code reads it. New code
   should read `Api.role` and call `Api.role_at_least()`.
+
+## The element system
+
+One artist's sheet becomes seven creatures. What stops that reading as seven
+coats of paint is that **an element changes how a thing behaves, not just what
+colour it is** — and the numbers for that live in three separate places, on
+purpose, because they answer three different questions.
+
+### Which file owns which number
+
+| question | lives in | example |
+|---|---|---|
+| How hard does it hit, how much HP? | `data/enemies/<el><family>.tres` | `icebushsniper.tres`: 14 damage, 208 hp |
+| How does its shot move and look? | `scene/projectiles/<el><base>.tscn` | `icearrow.tscn`: speed 320, scale 1.25 |
+| What does its ground hazard do? | `scene/projectiles/<el>puddle.tscn` | `icepuddle.tscn`: 5.0s, 2 tick, scale 1.25 |
+| What does the boss's spike do? | `ELEMENT_PROFILE` in `bossprojectile.gd` | ice: 1.35 telegraph, 1.25 size |
+
+**The `.tres` is a difficulty ladder, not a personality.** Dark is the hardest
+tier and light the easiest, and damage and HP both rank the same way in every
+family — that is tier, and it is deliberately orthogonal to element character.
+Do not encode "ice feels slow" as lower damage; encode it as lower speed.
+
+**Do not write `damage` into a variant scene.** `spawn_projectile_node()`
+overwrites it with `EnemyData.projectile_damage` whenever that is above zero,
+and every variant sets it. A `damage` line in `icearrow.tscn` is a knob that
+lies.
+
+### What each element means
+
+Consistent across every family, which is what makes it learnable — ICE means
+the same thing whether it is an arrow, a vine or a boss pillar.
+
+| element | speed | scale | reach | reads as |
+|---|---|---|---|---|
+| light | 1.35 | 1.00 | 0.85 | fastest thing in the game, short |
+| wind | 1.30 | 0.80 | 0.80 | fast, small, gone quickly |
+| dark | 1.00 | 1.00 | 1.00 | normal, and hard to track |
+| fire | 1.00 | 1.00 | 1.10 | normal, leaves the ground burning |
+| water | 0.90 | 1.05 | 1.25 | slow-ish, long, spreads |
+| ice | 0.80 | 1.25 | 1.30 | slow, big, reaches furthest |
+| earth | 0.80 | 1.35 | 0.85 | slow, biggest, short |
+
+`lifetime` is derived, not chosen: `reach / speed`. Reach is what a player
+feels; a lifetime typed in directly will contradict the speed sitting above it.
+
+Two levers are family-specific because the others are not real there:
+
+- **The vine is stationary**, so its lever is `impact_frame` — which of six
+  animation frames lands the hit. Light 2, wind 3, dark/fire/water 4, ice 5.
+  Five is the last frame and is as late as it goes.
+- **Arrows and orbs are screen-bounded.** Their `lifetime` is a failsafe, not a
+  range. Leave it alone; tune speed and scale.
+
+Dark's low-visibility signature is `self_modulate` alpha `0.78` on the sprite,
+and it is deliberately **not** applied to puddles. A bullet you half-see is a
+reaction test; a floor hazard you cannot see is just unfair, and dark is already
+the hardest tier. If dark feels cheap in playtest, that alpha is the first knob
+to back off — six files, one value.
+
+### The floor coverage budget
+
+Read `PUDDLE_CHANCE` in `bossenemy.gd` before changing any puddle number. A
+65-pillar cast every 2.16s with a 2.5s pool would cover 44% of the room in
+standing hazard; the constant exists to hold the real figure near 15%.
+
+Every element currently lands between 0% and 23%. **Area goes as the square of
+scale**, which is what makes this easy to get wrong — two multipliers in that
+table are compensation rather than character, and both say so in their comment:
+
+- **water 0.5**, because `extra: 2` means three pools per roll. At 1.4 it was 54%.
+- **ice 0.8**, because scale 1.25 is 1.56x the area. At 1.2 it was 35%.
+
+`bossprojectile.gd`'s `puddle_life_scale` (0.6) is what keeps a carpet from
+turning ice's five seconds into a floor with no floor left.
+
+### Adding to it
+
+- **A new elemental variant of an existing family** — copy the `.tres`, the
+  enemy `.tscn`, and the six-per-family projectile scenes, then add the scene to
+  `Projectiles.BY_BASE` and to `ENEMY_PROJECTILE_SCENES` in `testrunner.gd`.
+  Drag the enemy scene into the level; the respawner takes a census of what is
+  already placed, so it repopulates on its own.
+- **A new element** — append to `Element.Type`, add a hue to `HUES` and a colour
+  to `COLOURS` (measure it off the art if the art exists first), add a row to
+  `ELEMENT_PROFILE`, then build its scenes. An element with no scene falls back
+  to the base and is recoloured at runtime, so it degrades rather than breaking.
+- **Two registries map base scene to variant**: `src/shared/projectiles.gd` and
+  `src/shared/puddles.gd`. Both key on the base scene's `resource_path`, so an
+  `@export` pointed at something custom is not in the table and passes through
+  untouched. Neither can preload a scene whose script it is attached to — that
+  is why they are separate files and not constants on the projectile scripts.
 
 ## Conventions
 

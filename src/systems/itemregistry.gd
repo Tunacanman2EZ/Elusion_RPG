@@ -8,7 +8,6 @@
 # usage from other scripts:
 # var data: ItemData = ItemRegistry.get_item("healthpotion")
 # if ItemRegistry.has_item("ironsword"): ...
-# var all_weapons = ItemRegistry.get_items_by_type(ItemData.Type.WEAPON)
 #
 # validation:
 # - empty item_id → error logged, item skipped
@@ -31,10 +30,6 @@ const FALLBACK_ITEM_ID := "error_item"
 # dictionary mapping item_id (String) to ItemData (Resource).
 # this is the lookup table the rest of the game uses.
 var _items: Dictionary = {}
-
-# whether the registry has finished its initial scan.
-# other systems can poll is_loaded() if they need to wait.
-var _is_loaded: bool = false
 
 # how many ItemData resources the scan actually found on disk, counted
 # BEFORE the item_id validation below can reject any of them.
@@ -59,7 +54,6 @@ func _ready() -> void:
 	# scan the items folder once on autoload init. all .tres files under
 	# ITEMS_PATH get loaded and indexed by item_id.
 	_scan_folder(ITEMS_PATH)
-	_is_loaded = true
 
 	var loaded: int = _items.size()
 	if OS.is_debug_build():
@@ -174,21 +168,3 @@ func get_all_items() -> Array[ItemData]:
 	for item in _items.values():
 		all.append(item)
 	return all
-
-func get_items_by_type(item_type: ItemData.Type) -> Array[ItemData]:
-	# returns all items matching a given Type enum value.
-	# useful for "show me all weapons" or "list all consumables" filters.
-	var matching: Array[ItemData] = []
-	for item in _items.values():
-		if item.type == item_type:
-			matching.append(item)
-	return matching
-
-# =============================================================================
-# STATE QUERY
-# =============================================================================
-func is_loaded() -> bool:
-	# returns true once the initial scan has completed.
-	# other systems can poll this if they need to wait for the registry
-	# to be ready before doing item lookups.
-	return _is_loaded

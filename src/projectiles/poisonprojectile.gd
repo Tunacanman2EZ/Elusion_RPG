@@ -8,12 +8,30 @@ extends Area2D
 # EXPORTED SETTINGS
 # =============================================================================
 
-# NEW: the ground hazard this ball leaves where it lands.
-const PUDDLE_SCENE := preload("res://scene/projectiles/acidpuddle.tscn")
-
+# The ground hazard this ball leaves where it lands is chosen by element —
+# Puddles.scene_for(). There are nine of them, so there is no one scene to
+# preload here; an ice slime's ball leaves ice, not green acid with the hue
+# turned at runtime.
 @export var speed: float = 260.0
 @export var damage: int = 7
-@export var damage_type: StringName = &"poison"
+# The element this projectile deals. Element.Type is an int, not the
+# StringName this used to be: an enum is checked when the file is parsed,
+# and &"posion" was only ever going to be found by someone wondering why a
+# resistance did nothing.
+#
+# Overwritten at spawn for anything an enemy fires — see
+# BaseEnemy.spawn_projectile_node(), which stamps the caster's element on
+# it so a water slime's shot IS water without a second scene existing.
+# POISON, NOT EARTH — the same correction acidpuddle.gd needed, and this is
+# where the brown puddles were coming from.
+#
+# slime.png's ball is green. EARTH is ochre. They disagreed harmlessly for as
+# long as nothing read the element for colour, and then stopped being harmless
+# the moment this started passing it to the puddle it drops: every pool a slime
+# left was being hue-rotated to 0.0985, which is brown, on top of art that is
+# green. POISON is 0.3122 against the art's own 0.311, so the rotation is a
+# no-op and the acid comes out as drawn.
+@export var element: int = Element.Type.POISON
 
 # NEW: whether a hit leaves an acid puddle behind. Exported so a variant
 # ball (a weaker slime, a different enemy reusing this projectile) can fire
@@ -146,10 +164,19 @@ func _leave_puddle() -> void:
 	# Spawned on CONTACT only, not when the lifetime failsafe fires: a ball
 	# that flew off into empty space and timed out should not be quietly
 	# poisoning ground nobody is near.
-	if not leaves_puddle or PUDDLE_SCENE == null:
+	if not leaves_puddle:
 		return
 
-	var puddle: Node2D = PUDDLE_SCENE.instantiate()
+	# THE BALL'S ELEMENT PICKS THE SCENE, which for the poison slime that owns
+	# this projectile is poison and looks like nothing changed. It matters for
+	# every other slime: BaseEnemy.spawn_projectile_node() stamps the caster's
+	# element on the way out, so an ice slime's ball arrives here carrying ICE
+	# and leaves an ice pool with ice's own lifetime and tick.
+	var puddle: Node2D = Puddles.scene_for(element).instantiate()
+
+	# Carried through for the fallback case — see the same line in
+	# bossprojectile.gd. The scene already agrees for every element that has one.
+	puddle.element = element
 
 	# capture the position NOW — this node is about to be freed, so reading
 	# global_position from inside the deferred call below would be too late.
@@ -168,9 +195,9 @@ func _leave_puddle() -> void:
 	# deferred: this runs inside a collision callback, and adding a node to
 	# the tree mid-physics throws "Can't change this state while flushing
 	# queries".
+	# One deferred call: the pool places itself from spawn_at in _ready().
+	puddle.spawn_at = landing
 	container.call_deferred("add_child", puddle)
-	puddle.call_deferred("set", "global_position", landing)
-	puddle.call_deferred("reset_physics_interpolation")
 
 
 # =============================================================================
@@ -185,7 +212,7 @@ func _try_damage(target: Node) -> void:
 	if not _is_player_target(target):
 		return
 	if target.has_method(&"take_damage"):
-		target.take_damage(damage, damage_type)
+		target.take_damage(damage, element)
 
 
 # =============================================================================

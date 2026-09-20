@@ -88,14 +88,6 @@ var next_spawn_id: String = ""
 # GLOBAL STATE
 # =============================================================================
 
-# last known player world position — used by multiplayer sync.
-# currently set passively by player_moved signal listeners.
-var player_position: Vector2 = Vector2()
-
-# logged-in username — populated after Firebase auth in phase 2.
-# empty string means anonymous/offline mode.
-var logged_in_username: String = ""
-
 # true while a right-click that the UI already consumed is still held down.
 #
 # set by inventoryslot.gd when a slot handles a right-click; read by

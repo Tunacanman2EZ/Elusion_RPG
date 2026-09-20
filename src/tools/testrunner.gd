@@ -1038,8 +1038,88 @@ const ENEMY_PROJECTILE_SCENES := [
 	"res://scene/projectiles/magicprojectile.tscn",
 	"res://scene/projectiles/bossprojectile.tscn",
 	"res://scene/projectiles/secondbossprojectile.tscn",
-	"res://scene/projectiles/acidpuddle.tscn",
 	"res://scene/projectiles/vine.tscn",
+
+	# THE NINE PUDDLES, listed one by one on purpose.
+	#
+	# They were one scene recoloured at runtime, so one row here covered all of
+	# them. They are nine files now, each meant to be opened and tuned — which
+	# is nine chances for someone adjusting ice to clear a layer field they did
+	# not mean to touch. A pool on the wrong layer is invisible when it breaks:
+	# it draws, it fades on time, and it never hurts anybody.
+	"res://scene/projectiles/poisonpuddle.tscn",
+	"res://scene/projectiles/firepuddle.tscn",
+	"res://scene/projectiles/icepuddle.tscn",
+	"res://scene/projectiles/earthpuddle.tscn",
+	"res://scene/projectiles/waterpuddle.tscn",
+	"res://scene/projectiles/darkpuddle.tscn",
+	"res://scene/projectiles/lightningpuddle.tscn",
+	"res://scene/projectiles/lightpuddle.tscn",
+	"res://scene/projectiles/windpuddle.tscn",
+
+	# THE FORTY-EIGHT ELEMENTAL VARIANTS, six per family.
+	#
+	# Same reason as the puddles above, with more at stake: these are full
+	# copies, so a layer or mask edited on one of them does NOT follow from the
+	# base scene. A variant whose mask lost the player bit is an arrow that flies
+	# through everyone it is aimed at and reports nothing at all - the exact
+	# failure this whole section was written for, multiplied by forty-eight.
+	# bush sniper
+	"res://scene/projectiles/darkarrow.tscn",
+	"res://scene/projectiles/eartharrow.tscn",
+	"res://scene/projectiles/icearrow.tscn",
+	"res://scene/projectiles/lightarrow.tscn",
+	"res://scene/projectiles/waterarrow.tscn",
+	"res://scene/projectiles/windarrow.tscn",
+	# small slime
+	"res://scene/projectiles/darkpoisonarrow.tscn",
+	"res://scene/projectiles/earthpoisonarrow.tscn",
+	"res://scene/projectiles/icepoisonarrow.tscn",
+	"res://scene/projectiles/lightpoisonarrow.tscn",
+	"res://scene/projectiles/waterpoisonarrow.tscn",
+	"res://scene/projectiles/windpoisonarrow.tscn",
+	# large slime
+	"res://scene/projectiles/darkpoisonball.tscn",
+	"res://scene/projectiles/earthpoisonball.tscn",
+	"res://scene/projectiles/icepoisonball.tscn",
+	"res://scene/projectiles/lightpoisonball.tscn",
+	"res://scene/projectiles/waterpoisonball.tscn",
+	"res://scene/projectiles/windpoisonball.tscn",
+	# fire sprite
+	"res://scene/projectiles/darkfireprojectile.tscn",
+	"res://scene/projectiles/earthfireprojectile.tscn",
+	"res://scene/projectiles/icefireprojectile.tscn",
+	"res://scene/projectiles/lightfireprojectile.tscn",
+	"res://scene/projectiles/waterfireprojectile.tscn",
+	"res://scene/projectiles/windfireprojectile.tscn",
+	# electric sprite
+	"res://scene/projectiles/darkmagicprojectile.tscn",
+	"res://scene/projectiles/earthmagicprojectile.tscn",
+	"res://scene/projectiles/icemagicprojectile.tscn",
+	"res://scene/projectiles/lightmagicprojectile.tscn",
+	"res://scene/projectiles/watermagicprojectile.tscn",
+	"res://scene/projectiles/windmagicprojectile.tscn",
+	# bush mage
+	"res://scene/projectiles/darkvine.tscn",
+	"res://scene/projectiles/firevine.tscn",
+	"res://scene/projectiles/icevine.tscn",
+	"res://scene/projectiles/lightvine.tscn",
+	"res://scene/projectiles/watervine.tscn",
+	"res://scene/projectiles/windvine.tscn",
+	# boss pillar
+	"res://scene/projectiles/earthbossprojectile.tscn",
+	"res://scene/projectiles/firebossprojectile.tscn",
+	"res://scene/projectiles/icebossprojectile.tscn",
+	"res://scene/projectiles/lightbossprojectile.tscn",
+	"res://scene/projectiles/waterbossprojectile.tscn",
+	"res://scene/projectiles/windbossprojectile.tscn",
+	# boss gate spike
+	"res://scene/projectiles/earthsecondbossprojectile.tscn",
+	"res://scene/projectiles/firesecondbossprojectile.tscn",
+	"res://scene/projectiles/icesecondbossprojectile.tscn",
+	"res://scene/projectiles/lightsecondbossprojectile.tscn",
+	"res://scene/projectiles/watersecondbossprojectile.tscn",
+	"res://scene/projectiles/windsecondbossprojectile.tscn",
 ]
 
 # Bit VALUES, not indices: layer N in the Project Settings list is 1 << (N - 1).

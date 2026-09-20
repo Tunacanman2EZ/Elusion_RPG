@@ -30,6 +30,9 @@ SceneTransition="*res://src/systems/scenetransition.gd"
 Api="*res://src/systems/api.gd"
 Audio="*res://src/systems/audio.gd"
 Combat="*res://src/systems/combat.gd"
+PerfOverlay="*res://src/systems/perfoverlay.gd"
+Settings="*res://src/systems/settings.gd"
+WorldMap="*res://src/systems/worldmap.gd"
 
 [display]
 
@@ -131,6 +134,7 @@ sprint={
 
 [physics]
 
+common/physics_ticks_per_second=80
 2d/default_gravity=0.0
 common/physics_interpolation=true
 

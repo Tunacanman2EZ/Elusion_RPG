@@ -2339,15 +2339,11 @@ frame = 5
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=957407431]
 texture_filter = 1
-custom_minimum_size = Vector2(30, 4)
-offset_left = -18.189148
-offset_top = -37.40522
-offset_right = 17.810852
-offset_bottom = -29.40522
-min_value = 35.0
-max_value = 35.0
-value = 35.0
-fill_mode = 1
+offset_left = -18.0
+offset_top = -36.0
+offset_right = 18.0
+offset_bottom = -28.0
+value = 100.0
 texture_under = ExtResource("3_dqs0b")
 texture_progress = ExtResource("4_on7kh")
 

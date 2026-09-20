@@ -26,9 +26,15 @@ const LOGIN_MENU_PATH := "res://scene/ui/menus/loginmenu.tscn"
 # preloaded panel scenes
 const INVENTORY_SCENE     := preload("res://scene/ui/inventory/inventory.tscn")
 const STATSSCREEN_SCENE   := preload("res://scene/ui/statsscreen.tscn")
+const EQUIPMENT_SCENE     := preload("res://scene/ui/equipment/equipmentpanel.tscn")
+const OPTIONS_SCENE       := preload("res://scene/ui/menus/optionsscreen.tscn")
+const MAPSCREEN_SCENE     := preload("res://scene/ui/menus/mapscreen.tscn")
 const BANK_SCENE          := preload("res://scene/ui/bank/bankinventory.tscn")
 const LOOTBAG_PANEL_SCENE := preload("res://scene/ui/lootbag/lootbaginventory.tscn")
 const COOKING_PANEL_SCENE := preload("res://scene/ui/cooking/cookingscreen.tscn")
+const SHOP_PANEL_SCENE    := preload("res://scene/ui/shop/shopinventory.tscn")
+const KINGDOM_PANEL_SCENE := preload("res://scene/ui/kingdom/kingdomboard.tscn")
+const TRADE_PANEL_SCENE   := preload("res://scene/ui/trade/tradepanel.tscn")
 # Owner-only save-viewer panel (see ownerpanel.gd). preload is fine
 # here even though most players will never see it — the panel itself
 # fails closed via Api.is_owner, so preloading the scene
@@ -44,6 +50,17 @@ const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
 var active_character: Node = null
 
 # stat bar references — resolved in _ready
+# THE EXACT NUMBERS, printed over the bars.
+#
+# These are the answer to what the visible floor in _displayable() cannot give:
+# a bar has to round somewhere, a number does not. So the bar stays readable at
+# a glance and the label stays true to the point - and critically, the label
+# reads the REAL value, never the floored one, or the two would agree with each
+# other and both be wrong.
+var healthvalue:   Label = null
+var manavalue:     Label = null
+var staminavalue:  Label = null
+
 var healthbar:  TextureProgressBar = null
 var magicbar:   TextureProgressBar = null
 var staminabar: TextureProgressBar = null
@@ -51,11 +68,24 @@ var staminabar: TextureProgressBar = null
 # panel references — inventory is eagerly created in set_active_character,
 # stats/bank/lootbag/owner stay lazy.
 var inventory_screen: InventoryScreen = null
+
+# THE PAPER DOLL, WHICH OPENS AND CLOSES WITH THE BACKPACK rather than on a key
+# of its own. Gear is dragged from one to the other, so both ends of the drag
+# have to be on screen at once — and a second keybind, for a panel that is only
+# useful beside the first one, is a thing to learn for no gain. It sits
+# immediately to the left of the inventory; the offsets are in
+# equipmentpanel.tscn, and they are the inventory's own minus its width.
+var equipment_panel:  EquipmentPanel  = null
 var stats_screen:     Control         = null
 var bank_screen:      Control         = null
 var lootbag_panel:    Control         = null
 var cooking_panel:    Control         = null
+var shop_panel:       Control         = null
+var kingdom_panel:    Control         = null
+var trade_panel:      Control         = null
 var owner_panel:      Control         = null
+var options_screen:   Control         = null
+var map_screen:       Control         = null
 
 # hotbar reference — resolved on _ready
 var hotbar: Hotbar = null
@@ -96,6 +126,24 @@ const BAR_FILL_SPEED: float = 6.0
 # Without it the bar approaches the target asymptotically and never arrives.
 const BAR_SNAP_THRESHOLD: float = 0.25
 
+# EMPTY MUST MEAN DEAD, and without this it did not.
+#
+# A TextureProgressBar draws its fill as a fraction of the progress texture's
+# width. The health bar's texture is 148px, so the smallest thing it can draw
+# is 1/148th of the bar - and a level 50 tank has 1338 max HP, which is 0.22
+# pixels per point. The last FOUR of that tank's hit points round away to
+# nothing: the bar reads empty, the player is still alive, and every hit after
+# that looks like damage being taken from an empty bar.
+#
+# A health bar has exactly one reading it must never get wrong, and that is
+# this one. So a value above zero is never drawn as less than one pixel of
+# fill. It over-reports at the very bottom - a sliver can mean anything from 1
+# HP to about 9 on the biggest health pool in the game - and that is the right
+# trade: "almost nothing" and "nothing" are different facts and have to look
+# different. Exactly zero still draws empty, because that is the fact the
+# player needs.
+const BAR_MIN_VISIBLE_TEXTURE_PIXELS: float = 1.0
+
 # drag-cursor state — see _update_drag_cursor().
 # _mouse_mode_before_drag remembers what the pointer was doing before a drag
 # started, so ending one restores that rather than assuming it was visible.
@@ -135,6 +183,39 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# ESCAPE CLOSES WHATEVER IS OPEN. hide_panel() and is_panel_open() were
+	# written for this handler and then sat uncalled for months — every panel
+	# closed only by its own X, so a player with the bank up had to go find it.
+	#
+	# THE GUARD IS THE POINT. An unconditional hide_panel() would eat every
+	# Escape press in the game, and the pause menu this project will eventually
+	# want would never see one. Nothing open means this branch does not run.
+	#
+	# RAW KEYCODE, NOT "ui_cancel". project.godot redefines six ui_ actions and
+	# ui_cancel is not among them, so it would be resolving against an engine
+	# default that nothing in this project has ever declared. The backquote
+	# check below reads the keycode for the same reason.
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_ESCAPE:
+		# CLOSE FIRST, OPEN SECOND. Escape means "get this off my screen" if
+		# there is anything on it, and only means "show me the options" when
+		# there is not — which is the behaviour the comment above predicted
+		# when it said the pause menu this project will eventually want would
+		# need to see the press.
+		#
+		# The open branch is guarded by _any_panel_visible(), not
+		# is_panel_open(): the shop and the trade window are deliberately not
+		# closed by Escape, and stacking options on top of one would be worse
+		# than doing nothing.
+		if is_panel_open():
+			hide_panel()
+			get_viewport().set_input_as_handled()
+			return
+		if not _any_panel_visible():
+			toggle_options()
+			get_viewport().set_input_as_handled()
+			return
+
 	# Backquote / tilde toggles the owner panel. Anyone who is not the owner
 	# gets no response at all by design, not even an error — see
 	# _toggle_owner_panel().
@@ -245,6 +326,10 @@ func _exit_tree() -> void:
 # =============================================================================
 
 func _resolve_bar_references() -> void:
+	healthvalue   = get_node_or_null("barcontainer/healthbar/healthvalue")
+	manavalue     = get_node_or_null("barcontainer/magicbar/manavalue")
+	staminavalue  = get_node_or_null("barcontainer/staminabar/staminavalue")
+
 	healthbar  = get_node_or_null("barcontainer/healthbar")
 	magicbar   = get_node_or_null("barcontainer/magicbar")
 	staminabar = get_node_or_null("barcontainer/staminabar")
@@ -284,6 +369,8 @@ func _wire_nav_buttons() -> void:
 		"inventorybutton":         "_on_inventory_pressed",
 		"statsbutton":             "_on_stats_pressed",
 		"shopbutton":              "_on_shop_pressed",
+		"kingdombutton":           "_on_kingdom_pressed",
+		"tradebutton":             "_on_trade_pressed",
 		"mapbutton":               "_on_map_pressed",
 		"optionsbutton":           "_on_options_pressed",
 		"discordbutton":           "_on_discord_pressed",
@@ -358,15 +445,18 @@ func set_active_character(character: Node) -> void:
 
 	if inventory_screen != null:
 		inventory_screen.set_player(active_character)
+	# Only if it already exists: the doll is built the first time the backpack
+	# opens, and instantiating it here would put a panel on screen for a
+	# character who has not asked to see it.
+	if equipment_panel != null:
+		equipment_panel.set_player(active_character)
+	if map_screen != null and map_screen.has_method("set_player"):
+		map_screen.set_player(active_character)
 	if stats_screen != null:
 		stats_screen.setup_for_player(active_character)
 
 	if hotbar != null:
 		hotbar.set_player(active_character)
-
-
-func get_active_character() -> Node:
-	return active_character
 
 
 # =============================================================================
@@ -381,17 +471,43 @@ func update_bars() -> void:
 	if active_character == null:
 		return
 
+	# Through _displayable() like the animated path, or switching characters
+	# would snap the bars to a raw value the eased path never shows - the same
+	# number drawn two different ways depending on how you arrived at it.
 	if healthbar:
-		healthbar.max_value = active_character.get("max_hp")
-		healthbar.value     = active_character.get("hp")
+		healthbar.max_value = maxf(active_character.get("max_hp"), 1.0)
+		healthbar.value     = _displayable(healthbar, active_character.get("hp"))
 
 	if magicbar:
-		magicbar.max_value = max(active_character.get("max_mana"), 1)
-		magicbar.value     = active_character.get("mana")
+		magicbar.max_value = maxf(active_character.get("max_mana"), 1.0)
+		magicbar.value     = _displayable(magicbar, active_character.get("mana"))
 
 	if staminabar:
-		staminabar.max_value = active_character.get("max_stamina")
-		staminabar.value     = active_character.get("stamina")
+		staminabar.max_value = maxf(active_character.get("max_stamina"), 1.0)
+		staminabar.value     = _displayable(staminabar, active_character.get("stamina"))
+
+	_write_readouts()
+
+
+func _write_readouts() -> void:
+	# STRAIGHT FROM THE CHARACTER, not from bar.value. bar.value has been put
+	# through _displayable() and is deliberately a little generous at the
+	# bottom; printing that would turn one honest approximation into two
+	# numbers that lie in agreement.
+	if active_character == null:
+		return
+	_write_readout(healthvalue,  active_character.get("hp"),      active_character.get("max_hp"))
+	_write_readout(manavalue,    active_character.get("mana"),    active_character.get("max_mana"))
+	_write_readout(staminavalue, active_character.get("stamina"), active_character.get("max_stamina"))
+
+
+func _write_readout(label: Label, amount: float, amount_max: float) -> void:
+	if label == null:
+		return
+	# Rounded rather than truncated: at 0.6 HP left, "0 / 432" beside a bar
+	# that still shows something is the same contradiction this whole change
+	# exists to remove.
+	label.text = "%d / %d" % [roundi(amount), roundi(maxf(amount_max, 1.0))]
 
 
 func _animate_bars(delta: float) -> void:
@@ -402,6 +518,8 @@ func _animate_bars(delta: float) -> void:
 	_ease_bar(magicbar,    active_character.get("mana"),    active_character.get("max_mana"),    delta)
 	_ease_bar(staminabar,  active_character.get("stamina"), active_character.get("max_stamina"), delta)
 
+	_write_readouts()
+
 
 func _ease_bar(bar: TextureProgressBar, target: float, stat_max: float, delta: float) -> void:
 	if bar == null:
@@ -410,23 +528,44 @@ func _ease_bar(bar: TextureProgressBar, target: float, stat_max: float, delta: f
 	# keep the range current — max_hp changes on every level-up
 	bar.max_value = maxf(stat_max, 1.0)
 
+	# Everything below works on what is DRAWN, not on the raw stat - see
+	# _displayable(). Easing toward the raw value and only flooring at the end
+	# would make the bar creep below its own floor and back.
+	var shown: float = _displayable(bar, target)
+
 	# DROPS SNAP. Damage has to read instantly: a health bar that glides down
 	# after a hit tells you a moment late that you were hit, and in a fight
 	# that moment is the whole point of having a health bar. Only refilling
 	# eases, which is where the wobble lived anyway.
-	if target <= bar.value:
-		bar.value = target
+	if shown <= bar.value:
+		bar.value = shown
 		return
 
-	if target - bar.value <= BAR_SNAP_THRESHOLD:
-		bar.value = target
+	if shown - bar.value <= BAR_SNAP_THRESHOLD:
+		bar.value = shown
 		return
 
 	# Exponential ease, framerate independent. Using exp() rather than a plain
 	# lerp(a, b, speed * delta) matters: the naive version moves a different
 	# fraction of the gap at 60fps than at 144, so the bars would fill at
 	# different speeds on different machines.
-	bar.value = lerpf(bar.value, target, 1.0 - exp(-BAR_FILL_SPEED * delta))
+	bar.value = lerpf(bar.value, shown, 1.0 - exp(-BAR_FILL_SPEED * delta))
+
+
+func _displayable(bar: TextureProgressBar, amount: float) -> float:
+	"""What to DRAW for this amount: the amount itself, or the smallest sliver
+	the bar can actually render, whichever is larger. Zero draws zero."""
+	if bar == null or amount <= 0.0:
+		return 0.0
+
+	# Measured off the texture rather than hard-coded, so a bar with different
+	# art gets the floor its own art deserves. Falling back to 100 makes the
+	# floor 1% if a bar somehow has no progress texture, which is a harmless
+	# answer for a bar that cannot be seen anyway.
+	var texture: Texture2D = bar.texture_progress
+	var width: float = float(texture.get_width()) if texture != null else 100.0
+	var floor_value: float = bar.max_value * (BAR_MIN_VISIBLE_TEXTURE_PIXELS / maxf(width, 1.0))
+	return maxf(amount, floor_value)
 
 
 # =============================================================================
@@ -445,12 +584,83 @@ func _on_shop_pressed() -> void:
 	print("shop pressed (not yet implemented)")
 
 
+func _on_trade_pressed() -> void:
+	await toggle_trade()
+
+
+func _on_kingdom_pressed() -> void:
+	await toggle_kingdom()
+
+
+func _ensure_map_screen() -> void:
+	if map_screen != null:
+		return
+	map_screen = MAPSCREEN_SCENE.instantiate()
+	add_child(map_screen)
+	if active_character != null and map_screen.has_method("set_player"):
+		map_screen.set_player(active_character)
+	map_screen.visible = false
+
+
+func toggle_map() -> void:
+	_ensure_map_screen()
+	if map_screen == null:
+		return
+	if map_screen.visible:
+		map_screen.close()
+	else:
+		if active_character != null and map_screen.has_method("set_player"):
+			map_screen.set_player(active_character)
+		map_screen.open()
+
+
 func _on_map_pressed() -> void:
-	print("map pressed (not yet implemented)")
+	# WHAT THIS USED TO BE, in full:
+	#
+	#     print("map pressed (not yet implemented)")
+	#
+	# tools/audit.py found it under "handlers wired to nothing", alongside the
+	# shop button, which is still there.
+	toggle_map()
+
+
+func _ensure_options_screen() -> void:
+	if options_screen != null:
+		return
+	options_screen = OPTIONS_SCENE.instantiate()
+	add_child(options_screen)
+	options_screen.visible = false
+
+	# NOTHING IS CONNECTED TO `closed`, ON PURPOSE. There is nothing to tear
+	# down: the panel writes through Settings, which has already applied and
+	# saved by the time it closes.
+	#
+	# A handler was written here and it did nothing but `pass` — which
+	# tools/audit.py flagged within the hour, under "handlers wired to
+	# nothing", which is the check that exists because of the Options button
+	# this panel replaced. A signal connected to an empty function is a
+	# connection someone later has to read and decide about. The signal stays
+	# declared for anything that does want it.
+
+
+func toggle_options() -> void:
+	_ensure_options_screen()
+	if options_screen == null:
+		return
+	if options_screen.visible:
+		options_screen.close()
+	else:
+		options_screen.open()
 
 
 func _on_options_pressed() -> void:
-	print("options pressed (not yet implemented)")
+	# WHAT THIS USED TO BE, in full:
+	#
+	#     print("options pressed (not yet implemented)")
+	#
+	# The button has been on the nav row the whole time, styled and wired, and
+	# pressing it printed a line to a console the player does not have.
+	toggle_options()
 
 
 func _on_discord_pressed() -> void:
@@ -478,12 +688,37 @@ func _on_logout_pressed() -> void:
 		CharacterData.save_character_state(active_character)
 	active_character = null
 
+	# NULLED AS WELL AS FREED, and that is not tidiness.
+	#
+	# The await further down can sit for the full 10-second request timeout
+	# against a dead server, and this HUD keeps running the whole time: _process
+	# ticks, hotbar keys 1-9 still fire, _unhandled_input still routes. Every
+	# guard on these references is `!= null`, and a queue_freed node is NOT null
+	# — bankinventory.gd says exactly this ("the cache holds a freed instance,
+	# which is not null"). So a hotbar key pressed during a slow logout reached
+	# get_node_or_null() on a freed inventory screen.
+	#
+	# Freeing and nulling together makes those same guards tell the truth for
+	# the seconds where it matters.
 	if inventory_screen: inventory_screen.queue_free()
 	if stats_screen:     stats_screen.queue_free()
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
 	if cooking_panel:    cooking_panel.queue_free()
+	if shop_panel:       shop_panel.queue_free()
+	if kingdom_panel:    kingdom_panel.queue_free()
+	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
+
+	inventory_screen = null
+	stats_screen     = null
+	bank_screen      = null
+	lootbag_panel    = null
+	cooking_panel    = null
+	shop_panel       = null
+	kingdom_panel    = null
+	trade_panel      = null
+	owner_panel      = null
 
 	# NEW: reset CharacterData's in-memory state too — logout was only ever
 	# clearing the UI panels, never actually telling CharacterData the user
@@ -529,12 +764,37 @@ func _on_switch_character_pressed() -> void:
 		CharacterData.save_character_state(active_character)
 	active_character = null
 
+	# NULLED AS WELL AS FREED, and that is not tidiness.
+	#
+	# The await further down can sit for the full 10-second request timeout
+	# against a dead server, and this HUD keeps running the whole time: _process
+	# ticks, hotbar keys 1-9 still fire, _unhandled_input still routes. Every
+	# guard on these references is `!= null`, and a queue_freed node is NOT null
+	# — bankinventory.gd says exactly this ("the cache holds a freed instance,
+	# which is not null"). So a hotbar key pressed during a slow logout reached
+	# get_node_or_null() on a freed inventory screen.
+	#
+	# Freeing and nulling together makes those same guards tell the truth for
+	# the seconds where it matters.
 	if inventory_screen: inventory_screen.queue_free()
 	if stats_screen:     stats_screen.queue_free()
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
 	if cooking_panel:    cooking_panel.queue_free()
+	if shop_panel:       shop_panel.queue_free()
+	if kingdom_panel:    kingdom_panel.queue_free()
+	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
+
+	inventory_screen = null
+	stats_screen     = null
+	bank_screen      = null
+	lootbag_panel    = null
+	cooking_panel    = null
+	shop_panel       = null
+	kingdom_panel    = null
+	trade_panel      = null
+	owner_panel      = null
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
 
@@ -584,10 +844,12 @@ func toggle_inventory() -> void:
 
 	if inventory_screen.visible:
 		inventory_screen.hide_inventory()
+		_hide_equipment_panel()
 	else:
 		if active_character != null:
 			inventory_screen.set_player(active_character)
 		inventory_screen.show_inventory()
+		_show_equipment_panel()
 
 
 func show_inventory() -> void:
@@ -599,11 +861,53 @@ func show_inventory() -> void:
 	if active_character != null:
 		inventory_screen.set_player(active_character)
 	inventory_screen.show_inventory()
+	_show_equipment_panel()
 
 
 func hide_inventory() -> void:
 	if inventory_screen != null:
 		inventory_screen.hide_inventory()
+	_hide_equipment_panel()
+
+
+# =============================================================================
+# PANEL TOGGLES — EQUIPMENT
+# =============================================================================
+# NOT ITS OWN TOGGLE. Every path above that shows or hides the backpack shows
+# or hides the doll with it, including inventory_screen.closed, which routes
+# through hide_inventory(). One panel that is only useful next to another is
+# not two panels.
+
+func _ensure_equipment_panel() -> void:
+	if equipment_panel != null:
+		return
+
+	equipment_panel = EQUIPMENT_SCENE.instantiate()
+	add_child(equipment_panel)
+
+	# Closing the doll closes the backpack too, rather than leaving a bag open
+	# with nothing to drag into. Its own close button is there because a panel
+	# with no way out looks broken, not because the two are independent.
+	if not equipment_panel.closed.is_connected(hide_inventory):
+		equipment_panel.closed.connect(hide_inventory)
+
+	if active_character != null:
+		equipment_panel.set_player(active_character)
+	equipment_panel.visible = false
+
+
+func _show_equipment_panel() -> void:
+	_ensure_equipment_panel()
+	if equipment_panel == null:
+		return
+	if active_character != null:
+		equipment_panel.set_player(active_character)
+	equipment_panel.show_panel()
+
+
+func _hide_equipment_panel() -> void:
+	if equipment_panel != null:
+		equipment_panel.hide_panel()
 
 
 func _attach_inventory_to_hotbar() -> void:
@@ -642,21 +946,6 @@ func toggle_stats() -> void:
 		if active_character != null:
 			stats_screen.setup_for_player(active_character)
 		stats_screen.visible = true
-
-
-func show_stats() -> void:
-	if stats_screen == null:
-		toggle_stats()
-		return
-
-	if active_character != null:
-		stats_screen.setup_for_player(active_character)
-	stats_screen.visible = true
-
-
-func hide_stats() -> void:
-	if stats_screen != null:
-		stats_screen.visible = false
 
 
 func _on_stats_close_requested() -> void:
@@ -698,6 +987,64 @@ func open_lootbag(world_bag: Node, player: Node) -> void:
 		lootbag_panel.open_for_bag(world_bag, player)
 
 
+# =============================================================================
+# PANEL TOGGLES — SHOP
+# =============================================================================
+
+func open_shop(shop_id: String, player: Node) -> void:
+	# Lazy like every other panel here: built the first time a vendor is used
+	# and kept afterwards, so walking back to the counter does not re-parse the
+	# scene. The catalogue itself is re-fetched on every open, because stock and
+	# prices are the server's and may have changed while the player was away.
+	if shop_panel == null:
+		shop_panel = SHOP_PANEL_SCENE.instantiate()
+		add_child(shop_panel)
+
+	# WITH the inventory, not instead of it. A shop the player cannot see their
+	# own bag next to is one where they buy a second sword because they forgot
+	# about the first — and the purchase lands in that bag, so it wants to be on
+	# screen when it does. Same reason toggle_bank() shows it.
+	show_inventory()
+
+	if shop_panel.has_method("open_for_shop"):
+		shop_panel.open_for_shop(shop_id, player)
+
+
+func toggle_trade() -> void:
+	# Built on first use, like every other panel here. It polls while visible
+	# and not at all while closed, so a player who never trades costs the
+	# server nothing.
+	if trade_panel == null:
+		trade_panel = TRADE_PANEL_SCENE.instantiate()
+		add_child(trade_panel)
+
+	if trade_panel.has_method("toggle_panel"):
+		await trade_panel.toggle_panel(active_character)
+
+
+func toggle_kingdom() -> void:
+	# BUILT ON FIRST USE, like every other panel here. Most players open this
+	# rarely, and a board instantiated at spawn is a node polling nothing and
+	# holding a scroll container for a screen nobody asked for.
+	if kingdom_panel == null:
+		kingdom_panel = KINGDOM_PANEL_SCENE.instantiate()
+		add_child(kingdom_panel)
+
+	if kingdom_panel.has_method("toggle_board"):
+		await kingdom_panel.toggle_board()
+
+
+func close_shop() -> void:
+	# Safe to call when nothing is open: the vendor calls this on walk-away
+	# without knowing whether the player ever pressed interact.
+	if shop_panel != null and shop_panel.has_method("close_shop"):
+		shop_panel.close_shop()
+
+
+# =============================================================================
+# PANEL TOGGLES — COOKING
+# =============================================================================
+
 func open_cooking(firepit: Node, player: Node) -> void:
 	# Lazy-instantiated on first use and then kept, exactly like the loot bag
 	# panel above — a firepit is a thing most players walk past, so the scene is
@@ -726,6 +1073,16 @@ func hide_panel() -> void:
 	if bank_screen != null and bank_screen.visible:
 		if bank_screen.has_method("close_bank"):
 			bank_screen.close_bank()
+	# The cooking panel counts in is_panel_open() below, so it has to close
+	# here too — otherwise Escape would report "something is open", swallow the
+	# press, and shut nothing.
+	if cooking_panel != null and cooking_panel.visible:
+		if cooking_panel.has_method("close_panel"):
+			cooking_panel.close_panel()
+	if options_screen != null and options_screen.visible:
+		options_screen.close()
+	if map_screen != null and map_screen.visible:
+		map_screen.close()
 
 
 func is_panel_open() -> bool:
@@ -733,4 +1090,27 @@ func is_panel_open() -> bool:
 	var stats_open: bool = stats_screen     != null and stats_screen.visible
 	var bank_open:  bool = bank_screen      != null and bank_screen.visible
 	var cook_open:  bool = cooking_panel    != null and cooking_panel.visible
-	return inv_open or stats_open or bank_open or cook_open
+	var opts_open:  bool = options_screen   != null and options_screen.visible
+	var map_open:   bool = map_screen       != null and map_screen.visible
+	return inv_open or stats_open or bank_open or cook_open or opts_open or map_open
+
+
+func _any_panel_visible() -> bool:
+	# EVERY PANEL, not the five is_panel_open() knows about.
+	#
+	# The two questions are different and it matters. is_panel_open() means
+	# "is there something Escape should close", and it deliberately leaves out
+	# the shop, the kingdom board, the loot bag, the trade window and the owner
+	# panel — the trade window in particular has a server-side counterpart and
+	# is not something a stray keypress should shut.
+	#
+	# THIS one means "is the screen already busy", and it is the guard on
+	# Escape OPENING the options panel. Without it, pressing Escape at a
+	# vendor would stack options on top of the shop, because is_panel_open()
+	# would answer false about a panel that is plainly on screen.
+	for panel in [inventory_screen, stats_screen, bank_screen, lootbag_panel,
+			cooking_panel, shop_panel, kingdom_panel, trade_panel,
+			owner_panel, options_screen, map_screen]:
+		if panel != null and panel.visible:
+			return true
+	return false

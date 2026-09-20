@@ -79,6 +79,15 @@ const SOUNDS: Dictionary = {
 	"bag_open":       "",  # opening the loot panel
 	"inventory_move": "",  # dropping an item into a slot
 
+	# --- gathering and cooking ---
+	# "cook" WAS ALREADY BEING CALLED AND WAS NOT REGISTERED. cookingscreen.gd
+	# has asked for it since it was written, so every fish landed a
+	# push_warning instead of a sound. An unassigned id is a silent no-op by
+	# design — an id that does not exist at all is a typo, and _stream_for()
+	# is right to say so.
+	"cook":           "",  # a fish finishing on the fire
+	"fire_light":     "",  # a firepit catching
+
 	# --- progression ---
 	"level_up":       "",  # character level
 	"skill_up":       "",  # attack / defence / agility / magic level

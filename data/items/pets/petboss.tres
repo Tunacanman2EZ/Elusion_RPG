@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="ItemData" format=3]
+
+[ext_resource type="Texture2D" uid="uid://djeltmsl4xet5" path="res://art/enemy/boss.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+[ext_resource type="PackedScene" path="res://scene/pets/petboss.tscn" id="3_pet"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_peticon"]
+atlas = ExtResource("1_icon")
+region = Rect2(8, 4, 48, 48)
+
+[resource]
+script = ExtResource("2_script")
+item_id = "petboss"
+display_name = "Crowned Companion"
+description = "Still wearing the crown, still convinced it rules something. Calls up spikes a fraction of the size it used to."
+icon = SubResource("AtlasTexture_peticon")
+stackable = false
+max_stack = 1
+value = 5000
+tier = 5
+droppable = false
+required_level = 1
+type = 5
+pet_scene = ExtResource("3_pet")
+pet_source_name = "The Crowned"
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

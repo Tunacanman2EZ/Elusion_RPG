@@ -1,0 +1,99 @@
+[gd_scene load_steps=2 format=3 uid="uid://ckt2wm9x4vqpe"]
+
+[ext_resource type="Script" path="res://src/ui/menus/mapscreen.gd" id="1_mapscreen"]
+
+[node name="mapscreen" type="Control"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -240.0
+offset_right = 260.0
+offset_bottom = 240.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_mapscreen")
+
+[node name="mainpanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
+layout_mode = 2
+
+[node name="mapheaderlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 15
+text = "Map"
+vertical_alignment = 1
+
+[node name="mapclosebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+text = "x"
+
+[node name="hseparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="mapframe" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="mapcentre" type="CenterContainer" parent="mainpanel/margincontainer/vboxcontainer/mapframe"]
+layout_mode = 2
+
+[node name="mapview" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/mapframe/mapcentre"]
+unique_name_in_owner = true
+texture_filter = 1
+layout_mode = 2
+stretch_mode = 5
+
+[node name="mapmarkers" type="Control" parent="mainpanel/margincontainer/vboxcontainer/mapframe/mapcentre/mapview"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="footerrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+
+[node name="mapexploredlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/footerrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 11
+text = "0% explored"
+vertical_alignment = 1

@@ -1613,17 +1613,12 @@ shape = SubResource("CapsuleShape2D_igatj")
 debug_color = Color(0, 0, 0, 0.41960785)
 
 [node name="healthbar" type="TextureProgressBar" parent="." unique_id=912969549]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
+texture_filter = 1
 offset_left = -32.0
-offset_top = -39.0
+offset_top = -38.0
 offset_right = 32.0
-offset_bottom = -29.0
-grow_horizontal = 2
-grow_vertical = 2
+offset_bottom = -28.0
 value = 100.0
-fill_mode = 1
 texture_under = ExtResource("2_hpempty")
 texture_progress = ExtResource("3_hpfull")
 

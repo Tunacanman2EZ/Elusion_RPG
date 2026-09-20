@@ -18,6 +18,23 @@ const REVIVE_COST: int = 20
 # deliberately equal to REVIVE_COST so a dupe pet is exactly one free revive.
 const DUPE_PET_LUSIONS: int = 20
 
+# THE OTHER WAY OUT OF A DEATH: pay in gold instead of lusions.
+#
+# A FRACTION, NOT A PRICE, and that is the whole idea. A flat figure is either
+# unaffordable at level 3 or pocket change at level 30, and death is supposed to
+# sting the same amount at both ends. Eighty percent of everything you own
+# always hurts, and — because it is a share of what you HAVE — it can always be
+# paid. Nobody is ever stranded on the death screen with no way back.
+#
+# OF EVERYTHING, carry and bank together. Banked gold is the part death cannot
+# touch, which is exactly why it is worth spending here: it is the only pile
+# still standing when you are looking at this screen.
+#
+# THE GOLD IS NOT MOVED, IT IS DESTROYED, and it lands on the kingdom board
+# beside the trade tax. A sink nobody can see is a tax; a sink with a
+# scoreboard is a contribution. See gold_ledger and /api/economy/kingdom.
+const REVIVE_GOLD_RATE: float = 0.80
+
 
 # =============================================================================
 # PROGRESSION
@@ -127,3 +144,34 @@ const SKILL_XP_GROWTH: Dictionary = {
 	"fishing": 1.12,
 	"cooking": 1.10,
 }
+
+
+# =============================================================================
+# THE KINGDOM TAX
+# =============================================================================
+# Every player-to-player trade is taxed, and the tax is DESTROYED rather than
+# paid to anyone. That is the whole point: it is the only structural gold sink
+# in the game.
+#
+# WHY A TAX AND NOT A FEE TO AN NPC. A fee that lands in somebody's pocket moves
+# gold; it does not remove it. Supply keeps climbing and the only question is
+# who is holding it. Burning it is what lets total supply find an equilibrium
+# instead of growing without bound - at a faucet rate F, a tax rate r and a
+# trade velocity v, supply settles near F / (r * v) rather than at infinity.
+#
+# THE RATE IS THE ONE DIAL. Raise it and the world drains faster and players
+# trade less; lower it and supply climbs. 0.05 is a starting position, not a
+# measurement: velocity cannot be known before there are players to observe, and
+# v is half of what sets the equilibrium. Expect to retune this against a real
+# server, and retune it HERE - /api/economy/supply is the instrument for it.
+const KINGDOM_TAX_RATE: float = 0.05
+
+# THE FLOOR, AND IT IS WHAT STOPS TRADE-SPLITTING.
+#
+# Round a 5% tax down and any trade under 20 gold of value is free. Free trades
+# are a laundering channel: move 10,000 gold as a thousand untaxed dribbles and
+# the sink never fires. Rounding UP with a floor of 1 makes splitting strictly
+# more expensive than not splitting - one trade worth 100 costs 5, the same 100
+# as ten trades of 10 costs 10 - so the cheapest way to move value is the honest
+# one. Same rule and same reason as shop_price().
+const KINGDOM_TAX_MINIMUM: int = 1

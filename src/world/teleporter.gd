@@ -59,6 +59,15 @@ func _on_body_entered(body):
 
 func _start_cooldown() -> void:
 	await get_tree().create_timer(reenter_cooldown).timeout
+
+	# A SceneTreeTimer belongs to the tree, not to this node, so it outlives a
+	# scene change. Step on the teleporter and then walk into a door within
+	# reenter_cooldown seconds and this resumes on a freed Area2D to write a
+	# member on it. Every other await in src/world/ carries this guard —
+	# fishingspot, enemyrespawner, lever — and this was the one that did not.
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+
 	can_teleport = true
 
 func _on_body_exited(body):

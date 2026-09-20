@@ -146,12 +146,50 @@ class_name EnemyData
 # NONE (0) is physical and is the right answer for anything that hits you with
 # an object rather than a force — the bush sniper's arrow is not an element.
 #
-# THE COLOUR BELOW SHOULD MATCH THIS. Element.colour_for() is the authored
-# answer for every type, and body_tint is what actually gets drawn; they are
-# kept as two fields rather than one so a creature CAN sit off-palette on
-# purpose (a rare variant, a boss), but a normal enemy whose tint disagrees
-# with its element is a bug and the test suite says so.
+# IT DOES NOT HAVE TO MATCH WHAT THE CREATURE LOOKS LIKE, and an earlier
+# version of this comment said the opposite. An element is a damage type. The
+# colour is the artist's. When those two agree — the fire sprite measures hue
+# 0.056 against FIRE's 0.056, which is as close as two numbers get — that is
+# because the artist already drew the element, not because a rule forced it.
+# When they disagree, the art wins: the boss is gold and its element is DARK,
+# and nothing should repaint it to settle the argument.
+#
+# The one place the two are locked together is a DERIVED variant, which is
+# made by recolouring a sheet to an element's hue on purpose. See
+# recolour_to_element below.
 @export var element: Element.Type = Element.Type.NONE
+
+
+# =============================================================================
+# RECOLOUR — OFF BY DEFAULT, AND THAT DEFAULT IS THE WHOLE POINT
+# =============================================================================
+
+# FALSE means "draw the sheet exactly as the artist drew it". That is the
+# default, it is what every original creature in this project uses, and a new
+# enemy gets it for free by doing nothing.
+#
+# WHY THIS EXISTS. The recolour shader replaces a pixel's hue outright — that
+# is how it turns one sheet into seven creatures without new art. Run it over
+# an ORIGINAL sheet and it does the same thing, which is not a tint, not a
+# tweak, and not reversible by eye: every chromatic pixel in the drawing is
+# flattened to a single hue. Four of this project's six original enemies were
+# being rendered that way, and the measurements are what they are —
+#
+#     electricsprite   drawn #5299C5 blue      rendered as WIND mint green
+#     slime            drawn #2F9C1F green     rendered as EARTH brown
+#     bushmage         drawn #818A28 olive     rendered as EARTH brown
+#     boss             drawn #DE890E gold      rendered as DARK violet
+#
+# The electric sprite was the clearest case: it was filed under WIND, so it
+# rendered as the same mint green as windsprite.tres — the artist's original
+# had been overwritten by a recolour of itself.
+#
+# SO THE DEFAULT IS OFF, not on-unless-suppressed. A flag that has to be
+# remembered to protect someone's work is a flag that will be forgotten once.
+# Set this TRUE only on a resource that is deliberately a palette-swap of a
+# sheet that already exists somewhere else — the six *sprite.tres variants
+# built from electricsprite.png are the whole current list.
+@export var recolour_to_element: bool = false
 
 
 # =============================================================================
@@ -181,6 +219,22 @@ class_name EnemyData
 # best as a deeper or more acidic version of the same element, which is also
 # the more honest signal: a poison slime that is more poisonous.
 @export var body_tint: Color = Color.WHITE
+
+
+# How hard to push saturation when this creature is recoloured by
+# element_recolour.gdshader. 1.0 leaves the art's own saturation alone.
+#
+# A HUE ROTATION PRESERVES SATURATION, WHICH IS USUALLY RIGHT AND SOMETIMES
+# NOT. The sheets are not equally coloured — the bush archer measures 0.18 and
+# the slime 0.66 — so one element applied to both gives a washed-out archer
+# beside a vivid slime. Element.suggested_saturation_scale() turns a sheet's
+# measured saturation into a starting value: 1.6 for the archer and the
+# electric sprite, 1.3 for the bush mage, 1.0 for the slime and fire sprite.
+#
+# Authored per creature rather than computed at runtime, because "how vivid
+# should this thing be" is art direction and the measurement is only ever a
+# first guess at it.
+@export var saturation_scale: float = 1.0
 
 
 # =============================================================================

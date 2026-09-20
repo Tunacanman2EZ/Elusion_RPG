@@ -242,8 +242,14 @@ func _ready() -> void:
 	super._ready()
 
 	# after super._ready(), because BaseEnemy._wire_healthbar() runs in there
-	# and sets min/max/value. It never touches geometry, so the size and
-	# position fix has to happen here.
+	# and sets min/max/value. It never touches the BAR's geometry, so the size
+	# and position fix has to happen here.
+	#
+	# It does add one child to the bar — the health readout label — and that
+	# label's counter-scale is computed from bar.scale, which the next line is
+	# about to change. BaseEnemy re-lays it out deferred for exactly this
+	# reason; see _wire_health_readout(). Nothing to do here but be aware that
+	# the bar now has a child worth not clobbering.
 	_fit_healthbar_to_form()
 
 	# frame-accurate firing, same as bushsniper.gd.
@@ -392,6 +398,12 @@ func fire_projectile() -> void:
 	if scene == null:
 		return
 
+	# THE ELEMENT PICKS THE SCENE — see bushsniper.gd. current_element() rather
+	# than enemy_data.element, so a small split off a water parent fires water:
+	# element_override carries the parent's element down, and a small that
+	# resolved its own EnemyData would otherwise be born poison.
+	scene = Projectiles.variant_of(scene, current_element())
+
 	var origin: Vector2 = _projectile_origin(attack_direction)
 	var projectile: Node = scene.instantiate()
 
@@ -454,8 +466,8 @@ func _check_duplicate() -> void:
 # SPLITTING  (large only, exactly once)
 # =============================================================================
 
-func take_damage(amount: int, type: StringName = &"physical") -> void:
-	super.take_damage(amount, type)
+func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
+	super.take_damage(amount, element)
 
 	# a large that survived the hit but crossed the threshold converts now.
 	# One that was taken straight to zero is handled by _die() instead.
@@ -549,6 +561,12 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	# block in _ready(), and add_child() is what runs _ready() — set it
 	# afterwards and the slime has already initialised as the wrong form.
 	slime.is_small = small
+
+	# THE CHILDREN ARE THE SAME CREATURE. _ready() resolves enemy_data from
+	# is_small alone, so without this a child takes the SMALL profile's element
+	# and a water slime bursts into four earth ones. Set before add_child() for
+	# the same reason is_small is — add_child() is what runs _ready().
+	slime.element_override = current_element()
 
 	# EVERY child is born with its duplication spent, small or large. This
 	# is the second half of the recursion guard: the twin from

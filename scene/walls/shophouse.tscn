@@ -4,6 +4,9 @@
 [ext_resource type="PackedScene" uid="uid://dtpff8j73spyb" path="res://scene/walls/shopinterior.tscn" id="2_leya0"]
 [ext_resource type="PackedScene" uid="uid://bdnc0gfyhpgck" path="res://scene/walls/shopexterior.tscn" id="3_5swhr"]
 [ext_resource type="Script" uid="uid://ddwqwfk2e6blj" path="res://src/world/shop.gd" id="4_k6awu"]
+[ext_resource type="Texture2D" path="res://art/placeholder/vendorplaceholder.png" id="5_vendorart"]
+[ext_resource type="Script" path="res://src/world/vendor.gd" id="6_vendorscript"]
+[ext_resource type="Resource" path="res://data/shops/generalstore.tres" id="7_generalstore"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_enowg"]
 texture = ExtResource("1_a2lp7")
@@ -149,6 +152,9 @@ sources/1 = SubResource("TileSetAtlasSource_enowg")
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_trigger"]
 size = Vector2(286, 279)
 
+[sub_resource type="CircleShape2D" id="CircleShape2D_vendorrange"]
+radius = 36.0
+
 [node name="shophouse" type="Node2D" unique_id=1896304923]
 y_sort_enabled = true
 position = Vector2(-1.6420898, 1.6421051)
@@ -176,3 +182,21 @@ shape = SubResource("RectangleShape2D_trigger")
 
 [connection signal="body_entered" from="trigger" to="trigger" method="_on_body_entered"]
 [connection signal="body_exited" from="trigger" to="trigger" method="_on_body_exited"]
+
+[node name="shopvendor" type="Area2D" parent="interiorfurniture"]
+y_sort_enabled = true
+texture_filter = 1
+position = Vector2(-24, -8)
+collision_layer = 16
+collision_mask = 6
+script = ExtResource("6_vendorscript")
+shop_data = ExtResource("7_generalstore")
+
+[node name="sprite2d" type="Sprite2D" parent="interiorfurniture/shopvendor"]
+texture_filter = 1
+texture = ExtResource("5_vendorart")
+offset = Vector2(0, -16)
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="interiorfurniture/shopvendor"]
+position = Vector2(0, 8)
+shape = SubResource("CircleShape2D_vendorrange")

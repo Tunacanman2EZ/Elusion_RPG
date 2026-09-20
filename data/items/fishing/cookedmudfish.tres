@@ -13,6 +13,7 @@ stackable = true
 max_stack = 20
 value = 12
 tier = 1
+required_skill = "cooking"
 type = 0
 droppable = false
 restore_amount = 10

@@ -1,0 +1,48 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/projectiles/acidpuddle.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://cr5tiqbe7gt43" path="res://art/enemy/slime.png" id="2_sheet"]
+[ext_resource type="Shader" path="res://src/shared/element_recolour.gdshader" id="3_shader"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_splat"]
+atlas = ExtResource("2_sheet")
+region = Rect2(48, 240, 48, 48)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_puddle"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_splat")
+}],
+"loop": true,
+"name": &"puddle",
+"speed": 5.0
+}]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_tint"]
+shader = ExtResource("3_shader")
+shader_parameter/element_hue = 0.0558
+shader_parameter/amount = 1.0
+shader_parameter/saturation_scale = 1.0
+shader_parameter/grey_threshold = 0.08
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_puddle"]
+radius = 9.0
+
+[node name="firepuddle" type="Area2D"]
+texture_filter = 1
+collision_layer = 64
+collision_mask = 4
+script = ExtResource("1_script")
+element = 6
+lifetime = 4.5
+tick_damage = 5
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="."]
+material = SubResource("ShaderMaterial_tint")
+sprite_frames = SubResource("SpriteFrames_puddle")
+animation = &"puddle"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="."]
+position = Vector2(1, 1)
+shape = SubResource("CircleShape2D_puddle")

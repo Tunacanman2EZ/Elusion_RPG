@@ -783,6 +783,7 @@ animations = [{
 modulate = Color(0.7137255, 1, 0.3019608, 1)
 y_sort_enabled = true
 texture_filter = 1
+scale = Vector2(0.666667, 0.666667)
 collision_layer = 0
 collision_mask = 3
 motion_mode = 1

@@ -293,6 +293,13 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 		"bag_id": bag_id,
 		"position": cell,
 	}, TAKE_TIMEOUT)
+
+	# PAST A FOUR-SECOND AWAIT — see bankinventory.request_transfer() for the
+	# full version. This file is careful about its captured values and was not
+	# careful about itself.
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+
 	_taking = false
 
 	# Re-collapse: valid a moment ago is not valid now.

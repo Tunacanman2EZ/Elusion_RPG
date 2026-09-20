@@ -197,9 +197,20 @@ const SELF_AIMED := [&"spiral", &"ladder"]
 # What share of pillars leave acid behind.
 #
 # NOT ALL OF THEM, and the arithmetic is why: a 65-pillar cast every 2.16s with
-# even a shortened 2.5s pool life would keep 75 pools alive and cover 44% of the
-# room in standing acid. At a third of that it is 15% - the floor degrades and
-# has to be watched, without the fight turning into a swamp you cannot read.
+# a 2.5s pool life would keep 75 pools alive and cover 44% of the room in
+# standing acid. At a third of that it is 15% - the floor degrades and has to
+# be watched, without the fight turning into a swamp you cannot read.
+#
+# THE 2.5s THIS ASSUMES IS NOW A MIDPOINT, NOT A SETTING. Each element's pool
+# has its own lifetime authored in its own scene, from wind's 1.0 to ice's 5.0,
+# and bossprojectile.gd's puddle_life_scale (0.6) is what keeps a 65-pillar
+# carpet from turning ice's five seconds into a floor with holes in it. Run the
+# numbers per element and the band is 0% for light and wind up to 22% for ice -
+# the wet elements are wetter, which is the point, and nothing approaches 44%.
+#
+# IF YOU RAISE A MULTIPLIER, RAISE IT AGAINST THAT BAND. Water is the worked
+# example: three pools per roll at a 1.4 multiplier put it at 54%, over the
+# line, and it took a chance of 0.5 to bring it back beside fire.
 const PUDDLE_CHANCE := 0.35
 
 # THE SPIKE TRACK — a second attack, running beside the pillars.
@@ -1013,7 +1024,7 @@ func _land_swing() -> void:
 			continue
 		already_hit.append(id)
 
-		target.take_damage(melee_power, &"physical")
+		target.take_damage(melee_power, current_element())
 
 
 func _is_damageable_player(node: Node) -> bool:
@@ -1146,12 +1157,20 @@ func _measure_scene_timing(scene: PackedScene) -> Vector2:
 	# _ready() never runs: nothing validates, hides itself or starts a
 	# telegraph. All that is read is authored data.
 	var probe: Node = scene.instantiate()
-	var sprite: AnimatedSprite2D = probe.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+
+	# NAMED probe_sprite, NOT sprite. `sprite` is this class's own @onready
+	# reference to the BOSS's AnimatedSprite2D, and a local of that name shadows
+	# it for the rest of the function — which reads fine here, and is one await
+	# away from being the firepit bug, where a member shadowed by a local across
+	# a suspension point left the wrong node being animated. Godot warns about
+	# it (SHADOWED_VARIABLE) for that reason. The rename also says the true
+	# thing: this is the probe's sprite, not the boss's.
+	var probe_sprite: AnimatedSprite2D = probe.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
 
 	var result: Vector2 = Vector2.ZERO
-	if sprite != null and sprite.sprite_frames != null \
-			and sprite.sprite_frames.has_animation(&"projectile"):
-		var frames: SpriteFrames = sprite.sprite_frames
+	if probe_sprite != null and probe_sprite.sprite_frames != null \
+			and probe_sprite.sprite_frames.has_animation(&"projectile"):
+		var frames: SpriteFrames = probe_sprite.sprite_frames
 		var speed: float = frames.get_animation_speed(&"projectile")
 		if speed > 0.0:
 			# The hazard's own impact_frame, read off the instance - the two
@@ -1415,6 +1434,16 @@ func _pattern_checker(origin: Vector2) -> Array[Dictionary]:
 	var first: int = randi() % 2
 
 	var out: Array[Dictionary] = []
+
+	# THE TRUNCATION IS THE POINT, which is why the warning is silenced rather
+	# than the arithmetic changed. The loop below runs range(-half, half + 1),
+	# so the grid comes out 2*half + 1 cells per side. At CHECKER_CELLS = 5 that
+	# is half = 2 and exactly 5 cells, which is what the constant promises.
+	#
+	# IT ONLY PROMISES THAT FOR AN ODD VALUE. Set CHECKER_CELLS to 6 and you get
+	# 7 cells per side and 49 spikes instead of 36 — the constant would quietly
+	# mean something other than its name. Keep it odd, or change the loop too.
+	@warning_ignore("integer_division")
 	var half: int = CHECKER_CELLS / 2
 
 	for i in range(-half, half + 1):
@@ -1473,7 +1502,12 @@ func _spawn_stalker() -> void:
 		away = Vector2.DOWN
 	stalker.global_position = global_position + away * STALKER_SPAWN_OFFSET
 
-	stalker.setup(player, eruption_scene)
+	# RESOLVED HERE, NOT IN THE STALKER. bossstalker.gd is not a BaseEnemy and
+	# has no element of its own — it drops whatever pillar it was handed. Handing
+	# it the resolved variant means its trail wears the boss's element without
+	# the stalker needing to know elements exist, and its pillars pick up the
+	# element from the scene rather than staying NONE, which is what they were.
+	stalker.setup(player, Projectiles.variant_of(eruption_scene, current_element()))
 
 	if debug_patterns:
 		print("[BOSS] stalker released (phase %d)" % [_current_phase() + 1])
@@ -1761,16 +1795,32 @@ func _pattern_lance(origin: Vector2) -> Array[Dictionary]:
 	var blades: int = 2 if randf() < 0.33 else 1
 	var spread: float = deg_to_rad(60.0)
 
+	# THE TRUNCATION IS THE POINT, same as _pattern_checker above, which is why
+	# the warning is silenced rather than the arithmetic changed. Spikes are laid
+	# at indices 0..LANCE_SPIKES-1 and this is the one the blade is centred on.
+	# At LANCE_SPIKES = 5 that is index 2, with two spikes either side of it.
+	#
+	# IT ONLY LANDS ON THE PLAYER FOR AN ODD VALUE. Set LANCE_SPIKES to 6 and mid
+	# is 3, which is the spike just PAST centre — the blade would sit half a step
+	# off the player, and the second blade would skip the wrong one. Keep it odd.
+	#
+	# Hoisted out of the loop because it was written twice below, and the two
+	# copies have to agree: the spike the blade is centred on is the same spike
+	# the crossing blade skips. Two expressions that must stay equal are one
+	# edit away from not being.
+	@warning_ignore("integer_division")
+	var mid: int = LANCE_SPIKES / 2
+
 	var out: Array[Dictionary] = []
 	for b in range(blades):
 		var d: Vector2 = dir.rotated(-spread * 0.5 + spread * float(b)) if blades > 1 else dir
 		# Centred on the player so the middle of each blade passes through them.
-		var start: Vector2 = origin - d * LANCE_SPACING * float(LANCE_SPIKES / 2)
+		var start: Vector2 = origin - d * LANCE_SPACING * float(mid)
 		for i in range(LANCE_SPIKES):
 			# The centre spike of the second blade would land on top of the
 			# first blade's, so it is skipped - two spikes in one place is the
 			# overlap this whole file is built to avoid.
-			if b > 0 and i == LANCE_SPIKES / 2:
+			if b > 0 and i == mid:
 				continue
 			out.append({
 				"pos": start + d * LANCE_SPACING * float(i),
@@ -1981,14 +2031,63 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	# pillar indistinguishable from a spike-track attack.
 	if scene == null:
 		return
-	var eruption: Node2D = scene.instantiate()
-	container.add_child(eruption)
 
-	eruption.global_position = pos
+	# THE ELEMENT PICKS THE VARIANT, and it happens HERE because this is the one
+	# function both tracks pass through — the pillar cast and the gate spike each
+	# hand their own scene in, and each gets its own six.
+	#
+	# variant_of() is keyed on the base scene, which is what makes this safe to
+	# put in front of a parameter: eruption_scene and gate_scene are @export, so
+	# a scene pointed somewhere custom is not in the table and comes straight
+	# back out. The line below cannot silently replace a designer's choice.
+	var eruption: Node2D = Projectiles.variant_of(scene, current_element()).instantiate()
+
+	# CONFIGURED BEFORE IT ENTERS THE TREE. add_child() is what runs _ready(),
+	# and bossprojectile._ready() applies its element profile there — scaling
+	# the telegraph, the size and the damage this function sets. Set them after
+	# add_child and the profile multiplies values that do not exist yet, so
+	# every spike comes out at the scene defaults. poisonslime._spawn_slime()
+	# carries the same note for is_small, and for exactly the same reason.
 	eruption.damage = attack_power
 
-	# Rolled per pillar rather than set on the scene - see PUDDLE_CHANCE.
-	eruption.leaves_puddle = randf() < PUDDLE_CHANCE
+	# GUARDED, AND THE GUARD IS NOT DEFENSIVE PROGRAMMING - it is load-bearing.
+	#
+	# Both eruption scenes this boss spawns, bossprojectile.tscn and
+	# secondbossprojectile.tscn, run bossprojectile.gd, and that script has no
+	# leaves_puddle. Only poisonprojectile.gd does. So this line raised
+	#
+	#   Invalid assignment of property or key 'leaves_puddle' with value of
+	#   type 'bool' on a base object of type 'Area2D (bossprojectile.gd)'
+	#
+	# on EVERY pillar of EVERY cast - and GDScript aborts the function on an
+	# invalid assignment, so the three statements below this one never ran. That
+	# is the real damage: no spike was ever scaled to its pattern's radius, no
+	# spike ever got its own telegraph (they all sat at bossprojectile.gd's
+	# default 0.9), and none of them reset interpolation, so every one slid in
+	# from the top-left of the map on its first frame. The staggered patterns -
+	# lance, cross, carpet - have never rolled outward.
+	#
+	# THE GUARD STAYS even though bossprojectile.gd now has these properties.
+	# This function takes the scene from its CALLER, and eruption_scene and
+	# gate_scene are both @export - point either at something else and an
+	# unguarded assignment is the same crash again.
+	#
+	# THE ROLL MOVED INTO THE PROJECTILE. This used to be randf() < PUDDLE_CHANCE
+	# here, handing down a bool — and a bool cannot carry "fire leaves acid 30%
+	# more often than earth does". Passing the chance instead lets each element
+	# scale it. The constant still lives here, with the arithmetic that chose it.
+	if "leaves_puddle" in eruption:
+		eruption.leaves_puddle = true
+	if "puddle_chance" in eruption:
+		eruption.puddle_chance = PUDDLE_CHANCE
+
+	# THE CASTER'S ELEMENT, so a fire boss throws fire spikes and leaves fire
+	# behind. Eruptions are added to the container directly rather than through
+	# BaseEnemy.spawn_projectile_node(), which is where every other enemy's shot
+	# gets stamped — so without this line every spike from every one of the six
+	# elemental bosses was element NONE, and so was its acid.
+	if "element" in eruption:
+		eruption.element = current_element()
 
 	# SCALED, NOT RESIZED. The pillar's hitbox, its sprite and the warning ring
 	# it draws are all authored at SPIKE_BASE_RADIUS, so scaling the node moves
@@ -2008,6 +2107,11 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	# ring draws its own countdown, so six different clocks are still six things
 	# the player can read at a glance rather than six things to remember.
 	eruption.telegraph_seconds = telegraph
+
+	# NOW it enters the tree, which runs _ready() and applies the element
+	# profile on top of everything set above.
+	container.add_child(eruption)
+	eruption.global_position = pos
 
 	# AFTER the position is set. Physics interpolation blends from the node's
 	# previous transform, and a freshly added node's previous transform is

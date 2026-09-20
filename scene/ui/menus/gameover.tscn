@@ -73,6 +73,11 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Revive for (20 Lusions)"
 
+[node name="revivegoldbutton" type="Button" parent="PanelContainer/VBoxContainer" unique_id=1498233588]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Revive for (gold)"
+
 [node name="returnbutton" type="Button" parent="PanelContainer/VBoxContainer" unique_id=1498233587]
 unique_name_in_owner = true
 layout_mode = 2

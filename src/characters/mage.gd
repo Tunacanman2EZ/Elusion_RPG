@@ -52,13 +52,13 @@ const CLASS_DATA := preload("res://data/classes/mage.tres")
 @export var target_circle_scene: PackedScene
 
 # mana drained per stalagmite cast
-@export var spell_mana_cost: int = 11
+@export var spell_mana_cost: int = 15
 
 # cooldown between casts (seconds). prevents spell spam beyond animation duration.
 @export var spell_cooldown: float = 0.45
 
 # damage scales with magic skill: total = magic × damage_per_magic
-@export var damage_per_magic: int = 42
+@export var damage_per_magic: int = 25
 
 
 # =============================================================================
@@ -131,6 +131,19 @@ func _physics_process(delta: float) -> void:
 # =============================================================================
 # ATTACK ACTION OVERRIDE
 # =============================================================================
+
+func base_attack_damage() -> int:
+	# See player.gd's base_attack_damage().
+	return damage_per_magic
+
+
+func attack_period() -> float:
+	# One stalagmite per cooldown. See player.gd's attack_period() for what
+	# reads this and why it is asked of the live character rather than looked
+	# up in a table. The dps it gives is single-target; the stalagmite is an
+	# explosion, so a crowded cast is worth more than the number shown.
+	return spell_cooldown
+
 
 func attack_action() -> void:
 	# OVERRIDE: mage's spacebar attack IS the stalagmite drop spell.
@@ -252,8 +265,16 @@ func _spawn_stalagmite() -> void:
 	# Guarded the same way `caster` is, two lines down. Assigning a property a
 	# scene may not have is a hard error, and the two assignments had no reason
 	# to disagree about how careful to be.
+	#
+	# NEW: THE EQUIPPED STAFF, ADDED RATHER THAN SUBSTITUTED — the same rule
+	# all four classes now share; see player.gd's weapon_damage_roll(). Rolled
+	# once per cast, so a stalagmite that lands well hits harder than one that
+	# does not, and every enemy caught in the same explosion takes the same
+	# number. roundi rather than int, because truncating toward zero cost a
+	# fraction of a point on every single cast.
 	if "explosion_damage" in spell:
-		spell.explosion_damage = int(damage_per_magic * get_damage_multiplier())
+		spell.explosion_damage = roundi(
+			(damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
 	# Identifies the mage for spelltargetcircle.gd's XP-on-hit — same
 	# pattern as slashwave.gd's caster reference for warrior. this is what
 	# lets the spell grant attack XP (universal) AND magic XP (mage's
