@@ -424,12 +424,38 @@ func _ready() -> void:
 
 	_recompute_max_stats()
 
-	# ZERO IS THE ONE VALUE THAT CANNOT BE HONOURED. A character who took the
-	# true-death path is saved at 0 and would otherwise spawn as a corpse that
-	# dies again on its first frame. The penalty for dying is carried by the
-	# death flow — lost carry gold, lost items, a revive that costs lusions —
-	# not by refusing to let you stand up.
-	hp = max_hp if (was_full_hp or hp <= 0) else clampi(hp, 0, max_hp)
+	# ZERO MEANS DEAD, AND IT SURVIVES A LOGOUT NOW.
+	#
+	# WHAT THIS USED TO BE:
+	#
+	#     hp = max_hp if (was_full_hp or hp <= 0) else clampi(hp, 0, max_hp)
+	#
+	# A character stored at 0 stood up at full, on the reasoning that the
+	# alternative is spawning a corpse that dies again on its first frame. The
+	# reasoning was right about the symptom and wrong about the cure, and it
+	# cost the whole death penalty.
+	#
+	# BECAUSE DYING WAS A SCREEN, NOT A STATE. gameover.gd applies the penalty
+	# — carry gold cleared, carry items cleared — only when you press "return to
+	# character select". Logging out never reached it. So: die, quit, log back
+	# in, and _ready() handed the character back alive and whole with every item
+	# still in the bag. Confirmed by doing it.
+	#
+	# It also made the server's healing reconciler fire on an honest player: a
+	# zero-to-full refill with no kill, no revive and no consume behind it looks
+	# exactly like a client inventing health, because from the server's side
+	# that is all it is. See E-9.
+	#
+	# THE SERVER ALREADY KNEW. Stored hp is 0 and has been all along — nothing
+	# new has to be recorded or trusted. The client simply has to stop papering
+	# over it, which is what the line below does.
+	#
+	# _died_before_load is read by the world scene one frame later, because
+	# changing scenes from inside _ready() is how you get "Parent node is busy
+	# setting up children". The game over screen is the only way out of hp 0,
+	# whether you got there by dying just now or by logging back in afterwards.
+	_died_before_load = hp <= 0
+	hp = max_hp if was_full_hp else clampi(hp, 0, max_hp)
 	mana = max_mana if (was_full_mana or mana < 0) else clampi(mana, 0, max_mana)
 	stamina = max_stamina if (was_full_stamina or stamina < 0) else clampi(stamina, 0, max_stamina)
 
@@ -469,6 +495,23 @@ func _ready() -> void:
 # if it does not, the light stays off so a fully-lit town is not washed out by
 # an additive light nobody asked for. No per-scene wiring, nothing to keep in
 # sync - add a CanvasModulate to a new dark room and the player is lit there too.
+
+	# ALREADY DEAD WHEN LOADED -> STRAIGHT TO THE SCREEN.
+	#
+	# DEFERRED, because changing scenes from inside _ready() gives you "Parent
+	# node is busy setting up children" - the tree is mid-build and cannot be
+	# torn down from within it.
+	#
+	# is_dying IS SET TOO, and it is doing real work rather than decorating: it
+	# is one frame from here to the deferred call, and a character sitting at 0
+	# hp for a frame is a character _physics_process() will happily regenerate,
+	# move, or run take_damage() on. The flag is what every one of those already
+	# checks.
+	if _died_before_load:
+		is_dying = true
+		if OS.is_debug_build():
+			print("[PLR]  loaded at 0 hp - dead before this session, to game over")
+		call_deferred("_change_to_game_over")
 
 func _setup_carried_light() -> void:
 	if not is_instance_valid(_carried_light):
@@ -1315,6 +1358,17 @@ func restore_mana(amount: int) -> void:
 # DEATH SEQUENCE
 # =============================================================================
 
+# TRUE WHEN THIS CHARACTER LOADED ALREADY DEAD, which is a different thing
+# from dying while you are playing. is_dying drives the death animation; this
+# drives skipping straight to the screen, because the death already happened
+# and its animation played in a session that has ended.
+var _died_before_load: bool = false
+
+
+func died_before_load() -> bool:
+	return _died_before_load
+
+
 func _start_death_sequence() -> void:
 	is_dying = true
 	velocity = Vector2.ZERO
@@ -1709,6 +1763,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventKey and event.pressed:
+		# FUNCTION KEYS, UNMODIFIED. They collide with nothing a player presses,
+		# so they stay exactly where the muscle memory is.
+		#
+		# NOT F8: that is the editor's "Stop running project" shortcut and it
+		# kills the game even when the game window has focus.
 		match event.keycode:
 			KEY_F1: _debug_give_item("tinyhealthpotion", 5)
 			KEY_F2: _debug_give_item("ironsword", 1)
@@ -1717,6 +1776,30 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)
+			KEY_F9:  gain_attack_xp(30)
+			KEY_F10: gain_defense_xp(30)
+			KEY_F11: gain_agility_xp(30)
+			KEY_F12: gain_magic_xp(30)
+
+		# LETTERS, BEHIND CTRL — and that modifier is the whole fix.
+		#
+		# These used to be bare letters, which meant the debug block owned I, M,
+		# B, K, R and the P O I U Y T row outright. M was the worst of them: it
+		# was ALSO the minimap_toggle action, so opening the map drained thirty
+		# mana, and nothing anywhere said the two were the same key.
+		#
+		# A player never reaches any of this - _staff_debug_allowed() gates the
+		# whole function on a debug build AND a staff role - but the letters were
+		# unavailable to the KEYMAP, which is a different thing from unavailable
+		# to a player. inventory_toggle could not be I while this owned it.
+		#
+		# ONE RULE, NOT A NEW LAYOUT: every grant keeps its letter and gains
+		# Ctrl. Nothing has to be relearned, and the unmodified letters go back
+		# to the game.
+		if not event.ctrl_pressed:
+			return
+
+		match event.keycode:
 			# PETS — the P O I U Y T row, one key per pet, reading leftward,
 			# plus B for the boss pet (see below).
 			#
@@ -1734,9 +1817,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			# copy-pasted item_id and was being silently rejected at load.
 			# Four debug helpers that could not fail were standing in front of
 			# the one path that could. They are gone.
-			#
-			# NOT F8: that's the editor's "Stop running project" shortcut and
-			# it kills the game even when the game window has focus.
 			KEY_P: _debug_give_item("petsniper", 1)
 			KEY_O: _debug_give_item("petmage", 1)
 			KEY_I: _debug_give_item("petelectricsprite", 1)
@@ -1786,10 +1866,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_M:
 				mana = max(mana - 30, 0)
 				print("DEBUG: drained 30 mana (now %d)" % mana)
-			KEY_F9:  gain_attack_xp(30)
-			KEY_F10: gain_defense_xp(30)
-			KEY_F11: gain_agility_xp(30)
-			KEY_F12: gain_magic_xp(30)
 
 
 # =============================================================================

@@ -216,6 +216,29 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
+	# THE PANEL KEYS. inventory_toggle is I, character_toggle is C, and
+	# minimap_toggle is M — actions rather than raw keycodes, because these are
+	# the three the options screen lets a player rebind and a hardcoded keycode
+	# would ignore whatever they chose.
+	#
+	# WHY THEY COULD NOT EXIST BEFORE. player.gd's debug block owned the bare
+	# letters: I granted an electric sprite pet, M drained thirty mana, and M
+	# was ALSO minimap_toggle, so opening the map cost you mana and nothing
+	# anywhere said the two were the same key. Those grants are behind Ctrl now.
+	#
+	# is_action_pressed, NOT the keycode, and not ui_* either — see the Escape
+	# note above for why this project cannot trust an engine default it has
+	# never declared.
+	if event.is_action_pressed("inventory_toggle"):
+		toggle_inventory()
+		get_viewport().set_input_as_handled()
+		return
+
+	if event.is_action_pressed("character_toggle"):
+		toggle_stats()
+		get_viewport().set_input_as_handled()
+		return
+
 	# Backquote / tilde toggles the owner panel. Anyone who is not the owner
 	# gets no response at all by design, not even an error — see
 	# _toggle_owner_panel().
@@ -226,8 +249,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# conventional dev-console key and collides with nothing here.
 	#
 	# It was Shift+A before that, which collided with normal play: `interact`
-	# is Shift and `move_left` is A, so interacting while walking left
-	# toggled the panel.
+	# WAS Shift and `move_left` is A, so interacting while walking left toggled
+	# the panel. interact is E now and sprint has taken Shift, so that specific
+	# collision is gone — the binding stays on backquote anyway, because a dev
+	# console key that is also a letter is how the collision happened.
 	if event is InputEventKey and event.pressed and event.keycode == KEY_QUOTELEFT:
 		_toggle_owner_panel()
 
