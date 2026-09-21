@@ -217,7 +217,7 @@ func use_item(slot: InventorySlot) -> void:
 		ItemData.Type.PET:
 			_use_pet(slot)
 		ItemData.Type.WEAPON, ItemData.Type.ARMOR:
-			_equip_item(data)
+			await _equip_item(data)
 		_:
 			# push_warning, not print, and not debug-gated: reaching this
 			# branch means an item exists that the game has no idea how to
@@ -267,8 +267,17 @@ func _equip_item(data: ItemData) -> void:
 					_notify("That cannot be equipped.")
 			return
 
-	if not CharacterData.equip_item(player, data.item_id):
-		_notify("That cannot be equipped.")
+	# await: equip_item() is a server round trip now - /api/character/equip
+	# takes the item OUT of the backpack, which is the ownership check as well
+	# as the move. The local verdict above still runs first so a player four
+	# levels short is told instantly rather than a round trip later, exactly
+	# as the consume gate does.
+	#
+	# NO _notify HERE ANY MORE on the failure path: equip_item() already says
+	# why, with the server's own words - "your bag is full", "your class cannot
+	# wear that" - and a second generic line on top of a specific one is worse
+	# than either alone.
+	if not await CharacterData.equip_item(player, data.item_id):
 		return
 
 	# The doll is a view of player.equipped and has just gone stale. Found by

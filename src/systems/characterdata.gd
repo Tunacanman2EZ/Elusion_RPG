@@ -134,7 +134,6 @@ const DEFAULT_ACCOUNT_DATA := {
 	"lusions":         0,    # account-shared, soulbound premium currency
 	"bank_gold":       0,    # account-shared, safe from death
 	"bank_inventory":  [],   # account-shared item array (50 slots)
-	"score":           0,    # account-shared; what dying has cost, server-owned
 }
  
 # --- anti-tamper sanity ranges — PLACEHOLDERS, confirm against your design ---
@@ -401,14 +400,29 @@ func _sanitize_character_slot(slot) -> bool:
 	if slot.has("inventory") and typeof(slot["inventory"]) == TYPE_ARRAY:
 		slot["inventory"] = _validate_item_array(slot["inventory"], "character inventory")
 
-	# --- equipment, reconciled against the bag ABOVE ---
+	# --- equipment is NOT reconciled against the bag any more ---------------
 	#
-	# AFTER the inventory validation on purpose, not beside it. That line can
-	# remove an item — an id the registry no longer knows, a malformed entry —
-	# and a slot pointing at one of those has to go with it. Pruning first
-	# would check the gear against a bag that was about to shrink.
-	if slot.has("equipment"):
-		slot["equipment"] = prune_equipment(slot["equipment"], slot.get("inventory", []))
+	# WHAT WAS HERE, AND WHY IT ATE EVERY CHARACTER'S GEAR:
+	#
+	#     slot["equipment"] = prune_equipment(slot["equipment"],
+	#                                         slot.get("inventory", []))
+	#
+	# Equipment used to be a POINTER into the backpack, so a slot naming
+	# something the bag did not hold was genuinely wrong and had to go. The
+	# trouble was when this ran. GET /api/save returns equipment and NO
+	# inventory; GET /api/character returns inventory and NO equipment. The
+	# client merges the two, and this line fired with the gear from one
+	# response and an EMPTY bag from the other - concluded the character owned
+	# none of what they were wearing, and stripped them. Every login.
+	#
+	# Two endpoints each correct on its own, and a reconciliation running when
+	# only one half had arrived.
+	#
+	# It is gone rather than reordered, because equipment is not a pointer any
+	# more: /api/character/equip MOVES the item out of the bag, so gear is
+	# never in the backpack and reconciling the two would now strip everything
+	# unconditionally. The server owns both halves and hands them back
+	# together.
 
 	# NEW: say WHAT changed. This used to return a bare bool, so load_data()
 	# could only report "correction(s) applied" with no way to tell which
@@ -1054,25 +1068,19 @@ func save_character_state(player: Node) -> void:
 	character_slots[slot]["explored_rev"] = WorldMap.save_revision()
 
 	if "equipped" in player:
-		# PRUNED ONLY AGAINST A BAG WE ACTUALLY READ. This is what "the game
-		# doesn't remember what I had equipped" turned out to be.
+		# NOT PRUNED, AND NOT SENT AS AN ASSERTION EITHER.
 		#
-		# _capture_inventory() reads the live container when the inventory
-		# panel exists and otherwise falls back to player.inventory_data —
-		# which is assigned once at load and never updated, as the note above
-		# says. So: find a sword, equip it, close the inventory, and let
-		# anything at all trigger a save. The fallback bag is the one from
-		# login, it does not contain the sword, and prune_equipment() dutifully
-		# concludes you are wearing something you do not own and clears the
-		# slot. The gear was not failing to save. It was being deleted on the
-		# way out, by the reconciliation that exists to handle selling it.
+		# This used to reconcile worn gear against the captured bag, guarded by
+		# _inventory_capture_was_live because a stale bag would clear gear the
+		# player was still wearing. Both halves of that are obsolete: the item
+		# is no longer IN the bag to be found, so any such check strips
+		# everything.
 		#
-		# A stale bag is harmless for the inventory itself — the next pickup
-		# rewrites it — so the capture is still saved either way. It is only
-		# the prune that must not run on a guess.
+		# The save still carries `equipment` so a client that has never called
+		# the endpoints does not get undressed - but the server treats it as
+		# the client's opinion, and only /api/character/equip and /unequip
+		# actually move anything.
 		var worn: Dictionary = player.equipped
-		if _inventory_capture_was_live:
-			worn = prune_equipment(player.equipped, bag)
 		player.equipped = worn
 		# DUPLICATED INTO THE SLOT, not aliased into it. The player keeps
 		# wearing `worn`; if the slot held the same instance, equipping one more
@@ -1150,7 +1158,11 @@ func load_character_state(player: Node) -> void:
 	if "equipped" in player:
 		var saved_equipment = slot.get("equipment", {})
 		if typeof(saved_equipment) == TYPE_DICTIONARY:
-			player.equipped = prune_equipment(saved_equipment, slot.get("inventory", []))
+			# AS STORED. The prune that used to be here is what stripped the
+			# character on every login - see _sanitize_character_slot() for the
+			# two-endpoint split that made it fire against an empty bag.
+			player.equipped = (saved_equipment as Dictionary).duplicate() \
+				if saved_equipment is Dictionary else {}
 		else:
 			player.equipped = {}
 			
@@ -1201,90 +1213,116 @@ func _capture_inventory(player: Node) -> Array:
 	return []
 
 
-func prune_equipment(equipment, inventory) -> Dictionary:
-	# THE ONE RULE, WRITTEN ONCE: a slot survives only if it names an item you
-	# are holding, that item exists, and that item is actually worn in that
-	# slot. Everything else falls out of those three — an invented slot name
-	# can never match a real item's slot, and an item the registry has never
-	# heard of has no slot to match.
-	#
-	# Called from three places for three different reasons. save_character_state()
-	# runs it against the bag it has just captured, which is the only moment the
-	# running game knows what the player is really carrying.
-	# _sanitize_character_slot() runs it over a slot read off disk, where a save
-	# may have been hand-edited or may predate an item being renamed.
-	# load_character_state() runs it once more over a slot that may have come
-	# from the server, where the bag and the gear were written by two separate
-	# requests.
-	#
-	# RETURNS A NEW DICTIONARY, never mutating the one passed in. The callers
-	# hand in things they do not own — a slot dictionary, the player's live
-	# `equipped` — and rewriting one underneath its owner mid-iteration is how
-	# this would go wrong in a way nobody could reproduce.
-	#
-	# SILENT. A cleared slot is not a defect to report: selling your sword is a
-	# normal thing to do, and a warning on every sale would train everyone to
-	# ignore the log. The sanitizer's own before/after diff still reports it
-	# when it happens to a save on disk, which is the case where it IS news.
-	var cleaned: Dictionary = {}
-	if typeof(equipment) != TYPE_DICTIONARY:
-		return cleaned
-
-	var held: Dictionary = {}
-	if typeof(inventory) == TYPE_ARRAY:
-		for entry in inventory:
-			if entry == null or typeof(entry) != TYPE_DICTIONARY:
-				continue
-			var entry_id: String = str(entry.get("item_id", ""))
-			if entry_id != "":
-				held[entry_id] = true
-
-	for slot_name in equipment:
-		var item_id: String = str(equipment[slot_name])
-		if item_id == "" or not held.has(item_id):
-			continue
-		var data: ItemData = ItemRegistry.get_item(item_id)
-		if data == null:
-			continue
-		if ItemData.slot_name(int(data.equip_slot)) != str(slot_name):
-			continue
-		cleaned[str(slot_name)] = item_id
-
-	return cleaned
-
+# prune_equipment() USED TO LIVE HERE and is deliberately deleted rather than
+# left unused. It reconciled worn gear against the backpack, which was correct
+# while a slot POINTED at a bag item - and is now actively destructive, because
+# /api/character/equip MOVES the item out of the bag. Kept as a dead function it
+# would be one call away from stripping every character again.
+#
+# The gear-loss bug it caused is written up at _sanitize_character_slot().
 
 func equip_item(player: Node, item_id: String) -> bool:
-	# CHANGE WHAT IS WORN, AND PERSIST IT. One function, because there are two
-	# ways to equip something — dropping it on a square of the paper doll, and
-	# right-clicking it in the backpack — and they must not be two rules.
+	# THE SERVER MOVES THE ITEM. Equipping used to be one assignment on the
+	# player - `equipped[slot] = item_id` - because a slot POINTED at a bag
+	# item rather than holding one. Nothing moved, so nothing could be lost.
 	#
-	# IT LIVES HERE RATHER THAN ON EITHER PANEL because the second half is
-	# save_character_state(), which is this file's job, and a UI panel that
-	# owned the only copy of "equip then save" would mean the backpack had to
-	# either duplicate it or refuse to work while that panel was closed.
+	# That shape carried the ownership check for free: the bag is reconciled
+	# against what the server granted (E-1), so gear pointing into it was
+	# reconciled too. Now that equipping takes the item OUT of the bag, both
+	# of those stop applying - and `equipment` would become a client-written
+	# field that nothing checks, in the column combat reads to decide what a
+	# hit is worth. So the move is an endpoint, and taking from the bag IS the
+	# ownership check: you cannot equip what the server cannot find on you.
 	#
-	# The player decides WHETHER — player.equip() runs the same three checks
-	# the server does, and returns false without changing anything if the
-	# answer is no. This decides what happens next, which is that it sticks.
-	if player == null or not player.has_method("equip"):
+	# await, AND THAT IS WHY THIS RETURNS A COROUTINE NOW. Every caller has to
+	# await it. There is exactly one, and a fire-and-forget version would
+	# repaint the panel from a player the server has not answered about yet.
+	if player == null:
 		return false
-	if not player.equip(item_id):
+
+	var res: Dictionary = await Api.post("/api/character/equip", {
+		"slot": active_character_index,
+		"item_id": item_id,
+	})
+	if not res.get("ok", false):
+		_notify_equip_refusal(player, res)
 		return false
-	save_character_state(player)
+
+	_apply_equip_result(player, res.get("data", {}))
 	return true
 
 
 func unequip_slot(player: Node, slot_name: String) -> String:
-	# The mirror. Returns the item_id that came off, or "" if the slot was
-	# already empty — in which case nothing is saved, because nothing changed
-	# and a save costs a whole-inventory walk.
-	if player == null or not player.has_method("unequip"):
+	# The mirror, and the one that can genuinely fail for a reason the player
+	# needs to hear: a full bag has nowhere to put what comes off. The server
+	# refuses with 409 and the piece stays on the character rather than
+	# evaporating.
+	if player == null:
 		return ""
-	var was: String = str(player.unequip(slot_name))
-	if was == "":
+
+	var res: Dictionary = await Api.post("/api/character/unequip", {
+		"slot": active_character_index,
+		"equip_slot": slot_name,
+	})
+	if not res.get("ok", false):
+		_notify_equip_refusal(player, res)
 		return ""
-	save_character_state(player)
-	return was
+
+	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+	_apply_equip_result(player, data)
+	return str(data.get("unequipped", ""))
+
+
+func _apply_equip_result(player: Node, data: Dictionary) -> void:
+	# THE SERVER'S ANSWER, RENDERED - not a local guess that happens to agree.
+	#
+	# Both halves come back together on purpose. The bug that made this whole
+	# change necessary was equipment and inventory arriving from two different
+	# endpoints and being reconciled against each other before both had landed;
+	# a response that carries one without the other would rebuild that.
+	if not (data is Dictionary) or data.is_empty():
+		return
+
+	if "equipment" in data and data["equipment"] is Dictionary:
+		player.equipped = (data["equipment"] as Dictionary).duplicate()
+
+	# THE WHOLE BACKPACK, laid out the way the server laid it out. Same
+	# reasoning as /api/loot/take: the server tops up a part-used stack before
+	# opening a new cell, and a client that added the item itself would lay the
+	# same bag out differently.
+	var cells: Array = data.get("inventory", []) if data.get("inventory", []) is Array else []
+	if cells.is_empty():
+		return
+	var container: Node = _live_inventory_container(player)
+	if container != null and container.has_method("load_server_array"):
+		container.load_server_array(cells)
+	elif "inventory_data" in player:
+		# The panel is shut, so there is no grid to repaint - but the cached
+		# array is what the next save reads, and leaving it stale is how an
+		# item comes back.
+		player.inventory_data = _normalise_item_array(cells)
+
+
+func _live_inventory_container(player: Node) -> Node:
+	var hud: Node = player.get_tree().get_first_node_in_group("hud") if player.is_inside_tree() else null
+	if hud == null or hud.inventory_screen == null:
+		return null
+	return hud.inventory_screen.get_node_or_null("%inventorycontainer")
+
+
+func _notify_equip_refusal(player: Node, res: Dictionary) -> void:
+	# SAY WHY. A button that does nothing and says nothing is the bug the shop
+	# handler shipped as; a full bag refusing an unequip is exactly the case a
+	# player cannot work out on their own.
+	var message: String = str(res.get("error_message", "")).strip_edges()
+	if message == "":
+		message = str(res.get("error", "")).strip_edges()
+	if message == "":
+		message = "That cannot be equipped right now."
+	if is_instance_valid(player) and player.has_method("show_notice"):
+		player.show_notice(message)
+	if OS.is_debug_build():
+		print("[EQUIP] refused (%s) - %s" % [str(res.get("status", 0)), message])
 
 
 func active_class_id() -> String:
@@ -1340,19 +1378,6 @@ func get_account_lusions() -> int:
 	return int(account_data.get("lusions", 0))
  
  
-func get_account_score() -> int:
-	# WHAT DYING HAS COST THIS ACCOUNT. Mirrors get_account_lusions(), and
-	# there is deliberately no set_account_score() to mirror the setter below.
-	#
-	# THE SERVER OWNS IT. /api/character/revive adds to it in the same
-	# transaction that takes the payment, and serverstorage.gd has no PUT for
-	# it. A client able to write its own score would be E-8 with a different
-	# column name - a currency-shaped field the server stored because it was
-	# asked to. The only way this number moves is by dying.
-	_ensure_account_data()
-	return int(account_data.get("score", 0))
-
-
 func set_account_lusions(value: int) -> void:
 	_ensure_account_data()
 	account_data["lusions"] = max(int(value), 0)

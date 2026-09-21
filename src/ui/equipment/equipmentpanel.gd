@@ -189,9 +189,15 @@ func _stack_for(slot_name: String) -> ItemStack:
 
 	var data: ItemData = ItemRegistry.get_item(item_id)
 	if data == null:
-		# Not an error worth shouting about: CharacterData.prune_equipment()
-		# drops an id the registry has never heard of on the next save, so this
-		# is a square that is about to empty itself anyway.
+		# Not an error worth shouting about, but it no longer clears itself.
+		# prune_equipment() used to drop an id the registry had never heard of
+		# on the next save; it is gone, because equipment is a location now
+		# rather than a pointer into the bag. An unknown id here means the
+		# catalogue and the save disagree - the square draws empty and the
+		# server still believes the slot is filled.
+		#
+		# Reachable only by removing an item from the catalogue that someone is
+		# wearing, which is a migration problem rather than a runtime one.
 		return null
 
 	return ItemStack.new(data, 1)
@@ -245,7 +251,7 @@ func _on_equip_requested(_slot_name: String, item_id: String) -> void:
 	# The square's name is ignored on purpose: player.equip() derives the slot
 	# from the item, so there is nothing for the two to disagree about. The
 	# square already refused anything that does not belong in it.
-	equip(item_id)
+	await equip(item_id)
 
 
 func equip(item_id: String) -> bool:
@@ -255,7 +261,10 @@ func equip(item_id: String) -> bool:
 	# "equip, then save" would mean the other gesture had to duplicate it.
 	#
 	# What is left here is the view: repaint, from the player, afterwards.
-	if not CharacterData.equip_item(player, item_id):
+	# await: equip_item() is a server round trip now. Repainting before the
+	# answer lands would draw a character wearing something the server may be
+	# about to refuse.
+	if not await CharacterData.equip_item(player, item_id):
 		return false
 	refresh()
 	return true
@@ -268,12 +277,11 @@ func _on_slot_right_clicked(slot: InventorySlot) -> void:
 	if square.is_empty():
 		return
 
-	# REPAINTED FROM THE PLAYER AFTER THE SAVE, not from what was just written.
-	# save_character_state() runs prune_equipment() against the bag it
-	# captures, and that can legitimately take a piece back off — you sold it
-	# in another window, it was banked, it is gone. The squares should show
-	# what survived, not what was attempted.
-	CharacterData.unequip_slot(player, square.equip_slot_name)
+	# REPAINTED FROM THE PLAYER AFTER THE SERVER ANSWERS, not from what was
+	# requested. The square should show what the server did: an unequip into a
+	# full bag is refused with a 409 and the piece stays on, which is a
+	# different picture from the one the click asked for.
+	await CharacterData.unequip_slot(player, square.equip_slot_name)
 	refresh()
 
 

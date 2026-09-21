@@ -542,20 +542,36 @@ func _describe_api_error(data: Variant, status: int) -> String:
 		if message is String and message != "":
 			return message
 
-	# NO PARSEABLE MESSAGE, and for 404 that is itself the diagnosis.
+	# NO PARSEABLE MESSAGE, and for 404 that is itself the diagnosis - but it
+	# narrows to TWO things, not one, and the first version named only the
+	# second of them.
 	#
 	# Every 404 this server raises on purpose - an unknown account, a staff
 	# route hiding from a non-staff caller - carries {"error", "message"} and
-	# is answered above. Reaching here with a 404 means the body was HTML or
-	# empty, which our error handler never produces. Something else is on the
-	# port: Flask's app.run() defaults to 5000 and so does this client, so any
-	# other Flask project running on this machine takes it and answers 404 to
-	# every path here.
+	# is answered above. Reaching here with a 404 means the body was HTML,
+	# which our error handler never produces and Flask's own unknown-route
+	# page always does. So: SOME Flask app answered, and it has no such route.
 	#
-	# The old text was "Something went wrong (HTTP 404)", which is true, says
-	# nothing, and points at the account rather than at the port.
+	# THAT IS EITHER A STALE SERVER OR A DIFFERENT ONE, and the mechanism
+	# cannot tell them apart because they produce the identical response.
+	#
+	#   stale     the route was added and the process was not restarted. The
+	#             overwhelmingly common one in development, and the only one
+	#             with a fix the reader can act on in five seconds.
+	#   different Flask's app.run() defaults to 5000 and so does this client,
+	#             so any other Flask project on this machine takes the port.
+	#
+	# THE FIRST VERSION ASSERTED THE SECOND and cost real confusion: a new
+	# endpoint went in, the server was not restarted, and the client announced
+	# that something else had taken the port. A diagnostic that names one cause
+	# out of two is worse than one that names both - it does not merely fail to
+	# help, it sends the reader somewhere.
+	#
+	# Ordered by likelihood, because a message is read top-down and the first
+	# line is the one that gets acted on.
 	if status == 404:
-		return ("No Elusion server at %s — something else is answering on that "
-			+ "address. Another local server may have taken the port.") % BASE_URL
+		return ("%s has no such route. If you just added it, restart the "
+			+ "server — otherwise another local Flask project may have taken "
+			+ "the port.") % BASE_URL
 
 	return "Something went wrong (HTTP %d)." % status
