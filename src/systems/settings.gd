@@ -223,8 +223,10 @@ const VSYNC_MODES := ["off", "on", "adaptive", "fast"]
 const FRAME_CAPS := [0, 60, 120, 144, 165, 240, 360]
 
 
-static func vsync_mode_for(name: String) -> int:
-	match name:
+# `mode_name`, not `name`: Node.name exists, and a parameter by that name
+# shadows it - Godot warns, and testrunner.gd already says so in its harness.
+static func vsync_mode_for(mode_name: String) -> int:
+	match mode_name:
 		"off":      return DisplayServer.VSYNC_DISABLED
 		"adaptive": return DisplayServer.VSYNC_ADAPTIVE
 		"fast":     return DisplayServer.VSYNC_MAILBOX

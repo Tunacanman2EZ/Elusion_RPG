@@ -148,8 +148,8 @@ func _connect_controls() -> void:
 		fullscreen_toggle.toggled.connect(_on_fullscreen_toggled)
 	if vsync_mode != null:
 		vsync_mode.clear()
-		for name in Settings.VSYNC_MODES:
-			vsync_mode.add_item(VSYNC_LABELS.get(name, name))
+		for mode_name in Settings.VSYNC_MODES:
+			vsync_mode.add_item(VSYNC_LABELS.get(mode_name, mode_name))
 		vsync_mode.item_selected.connect(_on_vsync_selected)
 	if frame_cap != null:
 		frame_cap.clear()
