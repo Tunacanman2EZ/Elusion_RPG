@@ -119,7 +119,14 @@ static func ring_radius(ring: int) -> float:
 # DERIVED, NEVER HARDCODED. The whole point of the wedge model is that this
 # number is a consequence of the radius, so writing it down separately would
 # only create something that can disagree with the geometry. Ring 1 comes out at
-# eleven; ring 2 at seventeen; ring 3 at twenty-three.
+# SEVEN; ring 2 at thirteen; ring 3 at twenty. Forty slots in all.
+#
+# Those three numbers used to read eleven, seventeen and twenty-three, which is
+# what a half-wedge — asin(BODY/r) rather than the 2*asin below — would give.
+# The code was right and the comment was wrong, and it stayed wrong because a
+# comment cannot fail. The count is asserted in testrunner.gd's FORMATION
+# section now, derived rather than pinned, so the geometry is free to move and
+# a contradiction between the two shows up as a failure instead of prose.
 static func slots_in_ring(ring: int) -> int:
 	var r: float = ring_radius(ring)
 	if r <= BODY_RADIUS:

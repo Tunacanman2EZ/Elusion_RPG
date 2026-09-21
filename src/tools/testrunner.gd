@@ -687,33 +687,113 @@ func _test_player_stats() -> void:
 
 
 # =============================================================================
-# FORMATION — the ring of tiles enemies surround a player on
+# FORMATION — the ring enemies surround a player on
 # =============================================================================
 # Pure geometry, so all of it is checkable without a world. Which matters more
 # than usual here: the formation is the thing that stops enemies piling into one
 # spot, and "it looks about right when I fight three slimes" is the only test it
 # has ever had.
+#
+# REWRITTEN AGAINST THE REAL API, and the reason is worth keeping. The first
+# version of this block was written against a SQUARE GRID — SLOT_STRIDE,
+# TILE_SIZE, world_position(anchor, slot, spacing), rings of 8/16/24 — and
+# Formation has been a set of concentric CIRCLES since two days before this file
+# was created. None of those five symbols exist. GDScript resolves a const on a
+# class_name at PARSE time, so the file did not merely fail its formation
+# checks: it failed to load, which means the whole suite, all of it, HAS NEVER
+# RUN ONCE.
+#
+# That is this project's own recurring bug wearing the test suite's clothes. The
+# thing written to catch "looks finished, does nothing" was itself finished-
+# looking and doing nothing, and it said so in an error nobody read until the
+# editor happened to try loading it.
 
 func _test_formation() -> void:
 	section("FORMATION")
 
-	var offsets: Array[Vector2i] = Formation.slot_offsets()
+	var offsets: Array[Vector2] = Formation.slot_offsets()
 
-	# 8 + 16 + 24 = 48. The arithmetic was written in a comment in baseenemy.gd
-	# and never checked. Ring N is the PERIMETER at Chebyshev distance
-	# N * SLOT_STRIDE, so its size is (2N+1)^2 - (2N-1)^2 = 8N.
-	check("three rings produce 48 slots", offsets.size() == 48, offsets.size())
+	# THE COUNT IS DERIVED, so the test derives it too rather than writing 40
+	# down. slots_in_ring() is a consequence of the radius by design; pinning
+	# the total here would mean every legitimate tuning of RING_RADIUS breaks
+	# the suite, and a test that cries wolf is a test somebody deletes.
+	var expected: int = 0
+	for ring in range(1, Formation.RING_COUNT + 1):
+		expected += Formation.slots_in_ring(ring)
+	check("the rings produce as many slots as they say they do",
+		offsets.size() == expected, "%d vs %d" % [offsets.size(), expected])
 	check("slot_count agrees with the array",
 		Formation.slot_count() == offsets.size(), Formation.slot_count())
 
-	var per_ring: Dictionary = {}
-	for offset in offsets:
-		var chebyshev: int = maxi(absi(offset.x), absi(offset.y))
-		per_ring[chebyshev] = int(per_ring.get(chebyshev, 0)) + 1
-	check("ring 1 holds 8", int(per_ring.get(2, 0)) == 8, per_ring)
-	check("ring 2 holds 16", int(per_ring.get(4, 0)) == 16, per_ring)
-	check("ring 3 holds 24", int(per_ring.get(6, 0)) == 24, per_ring)
-	check("and there is no fourth ring", per_ring.size() == 3, per_ring)
+	# EVERY SLOT STANDS ON ITS OWN RING. This is the invariant the whole model
+	# rests on: ring_of() is the FIRST thing slot selection sorts by, so a slot
+	# whose label disagrees with where it actually stands sends enemies to the
+	# wrong rank while every individual position still looks reasonable.
+	var off_ring: int = 0
+	for i in range(offsets.size()):
+		var want: float = Formation.ring_radius(Formation.ring_of(i))
+		if absf(offsets[i].length() - want) > 0.001:
+			off_ring += 1
+	check("every slot stands at its own ring's radius", off_ring == 0,
+		"%d slots off their ring" % off_ring)
+
+	# RINGS STEP BY ONE BODY DIAMETER, which is what makes rank 2 touch the
+	# backs of rank 1 rather than trying to stand inside them.
+	check("each ring is one body diameter beyond the last",
+		is_equal_approx(Formation.ring_radius(2) - Formation.ring_radius(1),
+			Formation.BODY_RADIUS * 2.0),
+		Formation.ring_radius(2) - Formation.ring_radius(1))
+
+	# NOBODY OVERLAPS THEIR NEIGHBOUR, which is the entire point of the wedge
+	# count. slots_in_ring() FLOORS, and flooring is the kind of thing a
+	# refactor rounds "for accuracy" — which would put every ring exactly one
+	# body over capacity and read in play as enemies standing inside each other.
+	var overlapping: int = 0
+	for ring in range(1, Formation.RING_COUNT + 1):
+		var count: int = Formation.slots_in_ring(ring)
+		var chord: float = 2.0 * Formation.ring_radius(ring) * sin(PI / float(count))
+		if chord < Formation.BODY_RADIUS * 2.0:
+			overlapping += 1
+	check("no ring is packed tighter than a body's width", overlapping == 0,
+		"%d rings overcrowded" % overlapping)
+
+	# EVENLY SPACED AROUND EACH RING. Uneven spacing is how "they always come
+	# from the left" happens, and it is invisible in a screenshot of one fight.
+	#
+	# The gap is taken with fposmod because bearing_of() answers in (-PI, PI]
+	# and the ring wraps through it; a plain subtraction would report one
+	# enormous negative gap per ring and pass anyway on the count.
+	var uneven: int = 0
+	for ring in range(1, Formation.RING_COUNT + 1):
+		var bearings: Array[float] = []
+		for i in range(offsets.size()):
+			if Formation.ring_of(i) == ring:
+				bearings.append(Formation.bearing_of(i))
+		if bearings.size() < 2:
+			continue
+		var step: float = TAU / float(bearings.size())
+		for j in range(1, bearings.size()):
+			if absf(fposmod(bearings[j] - bearings[j - 1], TAU) - step) > 0.0001:
+				uneven += 1
+	check("slots are evenly spaced around each ring", uneven == 0,
+		"%d uneven gaps" % uneven)
+
+	# THE HALF-WEDGE PHASE. Ring 2 onward is rotated half a gap so the rank
+	# behind stands in the gaps rather than directly behind backs — lined up it
+	# reads as a queue, offset it reads as a crowd. That is a decision somebody
+	# made on purpose, so it gets an assertion rather than a comment.
+	for ring in range(2, Formation.RING_COUNT + 1):
+		var first: int = -1
+		for i in range(offsets.size()):
+			if Formation.ring_of(i) == ring:
+				first = i
+				break
+		if first < 0:
+			continue
+		check("ring %d starts half a gap round" % ring,
+			absf(Formation.bearing_of(first)
+				- PI / float(Formation.slots_in_ring(ring))) < 0.0001,
+			Formation.bearing_of(first))
 
 	# NO DUPLICATES. Two slots at one offset means two enemies standing in each
 	# other, which is the exact failure the formation exists to prevent - and it
@@ -727,25 +807,17 @@ func _test_formation() -> void:
 	check("no two slots share an offset", duplicates == 0, "%d duplicates" % duplicates)
 
 	# NOTHING STANDS ON THE PLAYER.
-	check("no slot sits on the anchor", not seen.has(Vector2i.ZERO), offsets.slice(0, 8))
-
-	# SYMMETRY. An asymmetric ring means enemies crowd one side of the player,
-	# which reads in play as "they always come from the left".
-	var asymmetric: int = 0
+	var on_anchor: int = 0
 	for offset in offsets:
-		if not seen.has(-offset):
-			asymmetric += 1
-	check("every slot has an opposite", asymmetric == 0,
-		"%d slots with no mirror" % asymmetric)
+		if offset.is_zero_approx():
+			on_anchor += 1
+	check("no slot sits on the anchor", on_anchor == 0, "%d on the anchor" % on_anchor)
 
-	# EVERY SLOT IS ON THE STRIDE. A slot off the stride sits half a tile from
-	# its neighbours, which is the spacing that made enemies look piled.
-	var off_stride: int = 0
-	for offset in offsets:
-		if offset.x % Formation.SLOT_STRIDE != 0 or offset.y % Formation.SLOT_STRIDE != 0:
-			off_stride += 1
-	check("every slot lands on the stride", off_stride == 0,
-		"%d off-grid" % off_stride)
+	# THERE IS DELIBERATELY NO MIRROR TEST, and the old grid version had one.
+	# An odd ring — seven on ring 1 — cannot have opposites, and demanding them
+	# would force even counts, which means rounding the wedge UP and putting
+	# bodies inside each other. Even SPACING is the property that was actually
+	# wanted; "every slot has an opposite" was a grid's way of spelling it.
 
 	# --- world placement ----------------------------------------------------
 	var anchor := Vector2(100, 200)
@@ -754,30 +826,54 @@ func _test_formation() -> void:
 		Formation.world_position(anchor, -1))
 	check("and so does one past the end",
 		Formation.world_position(anchor, 9999) == anchor)
+	check("an out-of-range slot reports a ring worse than any real one",
+		Formation.ring_of(9999) > Formation.RING_COUNT, Formation.ring_of(9999))
 
-	# RING 1 IS 40px OUT: TILE_SIZE 20 * SLOT_STRIDE 2. That number is load
-	# bearing - the comment in baseenemy.gd says "no attack range changes"
-	# because of it, so attack_range is tuned against it.
+	# THE NEAREST RANK IS RING_RADIUS OUT, and that number is load bearing:
+	# attack_range in baseenemy.gd is tuned against it, so a change here is a
+	# change to whether a melee enemy can reach the player at all.
 	var nearest: float = INF
 	for i in range(Formation.slot_count()):
-		var d: float = anchor.distance_to(Formation.world_position(anchor, i))
-		nearest = minf(nearest, d)
-	check("the closest slot is one stride out, 40px",
-		is_equal_approx(nearest, Formation.TILE_SIZE * Formation.SLOT_STRIDE),
-		nearest)
+		nearest = minf(nearest, anchor.distance_to(Formation.world_position(anchor, i)))
+	check("the closest slot is exactly RING_RADIUS out",
+		is_equal_approx(nearest, Formation.RING_RADIUS), nearest)
 
-	# A bigger tile_size holds further out without changing the grid's shape -
-	# that parameter exists for ranged classes.
-	check("a larger tile size scales the ring, not its shape",
-		is_equal_approx(
-			anchor.distance_to(Formation.world_position(anchor, 0, Formation.TILE_SIZE * 2)),
-			anchor.distance_to(Formation.world_position(anchor, 0)) * 2.0),
-		Formation.world_position(anchor, 0, Formation.TILE_SIZE * 2))
+	check("world_position is just the anchor plus the offset",
+		Formation.world_position(anchor, 0) == anchor + Formation.offset_for(0))
 
-	# The offsets are shared, static and built once. Handing out a reference
-	# that a caller can append to would corrupt the formation for every enemy.
-	check("asking twice gives the same slots",
-		Formation.slot_offsets().size() == 48, Formation.slot_offsets().size())
+	# The offsets are static and built once. slot_offsets() APPENDS to a static
+	# array behind an is_empty() guard, so a second call that ever stopped
+	# returning early would not error — it would silently double the formation.
+	#
+	# COMPARED AGAINST expected, NOT AGAINST offsets.size(). `offsets` is a
+	# REFERENCE to that same static array, not a copy of it, so a doubling would
+	# grow both sides of that comparison and the check would pass while cheerily
+	# reporting eighty. A live reference compared against itself is the shape of
+	# test this project keeps finding: present, green, and unable to fail.
+	check("asking twice does not rebuild or extend the formation",
+		Formation.slot_offsets().size() == expected,
+		Formation.slot_offsets().size())
+
+	# That aliasing gets an assertion of its own, because it is a real hazard
+	# rather than a test artefact: any caller holding this array can append to
+	# it and corrupt the formation for every enemy in the game.
+	#
+	# SHOWN BY MUTATION, NOT BY ==. The obvious spelling of this check is
+	# `Formation.slot_offsets() == offsets`, and it is worthless: Array == in
+	# GDScript compares CONTENTS, so it is equally true of a copy and can never
+	# fail. Identity only shows up if you change one and look at the other, so a
+	# sentinel goes on and comes straight back off. resize() restores the length
+	# either way - if the array really is shared this repairs the formation, and
+	# if it is a copy the append never reached the formation to begin with.
+	var sentinel := Vector2(99999.0, 99999.0)
+	offsets.append(sentinel)
+	var aliased: bool = Formation.slot_offsets().size() == expected + 1
+	offsets.resize(expected)
+	check("slot_offsets hands out the shared array, not a copy", aliased,
+		Formation.slot_offsets().size())
+	check("and the formation is back to its own length afterwards",
+		Formation.slot_offsets().size() == expected,
+		Formation.slot_offsets().size())
 
 
 # =============================================================================

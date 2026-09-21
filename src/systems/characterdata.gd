@@ -134,6 +134,10 @@ const DEFAULT_ACCOUNT_DATA := {
 	"lusions":         0,    # account-shared, soulbound premium currency
 	"bank_gold":       0,    # account-shared, safe from death
 	"bank_inventory":  [],   # account-shared item array (50 slots)
+	# SERVER-OWNED, listed here only so _ensure_account_data() puts the key on
+	# an older save rather than leaving get_account_score() to invent a zero
+	# from a missing entry. Nothing on this side ever adds to it.
+	"score":           0,    # account-shared, only /api/character/revive writes
 }
  
 # --- anti-tamper sanity ranges — PLACEHOLDERS, confirm against your design ---
@@ -1388,7 +1392,26 @@ func add_account_lusions(amount: int) -> void:
 	_ensure_account_data()
 	account_data["lusions"] = max(int(account_data.get("lusions", 0)) + int(amount), 0)
 	save_data()
- 
+
+
+# --- score (what dying has cost this account) ---
+
+# A GETTER AND NOTHING ELSE, and that asymmetry is the whole design.
+#
+# Lusions above have three functions because the client legitimately spends
+# them. Score has one, because the only thing that ever adds to it is
+# /api/character/revive, inside the same transaction as the payment. A
+# set_account_score() would be E-8 with a different column name: a client that
+# can name its own number on a leaderboard.
+#
+# serverstorage.gd reads it in _account_from_server() and has no matching PUT,
+# so the value here is a copy of the server's answer and is allowed to be a
+# little stale. It refreshes on the next login, which is also the only moment
+# it can have changed without this client being the one that died.
+func get_account_score() -> int:
+	_ensure_account_data()
+	return int(account_data.get("score", 0))
+
  
 # --- bank gold (account-shared, safe from death) ---
  
