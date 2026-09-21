@@ -9,9 +9,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -180.0
-offset_top = -215.0
+offset_top = -268.0
 offset_right = 180.0
-offset_bottom = 215.0
+offset_bottom = 268.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_options")
@@ -191,12 +191,74 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 theme_override_font_sizes/font_size = 11
-text = "Vertical sync"
+text = "V-Sync"
 vertical_alignment = 1
 
-[node name="vsynctoggle" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/vsyncrow"]
+[node name="vsyncmode" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/vsyncrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(124, 26)
+layout_mode = 2
+
+[node name="framecaprow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/framecaprow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Frame cap"
+vertical_alignment = 1
+
+[node name="framecap" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/framecaprow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(124, 26)
+layout_mode = 2
+
+[node name="apirow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/apirow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Graphics API"
+vertical_alignment = 1
+
+[node name="apinote" type="Label" parent="mainpanel/margincontainer/vboxcontainer/apirow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.55, 0.45, 1)
+theme_override_font_sizes/font_size = 10
+text = "running on Vulkan"
+vertical_alignment = 1
+
+[node name="graphicsapi" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/apirow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(124, 26)
+layout_mode = 2
+
+[node name="pacingreadout" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 10
+text = "Screen ? Hz  -  drawing 0 fps  -  V-Sync on"
+horizontal_alignment = 1
+
+[node name="pacinghint" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.72, 0.45, 1)
+theme_override_font_sizes/font_size = 10
+text = "Your graphics driver is overriding V-Sync."
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="windowrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 layout_mode = 2

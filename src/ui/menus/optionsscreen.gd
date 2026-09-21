@@ -53,9 +53,27 @@ signal closed
 @onready var sfx_value:     Label        = get_node_or_null("%sfxvalue")
 
 @onready var fullscreen_toggle: CheckButton = get_node_or_null("%fullscreentoggle")
-@onready var vsync_toggle:      CheckButton = get_node_or_null("%vsynctoggle")
+@onready var vsync_mode:        OptionButton = get_node_or_null("%vsyncmode")
+@onready var frame_cap:         OptionButton = get_node_or_null("%framecap")
+@onready var graphics_api:      OptionButton = get_node_or_null("%graphicsapi")
+@onready var api_row:           Control      = get_node_or_null("%apirow")
+@onready var api_note:          Label        = get_node_or_null("%apinote")
+@onready var pacing_readout:    Label        = get_node_or_null("%pacingreadout")
+@onready var pacing_hint:       Label        = get_node_or_null("%pacinghint")
 @onready var window_size:       OptionButton = get_node_or_null("%windowsize")
 @onready var damage_toggle:     CheckButton = get_node_or_null("%damagenumbers")
+
+# The readout is polled, not signalled: nothing announces that the driver has
+# started ignoring vsync. Half a second is fast enough to watch a change take
+# effect and slow enough that the number is readable rather than a blur.
+const READOUT_SECONDS := 0.5
+var _readout_accum: float = 0.0
+
+# Labels for the pickers, in the same order as the constants they mirror.
+const VSYNC_LABELS := {
+	"off": "Off", "on": "On", "adaptive": "Adaptive", "fast": "Fast (no cap)",
+}
+const API_LABELS := {"vulkan": "Vulkan", "d3d12": "Direct3D 12"}
 
 
 # =============================================================================
@@ -128,8 +146,26 @@ func _connect_controls() -> void:
 
 	if fullscreen_toggle != null:
 		fullscreen_toggle.toggled.connect(_on_fullscreen_toggled)
-	if vsync_toggle != null:
-		vsync_toggle.toggled.connect(_on_vsync_toggled)
+	if vsync_mode != null:
+		vsync_mode.clear()
+		for name in Settings.VSYNC_MODES:
+			vsync_mode.add_item(VSYNC_LABELS.get(name, name))
+		vsync_mode.item_selected.connect(_on_vsync_selected)
+	if frame_cap != null:
+		frame_cap.clear()
+		for cap in Settings.FRAME_CAPS:
+			frame_cap.add_item("Unlimited" if int(cap) == 0 else "%d fps" % int(cap))
+		frame_cap.item_selected.connect(_on_frame_cap_selected)
+	if graphics_api != null:
+		graphics_api.clear()
+		for api in Settings.GRAPHICS_APIS:
+			graphics_api.add_item(API_LABELS.get(api, api))
+		graphics_api.item_selected.connect(_on_graphics_api_selected)
+	# WINDOWS ONLY. The setting the picker writes is driver.windows, and on any
+	# other platform the row would be a control that does nothing - which is
+	# this project's least favourite kind of control.
+	if api_row != null and OS.get_name() != "Windows":
+		api_row.visible = false
 	if window_size != null:
 		window_size.item_selected.connect(_on_window_size_selected)
 	if damage_toggle != null:
@@ -173,8 +209,16 @@ func refresh() -> void:
 
 	if fullscreen_toggle != null:
 		fullscreen_toggle.button_pressed = bool(Settings.get_value("fullscreen"))
-	if vsync_toggle != null:
-		vsync_toggle.button_pressed = bool(Settings.get_value("vsync"))
+	if vsync_mode != null:
+		vsync_mode.selected = Settings.VSYNC_MODES.find(str(Settings.get_value("vsync")))
+	if frame_cap != null:
+		# A cap the list does not offer (a hand-edited 100) selects nothing,
+		# for the same reason the window-size picker does below.
+		frame_cap.selected = Settings.FRAME_CAPS.find(int(Settings.get_value("frame_cap")))
+	if graphics_api != null:
+		graphics_api.selected = Settings.GRAPHICS_APIS.find(Settings.graphics_api_requested())
+	_update_api_note()
+	_update_pacing_readout()
 	if damage_toggle != null:
 		damage_toggle.button_pressed = bool(Settings.get_value("damage_numbers"))
 
@@ -251,10 +295,81 @@ func _on_fullscreen_toggled(pressed: bool) -> void:
 	_update_window_size_enabled()
 
 
-func _on_vsync_toggled(pressed: bool) -> void:
+func _on_vsync_selected(index: int) -> void:
 	if _refreshing:
 		return
-	Settings.set_value("vsync", pressed)
+	if index < 0 or index >= Settings.VSYNC_MODES.size():
+		return
+	Settings.set_value("vsync", Settings.VSYNC_MODES[index])
+	_readout_accum = READOUT_SECONDS   # show the effect on the next frame
+
+
+func _on_frame_cap_selected(index: int) -> void:
+	if _refreshing:
+		return
+	if index < 0 or index >= Settings.FRAME_CAPS.size():
+		return
+	Settings.set_value("frame_cap", int(Settings.FRAME_CAPS[index]))
+	_readout_accum = READOUT_SECONDS
+
+
+func _on_graphics_api_selected(index: int) -> void:
+	if _refreshing:
+		return
+	if index < 0 or index >= Settings.GRAPHICS_APIS.size():
+		return
+	Settings.set_graphics_api(Settings.GRAPHICS_APIS[index])
+	_update_api_note()
+
+
+func _update_api_note() -> void:
+	# SAYS WHEN A RESTART IS OWED. The picker shows what override.cfg asks for;
+	# the engine is still running whatever it booted with, and a player who
+	# picked Direct3D 12 and saw nothing change would reasonably conclude the
+	# option is broken rather than pending.
+	if api_note == null:
+		return
+	var requested: String = Settings.graphics_api_requested()
+	var running: String = Settings.graphics_api_in_effect()
+	if requested == running:
+		api_note.text = "running on %s" % API_LABELS.get(running, running)
+	else:
+		api_note.text = "restart to switch to %s" % API_LABELS.get(requested, requested)
+
+
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	_readout_accum += delta
+	if _readout_accum < READOUT_SECONDS:
+		return
+	_readout_accum = 0.0
+	_update_pacing_readout()
+
+
+func _update_pacing_readout() -> void:
+	# THE LINE THIS SCREEN EXISTS FOR. Every other control here is a request;
+	# this is the answer. "Screen 60 Hz - drawing 60 fps - V-Sync on" means the
+	# request was honoured. "Screen 60 Hz - drawing 2400 fps - V-Sync on" means
+	# the graphics driver is overriding the game, and no setting on this screen
+	# can change that - so the hint underneath says where the setting that can
+	# lives.
+	if pacing_readout == null:
+		return
+	var r: Dictionary = Settings.pacing_report()
+	var cap_text: String = "" if int(r["cap"]) == 0 else ", cap %d" % int(r["cap"])
+	pacing_readout.text = "Screen %s Hz  -  drawing %d fps  -  V-Sync %s%s" % [
+		("%.0f" % float(r["refresh"])) if float(r["refresh"]) > 0.0 else "?",
+		int(round(float(r["fps"]))),
+		VSYNC_LABELS.get(str(r["vsync"]), str(r["vsync"])).to_lower(),
+		cap_text]
+	if pacing_hint != null:
+		pacing_hint.visible = bool(r["overridden"])
+		if bool(r["overridden"]):
+			pacing_hint.text = ("Your graphics driver is overriding V-Sync. "
+				+ "AMD: Wait for Vertical Refresh -> \"Off, unless application specifies\", Enhanced Sync off. "
+				+ "NVIDIA: Vertical sync -> \"Use the 3D application setting\". "
+				+ "Or try Direct3D 12 below.")
 
 
 func _on_window_size_selected(index: int) -> void:

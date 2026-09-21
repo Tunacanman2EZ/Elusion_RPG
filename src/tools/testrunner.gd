@@ -81,6 +81,7 @@ func _run_all() -> void:
 	_test_pet_controller()
 	_test_itemstack()
 	_test_ranks()
+	_test_settings()
 	_test_collision_contract()
 
 
@@ -1150,6 +1151,72 @@ func _test_ranks() -> void:
 		check("a %s can" % rank, Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE), rank)
 
 	Api.role = saved_role
+
+
+# =============================================================================
+# SETTINGS - the frame-pacing rules, and every setting has a control
+# =============================================================================
+# Two things this guards. First, the normalisers: an options.cfg from before
+# vsync became a mode stores a bool, and it has to keep meaning what it meant.
+# Second, the contract the settings file states in its own header - "adding a
+# setting is one line in DEFAULTS and one control in optionsscreen.tscn" - is
+# exactly the kind of promise that breaks silently, and this checks it.
+
+func _test_settings() -> void:
+	section("SETTINGS")
+
+	# --- the regression, pinned ------------------------------------------
+	# The tearing band came back because code chose a frame cap on its own -
+	# ceil(refresh) - 1 - and a cap near the refresh rate is what makes a tear
+	# seam slow enough to see. These two lines are the fix, stated as facts.
+	check("the default vsync is on", Settings.DEFAULTS["vsync"] == "on", Settings.DEFAULTS["vsync"])
+	check("and the default cap is no cap", Settings.DEFAULTS["frame_cap"] == 0, Settings.DEFAULTS["frame_cap"])
+	check("Unlimited is the first cap the picker offers", Settings.FRAME_CAPS[0] == 0)
+
+	# --- migration --------------------------------------------------------
+	check("an old vsync=true means on", Settings.normalise_vsync(true) == "on")
+	check("an old vsync=false means off", Settings.normalise_vsync(false) == "off")
+	check("the string 'false' too", Settings.normalise_vsync("false") == "off")
+	check("case does not matter", Settings.normalise_vsync("Adaptive") == "adaptive")
+	check("nonsense becomes the default", Settings.normalise_vsync("banana") == "on")
+	check("a negative cap is no cap", Settings.normalise_frame_cap(-5) == 0)
+
+	# --- the mode table round-trips ------------------------------------------
+	var lost: Array = []
+	for name in Settings.VSYNC_MODES:
+		if Settings.vsync_name_for(Settings.vsync_mode_for(name)) != name:
+			lost.append(name)
+	check("every mode survives name -> engine constant -> name", lost.is_empty(), lost)
+
+	# --- every setting has a control -------------------------------------
+	# The one place this mapping is written down, on purpose: a new key in
+	# DEFAULTS with no row here fails, which is the point.
+	var controls := {
+		"volume_master": "mastervolume",   "volume_music": "musicvolume",
+		"volume_sfx": "sfxvolume",         "fullscreen": "fullscreentoggle",
+		"vsync": "vsyncmode",              "frame_cap": "framecap",
+		"window_width": "windowsize",      "window_height": "windowsize",
+		"damage_numbers": "damagenumbers",
+	}
+	var unmapped: Array = []
+	for key in Settings.DEFAULTS:
+		if not controls.has(key):
+			unmapped.append(key)
+	check("every setting in DEFAULTS is mapped to a control here", unmapped.is_empty(), unmapped)
+
+	var packed: PackedScene = load("res://scene/ui/menus/optionsscreen.tscn")
+	check("the options scene loads", packed != null)
+	if packed == null:
+		return
+	var screen: Node = packed.instantiate()
+	var missing: Array = []
+	for key in controls:
+		if screen.get_node_or_null("%" + controls[key]) == null:
+			missing.append(controls[key])
+	check("and every mapped control exists in it", missing.is_empty(), missing)
+	check("including the readout the whole pacing section is for",
+		screen.get_node_or_null("%pacingreadout") != null)
+	screen.free()
 
 
 # =============================================================================

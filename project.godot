@@ -18,7 +18,6 @@ config/name="ElusionRPG"
 run/main_scene="res://scene/ui/menus/loginmenu.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 run/flush_stdout_on_print=true
-run/max_fps=60
 
 [autoload]
 

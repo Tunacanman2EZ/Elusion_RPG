@@ -96,3 +96,8 @@ remaining-raw.txt
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Written by Settings.set_graphics_api() beside project.godot. It is one
+# machine's choice of renderer, which is the definition of a file that must
+# not follow the project to another machine.
+override.cfg

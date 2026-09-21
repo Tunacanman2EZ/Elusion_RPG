@@ -83,7 +83,25 @@ const DEFAULTS := {
 
 	# --- display ---
 	"fullscreen": false,
-	"vsync": true,
+
+	# V-SYNC IS A MODE NOW, NOT A SWITCH, and it is the whole frame-pacing
+	# story - read the FRAME PACING section below before touching either of
+	# these two. "on" is the default because it is the only setting that can
+	# make tearing impossible; the others exist for a driver that overrides it.
+	#   off       no sync, no cap unless frame_cap says so; tears
+	#   on        FIFO - waits for the screen; the classic, tear-free
+	#   adaptive  syncs when the game is faster than the screen, tears when
+	#             it is slower, so a slow frame never becomes a doubled one
+	#   fast      mailbox - tear-free AND uncapped, lowest latency; the driver
+	#             shows the newest frame each refresh and discards the rest
+	"vsync": "on",
+
+	# 0 IS "NO CAP" AND IS THE DEFAULT. With vsync on, the screen paces the
+	# game and any cap is redundant or harmful (a cap BELOW the refresh rate
+	# drops a frame every second - a visible hitch). With vsync off, an
+	# uncapped game tears in slices too thin to see; it is a cap NEAR the
+	# refresh rate that makes tearing visible. See FRAME PACING.
+	"frame_cap": 0,
 
 	# Windowed size, ignored while fullscreen. 1280x720 is the project's own
 	# viewport size, so the default is "no scaling at all".
@@ -142,92 +160,179 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_enforce_minimum_window()
 	load_settings()
-	match_frame_cap_to_display()
 
 
-# PUBLIC, because the right cap depends on which monitor the window is on and
-# that can change while the game is running.
-func match_frame_cap_to_display() -> void:
-	# 59.94 Hz IS A REAL REFRESH RATE AND IT IS NOT 60.
-	#
-	# It is the NTSC rate, and a great many monitors report it rather than a
-	# round 60 — including the one this was found on, a Samsung reporting
-	# "1920 x 1080, 59.94 Hz" in Windows' own display information.
-	#
-	# project.godot asked for max_fps = 60. Against a 59.94 Hz panel the game
-	# hands over 0.06 more frames every second than the display can show, so
-	# the tear seam advances six hundredths of a screen height per second and
-	# sweeps top to bottom once every 16.7 seconds. That is far too slow to
-	# read as tearing. It reads as a band of noise drifting steadily upward —
-	# which is how it was reported, and why it survived days of looking for a
-	# rendering bug. Nothing was being drawn wrong. The game was simply
-	# producing frames slightly faster than the screen could take them.
-	#
-	# ONE BELOW THE PANEL, DELIBERATELY — and not merely floor(refresh).
-	#
-	# An earlier version of this used floor(), which gives 59 on a 59.94 Hz
-	# panel and fixed the reported band. But it gives 60 on a panel reporting
-	# a round 60, and MATCHING the refresh rate exactly is the worst setting
-	# available, not the best one.
-	#
-	# Without vsync pacing, the seam sits wherever the buffer swap lands in the
-	# scan. How fast it moves is the difference between the two rates:
-	#
-	#   60 fps on 59.94 Hz   0.06 apart   sweeps every 16.7 s   a visible band
-	#   60 fps on 60.00 Hz   ~0 apart     barely moves at all   worse
-	#   59 fps on 60.00 Hz   1.00 apart   sweeps every 1.0 s    imperceptible
-	#
-	# The seam does not disappear when the rates differ. It moves too fast to
-	# read as an object. Being close to the refresh rate is what makes it slow
-	# enough for an eye to follow, so the goal is to be reliably about a frame
-	# away rather than as near as possible.
-	#
-	# ceil() - 1 lands one below whether the panel reports 59.94 or 60.0, which
-	# floor() does not: floor(60.0) is 60 and puts the seam back.
-	#
-	# All of this would be moot if vsync were pacing the frames, and on most
-	# machines it is. It was not here: with the cap removed the game ran at
-	# 2625 fps on a 60 Hz screen, which is what proved the cap was doing all
-	# of the work and vsync none of it.
+# =============================================================================
+# FRAME PACING - WHAT THE "BAND OF STATIC" ACTUALLY IS, AND WHAT IS NOT A FIX
+# =============================================================================
+# A monitor draws top to bottom, sixty times a second. If the game swaps in a
+# new frame while a draw is in progress, the top of the screen shows the old
+# frame and the bottom shows the new one, with a horizontal shear line where
+# they meet. That is a tear. When the picture is moving - walking - the two
+# halves are offset by however far things moved between those frames, and the
+# line is visible.
+#
+# WHERE THE LINE SITS depends on when in the scan the swap lands, and HOW FAST
+# IT MOVES is the difference between the game's frame rate and the screen's:
+#
+#     game fps    screen Hz    difference    the line sweeps the screen every
+#     60          59.94        0.06 /s       16.7 s   - a slow crawling band
+#     59          60.00        1.00 /s       1.0 s    - a wave, once a second
+#     2000        60.00        ~33 tears per refresh, each a fraction of a pixel
+#
+# THE PREVIOUS VERSION OF THIS FILE HAD THE LAST TWO ROWS THE WRONG WAY ROUND.
+# It capped the game at ceil(Hz) - 1, on the reasoning that a seam sweeping
+# once a second moves "too fast to read as an object". It does not. A shear
+# line rolling down the screen once a second during every walk is exactly the
+# "waves of static" that got reported. The cap was the regression: before it,
+# project.godot's flat 60 gave the slow crawl; after it, the wave.
+#
+# WHAT IS ACTUALLY TRUE about the third row: at 2000 fps the frame changes 33
+# times per scan, and consecutive frames differ by 90 px/s / 2000 = 0.05 px.
+# The shear at each tear is smaller than a pixel. Uncapped with vsync off does
+# not LOOK torn - it is the setting competitive players run. It is a cap close
+# to the refresh rate that makes tearing worst, because it makes each tear a
+# whole frame of motion wide and moves it slowly enough to follow.
+#
+# THE ONLY CURE IS VSYNC. A cap of any value changes the seam's speed, never
+# its existence. V-sync "on" holds the swap until the scan finishes, and then
+# there is no seam to have a speed. So:
+#
+#   - the default is vsync on, cap 0, and the screen paces the game
+#   - no code here ever sets a cap by itself any more. The cap is the
+#     player's, and is 0 unless they say otherwise
+#   - the options screen shows what the ENGINE is doing right now - screen Hz,
+#     frames actually drawn, vsync mode in effect - because the one thing that
+#     can still defeat this is a graphics driver overriding vsync from outside
+#     the game, and the only way to see that is to compare the number the game
+#     asked for with the number it is getting
+#
+# THAT OVERRIDE IS NOT HYPOTHETICAL. On the machine this was found on, with
+# vsync requested, removing the cap produced 2625 fps on a 60 Hz screen. Vsync
+# was being asked for and not delivered - which is a driver control panel
+# setting (AMD: "Wait for Vertical Refresh", "Enhanced Sync"), not anything a
+# game can fix. pacing_report() below is how the options screen says so.
+
+# The four modes, in the order the options screen lists them.
+const VSYNC_MODES := ["off", "on", "adaptive", "fast"]
+
+# Caps the options screen offers. 0 first because it is the default and the
+# right answer whenever vsync is working. The rest are common panel rates; a
+# cap is worth offering at all because an uncapped game with vsync off draws
+# thousands of frames a second and turns the GPU into a heater.
+const FRAME_CAPS := [0, 60, 120, 144, 165, 240, 360]
+
+
+static func vsync_mode_for(name: String) -> int:
+	match name:
+		"off":      return DisplayServer.VSYNC_DISABLED
+		"adaptive": return DisplayServer.VSYNC_ADAPTIVE
+		"fast":     return DisplayServer.VSYNC_MAILBOX
+		_:          return DisplayServer.VSYNC_ENABLED
+
+
+static func vsync_name_for(mode: int) -> String:
+	match mode:
+		DisplayServer.VSYNC_DISABLED: return "off"
+		DisplayServer.VSYNC_ADAPTIVE: return "adaptive"
+		DisplayServer.VSYNC_MAILBOX:  return "fast"
+		_:                            return "on"
+
+
+static func normalise_vsync(value: Variant) -> String:
+	# THE OLD FILE STORED A BOOL. Every options.cfg written before this change
+	# has `vsync=true` or `vsync=false`, and ConfigFile hands those back as
+	# bools. They mean "on" and "off"; anything else unrecognised means the
+	# default, because the alternative is a stored value the apply step does
+	# not understand silently becoming whatever the match falls through to.
+	if typeof(value) == TYPE_BOOL:
+		return "on" if value else "off"
+	var s: String = str(value).to_lower()
+	if s == "true":  return "on"
+	if s == "false": return "off"
+	return s if s in VSYNC_MODES else "on"
+
+
+static func normalise_frame_cap(value: Variant) -> int:
+	# Negative means nothing; 0 is the honest spelling of "no cap".
+	return maxi(0, int(value))
+
+
+func pacing_report() -> Dictionary:
+	# WHAT THE ENGINE IS DOING, NOT WHAT IT WAS ASKED TO DO. Both are read live.
+	# `overridden` is the one line the whole section exists for: vsync was
+	# requested, nothing is capping, and the game is drawing far more frames
+	# than the screen can show. A driver is ignoring the request. Nothing in
+	# this file can change that; the options screen can at least say it.
 	var screen: int = DisplayServer.window_get_current_screen()
 	var refresh: float = DisplayServer.screen_get_refresh_rate(screen)
+	var fps: float = Engine.get_frames_per_second()
+	var mode: String = vsync_name_for(DisplayServer.window_get_vsync_mode())
+	var cap: int = Engine.max_fps
+	var overridden: bool = (mode != "off" and mode != "fast" and cap == 0
+		and refresh > 0.0 and fps > refresh * 1.5)
+	return {
+		"refresh": refresh, "fps": fps, "vsync": mode, "cap": cap,
+		"overridden": overridden,
+	}
 
-	# A rate of 0 or -1 means the platform would not say. Leaving max_fps at
-	# whatever project.godot set is better than guessing at it.
-	if refresh <= 0.0:
+
+# =============================================================================
+# THE GRAPHICS API - THE ONE SETTING THAT IS NOT IN DEFAULTS, ON PURPOSE
+# =============================================================================
+# Vulkan or Direct3D 12, Windows only, restart required. It is not in DEFAULTS
+# because the engine has to read it BEFORE any script runs - the renderer is
+# built before autoloads exist - so it cannot live in options.cfg. It lives in
+# override.cfg beside the project (or the executable, in an export), which is
+# a file Godot reads on top of project.godot at boot.
+#
+# WHY IT IS OFFERED AT ALL: when a driver overrides vsync on one API, it does
+# not always override it on the other. D3D12 presents through DXGI and the
+# desktop compositor, which on Windows 11 is a different path from Vulkan's
+# swapchain, and the one more likely to be left alone. It is a thing to TRY,
+# reported honestly as a restart-required experiment, not a promise.
+#
+# NOT TOUCHED BY reset(). Silently changing a restart-required renderer
+# setting under "Reset to defaults" is a surprise waiting for a laptop.
+
+const GRAPHICS_APIS := ["vulkan", "d3d12"]
+const GRAPHICS_API_SETTING := "rendering/rendering_device/driver.windows"
+
+
+func graphics_api_in_effect() -> String:
+	# What the engine booted with, which is the only truthful answer until the
+	# next restart.
+	return str(ProjectSettings.get_setting(GRAPHICS_API_SETTING, "vulkan"))
+
+
+func graphics_api_requested() -> String:
+	# What override.cfg says, which becomes true on the next launch.
+	var cfg := ConfigFile.new()
+	if cfg.load(_override_path()) != OK:
+		return graphics_api_in_effect()
+	return str(cfg.get_value("rendering", "rendering_device/driver.windows",
+		graphics_api_in_effect()))
+
+
+func set_graphics_api(api: String) -> void:
+	if api not in GRAPHICS_APIS:
+		push_error("Settings: unknown graphics api '%s'" % api)
 		return
-
-	var cap: int = int(ceil(refresh)) - 1
-	if cap < 30:
-		return
-
-	if Engine.max_fps != cap:
-		Engine.max_fps = cap
-
-	_capped_screen = screen
+	var path: String = _override_path()
+	var cfg := ConfigFile.new()
+	cfg.load(path)   # a missing file is fine; it starts empty
+	cfg.set_value("rendering", "rendering_device/driver.windows", api)
+	var err: int = cfg.save(path)
+	if err != OK:
+		push_warning("Settings: could not write %s (error %d)." % [path, err])
 
 
-# The screen the current cap was calculated for. Dragging the window to a
-# monitor with a different refresh rate has to recalculate, and there is no
-# signal for that — see _process().
-var _capped_screen: int = -1
-var _screen_check_accum: float = 0.0
-const SCREEN_CHECK_SECONDS := 1.0
-
-
-func _process(delta: float) -> void:
-	# ONCE A SECOND, NOT ONCE A FRAME. This exists because a window can be
-	# dragged from a 59.94 Hz panel to a 144 Hz one and the correct frame cap
-	# changes underneath the game with nothing announcing it. A whole second of
-	# the wrong cap is imperceptible; sixty DisplayServer queries a second to
-	# avoid it would not be a trade worth making.
-	_screen_check_accum += delta
-	if _screen_check_accum < SCREEN_CHECK_SECONDS:
-		return
-	_screen_check_accum = 0.0
-
-	if DisplayServer.window_get_current_screen() != _capped_screen:
-		match_frame_cap_to_display()
+func _override_path() -> String:
+	# Beside project.godot in the editor, beside the executable in an export.
+	# Godot reads override.cfg from exactly those two places, and nowhere else.
+	if OS.has_feature("editor"):
+		return "res://override.cfg"
+	return OS.get_executable_path().get_base_dir().path_join("override.cfg")
 
 
 func _enforce_minimum_window() -> void:
@@ -283,7 +388,7 @@ func set_value(key: String, value: Variant) -> void:
 	# round-trips 1.0 as a float and 1 as an int, and a slider that happens to
 	# land exactly on 1 would otherwise store an int where a float is expected
 	# and read back as one on the next launch. The default is the type.
-	var typed: Variant = _coerce(value, DEFAULTS[key])
+	var typed: Variant = _normalise(key, _coerce(value, DEFAULTS[key]))
 	if _values.get(key, null) == typed and not _loading:
 		return
 
@@ -311,8 +416,25 @@ func _coerce(value: Variant, like: Variant) -> Variant:
 			return int(value)
 		TYPE_FLOAT:
 			return float(value)
+		TYPE_STRING:
+			return str(value)
 		_:
 			return value
+
+
+func _normalise(key: String, typed: Variant) -> Variant:
+	# COERCION PINS THE TYPE; THIS PINS THE MEANING. A string is the right type
+	# for vsync and still says nothing about whether "true" or "Adaptive" or
+	# "banana" is a mode the apply step knows. Each key that has a vocabulary
+	# gets one line here, and an unknown value becomes the default rather than
+	# something the match statement silently falls through.
+	match key:
+		"vsync":
+			return normalise_vsync(typed)
+		"frame_cap":
+			return normalise_frame_cap(typed)
+		_:
+			return typed
 
 
 # =============================================================================
@@ -358,7 +480,7 @@ func save_settings() -> void:
 
 func _apply(key: String, value: Variant) -> void:
 	# DISPATCHED ON THE KEY, one branch each, rather than an apply_all() that
-	# reapplies eight things whenever one changes. Setting the window mode has
+	# reapplies nine things whenever one changes. Setting the window mode has
 	# a visible cost — the window flickers — and doing it because the SFX
 	# slider moved is the kind of thing that reads as a bug.
 	match key:
@@ -377,10 +499,16 @@ func _apply(key: String, value: Variant) -> void:
 			# the renderer rebuild its swapchain, and doing that once per
 			# launch to set it to the value it already had is a real change to
 			# how the first frames are presented in exchange for nothing.
-			var want_vsync: int = (DisplayServer.VSYNC_ENABLED if bool(value)
-				else DisplayServer.VSYNC_DISABLED)
+			var want_vsync: int = vsync_mode_for(str(value))
 			if DisplayServer.window_get_vsync_mode() != want_vsync:
 				DisplayServer.window_set_vsync_mode(want_vsync)
+		"frame_cap":
+			# THE ONLY PLACE max_fps IS WRITTEN. It used to be written by a
+			# once-a-second poll that chose ceil(refresh) - 1 on its own, which
+			# is the regression the FRAME PACING section describes. Now the cap
+			# is the player's number or nothing.
+			if Engine.max_fps != int(value):
+				Engine.max_fps = int(value)
 		"damage_numbers":
 			# Read where the labels are spawned rather than pushed anywhere —
 			# see player.gd and baseenemy.gd. Nothing to apply.
