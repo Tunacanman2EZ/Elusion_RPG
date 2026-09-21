@@ -345,9 +345,20 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 				# Days remaining rather than a date: against a fixed token ttl
 				# that is also how OLD the session is, which is the reading
 				# that matters. Nearly the full ttl means it just signed in.
+				# WHOLE DAYS ON PURPOSE, said out loud rather than left as a
+				# warning. tools/audit.py hunts undocumented int/int for a
+				# reason - a discarded remainder is usually a rounding bug -
+				# so where it IS intended the project annotates it with why.
+				#
+				# A session with 29.6 days left reads as 29, and that is the
+				# honest rendering: the number is there to say "this is old"
+				# or "this just signed in", and rounding 29.6 up to 30 would
+				# make a day-old session look brand new.
+				@warning_ignore("integer_division")
+				var days_left: int = int(entry.get("expires_in", 0)) / 86400
 				_say("  expires %s  (%d day(s) left)" % [
 					_when(int(entry.get("expires_at", 0))),
-					int(entry.get("expires_in", 0)) / 86400,
+					days_left,
 				])
 
 	# OTHER ACCOUNTS ON THE SAME ADDRESSES. Surfaced, never acted on - see

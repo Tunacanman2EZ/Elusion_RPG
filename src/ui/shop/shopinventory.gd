@@ -180,7 +180,45 @@ func _build_row(entry: Dictionary) -> Control:
 	buy.pressed.connect(_on_buy_pressed.bind(item_id, price))
 	row.add_child(buy)
 
+	# HOVER SHOWS THE TOOLTIP, the same one the backpack and the equipment doll
+	# use. The shop was the one place items were listed and could not be
+	# inspected - which is the panel where you most need it, because you are
+	# deciding whether to spend on something you do not own yet.
+	#
+	# MOUSE_FILTER_PASS, not STOP. The row holds a Buy button, and STOP on the
+	# container eats the press before the button sees it. PASS lets the row see
+	# the motion and the button keep the click.
+	#
+	# THE ROW IS ITS OWN source_slot. The tooltip tracks whoever asked so a hide
+	# from somewhere else cannot close it; it does not care what kind of node
+	# that is, only that the same one asks twice.
+	if data != null:
+		row.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.mouse_entered.connect(_on_row_hovered.bind(row, data))
+		row.mouse_exited.connect(_on_row_unhovered.bind(row))
+
 	return row
+
+
+func _on_row_hovered(row: Control, data: ItemData) -> void:
+	var tooltip: Node = get_tree().get_first_node_in_group("itemtooltip")
+	if tooltip == null or not tooltip.has_method("show_for_stack"):
+		return
+	# QUANTITY 1: the shop sells one at a time, and the tooltip only prints a
+	# count above one, so this reads as an item rather than as a stack.
+	tooltip.show_for_stack(ItemStack.new(data, 1), row)
+
+
+func _on_row_unhovered(row: Control) -> void:
+	var tooltip: Node = get_tree().get_first_node_in_group("itemtooltip")
+	if tooltip == null or not tooltip.has_method("hide_tooltip"):
+		return
+	# ONLY IF THIS ROW IS THE ONE SHOWING. Moving between two rows fires exited
+	# on the old and entered on the new in that order, so an unconditional hide
+	# would close the tooltip the new row had just opened.
+	if "_current_slot" in tooltip and tooltip._current_slot != row:
+		return
+	tooltip.hide_tooltip()
 
 
 func _requirement_suffix(entry: Dictionary) -> String:
@@ -204,6 +242,24 @@ func _requirement_suffix(entry: Dictionary) -> String:
 	var skill_level: int = int(entry.get("required_skill_level", 1))
 	if skill != "" and skill_level > 1:
 		parts.append("%s %d" % [skill.capitalize(), skill_level])
+
+	# THE CLASS, which is the one this rack needed most. The general store
+	# sells an ironsword, an ironmaul, an ironstaff and an ironscepter side by
+	# side - same level, same shelf, one per class - and nothing on the row
+	# said which of them you could hold. The first time you found out was the
+	# equip refusing, after you had paid.
+	#
+	# EMPTY MEANS ANYONE, which is most of the catalogue. A potion printing
+	# "Needs: anyone" would be noise on every row to help on a few.
+	#
+	# Capitalised and joined with "or" rather than a comma: ironchest is
+	# ["warrior", "tank"] and "Warrior, Tank" reads like it needs both.
+	var classes: Array = entry.get("required_classes", []) if entry.get("required_classes", []) is Array else []
+	if not classes.is_empty():
+		var names := PackedStringArray()
+		for c in classes:
+			names.append(str(c).capitalize())
+		parts.append(" or ".join(names))
 
 	if parts.is_empty():
 		return ""

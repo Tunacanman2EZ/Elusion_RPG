@@ -137,6 +137,11 @@ ALLOWED = {
 # the same rule: the reason is printed at the end, so this stays a decision
 # rather than a way of making a number go down.
 ALLOWED_ROWS = {
+    "scene/projectiles/poisonpuddle.tscn: ShaderMaterial ShaderMaterial_tint is shared by every instance (scene instanced 2+ times, not resource_local_to_scene)":
+        "Reviewed and kept. acidpuddle.gd returns early when the node already carries a material and builds a fresh ShaderMaterial.new() otherwise, so nothing ever mutates the shared sub-resource - every puddle of a type is meant to look identical, which is what sharing gives and is cheaper than a copy per puddle. Flagged here because a scene file cannot tell that apart from the boss-prism case, where the shared material WAS tweened and erased all six at once.",
+    "scene/projectiles/icepuddle.tscn: ShaderMaterial ShaderMaterial_tint is shared by every instance (scene instanced 2+ times, not resource_local_to_scene)":
+        "Reviewed and kept. acidpuddle.gd returns early when the node already carries a material and builds a fresh ShaderMaterial.new() otherwise, so nothing ever mutates the shared sub-resource - every puddle of a type is meant to look identical, which is what sharing gives and is cheaper than a copy per puddle. Flagged here because a scene file cannot tell that apart from the boss-prism case, where the shared material WAS tweened and erased all six at once.",
+
     "src/projectiles/fireprojectile.gd: "
     "_on_visible_on_screen_notifier_2d_screen_exited() runs nothing":
         "Deliberately empty and says so. The notifier fired screen_exited when "
@@ -1057,6 +1062,114 @@ print("=" * 72)
 print("  ELUSION PROJECT AUDIT — %s" % ROOT)
 print("  %d scripts, %d scenes, %d resources"
       % (len(SCRIPTS), len(SCENES), len(RESOURCES)))
+
+# =============================================================================
+# 19. THINGS THAT LOOK DRAWN AND ARE NOT
+# =============================================================================
+# THE BUG CLASS THIS FILE KEEPS FINDING, aimed at scene files rather than code.
+# Three builds of the boss prisms shipped invisible and none errored: a Control
+# that resolved no size, a texture that reports a size and rasterises nothing,
+# and a material every instance shared. Each satisfied the STRUCTURE without
+# producing the EFFECT. Below are the two a .tscn can be asked about.
+
+rows = []
+for _rel, _text in SCENES.items():
+    for _pid in set(re.findall(
+            r'\[sub_resource type="PlaceholderTexture2D" id="([^"]+)"', _text)):
+        if re.search(r'texture\s*=\s*SubResource\("%s"\)' % re.escape(_pid), _text):
+            rows.append("%s: PlaceholderTexture2D %s is a node's texture - "
+                        "reports a size, draws nothing" % (_rel, _pid))
+
+report("PLACEHOLDER TEXTURES THAT ARE ACTUALLY DRAWN",
+       "A PlaceholderTexture2D reports a size and issues no draw call, so it "
+       "passes every 'is it set' check and renders nothing. It is a stand-in "
+       "the editor uses while you wire something up; shipping one is always "
+       "an accident.",
+       rows, severity="fail")
+
+
+# A sub-resource belongs to the SCENE, not the instance, so every copy holds
+# the same object. Six boss prisms held two materials between them: the
+# gauntlet tweened `dissolve` on wave one and all six erased themselves inside
+# 0.6 seconds. resource_local_to_scene = true is the fix.
+#
+# ADVISORY, NOT A DEFECT. Sharing is only wrong when something mutates the
+# material per instance - if every copy is meant to look identical, sharing is
+# correct and cheaper. A .tscn cannot tell those apart, so this names them and
+# ALLOWED_ROWS carries the ones that have been looked at. A check that called
+# all of these bugs would be wrong more often than right, which is how a
+# section stops being read.
+_INSTANCED = {}
+for _text in SCENES.values():
+    for _rel2, _rid in re.findall(
+            r'\[ext_resource type="PackedScene"[^\]]*path="res://([^"]+)"[^\]]*id="([^"]+)"', _text):
+        _INSTANCED[_rel2] = _INSTANCED.get(_rel2, 0) + _text.count(
+            'instance=ExtResource("%s")' % _rid)
+for _text in SCRIPTS.values():
+    for _hit in re.findall(r'preload\(\s*"res://([^"]+\.tscn)"\s*\)', _text):
+        # PRELOADED MEANS INSTANTIATED, usually more than once - a projectile
+        # or a puddle is spawned per event. Counted as 2 so it clears the
+        # threshold below without pretending to know the real number.
+        _INSTANCED[_hit] = _INSTANCED.get(_hit, 0) + 2
+
+rows = []
+for _rel, _text in SCENES.items():
+    if _INSTANCED.get(_rel, 0) < 2:
+        continue
+    for _m in re.finditer(
+            r'\[sub_resource type="ShaderMaterial" id="([^"]+)"\](.*?)(?=\n\[|\Z)',
+            _text, re.S):
+        _sid, _body = _m.group(1), _m.group(2)
+        if "resource_local_to_scene = true" in _body:
+            continue
+        if re.search(r'material\s*=\s*SubResource\("%s"\)' % re.escape(_sid), _text):
+            rows.append("%s: ShaderMaterial %s is shared by every instance "
+                        "(scene instanced %d+ times, not resource_local_to_scene)"
+                        % (_rel, _sid, _INSTANCED[_rel]))
+
+report("SHADER MATERIALS SHARED BY EVERY INSTANCE",
+       "A sub-resource belongs to the scene, so every instance holds the same "
+       "object. Setting a shader parameter on one sets it on all of them.",
+       rows)
+
+
+# =============================================================================
+# 20. ONE DIRECTION OF AN ANIMATION SET RUNNING AT A DIFFERENT RATE
+# =============================================================================
+# A new animation defaults to speed 5.0. Add one direction to a group tuned to
+# 10.0 and the character visibly changes rate as it turns - which reads as a
+# physics or input problem, not an art one, and gets hunted in the wrong file.
+# Found in poisonslime.tscn and bossenemy.tscn, where every *left sat at 5.0.
+#
+# BY BASE NAME, so walk{up,down,left,right} is one group and smallattack* is
+# its own: a variant character prefixes the whole set, and comparing across the
+# prefix would report the small slime against the large.
+_DIRS = ("up", "down", "left", "right")
+
+rows = []
+for _rel, _text in SCENES.items():
+    for _block in re.finditer(
+            r'\[sub_resource type="SpriteFrames" id="[^"]+"\](.*?)(?=\n\[sub_resource|\n\[node|\Z)',
+            _text, re.S):
+        _groups = {}
+        for _name, _speed in re.findall(
+                r'"name":\s*&"([^"]+)",\s*"speed":\s*([0-9.]+)', _block.group(1)):
+            for _d in _DIRS:
+                if _name.endswith(_d):
+                    _groups.setdefault(_name[: -len(_d)], {})[_name] = float(_speed)
+                    break
+        for _base, _members in sorted(_groups.items()):
+            if len(set(_members.values())) > 1:
+                rows.append("%s: '%s*' - %s" % (_rel, _base, ", ".join(
+                    "%s=%g" % (k, v) for k, v in sorted(_members.items()))))
+
+report("ANIMATION SPEED DRIFT ACROSS A DIRECTION GROUP",
+       "All four directions of one animation should run at the same speed. A "
+       "new animation defaults to 5.0, so one added to a tuned group makes the "
+       "character change rate as it turns.",
+       rows, severity="fail")
+
+
 print("=" * 72)
 found = emit()
 sys.exit(0)

@@ -239,6 +239,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
+	# THE DOLL ON ITS OWN. It still opens with the bag by default - that is the
+	# common case - but it is no longer only reachable that way, which is what
+	# "equipment rides on the inventory" used to mean in practice.
+	if event.is_action_pressed("equipment_toggle"):
+		toggle_equipment()
+		get_viewport().set_input_as_handled()
+		return
+
 	# Backquote / tilde toggles the owner panel. Anyone who is not the owner
 	# gets no response at all by design, not even an error — see
 	# _toggle_owner_panel().
@@ -916,7 +924,25 @@ func toggle_inventory() -> void:
 		_show_equipment_panel()
 
 
-func show_inventory() -> void:
+func toggle_equipment() -> void:
+	# EQUIPMENT IS ITS OWN PANEL NOW, and this function is that change.
+	#
+	# It used to open and close with the backpack, on the rule written further
+	# down: "one panel that is only useful next to another is not two panels".
+	# That held while equipping was a POINTER into the bag - the doll was a
+	# view of the backpack and said nothing on its own.
+	#
+	# It stopped holding for two reasons. Equipping MOVES the item now, so the
+	# doll holds things the bag does not and is worth reading by itself. And
+	# the shop calls show_inventory() so you can sell, which dragged the doll
+	# onto a screen it has no business being on, over the stock list.
+	if equipment_panel != null and equipment_panel.visible:
+		_hide_equipment_panel()
+		return
+	_show_equipment_panel()
+
+
+func show_inventory(with_equipment: bool = true) -> void:
 	if inventory_screen == null:
 		_ensure_inventory_screen()
 		if inventory_screen == null:
@@ -925,7 +951,13 @@ func show_inventory() -> void:
 	if active_character != null:
 		inventory_screen.set_player(active_character)
 	inventory_screen.show_inventory()
-	_show_equipment_panel()
+
+	# THE DEFAULT STILL PAIRS THEM, because opening the bag to manage gear is
+	# the common case and two keystrokes for it would be a downgrade. What
+	# changed is that the pairing is a DEFAULT rather than a law: the shop
+	# passes false, and toggle_equipment() opens the doll with no bag at all.
+	if with_equipment:
+		_show_equipment_panel()
 
 
 func hide_inventory() -> void:
@@ -1068,7 +1100,12 @@ func open_shop(shop_id: String, player: Node) -> void:
 	# own bag next to is one where they buy a second sword because they forgot
 	# about the first — and the purchase lands in that bag, so it wants to be on
 	# screen when it does. Same reason toggle_bank() shows it.
-	show_inventory()
+	# THE BACKPACK ONLY. Selling needs the bag on screen; nothing about a shop
+	# needs the equipment doll, and it used to arrive anyway and sit over the
+	# stock list. Take gear off first if you mean to sell it - which is a real
+	# action now rather than bookkeeping, since unequipping puts the item back
+	# in the bag.
+	show_inventory(false)
 
 	if shop_panel.has_method("open_for_shop"):
 		shop_panel.open_for_shop(shop_id, player)
