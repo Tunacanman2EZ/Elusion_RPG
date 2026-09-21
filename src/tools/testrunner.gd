@@ -104,9 +104,45 @@ func check(label: String, condition: bool, detail: Variant = "") -> void:
 
 
 func section(title: String) -> void:
+	# RE-ARMED EVERY SECTION. quietly() below turns engine messages off and on
+	# around a single call, and if that call ever aborts between the two the flag
+	# stays off and the rest of the run goes silent - including real errors. This
+	# line means the damage can never outlive one section.
+	Engine.print_error_messages = true
 	_say("")
 	_say(title)
 	_say("-".repeat(title.length()))
+
+
+func quietly(fn: Callable) -> Variant:
+	# RUN ONE CALL WITH THE ENGINE'S MESSAGES OFF, and hand back what it returned.
+	#
+	# WHY THIS EXISTS. Several checks in this suite deliberately do the wrong
+	# thing and assert that the code REFUSES: an unknown item_id, a consumable
+	# asked to be a pet, a non-pet sitting in the pets group. Refusing is the
+	# behaviour under test, and push_warning() is how each refusal announces
+	# itself - so a fully passing run printed five warnings and fifteen lines of
+	# backtrace, and the suite had to apologise for them in its own output with
+	# "...expected warnings follow".
+	#
+	# That is the same disease as the leaked-instance warning that came out of
+	# api.gd's boot probe: NOISE ON A GREEN RUN. It teaches you to skim the
+	# console, and skimming the console is how a 46 hour stale catalogue with
+	# four disarmed security controls survived.
+	#
+	# Engine.print_error_messages is the only lever GDScript has here, and it is
+	# a BIG HAMMER - while it is off, genuine errors vanish too. So it is off for
+	# exactly one call and on again on the next line, never around a block, and
+	# section() re-arms it regardless.
+	#
+	# THE WARNINGS THEMSELVES ARE NOT THE PROBLEM AND ARE NOT BEING SUPPRESSED IN
+	# THE GAME. A player who somehow lands on a missing item_id should absolutely
+	# see it in the console. This only silences the calls where this file is the
+	# one asking for the impossible thing.
+	Engine.print_error_messages = false
+	var out: Variant = fn.call()
+	Engine.print_error_messages = true
+	return out
 
 
 func _environment() -> void:
@@ -908,7 +944,9 @@ func _test_pet_controller() -> void:
 	check("an empty id resolves to nothing, and warns about nothing",
 		PetController.pet_scene_for("") == null)
 
-	_say("  ...expected warnings follow - each rejected lookup explains itself")
+	# THE TWO REFUSALS BELOW ARE WRAPPED IN quietly(). Each one warns on purpose
+	# - that is the refusal announcing itself - and the suite used to print an
+	# apology here saying so. An apology in the output is not the fix.
 
 	# A potion is not a pet. THIS IS THE CHECK THE SPLIT WAS FOR: the restore
 	# path used to accept any item carrying a pet_scene without asking whether
@@ -916,10 +954,11 @@ func _test_pet_controller() -> void:
 	var potion: ItemData = _any_item_of_type(ItemData.Type.CONSUMABLE)
 	if potion != null:
 		check("a consumable is not summonable as a pet",
-			PetController.pet_scene_for(potion.item_id) == null, potion.item_id)
+			quietly(func() -> Variant: return PetController.pet_scene_for(potion.item_id)) == null,
+			potion.item_id)
 
 	check("an unknown id is not summonable",
-		PetController.pet_scene_for("notarealpet") == null)
+		quietly(func() -> Variant: return PetController.pet_scene_for("notarealpet")) == null)
 
 	# --- despawning --------------------------------------------------------
 	# A REGRESSION TEST WITH A STORY. field.tscn had its pets CONTAINER in the
@@ -936,8 +975,8 @@ func _test_pet_controller() -> void:
 	not_a_pet.add_to_group("pets")
 	add_child(not_a_pet)
 
-	_say("  ...one more expected warning: the container below is meant to be skipped")
-	var freed: int = PetController.despawn_all(get_tree())
+	# Skipping the container is what warns, and skipping it is the whole point.
+	var freed: int = int(quietly(func() -> Variant: return PetController.despawn_all(get_tree())))
 
 	check("despawn_all frees the pet", freed == 1, "freed %d" % freed)
 	check("and the pet is actually going away",
@@ -1022,8 +1061,10 @@ func _test_itemstack() -> void:
 	# when error_item.tres exists. It does not exist today, so from_dict returns
 	# null — but asserting null would mean this check silently stopped testing
 	# anything the day someone added the fallback item.
-	_say("  ...the ItemRegistry warning below is expected, the next check causes it")
-	var ghost := ItemStack.from_dict({"item_id": "notarealitem", "quantity": 1})
+	# quietly(): the registry warns about the unknown id, which is it doing its
+	# job. See the note on quietly() for why that does not belong in the output.
+	var ghost: ItemStack = quietly(
+		func() -> Variant: return ItemStack.from_dict({"item_id": "notarealitem", "quantity": 1}))
 	check("an unknown item_id never rehydrates as that item",
 		ghost == null or ghost.data.item_id != "notarealitem",
 		ghost.data.item_id if ghost != null else "null")
