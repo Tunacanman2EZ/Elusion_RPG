@@ -69,7 +69,17 @@ Both sides confirm before anything moves, and a trade that fails validation at e
 
 ### Real accounts, not a local profile gate — `src/systems/api.gd`
 
-Passwords are salted and hashed server-side; the client holds a bearer token and never sees a hash. Login and "no such user" return an identical 401 so the endpoint can't be used to enumerate usernames. Admin is a database column, not a username comparison running on the player's own machine.
+Passwords are salted and hashed server-side; the client holds a bearer token and never sees a hash. Login and "no such user" return an identical 401 so the endpoint can't be used to enumerate usernames. Rank is a ladder — player, mod, dev, owner — decided on the server, and **owner cannot be stored at all**: it comes from an environment variable, so no request and no database edit can grant it.
+
+### Staff tools that actually reach the player — `src/ui/staff/staffpanel.gd`, `src/ui/characterhud.gd`
+
+Mods, devs and the owner get a Staff button on the HUD: every account with who is online right now, and kick, ban (1, 7 or 30 days, or permanent), unban, promote and demote. The panel decides nothing — it only hides what the server would refuse. A mod cannot touch a mod, only a dev or the owner bans permanently, and nobody grants a rank at or above their own.
+
+The interesting part was what a kick looked like from the other side: nothing. The server deleted the session, but the game never asked again after the login screen, so a kicked player played on until they restarted. The game now sends a heartbeat every fifteen seconds and re-checks at once on any refused request — a kick lands in about a second — and only a 401 counts, so restarting the server never signs everyone out.
+
+### Runs on modest hardware, measured rather than guessed — `src/systems/settings.gd`
+
+Before adding a single graphics option, the real scenes were benchmarked on the slowest machine available: a graphics card simulated in software on two CPU cores. Two things carried almost all the cost — the candle and lantern lights, which double the frame time of any area they are in, and drawing at a 1440p or 4K window's full resolution, which is 4x or 9x the pixels for pixel art that gains nothing from them. Those became the options: **Simple lighting** (2x faster in lit areas), **1280 × 720 rendering** (3–5x faster on big screens), a **Compatibility (OpenGL) renderer** for hardware whose Vulkan is weak, a **30 fps cap** for machines that cannot hold 60 smoothly, and a **background limit** that drops to 15 fps when the game is not the focused window. Everything that trades looks for speed is off by default, and the table of measurements lives in the code beside the options it justified.
 
 ### Composition where inheritance would have been wrong — `src/pets/pet.gd`
 
@@ -85,7 +95,24 @@ Fishing and cooking are the first two skills the client cannot lie about. The ro
 
 ### An audit I ran against my own API — `SECURITY_NOTES.md` (API repo)
 
-I attacked my own server as a logged-in player with a modified client and wrote down what I got away with, then kept the file honest as the code moved. Ten findings now, each rated, each with a fix: six closed, one partly closed, two open and still listed because naming them is the point.
+I attacked my own server as a logged-in player with a modified client and wrote down what I got away with, then kept the file honest as the code moved. Fourteen findings now: twelve closed, one partly closed, one open and still listed because naming it is the point. Each has a one-line risk and a one-line fix:
+
+| # | Risk if exploited | Fix |
+|---|-------------------|-----|
+| E-1 | Any item, any quantity, written straight into the bag or bank. | Server-side authority — saves reconciled against what the server granted. |
+| E-2 | Any skill level claimed, skipping all progression. | Hard cap at 99; three of six skills now granted only by the server. *Partly closed.* |
+| E-3 | Kills reported without fighting, farming XP and loot. | Rate limit and a cap from the world's own respawners. *Open — needs server-side combat.* |
+| E-4 | A crash on a reachable server hands out a shell next to every password hash. | Safe default + refusal — the debugger is off unless deliberately switched on, and the server refuses to start if anything else asks for it. |
+| E-5 | Passwords guessed at machine speed. | Rate limit — per-account lockout plus per-address ceilings. |
+| E-6 | A leaked token works for a month, even after a password change. | Revocation and rotation — log out everywhere; a password change ends every session. |
+| E-7 | Gear and potions used without the level or skill they need. | Server-side authority — the server checks requirements and destroys the item itself. |
+| E-8 | Infinite gold, destroying the economy and progression. | Server-side authority — gold is server-owned on every write path. |
+| E-9 | Heal to full at will; never die. | Extra check — rises past what regen and potions explain are trimmed. |
+| E-10 | Free revives, so death costs nothing. | Server-side authority — the server charges the revive from its own balance. |
+| E-11 | A ban lasts as long as it takes to register a new account. | Extra check — no sign-ups from an address holding a live ban; linked accounts shown to staff. |
+| E-12 | Removing anyone required a ban, the harshest response available. | New tool — a kick that ends sessions without banning. |
+| E-13 | Four closed fixes silently off in production, every test green. | Deployment check — a suite and a boot-time error for any protection running unarmed. |
+| E-14 | A kicked or banned player keeps playing as long as the game stays open. | Heartbeat — the game re-checks its session and a dead one returns it to login. |
 
 The one I'd actually point at is **E-8**, because I found it by accident. Every other finding came from attacking the API deliberately; that one turned up while wiring an unrelated endpoint. `gold` was a writable field on the status endpoint and had never been marked server-owned, so one request set any balance a player liked and the supply invariant broke on the spot. What makes it worth writing down is *why the tests missed it*: all 268 of them moved gold through a server path and then asserted the books balanced. None tried the front door of the balance itself.
 
@@ -109,11 +136,12 @@ src/
   projectiles/   arrows, acid, vines, slash waves, ground hazards
   shared/        facing and formation helpers, the element table and its two
 				 shaders, and the base-scene -> elemental-variant registries
-  systems/       save/load, item registry, API client, game state, audio
+  systems/       save/load, item registry, API client, game state, audio,
+				 settings and the world map
   tools/         editor-only: the game-data exporter and the in-engine test runner
   types/         the Resource definitions — ItemData, EnemyData, ClassData, ItemStack
   ui/            HUD, inventory, bank, shop, cooking, trade, kingdom board,
-				 loot bag, character select, login
+				 loot bag, character select, login, options, staff panel
   world/         ladders, portals, shops, fishing spots, firepits, loot bags
 scene/           the .tscn side of all of the above
 data/items/      ItemData resources — the item database (123 of them, in eight
@@ -146,25 +174,37 @@ cd <your-path>/game/api
 
 Calling the virtualenv's interpreter directly is deliberate: it skips having to activate the environment and guarantees you're on the venv's Python rather than whatever `python` happens to resolve to on `PATH`.
 
-That serves forty-two endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves forty-five endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-Thirty-nine of the forty-two require a bearer token. The three that do not are `register`, `login` and `status`, and that is the whole public surface.
+Forty-two of the forty-five require a bearer token. The three that do not are `register`, `login` and `status`, and that is the whole public surface.
 
-The backend has five test suites, run individually and all green together:
+The backend has twelve test suites, run together with one command:
 
-```
-test_api.py        422 checks    the endpoint surface
-test_economy.py    279 checks    the gold ledger and the supply invariant
-test_security.py   131 checks    the audit's findings, held closed
-test_throttle.py    44 checks    login lockout, per-IP spray, token rotation
-test_gathering.py   44 checks    fishing and cooking authority
-				   ───
-				   920 checks, 0 failures
+```bat
+cd <your-path>\game\api
+.\run_tests.ps1
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database.
+```
+test_api.py         454 checks    the endpoint surface, moderation, presence
+test_economy.py     295 checks    the gold ledger and the supply invariant
+test_security.py    248 checks    the audit's findings, held closed
+test_equipment.py   197 checks    the equipment system, client and server
+test_loot.py        182 checks    every finished item is actually obtainable
+test_throttle.py     55 checks    login lockout, per-IP spray, token rotation
+test_settings.py     49 checks    the options screen's rules
+test_map.py          48 checks    the map's fog rules and their storage
+test_gathering.py    44 checks    fishing and cooking authority
+test_healing.py      28 checks    the heal clamp stays quiet for honest play
+test_equipmove.py    22 checks    equipping moves the item, never copies it
+test_catalogue.py    13 checks    the shipped catalogue arms every protection
+                    ─────
+                    1,635 checks, 0 failures
+```
 
-Note this is Flask's development server (`app.run(debug=True)`), which is right for local play and wrong for anything public; a real deployment would sit behind a WSGI server.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless.
+
+`python app.py` is Flask's development server, which is right for local play and wrong for anything public. The interactive debugger stays off unless `ELUSION_DEBUG=1` is set on purpose, and `wsgi.py` / `DEPLOY.md` in the API repo cover running it behind a real WSGI server.
 
 Without the service running, the login screen will tell you it can't reach the server — the game does not fall back to local accounts by design.
 
@@ -178,7 +218,7 @@ Gold is double-entry on top of that. Every coin that enters or leaves the world 
 
 Item use is server-authoritative too now — the server checks the level and skill requirement against the character it owns and destroys the item itself, so the gates stopped being advisory the day trading made them matter. So is reviving: the server refuses anyone who is not dead by its own reckoning, takes the cost in lusions itself, and restores the resources from the class curve, which is what puts a price back on dying.
 
-Three gaps remain, all named and tracked in the API repo's `SECURITY_NOTES.md`: three of the six skills still have no server-side XP grant (fishing, cooking and attack do), current health is still written by the client, and the kill *event* is still asserted rather than verified. The last two are the same problem wearing different hats — the server does not watch the fight. Health is at least measured now: an unexplained rise is logged against what regeneration and an authorised potion could account for, which is the same shadow-mode staging the backpack fix used before it started refusing anything.
+Two gaps remain, both named and tracked in the API repo's `SECURITY_NOTES.md`: three of the six skills still have no server-side XP grant (fishing, cooking and attack do), and the kill *event* is still asserted rather than verified — the server does not watch the fight. Health used to be the third, and is closed the way the backpack was: measured in log-only mode first, then clamped, so a rise that regeneration and an authorised potion cannot explain is trimmed rather than stored.
 
 `devlog.md` records the architecture decisions and the reasoning behind them, including the ones that turned out to be wrong.
 
