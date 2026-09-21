@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://cjnng780ylcn6"]
 
 [ext_resource type="Script" uid="uid://bus5md8lbkyyf" path="res://src/ui/inventory/itemtooltip.gd" id="1_xttnj"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip_separator"]
 content_margin_top = 1.0
@@ -25,6 +26,7 @@ offset_right = 200.0
 offset_bottom = 150.0
 size_flags_vertical = 0
 mouse_filter = 2
+theme = ExtResource("2_theme")
 theme_type_variation = &"PanelTooltip"
 script = ExtResource("1_xttnj")
 
