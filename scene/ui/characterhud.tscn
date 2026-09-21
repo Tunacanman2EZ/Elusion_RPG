@@ -123,11 +123,17 @@ size_flags_horizontal = 4
 
 [node name="navbuttons" type="HBoxContainer" parent="navhbox" unique_id=1515114216]
 layout_mode = 2
+theme_override_constants/separation = 2
 
 [node name="inventorybutton" type="Button" parent="navhbox/navbuttons" unique_id=1421840767]
 layout_mode = 2
 focus_mode = 0
 text = "Inventory"
+
+[node name="equipmentbutton" type="Button" parent="navhbox/navbuttons" unique_id=1969924149]
+layout_mode = 2
+focus_mode = 0
+text = "Equipment"
 
 [node name="statsbutton" type="Button" parent="navhbox/navbuttons" unique_id=2038986305]
 layout_mode = 2

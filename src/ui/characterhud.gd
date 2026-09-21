@@ -69,12 +69,17 @@ var staminabar: TextureProgressBar = null
 # stats/bank/lootbag/owner stay lazy.
 var inventory_screen: InventoryScreen = null
 
-# THE PAPER DOLL, WHICH OPENS AND CLOSES WITH THE BACKPACK rather than on a key
-# of its own. Gear is dragged from one to the other, so both ends of the drag
-# have to be on screen at once — and a second keybind, for a panel that is only
-# useful beside the first one, is a thing to learn for no gain. It sits
-# immediately to the left of the inventory; the offsets are in
-# equipmentpanel.tscn, and they are the inventory's own minus its width.
+# THE PAPER DOLL - A PANEL OF ITS OWN, with its own nav button and the G key.
+#
+# It used to open and close with the backpack, on the argument that gear was
+# dragged between them so both had to be on screen. That argument lost both its
+# legs: clicking a weapon or armour in the bag equips it (use_item() routes
+# WEAPON and ARMOR to _equip_item()), and equipping MOVES the item now, so the
+# doll holds things the bag does not and is worth opening on its own.
+#
+# Open both and dragging between them still works. It sits immediately to the
+# left of the inventory - the offsets are in equipmentpanel.tscn, and they are
+# the inventory's own minus its width - so the two line up whenever both are up.
 var equipment_panel:  EquipmentPanel  = null
 var stats_screen:     Control         = null
 var bank_screen:      Control         = null
@@ -239,9 +244,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
-	# THE DOLL ON ITS OWN. It still opens with the bag by default - that is the
-	# common case - but it is no longer only reachable that way, which is what
-	# "equipment rides on the inventory" used to mean in practice.
+	# THE DOLL ON ITS OWN - G, or the Equipment button on the nav bar. It no
+	# longer comes up with the bag at all; see the note on equipment_panel.
 	if event.is_action_pressed("equipment_toggle"):
 		toggle_equipment()
 		get_viewport().set_input_as_handled()
@@ -398,8 +402,19 @@ func _wire_nav_buttons() -> void:
 		if button is Button:
 			button.focus_mode = Control.FOCUS_NONE
 
+	# THE NAV ROW IS OUT OF WIDTH, and this is the only place that can say so -
+	# a .tscn cannot hold a comment the editor will not strip on the next save.
+	#
+	# Measured on 4.6.1 with the default theme at 1280x720: eleven buttons at the
+	# default 4px separation end at x=785, and the equipment doll's left edge is
+	# x=779 (offset_left -501 in equipmentpanel.tscn), so with the doll open the
+	# Characters button slid 6px under it and lost its clicks there.
+	# characterhud.tscn sets navbuttons' separation to 2, which ends the row at
+	# x=765 - 14px clear. Twelve buttons will not fit. The next one needs a
+	# shorter label somewhere, a second row, or the doll moved down.
 	var bindings := {
 		"inventorybutton":         "_on_inventory_pressed",
+		"equipmentbutton":         "_on_equipment_pressed",
 		"statsbutton":             "_on_stats_pressed",
 		"shopbutton":              "_on_shop_pressed",
 		"kingdombutton":           "_on_kingdom_pressed",
@@ -607,6 +622,10 @@ func _displayable(bar: TextureProgressBar, amount: float) -> float:
 
 func _on_inventory_pressed() -> void:
 	toggle_inventory()
+
+
+func _on_equipment_pressed() -> void:
+	toggle_equipment()
 
 
 func _on_stats_pressed() -> void:
@@ -914,35 +933,35 @@ func toggle_inventory() -> void:
 		if inventory_screen == null:
 			return
 
+	# THE BAG ONLY. It used to bring the doll up with it, and that pairing is
+	# what put the doll over the shop's stock list and over the bank - every
+	# screen that opens the bag so you can move items got a paper doll it never
+	# asked for. The doll has its own button now; see the note on
+	# equipment_panel near the top of this file.
 	if inventory_screen.visible:
 		inventory_screen.hide_inventory()
-		_hide_equipment_panel()
 	else:
 		if active_character != null:
 			inventory_screen.set_player(active_character)
 		inventory_screen.show_inventory()
-		_show_equipment_panel()
 
 
 func toggle_equipment() -> void:
-	# EQUIPMENT IS ITS OWN PANEL NOW, and this function is that change.
-	#
-	# It used to open and close with the backpack, on the rule written further
-	# down: "one panel that is only useful next to another is not two panels".
-	# That held while equipping was a POINTER into the bag - the doll was a
-	# view of the backpack and said nothing on its own.
-	#
-	# It stopped holding for two reasons. Equipping MOVES the item now, so the
-	# doll holds things the bag does not and is worth reading by itself. And
-	# the shop calls show_inventory() so you can sell, which dragged the doll
-	# onto a screen it has no business being on, over the stock list.
+	# The Equipment nav button and the G key. Opens and closes the doll and
+	# nothing else - whether the bag is up is the bag's business.
 	if equipment_panel != null and equipment_panel.visible:
 		_hide_equipment_panel()
 		return
 	_show_equipment_panel()
 
 
-func show_inventory(with_equipment: bool = true) -> void:
+func show_inventory() -> void:
+	# NO with_equipment PARAMETER ANY MORE. It existed so the shop could pass
+	# false, and the reason it had to was that the default was true - so every
+	# other caller that opens the bag to move items (toggle_bank() here, and
+	# bankinventory.gd) was still getting the doll, and nobody had noticed
+	# because the shop was the only one anyone had complained about. Removing
+	# the parameter removes the question: the bag opens alone, everywhere.
 	if inventory_screen == null:
 		_ensure_inventory_screen()
 		if inventory_screen == null:
@@ -952,27 +971,24 @@ func show_inventory(with_equipment: bool = true) -> void:
 		inventory_screen.set_player(active_character)
 	inventory_screen.show_inventory()
 
-	# THE DEFAULT STILL PAIRS THEM, because opening the bag to manage gear is
-	# the common case and two keystrokes for it would be a downgrade. What
-	# changed is that the pairing is a DEFAULT rather than a law: the shop
-	# passes false, and toggle_equipment() opens the doll with no bag at all.
-	if with_equipment:
-		_show_equipment_panel()
-
 
 func hide_inventory() -> void:
+	# The bag only, for the same reason. This is what the bag's own close button
+	# routes to (inventory_screen.closed), and what the bank calls on its way
+	# out - neither of which has any business closing a doll the player opened
+	# themselves. Escape still closes both; see hide_panel().
 	if inventory_screen != null:
 		inventory_screen.hide_inventory()
-	_hide_equipment_panel()
 
 
 # =============================================================================
 # PANEL TOGGLES — EQUIPMENT
 # =============================================================================
-# NOT ITS OWN TOGGLE. Every path above that shows or hides the backpack shows
-# or hides the doll with it, including inventory_screen.closed, which routes
-# through hide_inventory(). One panel that is only useful next to another is
-# not two panels.
+# ITS OWN PANEL: the Equipment nav button, or G. This header used to say "NOT
+# ITS OWN TOGGLE" and describe a rule - "one panel that is only useful next to
+# another is not two panels" - that stopped being true the day equipping became
+# a move rather than a pointer into the bag. The code changed and the header did
+# not, which left this file arguing with itself for a day.
 
 func _ensure_equipment_panel() -> void:
 	if equipment_panel != null:
@@ -981,11 +997,12 @@ func _ensure_equipment_panel() -> void:
 	equipment_panel = EQUIPMENT_SCENE.instantiate()
 	add_child(equipment_panel)
 
-	# Closing the doll closes the backpack too, rather than leaving a bag open
-	# with nothing to drag into. Its own close button is there because a panel
-	# with no way out looks broken, not because the two are independent.
-	if not equipment_panel.closed.is_connected(hide_inventory):
-		equipment_panel.closed.connect(hide_inventory)
+	# NOTHING CONNECTED TO `closed` ANY MORE, and that is the fix for a real bug.
+	# It was wired to hide_inventory(), so pressing the doll's own X closed the
+	# BAG as well - fine while the two always travelled together, wrong the
+	# moment G could open the doll alone. The X already hides the panel itself
+	# (equipmentpanel.gd _on_close_pressed), so there is nothing left for the
+	# HUD to do when it fires.
 
 	if active_character != null:
 		equipment_panel.set_player(active_character)
@@ -1100,12 +1117,12 @@ func open_shop(shop_id: String, player: Node) -> void:
 	# own bag next to is one where they buy a second sword because they forgot
 	# about the first — and the purchase lands in that bag, so it wants to be on
 	# screen when it does. Same reason toggle_bank() shows it.
-	# THE BACKPACK ONLY. Selling needs the bag on screen; nothing about a shop
-	# needs the equipment doll, and it used to arrive anyway and sit over the
-	# stock list. Take gear off first if you mean to sell it - which is a real
-	# action now rather than bookkeeping, since unequipping puts the item back
-	# in the bag.
-	show_inventory(false)
+	# THE BACKPACK ONLY - which is now simply what show_inventory() does, so
+	# there is no false to pass. Selling needs the bag on screen; nothing about a
+	# shop needs the doll. Take gear off first if you mean to sell it - a real
+	# action rather than bookkeeping, since unequipping puts the item back in the
+	# bag. The Equipment button is right there on the nav bar if you want it.
+	show_inventory()
 
 	if shop_panel.has_method("open_for_shop"):
 		shop_panel.open_for_shop(shop_id, player)
@@ -1167,18 +1184,16 @@ func open_cooking(firepit: Node, player: Node) -> void:
 # =============================================================================
 
 func hide_panel() -> void:
-	# hide_inventory() — THIS node's, not inventory_screen's.
+	# ESCAPE CLOSES EVERYTHING, so both panels, by name.
 	#
-	# The two are one line apart in spelling and a whole panel apart in effect.
-	# inventory_screen.hide_inventory() closes the backpack. hide_inventory()
-	# here closes the backpack AND the equipment doll, which is the rule every
-	# other path in this file already follows: "One panel that is only useful
-	# next to another is not two panels", as the section below says.
-	#
-	# This line called the inner one, so Escape shut the bag and left the doll
-	# hanging there on its own — the only way in the game to get one without
-	# the other, and reachable by the most-pressed key on the keyboard.
+	# This used to lean on hide_inventory() taking the doll down with the bag,
+	# and a comment here explained why that mattered: the line once called the
+	# inner inventory_screen.hide_inventory() instead, and Escape left the doll
+	# hanging on its own. Now that the two really are separate panels,
+	# hide_inventory() closes the bag and nothing else - so leaning on it would
+	# reintroduce exactly that bug. The doll is closed here explicitly instead.
 	hide_inventory()
+	_hide_equipment_panel()
 	if stats_screen != null:
 		stats_screen.visible = false
 	if bank_screen != null and bank_screen.visible:
