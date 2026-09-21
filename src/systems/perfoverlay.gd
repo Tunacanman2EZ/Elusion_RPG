@@ -163,11 +163,22 @@ func _cap_note() -> String:
 	# value is stale until a restart, and a graphics driver can force vsync back
 	# on over whatever the game asked for. What the engine is doing right now is
 	# the only version worth printing.
+	#
+	# AND THE ENGINE CAN BE WRONG ABOUT VSYNC. window_get_vsync_mode() reports
+	# what the swapchain was ASKED for; a driver overriding it from its own
+	# control panel does so underneath the engine, which goes on believing it
+	# is synced. This line once read "2516 (capped by vsync - not a limit)",
+	# which is a number vsync would never permit sitting next to the claim
+	# that vsync was producing it. Settings.pacing_report() compares the
+	# request with the result, and that comparison is the only honest source.
+	var r: Dictionary = Settings.pacing_report()
+	if bool(r["overridden"]):
+		return "   [vsync requested, driver ignoring it - this number is real]"
 	var caps: PackedStringArray = []
-	if DisplayServer.window_get_vsync_mode(0) != DisplayServer.VSYNC_DISABLED:
+	if str(r["vsync"]) != "off":
 		caps.append("vsync")
-	if Engine.max_fps > 0:
-		caps.append("max_fps %d" % Engine.max_fps)
+	if int(r["cap"]) > 0:
+		caps.append("cap %d" % int(r["cap"]))
 	if caps.is_empty():
 		return ""
 	return "   [capped by %s - not a limit]" % ", ".join(caps)
