@@ -69,3 +69,21 @@ func _on_body_entered(body):
 func _on_body_exited(body):
 	if body and (body.name == "Player" or body.is_in_group("player")):
 		can_teleport = true
+
+
+# =============================================================================
+# ON THE MAP
+# =============================================================================
+# mapscreen.gd draws a pin for everything in "map_landmarks" and asks each one
+# what it is. Joined in _init rather than _ready so it does not depend on this
+# script having a _ready, or on anything a _ready returns early for - and so
+# the pin exists from the moment the node does.
+
+func _init() -> void:
+	add_to_group("map_landmarks")
+
+func map_landmark() -> Dictionary:
+	var where: String = "Ladder"
+	if destination_scene_path != "":
+		where = "Ladder to " + destination_scene_path.get_file().get_basename().capitalize()
+	return {"kind": "ladder", "label": where}

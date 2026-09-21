@@ -866,3 +866,18 @@ func _draw_idle() -> void:
 	var target: Color = float_color
 	target.a = float_color.a * _near * 0.55
 	draw_arc(dir * float_distance, FLOAT_RADIUS + 1.5, 0.0, TAU, 16, target, 1.0, true)
+
+
+# =============================================================================
+# ON THE MAP
+# =============================================================================
+# mapscreen.gd draws a pin for everything in "map_landmarks" and asks each one
+# what it is. Joined in _init rather than _ready so it does not depend on this
+# script having a _ready, or on anything a _ready returns early for - and so
+# the pin exists from the moment the node does.
+
+func _init() -> void:
+	add_to_group("map_landmarks")
+
+func map_landmark() -> Dictionary:
+	return {"kind": "fishing", "label": "Fishing spot"}

@@ -196,3 +196,24 @@ func shut() -> void:
 	_open = false
 	if _boss != null and "gated" in _boss:
 		_boss.set("gated", true)
+
+
+# =============================================================================
+# ON THE MAP
+# =============================================================================
+# mapscreen.gd draws a pin for everything in "map_landmarks" and asks each one
+# what it is. Joined in _init rather than _ready so it does not depend on this
+# script having a _ready, or on anything a _ready returns early for - and so
+# the pin exists from the moment the node does.
+
+func _init() -> void:
+	add_to_group("map_landmarks")
+
+func map_landmark() -> Dictionary:
+	# In the gate's own element colour - six gates in one room are six
+	# identical diamonds otherwise, and which one is which is the question.
+	return {
+		"kind": "boss",
+		"label": Element.name_for(element).capitalize() + " boss",
+		"colour": Element.colour_for(element),
+	}

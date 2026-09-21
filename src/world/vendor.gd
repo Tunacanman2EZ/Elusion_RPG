@@ -172,3 +172,23 @@ func _exit_tree() -> void:
 	# is_instance_valid() checks exist to survive. Cheaper to not leave one.
 	if is_in_group(OPEN_VENDOR_GROUP):
 		remove_from_group(OPEN_VENDOR_GROUP)
+
+
+# =============================================================================
+# ON THE MAP
+# =============================================================================
+# mapscreen.gd draws a pin for everything in "map_landmarks" and asks each one
+# what it is. Joined in _init rather than _ready so it does not depend on this
+# script having a _ready, or on anything a _ready returns early for - and so
+# the pin exists from the moment the node does.
+
+func _init() -> void:
+	add_to_group("map_landmarks")
+
+func map_landmark() -> Dictionary:
+	# The shop's own name, so a second vendor with different stock reads as a
+	# different place rather than as "Shop" twice.
+	var shop_name: String = "Shop"
+	if shop_data != null and str(shop_data.display_name) != "":
+		shop_name = str(shop_data.display_name)
+	return {"kind": "shop", "label": shop_name}

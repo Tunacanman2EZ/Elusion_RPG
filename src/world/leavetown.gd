@@ -142,3 +142,27 @@ func _visual_target() -> CanvasItem:
 func _disable_after_vanish() -> void:
 	can_teleport = false        # belt-and-suspenders against any further use
 	set_deferred("monitoring", false)  # stop detecting body entry/exit entirely
+
+
+# =============================================================================
+# ON THE MAP
+# =============================================================================
+# mapscreen.gd draws a pin for everything in "map_landmarks" and asks each one
+# what it is. Joined in _init rather than _ready so it does not depend on this
+# script having a _ready, or on anything a _ready returns early for - and so
+# the pin exists from the moment the node does.
+
+func _init() -> void:
+	add_to_group("map_landmarks")
+
+func map_landmark() -> Dictionary:
+	# NO PIN FOR A DOOR THAT IS NOT A WAY OUT. The field's copy of this script
+	# is arrival-only and vanishes after first use - it is where you land from
+	# town, not a route back - and a pin on it would advertise an exit that
+	# does not exist.
+	if arrival_only or _has_vanished:
+		return {}
+	var where: String = "Exit"
+	if destination_scene != null and destination_scene.resource_path != "":
+		where = "To " + destination_scene.resource_path.get_file().get_basename().capitalize()
+	return {"kind": "exit", "label": where}

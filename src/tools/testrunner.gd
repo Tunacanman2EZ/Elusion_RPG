@@ -82,6 +82,7 @@ func _run_all() -> void:
 	_test_itemstack()
 	_test_ranks()
 	_test_settings()
+	_test_map_landmarks()
 	_test_collision_contract()
 
 
@@ -1183,9 +1184,9 @@ func _test_settings() -> void:
 
 	# --- the mode table round-trips ------------------------------------------
 	var lost: Array = []
-	for name in Settings.VSYNC_MODES:
-		if Settings.vsync_name_for(Settings.vsync_mode_for(name)) != name:
-			lost.append(name)
+	for mode_name in Settings.VSYNC_MODES:
+		if Settings.vsync_name_for(Settings.vsync_mode_for(mode_name)) != mode_name:
+			lost.append(mode_name)
 	check("every mode survives name -> engine constant -> name", lost.is_empty(), lost)
 
 	# --- every setting has a control -------------------------------------
@@ -1217,6 +1218,101 @@ func _test_settings() -> void:
 	check("including the readout the whole pacing section is for",
 		screen.get_node_or_null("%pacingreadout") != null)
 	screen.free()
+
+
+# =============================================================================
+# MAP LANDMARKS - every placed landmark says what it is, and the map can draw it
+# =============================================================================
+# A pin comes from the thing it marks: mapscreen.gd draws whatever is in the
+# "map_landmarks" group and asks each one map_landmark(). So the failure worth
+# guarding is silent - a landmark that forgot to join, or reports a kind the
+# map has no style for, simply has no pin, which looks exactly like a
+# landmark that was never placed.
+
+func _test_map_landmarks() -> void:
+	section("MAP LANDMARKS")
+
+	var style: Dictionary = (load("res://src/ui/menus/mapscreen.gd") as Script) \
+		.get_script_constant_map().get("LANDMARK_STYLE", {})
+	check("the map has a style table", not style.is_empty())
+	var missing_art: Array = []
+	for kind in style:
+		var art: String = style[kind][0]
+		if art != "" and not ResourceLoader.exists(art):
+			missing_art.append(art)
+	check("every pin icon the map names exists", missing_art.is_empty(), missing_art)
+
+	# WHAT EACH AREA WILL ACTUALLY SHOW - the three world scenes, loaded the way
+	# the game loads them, instantiated and NOT added to the tree: _init runs on
+	# every node, which is where the group is joined, and _ready runs on none.
+	#
+	# BY AREA, NOT BY SCENE FILE, and the first draft of this section learned
+	# why. It checked ladderup.tscn on its own and found no pin - because that
+	# file has no script. It is a sprite and a collider, and the boss arena
+	# makes it a ladder by attaching ladder.gd to its placed copy. The file is
+	# not what the player sees; the area is.
+	#
+	# AT LEAST, not exactly: a second bank should not fail the suite. The one
+	# exact number is the zero, below.
+	var areas := {
+		"res://scene/elusion.tscn":   ["shop", "bank", "cooking", "fishing", "teleport", "exit"],
+		"res://scene/field.tscn":     ["ladder"],
+		"res://scene/bossarena.tscn": ["ladder", "boss"],
+	}
+	var pins_by_area := {}
+	for path in areas:
+		var packed: PackedScene = load(path) as PackedScene
+		if packed == null:
+			check("%s loads" % path.get_file(), false)
+			continue
+		var inst: Node = packed.instantiate()
+		var found: Array = []
+		_collect_landmark_nodes(inst, found)
+		var counts := {}
+		var colours := {}
+		for n in found:
+			var info: Dictionary = n.map_landmark()
+			if info.is_empty():
+				continue
+			var kind: String = str(info.get("kind", ""))
+			counts[kind] = int(counts.get(kind, 0)) + 1
+			if kind == "boss":
+				colours[info.get("colour", Color.BLACK)] = true
+		pins_by_area[path.get_file()] = counts
+		for kind in areas[path]:
+			var article := "an" if "aeiou".contains(kind.left(1)) else "a"
+			check("%s shows %s %s pin" % [path.get_file(), article, kind], int(counts.get(kind, 0)) >= 1, counts)
+		var unknown: Array = counts.keys().filter(func(k): return not style.has(k))
+		check("%s has no pin the map cannot draw" % path.get_file(), unknown.is_empty(), unknown)
+		if int(counts.get("boss", 0)) > 1:
+			# Six diamonds in one room are six identical diamonds otherwise.
+			check("every boss gate there is its own colour",
+				colours.size() == int(counts["boss"]), "%d gates, %d colours" % [counts["boss"], colours.size()])
+		inst.free()
+
+	# THE ZERO. The field's arrival portal runs leavetown.gd like the town's
+	# real exit does, but it is one-way and vanishes after first use - so the
+	# field must show no exit pin at all, or it advertises a way back to town
+	# that does not exist.
+	if pins_by_area.has("field.tscn"):
+		check("the field shows NO exit pin - its portal is arrival-only",
+			int(pins_by_area["field.tscn"].get("exit", 0)) == 0, pins_by_area["field.tscn"])
+
+	# The same rule on a bare exit, so a failure above can be told apart: the
+	# scene wiring changed, or leavetown.gd stopped honouring arrival_only.
+	var exit_node: Node = (load("res://src/world/leavetown.gd") as Script).new()
+	check("an exit is a landmark", exit_node.is_in_group("map_landmarks"))
+	check("an ordinary exit has a pin", str(exit_node.map_landmark().get("kind", "")) == "exit")
+	exit_node.arrival_only = true
+	check("an arrival-only portal has none", exit_node.map_landmark().is_empty(), exit_node.map_landmark())
+	exit_node.free()
+
+
+func _collect_landmark_nodes(node: Node, into: Array) -> void:
+	if node.is_in_group("map_landmarks") and node.has_method("map_landmark"):
+		into.append(node)
+	for child in node.get_children():
+		_collect_landmark_nodes(child, into)
 
 
 # =============================================================================

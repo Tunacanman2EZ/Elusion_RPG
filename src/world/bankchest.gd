@@ -262,3 +262,18 @@ func _on_animation_finished() -> void:
 	if anim.animation == "open" and is_open:
 		var frame_count: int = anim.sprite_frames.get_frame_count("open")
 		anim.frame = frame_count - 1
+
+
+# =============================================================================
+# ON THE MAP
+# =============================================================================
+# mapscreen.gd draws a pin for everything in "map_landmarks" and asks each one
+# what it is. Joined in _init rather than _ready so it does not depend on this
+# script having a _ready, or on anything a _ready returns early for - and so
+# the pin exists from the moment the node does.
+
+func _init() -> void:
+	add_to_group("map_landmarks")
+
+func map_landmark() -> Dictionary:
+	return {"kind": "bank", "label": "Bank"}
