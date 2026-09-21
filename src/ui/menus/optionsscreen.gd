@@ -63,6 +63,12 @@ signal closed
 @onready var window_size:       OptionButton = get_node_or_null("%windowsize")
 @onready var damage_toggle:     CheckButton = get_node_or_null("%damagenumbers")
 
+@onready var render_resolution: OptionButton = get_node_or_null("%renderresolution")
+@onready var lighting:          OptionButton = get_node_or_null("%lighting")
+@onready var background_limit:  CheckButton  = get_node_or_null("%backgroundlimit")
+@onready var renderer:          OptionButton = get_node_or_null("%renderer")
+@onready var renderer_note:     Label        = get_node_or_null("%renderernote")
+
 # The readout is polled, not signalled: nothing announces that the driver has
 # started ignoring vsync. Half a second is fast enough to watch a change take
 # effect and slow enough that the number is readable rather than a blur.
@@ -74,6 +80,13 @@ const VSYNC_LABELS := {
 	"off": "Off", "on": "On", "adaptive": "Adaptive", "fast": "Fast (no cap)",
 }
 const API_LABELS := {"vulkan": "Vulkan", "d3d12": "Direct3D 12"}
+const RESOLUTION_LABELS := {"screen": "Full (sharpest)", "low": "1280 x 720 (fastest)"}
+const LIGHTING_LABELS := {"full": "Full", "simple": "Simple (fastest)"}
+# forward_plus is never offered, but a project could be switched to it by
+# hand, and the note should still name what is running.
+const RENDERER_LABELS := {
+	"mobile": "Standard", "gl_compatibility": "Compatibility", "forward_plus": "Forward+",
+}
 
 
 # =============================================================================
@@ -171,6 +184,24 @@ func _connect_controls() -> void:
 	if damage_toggle != null:
 		damage_toggle.toggled.connect(_on_damage_numbers_toggled)
 
+	if render_resolution != null:
+		render_resolution.clear()
+		for choice in Settings.RENDER_RESOLUTIONS:
+			render_resolution.add_item(RESOLUTION_LABELS.get(choice, choice))
+		render_resolution.item_selected.connect(_on_render_resolution_selected)
+	if lighting != null:
+		lighting.clear()
+		for choice in Settings.LIGHTING_MODES:
+			lighting.add_item(LIGHTING_LABELS.get(choice, choice))
+		lighting.item_selected.connect(_on_lighting_selected)
+	if background_limit != null:
+		background_limit.toggled.connect(_on_background_limit_toggled)
+	if renderer != null:
+		renderer.clear()
+		for method in Settings.RENDERERS:
+			renderer.add_item(RENDERER_LABELS.get(method, method))
+		renderer.item_selected.connect(_on_renderer_selected)
+
 	if close_button != null:
 		close_button.pressed.connect(close)
 	if reset_button != null:
@@ -221,6 +252,17 @@ func refresh() -> void:
 	_update_pacing_readout()
 	if damage_toggle != null:
 		damage_toggle.button_pressed = bool(Settings.get_value("damage_numbers"))
+
+	if render_resolution != null:
+		render_resolution.selected = Settings.RENDER_RESOLUTIONS.find(
+			str(Settings.get_value("render_resolution")))
+	if lighting != null:
+		lighting.selected = Settings.LIGHTING_MODES.find(str(Settings.get_value("lighting")))
+	if background_limit != null:
+		background_limit.button_pressed = bool(Settings.get_value("background_fps_limit"))
+	if renderer != null:
+		renderer.selected = Settings.RENDERERS.find(Settings.renderer_requested())
+	_update_renderer_note()
 
 	if window_size != null:
 		var current := Vector2i(int(Settings.get_value("window_width")),
@@ -387,6 +429,72 @@ func _on_window_size_selected(index: int) -> void:
 	# of flicker that nobody will see.
 	Settings.set_value("window_width", chosen.x)
 	Settings.set_value("window_height", chosen.y)
+
+
+func _on_render_resolution_selected(index: int) -> void:
+	if _refreshing:
+		return
+	if index < 0 or index >= Settings.RENDER_RESOLUTIONS.size():
+		return
+	Settings.set_value("render_resolution", Settings.RENDER_RESOLUTIONS[index])
+
+
+func _on_lighting_selected(index: int) -> void:
+	if _refreshing:
+		return
+	if index < 0 or index >= Settings.LIGHTING_MODES.size():
+		return
+	Settings.set_value("lighting", Settings.LIGHTING_MODES[index])
+
+
+func _on_background_limit_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("background_fps_limit", pressed)
+
+
+func _on_renderer_selected(index: int) -> void:
+	if _refreshing:
+		return
+	if index < 0 or index >= Settings.RENDERERS.size():
+		return
+	Settings.set_renderer(Settings.RENDERERS[index])
+	_update_renderer_note()
+
+
+static func renderer_note_for(requested: String, booted: String, running: String) -> String:
+	# THREE DIFFERENT TRUTHS, and the note says which one applies.
+	#
+	#   requested != booted   the player changed it; nothing happens until a
+	#                         restart, and a picker that seemed to do nothing
+	#                         would read as broken.
+	#   running != booted     Godot fell back - asked for Standard, found no
+	#                         Vulkan, and is drawing with OpenGL. Worth saying:
+	#                         it explains why Standard "does nothing" here.
+	#   otherwise             what is running.
+	var name_of := func(method: String) -> String:
+		return RENDERER_LABELS.get(method, method)
+	if requested != booted:
+		return "restart to switch to %s" % name_of.call(requested)
+	if running != booted:
+		return "running %s - this PC has no Vulkan, so the game switched itself" % name_of.call(running)
+	return "running %s" % name_of.call(running)
+
+
+func _update_renderer_note() -> void:
+	var requested: String = Settings.renderer_requested()
+	if renderer_note != null:
+		renderer_note.text = renderer_note_for(requested, Settings.renderer_booted_with(),
+			Settings.renderer_in_effect())
+	# THE API ONLY MEANS ANYTHING TO STANDARD. Vulkan versus Direct3D 12 is a
+	# choice inside the Standard renderer; Compatibility is OpenGL either way.
+	# Greyed out rather than hidden, with the note saying why.
+	if graphics_api != null:
+		graphics_api.disabled = requested == "gl_compatibility"
+	if api_note != null and requested == "gl_compatibility":
+		api_note.text = "not used by Compatibility"
+	elif api_note != null:
+		_update_api_note()
 
 
 func _on_damage_numbers_toggled(pressed: bool) -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://cw8yr2mnl6qtb"]
+[gd_scene format=3 uid="uid://cw8yr2mnl6qtb"]
 
 [ext_resource type="Script" path="res://src/ui/menus/optionsscreen.gd" id="1_options"]
 
@@ -8,9 +8,9 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -180.0
+offset_left = -370.0
 offset_top = -268.0
-offset_right = 180.0
+offset_right = 370.0
 offset_bottom = 268.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -55,17 +55,27 @@ custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 text = "x"
 
-[node name="audioheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="columns" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 18
+
+[node name="leftcol" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="audioheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "AUDIO"
 
-[node name="masterrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="masterrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/masterrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/masterrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
@@ -73,7 +83,7 @@ theme_override_font_sizes/font_size = 11
 text = "Master"
 vertical_alignment = 1
 
-[node name="mastervolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/masterrow"]
+[node name="mastervolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/masterrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
@@ -83,7 +93,7 @@ max_value = 1.0
 step = 0.01
 value = 1.0
 
-[node name="mastervalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/masterrow"]
+[node name="mastervalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/masterrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
@@ -93,11 +103,11 @@ text = "100%"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="musicrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="musicrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/musicrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/musicrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
@@ -105,7 +115,7 @@ theme_override_font_sizes/font_size = 11
 text = "Music"
 vertical_alignment = 1
 
-[node name="musicvolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/musicrow"]
+[node name="musicvolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/musicrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
@@ -115,7 +125,7 @@ max_value = 1.0
 step = 0.01
 value = 0.7
 
-[node name="musicvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/musicrow"]
+[node name="musicvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/musicrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
@@ -125,11 +135,11 @@ text = "70%"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="sfxrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="sfxrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/sfxrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/sfxrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
@@ -137,7 +147,7 @@ theme_override_font_sizes/font_size = 11
 text = "Sound effects"
 vertical_alignment = 1
 
-[node name="sfxvolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/sfxrow"]
+[node name="sfxvolume" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/sfxrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
@@ -147,7 +157,7 @@ max_value = 1.0
 step = 0.01
 value = 1.0
 
-[node name="sfxvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/sfxrow"]
+[node name="sfxvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/sfxrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
@@ -157,20 +167,50 @@ text = "100%"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="hseparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="leftsep" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
 layout_mode = 2
 
-[node name="displayheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="gameheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "GAME"
+
+[node name="damagerow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/damagerow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Damage numbers"
+vertical_alignment = 1
+
+[node name="damagenumbers" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/damagerow"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="colsep" type="VSeparator" parent="mainpanel/margincontainer/vboxcontainer/columns"]
+layout_mode = 2
+
+[node name="rightcol" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="displayheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "DISPLAY"
 
-[node name="fullscreenrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="fullscreenrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/fullscreenrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/fullscreenrow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
@@ -178,15 +218,32 @@ theme_override_font_sizes/font_size = 11
 text = "Fullscreen"
 vertical_alignment = 1
 
-[node name="fullscreentoggle" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/fullscreenrow"]
+[node name="fullscreentoggle" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/fullscreenrow"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="vsyncrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="windowrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/vsyncrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/windowrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Window size"
+vertical_alignment = 1
+
+[node name="windowsize" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/windowrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 26)
+layout_mode = 2
+
+[node name="vsyncrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/vsyncrow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
@@ -194,16 +251,16 @@ theme_override_font_sizes/font_size = 11
 text = "V-Sync"
 vertical_alignment = 1
 
-[node name="vsyncmode" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/vsyncrow"]
+[node name="vsyncmode" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/vsyncrow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(124, 26)
+custom_minimum_size = Vector2(150, 26)
 layout_mode = 2
 
-[node name="framecaprow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="framecaprow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/framecaprow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/framecaprow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
@@ -211,38 +268,12 @@ theme_override_font_sizes/font_size = 11
 text = "Frame cap"
 vertical_alignment = 1
 
-[node name="framecap" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/framecaprow"]
+[node name="framecap" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/framecaprow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(124, 26)
+custom_minimum_size = Vector2(150, 26)
 layout_mode = 2
 
-[node name="apirow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/apirow"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
-text = "Graphics API"
-vertical_alignment = 1
-
-[node name="apinote" type="Label" parent="mainpanel/margincontainer/vboxcontainer/apirow"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.55, 0.45, 1)
-theme_override_font_sizes/font_size = 10
-text = "running on Vulkan"
-vertical_alignment = 1
-
-[node name="graphicsapi" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/apirow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(124, 26)
-layout_mode = 2
-
-[node name="pacingreadout" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="pacingreadout" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
@@ -250,7 +281,7 @@ theme_override_font_sizes/font_size = 10
 text = "Screen ? Hz  -  drawing 0 fps  -  V-Sync on"
 horizontal_alignment = 1
 
-[node name="pacinghint" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="pacinghint" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
@@ -260,52 +291,117 @@ text = "Your graphics driver is overriding V-Sync."
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="windowrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/windowrow"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
-text = "Window size"
-vertical_alignment = 1
-
-[node name="windowsize" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/windowrow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(124, 26)
+[node name="perfsep" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
 
-[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
-layout_mode = 2
-
-[node name="gameheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="perfheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
 theme_override_font_sizes/font_size = 11
-text = "GAME"
+text = "PERFORMANCE"
 
-[node name="damagerow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="resolutionrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/damagerow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/resolutionrow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 theme_override_font_sizes/font_size = 11
-text = "Damage numbers"
+text = "Render resolution"
 vertical_alignment = 1
 
-[node name="damagenumbers" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/damagerow"]
+[node name="renderresolution" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/resolutionrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 26)
+layout_mode = 2
+
+[node name="lightingrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/lightingrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Lighting"
+vertical_alignment = 1
+
+[node name="lighting" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/lightingrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 26)
+layout_mode = 2
+
+[node name="backgroundrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/backgroundrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Slow down in background"
+vertical_alignment = 1
+
+[node name="backgroundlimit" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/backgroundrow"]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="spacer" type="Control" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="rendererrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
-size_flags_vertical = 3
-mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/rendererrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Renderer"
+vertical_alignment = 1
+
+[node name="renderer" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/rendererrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 26)
+layout_mode = 2
+
+[node name="renderernote" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.55, 0.45, 1)
+theme_override_font_sizes/font_size = 10
+text = "running on Standard"
+horizontal_alignment = 2
+autowrap_mode = 2
+
+[node name="apirow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/apirow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "Graphics API"
+vertical_alignment = 1
+
+[node name="apinote" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/apirow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.55, 0.45, 1)
+theme_override_font_sizes/font_size = 10
+text = "running on Vulkan"
+vertical_alignment = 1
+
+[node name="graphicsapi" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/apirow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 26)
+layout_mode = 2
 
 [node name="hseparator3" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
 layout_mode = 2

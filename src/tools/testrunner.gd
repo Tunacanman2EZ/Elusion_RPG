@@ -1199,6 +1199,8 @@ func _test_settings() -> void:
 		"vsync": "vsyncmode",              "frame_cap": "framecap",
 		"window_width": "windowsize",      "window_height": "windowsize",
 		"damage_numbers": "damagenumbers",
+		"render_resolution": "renderresolution", "lighting": "lighting",
+		"background_fps_limit": "backgroundlimit",
 	}
 	var unmapped: Array = []
 	for key in Settings.DEFAULTS:
@@ -1218,7 +1220,77 @@ func _test_settings() -> void:
 	check("and every mapped control exists in it", missing.is_empty(), missing)
 	check("including the readout the whole pacing section is for",
 		screen.get_node_or_null("%pacingreadout") != null)
+	check("and the renderer picker, which lives outside DEFAULTS",
+		screen.get_node_or_null("%renderer") != null and screen.get_node_or_null("%renderernote") != null)
 	screen.free()
+
+	# --- performance: the defaults are the game as authored ---------------
+	# Every performance option trades looks for speed, so none of them may be
+	# ON by default except the one that costs nothing you can see.
+	check("full resolution by default", Settings.DEFAULTS["render_resolution"] == "screen")
+	check("full lighting by default", Settings.DEFAULTS["lighting"] == "full")
+	check("the background limit is on by default - nobody sees those frames",
+		Settings.DEFAULTS["background_fps_limit"] == true)
+	check("30 is offered, for the weakest machines", 30 in Settings.FRAME_CAPS)
+
+	check("an unknown resolution becomes the default",
+		Settings.normalise_choice("potato", Settings.RENDER_RESOLUTIONS, "screen") == "screen")
+	check("case does not matter to lighting",
+		Settings.normalise_choice("Simple", Settings.LIGHTING_MODES, "full") == "simple")
+	check("low resolution is viewport stretch",
+		Settings.content_scale_mode_for("low") == Window.CONTENT_SCALE_MODE_VIEWPORT)
+	check("screen resolution is the project's canvas_items",
+		Settings.content_scale_mode_for("screen") == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS)
+
+	# --- the background limit, as a table ------------------------------------
+	# (player's cap, focused, limit on) -> max_fps
+	var caps := [
+		[0, true, true, 0],     # foreground: the player's cap, which is none
+		[144, true, true, 144],
+		[0, false, true, Settings.BACKGROUND_FPS],
+		[144, false, true, Settings.BACKGROUND_FPS],
+		[10, false, true, 10],   # a lower cap is never RAISED by alt-tabbing
+		[0, false, false, 0],    # limit off: background is the foreground
+	]
+	var wrong: Array = []
+	for row in caps:
+		if Settings.fps_cap_for(row[0], row[1], row[2]) != row[3]:
+			wrong.append(row)
+	check("the frame cap in and out of focus", wrong.is_empty(), wrong)
+
+	# --- simple lighting on real nodes -------------------------------------
+	# Hidden rather than disabled, because player.gd owns its carried light's
+	# `enabled`; restored to exactly what was authored, including a light the
+	# scene had hidden on purpose.
+	var holder := Node2D.new()
+	var lit := PointLight2D.new()
+	var authored_off := PointLight2D.new()
+	authored_off.visible = false
+	var ambience := CanvasModulate.new()
+	ambience.color = Color(0.28, 0.3, 0.4)
+	for n in [lit, authored_off, ambience]:
+		holder.add_child(n)
+	for n in [lit, authored_off, ambience]:
+		Settings._apply_lighting_to(n, "simple")
+	check("simple hides a light", not lit.visible)
+	check("and leaves `enabled` to player.gd", lit.enabled)
+	check("and lifts the darkness", ambience.color.v > 0.4 and ambience.color.v < 1.0, ambience.color)
+	for n in [lit, authored_off, ambience]:
+		Settings._apply_lighting_to(n, "full")
+	check("full brings the light back", lit.visible)
+	check("but not one the scene hid itself", not authored_off.visible)
+	check("and the darkness exactly as authored", ambience.color.is_equal_approx(Color(0.28, 0.3, 0.4)), ambience.color)
+	holder.free()
+
+	# --- the renderer note says which of three things is true -----------------
+	var note := func(req: String, boot: String, run: String) -> String:
+		return (load("res://src/ui/menus/optionsscreen.gd") as Script).renderer_note_for(req, boot, run)
+	check("a pending switch asks for a restart",
+		note.call("gl_compatibility", "mobile", "mobile").begins_with("restart"))
+	check("a fallback says so", note.call("mobile", "mobile", "gl_compatibility").contains("no Vulkan"))
+	check("otherwise it names what is running", note.call("mobile", "mobile", "mobile") == "running Standard")
+	check("Forward+ is never offered - the heaviest renderer, for 3D",
+		not ("forward_plus" in Settings.RENDERERS))
 
 
 # =============================================================================

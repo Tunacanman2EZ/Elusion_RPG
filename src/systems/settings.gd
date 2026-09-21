@@ -1,4 +1,5 @@
-# settings.gd — the player's own preferences: volume, window, damage numbers.
+# settings.gd — the player's own preferences: volume, window, performance,
+# damage numbers.
 # Autoloaded as `Settings`.
 #
 # =============================================================================
@@ -108,6 +109,26 @@ const DEFAULTS := {
 	"window_width": 1280,
 	"window_height": 720,
 
+	# --- performance ---
+	# See the PERFORMANCE section below for what each of these costs, measured.
+	#
+	# RENDER RESOLUTION. "screen" draws the 2D canvas at the window's own
+	# resolution - the project's canvas_items stretch, sharpest text. "low"
+	# draws it at the project's 1280x720 and scales the finished frame up -
+	# viewport stretch. The world is pixel art at 3x zoom either way, so the
+	# world looks the same; text and UI edges are what get blockier.
+	"render_resolution": "screen",
+
+	# "full" is every Light2D and the crypt's darkness as authored. "simple"
+	# turns the lights off and lifts the darkness so nothing becomes unplayably
+	# dim - the single biggest cost in any lit area.
+	"lighting": "full",
+
+	# Drop to BACKGROUND_FPS while the game is not the focused window. On by
+	# default: nobody is watching those frames, and a laptop on battery or a
+	# second monitor running a video should not pay for them.
+	"background_fps_limit": true,
+
 	# --- game ---
 	# The numbers that fly off things when they are hit. On by default, because
 	# they are how the game tells you what a weapon is doing — and optional,
@@ -143,6 +164,10 @@ const WINDOW_SIZES := [
 
 var _values: Dictionary = {}
 
+# Whether the game window has focus. Starts true: a game that just launched is
+# the thing the player is looking at, and the first FOCUS_OUT says otherwise.
+var _focused: bool = true
+
 # True while load() is applying the file, so the whole startup does not emit
 # eight `changed` signals at anything that happens to be listening.
 var _loading: bool = false
@@ -159,7 +184,23 @@ func _ready() -> void:
 	# most games, and where this one may end up.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_enforce_minimum_window()
+	# BEFORE load_settings(), and before any world scene exists: every Light2D
+	# and CanvasModulate that ever enters the tree passes through here, so a
+	# candle in a scene loaded an hour from now obeys the lighting setting
+	# without that scene, or the candle, knowing it exists.
+	get_tree().node_added.connect(_on_node_added)
 	load_settings()
+
+
+func _notification(what: int) -> void:
+	# The background limit. See "background_fps_limit" in DEFAULTS.
+	match what:
+		NOTIFICATION_APPLICATION_FOCUS_OUT:
+			_focused = false
+			_apply_fps_cap()
+		NOTIFICATION_APPLICATION_FOCUS_IN:
+			_focused = true
+			_apply_fps_cap()
 
 
 # =============================================================================
@@ -220,7 +261,12 @@ const VSYNC_MODES := ["off", "on", "adaptive", "fast"]
 # right answer whenever vsync is working. The rest are common panel rates; a
 # cap is worth offering at all because an uncapped game with vsync off draws
 # thousands of frames a second and turns the GPU into a heater.
-const FRAME_CAPS := [0, 60, 120, 144, 165, 240, 360]
+#
+# 30 IS FOR THE WEAKEST MACHINES: one that manages 40-50 fps looks smoother
+# held at a steady 30 than wandering, and runs cooler doing it. On a 60 Hz
+# screen it is exactly every other refresh, so it does not hitch the way a
+# cap just under the refresh rate does.
+const FRAME_CAPS := [0, 30, 60, 120, 144, 165, 240, 360]
 
 
 # `mode_name`, not `name`: Node.name exists, and a parameter by that name
@@ -277,6 +323,186 @@ func pacing_report() -> Dictionary:
 		"refresh": refresh, "fps": fps, "vsync": mode, "cap": cap,
 		"overridden": overridden,
 	}
+
+
+# =============================================================================
+# PERFORMANCE - "ANYONE CAN RUN THIS GAME", MEASURED
+# =============================================================================
+# Every option here was measured before it was added, on the worst machine
+# available: Godot 4.6.1, Compatibility renderer, Mesa llvmpipe - a graphics
+# card simulated on two CPU cores, slower than any real GPU. Frame time, mean
+# over a camera walk through the real scenes:
+#
+#                                   lights on    lights off
+#     town        1280x720           18.9 ms      (no lights there)
+#     boss arena  1280x720           37.4 ms      20.6 ms
+#     field       1280x720           45.6 ms      22.3 ms
+#     field       2560x1440 screen  166.6 ms      77.4 ms
+#     field       2560x1440 low      55.7 ms      32.0 ms
+#     field       3840x2160 screen  359.8 ms     172.2 ms
+#     field       3840x2160 low      71.9 ms      45.8 ms
+#
+# Two things carry almost all of it. The twelve candle and lantern lights
+# double the cost of any area they are in. And "screen" resolution means a
+# 1440p or 4K window really does draw 4x or 9x the pixels of 720p - for a
+# world that is 3x-zoomed pixel art and gains nothing from them. Those are
+# the two options. Nothing else measured was worth a control.
+#
+# A real graphics card is far faster than that simulation, so the absolute
+# numbers are not a prediction. The ratios are the point: on the weakest
+# laptop a player might have, these two are the difference.
+
+const RENDER_RESOLUTIONS := ["screen", "low"]
+const LIGHTING_MODES := ["full", "simple"]
+
+# While the window is in the background. Low enough to cost almost nothing,
+# high enough that nothing time-driven stutters when you look back.
+const BACKGROUND_FPS := 15
+
+# How far "simple" lighting lifts a CanvasModulate toward white. The crypt's
+# darkness is Color(0.28, 0.3, 0.4) and is only playable because candles
+# light it; with the candles off, this is what keeps it readable.
+const SIMPLE_AMBIENT_LIFT := 0.4
+
+const _META_VISIBLE := &"_settings_authored_visible"
+const _META_COLOUR := &"_settings_authored_colour"
+
+
+static func normalise_choice(value: Variant, allowed: Array, fallback: String) -> String:
+	# Case-folded, and anything unrecognised becomes the default rather than a
+	# value the apply step does not know.
+	var s: String = str(value).to_lower()
+	return s if s in allowed else fallback
+
+
+static func content_scale_mode_for(render_resolution: String) -> int:
+	return (Window.CONTENT_SCALE_MODE_VIEWPORT if render_resolution == "low"
+		else Window.CONTENT_SCALE_MODE_CANVAS_ITEMS)
+
+
+static func fps_cap_for(frame_cap: int, focused: bool, background_limit: bool) -> int:
+	# THE ONE PLACE THE CAP IS WORKED OUT. The player's cap in the foreground;
+	# in the background, BACKGROUND_FPS or the player's cap, whichever is lower
+	# - a player who capped at 10 does not get raised to 15 by alt-tabbing.
+	var cap: int = maxi(0, frame_cap)
+	if focused or not background_limit:
+		return cap
+	return BACKGROUND_FPS if cap == 0 else mini(cap, BACKGROUND_FPS)
+
+
+static func simple_ambient(authored: Color) -> Color:
+	var lifted: Color = authored.lerp(Color.WHITE, SIMPLE_AMBIENT_LIFT)
+	lifted.a = authored.a
+	return lifted
+
+
+func _apply_fps_cap() -> void:
+	# THE ONLY PLACE max_fps IS WRITTEN - see "frame_cap" in _apply().
+	var want: int = fps_cap_for(int(get_value("frame_cap")), _focused,
+		bool(get_value("background_fps_limit")))
+	if Engine.max_fps != want:
+		Engine.max_fps = want
+
+
+func _on_node_added(node: Node) -> void:
+	# Cheap for everything else: two type checks. This fires for every node
+	# that enters the tree, and nearly all of them are neither.
+	if node is Light2D or node is CanvasModulate:
+		_apply_lighting_to(node, str(get_value("lighting")))
+
+
+func _apply_lighting_to(node: Node, mode: String) -> void:
+	# AUTHORED VALUES ARE REMEMBERED ON THE NODE the first time it is touched,
+	# so "full" restores exactly what the scene said rather than assuming every
+	# light was visible and every ambience was one colour.
+	#
+	# VISIBLE, NOT ENABLED. player.gd switches its carried light's `enabled` on
+	# and off depending on whether the scene is dark; writing `enabled` here
+	# would fight it. Hiding the node turns the light off underneath whatever
+	# player.gd decides.
+	var simple: bool = mode == "simple"
+	if node is Light2D:
+		var light := node as Light2D
+		if not light.has_meta(_META_VISIBLE):
+			light.set_meta(_META_VISIBLE, light.visible)
+		light.visible = false if simple else bool(light.get_meta(_META_VISIBLE))
+	elif node is CanvasModulate:
+		var ambience := node as CanvasModulate
+		if not ambience.has_meta(_META_COLOUR):
+			ambience.set_meta(_META_COLOUR, ambience.color)
+		var authored: Color = ambience.get_meta(_META_COLOUR)
+		ambience.color = simple_ambient(authored) if simple else authored
+
+
+func _apply_lighting_everywhere(mode: String) -> void:
+	var tree := get_tree()
+	if tree == null or tree.root == null:
+		return
+	for node in tree.root.find_children("*", "Light2D", true, false):
+		_apply_lighting_to(node, mode)
+	for node in tree.root.find_children("*", "CanvasModulate", true, false):
+		_apply_lighting_to(node, mode)
+
+
+# =============================================================================
+# THE RENDERER - Standard or Compatibility, restart required
+# =============================================================================
+# Same home as the graphics API below, for the same reason: the renderer is
+# chosen before any script runs, so it lives in override.cfg, not options.cfg.
+#
+#   mobile            "Standard". Vulkan or Direct3D 12. What project.godot
+#                     names.
+#   gl_compatibility  OpenGL 3.3. Runs on graphics hardware too old for
+#                     Vulkan, and is often the faster of the two on weak
+#                     integrated graphics - it is the renderer Godot itself
+#                     recommends for low-end machines and for 2D.
+#
+# A MACHINE WITH NO VULKAN ALREADY GETS COMPATIBILITY. Measured: with the
+# project's own "mobile" setting, on a machine without Vulkan, Godot 4.6.1
+# prints "switching to OpenGL 3" and boots Compatibility. So this option is
+# not what lets old hardware start the game - it is for hardware whose Vulkan
+# exists but runs badly, and for comparing the two.
+#
+# Forward+ is deliberately not offered: it is Godot's high-end 3D renderer,
+# the heaviest of the three, and gives a 2D game nothing.
+#
+# NOT TOUCHED BY reset(), like the API: silently switching a restart-required
+# renderer under "Reset to defaults" is a surprise waiting for a laptop.
+
+const RENDERERS := ["mobile", "gl_compatibility"]
+const RENDERER_SETTING := "rendering/renderer/rendering_method"
+
+
+func renderer_in_effect() -> String:
+	# What is actually drawing, which after a fallback is not what was asked.
+	return RenderingServer.get_current_rendering_method()
+
+
+func renderer_booted_with() -> String:
+	# What project.godot plus override.cfg asked for at launch.
+	return str(ProjectSettings.get_setting(RENDERER_SETTING, "mobile"))
+
+
+func renderer_requested() -> String:
+	# What override.cfg says now, which becomes true on the next launch.
+	var cfg := ConfigFile.new()
+	if cfg.load(_override_path()) != OK:
+		return renderer_booted_with()
+	return str(cfg.get_value("rendering", "renderer/rendering_method",
+		renderer_booted_with()))
+
+
+func set_renderer(method: String) -> void:
+	if method not in RENDERERS:
+		push_error("Settings: unknown renderer '%s'" % method)
+		return
+	var path: String = _override_path()
+	var cfg := ConfigFile.new()
+	cfg.load(path)   # a missing file is fine; it starts empty
+	cfg.set_value("rendering", "renderer/rendering_method", method)
+	var err: int = cfg.save(path)
+	if err != OK:
+		push_warning("Settings: could not write %s (error %d)." % [path, err])
 
 
 # =============================================================================
@@ -435,6 +661,10 @@ func _normalise(key: String, typed: Variant) -> Variant:
 			return normalise_vsync(typed)
 		"frame_cap":
 			return normalise_frame_cap(typed)
+		"render_resolution":
+			return normalise_choice(typed, RENDER_RESOLUTIONS, "screen")
+		"lighting":
+			return normalise_choice(typed, LIGHTING_MODES, "full")
 		_:
 			return typed
 
@@ -505,12 +735,20 @@ func _apply(key: String, value: Variant) -> void:
 			if DisplayServer.window_get_vsync_mode() != want_vsync:
 				DisplayServer.window_set_vsync_mode(want_vsync)
 		"frame_cap":
-			# THE ONLY PLACE max_fps IS WRITTEN. It used to be written by a
-			# once-a-second poll that chose ceil(refresh) - 1 on its own, which
+			# max_fps IS WRITTEN IN ONE PLACE, _apply_fps_cap(). It used to be
+			# written by a once-a-second poll that chose ceil(refresh) - 1 on its own, which
 			# is the regression the FRAME PACING section describes. Now the cap
-			# is the player's number or nothing.
-			if Engine.max_fps != int(value):
-				Engine.max_fps = int(value)
+			# is the player's number or nothing - or, in the background, the
+			# background limit. fps_cap_for() works out which.
+			_apply_fps_cap()
+		"background_fps_limit":
+			_apply_fps_cap()
+		"render_resolution":
+			var want_scale: int = content_scale_mode_for(str(value))
+			if get_tree().root.content_scale_mode != want_scale:
+				get_tree().root.content_scale_mode = want_scale
+		"lighting":
+			_apply_lighting_everywhere(str(value))
 		"damage_numbers":
 			# Read where the labels are spawned rather than pushed anywhere —
 			# see player.gd and baseenemy.gd. Nothing to apply.
