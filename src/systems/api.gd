@@ -244,6 +244,28 @@ func _log_server_reachability() -> void:
 	if not OS.is_debug_build():
 		return
 
+	# AND NOT IN A HEADLESS RUN, which in this project means testrunner.gd and
+	# nothing else.
+	#
+	# _ready() deliberately does not await this, so the probe OUTLIVES ITS
+	# CALLER: a suspended coroutine holding an HTTPRequest. The suite finishes in
+	# well under a second and calls quit() while the probe is still sitting on
+	# its three second timeout, so the engine tears down with a live
+	# GDScriptFunctionState and prints "ObjectDB instances leaked at exit" on
+	# every green run. That was the warning exactly - one leaked instance, and
+	# orphan StringNames get_json, request_completed and completed.
+	#
+	# THE WARNING IS THE SMALL HALF. A test suite that makes a network call at
+	# startup can behave differently depending on whether Flask happens to be
+	# running on the machine, and that is a dependency nobody would ever think to
+	# go looking for. It has been there since the suite was written and could not
+	# be noticed, because the suite had never once run.
+	#
+	# A boot log line exists for somebody watching a console. Nothing watches a
+	# headless run except a script reading the exit code.
+	if DisplayServer.get_name() == "headless":
+		return
+
 	# /api/auth/session is the probe because it already exists, is a GET, and
 	# has no side effects. What matters is whether ANY HTTP response comes
 	# back — a 401 from a missing or expired token still proves the server is

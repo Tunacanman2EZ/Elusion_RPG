@@ -47,10 +47,22 @@ var _log: PackedStringArray = []
 
 func _ready() -> void:
 	# Wait one frame before doing anything. Calling get_tree().quit() from inside
-	# _ready(), while the tree and the autoloads are still coming up, is what
-	# produces "ObjectDB instances leaked at exit" on the way out. Nothing is
-	# actually wrong when that appears, which is the problem: a suite that prints
-	# a warning on every green run teaches you to skim past warnings.
+	# _ready(), while the tree and the autoloads are still coming up, is a bad
+	# idea on its own terms: the suite would be judging a half-built world.
+	#
+	# THIS COMMENT USED TO CLAIM THE AWAIT ALSO PREVENTED "ObjectDB instances
+	# leaked at exit", and that it was harmless when it appeared. Both halves
+	# were wrong, and the first run this file ever completed printed the warning
+	# anyway. Running it with --verbose named the culprit in one line: a leaked
+	# GDScriptFunctionState with orphan StringNames get_json, request_completed
+	# and completed - api.gd's unawaited boot probe, still waiting on a three
+	# second HTTP timeout when quit() arrived. Fixed there, with the reasoning.
+	#
+	# WORTH KEEPING AS A LESSON. A comment asserting that a warning is harmless
+	# is the most expensive kind of comment there is: it does not just fail to
+	# help, it actively tells the next person not to look. A comment cannot fail,
+	# so this one went unexamined from the day it was written until the day the
+	# file first ran.
 	await get_tree().process_frame
 	_say("")
 	_run_all()
