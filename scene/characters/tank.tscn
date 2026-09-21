@@ -6,8 +6,8 @@
 [ext_resource type="Texture2D" uid="uid://d1pq4csbk0w2o" path="res://art/maincharacter/largeringonly.png" id="4_3cjqv"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_6lggi"]
-radius = 8.777779
-height = 18.222221
+radius = 7.9
+height = 16.4
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_6lggi"]
 atlas = ExtResource("2_6lggi")
@@ -893,38 +893,38 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_xt8cs"]
-radius = 47.0
-height = 164.0
+radius = 42.3
+height = 147.6
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_j1aco"]
-radius = 15.555555
-height = 35.555557
+radius = 14.0
+height = 32.0
 
 [node name="tank" type="CharacterBody2D" unique_id=724977901]
 light_mask = 4
 visibility_layer = 27
 y_sort_enabled = true
 texture_filter = 1
-scale = Vector2(0.9, 0.9)
 collision_layer = 4
 collision_mask = 19
 motion_mode = 1
 script = ExtResource("1_kkm52")
 
 [node name="bodyshape" type="CollisionShape2D" parent="." unique_id=309465999]
-position = Vector2(-1, -18)
+position = Vector2(-0.9, -16.2)
 shape = SubResource("CapsuleShape2D_6lggi")
 debug_color = Color(0, 0, 0, 0.41960785)
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1531608484]
 texture_filter = 1
-position = Vector2(-1, -20)
+position = Vector2(-1, -23)
 sprite_frames = SubResource("SpriteFrames_epri2")
 animation = &"deathdown"
 offset = Vector2(0, -16)
 
 [node name="ring" type="AnimatedSprite2D" parent="." unique_id=134013425]
-position = Vector2(0, -36.666668)
+scale = Vector2(0.9, 0.9)
+position = Vector2(0, -33)
 sprite_frames = SubResource("SpriteFrames_pnr57")
 animation = &"ring"
 autoplay = "ring"
@@ -937,8 +937,8 @@ zoom = Vector2(3, 3)
 
 [node name="firering" type="AnimatedSprite2D" parent="." unique_id=1899786570]
 texture_filter = 1
-position = Vector2(-105, -146)
-scale = Vector2(1.6249999, 1.5972222)
+position = Vector2(-94.5, -131.4)
+scale = Vector2(1.4625, 1.4375)
 sprite_frames = SubResource("SpriteFrames_1hx8c")
 animation = &"firering"
 frame_progress = 0.03747811
@@ -948,13 +948,13 @@ centered = false
 [node name="aura" type="Area2D" parent="." unique_id=1885856176]
 z_index = -1
 texture_filter = 1
-position = Vector2(-1, -19)
+position = Vector2(-0.9, -17.1)
 collision_layer = 4
 collision_mask = 8
 monitorable = false
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="aura" unique_id=798835221]
-position = Vector2(0, 4)
+position = Vector2(0, 3.6)
 rotation = 1.5707964
 shape = SubResource("CapsuleShape2D_xt8cs")
 
@@ -963,20 +963,22 @@ collision_layer = 4
 collision_mask = 64
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="hurtbox" unique_id=1997584844]
-position = Vector2(-1.1111112, -33.333336)
+position = Vector2(-1, -30)
 shape = SubResource("CapsuleShape2D_j1aco")
 debug_color = Color(0.6959545, 0.49238682, 0.13868463, 0.41960785)
 
 [node name="damagelabel" type="Label" parent="." unique_id=548524885]
-offset_left = -28.0
-offset_top = -42.0
-offset_right = 12.0
-offset_bottom = -19.0
+scale = Vector2(0.9, 0.9)
+offset_left = -25.2
+offset_top = -37.8
+offset_right = 14.8
+offset_bottom = -14.8
 
 [node name="damagelabeltimer" type="Timer" parent="damagelabel" unique_id=206402058]
 
 [node name="damagerecievedlabel" type="Label" parent="." unique_id=1486179397]
-offset_left = -20.0
-offset_top = -72.22222
-offset_right = 20.0
-offset_bottom = -49.22222
+scale = Vector2(0.9, 0.9)
+offset_left = -18.0
+offset_top = -65.0
+offset_right = 22.0
+offset_bottom = -42.0

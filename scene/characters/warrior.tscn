@@ -1016,8 +1016,7 @@ debug_color = Color(0, 0, 0, 0.41960785)
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1319435616]
 y_sort_enabled = true
 texture_filter = 1
-position = Vector2(0, 15)
-scale = Vector2(0.982, 0.9)
+position = Vector2(0, 13)
 sprite_frames = SubResource("SpriteFrames_ih3hd")
 animation = &"attackdown"
 speed_scale = 1.5

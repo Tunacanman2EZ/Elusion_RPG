@@ -963,8 +963,7 @@ script = ExtResource("1_1urxr")
 target_circle_scene = ExtResource("2_skpm8")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1544333046]
-position = Vector2(0, -16)
-scale = Vector2(0.9, 0.9)
+position = Vector2(0, -19)
 sprite_frames = SubResource("SpriteFrames_px1f2")
 animation = &"hitflashup"
 

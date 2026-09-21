@@ -516,6 +516,20 @@ func activate_expand() -> void:
 	if mana >= 25:
 		_expanding = true
 		mana = clamp(mana - 25, 0, max_mana)
+		# RESTORE WHAT WAS THERE, NOT WHAT SOMEBODY ASSUMED WAS THERE.
+		#
+		# The shrink below used to write Vector2(1.0, 1.0) to both. The scene had
+		# the root at 0.9 and the fire ring at 1.625 x 1.597, so the first expand
+		# would have left the tank permanently resized and the ring a third
+		# smaller - invisible only because nothing calls this yet.
+		#
+		# The root is 1.0 in the scene now (the 0.9 made the sprite ripple while
+		# walking - see the commit that changed tank.tscn), which happens to make
+		# the old root line right. The ring's would still have been wrong, and the
+		# next person to tune either value in the editor would break it again.
+		# Captured here, so neither number is written down twice.
+		var root_scale_before: Vector2 = scale
+		var ring_scale_before: Vector2 = _firering.scale if _firering != null else Vector2.ONE
 		scale = Vector2(1.5, 1.5)
 		if _firering != null:
 			_firering.scale = Vector2(1.5, 1.5)
@@ -525,9 +539,9 @@ func activate_expand() -> void:
 		if not is_instance_valid(self) or not is_inside_tree():
 			return
 		_expanding = false
-		scale = Vector2(1.0, 1.0)
+		scale = root_scale_before
 		# is_instance_valid rather than a null check, uniquely here: this is the
 		# far side of a four-second await, and a cached reference to a freed
 		# node is non-null while has_node() would have returned false.
 		if is_instance_valid(_firering):
-			_firering.scale = Vector2(1.0, 1.0)
+			_firering.scale = ring_scale_before
