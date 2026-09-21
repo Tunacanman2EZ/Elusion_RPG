@@ -586,10 +586,17 @@ func _physics_process(_delta):
 		return
 
 	var direction := Vector2.ZERO
-	if Input.is_action_pressed("move_right"): direction.x += 1
-	if Input.is_action_pressed("move_left"):  direction.x -= 1
-	if Input.is_action_pressed("move_down"):  direction.y += 1
-	if Input.is_action_pressed("move_up"):    direction.y -= 1
+	# NOT WHILE TYPING. Movement is polled, and a poll does not know that a
+	# text box has the keyboard - so typing "wade" into a search field walked
+	# the character up, left, right and away. The bank's gold box always had
+	# this; the staff panel, with a search box and a ban reason, made it
+	# impossible to miss. Key EVENTS were already safe: a focused LineEdit
+	# consumes them before _unhandled_input sees them. Only the poll leaked.
+	if not _typing_in_ui():
+		if Input.is_action_pressed("move_right"): direction.x += 1
+		if Input.is_action_pressed("move_left"):  direction.x -= 1
+		if Input.is_action_pressed("move_down"):  direction.y += 1
+		if Input.is_action_pressed("move_up"):    direction.y -= 1
 
 	if direction != Vector2.ZERO:
 		_set_active()
@@ -1756,6 +1763,19 @@ func update_lusions_label() -> void:
 # than the pet row alone.
 func _staff_debug_allowed() -> bool:
 	return OS.is_debug_build() and Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)
+
+
+func _typing_in_ui() -> bool:
+	# A text field that is visible and can be typed into holds the keyboard.
+	# Read-only fields do not count - nothing is being typed into them.
+	var focused: Control = get_viewport().gui_get_focus_owner()
+	if focused == null or not focused.is_visible_in_tree():
+		return false
+	if focused is LineEdit:
+		return (focused as LineEdit).editable
+	if focused is TextEdit:
+		return (focused as TextEdit).editable
+	return false
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -126,6 +126,14 @@ const PROBE_TIMEOUT := 3.0
 # where the session token is cached between launches
 const SESSION_PATH := "user://session.cfg"
 
+# HOW OFTEN THE GAME TELLS THE SERVER IT IS STILL HERE, while a character is in
+# the world. characterhud.gd owns the timer; this is the one statement of the
+# number. It pairs with ONLINE_WINDOW_SECONDS = 45 in app.py - three beats - so
+# one slow request does not show a player as gone.
+#
+# It is also how a kick lands. See heartbeat().
+const HEARTBEAT_SECONDS := 15.0
+
 
 # =============================================================================
 # CONNECTION STATE
@@ -135,6 +143,15 @@ const SESSION_PATH := "user://session.cfg"
 # UI listening to this wants to know the moment the world changed, and would
 # otherwise get an event per call saying the same thing.
 signal connection_changed(online: bool)
+
+# An authenticated request came back 401 while this client held a token.
+#
+# NOT PROOF THE SESSION IS GONE, and nothing should act on it alone: changing a
+# password answers 401 for a mistyped CURRENT password, and signing out a
+# player for a typo would be absurd. It means "ask now rather than in up to
+# fifteen seconds" - characterhud.gd answers it with an immediate heartbeat(),
+# and heartbeat() is what decides.
+signal unauthorized_seen
 
 # Whether the last request got an answer of ANY kind. A 401 counts as online:
 # the question is whether the server is there, not whether it liked us.
@@ -183,6 +200,11 @@ var is_owner: bool = false
 # - memory only, re-read on every login and resume, never written to
 # session.cfg.
 var role: String = "player"
+
+# What the login screen should say when the game was signed out FROM THE
+# SERVER'S SIDE - a kick, a ban, or a login that simply ran out. Set by
+# forget_session(), shown once by loginmenu.gd, and cleared there.
+var signout_notice: String = ""
 
 
 # The rank the in-game debug shortcuts require. Defined here rather than in
@@ -340,6 +362,10 @@ func _request(method: int, path: String, body: Dictionary, timeout_override: flo
 	add_child(http)
 
 	var headers := PackedStringArray(["Content-Type: application/json"])
+	# Remembered, because the answer is only about THIS token. A logout and a
+	# fresh login can both happen while a slow request is in flight, and a 401
+	# for the old token says nothing about the new one.
+	var sent_token: String = token
 	if token != "":
 		headers.append("Authorization: Bearer " + token)
 
@@ -393,6 +419,13 @@ func _request(method: int, path: String, body: Dictionary, timeout_override: flo
 
 	if status >= 200 and status < 300:
 		return {"ok": true, "status": status, "data": data, "error": ""}
+
+	# See unauthorized_seen. The heartbeat's own path is excluded because
+	# heartbeat() is already the thing deciding - announcing its answer back to
+	# the listener that asked for it would just ask again.
+	if status == 401 and sent_token != "" and sent_token == token \
+			and path != "/api/auth/session":
+		unauthorized_seen.emit()
 
 	return {
 		"ok": false,
@@ -458,6 +491,58 @@ func probe_and_resume() -> Dictionary:
 	# Reached the server and it said no — the token expired or was revoked.
 	_clear_session()
 	return {"online": true, "resumed": false}
+
+
+func heartbeat() -> String:
+	# "I am still here" - see HEARTBEAT_SECONDS. Resolves to one of:
+	#
+	#   "ok"        the session is live. Rank is re-read on the way through, so
+	#               a promotion or demotion reaches the HUD within one beat.
+	#   "revoked"   the server has no such session: kicked, banned, or expired.
+	#   "offline"   no verdict. Nothing about the login is known.
+	#   "stale"     the token changed while this was in flight. Ignore it.
+	#   "none"      there is no login to check - a scene run straight from
+	#               the editor, say. Nothing to sign out of, so nothing happens.
+	#
+	# A kick deletes the player's sessions and a ban does too, but a client
+	# that never asks never finds out - which is how a kicked player used to go
+	# on playing until they happened to restart. This is the asking.
+	if token == "":
+		return "none"
+	var asked_with: String = token
+	var res: Dictionary = await get_json("/api/auth/session", PROBE_TIMEOUT)
+	if token != asked_with:
+		return "stale"
+	var verdict: String = heartbeat_verdict(res)
+	if verdict == "ok" and res.get("data") is Dictionary:
+		role = str(res.data.get("role", role))
+		is_owner = bool(res.data.get("is_owner", is_owner))
+	return verdict
+
+
+func heartbeat_verdict(res: Dictionary) -> String:
+	# The judgement on its own, so the test suite can pin it without a server.
+	# Not static: Api is reached as an autoload instance, and calling a static
+	# function through an instance is a warning in the editor.
+	#
+	# ONLY A 401 SIGNS ANYONE OUT. Everything else that is not a success - no
+	# answer, a 500, a 404 from some other program holding the port - says
+	# nothing about whether this login is valid. Throwing a player to the
+	# login screen because the server hiccuped would turn every restart of
+	# app.py into a mass kick.
+	if res.get("ok", false):
+		return "ok"
+	if int(res.get("status", 0)) == 401:
+		return "revoked"
+	return "offline"
+
+
+func forget_session(notice: String) -> void:
+	# The server already ended this session, so there is nobody to tell -
+	# Api.logout() would spend a request on a token that no longer exists.
+	# Keep the reason for the login screen and drop the token.
+	signout_notice = notice
+	_clear_session()
 
 
 # =============================================================================

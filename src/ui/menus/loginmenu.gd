@@ -132,6 +132,15 @@ func _ready() -> void:
 		Api.connection_changed.connect(_on_connection_changed)
 
 	load_remembered_user()
+
+	# SIGNED OUT FROM THE SERVER'S SIDE - a kick, a ban, or a login that ran
+	# out while the game was open. characterhud.gd's heartbeat put the reason
+	# here on the way out; show it once and let it go, so a later normal logout
+	# does not repeat it.
+	if Api.signout_notice != "":
+		%errorlabel.text = Api.signout_notice
+		Api.signout_notice = ""
+
 	await _check_connection_and_resume()
 
 
@@ -270,7 +279,7 @@ func _on_login_button_pressed() -> void:
 
 	# anything else — server down, validation rejection, unexpected status
 	_set_busy(false)
-	error_label.text = res.error
+	error_label.text = describe_login_refusal(res)
 
 
 # COROUTINE — callers must await. CharacterData.load_for_user() fetches every
@@ -373,6 +382,30 @@ func _on_exit_button_pressed() -> void:
 # =============================================================================
 # VALIDATION
 # =============================================================================
+
+static func describe_login_refusal(res: Dictionary) -> String:
+	# A BAN SAYS HOW LONG AND WHY. The server has always sent both with its
+	# 403 - `ban` carries permanent, expires_at and the reason staff typed -
+	# and this screen showed only "This account is banned until further
+	# notice", which for a seven-day ban is not even true.
+	var data: Variant = res.get("data", {})
+	if int(res.get("status", 0)) == 403 and data is Dictionary and data.get("ban") is Dictionary:
+		var ban: Dictionary = data["ban"]
+		var line: String = "This account is banned permanently."
+		if not bool(ban.get("permanent", false)):
+			# LOCAL TIME, to the minute. The server's clock is unix time and
+			# get_datetime_string_from_unix_time() reads it as UTC, which for
+			# most players is a date that is off by hours.
+			var local: int = int(ban.get("expires_at", 0)) \
+				+ int(Time.get_time_zone_from_system().get("bias", 0)) * 60
+			line = "This account is banned until %s." % \
+				Time.get_datetime_string_from_unix_time(local, true).substr(0, 16)
+		var reason: String = str(ban.get("reason", ""))
+		if reason != "":
+			line += "\nReason: %s" % reason
+		return line
+	return str(res.get("error", ""))
+
 
 func is_valid_username(input_str: String) -> bool:
 	# mirrors USERNAME_PATTERN in app.py.

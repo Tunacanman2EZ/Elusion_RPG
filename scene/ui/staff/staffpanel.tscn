@@ -1,0 +1,274 @@
+[gd_scene format=3]
+
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://src/ui/staff/staffpanel.gd" id="2_script"]
+
+[node name="staffpanel" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_script")
+
+[node name="mainpanel" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(660, 470)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -330.0
+offset_top = -235.0
+offset_right = 330.0
+offset_bottom = 235.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margin" type="MarginContainer" parent="mainpanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="rows" type="VBoxContainer" parent="mainpanel/margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margin/rows"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="header" type="HBoxContainer" parent="mainpanel/margin/rows/headerpanel"]
+layout_mode = 2
+
+[node name="title" type="Label" parent="mainpanel/margin/rows/headerpanel/header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 20
+text = "Staff"
+horizontal_alignment = 1
+
+[node name="staffyoulabel" type="Label" parent="mainpanel/margin/rows/headerpanel/header"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "You: -"
+vertical_alignment = 1
+
+[node name="staffclosebutton" type="Button" parent="mainpanel/margin/rows/headerpanel/header"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+focus_mode = 0
+theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
+theme_override_colors/font_hover_color = Color(1, 0.5, 0.4, 1)
+theme_override_font_sizes/font_size = 18
+text = "×"
+flat = true
+
+[node name="body" type="HBoxContainer" parent="mainpanel/margin/rows"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="left" type="VBoxContainer" parent="mainpanel/margin/rows/body"]
+custom_minimum_size = Vector2(250, 0)
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="staffsearch" type="LineEdit" parent="mainpanel/margin/rows/body/left"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+placeholder_text = "Search players"
+clear_button_enabled = true
+
+[node name="filters" type="HBoxContainer" parent="mainpanel/margin/rows/body/left"]
+layout_mode = 2
+
+[node name="staffonlineonly" type="CheckBox" parent="mainpanel/margin/rows/body/left/filters"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Online only"
+
+[node name="staffcountlabel" type="Label" parent="mainpanel/margin/rows/body/left/filters"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="staffemptylabel" type="Label" parent="mainpanel/margin/rows/body/left"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "No accounts loaded."
+horizontal_alignment = 1
+
+[node name="scroll" type="ScrollContainer" parent="mainpanel/margin/rows/body/left"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="staffaccountlist" type="VBoxContainer" parent="mainpanel/margin/rows/body/left/scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="right" type="PanelContainer" parent="mainpanel/margin/rows/body"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSub"
+
+[node name="margin" type="MarginContainer" parent="mainpanel/margin/rows/body/right"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="rightbox" type="VBoxContainer" parent="mainpanel/margin/rows/body/right/margin"]
+layout_mode = 2
+
+[node name="staffpickhint" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 6
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 13
+text = "Pick a player on the left."
+horizontal_alignment = 1
+
+[node name="staffdetail" type="VBoxContainer" parent="mainpanel/margin/rows/body/right/margin/rightbox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 5
+
+[node name="staffnamelabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 18
+
+[node name="staffpresencelabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+
+[node name="staffranklabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+
+[node name="staffbanlabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 2
+
+[node name="staffreachlabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.65, 0.25, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 2
+
+[node name="sep" type="HSeparator" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+layout_mode = 2
+
+[node name="staffreason" type="LineEdit" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+placeholder_text = "Reason (needed to ban)"
+max_length = 200
+clear_button_enabled = true
+
+[node name="staffkickbutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "Kick (sign out now)"
+
+[node name="bancaption" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = "Ban for"
+
+[node name="staffbanrow" type="HBoxContainer" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="staffpermanentbutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail/staffbanrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+text = "Permanent"
+
+[node name="staffunbanbutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+text = "Unban"
+
+[node name="staffrankrow" type="HBoxContainer" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="staffpromotebutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail/staffrankrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+text = "Promote"
+
+[node name="staffdemotebutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail/staffrankrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+text = "Demote"
+
+[node name="footer" type="HBoxContainer" parent="mainpanel/margin/rows"]
+layout_mode = 2
+
+[node name="staffnotice" type="Label" parent="mainpanel/margin/rows/footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 2
+
+[node name="staffrefreshbutton" type="Button" parent="mainpanel/margin/rows/footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(72, 26)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Refresh"

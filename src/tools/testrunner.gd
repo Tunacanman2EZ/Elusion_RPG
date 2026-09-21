@@ -83,6 +83,7 @@ func _run_all() -> void:
 	_test_ranks()
 	_test_settings()
 	_test_map_landmarks()
+	_test_staff_panel()
 	_test_collision_contract()
 
 
@@ -1306,6 +1307,132 @@ func _test_map_landmarks() -> void:
 	exit_node.arrival_only = true
 	check("an arrival-only portal has none", exit_node.map_landmark().is_empty(), exit_node.map_landmark())
 	exit_node.free()
+
+
+# =============================================================================
+# STAFF PANEL - what it offers each rank, and how a kick reaches a player
+# =============================================================================
+# The server decides every one of these; the panel only declines to offer what
+# would be refused. So the failure worth guarding is the panel drifting from
+# app.py - offering a mod a permanent ban, or hiding a demotion the owner is
+# allowed - which looks like a broken button either way. The rules are pure
+# static functions on staffpanel.gd precisely so they can be pinned here
+# without a server. The live run - real panel, real app.py, every button
+# pressed - is in the commit that added this.
+
+func _test_staff_panel() -> void:
+	section("STAFF PANEL")
+
+	var panel_script: Script = load("res://src/ui/staff/staffpanel.gd")
+	var offer := func(viewer: String, role: String, actionable: bool, banned: bool = false) -> Dictionary:
+		return panel_script.actions_for(viewer, {"role": role, "actionable": actionable, "banned": banned})
+
+	# ---- reach: can_act_on() is STRICTLY above ----
+	var o: Dictionary = offer.call("mod", "player", true)
+	check("a mod may kick and ban a player", o.kick and o.ban, o)
+	check("but not permanently - MAX_MOD_BAN_DAYS", not o.ban_permanent, o)
+	check("and changes no ranks", o.promote_to == "" and o.demote_to == "", o)
+	check("unban is only offered on a ban", not o.unban and offer.call("mod", "player", true, true).unban)
+
+	o = offer.call("mod", "mod", false)
+	check("a mod cannot touch another mod", not o.kick and not o.ban and not o.unban, o)
+
+	# BOTH SIDES MUST AGREE. The server's `actionable` is the authority, and
+	# the client's own rank stops a panel that has not caught up with a
+	# demotion from showing buttons its user just lost.
+	check("a stale 'actionable' from the server offers nothing to an equal",
+		not offer.call("mod", "mod", true).kick)
+	check("and a client that thinks it outranks, against the server's no, offers nothing",
+		not offer.call("owner", "player", false).kick)
+
+	# ---- promotion: never to your own rank, never to owner ----
+	o = offer.call("dev", "player", true)
+	check("a dev may promote a player to mod", o.promote_to == "mod", o)
+	check("and ban permanently", o.ban_permanent, o)
+	o = offer.call("dev", "mod", true)
+	check("a dev may not promote a mod - that would make a dev", o.promote_to == "", o)
+	check("a dev may demote a mod to player", o.demote_to == "player", o)
+	o = offer.call("owner", "mod", true)
+	check("the owner may make a mod a dev", o.promote_to == "dev", o)
+	o = offer.call("owner", "dev", true)
+	check("owner is never offered as a promotion", o.promote_to == "", o)
+	check("the owner may demote a dev to mod", o.demote_to == "mod", o)
+	check("nobody is offered anything against the owner",
+		not offer.call("owner", "owner", false).kick and not offer.call("dev", "owner", false).kick)
+
+	# FAILS LOW, like Api.role_at_least(): a rank this build has never heard of
+	# is a player, on either side.
+	check("an unknown viewer rank is offered nothing", not offer.call("superuser", "player", true).kick)
+	check("an unknown target rank reads as a player", offer.call("mod", "wizard", true).kick)
+
+	# ---- the list ----
+	var accounts: Array = [
+		{"username": "zed", "online": false}, {"username": "Amy", "online": false},
+		{"username": "bob", "online": true}, {"username": "al", "online": true},
+	]
+	var sorted: Array = panel_script.sort_accounts(accounts)
+	check("online first, then by name ignoring case",
+		sorted.map(func(e): return e.username) == ["al", "bob", "Amy", "zed"],
+		sorted.map(func(e): return e.username))
+	check("sorting does not reorder the caller's array", accounts[0].username == "zed")
+	check("search ignores case",
+		panel_script.filter_accounts(accounts, "AM", false).map(func(e): return e.username) == ["Amy"])
+	check("online only",
+		panel_script.filter_accounts(accounts, "", true).size() == 2)
+
+	# ---- presence text, against the SERVER'S clock ----
+	var now := 1_000_000
+	check("online reads as online", panel_script.describe_presence({"online": true}, now) == "Online now")
+	check("minutes", panel_script.describe_presence({"last_seen_at": now - 300}, now) == "Last seen 5 min ago",
+		panel_script.describe_presence({"last_seen_at": now - 300}, now))
+	check("hours", panel_script.describe_presence({"last_seen_at": now - 7200}, now) == "Last seen 2 h ago")
+	check("days", panel_script.describe_presence({"last_seen_at": now - 3 * 86400}, now) == "Last seen 3 days ago")
+	check("no heartbeat at all is just offline", panel_script.describe_presence({"last_seen_at": 0}, now) == "Offline")
+
+	# ---- the scene carries every node the script reaches for ----
+	var scene: Node = (load("res://scene/ui/staff/staffpanel.tscn") as PackedScene).instantiate()
+	var missing: Array = []
+	for unique in ["staffclosebutton", "staffyoulabel", "staffsearch", "staffonlineonly",
+			"staffaccountlist", "staffemptylabel", "staffcountlabel", "staffpickhint",
+			"staffdetail", "staffnamelabel", "staffpresencelabel", "staffranklabel",
+			"staffbanlabel", "staffreachlabel", "staffreason", "staffkickbutton",
+			"staffbanrow", "staffpermanentbutton", "staffunbanbutton", "staffrankrow",
+			"staffpromotebutton", "staffdemotebutton", "staffnotice", "staffrefreshbutton"]:
+		if scene.get_node_or_null("%" + unique) == null:
+			missing.append(unique)
+	check("staffpanel.tscn has every node staffpanel.gd uses", missing.is_empty(), missing)
+	scene.free()
+
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var staff_button: Node = hud.get_node_or_null("navhbox/staffrow/staffbutton")
+	check("the HUD has a Staff button on a row of its own", staff_button is Button)
+	# HIDDEN IN THE FILE. The script shows it to staff; a player must never see
+	# it even for the frame before the script runs.
+	check("and it starts hidden", staff_button is Button and not (staff_button as Button).visible)
+	hud.free()
+
+	# ---- the heartbeat: only a 401 signs anyone out ----
+	check("a live session beats ok", Api.heartbeat_verdict({"ok": true, "status": 200}) == "ok")
+	check("a 401 is a kick, a ban or an expiry", Api.heartbeat_verdict({"ok": false, "status": 401}) == "revoked")
+	# A SERVER RESTART MUST NOT BE A MASS KICK.
+	for status in [0, 404, 500, 503]:
+		check("HTTP %d signs nobody out" % status,
+			Api.heartbeat_verdict({"ok": false, "status": status}) == "offline")
+	# Three beats inside app.py's ONLINE_WINDOW_SECONDS, which is 45. Written
+	# out because the two numbers live in different repositories.
+	check("three heartbeats fit inside the server's 45 s online window",
+		Api.HEARTBEAT_SECONDS * 3.0 <= 45.0, Api.HEARTBEAT_SECONDS)
+
+	# ---- what a banned player is told ----
+	var login_script: Script = load("res://src/ui/menus/loginmenu.gd")
+	var told: String = login_script.describe_login_refusal({"status": 403,
+		"data": {"message": "This account is banned.", "ban": {"permanent": true, "reason": "cheating"}}})
+	check("a permanent ban says so, and why", told.contains("permanently") and told.contains("cheating"), told)
+	told = login_script.describe_login_refusal({"status": 403,
+		"data": {"ban": {"permanent": false, "expires_at": 1_900_000_000, "reason": ""}}})
+	check("a timed ban gives its date", told.begins_with("This account is banned until 20"), told)
+	told = login_script.describe_login_refusal({"status": 500, "error": "Server error."})
+	check("anything else passes the error through", told == "Server error.", told)
 
 
 func _collect_landmark_nodes(node: Node, into: Array) -> void:

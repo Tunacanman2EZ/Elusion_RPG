@@ -179,6 +179,16 @@ text = "Logout"
 layout_mode = 2
 text = "Characters"
 
+[node name="staffrow" type="HBoxContainer" parent="navhbox" unique_id=1733059214]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="staffbutton" type="Button" parent="navhbox/staffrow" unique_id=1491683027]
+visible = false
+layout_mode = 2
+focus_mode = 0
+text = "Staff"
+
 [node name="itemtooltip" parent="." unique_id=1631671194 instance=ExtResource("17_xinkp")]
 offset_left = 3.0
 offset_top = 154.0
