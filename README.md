@@ -227,3 +227,5 @@ Two gaps remain, both named and tracked in the API repo's `SECURITY_NOTES.md`: t
 Code is MIT licensed — see [LICENSE](LICENSE).
 
 Art, graphics and audio are **not** covered by that license, and some of it belongs to someone else. See [assetlicense.md](assetlicense.md) before doing anything with the files under `art/` or `assets/`. If you'd like to contribute assets, read [docs/ASSET_CONTRIBUTOR_AGREEMENT.md](docs/ASSET_CONTRIBUTOR_AGREEMENT.md) first.
+
+Item and icon art is © **Caio Carlos / [Clockwork Raven Studios](https://www.clockworkravenstudios.com/)**, used with permission. Characters, enemies and tilesets are by **Ahvassa**. Full details and links are in [assetlicense.md](assetlicense.md).
