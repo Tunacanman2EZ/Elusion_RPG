@@ -31,6 +31,8 @@
 [ext_resource type="PackedScene" path="res://scene/crypt/wallrun4.tscn" id="p_wallrun4"]
 [ext_resource type="PackedScene" path="res://scene/crypt/wallsidea.tscn" id="p_wallsidea"]
 [ext_resource type="PackedScene" path="res://scene/crypt/wallsideb.tscn" id="p_wallsideb"]
+[ext_resource type="Script" path="res://src/world/victoryteleporter.gd" id="s_victory"]
+[ext_resource type="SpriteFrames" path="res://art/teleport/teleportframes.tres" id="tp_frames"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_underground"]
 texture = ExtResource("2_tiles")
@@ -226,6 +228,9 @@ shader = ExtResource("10_blend")
 shader_parameter/blend = 0.55
 shader_parameter/stone_tint = Color(1, 0.98, 0.94, 1)
 shader_parameter/brightness = 1.1
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_victory"]
+size = Vector2(44, 44)
 
 [node name="bossarena" type="Node2D" unique_id=2089291786]
 script = ExtResource("1_boss")
@@ -434,6 +439,24 @@ position = Vector2(0, 150)
 script = ExtResource("6_portal")
 portal_id = "boss_entrance"
 
+[node name="victoryteleporter" type="Area2D" parent="ysortworld/inteactables" unique_id=1990000101]
+position = Vector2(0, -60)
+visible = false
+collision_layer = 16
+collision_mask = 4
+monitoring = false
+script = ExtResource("s_victory")
+destination_scene_path = "res://scene/elusion.tscn"
+
+[node name="teleporter" type="AnimatedSprite2D" parent="ysortworld/inteactables/victoryteleporter" unique_id=1990000102]
+texture_filter = 1
+scale = Vector2(2.5, 2.25)
+sprite_frames = ExtResource("tp_frames")
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="ysortworld/inteactables/victoryteleporter" unique_id=1990000103]
+disabled = true
+shape = SubResource("RectangleShape2D_victory")
+
 [node name="enemies" type="Node2D" parent="ysortworld" unique_id=1709970370]
 y_sort_enabled = true
 
@@ -520,3 +543,5 @@ min_player_distance = 400.0
 
 [connection signal="body_entered" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_exited"]
+[connection signal="body_entered" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_entered"]
+[connection signal="body_exited" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_exited"]

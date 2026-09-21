@@ -31,6 +31,14 @@ var _current: int = 0
 var _live: Array = []                # bosses still standing in the current wave
 
 
+# Joined in _init so the victory teleporter can find this sequencer by group
+# without naming a path into the arena tree - and from _init so the membership
+# exists the moment the node does, before any _ready runs. The signal below is
+# the reactor's hook; this is how it locates the emitter.
+func _init() -> void:
+	add_to_group("bossgauntlet")
+
+
 func _ready() -> void:
 	# EVERY DESCENDANT, not just direct children. The gates sit under
 	# ysortworld with the rest of the world so they sort against the bosses
