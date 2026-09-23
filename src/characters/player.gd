@@ -1647,6 +1647,10 @@ func gain_defense_xp(amount: int) -> void:
 	if tier_after != tier_before:
 		_spawn_defense_tier_popup(tier_after)
 	CharacterData.save_character_state(self)
+	# SERVER-OWNED (E-2): the level above is optimistic display only. The RAW,
+	# pre-proficiency amount is reported to the server, which grants and stores
+	# the real number and loads it next session. See skilltrainer.gd.
+	SkillTrainer.report("defense", amount)
 
 
 func gain_agility_xp(amount: int) -> void:
@@ -1664,6 +1668,9 @@ func gain_agility_xp(amount: int) -> void:
 		agility_xp_next = xp_needed_for_skill_id("agility", agility)
 		_spawn_skillup_popup("agility", agility)
 	CharacterData.save_character_state(self)
+	# SERVER-OWNED (E-2): optimistic display above; the server owns the record.
+	# agility has no class proficiency, so raw and scaled are the same number.
+	SkillTrainer.report("agility", amount)
 
 
 func gain_magic_xp(amount: int) -> void:
@@ -1680,6 +1687,9 @@ func gain_magic_xp(amount: int) -> void:
 		magic_xp_next = xp_needed_for_skill_id("magic", magic)
 		_spawn_skillup_popup("magic", magic)
 	CharacterData.save_character_state(self)
+	# SERVER-OWNED (E-2): optimistic display above; the RAW, pre-proficiency
+	# amount goes to the server, which scales and stores the record.
+	SkillTrainer.report("magic", amount)
 
 
 # =============================================================================
@@ -1796,10 +1806,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)
-			KEY_F9:  gain_attack_xp(30)
-			KEY_F10: gain_defense_xp(30)
-			KEY_F11: gain_agility_xp(30)
-			KEY_F12: gain_magic_xp(30)
 
 		# LETTERS, BEHIND CTRL — and that modifier is the whole fix.
 		#

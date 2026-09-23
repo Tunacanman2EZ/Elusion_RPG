@@ -41,16 +41,6 @@ const TRADE_PANEL_SCENE   := preload("res://scene/ui/trade/tradepanel.tscn")
 # doesn't expose anything, it's just an inert resource until the owner
 # actually toggles it with the backquote key.
 const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
-# Kick, ban, unban, promote, demote - for mods, devs and the owner, behind the
-# Staff button on the second nav row. Inert for everyone else, same as above:
-# the button that opens it is hidden, and every action is decided server-side.
-const STAFF_PANEL_SCENE   := preload("res://scene/ui/staff/staffpanel.tscn")
-
-# What the login screen says after the server ended this session. It cannot
-# say which - a kick and a ban both just delete the session, and an expired
-# login looks the same - so it says what is true of all three, and a banned
-# player learns the rest the moment they try to log in.
-const SIGNED_OUT_NOTICE := "You were signed out by the server. Log in again to continue."
 
 
 # =============================================================================
@@ -99,7 +89,6 @@ var shop_panel:       Control         = null
 var kingdom_panel:    Control         = null
 var trade_panel:      Control         = null
 var owner_panel:      Control         = null
-var staff_panel:      Control         = null
 var options_screen:   Control         = null
 var map_screen:       Control         = null
 
@@ -196,8 +185,6 @@ func _ready() -> void:
 	_resolve_hotbar()
 	_wire_nav_buttons()
 	_wire_hotbar()
-	_start_heartbeat()
-	_refresh_staff_button()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -299,105 +286,6 @@ func _toggle_owner_panel() -> void:
 		add_child(owner_panel)
 
 	owner_panel.visible = not owner_panel.visible
-
-
-# =============================================================================
-# HEARTBEAT - HOW A KICK OR A BAN REACHES A PLAYER WHO IS STILL PLAYING
-# =============================================================================
-# /api/staff/kick and /api/staff/ban delete the target's sessions, and until
-# this existed nothing in the game ever noticed: a kicked player carried on
-# until they restarted, their saves quietly bouncing off a dead token. Every
-# Api.HEARTBEAT_SECONDS the game now asks the server whether its login still
-# stands, and a no sends the player to the login screen.
-#
-# THE HUD OWNS IT because the HUD exists exactly while a character is in the
-# world, which is where a kick has something to interrupt. The login screen
-# already checks the token when it opens, and a player kicked at character
-# select meets the heartbeat the moment they pick someone.
-#
-# PROCESS_MODE_ALWAYS so a paused tree cannot stop it. A player who can pause
-# their way out of a kick has not been kicked.
-
-var _heartbeat_timer: Timer = null
-var _heartbeat_in_flight: bool = false
-var _session_revoked: bool = false
-
-
-func _start_heartbeat() -> void:
-	_heartbeat_timer = Timer.new()
-	_heartbeat_timer.wait_time = Api.HEARTBEAT_SECONDS
-	_heartbeat_timer.process_mode = Node.PROCESS_MODE_ALWAYS
-	_heartbeat_timer.timeout.connect(_beat)
-	add_child(_heartbeat_timer)
-	_heartbeat_timer.start()
-
-	# Any other request that bounces off a dead token asks for a beat NOW, so a
-	# player who is kicked mid-save finds out in one round trip instead of up
-	# to fifteen seconds later. Api's own note on the signal says why it only
-	# asks and never decides.
-	if not Api.unauthorized_seen.is_connected(_beat):
-		Api.unauthorized_seen.connect(_beat)
-
-
-func _beat() -> void:
-	if _heartbeat_in_flight or _logging_out:
-		return
-	_heartbeat_in_flight = true
-	var verdict: String = await Api.heartbeat()
-	# PAST AN AWAIT. A scene change can free this HUD while the server answers.
-	if not is_instance_valid(self) or not is_inside_tree():
-		return
-	_heartbeat_in_flight = false
-
-	match verdict:
-		"revoked":
-			await _on_session_revoked()
-		"ok":
-			# The beat re-reads rank, so a promotion shows the Staff button
-			# and a demotion takes it away without anyone logging out.
-			_refresh_staff_button()
-		# "offline", "stale" and "none" say nothing about this login. See
-		# Api.heartbeat_verdict(): a server restart must not be a mass kick,
-		# and a scene run from the editor with nobody logged in must not be
-		# thrown to the login screen fifteen seconds in.
-
-
-func _on_session_revoked() -> void:
-	if _logging_out:
-		return
-	_session_revoked = true
-	await _on_logout_pressed()
-
-
-# =============================================================================
-# STAFF PANEL
-# =============================================================================
-
-func is_staff() -> bool:
-	return Api.is_owner or Api.role_at_least("mod")
-
-
-func _refresh_staff_button() -> void:
-	var staff_button: Button = get_node_or_null("navhbox/staffrow/staffbutton")
-	if staff_button != null:
-		staff_button.visible = is_staff()
-	# Demoted with the panel open: close it rather than leave buttons up that
-	# the server will now refuse one by one.
-	if not is_staff() and staff_panel != null and staff_panel.visible:
-		staff_panel.close_panel()
-
-
-func _on_staff_pressed() -> void:
-	await toggle_staff()
-
-
-func toggle_staff() -> void:
-	if not is_staff():
-		return
-	if staff_panel == null:
-		staff_panel = STAFF_PANEL_SCENE.instantiate()
-		add_child(staff_panel)
-	await staff_panel.toggle_panel()
 
 
 func _process(_delta: float) -> void:
@@ -542,16 +430,6 @@ func _wire_nav_buttons() -> void:
 	for btn_name in bindings:
 		if nav.has_node(btn_name):
 			nav.get_node(btn_name).pressed.connect(Callable(self, bindings[btn_name]))
-
-	# THE STAFF BUTTON IS ON A ROW OF ITS OWN, which is the note above taken at
-	# its word: twelve buttons do not fit on this one. navhbox was always a
-	# VBoxContainer, so the second row stacks under the first for free, and it
-	# is hidden for players - so for almost everyone the HUD looks exactly as
-	# it did. _refresh_staff_button() decides; the server decides for real.
-	var staff_button: Button = get_node_or_null("navhbox/staffrow/staffbutton")
-	if staff_button != null:
-		staff_button.focus_mode = Control.FOCUS_NONE
-		staff_button.pressed.connect(_on_staff_pressed)
 
 
 func _wire_hotbar() -> void:
@@ -922,7 +800,6 @@ func _on_logout_pressed() -> void:
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
-	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
 	stats_screen     = null
@@ -933,7 +810,15 @@ func _on_logout_pressed() -> void:
 	kingdom_panel    = null
 	trade_panel      = null
 	owner_panel      = null
-	staff_panel      = null
+
+	# NEW (E-2): send any training XP (defense/agility/magic) that has not hit
+	# its 20s flush timer yet, while the token and active slot are still valid.
+	# Awaited so it lands before Api.logout() clears the session below — after
+	# that the server would reject it, and clear_current_user() resets the slot
+	# it needs. A logout is the one deliberate "leaving" moment worth the wait;
+	# an abrupt window-close still loses at most one flush interval. See
+	# skilltrainer.gd.
+	await SkillTrainer.flush()
 
 	# NEW: reset CharacterData's in-memory state too — logout was only ever
 	# clearing the UI panels, never actually telling CharacterData the user
@@ -950,15 +835,7 @@ func _on_logout_pressed() -> void:
 	# unreachable. Awaiting matters: Api.logout() only clears the local
 	# token after the server call returns, so changing scene first would
 	# race the login screen's check against it.
-	#
-	# UNLESS THE SERVER ENDED IT FIRST. A kick or a ban has already deleted the
-	# session, so there is nothing to tell the server - the request would only
-	# bounce off a dead token - and the login screen needs to be told why the
-	# player is suddenly there.
-	if _session_revoked:
-		Api.forget_session(SIGNED_OUT_NOTICE)
-	else:
-		await Api.logout()
+	await Api.logout()
 
 	# PAST AN AWAIT. Up to the request timeout has passed, and this node can be
 	# gone by now - the player died and the game-over screen took the scene with
@@ -1008,7 +885,6 @@ func _on_switch_character_pressed() -> void:
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
-	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
 	stats_screen     = null
@@ -1019,7 +895,6 @@ func _on_switch_character_pressed() -> void:
 	kingdom_panel    = null
 	trade_panel      = null
 	owner_panel      = null
-	staff_panel      = null
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
 
@@ -1343,8 +1218,6 @@ func hide_panel() -> void:
 		options_screen.close()
 	if map_screen != null and map_screen.visible:
 		map_screen.close()
-	if staff_panel != null and staff_panel.visible:
-		staff_panel.close_panel()
 
 
 func is_panel_open() -> bool:
@@ -1354,9 +1227,7 @@ func is_panel_open() -> bool:
 	var cook_open:  bool = cooking_panel    != null and cooking_panel.visible
 	var opts_open:  bool = options_screen   != null and options_screen.visible
 	var map_open:   bool = map_screen       != null and map_screen.visible
-	var staff_open: bool = staff_panel      != null and staff_panel.visible
-	return inv_open or stats_open or bank_open or cook_open or opts_open or map_open \
-		or staff_open
+	return inv_open or stats_open or bank_open or cook_open or opts_open or map_open
 
 
 func _any_panel_visible() -> bool:
@@ -1378,7 +1249,7 @@ func _any_panel_visible() -> bool:
 	# how the pairing quietly stops being true.
 	for panel in [inventory_screen, equipment_panel, stats_screen, bank_screen,
 			lootbag_panel, cooking_panel, shop_panel, kingdom_panel,
-			trade_panel, owner_panel, staff_panel, options_screen, map_screen]:
+			trade_panel, owner_panel, options_screen, map_screen]:
 		if panel != null and panel.visible:
 			return true
 	return false
