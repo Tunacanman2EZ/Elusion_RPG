@@ -61,9 +61,12 @@ var caster: Node = null
 @export var magic_xp_on_hit: int = 5
 
 # visual radius of the target ring drawn on the ground.
-# does NOT control the actual damage area — that's the CollisionShape2D
-# on the Area2D root. keep this value matched to that shape's radius.
-var circle_radius: float = 14.0
+# does NOT control the actual damage area — that's the CollisionShape2D on the
+# Area2D root (CircleShape2D radius 18). MATCHED to it on purpose: the ring was
+# 14 while the hit landed at 18, so it under-sold the AoE by four pixels and a
+# player standing just outside the drawn ring still got hit. If the collision
+# shape's radius changes in the scene, change this with it.
+var circle_radius: float = 18.0
 
 
 # =============================================================================
@@ -87,12 +90,42 @@ func _ready() -> void:
 		queue_free()
 		return
 
+	_layer_ring_on_the_ground()
+
 	anim.animation_finished.connect(_on_animation_finished)
 	anim.frame_changed.connect(_on_frame_changed)
 	anim.play("fall")
 
 	# trigger _draw so the targeting ring renders on the first frame
 	queue_redraw()
+
+
+func _layer_ring_on_the_ground() -> void:
+	# THE RING IS A GROUND DECAL; THE STALAGMITE FALLS ON TOP OF IT.
+	#
+	# mage.gd spawns this whole scene as a child of the scene ROOT, which makes
+	# it a sibling drawn AFTER `ysortworld` — the y-sorted layer every enemy and
+	# player lives in. So by default BOTH the _draw() ring and the falling
+	# stalagmite paint over every enemy, and the ring "pastes on top" instead of
+	# lying on the floor.
+	#
+	# The field stacks its layers by z: Black(-100) < water(-20) < ground(-10) <
+	# grounddecals(0) <= ysortworld(0, the entities). To read as a decal the ring
+	# has to sit BELOW the entities but ABOVE the floor, so the root — which is
+	# what _draw() paints on — goes to an absolute z of -1: over the ground, under
+	# every enemy.
+	#
+	# The stalagmite must NOT follow the root down there (it drops from the sky
+	# and should cover what it lands on), so it is pinned to its own absolute
+	# layer at z 0 — exactly where the whole spell used to sit, i.e. over the
+	# entities by tree order — instead of inheriting the root's new z.
+	#
+	# z only reorders drawing; the Area2D's collision shape is untouched, so the
+	# damage radius is exactly what it was.
+	z_index = -1
+	z_as_relative = false
+	anim.z_index = 0
+	anim.z_as_relative = false
 
 
 func _validate_animation() -> bool:
