@@ -58,10 +58,11 @@
 #   axis-aligned ones. only its SPRITE still snaps to the nearest of four,
 #   because only four were drawn.
 # - MELEE HIT DETECTION is still cardinal-snapped (4-way): hitboxleft/right/
-#   up/down are 4 fixed pre-placed Area2D nodes. the animation upgraded to
-#   8-way independently of this — if/when 4 more hitbox nodes get added for
-#   the diagonals, _resolve_swing_hitbox() can switch from
-#   _cardinal_from_direction() to _octant_from_direction() to match. not done
+#   up/down are 4 fixed pre-placed Area2D nodes. the swing's cardinal is now
+#   resolved ONCE (see _resolve_swing_cardinal — the tuned bias/hysteresis) and
+#   handed to both the hitbox and the animation fallback, so what you see and
+#   what you hit stay in step. if/when 4 more hitbox nodes get added for the
+#   diagonals, that resolver is the single place to switch to 8-way. not done
 #   here — pending a decision on whether that scene work is worth it, since a
 #   single rotating hitbox would be MORE precise than the 8-pose art can
 #   visually justify anyway.
@@ -102,6 +103,30 @@ const OCTANT_DIRECTIONS := [
 	"right", "downright", "down", "downleft",
 	"left", "upleft", "up", "upright"
 ]
+
+# =============================================================================
+# 4-WAY SWING TUNING  (until the 4 diagonal attack frames exist)
+# =============================================================================
+# Both knobs affect ONLY diagonal aims — a clearly horizontal or vertical aim is
+# untouched by either. Exported so they can be dialed in the Inspector without
+# touching code.
+
+# Favors the LEFT/RIGHT swing on a diagonal aim. The old rule snapped a perfect
+# 45° aim to VERTICAL (abs(x) > abs(y) is false when they're equal), so walking
+# left and attacking with the cursor even a little high flipped the swing to UP.
+# >1 widens the horizontal cone: at 1.3, left/right keep winning until the aim is
+# within ~38° of straight up or down. 1.0 restores the old dominant-axis rule.
+@export var swing_horizontal_bias: float = 1.3
+
+# Hysteresis. Holds the CURRENT swing facing until the other axis beats it by
+# this margin, so sweeping the cursor across the 45° line during rapid swings
+# doesn't strobe between two cardinals. 1.0 = off; ~1.3 = noticeably sticky.
+# Off by default, so the bias above is the only change to feel first.
+@export var swing_facing_stickiness: float = 1.0
+
+# The cardinal the previous swing resolved to — the state the hysteresis needs.
+var _last_swing_cardinal: String = ""
+
 
 # Attack XP granted per enemy a swing connects with. Paid out in one call at
 # the end of each damage pass rather than per enemy — see _deal_melee_damage().
@@ -416,11 +441,15 @@ func attack_action() -> void:
 	# swing that instantly reverted to facing left.
 	last_direction = _swing_aim_direction
 
-	# The hitbox for this swing, resolved once from the frozen aim. 4-way,
-	# while the animation above is 8-way — see the class comment.
-	_swing_hitbox = _resolve_swing_hitbox()
+	# Direction resolved ONCE here (with the 4-way tuning above applied), then
+	# handed to BOTH the hitbox and the animation. Resolving it once is not just
+	# tidiness: _resolve_swing_cardinal() advances the hysteresis state, so
+	# calling it twice per swing would double-step it and could let the hitbox
+	# and the sprite disagree about which way this swing went.
+	var swing_cardinal: String = _resolve_swing_cardinal(_swing_aim_direction)
+	_swing_hitbox = _resolve_swing_hitbox(swing_cardinal)
 
-	var anim: String = _resolve_swing_animation()
+	var anim: String = _resolve_swing_animation(swing_cardinal)
 	_swing_wave_frame = _resolve_wave_frame(anim)
 
 	if anim != "":
@@ -431,13 +460,18 @@ func attack_action() -> void:
 	_release_attack_lock_after(_swing_lock_duration(anim), this_swing_id)
 
 
-func _resolve_swing_hitbox() -> Area2D:
-	return hitboxes.get(_cardinal_from_direction(_swing_aim_direction))
+func _resolve_swing_hitbox(cardinal: String) -> Area2D:
+	return hitboxes.get(cardinal)
 
 
-func _resolve_swing_animation() -> String:
+func _resolve_swing_animation(cardinal: String) -> String:
 	# Returns the clip to play, or "" when there is nothing playable — which
 	# is not fatal: the swing still deals damage, it just doesn't animate.
+	#
+	# `cardinal` is the already-tuned 4-way fallback, resolved once by the caller
+	# so the animation and the hitbox agree. The 8-way octant is still tried
+	# FIRST and straight off the raw aim, so the moment a diagonal clip is drawn
+	# it takes over untouched by the fallback's horizontal bias.
 	#
 	# sprite_frames IS CHECKED FOR NULL HERE, and it did not used to be. The
 	# lock-duration block below guarded it and this one didn't, so a warrior
@@ -449,7 +483,7 @@ func _resolve_swing_animation() -> String:
 
 	var frames: SpriteFrames = sprite.sprite_frames
 
-	# 8-directional first. Falls back to the nearest cardinal if the diagonal
+	# 8-directional first. Falls back to the tuned cardinal if the diagonal
 	# clip isn't in the SpriteFrames yet, which lets code and testing proceed
 	# before all 8 attack animations exist.
 	#
@@ -463,7 +497,7 @@ func _resolve_swing_animation() -> String:
 	if frames.has_animation(anim):
 		return anim
 
-	anim = "attack" + _cardinal_from_direction(_swing_aim_direction)
+	anim = "attack" + cardinal
 	if frames.has_animation(anim):
 		return anim
 
@@ -694,6 +728,24 @@ func _parent_to_projectiles_container(wave: Node) -> void:
 # animation selection.
 func _cardinal_from_direction(dir: Vector2) -> String:
 	return Facing.from_vec_total(dir)
+
+
+# The TUNED 4-way choice for a swing: the nearest cardinal, but with a horizontal
+# bias and optional hysteresis applied so the fallback feels smooth with only the
+# four drawn frames. Used for the hitbox and for the animation fallback; the raw
+# 8-way octant is resolved separately and is never touched by this.
+#
+# The bias is a pre-scale of x before the compare — stretching the aim
+# horizontally makes left/right win over a wider cone, which is exactly "a
+# slightly-off-horizontal aim should still swing sideways". Facing.from_vec_stable
+# then applies the hysteresis against the last swing's facing (margin 1.0 = none).
+# Has a side effect on purpose: it records the chosen cardinal for next time, so
+# it must run exactly once per swing.
+func _resolve_swing_cardinal(dir: Vector2) -> String:
+	var biased := Vector2(dir.x * swing_horizontal_bias, dir.y)
+	var chosen := Facing.from_vec_stable(biased, _last_swing_cardinal, swing_facing_stickiness)
+	_last_swing_cardinal = chosen
+	return chosen
 
 
 # Snaps a direction vector to the nearest of 8 equal 45° wedges (4 cardinals +
