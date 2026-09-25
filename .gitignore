@@ -3,12 +3,12 @@
 # =============================================================================
 
 # the editor's own cache: imported textures, shader cache, editor layout.
-# regenerated on open, and machine-specific — never commit it.
+# regenerated on open, and machine-specific â€” never commit it.
 .godot/
 
 .nomedia
 
-# FIXED: this line used to read `.import/	export.cfg` — two patterns
+# FIXED: this line used to read `.import/	export.cfg` â€” two patterns
 # separated by a tab. git reads a line as ONE pattern, so it was matching a
 # path literally called ".import/<tab>export.cfg" and neither entry did
 # anything. Split apart below.
@@ -16,7 +16,7 @@
 # NOTE the trailing slash on `.import/`: that restricts the match to a
 # DIRECTORY of that name (a Godot 3 leftover). It must never become
 # `*.import`, which would exclude the per-asset .import files Godot 4
-# generates — those are required metadata and DO belong in the repo.
+# generates â€” those are required metadata and DO belong in the repo.
 .import/
 
 export.cfg
@@ -31,7 +31,7 @@ export_credentials.cfg
 .mono/
 
 # CAREFUL: this is `data_*` with an underscore, so it does NOT match this
-# project's own data/ folder (items, pets). Do not "tidy" it to `data*/` —
+# project's own data/ folder (items, pets). Do not "tidy" it to `data*/` â€”
 # that would silently stop tracking every item definition in the game.
 data_*/
 
@@ -42,7 +42,7 @@ mono_crash.*.json
 # BUILD OUTPUT AND SCRATCH  (added)
 # =============================================================================
 
-# exported builds — large, regenerable, and they change on every export.
+# exported builds â€” large, regenerable, and they change on every export.
 builds/
 
 # working files from Claude sessions: debug renders, sprite-sheet contact
@@ -51,13 +51,13 @@ builds/
 # were showing up as assets.
 Claude outputs/
 
-# a stray near-duplicate of project.godot. The hyphen matters — this pattern
+# a stray near-duplicate of project.godot. The hyphen matters â€” this pattern
 # does NOT match project.godot itself.
 project-*.godot
 
 # the test suite's transcript, rewritten on every run. The suite writes it
 # because neither the editor's Output panel nor a Windows terminal could be
-# relied on to show its results — see src/tools/testrunner.gd.
+# relied on to show its results â€” see src/tools/testrunner.gd.
 test_results.txt
 
 
