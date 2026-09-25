@@ -9,6 +9,7 @@ display_name = "Light The Crowned"
 element = 2
 recolour_to_element = true
 saturation_scale = 1.0
+grey_tint = 0.35
 projectile_damage = 19
 max_hp = 4576
 xp_reward = 616

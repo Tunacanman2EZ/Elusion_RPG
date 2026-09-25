@@ -100,17 +100,25 @@ func _unhandled_input(event: InputEvent) -> void:
 func _resolve_slot_children() -> void:
 	# look up slot1 through slot9 children by name. fills the `slots` array.
 	# null entries warn but don't crash so partial hotbars still function.
+	# FOUND BY NAME ANYWHERE UNDER HERE, not as a direct child.
+	#
+	# This used to be has_node("slot1"), which meant the nine slots had to be
+	# children of the root - and the moment the bar was given a frame and a
+	# margin to sit in, every one of them was two levels down and the hotbar
+	# came up empty with nine warnings. find_child costs a walk of about a
+	# dozen nodes, once, at startup.
 	slots.clear()
 	for i in range(SLOT_COUNT):
 		var slot_name: String = "slot%d" % (i + 1)
-		if has_node(slot_name):
-			var slot: HotbarSlot = get_node(slot_name) as HotbarSlot
-			if slot == null:
-				push_warning("Hotbar: %s is not a HotbarSlot" % slot_name)
-			slots.append(slot)
-		else:
+		var found: Node = find_child(slot_name, true, false)
+		if found == null:
 			push_warning("Hotbar: missing child %s" % slot_name)
 			slots.append(null)
+			continue
+		var slot: HotbarSlot = found as HotbarSlot
+		if slot == null:
+			push_warning("Hotbar: %s is not a HotbarSlot" % slot_name)
+		slots.append(slot)
 
 
 func _wire_slot_signals() -> void:

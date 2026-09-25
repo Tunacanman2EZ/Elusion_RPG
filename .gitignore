@@ -101,3 +101,6 @@ desktop.ini
 # machine's choice of renderer, which is the definition of a file that must
 # not follow the project to another machine.
 override.cfg
+
+# Commit message drafts used with git commit -F. Scratch, not record.
+commit_*.txt

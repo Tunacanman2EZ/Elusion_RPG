@@ -9,6 +9,7 @@ display_name = "Earth The Crowned"
 element = 5
 recolour_to_element = true
 saturation_scale = 1.0
+grey_tint = 0.35
 projectile_damage = 31
 max_hp = 7384
 xp_reward = 994

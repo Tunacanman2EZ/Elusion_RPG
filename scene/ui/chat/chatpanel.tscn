@@ -1,0 +1,219 @@
+[gd_scene format=3 uid="uid://cwch4tp4n2e10"]
+
+[ext_resource type="Script" uid="uid://btf4mv4vg16et" path="res://src/ui/chat/chatpanel.gd" id="1_chatpanel"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_chattheme"]
+[ext_resource type="FontFile" uid="uid://ceawjamijksb1" path="res://assets/fonts/NotoColorEmoji.ttf" id="3_emoji"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_chatlog"]
+content_margin_left = 4.0
+content_margin_top = 3.0
+content_margin_right = 4.0
+content_margin_bottom = 3.0
+bg_color = Color(0.07, 0.06, 0.045, 0.75)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.3, 0.2, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="SystemFont" id="SystemFont_chat"]
+fallbacks = Array[Font]([ExtResource("3_emoji")])
+font_names = PackedStringArray("Segoe UI", "Noto Sans", "DejaVu Sans", "Sans-Serif")
+subpixel_positioning = 0
+
+[node name="chatpanel" type="Control" unique_id=1710044201]
+clip_contents = true
+layout_mode = 3
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -714.0
+offset_right = 472.0
+offset_bottom = -84.0
+grow_vertical = 0
+mouse_filter = 2
+theme = ExtResource("2_chattheme")
+script = ExtResource("1_chatpanel")
+
+[node name="frame" type="PanelContainer" parent="." unique_id=1710044202]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margin" type="MarginContainer" parent="frame" unique_id=1710044203]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="rows" type="VBoxContainer" parent="frame/margin" unique_id=1710044204]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="headerpanel" type="PanelContainer" parent="frame/margin/rows" unique_id=1710044205]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="headerbox" type="HBoxContainer" parent="frame/margin/rows/headerpanel" unique_id=1710044206]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="titlelabel" type="Label" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1710044207]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 14
+text = "Chat"
+vertical_alignment = 1
+
+[node name="chattolabel" type="Label" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1710044220]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.58, 0.52, 1)
+theme_override_font_sizes/font_size = 11
+text = "to"
+vertical_alignment = 1
+
+[node name="chatto" type="LineEdit" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1710044221]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(120, 22)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_font_sizes/font_size = 11
+placeholder_text = "who?"
+max_length = 20
+
+[node name="spacer" type="Control" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1710044222]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="chatclosebutton" type="Button" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1710044208]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+focus_mode = 0
+text = "x"
+
+[node name="chattabs" type="HBoxContainer" parent="frame/margin/rows" unique_id=1710044223]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="chatscroll" type="ScrollContainer" parent="frame/margin/rows" unique_id=1710044224]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_chatlog")
+horizontal_scroll_mode = 0
+
+[node name="chatlines" type="VBoxContainer" parent="frame/margin/rows/chatscroll" unique_id=1710044225]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="chatnotice" type="Label" parent="frame/margin/rows" unique_id=1710044210]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.72, 0.4, 1)
+theme_override_font_sizes/font_size = 11
+autowrap_mode = 3
+
+[node name="attachrow" type="PanelContainer" parent="frame/margin/rows" unique_id=1710044230]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"PanelSlot"
+
+[node name="attachmargin" type="MarginContainer" parent="frame/margin/rows/attachrow" unique_id=1710044231]
+layout_mode = 2
+theme_override_constants/margin_left = 5
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 5
+theme_override_constants/margin_bottom = 4
+
+[node name="attachbox" type="HBoxContainer" parent="frame/margin/rows/attachrow/attachmargin" unique_id=1710044232]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="attachthumb" type="TextureRect" parent="frame/margin/rows/attachrow/attachmargin/attachbox" unique_id=1710044233]
+unique_name_in_owner = true
+texture_filter = 1
+custom_minimum_size = Vector2(46, 46)
+layout_mode = 2
+size_flags_vertical = 4
+expand_mode = 1
+stretch_mode = 5
+
+[node name="attachtext" type="VBoxContainer" parent="frame/margin/rows/attachrow/attachmargin/attachbox" unique_id=1710044234]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 1
+
+[node name="attachname" type="Label" parent="frame/margin/rows/attachrow/attachmargin/attachbox/attachtext" unique_id=1710044235]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.87, 0.7, 1)
+theme_override_font_sizes/font_size = 12
+text = "picture"
+text_overrun_behavior = 3
+
+[node name="attachsize" type="Label" parent="frame/margin/rows/attachrow/attachmargin/attachbox/attachtext" unique_id=1710044236]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.58, 0.52, 1)
+theme_override_font_sizes/font_size = 10
+text = "ready"
+autowrap_mode = 3
+
+[node name="attachremove" type="Button" parent="frame/margin/rows/attachrow/attachmargin/attachbox" unique_id=1710044237]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Take this picture off the message"
+focus_mode = 0
+text = "x"
+
+[node name="entryrow" type="HBoxContainer" parent="frame/margin/rows" unique_id=1710044211]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="chatentry" type="LineEdit" parent="frame/margin/rows/entryrow" unique_id=1710044212]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_fonts/font = SubResource("SystemFont_chat")
+theme_override_font_sizes/font_size = 13
+placeholder_text = "Say something, or paste a picture with Ctrl+V..."
+max_length = 200
+
+[node name="chatimagebutton" type="Button" parent="frame/margin/rows/entryrow" unique_id=1710044226]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(34, 0)
+layout_mode = 2
+tooltip_text = "Add a picture. You can also press Ctrl+V to paste one you have copied, or drag a file onto the window. Whatever you add, the server keeps its own copy and shows everyone that - nobody's game ever loads a stranger's link."
+focus_mode = 0
+theme_override_font_sizes/font_size = 16
+text = "+"
+
+[node name="chatsendbutton" type="Button" parent="frame/margin/rows/entryrow" unique_id=1710044213]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(46, 0)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Say"

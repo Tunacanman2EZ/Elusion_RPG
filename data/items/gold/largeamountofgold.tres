@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://6bhglqems5jh"]
 
-[ext_resource type="Texture2D" uid="uid://cy6bua65nqkvu" path="res://art/pack/currency/largeamountofgold.png" id="1_ivp02"]
+[ext_resource type="Texture2D" uid="uid://cven7sts6abwr" path="res://art/pack/currency/goldpile.png" id="1_ivp02"]
 [ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="1_lgao6"]
 
 [resource]

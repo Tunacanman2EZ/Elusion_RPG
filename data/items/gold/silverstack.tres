@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://skhgg2coax48"]
+
+[ext_resource type="Texture2D" path="res://art/pack/currency/silverstack.png" id="1_art"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+item_id = "silverstack"
+display_name = "Stack of Silver"
+description = "Enough silver that you would notice losing it."
+icon = ExtResource("1_art")
+stackable = true
+max_stack = 9999
+value = 250
+type = 6
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,0 +1,134 @@
+[gd_scene format=3 uid="uid://b8fr1ndsp4nel"]
+
+[ext_resource type="Script" path="res://src/ui/friends/friendspanel.gd" id="1_friendspanel"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_friendstheme"]
+
+[node name="friendspanel" type="Control" unique_id=1820044301]
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -190.0
+offset_top = -240.0
+offset_right = 190.0
+offset_bottom = 240.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_friendstheme")
+script = ExtResource("1_friendspanel")
+
+[node name="frame" type="PanelContainer" parent="." unique_id=1820044302]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margin" type="MarginContainer" parent="frame" unique_id=1820044303]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="rows" type="VBoxContainer" parent="frame/margin" unique_id=1820044304]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="headerpanel" type="PanelContainer" parent="frame/margin/rows" unique_id=1820044305]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="headerbox" type="HBoxContainer" parent="frame/margin/rows/headerpanel" unique_id=1820044306]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="titlelabel" type="Label" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1820044307]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 16
+text = "Friends"
+vertical_alignment = 1
+
+[node name="friendscount" type="Label" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1820044308]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.58, 0.52, 1)
+theme_override_font_sizes/font_size = 11
+text = "0 online of 0"
+vertical_alignment = 1
+
+[node name="friendsrefreshbutton" type="Button" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1820044309]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 24)
+layout_mode = 2
+tooltip_text = "Read the list again"
+focus_mode = 0
+theme_override_font_sizes/font_size = 11
+text = "R"
+
+[node name="friendsclosebutton" type="Button" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1820044310]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+focus_mode = 0
+text = "x"
+
+[node name="addpanel" type="PanelContainer" parent="frame/margin/rows" unique_id=1820044311]
+layout_mode = 2
+theme_type_variation = &"PanelSub"
+
+[node name="addmargin" type="MarginContainer" parent="frame/margin/rows/addpanel" unique_id=1820044312]
+layout_mode = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 5
+
+[node name="addrow" type="HBoxContainer" parent="frame/margin/rows/addpanel/addmargin" unique_id=1820044313]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="friendsaddentry" type="LineEdit" parent="frame/margin/rows/addpanel/addmargin/addrow" unique_id=1820044314]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+placeholder_text = "Who do you want to add?"
+max_length = 20
+
+[node name="friendsaddbutton" type="Button" parent="frame/margin/rows/addpanel/addmargin/addrow" unique_id=1820044315]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 0)
+layout_mode = 2
+tooltip_text = "Send them a request. They have to accept before either of you is on the other's list."
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Ask"
+
+[node name="friendsnotice" type="Label" parent="frame/margin/rows" unique_id=1820044316]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.82, 0.42, 1)
+theme_override_font_sizes/font_size = 11
+autowrap_mode = 3
+
+[node name="hseparator" type="HSeparator" parent="frame/margin/rows" unique_id=1820044317]
+layout_mode = 2
+
+[node name="scroll" type="ScrollContainer" parent="frame/margin/rows" unique_id=1820044318]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="friendsrows" type="VBoxContainer" parent="frame/margin/rows/scroll" unique_id=1820044319]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4

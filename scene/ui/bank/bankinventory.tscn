@@ -3,6 +3,7 @@
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_2vgm5"]
 [ext_resource type="Script" uid="uid://drsoebtbbsv8h" path="res://src/ui/bank/bankinventory.gd" id="2_2qeky"]
 [ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventory/inventorycontainer.gd" id="3_2qeky"]
+[ext_resource type="Texture2D" uid="uid://d0i8mhcexu4d" path="res://art/pack/currency/goldcoin.png" id="4_goldicon"]
 
 [node name="bankinventory" type="Control" unique_id=1169906003]
 visible = false
@@ -89,11 +90,13 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="goldicon" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldcontainer" unique_id=839725113]
+[node name="goldicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldcontainer" unique_id=839725113]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(16, 16)
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
-theme_override_font_sizes/font_size = 14
-text = "◆"
+texture = ExtResource("4_goldicon")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="goldlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldcontainer" unique_id=149820312]
 unique_name_in_owner = true

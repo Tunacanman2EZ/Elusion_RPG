@@ -33,13 +33,13 @@ SkillTrainer="*res://src/systems/skilltrainer.gd"
 PerfOverlay="*res://src/systems/perfoverlay.gd"
 Settings="*res://src/systems/settings.gd"
 WorldMap="*res://src/systems/worldmap.gd"
+AreaRegistry="*res://src/systems/arearegistry.gd"
 
 [display]
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
-window/stretch/scale_mode="integer"
 
 [input]
 

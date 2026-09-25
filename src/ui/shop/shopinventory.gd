@@ -163,7 +163,7 @@ func _build_row(entry: Dictionary) -> Control:
 	row.add_child(text_column)
 
 	var price_label := Label.new()
-	price_label.text = "%d g" % price
+	price_label.text = "%s g" % GameConstants.commas(price)
 	price_label.add_theme_font_size_override("font_size", 13)
 	price_label.add_theme_color_override("font_color", Color(1, 0.9, 0.5))
 	price_label.custom_minimum_size = Vector2(56, 0)
@@ -342,7 +342,7 @@ func _apply_purchase(data: Dictionary, acting_player: Node) -> void:
 	var item: ItemData = ItemRegistry.get_item(bought)
 	if item != null:
 		label = item.display_name
-	_notify(acting_player, "Bought %s for %d gold." % [label, paid])
+	_notify(acting_player, "Bought %s for %s." % [label, GameConstants.gold_text(paid)])
 
 
 func _player_inventory_container() -> Node:
@@ -380,7 +380,10 @@ func _write_gold(amount: int) -> void:
 
 
 func _refresh_gold() -> void:
-	gold_label.text = "Gold: %d" % _current_gold()
+	var carried: int = _current_gold()
+	gold_label.text = "Gold: %s" % GameConstants.commas(carried)
+	# Carried gold, because that is the pile this till can take.
+	GameConstants.apply_gold_icon(get_node_or_null("%goldicon"), carried)
 
 
 # =============================================================================

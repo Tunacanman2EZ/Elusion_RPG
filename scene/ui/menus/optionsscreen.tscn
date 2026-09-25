@@ -2,6 +2,133 @@
 
 [ext_resource type="Script" path="res://src/ui/menus/optionsscreen.gd" id="1_options"]
 
+[sub_resource type="StyleBoxFlat" id="SB_optpanel"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.058824, 0.070588, 0.094118, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25098, 0.32549, 0.43137, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.45098)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="SB_optbtn"]
+content_margin_left = 8.0
+content_margin_top = 5.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.14118, 0.18039, 0.24706, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.24706, 0.31373, 0.4, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_optbtn_hover"]
+content_margin_left = 8.0
+content_margin_top = 5.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.20392, 0.26667, 0.36078, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.40784, 0.52549, 0.67059, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_optbtn_press"]
+content_margin_left = 8.0
+content_margin_top = 5.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.098039, 0.12941, 0.18039, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.40784, 0.52549, 0.67059, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_optinput"]
+content_margin_left = 8.0
+content_margin_top = 5.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.086275, 0.10588, 0.14118, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.19608, 0.24706, 0.31765, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_optinput_focus"]
+content_margin_left = 8.0
+content_margin_top = 5.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.10588, 0.13333, 0.18039, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.40784, 0.58824, 0.83137, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxLine" id="SB_optsep"]
+color = Color(0.19608, 0.24706, 0.31765, 1)
+thickness = 1
+
+[sub_resource type="Theme" id="Theme_options"]
+default_font_size = 12
+Button/colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+Button/colors/font_hover_color = Color(0.95, 0.97, 1, 1)
+Button/font_sizes/font_size = 12
+Button/styles/normal = SubResource("SB_optbtn")
+Button/styles/hover = SubResource("SB_optbtn_hover")
+Button/styles/pressed = SubResource("SB_optbtn_press")
+Button/styles/focus = SubResource("SB_optbtn")
+CheckButton/colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+CheckButton/font_sizes/font_size = 12
+OptionButton/colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+OptionButton/font_sizes/font_size = 12
+OptionButton/styles/normal = SubResource("SB_optinput")
+OptionButton/styles/hover = SubResource("SB_optbtn_hover")
+OptionButton/styles/pressed = SubResource("SB_optbtn_press")
+OptionButton/styles/focus = SubResource("SB_optinput_focus")
+LineEdit/colors/font_color = Color(0.87843, 0.9098, 0.9451, 1)
+LineEdit/colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+LineEdit/font_sizes/font_size = 12
+LineEdit/styles/normal = SubResource("SB_optinput")
+LineEdit/styles/focus = SubResource("SB_optinput_focus")
+HSeparator/styles/separator = SubResource("SB_optsep")
+VSeparator/styles/separator = SubResource("SB_optsep")
+
 [node name="optionsscreen" type="Control"]
 anchors_preset = 8
 anchor_left = 0.5
@@ -9,15 +136,17 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -370.0
-offset_top = -268.0
+offset_top = -300.0
 offset_right = 370.0
-offset_bottom = 268.0
+offset_bottom = 300.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = SubResource("Theme_options")
 script = ExtResource("1_options")
 
 [node name="mainpanel" type="PanelContainer" parent="."]
 layout_mode = 1
+theme_override_styles/panel = SubResource("SB_optpanel")
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -26,10 +155,10 @@ grow_vertical = 2
 
 [node name="margincontainer" type="MarginContainer" parent="mainpanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 10
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
 
 [node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
 layout_mode = 2
@@ -44,8 +173,8 @@ layout_mode = 2
 [node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
-theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_font_sizes/font_size = 19
 text = "Options"
 vertical_alignment = 1
 
@@ -67,8 +196,8 @@ theme_override_constants/separation = 6
 
 [node name="audioheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 12
 text = "AUDIO"
 
 [node name="masterrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
@@ -78,8 +207,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/masterrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Master"
 vertical_alignment = 1
 
@@ -97,8 +226,8 @@ value = 1.0
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "100%"
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -110,8 +239,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/musicrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Music"
 vertical_alignment = 1
 
@@ -129,8 +258,8 @@ value = 0.7
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "70%"
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -142,8 +271,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/sfxrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Sound effects"
 vertical_alignment = 1
 
@@ -161,8 +290,8 @@ value = 1.0
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "100%"
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -172,9 +301,97 @@ layout_mode = 2
 
 [node name="gameheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 12
 text = "GAME"
+
+[node name="camerarow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/camerarow"]
+custom_minimum_size = Vector2(104, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Camera view"
+vertical_alignment = 1
+
+[node name="camerazoom" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/camerarow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 2.0
+max_value = 3.0
+step = 0.25
+value = 3.0
+tick_count = 5
+ticks_on_borders = true
+
+[node name="camerazoomvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/camerarow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(42, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_font_sizes/font_size = 12
+text = "3.00x"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="camerahint" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.6, 0.66, 1)
+theme_override_font_sizes/font_size = 10
+text = "Lower pulls the camera back and shows more of the world."
+autowrap_mode = 3
+
+[node name="namecolourrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/namecolourrow"]
+custom_minimum_size = Vector2(104, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Name colour"
+vertical_alignment = 1
+
+[node name="namehue" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/namecolourrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.0
+max_value = 359.0
+step = 5.0
+value = 45.0
+
+[node name="namecolourswatch" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/namecolourrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(42, 20)
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="namecolourpreview" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/namecolourrow/namecolourswatch"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 12
+text = "Name"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="namecolourhint" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.6, 0.66, 1)
+theme_override_font_sizes/font_size = 10
+text = "Tells your name apart from everyone else's when you are standing together."
+autowrap_mode = 3
 
 [node name="damagerow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
 layout_mode = 2
@@ -183,14 +400,126 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/damagerow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Damage numbers"
 vertical_alignment = 1
 
 [node name="damagenumbers" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/damagerow"]
 unique_name_in_owner = true
 layout_mode = 2
+
+[node name="accountsep" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol" unique_id=1900114001]
+layout_mode = 2
+
+[node name="accountheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol" unique_id=1900114002]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 12
+text = "ACCOUNT"
+
+[node name="accountemailrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol" unique_id=1900114003]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountemailrow" unique_id=1900114004]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Recovery email"
+
+[node name="accountemailvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountemailrow" unique_id=1900114005]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "checking..."
+
+[node name="accountbuttons" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol" unique_id=1900114006]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="accountemailbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountbuttons" unique_id=1900114007]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+text = "Change email"
+
+[node name="accountpasswordbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountbuttons" unique_id=1900114008]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+text = "Change password"
+
+[node name="accountemailform" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol" unique_id=1900114009]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="accountemailinput" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountemailform" unique_id=1900114010]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "New email address"
+
+[node name="accountemailpassword" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountemailform" unique_id=1900114011]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Your current password"
+secret = true
+
+[node name="accountemailsend" type="Button" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountemailform" unique_id=1900114012]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Send confirmation code"
+
+[node name="accountemailcode" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountemailform" unique_id=1900114013]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "6-digit code"
+max_length = 6
+
+[node name="accountemailverify" type="Button" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountemailform" unique_id=1900114014]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Confirm code"
+
+[node name="accountpasswordform" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol" unique_id=1900114015]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="accountcurrentpassword" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountpasswordform" unique_id=1900114016]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Current password"
+secret = true
+
+[node name="accountnewpassword" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountpasswordform" unique_id=1900114017]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "New password"
+secret = true
+
+[node name="accountconfirmpassword" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountpasswordform" unique_id=1900114018]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Confirm new password"
+secret = true
+
+[node name="accountpasswordsave" type="Button" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/accountpasswordform" unique_id=1900114019]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Update password"
+
+[node name="accountstatus" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol" unique_id=1900114020]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 3
 
 [node name="colsep" type="VSeparator" parent="mainpanel/margincontainer/vboxcontainer/columns"]
 layout_mode = 2
@@ -202,8 +531,8 @@ theme_override_constants/separation = 6
 
 [node name="displayheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 12
 text = "DISPLAY"
 
 [node name="fullscreenrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
@@ -213,8 +542,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/fullscreenrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Fullscreen"
 vertical_alignment = 1
 
@@ -229,8 +558,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/windowrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Window size"
 vertical_alignment = 1
 
@@ -246,8 +575,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/vsyncrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "V-Sync"
 vertical_alignment = 1
 
@@ -263,8 +592,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/framecaprow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Frame cap"
 vertical_alignment = 1
 
@@ -296,8 +625,8 @@ layout_mode = 2
 
 [node name="perfheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.85, 0.75, 0.45, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 12
 text = "PERFORMANCE"
 
 [node name="resolutionrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
@@ -307,8 +636,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/resolutionrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Render resolution"
 vertical_alignment = 1
 
@@ -324,8 +653,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/lightingrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Lighting"
 vertical_alignment = 1
 
@@ -341,8 +670,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/backgroundrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Slow down in background"
 vertical_alignment = 1
 
@@ -357,8 +686,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/rendererrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Renderer"
 vertical_alignment = 1
 
@@ -385,8 +714,8 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/apirow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
 text = "Graphics API"
 vertical_alignment = 1
 

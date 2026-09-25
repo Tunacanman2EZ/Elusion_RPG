@@ -79,9 +79,15 @@ var slot_index: int = -1
 var is_hovered: bool = false
 var is_selected: bool = false
 
-var style_normal: StyleBoxFlat = null
-var style_hover:  StyleBoxFlat = null
-var style_linked: StyleBoxFlat = null
+# StyleBox, NOT StyleBoxFlat. A slot's face is whatever the theme hands over,
+# and since the hotbar's is a piece of the artist's tile art it is a
+# StyleBoxTexture - which is not a StyleBoxFlat and never will be. Typed
+# narrowly, `style is StyleBoxTexture` is not a check that fails at runtime,
+# it is one Godot refuses to compile: "Expression is of type StyleBoxFlat so
+# it can't be of type StyleBoxTexture."
+var style_normal: StyleBox = null
+var style_hover:  StyleBox = null
+var style_linked: StyleBox = null
 
 
 # =============================================================================
@@ -109,15 +115,46 @@ func _ready() -> void:
 # STYLE
 # =============================================================================
 
+# A SLOT'S THREE FACES - resting, hovered, and linked to the hotbar - are all
+# DERIVED from whatever stylebox the theme hands over, never written out here.
+# That is what lets one slot be a flat panel drawn by the theme and another be
+# a piece of the artist's own tile art, with no code between them knowing
+# which.
+#
+# HOW A STATE IS SHOWN DEPENDS ON WHAT THE STYLE IS. A flat box has a bg and a
+# border to change; a texture has neither - it has art that must not be
+# repainted, so it is TINTED instead. Same three states, same meaning, two
+# ways of saying it.
 func _build_styles() -> void:
 	var base: StyleBox = get_theme_stylebox("panel")
-	if base is StyleBoxFlat:
-		style_normal = base.duplicate()
-		style_hover = base.duplicate()
-		style_hover.bg_color = style_normal.bg_color.lightened(0.15)
 
-		style_linked = style_normal.duplicate()
-		style_linked.border_color = Color(0.95, 0.80, 0.30, 1.0)
+	# THE COPIES ARE HELD IN LOCALS OF THE EXACT TYPE, not written straight
+	# onto the members. bg_color exists on a StyleBoxFlat and modulate_color on
+	# a StyleBoxTexture, and reaching for either through a variable typed as
+	# the base StyleBox is a compile error, not a runtime one.
+	if base is StyleBoxFlat:
+		var flat: StyleBoxFlat = base as StyleBoxFlat
+		var flat_hover: StyleBoxFlat = flat.duplicate() as StyleBoxFlat
+		flat_hover.bg_color = flat.bg_color.lightened(0.15)
+		var flat_linked: StyleBoxFlat = flat.duplicate() as StyleBoxFlat
+		flat_linked.border_color = Color(0.95, 0.80, 0.30, 1.0)
+
+		style_normal = flat.duplicate() as StyleBoxFlat
+		style_hover = flat_hover
+		style_linked = flat_linked
+	elif base is StyleBoxTexture:
+		# THE ART IS THE SLOT. Lightening it for a hover and warming it for a
+		# link keeps the artist's outline, highlight and corners exactly as
+		# drawn - a border colour would have nothing to colour.
+		var art: StyleBoxTexture = base as StyleBoxTexture
+		var art_hover: StyleBoxTexture = art.duplicate() as StyleBoxTexture
+		art_hover.modulate_color = Color(1.22, 1.20, 1.10, 1.0)
+		var art_linked: StyleBoxTexture = art.duplicate() as StyleBoxTexture
+		art_linked.modulate_color = Color(1.25, 1.05, 0.55, 1.0)
+
+		style_normal = art.duplicate() as StyleBoxTexture
+		style_hover = art_hover
+		style_linked = art_linked
 	else:
 		style_normal = StyleBoxFlat.new()
 		style_hover = StyleBoxFlat.new()

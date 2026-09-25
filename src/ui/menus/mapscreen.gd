@@ -93,7 +93,7 @@ const LANDMARK_GROUP := "map_landmarks"
 # is drawn instead - four or five shapes, crisp at any size, and no second
 # artist to ask.
 const LANDMARK_STYLE := {
-	"shop":     ["res://art/pack/currency/largeamountofgold.png",           Color(1.0, 0.84, 0.35)],
+	"shop":     ["res://art/pack/currency/goldpile.png",           Color(1.0, 0.84, 0.35)],
 	"cooking":  ["res://art/pack/icons/cookingiconcharacterselection.png",   Color(1.0, 0.56, 0.26)],
 	"fishing":  ["res://art/pack/icons/fishingiconcharacterstats.png",       Color(0.45, 0.76, 1.0)],
 	"bank":     ["", Color(0.95, 0.78, 0.38)],
@@ -482,4 +482,3 @@ func _draw_hover_label() -> void:
 	markers.draw_rect(Rect2(origin, box), lm["colour"], false, 1.0)
 	markers.draw_string(font, origin + Vector2(pad.x, pad.y + float(LABEL_FONT_SIZE)),
 		text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE, Color(0.98, 0.94, 0.86))
-

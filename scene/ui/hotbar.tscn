@@ -2,188 +2,379 @@
 
 [ext_resource type="Script" uid="uid://csopi3oux81bg" path="res://src/ui/hotbar.gd" id="1_4c1i3"]
 [ext_resource type="Script" uid="uid://yc2wbqckw8jt" path="res://src/ui/hotbarslot.gd" id="2_veb73"]
-[ext_resource type="Texture2D" uid="uid://bv4f14feq4lo0" path="res://art/images/hotbar0.png" id="3_l23q4"]
-[ext_resource type="Texture2D" uid="uid://c5pa47hb18im8" path="res://art/images/hotbar1.png" id="4_l85tu"]
-[ext_resource type="Texture2D" uid="uid://ij8qqqskjcof" path="res://art/images/hotbar2.png" id="5_bbprc"]
-[ext_resource type="Texture2D" uid="uid://ba7lwle0ecywv" path="res://art/images/hotbar3.png" id="6_q6w7q"]
-[ext_resource type="Texture2D" uid="uid://c8324w7ajx525" path="res://art/images/hotbar4.png" id="7_ve4ro"]
-[ext_resource type="Texture2D" uid="uid://dhadq3r2hcfu0" path="res://art/images/hotbar5.png" id="8_lhyyo"]
-[ext_resource type="Texture2D" uid="uid://d07hokb6hgc15" path="res://art/images/hotbar6.png" id="9_elm0i"]
-[ext_resource type="Texture2D" uid="uid://rsul4xgnanfu" path="res://art/images/hotbar7.png" id="10_57ck0"]
-[ext_resource type="Texture2D" uid="uid://cdmueb5d3pgdb" path="res://art/images/hotbar8.png" id="11_bnnwq"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_hbtheme"]
+[ext_resource type="Texture2D" path="res://art/images/hotbarslot.png" id="4_socket"]
 
-[node name="hotbar" type="HBoxContainer" unique_id=147410389]
-offset_right = 40.0
-offset_bottom = 40.0
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket"]
+content_margin_left = 7.0
+content_margin_top = 7.0
+content_margin_right = 7.0
+content_margin_bottom = 7.0
+texture = ExtResource("4_socket")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hotbar"]
+content_margin_left = 6.0
+content_margin_top = 5.0
+content_margin_right = 6.0
+content_margin_bottom = 5.0
+bg_color = Color(0.11, 0.09, 0.07, 0.7)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.48, 0.39, 0.26, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 6
+
+[node name="hotbar" type="PanelContainer" unique_id=147410389]
+theme = ExtResource("3_hbtheme")
+theme_override_styles/panel = SubResource("StyleBoxFlat_hotbar")
 script = ExtResource("1_4c1i3")
 
-[node name="slot1" type="PanelContainer" parent="." unique_id=1294619876]
+[node name="margin" type="MarginContainer" parent="." unique_id=1500900001]
 layout_mode = 2
+
+[node name="slots" type="HBoxContainer" parent="margin" unique_id=1500900002]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="slot1" type="PanelContainer" parent="margin/slots" unique_id=1500100007]
+custom_minimum_size = Vector2(42, 42)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
 script = ExtResource("2_veb73")
-empty_icon = ExtResource("3_l23q4")
 
-[node name="centercontainer" type="CenterContainer" parent="slot1" unique_id=1548502929]
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot1" unique_id=1500200007]
 layout_mode = 2
 
-[node name="icon" type="TextureRect" parent="slot1/centercontainer" unique_id=1181584708]
+[node name="icon" type="TextureRect" parent="margin/slots/slot1/centercontainer" unique_id=1500300007]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
-texture = ExtResource("3_l23q4")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="quantitylabel" type="Label" parent="slot1" unique_id=1440662307]
+[node name="keylabel" type="Label" parent="margin/slots/slot1" unique_id=1500400007]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "1"
 
-[node name="slot2" type="PanelContainer" parent="." unique_id=398101357]
-layout_mode = 2
-script = ExtResource("2_veb73")
-empty_icon = ExtResource("4_l85tu")
-
-[node name="centercontainer" type="CenterContainer" parent="slot2" unique_id=1804023370]
-layout_mode = 2
-
-[node name="icon" type="TextureRect" parent="slot2/centercontainer" unique_id=81891322]
-layout_mode = 2
-texture = ExtResource("4_l85tu")
-
-[node name="quantitylabel" type="Label" parent="slot2" unique_id=1052721436]
+[node name="quantitylabel" type="Label" parent="margin/slots/slot1" unique_id=1500500007]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 8
 size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
 
-[node name="slot3" type="PanelContainer" parent="." unique_id=2080734021]
+[node name="slot2" type="PanelContainer" parent="margin/slots" unique_id=1500100014]
+custom_minimum_size = Vector2(42, 42)
 layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
 script = ExtResource("2_veb73")
-empty_icon = ExtResource("5_bbprc")
 
-[node name="centercontainer" type="CenterContainer" parent="slot3" unique_id=584516607]
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot2" unique_id=1500200014]
 layout_mode = 2
 
-[node name="icon" type="TextureRect" parent="slot3/centercontainer" unique_id=1948031172]
+[node name="icon" type="TextureRect" parent="margin/slots/slot2/centercontainer" unique_id=1500300014]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
-texture = ExtResource("5_bbprc")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="quantitylabel" type="Label" parent="slot3" unique_id=773692579]
+[node name="keylabel" type="Label" parent="margin/slots/slot2" unique_id=1500400014]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "2"
 
-[node name="slot4" type="PanelContainer" parent="." unique_id=1496550858]
-layout_mode = 2
-script = ExtResource("2_veb73")
-empty_icon = ExtResource("6_q6w7q")
-
-[node name="centercontainer" type="CenterContainer" parent="slot4" unique_id=1598046726]
-layout_mode = 2
-
-[node name="icon" type="TextureRect" parent="slot4/centercontainer" unique_id=137418052]
-layout_mode = 2
-texture = ExtResource("6_q6w7q")
-
-[node name="quantitylabel" type="Label" parent="slot4" unique_id=1966561051]
+[node name="quantitylabel" type="Label" parent="margin/slots/slot2" unique_id=1500500014]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 8
 size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
 
-[node name="slot5" type="PanelContainer" parent="." unique_id=1379908505]
+[node name="slot3" type="PanelContainer" parent="margin/slots" unique_id=1500100021]
+custom_minimum_size = Vector2(42, 42)
 layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
 script = ExtResource("2_veb73")
-empty_icon = ExtResource("7_ve4ro")
 
-[node name="centercontainer" type="CenterContainer" parent="slot5" unique_id=1864824974]
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot3" unique_id=1500200021]
 layout_mode = 2
 
-[node name="icon" type="TextureRect" parent="slot5/centercontainer" unique_id=1919741823]
+[node name="icon" type="TextureRect" parent="margin/slots/slot3/centercontainer" unique_id=1500300021]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
-texture = ExtResource("7_ve4ro")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="quantitylabel" type="Label" parent="slot5" unique_id=1272533200]
+[node name="keylabel" type="Label" parent="margin/slots/slot3" unique_id=1500400021]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "3"
 
-[node name="slot6" type="PanelContainer" parent="." unique_id=687518470]
-layout_mode = 2
-script = ExtResource("2_veb73")
-empty_icon = ExtResource("8_lhyyo")
-
-[node name="centercontainer" type="CenterContainer" parent="slot6" unique_id=734382617]
-layout_mode = 2
-
-[node name="icon" type="TextureRect" parent="slot6/centercontainer" unique_id=1718217396]
-layout_mode = 2
-texture = ExtResource("8_lhyyo")
-
-[node name="quantitylabel" type="Label" parent="slot6" unique_id=946100508]
+[node name="quantitylabel" type="Label" parent="margin/slots/slot3" unique_id=1500500021]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 8
 size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
 
-[node name="slot7" type="PanelContainer" parent="." unique_id=1179176134]
+[node name="slot4" type="PanelContainer" parent="margin/slots" unique_id=1500100028]
+custom_minimum_size = Vector2(42, 42)
 layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
 script = ExtResource("2_veb73")
-empty_icon = ExtResource("9_elm0i")
 
-[node name="centercontainer" type="CenterContainer" parent="slot7" unique_id=294737382]
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot4" unique_id=1500200028]
 layout_mode = 2
 
-[node name="icon" type="TextureRect" parent="slot7/centercontainer" unique_id=1880090559]
+[node name="icon" type="TextureRect" parent="margin/slots/slot4/centercontainer" unique_id=1500300028]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
-texture = ExtResource("9_elm0i")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="quantitylabel" type="Label" parent="slot7" unique_id=915986577]
+[node name="keylabel" type="Label" parent="margin/slots/slot4" unique_id=1500400028]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "4"
 
-[node name="slot8" type="PanelContainer" parent="." unique_id=2052893818]
-layout_mode = 2
-script = ExtResource("2_veb73")
-empty_icon = ExtResource("10_57ck0")
-
-[node name="centercontainer" type="CenterContainer" parent="slot8" unique_id=560289696]
-layout_mode = 2
-
-[node name="icon" type="TextureRect" parent="slot8/centercontainer" unique_id=1870947375]
-layout_mode = 2
-texture = ExtResource("10_57ck0")
-
-[node name="quantitylabel" type="Label" parent="slot8" unique_id=892227751]
+[node name="quantitylabel" type="Label" parent="margin/slots/slot4" unique_id=1500500028]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 8
 size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
 
-[node name="slot9" type="PanelContainer" parent="." unique_id=983498044]
+[node name="slot5" type="PanelContainer" parent="margin/slots" unique_id=1500100035]
+custom_minimum_size = Vector2(42, 42)
 layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
 script = ExtResource("2_veb73")
-empty_icon = ExtResource("11_bnnwq")
 
-[node name="centercontainer" type="CenterContainer" parent="slot9" unique_id=739143774]
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot5" unique_id=1500200035]
 layout_mode = 2
 
-[node name="icon" type="TextureRect" parent="slot9/centercontainer" unique_id=1825474752]
+[node name="icon" type="TextureRect" parent="margin/slots/slot5/centercontainer" unique_id=1500300035]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
-texture = ExtResource("11_bnnwq")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="quantitylabel" type="Label" parent="slot9" unique_id=1359698741]
+[node name="keylabel" type="Label" parent="margin/slots/slot5" unique_id=1500400035]
 texture_filter = 1
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "5"
+
+[node name="quantitylabel" type="Label" parent="margin/slots/slot5" unique_id=1500500035]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 8
 size_flags_vertical = 8
-theme_override_font_sizes/font_size = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+
+[node name="slot6" type="PanelContainer" parent="margin/slots" unique_id=1500100042]
+custom_minimum_size = Vector2(42, 42)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
+script = ExtResource("2_veb73")
+
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot6" unique_id=1500200042]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="margin/slots/slot6/centercontainer" unique_id=1500300042]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="keylabel" type="Label" parent="margin/slots/slot6" unique_id=1500400042]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "6"
+
+[node name="quantitylabel" type="Label" parent="margin/slots/slot6" unique_id=1500500042]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+
+[node name="slot7" type="PanelContainer" parent="margin/slots" unique_id=1500100049]
+custom_minimum_size = Vector2(42, 42)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
+script = ExtResource("2_veb73")
+
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot7" unique_id=1500200049]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="margin/slots/slot7/centercontainer" unique_id=1500300049]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="keylabel" type="Label" parent="margin/slots/slot7" unique_id=1500400049]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "7"
+
+[node name="quantitylabel" type="Label" parent="margin/slots/slot7" unique_id=1500500049]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+
+[node name="slot8" type="PanelContainer" parent="margin/slots" unique_id=1500100056]
+custom_minimum_size = Vector2(42, 42)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
+script = ExtResource("2_veb73")
+
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot8" unique_id=1500200056]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="margin/slots/slot8/centercontainer" unique_id=1500300056]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="keylabel" type="Label" parent="margin/slots/slot8" unique_id=1500400056]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "8"
+
+[node name="quantitylabel" type="Label" parent="margin/slots/slot8" unique_id=1500500056]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+
+[node name="slot9" type="PanelContainer" parent="margin/slots" unique_id=1500100063]
+custom_minimum_size = Vector2(42, 42)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_socket")
+script = ExtResource("2_veb73")
+
+[node name="centercontainer" type="CenterContainer" parent="margin/slots/slot9" unique_id=1500200063]
+layout_mode = 2
+
+[node name="icon" type="TextureRect" parent="margin/slots/slot9/centercontainer" unique_id=1500300063]
+texture_filter = 1
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="keylabel" type="Label" parent="margin/slots/slot9" unique_id=1500400063]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.74, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10
+text = "9"
+
+[node name="quantitylabel" type="Label" parent="margin/slots/slot9" unique_id=1500500063]
+texture_filter = 1
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+theme_override_colors/font_color = Color(1, 0.97, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 10

@@ -2,6 +2,7 @@
 
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://src/ui/shop/shopinventory.gd" id="2_script"]
+[ext_resource type="Texture2D" uid="uid://d0i8mhcexu4d" path="res://art/pack/currency/goldcoin.png" id="3_goldicon"]
 
 [node name="shopinventory" type="Control"]
 visible = false
@@ -69,7 +70,21 @@ flat = true
 layout_mode = 2
 theme_type_variation = &"PanelSub"
 
-[node name="goldlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/goldpanel"]
+[node name="goldrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/goldpanel"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 6
+
+[node name="goldicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/goldpanel/goldrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(16, 16)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("3_goldicon")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="goldlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/goldpanel/goldrow"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)

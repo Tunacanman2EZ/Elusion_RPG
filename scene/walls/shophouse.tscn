@@ -4,9 +4,10 @@
 [ext_resource type="PackedScene" uid="uid://dtpff8j73spyb" path="res://scene/walls/shopinterior.tscn" id="2_leya0"]
 [ext_resource type="PackedScene" uid="uid://bdnc0gfyhpgck" path="res://scene/walls/shopexterior.tscn" id="3_5swhr"]
 [ext_resource type="Script" uid="uid://ddwqwfk2e6blj" path="res://src/world/shop.gd" id="4_k6awu"]
-[ext_resource type="Texture2D" uid="uid://pgiwmxf4bbtg" path="res://art/placeholder/vendorplaceholder.png" id="5_vendorart"]
 [ext_resource type="Script" uid="uid://cm5pk1btmglnd" path="res://src/world/vendor.gd" id="6_vendorscript"]
 [ext_resource type="Resource" path="res://data/shops/generalstore.tres" id="7_generalstore"]
+[ext_resource type="Texture2D" uid="uid://cuuln0rxlige5" path="res://art/npc/shopkeeper.png" id="8_shopkeeperart"]
+[ext_resource type="Script" uid="uid://d3qgm8noxqsxm" path="res://src/world/shopkeeperanim.gd" id="9_shopanim"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_enowg"]
 texture = ExtResource("1_a2lp7")
@@ -149,15 +150,92 @@ texture = ExtResource("1_a2lp7")
 physics_layer_0/collision_layer = 1
 sources/1 = SubResource("TileSetAtlasSource_enowg")
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk0"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk1"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk2"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk3"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk4"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(256, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk5"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(320, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk6"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(384, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk7"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(448, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk8"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(512, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sk9"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(576, 0, 64, 64)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_shopkeep"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk7")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk8")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sk9")
+}],
+"loop": true,
+"name": &"wavedown",
+"speed": 7.0
+}]
+
 [sub_resource type="CircleShape2D" id="CircleShape2D_vendorrange"]
-radius = 36.0
+radius = 62.008064
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_trigger"]
 size = Vector2(286, 279)
 
 [node name="shophouse" type="Node2D" unique_id=1896304923]
 y_sort_enabled = true
-position = Vector2(0, 0)
 
 [node name="interiorfurniture" type="TileMapLayer" parent="." unique_id=627354167]
 position = Vector2(157, -141)
@@ -173,13 +251,15 @@ collision_mask = 6
 script = ExtResource("6_vendorscript")
 shop_data = ExtResource("7_generalstore")
 
-[node name="sprite2d" type="Sprite2D" parent="interiorfurniture/shopvendor" unique_id=160488180]
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="interiorfurniture/shopvendor" unique_id=160488180]
 texture_filter = 1
-texture = ExtResource("5_vendorart")
-offset = Vector2(0, -16)
+sprite_frames = SubResource("SpriteFrames_shopkeep")
+animation = &"wavedown"
+offset = Vector2(0, -7)
+script = ExtResource("9_shopanim")
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="interiorfurniture/shopvendor" unique_id=1759126828]
-position = Vector2(0, 8)
+position = Vector2(-2, 38)
 shape = SubResource("CircleShape2D_vendorrange")
 
 [node name="shopinterior" parent="." unique_id=1191200972 instance=ExtResource("2_leya0")]

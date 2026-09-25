@@ -9,6 +9,7 @@ display_name = "Wind The Crowned"
 element = 4
 recolour_to_element = true
 saturation_scale = 1.0
+grey_tint = 0.35
 projectile_damage = 21
 max_hp = 4992
 xp_reward = 672

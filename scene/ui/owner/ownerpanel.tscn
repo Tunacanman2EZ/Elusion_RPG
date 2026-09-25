@@ -2,6 +2,181 @@
 
 [ext_resource type="Script" uid="uid://bos6ilrriqa0v" path="res://src/ui/owner/ownerpanel.gd" id="1_lf0mq"]
 
+[sub_resource type="StyleBoxFlat" id="SB_panel"]
+bg_color = Color(0.058824, 0.070588, 0.094118, 0.97)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25098, 0.32549, 0.43137, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.45098)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="SB_input"]
+content_margin_left = 8.0
+content_margin_top = 5.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.086275, 0.10588, 0.14118, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.19608, 0.24706, 0.31765, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_input_focus"]
+content_margin_left = 8.0
+content_margin_top = 5.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.10588, 0.13333, 0.18039, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.40784, 0.58824, 0.83137, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_btn"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.14118, 0.18039, 0.24706, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.24706, 0.31373, 0.4, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_btn_hover"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.20392, 0.26667, 0.36078, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.40784, 0.52549, 0.67059, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_btn_pressed"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.098039, 0.12941, 0.18039, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.40784, 0.52549, 0.67059, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_danger"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.27451, 0.098039, 0.098039, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.6, 0.25098, 0.22745, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_danger_hover"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.41176, 0.14118, 0.13333, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.81176, 0.36078, 0.31373, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_safe"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.098039, 0.23529, 0.15686, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.25098, 0.52549, 0.34902, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_safe_hover"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.14902, 0.34118, 0.22745, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.36078, 0.70196, 0.47059, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxLine" id="SB_sep"]
+color = Color(0.19608, 0.24706, 0.31765, 1)
+thickness = 1
+
+[sub_resource type="StyleBoxFlat" id="SB_status"]
+content_margin_left = 9.0
+content_margin_top = 6.0
+content_margin_right = 9.0
+content_margin_bottom = 6.0
+bg_color = Color(0.070588, 0.094118, 0.12941, 1)
+border_width_left = 3
+border_color = Color(0.25098, 0.32549, 0.43137, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
 [node name="ownerpanel" type="Control" unique_id=1800928466]
 layout_mode = 3
 anchors_preset = 0
@@ -9,58 +184,305 @@ script = ExtResource("1_lf0mq")
 
 [node name="frame" type="PanelContainer" parent="." unique_id=1900112233]
 layout_mode = 0
-offset_left = 24.0
-offset_top = 24.0
-offset_right = 324.0
-offset_bottom = 320.0
+offset_left = 14.0
+offset_top = 14.0
+offset_right = 356.0
+offset_bottom = 14.0
+theme_override_styles/panel = SubResource("SB_panel")
 
-[node name="rows" type="VBoxContainer" parent="frame" unique_id=1900112234]
+[node name="margin" type="MarginContainer" parent="frame" unique_id=1900112260]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="rows" type="VBoxContainer" parent="frame/margin" unique_id=1900112234]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="title" type="Label" parent="frame/rows" unique_id=1900112235]
+[node name="title" type="Label" parent="frame/margin/rows" unique_id=1900112235]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_font_sizes/font_size = 19
 text = "GM PANEL"
 
-[node name="hint" type="Label" parent="frame/rows" unique_id=1900112236]
+[node name="hint" type="Label" parent="frame/margin/rows" unique_id=1900112236]
 layout_mode = 2
-text = "Results print to Output. Sanctions ask twice."
+theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_font_sizes/font_size = 11
+text = "Results print to Output · sanctions ask twice"
 autowrap_mode = 3
 
-[node name="usernameinput" type="LineEdit" parent="frame/rows" unique_id=1354814840]
+[node name="sep1" type="HSeparator" parent="frame/margin/rows" unique_id=1900112237]
+layout_mode = 2
+theme_override_styles/separator = SubResource("SB_sep")
+
+[node name="accountlabel" type="Label" parent="frame/margin/rows" unique_id=1900112261]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 11
+text = "ACCOUNT"
+
+[node name="usernameinput" type="LineEdit" parent="frame/margin/rows" unique_id=1354814840]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "username"
 
-[node name="viewbutton" type="Button" parent="frame/rows" unique_id=1644512135]
+[node name="viewbutton" type="Button" parent="frame/margin/rows" unique_id=1644512135]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Read this account: rank, ban state, characters, logins, sessions"
+theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_btn")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "View account"
 
-[node name="sep" type="HSeparator" parent="frame/rows" unique_id=1900112237]
+[node name="sep2" type="HSeparator" parent="frame/margin/rows" unique_id=1900112243]
 layout_mode = 2
+theme_override_styles/separator = SubResource("SB_sep")
 
-[node name="reasoninput" type="LineEdit" parent="frame/rows" unique_id=1900112238]
+[node name="sanctionlabel" type="Label" parent="frame/margin/rows" unique_id=1900112262]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 11
+text = "SANCTIONS"
+
+[node name="reasoninput" type="LineEdit" parent="frame/margin/rows" unique_id=1900112238]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "reason (required to ban)"
 
-[node name="daysinput" type="LineEdit" parent="frame/rows" unique_id=1900112239]
+[node name="daysinput" type="LineEdit" parent="frame/margin/rows" unique_id=1900112239]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "days (blank = permanent)"
 
-[node name="kickbutton" type="Button" parent="frame/rows" unique_id=1900112240]
-unique_name_in_owner = true
+[node name="sanctionrow" type="HBoxContainer" parent="frame/margin/rows" unique_id=1900112263]
 layout_mode = 2
-text = "Kick (sign out everywhere)"
+theme_override_constants/separation = 6
 
-[node name="banbutton" type="Button" parent="frame/rows" unique_id=1900112241]
+[node name="kickbutton" type="Button" parent="frame/margin/rows/sanctionrow" unique_id=1900112240]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Sign this account out everywhere. Not a ban — they can log straight back in."
+theme_override_colors/font_color = Color(0.92941, 0.80392, 0.54902, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_btn")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+text = "Kick"
+
+[node name="banbutton" type="Button" parent="frame/margin/rows/sanctionrow" unique_id=1900112241]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Ban for the days above, or permanently if blank. Needs a reason."
+theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_danger")
+theme_override_styles/hover = SubResource("SB_danger_hover")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "Ban"
 
-[node name="unbanbutton" type="Button" parent="frame/rows" unique_id=1900112242]
+[node name="unbanbutton" type="Button" parent="frame/margin/rows/sanctionrow" unique_id=1900112242]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Lift an existing ban"
+theme_override_colors/font_color = Color(0.61961, 0.87843, 0.70196, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_safe")
+theme_override_styles/hover = SubResource("SB_safe_hover")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "Unban"
+
+[node name="sep3" type="HSeparator" parent="frame/margin/rows" unique_id=1900112246]
+layout_mode = 2
+theme_override_styles/separator = SubResource("SB_sep")
+
+[node name="ranklabel" type="Label" parent="frame/margin/rows" unique_id=1900112264]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 11
+text = "RANK"
+
+[node name="rankrow" type="HBoxContainer" parent="frame/margin/rows" unique_id=1900112265]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="roleoption" type="OptionButton" parent="frame/margin/rows/rankrow" unique_id=1900112244]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Only ranks below your own. 'owner' comes from ELUSION_OWNER on the server and can never be granted."
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/hover = SubResource("SB_input_focus")
+theme_override_styles/pressed = SubResource("SB_input_focus")
+
+[node name="rolebutton" type="Button" parent="frame/margin/rows/rankrow" unique_id=1900112245]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Owner only makes a dev. 'owner' comes from the server's environment and cannot be granted."
+theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_btn")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+text = "Set rank"
+
+[node name="rankhint" type="Label" parent="frame/margin/rows" unique_id=1900112268]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_font_sizes/font_size = 10
+text = "mod: kick + ban up to 30d  ·  dev: + permanent ban, economy  ·  owner: + the server switch"
+autowrap_mode = 3
+
+[node name="sep5" type="HSeparator" parent="frame/margin/rows" unique_id=1900112280]
+layout_mode = 2
+theme_override_styles/separator = SubResource("SB_sep")
+
+[node name="testinglabel" type="Label" parent="frame/margin/rows" unique_id=1900112281]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 11
+text = "TESTING - YOUR OWN CHARACTER ONLY"
+
+[node name="goldrow" type="HBoxContainer" parent="frame/margin/rows" unique_id=1900112282]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="goldinput" type="LineEdit" parent="frame/margin/rows/goldrow" unique_id=1900112283]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/focus = SubResource("SB_input_focus")
+placeholder_text = "how much gold (minus takes it away)"
+max_length = 8
+
+[node name="goldbutton" type="Button" parent="frame/margin/rows/goldrow" unique_id=1900112284]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(86, 0)
+layout_mode = 2
+tooltip_text = "Put gold in your own pocket. It goes through the ledger like every other coin, so the Kingdom board still adds up."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Give gold"
+
+[node name="goldbankbutton" type="Button" parent="frame/margin/rows/goldrow" unique_id=1900112285]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+tooltip_text = "Put it in the bank instead of your pocket."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "To bank"
+
+[node name="itemrow" type="HBoxContainer" parent="frame/margin/rows" unique_id=1900112286]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="iteminput" type="LineEdit" parent="frame/margin/rows/itemrow" unique_id=1900112287]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/focus = SubResource("SB_input_focus")
+placeholder_text = "item id, e.g. tinyhealthpotion"
+max_length = 64
+
+[node name="itemcountinput" type="LineEdit" parent="frame/margin/rows/itemrow" unique_id=1900112288]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(46, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/focus = SubResource("SB_input_focus")
+placeholder_text = "1"
+max_length = 3
+
+[node name="itembutton" type="Button" parent="frame/margin/rows/itemrow" unique_id=1900112289]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(86, 0)
+layout_mode = 2
+tooltip_text = "Put an item in your own bag. The same route the debug keys use - which only exist in a debug build, which is why this is here."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Give item"
+
+[node name="testingstatus" type="Label" parent="frame/margin/rows" unique_id=1900112290]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94902, 0.85098, 0.61961, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 3
+
+[node name="sep4" type="HSeparator" parent="frame/margin/rows" unique_id=1900112266]
+layout_mode = 2
+theme_override_styles/separator = SubResource("SB_sep")
+
+[node name="serverlabel" type="Label" parent="frame/margin/rows" unique_id=1900112267]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 11
+text = "SERVER"
+
+[node name="maintenancestatus" type="Label" parent="frame/margin/rows" unique_id=1900112247]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43137, 0.83922, 0.49412, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_status")
+text = "Server is OPEN"
+autowrap_mode = 3
+
+[node name="maintenancemessageinput" type="LineEdit" parent="frame/margin/rows" unique_id=1900112248]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("SB_input")
+theme_override_styles/focus = SubResource("SB_input_focus")
+placeholder_text = "what players are told (optional)"
+
+[node name="maintenancebutton" type="Button" parent="frame/margin/rows" unique_id=1900112249]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Closes the door now; players get a save window, then are signed out. You are never locked out."
+theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("SB_danger")
+theme_override_styles/hover = SubResource("SB_danger_hover")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+text = "Close server"

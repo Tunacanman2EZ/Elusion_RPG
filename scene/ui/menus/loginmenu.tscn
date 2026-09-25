@@ -84,6 +84,7 @@ horizontal_alignment = 1
 autowrap_mode = 3
 
 [node name="loginform" type="VBoxContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1667337425]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 12
 
@@ -114,11 +115,161 @@ layout_mode = 2
 size_flags_horizontal = 4
 text = "Enter Elysium"
 
+[node name="recoverlinkbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=1900113001]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 12
+flat = true
+text = "Forgot password?"
+
 [node name="errorlabel" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=667489728]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(1, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="recoverform" type="VBoxContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1900113002]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="recoverintro" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113003]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Enter the email on your account. We'll send a 6-digit code."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="recoveremail" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113004]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Email address"
+alignment = 1
+
+[node name="recoversendbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113005]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Email me a code"
+
+[node name="recovercoderow" type="HBoxContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113006]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="recovercode" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform/recovercoderow" unique_id=1900113007]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "6-digit code"
+alignment = 1
+max_length = 6
+
+[node name="recovercodelight" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform/recovercoderow" unique_id=1900113008]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(26, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43137, 0.83922, 0.49412, 1)
+theme_override_font_sizes/font_size = 18
+vertical_alignment = 1
+
+[node name="recovernewpassword" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113009]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "New password"
+alignment = 1
+secret = true
+
+[node name="recoverconfirmpassword" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113010]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Confirm new password"
+alignment = 1
+secret = true
+
+[node name="recoversubmitbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113011]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+disabled = true
+text = "Set new password"
+
+[node name="recoverstatus" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113012]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="recoverbackbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/recoverform" unique_id=1900113013]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 12
+flat = true
+text = "Back to sign in"
+
+[node name="emailform" type="VBoxContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer" unique_id=1900113020]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="emailintro" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/emailform" unique_id=1900113021]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "One more step: add a recovery email. It is private, never shown to anyone, and only ever used to get you back in if you lose your password."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="emailaddress" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/emailform" unique_id=1900113022]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Email address"
+alignment = 1
+
+[node name="emailsendbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/emailform" unique_id=1900113023]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Send confirmation code"
+
+[node name="emailcoderow" type="HBoxContainer" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/emailform" unique_id=1900113024]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="emailcode" type="LineEdit" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/emailform/emailcoderow" unique_id=1900113025]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "6-digit code"
+alignment = 1
+max_length = 6
+
+[node name="emailcodelight" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/emailform/emailcoderow" unique_id=1900113026]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(26, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43137, 0.83922, 0.49412, 1)
+theme_override_font_sizes/font_size = 18
+vertical_alignment = 1
+
+[node name="emailconfirmbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/emailform" unique_id=1900113027]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+disabled = true
+text = "Confirm and continue"
+
+[node name="emailstatus" type="Label" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/emailform" unique_id=1900113028]
+unique_name_in_owner = true
+layout_mode = 2
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 1
 autowrap_mode = 2

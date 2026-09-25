@@ -9,6 +9,7 @@ display_name = "Water The Crowned"
 element = 7
 recolour_to_element = true
 saturation_scale = 1.0
+grey_tint = 0.35
 projectile_damage = 24
 max_hp = 5616
 xp_reward = 756

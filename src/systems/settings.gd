@@ -134,27 +134,83 @@ const DEFAULTS := {
 	# they are how the game tells you what a weapon is doing — and optional,
 	# because a screen full of them is a real complaint.
 	"damage_numbers": true,
+
+	# HOW CLOSE THE CAMERA SITS. 3.0 is what all four class scenes were built
+	# with and is the default, so nobody who never opens this sees a change.
+	# Lower numbers pull back and show more of the world.
+	#
+	# 3.0 IS THE CEILING, not a suggestion. The art is 64x64 (128 for the
+	# tank), and past 3x the game stops being pixel art and starts being big
+	# rectangles - there is nothing above it worth offering.
+	#
+	# 2.0 IS THE FLOOR. It started at 1.0 and that was too far back: at 1x a
+	# 64px character is 64 screen pixels, the faces go, and a nameplate over
+	# their head is smaller than the character. Two is as far out as the art
+	# holds up.
+	"camera_zoom": 3.0,
+
+	# THE COLOUR OF YOUR OWN NAME, as a hue in degrees. A hue and nothing else:
+	# saturation and value are fixed at NAME_SATURATION and NAME_VALUE below,
+	# because those are the two that decide whether a name is READABLE over
+	# grass, stone and water, and they are not a choice worth letting somebody
+	# make badly. One slider, and every position on it works.
+	#
+	# 45 is the default because at the fixed saturation it comes out as almost
+	# exactly the parchment colour ordinary names already had, so nobody who
+	# never opens this sees a change.
+	"name_hue": 45.0,
 }
 
-# WHOLE MULTIPLES OF THE VIEWPORT, AND NOTHING ELSE.
+
+# The range the slider offers and the value is clamped to. Read by the options
+# screen so the two cannot disagree about what is allowed.
+const CAMERA_ZOOM_MIN := 2.0
+const CAMERA_ZOOM_MAX := 3.0
+const CAMERA_ZOOM_STEP := 0.25
+
+# The hue wheel, and the two numbers that are not on the slider.
 #
-# project.godot sets stretch/scale_mode="integer", so the canvas is only ever
-# drawn at 1x, 2x, 3x and the remainder becomes a border. That makes every
-# other size in this list a lie: at 1600x900 the game still renders at 1x —
-# identical pixels to 1280x720 — inside a window with 160px of black down each
-# side. The player picks a bigger number and gets the same picture with more
-# letterbox, which reads as the option doing nothing.
+# HALF SATURATION, FULL VALUE. A fully saturated name is a thin bright line
+# that vibrates against the grass; half of it gives a pastel that the black
+# outline can hold. Full value because the world is dark and every name has to
+# win against it.
+const NAME_HUE_MIN := 0.0
+const NAME_HUE_MAX := 359.0
+const NAME_HUE_STEP := 5.0
+const NAME_SATURATION := 0.5
+const NAME_VALUE := 1.0
+
+# EVERY 16:9 SIZE WORTH OFFERING, which it did not used to be.
 #
-# 1920x1080 is the one worth naming, because it is the most common monitor
-# there is and it is NOT a whole multiple of 1280x720 (it is 1.5x). Anyone on
-# a 1080p screen wants fullscreen, which letterboxes honestly, rather than a
-# windowed 1920x1080 that is 1x with a thick frame.
+# THIS LIST USED TO BE 1x, 2x, 3x AND NOTHING ELSE, and the comment here
+# explained why at length: project.godot set stretch/scale_mode="integer", so
+# the canvas was only ever drawn at a whole multiple and the remainder became a
+# border. At 1600x900 the game rendered at 1x - pixel for pixel identical to
+# 1280x720 - inside a window with 160px of black down each side, so offering
+# that size would have been offering the same picture with more letterbox.
 #
-# So: 1x, 2x, 3x. The options screen prints the multiplier beside each one.
+# 1920x1080 WAS THE ONE THAT HURT. It is the most common monitor there is and
+# it is 1.5x of 1280x720, so under integer scaling FULLSCREEN on a 1080p screen
+# drew the game at 1x in the middle of the display with a thick black frame
+# around it. That is not fullscreen working; that is fullscreen refusing.
+#
+# project.godot now sets scale_mode="fractional", so the canvas is drawn at
+# whatever multiple fits and 1.5x is a real scale. aspect="keep" is pinned
+# alongside it, which is what keeps the viewport exactly 1280x720 in game units
+# at every window size - so every offset in every .tscn still lands where it
+# was placed, and a wider monitor gets bars rather than a stretched picture.
+#
+# The cost is that at a fractional scale the pixel grid is uneven: at 1.5x some
+# source pixels land on two screen pixels and some on one. On a 16:9 screen the
+# alternative was a black border, so this is the better trade - and anyone who
+# wants the perfect grid can pick 1280x720 or 2560x1440, which are whole
+# multiples and have no unevenness at all.
 const WINDOW_SIZES := [
-	Vector2i(1280, 720),    # 1x
-	Vector2i(2560, 1440),   # 2x
-	Vector2i(3840, 2160),   # 3x
+	Vector2i(1280, 720),    # 1.0x - exact
+	Vector2i(1600, 900),    # 1.25x
+	Vector2i(1920, 1080),   # 1.5x  - the common monitor
+	Vector2i(2560, 1440),   # 2.0x  - exact
+	Vector2i(3840, 2160),   # 3.0x  - exact
 ]
 
 
@@ -375,7 +431,7 @@ static func normalise_choice(value: Variant, allowed: Array, fallback: String) -
 	return s if s in allowed else fallback
 
 
-static func content_scale_mode_for(render_resolution: String) -> int:
+static func content_scale_mode_for(render_resolution: String) -> Window.ContentScaleMode:
 	return (Window.CONTENT_SCALE_MODE_VIEWPORT if render_resolution == "low"
 		else Window.CONTENT_SCALE_MODE_CANVAS_ITEMS)
 
@@ -409,6 +465,12 @@ func _on_node_added(node: Node) -> void:
 	# that enters the tree, and nearly all of them are neither.
 	if node is Light2D or node is CanvasModulate:
 		_apply_lighting_to(node, str(get_value("lighting")))
+	elif node is Camera2D:
+		# A CAMERA THAT ARRIVES AFTER THE SETTING DID. Every scene change
+		# builds a new player with a new camera carrying the 3.0 its .tscn was
+		# saved with, so without this the zoom would reset itself at every
+		# doorway.
+		_apply_camera_zoom_to(node as Camera2D, float(get_value("camera_zoom")))
 
 
 func _apply_lighting_to(node: Node, mode: String) -> void:
@@ -432,6 +494,35 @@ func _apply_lighting_to(node: Node, mode: String) -> void:
 			ambience.set_meta(_META_COLOUR, ambience.color)
 		var authored: Color = ambience.get_meta(_META_COLOUR)
 		ambience.color = simple_ambient(authored) if simple else authored
+
+
+func name_colour(hue_degrees: float = -1.0) -> Color:
+	"""
+	The colour a player's own name is drawn in.
+
+	Takes a hue so the options screen can preview one the player has not
+	committed to yet; called with nothing, it answers for the saved setting.
+	"""
+	var hue: float = hue_degrees if hue_degrees >= 0.0 else float(get_value("name_hue"))
+	# wrapf, not clamp: a hue is a wheel, and 360 is 0 rather than an error.
+	return Color.from_hsv(wrapf(hue, 0.0, 360.0) / 360.0, NAME_SATURATION, NAME_VALUE)
+
+
+func _apply_camera_zoom_to(camera: Camera2D, zoom: float) -> void:
+	# ABSOLUTE, NOT A MULTIPLIER OF WHAT THE SCENE SAID. All four class scenes
+	# are authored at 3.0, so an absolute value is the same thing here and is
+	# the one a player can reason about: the number on the slider IS the zoom.
+	var want: float = clampf(zoom, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+	if not is_equal_approx(camera.zoom.x, want):
+		camera.zoom = Vector2(want, want)
+
+
+func _apply_camera_zoom_everywhere(zoom: float) -> void:
+	var tree := get_tree()
+	if tree == null or tree.root == null:
+		return
+	for node in tree.root.find_children("*", "Camera2D", true, false):
+		_apply_camera_zoom_to(node as Camera2D, zoom)
 
 
 func _apply_lighting_everywhere(mode: String) -> void:
@@ -665,6 +756,15 @@ func _normalise(key: String, typed: Variant) -> Variant:
 			return normalise_choice(typed, RENDER_RESOLUTIONS, "screen")
 		"lighting":
 			return normalise_choice(typed, LIGHTING_MODES, "full")
+		"camera_zoom":
+			# CLAMPED, NOT REFUSED. options.cfg is a text file a player can
+			# edit, and a 40 in it should become the ceiling rather than a
+			# camera so far in that the game is four tiles across.
+			return clampf(float(typed), CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+		"name_hue":
+			# WRAPPED, because the thing it names is a circle. 400 is 40 and
+			# -20 is 340; neither is a mistake worth refusing.
+			return wrapf(float(typed), 0.0, 360.0)
 		_:
 			return typed
 
@@ -744,11 +844,18 @@ func _apply(key: String, value: Variant) -> void:
 		"background_fps_limit":
 			_apply_fps_cap()
 		"render_resolution":
-			var want_scale: int = content_scale_mode_for(str(value))
+			var want_scale: Window.ContentScaleMode = content_scale_mode_for(str(value))
 			if get_tree().root.content_scale_mode != want_scale:
 				get_tree().root.content_scale_mode = want_scale
 		"lighting":
 			_apply_lighting_everywhere(str(value))
+		"camera_zoom":
+			_apply_camera_zoom_everywhere(float(value))
+		"name_hue":
+			# Nothing pushed anywhere. player.gd listens on `changed` and
+			# repaints its own plate - the colour belongs to the character,
+			# not to a list this autoload would have to keep.
+			pass
 		"damage_numbers":
 			# Read where the labels are spawned rather than pushed anywhere —
 			# see player.gd and baseenemy.gd. Nothing to apply.

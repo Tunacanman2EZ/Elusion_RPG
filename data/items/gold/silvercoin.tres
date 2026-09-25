@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://5yesqbl2f3m1"]
+
+[ext_resource type="Texture2D" path="res://art/pack/currency/silvercoin.png" id="1_art"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+item_id = "silvercoin"
+display_name = "Silver Coin"
+description = "Silver, and clean enough to see your face in."
+icon = ExtResource("1_art")
+stackable = true
+max_stack = 9999
+value = 50
+type = 6
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

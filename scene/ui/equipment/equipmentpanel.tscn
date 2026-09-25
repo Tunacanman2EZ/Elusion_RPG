@@ -1,20 +1,36 @@
-[gd_scene load_steps=3 format=3 uid="uid://dm4xqt7v0brny"]
+[gd_scene format=3 uid="uid://dm4xqt7v0brny"]
 
 [ext_resource type="Script" path="res://src/ui/equipment/equipmentpanel.gd" id="1_eqpanel"]
 [ext_resource type="PackedScene" uid="uid://b3qk8vn2eqwla" path="res://scene/ui/equipment/equipmentslot.tscn" id="2_eqslot"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="3_eqtheme"]
 
-[node name="equipmentpanel" type="Control"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_eqwell"]
+bg_color = Color(0.08, 0.065, 0.05, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.36, 0.3, 0.21, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[node name="equipmentpanel" type="Control" unique_id=1930055401]
+layout_mode = 3
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -501.0
+offset_left = -551.0
 offset_top = 27.0
 offset_right = -291.0
-offset_bottom = 373.0
+offset_bottom = 407.0
 grow_horizontal = 0
+mouse_filter = 2
+theme = ExtResource("3_eqtheme")
 script = ExtResource("1_eqpanel")
 
-[node name="mainpanel" type="PanelContainer" parent="."]
+[node name="mainpanel" type="PanelContainer" parent="." unique_id=1930055402]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -22,184 +38,223 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
+[node name="margincontainer" type="MarginContainer" parent="mainpanel" unique_id=1930055403]
 layout_mode = 2
 theme_override_constants/margin_left = 8
 theme_override_constants/margin_top = 6
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 6
 
-[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer" unique_id=1930055404]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1930055405]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel" unique_id=1930055406]
 layout_mode = 2
 
-[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
-layout_mode = 2
-
-[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1930055407]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 16
 text = "Equipment"
 vertical_alignment = 1
 
-[node name="equipclosebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+[node name="equipclosebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1930055408]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
+focus_mode = 0
 text = "x"
 
-[node name="hseparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="dollrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1930055409]
 layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
 
-[node name="dollcenter" type="CenterContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="leftcolumn" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/dollrow" unique_id=1930055410]
 layout_mode = 2
+theme_override_constants/separation = 6
 
-[node name="dollgrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/dollcenter"]
+[node name="helm" parent="mainpanel/margincontainer/vboxcontainer/dollrow/leftcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_override_constants/h_separation = 6
-theme_override_constants/v_separation = 6
-columns = 3
-
-[node name="padtopleft" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid"]
-custom_minimum_size = Vector2(48, 48)
-layout_mode = 2
-mouse_filter = 2
-
-[node name="helm" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
-layout_mode = 2
+theme_type_variation = &"PanelSlot"
 equip_slot_name = "helm"
 empty_hint = "Helm"
 
-[node name="padtopright" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid"]
-custom_minimum_size = Vector2(48, 48)
+[node name="chest" parent="mainpanel/margincontainer/vboxcontainer/dollrow/leftcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-mouse_filter = 2
-
-[node name="weapon" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
-layout_mode = 2
-equip_slot_name = "weapon"
-empty_hint = "Weapon"
-
-[node name="chest" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
-layout_mode = 2
+theme_type_variation = &"PanelSlot"
 equip_slot_name = "chest"
 empty_hint = "Chest"
 
-[node name="shield" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+[node name="legs" parent="mainpanel/margincontainer/vboxcontainer/dollrow/leftcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-equip_slot_name = "shield"
-empty_hint = "Off hand"
-
-[node name="ring" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
-layout_mode = 2
-equip_slot_name = "ring"
-empty_hint = "Ring"
-
-[node name="legs" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
-layout_mode = 2
+theme_type_variation = &"PanelSlot"
 equip_slot_name = "legs"
 empty_hint = "Legs"
 
-[node name="amulet" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
+[node name="boots" parent="mainpanel/margincontainer/vboxcontainer/dollrow/leftcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-equip_slot_name = "amulet"
-empty_hint = "Amulet"
-
-[node name="padbottomleft" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid"]
-custom_minimum_size = Vector2(48, 48)
-layout_mode = 2
-mouse_filter = 2
-
-[node name="boots" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid" instance=ExtResource("2_eqslot")]
-layout_mode = 2
+theme_type_variation = &"PanelSlot"
 equip_slot_name = "boots"
 empty_hint = "Boots"
 
-[node name="padbottomright" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollcenter/dollgrid"]
-custom_minimum_size = Vector2(48, 48)
+[node name="previewwell" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/dollrow" unique_id=1930055411]
+custom_minimum_size = Vector2(128, 210)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_eqwell")
+
+[node name="equippreviewbox" type="Control" parent="mainpanel/margincontainer/vboxcontainer/dollrow/previewwell" unique_id=1930055412]
+unique_name_in_owner = true
+clip_contents = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="equippreview" type="AnimatedSprite2D" parent="mainpanel/margincontainer/vboxcontainer/dollrow/previewwell/equippreviewbox" unique_id=1930055413]
+unique_name_in_owner = true
+texture_filter = 1
+visible = false
+
+[node name="equippreviewhint" type="Label" parent="mainpanel/margincontainer/vboxcontainer/dollrow/previewwell/equippreviewbox" unique_id=1930055414]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.45, 0.41, 0.35, 1)
+theme_override_font_sizes/font_size = 10
+text = "no character"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="rightcolumn" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/dollrow" unique_id=1930055415]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="weapon" parent="mainpanel/margincontainer/vboxcontainer/dollrow/rightcolumn" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+theme_type_variation = &"PanelSlot"
+equip_slot_name = "weapon"
+empty_hint = "Weapon"
+
+[node name="shield" parent="mainpanel/margincontainer/vboxcontainer/dollrow/rightcolumn" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+theme_type_variation = &"PanelSlot"
+equip_slot_name = "shield"
+empty_hint = "Off hand"
+
+[node name="amulet" parent="mainpanel/margincontainer/vboxcontainer/dollrow/rightcolumn" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+theme_type_variation = &"PanelSlot"
+equip_slot_name = "amulet"
+empty_hint = "Amulet"
+
+[node name="ring" parent="mainpanel/margincontainer/vboxcontainer/dollrow/rightcolumn" instance=ExtResource("2_eqslot")]
+layout_mode = 2
+theme_type_variation = &"PanelSlot"
+equip_slot_name = "ring"
+empty_hint = "Ring"
+
+[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1930055416]
 layout_mode = 2
 
-[node name="summary" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="summary" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1930055417]
 layout_mode = 2
-theme_override_constants/separation = 2
+theme_override_constants/separation = 3
 
-[node name="damagerow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary"]
+[node name="damagerow" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/summary" unique_id=1930055418]
+layout_mode = 2
+theme_type_variation = &"PanelStatBg"
+
+[node name="box" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary/damagerow" unique_id=1930055419]
 layout_mode = 2
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/damagerow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/damagerow/box" unique_id=1930055420]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "Damage:"
 
-[node name="equipdamagevalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/damagerow"]
+[node name="equipdamagevalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/damagerow/box" unique_id=1930055421]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "-"
 horizontal_alignment = 2
 
-[node name="speedrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary"]
+[node name="speedrow" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/summary" unique_id=1930055422]
+layout_mode = 2
+theme_type_variation = &"PanelStatBg"
+
+[node name="box" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary/speedrow" unique_id=1930055423]
 layout_mode = 2
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/speedrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/speedrow/box" unique_id=1930055424]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "Damage per second:"
 
-[node name="equipspeedvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/speedrow"]
+[node name="equipspeedvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/speedrow/box" unique_id=1930055425]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "-"
 horizontal_alignment = 2
 
-[node name="armourrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary"]
+[node name="armourrow" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/summary" unique_id=1930055426]
+layout_mode = 2
+theme_type_variation = &"PanelStatBg"
+
+[node name="box" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary/armourrow" unique_id=1930055427]
 layout_mode = 2
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/armourrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/armourrow/box" unique_id=1930055428]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "Armour:"
 
-[node name="equiparmourvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/armourrow"]
+[node name="equiparmourvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/armourrow/box" unique_id=1930055429]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "0"
 horizontal_alignment = 2
 
-[node name="soakrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary"]
+[node name="soakrow" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/summary" unique_id=1930055430]
+layout_mode = 2
+theme_type_variation = &"PanelStatBg"
+
+[node name="box" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary/soakrow" unique_id=1930055431]
 layout_mode = 2
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/soakrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/soakrow/box" unique_id=1930055432]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "Damage taken:"
 
-[node name="equipsoakvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/soakrow"]
+[node name="equipsoakvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/soakrow/box" unique_id=1930055433]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-theme_override_font_sizes/font_size = 10
+theme_override_font_sizes/font_size = 11
 text = "0% less"
 horizontal_alignment = 2

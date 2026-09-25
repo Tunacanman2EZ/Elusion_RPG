@@ -42,6 +42,23 @@ signal closed
 # CONSTANTS
 # =============================================================================
 
+# HOW TALL THE CHARACTER IS DRAWN IN THE WELL, in pixels, whatever the source
+# art measures. The classes are not one size - warrior, mage and healer are
+# 64x64 frames and the tank is 128x128 - so a fixed scale would draw the tank
+# at twice everyone else and burst out of the box. The scale is worked out from
+# the frame instead, which also means new art of any size just fits.
+const PREVIEW_HEIGHT := 150.0
+
+# Matches the in-world speed_scale on every class's animatedsprite2d, so the
+# walk in the panel has the same cadence as the walk on the map.
+const PREVIEW_SPEED_SCALE := 1.5
+
+# WALKING, NOT STANDING, and this is the whole point of the well: an idle
+# frame is a picture, and what a player wants to see when they put new boots on
+# is their character moving in them. idledown is the fallback for art that has
+# no walk cycle rather than the preference.
+const PREVIEW_ANIMATIONS := ["walkdown", "idledown"]
+
 const COLOUR_NEUTRAL := Color(0.8, 0.75, 0.65)
 const COLOUR_GOOD    := Color(0.55, 0.85, 0.5)
 
@@ -55,6 +72,13 @@ const COLOUR_GOOD    := Color(0.55, 0.85, 0.5)
 @onready var speed_label:   Label   = get_node_or_null("%equipspeedvalue")
 @onready var armour_label:  Label   = get_node_or_null("%equiparmourvalue")
 @onready var soak_label:    Label   = get_node_or_null("%equipsoakvalue")
+
+# THE LIVING DOLL. An AnimatedSprite2D in the middle of the squares, walking on
+# the spot, so the panel shows who is wearing all this rather than a grid of
+# icons belonging to nobody.
+@onready var preview:      AnimatedSprite2D = get_node_or_null("%equippreview")
+@onready var preview_box:  Control = get_node_or_null("%equippreviewbox")
+@onready var preview_hint: Label   = get_node_or_null("%equippreviewhint")
 
 
 # =============================================================================
@@ -84,6 +108,15 @@ func _ready() -> void:
 
 	if close_button != null and not close_button.pressed.is_connected(_on_close_pressed):
 		close_button.pressed.connect(_on_close_pressed)
+
+	if preview != null:
+		preview.speed_scale = PREVIEW_SPEED_SCALE
+	if preview_box != null and not preview_box.resized.is_connected(_centre_preview):
+		# THE BOX HAS NO SIZE YET. Containers lay out after _ready(), so
+		# centring the sprite now would centre it in a zero-sized rectangle and
+		# leave it in the corner. This fires when the real size arrives, and
+		# again if the panel is ever resized.
+		preview_box.resized.connect(_centre_preview)
 
 	visible = false
 
@@ -169,6 +202,83 @@ func refresh() -> void:
 		slot.set_stack(_stack_for(slot_name))
 
 	_refresh_summary()
+	_refresh_preview()
+
+
+# =============================================================================
+# THE CHARACTER IN THE MIDDLE
+# =============================================================================
+
+func _refresh_preview() -> void:
+	# THE ART COMES OFF THE LIVE PLAYER, not from a class-id lookup. The panel
+	# already holds the character node, and that node IS its class with its own
+	# SpriteFrames hanging off it - so there is no fifth copy of the slot ->
+	# scene table to keep in step, and switching character repaints this for
+	# free because characterhud.gd calls set_player() again.
+	if preview == null:
+		return
+
+	var body: AnimatedSprite2D = null
+	if player != null:
+		body = player.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+
+	if body == null or body.sprite_frames == null:
+		_show_preview(false)
+		return
+
+	var frames: SpriteFrames = body.sprite_frames
+	var wanted: String = ""
+	for candidate in PREVIEW_ANIMATIONS:
+		if frames.has_animation(candidate):
+			wanted = candidate
+			break
+	if wanted == "":
+		# Art with neither a walk nor an idle facing the camera. Nothing to
+		# draw, and an empty well says so rather than showing a stuck frame.
+		_show_preview(false)
+		return
+
+	# SHARED, NOT COPIED. SpriteFrames is a Resource and assigning it points
+	# this sprite at the same one the character is using; duplicating it would
+	# hold a second copy of every frame of every animation in memory for a
+	# panel that is shut most of the time.
+	if preview.sprite_frames != frames:
+		preview.sprite_frames = frames
+
+	_show_preview(true)
+	_fit_preview(frames, wanted)
+
+	# PLAYED EXPLICITLY EVERY TIME. The panel is built once and then shown and
+	# hidden, so autoplay would only ever start it on the first open.
+	if preview.animation != StringName(wanted) or not preview.is_playing():
+		preview.play(wanted)
+
+
+func _show_preview(on: bool) -> void:
+	if preview != null:
+		preview.visible = on
+	if preview_hint != null:
+		preview_hint.visible = not on
+
+
+func _fit_preview(frames: SpriteFrames, anim: String) -> void:
+	var frame_height: float = 64.0
+	if frames.get_frame_count(anim) > 0:
+		var texture: Texture2D = frames.get_frame_texture(anim, 0)
+		if texture != null and texture.get_height() > 0:
+			frame_height = float(texture.get_height())
+
+	var factor: float = PREVIEW_HEIGHT / frame_height
+	preview.scale = Vector2(factor, factor)
+	_centre_preview()
+
+
+func _centre_preview() -> void:
+	if preview == null or preview_box == null:
+		return
+	# The sprite is centred on its own origin, so putting that origin in the
+	# middle of the box is the whole of the centring.
+	preview.position = preview_box.size * 0.5
 
 
 # =============================================================================

@@ -103,6 +103,14 @@ const SAVEABLE_STATS := {
 	"xp":           0,
 	"xp_next":      100,
 	"gold":         0,            # per-character carry gold (lost on death without revive)
+
+	# WHERE THIS CHARACTER IS, as an AreaRegistry id (the scene's filename).
+	#
+	# It existed on the server from the beginning and nothing ever set it, so
+	# every character in the game reported "elusion" forever - which quietly
+	# made trade proximity meaningless, since tradepanel.gd compares exactly
+	# this field to decide whether two people are near each other.
+	"area":         "elusion",
 	"hp":           100,
 	"max_hp":       100,
 	"stamina":      100,
@@ -1023,6 +1031,18 @@ func save_character_state(player: Node) -> void:
  
 	var bag: Array = _capture_inventory(player)
 	character_slots[slot]["inventory"] = bag
+
+	# WHERE THEY ARE. Recorded here because this is the function that already
+	# runs whenever anything about the character changes, so the area rides
+	# along with the next save rather than needing a trigger of its own.
+	#
+	# EMPTY MEANS "NOT IN THE WORLD" - character select, the login screen, a
+	# scene mid-swap. Keeping the previous value is deliberate: overwriting a
+	# real area with "" on the way out through a menu is how a player would be
+	# spawned into nowhere next time they logged in.
+	var here: String = AreaRegistry.current_area_id()
+	if here != "":
+		character_slots[slot]["area"] = here
 
 	# save hotbar assignments alongside the int stats.
 	# must happen BEFORE save_data() or the assignments wait one save cycle

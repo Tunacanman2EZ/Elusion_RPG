@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://y8py0d7k22ov"]
 
 [ext_resource type="Script" uid="uid://b5421s5c7eqda" path="res://src/ui/characterhud.gd" id="1_s3c7b"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="18_hudtheme"]
 [ext_resource type="Texture2D" uid="uid://bpjyuft8fvubi" path="res://art/images/hpempty.png" id="2_s3c7b"]
 [ext_resource type="Texture2D" uid="uid://dgqbq5vvg3552" path="res://art/images/hpfull.png" id="3_xinkp"]
 [ext_resource type="Texture2D" uid="uid://crcfawfx7u8j2" path="res://art/images/manaempty.png" id="4_a33qf"]
@@ -12,6 +13,24 @@
 
 [sub_resource type="FontVariation" id="FontVariation_readout"]
 variation_embolden = 0.35
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_navbar"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+bg_color = Color(0.12, 0.1, 0.08, 0.82)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.55, 0.45, 0.3, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 6
 
 [node name="characterhud" type="CanvasLayer" unique_id=2045428837]
 visible = false
@@ -114,81 +133,139 @@ theme_override_font_sizes/font_size = 15
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="navhbox" type="VBoxContainer" parent="." unique_id=440246108]
-offset_left = 12.0
-offset_top = 13.0
-offset_right = 456.0
-offset_bottom = 45.0
-size_flags_horizontal = 4
+[node name="navframe" type="PanelContainer" parent="." unique_id=1204777301]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = -8.0
+offset_right = -334.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme = ExtResource("18_hudtheme")
+theme_override_styles/panel = SubResource("StyleBoxFlat_navbar")
 
-[node name="navbuttons" type="HBoxContainer" parent="navhbox" unique_id=1515114216]
+[node name="navhbox" type="VBoxContainer" parent="navframe" unique_id=440246108]
 layout_mode = 2
-theme_override_constants/separation = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
 
-[node name="inventorybutton" type="Button" parent="navhbox/navbuttons" unique_id=1421840767]
+[node name="staffrow" type="HBoxContainer" parent="navframe/navhbox" unique_id=1733059214]
+unique_name_in_owner = true
 layout_mode = 2
-focus_mode = 0
-text = "Inventory"
+mouse_filter = 2
+theme_override_constants/separation = 4
+alignment = 2
 
-[node name="equipmentbutton" type="Button" parent="navhbox/navbuttons" unique_id=1969924149]
-layout_mode = 2
-focus_mode = 0
-text = "Equipment"
-
-[node name="statsbutton" type="Button" parent="navhbox/navbuttons" unique_id=2038986305]
-layout_mode = 2
-focus_mode = 0
-text = "Stats"
-
-[node name="shopbutton" type="Button" parent="navhbox/navbuttons" unique_id=1681920515]
-layout_mode = 2
-focus_mode = 0
-text = "Shop"
-
-[node name="kingdombutton" type="Button" parent="navhbox/navbuttons" unique_id=1699508882]
-layout_mode = 2
-focus_mode = 0
-text = "Kingdom"
-
-[node name="tradebutton" type="Button" parent="navhbox/navbuttons" unique_id=478330591]
-layout_mode = 2
-focus_mode = 0
-text = "Trade"
-
-[node name="mapbutton" type="Button" parent="navhbox/navbuttons" unique_id=1039820360]
-layout_mode = 2
-focus_mode = 0
-text = "Map"
-
-[node name="optionsbutton" type="Button" parent="navhbox/navbuttons" unique_id=1350421317]
-layout_mode = 2
-focus_mode = 0
-text = "Options"
-
-[node name="discordbutton" type="Button" parent="navhbox/navbuttons" unique_id=1360650016]
-layout_mode = 2
-focus_mode = 0
-text = "Discord"
-
-[node name="logoutbutton" type="Button" parent="navhbox/navbuttons" unique_id=1289277085]
-layout_mode = 2
-focus_mode = 0
-text = "Logout"
-
-[node name="switchcharacterbutton" type="Button" parent="navhbox/navbuttons" unique_id=1320215097]
-layout_mode = 2
-text = "Characters"
-
-[node name="staffrow" type="HBoxContainer" parent="navhbox" unique_id=1733059214]
-layout_mode = 2
-theme_override_constants/separation = 2
-
-[node name="staffbutton" type="Button" parent="navhbox/staffrow" unique_id=1491683027]
+[node name="staffbutton" type="Button" parent="navframe/navhbox/staffrow" unique_id=1491683027]
+unique_name_in_owner = true
 visible = false
 layout_mode = 2
 focus_mode = 0
 text = "Staff"
 
+[node name="navbuttons" type="HBoxContainer" parent="navframe/navhbox" unique_id=1515114216]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="inventorybutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1421840767]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Inventory"
+
+[node name="equipmentbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1969924149]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Gear"
+
+[node name="statsbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=2038986305]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Stats"
+
+[node name="shopbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1681920515]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Shop"
+
+[node name="kingdombutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1699508882]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Kingdom"
+
+[node name="tradebutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=478330591]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Trade"
+
+[node name="chatbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1288450017]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Chat"
+
+[node name="friendsbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1288450018]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Friends"
+
+[node name="guildbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1288450019]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Your guild, its roster, and any invitation waiting for you"
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Guild"
+
+[node name="mapbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1039820360]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Map"
+
+[node name="optionsbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1350421317]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Options"
+
+[node name="logoutbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1289277085]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+focus_mode = 0
+text = "Logout"
+
+[node name="switchcharacterbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1320215097]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+text = "Switch"
 [node name="itemtooltip" parent="." unique_id=1631671194 instance=ExtResource("17_xinkp")]
 offset_left = 3.0
 offset_top = 154.0
@@ -197,7 +274,15 @@ offset_bottom = 310.0
 
 [node name="hotbar" parent="." unique_id=147410389 instance=ExtResource("10_manxm")]
 unique_name_in_owner = true
-offset_left = 956.0
-offset_top = 569.0
-offset_right = 1276.0
-offset_bottom = 609.0
+layout_mode = 3
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -418.0
+offset_top = -163.0
+offset_right = -4.0
+offset_bottom = -111.0
+grow_horizontal = 0
+grow_vertical = 0

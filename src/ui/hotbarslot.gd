@@ -28,8 +28,12 @@ class_name HotbarSlot
 # CONSTANTS
 # =============================================================================
 
-# fixed slot size — matches the 32x32 pixel art convention.
-const SLOT_SIZE := Vector2(32, 32)
+# HOW BIG A SLOT IS ON SCREEN. The art is 32x32 with a 7px frame, which leaves
+# an 18px hole - too small for a 32px item icon, which is why a filled slot
+# used to overflow its own frame and cover it completely. At 42 the tile is
+# nine-patched (the frame stays pixel-exact, only the middle stretches) and the
+# hole comes out at 28, which an item icon fits inside.
+const SLOT_SIZE := Vector2(42, 42)
 
 # tooltip suffix added when hovering an assigned hotbar slot.
 # communicates the link-not-copy relationship to the player.
@@ -53,7 +57,10 @@ var assigned_item_id: String = ""
 
 # gold-tinted stylebox for assigned hotbar slots. built once in _ready.
 # applied in _update_style when is_assigned() returns true.
-var style_assigned: StyleBoxFlat = null
+# StyleBox, for the same reason as the three in InventorySlot: the hotbar's
+# own slots are drawn from tile art, and a StyleBoxTexture is not a
+# StyleBoxFlat.
+var style_assigned: StyleBox = null
 
 
 # =============================================================================
@@ -80,8 +87,22 @@ func _build_assigned_style() -> void:
 	if style_normal == null:
 		return
 
-	style_assigned = style_normal.duplicate()
-	style_assigned.border_color = Color(0.95, 0.80, 0.30, 1.0)  # gold border
+	# TWO KINDS OF STYLE, TWO WAYS TO SAY "GOLD". A flat box has a border to
+	# recolour; tile art does not - it has an outline the artist drew, which
+	# must not be painted over, so a linked slot warms the whole tile instead.
+	#
+	# Each branch works through a local of the exact type, because a property
+	# reached through a variable typed as the base StyleBox does not compile.
+	if style_normal is StyleBoxFlat:
+		var flat: StyleBoxFlat = style_normal.duplicate() as StyleBoxFlat
+		flat.border_color = Color(0.95, 0.80, 0.30, 1.0)
+		style_assigned = flat
+	elif style_normal is StyleBoxTexture:
+		var art: StyleBoxTexture = style_normal.duplicate() as StyleBoxTexture
+		art.modulate_color = Color(1.25, 1.05, 0.55, 1.0)
+		style_assigned = art
+	else:
+		style_assigned = style_normal.duplicate() as StyleBox
 
 
 # =============================================================================

@@ -9,6 +9,7 @@ display_name = "Ice The Crowned"
 element = 3
 recolour_to_element = true
 saturation_scale = 1.0
+grey_tint = 0.35
 projectile_damage = 26
 max_hp = 6188
 xp_reward = 833

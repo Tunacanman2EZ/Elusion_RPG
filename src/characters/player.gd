@@ -29,6 +29,15 @@ const FLOATING_LABEL_SCENE := preload("res://scene/ui/floatinglabel.tscn")
 const PLAYER_LIGHT_SCENE := preload("res://scene/characters/playerlight.tscn")
 var _carried_light: PointLight2D = null
 
+# The name that floats over this character's head. Built in code for the same
+# reason the light above is: four class scenes would be four copies of one
+# decision. See _setup_nameplate().
+var _nameplate: Label = null
+
+# The crown beside the owner's name. Built alongside the plate and shown to
+# exactly one account - see _setup_nameplate().
+var _nameplate_crown: TextureRect = null
+
 # FloatingLabel.Type.NOTICE.
 #
 # This used to be a bare int with a comment explaining that floatinglabel.gd
@@ -478,6 +487,7 @@ func _ready() -> void:
 			$animatedsprite2d.animation_finished.connect(_on_animatedsprite2d_animation_finished)
 
 	_setup_carried_light()
+	_setup_nameplate()
 
 
 # =============================================================================
@@ -566,6 +576,17 @@ func _physics_process(_delta):
 	# look like a fresh press the instant that block lifted. Every class used
 	# to carry its own copy of this comment and its own copy of the tracker.
 	var attack_pressed: bool = _poll_attack_pressed()
+
+	# AND NOT WHILE TYPING EITHER. "attack" is bound to SPACE, and this is a
+	# poll - a focused text box consumes key EVENTS but a poll reads the
+	# keyboard directly, so every space in a chat message swung the weapon.
+	#
+	# DISCARDED AFTER THE POLL, NEVER INSTEAD OF IT. _poll_attack_pressed()
+	# holds the right-click edge detector and its own comment says it must run
+	# exactly once per physics frame; skipping the call would make a held
+	# button fire twice the moment the box lost focus.
+	if attack_pressed and _typing_in_ui():
+		attack_pressed = false
 
 	if is_dying:
 		velocity = Vector2.ZERO
@@ -1722,7 +1743,7 @@ func set_gold(total: int) -> void:
 
 func update_gold_label() -> void:
 	if gold_label:
-		gold_label.text = "gold: " + str(gold)
+		gold_label.text = "gold: " + GameConstants.commas(gold)
 
 
 func add_lusions(amount: int) -> void:
@@ -1775,6 +1796,270 @@ func _staff_debug_allowed() -> bool:
 	return OS.is_debug_build() and Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)
 
 
+# =============================================================================
+# NAMEPLATE  (who this is, over their head)
+# =============================================================================
+#
+# ATTACHED IN CODE for the same reason the carried light is - see the comment
+# over _setup_carried_light(). Four class scenes would be four copies of one
+# decision and the first tuning pass would drift three of them.
+#
+# WRITTEN FOR A SECOND PLAYER THAT DOES NOT EXIST YET. Nothing in this build
+# draws anybody else: there is no world sync, so the only body on screen is
+# yours. set_nameplate() takes the name and the rank as ARGUMENTS rather than
+# reading Api directly, so the day a remote player is spawned it gets a plate
+# by being told who it is - which is the difference between this being reused
+# and being rewritten.
+
+# WHERE THE TOP OF EACH CLASS'S HEAD ACTUALLY IS, in the character's own
+# space. Measured off the art rather than chosen: for each class, the first row
+# of non-transparent pixels in its idledown frame, placed through that scene's
+# own animatedsprite2d position and offset.
+#
+# THIS USED TO BE ONE NUMBER, -42, borrowed from the damagelabel that sits
+# unused in all four class scenes. One number cannot be right for four classes
+# that do not sit in their frames the same way: the warrior's head is at -17,
+# so -42 floated the plate twenty-five pixels of empty air above it - which at
+# 3x zoom is seventy-five screen pixels. It happened to be nearly right for the
+# mage, whose head is at -41, which is why it looked deliberate.
+#
+# If the art is redrawn, re-measure. A frame whose character moves within it
+# changes these and nothing else will notice.
+const NAMEPLATE_HEAD_Y := {
+	"warrior": -17.0,
+	"mage":    -41.0,
+	"healer":  -37.0,
+	"tank":    -58.0,
+}
+
+# How far above the head the bottom of the text sits. Small on purpose: the
+# plate belongs to the character, and a gap wide enough to fit another name in
+# is a gap somebody else's name will end up in.
+const NAMEPLATE_GAP := 3.0
+
+# THE CROWNED'S OWN CROWN. Not drawn for this - cut out of the boss sheet the
+# game already ships, so the thing over the owner's head is the same crown the
+# player fights their way to the bottom of the crypt to take off something
+# else. 26x15 with its outline, which stands a little taller than the 12px
+# name and is meant to.
+const NAMEPLATE_CROWN_PATH := "res://art/pack/icons/behemothcrown.png"
+
+# WORN, NOT CARRIED. The crown sits ON TOP of the name rather than beside it,
+# which is the difference between a badge and a hat. Beside the name it also
+# widened the whole label by 26px, and the wider a nameplate is the sooner it
+# runs into somebody else's - which is the thing this plate is supposed to be
+# getting out of the way of.
+#
+# The gap is the air between the bottom of the crown and the top of the
+# letters. One pixel: the two are meant to be touching.
+const NAMEPLATE_CROWN_GAP := 1.0
+
+# WHO WEARS IT. One account, named in the server's environment, and it is not a
+# rank that can be handed out - see is_owner() in app.py. A badge that more than
+# one person can be wearing is not a badge.
+const NAMEPLATE_CROWN_RANK := "owner"
+
+# For a class this table has never heard of. The frame's own top edge, worked
+# out from the sprite, is closer than any fixed number would be.
+const NAMEPLATE_FALLBACK_HEAD_Y := -40.0
+
+# THE CAMERA IS NOT FIXED ANY MORE. Every class scene carries a Camera2D
+# authored at zoom = (3, 3), but the "Camera view" setting now drives it
+# between 1.0 and 3.0 - so a plate that divided by a hard 3.0 would double in
+# apparent size the moment somebody pulled the camera back to 1.5.
+#
+# The label lives in world space, so the camera magnifies it: a font built at
+# 12 and scaled by 1/zoom lands back at an apparent 12px at EVERY zoom. Built
+# at 12 rather than at 4 and left alone, because a font asked to render at 4
+# has no glyphs left to render with.
+#
+# The constant below is only the answer for a player with no camera at all,
+# which is a character sitting in a scene run straight from the editor.
+const NAMEPLATE_FALLBACK_ZOOM := 3.0
+const NAMEPLATE_FONT_SIZE := 12
+
+# Above the sprite, which y-sorts. Without this the plate sorts BEHIND the
+# character it belongs to, because it sits at a negative y.
+const NAMEPLATE_Z := 60
+
+
+func _setup_nameplate() -> void:
+	if _nameplate != null:
+		return
+
+	var label := Label.new()
+	label.name = "nameplate"
+	# NEAREST, like every other pixel in the game. A Label left on the default
+	# filter is the one blurry thing on a screen of crisp art.
+	label.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.z_index = NAMEPLATE_Z
+	label.add_theme_font_size_override("font_size", NAMEPLATE_FONT_SIZE)
+	# Outlined, not shadowed. The plate is read against grass, stone, water and
+	# whatever an enemy is standing on, and only an outline survives all four.
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	label.add_theme_constant_override("outline_size", 5)
+	label.top_level = false
+	add_child(label)
+	_nameplate = label
+
+	# LOADED, NOT PRELOADED. preload() resolves when the script is compiled,
+	# so a missing or not-yet-imported texture would stop player.gd loading at
+	# all rather than costing one crown.
+	var crown_texture: Texture2D = load(NAMEPLATE_CROWN_PATH) as Texture2D
+	if crown_texture != null:
+		var crown := TextureRect.new()
+		crown.name = "nameplatecrown"
+		crown.texture = crown_texture
+		crown.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		crown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# SIZED TO THE ART, once. A TextureRect outside a container keeps
+		# whatever size it is given, and _place_nameplate() measures this to
+		# work out where the name starts.
+		crown.size = crown_texture.get_size()
+		crown.z_index = NAMEPLATE_Z
+		crown.visible = false
+		add_child(crown)
+		_nameplate_crown = crown
+
+	set_nameplate(Api.username, Api.role)
+
+	# RANK CAN CHANGE MID-SESSION. api.gd re-reads it on every heartbeat, so a
+	# promotion lands without a relog - and the plate has to repaint when it
+	# does. Connecting beats checking a string that almost never changes on a
+	# timer of its own, forever.
+	if not Api.identity_changed.is_connected(_on_identity_changed):
+		Api.identity_changed.connect(_on_identity_changed)
+
+	# AND WHEN THE CAMERA MOVES. Settings applies the new zoom to the camera
+	# before it emits, so by the time this runs the camera already holds the
+	# number _place_nameplate() is about to read.
+	if not Settings.changed.is_connected(_on_setting_changed):
+		Settings.changed.connect(_on_setting_changed)
+
+
+func set_nameplate(display_name: String, rank: String) -> void:
+	"""Who this body is. Public so a remote player can be told."""
+	if _nameplate == null:
+		return
+
+	var text: String = display_name.strip_edges()
+	_nameplate.text = text
+	# NOTHING TO SAY, NOTHING ON SCREEN. A game run straight from the editor
+	# has no login and so no name, and an empty plate is an outline box
+	# hovering over the character for no reason.
+	_nameplate.visible = text != ""
+	_nameplate.add_theme_color_override("font_color", _nameplate_colour(rank))
+	if _nameplate_crown != null:
+		_nameplate_crown.visible = (text != "" and rank == NAMEPLATE_CROWN_RANK)
+	_place_nameplate()
+
+
+func _nameplate_colour(rank: String) -> Color:
+	"""
+	What colour this name is drawn in.
+
+	A PLAYER PICKS THEIRS. Names overlap the moment two people stand together,
+	and two names in the same parchment colour are one smear - so the hue
+	slider in Options exists to pull them apart.
+
+	STAFF DO NOT GET THE CHOICE. Rank is the one thing a nameplate says that
+	has to be true: if anybody could set their name to the owner's gold, then
+	the colour would stop meaning rank and start meaning "somebody picked
+	gold", which is worth less than nothing. Their own colour still shows up in
+	world chat and the friends list, where the rank comes from the server and
+	cannot be dressed up.
+	"""
+	if rank != "" and rank != "player":
+		return Api.colour_for_role(rank)
+	return Settings.name_colour()
+
+
+func _nameplate_zoom() -> float:
+	# READ OFF THE CAMERA, not off the setting. Same answer almost always, but
+	# the camera is the thing actually doing the magnifying - and reading it
+	# means a scene with its own camera, or one the setting has not reached
+	# yet, still gets a correctly sized plate.
+	var camera: Camera2D = get_node_or_null("camera2d") as Camera2D
+	if camera != null and absf(camera.zoom.x) > 0.01:
+		return absf(camera.zoom.x)
+	return NAMEPLATE_FALLBACK_ZOOM
+
+
+func _nameplate_head_y() -> float:
+	if NAMEPLATE_HEAD_Y.has(character_name):
+		return float(NAMEPLATE_HEAD_Y[character_name])
+
+	# An unlisted class. The top of the sprite's FRAME is not the top of the
+	# character - there is empty space above it in every one of these sheets -
+	# but it is derived from the art rather than invented, so it is the better
+	# guess than a constant.
+	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	if sprite != null and sprite.sprite_frames != null:
+		var frames: SpriteFrames = sprite.sprite_frames
+		if frames.has_animation(sprite.animation) and frames.get_frame_count(sprite.animation) > 0:
+			var texture: Texture2D = frames.get_frame_texture(sprite.animation, 0)
+			if texture != null and texture.get_height() > 0:
+				return sprite.position.y + sprite.offset.y - texture.get_height() * 0.5
+	return NAMEPLATE_FALLBACK_HEAD_Y
+
+
+func _place_nameplate() -> void:
+	if _nameplate == null:
+		return
+
+	var plate_scale: Vector2 = Vector2.ONE / _nameplate_zoom()
+	_nameplate.scale = plate_scale
+
+	# PLACED BY ITS BOTTOM EDGE, not its top. A Label is anchored at its
+	# top-left and grows downwards, so positioning by the top would move the
+	# text every time the font size or the camera zoom changed. What has to
+	# stay put is the gap between the text and the head.
+	_nameplate.size = Vector2.ZERO
+	var wanted: Vector2 = _nameplate.get_combined_minimum_size()
+	var text_w: float = wanted.x * plate_scale.x
+	var text_h: float = wanted.y * plate_scale.y
+
+	# THE NAME IS PLACED FIRST AND THE CROWN GOES ABOVE IT. Doing it the other
+	# way - sizing the pair and then splitting the height - would move the name
+	# itself depending on whether a crown was being worn, and the name is the
+	# part that has to sit in the same place for everybody.
+	var bottom: float = _nameplate_head_y() - NAMEPLATE_GAP
+	_nameplate.position = Vector2(-text_w * 0.5, bottom - text_h)
+
+	# Physics interpolation is on in this project, and a node positioned after
+	# it has already been drawn once streaks in from the origin. Same call, and
+	# the same reason, as the floating damage labels.
+	_nameplate.reset_physics_interpolation()
+
+	if _nameplate_crown != null and _nameplate_crown.visible:
+		_nameplate_crown.scale = plate_scale
+		var crown_w: float = _nameplate_crown.size.x * plate_scale.x
+		var crown_h: float = _nameplate_crown.size.y * plate_scale.y
+		# CENTRED ON THE CHARACTER, not on the text. The two agree today
+		# because the name is centred too, but a long name and a short one
+		# would otherwise wear the crown at different angles.
+		var crown_bottom: float = (bottom - text_h) - NAMEPLATE_CROWN_GAP * plate_scale.y
+		_nameplate_crown.position = Vector2(-crown_w * 0.5, crown_bottom - crown_h)
+		_nameplate_crown.reset_physics_interpolation()
+
+
+func _on_identity_changed(new_username: String, new_role: String) -> void:
+	set_nameplate(new_username, new_role)
+
+
+func _on_setting_changed(key: String, _value: Variant) -> void:
+	if key == "camera_zoom":
+		_place_nameplate()
+	elif key == "name_hue":
+		# Repainted through set_nameplate() rather than by writing the colour
+		# here, so the staff rule above stays in ONE place - a second copy of
+		# it is a second chance to let a player paint themselves gold.
+		set_nameplate(Api.username, Api.role)
+
+
 func _typing_in_ui() -> bool:
 	# A text field that is visible and can be typed into holds the keyboard.
 	# Read-only fields do not count - nothing is being typed into them.
@@ -1802,7 +2087,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F1: _debug_give_item("tinyhealthpotion", 5)
 			KEY_F2: _debug_give_item("ironsword", 1)
 			KEY_F3: _debug_give_item("bushamulet", 1)
-			KEY_F4: _debug_give_item("smallamountofgold", 1)
+			# A GOLD COIN, worth 1000, rather than one of the old heap items
+			# worth 1. The debug key is for seeing whether money works, and a
+			# single copper does not show you that.
+			KEY_F4: _debug_give_item("goldcoin", 1)
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)

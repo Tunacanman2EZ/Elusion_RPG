@@ -9,6 +9,7 @@ display_name = "Fire The Crowned"
 element = 6
 recolour_to_element = true
 saturation_scale = 1.0
+grey_tint = 0.35
 projectile_damage = 35
 max_hp = 8216
 xp_reward = 1106

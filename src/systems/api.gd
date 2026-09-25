@@ -153,6 +153,17 @@ signal connection_changed(online: bool)
 # and heartbeat() is what decides.
 signal unauthorized_seen
 
+
+# WHO THIS CLIENT IS, whenever that changes: a login, a resume, a signout, or a
+# promotion that arrived on a heartbeat.
+#
+# WHY A SIGNAL AND NOT A POLL. Rank is re-read every 15 seconds and changes
+# almost never, so anything that paints it - the nameplate over the player's
+# head, the colour of their name in chat - would otherwise have to check a
+# string it already knows on a timer of its own, forever, to catch an event
+# that happens once. Listeners connect once and are told.
+signal identity_changed(new_username: String, new_role: String)
+
 # Whether the last request got an answer of ANY kind. A 401 counts as online:
 # the question is whether the server is there, not whether it liked us.
 #
@@ -195,6 +206,15 @@ var username: String = ""
 # require_owner in app.py.
 var is_owner: bool = false
 
+# Whether this account still owes us a confirmed recovery address.
+#
+# Held in memory only, like is_owner and role, and re-read from the server on
+# every login, register and resume. It is a PROMPT, not a permission - the
+# server never refuses anything because of it, it simply keeps answering
+# "true" until an address has been confirmed, and the login screen keeps
+# asking. Nothing on disk has a say.
+var needs_email: bool = false
+
 # This account's rank, as the server understands it. The chain of command runs
 # owner > dev > mod > player, and there is no fifth rank. Same rules as is_owner
 # - memory only, re-read on every login and resume, never written to
@@ -216,6 +236,28 @@ var signout_notice: String = ""
 const DEBUG_KEYS_MIN_ROLE := "mod"
 
 
+# WHAT EACH RANK LOOKS LIKE. Defined here, with the rank itself, because two
+# places now paint it - the nameplate above a player and their name in world
+# chat - and a rank that is gold in one and orange in the other reads as two
+# different people.
+#
+# The player colour is the theme's own font colour, so an ordinary name looks
+# like ordinary text rather than like a rank nobody has.
+const RANK_COLOURS := {
+	"owner":  Color(1.0, 0.78, 0.35),
+	"dev":    Color(0.62, 0.82, 1.0),
+	"mod":    Color(0.55, 0.95, 0.68),
+	"player": Color(0.95, 0.85, 0.6),
+}
+
+
+func colour_for_role(which: String) -> Color:
+	# An unknown rank paints as a player, for the same reason role_at_least()
+	# sorts one lowest: a newer server naming a rank this build has never heard
+	# of must not be given a colour that says "staff".
+	return RANK_COLOURS.get(which, RANK_COLOURS["player"])
+
+
 func role_at_least(minimum: String) -> bool:
 	# Mirrors role_at_least() in app.py, and for the same reason: "mod or
 	# above" should be one comparison rather than an expression repeated at
@@ -234,6 +276,24 @@ func role_at_least(minimum: String) -> bool:
 
 func is_logged_in() -> bool:
 	return token != ""
+
+
+func _set_identity(new_username: String, new_role: String, owner_flag: bool) -> void:
+	# EVERY WRITE TO THESE THREE GOES THROUGH HERE. They are set from four
+	# places - login, resume, heartbeat and signout - and a signal emitted from
+	# three of them is a signal that is wrong on the fourth.
+	#
+	# The comparison is not an optimisation. heartbeat() runs every 15 seconds
+	# and assigns the same rank almost every time; emitting on each of those
+	# would have listeners rebuilding a label four times a minute forever.
+	var changed: bool = (username != new_username
+		or role != new_role
+		or is_owner != owner_flag)
+	username = new_username
+	role = new_role
+	is_owner = owner_flag
+	if changed:
+		identity_changed.emit(username, role)
 
 
 # =============================================================================
@@ -341,6 +401,49 @@ func _log_server_reachability() -> void:
 # REQUESTS
 # =============================================================================
 
+# HOW MANY REQUESTS THIS CLIENT HAS MADE, AND WHY IT IS WORTH COUNTING.
+#
+# This is the number that decides how many people the server can hold, and it
+# is the only one on the perf overlay that is not about this machine at all.
+#
+# The frame counters answer "is the game smooth for me". This answers "what
+# does one of me cost the server", and it is multiplied by every player at
+# once: the load test puts the read ceiling around 800 requests a second, so a
+# client that polls at 0.75/s fits about a thousand players on that box and one
+# that polls at 3/s fits two hundred and fifty. Nobody notices adding a panel
+# that refreshes every two seconds. Everybody notices the box it lands on.
+#
+# A ROLLING WINDOW, NOT A TOTAL. A total only says the session was long. What
+# matters is the rate right now, with whatever panels happen to be open - which
+# is the thing that changes as the game grows.
+const REQUEST_WINDOW_SECONDS := 20.0
+
+var _request_times: Array[float] = []
+var _requests_total: int = 0
+
+
+func _note_request() -> void:
+	# Called from the one funnel every request goes through. Cheap by
+	# construction: one append and a trim of whatever fell out of the window.
+	var now: float = Time.get_ticks_msec() / 1000.0
+	_requests_total += 1
+	_request_times.append(now)
+	var cutoff: float = now - REQUEST_WINDOW_SECONDS
+	while not _request_times.is_empty() and _request_times[0] < cutoff:
+		_request_times.remove_at(0)
+
+
+func requests_per_second() -> float:
+	"""The rate over the last REQUEST_WINDOW_SECONDS, for the perf overlay."""
+	if _request_times.is_empty():
+		return 0.0
+	return float(_request_times.size()) / REQUEST_WINDOW_SECONDS
+
+
+func requests_total() -> int:
+	return _requests_total
+
+
 func get_json(path: String, timeout_override: float = 0.0) -> Dictionary:
 	return await _request(HTTPClient.METHOD_GET, path, {}, timeout_override)
 
@@ -351,6 +454,78 @@ func post(path: String, body: Dictionary, timeout_override: float = 0.0) -> Dict
 
 func put(path: String, body: Dictionary) -> Dictionary:
 	return await _request(HTTPClient.METHOD_PUT, path, body)
+
+
+# RAW BYTES GOING OUT, the mirror of get_bytes() below, and the only caller is
+# the picture upload.
+#
+# WHY NOT BASE64 THROUGH post(). Because base64 is a third bigger, and the
+# server refuses a body over four megabytes - so a four-megabyte photo becomes
+# five and a half and bounces off a limit it is not actually over. The player
+# would be told their picture was too big for a picture that was not. Binary
+# costs nothing extra and fits the number that is written down.
+#
+# UNLIKE get_bytes, the ANSWER here is ordinary JSON, so it is read by the same
+# function every other call uses. A raw POST that failed to notice a 401, or
+# forgot to mark the server reachable, would be a second client with quietly
+# different opinions.
+func post_bytes(path: String, payload: PackedByteArray, content_type: String,
+		extra_headers: Dictionary = {}, timeout_override: float = 0.0) -> Dictionary:
+	var http := HTTPRequest.new()
+	http.timeout = timeout_override if timeout_override > 0.0 else TIMEOUT
+	add_child(http)
+
+	var headers := PackedStringArray(["Content-Type: " + content_type])
+	var sent_token: String = token
+	if token != "":
+		headers.append("Authorization: Bearer " + token)
+	for key in extra_headers:
+		headers.append("%s: %s" % [str(key), str(extra_headers[key])])
+
+	var err := http.request_raw(BASE_URL + path, headers, HTTPClient.METHOD_POST, payload)
+	if err != OK:
+		http.queue_free()
+		_set_online(false)
+		return _failure(0, "Could not reach the server.")
+
+	return await _read_answer(http, sent_token, path)
+
+
+func get_bytes(path: String, timeout_override: float = 0.0) -> Dictionary:
+	"""
+	A GET whose answer is not JSON - a picture, so far.
+
+	SEPARATE FROM _request() ON PURPOSE. That one parses every response as JSON
+	and decides the server's reachability from it, and a PNG is neither JSON
+	nor evidence of anything different. This is the same request with neither
+	of those steps, returning {"ok": bool, "status": int, "bytes":
+	PackedByteArray}.
+	"""
+	var http := HTTPRequest.new()
+	http.timeout = timeout_override if timeout_override > 0.0 else TIMEOUT
+	add_child(http)
+
+	var headers := PackedStringArray()
+	if token != "":
+		headers.append("Authorization: Bearer " + token)
+
+	_note_request()
+	var err := http.request(BASE_URL + path, headers, HTTPClient.METHOD_GET)
+	if err != OK:
+		http.queue_free()
+		return {"ok": false, "status": 0, "bytes": PackedByteArray()}
+
+	var result: Array = await http.request_completed
+	http.queue_free()
+
+	var status: int = result[1]
+	if result[0] != HTTPRequest.RESULT_SUCCESS:
+		return {"ok": false, "status": status, "bytes": PackedByteArray()}
+	return {
+		"ok": status >= 200 and status < 300,
+		"status": status,
+		"bytes": result[3] as PackedByteArray,
+	}
 
 
 func _request(method: int, path: String, body: Dictionary, timeout_override: float = 0.0) -> Dictionary:
@@ -373,12 +548,20 @@ func _request(method: int, path: String, body: Dictionary, timeout_override: flo
 	if not body.is_empty():
 		payload = JSON.stringify(body)
 
+	_note_request()
 	var err := http.request(BASE_URL + path, headers, method, payload)
 	if err != OK:
 		http.queue_free()
 		_set_online(false)
 		return _failure(0, "Could not reach the server.")
 
+	return await _read_answer(http, sent_token, path)
+
+
+# EVERY JSON ANSWER COMES THROUGH HERE, whatever shape the request was. Split
+# out so post_bytes() can exist without becoming a second client with its own
+# opinions about what a 401 means or what proves the server is up.
+func _read_answer(http: HTTPRequest, sent_token: String, path: String) -> Dictionary:
 	# suspends here until the response lands — this is why every caller
 	# has to await. result[] is [result, response_code, headers, body].
 	var result: Array = await http.request_completed
@@ -483,9 +666,11 @@ func probe_and_resume() -> Dictionary:
 		return {"online": true, "resumed": false}
 
 	if res.get("ok", false):
-		username = res.data.get("username", username)
-		is_owner = bool(res.data.get("is_owner", false))
-		role = str(res.data.get("role", "player"))
+		_set_identity(
+			str(res.data.get("username", username)),
+			str(res.data.get("role", "player")),
+			bool(res.data.get("is_owner", false)))
+		needs_email = bool(res.data.get("needs_email", false))
 		return {"online": true, "resumed": true}
 
 	# Reached the server and it said no — the token expired or was revoked.
@@ -515,8 +700,12 @@ func heartbeat() -> String:
 		return "stale"
 	var verdict: String = heartbeat_verdict(res)
 	if verdict == "ok" and res.get("data") is Dictionary:
-		role = str(res.data.get("role", role))
-		is_owner = bool(res.data.get("is_owner", is_owner))
+		# Username is passed through unchanged: this response carries one, but
+		# a heartbeat is not where an account gets renamed, and reading it here
+		# would make a missing field look like a rename.
+		_set_identity(username,
+			str(res.data.get("role", role)),
+			bool(res.data.get("is_owner", is_owner)))
 	return verdict
 
 
@@ -537,6 +726,21 @@ func heartbeat_verdict(res: Dictionary) -> String:
 	return "offline"
 
 
+func adopt_new_token(new_token: String) -> void:
+	# A PASSWORD CHANGE DESTROYS EVERY SESSION AND ISSUES ONE REPLACEMENT in the
+	# same response, so the player who made the change stays logged in while
+	# everyone else is thrown out. This adopts that replacement.
+	#
+	# NOT _adopt_session(). That reads username, role and is_owner out of the
+	# payload it is given, and this payload carries none of them - so it would
+	# reset the name to "" and the rank to "player". A password change that
+	# quietly demoted the owner would be a memorable bug.
+	if new_token == "":
+		return
+	token = new_token
+	_save_session()
+
+
 func forget_session(notice: String) -> void:
 	# The server already ended this session, so there is nobody to tell -
 	# Api.logout() would spend a request on a token that no longer exists.
@@ -551,9 +755,11 @@ func forget_session(notice: String) -> void:
 
 func _adopt_session(data: Dictionary) -> void:
 	token = data.get("token", "")
-	username = data.get("username", "")
-	is_owner = bool(data.get("is_owner", false))
-	role = str(data.get("role", "player"))
+	_set_identity(
+		str(data.get("username", "")),
+		str(data.get("role", "player")),
+		bool(data.get("is_owner", false)))
+	needs_email = bool(data.get("needs_email", false))
 
 	# _save_session() writes the token and username only. is_owner is
 	# deliberately not among them — it is re-read from the server on every
@@ -563,9 +769,7 @@ func _adopt_session(data: Dictionary) -> void:
 
 func _clear_session() -> void:
 	token = ""
-	username = ""
-	is_owner = false
-	role = "player"
+	_set_identity("", "player", false)
 	DirAccess.remove_absolute(SESSION_PATH)
 
 
@@ -615,6 +819,19 @@ func describe_offline() -> String:
 	if OS.is_debug_build():
 		return "No connection — nothing answering at %s. Is app.py running?" % BASE_URL
 	return "Can't reach the Elusion server. Check your connection and try again."
+
+
+func describe_online() -> String:
+	# The player-facing confirmation that the server is reachable — the positive
+	# twin of describe_offline(), kept beside it so both wordings live in one
+	# place and every screen says the same thing.
+	#
+	# Debug builds name the address for the same reason describe_offline() does:
+	# when it's you, the address is the fastest way to confirm you're pointed at
+	# the right server. A shipped build never shows a player a raw URL.
+	if OS.is_debug_build():
+		return "Server online at %s — ready when you are." % BASE_URL
+	return "Connected to the Elusion server."
 
 
 # =============================================================================

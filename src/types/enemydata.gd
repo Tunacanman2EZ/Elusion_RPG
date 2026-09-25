@@ -236,6 +236,34 @@ class_name EnemyData
 # first guess at it.
 @export var saturation_scale: float = 1.0
 
+# WHICH PIXELS THE ELEMENT RECOLOUR IS ALLOWED TO TOUCH.
+#
+# A slime is one material, so recolouring the whole sheet is right - a fire
+# slime should be fire all over. A robed creature is not: the bush mage's green
+# robe should change element while its skin and the gold on its staff stay put.
+# Left at -1 the recolour hits every coloured pixel, exactly as before. Set to
+# the OUTFIT's own hue (0..1, the hue it is drawn in on the base sheet - the bush
+# mage's robe is green, ~0.29) and only pixels within `outfit_hue_band` of it are
+# recoloured; everything else keeps the colour the artist drew.
+#
+# TUNE IT BY EYE. These are art direction, not measurement: nudge outfit_hue onto
+# the garment and widen outfit_hue_band until the robe is fully caught but the
+# skin and accents are not. -1 disables the mask, which is correct for slimes and
+# sprites. If a sheet's shading drifts too far in hue to separate cleanly, that
+# sheet wants a paint-on mask instead - this handles the clean-palette common case
+# for free.
+@export_range(-1.0, 1.0) var outfit_hue: float = -1.0
+@export_range(0.0, 0.5) var outfit_hue_band: float = 0.5
+
+# HOW MUCH THE GREY/BLACK PARTS TAKE THE ELEMENT'S COLOUR. Hue rotation only
+# moves pixels that already have a hue, so a creature that is mostly grey - the
+# boss is about half grey and black - barely changes between elements: same dark
+# body, only the crown and effects differ. Above 0, the greys are tinted toward
+# the element at this strength (keeping their brightness, so black stays black),
+# which is what makes a fire boss read dark-warm and an ice boss dark-cool. Leave
+# 0 for anything already colourful; ~0.35 is a strong, still-tasteful boss tint.
+@export_range(0.0, 1.0) var grey_tint: float = 0.0
+
 
 # =============================================================================
 # THREAT

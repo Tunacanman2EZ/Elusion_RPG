@@ -301,7 +301,7 @@ texture = ExtResource("6_hauye")
 
 [node name="attackbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=101700174]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 10)
+custom_minimum_size = Vector2(200, 18)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -309,29 +309,36 @@ show_percentage = false
 
 [node name="attackbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow/attackbar" unique_id=1846724919]
 unique_name_in_owner = true
-layout_mode = 0
-offset_left = 86.0
-offset_top = -2.0
-offset_right = 113.0
-offset_bottom = 12.0
-theme_override_font_sizes/font_size = 10
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
 text = "0/100"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="attackvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=666215065]
 unique_name_in_owner = true
-texture_filter = 1
+custom_minimum_size = Vector2(34, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.6, 0.4, 1)
 text = "1"
+horizontal_alignment = 2
 
 [node name="defenserow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox" unique_id=1312994536]
 layout_mode = 2
 
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=2087719953]
+custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Defense:"
 
@@ -343,7 +350,7 @@ texture = ExtResource("7_nmnmi")
 
 [node name="defensebar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=1151399401]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 10)
+custom_minimum_size = Vector2(200, 18)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -355,19 +362,20 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 85.0
-offset_top = -6.0
-offset_right = -87.0
-offset_bottom = 7.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 10
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
 text = "0/100"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="defensevalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=1348993767]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(34, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 0.7, 1, 1)
 text = "1"
@@ -377,8 +385,9 @@ horizontal_alignment = 2
 layout_mode = 2
 
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=461802380]
+custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Agility:"
 
@@ -390,7 +399,7 @@ texture = ExtResource("8_0u0r4")
 
 [node name="agilitybar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=1980357902]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 10)
+custom_minimum_size = Vector2(200, 18)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -402,19 +411,20 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 85.0
-offset_top = -6.0
-offset_right = -86.0
-offset_bottom = 7.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 10
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
 text = "0/100"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="agilityvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=842119567]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(34, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 1, 0.6, 1)
 text = "1"
@@ -424,8 +434,9 @@ horizontal_alignment = 2
 layout_mode = 2
 
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=892800830]
+custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Magic:"
 
@@ -437,7 +448,7 @@ texture = ExtResource("9_0oet0")
 
 [node name="magicbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=2066434972]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 10)
+custom_minimum_size = Vector2(200, 18)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -449,19 +460,20 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 86.0
-offset_top = -6.0
-offset_right = -87.0
-offset_bottom = 7.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 10
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
 text = "0/100"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="magicvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=503675417]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(34, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.5, 1, 1)
 text = "1"
@@ -494,8 +506,9 @@ horizontal_alignment = 1
 layout_mode = 2
 
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=984984238]
+custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Fishing:"
 
@@ -507,7 +520,7 @@ texture = ExtResource("10_23bjm")
 
 [node name="fishingbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=455983359]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 10)
+custom_minimum_size = Vector2(200, 18)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -519,17 +532,20 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -6.5
-offset_bottom = 6.5
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 10
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
 text = "0/100"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="fishingvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=67483399]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(34, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.4, 0.8, 1, 1)
 text = "1"
@@ -539,8 +555,9 @@ horizontal_alignment = 2
 layout_mode = 2
 
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=2082493353]
+custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 text = "Cooking:"
 
@@ -552,7 +569,7 @@ texture = ExtResource("11_mtu1p")
 
 [node name="cookingbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=224907749]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 10)
+custom_minimum_size = Vector2(200, 18)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -564,17 +581,20 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -6.5
-offset_bottom = 6.5
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_font_sizes/font_size = 10
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
 text = "0/100"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="cookingvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=1156372384]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(34, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.7, 0.4, 1)
 text = "1"

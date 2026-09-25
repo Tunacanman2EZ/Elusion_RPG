@@ -87,8 +87,12 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
 [node name="goldicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=313845736]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 texture = ExtResource("3_d77iw")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="goldlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyhbox/goldcontainer" unique_id=149820312]
 unique_name_in_owner = true

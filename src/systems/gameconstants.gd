@@ -14,6 +14,23 @@ extends Node
 # lusions required to revive at the game-over screen.
 const REVIVE_COST: int = 20
 
+# WHAT ONE LUSION IS WORTH IN GOLD.
+#
+# Needed the moment two currencies are added into one number - the high score
+# is the only place that does it - and stated once here rather than inlined
+# where they are added, because the day it is tuned it must move everywhere.
+#
+# WHERE 1000 COMES FROM. It is one gold coin on the denomination ladder, which
+# makes the premium currency legible against the thing players actually count:
+# a lusion is a gold coin. It also lands the two revive paths near each other
+# in cost - the lusion revive is 20 lusions, so 20,000 gold, and the gold
+# revive takes 80% of what you hold, which is the same bill for somebody
+# carrying about 25,000. Choosing between them is then a real choice.
+#
+# NOT AN EXCHANGE RATE PLAYERS CAN TRADE AT, and nothing lets them. It is the
+# weight used when one number has to describe both.
+const LUSION_GOLD_VALUE: int = 1000
+
 # a duplicate pet (rolled but already owned) converts to this many lusions —
 # deliberately equal to REVIVE_COST so a dupe pet is exactly one free revive.
 const DUPE_PET_LUSIONS: int = 20
@@ -34,6 +51,36 @@ const DUPE_PET_LUSIONS: int = 20
 # beside the trade tax. A sink nobody can see is a tax; a sink with a
 # scoreboard is a contribution. See gold_ledger and /api/economy/kingdom.
 const REVIVE_GOLD_RATE: float = 0.80
+
+# THE FLOOR UNDER THAT SHARE, and it is the one place this design gives
+# something up on purpose.
+#
+# The share alone has a hole at the bottom. Eighty percent of the thirty gold a
+# fresh character is carrying is twenty-four gold, which is not a death, it is a
+# toll — and it got CHEAPER the less you had, so the cheapest way out of dying
+# broke was to die again rather than walk home. A sink that rewards the
+# behaviour it is meant to discourage is not a sink.
+#
+# 100 IS ONE COPPER STACK SHORT OF A SILVER-STACK-AND-CHANGE, which in practice
+# is two or three tier-2 kills. Deaths that cost two kills are felt; deaths that
+# cost twenty-four gold are not.
+#
+# WHAT IT COSTS, IN THREE BANDS — and it is three, not two, which is the part
+# that is easy to get wrong. The share drops below the floor at 125 gold, but
+# the gold route only CLOSES at 100:
+#
+#   under 100    the price is more than you hold  → the gold route is refused
+#   100 to 123   the floor sits above the share   → you pay 100, not the share
+#   124 and up   the share sits above the floor   → nothing changed at all
+#
+# So the old guarantee that this route could always be paid no longer holds,
+# but only for the bottom hundred gold. That is deliberate — the lusion revive
+# and the walk are both still there — and it is why this constant has a comment
+# this long.
+#
+# ABOVE THE FLOOR NOTHING MOVES. At 5,000 gold the share is 4,000 and this
+# number never enters the arithmetic.
+const REVIVE_GOLD_MINIMUM: int = 100
 
 
 # =============================================================================
@@ -175,3 +222,131 @@ const KINGDOM_TAX_RATE: float = 0.05
 # as ten trades of 10 costs 10 - so the cheapest way to move value is the honest
 # one. Same rule and same reason as shop_price().
 const KINGDOM_TAX_MINIMUM: int = 1
+
+
+# =============================================================================
+# NUMBER FORMATTING
+# =============================================================================
+
+func commas(amount: int) -> String:
+	# Thousands separators, because the economy grew past the point where a bare
+	# run of digits is readable.
+	#
+	# WHY THIS IS SUDDENLY WORTH AN AUTOLOAD FUNCTION. It used to live as a
+	# private _commas() in kingdomboard.gd, with a comment saying a shared helper
+	# was not worth the indirection for one call site. That was true when the
+	# kingdom board held the only genuinely large number in the game. It stopped
+	# being true when gear was rescaled x8 and the jackpot dice started paying
+	# six figures: "Gold: 131760" is now a number a player reads in the backpack,
+	# the bank, the shop and the HUD, and four hand-rolled copies of this loop is
+	# four places for it to drift.
+	#
+	# GDScript's String has no thousands separator and % does not do grouping, so
+	# this is built by hand. Negative amounts keep their sign outside the groups
+	# (-1,204, not -,1204), which matters because bank and trade deltas are shown
+	# signed.
+	var digits: String = str(absi(amount))
+	var out: String = ""
+	var count: int = 0
+	for index in range(digits.length() - 1, -1, -1):
+		out = digits[index] + out
+		count += 1
+		if count % 3 == 0 and index > 0:
+			out = "," + out
+	return ("-" + out) if amount < 0 else out
+
+
+func gold_text(amount: int) -> String:
+	# "1 gold" / "1,204 gold". One place decides the noun so a stray "1 golds"
+	# cannot appear in one panel and not another.
+	return "%s gold" % commas(amount)
+
+
+# =============================================================================
+# THE COIN LADDER, FOR DISPLAY
+# =============================================================================
+#
+# WHICH COIN A BALANCE LOOKS LIKE. Eight denominations exist, they are drawn,
+# priced and dropped - and until now the only place a player ever saw one was
+# the moment it landed in the backpack. Every gold figure in the UI sat beside
+# the same single icon whether it read 40 or 131,760.
+#
+# THE RULE IS THE LARGEST COIN THAT FITS, which is the first coin make_change()
+# would reach for. 40 gold is a copper stack; 1,760 is a gold coin; 131,760 is
+# platinum. That makes the ladder legible from the HUD rather than from a wiki,
+# and it means the icon changes as you get richer, which is the whole reward.
+#
+# READ OFF ItemRegistry, NOT A TABLE HERE. Each coin's value lives on its
+# ItemData where it belongs, and the ORDER lives on BaseEnemy.GOLD_DENOMINATION_
+# IDS where the server reads it from. A third copy in this file is a third thing
+# to keep in step - the exact drift exportgamedata.gd exists to prevent.
+
+# Built once on first use, because it walks eight resources and the answer only
+# changes when the game is rebuilt.
+var _gold_ladder: Array = []
+
+
+func _gold_ladder_cached() -> Array:
+	# [[value, item_id], ...] richest first.
+	if not _gold_ladder.is_empty():
+		return _gold_ladder
+	if not is_instance_valid(ItemRegistry):
+		return []
+	var built: Array = []
+	for item_id in BaseEnemy.GOLD_DENOMINATION_IDS:
+		var data: ItemData = ItemRegistry.get_item(String(item_id))
+		# has_item() first would be a second lookup; get_item() answering null
+		# is the same question asked once. A missing coin is skipped rather
+		# than faked - an icon for a denomination that does not exist would be
+		# a lie the player cannot check.
+		if data == null:
+			continue
+		var worth: int = int(data.value)
+		if worth > 0:
+			built.append([worth, String(item_id)])
+	built.sort_custom(func(a, b): return int(a[0]) > int(b[0]))
+	_gold_ladder = built
+	return _gold_ladder
+
+
+func gold_denomination_for(amount: int) -> String:
+	# The item_id of the largest coin that fits in `amount`, or the smallest
+	# coin on the ladder when nothing does.
+	#
+	# EMPTY POCKETS GET THE COPPER COIN rather than no icon at all. A missing
+	# icon reads as a broken panel; a copper coin reads as being broke, which is
+	# the true and more useful statement.
+	var ladder: Array = _gold_ladder_cached()
+	if ladder.is_empty():
+		return ""
+	for rung in ladder:
+		if amount >= int(rung[0]):
+			return String(rung[1])
+	return String(ladder[ladder.size() - 1][1])
+
+
+func gold_icon_for(amount: int) -> Texture2D:
+	# The coin's own icon, straight off its ItemData - the same art the backpack
+	# draws, so the thing in your purse and the thing on the label cannot end up
+	# being different pictures.
+	var item_id: String = gold_denomination_for(amount)
+	if item_id == "":
+		return null
+	var data: ItemData = ItemRegistry.get_item(item_id)
+	return data.icon if data != null else null
+
+
+func apply_gold_icon(node: Node, amount: int) -> bool:
+	# Point a TextureRect at the coin for this balance. Returns whether it did.
+	#
+	# TAKES A Node AND CHECKS, because the panels that call this find their icon
+	# by name in a scene the designer owns, and that scene is edited in Godot.
+	# A null node or a node that is not a TextureRect is a scene that has moved
+	# on, not a crash - the label beside it still says the number.
+	if node == null or not (node is TextureRect):
+		return false
+	var texture: Texture2D = gold_icon_for(amount)
+	if texture == null:
+		return false
+	(node as TextureRect).texture = texture
+	return true

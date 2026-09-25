@@ -98,7 +98,7 @@ func _update_display() -> void:
 	var current_lusions: int = _get_current_lusions()
 
 	if has_node("%lusionslabel"):
-		$"%lusionslabel".text = "Lusions: %d" % current_lusions
+		$"%lusionslabel".text = "Lusions: %s" % GameConstants.commas(current_lusions)
 
 	# THE SCORE, WHICH IS THE ONE NUMBER THAT GOES UP WHEN YOU LOSE.
 	#
@@ -130,10 +130,25 @@ func _update_display() -> void:
 	if has_node("%revivegoldbutton"):
 		var btn: Button = $"%revivegoldbutton"
 		var price: int = _gold_revive_price()
-		btn.text = "Revive (%d Gold)" % price
-		# Zero means an empty purse AND an empty bank, which is the one case
-		# the gold route cannot cover. Nothing to take, so nothing to offer.
-		btn.disabled = price <= 0
+		var held: int = _gold_revive_held()
+		if price > held:
+			# THE FLOOR, SPELLED OUT ON THE BUTTON. Below 100 gold the price
+			# is more than the player holds and the server refuses the gold
+			# route outright. A button reading "Revive (100 Gold)" that greys
+			# out without saying why reads as a bug; one reading "Need 100
+			# Gold" is a price tag the player can act on.
+			#
+			# THIS BRANCH IS THE ONLY ONE THAT FIRES BELOW 100. Between 100 and
+			# 123 the floor still lifts the price above the share, but it is
+			# affordable, so that case takes the ordinary branch and simply
+			# shows a higher number than the percentage would suggest.
+			btn.text = "Need %s Gold" % GameConstants.commas(price)
+			btn.disabled = true
+		else:
+			btn.text = "Revive (%s Gold)" % GameConstants.commas(price)
+			# Zero means an empty purse AND an empty bank, which is the one case
+			# the gold route cannot cover. Nothing to take, so nothing to offer.
+			btn.disabled = price <= 0
 
 
 func _get_current_lusions() -> int:
@@ -240,6 +255,20 @@ func _revive_paying_with(method: String) -> void:
 	get_tree().change_scene_to_file(world_scene_path)
 
 
+func _gold_revive_held() -> int:
+	"""Carry plus bank, the same pair _gold_revive_price() charges against.
+
+	SPLIT OUT so the button can compare the price to the balance without
+	computing the balance a second way. Two hand-rolled copies of "carry plus
+	bank" is how a button ends up disagreeing with the price printed on it."""
+	var carried: int = 0
+	var char_name: String = GameState.death_state.get("character_name", "")
+	if char_name != "":
+		var slot_data: Dictionary = CharacterData.get_character_by_name(char_name)
+		carried = int(slot_data.get("gold", 0))
+	return carried + CharacterData.get_bank_gold()
+
+
 func _gold_revive_price() -> int:
 	"""What the server will charge: a share of carry AND banked gold together.
 
@@ -255,7 +284,14 @@ func _gold_revive_price() -> int:
 	var total: int = carried + CharacterData.get_bank_gold()
 	if total <= 0:
 		return 0
-	return int(ceil(float(total) * GameConstants.REVIVE_GOLD_RATE))
+	# maxi() against the floor, mirroring gamedata.revive_gold_cost(). The
+	# result CAN exceed what the player holds - that is what the floor does at
+	# the bottom of the curve - and the caller is what decides whether to offer
+	# the button, not this function. A price clamped to the balance here would
+	# put an affordable-looking number on a button the server is going to
+	# refuse.
+	return maxi(GameConstants.REVIVE_GOLD_MINIMUM,
+		int(ceil(float(total) * GameConstants.REVIVE_GOLD_RATE)))
 
 
 func _on_revive_gold_pressed() -> void:

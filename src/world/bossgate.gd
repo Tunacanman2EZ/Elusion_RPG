@@ -93,7 +93,11 @@ func _ready() -> void:
 	# drawing nothing" without opening the scene. One line removes that whole
 	# question. Debug builds only - it is a diagnostic, not a game message.
 	if OS.is_debug_build():
-		var where: String = _boss.name if _boss != null else "(no boss)"
+		# String(), because a Node's `name` is a StringName and the other
+		# branch is a String - two different types either side of a ternary,
+		# which Godot is right to complain about even though both print the
+		# same. The conversion is the whole fix; the line does what it did.
+		var where: String = String(_boss.name) if _boss != null else "(no boss)"
 		# THE PANE STATE, NOT JUST THE WIRING. Two builds of this were present,
 		# correctly wired and completely invisible - first a ColorRect with no
 		# resolved size, then a PlaceholderTexture2D, which reports a size and
@@ -136,9 +140,9 @@ func _tint() -> void:
 	# Element.COLOURS is the same palette the recolour shader puts on the boss
 	# itself, so the prism and the thing inside it always agree.
 	var colour: Color = Element.COLOURS.get(element, Element.COLOURS[Element.Type.ICE])
-	for material in _panes():
-		material.set_shader_parameter("tint", colour)
-		material.set_shader_parameter("dissolve", 0.0)
+	for pane_material in _panes():
+		pane_material.set_shader_parameter("tint", colour)
+		pane_material.set_shader_parameter("dissolve", 0.0)
 
 
 func is_open() -> bool:
@@ -184,8 +188,8 @@ func open() -> void:
 
 
 func _set_dissolve(value: float) -> void:
-	for material in _panes():
-		material.set_shader_parameter("dissolve", value)
+	for pane_material in _panes():
+		pane_material.set_shader_parameter("dissolve", value)
 
 
 func shut() -> void:

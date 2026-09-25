@@ -720,16 +720,6 @@ func _parent_to_projectiles_container(wave: Node) -> void:
 # DIRECTION HELPERS
 # =============================================================================
 
-# Snaps ANY direction vector to its nearest cardinal. Generalized from
-# _last_direction_to_cardinal(), which only ever read last_direction; warrior
-# now calls it with _swing_aim_direction (cursor-based) instead. STILL USED for
-# hitbox selection (4-way) and as the fallback when a diagonal animation is
-# missing — see _octant_from_direction() for the 8-way version used for
-# animation selection.
-func _cardinal_from_direction(dir: Vector2) -> String:
-	return Facing.from_vec_total(dir)
-
-
 # The TUNED 4-way choice for a swing: the nearest cardinal, but with a horizontal
 # bias and optional hysteresis applied so the fallback feels smooth with only the
 # four drawn frames. Used for the hitbox and for the animation fallback; the raw

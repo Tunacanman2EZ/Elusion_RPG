@@ -3,8 +3,6 @@
 [ext_resource type="Script" uid="uid://d1lilxv0r0634" path="res://src/enemies/boss.gd" id="1_boss"]
 [ext_resource type="Texture2D" uid="uid://clru34rpbm7dh" path="res://art/tiles/underground.png" id="2_tiles"]
 [ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/characterhud.tscn" id="3_hud"]
-[ext_resource type="PackedScene" uid="uid://d377s2b0gefqn" path="res://scene/ladderup.tscn" id="4_ladderup"]
-[ext_resource type="Script" uid="uid://liyvr0aortjw" path="res://src/world/ladder.gd" id="5_ladder"]
 [ext_resource type="Script" uid="uid://blrs7e81o2jg4" path="res://src/world/fieldportal.gd" id="6_portal"]
 [ext_resource type="PackedScene" uid="uid://b7mqtx4vhjs2e" path="res://scene/world/enemyrespawner.tscn" id="8_respawner"]
 [ext_resource type="PackedScene" path="res://scene/crypt/cryptambience.tscn" id="9_ambience"]
@@ -16,11 +14,10 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/fireboss.tscn" id="24_y8cpd"]
 [ext_resource type="PackedScene" path="res://scene/enemy/iceboss.tscn" id="25_phmlf"]
 [ext_resource type="PackedScene" path="res://scene/enemy/lightboss.tscn" id="26_ypv32"]
-[ext_resource type="PackedScene" path="res://scene/environment/bossgate.tscn" id="p_bossgate"]
-[ext_resource type="Script" path="res://src/world/bossgauntlet.gd" id="s_gauntlet"]
 [ext_resource type="PackedScene" path="res://scene/enemy/waterboss.tscn" id="27_6b28i"]
 [ext_resource type="PackedScene" path="res://scene/enemy/windboss.tscn" id="28_b7854"]
 [ext_resource type="PackedScene" path="res://scene/crypt/bones.tscn" id="p_bones"]
+[ext_resource type="PackedScene" uid="uid://cq8x2gatepr1s" path="res://scene/environment/bossgate.tscn" id="p_bossgate"]
 [ext_resource type="PackedScene" path="res://scene/crypt/candelabra.tscn" id="p_candelabra"]
 [ext_resource type="PackedScene" path="res://scene/crypt/lantern.tscn" id="p_lantern"]
 [ext_resource type="PackedScene" path="res://scene/crypt/pillar.tscn" id="p_pillar"]
@@ -31,7 +28,8 @@
 [ext_resource type="PackedScene" path="res://scene/crypt/wallrun4.tscn" id="p_wallrun4"]
 [ext_resource type="PackedScene" path="res://scene/crypt/wallsidea.tscn" id="p_wallsidea"]
 [ext_resource type="PackedScene" path="res://scene/crypt/wallsideb.tscn" id="p_wallsideb"]
-[ext_resource type="Script" path="res://src/world/victoryteleporter.gd" id="s_victory"]
+[ext_resource type="Script" uid="uid://b1l54hc4fxmvo" path="res://src/world/bossgauntlet.gd" id="s_gauntlet"]
+[ext_resource type="Script" uid="uid://c34sutp7765kr" path="res://src/world/victoryteleporter.gd" id="s_victory"]
 [ext_resource type="SpriteFrames" path="res://art/teleport/teleportframes.tres" id="tp_frames"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_underground"]
@@ -426,27 +424,18 @@ position = Vector2(-313, 120)
 [node name="inteactables" type="Node2D" parent="ysortworld" unique_id=733927190]
 y_sort_enabled = true
 
-[node name="ladderup" parent="ysortworld/inteactables" unique_id=1423717085 instance=ExtResource("4_ladderup")]
-position = Vector2(0, 178)
-collision_layer = 16
-collision_mask = 4
-script = ExtResource("5_ladder")
-destination_scene_path = "res://scene/field.tscn"
-target_spawn_id = "boss_ladder"
-
 [node name="arrivalmarker" type="Node2D" parent="ysortworld/inteactables" unique_id=1845048894]
 position = Vector2(0, 150)
 script = ExtResource("6_portal")
 portal_id = "boss_entrance"
 
 [node name="victoryteleporter" type="Area2D" parent="ysortworld/inteactables" unique_id=1990000101]
-position = Vector2(0, -60)
 visible = false
+position = Vector2(0, -60)
 collision_layer = 16
 collision_mask = 4
 monitoring = false
 script = ExtResource("s_victory")
-destination_scene_path = "res://scene/elusion.tscn"
 
 [node name="teleporter" type="AnimatedSprite2D" parent="ysortworld/inteactables/victoryteleporter" unique_id=1990000102]
 texture_filter = 1
@@ -454,14 +443,15 @@ scale = Vector2(2.5, 2.25)
 sprite_frames = ExtResource("tp_frames")
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="ysortworld/inteactables/victoryteleporter" unique_id=1990000103]
-disabled = true
 shape = SubResource("RectangleShape2D_victory")
+disabled = true
 
 [node name="enemies" type="Node2D" parent="ysortworld" unique_id=1709970370]
 y_sort_enabled = true
 
 [node name="earthboss" parent="ysortworld/enemies" unique_id=1515498848 instance=ExtResource("24_25nax")]
 position = Vector2(0, -172)
+
 [node name="fireboss" parent="ysortworld/enemies" unique_id=1413884408 instance=ExtResource("24_y8cpd")]
 position = Vector2(175, -172)
 
@@ -483,7 +473,6 @@ script = ExtResource("s_gauntlet")
 [node name="gate_lightboss" parent="ysortworld/gauntlet" unique_id=771200010 instance=ExtResource("p_bossgate")]
 position = Vector2(0, -30)
 boss_path = NodePath("../../enemies/lightboss")
-wave = 1
 element = 2
 
 [node name="gate_windboss" parent="ysortworld/gauntlet" unique_id=771200011 instance=ExtResource("p_bossgate")]
@@ -502,7 +491,6 @@ element = 7
 position = Vector2(-175, -172)
 boss_path = NodePath("../../enemies/iceboss")
 wave = 3
-element = 3
 
 [node name="gate_earthboss" parent="ysortworld/gauntlet" unique_id=771200014 instance=ExtResource("p_bossgate")]
 position = Vector2(0, -172)
@@ -541,7 +529,5 @@ respawn_seconds = 120.0
 respawn_jitter = 0.0
 min_player_distance = 400.0
 
-[connection signal="body_entered" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_entered"]
-[connection signal="body_exited" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_exited"]
 [connection signal="body_entered" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_exited"]

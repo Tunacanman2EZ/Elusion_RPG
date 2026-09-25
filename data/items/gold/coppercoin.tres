@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://drg40r4kr1kky"]
+
+[ext_resource type="Texture2D" path="res://art/pack/currency/coppercoin.png" id="1_art"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+item_id = "coppercoin"
+display_name = "Copper Coin"
+description = "A dull copper coin. Worth almost nothing, but it is not nothing."
+icon = ExtResource("1_art")
+stackable = true
+max_stack = 9999
+value = 1
+type = 6
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

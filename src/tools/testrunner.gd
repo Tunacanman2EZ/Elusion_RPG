@@ -83,8 +83,161 @@ func _run_all() -> void:
 	_test_ranks()
 	_test_settings()
 	_test_map_landmarks()
+	_test_boss_arena_exits()
 	_test_staff_panel()
 	_test_collision_contract()
+	_test_frame_budget()
+
+
+# =============================================================================
+# THE FRAME BUDGET
+# =============================================================================
+# A game holds its frame rate or it does not, and the whole question is decided
+# by what runs every frame. Everything else in this file checks that a number
+# is right; this checks that the game is still fast enough to show it.
+#
+# WHY IT IS A TEST AND NOT A PROFILING SESSION. Profiling tells you what is slow
+# today. A test tells you the day something GOT slow, which is the only version
+# of the question that helps on a project meant to run for years - by the time
+# a hitch is bad enough to feel, it has usually been growing for months and
+# nobody can say which change caused it.
+#
+# THE THRESHOLDS ARE DELIBERATELY LOOSE. These run on whatever machine the
+# developer has, possibly with a build and a browser fighting them for CPU, so
+# a tight bound would fail for reasons that have nothing to do with the code.
+# Each one is set where crossing it means something structural changed - a
+# per-frame lookup added to a loop, a pooled list quietly turned back into a
+# rebuilt one - not where a number drifted by a millisecond.
+
+# 33.3ms is a frame at 30fps. Not 60: 30 is the floor this game promises, and a
+# floor is what a budget should be measured against.
+const FRAME_BUDGET_MS := 33.3
+
+
+func _test_frame_budget() -> void:
+	section("FRAME BUDGET — what every frame costs")
+
+	# --- space queries ----------------------------------------------------
+	# The enemy AI runs a raycast and a shape query per enemy per physics
+	# frame. Measured at about 2us and 4us, which is why it was left alone -
+	# eighty enemies is under 2% of a frame. This check exists so that stays
+	# true: a physics layer misconfigured into testing every body, or a
+	# collision mask widened by accident, shows up here as a query that costs
+	# ten times what it should.
+	var space := get_viewport().world_2d.direct_space_state
+	var ray := PhysicsRayQueryParameters2D.new()
+	ray.collide_with_areas = false
+	var runs := 2000
+	var started := Time.get_ticks_usec()
+	for i in range(runs):
+		ray.from = Vector2(float(i % 400), 0.0)
+		ray.to = Vector2(float(i % 400) + 200.0, 300.0)
+		space.intersect_ray(ray)
+	var ray_us := float(Time.get_ticks_usec() - started) / runs
+
+	# 40us is twenty times the measured cost. A ray that takes longer than
+	# that is not drift, it is a different query.
+	check("a raycast is still cheap enough to do per enemy per frame",
+		ray_us < 40.0, "%.2f us each" % ray_us)
+
+	# --- the kingdom board ------------------------------------------------
+	# The heaviest list in the game: up to two hundred rows, refreshed on a
+	# timer whether or not anybody is looking at it.
+	var board_scene: PackedScene = load("res://scene/ui/kingdom/kingdomboard.tscn")
+	if board_scene == null:
+		check("the kingdom board scene loads", false, "missing")
+		return
+	var board: Control = board_scene.instantiate()
+	add_child(board)
+
+	var rows: Array = []
+	for i in range(200):
+		rows.append({"username": "player%04d" % i, "contributed": 1_000_000 - i,
+			"lusions": i, "deaths": i % 50, "rank": i + 1})
+
+	# FIRST PAINT IS SPREAD ACROSS FRAMES on purpose - building two hundred
+	# rows in one go measured at 79ms, which is two and a half frames of
+	# stutter every time the panel opened. Each slice must fit in a frame, and
+	# the whole board must still finish.
+	var worst_slice := 0.0
+	var slices := 0
+	board._render_rows(rows)
+	while true:
+		slices += 1
+		if board._rows_pending.is_empty():
+			break
+		var slice_start := Time.get_ticks_usec()
+		board._render_rows(board._rows_pending, board._rows_done)
+		worst_slice = maxf(worst_slice,
+			float(Time.get_ticks_usec() - slice_start) / 1000.0)
+		if slices > 500:
+			break
+
+	check("no slice of the board's first paint eats a frame",
+		worst_slice < FRAME_BUDGET_MS,
+		"worst slice %.2f ms against a %.1f ms frame" % [worst_slice, FRAME_BUDGET_MS])
+	check("and the board finishes building",
+		board.board_list.get_child_count() == 200,
+		"%d rows" % board.board_list.get_child_count())
+
+	# A REFRESH REUSES THE ROWS. If somebody changes _render_rows() back to
+	# freeing and rebuilding, this is the number that moves - a refill of two
+	# hundred rows measured at about 13ms, a rebuild at 79ms.
+	var refresh_start := Time.get_ticks_usec()
+	board._render_rows(rows)
+	var refresh_ms := float(Time.get_ticks_usec() - refresh_start) / 1000.0
+	check("a board refresh fits inside one frame",
+		refresh_ms < FRAME_BUDGET_MS,
+		"%.2f ms against a %.1f ms frame" % [refresh_ms, FRAME_BUDGET_MS])
+
+	# AND IT DOES NOT GROW WITH THE SERVER. The panel's cost is set by rows on
+	# screen, which the server caps; a year of ledger rows cannot reach it.
+	var few: Array = rows.slice(0, 10)
+	board._render_rows(few)
+	var small_start := Time.get_ticks_usec()
+	board._render_rows(few)
+	var small_ms := float(Time.get_ticks_usec() - small_start) / 1000.0
+	check("ten rows cost a fraction of two hundred",
+		small_ms < refresh_ms, "%.2f ms vs %.2f ms" % [small_ms, refresh_ms])
+
+	board.queue_free()
+
+	# --- what one player costs the server ---------------------------------
+	# THE ONLY BUDGET HERE THAT IS NOT ABOUT THIS MACHINE, and the one that
+	# scales with players rather than with content.
+	#
+	# The load test puts the read ceiling around 800 requests a second on four
+	# workers. Divide that by what one client asks for and you get how many
+	# people the box holds: at 0.55 req/s it is about fifteen hundred, at 3
+	# req/s it is under three hundred. Nobody notices adding a panel that polls
+	# every two seconds; everybody notices the box it lands on.
+	#
+	# READ OFF THE REAL CONSTANTS, so this goes stale the moment somebody
+	# changes an interval - which is exactly when the arithmetic stops being
+	# true and somebody should look at it again.
+	var always: float = (
+		1.0 / Api.HEARTBEAT_SECONDS
+		+ 1.0 / load("res://src/ui/characterhud.gd").BROADCAST_POLL_SECONDS
+		+ 1.0 / load("res://src/systems/skilltrainer.gd").FLUSH_INTERVAL
+	)
+	var with_chat: float = always + 1.0 / load(
+		"res://src/ui/chat/chatpanel.gd").POLL_SECONDS
+
+	# One request a second per player is the line. It is not a hardware limit,
+	# it is the point past which a single box stops holding a thousand people -
+	# and crossing it should be a decision somebody made on purpose.
+	check("a player sitting in the world stays well under 1 req/s",
+		always < 0.5, "%.3f req/s with nothing open" % always)
+	check("and under it with chat open, which is most of the time",
+		with_chat < 1.0, "%.3f req/s" % with_chat)
+
+	# The counter the perf overlay reads has to actually count.
+	var before: int = Api.requests_total()
+	Api._note_request()
+	check("the request counter counts", Api.requests_total(), before + 1)
+	check("and reports a rate over its window",
+		Api.requests_per_second() > 0.0,
+		"%.3f req/s" % Api.requests_per_second())
 
 
 # =============================================================================
@@ -104,6 +257,26 @@ func check(label: String, condition: bool, detail: Variant = "") -> void:
 		failed += 1
 		failures.append(label)
 		_say("  FAIL  %s   %s" % [label, str(detail)])
+
+
+func require_script(path: String, what: String) -> Script:
+	"""Load a script a whole section depends on, or fail the section out loud.
+
+	WHY THIS EXISTS. A section that does `load(...)` and calls straight into the
+	result dies on the first line when the file is missing or will not compile.
+	GDScript prints one error to stderr and unwinds the rest of the section -
+	so the report prints the heading, nothing under it, and moves on. Zero
+	checks ran and zero checks failed, which reads exactly like a clean pass.
+
+	That is the same hole as the suites that printed no summary line: work that
+	silently did not happen, reported as work that happened fine. A missing
+	subject is a FAILURE, and it has to say so in the one place anybody looks.
+	"""
+	var script: Script = load(path) as Script
+	if script == null:
+		check("%s loads at all" % what, false,
+			"%s is missing or will not compile - every check below it was SKIPPED" % path)
+	return script
 
 
 func section(title: String) -> void:
@@ -414,7 +587,7 @@ func _test_class_curves() -> void:
 		# cls.get(field) is Object.get() — ONE argument, no default. Passing a
 		# second is a parse error, not a fallback.
 		for field in ["hp_base", "hp_per_lvl", "mana_base", "mana_per_lvl",
-					  "stam_base", "stam_per_lvl"]:
+					"stam_base", "stam_per_lvl"]:
 			check("%s.%s matches" % [cls.class_id, field],
 				int(row.get(field, -1)) == int(cls.get(field)),
 				"contract %s, resource %s" % [row.get(field), cls.get(field)])
@@ -502,6 +675,189 @@ func _test_enemy_constants() -> void:
 	check("tier 3 is still the original triple-six, 1 in 216",
 		int(BaseEnemy.PET_ODDS_BY_TIER.get(3, -1)) == 216,
 		BaseEnemy.PET_ODDS_BY_TIER.get(3))
+
+	_test_pet_drops_can_pay_out(data)
+	_test_every_exported_constant(constants)
+
+
+# =============================================================================
+# A PET ROLL THAT CANNOT PAY OUT
+# =============================================================================
+# ELEVEN ENEMIES ROLLED FOR A PET THEY COULD NOT DROP, and the six elemental
+# bosses among them are the hardest content in the game - up to 8,216 hp, more
+# than the base boss that drops petboss at 1 in 72. A player could farm
+# earthboss forever and the roll would never once be reachable.
+#
+# The cause was an omission, not a decision: pet_drop_id defaults to "" and a
+# .tres omits any property equal to its default, so an elemental variant copied
+# from a sibling that had not set it yet simply has no line, and looks exactly
+# like one that never wanted a pet. roll_pet() returns on the empty id before it
+# ever reads the odds, so nothing errors, nothing logs, and the odds in the
+# exporter's own listing read as though they were live.
+#
+# WHY THIS BELONGS HERE AND NOT IN THE EXPORTER'S WARNING. That warning existed
+# and said the right thing, and it was read as harmless - it ends "harmless
+# while the pets are unauthored", which was true once and had quietly stopped
+# being true: petboss.tres and petmage.tres both exist. A warning that explains
+# itself away gets skimmed. A failing check does not.
+
+
+func _test_pet_drops_can_pay_out(data: Dictionary) -> void:
+	var items: Array = data.get("items", [])
+	var known := {}
+	for item in items:
+		known[str(item.get("item_id", ""))] = true
+
+	# Every enemy that rolls for a pet must be able to award one. Read off the
+	# EXPORT rather than the .tres files, because the export is what the server
+	# reads too - so this compares the thing both sides actually use.
+	var dead: Array[String] = []
+	for enemy in data.get("enemies", []):
+		if not bool(enemy.get("grants_rewards", true)):
+			continue
+		if int(enemy.get("pet_odds", 0)) <= 0:
+			continue
+		var pet: String = str(enemy.get("pet_drop_id", ""))
+		var rare: String = str(enemy.get("rare_pet_drop_id", ""))
+		if pet == "":
+			dead.append("%s rolls 1/%d for nothing"
+				% [enemy.get("enemy_id"), int(enemy.get("pet_odds", 0))])
+		elif not known.has(pet):
+			dead.append("%s names pet '%s', which is not an item"
+				% [enemy.get("enemy_id"), pet])
+		# The rare slot is optional, but a NAMED one that does not exist is the
+		# same silent dead end one level down.
+		if rare != "" and not known.has(rare):
+			dead.append("%s names rare pet '%s', which is not an item"
+				% [enemy.get("enemy_id"), rare])
+
+	dead.sort()
+	check("every enemy that rolls for a pet can actually drop one",
+		dead.is_empty(), "\n         ".join(dead))
+
+
+# =============================================================================
+# THE REST OF THE CONTRACT
+# =============================================================================
+# The block above checks six constants by hand. The contract carries thirty-one,
+# and the eighteen nobody was comparing included every number this year's
+# economy work added: the coin ladder, the jackpot dice, the lusion weight, the
+# revive floor, the trade tax. Each one is authored in a GDScript const, copied
+# into gamedata.json by the exporter, and then read by Flask - so each one is a
+# number that can be edited in the game and left stale on the server, silently,
+# with no disagreement anybody can see.
+#
+# A TABLE RATHER THAN EIGHTEEN MORE HAND-WRITTEN CHECKS. The hand-written form
+# is why there were only six: each is five lines, and nobody adds five lines
+# when they add a constant. A row is one line, so the next constant has a real
+# chance of being covered.
+#
+# THE SOURCE SCRIPT IS NAMED PER ROW because these live in three different
+# files, and reading the constant off the script that DEFINES it is the whole
+# point - comparing gamedata.json to a copy in this file would just be a third
+# place for the number to go stale.
+
+func _test_every_exported_constant(constants: Dictionary) -> void:
+	section("THE EXPORTED CONTRACT — every constant, both sides")
+
+	var sources := {
+		"enemy": (load("res://src/enemies/baseenemy.gd") as GDScript).get_script_constant_map(),
+		"game": (load("res://src/systems/gameconstants.gd") as GDScript).get_script_constant_map(),
+		"char": (load("res://src/systems/characterdata.gd") as GDScript).get_script_constant_map(),
+		"stats": (load("res://src/characters/playerstats.gd") as GDScript).get_script_constant_map(),
+	}
+
+	# [contract key, source, constant name]. Mirrors _export_constants() in
+	# exportgamedata.gd - if a row is added there, add one here.
+	var rows := [
+		["gold_tier_ratio", "enemy", "GOLD_TIER_RATIO"],
+		["gold_base_unit", "enemy", "GOLD_BASE_UNIT"],
+		["gold_spread", "enemy", "GOLD_SPREAD"],
+		["gold_denomination_ids", "enemy", "GOLD_DENOMINATION_IDS"],
+		["gold_jackpot_dice", "enemy", "GOLD_JACKPOT_DICE"],
+		["gold_jackpot_faces", "enemy", "GOLD_JACKPOT_FACES"],
+		["gold_jackpot_min_tier", "enemy", "GOLD_JACKPOT_MIN_TIER"],
+		["gold_jackpot_multipliers", "enemy", "GOLD_JACKPOT_MULTIPLIERS"],
+		["lusion_gold_value", "game", "LUSION_GOLD_VALUE"],
+		["revive_cost", "game", "REVIVE_COST"],
+		["revive_gold_rate", "game", "REVIVE_GOLD_RATE"],
+		["revive_gold_minimum", "game", "REVIVE_GOLD_MINIMUM"],
+		["dupe_pet_lusions", "game", "DUPE_PET_LUSIONS"],
+		["kingdom_tax_rate", "game", "KINGDOM_TAX_RATE"],
+		["kingdom_tax_minimum", "game", "KINGDOM_TAX_MINIMUM"],
+	]
+
+	for row in rows:
+		var key: String = String(row[0])
+		var mine = sources[String(row[1])].get(String(row[2]))
+		var theirs = constants.get(key)
+		check("%s matches the game's %s" % [key, String(row[2])],
+			theirs != null and mine != null and _same_number(mine, theirs),
+			"contract %s, game %s" % [theirs, mine])
+
+	# THE LADDER IS ONLY USEFUL IF THE COINS EXIST. The same check the two
+	# legacy gold ids get above, for the eight that replaced them - a
+	# denomination naming an item ItemRegistry has not got is a coin the server
+	# will make change in and the game cannot draw.
+	for item_id in BaseEnemy.GOLD_DENOMINATION_IDS:
+		check("the '%s' coin exists" % String(item_id),
+			ItemRegistry.has_item(String(item_id)), String(item_id))
+
+	# And it must be ordered richest-first with no ties, because make_change()
+	# walks it in order and a ladder out of order makes change that is wrong
+	# rather than merely ugly.
+	var previous_value: int = -1
+	for item_id in BaseEnemy.GOLD_DENOMINATION_IDS:
+		var coin: ItemData = ItemRegistry.get_item(String(item_id))
+		if coin == null:
+			continue
+		var worth: int = int(coin.value)
+		if previous_value >= 0:
+			check("%s is worth less than the coin above it" % String(item_id),
+				worth < previous_value, "%d then %d" % [previous_value, worth])
+		previous_value = worth
+
+	# The multiplier table has to have one entry per possible number of sixes,
+	# or a lucky roll indexes past the end of it.
+	check("there is a jackpot multiplier for every dice outcome",
+		BaseEnemy.GOLD_JACKPOT_MULTIPLIERS.size() == BaseEnemy.GOLD_JACKPOT_DICE + 1,
+		"%d multipliers for %d dice" % [BaseEnemy.GOLD_JACKPOT_MULTIPLIERS.size(),
+			BaseEnemy.GOLD_JACKPOT_DICE])
+
+
+func _same_number(mine, theirs) -> bool:
+	"""Compare a GDScript constant with what came back out of JSON.
+
+	JSON HAS NO INTEGER TYPE and no float/int distinction the way GDScript does,
+	so 0.8 can come back as a float and 5 as an int-shaped float. Comparing with
+	== would fail on types rather than on values, which is a test that cries
+	wolf until somebody deletes it.
+
+	Arrays are compared element by element, because an exported array of ids is
+	a PackedStringArray on one side and a plain Array on the other and those are
+	never == either.
+
+	AND EACH ELEMENT GOES THROUGH THIS SAME FUNCTION rather than through str().
+	The first version stringified them, which is right for ids and wrong for
+	numbers: JSON parsed the jackpot multipliers [1, 1, 1, 4, 12, 45] back as
+	floats, and "1.0" != "1" reported a mismatch between a table and itself."""
+	if mine is Array or mine is PackedStringArray or mine is PackedInt32Array \
+			or mine is PackedFloat64Array:
+		if not (theirs is Array):
+			return false
+		if mine.size() != theirs.size():
+			return false
+		for index in range(mine.size()):
+			if not _same_number(mine[index], theirs[index]):
+				return false
+		return true
+	# Ids and other text, once the array case has been dealt with.
+	if mine is String or mine is StringName or theirs is String \
+			or theirs is StringName:
+		return str(mine) == str(theirs)
+	if mine is float or theirs is float:
+		return absf(float(mine) - float(theirs)) < 0.000001
+	return int(mine) == int(theirs)
 
 
 # =============================================================================
@@ -1201,6 +1557,18 @@ func _test_settings() -> void:
 		"damage_numbers": "damagenumbers",
 		"render_resolution": "renderresolution", "lighting": "lighting",
 		"background_fps_limit": "backgroundlimit",
+		# BOTH OF THESE WERE MISSING FROM THE TABLE, not from the game.
+		# optionsscreen.gd wires the camera zoom slider and the name hue
+		# slider, and the scene carries both controls with their swatch and
+		# preview - the table simply was not updated when they were added, so
+		# the check has been reporting two false positives ever since.
+		#
+		# WHICH IS THE FAILURE MODE OF A HAND-MAINTAINED MAPPING, and worth
+		# naming: a check that cries wolf gets ignored, and then stops being a
+		# check at all. Adding the two rows is the fix; the check itself is
+		# still the right one, because a setting with no control is a real bug
+		# and this is the only place that relationship is written down.
+		"camera_zoom": "camerazoom",       "name_hue": "namehue",
 	}
 	var unmapped: Array = []
 	for key in Settings.DEFAULTS:
@@ -1321,16 +1689,16 @@ func _test_map_landmarks() -> void:
 	#
 	# BY AREA, NOT BY SCENE FILE, and the first draft of this section learned
 	# why. It checked ladderup.tscn on its own and found no pin - because that
-	# file has no script. It is a sprite and a collider, and the boss arena
-	# makes it a ladder by attaching ladder.gd to its placed copy. The file is
-	# not what the player sees; the area is.
+	# file has no script. It is a sprite and a collider, and a scene makes it a
+	# ladder by attaching ladder.gd to its placed copy. The file is not what the
+	# player sees; the area is.
 	#
-	# AT LEAST, not exactly: a second bank should not fail the suite. The one
-	# exact number is the zero, below.
+	# AT LEAST, not exactly: a second bank should not fail the suite. The exact
+	# numbers are the two zeroes, below.
 	var areas := {
 		"res://scene/elusion.tscn":   ["shop", "bank", "cooking", "fishing", "teleport", "exit"],
 		"res://scene/field.tscn":     ["ladder"],
-		"res://scene/bossarena.tscn": ["ladder", "boss"],
+		"res://scene/bossarena.tscn": ["boss"],
 	}
 	var pins_by_area := {}
 	for path in areas:
@@ -1363,13 +1731,25 @@ func _test_map_landmarks() -> void:
 				colours.size() == int(counts["boss"]), "%d gates, %d colours" % [counts["boss"], colours.size()])
 		inst.free()
 
-	# THE ZERO. The field's arrival portal runs leavetown.gd like the town's
-	# real exit does, but it is one-way and vanishes after first use - so the
-	# field must show no exit pin at all, or it advertises a way back to town
-	# that does not exist.
+	# THE FIRST ZERO. The field's arrival portal runs leavetown.gd like the
+	# town's real exit does, but it is one-way and vanishes after first use - so
+	# the field must show no exit pin at all, or it advertises a way back to
+	# town that does not exist.
 	if pins_by_area.has("field.tscn"):
 		check("the field shows NO exit pin - its portal is arrival-only",
 			int(pins_by_area["field.tscn"].get("exit", 0)) == 0, pins_by_area["field.tscn"])
+
+	# THE SECOND ZERO, and the one that keeps the gauntlet a gauntlet. The arena
+	# used to hold a ladder back up to the field, which meant a player could walk
+	# in, look at wave one, and walk out - and it made the victory teleporter
+	# ceremonial, since there was already a way home before anything had been
+	# beaten. The arena now has exactly one exit and you have to earn it. A
+	# ladder reappearing here is the regression this catches, and it would be an
+	# easy one to make by dragging ladderup.tscn back in without noticing what
+	# it undoes.
+	if pins_by_area.has("bossarena.tscn"):
+		check("the boss arena shows NO ladder pin - the only way out is winning",
+			int(pins_by_area["bossarena.tscn"].get("ladder", 0)) == 0, pins_by_area["bossarena.tscn"])
 
 	# The same rule on a bare exit, so a failure above can be told apart: the
 	# scene wiring changed, or leavetown.gd stopped honouring arrival_only.
@@ -1379,6 +1759,118 @@ func _test_map_landmarks() -> void:
 	exit_node.arrival_only = true
 	check("an arrival-only portal has none", exit_node.map_landmark().is_empty(), exit_node.map_landmark())
 	exit_node.free()
+
+
+# =============================================================================
+# THE BOSS ARENA HAS ONE WAY IN AND ONE WAY OUT
+# =============================================================================
+# The arena used to have two exits: a ladder back up to the field, usable from
+# the moment you arrived, and the victory teleporter that appears when the last
+# boss falls. The ladder is gone, which makes the teleporter the only way home
+# and the gauntlet a thing you finish.
+#
+# That is a better room and a more fragile one. With two exits, either could be
+# broken and the player still got out. With one, a teleporter that never appears
+# is a player stuck in a room with nothing left to kill, and the only way out is
+# closing the game. So the wiring that used to be a convenience is now the
+# contract, and these are the checks that hold it:
+#
+#   - the way IN still lands somewhere. The field's ladder down names a spawn
+#     id; the arena must still have a marker carrying it. Deleting the ladder up
+#     would have been an easy way to take the arrival marker with it, since they
+#     sat next to each other in the same node.
+#   - the way OUT exists, starts shut, and leads to a scene that is really there.
+#   - there is something to clear. The teleporter only ever appears in answer to
+#     gauntlet_cleared, so an arena with no gates is an arena with no exit.
+#
+# Instantiated, not added to the tree: _init runs, _ready does not. That is why
+# nothing below looks for a group - fieldportal.gd joins "fieldportals" in
+# _ready, so at this point it has not.
+
+func _test_boss_arena_exits() -> void:
+	section("BOSS ARENA - ONE WAY IN, ONE WAY OUT")
+
+	var arena_packed: PackedScene = load("res://scene/bossarena.tscn") as PackedScene
+	var field_packed: PackedScene = load("res://scene/field.tscn") as PackedScene
+	check("the boss arena loads", arena_packed != null)
+	check("the field loads", field_packed != null)
+	if arena_packed == null or field_packed == null:
+		return
+
+	var arena: Node = arena_packed.instantiate()
+	var field: Node = field_packed.instantiate()
+
+	var ladder_script: String = "res://src/world/ladder.gd"
+
+	# THE WAY OUT IS THE ONLY WAY OUT.
+	var arena_ladders: Array = []
+	_collect_by_script(arena, ladder_script, arena_ladders)
+	check("the arena has no ladder - you leave by winning",
+		arena_ladders.is_empty(), "%d found" % arena_ladders.size())
+
+	# THE WAY IN STILL LANDS. The field's ladder down names the spot; the arena
+	# has to still own a marker by that name.
+	var field_ladders: Array = []
+	_collect_by_script(field, ladder_script, field_ladders)
+	var wanted: String = ""
+	for node in field_ladders:
+		if str(node.destination_scene_path) == "res://scene/bossarena.tscn":
+			wanted = str(node.target_spawn_id)
+	check("the field has a ladder down to the arena", wanted != "", wanted)
+
+	var portal_ids: Array = []
+	_collect_portal_ids(arena, portal_ids)
+	check("the arena still has the arrival marker that ladder aims at",
+		wanted != "" and portal_ids.has(wanted), "wants '%s', arena has %s" % [wanted, portal_ids])
+
+	# THE WAY OUT EXISTS, IS SHUT, AND GOES SOMEWHERE.
+	var teleporters: Array = []
+	_collect_by_script(arena, "res://src/world/victoryteleporter.gd", teleporters)
+	check("the arena has exactly one victory teleporter",
+		teleporters.size() == 1, "%d found" % teleporters.size())
+
+	if teleporters.size() == 1:
+		var way_home: Node = teleporters[0]
+		check("it starts hidden", not way_home.visible)
+		check("it starts unsteppable", not way_home.monitoring)
+		var shape: Node = way_home.get_node_or_null("collisionshape2d")
+		check("its collider starts disabled", shape != null and shape.disabled)
+		var home: String = str(way_home.destination_scene_path)
+		check("it leads to a scene that exists",
+			home != "" and ResourceLoader.exists(home), home)
+
+	# SOMETHING TO CLEAR. No gates, no gauntlet_cleared, no teleporter, no exit.
+	var gates: Array = []
+	_collect_by_script(arena, "res://src/world/bossgate.gd", gates)
+	check("there is a gauntlet to finish", gates.size() >= 1, "%d gates" % gates.size())
+	check("the arena has a sequencer to run it",
+		_has_script_in_tree(arena, "res://src/world/bossgauntlet.gd"))
+
+	arena.free()
+	field.free()
+
+
+func _collect_by_script(node: Node, script_path: String, into: Array) -> void:
+	var s: Script = node.get_script() as Script
+	if s != null and s.resource_path == script_path:
+		into.append(node)
+	for child in node.get_children():
+		_collect_by_script(child, script_path, into)
+
+
+func _has_script_in_tree(node: Node, script_path: String) -> bool:
+	var found: Array = []
+	_collect_by_script(node, script_path, found)
+	return not found.is_empty()
+
+
+func _collect_portal_ids(node: Node, into: Array) -> void:
+	# By the property, not the group: fieldportal.gd joins "fieldportals" in
+	# _ready, and nothing here is in the tree for a _ready to run.
+	if "portal_id" in node and str(node.portal_id) != "":
+		into.append(str(node.portal_id))
+	for child in node.get_children():
+		_collect_portal_ids(child, into)
 
 
 # =============================================================================
@@ -1395,7 +1887,10 @@ func _test_map_landmarks() -> void:
 func _test_staff_panel() -> void:
 	section("STAFF PANEL")
 
-	var panel_script: Script = load("res://src/ui/staff/staffpanel.gd")
+	var panel_script: Script = require_script(
+		"res://src/ui/staff/staffpanel.gd", "the staff panel")
+	if panel_script == null:
+		return
 	var offer := func(viewer: String, role: String, actionable: bool, banned: bool = false) -> Dictionary:
 		return panel_script.actions_for(viewer, {"role": role, "actionable": actionable, "banned": banned})
 
@@ -1476,12 +1971,433 @@ func _test_staff_panel() -> void:
 	scene.free()
 
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
-	var staff_button: Node = hud.get_node_or_null("navhbox/staffrow/staffbutton")
+	# BY UNIQUE NAME, NOT BY PATH. This read "navhbox/staffrow/staffbutton" until
+	# the nav row was wrapped in navframe to give it a frame. A hard-coded path
+	# survives no rearrangement at all, and when it breaks it fails HERE, saying
+	# the scene has lost its Staff button, when the button is sitting exactly
+	# where it was and only the path to it moved. The unique name is resolved
+	# against the scene, so wrapping the row again costs nothing.
+	var staff_button: Node = hud.get_node_or_null("%staffbutton")
 	check("the HUD has a Staff button on a row of its own", staff_button is Button)
 	# HIDDEN IN THE FILE. The script shows it to staff; a player must never see
 	# it even for the frame before the script runs.
 	check("and it starts hidden", staff_button is Button and not (staff_button as Button).visible)
+
+	# ---- the menu bar: the two lookups characterhud.gd makes by name ----
+	# unique_name_in_owner is one checkbox in the inspector, and turning it off
+	# costs nothing visible: the scene still opens, the buttons still draw, and
+	# _wire_nav_buttons() quietly connects NOTHING, so every button in the menu
+	# does nothing when clicked. That is the failure this pair of lines catches.
+	var nav_row: Node = hud.get_node_or_null("%navbuttons")
+	check("the HUD registers %navbuttons", nav_row != null)
+	check("the HUD registers %staffrow", hud.get_node_or_null("%staffrow") != null)
+
+	# AND THE BUTTONS THEMSELVES. _wire_nav_buttons() connects by name and skips
+	# anything it cannot find, so a renamed button is a dead button with no error.
+	var absent: Array = []
+	for wanted in ["inventorybutton", "equipmentbutton", "statsbutton", "shopbutton",
+			"kingdombutton", "tradebutton", "chatbutton", "friendsbutton",
+			"guildbutton", "mapbutton", "optionsbutton", "logoutbutton",
+			"switchcharacterbutton"]:
+		if nav_row == null or nav_row.get_node_or_null(wanted) == null:
+			absent.append(wanted)
+	check("every button characterhud.gd wires up is in the scene", absent.is_empty(), absent)
+
+	# ---- where the bar sits, checked against the things it has to miss ----
+	var frame: Control = hud.get_node_or_null("%navframe") as Control
+	check("the nav bar is framed", frame is PanelContainer)
+	check("it hangs off the bottom of the screen",
+		frame != null and frame.anchor_bottom == 1.0 and frame.offset_bottom < 0.0)
+	# GROWING UPWARD IS THE POINT. The owner gets a second row; with the bottom
+	# edge pinned, that row is added ABOVE and the ordinary menu stays put. Flip
+	# this to END and the whole menu jumps whenever the owner signs in.
+	check("and grows upward, so the menu sits in one place for everyone",
+		frame != null and frame.grow_vertical == Control.GROW_DIRECTION_BEGIN)
+
+	# THE RIGHT EDGE IS DODGING THE READOUTS, not a number picked by eye. The
+	# health and magic bars run from barcontainer's offset plus their own, down
+	# to y=709 - straight through the height of the menu bar. Both numbers are
+	# read out of the scene here so that moving either one fails this line
+	# instead of silently putting Logout underneath the health bar.
+	var screen_w: float = float(ProjectSettings.get_setting(
+		"display/window/size/viewport_width", 1280))
+	var holder: Control = hud.get_node_or_null("barcontainer") as Control
+	var hp: Control = hud.get_node_or_null("barcontainer/healthbar") as Control
+	if frame != null and holder != null and hp != null:
+		var bar_right: float = screen_w + frame.offset_right
+		var readouts_left: float = holder.offset_left + hp.offset_left
+		check("and it stops clear of the health and magic bars", bar_right < readouts_left,
+			"bar ends at %.0f, the readouts begin at %.0f" % [bar_right, readouts_left])
+	else:
+		check("and it stops clear of the health and magic bars", false, "nodes missing")
 	hud.free()
+
+	# ---- the two social panels carry what their scripts reach for ----
+	# Same failure as the HUD's own unique names, and the same silence: every
+	# lookup in these two is get_node_or_null, so a missing name is a panel
+	# that opens, draws, and does nothing at all when clicked.
+	for spec in [
+		["res://scene/ui/chat/chatpanel.tscn",
+			["chatlines", "chatscroll", "chattabs", "chatentry", "chatsendbutton",
+			"chatimagebutton", "chatclosebutton", "chatnotice", "chatto", "chattolabel"]],
+		["res://scene/ui/friends/friendspanel.tscn",
+			["friendsrows", "friendsaddentry", "friendsaddbutton", "friendsclosebutton",
+			"friendsrefreshbutton", "friendsnotice", "friendscount"]],
+		["res://scene/ui/equipment/equipmentpanel.tscn",
+			["equipclosebutton", "equipdamagevalue", "equipspeedvalue", "equiparmourvalue",
+			"equipsoakvalue", "equippreview", "equippreviewbox", "equippreviewhint"]],
+		["res://scene/ui/guild/guildpanel.tscn",
+			["guildrows", "guildtitle", "guildcount", "guildentry",
+			"guildactionbutton", "actionpanel", "guildclosebutton",
+			"guildrefreshbutton", "guildnotice", "footerbox",
+			"guildleavebutton", "guilddisbandbutton"]],
+	]:
+		var built: Node = (load(String(spec[0])) as PackedScene).instantiate()
+		var gone: Array = []
+		for unique in spec[1]:
+			if built.get_node_or_null("%" + String(unique)) == null:
+				gone.append(unique)
+		check("%s has every node its script uses" % String(spec[0]).get_file(),
+			gone.is_empty(), gone)
+		built.free()
+
+	# ---- world chat cannot be used to paint the log ----
+	# The log renders BBCode so staff ranks can be coloured, and BBCode is not
+	# only colour: [img]url[/img] makes the client FETCH that url. A message is
+	# text, so every opening bracket in one has to stop being a tag.
+	var chat: Node = (load("res://scene/ui/chat/chatpanel.tscn") as PackedScene).instantiate()
+	check("a bracket in a message is neutralised",
+		chat._escape("[color=red]hi[/color]") == "[lb]color=red]hi[lb]/color]",
+		chat._escape("[color=red]hi[/color]"))
+	check("and so is an image tag",
+		not chat._escape("[img]http://x/y.png[/img]").begins_with("[img"))
+	check("ordinary text is left alone", chat._escape("hello there") == "hello there")
+
+	# ---- four channels, and the client agrees with the server about them ----
+	check("the client knows four channels", chat.CHANNELS.size() == 4, chat.CHANNELS)
+	var unlabelled: Array = []
+	for room in chat.CHANNELS:
+		if not chat.CHANNEL_LABELS.has(room):
+			unlabelled.append(room)
+	check("and every one has a tab label", unlabelled.is_empty(), unlabelled)
+	check("world is among them", chat.CHANNELS.has("world"))
+	check("so is a private one", chat.CHANNELS.has("private"))
+	check("and guild is declared, ready for when guilds are",
+		chat.CHANNELS.has("guild"))
+
+	# THE CAP THE BRIEF ASKED FOR, and it is PER CHANNEL. Shared, a busy world
+	# channel would push a whisper out of its own window.
+	check("a channel keeps 100 lines", chat.LINES_KEPT == 100, chat.LINES_KEPT)
+
+	# ---- a picture is never loaded from the link somebody pasted ----
+	# The whole reason the relay exists. If this file ever grows a call that
+	# loads a remote URL directly, every viewer's address goes to whoever
+	# posted it.
+	var chat_source: String = FileAccess.get_file_as_string(
+		"res://src/ui/chat/chatpanel.gd")
+	check("the client asks the server to fetch pictures",
+		chat_source.contains("/api/chat/image"))
+	check("and decodes only what the server sent it",
+		chat_source.contains("load_png_from_buffer"))
+	check("nothing here opens a remote address itself",
+		not chat_source.contains("http://") or chat_source.contains("begins_with(\"http://\")"))
+	chat.free()
+
+	# ---- the emoji font ships ----
+	# A pasted emoji with no colour font behind it is a blank box, on every
+	# machine, for everyone.
+	check("the colour emoji font is in the project",
+		ResourceLoader.exists("res://assets/fonts/NotoColorEmoji.ttf"))
+
+	# ---- the hotbar ----
+	# THE SLOTS MOVED TWO LEVELS DOWN when the bar was given a frame, and the
+	# lookup that finds them used to be has_node("slot1") - a direct-child
+	# check. That fails silently: nine warnings in the log, a hotbar that draws
+	# perfectly and does nothing at all when you press a number key.
+	var bar: Node = (load("res://scene/ui/hotbar.tscn") as PackedScene).instantiate()
+	var lost: Array = []
+	var keyless: Array = []
+	for n in range(1, 10):
+		var slot: Node = bar.find_child("slot%d" % n, true, false)
+		if slot == null:
+			lost.append("slot%d" % n)
+			continue
+		# AND THE KEY NUMBER IS A NODE NOW, not baked into the empty art - so
+		# it is still there once a slot has something in it. That was the whole
+		# complaint: a filled slot used to stop saying which key it was.
+		var key: Label = slot.get_node_or_null("keylabel") as Label
+		if key == null or key.text != str(n):
+			keyless.append("slot%d" % n)
+	check("every hotbar slot is findable", lost.is_empty(), lost)
+	check("and each one shows its own key number", keyless.is_empty(), keyless)
+	check("the bar itself is a framed panel", bar is PanelContainer, bar.get_class())
+
+	# ---- the commissioned slot art is the slot ----
+	# It used to be a 32px picture sitting INSIDE a panel the theme drew, which
+	# meant an item icon covered it completely and the art you paid for was
+	# only ever visible on an empty slot. As a nine-patched stylebox it frames
+	# every slot, full or empty, and the item sits inside it.
+	check("the slot art ships with the game",
+		ResourceLoader.exists("res://art/images/hotbarslot.png"))
+	var one: Control = bar.find_child("slot1", true, false) as Control
+	var skin: StyleBox = one.get_theme_stylebox("panel") if one != null else null
+	check("and it is what draws a slot", skin is StyleBoxTexture, skin)
+	if skin is StyleBoxTexture:
+		var skinned: StyleBoxTexture = skin as StyleBoxTexture
+		# NINE-PATCHED. Without margins the frame stretches with the slot and
+		# the artist's 1px outline turns into a smear.
+		check("nine-patched, so the frame never stretches",
+			skinned.texture_margin_left > 0.0 and skinned.texture_margin_top > 0.0,
+			skinned.texture_margin_left)
+		check("with the content pushed inside the frame",
+			skinned.content_margin_left >= skinned.texture_margin_left,
+			skinned.content_margin_left)
+	# AND THE SLOT IS BIG ENOUGH TO HOLD SOMETHING. The art's hole is 18px at
+	# its native 32; a 32px item icon in that is an icon wearing the frame as a
+	# belt. See SLOT_SIZE in hotbarslot.gd.
+	check("a slot is large enough for an item inside its frame",
+		one != null and one.custom_minimum_size.x >= 40.0,
+		one.custom_minimum_size if one else "no slot")
+	bar.free()
+
+	# ---- one statement of what a rank looks like ----
+	# The nameplate over a player's head, their name in chat and their row in
+	# the friends list all paint from this. Three copies would drift.
+	check("every rank has a colour", Api.RANK_COLOURS.size() == 4, Api.RANK_COLOURS.size())
+	check("the owner's is not the player's",
+		Api.colour_for_role("owner") != Api.colour_for_role("player"))
+	check("a rank this build has never heard of paints as a player",
+		Api.colour_for_role("archmage") == Api.colour_for_role("player"))
+	check("the client can be told when its rank changes",
+		Api.has_signal("identity_changed"))
+
+	# ---- the stat bars' numbers are anchored, not hand-placed ----
+	# EVERY ONE OF THESE WAS WRONG IN A DIFFERENT WAY. The six labels had five
+	# geometries between them: one at a fixed offset_left of 86, three anchored
+	# full-width but with offsets of 85 and -87 that go NEGATIVE on any bar
+	# narrower than 172, and two correct. The bars carry FILL|EXPAND, so none of
+	# those numbers survives the panel being any width but the one they were
+	# placed at - which is how "52/100" ended up sitting right of centre and
+	# "85/100" ended up clipped.
+	var stats: Node = (load("res://scene/ui/statsscreen.tscn") as PackedScene).instantiate()
+	var adrift: Array = []
+	for bar_name in ["attack", "defense", "agility", "magic", "fishing", "cooking"]:
+		var tag: Control = stats.get_node_or_null("%" + bar_name + "barlabel") as Control
+		if tag == null:
+			adrift.append(bar_name + ": missing")
+			continue
+		# Anchored across the whole bar with no horizontal offsets is the only
+		# arrangement that is centred at EVERY width.
+		if tag.anchor_left != 0.0 or tag.anchor_right != 1.0:
+			adrift.append("%s: anchors %.2f..%.2f" % [bar_name, tag.anchor_left, tag.anchor_right])
+		elif tag.offset_left != 0.0 or tag.offset_right != 0.0:
+			adrift.append("%s: offsets %.0f/%.0f" % [bar_name, tag.offset_left, tag.offset_right])
+		elif tag.horizontal_alignment != HORIZONTAL_ALIGNMENT_CENTER:
+			adrift.append(bar_name + ": not centred")
+	check("every stat bar's number is centred on its bar", adrift.is_empty(), adrift)
+
+	# AND THE TWO SECTIONS LINE UP. The skills rows' name labels expanded while
+	# the combat rows' held a fixed 90, so the two blocks' bars started at
+	# different x down the same panel.
+	var ragged: Array = []
+	for row_name in ["attackrow", "defenserow", "agilityrow", "magicrow",
+			"fishingrow", "cookingrow"]:
+		# find_child rather than a path: these six sit at the bottom of two
+		# different seven-deep branches, and writing those out would make this
+		# check break every time the panel is re-nested.
+		var found: Node = stats.find_child(row_name, true, false)
+		if found == null:
+			ragged.append(row_name + ": missing")
+			continue
+		var name_tag: Control = found.get_node_or_null("label") as Control
+		if name_tag == null or name_tag.custom_minimum_size.x != 90.0:
+			ragged.append(row_name)
+	check("every stat row's name holds the same width", ragged.is_empty(), ragged)
+	stats.free()
+
+	# ---- the window actually fills the screen ----
+	# THIS IS THE ONE THAT MADE FULLSCREEN LOOK BROKEN. With
+	# scale_mode="integer" the canvas is only ever drawn at a WHOLE multiple,
+	# and 1920x1080 is 1.5x of the project's 1280x720 - so fullscreen on the
+	# most common monitor there is drew the game at 1x in the middle of the
+	# display inside a thick black frame. "fractional" is what makes 1.5x a
+	# real scale.
+	check("the canvas scales fractionally, so 1.5x is a real size",
+		str(ProjectSettings.get_setting("display/window/stretch/scale_mode", "")) == "fractional",
+		ProjectSettings.get_setting("display/window/stretch/scale_mode", ""))
+	# AND THE ASPECT IS PINNED. "keep" is what holds the viewport at exactly
+	# 1280x720 game units whatever the window is, which is what every offset in
+	# every .tscn in this project was placed against. "expand" would hand a
+	# wider monitor a wider viewport, and every hand-placed HUD element would
+	# land somewhere else.
+	check("and the aspect is kept, so every .tscn offset still lands",
+		str(ProjectSettings.get_setting("display/window/stretch/aspect", "")) == "keep",
+		ProjectSettings.get_setting("display/window/stretch/aspect", ""))
+
+	# EVERY OFFERED SIZE IS THE VIEWPORT'S OWN SHAPE. With the aspect kept, a
+	# window of any other shape gets black bars - so a size in this list that
+	# is not 16:9 is a size that cannot fill its own window.
+	var base_w: float = float(ProjectSettings.get_setting(
+		"display/window/size/viewport_width", 1280))
+	var base_h: float = float(ProjectSettings.get_setting(
+		"display/window/size/viewport_height", 720))
+	var wrong_shape: Array = []
+	for option in Settings.WINDOW_SIZES:
+		if not is_equal_approx(float(option.x) / float(option.y), base_w / base_h):
+			wrong_shape.append("%dx%d" % [option.x, option.y])
+	check("every window size offered is the viewport's own shape",
+		wrong_shape.is_empty(), wrong_shape)
+	check("and 1920x1080 is among them now",
+		Settings.WINDOW_SIZES.has(Vector2i(1920, 1080)), Settings.WINDOW_SIZES)
+
+	# ---- the camera view setting ----
+	check("the camera setting defaults to what the scenes were authored at",
+		is_equal_approx(float(Settings.DEFAULTS["camera_zoom"]), 3.0),
+		Settings.DEFAULTS.get("camera_zoom"))
+	check("and 3.0 is the ceiling",
+		is_equal_approx(Settings.CAMERA_ZOOM_MAX, 3.0), Settings.CAMERA_ZOOM_MAX)
+	# A HAND-EDITED options.cfg MUST NOT BE ABLE TO BREAK THE VIEW.
+	check("a silly number out of the file is clamped, not obeyed",
+		is_equal_approx(float(Settings._normalise("camera_zoom", 40.0)),
+			Settings.CAMERA_ZOOM_MAX),
+		Settings._normalise("camera_zoom", 40.0))
+	check("and so is one below the floor",
+		is_equal_approx(float(Settings._normalise("camera_zoom", -5.0)),
+			Settings.CAMERA_ZOOM_MIN))
+	# THE FLOOR IS 2.0, not 1.0. At 1x a 64px character is 64 screen pixels
+	# and the nameplate over their head is smaller than they are.
+	check("the camera cannot go further out than 2x",
+		is_equal_approx(Settings.CAMERA_ZOOM_MIN, 2.0), Settings.CAMERA_ZOOM_MIN)
+
+	var probe := Camera2D.new()
+	probe.zoom = Vector2(3.0, 3.0)
+	# A LEGAL SETTING, WHICH 1.5 HAS NOT BEEN SINCE THE FLOOR WENT TO 2.0.
+	# This asked for 1.5 and expected 1.5 back, so once the floor was raised the
+	# clamp did its job, handed back 2.0, and the test called correct behaviour a
+	# failure - two red lines that mean "the constant above me changed", which is
+	# the check three lines up already saying it louder.
+	#
+	# 2.5 is inside the range AND different from the 3.0 the probe starts at, so
+	# a write that never happens still fails this the way it always should have.
+	const LEGAL_ZOOM := 2.5
+	Settings._apply_camera_zoom_to(probe, LEGAL_ZOOM)
+	check("the setting reaches a camera",
+		is_equal_approx(probe.zoom.x, LEGAL_ZOOM), probe.zoom)
+	check("on both axes", is_equal_approx(probe.zoom.y, LEGAL_ZOOM), probe.zoom)
+	Settings._apply_camera_zoom_to(probe, 99.0)
+	check("and cannot push one past the ceiling",
+		is_equal_approx(probe.zoom.x, Settings.CAMERA_ZOOM_MAX), probe.zoom)
+	probe.free()
+
+	# ---- the options screen carries the control ----
+	var opts: Node = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate()
+	var no_control: Array = []
+	for unique in ["camerazoom", "camerazoomvalue"]:
+		if opts.get_node_or_null("%" + unique) == null:
+			no_control.append(unique)
+	check("the options screen has the camera slider", no_control.is_empty(), no_control)
+	var no_colour: Array = []
+	for unique in ["namehue", "namecolourswatch", "namecolourpreview"]:
+		if opts.get_node_or_null("%" + unique) == null:
+			no_colour.append(unique)
+	check("and the name colour slider", no_colour.is_empty(), no_colour)
+	var slider: Range = opts.get_node_or_null("%camerazoom") as Range
+	check("whose range matches the setting's own",
+		slider != null and is_equal_approx(slider.min_value, Settings.CAMERA_ZOOM_MIN)
+			and is_equal_approx(slider.max_value, Settings.CAMERA_ZOOM_MAX),
+		"%s..%s" % [slider.min_value if slider else "?", slider.max_value if slider else "?"])
+	var hue_slider: Range = opts.get_node_or_null("%namehue") as Range
+	check("whose range is the whole hue wheel",
+		hue_slider != null and is_equal_approx(hue_slider.min_value, Settings.NAME_HUE_MIN)
+			and is_equal_approx(hue_slider.max_value, Settings.NAME_HUE_MAX))
+	opts.free()
+
+	# ---- the name colour ----
+	# EVERY POSITION ON THE SLIDER HAS TO BE READABLE. Saturation and value are
+	# fixed for exactly that reason, so the check is that they really are fixed
+	# and that the wheel wraps rather than clamping at its ends.
+	var dull: Array = []
+	var hue: float = 0.0
+	while hue < 360.0:
+		var painted: Color = Settings.name_colour(hue)
+		if not is_equal_approx(painted.v, Settings.NAME_VALUE):
+			dull.append("hue %d is value %.2f" % [int(hue), painted.v])
+		elif not is_equal_approx(painted.s, Settings.NAME_SATURATION):
+			dull.append("hue %d is saturation %.2f" % [int(hue), painted.s])
+		hue += 15.0
+	check("every hue comes out at the one readable saturation", dull.is_empty(), dull)
+	check("the wheel wraps rather than stopping",
+		is_equal_approx(float(Settings._normalise("name_hue", 400.0)), 40.0),
+		Settings._normalise("name_hue", 400.0))
+	check("and wraps backwards too",
+		is_equal_approx(float(Settings._normalise("name_hue", -20.0)), 340.0),
+		Settings._normalise("name_hue", -20.0))
+	check("the default hue is near the parchment the names already were",
+		Settings.name_colour(float(Settings.DEFAULTS["name_hue"])).r > 0.9,
+		Settings.name_colour(float(Settings.DEFAULTS["name_hue"])))
+
+	# ---- staff cannot paint themselves a rank ----
+	# The one thing a nameplate says that has to be TRUE. player.gd decides
+	# this; the rule is checked here because a second copy of it anywhere is a
+	# second chance to get it wrong.
+	var body: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	check("a player gets the colour they chose",
+		body._nameplate_colour("player") == Settings.name_colour(),
+		body._nameplate_colour("player"))
+	check("and so does a rank this build has never heard of",
+		body._nameplate_colour("") == Settings.name_colour())
+	var spoofed: Array = []
+	for staff_rank in ["mod", "dev", "owner"]:
+		if body._nameplate_colour(staff_rank) != Api.colour_for_role(staff_rank):
+			spoofed.append(staff_rank)
+	check("but staff keep their rank colour whatever the slider says",
+		spoofed.is_empty(), spoofed)
+
+	# ---- and the plate sits on the head, not above it ----
+	# ONE NUMBER FOR FOUR CLASSES WAS THE BUG. The warrior's head is at -17 and
+	# the mage's at -41; a shared -42 floated the warrior's name 25px of empty
+	# air clear of them, which at 3x zoom is 75 screen pixels.
+	var heads: Dictionary = body.NAMEPLATE_HEAD_Y
+	check("every class has a measured head height",
+		heads.has("warrior") and heads.has("mage") and heads.has("healer")
+			and heads.has("tank"), heads)
+	var same: bool = (float(heads["warrior"]) == float(heads["mage"]))
+	check("and they are not all the same number", not same, heads)
+
+	# ---- the crown ----
+	# ONE ACCOUNT WEARS IT. The rank it keys off is the server's, copied into
+	# the chat row by app.py and read out of /api/friends - not the name colour
+	# beside it, which is a local preference anybody can set to anything.
+	var crown_file: String = body.NAMEPLATE_CROWN_PATH
+	check("the crown art ships with the game", ResourceLoader.exists(crown_file),
+		crown_file)
+	var crown_art: Texture2D = load(crown_file) as Texture2D
+	check("and loads as a texture", crown_art != null)
+	check("at the size the chat tag and the plate both assume",
+		crown_art != null and crown_art.get_width() == 26 and crown_art.get_height() == 15,
+		crown_art.get_size() if crown_art else "none")
+	check("only the owner wears it", body.NAMEPLATE_CROWN_RANK == "owner",
+		body.NAMEPLATE_CROWN_RANK)
+
+	# THE THREE PLACES THAT DRAW IT MUST AGREE. A path typed out three times is
+	# three chances for one of them to point at nothing, and a missing [img] in
+	# a RichTextLabel fails silently.
+	var chat_src: String = FileAccess.get_file_as_string("res://src/ui/chat/chatpanel.gd")
+	var mates_src: String = FileAccess.get_file_as_string("res://src/ui/friends/friendspanel.gd")
+	check("world chat points at the same file", chat_src.contains(crown_file), crown_file)
+	check("the friends list points at the same file", mates_src.contains(crown_file))
+	check("and both agree on who wears it",
+		chat_src.contains('"owner"') and mates_src.contains('"owner"'))
+
+	# AND IT IS ACTUALLY DRAWN, not merely spelled correctly in a constant.
+	# The two checks above passed for chat and failed for the friends list for
+	# as long as the friends list had no crown at all - which is the right
+	# answer, but only because the path happened to be absent too. A panel that
+	# declared the constant and never used it would slip straight past them.
+	check("and the friends list really puts it in a row",
+		mates_src.contains("CROWN_RANK") and mates_src.contains("line.add_child(crown)"),
+		"friendspanel.gd names the crown but never adds it to a row")
+	body.free()
 
 	# ---- the heartbeat: only a 401 signs anyone out ----
 	check("a live session beats ok", Api.heartbeat_verdict({"ok": true, "status": 200}) == "ok")
@@ -1496,7 +2412,10 @@ func _test_staff_panel() -> void:
 		Api.HEARTBEAT_SECONDS * 3.0 <= 45.0, Api.HEARTBEAT_SECONDS)
 
 	# ---- what a banned player is told ----
-	var login_script: Script = load("res://src/ui/menus/loginmenu.gd")
+	var login_script: Script = require_script(
+		"res://src/ui/menus/loginmenu.gd", "the login menu")
+	if login_script == null:
+		return
 	var told: String = login_script.describe_login_refusal({"status": 403,
 		"data": {"message": "This account is banned.", "ban": {"permanent": true, "reason": "cheating"}}})
 	check("a permanent ban says so, and why", told.contains("permanently") and told.contains("cheating"), told)

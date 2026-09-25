@@ -191,6 +191,10 @@ func _slot_from_server(data: Dictionary) -> Dictionary:
 		# what the bytes mean and this layer does not need to.
 		"explored":           _dict(data.get("explored", {})),
 
+		# Alongside explored rather than in `status`: save_row_to_dict() returns
+		# it at the top level of the character, not in the status block.
+		"area":               str(data.get("area", "elusion")),
+
 		"level":       _int(status.get("level", 1), 1),
 		"xp":          _int(status.get("xp", 0)),
 		# The server's xp_to_next is the client's xp_next. Different name for
@@ -348,6 +352,17 @@ func _save_body(index: int, slot: Dictionary) -> Dictionary:
 		body["hotbar"] = _string_array(slot["hotbar_assignments"], HOTBAR_SIZE)
 	if slot.has("explored"):
 		body["explored"] = _dict(slot["explored"])
+
+	# SAME "OMITTED MEANS LEAVE IT ALONE" RULE as the three above. A save from
+	# before this field existed has no area, and sending "" would move that
+	# character to the server's default instead of leaving it where it was.
+	#
+	# It also lands in _save_fingerprint() for free, which is what makes
+	# walking into a new area push a save at all - without that the server
+	# would keep whichever area you happened to be in when something else
+	# changed.
+	if slot.has("area"):
+		body["area"] = str(slot["area"])
 
 	return body
 

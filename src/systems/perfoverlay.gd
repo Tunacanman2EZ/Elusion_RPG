@@ -142,6 +142,13 @@ func _process(delta: float) -> void:
 			int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))),
 		_row("memory", "%.1f MB" % (
 			Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0)),
+		# THE ONLY ROW HERE THAT IS NOT ABOUT THIS MACHINE. Every other number
+		# answers "is this smooth for me"; this one answers "what does one of
+		# me cost the server", and it is multiplied by every player online.
+		# See Api.REQUEST_WINDOW_SECONDS for the arithmetic that makes it the
+		# number worth watching as the game grows.
+		_row("net", "%.2f req/s   (%s total)" % [
+			Api.requests_per_second(), _thousands(Api.requests_total())]),
 	])
 
 

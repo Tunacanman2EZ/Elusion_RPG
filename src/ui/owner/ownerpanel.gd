@@ -53,6 +53,48 @@ extends Control
 @onready var days_input: LineEdit = get_node_or_null("%daysinput")
 @onready var reason_input: LineEdit = get_node_or_null("%reasoninput")
 
+# RANK AND THE SERVER SWITCH, optional and null-guarded for the same reason as
+# the sanction buttons above: this script is committed from outside the editor
+# and the scene is not, so a hard @onready on a node that does not exist yet
+# would take the whole panel down with it.
+#
+# SCENE SETUP (editor work):
+#   an OptionButton, unique name "roleoption"     - filled in code, see RANKS
+#   a Button   with unique name "rolebutton"       - apply that rank
+#   a LineEdit with unique name "maintenancemessageinput" - what players are told
+#   a Button   with unique name "maintenancebutton"       - close / reopen
+#   a Label    with unique name "maintenancestatus"       - the switch as it is
+@onready var role_option: OptionButton = get_node_or_null("%roleoption")
+@onready var role_button: Button = get_node_or_null("%rolebutton")
+@onready var maintenance_message_input: LineEdit = get_node_or_null("%maintenancemessageinput")
+@onready var maintenance_button: Button = get_node_or_null("%maintenancebutton")
+@onready var maintenance_status: Label = get_node_or_null("%maintenancestatus")
+
+# THE TESTING ROW. get_node_or_null like everything below it, so a build whose
+# scene predates these controls opens the panel instead of failing on _ready.
+@onready var gold_input: LineEdit = get_node_or_null("%goldinput")
+@onready var gold_button: Button = get_node_or_null("%goldbutton")
+@onready var gold_bank_button: Button = get_node_or_null("%goldbankbutton")
+@onready var item_input: LineEdit = get_node_or_null("%iteminput")
+@onready var item_count_input: LineEdit = get_node_or_null("%itemcountinput")
+@onready var item_button: Button = get_node_or_null("%itembutton")
+@onready var testing_status: Label = get_node_or_null("%testingstatus")
+
+# What the switch looked like the last time we asked. The button has to know
+# whether pressing it closes or reopens, and asking the server at press time
+# would make the FIRST press a question and the second one the action.
+var _server_closed: bool = false
+
+# The server button's two faces, built once from whatever the scene handed it,
+# so the SHAPE (corners, padding) stays in the .tscn and only the colours move.
+# Closing signs everyone out and reads red; reopening only lets people back in
+# and reads green. A toggle that looks identical in both directions is how the
+# wrong one gets pressed.
+var _style_close: StyleBoxFlat = null
+var _style_close_hover: StyleBoxFlat = null
+var _style_reopen: StyleBoxFlat = null
+var _style_reopen_hover: StyleBoxFlat = null
+
 # ARMED-THEN-CONFIRMED, because a ban is one click from a typo.
 #
 # A ConfirmationDialog is the obvious answer and it is scene work this script
@@ -63,6 +105,17 @@ extends Control
 # The window is short on purpose. A button that stays armed is a button that
 # gets pressed later by somebody who has forgotten what it was armed for.
 const ARM_SECONDS := 4.0
+
+# THE RANK LADDER, mirroring ROLES in app.py. Order is the comparison: index 0
+# is the lowest. Kept as a list rather than free text because a typed rank is a
+# rank that can be typo'd - "moderator" is not a rank, and the only way the
+# panel could tell you so was to send it and let the server refuse.
+#
+# 'owner' is in the list to be COMPARED AGAINST, never to be granted. The
+# server's users.role has a CHECK that refuses it outright; it comes from
+# ELUSION_OWNER in the environment, which is what makes it the one rank no
+# request can hand out.
+const RANKS := ["player", "mod", "dev", "owner"]
 
 var _armed_action: String = ""
 var _armed_label: String = ""
@@ -84,6 +137,36 @@ func _ready() -> void:
 		var button: Button = pair[0]
 		if button != null and not button.pressed.is_connected(_on_sanction_pressed):
 			button.pressed.connect(_on_sanction_pressed.bind(String(pair[1])))
+
+	if role_button != null and not role_button.pressed.is_connected(_on_role_pressed):
+		role_button.pressed.connect(_on_role_pressed)
+
+	if maintenance_button != null:
+		if not maintenance_button.pressed.is_connected(_on_maintenance_pressed):
+			maintenance_button.pressed.connect(_on_maintenance_pressed.bind("maintenance"))
+
+	if gold_button != null and not gold_button.pressed.is_connected(_on_gold_pressed):
+		gold_button.pressed.connect(_on_gold_pressed.bind(false))
+	if gold_bank_button != null \
+			and not gold_bank_button.pressed.is_connected(_on_gold_pressed):
+		gold_bank_button.pressed.connect(_on_gold_pressed.bind(true))
+	if gold_input != null:
+		gold_input.text_submitted.connect(func(_t): _on_gold_pressed(false))
+	if item_button != null and not item_button.pressed.is_connected(_on_item_pressed):
+		item_button.pressed.connect(_on_item_pressed)
+	if item_input != null:
+		item_input.text_submitted.connect(func(_t): _on_item_pressed())
+	_set_testing_status("")
+
+	# The switch is server state, not panel state, so the panel has to ask.
+	# Re-asked every time it is opened rather than only here: the owner may have
+	# thrown it from another machine, and a stale button is a button that closes
+	# a server somebody already reopened.
+	if not visibility_changed.is_connected(_on_visibility_changed):
+		visibility_changed.connect(_on_visibility_changed)
+	_build_server_button_styles()
+	_populate_ranks()
+	_refresh_maintenance()
 
 
 func _process(_delta: float) -> void:
@@ -159,6 +242,8 @@ func _button_for(action: String) -> Button:
 			return ban_button
 		"unban":
 			return unban_button
+		"maintenance":
+			return maintenance_button
 	return null
 
 
@@ -248,6 +333,368 @@ func _on_sanction_pressed(action: String) -> void:
 
 	# Re-read, so the panel shows the result rather than the state before it.
 	_on_view_pressed()
+
+
+# =============================================================================
+# RANK
+# =============================================================================
+
+func _populate_ranks() -> void:
+	# ONLY RANKS BELOW YOUR OWN. The server enforces this anyway - it refuses to
+	# grant a rank at or above the caller's - but offering a choice that is
+	# always going to be refused is a worse way to learn the rule than simply
+	# not offering it. As owner you see all three; a dev sees player and mod.
+	if role_option == null:
+		return
+
+	var mine: int = RANKS.find("owner") if Api.is_owner else RANKS.find(Api.role)
+	if mine < 0:
+		mine = 0
+
+	# Rebuilt rather than filtered in place, because rank can change under us -
+	# the owner may have just demoted the account this client is logged in as.
+	var keep: int = role_option.get_selected_id() if role_option.item_count > 0 else -1
+	role_option.clear()
+	for i in range(mine):
+		role_option.add_item(RANKS[i], i)
+
+	if role_option.item_count == 0:
+		return
+	# Restore the previous pick when it is still on offer, so reopening the
+	# panel does not silently move the selection to something else.
+	for i in range(role_option.item_count):
+		if role_option.get_item_id(i) == keep:
+			role_option.select(i)
+			return
+	role_option.select(0)
+
+
+func _on_role_pressed() -> void:
+	# The server decides for real, and it enforces a rule this panel cannot:
+	# you may not grant a rank at or above your own, so only the owner makes a
+	# dev. 'owner' itself is not settable at all - it comes from ELUSION_OWNER
+	# in the server's environment, which is what makes it the one rank no
+	# request can hand out.
+	if Api.role != "mod" and Api.role != "dev" and not Api.is_owner:
+		return
+
+	var username: String = "" if username_input == null else username_input.text.strip_edges()
+	if username == "":
+		_say("[GM] type a username first.")
+		return
+
+	var new_role: String = ""
+	if role_option != null and role_option.selected >= 0:
+		new_role = str(RANKS[role_option.get_selected_id()])
+	if new_role == "":
+		_say("[GM] pick a rank first.")
+		return
+
+	if role_button != null:
+		role_button.disabled = true
+	var res: Dictionary = await Api.put("/api/staff/role", {"username": username, "role": new_role})
+	if role_button != null:
+		role_button.disabled = false
+
+	if not res.get("ok", false):
+		var status: int = int(res.get("status", 0))
+		if status == 0:
+			_say("[GM] could not reach the server: %s" % str(res.get("error", "")))
+		elif status == 404:
+			# The same two answers every other target lookup gives, for the same
+			# reason - require_role() hides behind "Not found" and so does a
+			# target out of your reach. Do not guess which.
+			_say("[GM] no account called '%s' - or it is out of your reach." % username)
+		else:
+			_say("[GM] rank change refused (%d): %s" % [status, str(res.get("error", ""))])
+		return
+
+	var data = res.get("data", {})
+	if data is Dictionary:
+		_say("[GM] %s: %s -> %s" % [
+			username, str(data.get("was", "?")), str(data.get("role", new_role))])
+	_on_view_pressed()
+
+
+# =============================================================================
+# THE SERVER SWITCH
+# =============================================================================
+
+func _on_visibility_changed() -> void:
+	# Asked again on every open, because the switch is SERVER state: the owner
+	# may have thrown it from another machine, and a stale button is one that
+	# closes a server somebody already reopened.
+	if visible:
+		_refresh_maintenance()
+		_populate_ranks()
+	else:
+		_disarm()
+
+
+func _refresh_maintenance() -> void:
+	# /api/status carries no token and needs no rank - it is the same call the
+	# login screen makes before anyone has logged in.
+	if maintenance_button == null and maintenance_status == null:
+		return
+
+	var res: Dictionary = await Api.get_json("/api/status")
+	if not res.get("ok", false):
+		_set_maintenance_display(_server_closed, "(could not read the server's state)")
+		return
+
+	var data = res.get("data", {})
+	if not (data is Dictionary):
+		return
+
+	_server_closed = bool(data.get("maintenance", false))
+	var detail: String = ""
+	if _server_closed:
+		detail = str(data.get("message", ""))
+		var left: int = int(data.get("seconds_left", 0))
+		if left > 0:
+			detail += "  (%ds left to save)" % left
+	_set_maintenance_display(_server_closed, detail)
+
+
+func _build_server_button_styles() -> void:
+	# Duplicated from the scene rather than written here, so restyling the panel
+	# in the editor keeps working and this only ever changes two colours.
+	if maintenance_button == null:
+		return
+	var normal: StyleBox = maintenance_button.get_theme_stylebox("normal")
+	var hovered: StyleBox = maintenance_button.get_theme_stylebox("hover")
+	if not (normal is StyleBoxFlat) or not (hovered is StyleBoxFlat):
+		return
+
+	_style_close = (normal as StyleBoxFlat).duplicate()
+	_style_close_hover = (hovered as StyleBoxFlat).duplicate()
+
+	_style_reopen = (normal as StyleBoxFlat).duplicate()
+	_style_reopen.bg_color = Color(0.098, 0.235, 0.157)
+	_style_reopen.border_color = Color(0.251, 0.525, 0.349)
+
+	_style_reopen_hover = (hovered as StyleBoxFlat).duplicate()
+	_style_reopen_hover.bg_color = Color(0.149, 0.341, 0.227)
+	_style_reopen_hover.border_color = Color(0.361, 0.702, 0.471)
+
+
+func _set_maintenance_display(closed: bool, detail: String) -> void:
+	if maintenance_button != null:
+		# THE BUTTON SAYS WHAT PRESSING IT DOES, not what the state is. A toggle
+		# labelled with its current state is ambiguous in exactly the situation
+		# where being wrong is expensive - and the colour says it a second time.
+		maintenance_button.text = "Reopen server" if closed else "Close server"
+		var box: StyleBoxFlat = _style_reopen if closed else _style_close
+		var box_hover: StyleBoxFlat = _style_reopen_hover if closed else _style_close_hover
+		if box != null:
+			maintenance_button.add_theme_stylebox_override("normal", box)
+		if box_hover != null:
+			maintenance_button.add_theme_stylebox_override("hover", box_hover)
+		maintenance_button.add_theme_color_override(
+			"font_color", Color(0.62, 0.88, 0.70) if closed else Color(0.95, 0.66, 0.62))
+	if maintenance_status != null:
+		maintenance_status.text = ("CLOSED - %s" % detail) if closed else "Server is OPEN"
+		# Colour carries the state faster than the words do, on a panel where
+		# reading it wrong signs everyone out.
+		maintenance_status.add_theme_color_override(
+			"font_color", Color(0.94, 0.55, 0.36) if closed else Color(0.43, 0.84, 0.49))
+
+
+func _on_maintenance_pressed(action: String) -> void:
+	# Owner only, and the server agrees: require_owner answers 404 to everyone
+	# else - the same 404 every owner route gives, so a refusal does not confirm
+	# the route exists.
+	if not Api.is_owner:
+		return
+
+	# REOPENING NEEDS NO CONFIRMATION. Closing signs everyone out once the save
+	# window runs down; reopening only lets people back in. Making the safe
+	# direction slower is how a server stays shut longer than it had to.
+	if not _server_closed and _armed_action != action:
+		_disarm()
+		_armed_action = action
+		_armed_until = Time.get_ticks_msec() / 1000.0 + ARM_SECONDS
+		if maintenance_button != null:
+			_armed_label = maintenance_button.text
+			maintenance_button.text = "Confirm close?"
+		_say("[SERVER] close the server? everyone is signed out once the save window "
+			+ "runs out. press again within %d seconds." % int(ARM_SECONDS))
+		return
+
+	_disarm()
+
+	var body: Dictionary = {"on": not _server_closed}
+	if not _server_closed and maintenance_message_input != null:
+		var message: String = maintenance_message_input.text.strip_edges()
+		if message != "":
+			body["message"] = message
+
+	if maintenance_button != null:
+		maintenance_button.disabled = true
+	var res: Dictionary = await Api.post("/api/server/maintenance", body)
+	if maintenance_button != null:
+		maintenance_button.disabled = false
+
+	if not res.get("ok", false):
+		var status: int = int(res.get("status", 0))
+		if status == 0:
+			_say("[SERVER] could not reach the server: %s" % str(res.get("error", "")))
+		elif status == 404:
+			_say("[SERVER] refused - this account is not the owner.")
+		else:
+			_say("[SERVER] refused (%d): %s" % [status, str(res.get("error", ""))])
+		return
+
+	var data = res.get("data", {})
+	if data is Dictionary:
+		if bool(data.get("maintenance", false)):
+			_say("[SERVER] CLOSED. %d online; they have %ds to save before being signed out."
+				% [int(data.get("online_now", 0)), int(data.get("grace_seconds", 0))])
+		else:
+			_say("[SERVER] reopened - players can log in again.")
+	await _refresh_maintenance()
+
+
+# =============================================================================
+# TESTING YOUR OWN SYSTEMS
+# =============================================================================
+# WHY THIS IS IN THE OWNER PANEL AND NOT ON A DEBUG KEY.
+#
+# The F-key grants are gated on OS.is_debug_build(), so they exist when the
+# game is run from the editor and vanish the moment it is exported - which is
+# exactly when the shops, the bank, trading, reviving and founding a guild
+# most need exercising. A server whose owner cannot put gold on it is a server
+# whose economy cannot be tested by the person who wrote it.
+#
+# SELF ONLY, AND THE SERVER SAYS SO. /api/staff/gold is @require_owner and
+# takes no target; these boxes cannot reach another account even by trying.
+#
+# IT SPEAKS ON SCREEN, NOT THROUGH _say(). Everything else in this panel
+# reports with _say(), which prints only in a debug build - so in an exported
+# build the panel does its work in total silence. That is a bug of its own;
+# this section at least does not repeat it.
+
+func _on_gold_pressed(to_bank: bool) -> void:
+	if gold_input == null:
+		return
+
+	var typed: String = gold_input.text.strip_edges()
+	if typed == "":
+		_set_testing_status("Type an amount first.")
+		return
+	if not typed.lstrip("-").is_valid_int():
+		_set_testing_status("That is not a number.")
+		return
+
+	var amount: int = int(typed)
+	if amount == 0:
+		_set_testing_status("Zero would do nothing.")
+		return
+
+	_set_testing_status("Asking the server...")
+	var res: Dictionary = await Api.post("/api/staff/gold", {
+		"slot": CharacterData.active_character_index,
+		"amount": amount,
+		"bank": to_bank,
+	})
+
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_set_testing_status(_refused(res))
+		return
+
+	var data = res.get("data", {})
+	if not (data is Dictionary):
+		_set_testing_status("The server did not say what happened.")
+		return
+
+	_set_testing_status("Carrying %d, bank %d." % [
+		int(data.get("gold", 0)), int(data.get("bank_gold", 0))])
+
+	# THE SERVER'S FIGURE, HANDED STRAIGHT TO THE PLAYER. set_gold() takes the
+	# balance rather than a delta for exactly this reason - see its own note -
+	# so there is no adding up to get wrong here.
+	if not to_bank:
+		var body: Node = get_tree().get_first_node_in_group("player")
+		if body != null and body.has_method("set_gold"):
+			body.set_gold(int(data.get("gold", 0)))
+
+
+func _on_item_pressed() -> void:
+	if item_input == null:
+		return
+
+	var wanted: String = item_input.text.strip_edges()
+	if wanted == "":
+		_set_testing_status("Type an item id first.")
+		return
+
+	var how_many: int = 1
+	if item_count_input != null:
+		var typed: String = item_count_input.text.strip_edges()
+		if typed != "" and typed.is_valid_int():
+			how_many = max(1, int(typed))
+
+	_set_testing_status("Asking the server...")
+	var res: Dictionary = await Api.post("/api/staff/grant", {
+		"slot": CharacterData.active_character_index,
+		"item_id": wanted,
+		"quantity": how_many,
+	})
+
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_set_testing_status(_refused(res))
+		return
+
+	# THE SERVER HANDS BACK THE WHOLE BAG, and the open inventory is told to
+	# redraw from it - the same two lines the debug key uses, through the same
+	# group lookup, so the two cannot drift.
+	var data = res.get("data", {})
+	var container: Node = _open_inventory_container()
+	if container != null and data is Dictionary:
+		container.load_server_array(data.get("inventory", []))
+		_set_testing_status("Added %d x %s to your bag." % [how_many, wanted])
+		return
+
+	# THE ITEM IS REAL EVEN WHEN NOTHING IS OPEN TO SHOW IT. Saying "nothing
+	# happened" here would be a lie - it is on the server and will be in the
+	# bag on the next load.
+	_set_testing_status(
+		"Added %d x %s - open the inventory to see it." % [how_many, wanted])
+
+
+func _open_inventory_container() -> Node:
+	# THROUGH THE "hud" GROUP, exactly as player.gd's debug grant does. This
+	# panel is a child of the HUD today and reaching upward by name is what
+	# breaks the day somebody moves it.
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	if hud == null or hud.inventory_screen == null:
+		return null
+	return hud.inventory_screen.get_node_or_null("%inventorycontainer")
+
+
+func _refused(res: Dictionary) -> String:
+	# THE SERVER'S OWN SENTENCE WHEN THERE IS ONE. Api._request has already
+	# pulled it out of the body into `error`.
+	var status: int = int(res.get("status", 0))
+	var said: String = str(res.get("error", "")).strip_edges()
+	if status == 0:
+		return "No answer from the server. Is it running?"
+	if status == 404 and (said == "" or said == "Not found."):
+		return "The server does not allow that, or has no such route - restart it?"
+	if said != "":
+		return said
+	return "Refused (HTTP %d)." % status
+
+
+func _set_testing_status(line: String) -> void:
+	if testing_status == null:
+		return
+	testing_status.text = line
+	testing_status.visible = line != ""
 
 
 func _say(line: String) -> void:

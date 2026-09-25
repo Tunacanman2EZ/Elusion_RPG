@@ -14,6 +14,11 @@ extends CanvasLayer
 # CONSTANTS
 # =============================================================================
 
+# KEPT DELIBERATELY, THOUGH NOTHING READS IT. The Discord button came off the
+# menu bar and its handler went with it; this is the invite itself, which is the
+# part that would be annoying to go and find again. Putting the link back
+# anywhere - the options screen, the login menu - is one line:
+#     OS.shell_open(DISCORD_URL)
 const DISCORD_URL := "https://discord.gg/4PEhh4Uu"
 const CHARACTER_SELECT_PATH := "res://scene/ui/menus/characterselect.tscn"
 # NEW: log out now goes all the way back to the login screen (true logout),
@@ -22,6 +27,16 @@ const CHARACTER_SELECT_PATH := "res://scene/ui/menus/characterselect.tscn"
 # logout) gets added later, even though nothing in this file uses it right
 # now.
 const LOGIN_MENU_PATH := "res://scene/ui/menus/loginmenu.tscn"
+
+# HOW OFTEN THE CLIENT ASKS THE SERVER WHAT IS GOING ON. One call does three
+# jobs - see _on_broadcast_poll_timeout() - so this is the only timer the HUD
+# needs. Ten seconds is comfortably inside the server's ONLINE_WINDOW_SECONDS
+# (45), so staff see this client as online, and well inside the default
+# maintenance grace window (60) so a closing server is heard in time to save.
+const BROADCAST_POLL_SECONDS := 10.0
+
+# How many announcements stay on screen. Old ones scroll off the top.
+const MESSAGES_KEPT := 5
 
 # preloaded panel scenes
 const INVENTORY_SCENE     := preload("res://scene/ui/inventory/inventory.tscn")
@@ -41,6 +56,9 @@ const TRADE_PANEL_SCENE   := preload("res://scene/ui/trade/tradepanel.tscn")
 # doesn't expose anything, it's just an inert resource until the owner
 # actually toggles it with the backquote key.
 const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
+const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
+const FRIENDS_PANEL_SCENE := preload("res://scene/ui/friends/friendspanel.tscn")
+const GUILD_PANEL_SCENE := preload("res://scene/ui/guild/guildpanel.tscn")
 
 
 # =============================================================================
@@ -78,8 +96,11 @@ var inventory_screen: InventoryScreen = null
 # doll holds things the bag does not and is worth opening on its own.
 #
 # Open both and dragging between them still works. It sits immediately to the
-# left of the inventory - the offsets are in equipmentpanel.tscn, and they are
-# the inventory's own minus its width - so the two line up whenever both are up.
+# left of the inventory - the offsets are in equipmentpanel.tscn, and its right
+# edge is the inventory's left edge less a small gap - so the two line up
+# whenever both are up. It got wider when the character preview went in the
+# middle of the doll, and it grew LEFTWARDS for that reason: growing the other
+# way would have put it under the bag.
 var equipment_panel:  EquipmentPanel  = null
 var stats_screen:     Control         = null
 var bank_screen:      Control         = null
@@ -89,6 +110,25 @@ var shop_panel:       Control         = null
 var kingdom_panel:    Control         = null
 var trade_panel:      Control         = null
 var owner_panel:      Control         = null
+var chat_panel:       Control         = null
+var friends_panel:    Control         = null
+var guild_panel:      Control         = null
+
+# The server's announcements, and the cursor into them. 0 means "I just got
+# here" and the server answers with the recent tail rather than the whole
+# table. See read_broadcasts() in app.py.
+var message_box:      PanelContainer   = null
+var message_rows:     VBoxContainer    = null
+var _broadcast_cursor: int = 0
+var _broadcast_poll_in_flight: bool = false
+
+# Said once per closing, not once every ten seconds.
+var _maintenance_warned: bool = false
+
+# The last teleport id this client carried out. Kept so a move is not applied
+# twice while the acknowledgement is still in flight - the poll can come round
+# again before the server has been told.
+var _teleport_done: int = 0
 var options_screen:   Control         = null
 var map_screen:       Control         = null
 
@@ -184,6 +224,9 @@ func _ready() -> void:
 	_resolve_bar_references()
 	_resolve_hotbar()
 	_wire_nav_buttons()
+	_add_owner_button()
+	_build_message_box()
+	_start_broadcast_poll()
 	_wire_hotbar()
 
 
@@ -394,7 +437,14 @@ func _resolve_hotbar() -> void:
 
 
 func _wire_nav_buttons() -> void:
-	var nav: Node = get_node_or_null("navhbox/navbuttons")
+	# %navbuttons, NOT "navhbox/navbuttons". The menu has been rearranged twice in
+	# two days - the staff buttons into the row the scene had reserved, and then
+	# the whole thing into navframe, the PanelContainer that draws the bar - and
+	# the second one moved every node in here one level deeper. A path spelled out
+	# like that survives no rearrangement at all. A unique name is resolved against
+	# the SCENE, so the row can be wrapped or reparented again and this still finds
+	# it; the same goes for %staffrow below and %staffbutton in testrunner.gd.
+	var nav: Node = get_node_or_null("%navbuttons")
 	if nav == null:
 		return
 
@@ -402,16 +452,24 @@ func _wire_nav_buttons() -> void:
 		if button is Button:
 			button.focus_mode = Control.FOCUS_NONE
 
-	# THE NAV ROW IS OUT OF WIDTH, and this is the only place that can say so -
-	# a .tscn cannot hold a comment the editor will not strip on the next save.
+	# WHERE THE BAR SITS, AND WHY. A .tscn cannot hold a comment the editor will
+	# not strip on the next save, so the numbers are explained here.
 	#
-	# Measured on 4.6.1 with the default theme at 1280x720: eleven buttons at the
-	# default 4px separation end at x=785, and the equipment doll's left edge is
-	# x=779 (offset_left -501 in equipmentpanel.tscn), so with the doll open the
-	# Characters button slid 6px under it and lost its clicks there.
-	# characterhud.tscn sets navbuttons' separation to 2, which ends the row at
-	# x=765 - 14px clear. Twelve buttons will not fit. The next one needs a
-	# shorter label somewhere, a second row, or the doll moved down.
+	# navframe is pinned to the BOTTOM LEFT: anchors_preset 12 with offset_bottom
+	# -8 and grow_vertical = BEGIN, so its bottom edge stays 8px off the floor and
+	# it grows UPWARD when the staff row appears. The ordinary menu therefore
+	# lands in exactly the same place whether or not you are the owner.
+	#
+	# offset_right = -334 puts its right edge at x=946. Everything in the bottom
+	# right is what that number is dodging: the hotbar at x 956-1276, and the
+	# health, magic and stamina bars, whose left edge is x=984 and which run down
+	# to y=709 - straight through the bar's height. 946 clears the nearest of
+	# them by 10px. It is an anchor rather than a fixed width so the gap holds
+	# wherever the right edge ends up.
+	#
+	# The buttons carry size_flags_horizontal = FILL|EXPAND, so they share that
+	# width instead of queueing up on the left, and an eleventh costs the others
+	# a few pixels each rather than running off the end.
 	var bindings := {
 		"inventorybutton":         "_on_inventory_pressed",
 		"equipmentbutton":         "_on_equipment_pressed",
@@ -421,7 +479,9 @@ func _wire_nav_buttons() -> void:
 		"tradebutton":             "_on_trade_pressed",
 		"mapbutton":               "_on_map_pressed",
 		"optionsbutton":           "_on_options_pressed",
-		"discordbutton":           "_on_discord_pressed",
+		"chatbutton":              "_on_chat_pressed",
+		"friendsbutton":           "_on_friends_pressed",
+		"guildbutton":             "_on_guild_pressed",
 		"logoutbutton":            "_on_logout_pressed",
 		# NEW: distinct from logout — returns to character select without
 		# clearing the logged-in session, so no re-entering a password.
@@ -430,6 +490,413 @@ func _wire_nav_buttons() -> void:
 	for btn_name in bindings:
 		if nav.has_node(btn_name):
 			nav.get_node(btn_name).pressed.connect(Callable(self, bindings[btn_name]))
+
+
+func _add_owner_button() -> void:
+	# THE OWNER'S WAY IN, using the row the scene already reserved.
+	#
+	# characterhud.tscn has carried a "staffrow" with a hidden Staff button and
+	# nothing driving it - a second row put aside for exactly this. Building a
+	# THIRD row in code, which is what this used to do, stacked the menu three
+	# deep for no reason. These go in the row that was waiting for them.
+	#
+	# STILL BUILT IN CODE, AND ONLY FOR THE OWNER. A button that exists in the
+	# .tscn exists for every player - hidden, but present, and one `visible =
+	# true` in a modified client away from being pressed. The server refuses
+	# every one of these calls to anyone else regardless, so this is about not
+	# shipping a door rather than about the lock.
+	var row: Control = get_node_or_null("%staffrow") as Control
+	if row == null:
+		return
+
+	# AN EMPTY ROW IS STILL A ROW. Left visible it contributes nothing but the
+	# VBox's 4px of separation, which reads as the bar sitting slightly crooked
+	# on every ordinary player's screen. Hidden, navframe shrinks to exactly one
+	# row of buttons.
+	#
+	# AND ONLY THE OWNER'S BAR IS TWO ROWS TALL: 6 top + 24 + 4 + 28 + 6 bottom =
+	# 68 against everyone else's 40. Since navframe grows upward from the floor,
+	# that difference is spent on the staff row and the ordinary menu does not
+	# move - which is why staffrow is declared FIRST in the scene, above
+	# navbuttons rather than below it.
+	if not Api.is_owner:
+		row.visible = false
+		return
+	row.visible = true
+
+	if row.has_node("ownerbutton"):
+		return
+
+	for spec in [
+		["ownerbutton", "Owner",
+			"Owner tools: view, kick, ban, rank, and the server switch",
+			_toggle_owner_panel],
+		["powersbutton", "Powers",
+			"What mod, dev and owner can each do - read from the live server",
+			_toggle_powers_panel],
+	]:
+		var button := Button.new()
+		button.name = String(spec[0])
+		button.text = String(spec[1])
+		button.tooltip_text = String(spec[2])
+		button.focus_mode = Control.FOCUS_NONE
+		button.add_theme_font_size_override("font_size", 12)
+		# Matched to the nav row above by hand. That row gets its height from a
+		# custom_minimum_size on the container, which cannot be used here - it
+		# would hold the row open at that height for every player who is not the
+		# owner, and this row has to collapse to nothing.
+		button.custom_minimum_size = Vector2(0.0, 24.0)
+		# Staff tools read warmer than the ordinary menu, so a glance tells you
+		# which row can close the server and which one opens your bag.
+		button.add_theme_color_override("font_color", Color(1.0, 0.78, 0.35))
+		button.pressed.connect(spec[3])
+		row.add_child(button)
+
+
+func _toggle_powers_panel() -> void:
+	# Owner-gated here as a courtesy; the SERVER is the gate that counts, and
+	# /api/staff/powers is require_role("mod") on its way in.
+	if not Api.is_owner:
+		return
+
+	var panel: Control = get_node_or_null("powerspanel")
+	if panel != null:
+		panel.visible = not panel.visible
+		if panel.visible:
+			_load_powers()
+		return
+
+	var frame := PanelContainer.new()
+	frame.name = "powerspanel"
+	frame.anchor_left = 0.5
+	frame.anchor_top = 0.5
+	frame.anchor_right = 0.5
+	frame.anchor_bottom = 0.5
+	frame.offset_left = -250.0
+	frame.offset_top = -230.0
+	frame.offset_right = 250.0
+	frame.offset_bottom = 230.0
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.058, 0.070, 0.094, 0.97)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.25, 0.33, 0.43)
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_right = 8
+	style.corner_radius_bottom_left = 8
+	style.content_margin_left = 14.0
+	style.content_margin_top = 12.0
+	style.content_margin_right = 14.0
+	style.content_margin_bottom = 12.0
+	frame.add_theme_stylebox_override("panel", style)
+
+	var scroll := ScrollContainer.new()
+	scroll.name = "scroll"
+	var rows := VBoxContainer.new()
+	rows.name = "rows"
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 4)
+	scroll.add_child(rows)
+	frame.add_child(scroll)
+	add_child(frame)
+
+	_load_powers()
+
+
+func _powers_line(rows: VBoxContainer, text: String, color: Color, size: int) -> void:
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_font_size_override("font_size", size)
+	rows.add_child(label)
+
+
+func _load_powers() -> void:
+	var rows: VBoxContainer = get_node_or_null("powerspanel/scroll/rows")
+	if rows == null:
+		return
+	for child in rows.get_children():
+		child.queue_free()
+
+	_powers_line(rows, "RANKS AND POWERS", Color(0.93, 0.73, 0.30), 17)
+	_powers_line(rows, "Read from the server's own route decorators, not a hand-kept list.",
+		Color(0.45, 0.50, 0.58), 11)
+
+	var res: Dictionary = await Api.get_json("/api/staff/powers", Api.PROBE_TIMEOUT)
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	rows = get_node_or_null("powerspanel/scroll/rows")
+	if rows == null:
+		return
+
+	if not res.get("ok", false):
+		_powers_line(rows, "Could not read the server: %s" % str(res.get("error", "")),
+			Color(0.95, 0.45, 0.35), 13)
+		return
+
+	var data = res.get("data", {})
+	if not (data is Dictionary):
+		return
+
+	for entry in data.get("ladder", []):
+		if not (entry is Dictionary):
+			continue
+		var rank: String = str(entry.get("rank", "?")).to_upper()
+		var grantable: bool = bool(entry.get("grantable", false))
+		_powers_line(rows, "", Color(1, 1, 1), 4)
+		_powers_line(rows, "%s%s" % [rank, "" if grantable else "   (cannot be granted)"],
+			Color(0.50, 0.66, 0.85), 14)
+
+		var routes: Array = entry.get("routes", [])
+		if routes.is_empty() and entry.get("notes", []).is_empty():
+			_powers_line(rows, "    nothing beyond playing the game", Color(0.55, 0.60, 0.68), 12)
+		for route in routes:
+			if route is Dictionary:
+				_powers_line(rows, "    %s  %s" % [str(route.get("method", "")), str(route.get("path", ""))],
+					Color(0.78, 0.83, 0.89), 12)
+		for note in entry.get("notes", []):
+			_powers_line(rows, "    - %s" % str(note), Color(0.93, 0.80, 0.55), 12)
+
+	_powers_line(rows, "", Color(1, 1, 1), 6)
+	var may_grant: Array = data.get("you_may_grant", [])
+	var grant_text: String = "nothing"
+	if not may_grant.is_empty():
+		grant_text = ", ".join(PackedStringArray(may_grant))
+	_powers_line(rows, "You are %s. You may grant: %s" % [str(data.get("you_are", "?")), grant_text],
+		Color(0.43, 0.84, 0.49), 12)
+
+
+func _build_message_box() -> void:
+	# Built in code rather than in characterhud.tscn so the HUD scene is not
+	# touched: every player gets this, and a scene edit is the thing most likely
+	# to collide with work in the editor.
+	if has_node("messagebox"):
+		return
+
+	var frame := PanelContainer.new()
+	frame.name = "messagebox"
+	# BOTTOM LEFT, STACKED ABOVE THE MENU BAR. This used to sit at -168/-62,
+	# which was the free corner until the menu bar moved down here and took the
+	# floor. The numbers below put its bottom edge at y=636, and the bar's top
+	# edge is y=644 for the owner (two rows) or 672 for everyone else - so it
+	# clears the taller of the two by 8px and never has to know which it is.
+	#
+	# Sized for the OWNER'S bar on purpose. Measuring the bar and positioning to
+	# suit would be exact, but this is built in _ready() before the staff row has
+	# been shown or hidden, so it would measure the wrong thing half the time.
+	frame.anchor_left = 0.0
+	frame.anchor_top = 1.0
+	frame.anchor_right = 0.0
+	frame.anchor_bottom = 1.0
+	frame.offset_left = 12.0
+	frame.offset_top = -190.0
+	frame.offset_right = 452.0
+	frame.offset_bottom = -84.0
+	# NEVER EATS A CLICK. This sits over the play area, and a panel that
+	# swallowed input would make the world under it dead to the mouse.
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.visible = false
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.058, 0.070, 0.094, 0.86)
+	style.border_width_left = 3
+	style.border_color = Color(0.25, 0.33, 0.43)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 4
+	style.content_margin_left = 10.0
+	style.content_margin_top = 8.0
+	style.content_margin_right = 10.0
+	style.content_margin_bottom = 8.0
+	frame.add_theme_stylebox_override("panel", style)
+
+	var rows := VBoxContainer.new()
+	rows.name = "rows"
+	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rows.add_theme_constant_override("separation", 3)
+	frame.add_child(rows)
+
+	add_child(frame)
+	message_box = frame
+	message_rows = rows
+
+
+func _push_message(text: String, color: Color) -> void:
+	if text.strip_edges() == "":
+		return
+
+	# ONE NOTICE, ONE PLACE. With world chat open the conversation IS the
+	# message log, so the line goes there and the floating box stays down;
+	# with it closed the box is the only channel the player has and it pops as
+	# it always did. Printing to both would double every maintenance warning.
+	if chat_panel != null and chat_panel.visible:
+		if chat_panel.has_method("push_system_line"):
+			chat_panel.push_system_line(text, color)
+			return
+
+	if message_rows == null:
+		return
+
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_font_size_override("font_size", 13)
+	message_rows.add_child(label)
+
+	# Oldest off the top, so the box never grows past its corner.
+	while message_rows.get_child_count() > MESSAGES_KEPT:
+		var oldest := message_rows.get_child(0)
+		message_rows.remove_child(oldest)
+		oldest.queue_free()
+
+	if message_box != null:
+		message_box.visible = true
+
+
+func _start_broadcast_poll() -> void:
+	if has_node("BroadcastPoll"):
+		return
+	var timer := Timer.new()
+	timer.name = "BroadcastPoll"
+	timer.wait_time = BROADCAST_POLL_SECONDS
+	timer.one_shot = false
+	timer.autostart = true
+	timer.timeout.connect(_on_broadcast_poll_timeout)
+	add_child(timer)
+
+
+func _on_broadcast_poll_timeout() -> void:
+	# Nothing to ask on behalf of nobody, and never two at once - a slow or
+	# dead server must not stack requests behind each other.
+	if _broadcast_poll_in_flight or not Api.is_logged_in():
+		return
+	_broadcast_poll_in_flight = true
+
+	var res: Dictionary = await Api.get_json(
+		"/api/server/broadcasts?since=%d" % _broadcast_cursor, Api.PROBE_TIMEOUT)
+
+	# PAST AN AWAIT. Up to the timeout has passed and this node may be gone -
+	# the player died, or something else changed scenes. Same guard and same
+	# reason as _on_logout_pressed().
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	_broadcast_poll_in_flight = false
+
+	# ONE PLACE DECIDES WHAT A RESPONSE MEANS. heartbeat_verdict() is in api.gd
+	# and the test suite pins it: only a 401 signs anyone out. A 500, a 404 from
+	# some other program on the port, or no answer at all says nothing about
+	# whether this login is still good, and throwing the player to the login
+	# screen over a hiccup would turn every restart of app.py into a mass kick.
+	var verdict: String = Api.heartbeat_verdict(res)
+	if verdict == "revoked":
+		_forced_signout()
+		return
+	if verdict != "ok":
+		return
+
+	var data = res.get("data", {})
+	if not (data is Dictionary):
+		return
+
+	_read_maintenance(data.get("maintenance"))
+	_read_teleport(data.get("teleport"))
+
+	for entry in data.get("messages", []):
+		if not (entry is Dictionary):
+			continue
+		var body: String = str(entry.get("body", ""))
+		var kind: String = str(entry.get("kind", "system"))
+		_push_message(body, Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94))
+
+	var newest: int = int(data.get("latest_id", _broadcast_cursor))
+	if newest > _broadcast_cursor:
+		_broadcast_cursor = newest
+
+
+func _read_teleport(order) -> void:
+	# SENT BY STAFF, CARRIED OUT HERE. The server decided the destination AND
+	# the exact spot - it spaces a group out on hex rings so nobody lands on
+	# anybody - so this does not compute a position, it goes where it is told.
+	if not (order is Dictionary):
+		return
+
+	var teleport_id: int = int(order.get("id", 0))
+	if teleport_id == 0 or teleport_id == _teleport_done:
+		return
+	# Claimed before the trip, because go_to() may change scene and the next
+	# poll can land before the ack does.
+	_teleport_done = teleport_id
+
+	var area: String = str(order.get("area", ""))
+	var spot := Vector2(float(order.get("x", 0.0)), float(order.get("y", 0.0)))
+	var by: String = str(order.get("by", "staff"))
+	var of_many: int = int(order.get("of", 1))
+
+	if AreaRegistry.has_area(area):
+		AreaRegistry.go_to(area, spot)
+		if of_many > 1:
+			_push_message("%s moved everyone to %s." % [by, area], Color(1.0, 0.82, 0.42))
+		else:
+			_push_message("%s moved you to %s." % [by, area], Color(1.0, 0.82, 0.42))
+	else:
+		# UNKNOWN AREA. Acked anyway rather than left queued: an order this
+		# build cannot carry out would otherwise be retried on every login
+		# forever. The warning names the id so it can be looked up.
+		push_warning("Teleport %d names area '%s', which is not in AreaRegistry."
+			% [teleport_id, area])
+		_push_message("A teleport arrived for an area this build does not know: %s" % area,
+			Color(0.95, 0.45, 0.35))
+
+	# TOLD LAST. The server keeps the order until somebody says it was carried
+	# out, so a crash between arriving and acking costs a repeat, not a loss.
+	await Api.post("/api/teleport/ack", {"id": teleport_id})
+
+
+func _read_maintenance(notice) -> void:
+	if not (notice is Dictionary) or not bool(notice.get("on", false)):
+		# Reopened. Arm the warning again so the NEXT closing is announced.
+		_maintenance_warned = false
+		return
+
+	if _maintenance_warned:
+		return
+	_maintenance_warned = true
+
+	var seconds: int = int(notice.get("seconds_left", 0))
+	_push_message("The server is closing in %ds. Saving your progress now." % seconds,
+		Color(0.95, 0.45, 0.35))
+
+	# THE CLIENT'S HALF OF "SAVE EVERYONE BEFORE DISCONNECTING". The server
+	# holds the door open for a grace window precisely so this can happen; a
+	# debounced write that happened to be two seconds away is not good enough
+	# when the room is about to empty.
+	if CharacterData != null and CharacterData.has_method("flush_save"):
+		CharacterData.flush_save()
+
+
+func _forced_signout() -> void:
+	# The server has already destroyed this session - kicked, banned, or the
+	# grace window on a closing server ran out. Api.logout() would spend a
+	# request on a token that no longer exists, which is exactly what
+	# forget_session() exists for: keep the reason for the login screen, drop
+	# the token, and go.
+	_push_message("Signed out by the server.", Color(0.95, 0.45, 0.35))
+
+	# Flushes any pending debounced save on the way out.
+	CharacterData.clear_current_user()
+	Api.forget_session("You were signed out by the server.")
+
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	get_tree().change_scene_to_file(LOGIN_MENU_PATH)
 
 
 func _wire_hotbar() -> void:
@@ -752,10 +1219,6 @@ func _on_options_pressed() -> void:
 	# The button has been on the nav row the whole time, styled and wired, and
 	# pressing it printed a line to a console the player does not have.
 	toggle_options()
-
-
-func _on_discord_pressed() -> void:
-	OS.shell_open(DISCORD_URL)
 
 
 var _logging_out: bool = false
@@ -1161,6 +1624,55 @@ func toggle_kingdom() -> void:
 		await kingdom_panel.toggle_board()
 
 
+func _on_chat_pressed() -> void:
+	toggle_chat()
+
+
+func _on_friends_pressed() -> void:
+	toggle_friends()
+
+
+func _on_guild_pressed() -> void:
+	toggle_guild()
+
+
+func toggle_chat() -> void:
+	# BUILT ON FIRST USE, like every other panel here. It also polls, so a
+	# player who never opens it never starts that timer.
+	if chat_panel == null:
+		chat_panel = CHAT_PANEL_SCENE.instantiate()
+		add_child(chat_panel)
+
+	if chat_panel.has_method("toggle"):
+		chat_panel.toggle()
+
+	# THE FLOATING BOX STANDS DOWN WHILE CHAT IS UP. The two live in the same
+	# corner and would otherwise overlap, and every server notice would be
+	# printed twice - once in each.
+	if message_box != null and chat_panel.visible:
+		message_box.visible = false
+
+
+func toggle_friends() -> void:
+	if friends_panel == null:
+		friends_panel = FRIENDS_PANEL_SCENE.instantiate()
+		add_child(friends_panel)
+
+	if friends_panel.has_method("toggle"):
+		friends_panel.toggle()
+
+
+func toggle_guild() -> void:
+	# BUILT ON FIRST USE, like every other panel here. It polls while open, so
+	# a player who never presses the button never starts that timer.
+	if guild_panel == null:
+		guild_panel = GUILD_PANEL_SCENE.instantiate()
+		add_child(guild_panel)
+
+	if guild_panel.has_method("toggle"):
+		guild_panel.toggle()
+
+
 func close_shop() -> void:
 	# Safe to call when nothing is open: the vendor calls this on walk-away
 	# without knowing whether the player ever pressed interact.
@@ -1218,6 +1730,15 @@ func hide_panel() -> void:
 		options_screen.close()
 	if map_screen != null and map_screen.visible:
 		map_screen.close()
+	# CHAT CLOSES ON ESCAPE TOO, and it has to be listed in is_panel_open()
+	# below for that to work - a panel that closes here but does not count
+	# there lets Escape fall through to whatever else is open behind it.
+	if chat_panel != null and chat_panel.visible:
+		chat_panel.close()
+	if friends_panel != null and friends_panel.visible:
+		friends_panel.close()
+	if guild_panel != null and guild_panel.visible:
+		guild_panel.close()
 
 
 func is_panel_open() -> bool:
@@ -1227,7 +1748,15 @@ func is_panel_open() -> bool:
 	var cook_open:  bool = cooking_panel    != null and cooking_panel.visible
 	var opts_open:  bool = options_screen   != null and options_screen.visible
 	var map_open:   bool = map_screen       != null and map_screen.visible
-	return inv_open or stats_open or bank_open or cook_open or opts_open or map_open
+	var chat_open:  bool = chat_panel      != null and chat_panel.visible
+	var mates_open: bool = friends_panel   != null and friends_panel.visible
+	# LISTED HERE BECAUSE IT CLOSES ON ESCAPE ABOVE. A panel that closes there
+	# but does not count here lets Escape fall through to whatever is open
+	# behind it - the comment over the chat panel says the same thing, and it
+	# is the exact mistake this pair of lists exists to prevent.
+	var guild_open: bool = guild_panel     != null and guild_panel.visible
+	return (inv_open or stats_open or bank_open or cook_open or opts_open
+		or map_open or chat_open or mates_open or guild_open)
 
 
 func _any_panel_visible() -> bool:

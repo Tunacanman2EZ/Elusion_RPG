@@ -10,7 +10,8 @@
 # behavior:
 # - follows the cursor while visible (16px offset to avoid overlapping)
 # - clamps to screen edges so it doesn't get cut off near the corners
-# - shows display_name, description, and quantity (if stackable + >1)
+# - shows the item's icon, display_name, description and what it is worth
+#   (quantity rides on the worth line, e.g. "Worth 50 gold each  (800 for 16)")
 # - z_index 100 so it renders above all other UI
 extends Control
 class_name ItemTooltip
@@ -36,6 +37,17 @@ const TOOLTIP_Z_INDEX := 100
 
 @onready var name_label:        Label = %tooltipname
 @onready var description_label: Label = %tooltipdescription
+# THE SCENE HAS THIS AND NOTHING EVER FILLED IT. itemtooltip.tscn carries a
+# 32x32 TextureRect in the header, correctly sized and set to keep its aspect,
+# which has been drawing nothing since it was added - every tooltip in the game
+# has had an empty box where the item's picture goes.
+@onready var icon_rect: TextureRect = get_node_or_null("%tooltipicon")
+# NO SCENE DECLARES %tooltipquantity. This has always resolved to null, so the
+# quantity branch in _populate_labels() has never run once. Left as a
+# get_node_or_null rather than deleted because the count is not missing from
+# the tooltip - _worth_line() prints "(800 for 16)" for any stack worth
+# anything - and if a quantity label is ever added to the scene this lights up
+# on its own.
 @onready var quantity_label:    Label = get_node_or_null("%tooltipquantity")
 
 
@@ -117,6 +129,14 @@ func _populate_labels(stack: ItemStack, description_suffix: String = "") -> void
 	# description_suffix is appended below the base description for
 	# context-aware tooltips (e.g., hotbar slots show "linked from inventory").
 
+	if icon_rect != null:
+		# The item's own icon, the same art the backpack cell draws. The node is
+		# already EXPAND_IGNORE_SIZE with a 32x32 minimum, so a large texture
+		# cannot push the tooltip open - which is the trap the chat panel fell
+		# into with the same property.
+		icon_rect.texture = stack.data.icon
+		icon_rect.visible = stack.data.icon != null
+
 	if name_label != null:
 		name_label.text = stack.data.display_name
 
@@ -147,6 +167,24 @@ func _populate_labels(stack: ItemStack, description_suffix: String = "") -> void
 			if desc != "":
 				desc += "\n"
 			desc += facts
+
+		# WHAT IT IS WORTH, and it goes below the requirements because it is the
+		# thing you check last.
+		#
+		# The tooltip never showed a price. That was survivable while a full iron
+		# kit cost six kills and nothing in the backpack was worth thinking about;
+		# it stopped being survivable when gear was rescaled x8 and the coin
+		# denominations landed. A backpack now holds a silver stack worth 250 and
+		# a platinum coin worth 100,000 that look like the same kind of clutter,
+		# and a player deciding what to sell had no number to decide on.
+		#
+		# TAKES THE QUANTITY, because "250 gold" on a pile of forty is the answer
+		# to a question nobody asked.
+		var worth: String = _worth_line(stack.data, stack.quantity)
+		if worth != "":
+			if desc != "":
+				desc += "\n"
+			desc += worth
 
 		# append context suffix on its own line if provided
 		if description_suffix != "":
@@ -211,6 +249,47 @@ func _requirement_lines(data: ItemData) -> String:
 		lines.append("Needs %s" % ", ".join(needs))
 
 	return "\n".join(lines)
+
+
+func _worth_line(data: ItemData, quantity: int) -> String:
+	# One line, or nothing at all for the things that have no price.
+	#
+	# TWO WORDINGS, BECAUSE THERE ARE TWO MEANINGS OF value.
+	#
+	# On a sword, `value` is what a vendor pays and the shop charges - it is a
+	# price, and the item is the thing you own. "Worth 200 gold" is right.
+	#
+	# On a coin it is not a price, it is the face value: a gold stack IS 5,000
+	# gold, the way a banknote is not worth money but is money. Calling that
+	# "worth" invites the reading that a vendor might pay something else for it,
+	# which is exactly the confusion the eight-rung denomination ladder can
+	# cause. "Cash in for" says what right-clicking it actually does.
+	if data == null:
+		return ""
+
+	var unit: int = int(data.value)
+	if unit <= 0:
+		return ""
+
+	var count: int = maxi(1, quantity)
+	var total: int = unit * count
+
+	if int(data.type) == int(ItemData.Type.CURRENCY):
+		# LUSIONS ARE NOT GOLD. The premium currency has value = 1 and a pile of
+		# them cashes in for lusions, so naming gold here would be a lie in the
+		# one place a player is most likely to believe it.
+		#
+		# THE SAME TEST inventoryscreen.gd::_use_currency_pile() routes on, and
+		# deliberately so: if the tooltip and the right-click ever disagreed about
+		# which pool a pile feeds, the tooltip would be the one lying.
+		var noun: String = "lusions" if "lusion" in str(data.item_id).to_lower() \
+			else "gold"
+		return "Cash in for %s %s" % [GameConstants.commas(total), noun]
+
+	if count > 1:
+		return "Worth %s each  (%s for %d)" % [
+			GameConstants.gold_text(unit), GameConstants.commas(total), count]
+	return "Worth %s" % GameConstants.gold_text(unit)
 
 
 func _clamp_to_screen() -> void:

@@ -198,8 +198,8 @@ test_gathering.py    44 checks    fishing and cooking authority
 test_healing.py      28 checks    the heal clamp stays quiet for honest play
 test_equipmove.py    22 checks    equipping moves the item, never copies it
 test_catalogue.py    13 checks    the shipped catalogue arms every protection
-                    ─────
-                    1,635 checks, 0 failures
+					─────
+					1,635 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless.

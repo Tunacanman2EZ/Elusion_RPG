@@ -477,7 +477,12 @@ func _update_gold_ui() -> void:
 	# refresh the bank gold label and clear the input field.
 	# called after deposit/withdraw and when the bank first opens.
 	if gold_label != null:
-		gold_label.text = "Bank Gold: %d" % CharacterData.get_bank_gold()
+		var banked: int = CharacterData.get_bank_gold()
+		gold_label.text = "Bank Gold: %s" % GameConstants.commas(banked)
+		# THE BANKED pile, not the carried one. This panel is about the gold
+		# that death cannot touch, so the coin over it should be the coin that
+		# pile would be paid in.
+		GameConstants.apply_gold_icon(get_node_or_null("%goldicon"), banked)
 	if gold_input != null:
 		gold_input.text = ""
 

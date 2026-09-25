@@ -1321,6 +1321,17 @@ func _export_constants() -> Dictionary:
 		"large_gold_threshold": int(enemy_consts.get("LARGE_GOLD_THRESHOLD", 100)),
 		"gold_small_id":        String(enemy_consts.get("GOLD_SMALL_ID", "smallamountofgold")),
 		"gold_large_id":        String(enemy_consts.get("GOLD_LARGE_ID", "largeamountofgold")),
+		# THE COIN LADDER, so the server makes change out of the same list the
+		# game does. Exported as ids only - each coin's value travels with the
+		# item record, where it belongs.
+		"gold_denomination_ids": enemy_consts.get("GOLD_DENOMINATION_IDS", []),
+		# THE JACKPOT DICE. Exported so the server rolls the same odds the
+		# game declares - two tables that disagree is a payout nobody can
+		# reason about.
+		"gold_jackpot_dice":  int(enemy_consts.get("GOLD_JACKPOT_DICE", 0)),
+		"gold_jackpot_min_tier": int(enemy_consts.get("GOLD_JACKPOT_MIN_TIER", 0)),
+		"gold_jackpot_faces": int(enemy_consts.get("GOLD_JACKPOT_FACES", 6)),
+		"gold_jackpot_multipliers": enemy_consts.get("GOLD_JACKPOT_MULTIPLIERS", []),
 
 		# THE GOLD CURVE. Read off baseenemy.gd for the same reason the three
 		# lines above are: the server rolls the gold, the constant lives with the
@@ -1343,11 +1354,16 @@ func _export_constants() -> Dictionary:
 		"xp_growth":            float(game_consts.get("XP_GROWTH", 1.15)),
 		"dupe_pet_lusions":     int(game_consts.get("DUPE_PET_LUSIONS", 20)),
 		"revive_cost":          int(game_consts.get("REVIVE_COST", 20)),
+		# WHAT ONE LUSION IS WORTH IN GOLD. Only needed where two currencies
+		# are added into one number - the score - and stated once so the day
+		# it is tuned it moves everywhere at once.
+		"lusion_gold_value":    int(game_consts.get("LUSION_GOLD_VALUE", 1000)),
 
 		# The gold alternative to that lusion price. A share rather than a
 		# figure, so the server computes it against a balance it owns rather
 		# than being told what the revive should cost.
 		"revive_gold_rate":     float(game_consts.get("REVIVE_GOLD_RATE", 0.80)),
+		"revive_gold_minimum":  int(game_consts.get("REVIVE_GOLD_MINIMUM", 100)),
 
 		# HOW FAST A CHARACTER RECOVERS ON ITS OWN, which the server needs in
 		# order to tell an honest rise in health from an invented one. Without

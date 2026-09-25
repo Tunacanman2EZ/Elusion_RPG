@@ -62,6 +62,21 @@ const MIN_PASSWORD_LENGTH := 8
 # people retype a password that was never wrong.
 const STATUS_WORKING := Color(0.75, 0.72, 0.62)   # muted grey — "checking"
 const STATUS_OFFLINE := Color(1.0, 0.65, 0.25)    # amber — "something is up"
+const STATUS_ONLINE := Color(0.55, 0.85, 0.5)     # green — "server is up"
+
+# How often the login screen re-checks the server while it sits open, so a
+# server that comes up (or goes down) after this screen loaded is reflected
+# without the player touching anything. The startup probe answers the
+# question once; this keeps answering it.
+const RECONNECT_POLL_SECONDS := 5.0
+
+# Matches the server's six digit code. Used only to light the tick and to stop
+# a half-typed code being submitted - the SERVER decides whether a code is
+# right, and it counts every wrong guess against a five try ceiling.
+const RECOVER_CODE_LENGTH := 6
+
+# Green, for the recovery tick and its success line.
+const STATUS_GOOD := Color(0.43, 0.84, 0.49)
 
 
 # =============================================================================
@@ -83,6 +98,47 @@ const STATUS_OFFLINE := Color(1.0, 0.65, 0.25)    # amber — "something is up"
 
 # guards against overlapping submissions while a request is in flight.
 var _request_in_flight: bool = false
+
+# Guards the background reconnect probe: skip a tick while the previous one
+# is still waiting out its timeout, so a dead server can't stack requests.
+var _reconnect_probe_in_flight: bool = false
+
+# RECOVERY. Every one is fetched with get_node_or_null and null-guarded, so an
+# older copy of loginmenu.tscn without these nodes still opens and still logs
+# people in - it simply has no recovery form.
+@onready var login_form: Control = get_node_or_null("%loginform")
+@onready var recover_form: Control = get_node_or_null("%recoverform")
+@onready var recover_link_button: Button = get_node_or_null("%recoverlinkbutton")
+@onready var recover_email: LineEdit = get_node_or_null("%recoveremail")
+@onready var recover_send_button: Button = get_node_or_null("%recoversendbutton")
+@onready var recover_code: LineEdit = get_node_or_null("%recovercode")
+@onready var recover_code_light: Label = get_node_or_null("%recovercodelight")
+@onready var recover_new_password: LineEdit = get_node_or_null("%recovernewpassword")
+@onready var recover_confirm_password: LineEdit = get_node_or_null("%recoverconfirmpassword")
+@onready var recover_submit_button: Button = get_node_or_null("%recoversubmitbutton")
+@onready var recover_status: Label = get_node_or_null("%recoverstatus")
+@onready var recover_back_button: Button = get_node_or_null("%recoverbackbutton")
+
+# THE RECOVERY ADDRESS PROMPT, shown after a successful sign-in when the server
+# says this account has no confirmed address. Same null-guarding as above.
+@onready var email_form: Control = get_node_or_null("%emailform")
+@onready var email_address: LineEdit = get_node_or_null("%emailaddress")
+@onready var email_send_button: Button = get_node_or_null("%emailsendbutton")
+@onready var email_code: LineEdit = get_node_or_null("%emailcode")
+@onready var email_code_light: Label = get_node_or_null("%emailcodelight")
+@onready var email_confirm_button: Button = get_node_or_null("%emailconfirmbutton")
+@onready var email_status: Label = get_node_or_null("%emailstatus")
+
+# The password the player just signed in with. POST /api/account/email demands
+# it - a session alone must not be able to set the recovery address, or a
+# stolen token could point recovery at the thief's inbox - and the player has
+# only just typed it, so asking a second time would be theatre. Cleared the
+# moment the address is confirmed.
+var _password_for_email: String = ""
+
+# Where to go once the address is confirmed. Held because the prompt interrupts
+# the sign-in and we have to resume it afterwards.
+var _pending_username: String = ""
 
 
 # =============================================================================
@@ -131,6 +187,13 @@ func _ready() -> void:
 	if not Api.connection_changed.is_connected(_on_connection_changed):
 		Api.connection_changed.connect(_on_connection_changed)
 
+	# Keep the server's state live for as long as this screen is open, not
+	# just at startup — see _start_reconnect_poll().
+	_start_reconnect_poll()
+
+	_wire_recovery()
+	_wire_email_prompt()
+
 	load_remembered_user()
 
 	# SIGNED OUT FROM THE SERVER'S SIDE - a kick, a ban, or a login that ran
@@ -149,14 +212,329 @@ func _on_login_field_submitted(_new_text: String) -> void:
 
 
 func _on_connection_changed(online: bool) -> void:
-	# Only ever CLEARS the banner. A request failing mid-login already writes
-	# its own message into %errorlabel with more detail than this has, and
-	# two lines saying the same thing in different colours reads as two
-	# separate problems.
+	# The banner tracks the SERVER's state from open to close: green the moment
+	# it answers, amber while it is unreachable. It is a separate line from
+	# %errorlabel by design — that one carries login progress and validation
+	# ("Incorrect password"), which are about the account, not about whether the
+	# server is there. The two answer different questions and never contradict.
 	if online:
-		_set_status("", STATUS_WORKING)
+		_set_status(Api.describe_online(), STATUS_ONLINE)
 	else:
 		_set_status(Api.describe_offline(), STATUS_OFFLINE)
+
+
+# =============================================================================
+# LIVE RECONNECT
+# =============================================================================
+
+func _start_reconnect_poll() -> void:
+	# A repeating, low-cost re-check so the server's state stays live for as long
+	# as this screen is open. connection_changed already drives the banner; the
+	# one thing missing on an idle login screen is anything that makes a request
+	# when nobody is clicking. Without this the amber "no connection" line is
+	# frozen the instant it appears — the player can start app.py and the screen
+	# never notices until they try to log in and make a request by hand. This is
+	# what turns "start the server, then restart the game" into "start the
+	# server, wait a moment".
+	#
+	# The timer is a child of this screen, so it is freed with it: the poll
+	# stops on its own the moment login succeeds and the scene changes.
+	if has_node("ReconnectPoll"):
+		return
+	var timer := Timer.new()
+	timer.name = "ReconnectPoll"
+	timer.wait_time = RECONNECT_POLL_SECONDS
+	timer.one_shot = false
+	timer.autostart = true
+	timer.timeout.connect(_on_reconnect_poll_timeout)
+	add_child(timer)
+
+
+func _on_reconnect_poll_timeout() -> void:
+	# Skip while the player's own login request is in flight — that request is
+	# already keeping reachability current, and a probe on top of it would only
+	# race to report the same thing. Skip while a previous probe is still
+	# waiting out its own timeout too, so a dead server can never stack requests.
+	if _request_in_flight or _reconnect_probe_in_flight:
+		return
+
+	_reconnect_probe_in_flight = true
+	# The result is deliberately discarded. get_json() updates reachability in
+	# api.gd as a side effect (_set_online), and THAT fires connection_changed on
+	# any change — the signal, not this return value, is what moves the banner.
+	# This call exists only to make the request happen. PROBE_TIMEOUT, not the
+	# full budget: nobody is watching this one.
+	await Api.get_json("/api/auth/session", Api.PROBE_TIMEOUT)
+	_reconnect_probe_in_flight = false
+
+
+# =============================================================================
+# RECOVERY  -  "I forgot my password"
+# =============================================================================
+#
+# The whole flow lives on this screen: ask for a code by email, type the six
+# digits in, choose a new password. There is no web page to bounce through and
+# nothing to hand off to a browser.
+#
+# WHAT THIS CODE DOES NOT DO IS DECIDE ANYTHING. The tick below turns green when
+# the code LOOKS like a code - six digits - and that is all it means. Whether it
+# IS the code is the server's call, and a wrong one costs one of five tries. A
+# client that claimed to validate the code would either be lying or would be a
+# way to guess it for free.
+
+func _wire_recovery() -> void:
+	# One table rather than five near-identical ifs, so a sixth control is a row
+	# instead of another paragraph.
+	var wiring := [
+		[recover_link_button, _on_recover_link_pressed],
+		[recover_back_button, _on_recover_back_pressed],
+		[recover_send_button, _on_recover_send_pressed],
+		[recover_submit_button, _on_recover_submit_pressed],
+	]
+	for pair in wiring:
+		var button: Button = pair[0]
+		var handler: Callable = pair[1]
+		if button != null and not button.pressed.is_connected(handler):
+			button.pressed.connect(handler)
+
+	if recover_code != null:
+		if not recover_code.text_changed.is_connected(_on_recover_code_changed):
+			recover_code.text_changed.connect(_on_recover_code_changed)
+
+	_show_recovery(false)
+
+
+func _show_recovery(on: bool) -> void:
+	if recover_form == null:
+		return
+	recover_form.visible = on
+	if login_form != null:
+		login_form.visible = not on
+	if on:
+		_recover_say("", STATUS_WORKING)
+		if recover_code != null:
+			recover_code.text = ""
+		if recover_new_password != null:
+			recover_new_password.text = ""
+		if recover_confirm_password != null:
+			recover_confirm_password.text = ""
+		_on_recover_code_changed("")
+
+
+func _recover_say(message: String, color: Color) -> void:
+	if recover_status == null:
+		return
+	recover_status.text = message
+	recover_status.add_theme_color_override("font_color", color)
+
+
+func _on_recover_link_pressed() -> void:
+	_show_recovery(true)
+
+
+func _on_recover_back_pressed() -> void:
+	_show_recovery(false)
+
+
+func _on_recover_code_changed(new_text: String) -> void:
+	# THE GREEN LIGHT. Format only - see this section's header.
+	var digits: String = new_text.strip_edges()
+	var looks_right: bool = digits.length() == RECOVER_CODE_LENGTH and digits.is_valid_int()
+	if recover_code_light != null:
+		recover_code_light.text = "OK" if looks_right else ""
+	if recover_submit_button != null:
+		recover_submit_button.disabled = not looks_right
+
+
+func _on_recover_send_pressed() -> void:
+	var address: String = "" if recover_email == null else recover_email.text.strip_edges()
+	if address == "":
+		_recover_say("Type the email address on your account.", STATUS_OFFLINE)
+		return
+
+	if recover_send_button != null:
+		recover_send_button.disabled = true
+	var res: Dictionary = await Api.post("/api/auth/recover", {"email": address})
+	if recover_send_button != null:
+		recover_send_button.disabled = false
+
+	if int(res.get("status", 0)) == 0:
+		_recover_say(Api.describe_offline(), STATUS_OFFLINE)
+		return
+	if int(res.get("status", 0)) == 429:
+		_recover_say(str(res.get("error", "Too many requests. Try again later.")), STATUS_OFFLINE)
+		return
+
+	# THE SAME SENTENCE WHETHER OR NOT THE ADDRESS EXISTS, because the server
+	# answers the same way on purpose - it will not say which addresses have
+	# accounts, and a client that rephrased the answer would give that away on
+	# the server's behalf.
+	var data = res.get("data", {})
+	var line: String = "If that address is on an account, a code is on its way."
+	if data is Dictionary and str(data.get("message", "")) != "":
+		line = str(data.get("message"))
+	_recover_say(line, STATUS_WORKING)
+
+
+func _on_recover_submit_pressed() -> void:
+	var address: String = "" if recover_email == null else recover_email.text.strip_edges()
+	var code: String = "" if recover_code == null else recover_code.text.strip_edges()
+	var new_password: String = "" if recover_new_password == null else recover_new_password.text
+	var confirm: String = "" if recover_confirm_password == null else recover_confirm_password.text
+
+	if address == "":
+		_recover_say("Type the email address on your account.", STATUS_OFFLINE)
+		return
+	if new_password != confirm:
+		_recover_say("Those two passwords do not match.", STATUS_OFFLINE)
+		return
+	if new_password.length() < MIN_PASSWORD_LENGTH:
+		_recover_say("Password must be at least %d characters." % MIN_PASSWORD_LENGTH, STATUS_OFFLINE)
+		return
+
+	if recover_submit_button != null:
+		recover_submit_button.disabled = true
+	var res: Dictionary = await Api.post("/api/auth/reset", {
+		"email": address, "code": code, "new_password": new_password,
+	})
+	if recover_submit_button != null:
+		recover_submit_button.disabled = false
+
+	if not res.get("ok", false):
+		if int(res.get("status", 0)) == 0:
+			_recover_say(Api.describe_offline(), STATUS_OFFLINE)
+		else:
+			_recover_say(str(res.get("error", "That code is wrong or has expired.")), STATUS_OFFLINE)
+		return
+
+	# Back to the sign-in form with the good news on it. The new password is
+	# deliberately NOT used to log in automatically: every session on the
+	# account was just destroyed, which is the point of recovering it, and
+	# signing straight back in would be a strange thing to do silently.
+	_show_recovery(false)
+	_set_status("Password updated - sign in with your new password.", STATUS_GOOD)
+	if %passwordlineedit != null:
+		%passwordlineedit.text = ""
+
+
+# =============================================================================
+# RECOVERY ADDRESS PROMPT
+# =============================================================================
+#
+# Every account gets asked for one, once, on the way in. The server answers
+# `needs_email` on login, register and every heartbeat, and keeps answering
+# true until an address has been CONFIRMED by a code sent to it - so an
+# existing account picks one up the next time its owner signs in, and a typo
+# does not count.
+#
+# IT IS A PROMPT, NOT A PERMISSION. The server refuses nothing over this; it is
+# gated here because the only person it protects is the player being asked. A
+# client that skipped it would simply have an account nobody can recover.
+
+func _wire_email_prompt() -> void:
+	if email_send_button != null:
+		if not email_send_button.pressed.is_connected(_on_email_send_pressed):
+			email_send_button.pressed.connect(_on_email_send_pressed)
+	if email_confirm_button != null:
+		if not email_confirm_button.pressed.is_connected(_on_email_confirm_pressed):
+			email_confirm_button.pressed.connect(_on_email_confirm_pressed)
+	if email_code != null:
+		if not email_code.text_changed.is_connected(_on_email_code_changed):
+			email_code.text_changed.connect(_on_email_code_changed)
+
+	if email_form != null:
+		email_form.visible = false
+
+
+func _show_email_prompt(username: String, password: String) -> void:
+	_pending_username = username
+	_password_for_email = password
+
+	if email_form == null:
+		# An older scene without the prompt must not strand anybody at a blank
+		# screen - go on into the game and leave the account without an address.
+		await _complete_login(username)
+		return
+
+	if login_form != null:
+		login_form.visible = false
+	if recover_form != null:
+		recover_form.visible = false
+	email_form.visible = true
+
+	_set_status("", STATUS_WORKING)
+	_email_say("", STATUS_WORKING)
+	if email_code != null:
+		email_code.text = ""
+	_on_email_code_changed("")
+
+
+func _email_say(message: String, color: Color) -> void:
+	if email_status == null:
+		return
+	email_status.text = message
+	email_status.add_theme_color_override("font_color", color)
+
+
+func _on_email_code_changed(new_text: String) -> void:
+	var digits: String = new_text.strip_edges()
+	var looks_right: bool = digits.length() == RECOVER_CODE_LENGTH and digits.is_valid_int()
+	if email_code_light != null:
+		email_code_light.text = "OK" if looks_right else ""
+	if email_confirm_button != null:
+		email_confirm_button.disabled = not looks_right
+
+
+func _on_email_send_pressed() -> void:
+	var address: String = "" if email_address == null else email_address.text.strip_edges()
+	if address == "":
+		_email_say("Type an email address first.", STATUS_OFFLINE)
+		return
+
+	if email_send_button != null:
+		email_send_button.disabled = true
+	var res: Dictionary = await Api.post("/api/account/email", {
+		"email": address, "password": _password_for_email,
+	})
+	if email_send_button != null:
+		email_send_button.disabled = false
+
+	if not res.get("ok", false):
+		if int(res.get("status", 0)) == 0:
+			_email_say(Api.describe_offline(), STATUS_OFFLINE)
+		else:
+			_email_say(str(res.get("error", "That address was not accepted.")), STATUS_OFFLINE)
+		return
+
+	_email_say("Code sent. Check that inbox, then type the six digits above.", STATUS_WORKING)
+
+
+func _on_email_confirm_pressed() -> void:
+	var code: String = "" if email_code == null else email_code.text.strip_edges()
+
+	if email_confirm_button != null:
+		email_confirm_button.disabled = true
+	var res: Dictionary = await Api.post("/api/account/email/verify", {"code": code})
+	if email_confirm_button != null:
+		email_confirm_button.disabled = false
+
+	if not res.get("ok", false):
+		if int(res.get("status", 0)) == 0:
+			_email_say(Api.describe_offline(), STATUS_OFFLINE)
+		else:
+			_email_say(str(res.get("error", "That code is wrong or has expired.")), STATUS_OFFLINE)
+		return
+
+	# Confirmed. Drop the password we were holding for this and carry on into
+	# the game exactly where the sign-in left off.
+	Api.needs_email = false
+	_password_for_email = ""
+	if email_form != null:
+		email_form.visible = false
+	_email_say("", STATUS_WORKING)
+	_set_status("Recovery address confirmed.", STATUS_GOOD)
+
+	await _complete_login(_pending_username)
 
 
 # =============================================================================
@@ -195,7 +573,7 @@ func _check_connection_and_resume() -> void:
 		_set_status(Api.describe_offline(), STATUS_OFFLINE)
 		return
 
-	_set_status("", STATUS_WORKING)
+	_set_status(Api.describe_online(), STATUS_ONLINE)
 
 	if not probe.get("resumed", false):
 		# Either there was no cached token, or the server rejected it. Neither
@@ -210,12 +588,31 @@ func _check_connection_and_resume() -> void:
 	if %passwordlineedit.text != "":
 		return
 
+	# A RESUMED SESSION CANNOT SET ONE. POST /api/account/email demands the
+	# password, and a bearer token is precisely what it refuses to take
+	# instead - that refusal is what stops a stolen session redirecting
+	# recovery. So an account that still owes an address signs in by hand this
+	# once, rather than being carried into the game still owing it.
+	if Api.needs_email:
+		_set_status("Please sign in to add a recovery email.", STATUS_WORKING)
+		return
+
 	await _complete_login(Api.username)
 
 
 # =============================================================================
 # LOGIN / REGISTER
 # =============================================================================
+
+func _enter_game(username: String, password: String) -> void:
+	# ONE DOOR INTO THE WORLD, so the recovery-address prompt cannot be skipped
+	# by whichever of the sign-in paths somebody forgot to change. Both the
+	# login and the register branch come through here.
+	if Api.needs_email:
+		await _show_email_prompt(username, password)
+		return
+	await _complete_login(username)
+
 
 func _on_login_button_pressed() -> void:
 	if _request_in_flight:
@@ -250,7 +647,7 @@ func _on_login_button_pressed() -> void:
 
 	if res.ok:
 		error_label.text = "Loading characters..."
-		await _complete_login(username)
+		await _enter_game(username, password)
 		_set_busy(false)
 		error_label.text = ""
 		return
@@ -265,7 +662,7 @@ func _on_login_button_pressed() -> void:
 
 		if created.ok:
 			error_label.text = "Loading characters..."
-			await _complete_login(username)
+			await _enter_game(username, password)
 			error_label.text = ""
 			return
 

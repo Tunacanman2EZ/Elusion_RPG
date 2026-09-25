@@ -43,15 +43,24 @@ const CLASS_DATA := preload("res://data/classes/healer.tres")
 @export var projectile_scene: PackedScene
 @export var mana_cost_per_shot: int = 1
 @export var shot_cooldown: float = 0.1
-# TWO, NOT THREE. See mage.gd's note on damage_per_magic for the arithmetic:
-# base over attack period is the dps floor, and 3 across a 0.1s cooldown was
-# 30/s against the warrior's 24/s — a ranged class beating a melee one before
-# either picked up a weapon. 2 gives 20/s, which is the 0.80x this class is
-# aimed at. One point of base damage is a big proportional step at ten shots
-# a second, which is why this line is 2 and not 2.4.
-@export var damage_per_magic: int = 2
+# THREE. Raised from two after playtesting. See mage.gd's note on
+# damage_per_magic for the arithmetic: base over attack period is the dps
+# floor, and at ten shots a second two was a 20/s floor that simply could not
+# clear the early mobs at a pace that felt like playing — a 70 hp light slime
+# took thirty-five hits, three and a half seconds of unbroken fire, on the most
+# fragile class in the game while it paid a mana point every shot.
+#
+# Three is 30/s. That is ABOVE the warrior's 24/s on paper, and it is meant to
+# be now: this used to be aimed at 0.80x the warrior on purpose, and that target
+# is what the number could not survive contact with the actual enemy HP. The
+# healer buys the lead back the way a glass cannon always does — it is the
+# squishiest body in the game and it spends mana to shoot, so a burst that
+# whiffs or drains the pool dry costs it the fight. One point of base is a big
+# proportional step here (a 50% jump), which is why the knob is this coarse: the
+# next stop up, four, is 40/s and a different class entirely.
+@export var damage_per_magic: int = 3
 @export var projectile_speed: float = 200.0
-@export var projectile_tint: Color = Color(0.3, 1.0, 0.4, 1.0)
+@export var projectile_tint: Color = Color(1.0, 1.0, 1.0, 1.0)
 
 
 # A cursor delta shorter than this counts as "no direction at all" — see

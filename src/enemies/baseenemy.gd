@@ -56,9 +56,79 @@ const LOOTBAG_SCENE := preload("res://scene/interactables/lootbag.tscn")
 
 const HOME_ARRIVAL_THRESHOLD := 4.0
 
+# KEPT, AND NO LONGER USED FOR DROPS. A bag used to hold one heap - roll an
+# amount, pick one of these two by the threshold, and put THAT MANY of it in
+# the bag - so a tier 8 kill paid out thirty thousand of a thing called "A Few
+# Coins". The three constants stay because saves and bags in the wild still
+# hold those ids, and because gamedata.py falls back to this behaviour if it
+# is ever handed a data file with no denominations in it.
 const LARGE_GOLD_THRESHOLD := 100
 const GOLD_SMALL_ID := "smallamountofgold"
 const GOLD_LARGE_ID := "largeamountofgold"
+
+# THE COIN LADDER, biggest first, and the single place it is written down.
+# Exported to gamedata.json so the server makes change out of exactly the same
+# list the game does - two ladders that disagree is gold appearing or
+# vanishing between the roll and the bag.
+#
+# EVERY STEP DIVIDES EVENLY INTO THE ONE ABOVE IT (1, 10, 50, 250, 1000, 5000,
+# 25000, 100000). That is not tidiness: it is what makes greedy change-making
+# exact. A ladder of 7s and 13s needs real change-making and can still leave a
+# remainder, and a remainder here is gold that was rolled and never arrived.
+#
+# The VALUES live on the ItemData resources under data/items/gold/, not here -
+# this is the order and the membership, and the price of a coin belongs with
+# the coin.
+# =============================================================================
+# THE JACKPOT DICE
+# =============================================================================
+# WHAT THIS IS FOR. The ordinary roll is randint(unit, unit * GOLD_SPREAD),
+# and at the highest loot tier in the game that tops out a few thousand gold.
+# The top three rungs of the coin ladder - a stack, a pile, a platinum coin -
+# were therefore unreachable: priced, named, drawn, and impossible to drop. A
+# denomination nobody can get is just a file.
+#
+# FIVE DICE, AND YOU WANT SIXES. Every gold drop rolls this many; the number
+# landing on the top face picks a multiplier from the table below. Three sixes
+# happens now and then, four is rare, five is one roll in 7776.
+#
+# WHY DICE RATHER THAN A FLAT PERCENTAGE. The shape is the point. A 0.013%
+# chance and five-sixes-in-a-row are the same number, but only one of them has
+# near misses, and four sixes landing a couple of times an evening is what
+# makes the fifth feel like it is coming.
+#
+# IT MULTIPLIES THE TIER'S OWN ROLL rather than replacing it, which is what
+# keeps it aligned with what you killed: a jackpot off a slime is a pleasant
+# surprise, and a jackpot off a boss is the only way a platinum coin enters
+# the game at all.
+const GOLD_JACKPOT_DICE := 5
+const GOLD_JACKPOT_FACES := 6
+
+# NOT IN THE STARTING AREA. Below this loot tier the dice are not rolled at
+# all - a windfall is only a windfall against a baseline, and a new player
+# whose third slime pays out a gold coin has been handed the rest of the first
+# area's economy before meeting it. It also puts the top of the coin ladder
+# where the top of the game is: if the easiest thing in the world can roll a
+# platinum coin, the coin says nothing about what you beat.
+#
+# The lowest max_loot_tier in the data today is 2 (the first area's mobs), so
+# 3 is the line that excludes them and lets everything past them in.
+const GOLD_JACKPOT_MIN_TIER := 3
+
+# Indexed by how many dice came up on the top face, 0 through 5. The first
+# three are 1 on purpose - two sixes is not luck, it is Tuesday.
+const GOLD_JACKPOT_MULTIPLIERS := [1, 1, 1, 4, 12, 45]
+
+const GOLD_DENOMINATION_IDS := [
+	"platinumcoin",
+	"goldpile",
+	"goldstack",
+	"goldcoin",
+	"silverstack",
+	"silvercoin",
+	"copperstack",
+	"coppercoin",
+]
 
 
 # =============================================================================
@@ -1969,6 +2039,16 @@ func _apply_element_recolour() -> void:
 	mat.shader = ELEMENT_SHADER
 	mat.set_shader_parameter("element_hue", Element.hue_for(current_element()))
 	mat.set_shader_parameter("saturation_scale", enemy_data.saturation_scale)
+	# The outfit mask (see EnemyData.outfit_hue). Default -1 recolours the whole
+	# sheet, so a slime is untouched; a robed creature sets these to recolour only
+	# its garment. Projectiles skip this on purpose - they have no outfit - and so
+	# fall back to the shader's own -1 default.
+	mat.set_shader_parameter("source_hue", enemy_data.outfit_hue)
+	mat.set_shader_parameter("source_hue_band", enemy_data.outfit_hue_band)
+	# Grey tint (see EnemyData.grey_tint). Default 0 leaves greys as drawn; the
+	# boss turns this up so its mostly-grey body takes the element's colour and the
+	# six elemental bosses stop looking identical.
+	mat.set_shader_parameter("grey_tint", enemy_data.grey_tint)
 	sprite.material = mat
 
 

@@ -62,12 +62,39 @@ signal closed
 @onready var pacing_hint:       Label        = get_node_or_null("%pacinghint")
 @onready var window_size:       OptionButton = get_node_or_null("%windowsize")
 @onready var damage_toggle:     CheckButton = get_node_or_null("%damagenumbers")
+@onready var camera_zoom:       HSlider      = get_node_or_null("%camerazoom")
+@onready var camera_zoom_value: Label        = get_node_or_null("%camerazoomvalue")
+@onready var name_hue:          HSlider      = get_node_or_null("%namehue")
+@onready var name_swatch:       PanelContainer = get_node_or_null("%namecolourswatch")
+@onready var name_preview:      Label        = get_node_or_null("%namecolourpreview")
 
 @onready var render_resolution: OptionButton = get_node_or_null("%renderresolution")
 @onready var lighting:          OptionButton = get_node_or_null("%lighting")
 @onready var background_limit:  CheckButton  = get_node_or_null("%backgroundlimit")
 @onready var renderer:          OptionButton = get_node_or_null("%renderer")
 @onready var renderer_note:     Label        = get_node_or_null("%renderernote")
+
+# ACCOUNT. Null-guarded like every other control here, so an older copy of
+# optionsscreen.tscn without these still opens and still changes the volume.
+@onready var account_email_value:    Label    = get_node_or_null("%accountemailvalue")
+@onready var account_email_button:   Button   = get_node_or_null("%accountemailbutton")
+@onready var account_password_button: Button  = get_node_or_null("%accountpasswordbutton")
+@onready var account_email_form:     Control  = get_node_or_null("%accountemailform")
+@onready var account_email_input:    LineEdit = get_node_or_null("%accountemailinput")
+@onready var account_email_password: LineEdit = get_node_or_null("%accountemailpassword")
+@onready var account_email_send:     Button   = get_node_or_null("%accountemailsend")
+@onready var account_email_code:     LineEdit = get_node_or_null("%accountemailcode")
+@onready var account_email_verify:   Button   = get_node_or_null("%accountemailverify")
+@onready var account_password_form:  Control  = get_node_or_null("%accountpasswordform")
+@onready var account_current_password: LineEdit = get_node_or_null("%accountcurrentpassword")
+@onready var account_new_password:   LineEdit = get_node_or_null("%accountnewpassword")
+@onready var account_confirm_password: LineEdit = get_node_or_null("%accountconfirmpassword")
+@onready var account_password_save:  Button   = get_node_or_null("%accountpasswordsave")
+@onready var account_status:         Label    = get_node_or_null("%accountstatus")
+
+const ACCOUNT_OK := Color(0.43, 0.84, 0.49)
+const ACCOUNT_BAD := Color(0.95, 0.55, 0.45)
+const ACCOUNT_PLAIN := Color(0.70, 0.75, 0.82)
 
 # The readout is polled, not signalled: nothing announces that the driver has
 # started ignoring vsync. Half a second is fast enough to watch a change take
@@ -108,6 +135,7 @@ var _refreshing: bool = false
 func _ready() -> void:
 	_populate_window_sizes()
 	_connect_controls()
+	_connect_account()
 
 	# Nothing here runs per frame; this is for the day the options panel is
 	# reachable from a paused state. A panel whose sliders stop responding
@@ -123,25 +151,27 @@ func _populate_window_sizes() -> void:
 	window_size.clear()
 	# `option`, not `size` — this script extends Control, which already has a
 	# `size` property, and the loop variable would shadow it.
-	# THE MULTIPLIER IS THE POINT, not decoration. With integer scaling these
-	# sizes are the only ones that fill their window edge to edge, and saying
-	# "2x" beside 2560x1440 explains why the list skips 1600x900 and 1920x1080
-	# rather than leaving it looking like an oversight.
-	var base_height: int = int(ProjectSettings.get_setting(
+	#
+	# THE MULTIPLIER IS THE POINT, not decoration - it is what tells a player
+	# that 2560x1440 is twice the game's own 1280x720 rather than an arbitrary
+	# bigger number.
+	#
+	# IT IS A FLOAT NOW. This used to be whole numbers only, and any size that
+	# was not a whole multiple printed with no multiplier at all - because
+	# project.godot used integer scaling and a fractional one would have been a
+	# lie. It scales fractionally now, so 1920x1080 really is 1.5x and says so.
+	var base_height: float = float(ProjectSettings.get_setting(
 		"display/window/size/viewport_height", 720))
 	for option in Settings.WINDOW_SIZES:
-		# Integer division on purpose: every entry in WINDOW_SIZES is a whole
-		# multiple of the viewport by construction, so there is no remainder to
-		# lose. The guard below catches the case where someone adds one that
-		# isn't, rather than printing a rounded-down lie.
-		@warning_ignore("integer_division")
-		var factor: int = (option.y / base_height) if base_height > 0 else 0
-		if base_height <= 0 or factor * base_height != option.y:
-			factor = 0
-		if factor > 0:
-			window_size.add_item("%d x %d   (%dx)" % [option.x, option.y, factor])
-		else:
+		if base_height <= 0.0:
 			window_size.add_item("%d x %d" % [option.x, option.y])
+			continue
+		var factor: float = float(option.y) / base_height
+		# "2x", not "2.00x", when it lands exactly - a whole multiple is worth
+		# recognising, because those are the ones with a perfect pixel grid.
+		var shown: String = ("%dx" % int(round(factor))) \
+			if is_equal_approx(factor, round(factor)) else ("%.2fx" % factor)
+		window_size.add_item("%d x %d   (%s)" % [option.x, option.y, shown])
 
 
 func _connect_controls() -> void:
@@ -156,6 +186,20 @@ func _connect_controls() -> void:
 		music_slider.value_changed.connect(_on_music_changed)
 	if sfx_slider != null:
 		sfx_slider.value_changed.connect(_on_sfx_changed)
+	if camera_zoom != null:
+		# THE RANGE COMES FROM Settings, not from the .tscn. The scene carries
+		# the same numbers so the slider looks right in the editor, but this is
+		# what makes them true - one statement of what is allowed, and the
+		# clamp in Settings._normalise() agrees with it by construction.
+		camera_zoom.min_value = Settings.CAMERA_ZOOM_MIN
+		camera_zoom.max_value = Settings.CAMERA_ZOOM_MAX
+		camera_zoom.step = Settings.CAMERA_ZOOM_STEP
+		camera_zoom.value_changed.connect(_on_camera_zoom_changed)
+	if name_hue != null:
+		name_hue.min_value = Settings.NAME_HUE_MIN
+		name_hue.max_value = Settings.NAME_HUE_MAX
+		name_hue.step = Settings.NAME_HUE_STEP
+		name_hue.value_changed.connect(_on_name_hue_changed)
 
 	if fullscreen_toggle != null:
 		fullscreen_toggle.toggled.connect(_on_fullscreen_toggled)
@@ -229,12 +273,21 @@ func close() -> void:
 func refresh() -> void:
 	_refreshing = true
 
+	# Asked on every open: the address can change from the login screen too.
+	_refresh_account()
+
 	if master_slider != null:
 		master_slider.value = float(Settings.get_value("volume_master"))
 	if music_slider != null:
 		music_slider.value = float(Settings.get_value("volume_music"))
 	if sfx_slider != null:
 		sfx_slider.value = float(Settings.get_value("volume_sfx"))
+	if camera_zoom != null:
+		camera_zoom.value = float(Settings.get_value("camera_zoom"))
+	if name_hue != null:
+		name_hue.value = float(Settings.get_value("name_hue"))
+	_update_camera_label()
+	_update_name_swatch()
 
 	_update_volume_labels()
 
@@ -277,6 +330,183 @@ func refresh() -> void:
 	_update_window_size_enabled()
 
 	_refreshing = false
+
+
+# =============================================================================
+# ACCOUNT  -  recovery email and password
+# =============================================================================
+#
+# Both of these already existed on the server and had nowhere to be used from:
+# POST /api/account/email (and its verify) were only reachable from the login
+# screen's first-time prompt, and POST /api/auth/password had no client at all.
+# This is the screen you come back to afterwards.
+#
+# BOTH DEMAND THE CURRENT PASSWORD, and the server is what enforces it. That is
+# the rule that stops a stolen session being upgraded into a stolen account: a
+# thief holding a token can neither change the password nor repoint recovery at
+# their own inbox without knowing the password they do not have.
+
+func _connect_account() -> void:
+	var wiring := [
+		[account_email_button, _on_account_email_button],
+		[account_password_button, _on_account_password_button],
+		[account_email_send, _on_account_email_send],
+		[account_email_verify, _on_account_email_verify],
+		[account_password_save, _on_account_password_save],
+	]
+	for pair in wiring:
+		var button: Button = pair[0]
+		var handler: Callable = pair[1]
+		if button != null and not button.pressed.is_connected(handler):
+			button.pressed.connect(handler)
+
+	_show_account_form(null)
+
+
+func _account_say(message: String, color: Color) -> void:
+	if account_status == null:
+		return
+	account_status.text = message
+	account_status.add_theme_color_override("font_color", color)
+
+
+func _show_account_form(which) -> void:
+	# One at a time, and both closed by default - this is a settings panel, not
+	# a form people are meant to be staring at.
+	if account_email_form != null:
+		account_email_form.visible = which == account_email_form
+	if account_password_form != null:
+		account_password_form.visible = which == account_password_form
+	if which == null:
+		_account_say("", ACCOUNT_PLAIN)
+
+
+func _refresh_account() -> void:
+	if account_email_value == null:
+		return
+	if not Api.is_logged_in():
+		account_email_value.text = "not signed in"
+		return
+
+	var res: Dictionary = await Api.get_json("/api/account/email", Api.PROBE_TIMEOUT)
+	if not res.get("ok", false):
+		account_email_value.text = "unavailable"
+		return
+
+	var data = res.get("data", {})
+	if not (data is Dictionary):
+		return
+
+	# The server only ever returns it masked - see _mask_email() in app.py. The
+	# raw address is never sent to any client, including this one.
+	if not bool(data.get("has_email", false)):
+		account_email_value.text = "none set"
+		account_email_value.add_theme_color_override("font_color", ACCOUNT_BAD)
+	elif bool(data.get("verified", false)):
+		account_email_value.text = str(data.get("email", ""))
+		account_email_value.add_theme_color_override("font_color", ACCOUNT_OK)
+	else:
+		account_email_value.text = "%s (unconfirmed)" % str(data.get("email", ""))
+		account_email_value.add_theme_color_override("font_color", ACCOUNT_BAD)
+
+
+func _on_account_email_button() -> void:
+	var opening: bool = account_email_form != null and not account_email_form.visible
+	_show_account_form(account_email_form if opening else null)
+
+
+func _on_account_password_button() -> void:
+	var opening: bool = account_password_form != null and not account_password_form.visible
+	_show_account_form(account_password_form if opening else null)
+
+
+func _on_account_email_send() -> void:
+	var address: String = "" if account_email_input == null else account_email_input.text.strip_edges()
+	var password: String = "" if account_email_password == null else account_email_password.text
+	if address == "" or password == "":
+		_account_say("Enter the new address and your current password.", ACCOUNT_BAD)
+		return
+
+	if account_email_send != null:
+		account_email_send.disabled = true
+	var res: Dictionary = await Api.post("/api/account/email",
+		{"email": address, "password": password})
+	if account_email_send != null:
+		account_email_send.disabled = false
+
+	if not res.get("ok", false):
+		_account_say(str(res.get("error", "That was not accepted.")), ACCOUNT_BAD)
+		return
+
+	# The password is not needed again and should not sit in a text box.
+	if account_email_password != null:
+		account_email_password.text = ""
+	_account_say("Code sent. Check that inbox and enter the six digits.", ACCOUNT_PLAIN)
+	_refresh_account()
+
+
+func _on_account_email_verify() -> void:
+	var code: String = "" if account_email_code == null else account_email_code.text.strip_edges()
+	if code == "":
+		_account_say("Enter the code from your email.", ACCOUNT_BAD)
+		return
+
+	if account_email_verify != null:
+		account_email_verify.disabled = true
+	var res: Dictionary = await Api.post("/api/account/email/verify", {"code": code})
+	if account_email_verify != null:
+		account_email_verify.disabled = false
+
+	if not res.get("ok", false):
+		_account_say(str(res.get("error", "That code is wrong or has expired.")), ACCOUNT_BAD)
+		return
+
+	Api.needs_email = false
+	if account_email_code != null:
+		account_email_code.text = ""
+	if account_email_input != null:
+		account_email_input.text = ""
+	_show_account_form(null)
+	_account_say("Recovery address confirmed.", ACCOUNT_OK)
+	_refresh_account()
+
+
+func _on_account_password_save() -> void:
+	var current: String = "" if account_current_password == null else account_current_password.text
+	var fresh: String = "" if account_new_password == null else account_new_password.text
+	var again: String = "" if account_confirm_password == null else account_confirm_password.text
+
+	if current == "" or fresh == "":
+		_account_say("Fill in your current and new password.", ACCOUNT_BAD)
+		return
+	if fresh != again:
+		_account_say("Those two passwords do not match.", ACCOUNT_BAD)
+		return
+
+	if account_password_save != null:
+		account_password_save.disabled = true
+	var res: Dictionary = await Api.post("/api/auth/password",
+		{"current_password": current, "new_password": fresh})
+	if account_password_save != null:
+		account_password_save.disabled = false
+
+	if not res.get("ok", false):
+		_account_say(str(res.get("error", "That did not work.")), ACCOUNT_BAD)
+		return
+
+	# EVERY SESSION WAS JUST DESTROYED, including this one, and the server
+	# handed back a replacement token in the same response. Adopting it is what
+	# keeps the player in the game instead of being thrown to the login screen
+	# by their own password change.
+	var data = res.get("data", {})
+	if data is Dictionary:
+		Api.adopt_new_token(str(data.get("token", "")))
+
+	for field in [account_current_password, account_new_password, account_confirm_password]:
+		if field != null:
+			field.text = ""
+	_show_account_form(null)
+	_account_say("Password updated. Other devices were signed out.", ACCOUNT_OK)
 
 
 func _update_volume_labels() -> void:
@@ -328,6 +558,60 @@ func _on_sfx_changed(value: float) -> void:
 	# when something happens, and setting their volume in a quiet menu would
 	# otherwise be done entirely by faith.
 	Audio.play("ui_click")
+
+
+func _on_camera_zoom_changed(value: float) -> void:
+	_update_camera_label()
+	if _refreshing:
+		return
+	# APPLIED WHILE THE HAND IS STILL ON THE SLIDER, like the volume ones
+	# above. Settings pushes it straight at the live camera, so the world
+	# behind this panel pulls back as you drag - which is the only way to
+	# choose a camera distance.
+	Settings.set_value("camera_zoom", value)
+
+
+func _update_camera_label() -> void:
+	if camera_zoom_value == null or camera_zoom == null:
+		return
+	camera_zoom_value.text = "%.2fx" % camera_zoom.value
+
+
+func _on_name_hue_changed(_value: float) -> void:
+	_update_name_swatch()
+	if _refreshing:
+		return
+	Settings.set_value("name_hue", _value)
+
+
+func _update_name_swatch() -> void:
+	# THE SWATCH IS THE NAME ITSELF, drawn the way it is drawn over the
+	# character: the same fixed saturation, the same black outline. A plain
+	# rectangle of colour would look fine at every hue and tell you nothing
+	# about which ones are actually readable as a name.
+	if name_hue == null or name_preview == null:
+		return
+
+	var picked: Color = Settings.name_colour(name_hue.value)
+	name_preview.add_theme_color_override("font_color", picked)
+
+	if name_swatch == null:
+		return
+	# A DARK PANEL BEHIND IT, because the name is read against the world and
+	# the world is dark. Shown on the options screen's own pale blue it would
+	# look like a different colour entirely.
+	var behind := StyleBoxFlat.new()
+	behind.bg_color = Color(0.09, 0.12, 0.08, 1.0)
+	behind.border_width_left = 1
+	behind.border_width_top = 1
+	behind.border_width_right = 1
+	behind.border_width_bottom = 1
+	behind.border_color = Color(0.25, 0.33, 0.43, 1.0)
+	behind.corner_radius_top_left = 2
+	behind.corner_radius_top_right = 2
+	behind.corner_radius_bottom_right = 2
+	behind.corner_radius_bottom_left = 2
+	name_swatch.add_theme_stylebox_override("panel", behind)
 
 
 func _on_fullscreen_toggled(pressed: bool) -> void:

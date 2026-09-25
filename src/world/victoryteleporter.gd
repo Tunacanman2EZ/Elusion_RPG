@@ -5,6 +5,14 @@
 # player back to the start — the town — the same fade-and-swap every other
 # scene change uses.
 #
+# IT IS THE ONLY WAY OUT. The arena used to also have a ladder back up to the
+# field, so this node was the reward and the ladder was the escape hatch. The
+# ladder is gone: walk in and the room is a commitment. That makes everything
+# below load-bearing in a way it was not before — if this teleporter fails to
+# appear there is no second door, so the failure mode is a player standing in
+# an empty room with nothing left to kill. testrunner.gd's BOSS ARENA section
+# guards the wiring for exactly that reason.
+#
 # =============================================================================
 # IT LISTENS; IT DOES NOT POLL
 # =============================================================================
@@ -127,9 +135,12 @@ func _on_gauntlet_cleared() -> void:
 	else:
 		await get_tree().process_frame
 
-	# PAST AN AWAIT. A SceneTreeTimer outlives this node, so a player who takes
-	# the ladder back up during the delay would resume this on a freed Area2D.
-	# Same guard every await in src/world/ carries.
+	# PAST AN AWAIT. A SceneTreeTimer outlives this node, and the arena can still
+	# change out from under it during the delay - a player who dies to the last
+	# boss's parting shot is on the game-over screen before this resumes, and
+	# resuming there means touching a freed Area2D. (It used to be the ladder
+	# back up to the field that did this; that ladder is gone, and the guard
+	# still earns its place.) Same guard every await in src/world/ carries.
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 

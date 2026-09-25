@@ -148,11 +148,23 @@ func _update_currency_labels() -> void:
 
 	var gold_label: Label = _get_label("%goldlabel")
 	if gold_label != null and "gold" in player:
-		gold_label.text = "Gold: %d" % int(player.gold)
+		gold_label.text = "Gold: %s" % GameConstants.commas(int(player.gold))
+
+	# THE ICON FOLLOWS THE BALANCE. Copper stack when you are scraping, gold
+	# coin mid-game, platinum when the dice have been kind - the same ladder
+	# the drops come off, so the eight denominations are visible from the
+	# backpack instead of only in the half second a coin spends on the floor.
+	#
+	# %goldicon now, not find_child(). The scene has a unique name on it, which
+	# is a direct lookup instead of a walk of the whole subtree on every gold
+	# change - and gold changes on every kill.
+	if "gold" in player:
+		GameConstants.apply_gold_icon(
+			get_node_or_null("%goldicon"), int(player.gold))
 
 	var lusions_label: Label = _get_label("%lusionslabel")
 	if lusions_label != null and "lusions" in player:
-		lusions_label.text = "Lusions: %d" % int(player.lusions)
+		lusions_label.text = "Lusions: %s" % GameConstants.commas(int(player.lusions))
 
 
 func _get_label(unique_path: String) -> Label:
