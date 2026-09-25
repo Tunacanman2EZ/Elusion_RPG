@@ -27,11 +27,10 @@ shader_parameter/saturation_scale = 1.0
 shader_parameter/grey_threshold = 0.08
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_puddle"]
-radius = 9.0
+radius = 4.5
 
 [node name="petpoisonpuddle" type="Area2D"]
 texture_filter = 1
-scale = Vector2(0.5, 0.5)
 collision_layer = 32
 collision_mask = 8
 script = ExtResource("1_script")
@@ -44,7 +43,8 @@ tick_damage = 5
 material = SubResource("ShaderMaterial_tint")
 sprite_frames = SubResource("SpriteFrames_puddle")
 animation = &"puddle"
+scale = Vector2(0.5, 0.5)
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="."]
-position = Vector2(1, 1)
+position = Vector2(0.5, 0.5)
 shape = SubResource("CircleShape2D_puddle")

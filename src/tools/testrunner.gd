@@ -86,7 +86,251 @@ func _run_all() -> void:
 	_test_boss_arena_exits()
 	_test_staff_panel()
 	_test_collision_contract()
+	_test_script_references()
+	_test_element_enum_order()
+	_test_floor_coverage()
 	_test_frame_budget()
+
+
+# =============================================================================
+# THE FLOOR COVERAGE BUDGET
+# =============================================================================
+# How much of the boss room is standing hazard at once. bossenemy.gd's
+# PUDDLE_CHANCE comment holds the reasoning: a 65-pillar cast every 2.16s with a
+# 2.5s pool would carpet 44% of the room, which is a fight you cannot read, and
+# the constants exist to hold the real figure far below that.
+#
+# WHAT MAKES IT EASY TO GET WRONG IS THE SQUARE. Area goes as scale squared, so
+# a pool scaled 1.25 covers 1.56x the floor, not 1.25x. That is why ice needs a
+# 0.8 chance multiplier and water needs 0.5 to pay for its extra: 2 - both are
+# compensation, and both say so in their own comment.
+#
+# THE INPUTS ARE SPREAD ACROSS TWELVE FILES: PUDDLE_CHANCE here, the per-element
+# multiplier and `extra` in bossprojectile.gd's ELEMENT_PROFILE, puddle_life_scale
+# beside them, and a lifetime and a scale authored into each of the nine
+# <element>puddle.tscn files. Any one of those can be edited alone, and the only
+# thing that noticed was a reader willing to redo the arithmetic.
+#
+# THE CEILING IS 30%, not the 23% the worst element currently sits at. A check
+# pinned to today's number fails on every deliberate tuning pass and gets
+# switched off; this one only fires when something has genuinely drifted toward
+# the unreadable-floor case the whole budget exists to prevent.
+
+const FLOOR_COVERAGE_CEILING := 0.30
+
+# The unscaled pool. Every <element>puddle.tscn sizes its own shape from this:
+# ice 11.25, earth 12.15, wind 7.2, and so on.
+const PUDDLE_BASE_RADIUS := 9.0
+
+
+func _test_floor_coverage() -> void:
+	section("FLOOR COVERAGE — how much of the boss room is hazard at once")
+
+	var pillars: float = 65.0
+	var cast_interval: float = 2.16
+	# Calibration from the PUDDLE_CHANCE comment: those pillars, that interval,
+	# a 2.5s pool at scale 1 and chance 1 is the 44% case. Everything below is
+	# measured against it rather than against a room size nobody wrote down.
+	var unit_area: float = 0.44 / (pillars * (2.5 / cast_interval))
+
+	var boss_script: Script = require_script(
+		"res://src/projectiles/bossprojectile.gd", "the boss projectile")
+	if boss_script == null:
+		return
+	var consts: Dictionary = boss_script.get_script_constant_map()
+	var profile: Dictionary = consts.get("ELEMENT_PROFILE", {})
+	check("the element profile table is readable", not profile.is_empty())
+	if profile.is_empty():
+		return
+
+	var probe: Node = (load("res://scene/projectiles/bossprojectile.tscn") as PackedScene).instantiate()
+	var life_scale: float = float(probe.puddle_life_scale)
+	var base_chance: float = float(probe.puddle_chance)
+	probe.free()
+
+	var over: Array[String] = []
+	var worst: float = 0.0
+	var worst_name: String = ""
+
+	for element in profile:
+		var p: Dictionary = profile[element]
+		var scene: PackedScene = Puddles.scene_for(int(element))
+		if scene == null:
+			continue
+		var pool: Node = scene.instantiate()
+		var life: float = float(pool.lifetime)
+		# THE COLLISION RADIUS, NOT THE SPRITE SCALE. Hazard is what damages
+		# you, and this project deliberately scales the sprite while sizing the
+		# shape - the root Area2D stays at scale 1 on every puddle, so reading
+		# node.scale here measured nothing at all. Today the two agree (every
+		# radius is 9.0 x its sprite scale); reading the shape means they do not
+		# have to, and a puddle that looks small while hitting big is caught
+		# rather than assumed away.
+		var radius: float = PUDDLE_BASE_RADIUS
+		var shape_node: CollisionShape2D = pool.get_node_or_null("collisionshape2d")
+		if shape_node != null and shape_node.shape is CircleShape2D:
+			radius = float((shape_node.shape as CircleShape2D).radius)
+		pool.free()
+
+		var chance: float = base_chance * float(p.get("puddle", 1.0))
+		var pools: float = 1.0 + float(p.get("extra", 0))
+		# SQUARED - the trap this whole check exists for. Area goes as the
+		# square of the radius, so a 1.25x pool is 1.56x the floor.
+		var area_factor: float = (radius / PUDDLE_BASE_RADIUS) * (radius / PUDDLE_BASE_RADIUS)
+		var coverage: float = pillars * chance * pools * area_factor \
+			* ((life * life_scale) / cast_interval) * unit_area
+
+		var label: String = str(Element.NAMES.get(int(element), element))
+		if coverage > worst:
+			worst = coverage
+			worst_name = label
+		if coverage > FLOOR_COVERAGE_CEILING:
+			over.append("%s covers %.0f%% of the room (ceiling %.0f%%)"
+				% [label, coverage * 100.0, FLOOR_COVERAGE_CEILING * 100.0])
+
+	over.sort()
+	check("no element carpets the boss room", over.is_empty(),
+		"\n         ".join(over))
+	check("and the worst is still well under the 44 percent unreadable case",
+		worst < 0.44, "%s at %.1f%%" % [worst_name, worst * 100.0])
+
+	print("  worst element: %s at %.1f%% of the floor" % [worst_name, worst * 100.0])
+
+
+# =============================================================================
+# ELEMENT.TYPE IS APPEND-ONLY, and this is what enforces it
+# =============================================================================
+# An enum value is written into a .tres as a BARE INTEGER. `element = 3` means
+# ICE only because ICE is fourth. Insert a value anywhere but the end and every
+# .tres, every .tscn and every saved game silently means something different -
+# a fire enemy becomes a water one, and nothing errors, because 3 is still a
+# perfectly valid integer.
+#
+# THE TABLE BELOW IS DELIBERATELY WRITTEN OUT rather than derived from the enum.
+# Deriving it would make the check agree with whatever the enum currently says,
+# which is precisely the thing under test. These are the numbers already baked
+# into the data files on disk; the enum has to keep matching them, not the other
+# way round.
+#
+# APPENDING IS FINE and stays green: a new member takes the next free integer
+# and no existing file changes meaning. That is the whole rule, and this check
+# permits exactly it.
+
+
+func _test_element_enum_order() -> void:
+	section("ELEMENT ENUM — append-only, because .tres stores bare integers")
+
+	# name -> the integer the data files on disk already mean by it
+	var baked := {
+		"NONE": 0, "DARK": 1, "LIGHT": 2, "ICE": 3, "WIND": 4,
+		"EARTH": 5, "FIRE": 6, "WATER": 7, "LIGHTNING": 8, "POISON": 9,
+	}
+
+	var wrong: Array[String] = []
+	for name in baked:
+		var want: int = int(baked[name])
+		if not Element.Type.has(name):
+			wrong.append("%s is gone from the enum (data files still say %d)" % [name, want])
+			continue
+		var got: int = int(Element.Type[name])
+		if got != want:
+			wrong.append("%s is now %d, but every .tres that says %d means %s"
+				% [name, got, want, name])
+	wrong.sort()
+
+	check("every element still has the integer the data files were written with",
+		wrong.is_empty(), "\n         ".join(wrong))
+
+	# An append is legal; anything that shortens the enum is not.
+	check("the enum has not lost members",
+		Element.Type.size() >= baked.size(),
+		"%d now, %d baked into data" % [Element.Type.size(), baked.size()])
+
+	print("  %d elements pinned; appending a new one keeps this green" % baked.size())
+
+
+# =============================================================================
+# SCRIPT REFERENCES - the break that produces no error
+# =============================================================================
+# A .tscn or .tres saved by the editor names its script TWICE: uid="uid://..."
+# and path="res://...". Godot resolves the uid first, so moving the script (with
+# its .gd.uid) is safe.
+#
+# A HAND-AUTHORED ONE HAS ONLY THE PATH. Move that script and nothing errors:
+# the resource loads, the script is simply absent, and the object falls back to
+# its base class. Every class quietly running on Node's defaults is what that
+# looks like from the outside, and it is invisible until someone plays the part
+# of the game that needed it.
+#
+# So this walks every scene and resource, finds the references carrying no uid,
+# and asserts the file each one names still exists. It cannot stop a script from
+# moving; it makes the move loud instead of silent, which is the whole ask.
+
+
+func _test_script_references() -> void:
+	section("SCRIPT REFERENCES — path-only, and therefore fragile")
+
+	var with_uid: int = 0
+	var path_only: Array[String] = []
+	var broken: Array[String] = []
+
+	for root in ["res://scene", "res://data"]:
+		_scan_script_refs(root, path_only, broken, [with_uid])
+
+	# Recount properly: the int above cannot be passed by reference in GDScript,
+	# so the scan returns totals through the arrays it fills instead.
+	check("the project still contains script references to check",
+		not path_only.is_empty() or not broken.is_empty(), path_only.size())
+
+	# THE ONE THAT MATTERS. A path-only reference to a file that no longer
+	# exists is a silently scriptless object.
+	broken.sort()
+	check("every path-only script reference resolves", broken.is_empty(),
+		"\n         ".join(broken))
+
+	print("  %d path-only references, across %d distinct scripts"
+		% [path_only.size(), _distinct_scripts(path_only)])
+
+
+func _scan_script_refs(dir_path: String, path_only: Array[String],
+		broken: Array[String], _counter: Array) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				_scan_script_refs(full, path_only, broken, _counter)
+		elif entry.ends_with(".tscn") or entry.ends_with(".tres"):
+			var text := FileAccess.get_file_as_string(full)
+			for line in text.split("\n"):
+				if not line.contains("type=\"Script\""):
+					continue
+				if line.contains("uid="):
+					continue
+				var from: int = line.find("path=\"")
+				if from < 0:
+					continue
+				from += 6
+				var to: int = line.find("\"", from)
+				if to < 0:
+					continue
+				var script_path: String = line.substr(from, to - from)
+				path_only.append("%s -> %s" % [full, script_path])
+				if not ResourceLoader.exists(script_path):
+					broken.append("%s names %s, which does not exist" % [full, script_path])
+		entry = dir.get_next()
+	dir.list_dir_end()
+
+
+func _distinct_scripts(refs: Array[String]) -> int:
+	var seen := {}
+	for r in refs:
+		seen[r.get_slice(" -> ", 1)] = true
+	return seen.size()
 
 
 # =============================================================================
@@ -1073,6 +1317,25 @@ func _test_player_stats() -> void:
 		PlayerStats.xp_needed_for_skill(10))
 	check("skill level 50 costs 332826", PlayerStats.xp_needed_for_skill(50) == 332826,
 		PlayerStats.xp_needed_for_skill(50))
+
+	# TWO HAND-KEPT COPIES OF ONE NUMBER, now checked rather than hoped for.
+	#
+	# SKILL_XP_BASE is declared in PlayerStats and again in GameConstants, and
+	# the two serve different callers: xp_needed_for_skill() takes the
+	# PlayerStats value as a default argument because defaults are part of a
+	# public signature, while xp_needed_for_skill_id() reads the GameConstants
+	# one because that is the copy the exporter sends to the server.
+	#
+	# Both are deliberate. Nothing checked they agreed, which is precisely the
+	# shape player.gd's own note calls "the exact shape of the bug this project
+	# has already paid for once" - the character XP formula in two places, the
+	# sanitizer rewriting honest saves, 1,636 XP becoming 52 million at level
+	# 20. A divergence here would have surfaced as a confusing "skill level 1
+	# costs the base" failure; this names it instead.
+	check("both copies of SKILL_XP_BASE agree",
+		PlayerStats.SKILL_XP_BASE == GameConstants.SKILL_XP_BASE,
+		"PlayerStats %d, GameConstants %d"
+			% [PlayerStats.SKILL_XP_BASE, GameConstants.SKILL_XP_BASE])
 
 	# The skill curve is steeper than the character curve on purpose — six
 	# skills compete for the same play time. If they ever converge, someone has

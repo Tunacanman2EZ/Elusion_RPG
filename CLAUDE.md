@@ -275,21 +275,28 @@ error at all: the resource loads, the script is simply absent, and the object
 falls back to its base class. Every class quietly running on Player's 20 hp
 default is what that looks like from the outside.
 
-Which files are which is not guessable, so grep before you move anything:
+**The suite now checks this, so it is no longer something to remember.**
+`_test_script_references()` walks every `.tscn` and `.tres`, finds the
+references carrying no uid, and asserts the file each one names still exists.
+Move a path-only script and the run goes red naming every scene affected,
+instead of the game quietly running on base-class defaults.
+
+Which files are which is still not guessable, so to see the list yourself:
 
 ```
 rg -o 'type="Script"[^]]*' --glob '*.tscn' --glob '*.tres' | rg -v 'uid='
 ```
 
-At the time of writing that returns three groups, all path-only:
+At the time of writing: **339 script references, 301 with a uid, 38 path-only
+across 22 distinct scripts.** The two clusters are `projectiles/acidpuddle.gd`
+(11 files) and `world/lightflicker.gd` (7); the rest are one apiece, mostly UI
+scenes.
 
-- `data/enemies/*.tres` → `enemydata.gd` (6)
-- `data/classes/*.tres` → `classdata.gd` (4)
-- the crypt light scenes → `world/lightflicker.gd` (6), and one to
-  `projectiles/acidpuddle.gd`
-
-`data/items/*.tres` are editor-saved and carry uids, which is exactly why this
-cannot be reasoned about from the folder name.
+This section used to name `data/enemies/*.tres` and `data/classes/*.tres` as
+two of three path-only groups. **Both carry uids now** — they were re-saved by
+the editor at some point, which is exactly how this set drifts and why a check
+beats a written list. `data/items/*.tres` were always editor-saved, which is
+why this cannot be reasoned about from the folder name.
 
 ### GDScript paths in string literals break silently too
 
@@ -466,12 +473,33 @@ because each is a full copy owning its own sub-resources — nothing is shared
 with the base scene, so writing `radius = 11.25` into `icepuddle.tscn` affects
 ice and nothing else.
 
-**Still outstanding:** `bossenemy._spawn_one_eruption()` and
+**Still outstanding, at runtime:** `bossenemy._spawn_one_eruption()` and
 `bossstalker._drop_pillar()` both set `eruption.scale` at runtime, because the
 per-pattern spike radius is not known until the pattern is chosen. Fixing those
 properly means `resource_local_to_scene = true` on the spike's shape, or a
 `duplicate()` per spike, and both change how a load-bearing fight behaves. It is
 written down here rather than done.
+
+**Still outstanding, authored into scenes: 15 physics nodes carry a non-unit
+scale.** Counted, rather than estimated:
+
+- all seven pets — six at `0.666667`, `petboss` at `1.333333`
+- `turretprojectile` at 2.0, `petbossprojectile` at 0.35, `petvine` at 0.5
+- `fieldteleport` at 1.5, and `teleports.tscn`, which has a non-uniform
+  `0.93, 0.14` on the Area2D and a **negative** `0.53, -2.54` on the shape
+  itself — that one is an editor drag, not a decision
+- two `collisionshape2d` in `elusion.tscn` at `1, 0.99999994`, which is float
+  noise rather than intent
+
+`petpoisonpuddle.tscn` used to be a sixteenth. It was fixed because it was the
+odd one out among eleven sibling puddles that all follow the rule, and because
+the fix was provably geometry-neutral: radius 9.0 → 4.5, shape offset
+`(1,1)` → `(0.5,0.5)`, the 0.5 moved onto the sprite. Same picture, same
+hitbox, `Area2D` and `CollisionShape2D` both back at `(1,1)`.
+
+The other fifteen are the same one-line-each change, but they are pets and
+projectiles whose feel is tuned, so each wants verifying in play rather than
+in arithmetic. Written down here rather than done, same as above.
 
 ### Two .tscn facts that changed in Godot 4.6
 
@@ -492,6 +520,16 @@ written down here rather than done.
 
 `Element.Type` is **append only**. `LIGHTNING` and `POISON` are at the bottom
 for exactly this reason, even though the tidy place for them was in the middle.
+
+**The suite enforces this now.** `_test_element_enum_order()` pins all ten
+names to the integers already baked into the data — written out by hand rather
+than derived from the enum, because deriving it would make the check agree with
+whatever the enum currently says, which is the thing under test.
+
+Appending stays green; inserting goes red and names every element that moved
+and what it now contradicts (*"EARTH is now 6, but every .tres that says 5
+means EARTH"*). 102 files carry an element integer and every value 0-9 is in
+use, so an insertion silently rewrites the meaning of 101 of them.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 
