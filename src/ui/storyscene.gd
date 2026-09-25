@@ -1,4 +1,4 @@
-# storyscreen.gd — full black-screen narration overlay with centered text,
+# storyscene.gd — full black-screen narration overlay with centered text,
 # shown one paragraph at a time. REPLACES the earlier TextSequence attempt
 # (which floated text above a character in the world) — this is
 # screen-space instead (a CanvasLayer), covering the whole viewport

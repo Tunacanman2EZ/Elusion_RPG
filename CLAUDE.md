@@ -71,7 +71,7 @@ repository — run this from *its* folder, not from this one:
 .\venv\Scripts\python.exe test_api.py
 ```
 
-365 checks, exits non-zero on any failure. It uses a throwaway database in your
+454 checks, exits non-zero on any failure. It uses a throwaway database in your
 temp folder and never touches `elusion.db`.
 
 No relative path is given on purpose. The two repositories are separate
@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 177 checks at the time of writing; if that number and the one in this
+failure. 613 checks at the time of writing; if that number and the one in this
 file disagree, this file is the stale one. It covers what can be checked without playing: the XP curve, the shared
 constants and class stat curves, `ItemStack`'s save round trip, and the rank
 ordering.
@@ -214,29 +214,35 @@ Before deleting a function because nothing seems to call it, check all three:
 - **Engine virtuals.** `_ready`, `_process`, `_drop_data`,
   `_get_drag_data`, and EditorScript's `_run` are called by Godot.
 
-### Seven copies of the four-direction rule are still out there
+### The four-direction rule lives in one place now
 
 `Facing` (in `src/shared/`) owns the rule that turns a Vector2 into "up",
-"down", "left" or "right". `baseenemy.gd` uses it. **`player.gd`, `warrior.gd`,
-`mage.gd`, `tank.gd`, `healer.gd` and `pet.gd` still have their own copies** —
-seven in total, all spelled `if abs(dir.x) > abs(dir.y)`.
+"down", "left" or "right". This section used to say seven copies were still out
+there, in `player.gd`, `warrior.gd`, `mage.gd`, `tank.gd`, `healer.gd` and
+`pet.gd`. **They are all converted.** Those six now carry zero copies between
+them and call `Facing`.
 
-They have already drifted, and it is worth knowing which way. The enemy version
-returns `""` for `Vector2.ZERO`; the player and class versions fall through to
-their `else` and return `"up"`. A still enemy faces nowhere, a still character
-faces up, and nobody chose that.
-
-Both behaviours are right for their caller, which is why `Facing` has two
-entry points rather than one winner:
+The drift that motivated it is worth keeping, because it is why `Facing` has
+two entry points rather than one winner. The enemy version returned `""` for
+`Vector2.ZERO`; the player and class versions fell through to their `else` and
+returned `"up"`. A still enemy faced nowhere, a still character faced up, and
+nobody chose that.
 
 - `from_vec()` — `NONE` when there is no direction. Navigation needs "no
   heading" to be a real answer rather than a coerced `"down"`.
-- `from_vec_total()` — always a direction. There is no "no animation" to play,
-  so a still sprite has to idle facing somewhere.
+- `from_vec_total()` — always a direction, `UP` on an exactly zero vector.
+  There is no "no animation" to play, so a still sprite has to idle facing
+  somewhere. The `UP` default is not a preference: every old copy resolved zero
+  to up because they all ended `else "up"` and `0 > 0` is false.
 
-The remaining seven are animation-name mapping (`"walk" + direction`), so
-converting them is an eight-file change through code that has no tests. Worth
-doing; not worth doing by accident.
+**Two literal copies remain and both are correct.** `slashwave.gd` was the last
+straggler and now delegates. What is left:
+
+- `testrunner.gd::_legacy_walk_animation()` — deliberately the old body,
+  character for character, as an independent oracle. It checks `Facing` against
+  what `Facing` replaced on a grid of vectors, and the moment it delegates to
+  the thing it is testing it tests nothing. Its own comment says so. Leave it.
+- Nothing else. If a grep turns up a third, it is new and it is a mistake.
 
 ### The debug keys are staff-only, and that is a rule, not a defence
 
@@ -535,9 +541,27 @@ the backpack are bound by the same rule.
 
 Do not "fix" these.
 
-- **`SOUNDS` in `audio.gd` is 27 empty strings.** An unassigned id is a silent
+- **`SOUNDS` in `audio.gd` is 31 empty strings.** An unassigned id is a silent
   no-op by design. That is what lets the call sites exist now and the audio
   arrive later, one file at a time.
+- **Eight signals are emitted with nothing connected, and that is the
+  convention, not an oversight.** `took_damage` and `xp_gained_signal`
+  (player.gd), `damaged` (baseenemy.gd), `wave_started` (bossgauntlet.gd),
+  `cook_requested` (firepit.gd), `cast_failed` (fishingspot.gd),
+  `raised_changed` (spikedoor.gd), `unauthorized_seen` (api.gd).
+
+  Each sits **alongside** a direct call that already does the work — the
+  "signal as well as the direct call" shape `fishingspot.gd` documents at
+  `_notify()`. The signal is an extension point so a quest or a tutorial can
+  hear an event without the emitting script knowing about it; it is never the
+  only thing that happens, which is the failure that made `cast_failed` worth
+  writing about in the first place.
+
+  This is **not** the `gamestate.gd` case, and the difference is the whole
+  rule. Those thirteen were the sole mechanism, heard by nothing, and
+  `player_moved` cost 180 emissions a second. These fire when a cast fails or
+  a wave starts. A rarely-emitted signal nobody hears costs nothing; a
+  per-frame one costs CPU and reads as working code.
 - **Server-owned stats are ignored, not refused.** `PUT /api/player/status`
   drops `level`, `xp` and the maxima and names them in an `ignored` array. A 400
   would break every honest client, because the client sends its whole status
@@ -735,12 +759,20 @@ complexity and are the best places to start reading.
 
 - The backpack ledger is still whatever the client pushes on save.
   `POST /api/loot/take` closed where items come from, not what you claim to hold.
-- `has_active_revive` in `player.gd` is never set true. The branch it guards
-  cannot be reached; the real revive is `GameState.reviving`, set by
-  `gameover.gd` after death.
-- `gamestate.gd` declares eleven signals that are never emitted or connected.
-- The boss scene has no script.
-- 27 sound ids, 20 wired to call sites, 0 audio files.
+- ~~`has_active_revive` in `player.gd` is never set true.~~ Closed — the flag
+  and its unreachable branch are gone. The real revive is `GameState.reviving`,
+  set by `gameover.gd` after death. The ordering the dead branch needed is
+  recorded where it was, in case a token-style revive is ever added.
+- ~~`gamestate.gd` declares eleven signals that are never emitted or connected.~~
+  Closed. There were thirteen, not eleven, which is its own small lesson about
+  counts written down by hand. All removed — `gamestate.gd` is now the four
+  transient values something actually reads. The signals are in git if
+  multiplayer wants a starting point, though one designed around a real
+  listener will fit better than one designed around none.
+- ~~The boss scene has no script.~~ Closed — `bossarena.tscn` runs `boss.gd`,
+  and the arena's portal runs `fieldportal.gd`.
+- 31 sound ids, 26 wired to call sites, 1 audio file (`audio/ambience/firepit.ogg`).
+  The audio is authored in-house, so the slots exist and fill one at a time.
 - `ItemRegistry.FALLBACK_ITEM_ID` is `"error_item"` and no `error_item.tres`
   exists, so an unknown id returns `null` rather than a visible placeholder.
   Not a bug — but adding that resource changes what `ItemStack.from_dict()`
@@ -748,7 +780,9 @@ complexity and are the best places to start reading.
   rather than "null" on purpose.
 - The test suite covers agreement and arithmetic, nothing that moves.
   `player.gd`, `baseenemy.gd` and the whole UI layer are still boot-and-read.
-  `player.gd` is 60KB, `characterdata.gd` 52KB and `baseenemy.gd` 48KB. The
+  `baseenemy.gd` is 116KB, `player.gd` 110KB and `characterdata.gd` 65KB —
+  each roughly double what this line said when it was written, which is the
+  argument for the seams below rather than against measuring. The
   pure stat maths came out into `PlayerStats` and the pet mechanics into
   `PetController`; the floating-label feedback is the next seam. `player.gd`
   still owns `active_pet_id`, because CharacterData persists it per slot and

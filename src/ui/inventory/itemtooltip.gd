@@ -55,9 +55,15 @@ const TOOLTIP_Z_INDEX := 100
 # STATE
 # =============================================================================
 
-# tracks the slot currently being hovered — used to detect when to hide
-# even if mouse_exited fires twice or from a stale source.
-var _current_slot: Node = null
+# A _current_slot tracker lived here, described as detecting a doubled or
+# stale mouse_exited. It was assigned on show and cleared on hide and read
+# nowhere, so that detection never existed - hide_tooltip() simply hides,
+# which is what it did all along and what no bug report has argued with.
+#
+# IF A STALE EXIT EVER DOES CAUSE TROUBLE - a tooltip hidden by the slot the
+# cursor just LEFT, a frame after the slot it just entered showed one - the
+# fix is to record the showing slot and ignore a hide from any other. That is
+# what this was reaching for; it just never got wired to anything.
 
 
 # =============================================================================
@@ -104,7 +110,6 @@ func show_for_stack(stack: ItemStack, source_slot: Node, description_suffix: Str
 	if stack == null or not stack.is_valid():
 		return
 
-	_current_slot = source_slot
 	_populate_labels(stack, description_suffix)
 
 	visible = true
@@ -114,10 +119,8 @@ func show_for_stack(stack: ItemStack, source_slot: Node, description_suffix: Str
 	_clamp_to_screen()
 
 func hide_tooltip() -> void:
-	# hide the tooltip and clear the source-slot tracker.
 	# called by slots on mouse_exited.
 	visible = false
-	_current_slot = null
 
 
 # =============================================================================

@@ -218,16 +218,16 @@ func _build_column_header() -> void:
 	and nothing anywhere says which figure is which. Gold, lusions and deaths
 	are three different things and only two of them are currencies; the panel
 	was asking the reader to infer that from colour alone.
-	
+
 	ICONS RATHER THAN WORDS, because the words do not fit. The fixed columns
 	already eat 230 of about 316 usable pixels and the name gets what is left -
 	"Lusions" as a header is wider than the column it would label. A 14px coin
 	is unambiguous and costs nothing.
-	
+
 	THE DEATH COLUMN GETS A WORD, not an icon, and the asymmetry is the point:
 	the first two columns are money and the third is not. Giving deaths a coin
 	would put them in the same category as the gold beside them.
-	
+
 	BUILT HERE, NOT IN THE SCENE, so it reads its widths from the same four
 	constants _make_row() does. A header in the .tscn would be four more magic
 	numbers to keep in step, and they would drift the first time a column moved.

@@ -1,52 +1,34 @@
-# autoload global game state — persists across all scenes. Shared-state
-# container, and the declared contract for a game-wide event bus.
+# autoload global game state — transient, in-memory values that have to survive
+# a scene change and must NOT survive a restart.
 #
-# READ THIS BEFORE TRUSTING THE SIGNALS BELOW.
+# Everything here is deliberately unsaved. Each one is a handshake between two
+# parts of the game that cannot see each other: a scene being left and the scene
+# being entered, or a Control that consumed an event and a character that reads
+# the hardware directly. Persistent state belongs in CharacterData, which goes
+# through the server.
 #
-# NOTHING IN THE GAME CONNECTS TO ANY OF THEM. Not one. They are a designed
-# interface for multiplayer that has not been built yet, deliberately kept, and
-# they are documented as such rather than left to look finished.
+# WHAT LEFT THIS FILE, so the next person looking for it knows where it went:
 #
-# The signals carry instance_id parameters (player_id, enemy_id, ...) so that
-# when multiplayer arrives the same events can forward across the network
-# without restructuring callers. Single-player would use self-IDs; multiplayer
-# routes IDs to the right peer. That design still holds — it is just unbuilt.
+#   Thirteen signals — a designed event bus for multiplayer, carrying instance
+#   ids so events could later route to the right peer. Nothing ever connected to
+#   one. The relays that fed them were removed first (elusion.gd, field.gd and
+#   boss.gd each carried an identical ~35-line _wire_player_signals(), and
+#   player_moved alone cost 180 emissions a second arriving nowhere); the
+#   declarations followed once it was clear the interface would be designed
+#   against a real feature rather than ahead of one. Recoverable from git if
+#   multiplayer ever wants a starting point, but a bus built to fit whatever
+#   actually needs it will fit better than one built to fit nothing.
 #
-# WHAT WAS REMOVED, AND WHY
-#
-# elusion.gd, field.gd and boss.gd each carried an identical ~35-line
-# _wire_player_signals() that bridged the player's own signals onto these ones.
-# Roughly 105 lines of relay, feeding an empty bus.
-#
-# The cost was not theoretical. player.gd emits `moved` on every physics frame
-# it is walking, so at 180 ticks/second player_moved meant 180 lambda
-# dispatches and 180 three-argument emissions a second, arriving nowhere.
-# A declared signal nobody emits costs nothing; an emitted signal nobody hears
-# costs CPU AND reads as working code. So the declarations stayed and the
-# relays went.
-#
-# TO WIRE IT BACK, in the world script that owns the player:
-#
-#     current_player.took_damage.connect(func(amount, type):
-#         GameState.damage_dealt.emit(0, current_player.get_instance_id(),
-#                                     amount, type))
-#
-# ...and the same shape for died -> player_died, xp_gained_signal -> xp_gained,
-# gold_changed_signal -> gold_changed, moved -> player_moved. Add the relay in
-# ONE place this time, not once per world scene, and only for the events
-# something is actually listening for.
-#
-# ABOUT THE @warning_ignore LINES
-#
-# Every declaration below carries @warning_ignore("unused_signal"). Godot is
-# correct that they are unused - that is the whole point of this file's
-# comment, and the warning is not being hidden because it is wrong. It is
-# annotated per-signal rather than switched off project-wide so that an
-# unused signal ANYWHERE ELSE in the codebase still warns loudly. These
-# thirteen are the known, deliberate exceptions; nothing else gets a pass.
-#
-# When you wire one up for real, delete its annotation. If the warning does
-# not come back, the signal still is not reaching anything.
+#   Element.Type and get_element_name() — now src/shared/element.gd, as
+#   `Element.Type` and `Element.name_for()`. They were unreachable here: an
+#   autoload cannot carry a class_name (it would collide with the autoload's own
+#   name), and without one `GameState.Element` cannot be written in a type
+#   position — not as an @export on a Resource, not as a parameter type. So the
+#   enum could only be compared as a bare int, which is why it went ten thousand
+#   lines without a reference. Element also carries each element's colour, which
+#   is what makes it worth reaching for: EnemyData.element and EnemyData.body_tint
+#   are authored from it, so a palette-swap variant is a .tres rather than a pile
+#   of modulates stacked on nodes.
 extends Node
 
 
@@ -69,7 +51,7 @@ var reviving: bool = false
 
 
 # =============================================================================
-# SCENE ARRIVAL  (NEW)
+# SCENE ARRIVAL
 # =============================================================================
 # same transient, in-memory-only philosophy as death_state/reviving above —
 # set by a portal/teleport trigger (see leavetown.gd's target_spawn_id)
@@ -104,99 +86,3 @@ var next_spawn_id: String = ""
 # class_name, and a class_name only exists once Godot has rescanned the file —
 # which is a bootstrapping problem the autoload simply doesn't have.
 var ui_absorbed_right_click: bool = false
-
-
-# =============================================================================
-# MOVEMENT AND COMBAT SIGNALS
-# =============================================================================
-
-# emitted every time the player moves — sends position and direction
-@warning_ignore("unused_signal")
-signal player_moved(player_id: int, position: Vector2, direction: String)
-
-# emitted when any damage is dealt — source, target, amount, and type
-@warning_ignore("unused_signal")
-signal damage_dealt(source_id: int, target_id: int, amount: int, type: String)
-
-# emitted when a player dies — used to trigger death handling server-side
-@warning_ignore("unused_signal")
-signal player_died(player_id: int)
-
-# emitted when an enemy dies — tracks who killed it for XP and loot
-@warning_ignore("unused_signal")
-signal enemy_died(enemy_id: int, killer_id: int)
-
-
-# =============================================================================
-# PROGRESSION SIGNALS
-# =============================================================================
-
-# emitted when a player gains XP — server validates and updates leaderboard
-@warning_ignore("unused_signal")
-signal xp_gained(player_id: int, amount: int)
-
-# emitted when a player's gold amount changes
-@warning_ignore("unused_signal")
-signal gold_changed(player_id: int, amount: int)
-
-
-# =============================================================================
-# INVENTORY AND ITEMS
-# =============================================================================
-
-# emitted when a player picks up an item from the world
-@warning_ignore("unused_signal")
-signal item_picked_up(player_id: int, item_id: String)
-
-# emitted when a player uses an item from their inventory
-@warning_ignore("unused_signal")
-signal item_used(player_id: int, item_id: String)
-
-# emitted when a player activates a skill from the hotbar
-@warning_ignore("unused_signal")
-signal skill_used(player_id: int, skill_id: String, target_pos: Vector2)
-
-
-# =============================================================================
-# TANK-SPECIFIC SIGNALS
-# =============================================================================
-
-# emitted when the tank's aura deals damage to a nearby enemy
-@warning_ignore("unused_signal")
-signal aura_damage_dealt(tank_id: int, enemy_id: int, amount: int)
-
-# emitted when the tank activates their taunt skill (phase 2 ability)
-@warning_ignore("unused_signal")
-signal taunt_activated(tank_id: int, duration: float)
-
-
-# =============================================================================
-# BANK SIGNALS
-# =============================================================================
-
-# emitted when a player deposits an item into the bank chest
-@warning_ignore("unused_signal")
-signal bank_deposited(player_id: int, item_id: String, amount: int)
-
-# emitted when a player withdraws an item from the bank chest
-@warning_ignore("unused_signal")
-signal bank_withdrawn(player_id: int, item_id: String, amount: int)
-
-
-# =============================================================================
-# ELEMENT TYPES  (MOVED)
-# =============================================================================
-# The enum and get_element_name() that used to live here are now in
-# src/shared/element.gd, as `Element.Type` and `Element.name_for()`.
-#
-# THEY WERE UNREACHABLE HERE. This file is an autoload with no class_name — it
-# cannot have one, because that would collide with the autoload's own name —
-# and without a class_name `GameState.Element` cannot be written in a type
-# position. Not as an @export on a Resource, not as a parameter type. So the
-# enum could only ever be compared against as a bare int, which is why it went
-# ten thousand lines without a single reference.
-#
-# Element also carries each element's COLOUR, which is what makes the enum
-# worth reaching for: EnemyData.element and EnemyData.body_tint are authored
-# from it, and a palette-swap variant is then a .tres rather than a pile of
-# modulates stacked on nodes.

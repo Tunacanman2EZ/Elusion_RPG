@@ -260,10 +260,12 @@ func shoot_vector(dir: Vector2) -> void:
 	# what the game does — it closes when the diagonal sprites are drawn, and
 	# nothing here has to change when they are.
 	direction = dir.normalized()
-	if abs(direction.x) > abs(direction.y):
-		direction_name = "right" if direction.x > 0 else "left"
-	else:
-		direction_name = "down" if direction.y > 0 else "up"
+	# Facing.from_vec_total(), not a seventh copy of the four-direction rule.
+	# Identical behaviour including the zero case: this used to end
+	# `else "up"`, and from_vec_total's UP fallback is that same fall-through
+	# made explicit. testrunner checks Facing against the original body on a
+	# grid of vectors, so this delegation is pinned rather than assumed.
+	direction_name = Facing.from_vec_total(direction)
 	_play_directional_animation()
 	_apply_directional_hitbox()
 

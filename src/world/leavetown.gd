@@ -1,10 +1,10 @@
 # leavetown.gd — teleport trigger that changes to a DIFFERENT SCENE
 # entirely, rather than moving the player's position within the current
-# scene (see teleportnextarea.gd's script for that simpler in-scene
-# version — this mirrors its structure and conventions on purpose).
+# scene (see teleporter.gd for that simpler in-scene version — this mirrors
+# its structure and conventions on purpose).
 #
 # CHANGED: no longer plays a story sequence here — that moved to
-# storyscreen.gd, triggered on field.tscn's own arrival instead of during
+# storyscene.gd, triggered on field.tscn's own arrival instead of during
 # the portal crossing. this is back to its original, simple job: fade to
 # black, swap scenes, fade back in.
 #

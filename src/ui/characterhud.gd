@@ -14,12 +14,6 @@ extends CanvasLayer
 # CONSTANTS
 # =============================================================================
 
-# KEPT DELIBERATELY, THOUGH NOTHING READS IT. The Discord button came off the
-# menu bar and its handler went with it; this is the invite itself, which is the
-# part that would be annoying to go and find again. Putting the link back
-# anywhere - the options screen, the login menu - is one line:
-#     OS.shell_open(DISCORD_URL)
-const DISCORD_URL := "https://discord.gg/4PEhh4Uu"
 const CHARACTER_SELECT_PATH := "res://scene/ui/menus/characterselect.tscn"
 # NEW: log out now goes all the way back to the login screen (true logout),
 # not just character select — see _on_logout_pressed(). CHARACTER_SELECT_PATH

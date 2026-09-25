@@ -1,4 +1,4 @@
-# poisonball.gd — acid ball spat by the large poison slime.
+# poisonprojectile.gd — acid ball spat by the large poison slime.
 # structural twin of magicprojectile.gd / fireprojectile.gd / arrow.gd.
 # the rapid-fire cadence lives in poisonslime.gd, not here — this just travels.
 extends Area2D

@@ -316,7 +316,6 @@ var _regen_stamina_accumulator: float = 0.0
 # DEATH AND REVIVE
 # =============================================================================
 
-var has_active_revive: bool = false
 var is_dying: bool = false
 
 @export var hit_flash_duration: float = 0.15
@@ -459,7 +458,9 @@ func _ready() -> void:
 	# new has to be recorded or trusted. The client simply has to stop papering
 	# over it, which is what the line below does.
 	#
-	# _died_before_load is read by the world scene one frame later, because
+	# _died_before_load is acted on one frame later, by the deferred call at the
+	# end of _ready() below - not by the world scene, which is what this note
+	# used to claim and no longer does. The deferral is the point either way:
 	# changing scenes from inside _ready() is how you get "Parent node is busy
 	# setting up children". The game over screen is the only way out of hp 0,
 	# whether you got there by dying just now or by logging back in afterwards.
@@ -1393,25 +1394,19 @@ func restore_mana(amount: int) -> void:
 var _died_before_load: bool = false
 
 
-func died_before_load() -> bool:
-	return _died_before_load
-
-
 func _start_death_sequence() -> void:
 	is_dying = true
 	velocity = Vector2.ZERO
 
-	if has_active_revive:
-		has_active_revive = false
-		_fill_all_resources()
-		is_dying = false
-		if OS.is_debug_build():
-			print("[PLR]  revive token consumed — full resources")
-		return
-
-	# BELOW the revive branch on purpose. A consumed revive token is not a
-	# death, and playing the death sound before checking would make the most
-	# dramatic sound in the game fire for something that did not happen.
+	# THERE WAS A REVIVE-TOKEN BRANCH HERE and it could never run: nothing in
+	# the project ever set has_active_revive true, so the flag, the branch and
+	# the early return were all unreachable. The revive that exists is
+	# GameState.reviving, set by gameover.gd after the server has been paid.
+	#
+	# If a token-style revive is ever added, the ordering it needed is worth
+	# keeping: check it BEFORE the line below. A consumed token is not a death,
+	# and playing the death sound first would fire the most dramatic sound in
+	# the game for something that did not happen.
 	Audio.play("player_death")
 
 	var death_anim: String = _get_death_animation()

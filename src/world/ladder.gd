@@ -13,12 +13,12 @@
 # specific spot instead of wherever that scene's player node happens to be
 # placed by default.
 extends Area2D
- 
- 
+
+
 # =============================================================================
 # EXPORTED SETTINGS
 # =============================================================================
- 
+
 # assign in the Inspector — path to the scene this ladder leads to.
 # a PATH (String) on purpose, NOT a PackedScene ext_resource: a ladder pair
 # (e.g. field <-> boss) has each side pointing at the other, and Godot
@@ -26,24 +26,24 @@ extends Area2D
 # that's a circular resource load and it fails to parse. loading by path
 # at teleport time (see load() below) sidesteps that entirely.
 @export_file("*.tscn") var destination_scene_path: String = ""
- 
+
 # if set, stored on GameState right before transitioning, so the
 # destination scene knows which FieldPortal marker to place the player at.
 # leave empty to fall back to that scene's own default player placement.
 @export var target_spawn_id: String = ""
- 
- 
+
+
 # =============================================================================
 # STATE
 # =============================================================================
- 
+
 var can_teleport := true
- 
- 
+
+
 # =============================================================================
 # COLLISION HANDLERS
 # =============================================================================
- 
+
 func _on_body_entered(body):
 	if body and can_teleport and (body.name == "Player" or body.is_in_group("player")):
 		can_teleport = false
@@ -64,8 +64,8 @@ func _on_body_entered(body):
 		Audio.play("door")
 
 		SceneTransition.change_scene(destination_scene)
- 
- 
+
+
 func _on_body_exited(body):
 	if body and (body.name == "Player" or body.is_in_group("player")):
 		can_teleport = true

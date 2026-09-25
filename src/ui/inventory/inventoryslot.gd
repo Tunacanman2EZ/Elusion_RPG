@@ -77,7 +77,6 @@ var stack: ItemStack = null
 var slot_index: int = -1
 
 var is_hovered: bool = false
-var is_selected: bool = false
 
 # StyleBox, NOT StyleBoxFlat. A slot's face is whatever the theme hands over,
 # and since the hotbar's is a piece of the artist's tile art it is a
@@ -165,7 +164,11 @@ func _update_style() -> void:
 	if style_normal == null or style_hover == null:
 		return
 
-	if is_hovered or is_selected:
+	# THERE WAS AN `is_selected` HALF TO THIS and nothing ever set it true, in
+	# this class or in HotbarSlot which inherits it - so the slot had a designed
+	# "selected" look that no input could reach. Removed rather than documented,
+	# because a state that renders is a state a reader assumes works.
+	if is_hovered:
 		add_theme_stylebox_override("panel", style_hover)
 	elif _is_linked_to_hotbar() and style_linked != null:
 		add_theme_stylebox_override("panel", style_linked)

@@ -48,18 +48,18 @@
 # (xp_next from level, each skill's xp_next from its skill level) so that no
 # caller has to.
 extends Node
- 
- 
+
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
- 
+
 # version of the save file format — increment when format changes incompatibly
 const SAVE_VERSION := 2
- 
+
 # bank holds up to this many item slots, fixed-size for stable indices
 const BANK_MAX_SLOTS := 50
- 
+
 # how long to wait after the last change before actually writing to disk.
 # see save_data() below for why this exists.
 const SAVE_DEBOUNCE_SECONDS := 2.0
@@ -95,7 +95,7 @@ const SAVE_RETRY_SECONDS: float = 0.5
 # than raising it — it only ever converts a write that never happened into one
 # that did.
 const SAVE_MAX_DELAY_SECONDS: float = 10.0
- 
+
 # central definition of all stats that get saved per character.
 # LUSIONS REMOVED — now stored in account_data (account-shared).
 const SAVEABLE_STATS := {
@@ -136,7 +136,7 @@ const SAVEABLE_STATS := {
 	"fishing_xp":      0,   "fishing_xp_next": 100,
 	"cooking_xp":      0,   "cooking_xp_next": 100,
 }
- 
+
 # default account_data structure — used for fresh installs and migrations
 const DEFAULT_ACCOUNT_DATA := {
 	"lusions":         0,    # account-shared, soulbound premium currency
@@ -147,7 +147,7 @@ const DEFAULT_ACCOUNT_DATA := {
 	# from a missing entry. Nothing on this side ever adds to it.
 	"score":           0,    # account-shared, only /api/character/revive writes
 }
- 
+
 # --- anti-tamper sanity ranges — PLACEHOLDERS, confirm against your design ---
 const MAX_LEVEL := 99
 const MIN_SKILL_LEVEL := 1
@@ -156,7 +156,7 @@ const MAX_GOLD := 999999999
 # blunt ceiling for hp/mana/stamina + their maxes — see class comment above
 # for why this can't be a precise per-class check.
 const MAX_STAT_POOL := 999999
- 
+
 # NEW: growth factors for each skill's XP-to-next-level curve, used to
 # cross-check skill_xp/skill_xp_next the same way character-level xp/xp_next
 # is already cross-checked. MUST exactly match the factor argument each
@@ -172,38 +172,38 @@ const SKILL_GROWTH_FACTORS := {
 	"fishing": 1.12,
 	"cooking": 1.10,
 }
- 
+
 # SAVE_SIGNING_KEY removed — see SAVE SIGNING (REMOVED) further down. It signed
 # a local file that no longer exists.
- 
- 
+
+
 # =============================================================================
 # STATE
 # =============================================================================
- 
+
 # Storage backend. Typed as the INTERFACE, not either implementation — see
 # savestorage.gd. Starts null; a distinct instance is constructed per user in
 # load_for_user() below, rather than one shared instance at autoload boot.
 var storage: SaveStorage = null
- 
+
 # NEW: which user is currently loaded, if any. empty string means no user
 # is logged in (fresh boot, or after clear_current_user()).
 var current_username: String = ""
- 
+
 # 4 character slots, each a dictionary (or null if empty)
 var character_slots: Array = [null, null, null, null]
- 
+
 # which slot the player picked at character select — read by elusion.gd
 var active_character_index: int = 0
- 
+
 # account-wide shared data — initialized in _ready, refilled on load
 var account_data: Dictionary = DEFAULT_ACCOUNT_DATA.duplicate(true)
- 
- 
+
+
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
- 
+
 func _ready() -> void:
 	# every startup print in this project is gated on OS.is_debug_build() and
 	# tagged [BOOT]/[CHAR]/[HUD]/[WORLD]/[PET], so the boot log is greppable
@@ -216,8 +216,8 @@ func _ready() -> void:
 	# user" yet to load for. state stays at defaults until load_for_user()
 	# is called after a successful login (see loginmenu.gd).
 	_initialize_account_data()
- 
- 
+
+
 # =============================================================================
 # PER-USER SESSION  (NEW)
 # =============================================================================
@@ -227,7 +227,7 @@ func _ready() -> void:
 # genuinely scoped per username: a distinct LocalStorage instance (and
 # therefore a distinct file on disk) per user, constructed on demand here
 # rather than once at autoload _ready().
- 
+
 # COROUTINE — callers must await. See the storage swap inside.
 func load_for_user(username: String) -> bool:
 	# call this right after a successful login, BEFORE transitioning to
@@ -236,7 +236,7 @@ func load_for_user(username: String) -> bool:
 	# user logging in during the same session can't briefly see whatever
 	# the previous user's data was.
 	clear_current_user()
- 
+
 	current_username = username
 
 	# THE CUTOVER. This was LocalStorage.new(_save_path_for_user(username)) — a
@@ -252,8 +252,8 @@ func load_for_user(username: String) -> bool:
 	# correct for a file read too.
 	storage = ServerStorage.new()
 	return await load_data()
- 
- 
+
+
 func clear_current_user() -> void:
 	# called on logout (see characterhud.gd's _on_logout_pressed()), AND
 	# internally by load_for_user() before switching to a new user. resets
@@ -266,30 +266,18 @@ func clear_current_user() -> void:
 	# threw it away — storage gets nulled two lines below, and the queued
 	# write would then have nowhere to go.
 	flush_save()
- 
+
 	current_username = ""
 	storage = null
 	character_slots = [null, null, null, null]
 	active_character_index = 0
 	account_data = DEFAULT_ACCOUNT_DATA.duplicate(true)
- 
- 
-func _save_path_for_user(username: String) -> String:
-	# usernames are already restricted to [a-zA-Z0-9_] at registration
-	# (see loginmenu.gd's is_valid_input()), so they're already safe to
-	# use directly in a filename — no path-traversal risk from characters
-	# like '/' or '..'. this strip is defensive in case load_for_user()
-	# ever gets called from somewhere that skipped that validation.
-	var regex := RegEx.new()
-	regex.compile("[^a-zA-Z0-9_]")
-	var safe_username: String = regex.sub(username, "", true)
-	return "user://character_%s.save" % safe_username
- 
- 
+
+
 # =============================================================================
 # DEFENSIVE INITIALIZATION
 # =============================================================================
- 
+
 func _ensure_slot_array() -> void:
 	# guarantees character_slots is an Array of exactly 4 entries.
 	# protects against corrupted saves or malformed legacy data.
@@ -297,14 +285,14 @@ func _ensure_slot_array() -> void:
 			or typeof(character_slots) != TYPE_ARRAY \
 			or character_slots.size() != 4:
 		character_slots = [null, null, null, null]
- 
- 
+
+
 func _ensure_account_data() -> void:
 	# defensively initialize account_data if missing or malformed.
 	# handles fresh installs, corrupted saves, and migration edge cases.
 	if account_data == null or typeof(account_data) != TYPE_DICTIONARY:
 		account_data = DEFAULT_ACCOUNT_DATA.duplicate(true)
- 
+
 	# fill in any missing keys with defaults — graceful upgrade if a new
 	# account field is added later
 	for key in DEFAULT_ACCOUNT_DATA:
@@ -315,7 +303,7 @@ func _ensure_account_data() -> void:
 	# the payload is a key that outlives everyone who knows what it meant.
 	# Ranks live on the server now — Api.role, owner > dev > mod > player.
 	account_data.erase("is_admin")
- 
+
 	# ensure bank_inventory is exactly BANK_MAX_SLOTS long with nulls for empty
 	var bank: Array = account_data.get("bank_inventory", [])
 	if typeof(bank) != TYPE_ARRAY:
@@ -325,16 +313,16 @@ func _ensure_account_data() -> void:
 	if bank.size() > BANK_MAX_SLOTS:
 		bank.resize(BANK_MAX_SLOTS)
 	account_data["bank_inventory"] = bank
- 
- 
+
+
 func _initialize_account_data() -> void:
 	_ensure_account_data()
- 
- 
+
+
 # =============================================================================
 # ANTI-TAMPER / SANITY VALIDATION  (NEW)
 # =============================================================================
- 
+
 func _sanitize_character_slot(slot) -> bool:
 	# clamps/corrects one character slot in place (Dictionaries are
 	# reference types in GDScript, so mutating `slot` here mutates the
@@ -345,13 +333,13 @@ func _sanitize_character_slot(slot) -> bool:
 	# field's change individually.
 	if slot == null or typeof(slot) != TYPE_DICTIONARY:
 		return false
- 
+
 	var before: Dictionary = slot.duplicate(true)
- 
+
 	# --- level ---
 	var level: int = clamp(int(slot.get("level", 1)), 1, MAX_LEVEL)
 	slot["level"] = level
- 
+
 	# --- xp / xp_next cross-check ---
 	# xp_next is fully deterministic from level, so the sanitizer recomputes it
 	# rather than trust a saved value that may have been edited.
@@ -372,10 +360,10 @@ func _sanitize_character_slot(slot) -> bool:
 		])
 	slot["xp_next"] = expected_xp_next
 	slot["xp"] = clamp(int(slot.get("xp", 0)), 0, max(expected_xp_next - 1, 0))
- 
+
 	# --- gold (carry) ---
 	slot["gold"] = clamp(int(slot.get("gold", 0)), 0, MAX_GOLD)
- 
+
 	# --- skills + skill XP progress ---
 	# clamps each skill's LEVEL first, then uses that clamped level to
 	# recompute the expected xp_next for that skill's specific growth curve
@@ -387,12 +375,12 @@ func _sanitize_character_slot(slot) -> bool:
 	for skill in SKILL_GROWTH_FACTORS:
 		var skill_level: int = clamp(int(slot.get(skill, MIN_SKILL_LEVEL)), MIN_SKILL_LEVEL, MAX_SKILL_LEVEL)
 		slot[skill] = skill_level
- 
+
 		var factor: float = SKILL_GROWTH_FACTORS[skill]
 		var expected_skill_xp_next: int = int(100 * pow(factor, skill_level - 1))
 		var xp_key: String = skill + "_xp"
 		var xp_next_key: String = skill + "_xp_next"
- 
+
 		var saved_skill_xp_next: int = int(slot.get(xp_next_key, expected_skill_xp_next))
 		if saved_skill_xp_next != expected_skill_xp_next:
 			push_warning("CharacterData: %s mismatch for %s level %d (had %d, expected %d) — correcting" % [
@@ -400,14 +388,14 @@ func _sanitize_character_slot(slot) -> bool:
 			])
 		slot[xp_next_key] = expected_skill_xp_next
 		slot[xp_key] = clamp(int(slot.get(xp_key, 0)), 0, max(expected_skill_xp_next - 1, 0))
- 
+
 	# --- hp/mana/stamina + maxes — blunt defensive ceiling only, see notes above ---
 	for stat in ["hp", "max_hp", "mana", "max_mana", "stamina", "max_stamina"]:
 		slot[stat] = clamp(int(slot.get(stat, 0)), 0, MAX_STAT_POOL)
 	slot["hp"] = min(int(slot["hp"]), int(slot["max_hp"]))
 	slot["mana"] = min(int(slot["mana"]), int(slot["max_mana"]))
 	slot["stamina"] = min(int(slot["stamina"]), int(slot["max_stamina"]))
- 
+
 	# --- inventory item validation ---
 	if slot.has("inventory") and typeof(slot["inventory"]) == TYPE_ARRAY:
 		slot["inventory"] = _validate_item_array(slot["inventory"], "character inventory")
@@ -446,17 +434,17 @@ func _sanitize_character_slot(slot) -> bool:
 	# CHANGED: was `slot != before`, which compared TYPE as well as value and
 	# so reported a correction on every single load. See _values_differ().
 	return _values_differ(before, slot)
- 
- 
+
+
 func _sanitize_account_data() -> bool:
 	# lusions/bank_gold already clamp >= 0 in their setters (below), but
 	# that doesn't help against a save file edited directly on disk and
 	# loaded straight in — clamp again here at load time to close that gap.
 	var before: Dictionary = account_data.duplicate(true)
- 
+
 	account_data["lusions"] = max(int(account_data.get("lusions", 0)), 0)
 	account_data["bank_gold"] = max(int(account_data.get("bank_gold", 0)), 0)
- 
+
 	if account_data.has("bank_inventory") and typeof(account_data["bank_inventory"]) == TYPE_ARRAY:
 		account_data["bank_inventory"] = _validate_item_array(account_data["bank_inventory"], "bank inventory")
 
@@ -579,8 +567,8 @@ func _report_sanitizer_diff(before: Dictionary, after: Dictionary, context: Stri
 		return
 
 	push_warning("CharacterData: sanitizer changed %s — %s" % [context, ", ".join(changed)])
- 
- 
+
+
 func _is_item_registry_ready() -> bool:
 	# defensive check: if ItemRegistry reports zero total items, it almost
 	# certainly hasn't finished loading its item table yet (autoload order
@@ -590,8 +578,8 @@ func _is_item_registry_ready() -> bool:
 	# etc.) to get silently dropped from real saves. this check exists so
 	# that failure mode can't happen again regardless of autoload order.
 	return ItemRegistry.get_all_items().size() > 0
- 
- 
+
+
 func _validate_item_array(items: Array, context: String) -> Array:
 	# drops entries referencing an item_id that doesn't exist in
 	# ItemRegistry (e.g. a fabricated ID from a modified/fake registry)
@@ -600,7 +588,7 @@ func _validate_item_array(items: Array, context: String) -> Array:
 	if not _is_item_registry_ready():
 		push_warning("CharacterData: ItemRegistry not populated yet — skipping item validation for %s this load (nothing dropped)" % context)
 		return items
- 
+
 	var validated: Array = []
 	for entry in items:
 		if entry == null:
@@ -625,8 +613,8 @@ func _validate_item_array(items: Array, context: String) -> Array:
 			continue
 		validated.append(entry)
 	return validated
- 
- 
+
+
 # =============================================================================
 # SAVE SIGNING  (REMOVED)
 # =============================================================================
@@ -650,7 +638,7 @@ func _validate_item_array(items: Array, context: String) -> Array:
 # =============================================================================
 # SAVE / LOAD
 # =============================================================================
- 
+
 func _write_save_now() -> bool:
 	# does the ACTUAL disk write. Only ever called by flush_save() — every
 	# gameplay caller goes through save_data(), which queues instead.
@@ -661,7 +649,7 @@ func _write_save_now() -> bool:
 	if storage == null:
 		push_warning("CharacterData: save attempted with no user loaded — ignoring")
 		return false
- 
+
 	_ensure_slot_array()
 	_ensure_account_data()
 	var payload := {
@@ -701,8 +689,8 @@ func _write_save_now() -> bool:
 		# pretending otherwise is how a refused save became invisible before.
 		_save_retrying = true
 	return accepted
- 
- 
+
+
 # =============================================================================
 # DEBOUNCED SAVING
 # =============================================================================
@@ -726,7 +714,7 @@ func _write_save_now() -> bool:
 # ANYTHING THAT MUST NOT BE LOST calls flush_save() directly: logout,
 # quitting, and switching user. Those are the moments where waiting two
 # seconds could mean waiting forever.
- 
+
 var _save_pending: bool = false
 var _save_countdown: float = 0.0
 
@@ -754,7 +742,7 @@ func save_data() -> bool:
 	if storage == null:
 		push_warning("CharacterData: save_data() called with no user loaded — ignoring")
 		return false
- 
+
 	# THE AGE CLOCK STARTS ON THE FIRST CHANGE OF A BATCH, not on every one.
 	# Resetting it here unconditionally would make it a second copy of the
 	# countdown and the ceiling would never be reached — which is the bug it
@@ -765,8 +753,8 @@ func save_data() -> bool:
 	_save_pending = true
 	_save_countdown = SAVE_DEBOUNCE_SECONDS
 	return true
- 
- 
+
+
 func flush_save() -> bool:
 	# Writes immediately if anything is pending. Safe to call when nothing
 	# is dirty — it just does nothing and reports success.
@@ -776,18 +764,18 @@ func flush_save() -> bool:
 		_save_pending = false
 		return false
 	return _write_save_now()
- 
- 
+
+
 func _process(delta: float) -> void:
 	if not _save_pending:
 		return
- 
+
 	# defensive: if storage vanished while a save was queued, drop the
 	# queue rather than letting _write_save_now() warn on every frame.
 	if storage == null:
 		_save_pending = false
 		return
- 
+
 	_save_countdown -= delta
 	_save_age += delta
 
@@ -805,8 +793,8 @@ func _process(delta: float) -> void:
 	# There, SAVE_RETRY_SECONDS is the only clock that should be running.
 	if not _save_retrying and _save_age >= SAVE_MAX_DELAY_SECONDS:
 		_write_save_now()
- 
- 
+
+
 func _notification(what: int) -> void:
 	# NOTIFICATION_WM_CLOSE_REQUEST fires when the window's X is clicked.
 	# NOTIFICATION_EXIT_TREE covers get_tree().quit() paths, like the login
@@ -816,8 +804,8 @@ func _notification(what: int) -> void:
 	# seconds after picking up gold.
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
 		flush_save()
- 
- 
+
+
 func load_data() -> bool:
 	# COROUTINE — callers must await. storage.load() reaches the network now.
 	# reads from the backend and reconstructs character + account state.
@@ -829,7 +817,7 @@ func load_data() -> bool:
 		_ensure_slot_array()
 		_ensure_account_data()
 		return false
- 
+
 	# @warning_ignore because the analyser types `storage` as SaveStorage, whose
 	# load() is not a coroutine — so it reports this await as redundant. It is
 	# not: ServerStorage.load() waits on HTTP. await resolves dynamically at
@@ -841,21 +829,21 @@ func load_data() -> bool:
 		_ensure_slot_array()
 		_ensure_account_data()
 		return false
- 
+
 	data = _migrate_save(data)
- 
+
 	# The signature check that used to live here is gone entirely — see SAVE
 	# SIGNING (REMOVED) below. Nothing verifies the payload because nothing
 	# signs it: it came from the server.
 	var needs_resave: bool = false
- 
+
 	character_slots = data.get("character_slots", [null, null, null, null])
 	active_character_index = data.get("active_character_index", 0)
 	account_data = data.get("account_data", DEFAULT_ACCOUNT_DATA.duplicate(true))
- 
+
 	_ensure_slot_array()
 	_ensure_account_data()
- 
+
 	# Sanity pass — runs on every load regardless of whether the save was
 	# actually tampered with. See the class comment for scope and limitations.
 	var corrected: bool = false
@@ -884,7 +872,7 @@ func load_data() -> bool:
 	# treating a recomputation as a change worth writing back to the server.
 	if corrected and not storage.is_authoritative:
 		needs_resave = true
- 
+
 	# NEW: if anything above actually changed the data (a sanity-clamp
 	# correction, or a signature/timestamp anomaly), persist the corrected
 	# version immediately rather than waiting for the next natural save
@@ -895,14 +883,14 @@ func load_data() -> bool:
 	if needs_resave:
 		push_warning("CharacterData: correction(s) applied on load — persisting corrected save immediately.")
 		save_data()
- 
+
 	return true
- 
- 
+
+
 # =============================================================================
 # SAVE MIGRATION
 # =============================================================================
- 
+
 func _migrate_save(data: Dictionary) -> Dictionary:
 	# converts old save format to current SAVE_VERSION. runs on every load.
 	# safe to call on already-current saves (no-op if version is up to date).
@@ -914,9 +902,9 @@ func _migrate_save(data: Dictionary) -> Dictionary:
 		# evidence of which version it was migrated from — and a debug-gated
 		# print would not be there in the build that broke it.
 		push_warning("CharacterData: migrating save from version %d to %d" % [version, SAVE_VERSION])
- 
+
 	# version 0 -> 1: legacy saves without version field. no field changes.
- 
+
 	# version 1 -> 2:
 	# - extract per-character lusions into account_data.lusions (max value)
 	# - migrate old top-level bank fields (account_bank_gold,
@@ -925,12 +913,12 @@ func _migrate_save(data: Dictionary) -> Dictionary:
 	#   {item_id, quantity}
 	if version < 2:
 		var migrated_account: Dictionary = DEFAULT_ACCOUNT_DATA.duplicate(true)
- 
+
 		# legacy bank gold field
 		if data.has("account_bank_gold"):
 			migrated_account["bank_gold"] = int(data.get("account_bank_gold", 0))
 			data.erase("account_bank_gold")
- 
+
 		# consolidate per-character lusions into account-shared pool (take max)
 		var consolidated_lusions := 0
 		for slot in data.get("character_slots", []):
@@ -938,7 +926,7 @@ func _migrate_save(data: Dictionary) -> Dictionary:
 				consolidated_lusions = max(consolidated_lusions, int(slot["lusions"]))
 				slot.erase("lusions")
 		migrated_account["lusions"] = consolidated_lusions
- 
+
 		# convert legacy bank inventory format if present
 		# old format: array of {name, icon_path, quantity} dicts
 		# new format: array of {item_id, quantity} or null
@@ -968,18 +956,18 @@ func _migrate_save(data: Dictionary) -> Dictionary:
 						converted.append(null)
 			migrated_account["bank_inventory"] = converted
 			data.erase("account_bank_inventory")
- 
+
 		data["account_data"] = migrated_account
- 
+
 	# future migration template:
 	# if version < 3:
 	#     # field rename, new account field, etc.
 	#     pass
- 
+
 	data["version"] = SAVE_VERSION
 	return data
- 
- 
+
+
 func _find_item_id_by_display_name(item_name: String) -> String:
 	# helper used by migration to map old "name"-based bank entries to item_ids.
 	# only called during save migration, not at runtime.
@@ -989,12 +977,12 @@ func _find_item_id_by_display_name(item_name: String) -> String:
 		if data.display_name == item_name:
 			return data.item_id
 	return ""
- 
- 
+
+
 # =============================================================================
 # CHARACTER CREATION
 # =============================================================================
- 
+
 func create_character(slot_idx: int, character_name: String) -> void:
 	# creates a fresh character at the given slot with default stats.
 	# overwrites any existing character in that slot — caller is responsible
@@ -1009,12 +997,12 @@ func create_character(slot_idx: int, character_name: String) -> void:
 	new_char["explored"] = {}       # and having seen nowhere
 	character_slots[slot_idx] = new_char
 	save_data()
- 
- 
+
+
 # =============================================================================
 # CHARACTER STATE (PLAYER ↔ SAVE)
 # =============================================================================
- 
+
 func save_character_state(player: Node) -> void:
 	# saves player stats AND inventory to the active slot.
 	# called on logout, periodic auto-save, XP gain, gold pickup, etc.
@@ -1024,11 +1012,11 @@ func save_character_state(player: Node) -> void:
 	var slot: int = active_character_index
 	if character_slots[slot] == null:
 		return
- 
+
 	for stat in SAVEABLE_STATS:
 		if stat in player:
 			character_slots[slot][stat] = int(player.get(stat))
- 
+
 	var bag: Array = _capture_inventory(player)
 	character_slots[slot]["inventory"] = bag
 
@@ -1114,14 +1102,14 @@ func save_character_state(player: Node) -> void:
 		character_slots[slot]["equipment"] = worn.duplicate()
 
 	save_data()
- 
- 
+
+
 func load_character_state(player: Node) -> void:
 	# loads player stats AND inventory data from the active slot.
 	# called from player.gd._ready() when the world scene first spawns.
 	_ensure_slot_array()
 	_ensure_account_data()
- 
+
 	# TESTED BEFORE IT IS BOUND, because the guard below it could never run.
 	#
 	# Dictionary is not nullable, so assigning a null element to a typed
@@ -1134,20 +1122,20 @@ func load_character_state(player: Node) -> void:
 		return
 
 	var slot: Dictionary = raw_slot
- 
+
 	for stat in SAVEABLE_STATS:
 		if stat in player:
 			var default_value: int = SAVEABLE_STATS[stat]
 			var saved_value = slot.get(stat, default_value)
 			player.set(stat, int(saved_value))
- 
+
 	if "inventory_data" in player:
 		var saved_inventory = slot.get("inventory", [])
 		if typeof(saved_inventory) == TYPE_ARRAY:
 			player.inventory_data = saved_inventory
 		else:
 			player.inventory_data = []
- 
+
 	# load hotbar assignments — defaults to 9 empty strings if not in save
 	# (covers fresh characters and pre-hotbar save files)
 	if "hotbar_assignments" in player:
@@ -1156,7 +1144,7 @@ func load_character_state(player: Node) -> void:
 			player.hotbar_assignments = saved_hotbar
 		else:
 			player.hotbar_assignments = ["", "", "", "", "", "", "", "", ""]
- 
+
 	# NEW: load active_pet_id — defaults to "" (no pet) if not in save,
 	# which covers both fresh characters and saves that predate this
 	# feature. player.gd's _ready() calls _restore_active_pet() right
@@ -1189,19 +1177,18 @@ func load_character_state(player: Node) -> void:
 				if saved_equipment is Dictionary else {}
 		else:
 			player.equipped = {}
-			
-# TRUE ONLY IF THE LAST _capture_inventory() READ THE REAL BAG.
+
+# _inventory_capture_was_live WAS HERE: a flag recording whether the last
+# _capture_inventory() read the real bag or fell back to a cached copy. It
+# guarded prune_equipment(), and it outlived it - maintained on both paths
+# below, read by nothing, for as long as the function it protected has been
+# deleted.
 #
-# Valid for exactly as long as it takes save_character_state() to look at it,
-# which is the line after the call. It is a return value that could not be one
-# without changing the signature every caller uses.
-#
-# It exists because the difference matters enormously to equipment and not at
-# all to anything else: a stale bag saved as the inventory is a save that
-# loses a pickup, which the next pickup fixes. A stale bag used to PRUNE
-# equipment throws away gear the player is still wearing, permanently, and
-# looks exactly like "the game doesn't remember what I had equipped".
-var _inventory_capture_was_live: bool = false
+# THE REASON IT EXISTED IS STILL TRUE AND STILL WORTH KNOWING, because it is
+# the argument against ever writing that pruning again: a stale bag saved as
+# the inventory loses a pickup, which the next pickup fixes. A stale bag used
+# to PRUNE equipment throws away gear the player is still wearing, permanently,
+# and looks exactly like "the game doesn't remember what I had equipped".
 
 
 func _capture_inventory(player: Node) -> Array:
@@ -1217,8 +1204,6 @@ func _capture_inventory(player: Node) -> Array:
 	# again. That is how this save ended up with a lone
 	# {"item_id": "tinyhealthpotion", "quantity": 16.0} among otherwise
 	# integer values.
-	_inventory_capture_was_live = false
-
 	var hud: Node = player.get_tree().get_first_node_in_group("hud")
 	if hud == null:
 		if "inventory_data" in player:
@@ -1229,7 +1214,6 @@ func _capture_inventory(player: Node) -> Array:
 		var container: Node = hud.inventory_screen.get_node_or_null("%inventorycontainer")
 		if container != null and container.has_method("to_save_array"):
 			# The only path that reads what the player is actually carrying.
-			_inventory_capture_was_live = true
 			return container.to_save_array()
 
 	if "inventory_data" in player:
@@ -1394,20 +1378,20 @@ func _normalise_item_array(items: Array) -> Array:
 # =============================================================================
 # lusions, bank gold, bank inventory all live in account_data (shared across
 # all 4 characters). each setter writes to disk immediately for atomic save.
- 
+
 # --- lusions (premium currency, soulbound) ---
- 
+
 func get_account_lusions() -> int:
 	_ensure_account_data()
 	return int(account_data.get("lusions", 0))
- 
- 
+
+
 func set_account_lusions(value: int) -> void:
 	_ensure_account_data()
 	account_data["lusions"] = max(int(value), 0)
 	save_data()
- 
- 
+
+
 func add_account_lusions(amount: int) -> void:
 	_ensure_account_data()
 	account_data["lusions"] = max(int(account_data.get("lusions", 0)) + int(amount), 0)
@@ -1432,9 +1416,9 @@ func get_account_score() -> int:
 	_ensure_account_data()
 	return int(account_data.get("score", 0))
 
- 
+
 # --- bank gold (account-shared, safe from death) ---
- 
+
 func get_bank_gold() -> int:
 	_ensure_account_data()
 	return int(account_data.get("bank_gold", 0))
@@ -1455,14 +1439,14 @@ func set_bank_gold(value: int) -> void:
 
 
 # --- bank inventory (account-shared, fixed-size) ---
- 
+
 func get_bank_inventory() -> Array:
 	# returns the bank inventory contents — array of {item_id, quantity} or null.
 	# size is always BANK_MAX_SLOTS after _ensure_account_data() runs.
 	_ensure_account_data()
 	return account_data["bank_inventory"]
- 
- 
+
+
 func set_bank_inventory(items: Array) -> void:
 	# overwrites the bank inventory. used by the bank UI when items change.
 	# normalizes to BANK_MAX_SLOTS length to keep indices stable.
@@ -1473,30 +1457,30 @@ func set_bank_inventory(items: Array) -> void:
 		items.resize(BANK_MAX_SLOTS)
 	account_data["bank_inventory"] = items
 	save_data()
- 
- 
+
+
 # =============================================================================
 # BANK TRANSFERS
 # =============================================================================
 # atomic gold transfers between player carry pool and account-shared bank.
 # both sides of the transfer happen in one save_data() so a crash mid-transfer
 # can't desync the totals.
- 
+
 func deposit_gold_to_bank(amount: int, player: Node) -> bool:
 	# transfer gold from the player's carry pool to the account-shared bank.
 	# returns false if amount invalid or player can't afford it.
 	var player_gold: int = int(player.get("gold")) if player.get("gold") != null else 0
 	if amount <= 0 or player_gold < amount:
 		return false
- 
+
 	player.set("gold", player_gold - amount)
 	_ensure_account_data()
 	account_data["bank_gold"] = int(account_data.get("bank_gold", 0)) + amount
- 
+
 	save_character_state(player)  # includes save_data() at the end
 	return true
- 
- 
+
+
 func withdraw_gold_from_bank(amount: int, player: Node) -> bool:
 	# transfer gold from the account-shared bank to player's carry pool.
 	# returns false if amount invalid or bank can't cover it.
@@ -1505,18 +1489,18 @@ func withdraw_gold_from_bank(amount: int, player: Node) -> bool:
 	var current_bank: int = int(account_data.get("bank_gold", 0))
 	if amount <= 0 or current_bank < amount:
 		return false
- 
+
 	account_data["bank_gold"] = current_bank - amount
 	player.set("gold", player_gold + amount)
- 
+
 	save_character_state(player)
 	return true
- 
- 
+
+
 # =============================================================================
 # CHARACTER LOOKUP (DEATH/REVIVE SYSTEM)
 # =============================================================================
- 
+
 func get_character_by_name(char_name: String) -> Dictionary:
 	# look up a character slot by its name. returns empty dict if not found.
 	# used by the gameover/revive flow to find the dying character's data.
@@ -1525,8 +1509,8 @@ func get_character_by_name(char_name: String) -> Dictionary:
 		if slot != null and slot.get("character", "") == char_name:
 			return slot
 	return {}
- 
- 
+
+
 func save_character_slot(char_name: String, slot_data: Dictionary) -> bool:
 	# overwrite a character's slot data by name. used by the revive system
 	# to apply post-revive state (full HP, return position, etc.).

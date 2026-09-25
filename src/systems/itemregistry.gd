@@ -104,7 +104,7 @@ func _load_item(path: String) -> void:
 	# loads a single .tres file, validates it's ItemData with a valid item_id,
 	# and registers it in the lookup dictionary.
 	var resource: Resource = load(path)
-	
+
 	# silently ignore .tres files that aren't ItemData — the items folder
 	# might contain other resource types (palette tres, theme tres, etc.)
 	if not resource is ItemData:
@@ -159,14 +159,14 @@ func get_item(item_id: String) -> ItemData:
 
 	if not _items.has(item_id):
 		push_warning("ItemRegistry: requested unknown item_id '%s'. Reverting to fallback." % item_id)
-		
+
 		# check if our fallback item actually exists in the scanned files
 		if _items.has(FALLBACK_ITEM_ID):
 			return _items[FALLBACK_ITEM_ID]
-			
+
 		# absolute emergency backup if even the error item is missing from the directory
 		return null
-		
+
 	return _items[item_id]
 
 func has_item(item_id: String) -> bool:

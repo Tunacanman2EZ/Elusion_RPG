@@ -20,9 +20,15 @@
 # labels shoot upward with initial velocity, gravity decelerates them at the
 # peak, then they fall back a bit before settling. fade-out runs in parallel.
 #
-# important: _start_position is captured in the show_* call, NOT _ready().
-# _ready fires the moment add_child() runs — BEFORE the spawner sets
-# global_position. capturing on show ensures the cached position is correct.
+# The motion is entirely relative — _velocity integrated against gravity, added
+# to global_position each frame — so nothing needs to remember where the label
+# started. A _start_position was cached here and never read once; the comment
+# that used to sit on this line explained, at length, exactly when to capture a
+# value nothing consumed.
+#
+# IF SOMETHING EVER DOES NEED THE ORIGIN, capture it in the show_* call and not
+# in _ready(): _ready fires the moment add_child() runs, BEFORE the spawner sets
+# global_position, so a value cached there is the wrong one.
 extends Node2D
 
 # REGISTERED AS A GLOBAL CLASS so the enum below is reachable by name.
@@ -127,7 +133,6 @@ enum Type {
 # =============================================================================
 
 var _elapsed: float = 0.0
-var _start_position: Vector2
 var _velocity: Vector2 = Vector2.ZERO
 
 # Shared across every label in the game. Each new popup takes the next index
@@ -147,8 +152,8 @@ var _active_lifetime: float = 1.0
 # =============================================================================
 
 func _ready() -> void:
-	# intentionally empty. _start_position is captured in the show call
-	# because _ready fires before the spawner sets global_position.
+	# intentionally empty. The spawner sets global_position after add_child(),
+	# so there is nothing this could usefully do that show_*() does not.
 	pass
 
 
@@ -217,9 +222,6 @@ func _begin(text: String, type: Type, life: float) -> void:
 			cos(angle),
 			sin(angle) * spawn_scatter_vertical_bias
 		) * spawn_scatter_radius
-
-	# cache position NOW — this is the spawner's intended location
-	_start_position = global_position
 
 	# upward pop + small random horizontal drift so multi-hit popups spread
 	var drift: float = randf_range(-horizontal_drift_range, horizontal_drift_range)

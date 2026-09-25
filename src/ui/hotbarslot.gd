@@ -185,14 +185,11 @@ func _show_empty_state() -> void:
 func _update_style() -> void:
 	# extends the inherited style logic with an extra state: assigned slots
 	# get a gold border to signal "this slot is linked to inventory."
-	# selected and hovered states still take priority over assigned.
+	# hover still takes priority over assigned.
 	if style_normal == null or style_hover == null:
 		return
 
-	if is_selected:
-		modulate = Color(1.0, 1.0, 0.7, 1.0)
-		add_theme_stylebox_override("panel", style_hover)
-	elif is_hovered:
+	if is_hovered:
 		modulate = Color(1.0, 1.0, 1.0, 1.0)
 		add_theme_stylebox_override("panel", style_hover)
 	elif is_assigned() and style_assigned != null:

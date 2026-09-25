@@ -1354,12 +1354,6 @@ func _has_line_of_sight(target_pos: Vector2) -> bool:
 	return result.is_empty()
 
 
-func _get_direction_to_player_via_navigation() -> String:
-	if not is_instance_valid(player):
-		return _get_direction_to_player()
-	return _get_direction_to_point_via_navigation(player.global_position)
-
-
 func _get_secondary_direction_from_vec(vec: Vector2) -> String:
 	# the OPPOSITE axis choice from _get_direction_from_vec - the wall-slide
 	# fallback described above. The arithmetic lives in Facing now; this stays

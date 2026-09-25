@@ -361,12 +361,12 @@ func _deal_aura_damage() -> void:
 	# damage all enemies currently inside the $aura collision area.
 	#
 	# This used to also emit GameState.aura_damage_dealt on every hit,
-	# described as being "for analytics / multiplayer sync." Neither exists —
-	# nothing in the game connects to that signal, or to any of the others on
-	# GameState (see the note at the top of gamestate.gd). It fired once per
-	# enemy per aura tick into an empty bus, which is the most expensive place
-	# in this file to do nothing. The declaration is still there for when
-	# multiplayer is real; put the emit back then.
+	# described as being "for analytics / multiplayer sync." Neither existed —
+	# nothing connected to that signal, and it fired once per enemy per aura
+	# tick into an empty bus, which is the most expensive place in this file to
+	# do nothing. The emit went first; the declaration went with the rest of
+	# that bus later (see the note at the top of gamestate.gd). When multiplayer
+	# is real, the signal it needs should be designed around what listens.
 	if _aura == null:
 		return
 
