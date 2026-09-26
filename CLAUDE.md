@@ -123,6 +123,42 @@ second process bind port 5000 without complaining. The symptom is a 404 on a
 route that plainly exists in the file you are looking at, because the process
 actually answering is running last week's code.
 
+## Before you trust a check
+
+Every check in `testrunner.gd` is here because something went wrong once. But
+several of the checks *themselves* were wrong first, in ways that all looked like
+passing. This is the short version; each has its own section below.
+
+**A check you have not watched go red is not a check.** Sabotage it, see it fail
+by name, put it back. Every check added in this project has been through that,
+and it caught three that would otherwise have shipped green and blind.
+
+Five ways one of these looked right and was not:
+
+1. **`load(path) != null` does not prove a script compiles.** Godot returns a
+   non-null `Script` for a file that will not parse, even with
+   `CACHE_MODE_IGNORE`. The first compile check passed on a project that did not
+   build. `can_instantiate()` is the probe that moves.
+2. **An empty directory exists for you and for nobody who clones.** Git cannot
+   represent one, so a check that counts directories fails locally and passes in
+   CI on the same commit — the failure mode that teaches people to ignore a
+   suite.
+3. **A filename is not a file.** Two folders can hold the same name, so a text
+   search finds the copy that is used and clears the copy that is not. Found
+   exactly that: two byte-identical pairs.
+4. **Definitions are not usages.** Tile *definitions* in an atlas say which
+   rectangles are carved into tiles, not whether any is placed. Counting them
+   overstated a texture's use and nearly cost a file that 112 cells depend on.
+5. **A true measurement under the wrong heading is bad advice.** A reachability
+   report listed ~200 files of purchased art as "safe to delete". Every line was
+   true. The heading made it wrong, and nothing in the output would have made you
+   doubt it.
+
+The common thread: the measurement was almost always right and the *frame* around
+it was wrong. When a check tells you something surprising about your own project,
+your knowledge of the project is evidence too — twice here it was right and the
+tool was not.
+
 ## Traps
 
 ### JSON has no integer type
@@ -689,6 +725,50 @@ painted anywhere" means no tile is placed from that texture in any TileSet. It
 does *not* mean the file is unused — the same texture can be a `Sprite2D`, an
 animation frame, a button icon or a shader parameter. The tool answers one
 question well. Deleting on it alone is how art disappears.
+
+Which is why it prints a **second** report: reachability. That one walks
+`ResourceLoader.get_dependencies()` transitively from every scene and resource,
+plus literal `res://art...` strings in scripts, and lists art nothing reaches at
+all. *That* is the list you can delete from.
+
+**A filename is not a file, and this is the case that proves it.** Two folders
+can hold the same name, so searching scene text for `bushmagevines.png` finds
+the copy that is used and clears the copy that is not:
+
+| file | uid | used by |
+|---|---|---|
+| `art/enemy/bushmagevines.png` | `dxgqyacytahx1` | 8 vine scenes |
+| `art/tiles/bushmagevines.png` | `1tkm12y77aw4` | **nothing** |
+| `art/maincharacter/smalltankring.png` | `cl86sjmxy2fsc` | `tank.tscn` |
+| `art/tiles/smalltankring.png` | `d34clhu42p5x4` | **nothing** |
+
+Byte-identical pairs, left behind when the art folders were reorganised. A
+filename sweep called all four used; the dependency graph separates them by
+path. Both `art/tiles/` copies are safe to delete.
+
+Its own blind spot, also printed: a path assembled at runtime,
+`load("res://art/images/hotbar%d.png" % i)`. Nothing in this project does that —
+checked — but if that changes, the files behind it will look deletable here and
+will not be.
+
+**The reachability report splits `art/pack/` out, and that split is the whole
+difference between a useful report and a harmful one.**
+
+`art/pack/` is a purchased library, not project art. 646 files came in the
+Clockwork Raven pack and the game places 134. The other ~512 being unreferenced
+is not a finding — it is what buying an asset pack looks like, and they sit in a
+private submodule where keeping them costs nothing.
+
+The first version of this report did not distinguish them. It printed one list of
+218 files under the heading *"safe to delete"*, and roughly 200 of those were art
+that had been paid for. Every individual line was true — Godot genuinely does not
+reach them — and the report was still wrong, because **a true statement filed
+under the wrong heading is advice.** There would have been no reason to doubt it.
+
+So the rule for anything in this project that reports findings: the categories
+carry as much weight as the measurements, and they need checking just as hard. A
+number that is correct and a heading that is wrong reads exactly like a number
+that is correct.
 
 ### Godot's warnings don't reach the headless suite, so one is checked by text
 

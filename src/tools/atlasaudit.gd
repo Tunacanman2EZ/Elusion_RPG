@@ -133,7 +133,164 @@ func _initialize() -> void:
 	print("  question. Deleting on the strength of it alone is how art disappears.")
 	print("")
 
+	_report_unreachable()
 	quit()
+
+
+# =============================================================================
+# THE SECOND QUESTION: what does nothing reach at all?
+# =============================================================================
+# The painted-cell report above is about tiles. This one is about every art file
+# in the project, and it is the one that settles "can I delete this".
+#
+# WHY NOT GREP THE FILENAME. Because a filename is not a file. Two folders can
+# hold the same name, and searching scene text for "bushmagevines.png" finds the
+# one that IS used and reports the other as used too. That is not hypothetical -
+# it is exactly what was here:
+#
+#   art/enemy/bushmagevines.png          uid dxgqyacytahx1   8 scenes use it
+#   art/tiles/bushmagevines.png          uid 1tkm12y77aw4    nothing uses it
+#   art/maincharacter/smalltankring.png  uid cl86sjmxy2fsc   tank.tscn uses it
+#   art/tiles/smalltankring.png          uid d34clhu42p5x4   nothing uses it
+#
+# Byte-identical pairs, left behind when the art folders were reorganised. A
+# filename search called all four used. ResourceLoader.get_dependencies() walks
+# what Godot actually loads, by PATH, so it separates them.
+#
+# WHAT IT STILL CANNOT SEE, and this is the honest limit: a path assembled at
+# runtime, `load("res://art/images/hotbar%d.png" % i)`. Nothing in this project
+# does that today - checked - but if it ever does, the files behind it will look
+# orphaned here. Scripts are scanned for literal "res://art..." strings to cover
+# preload() and load() with a constant, which is the common case.
+func _report_unreachable() -> void:
+	var roots: Array[String] = []
+	for dir in ["res://scene", "res://data", "res://art", "res://assets"]:
+		_collect_ext(dir, roots, [".tscn", ".tres"])
+	roots.append("res://project.godot")
+
+	# Transitive closure over Godot's own dependency graph.
+	var reachable: Dictionary = {}
+	var seen: Dictionary = {}
+	var queue: Array[String] = roots.duplicate()
+	while not queue.is_empty():
+		var current: String = queue.pop_back()
+		if seen.has(current):
+			continue
+		seen[current] = true
+		for dep in ResourceLoader.get_dependencies(current):
+			# "uid://x::Type::res://path", or just "res://path"
+			var path: String = dep.get_slice("::", dep.count("::"))
+			if path == "":
+				continue
+			reachable[path] = true
+			if path.ends_with(".tscn") or path.ends_with(".tres"):
+				queue.append(path)
+
+	# Literal res://art paths written into scripts.
+	var scripts: Array[String] = []
+	_collect_ext("res://src", scripts, [".gd"])
+	for s in scripts:
+		var text := FileAccess.get_file_as_string(s)
+		var from: int = 0
+		while true:
+			var at: int = text.find("res://art", from)
+			if at < 0:
+				break
+			var end: int = at
+			while end < text.length() and text[end] != "\"" and text[end] != "'":
+				end += 1
+			reachable[text.substr(at, end - at)] = true
+			from = at + 1
+
+	var art: Array[String] = []
+	for dir in ["res://art", "res://assets"]:
+		_collect_ext(dir, art, [".png", ".jpg", ".jpeg", ".webp", ".svg", ".ttf", ".otf"])
+
+	# SPLIT BY WHOSE ART IT IS, and this split is the whole difference between a
+	# useful report and a harmful one.
+	#
+	# art/pack/ is a PURCHASED LIBRARY, not project art. 646 files came in the
+	# Clockwork Raven pack and the game uses 134 of them. The other 512 being
+	# unreferenced is not a finding - it is what buying an asset pack looks like,
+	# and they sit in a private submodule where keeping them costs nothing.
+	#
+	# The first version of this report did not make that distinction and printed
+	# "safe to delete" over 200 files of paid-for art. Reporting is not neutral:
+	# a true statement filed under the wrong heading is advice, and that was bad
+	# advice. Project art is the only list where "unreferenced" means "candidate".
+	var orphans: Array[String] = []
+	var library: Array[String] = []
+	var pack_used: int = 0
+	for a in art:
+		var in_pack: bool = a.begins_with("res://art/pack/")
+		if reachable.has(a):
+			if in_pack:
+				pack_used += 1
+			continue
+		if in_pack:
+			library.append(a)
+		else:
+			orphans.append(a)
+	orphans.sort()
+	library.sort()
+
+	print("=".repeat(72))
+	print("  REACHABILITY — %d art files, %d reached by something"
+		% [art.size(), art.size() - orphans.size() - library.size()])
+	print("=".repeat(72))
+	print("")
+	print("  PROJECT ART REACHED BY NOTHING (%d) — the list worth acting on"
+		% orphans.size())
+	print("")
+	if orphans.is_empty():
+		print("    (none)")
+	for o in orphans:
+		print("    %s" % o.trim_prefix("res://"))
+
+	print("")
+	print("  PURCHASED PACK, NOT YET USED (%d) — normal, not a cleanup list"
+		% library.size())
+	print("")
+	if library.is_empty() and pack_used == 0:
+		print("    art/pack/ is not present in this checkout - it is a private")
+		print("    submodule. Nothing to report here.")
+	else:
+		print("    art/pack/ is the Clockwork Raven library: %d of its %d files are"
+			% [pack_used, pack_used + library.size()])
+		print("    placed, and the other %d are simply art you bought and have not"
+			% library.size())
+		print("    used yet. They live in a private submodule and cost nothing to")
+		print("    keep. Deleting them throws away something you paid for.")
+		print("    Not listed individually, because this is not a cleanup list.")
+
+	print("")
+	print("  This walks ResourceLoader.get_dependencies() from every scene and")
+	print("  resource, so it is Godot's own answer rather than a filename search.")
+	print("")
+	print("  The one blind spot: a path built at runtime by string formatting.")
+	print("  Nothing here does that today. If that changes, its art lands in the")
+	print("  first list looking deletable, and it is not. Check before deleting.")
+	print("")
+
+
+func _collect_ext(dir_path: String, out: Array[String], exts: Array) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				_collect_ext(full, out, exts)
+		else:
+			for ext in exts:
+				if entry.ends_with(ext):
+					out.append(full)
+					break
+		entry = dir.get_next()
+	dir.list_dir_end()
 
 
 func _collect_scenes(dir_path: String, out: Array[String]) -> void:
