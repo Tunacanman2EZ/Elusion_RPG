@@ -10,6 +10,71 @@ All notable changes to this project will be documented in this file.
   4. give `baseenemy.gd` server authority
 - Poison slime: `small_attack*` and large `hitflash*` animations still unwired (art exists), `acidpuddle.tscn` not built, `poisonslime.gd` not written
 
+## [2026-09-26]
+
+### Licensing: scoped by location, not category
+
+`LICENSE` claimed all "paid/commissioned assets" as exclusive property. True the
+day it was written — one artist, rights assigned — and false from the day a
+second artist's pack arrived, with nothing to notice. Adding art does not feel
+like touching licensing, so the claim aged into asserting ownership of someone
+else's copyright.
+
+Found twice more while fixing it. `art/thirdparty/` held a tileset of
+unconfirmed origin, reachable only from an orphaned old shop scene. And two
+tiles from the purchased pack sat in `art/tiles/`, covered by no rule at all —
+the Clockwork section was about the *category* "item and icon art", and the pack
+contains tilesets.
+
+- The rule is now **location**: `art/pack/` is authoritative, so anything of
+  Caio's outside it is a split that was missed. Checkable; a category rule was
+  not.
+- `_test_art_folders_are_licensed()` maps every art folder to a named owner and
+  fails on one nobody has classified. Empty folders do not count — git cannot
+  represent them, so counting them would fail locally and pass in CI.
+- `LICENSE` is back to unmodified MIT. It had scored 85.9% against a 98% scanner
+  threshold, so GitHub reported the project as "Other" rather than MIT.
+- `behemothcrown.png` was misfiled *into* the private pack. It came from the
+  Ahvassa boss art, so it is ours; moved to `art/enemy/` and the three constants
+  that name it updated.
+
+### What a public clone could not build
+
+- `kingdomboard.gd` used `preload()` on two `art/pack` textures. `preload`
+  resolves at compile time, so without the private submodule that script did not
+  compile and `KingdomBoard` did not exist. One missing decoration removed a
+  whole screen, silently. Paths and a lazy `load()` now, with the header keeping
+  its column widths on null.
+- Checks that genuinely need the pack now report as **skipped with a reason**
+  instead of failing. A clone reads `604 passed, 0 failed, 12 skipped` and exits
+  0. They stay real checks wherever the pack is present.
+
+### The await trap was documented backwards in five files
+
+Measured on 4.6.1: a node freed mid-await **never resumes** — silently, no error
+— while `remove_child()` without a free resumes valid but out of the tree.
+`combat.gd` had it right; five files said the opposite. The consequence that
+matters: only the `is_inside_tree()` half of the standard guard can ever fire, so
+the wrong model talks you out of the half that works.
+
+### Six new checks, and a tool
+
+Each was watched go red before being trusted. `_test_every_script_compiles()`
+runs first (a compile error had surfaced as eight unrelated `gold_*` failures
+naming no file); plus checks for work lost past an await, `.ps1` ASCII purity,
+art-folder ownership, scenes pointing into `.godot/imported/`, and unused
+parameters — that last one because GDScript warns in the *editor* and not
+through a headless load, which is the one regression class CI could not see.
+
+`src/tools/atlasaudit.gd` answers "is this tile art actually used" with painted
+cell counts. It exists because that question got three wrong answers about one
+file: tile *definitions* are not placements, one texture can back several atlas
+sources, and source ids are per-TileSet. It asks Godot's TileSet API rather than
+parsing scene text — the text version had reported zero painted cells for three
+textures that have four each.
+
+636 checks, 112 scripts.
+
 ## [2026-09-08]
 
 ### Decision: persistent online world, served by headless Godot

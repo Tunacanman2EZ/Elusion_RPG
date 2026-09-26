@@ -204,11 +204,32 @@ test_catalogue.py    13 checks    the shipped catalogue arms every protection
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **631 checks, 0 failures.** It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 111 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **636 checks, 0 failures.** It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 112 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+
+**If you cloned this repo, it will report `604 passed, 0 failed, 12 skipped` and exit 0.** That is correct, and the twelve are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+
+Some of the suite is there to catch things the engine will not tell you about:
+
+- **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
+- **Configuring a node after `add_child()`.** `_ready()` has already run, so an element profile multiplies the scene's defaults and your assignment flattens the result — the thing wears its element's art and none of its behaviour. A text check, because the failure has no runtime symptom.
+- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 1,631 signatures.
+- **Art nobody has classified.** Every top-level folder under `art/` and `assets/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
+
+`src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool that answers "is this tile art actually used" with painted cell counts per texture. It exists because that question got three wrong answers about one file before the right one: tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet.
 
 `python app.py` is Flask's development server, which is right for local play and wrong for anything public. The interactive debugger stays off unless `ELUSION_DEBUG=1` is set on purpose, and `wsgi.py` / `DEPLOY.md` in the API repo cover running it behind a real WSGI server.
 
 Without the service running, the login screen will tell you it can't reach the server — the game does not fall back to local accounts by design.
+
+### A clone is missing the item art on purpose
+
+`art/pack/` is a private submodule. It holds item, weapon, armour and icon art purchased from [Clockwork Raven Studios](https://www.clockworkravenstudios.com/) under a licence that permits using it in this game and **not** redistributing it. Publishing this repository with those files in it would be redistribution, so they are not here.
+
+What that means if you clone: 134 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
+
+The test suite understands the difference. The twelve checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
+
+This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on two of those textures, and `preload` resolves at compile time — so in a clone that script did not compile and `KingdomBoard` did not exist. One missing decoration removed an entire screen, silently. It now holds paths and loads lazily, and the header keeps its column widths when the texture is null.
 
 ## Status
 
@@ -230,4 +251,10 @@ Code is MIT licensed — see [LICENSE](LICENSE).
 
 Art, graphics and audio are **not** covered by that license, and some of it belongs to someone else. See [assetlicense.md](assetlicense.md) before doing anything with the files under `art/` or `assets/`. If you'd like to contribute assets, read [docs/ASSET_CONTRIBUTOR_AGREEMENT.md](docs/ASSET_CONTRIBUTOR_AGREEMENT.md) first.
 
-Item and icon art is © **Caio Carlos / [Clockwork Raven Studios](https://www.clockworkravenstudios.com/)**, used with permission. Characters, enemies and tilesets are by **Ahvassa**. Full details and links are in [assetlicense.md](assetlicense.md).
+Item and icon art is © **Caio Carlos / [Clockwork Raven Studios](https://www.clockworkravenstudios.com/)**, used with permission. Characters, enemies and tilesets are by **Ahvassa**, commissioned with rights assigned to Elusion Studios. Full details and links are in [assetlicense.md](assetlicense.md).
+
+Two artists, and only one of them transferred rights — which is the whole job that file does. Ahvassa's work is Elusion Studios' to edit and ship, and crediting him is courtesy. Caio's is not: the IP stays with Clockwork Raven Studios, and crediting him is a condition of this repository being public at all.
+
+`LICENSE` is kept as the **unmodified** MIT text on purpose. Licence scanners match it word for word, so a carve-out paragraph added there drops the similarity below the match threshold and the repo stops being reported as MIT-licensed. Measured on this one: the canonical text scores 100%, the same text with a single extra sentence scores 93%, and the threshold is 98%. The carve-out lives in `assetlicense.md` instead, which makes the code's licence clearer rather than murkier.
+
+That file also records where this went wrong, because it went wrong three times the same way — a claim about a *set of files* stays put while the set changes underneath it. `_test_art_folders_are_licensed()` is what stops a fourth.

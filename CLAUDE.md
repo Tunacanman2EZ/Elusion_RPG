@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 631 checks at the time of writing; if that number and the one the suite
+failure. 636 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -460,7 +460,7 @@ switched off.
 ### A compile error is diagnosed by the first check, not the eighth
 
 `_test_every_script_compiles()` runs **first** in the suite, loads every `.gd`
-under `src/` (111 of them) and names any that will not parse.
+under `src/` (112 of them) and names any that will not parse.
 
 It exists because of what the alternative looked like. A one-argument call to
 `Combat.report_kill()` — which takes three — was planted in `baseenemy.gd`. The
@@ -570,8 +570,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 631 passed, 0 failed | 0 |
-| absent | 599 passed, 0 failed, 12 skipped | **0** |
+| present | 636 passed, 0 failed | 0 |
+| absent | 604 passed, 0 failed, 12 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.
