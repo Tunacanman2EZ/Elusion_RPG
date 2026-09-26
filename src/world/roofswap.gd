@@ -2,6 +2,18 @@
 # when outside. replaces houseswap.gd's old interior/exterior scene-swap
 # approach entirely.
 #
+# NOTHING REFERENCES THIS RIGHT NOW, and the irony is worth recording rather
+# than quietly deleting the file. Its only user was scene/walls/shop.tscn, the
+# old shop, which was removed because the only art it drew was a tileset of
+# unconfirmed origin (see assetlicense.md). The shop the game actually builds,
+# scene/walls/shophouse.tscn, is interior/exterior scenes — the very approach
+# the paragraph above says this replaced entirely. So this is the replacement
+# that got replaced.
+#
+# Kept because the design note below is the useful part and the next house that
+# wants a roof will want it, not because anything calls it. If you are reading
+# this while wiring up a second house, this is the file you want.
+#
 # WHY THIS IS SIMPLER THAN THE OLD SYSTEM:
 # houseswap.gd toggled between two entire pre-built halves (a full
 # "interior" node and a full "exterior" node) every time the player

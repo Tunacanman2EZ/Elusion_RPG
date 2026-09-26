@@ -494,9 +494,10 @@ func _kindle() -> void:
 
 	# PAST AN AWAIT, and every other await in src/world/ carries this guard:
 	# fishingspot, enemyrespawner, teleporter, lever. A SceneTreeTimer belongs to
-	# the tree rather than to this node, so it outlives a scene change and would
-	# otherwise resume on a freed Area2D. It goes FIRST, before anything below
-	# reads a node.
+	# the tree rather than to this node, so it outlives a scene change and this
+	# node may be out of the tree — or gone entirely — by the time it fires. It
+	# goes FIRST, before anything below reads a node. See combat.gd for which
+	# half of the guard actually fires and why both are kept.
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 

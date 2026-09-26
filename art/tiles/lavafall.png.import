@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b80rjrtlrnpsf"
-path="res://.godot/imported/font.png-c47dfa99ece7f6c19cd5e09e0fbf1827.ctex"
+path="res://.godot/imported/lavafall.png-12e071504b33371eedede6737e3bd036.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tiles/font.png"
-dest_files=["res://.godot/imported/font.png-c47dfa99ece7f6c19cd5e09e0fbf1827.ctex"]
+source_file="res://art/tiles/lavafall.png"
+dest_files=["res://.godot/imported/lavafall.png-12e071504b33371eedede6737e3bd036.ctex"]
 
 [params]
 

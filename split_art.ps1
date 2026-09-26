@@ -11,6 +11,13 @@
 #                    pixel-identical to his spritesheets
 #     art/thirdparty/  "ready to use" tilesets of unconfirmed origin
 #
+# NOTE, Sept 2026: art/thirdparty/ no longer exists in the project. Its files
+# were replaced by the purchased Clockwork Raven pack, and the last one went
+# with the orphaned old shop scene that was the only thing still drawing it.
+# The $ThirdPartyFiles list below is kept as the record of what was separated
+# out and why. Re-running this script would recreate the folder, so do not,
+# unless a new batch of unverified art actually needs the same treatment.
+#
 # art/pack/ is the folder that becomes the private submodule. Keeping it INSIDE
 # art/ rather than beside it means res://art/... still names everything, and a
 # clone without submodule access is missing one subfolder rather than all art.

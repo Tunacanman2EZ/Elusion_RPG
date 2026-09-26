@@ -1297,8 +1297,14 @@ func _on_logout_pressed() -> void:
 	# PAST AN AWAIT. Up to the request timeout has passed, and this node can be
 	# gone by now - the player died and the game-over screen took the scene with
 	# it, or something else changed scenes while the server was not answering.
-	# get_tree() on a freed node errors, and the logout never finishes. Same
-	# guard and same reason as fishingspot.gd and cookingscreen.gd.
+	# Same guard and same reason as fishingspot.gd and cookingscreen.gd.
+	#
+	# Worth being exact about what is at stake, because it is not an error in the
+	# log: Api.logout() has already cleared the token by the time we get here, so
+	# the account IS logged out either way. What a dropped or guarded coroutine
+	# loses is only the change_scene below. Whichever scene took over is the one
+	# the player is looking at, and sending them to the login menu from under it
+	# would be the worse outcome. Returning is the right answer, not a fallback.
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://6lwpeowg18ls"
-path="res://.godot/imported/lavatile.png-ab110bd9711b1dbbc7e9603e3160538a.ctex"
+uid="uid://bhqcigo8xahu5"
+path="res://.godot/imported/plant2.png-ff56869fd66496171e37425aa4bc5756.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tiles/lavatile.png"
-dest_files=["res://.godot/imported/lavatile.png-ab110bd9711b1dbbc7e9603e3160538a.ctex"]
+source_file="res://art/tiles/plant2.png"
+dest_files=["res://.godot/imported/plant2.png-ff56869fd66496171e37425aa4bc5756.ctex"]
 
 [params]
 

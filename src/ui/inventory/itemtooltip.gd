@@ -99,10 +99,17 @@ func _process(_delta: float) -> void:
 # PUBLIC API
 # =============================================================================
 
-func show_for_stack(stack: ItemStack, source_slot: Node, description_suffix: String = "") -> void:
-	# display tooltip with the given stack's info. source_slot is tracked
-	# so we can verify hide requests come from the same slot that triggered
-	# the show (avoids race conditions when cursor moves between slots fast).
+func show_for_stack(stack: ItemStack, _source_slot: Node, description_suffix: String = "") -> void:
+	# UNDERSCORED, AND KEPT. Nothing reads _source_slot: the tracker it fed was
+	# removed because it was written and never read (see the note at the top of
+	# this file). The parameter stays so the three call sites keep working and so
+	# the slot is still handed over if the stale-exit guard described up there
+	# ever gets built - the underscore is GDScript's way of saying "deliberately
+	# unused", and without it every parse of this file prints a warning.
+	#
+	# The docstring here used to claim the slot was "tracked so we can verify
+	# hide requests come from the same slot". That was inherited from the removed
+	# code and was describing something the file never did.
 	#
 	# description_suffix is optional extra text appended below the description.
 	# used by HotbarSlot to add "linked from inventory" hint so players

@@ -33,7 +33,7 @@ const NAME_PATTERN := "^[A-Za-z0-9_]{3,20}$"
 #
 # SIZED AT THE ART'S OWN 26x15, for the same reason chat pins its [img] to those
 # numbers: this is pixel art with an outline, and any other size smears it.
-const CROWN_PATH := "res://art/pack/icons/behemothcrown.png"
+const CROWN_PATH := "res://art/enemy/behemothcrown.png"
 const CROWN_SIZE := Vector2(26, 15)
 
 # The one rank that wears it. Dev, mod and player get their colour and no more.

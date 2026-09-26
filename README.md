@@ -202,7 +202,9 @@ test_catalogue.py    13 checks    the shipped catalogue arms every protection
 					1,635 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database.
+
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **631 checks, 0 failures.** It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 111 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
 `python app.py` is Flask's development server, which is right for local play and wrong for anything public. The interactive debugger stays off unless `ELUSION_DEBUG=1` is set on purpose, and `wsgi.py` / `DEPLOY.md` in the API repo cover running it behind a real WSGI server.
 

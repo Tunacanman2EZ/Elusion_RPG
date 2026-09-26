@@ -42,6 +42,8 @@ const RESULTS_PATH := "res://test_results.txt"
 var passed: int = 0
 var failed: int = 0
 var failures: PackedStringArray = []
+var skipped: int = 0
+var skips: PackedStringArray = []
 var _log: PackedStringArray = []
 
 
@@ -70,6 +72,11 @@ func _ready() -> void:
 
 
 func _run_all() -> void:
+	# FIRST, DELIBERATELY. A script that will not compile makes unrelated sections
+	# fail for reasons their own names do not mention. See the header above
+	# _test_every_script_compiles() for the eight gold failures that came out of
+	# one bad line in baseenemy.gd.
+	_test_every_script_compiles()
 	_test_curve_agreement()
 	_test_skill_curves()
 	_test_shared_constants()
@@ -89,6 +96,11 @@ func _run_all() -> void:
 	_test_script_references()
 	_test_element_enum_order()
 	_test_spawn_ordering()
+	_test_await_does_not_lose_work()
+	_test_helper_scripts_ascii()
+	_test_art_folders_are_licensed()
+	_test_no_import_cache_references()
+	_test_no_unused_parameters()
 	_test_floor_coverage()
 	_test_frame_budget()
 
@@ -182,6 +194,608 @@ func _scan_spawn_order(dir_path: String, offenders: Array[String], _n: Array) ->
 								% [full.get_file(), j + 1, subject, subject, prop])
 		entry = dir.get_next()
 	dir.list_dir_end()
+
+
+# =============================================================================
+# EVERY SCRIPT STILL COMPILES
+# =============================================================================
+# This runs FIRST, and the reason is a cascade worth describing, because the
+# cascade is what makes a broken build expensive to diagnose rather than just
+# broken.
+#
+# A one-argument call to Combat.report_kill() - which takes three - was put into
+# baseenemy.gd as a deliberate sabotage while proving the await check below.
+# GDScript validates the arity at compile time, so BaseEnemy stopped compiling,
+# so every check reading BaseEnemy.GOLD_* had no class to read from. The suite
+# reported EIGHT failures, all of them named gold_something, and not one line
+# naming baseenemy.gd. The honest state of the project was "one script does not
+# compile"; the report said "the gold constants disagree with the contract".
+#
+# Anybody chasing that goes into the gold code, which is fine, and finds nothing
+# wrong there, which is also fine, and that is the wasted hour.
+#
+# require_script() already solves this per-section and says so in its docstring.
+# It is only used where a section does an explicit load(), and the sections that
+# reach a global class name directly - BaseEnemy.X, ItemData.Y - get no such
+# guard, because there is no load() call to put it on. This check covers them
+# all at once instead: if something under src/ will not compile, the FIRST line
+# of the report names the file, and everything red below it is downstream.
+#
+# It also folds in a fact that until now lived outside the suite entirely. "All
+# scripts compile" was only ever proven by launching a separate scene by hand,
+# which means it was not proven by run_tests.ps1, which is the thing a person
+# who clones this repository actually runs, and the thing CI runs.
+#
+# HOW TO ASK, WHICH IS NOT OBVIOUS AND WAS GOT WRONG HERE FIRST.
+#
+# The first version of this check tested `load(path) as Script != null`. It
+# passed on a project with a script that did not compile - green, 111 loaded,
+# while eight gold checks were failing underneath it because the class it was
+# green about did not exist. A check that passes in the exact condition it exists
+# to catch is worse than no check, because it is evidence.
+#
+# So the probes were measured, on three separate ways of breaking one file (a
+# wrong-arity call, a syntax error, and a type mismatch) against a good one:
+#
+#   probe                            good        all three broken
+#   load()                           object      OBJECT  <- always non-null
+#   load(CACHE_MODE_IGNORE)          object      OBJECT  <- also always non-null
+#   can_instantiate()                true        false
+#   reload()                         0 (OK)      43 (ERR_PARSE_ERROR)
+#   get_script_constant_map().size() 1           0
+#   get_script_method_list().size()  1           0
+#
+# load() never reports the failure. reload() reports it perfectly but RECOMPILES
+# the script in place, which is not a thing to do to a live project from inside
+# its own test suite. can_instantiate() is the read-only one that moves.
+#
+# Used with two corroborating conditions rather than alone, because
+# can_instantiate() is also false for a legitimately abstract script - and a
+# future abstract class failing this check would be a false alarm that teaches
+# people to ignore it. A script that will not parse has no methods and no
+# constants either; an abstract one that declares either is therefore left
+# alone. All three together is the parse failure and nothing else.
+#
+# Loading is otherwise safe to do in bulk: it parses and compiles, it does not
+# execute, and anything already in memory comes back from the resource cache.
+
+
+func _test_every_script_compiles() -> void:
+	section("COMPILE — every script under src/ parses")
+
+	var broken: Array[String] = []
+	var total: Array[int] = [0]
+	_scan_compiles("res://src", broken, total)
+
+	broken.sort()
+	check("the sweep found scripts to check", total[0] > 0, "%d found" % total[0])
+	check("every script under src/ compiles", broken.is_empty(),
+		"\n         ".join(broken))
+
+	print("  %d scripts parsed" % total[0])
+
+
+func _scan_compiles(dir_path: String, broken: Array[String], total: Array[int]) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				_scan_compiles(full, broken, total)
+		elif entry.ends_with(".gd"):
+			total[0] += 1
+			# Errors off across the load, because a script that will not compile
+			# prints its parse error to stderr and the point of this check is to
+			# name the file in the summary, not to bury it in engine output.
+			Engine.print_error_messages = false
+			var script: Script = load(full) as Script
+			Engine.print_error_messages = true
+			if script == null:
+				# Not observed on any of the three break kinds measured above,
+				# but a genuinely unreadable file would land here.
+				broken.append("%s did not load at all" % full)
+			elif not script.can_instantiate() \
+					and script.get_script_method_list().is_empty() \
+					and script.get_script_constant_map().is_empty():
+				broken.append("%s will not compile" % full)
+		entry = dir.get_next()
+	dir.list_dir_end()
+
+
+# =============================================================================
+# WORK LOST PAST AN AWAIT
+# =============================================================================
+# Measured on 4.6.1, not assumed. A node suspended on
+# `await get_tree().create_timer(...).timeout`:
+#
+#   queue_free()d, or its scene replaced  -> the coroutine NEVER RESUMES.
+#                                            Nothing below the await runs. No
+#                                            error, no warning, no output.
+#   remove_child() without a free         -> resumes, valid, NOT inside tree.
+#   reparented, still in the tree         -> resumes, nothing to guard.
+#
+# combat.gd's header holds the full table and the reasoning. What matters for a
+# CHECK is the first row, and specifically that it is silent. A dropped
+# coroutine and a completed one are indistinguishable in the log, so the only
+# thing that ever notices is a player wondering where their loot went.
+#
+# THAT IS NOT HYPOTHETICAL EITHER. Small poison slimes await their death
+# animation and larges do not, and for months smalls dropped no loot bag at all
+# for exactly this reason. The fix was moving the work to an autoload, which is
+# why combat.gd exists as one.
+#
+# WHAT THIS CHECKS, AND WHY IT IS NARROW. Losing a write to your own member is
+# usually harmless - the node is going away and taking the member with it. What
+# is never harmless is losing work aimed OUTSIDE yourself: a kill report, a
+# signal someone is waiting on, a bag added to a container. So this fires only
+# when code after an await in a self-freeing node reaches for one of those.
+#
+# Scoped to enemies, projectiles and pets because those are the nodes that free
+# themselves mid-life. Autoloads are always in the tree and UI panels live as
+# long as their scene, so the same pattern there is not the same risk.
+const AWAIT_OUTSIDE_TOKENS := [
+	"Combat.", "CharacterData.", "ServerStorage.", "Api.", "SkillTrainer.",
+	"GameState.", "add_child(", "call_deferred(", ".emit(", "emit_signal(",
+	"get_first_node_in_group(",
+]
+
+
+func _test_await_does_not_lose_work() -> void:
+	section("PAST AN AWAIT — no outside-world work below an await that can be dropped")
+
+	var offenders: Array[String] = []
+	for folder in ["res://src/enemies", "res://src/projectiles", "res://src/pets"]:
+		_scan_await_losses(folder, offenders)
+
+	offenders.sort()
+	check("nothing reaches outside itself after an await in a self-freeing node",
+		offenders.is_empty(), "\n         ".join(offenders))
+
+	print("  checked every await in enemies, projectiles and pets")
+
+
+func _scan_await_losses(dir_path: String, offenders: Array[String]) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				_scan_await_losses(full, offenders)
+		elif entry.ends_with(".gd"):
+			var lines: PackedStringArray = FileAccess.get_file_as_string(full).split("\n")
+			for i in range(lines.size()):
+				var line: String = lines[i]
+				if not line.contains("await ") or line.strip_edges().begins_with("#"):
+					continue
+				# Walk to the end of the enclosing function: the first later line
+				# that has content and does NOT start with a tab is the next
+				# top-level declaration.
+				for j in range(i + 1, lines.size()):
+					var raw: String = lines[j]
+					var body: String = raw.strip_edges()
+					if body != "" and not raw.begins_with("\t"):
+						break
+					if body == "" or body.begins_with("#"):
+						continue
+					var flagged: bool = false
+					for token in AWAIT_OUTSIDE_TOKENS:
+						if body.contains(token):
+							offenders.append("%s:%d  await on line %d, then %s"
+								% [full.get_file(), j + 1, i + 1, body.left(56)])
+							flagged = true
+							break
+					if flagged:
+						break
+		entry = dir.get_next()
+	dir.list_dir_end()
+
+
+# =============================================================================
+# EVERY ART FOLDER IS CLASSIFIED BY SOMEBODY
+# =============================================================================
+# This one is not about the game working. It is about the repository not claiming
+# copyright it does not have, which has now gone wrong twice for the same reason.
+#
+# LICENSE used to say "all original artwork, music, and paid/commissioned assets
+# in this repository are the exclusive property of Robert Ashley Clear", and when
+# it was written that was TRUE - one artist, commissioned, rights assigned. It
+# became false the day a purchased pack from a second artist arrived, and nothing
+# went back to reread it. Adding art does not feel like touching licensing, so
+# nobody does.
+#
+# Caught the same thing a second time while fixing the first: /art/thirdparty/
+# held tilesets that split_art.ps1 itself describes as "of unconfirmed origin",
+# and assetlicense.md's catch-all - everything under /art except the item art -
+# was quietly claiming them. That folder is GONE now rather than disclosed: its
+# one remaining file was used only by scene/walls/shop.tscn, which was the old
+# shop, orphaned - nothing referenced it by path or by uid. Both were deleted, so
+# the repository no longer ships art nobody can account for.
+#
+# A LICENCE FILE IS A CLAIM ABOUT A SET OF FILES, and the set changes without the
+# claim changing. So the claim is pinned to names here, and a folder nobody has
+# classified fails the suite until somebody decides whose it is. The next time art
+# arrives from a new source, the thing that notices is a test run rather than a
+# stranger reading the repository.
+#
+# DELIBERATELY A HARDCODED LIST, not derived from assetlicense.md by parsing it.
+# A parser would keep passing while the prose rotted around it; the point is that
+# a human has to type the folder name in two places and think once.
+#
+# WHAT THIS CHECK CANNOT SEE, stated plainly because it is the hole that let the
+# third case through. This works at FOLDER granularity. It cannot express "these
+# two files inside art/tiles belong to a different artist", and that is exactly
+# what was found: two tiles from the purchased Clockwork Raven pack sitting in
+# art/tiles/, a folder whose owner here is "elusion". Green the whole time.
+#
+# The pack is a general fantasy asset pack - it has tilesets in it, not only
+# items and icons - so the old rule in assetlicense.md, which was about the
+# CATEGORY of art, could not catch them either. Both files were unreferenced and
+# are gone, so folder granularity is honest again today.
+#
+# The durable fix is not in this check, it is the rule assetlicense.md now states:
+# art/pack/ is the authoritative location for anything of Caio's, so a file of
+# his anywhere else is a split that was missed. If a future pack file has to live
+# outside art/pack/, this check will not notice, and whoever puts it there owes
+# this comment an update.
+const LICENSED_ART_FOLDERS := {
+	# Elusion Studios: commissioned from Ahvassa with rights assigned, plus
+	# original work.
+	"art/doors": "elusion",
+	"art/enemy": "elusion",
+	"art/floordecoration": "elusion",
+	"art/images": "elusion",
+	"art/maincharacter": "elusion",
+	"art/menu": "elusion",
+	"art/npc": "elusion",
+	"art/shophouses": "elusion",
+	"art/teleport": "elusion",
+	"art/tiles": "elusion",
+	"assets/fonts": "elusion",
+	"assets/themes": "elusion",
+
+	# Caio Carlos / Clockwork Raven Studios, purchased under their asset licence.
+	# Credit is REQUIRED, not courtesy. The private submodule lives here.
+	"art/pack": "clockwork-raven",
+
+	# NOTHING IS "unconfirmed" ANY MORE, and that is the point of leaving this
+	# note where the entry used to be. art/thirdparty held one file of unknown
+	# origin; it was reachable only from the orphaned old shop scene, so both went.
+	# If a folder ever needs that classification again, it means art arrived from
+	# a source nobody verified - which is a conversation, not a list entry.
+}
+
+
+func _test_art_folders_are_licensed() -> void:
+	section("ART LICENSING — every art folder is classified by name")
+
+	var unclassified: Array[String] = []
+	var missing: Array[String] = []
+	var found: Array[String] = []
+
+	for root in ["res://art", "res://assets"]:
+		var dir := DirAccess.open(root)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var entry := dir.get_next()
+		while entry != "":
+			if dir.current_is_dir() and not entry.begins_with("."):
+				var key: String = "%s/%s" % [root.trim_prefix("res://"), entry]
+				# EMPTY FOLDERS DO NOT COUNT, and this is not a convenience.
+				#
+				# Git cannot represent an empty directory. So a folder left behind
+				# on one machine after its files moved elsewhere exists for that
+				# developer and for nobody who clones - and a check that counted it
+				# would FAIL on their machine and PASS in CI, on the same commit.
+				# That is the one kind of failure that teaches people to ignore a
+				# suite, so it is worth more than the handful of lines it costs.
+				#
+				# Found the honest way: split_art.ps1 moved the purchased art into
+				# art/pack/ and left seven empty folders behind - amulets, armour,
+				# consumables, currency, icons, lootbag, weapons. This check went
+				# red on the author's machine and green in a clean clone.
+				#
+				# An empty folder is also not a licensing risk, which is the actual
+				# subject. Nobody can misattribute art that is not there.
+				if not _folder_holds_art(dir_path_of(root, entry)):
+					entry = dir.get_next()
+					continue
+				found.append(key)
+				if not LICENSED_ART_FOLDERS.has(key):
+					unclassified.append("%s is not classified in assetlicense.md" % key)
+			entry = dir.get_next()
+		dir.list_dir_end()
+
+	# Both directions. A folder that disappeared should be taken OUT of the list,
+	# or the list slowly becomes a record of what used to be here - which is how
+	# the prose it mirrors went stale in the first place.
+	#
+	# art/pack is exempt: it is the private submodule, so it is legitimately
+	# absent from any clone without access to it, and failing every such clone
+	# would train people to ignore this check.
+	for key in LICENSED_ART_FOLDERS:
+		if key == "art/pack":
+			continue
+		if not found.has(key):
+			missing.append("%s is classified but no longer exists" % key)
+
+	check("the sweep found art folders to check", not found.is_empty(),
+		"%d found" % found.size())
+	check("every art folder has a named owner", unclassified.is_empty(),
+		"\n         ".join(unclassified))
+	check("no classified folder has gone missing", missing.is_empty(),
+		"\n         ".join(missing))
+
+	print("  %d folders hold art; %d classified"
+		% [found.size(), LICENSED_ART_FOLDERS.size()])
+
+
+const ART_EXTENSIONS := ["png", "jpg", "jpeg", "webp", "svg", "ttf", "otf", "tres"]
+
+
+func dir_path_of(root: String, entry: String) -> String:
+	return root.path_join(entry)
+
+
+func _folder_holds_art(dir_path: String) -> bool:
+	# Recursive: art/tiles/field/ counts toward art/tiles.
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return false
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	var holds: bool = false
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with(".") and _folder_holds_art(full):
+				holds = true
+		elif ART_EXTENSIONS.has(entry.get_extension().to_lower()):
+			holds = true
+		if holds:
+			break
+		entry = dir.get_next()
+	dir.list_dir_end()
+	return holds
+
+
+# =============================================================================
+# NO SCENE MAY POINT INTO THE IMPORT CACHE
+# =============================================================================
+# .godot/ is gitignored, so it exists on the machine that built it and in no
+# clone, ever. A scene that names a file inside .godot/imported/ therefore works
+# for exactly one person and is blank for everybody else - including that person,
+# as soon as Godot cleans the cache.
+#
+# HOW A SCENE ENDS UP LIKE THAT, because nobody types it. Delete a texture that a
+# TileSet is still painted with and Godot does not refuse and does not warn. It
+# DEGRADES the reference: the healthy
+#
+#     [ext_resource type="Texture2D" path="res://art/tiles/c92.png" id="4_e1pj8"]
+#
+# is replaced on the next save by an embedded
+#
+#     [sub_resource type="CompressedTexture2D" id="..."]
+#     load_path = "res://.godot/imported/c92.png-<hash>.ctex"
+#
+# which keeps drawing from the baked copy until that copy is cleaned, and then
+# stops. That happened to elusion.tscn: c92.png was deleted as unused, 13 painted
+# tiles in the main world scene lost their texture, and the only trace was a line
+# 90 lines into an 85KB scene file.
+#
+# It is a text check because the failure is a text pattern, and because a runtime
+# check would pass on the machine whose cache still holds the file - which is the
+# one machine where the bug is invisible.
+func _test_no_import_cache_references() -> void:
+	section("IMPORT CACHE — no scene or resource points into .godot/")
+
+	var offenders: Array[String] = []
+	var scanned: Array[int] = [0]
+	for folder in ["res://scene", "res://data", "res://art"]:
+		_scan_import_cache_refs(folder, offenders, scanned)
+
+	offenders.sort()
+	check("the sweep found scenes and resources to check", scanned[0] > 0,
+		"%d scanned" % scanned[0])
+	check("nothing references the import cache", offenders.is_empty(),
+		"\n         ".join(offenders))
+
+	print("  %d scene/resource files scanned" % scanned[0])
+
+
+func _scan_import_cache_refs(dir_path: String, offenders: Array[String], scanned: Array[int]) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				_scan_import_cache_refs(full, offenders, scanned)
+		elif entry.ends_with(".tscn") or entry.ends_with(".tres"):
+			scanned[0] += 1
+			var lines: PackedStringArray = FileAccess.get_file_as_string(full).split("\n")
+			for i in range(lines.size()):
+				if lines[i].contains("res://.godot/"):
+					offenders.append("%s:%d  %s"
+						% [full.trim_prefix("res://"), i + 1, lines[i].strip_edges().left(72)])
+		entry = dir.get_next()
+	dir.list_dir_end()
+
+
+# =============================================================================
+# UNUSED PARAMETERS, BECAUSE GODOT'S OWN WARNING DOES NOT REACH THIS SUITE
+# =============================================================================
+# GDScript warns on a parameter that is never read, and the fix it asks for is a
+# leading underscore: `_source_slot` means "deliberately unused". That warning is
+# printed by the EDITOR when it parses a script. It does NOT surface through
+# ResourceLoader.load() in a headless run - proven by deliberately introducing an
+# unused variable and unreachable code and watching this suite stay silent.
+#
+# So the one class of regression this suite is structurally blind to is exactly
+# the class an editing pass produces: delete the last line that read a parameter
+# and the parameter is now dead, with nothing in a headless run to say so.
+#
+# THAT IS NOT HYPOTHETICAL. Removing a write-only `_current_slot` tracker from
+# itemtooltip.gd left `source_slot` with no reader. The suite was green; the
+# warning only appeared when the project was next opened in the editor. It also
+# left a docstring describing a guarantee the file no longer made.
+#
+# A text check closes the gap. It matches Godot's own rule rather than inventing
+# one - a parameter that does not begin with `_` and never appears in its
+# function body - so anything it flags is something the editor is already
+# complaining about, and underscoring it satisfies both at once.
+#
+# KNOWN LIMIT: it reads single-line `func` declarations, so a signature wrapped
+# across lines is skipped rather than guessed at. 1,627 functions parse this way
+# and one violation existed when it was written, so the blind spot is small and
+# a missed warning still shows up in the editor as it always did.
+func _test_no_unused_parameters() -> void:
+	section("UNUSED PARAMETERS — what the editor warns about, checked headless")
+
+	var offenders: Array[String] = []
+	var funcs: Array[int] = [0]
+	_scan_unused_params("res://src", offenders, funcs)
+
+	offenders.sort()
+	check("the sweep found functions to check", funcs[0] > 0, "%d found" % funcs[0])
+	check("every parameter is read, or underscored to say it is not",
+		offenders.is_empty(), "\n         ".join(offenders))
+
+	print("  %d function signatures scanned" % funcs[0])
+
+
+func _scan_unused_params(dir_path: String, offenders: Array[String], funcs: Array[int]) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				_scan_unused_params(full, offenders, funcs)
+		elif entry.ends_with(".gd"):
+			var lines: PackedStringArray = FileAccess.get_file_as_string(full).split("\n")
+			for i in range(lines.size()):
+				var line: String = lines[i]
+				if not line.begins_with("func "):
+					continue
+				var open_paren: int = line.find("(")
+				var close_paren: int = line.rfind(")")
+				if open_paren < 0 or close_paren < open_paren:
+					continue            # signature spans lines; see KNOWN LIMIT
+				funcs[0] += 1
+				var fname: String = line.substr(5, open_paren - 5)
+				var arglist: String = line.substr(open_paren + 1, close_paren - open_paren - 1)
+				if arglist.strip_edges() == "":
+					continue
+
+				# The body: every following line that is blank or indented.
+				var body: String = ""
+				for j in range(i + 1, lines.size()):
+					var raw: String = lines[j]
+					if raw.strip_edges() != "" and not raw.begins_with("\t"):
+						break
+					if not raw.strip_edges().begins_with("#"):
+						body += raw + "\n"
+
+				for piece in arglist.split(","):
+					var pname: String = piece.strip_edges().split(":")[0].split("=")[0].strip_edges()
+					if pname == "" or pname.begins_with("_"):
+						continue
+					if not _mentions_word(body, pname):
+						offenders.append("%s:%d  %s() — '%s' is never read; underscore it"
+							% [full.trim_prefix("res://"), i + 1, fname, pname])
+		entry = dir.get_next()
+	dir.list_dir_end()
+
+
+func _mentions_word(haystack: String, word: String) -> bool:
+	# Whole-word only. Without this, a parameter named `slot` counts itself as
+	# used because the body mentions `slot_index`, which is how a check like this
+	# quietly stops checking anything.
+	var from: int = 0
+	while true:
+		var at: int = haystack.find(word, from)
+		if at < 0:
+			return false
+		var before_ok: bool = at == 0 or not _is_word_char(haystack[at - 1])
+		var after: int = at + word.length()
+		var after_ok: bool = after >= haystack.length() or not _is_word_char(haystack[after])
+		if before_ok and after_ok:
+			return true
+		from = at + 1
+	return false
+
+
+func _is_word_char(c: String) -> bool:
+	return c == "_" or (c >= "0" and c <= "9") or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z")
+
+
+# =============================================================================
+# THE HELPER SCRIPTS STAY PURE ASCII
+# =============================================================================
+# run_tests.ps1 is the documented way to run this suite, and split_art.ps1 is
+# the documented way to separate the licensed art pack from original work. Both
+# are among the first things a person who clones this repository runs.
+#
+# WHY ASCII AND NOT "VALID UTF-8". Windows PowerShell 5.1 - still the shell you
+# get on a stock Windows install - reads a .ps1 with no byte-order mark as
+# CP1252, one byte per character. A UTF-8 em-dash in a comment is three bytes,
+# so 5.1 shows three garbage characters. Inside a comment that is only ugly; the
+# moment one lands in a string, a path or a regex the script misbehaves in a way
+# that has nothing to do with what the line looks like in the editor.
+#
+# The em-dash is the realistic way in, because every .md file in this repository
+# uses them and these headers get copy-edited alongside the docs.
+#
+# Held as ASCII rather than fixed with a BOM on purpose: a BOM makes 5.1 read the
+# file correctly and makes some other tooling read the BOM itself as content.
+# ASCII needs no agreement from anybody.
+const ASCII_HELPER_SCRIPTS := [
+	"res://run_tests.ps1",
+	"res://split_art.ps1",
+]
+
+
+func _test_helper_scripts_ascii() -> void:
+	section("HELPER SCRIPTS — the .ps1 entry points are pure ASCII")
+
+	for path in ASCII_HELPER_SCRIPTS:
+		# Named one by one rather than discovered by scanning, so renaming or
+		# deleting a documented entry point fails here instead of quietly
+		# leaving the check with nothing to look at.
+		var bytes: PackedByteArray = FileAccess.get_file_as_bytes(path)
+		if bytes.is_empty():
+			check("%s exists and is readable" % path.get_file(), false,
+				"FileAccess said: %s" % error_string(FileAccess.get_open_error()))
+			continue
+
+		var offenders: Array[String] = []
+		var line_no: int = 1
+		for b in bytes:
+			if b == 10:
+				line_no += 1
+			elif b > 127:
+				var note := "line %d: byte 0x%02X" % [line_no, b]
+				if not offenders.has(note):
+					offenders.append(note)
+		check("%s is pure ASCII" % path.get_file(), offenders.is_empty(),
+			", ".join(offenders.slice(0, 8)))
+
+	print("  %d helper script(s) checked byte by byte" % ASCII_HELPER_SCRIPTS.size())
 
 
 # =============================================================================
@@ -595,6 +1209,47 @@ func check(label: String, condition: bool, detail: Variant = "") -> void:
 		_say("  FAIL  %s   %s" % [label, str(detail)])
 
 
+# =============================================================================
+# CHECKS THAT NEED THE PRIVATE ART PACK
+# =============================================================================
+# art/pack/ is a private submodule holding purchased Clockwork Raven art. A clone
+# of the PUBLIC repository cannot have it, by design and by licence - those files
+# may be used in this game and not redistributed.
+#
+# WHY A SKIP AND NOT A FAILURE. Measured on a clone with the pack removed, this
+# suite reported 12 failures and did not run 20 further checks. Every one of those
+# was the licence boundary working exactly as intended, and all of it read as a
+# broken project. Cloning a repository and running its tests is close to the first
+# thing anybody evaluating it does, so that output is the project's first
+# impression, and "12 failed" and "12 skipped, private art pack not present" are
+# the same fact told two ways - one of which is true.
+#
+# It also has to stay honest in the other direction: on a machine that HAS the
+# pack, every one of these runs and fails loudly, so a genuinely missing or
+# renamed icon is still caught by the people who can see it. A skip that could
+# hide a real defect from the author would be worse than a confusing report.
+#
+# NOT the same thing as the compile check's problem. kingdomboard.gd used to
+# preload() two of these files, which made the whole script fail to COMPILE
+# without the pack - that was a real defect and it was fixed rather than skipped.
+# Skipping is only for facts that genuinely cannot be known without the art.
+func _pack_present() -> bool:
+	# The submodule directory exists but is empty in a clone that never ran
+	# `git submodule update`, so the test is for a FILE, not the folder - the same
+	# reasoning as the empty-folder rule in the art licensing check.
+	return ResourceLoader.exists("res://art/pack/currency/goldpile.png")
+
+
+func check_needs_pack(label: String, condition: bool, detail: Variant = "") -> void:
+	"""check(), unless the private art pack is absent - then it is a skip."""
+	if not _pack_present():
+		skipped += 1
+		skips.append(label)
+		_say("  skip  %s   (private art pack not present)" % label)
+		return
+	check(label, condition, detail)
+
+
 func require_script(path: String, what: String) -> Script:
 	"""Load a script a whole section depends on, or fail the section out loud.
 
@@ -670,12 +1325,21 @@ func _environment() -> void:
 func _report() -> void:
 	_say("")
 	_say("=".repeat(60))
-	_say("  %d passed, %d failed" % [passed, failed])
+	if skipped > 0:
+		_say("  %d passed, %d failed, %d skipped" % [passed, failed, skipped])
+	else:
+		_say("  %d passed, %d failed" % [passed, failed])
 	if failed > 0:
 		_say("")
 		_say("  failing checks:")
 		# `label`, not `name` - Node.name exists and shadowing it warns at parse.
 		for label in failures:
+			_say("    - " + label)
+	if skipped > 0:
+		_say("")
+		_say("  skipped — the private art pack (art/pack/) is not present.")
+		_say("  These need purchased art that may not be redistributed; see assetlicense.md.")
+		for label in skips:
 			_say("    - " + label)
 	_say("=".repeat(60))
 	_environment()
@@ -965,9 +1629,9 @@ func _test_enemy_constants() -> void:
 		"contract %s, game %s" % [constants.get("gold_large_id"), BaseEnemy.GOLD_LARGE_ID])
 
 	# Both gold ids have to name items that exist, or a kill pays out nothing.
-	check("the small gold item exists", ItemRegistry.has_item(BaseEnemy.GOLD_SMALL_ID),
+	check_needs_pack("the small gold item exists", ItemRegistry.has_item(BaseEnemy.GOLD_SMALL_ID),
 		BaseEnemy.GOLD_SMALL_ID)
-	check("the large gold item exists", ItemRegistry.has_item(BaseEnemy.GOLD_LARGE_ID),
+	check_needs_pack("the large gold item exists", ItemRegistry.has_item(BaseEnemy.GOLD_LARGE_ID),
 		BaseEnemy.GOLD_LARGE_ID)
 
 	check("pet_odds_fallback matches",
@@ -1136,7 +1800,7 @@ func _test_every_exported_constant(constants: Dictionary) -> void:
 	# denomination naming an item ItemRegistry has not got is a coin the server
 	# will make change in and the game cannot draw.
 	for item_id in BaseEnemy.GOLD_DENOMINATION_IDS:
-		check("the '%s' coin exists" % String(item_id),
+		check_needs_pack("the '%s' coin exists" % String(item_id),
 			ItemRegistry.has_item(String(item_id)), String(item_id))
 
 	# And it must be ordered richest-first with no ties, because make_change()
@@ -1730,7 +2394,7 @@ func _test_itemstack() -> void:
 
 	var item: ItemData = _any_stackable_item()
 	if item == null:
-		check("a stackable item exists to test with", false,
+		check_needs_pack("a stackable item exists to test with", false,
 			"no stackable ItemData under data/items")
 		return
 
@@ -2036,7 +2700,7 @@ func _test_map_landmarks() -> void:
 		var art: String = style[kind][0]
 		if art != "" and not ResourceLoader.exists(art):
 			missing_art.append(art)
-	check("every pin icon the map names exists", missing_art.is_empty(), missing_art)
+	check_needs_pack("every pin icon the map names exists", missing_art.is_empty(), missing_art)
 
 	# WHAT EACH AREA WILL ACTUALLY SHOW - the three world scenes, loaded the way
 	# the game loads them, instantiated and NOT added to the tree: _init runs on

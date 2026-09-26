@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://gfwleprj1o3l"
-path="res://.godot/imported/brickwallmiddle.png-6f0d076ebc817bbac02e51b1c41e6a49.ctex"
+uid="uid://delu84nupklah"
+path="res://.godot/imported/slashwavedown.png-3bcad51130b68d3e9fdecb8699f585c5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tiles/brickwallmiddle.png"
-dest_files=["res://.godot/imported/brickwallmiddle.png-6f0d076ebc817bbac02e51b1c41e6a49.ctex"]
+source_file="res://art/images/slashwavedown.png"
+dest_files=["res://.godot/imported/slashwavedown.png-3bcad51130b68d3e9fdecb8699f585c5.ctex"]
 
 [params]
 

@@ -18,6 +18,41 @@
 # container instead. The fix now is the same shape — an autoload is always in
 # the tree, so it can wait as long as the network takes.
 #
+#
+# WHAT GODOT 4.6.1 ACTUALLY DOES, MEASURED
+# ----------------------------------------
+# This is the canonical statement for the whole project, because five files
+# elsewhere used to describe it the other way round and the other way round
+# leads to the wrong guard. Measured directly, node with a suspended
+# `await get_tree().create_timer(...).timeout`:
+#
+#   node queue_free()d, or its scene replaced by change_scene_*
+#       -> the coroutine NEVER RESUMES. Nothing after the await runs. No error,
+#          no warning, no output. Silent.
+#   remove_child(), node NOT freed
+#       -> the coroutine RESUMES, is_instance_valid(self) is TRUE and
+#          is_inside_tree() is FALSE.
+#   reparented, still in the tree
+#       -> resumes, valid and inside the tree. Nothing to guard against.
+#
+# Two consequences, and the second is the one that bites:
+#
+# 1. There is no error message to look for. "It worked on my machine" and "the
+#    coroutine was dropped" are indistinguishable in the log, which is exactly
+#    why the small-slime loot bug survived for months.
+#
+# 2. In the standard guard
+#
+#        if not is_instance_valid(self) or not is_inside_tree():
+#            return
+#
+#    the FIRST half can never fire — if self were freed the line would not be
+#    running — and the SECOND half is the whole guard. Anyone who believes the
+#    engine errors on a freed resume concludes that validity is the point and
+#    drops the is_inside_tree() half, which is the half that works. Keep both:
+#    the validity check costs nothing and states the intent, but do not mistake
+#    it for the load-bearing one.
+#
 # WHAT MOVED HERE, AND WHY IT IS LESS CODE THAN IT REPLACED
 # ---------------------------------------------------------
 # BaseEnemy used to own _roll_pet(), _pick_pet_id(), _build_bag_contents() and

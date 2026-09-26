@@ -62,9 +62,14 @@ func _start_cooldown() -> void:
 
 	# A SceneTreeTimer belongs to the tree, not to this node, so it outlives a
 	# scene change. Step on the teleporter and then walk into a door within
-	# reenter_cooldown seconds and this resumes on a freed Area2D to write a
-	# member on it. Every other await in src/world/ carries this guard —
-	# fishingspot, enemyrespawner, lever — and this was the one that did not.
+	# reenter_cooldown seconds and this node is gone before the timer fires.
+	# Every other await in src/world/ carries this guard — fishingspot,
+	# enemyrespawner, lever — and this was the one that did not.
+	#
+	# The is_inside_tree() half is the half that fires: a door taking the scene
+	# means this coroutine is dropped and never reaches here at all, while a
+	# remove_child() without a free gets here valid but out of the tree. See the
+	# measured table in combat.gd.
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 

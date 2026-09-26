@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cjkfoquubvvo5"
-path="res://.godot/imported/tiles9_Animation 1_0.png-f4bcf48bc4901efd157565de762c6ed1.ctex"
+uid="uid://doqgaago17dvv"
+path="res://.godot/imported/slashwaveright.png-889b40fdf95c8da8b76b2858d781b8d0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tiles/tiles9_Animation 1_0.png"
-dest_files=["res://.godot/imported/tiles9_Animation 1_0.png-f4bcf48bc4901efd157565de762c6ed1.ctex"]
+source_file="res://art/images/slashwaveright.png"
+dest_files=["res://.godot/imported/slashwaveright.png-889b40fdf95c8da8b76b2858d781b8d0.ctex"]
 
 [params]
 

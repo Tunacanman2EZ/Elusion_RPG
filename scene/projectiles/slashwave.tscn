@@ -1,10 +1,10 @@
 [gd_scene format=3 uid="uid://bao1jh7rp6bi6"]
 
 [ext_resource type="Script" uid="uid://tuud7fyu6o81" path="res://src/projectiles/slashwave.gd" id="1_qoyg7"]
-[ext_resource type="Texture2D" uid="uid://delu84nupklah" path="res://art/images/Untitled - 1_Animation 1_3.png" id="2_bvxnc"]
-[ext_resource type="Texture2D" uid="uid://ivipnrelr5gw" path="res://art/images/Untitled - 1_Animation 1_1.png" id="3_v0scy"]
-[ext_resource type="Texture2D" uid="uid://doqgaago17dvv" path="res://art/images/Untitled - 1_Animation 1_0.png" id="4_4linu"]
-[ext_resource type="Texture2D" uid="uid://b8s5csb73f1n7" path="res://art/images/Untitled - 1_Animation 1_2.png" id="5_kqqdq"]
+[ext_resource type="Texture2D" uid="uid://delu84nupklah" path="res://art/images/slashwavedown.png" id="2_bvxnc"]
+[ext_resource type="Texture2D" uid="uid://ivipnrelr5gw" path="res://art/images/slashwaveleft.png" id="3_v0scy"]
+[ext_resource type="Texture2D" uid="uid://doqgaago17dvv" path="res://art/images/slashwaveright.png" id="4_4linu"]
+[ext_resource type="Texture2D" uid="uid://b8s5csb73f1n7" path="res://art/images/slashwaveup.png" id="5_kqqdq"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_c01oh"]
 animations = [{

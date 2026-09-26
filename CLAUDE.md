@@ -91,10 +91,11 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 613 checks at the time of writing; if that number and the one in this
-file disagree, this file is the stale one. It covers what can be checked without playing: the XP curve, the shared
-constants and class stat curves, `ItemStack`'s save round trip, and the rank
-ordering.
+failure. 631 checks at the time of writing; if that number and the one the suite
+prints disagree, this file is the stale one — trust the suite. It covers what can
+be checked without playing: that every script under `src/` compiles, the XP
+curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
+and the rank ordering.
 
 **Most of it checks agreement, not correctness.** `.tres` files,
 `GameConstants` and `baseenemy.gd`'s drop constants are the source of truth;
@@ -169,6 +170,29 @@ This is why `combat.gd` is an autoload rather than code inside `BaseEnemy`. An
 autoload is always in the tree and can wait as long as the network takes. The
 same trap ate every small poison slime's loot bag once already, because smalls
 await their death animation and larges do not.
+
+Measured on 4.6.1 rather than assumed, for a node suspended on
+`await get_tree().create_timer(...).timeout`:
+
+| what happens during the await | resumes? | `is_instance_valid(self)` | `is_inside_tree()` |
+|---|---|---|---|
+| `queue_free()`, or `change_scene_*` replaces its scene | **no — dropped silently** | not reached | not reached |
+| `remove_child()`, not freed | yes | `true` | **`false`** |
+| reparented, still in the tree | yes | `true` | `true` |
+
+Two things follow, and the second one is the trap inside the trap:
+
+- There is no error message. A dropped coroutine and a successful one look
+  identical in the log, which is why the slime bug lived for months.
+- In the standard guard `if not is_instance_valid(self) or not is_inside_tree()`
+  the **validity half can never fire** — if `self` were freed, the line would
+  not be running. The `is_inside_tree()` half is the whole guard. Keep both
+  (the check is free and states the intent) but do not let the first one talk
+  you out of the second.
+
+Five files used to explain this the other way round — that the coroutine resumes
+and errors on a freed node. `combat.gd` now carries the canonical version and
+they point at it.
 
 ### reset_physics_interpolation() goes after the position
 
@@ -404,7 +428,274 @@ anyway. A rule with one documented exception is a rule nobody can apply without
 reading the exception first, and the comment justifying it said "today" twice.
 
 It is a text check on the source rather than a runtime assertion, deliberately:
-the failure has no symptom to assert against, which is why it survived.
+the failure has no symptom to assert against, which is why it survived. That
+paid off in a way worth knowing: while a compile error was deliberately planted
+in `baseenemy.gd`, this check and its sibling below still reported correctly,
+because a text check does not need the project to build.
+
+### `load()` does NOT return null for a script that will not compile
+
+This is the trap that made a first attempt at the compile check below report a
+clean pass on a project that did not build. Measured on 4.6.1, breaking one file
+three different ways (wrong-arity call, syntax error, type mismatch):
+
+| probe | valid script | all three broken |
+|---|---|---|
+| `load(path) as Script` | object | **object** — never null |
+| `load(..., CACHE_MODE_IGNORE)` | object | **object** — also never null |
+| `can_instantiate()` | `true` | `false` |
+| `reload()` | `0` (OK) | `43` (`ERR_PARSE_ERROR`) |
+| `get_script_constant_map().size()` | 1 | 0 |
+| `get_script_method_list().size()` | 1 | 0 |
+
+So a null check proves the file exists, nothing more. `reload()` is accurate but
+recompiles in place, which is not something to do to a live project from inside
+its own test suite. `can_instantiate()` is the read-only probe that moves.
+
+`_test_every_script_compiles()` uses it with two corroborating conditions —
+no methods and no constants either — because `can_instantiate()` is also false
+for a legitimately abstract script, and a false alarm is how a check gets
+switched off.
+
+### A compile error is diagnosed by the first check, not the eighth
+
+`_test_every_script_compiles()` runs **first** in the suite, loads every `.gd`
+under `src/` (111 of them) and names any that will not parse.
+
+It exists because of what the alternative looked like. A one-argument call to
+`Combat.report_kill()` — which takes three — was planted in `baseenemy.gd`. The
+report came back with **eight failures, every one of them named `gold_*`**, and
+not a single line mentioning `baseenemy.gd`: the class had stopped compiling, so
+every check reading `BaseEnemy.GOLD_*` had nothing to read. The true state was
+"one file does not build"; the report said "the gold constants disagree with the
+contract". Now the first line names the file, and it names the subclasses that
+went down with it, so the blast radius is visible too.
+
+`require_script()` already solved this for sections that do an explicit
+`load()`. Sections that reach a global class name directly (`BaseEnemy.X`) have
+no `load()` call to guard, which is the gap this closes.
+
+It also moves a fact inside the suite that used to live outside it: "all scripts
+compile" was previously only provable by launching a separate scene by hand, so
+`run_tests.ps1` — the thing a person who clones this repo actually runs, and the
+thing CI runs — did not prove it.
+
+### Work that vanishes past an await is checked now too
+
+`_test_await_does_not_lose_work()` reads every `await` in `enemies`,
+`projectiles` and `pets` and fails if anything below it reaches **outside** the
+node — `Combat.`, `Api.`, `CharacterData.`, a signal emit, an `add_child()`.
+
+Losing a write to your own member when your node is freed is harmless; the node
+took the member with it. Losing a kill report is the small-poison-slime loot bug.
+See the measured table under "Never await on something about to be freed" for
+why nothing appears in the log when it happens.
+
+### Adding an art folder is a licensing decision, and the suite treats it as one
+
+`_test_art_folders_are_licensed()` holds a hardcoded map of every top-level
+folder under `art/` and `assets/` to an owner — `elusion`, `clockwork-raven`, or
+`unconfirmed` — and fails when a folder exists that nobody has classified, or
+when a classified folder has disappeared. `art/pack` is exempt from the second
+half, because it is the private submodule and legitimately absent from any clone
+without access to it.
+
+**It exists because this has gone wrong twice, both times the same way.**
+
+`LICENSE` used to claim that "all original artwork, music, and paid/commissioned
+assets in this repository are the exclusive property of Robert Ashley Clear."
+That was **true when it was written** — one artist, commissioned, rights
+assigned. It became false the day the Clockwork Raven pack arrived, and nothing
+went back to reread it. Adding art does not feel like touching licensing, so
+nobody does, and the sentence quietly grew to cover another artist's copyright.
+
+The second instance was found while fixing the first: `art/thirdparty/` holds
+tilesets `split_art.ps1` itself calls "of unconfirmed origin", and the catch-all
+in `assetlicense.md` — everything under `/art` except the item art — was
+claiming them. One of those files, `houses read to use.png`, is drawn by
+`scene/walls/shop.tscn`, so it ships. `assetlicense.md` now has a third section
+claiming it for nobody and asking whoever recognises it to get in touch.
+
+A licence file is a claim about a *set of files*, and the set changes without the
+claim changing. Pinning it to names means the next new source of art fails a test
+run instead of being noticed by a stranger reading the repo.
+
+Deliberately a hardcoded list rather than parsed out of `assetlicense.md`: a
+parser would keep passing while the prose rotted around it. Somebody has to type
+the folder name in two places and think once.
+
+**A folder with no art in it does not count, and that is a correctness rule
+rather than a convenience.** Git cannot represent an empty directory, so a folder
+left behind on one machine after its files moved elsewhere exists for that
+developer and for nobody who clones — and counting it would make the check FAIL
+locally and PASS in CI on the same commit. That is the one kind of failure that
+teaches people to ignore a suite.
+
+It was found the honest way: the check's first version went red on the author's
+machine and green in a clean clone. `split_art.ps1` had moved the purchased art
+into `art/pack/` and left seven empty folders behind — `amulets`, `armour`,
+`consumables`, `currency`, `icons`, `lootbag`, `weapons`. They are safe to delete
+and git will never notice either way. An empty folder is also not a licensing
+risk, which is the check's actual subject: nobody can misattribute art that is
+not there.
+
+### A public clone has no art/pack, and the suite says so instead of failing
+
+`art/pack/` is a private submodule of purchased Clockwork Raven art. A clone of
+the **public** repo cannot have it — by design and by licence. Measured with the
+pack removed, the suite used to report **16 failures**, and every one was the
+licence boundary working correctly.
+
+Two different problems were hiding in that number, and they needed opposite fixes.
+
+**One was a real defect.** `kingdomboard.gd` did
+
+```gdscript
+const GOLD_ICON := preload("res://art/pack/currency/goldpile.png")
+```
+
+`preload()` resolves at **compile time**, so without the pack that script did not
+compile. Not "the board lost its coin icons" — `KingdomBoard` did not exist. One
+missing decoration took out a whole screen. Now the paths are constants and the
+textures `load()` lazily at the call site, with `_header_icon()` returning a
+full-width empty box on null so the columns still line up under their headings.
+The reasons the original comment gave for `preload` were all correct; the
+compile-time coupling was the part nobody had priced.
+
+**The rest genuinely cannot be known without the art**, so they skip.
+`check_needs_pack()` reports those as skips and lists them with a reason. Crucially
+it stays a real check on any machine that *has* the pack, so a renamed icon still
+fails loudly for the people who can see it — a skip that could hide a defect from
+the author would be worse than a confusing report.
+
+| pack | result | exit |
+|---|---|---|
+| present | 631 passed, 0 failed | 0 |
+| absent | 599 passed, 0 failed, 12 skipped | **0** |
+
+The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
+merge on it, so a public clone now passes rather than looking abandoned.
+
+**Still open.** 20 checks do not *generate* without the pack — no section aborts,
+but `_test_itemstack()` bails once it has no registry item to test with, and the
+coin-ordering loop iterates over coins that never registered. `ItemStack` is pure
+logic and should not need purchased art to be tested; building its cases from a
+synthetic `ItemData` instead of the registry would let those run everywhere.
+
+### Deleting art a TileSet still uses degrades the scene instead of erroring
+
+`.godot/` is gitignored, so anything inside it exists on the machine that built
+it and in no clone, ever. `_test_no_import_cache_references()` fails on any
+`.tscn` or `.tres` naming a path under `res://.godot/`.
+
+**Nobody types such a path — Godot writes it for you.** Delete a texture a
+TileSet is still painted with and Godot does not refuse and does not warn. It
+*degrades* the reference. This:
+
+```
+[ext_resource type="Texture2D" uid="uid://cee7dyl4prmn0" path="res://art/tiles/c92.png" id="4_e1pj8"]
+```
+
+becomes, on the next save:
+
+```
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_8xafn"]
+load_path = "res://.godot/imported/c92.png-1dc1c53689dab26c05060ecf286a8bcc.ctex"
+```
+
+which keeps drawing from the baked copy until the cache is cleaned, then stops.
+That is exactly what happened when `c92.png` was deleted: **112 cells in the
+`ground` layer of `elusion.tscn` lost their texture**, and the only trace was one
+line ninety lines into an 85KB scene file. The `.ctex` was already cleaned by the
+time it was found; only the `.md5` remained.
+
+**How to count usage properly, because it was got wrong twice here.**
+
+One texture can back MORE THAN ONE atlas source, in DIFFERENT TileSets, at
+DIFFERENT source ids. `c92.png` backs two:
+
+| atlas source | TileSet | source id | painted cells |
+|---|---|---|---|
+| `TileSetAtlasSource_hv532` | `TileSet_xyqp5` (water) | 2 | 0 |
+| `TileSetAtlasSource_urc6g` | `TileSet_mtdc6` (ground) | 15 | **112** |
+
+Checking only the first one says the file is unused. It is not.
+
+Two separate traps, both hit:
+
+- The `N:M/0 = 0` lines in an atlas block are tile **definitions** — which
+  regions of the sheet are carved into tiles. They are not placements. Painted
+  cells live in `tile_map_data`, a base64 `PackedByteArray` of 12-byte records
+  (`int16` x, y, source_id, atlas x, y, alt) after a 2-byte header. Decode the
+  bytes.
+- Source ids are **per TileSet**. `ground`'s source 2 and `water`'s source 2 are
+  unrelated atlases. Resolve each layer's `tile_set` first, then map its ids.
+
+So the honest procedure before deleting any texture: find every
+`TileSetAtlasSource` whose `texture` resolves to it, note which TileSet holds
+each and at which id, then decode every layer's `tile_map_data` and count cells
+against those ids. Anything less answers a different question.
+
+This is also why a plain orphan sweep cannot settle it: searching scene text for
+`c92.png` finds the `ext_resource` and calls the file used, which is true but
+says nothing about whether a single tile is placed.
+
+A text check on purpose. A runtime check passes on the machine whose cache still
+holds the file — which is the one machine where the bug is invisible.
+
+**The general lesson, since this came out of a batch of renames and deletions:**
+renaming inside Godot is safe, because Godot rewrites every reference. Deleting
+is safe only for a file nothing uses, and Godot will not tell you which is which.
+Check first — an unreferenced file is free to delete, a referenced one takes the
+scene with it, quietly.
+
+### Godot's warnings don't reach the headless suite, so one is checked by text
+
+GDScript warns on a parameter that is never read and asks for a leading
+underscore — `_source_slot` means "deliberately unused". That warning comes from
+the **editor** parsing the script. It does **not** surface through
+`ResourceLoader.load()` in a headless run; that was proven by planting an unused
+variable and unreachable code and watching the suite stay silent.
+
+Which makes it the one regression class this suite is structurally blind to, and
+precisely the class an editing pass creates: delete the last line that read a
+parameter and it is now dead, with nothing headless to say so.
+
+It happened here. Removing a write-only `_current_slot` tracker from
+`itemtooltip.gd` left `source_slot` with no reader. The suite was green; the
+warning appeared only when the project was next opened in the editor. The
+docstring above it also still promised a guarantee the file no longer made.
+
+`_test_no_unused_parameters()` closes it by matching Godot's own rule rather
+than inventing one — a parameter not starting with `_` that never appears in its
+body — so anything it flags is something the editor already complains about, and
+underscoring satisfies both.
+
+Two details that make it a real check rather than a decorative one:
+
+- **Whole-word matching.** Without it a parameter named `slot` counts itself as
+  used because the body says `slot_index`, and the check quietly stops checking.
+  Sabotage-tested with exactly that case.
+- **Known limit:** it reads single-line `func` declarations, so a signature
+  wrapped across lines is skipped rather than guessed at. 1,631 signatures parse
+  this way. A missed one still shows in the editor, as it always did.
+
+### The .ps1 entry points are held to pure ASCII
+
+`_test_helper_scripts_ascii()` reads `run_tests.ps1` and `split_art.ps1` byte by
+byte and fails on any byte above 127.
+
+Windows PowerShell 5.1 — the shell on a stock Windows install — reads a `.ps1`
+with no BOM as CP1252, one byte per character, so a UTF-8 em-dash becomes three
+garbage characters. Harmless in a comment; not harmless in a string, a path or a
+regex. Every `.md` file here uses em-dashes and these headers get copy-edited
+alongside the docs, so that is the realistic way one gets in. Held as ASCII
+rather than fixed with a BOM, because a BOM makes 5.1 read the file correctly and
+makes some other tooling read the BOM itself as content.
+
+The two files are named explicitly rather than discovered by scanning, so
+renaming a documented entry point fails the check instead of quietly leaving it
+with nothing to look at.
 
 ### A Material is a Resource, so one instance is shared by everybody
 

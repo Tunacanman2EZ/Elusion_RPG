@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://delu84nupklah"
-path="res://.godot/imported/Untitled - 1_Animation 1_3.png-247a17741ab95de90b35c0f536bb810e.ctex"
+uid="uid://cdd113og4xha3"
+path="res://.godot/imported/plant3.png-69e85b1d4e59fa607aea7618b65426be.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/images/Untitled - 1_Animation 1_3.png"
-dest_files=["res://.godot/imported/Untitled - 1_Animation 1_3.png-247a17741ab95de90b35c0f536bb810e.ctex"]
+source_file="res://art/tiles/plant3.png"
+dest_files=["res://.godot/imported/plant3.png-69e85b1d4e59fa607aea7618b65426be.ctex"]
 
 [params]
 

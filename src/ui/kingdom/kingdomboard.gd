@@ -118,12 +118,28 @@ const COL_LUSIONS := 56
 const COL_DEATHS := 58
 const COL_SEPARATION := 8
 
-# The coin art the header marks its columns with. Preloaded rather than read
+# The coin art the header marks its columns with. Named here rather than read
 # from ItemRegistry: this is chrome, it never changes at runtime, and a header
-# that silently loses its icons because an autoload was not ready yet is a
-# worse trade than two more bytes in the scene.
-const GOLD_ICON := preload("res://art/pack/currency/goldpile.png")
-const LUSION_ICON := preload("res://art/pack/currency/lusions.png")
+# that silently loses its icons because an autoload was not ready yet is a worse
+# trade than naming two paths.
+#
+# PATHS AND A LAZY load(), NOT preload(), and the difference is not stylistic.
+#
+# These two were `preload(...)` until it was measured what that does to a clone
+# of the PUBLIC repository. Both files live in art/pack/, the private submodule,
+# which a public clone cannot have by design. preload() resolves at COMPILE time,
+# so their absence did not cost this board its icons — it stopped this entire
+# script from compiling. One missing texture, and KingdomBoard did not exist.
+#
+# The reasons in the paragraph above are still the right reasons; the compile-time
+# coupling was the part nobody had priced. A lazy load keeps every one of them and
+# degrades to a header with no coin pictures, which is what a missing decoration
+# should cost.
+#
+# Checked rather than assumed: the suite asserts both paths resolve whenever the
+# pack IS present, so a rename still fails loudly on the machines that can see it.
+const GOLD_ICON_PATH := "res://art/pack/currency/goldpile.png"
+const LUSION_ICON_PATH := "res://art/pack/currency/lusions.png"
 
 
 @onready var close_button: Button = %closebutton
@@ -251,8 +267,14 @@ func _build_column_header() -> void:
 	name_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(name_gap)
 
-	header.add_child(_header_icon(GOLD_ICON, COL_GOLD, "Gold given to the kingdom"))
-	header.add_child(_header_icon(LUSION_ICON, COL_LUSIONS, "Lusions given"))
+	# load() at use rather than preload() at compile — see GOLD_ICON_PATH. Null is
+	# a real possibility here (a clone without the private art pack), and
+	# _header_icon() keeps the column's width when it happens so the figures under
+	# it stay aligned with their headings.
+	header.add_child(_header_icon(load(GOLD_ICON_PATH) as Texture2D,
+		COL_GOLD, "Gold given to the kingdom"))
+	header.add_child(_header_icon(load(LUSION_ICON_PATH) as Texture2D,
+		COL_LUSIONS, "Lusions given"))
 
 	var death_head := Label.new()
 	death_head.text = "deaths"
@@ -279,10 +301,20 @@ func _header_icon(art: Texture2D, width: int, tip: String) -> Control:
 
 	EXPAND_IGNORE_SIZE, like every other coin in this project: the art is 16x16
 	and without it the TextureRect would demand its texture's size as a minimum
-	and quietly widen the column it is supposed to be labelling."""
+	and quietly widen the column it is supposed to be labelling.
+
+	`art` MAY BE NULL, and the box is still returned at full width when it is. The
+	caller load()s from art/pack/, which a clone of the public repository does not
+	have, so null is a supported state rather than an error. Returning the empty
+	box keeps the column exactly as wide as its heading promises - drop it and
+	every figure underneath shifts left by COL_GOLD pixels and lines up under the
+	wrong heading, which is a worse bug than a missing coin."""
 	var box := HBoxContainer.new()
 	box.custom_minimum_size = Vector2(width, 0)
 	box.alignment = BoxContainer.ALIGNMENT_END
+	if art == null:
+		box.tooltip_text = tip
+		return box
 
 	var frame := TextureRect.new()
 	frame.texture = art

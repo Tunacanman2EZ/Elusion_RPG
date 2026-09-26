@@ -137,10 +137,16 @@ func _on_gauntlet_cleared() -> void:
 
 	# PAST AN AWAIT. A SceneTreeTimer outlives this node, and the arena can still
 	# change out from under it during the delay - a player who dies to the last
-	# boss's parting shot is on the game-over screen before this resumes, and
-	# resuming there means touching a freed Area2D. (It used to be the ladder
-	# back up to the field that did this; that ladder is gone, and the guard
-	# still earns its place.) Same guard every await in src/world/ carries.
+	# boss's parting shot is on the game-over screen before this would resume.
+	# (It used to be the ladder back up to the field that did this; that ladder
+	# is gone, and the guard still earns its place.) Same guard every await in
+	# src/world/ carries.
+	#
+	# Note what that death case actually does, because this comment used to say
+	# the opposite: the game-over screen takes the scene, so this coroutine is
+	# DROPPED and never arrives here. The guard is not catching that. What it
+	# catches is the survivable case - alive but removed from the tree - and the
+	# reveal below must not run there either. combat.gd has the measured table.
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 

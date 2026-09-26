@@ -13,7 +13,7 @@
 [ext_resource type="Script" uid="uid://dm0wvqr63gv05" path="res://src/world/teleporter.gd" id="17_8xafn"]
 [ext_resource type="SpriteFrames" path="res://art/teleport/teleportframes.tres" id="17_tpfrm"]
 [ext_resource type="Texture2D" uid="uid://strclxayv16h" path="res://art/tiles/tiles4.png" id="20_ne5ey"]
-[ext_resource type="Texture2D" uid="uid://b80rjrtlrnpsf" path="res://art/tiles/font.png" id="22_a82r8"]
+[ext_resource type="Texture2D" uid="uid://b80rjrtlrnpsf" path="res://art/tiles/lavafall.png" id="22_a82r8"]
 [ext_resource type="Texture2D" uid="uid://0j521eqx26x0" path="res://art/tiles/tiles5.png" id="23_v7ajh"]
 [ext_resource type="Texture2D" uid="uid://o2spfupselix" path="res://art/tiles/tiles6.png" id="24_ssgan"]
 [ext_resource type="Texture2D" uid="uid://c33coinn5bl0b" path="res://art/tiles/tiles7.png" id="25_q44u2"]

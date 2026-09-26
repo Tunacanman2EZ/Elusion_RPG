@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://doqgaago17dvv"
-path="res://.godot/imported/Untitled - 1_Animation 1_0.png-5f54abd0a33d6534a2e1e9a8c22e836a.ctex"
+uid="uid://cjkfoquubvvo5"
+path="res://.godot/imported/plant.png-c7360c96908585e046a1573996f4cb8d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/images/Untitled - 1_Animation 1_0.png"
-dest_files=["res://.godot/imported/Untitled - 1_Animation 1_0.png-5f54abd0a33d6534a2e1e9a8c22e836a.ctex"]
+source_file="res://art/tiles/plant.png"
+dest_files=["res://.godot/imported/plant.png-c7360c96908585e046a1573996f4cb8d.ctex"]
 
 [params]
 

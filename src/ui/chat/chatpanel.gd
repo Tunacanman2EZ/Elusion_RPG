@@ -146,7 +146,7 @@ const ENTRY_PLACEHOLDER_ATTACHED := "Add something to say, or just hit Enter"
 # SIZED EXPLICITLY AT THE ART'S OWN 26x15. RichTextLabel will scale an [img] to
 # whatever it is given, and anything but native size turns 26 columns of pixel
 # art into a smear.
-const CROWN_TAG := "[img=26x15]res://art/pack/icons/behemothcrown.png[/img] "
+const CROWN_TAG := "[img=26x15]res://art/enemy/behemothcrown.png[/img] "
 
 # The one rank that wears it. Anything else - dev, mod, player - gets its
 # colour and nothing more.

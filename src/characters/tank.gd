@@ -504,8 +504,18 @@ func activate_expand() -> void:
 	#
 	# FOUR SECONDS IS A LONG AWAIT ON A TANK. This is the class built to stand
 	# in damage, so dying during the hold is the expected case, not the edge
-	# one - and a death takes the scene with it. Resuming here on a freed node
-	# and assigning `scale` is an error, and the shrink never happens.
+	# one - and a death takes the scene with it. There is nothing in the log
+	# when that happens: a coroutine whose node is gone is dropped silently, not
+	# with an error. combat.gd has the measured table.
+	#
+	# Death is the harmless version, because the node and its 1.5 scale go
+	# together. The case to actually think about when wiring this up is the one
+	# the guard catches - alive, out of the tree - because the guard returns
+	# BEFORE `_expanding = false`. Come back into the tree and the flag is still
+	# true, so the `if _expanding: return` at the top rejects every future press
+	# and the sprite stays at 1.5 forever. Whoever calls this first should decide
+	# whether the restore belongs in a deferred/`tree_exiting` path instead; it
+	# is left as-is rather than guessed at, since nothing calls it yet.
 	#
 	# AND IT MUST NOT OVERLAP ITSELF. Two presses inside four seconds used to
 	# start two timers; the first to fire shrank the sprite while the second

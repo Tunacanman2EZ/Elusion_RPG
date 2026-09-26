@@ -1837,7 +1837,7 @@ const NAMEPLATE_GAP := 3.0
 # player fights their way to the bottom of the crypt to take off something
 # else. 26x15 with its outline, which stands a little taller than the 12px
 # name and is meant to.
-const NAMEPLATE_CROWN_PATH := "res://art/pack/icons/behemothcrown.png"
+const NAMEPLATE_CROWN_PATH := "res://art/enemy/behemothcrown.png"
 
 # WORN, NOT CARRIED. The crown sits ON TOP of the name rather than beside it,
 # which is the difference between a badge and a hat. Beside the name it also
