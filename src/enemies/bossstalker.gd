@@ -126,9 +126,26 @@ func _drop_pillar() -> void:
 		return
 
 	var pillar: Node2D = pillar_scene.instantiate()
-	container.add_child(pillar)
 
-	pillar.global_position = global_position
+	# CONFIGURED BEFORE IT ENTERS THE TREE, the same order
+	# bossenemy._spawn_one_eruption() and poisonslime._spawn_slime() both use.
+	#
+	# add_child() runs bossprojectile.gd's _ready(), which calls
+	# _apply_element_profile() — and that function MULTIPLIES rather than sets:
+	#
+	#     telegraph_seconds = telegraph_seconds * p["telegraph"]
+	#     damage            = damage * p["damage"]
+	#     scale            *= p["size"]
+	#
+	# These lines used to run AFTER add_child, so all three were applied to the
+	# scene's defaults and then flattened by the assignments below — a stalker
+	# trail wore its element's ART and nothing else. Every pillar telegraphed in
+	# 0.50s and hit for 22 whether it was lightning or earth, while the boss's
+	# own cast pillars, spawned correctly, varied 0.25s-0.68s and 19-28.
+	#
+	# pillar_scene is already the elemental variant (bossenemy hands us
+	# Projectiles.variant_of(...) and those scenes author their own `element`),
+	# so nothing needs stamping here — the profile only has to run last.
 	pillar.damage = pillar_damage
 	pillar.telegraph_seconds = pillar_telegraph
 
@@ -136,10 +153,21 @@ func _drop_pillar() -> void:
 	# seven seconds; if each one left a pool, a single stalker would lay a
 	# permanent wall of poison across the arena behind it and the room would run
 	# out of floor in one pass.
-	pillar.leaves_puddle = false
+	#
+	# GUARDED, because pillar_scene arrives from setup() and this script does not
+	# own it. An assignment onto a property that is not there raises, and every
+	# statement below it in the function silently never runs.
+	if "leaves_puddle" in pillar:
+		pillar.leaves_puddle = false
 
+	# THE STALKER'S OWN SIZE PREFERENCE, which the element profile then scales.
+	# Set here rather than after add_child so the two COMPOSE — a 0.8 stalker
+	# pillar of ice ends up 0.8 x 1.25 — instead of this assignment wiping
+	# whatever the profile just produced.
 	if not is_equal_approx(pillar_radius, 20.0):
 		var s: float = pillar_radius / 20.0
 		pillar.scale = Vector2(s, s)
 
+	container.add_child(pillar)
+	pillar.global_position = global_position
 	pillar.reset_physics_interpolation()

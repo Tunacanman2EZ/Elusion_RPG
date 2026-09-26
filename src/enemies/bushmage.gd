@@ -321,12 +321,20 @@ func _spawn_vine() -> void:
 	if "element" in vine:
 		vine.element = current_element()
 
+	# DAMAGE MOVED UP HERE TOO, and it was below add_child until the suite
+	# started checking. vine.gd does not read it in _ready() today, so nothing
+	# was broken - but "nothing is broken today" is what the note above already
+	# says about element, and the two have no reason to sit on opposite sides of
+	# the call that runs _ready(). Uniform beats individually-justified: the
+	# rule is now checkable, and a rule with one documented exception is a rule
+	# nobody can apply without reading the exception first.
+	vine.damage = attack_power
+
 	var container: Node = get_tree().get_first_node_in_group("groundeffects")
 	if container == null:
 		container = get_tree().current_scene
 	container.add_child(vine)
 	vine.global_position = global_position
-	vine.damage = attack_power
 	vine.fire(attack_direction)
 	# AFTER fire(), not before: fire() sets the vine's facing, and rotation is
 	# part of the transform being interpolated. Resetting first would collapse

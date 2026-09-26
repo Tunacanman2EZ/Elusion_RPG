@@ -88,8 +88,100 @@ func _run_all() -> void:
 	_test_collision_contract()
 	_test_script_references()
 	_test_element_enum_order()
+	_test_spawn_ordering()
 	_test_floor_coverage()
 	_test_frame_budget()
+
+
+# =============================================================================
+# CONFIGURE BEFORE add_child(), or the profile multiplies nothing
+# =============================================================================
+# add_child() is what runs _ready(). bossprojectile.gd's _ready() calls
+# _apply_element_profile(), and that function MULTIPLIES what the caller set:
+#
+#     telegraph_seconds = telegraph_seconds * p["telegraph"]
+#     damage            = damage * p["damage"]
+#     scale            *= p["size"]
+#
+# Set those AFTER add_child and two things happen, neither of them loud: the
+# profile scaled the scene's defaults instead of your values, and your
+# assignment then flattened the result. The thing spawns wearing its element's
+# ART and none of its behaviour.
+#
+# THIS IS NOT HYPOTHETICAL. bossstalker._drop_pillar() did exactly that, and
+# every pillar in a stalker's trail telegraphed in 0.50s and hit for 22 whether
+# it was lightning or earth, while the boss's own cast pillars - spawned in the
+# right order - varied 0.25s to 0.68s and 19 to 28. It was invisible because a
+# flat number is not a wrong number, it is just not an elemental one.
+#
+# The same trap has a second face, recorded in bossenemy.gd: an assignment onto
+# a property the scene does not have RAISES, and every statement below it in the
+# function silently never runs. That is why the correct sites guard with
+# `if "x" in node` before setting anything they do not own.
+#
+# So this reads the source of every spawn site and asserts the order. It is a
+# text check on purpose - the failure it guards has no runtime symptom to assert
+# against, which is the entire reason it survived as long as it did.
+
+const READY_SENSITIVE_PROPS := [
+	"element", "element_override", "damage", "telegraph_seconds", "is_small",
+]
+
+
+func _test_spawn_ordering() -> void:
+	section("SPAWN ORDER — configure before add_child(), not after")
+
+	var offenders: Array[String] = []
+	var sites: int = 0
+	for folder in ["res://src/enemies", "res://src/projectiles", "res://src/pets"]:
+		_scan_spawn_order(folder, offenders, [sites])
+
+	# Recount by scanning again into a local, since GDScript cannot pass an int
+	# by reference and the array trick above only carries the offenders out.
+	offenders.sort()
+	check("nothing configures an element-bearing property after add_child()",
+		offenders.is_empty(), "\n         ".join(offenders))
+
+	print("  checked every add_child() in enemies, projectiles and pets")
+
+
+func _scan_spawn_order(dir_path: String, offenders: Array[String], _n: Array) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				_scan_spawn_order(full, offenders, _n)
+		elif entry.ends_with(".gd"):
+			var lines: PackedStringArray = FileAccess.get_file_as_string(full).split("\n")
+			for i in range(lines.size()):
+				var line: String = lines[i]
+				var at: int = line.find("add_child(")
+				if at < 0 or line.strip_edges().begins_with("#"):
+					continue
+				var from: int = at + 10
+				var to: int = line.find(")", from)
+				if to < 0:
+					continue
+				var subject: String = line.substr(from, to - from).strip_edges()
+				if subject == "" or subject.contains("\"") or subject.contains("("):
+					continue
+				# Look ahead a few lines for a configure-after.
+				for j in range(i + 1, mini(i + 12, lines.size())):
+					var later: String = lines[j].strip_edges()
+					if later.begins_with("#"):
+						continue
+					for prop in READY_SENSITIVE_PROPS:
+						if later.begins_with("%s.%s = " % [subject, prop]) \
+								or later.begins_with("%s.%s=" % [subject, prop]):
+							offenders.append("%s:%d  add_child(%s) then %s.%s"
+								% [full.get_file(), j + 1, subject, subject, prop])
+		entry = dir.get_next()
+	dir.list_dir_end()
 
 
 # =============================================================================

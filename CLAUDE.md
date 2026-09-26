@@ -385,6 +385,27 @@ there yet.
 Both `bossenemy._spawn_one_eruption()` and `poisonslime._spawn_slime()` set
 every property first and add last, on purpose. Keep that order.
 
+**The suite checks this now, and it found a live one.**
+`_test_spawn_ordering()` reads every `add_child()` in `enemies`, `projectiles`
+and `pets` and fails if `element`, `element_override`, `damage`,
+`telegraph_seconds` or `is_small` is assigned afterwards.
+
+`bossstalker._drop_pillar()` was doing exactly that. `_apply_element_profile()`
+**multiplies** — `telegraph_seconds *= p`, `damage *= p`, `scale *= size` — so
+running it before the caller's values were set meant it scaled the scene
+defaults, and the assignments below then flattened the result. Every pillar in
+a stalker's trail telegraphed in 0.50s and hit for 22 whether it was lightning
+or earth, while the boss's own cast pillars varied 0.25s–0.68s and 19–28. Fixed;
+the trail is elemental now, and the plain pillar is unchanged at 22 / 0.50 / 0.80.
+
+`bushmage.gd` set `vine.damage` after the call too. That one was genuinely
+harmless — `vine.gd::_ready()` only connects signals — but it was moved up
+anyway. A rule with one documented exception is a rule nobody can apply without
+reading the exception first, and the comment justifying it said "today" twice.
+
+It is a text check on the source rather than a runtime assertion, deliberately:
+the failure has no symptom to assert against, which is why it survived.
+
 ### A Material is a Resource, so one instance is shared by everybody
 
 `sprite.material = mat` does not copy anything. Hand the same `ShaderMaterial`
