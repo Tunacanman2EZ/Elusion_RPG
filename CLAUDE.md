@@ -649,6 +649,47 @@ is safe only for a file nothing uses, and Godot will not tell you which is which
 Check first — an unreferenced file is free to delete, a referenced one takes the
 scene with it, quietly.
 
+### "Is this tile art used?" is a command, not a judgement call
+
+```
+.\atlasaudit.ps1
+```
+
+`src/tools/atlasaudit.gd` prints painted cell counts per texture across every
+scene. It reads and prints; it writes nothing.
+
+**It exists because that question was answered wrong three times about one file.**
+`c92.png` looked unused and was deleted. Then: "13 tiles are painted from it" —
+wrong, those were tile *definitions* in the atlas. Then "nothing is painted from
+it, deleting was correct" — also wrong, from finding its atlas in the water
+TileSet, counting zero and stopping. The truth was **112 cells in the ground
+layer**, through a *second* atlas source in a different TileSet.
+
+Three traps, and a filename grep walks into all of them:
+
+- Tile **definitions** (`N:M/0 = 0` lines) are which rectangles of the sheet are
+  carved into tiles. They are not placements.
+- One texture can back **several atlas sources**, in different TileSets.
+- Source ids are **per TileSet** — `ground`'s source 2 and `water`'s source 2 are
+  unrelated atlases.
+
+So the tool asks Godot rather than parsing text. `PackedScene.get_state()` reads
+node types and properties **without instantiating** (reading `elusion.tscn`
+should not build the world), and `TileSet.get_source(id)` returns the real
+`TileSetAtlasSource` and its real texture, so the id-to-texture mapping is the
+engine's own. Only `tile_map_data` is hand-decoded, because there is no API for
+it: a 2-byte header then 12 bytes per cell, with the source id at offset 4.
+
+That choice paid immediately — a text-parsing version of the same audit reported
+zero painted cells for `barrels.png`, `redflower.png` and `bush.png`. All three
+have four.
+
+**Its output has one honest limit, printed at the bottom of every run.** "Not
+painted anywhere" means no tile is placed from that texture in any TileSet. It
+does *not* mean the file is unused — the same texture can be a `Sprite2D`, an
+animation frame, a button icon or a shader parameter. The tool answers one
+question well. Deleting on it alone is how art disappears.
+
 ### Godot's warnings don't reach the headless suite, so one is checked by text
 
 GDScript warns on a parameter that is never read and asks for a leading
@@ -1086,7 +1127,8 @@ src/ui/bank/        src/ui/inventory/   src/ui/lootbag/   src/ui/menus/
 src/ui/owner/       owner-only tooling, gated on Api.is_owner
 src/world/          levels (elusion, field), interactables, lootbag, roofswap
 src/shared/         pure helpers used across characters, enemies and pets
-src/tools/          the gamedata exporter and the test runner — neither ships
+src/tools/          the gamedata exporter, the test runner and the atlas
+                    audit — none of them ship
 scene/tests/        tests.tscn, the headless entry point for the test runner
 data/items/         ItemData      data/enemies/  EnemyData
 data/classes/       ClassData     data/gamedata.json  the exported contract

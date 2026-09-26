@@ -767,6 +767,7 @@ func _is_word_char(c: String) -> bool:
 const ASCII_HELPER_SCRIPTS := [
 	"res://run_tests.ps1",
 	"res://split_art.ps1",
+	"res://atlasaudit.ps1",
 ]
 
 
