@@ -1306,9 +1306,10 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	# So: no hp change, no floating number, no hit flash, no death, and no XP.
 	# Returning here is the only version that earns nothing.
 	#
-	# Api.is_owner is re-read per hit rather than trusted from the toggle. It is
-	# one bool and it means the flag alone is never the authority.
-	if GameState.god_mode and Api.is_owner:
+	# The rank is re-read per hit rather than trusted from the toggle, so the
+	# flag alone is never the authority. Api.GOD_MODE_MIN_ROLE is the single
+	# statement of which rank that is.
+	if GameState.god_mode and Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
 		return
 
 	_set_active()
@@ -1811,14 +1812,18 @@ func _staff_debug_allowed() -> bool:
 
 
 func _toggle_god_mode() -> void:
-	# OWNER, not mod, not dev — see the key binding for why this one is narrower
-	# than the grants. A dev is technical trust, someone met through a pull
-	# request; CLAUDE.md says so plainly under Ranks.
+	# DEV AND OWNER — one rung above the debug keys around it, and the threshold
+	# lives in Api.GOD_MODE_MIN_ROLE so there is one statement of it.
 	#
-	# The refusal says nothing useful, deliberately. Anyone who reaches this
-	# already holds a staff rank and a debug build, so there is no ladder to
-	# hide — but there is also no reason to teach a mod that the key exists.
-	if not Api.is_owner:
+	# The block this sits in already needs mod, so the only rank this actually
+	# turns away is a mod. That is the intended line: the keys beside it hand out
+	# things a player is supposed to earn, which is a fairness question, and this
+	# one decides whether the game can be lost at all.
+	#
+	# The refusal says nothing, deliberately. Anyone who reaches this already
+	# holds a staff rank and a debug build, so there is no ladder to hide — but
+	# there is no reason to teach a mod that the key exists either.
+	if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
 		return
 
 	GameState.god_mode = not GameState.god_mode
@@ -2115,6 +2120,36 @@ func _typing_in_ui() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# GOD MODE — Ctrl+G, handled BEFORE the gate below, and that placement is
+	# the point rather than an accident.
+	#
+	# Everything past _staff_debug_allowed() also needs OS.is_debug_build(),
+	# because those keys hand out gear, currency and pets — things a player is
+	# supposed to earn, which have no business existing in a shipped build at
+	# all. God mode hands out nothing. It is for the people who have to TEST the
+	# game, and testing means the real build against the real server: requiring
+	# a debug export would leave a dev with no way in on the thing they were
+	# asked to check.
+	#
+	# SAFE TO LIFT, on the same reasoning the feature rests on throughout: the
+	# guard in take_damage() returns before the hp change AND before the defense
+	# XP, so an invincible character earns exactly what a stationary one does.
+	# hp is client-written and only clamped server-side (E-9), so a modified
+	# client could always refuse to die — a rank the client checks keeps an
+	# HONEST build honest and was never going to do more than that. Dropping
+	# is_debug_build() here gives an attacker nothing they did not have.
+	#
+	# Behind Ctrl by the rule further down: bare letters belong to the keymap.
+	# G is free across the whole project and is the mnemonic. _typing_in_ui()
+	# because this now runs in release builds, where somebody may be typing in
+	# chat, and a Control that has not consumed the key is not proof that
+	# nobody is using it.
+	if event is InputEventKey and event.pressed \
+			and event.keycode == KEY_G and event.ctrl_pressed \
+			and not _typing_in_ui():
+		_toggle_god_mode()
+		return
+
 	if not _staff_debug_allowed():
 		return
 
@@ -2135,21 +2170,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)
-
-		# GOD MODE — Ctrl+G, and OWNER ONLY.
-		#
-		# Behind Ctrl with the other letters, by the rule two blocks down: bare
-		# letters belong to the keymap, not to the debug block. G is free across
-		# the whole project, and it is the mnemonic.
-		#
-		# NARROWER THAN EVERY OTHER KEY HERE. The block above needs mod; this
-		# needs owner, the same rank that may move the whole server. The keys
-		# above hand out things a player is supposed to earn, which is a
-		# fairness question. This one changes whether the game can be lost,
-		# which is a different kind of decision.
-		if event.keycode == KEY_G and event.ctrl_pressed:
-			_toggle_god_mode()
-			return
 
 		# LETTERS, BEHIND CTRL — and that modifier is the whole fix.
 		#

@@ -112,10 +112,10 @@ var ui_absorbed_right_click: bool = false
 # before the floating number, and before the XP - it is "the hit never happened",
 # not "the hit healed".
 #
-# It is gated on Api.is_owner, the narrowest rank in the game and the same one
-# that guards moving the whole server. Note that gate is about keeping an HONEST
-# build honest: hp is client-written and only clamped server-side (E-9), so a
-# modified client could always refuse to die. This grants an attacker nothing
-# they did not have; it grants the owner a way to test without dying a hundred
-# times.
+# It is gated on Api.GOD_MODE_MIN_ROLE - dev and owner, the two ranks trusted
+# with the server rather than with the community. Note that gate is about keeping
+# an HONEST build honest: hp is client-written and only clamped server-side
+# (E-9), so a modified client could always refuse to die. This grants an attacker
+# nothing they did not have; it grants the people who have to test the game a way
+# to do it without dying a hundred times.
 var god_mode: bool = false

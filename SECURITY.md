@@ -22,8 +22,11 @@ the client can grant themselves items with or without that gate; the backpack
 ledger is still client-declared, and that is named as an open limit on the
 server's page rather than pretended away.
 
-The same is true of **god mode** (`Ctrl+G`, owner only), which turns damage off
-so the server's owner can test without dying repeatedly. It grants nothing: the
+The same is true of **god mode** (`Ctrl+G`, or the owner panel's switch; dev and
+owner), which turns damage off so the people who test the game can do it without
+dying repeatedly. The key works in a release build, unlike the debug item keys
+beside it, because testing means the real build against the real server — and
+unlike those keys, this one hands out nothing. It grants nothing: the
 guard returns before the hit is applied *and* before the defense XP that
 `/api/skill/train` would otherwise bank, so an invincible character earns exactly
 as much as a stationary one. `hp` is client-written in any case, so a modified

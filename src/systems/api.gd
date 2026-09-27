@@ -235,6 +235,23 @@ var signout_notice: String = ""
 # shortcut because staff have to test what players do the slow way.
 const DEBUG_KEYS_MIN_ROLE := "mod"
 
+# The rank god mode requires. Here for the same reason as the line above: ONE
+# statement of the policy, asserted by the suite, rather than a copy in player.gd
+# and another in ownerpanel.gd that drift apart the first time it is tuned.
+#
+# HIGHER THAN THE DEBUG KEYS, and the difference is what each one does. Those
+# hand out things a player is supposed to earn, which is a fairness question.
+# This one decides whether the game can be lost at all, which is a different
+# kind of decision - so it stops at the two ranks that are trusted with the
+# server rather than with the community.
+#
+# It grants nothing either way: take_damage() returns before the hp change AND
+# before the defense XP, so an invincible character earns exactly what a
+# stationary one does. hp is client-written and only clamped server-side (E-9),
+# so a modified client could always refuse to die - this keeps an HONEST build
+# honest, which is the whole of what a client-side gate can buy.
+const GOD_MODE_MIN_ROLE := "dev"
+
 
 # WHAT EACH RANK LOOKS LIKE. Defined here, with the rank itself, because two
 # places now paint it - the nameplate above a player and their name in world

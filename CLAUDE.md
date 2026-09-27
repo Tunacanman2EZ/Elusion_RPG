@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 710 checks at the time of writing; if that number and the one the suite
+failure. 720 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -304,9 +304,10 @@ straggler and now delegates. What is left:
   the thing it is testing it tests nothing. Its own comment says so. Leave it.
 - Nothing else. If a grep turns up a third, it is new and it is a mistake.
 
-### God mode is owner-only, and the ordering is the whole feature
+### God mode is dev-and-owner, and the ordering is the whole feature
 
-`Ctrl+G` turns damage off so the owner can test without dying a hundred times.
+`Ctrl+G`, or the switch on the owner panel, turns damage off so the people who
+have to test the game can do it without dying a hundred times.
 `GameState.god_mode` holds it — transient, survives a scene change, cannot
 survive a restart, which is exactly the contract that file states.
 
@@ -325,11 +326,36 @@ the `hp = clamp(...)` index and before the `gain_defense_xp(` index — because
 position is the only thing that actually matters here. Sabotage-tested with the
 heal version, which fails both.
 
-Owner, not mod, not dev. The grants above need mod; this needs the narrowest rank
-in the game, the one that may also move the whole server. Handing out an item a
-player should earn is a fairness question; turning off whether the game can be
-lost is a different kind of decision, and a dev is technical trust — someone met
-through a pull request.
+**Dev and owner — one rung above the debug keys beside it.** The threshold is
+`Api.GOD_MODE_MIN_ROLE`, next to `DEBUG_KEYS_MIN_ROLE` and for the same reason:
+one statement of the policy, which the suite asserts instead of a second copy.
+Handing out an item a player should earn is a fairness question; turning off
+whether the game can be lost is a different kind of decision, so it stops at the
+two ranks trusted with the server rather than with the community.
+
+**Ctrl+G is handled *before* `_staff_debug_allowed()`, so it works in a release
+build.** Everything past that gate also needs `OS.is_debug_build()`, because those
+keys hand out gear, currency and pets — things a player is supposed to earn, which
+have no business existing in a shipped build. God mode hands out nothing, and it
+is for the people who have to **test the real build against the real server**;
+requiring a debug export would leave a dev with no way in on the thing they were
+asked to check. Safe to lift on the same reasoning the whole feature rests on: it
+earns nothing, and `hp` is client-written anyway. It calls `_typing_in_ui()`
+because it now runs where chat is open.
+
+**Two ways in, one flag.** `Ctrl+G` is the path a dev has; the panel switch is the
+owner's convenience, because **the owner panel opens for `Api.is_owner` only** and
+must stay that way — it also holds the maintenance switch and the gold grant.
+Widening it to reach devs would hand them things god mode has nothing to do with.
+Both paths move `GameState.god_mode`, and the switch re-reads it on every open
+with `set_pressed_no_signal()`, so the keyboard and the panel cannot disagree.
+The panel re-checks the rank in its handler too: a disabled button is a look, not
+a permission.
+
+`/api/staff/powers` lists it under `dev`, marked client-side. That route exists so
+a rank never surprises the person granting it, and "comes with the ability to stop
+dying" is exactly the kind of thing an owner should read before typing a name into
+the rank box.
 
 **It gives an attacker nothing.** `hp` is client-written and only clamped
 server-side (E-9), so a modified client could always refuse to die. The gate
@@ -670,8 +696,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 710 passed, 0 failed | 0 |
-| absent | 678 passed, 0 failed, 12 skipped | **0** |
+| present | 720 passed, 0 failed | 0 |
+| absent | 688 passed, 0 failed, 12 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.

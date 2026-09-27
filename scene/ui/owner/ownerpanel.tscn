@@ -439,6 +439,19 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Give item"
 
+[node name="godmoderow" type="HBoxContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="godmodebutton" type="CheckButton" parent="frame/margin/rows/godmoderow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Owner only. Damage is ignored entirely - the hit never lands, so nothing is healed and NO DEFENSE XP is earned while this is on. Survives walking between areas; always off again after a restart. Ctrl+G does the same thing."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "God mode"
+
 [node name="testingstatus" type="Label" parent="frame/margin/rows" unique_id=1900112290]
 unique_name_in_owner = true
 visible = false

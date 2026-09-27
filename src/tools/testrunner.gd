@@ -1182,7 +1182,7 @@ func _test_god_mode_earns_nothing() -> void:
 	var src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
 	check("player.gd is readable", src.length() > 0)
 
-	var guard: int = src.find("if GameState.god_mode and Api.is_owner:")
+	var guard: int = src.find("if GameState.god_mode and Api.role_at_least(")
 	check("take_damage() has a god-mode guard", guard != -1,
 		"without it the feature does not exist")
 
@@ -1195,14 +1195,63 @@ func _test_god_mode_earns_nothing() -> void:
 	check("AND BEFORE THE DEFENSE XP", guard < xp_call and xp_call != -1,
 		"this is the one that matters: past it, god mode mints server-granted XP")
 
-	# The toggle is owner-only. Not mod, not dev - a dev is technical trust,
-	# someone met through a pull request.
+	# ONE STATEMENT OF THE POLICY. Api.GOD_MODE_MIN_ROLE holds the rank, the same
+	# way DEBUG_KEYS_MIN_ROLE does for the keys beside it - so this suite asserts
+	# the rule itself rather than a second copy of it, and a literal rank string
+	# at any of these sites is the drift this is here to catch.
+	var api_src: String = FileAccess.get_file_as_string("res://src/systems/api.gd")
+	check("the rank lives in api.gd as a constant",
+		api_src.contains("const GOD_MODE_MIN_ROLE :="),
+		"a threshold written at each call site is a threshold that drifts")
+	check("and it is at least dev - not the mod the debug keys take",
+		api_src.contains("const GOD_MODE_MIN_ROLE := \"dev\"")
+			or api_src.contains("const GOD_MODE_MIN_ROLE := \"owner\""),
+		"the keys beside it hand out items; this decides whether the game can be lost")
+
+	# THE KEY WORKS IN A RELEASE BUILD, and that is deliberate. Everything past
+	# _staff_debug_allowed() also needs OS.is_debug_build(), because those keys
+	# hand out gear and currency. God mode hands out nothing and is for testing
+	# the REAL build against the REAL server, so requiring a debug export would
+	# leave a dev with no way in on the thing they were asked to check.
+	var gate: int = _first_code_index(src, "if not _staff_debug_allowed():", 0)
+	var key: int = _first_code_index(src, "event.keycode == KEY_G", 0)
+	check("Ctrl+G is handled before the debug-build gate",
+		key != -1 and gate != -1 and key < gate,
+		"inside it, a dev testing a release build has no way to turn it on")
+	check("and it ignores a keypress while somebody is typing",
+		src.contains("not _typing_in_ui()"),
+		"this runs in release builds now, where chat is open")
+
 	var toggle: int = src.find("func _toggle_god_mode(")
 	check("there is a toggle", toggle != -1)
-	check("and it refuses anyone who is not the owner",
-		src.find("if not Api.is_owner:", toggle) != -1
-			and src.find("if not Api.is_owner:", toggle) < src.find("GameState.god_mode = not", toggle),
+	var refusal: int = src.find("if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):", toggle)
+	check("the toggle refuses below the threshold",
+		refusal != -1 and refusal < src.find("GameState.god_mode = not", toggle),
 		"the refusal has to come before the flip, not after it")
+	check("and neither site hardcodes a rank",
+		not src.contains("Api.role_at_least(\"dev\")")
+			and not src.contains("GameState.god_mode and Api.is_owner"),
+		"a rank typed at the call site is the second copy of the rule")
+
+	# THE PANEL IS THE SECOND WAY IN, and a disabled button is a UI state rather
+	# than an authorisation - so it checks the rank itself.
+	var panel: String = FileAccess.get_file_as_string("res://src/ui/owner/ownerpanel.gd")
+	check("the panel has a god-mode switch", panel.contains("%godmodebutton"),
+		"the scene node and the script have to agree on the unique name")
+	check("and it checks the rank rather than trusting the button",
+		panel.contains("if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):"),
+		"disabled is a look, not a permission")
+	check("the switch mirrors the flag without re-emitting",
+		panel.contains("set_pressed_no_signal(GameState.god_mode)"),
+		"writing button_pressed fires toggled, which would flip what it mirrors")
+	check("and it re-reads on open, because Ctrl+G moves the same flag",
+		panel.contains("_sync_god_mode_button()"),
+		"a switch that remembers its own state disagrees with the keyboard")
+
+	var scene: String = FileAccess.get_file_as_string("res://scene/ui/owner/ownerpanel.tscn")
+	check("the scene actually carries the switch",
+		scene.contains("name=\"godmodebutton\"") and scene.contains("CheckButton"),
+		"a unique name the scene does not have is a null the panel silently skips")
 
 	# The flag lives where a scene change cannot clear it and a restart must.
 	var gs: String = FileAccess.get_file_as_string("res://src/systems/gamestate.gd")

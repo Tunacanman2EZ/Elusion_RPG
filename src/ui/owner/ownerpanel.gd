@@ -78,6 +78,7 @@ extends Control
 @onready var item_input: LineEdit = get_node_or_null("%iteminput")
 @onready var item_count_input: LineEdit = get_node_or_null("%itemcountinput")
 @onready var item_button: Button = get_node_or_null("%itembutton")
+@onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
 @onready var testing_status: Label = get_node_or_null("%testingstatus")
 
 # What the switch looked like the last time we asked. The button has to know
@@ -156,6 +157,14 @@ func _ready() -> void:
 		item_button.pressed.connect(_on_item_pressed)
 	if item_input != null:
 		item_input.text_submitted.connect(func(_t): _on_item_pressed())
+
+	# GOD MODE. A CheckButton rather than a Button, because it has two states
+	# and the control should say which one it is in without being pressed.
+	if god_mode_button != null \
+			and not god_mode_button.toggled.is_connected(_on_god_mode_toggled):
+		god_mode_button.toggled.connect(_on_god_mode_toggled)
+	_sync_god_mode_button()
+
 	_set_testing_status("")
 
 	# The switch is server state, not panel state, so the panel has to ask.
@@ -427,8 +436,57 @@ func _on_visibility_changed() -> void:
 	if visible:
 		_refresh_maintenance()
 		_populate_ranks()
+		# Ctrl+G flips the same flag from the keyboard, so the switch can be
+		# wrong by the time the panel is reopened. Re-read rather than remember.
+		_sync_god_mode_button()
 	else:
 		_disarm()
+
+
+# =============================================================================
+# GOD MODE
+# =============================================================================
+# The same flag Ctrl+G toggles - GameState.god_mode - so the two can never
+# disagree about what is on. This panel is a second way to reach it, not a
+# second copy of it.
+#
+# WHY THE SWITCH IS HERE AND THE KEY STILL EXISTS. The panel opens for the OWNER
+# only, deliberately: it also holds the maintenance switch and arbitrary gold,
+# and a dev is granted and revocable. God mode itself needs dev or owner, so the
+# key is the path a dev has and the switch is the owner's convenience. Widening
+# the panel to reach devs would hand them things god mode has nothing to do with.
+
+func _sync_god_mode_button() -> void:
+	if god_mode_button == null:
+		return
+	# NO SIGNAL. Writing button_pressed fires toggled, which would call the
+	# handler, which would flip the flag we are trying to mirror.
+	god_mode_button.set_pressed_no_signal(GameState.god_mode)
+	god_mode_button.disabled = not Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+
+
+func _on_god_mode_toggled(pressed: bool) -> void:
+	# THE RANK IS CHECKED HERE TOO, not only on the way into the panel. A
+	# disabled button is a UI state, and a UI state is not an authorisation.
+	if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
+		_sync_god_mode_button()
+		_set_testing_status("[GM] god mode needs %s or above."
+			% Api.GOD_MODE_MIN_ROLE)
+		return
+
+	GameState.god_mode = pressed
+
+	# THE STATUS LINE NAMES THE COST, because the surprising half is not that
+	# you stopped dying - it is that defense stops training. take_damage()
+	# returns before gain_defense_xp(), so a session spent testing in god mode
+	# trains no defense at all, and a flat skill bar an hour later is a worse way
+	# to find that out.
+	if pressed:
+		_set_testing_status("[GM] god mode ON - no damage taken, and no defense XP.")
+	else:
+		_set_testing_status("[GM] god mode OFF.")
+
+	print("[GM] god mode %s (%s)" % ["ON" if pressed else "OFF", Api.username])
 
 
 func _refresh_maintenance() -> void:
