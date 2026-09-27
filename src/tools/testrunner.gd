@@ -102,6 +102,8 @@ func _run_all() -> void:
 	_test_third_party_licences()
 	_test_audio_paths()
 	_test_chat_picture_sweep()
+	_test_chat_deletions_reach_the_client()
+	_test_security_policy()
 	_test_unauthorized_is_answered()
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
@@ -914,6 +916,185 @@ func _test_chat_picture_sweep() -> void:
 		"closing and reopening a picture would refetch it from the server")
 
 	print("  the log window bounds the cache; no separate size to tune")
+
+
+# =============================================================================
+# A DELETED LINE HAS TO LEAVE THE SCREENS THAT ALREADY HAVE IT
+# =============================================================================
+# The chat feed was APPEND-ONLY, and that made it unmoderatable. _poll() asks
+# for messages past its cursor and calls _add_line(); the only way a line ever
+# left was pop_front() at LINES_KEPT. So a mod deleting a message stopped it
+# reaching anybody who had not read it yet and did nothing about the people who
+# had - it stayed on their screen until a hundred more lines pushed it off, or
+# until they closed the game. That is exactly the set of players the deletion
+# was for.
+#
+# Worse for pictures. /api/chat/delete now drops the image row too, so the bytes
+# 404 - but a client that already decoded it holds the texture in _pictures, and
+# again that is the people who saw it.
+#
+# THIS ONE IS NOT A TEXT CHECK. _remove_lines() is pure logic over _feeds, so the
+# script can be instantiated bare, handed real feed contents and asked. _ready()
+# is never called - it needs nodes - so the test fills _feeds itself, which is
+# the only thing the function reads.
+func _test_chat_deletions_reach_the_client() -> void:
+	section("CHAT DELETIONS — a line the server removed leaves the feed")
+
+	var script: Script = load("res://src/ui/chat/chatpanel.gd") as Script
+	check("chatpanel.gd compiles and can be instantiated", script != null and script.can_instantiate())
+	if script == null or not script.can_instantiate():
+		return
+
+	var panel: Object = script.new()
+	check("a bare panel exists", panel != null)
+	if panel == null:
+		return
+
+	# _ready() is what normally builds these, and it wants nodes. The function
+	# under test reads nothing else.
+	var feeds: Dictionary = {}
+	for channel in ["world", "friends", "private", "guild"]:
+		feeds[channel] = {"cursor": 0, "lines": [], "unread": false}
+	feeds["world"]["lines"] = [
+		{"kind": "chat", "id": 10, "by": "a", "body": "fine"},
+		{"kind": "chat", "id": 11, "by": "b", "body": "offensive"},
+		{"kind": "image", "id": 12, "by": "b", "body": "", "image": "deadbeef"},
+		{"kind": "system", "body": "a notice with no id"},
+	]
+	panel.set("_feeds", feeds)
+	panel.set("_pictures", {"deadbeef": {"frames": []}})
+	panel.set("_viewing", "")
+
+	var went: int = panel.call("_remove_lines", "world", [11])
+	var left: Array = panel.get("_feeds")["world"]["lines"]
+	check("the named line goes", went == 1 and left.size() == 3, [went, left.size()])
+	check("and it is the right one",
+		not _feed_holds_id(left, 11) and _feed_holds_id(left, 10) and _feed_holds_id(left, 12),
+		left)
+
+	# A SYSTEM NOTICE HAS NO SERVER ID, which in this project means id 0. A
+	# removal list must not be able to sweep those away, and "id" defaulting to 0
+	# is exactly the shape that would.
+	went = panel.call("_remove_lines", "world", [0])
+	check("an id of 0 removes nothing", went == 0 and panel.get("_feeds")["world"]["lines"].size() == 3,
+		"a system notice carries no id; 0 must not match it")
+
+	# THE PICTURE GOES WITH THE LAST LINE THAT SHOWED IT, via the existing sweep.
+	went = panel.call("_remove_lines", "world", [12])
+	check("removing the last line showing a picture drops the picture",
+		went == 1 and not panel.get("_pictures").has("deadbeef"),
+		panel.get("_pictures").keys())
+
+	# AND THE OPEN VIEWER IS CLOSED, which is the case worth building this for.
+	# _sweep_pictures() deliberately SPARES _viewing, so a sweep alone would keep
+	# the picture alive and leave the overlay up in front of the one player most
+	# needing it gone.
+	var again: Dictionary = {}
+	for channel in ["world", "friends", "private", "guild"]:
+		again[channel] = {"cursor": 0, "lines": [], "unread": false}
+	again["world"]["lines"] = [{"kind": "image", "id": 20, "by": "b", "image": "cafe"}]
+	panel.set("_feeds", again)
+	panel.set("_pictures", {"cafe": {"frames": []}})
+	panel.set("_viewing", "cafe")
+
+	panel.call("_remove_lines", "world", [20])
+	check("the open viewer closes when its picture is deleted",
+		str(panel.get("_viewing")) == "",
+		"the player staring at it full-screen is who the deletion is for")
+	check("...and only then is the picture dropped",
+		not panel.get("_pictures").has("cafe"),
+		"close_viewer() has to run BEFORE the sweep, or _viewing spares it")
+
+	# REPEATS ARE FREE. The server announces a deletion for the whole window, so
+	# the same id arrives on around forty consecutive polls by design.
+	var repeat: int = panel.call("_remove_lines", "world", [20, 20, 20])
+	check("an id already gone costs nothing the second time", repeat == 0, repeat)
+
+	var other: int = panel.call("_remove_lines", "private", [20])
+	check("and a channel that never held it is untouched", other == 0, other)
+
+	panel.free()
+
+	# The wiring, which no bare instance can prove.
+	var src: String = FileAccess.get_file_as_string("res://src/ui/chat/chatpanel.gd")
+	check("the poll reads the server's removed list", src.contains("data.get(\"removed\", [])"),
+		"the function works and nothing calls it")
+	check("and it runs AFTER the additions",
+		src.find("_add_line(asked, _line_from_server(") < src.find("var removed = data.get(\"removed\""),
+		"a line posted and deleted inside one poll would survive")
+
+	print("  a feed that can only grow cannot be moderated")
+
+
+# =============================================================================
+# THE SECURITY POLICY SAYS WHAT IS TRUE OF THIS CLIENT
+# =============================================================================
+# SECURITY.md is what GitHub shows under this repository's Security tab, and it
+# is read by people who cannot check it themselves. Everything it claims about
+# the client has to still be true of the client.
+#
+# Four sentences on that page are load-bearing, and each names something in the
+# code that could be changed without anyone rereading the page. So the page does
+# not get to assert them - the code is asked.
+func _test_security_policy() -> void:
+	section("SECURITY.md — what it says about the client is still true")
+
+	var raw: String = FileAccess.get_file_as_string("res://SECURITY.md")
+
+	# WRAPPED PROSE IS STILL ONE SENTENCE, and this is the third time today that
+	# a text check has been fooled by a newline landing mid-phrase. Markdown wraps
+	# wherever the column ran out, so "the backpack\nledger is still..." does not
+	# contain "backpack ledger" at all. Collapse the whitespace before looking, or
+	# the check fails on a page that says exactly the right thing.
+	var doc: String = " ".join(raw.split("\n", false))
+	while doc.contains("  "):
+		doc = doc.replace("  ", " ")
+
+	check("SECURITY.md exists", raw.length() > 0,
+		"the Security tab has a report button and would have no policy behind it")
+	if raw.length() == 0:
+		return
+
+	check("it points at the server's model rather than restating one",
+		doc.contains("elusion-api") and doc.contains("SECURITY.md"),
+		"two security pages that can disagree is worse than one")
+
+	# "Api.role decides which buttons are drawn and refuses nothing."
+	var api_src: String = FileAccess.get_file_as_string("res://src/systems/api.gd")
+	check("role is still held in memory and never written to session.cfg",
+		api_src.contains("Held only in memory and never written to session.cfg"),
+		"a permission that lives in a file is a permission that can be edited")
+
+	# "gated on OS.is_debug_build() AND a rank of mod or above"
+	var player_src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
+	check("the debug keys are still gated on a debug build AND a rank",
+		player_src.contains("OS.is_debug_build() and Api.role_at_least("),
+		"SECURITY.md describes this gate; if it changes, the page is lying")
+	check("and the page says plainly that it is a rule, not a defence",
+		doc.contains("rule, not a defence"),
+		"claiming it stops a modified client would be the comforting lie")
+
+	# "The session token lives in user://session.cfg and is a bearer credential."
+	check("the token still lives where the page says it does",
+		api_src.contains("user://session.cfg"), api_src.contains("session.cfg"))
+
+	# The honest limit the page inherits from the server's list.
+	check("the page still names the backpack ledger as client-declared",
+		doc.contains("backpack ledger is still client-declared"),
+		"an open gap dropped from the page reads as a gap that was closed")
+
+	check("and it tells people where to report without publishing an inbox",
+		doc.contains("Report a vulnerability") and not doc.contains("@gmail"),
+		"a documented security address is a documented spam target")
+
+	print("  the page is checked against the client, not trusted")
+
+
+func _feed_holds_id(lines: Array, id: int) -> bool:
+	for line in lines:
+		if line is Dictionary and int(line.get("id", 0)) == id:
+			return true
+	return false
 
 
 # =============================================================================

@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 668 checks at the time of writing; if that number and the one the suite
+failure. 688 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -606,8 +606,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 668 passed, 0 failed | 0 |
-| absent | 636 passed, 0 failed, 12 skipped | **0** |
+| present | 688 passed, 0 failed | 0 |
+| absent | 656 passed, 0 failed, 12 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.
@@ -836,6 +836,45 @@ branch explaining why the phrase must not be used. What is forbidden is *saying*
 it, so the check now reads only lines containing `_say(`. Same family as the
 five entries under "Before you trust a check" — the measurement was right and
 the frame around it was wrong.
+
+### A feed that can only grow cannot be moderated
+
+`chatpanel.gd` was append-only, and nobody noticed because appending is all a chat
+log ever looks like it needs to do. `_poll()` asks `/api/chat?since=<cursor>` and
+calls `_add_line()`; the only way a line ever left was `pop_front()` at
+`LINES_KEPT`. So when a mod deleted a message the server row went, the line stopped
+reaching anybody who had not read it yet — and **stayed on every screen that
+already had it** until a hundred more lines pushed it off or the player closed the
+game. That is exactly the set of players the deletion was for.
+
+Pictures were worse. The server now drops the image row when the last message
+showing it goes, so the bytes 404 — but a client that already decoded one holds the
+frames in `_pictures`, and again that is the people who saw it.
+
+`_remove_lines(channel, ids)` closes it, off the `removed` list the poll now
+carries. Three things in it are the actual lesson:
+
+- **The open viewer is the case that makes it worth doing properly.**
+  `_sweep_pictures()` deliberately *spares* `_viewing` — correctly, for its own job
+  — so sweeping first keeps the picture alive and leaves the overlay up in front of
+  the one player most needing it gone. `close_viewer()` runs **before** the sweep.
+  After that the existing sweep needs no changes at all: it rebuilds the live set
+  from whatever the feeds still hold, so it drops the picture without knowing
+  anything about deletions.
+- **Removals run after additions.** A line posted and deleted inside one
+  three-second poll arrives in the same response as its own removal. Process the
+  removal first and the line survives for ever.
+- **An id of `0` must match nothing.** A system notice — a maintenance banner, a
+  kick message — is a line this client invented and has no server id, so
+  `line.get("id", 0)` returns `0` for it. A removal list that treats `0` as an id
+  quietly deletes every one of them.
+
+All three sabotage-tested, and `_test_chat_deletions_reach_the_client()` is a
+**behavioural** check rather than a text one: `_remove_lines()` is pure logic over
+`_feeds`, so the suite instantiates the script bare, fills `_feeds` itself (which is
+all `_ready()` would have done that the function reads), and asks. Only the two
+wiring facts — that the poll reads `removed`, and that it does so after the
+additions — are checked as text, because no bare instance can prove them.
 
 ### Godot's warnings don't reach the headless suite, so one is checked by text
 

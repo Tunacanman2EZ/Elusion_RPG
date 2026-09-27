@@ -454,6 +454,71 @@ func _add_line(channel: String, line: Dictionary) -> void:
 		_paint_tabs()
 
 
+func _remove_lines(channel: String, ids: Array) -> int:
+	"""Take lines back out of a feed, because the server says they are gone.
+
+	THE FEED USED TO BE APPEND-ONLY, AND THAT MADE IT UNMODERATABLE. _poll()
+	asks for messages with an id past its cursor and calls _add_line(); the only
+	way a line ever left was pop_front() at LINES_KEPT. So a mod deleting a
+	message stopped it reaching anybody who had not read it yet and did nothing
+	at all about the people who had - it sat on their screen until a hundred
+	more lines pushed it off, or until they closed the game. The set of players
+	who kept seeing it is exactly the set the deletion was for.
+
+	The server now reports `removed` on every poll (see CHAT_DELETION_WINDOW_
+	SECONDS in app.py), filtered by the same permission clause as the messages,
+	so a line this client was never allowed to read cannot arrive here either.
+
+	Returns how many lines actually went, so the caller only re-renders when
+	something changed. Almost every poll carries an empty list.
+	"""
+	if ids.is_empty() or not _feeds.has(channel):
+		return 0
+
+	# A SET, because `removed` repeats for as long as the window lasts - the same
+	# id comes back on forty consecutive polls by design, and `has` on a
+	# Dictionary beats walking the array once per line.
+	var doomed: Dictionary = {}
+	for raw_id in ids:
+		var id: int = int(raw_id)
+		if id > 0:
+			doomed[id] = true
+	if doomed.is_empty():
+		return 0
+
+	var kept: Array = _feeds[channel]["lines"]
+	var survivors: Array = []
+	var went: int = 0
+	var lost_pictures: Dictionary = {}
+	for line in kept:
+		if line is Dictionary and doomed.has(int(line.get("id", 0))):
+			went += 1
+			var image_id: String = str(line.get("image", ""))
+			if image_id != "":
+				lost_pictures[image_id] = true
+			continue
+		survivors.append(line)
+	if went == 0:
+		return 0
+	_feeds[channel]["lines"] = survivors
+
+	# THE OPEN VIEWER IS THE CASE THAT MAKES THIS WORTH DOING PROPERLY. A player
+	# looking at the picture full-screen when a mod deletes it is the person most
+	# needing it to go away, and _sweep_pictures() deliberately SPARES _viewing -
+	# correctly, for its own job - so sweeping first would keep the picture alive
+	# and leave the overlay up. Close it before the sweep, not after.
+	if _viewing != "" and lost_pictures.has(_viewing):
+		close_viewer()
+
+	# And then the existing sweep does the rest, unchanged: it rebuilds the live
+	# set from whatever the feeds still hold, so a picture whose last line just
+	# went is dropped without this function knowing anything about ids.
+	if not lost_pictures.is_empty():
+		_sweep_pictures()
+
+	return went
+
+
 func _render() -> void:
 	if lines_box == null:
 		return
@@ -1098,6 +1163,14 @@ func _poll() -> void:
 		if not (entry_data is Dictionary):
 			continue
 		_add_line(asked, _line_from_server(entry_data, pictures))
+
+	# WHAT HAS BEEN TAKEN BACK DOWN. After the additions, so a line deleted in
+	# the same three seconds it was posted cannot arrive and then be spared
+	# because the removal was processed first.
+	var removed = data.get("removed", [])
+	if removed is Array and not removed.is_empty():
+		if _remove_lines(asked, removed) > 0 and asked == _channel and visible:
+			_render()
 
 	var newest: int = int(data.get("latest_id", _feeds[asked]["cursor"]))
 	if newest > int(_feeds[asked]["cursor"]):
