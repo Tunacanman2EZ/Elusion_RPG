@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 636 checks at the time of writing; if that number and the one the suite
+failure. 668 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -606,8 +606,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 636 passed, 0 failed | 0 |
-| absent | 604 passed, 0 failed, 12 skipped | **0** |
+| present | 668 passed, 0 failed | 0 |
+| absent | 636 passed, 0 failed, 12 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.
@@ -769,6 +769,73 @@ So the rule for anything in this project that reports findings: the categories
 carry as much weight as the measurements, and they need checking just as hard. A
 number that is correct and a heading that is wrong reads exactly like a number
 that is correct.
+
+### A colour that cannot change is a state that cannot be told apart
+
+`%errorlabel` on the login screen carries everything this game says about an
+account — progress, validation, a wrong password, a ban — and its colour was a
+`theme_override` in `loginmenu.tscn`. One red, for all of it. So
+`"Connecting..."` and `"Loading characters..."`, the two messages that mean it is
+**working**, arrived in the same red as `"Incorrect password"`.
+
+The tell that this was an oversight rather than a decision: the recovery form,
+the email prompt and the connection banner **on the same screen** each already
+take a colour per state — `_recover_say()`, `_email_say()`, `_set_status()`, all
+three the same `(message, color)` shape. The main line was the only one that
+could not change, because it was the only one whose colour lived in the scene
+file instead of at the call site.
+
+`_say(message, color)` is the fourth of those now, and there are four colours
+because the server gives four kinds of answer, not because four is tidy.
+Measured against `app.py`: `/login` answers 200/400/401/403/429 and `/register`
+answers 201/400/403/409/429.
+
+| colour | means | reached by |
+|---|---|---|
+| grey | a request is in flight | "Connecting…" |
+| green | you are in | 200 login, 201 register → "Welcome, *name*" |
+| red | what you typed is wrong | 401, 400, client-side validation, status 0 |
+| amber | the door is shut anyway | 403 ban or blocked connection, 429, 503 |
+
+**The last two are the split that earns its keep.** "What you typed is wrong"
+asks the player to try again; a ban does not, and a ban in the typo colour asks
+somebody to retype a password that was never the problem. `Api.signout_notice`
+— the line a kicked or banned player reads on their way back to this screen —
+was rendering in the typo red to exactly the one person who must not misread it.
+
+**Status 0 is red, not amber, on purpose.** That is `api.gd`'s "no answer at
+all", and the connection banner is already amber and already saying the server is
+unreachable. Two amber lines saying the same thing is one of them repeating
+itself.
+
+**The 409 is the part most likely to be "fixed" by mistake.** A 409 means
+"username already taken" everywhere else, and this screen must never say that.
+`register()` is only ever called one line after a 401, so a 409 cannot mean a
+free name was refused — it can only mean the account exists and the password was
+wrong. Printing the server's own 409 message would send a player off to invent a
+second username for an account that is already theirs. `_test_login_states_are_distinct()`
+pins that reading, because it looks like a bug to anyone handling the status code
+rather than the flow.
+
+Worth knowing about the server side of it: `/login` is careful never to say
+whether a username exists — one message for both failures and the same scrypt
+cost on both paths — and `/register` answers that same question outright, because
+a signup form has to say when a name is taken. `REGISTER_MAX_CONFLICTS` is what
+stops the 409/201 split being an unlimited oracle. The client reconstructing
+"wrong password" from 401-then-409 is not a leak; it is reading something the
+server already publishes on purpose.
+
+**The distinctness half of the check is not a text check.**
+`get_script_constant_map()` hands back the real `Color` values, so "four
+different colours" is measured. Two names pointing at one colour is this exact
+bug wearing a new hat, and four different *spellings* would not catch it.
+
+**And one of these checks caught its own explanation first.** A whole-file
+search for `"already taken"` went red on the comment three lines above the
+branch explaining why the phrase must not be used. What is forbidden is *saying*
+it, so the check now reads only lines containing `_say(`. Same family as the
+five entries under "Before you trust a check" — the measurement was right and
+the frame around it was wrong.
 
 ### Godot's warnings don't reach the headless suite, so one is checked by text
 

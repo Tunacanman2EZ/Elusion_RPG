@@ -78,6 +78,31 @@ const RECOVER_CODE_LENGTH := 6
 # Green, for the recovery tick and its success line.
 const STATUS_GOOD := Color(0.43, 0.84, 0.49)
 
+# FOUR COLOURS FOR %errorlabel, because the server gives four kinds of answer and
+# this label used to render all of them in one red.
+#
+# The red is not a mistake - it is a theme_override in loginmenu.tscn and it was
+# right for the case it was written for. What it could not do is change. So
+# "Connecting..." and "Loading characters..." - the two things that mean it is
+# WORKING - arrived in the same red as "Incorrect password", and the recovery
+# form, the email prompt and the connection banner on this very screen all
+# already took a colour per state (_recover_say, _email_say, _set_status). The
+# main line was the one that did not.
+#
+# The split that matters is the last two. "What you typed is wrong" asks the
+# player to try again; "the door is shut to you" does not, and telling a banned
+# player in the same red as a typo asks them to retype a password that was never
+# the problem. Measured against app.py: /login answers 200/400/401/403/429 and
+# /register answers 201/400/403/409/429, so this is four states because there
+# are four, not because four is a nice number.
+const SAY_WORKING := STATUS_WORKING              # grey  - a request is in flight
+const SAY_GOOD := STATUS_GOOD                    # green - you are in
+const SAY_REFUSED := Color(1.0, 0.4, 0.4)        # red   - what you typed is wrong
+const SAY_BLOCKED := Color(1.0, 0.78, 0.28)      # amber - the door is shut anyway
+
+# SAY_REFUSED is the exact colour loginmenu.tscn already overrides the label to,
+# so the one case that was already right does not shift by a shade.
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -200,8 +225,12 @@ func _ready() -> void:
 	# out while the game was open. characterhud.gd's heartbeat put the reason
 	# here on the way out; show it once and let it go, so a later normal logout
 	# does not repeat it.
+	#
+	# AMBER, not red. A kick or a ban is the door being shut on somebody, not a
+	# password they got wrong, and in red this line reads as "your login failed"
+	# to the one player who most needs to understand it did not.
 	if Api.signout_notice != "":
-		%errorlabel.text = Api.signout_notice
+		_say(Api.signout_notice, SAY_BLOCKED)
 		Api.signout_notice = ""
 
 	await _check_connection_and_resume()
@@ -620,17 +649,16 @@ func _on_login_button_pressed() -> void:
 
 	var username: String = %usernamelineedit.text.strip_edges()
 	var password: String = %passwordlineedit.text.strip_edges()
-	var error_label: Label = %errorlabel
 
 	# --- input validation (courtesy only — the server validates too) ---
 	if username.is_empty() or password.is_empty():
-		error_label.text = "Please fill in both fields."
+		_say("Please fill in both fields.", SAY_REFUSED)
 		return
 	if not is_valid_username(username):
-		error_label.text = "Username: letters, numbers, and _ only."
+		_say("Username: letters, numbers, and _ only.", SAY_REFUSED)
 		return
 	if password.length() < MIN_PASSWORD_LENGTH:
-		error_label.text = "Password must be at least %d characters." % MIN_PASSWORD_LENGTH
+		_say("Password must be at least %d characters." % MIN_PASSWORD_LENGTH, SAY_REFUSED)
 		return
 
 	# --- remember me (username only — see class comment) ---
@@ -639,17 +667,17 @@ func _on_login_button_pressed() -> void:
 	else:
 		save_remembered_user("")
 
-	error_label.text = "Connecting..."
+	_say("Connecting...", SAY_WORKING)
 	_set_busy(true)
 
 	# --- try to log in first ---
 	var res: Dictionary = await Api.login(username, password)
 
 	if res.ok:
-		error_label.text = "Loading characters..."
+		_welcome(username)
 		await _enter_game(username, password)
 		_set_busy(false)
-		error_label.text = ""
+		_say("", SAY_WORKING)
 		return
 
 	# a 401 means the credentials didn't match — but the server won't say
@@ -661,22 +689,36 @@ func _on_login_button_pressed() -> void:
 		_set_busy(false)
 
 		if created.ok:
-			error_label.text = "Loading characters..."
+			_welcome(username)
 			await _enter_game(username, password)
-			error_label.text = ""
+			_say("", SAY_WORKING)
 			return
 
 		# 409 means the account DOES exist, so the original login failure
 		# was a genuinely wrong password.
+		#
+		# AND THAT IS WHY THIS SCREEN NEVER SAYS "username already taken", which
+		# is what a 409 means everywhere else and what you would write if you
+		# were handling the status code rather than the flow. Register is only
+		# ever called HERE, one line after a 401, so a 409 cannot mean a free
+		# name was refused - it can only mean the account exists and the password
+		# was wrong. Printing the server's own 409 message would send the player
+		# off to invent a second username for an account that is already theirs.
+		#
+		# It is also the one place the client learns something /login refuses to
+		# tell it. The server hides "does this name exist" on /login and answers
+		# it outright on /register, on purpose, because a signup form has to say
+		# when a name is taken - see the comment above the 409 in app.py, and the
+		# REGISTER_MAX_CONFLICTS throttle that stops it being an oracle.
 		if created.status == 409:
-			error_label.text = "Incorrect password."
+			_say("Incorrect password.", SAY_REFUSED)
 		else:
-			error_label.text = created.error
+			_say(created.error, _refusal_colour(created))
 		return
 
 	# anything else — server down, validation rejection, unexpected status
 	_set_busy(false)
-	error_label.text = describe_login_refusal(res)
+	_say(describe_login_refusal(res), _refusal_colour(res))
 
 
 # COROUTINE — callers must await. CharacterData.load_for_user() fetches every
@@ -758,6 +800,52 @@ func _set_busy(busy: bool, lock_fields: bool = true) -> void:
 		# if a submit locked them in the meantime.
 		%usernamelineedit.editable = true
 		%passwordlineedit.editable = true
+
+
+func _say(message: String, color: Color) -> void:
+	# THE ONE WAY %errorlabel IS WRITTEN. Same shape as _recover_say() and
+	# _email_say() beside it, so all four lines on this screen state their colour
+	# at the call site and none of them inherit the last state's.
+	#
+	# Guarded like _set_status, for the same reason: an older copy of
+	# loginmenu.tscn without the node keeps working rather than crashing on a
+	# missing unique name. A login screen that cannot say why is bad; one that
+	# cannot open is worse.
+	var label: Label = get_node_or_null("%errorlabel")
+	if label == null:
+		return
+	label.text = message
+	label.add_theme_color_override("font_color", color)
+
+
+func _welcome(typed_username: String) -> void:
+	# THE SERVER'S SPELLING, not the one that was typed. `username TEXT UNIQUE
+	# COLLATE NOCASE` means logging in as "tunacan" gets you into the account
+	# stored as "Tunacan", and the login response carries row["username"] back.
+	# Greeting somebody by the capitalisation they typed rather than the one their
+	# account actually has is a small lie, and it is the same lie that used to
+	# point a real session at a save file that had never existed - see
+	# _complete_login(). If the server sent nothing, fall back to the typed name.
+	var who: String = typed_username
+	if Api.username != "":
+		who = Api.username
+	_say("Welcome, %s" % who, SAY_GOOD)
+
+
+func _refusal_colour(res: Dictionary) -> Color:
+	# WHICH REFUSALS ARE NOT ABOUT THE PASSWORD. 403 is a ban or a blocked
+	# connection, 429 is a throttle, 503 is the server closing - none of them get
+	# better by retyping anything, so none of them are dressed as a typo.
+	#
+	# Everything else is red: 401, the 400s the server rejects a bad username or
+	# a short password with, and status 0, which is api.gd's "no answer at all".
+	# Status 0 is deliberately NOT amber, because the connection banner is
+	# already amber and already saying the server is unreachable - two amber
+	# lines saying the same thing is one of them repeating itself.
+	var status: int = int(res.get("status", 0))
+	if status == 403 or status == 429 or status == 503:
+		return SAY_BLOCKED
+	return SAY_REFUSED
 
 
 func _set_status(message: String, color: Color) -> void:

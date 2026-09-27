@@ -103,6 +103,7 @@ func _run_all() -> void:
 	_test_audio_paths()
 	_test_chat_picture_sweep()
 	_test_unauthorized_is_answered()
+	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
 	_test_no_unused_parameters()
 	_test_floor_coverage()
@@ -959,6 +960,116 @@ func _test_unauthorized_is_answered() -> void:
 		"without it the probe's own 401 calls the handler back forever")
 
 	print("  server revokes in one transaction; the client now asks at once")
+
+
+# =============================================================================
+# THE LOGIN SCREEN'S FOUR ANSWERS LOOK LIKE FOUR ANSWERS
+# =============================================================================
+# %errorlabel carries every word this screen says about an account, and its colour
+# was a theme_override in loginmenu.tscn - one red, for everything. So the two
+# messages that mean it is WORKING ("Connecting...", "Loading characters...")
+# arrived in the same red as "Incorrect password", while the recovery form, the
+# email prompt and the connection banner on the SAME SCREEN each already took a
+# colour per state. The main line was the one that could not change.
+#
+# Four states because app.py gives four kinds of answer, not because four is tidy:
+# /login answers 200/400/401/403/429 and /register answers 201/400/403/409/429.
+# The split that earns its keep is the last two - "what you typed is wrong" asks
+# the player to try again and a ban does not, and a ban in the typo colour asks
+# somebody to retype a password that was never the problem.
+#
+# THE 409 IS THE PART MOST LIKELY TO BE "FIXED" BY MISTAKE, so it is pinned here.
+# A 409 means "username already taken" everywhere else, and this screen must never
+# say that: register() is only ever called one line after a 401, so a 409 cannot
+# mean a free name was refused - it can only mean the account exists and the
+# password was wrong. Writing the server's own 409 message here would send a
+# player off to invent a second username for an account that is already theirs.
+#
+# Text checks. The alternative is driving a real form against a live server
+# through four different refusals, and a colour has no symptom a headless run can
+# assert - which is exactly why one red went unnoticed across every state.
+func _test_login_states_are_distinct() -> void:
+	section("LOGIN SCREEN — working, welcome, refused and blocked each look different")
+
+	var src: String = FileAccess.get_file_as_string("res://src/ui/menus/loginmenu.gd")
+	check("loginmenu.gd is readable", src.length() > 0)
+
+	# One writer. A direct .text assignment is how a fifth state gets added in
+	# whatever colour the fourth one happened to leave behind.
+	check("every line goes through _say()", src.contains("func _say(message: String, color: Color)"))
+	check("and nothing writes the label directly",
+		not src.contains("errorlabel.text ="),
+		"a direct write inherits the previous state's colour")
+
+	# FOUR NAMES, FOUR DIFFERENT COLOURS - and this half is not a text check.
+	# get_script_constant_map() hands back the real Color values, so "distinct" is
+	# measured rather than inferred from four different spellings. Two names
+	# pointing at one colour is precisely the bug being fixed, in a new disguise.
+	var login_script: Script = load("res://src/ui/menus/loginmenu.gd") as Script
+	check("loginmenu.gd's constants are readable", login_script != null)
+	if login_script != null:
+		var consts: Dictionary = login_script.get_script_constant_map()
+		var seen: Array[Color] = []
+		for name in ["SAY_WORKING", "SAY_GOOD", "SAY_REFUSED", "SAY_BLOCKED"]:
+			check("%s is defined" % name, consts.has(name))
+			if consts.has(name) and consts[name] is Color:
+				seen.append(consts[name])
+		check("and the four are four different colours", _all_colours_differ(seen),
+			"two states sharing a colour is the bug this check exists for: %s" % str(seen))
+
+	check("and all four are used at a call site",
+		src.contains("SAY_WORKING)") and src.contains("SAY_GOOD)")
+			and src.contains("SAY_REFUSED)") and src.contains("_refusal_colour("),
+		"a colour that is declared and never passed is a colour nobody sees")
+
+	# The success state exists at all. It did not before: the screen went straight
+	# from "Loading characters..." to a scene change, so a successful login and a
+	# stalled one looked the same for as long as the load took.
+	check("a successful login says so, in the good colour",
+		src.contains("_say(\"Welcome, %s\" % who, SAY_GOOD)"),
+		"success was silent - the same grey progress line either way")
+	check("and it greets the server's spelling of the name, not the typed one",
+		src.contains("if Api.username != \"\":"),
+		"username is UNIQUE COLLATE NOCASE; the stored case is the real one")
+
+	# The deliberate deviation, pinned so it survives the next reader.
+	check("the 409 is read as a wrong password",
+		src.contains("if created.status == 409:") and src.contains("_say(\"Incorrect password.\", SAY_REFUSED)"),
+		"here a 409 can only mean the account exists - see the comment there")
+	# PER LINE, AND ONLY LINES THAT SPEAK. A whole-file search for the phrase went
+	# red on the comment three lines above the branch that explains why the phrase
+	# must not be used - the check caught the explanation instead of the mistake.
+	# What is actually forbidden is SAYING it, so look only at _say() calls.
+	var says_taken: String = ""
+	for line in src.split("\n"):
+		var lower: String = line.to_lower()
+		if not lower.contains("_say("):
+			continue
+		if lower.contains("already taken") or lower.contains("already exists"):
+			says_taken = line.strip_edges()
+			break
+	check("and the screen never says a name is taken", says_taken == "",
+		"that message is true on /register and false in this flow: %s" % says_taken)
+
+	# A ban is not a typo.
+	check("403, 429 and 503 are not dressed as typos",
+		src.contains("if status == 403 or status == 429 or status == 503:"),
+		"none of the three get better by retyping anything")
+	check("and a server-side signout lands in the blocked colour",
+		src.contains("_say(Api.signout_notice, SAY_BLOCKED)"),
+		"a kick read as a failed login is the one player who must not misread it")
+
+	print("  four server answers, four colours; the 409 reading is deliberate")
+
+
+func _all_colours_differ(colours: Array[Color]) -> bool:
+	if colours.size() < 4:
+		return false
+	for i in range(colours.size()):
+		for j in range(i + 1, colours.size()):
+			if colours[i].is_equal_approx(colours[j]):
+				return false
+	return true
 
 
 # =============================================================================
