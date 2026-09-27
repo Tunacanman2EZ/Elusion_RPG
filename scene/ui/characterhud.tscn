@@ -232,6 +232,14 @@ theme_override_font_sizes/font_size = 12
 focus_mode = 0
 text = "Friends"
 
+[node name="playersbutton" type="Button" parent="navframe/navhbox/navbuttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Who is playing right now, and whether they are in this area with you"
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Players"
+
 [node name="guildbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1288450019]
 layout_mode = 2
 size_flags_horizontal = 3

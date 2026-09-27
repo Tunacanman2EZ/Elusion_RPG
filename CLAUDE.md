@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 740 checks at the time of writing; if that number and the one the suite
+failure. 755 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -529,14 +529,18 @@ next headless run reported **`characterhud.gd will not compile`** — because
 `.godot/global_script_class_cache.cfg` had never heard of `SafeSpot`, and a
 headless run only *reads* that file.
 
-So after adding any file with a new `class_name`, **open the editor once before
-running the suite**, or:
+So after adding any file with a new `class_name`, **open the project in the Godot
+editor once before running the suite.** That is the whole fix — the editor's
+filesystem scan writes the cache.
 
-```
-godot --headless --editor --quit
-```
+**Not `godot --headless --editor --quit`.** That command is correct and it is
+what CI would run, and on this machine `godot` is not on the PATH — the engine is
+a loose `.exe` on the Desktop, which is the entire reason `run_tests.ps1` hunts
+for the binary itself and why `atlasaudit.ps1` exists rather than a documented
+`godot` command. This file said to run it anyway for about twenty minutes, which
+is the same mistake the atlas audit already taught once. If you want it from a
+shell, give it the path `run_tests.ps1` would find, or set `$env:GODOT` first.
 
-which does the filesystem scan and writes the cache without opening a window.
 Confirmed on 4.6.1: `SafeSpot NOT in the class cache` → rescan → 740 passed.
 
 The compile check catches it immediately and names the file, which is the whole
@@ -779,8 +783,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 740 passed, 0 failed | 0 |
-| absent | 708 passed, 0 failed, 12 skipped | **0** |
+| present | 755 passed, 0 failed | 0 |
+| absent | 723 passed, 0 failed, 12 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.
@@ -1566,6 +1570,111 @@ twenty-five string literals that nothing checks until they run.
 
 `src/enemies/baseenemy.gd` and `src/systems/characterdata.gd` carry most of the
 complexity and are the best places to start reading.
+
+## The players menu, and a switch for combat that does not exist
+
+**Who is playing** is a nav-bar button anyone can press. It lists every online
+player, their character, level and area, grouped into *"In Elusion with you"* and
+*"Elsewhere"* — and the heading is built from the server's own `precision` field
+rather than the word "area", so when real positions arrive the wording follows
+instead of going on promising a distance nobody measured.
+
+**Online means the heartbeat, and the token.** Both. `last_seen_at` within
+`ONLINE_WINDOW_SECONDS` says a client was there in the last 45 seconds;
+`expires_at > now` says the session is still allowed to be. Either alone is wrong
+in a different direction, and both mistakes were made here in one afternoon:
+
+- `/api/players/nearby` had filtered on **`expires_at` only** — a token lasts
+  thirty days and survives the game being closed, so the trade panel's *"in this
+  area with you"* had been listing everyone who logged in since last month.
+  `ONLINE_WINDOW_SECONDS` warns about exactly this, in these words: *"NOT 'has a
+  live session'… a kick list sorted by it put last week's visitors at the top."*
+- The fix then used **`last_seen_at` only**, which let a revoked or expired
+  session stay listed for its last 45 seconds. `test_economy.py`'s *"an offline
+  player is not listed as nearby"* caught it on the next run.
+
+**The PvP switch is real and the combat is not, and every place it speaks says
+so.** It is a row in `server_settings` like the maintenance switch, set by
+`POST /api/server/pvp` (owner, 404 to anyone else), announced through the same
+broadcast path the shutdown notice uses — *"Tunacan has gone hostile."* /
+*"Tunacan has cooled off - no longer hostile."* — and carried on `/api/status`,
+which needs no token, so even the login screen can read it.
+
+It does **not** make anybody damageable, because nothing in this game can damage
+another player. The button's tooltip, the panel's banner and the route's own
+`damage_implemented: false` all say that, and `_test_players_menu_and_pvp_are_honest()`
+holds them to it. **A switch labelled "PvP" that implied combat would be the
+`unauthorized_seen` bug with a nicer font** — a control describing a wire nobody
+ran — which is the one failure this project has spent the most time removing.
+
+**Why build the switch before the combat, rather than with it.** Because of where
+it lives. "May other players hurt me" has to be answered by the **server**; a flag
+in a client is a flag an attacker sets. Putting the authority in the right place
+first means the damage path has something to ask when it exists, instead of
+growing an answer in a hurry beside the thing that needed one.
+
+## Decided, not built: PvP and the world boss
+
+**The goal:** the owner flips a switch, becomes a world boss, and players can hit
+him. It is a good goal. It is also **not a switch**, and the reason is worth
+writing down before anybody tries.
+
+`/api/players/nearby` already says it, in its own words:
+
+> *There is no position on the server and no heartbeat carrying one, so "nearby"
+> here means "in the same area and online" — which is the honest maximum today
+> and is genuinely what a trade panel needs, because **you cannot see another
+> player at all yet**.*
+
+That is the whole answer. Players are not rendered in each other's worlds; there
+are no remote bodies, no hurtboxes, nothing for a sword to overlap. A PvP toggle
+today would be a control wired to nothing — the `unauthorized_seen` bug with a
+button on it.
+
+**The ladder, in the order it has to happen:**
+
+1. **Positions on the server — there are none at all.** Not stale ones: none.
+   `saves` holds `class_id`, `name`, `level`, `area` and the vitals, and **no
+   coordinates**. This was got wrong here once already: a pass added `x, y` to
+   the `SELECT` in `/api/staff/user` so the owner panel could stand beside
+   somebody, and broke that route outright — `no such column: x`, caught by
+   `test_security.py` on the next run. The `x`/`y` that do exist are on
+   `pending_teleports`, which is where a teleport is **going**, not where a
+   player **is**.
+
+   So this step is a new column pair *and* a heartbeat carrying them — the first
+   thing in this project that costs real requests per player per second, which is
+   why it waits for the droplet's numbers. It is also why the owner panel's
+   button says **"Go to area"** and not "Go to them": it travels to the room they
+   are in and tells you the server does not know where in it. `SafeSpot` is
+   already written and already used by the other two buttons, so the day
+   coordinates exist, landing beside somebody is one line.
+2. **Remote players rendered.** A body, a nameplate, interpolation between
+   updates, and a decision about how many are drawn before it stops being
+   affordable. `/api/players/nearby` is the seam and its own comment says so:
+   *"the query gains a distance test and the response gains a position, and the
+   client does not change shape."*
+3. **Damage that the server decides.** This is the one that matters. If an
+   attacking client says *"I hit the boss for 40"*, that is E-3 with the stakes
+   raised — one modified client deletes the world boss from across the map.
+   A PvP hit has to be a server event like a kill: the server holds both
+   characters' stats, checks the range against positions it owns, and applies
+   the damage itself. Note this needs **server-owned hp**, which today is
+   client-written and only clamped (E-9).
+4. **Then the switch.** Owner-only, mutually exclusive with god mode, because one
+   says "nothing may hurt me" and the other says "everyone may".
+
+**Worth knowing before starting:** step 3 is the same work that would close E-9,
+and step 1 is the same work that makes E-3 closable. A world boss is not a
+feature bolted onto this architecture — it is what the architecture looks like
+once the two oldest open findings are shut. That is an argument for doing it, not
+against it, but it is a season rather than an afternoon.
+
+**One thing to decide early, not late:** if players can hit the owner, the
+owner's `take_damage()` runs, and that grants defense XP through
+`/api/skill/train`. A world boss farming defense off fifty attackers would sit at
+the rate cap all day. Whatever step 3 becomes has to answer it — the same
+question god mode answered by returning before the XP.
 
 ## Known gaps
 

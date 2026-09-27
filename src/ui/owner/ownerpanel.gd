@@ -86,6 +86,7 @@ extends Control
 @onready var teleport_status: Label = get_node_or_null("%teleportstatus")
 
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
+@onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
 @onready var testing_status: Label = get_node_or_null("%testingstatus")
 
 # What the switch looked like the last time we asked. The button has to know
@@ -180,6 +181,9 @@ func _ready() -> void:
 			and not god_mode_button.toggled.is_connected(_on_god_mode_toggled):
 		god_mode_button.toggled.connect(_on_god_mode_toggled)
 	_sync_god_mode_button()
+
+	if pvp_button != null and not pvp_button.toggled.is_connected(_on_pvp_toggled):
+		pvp_button.toggled.connect(_on_pvp_toggled)
 
 	_set_testing_status("")
 
@@ -460,6 +464,10 @@ func _on_visibility_changed() -> void:
 		# Ctrl+G flips the same flag from the keyboard, so the switch can be
 		# wrong by the time the panel is reopened. Re-read rather than remember.
 		_sync_god_mode_button()
+		# SERVER STATE, so it is asked rather than remembered - the same rule
+		# the maintenance switch follows. The owner may have thrown it from
+		# another machine.
+		await _refresh_pvp()
 	else:
 		_disarm()
 
@@ -545,7 +553,10 @@ func _on_teleport_pressed(action: String) -> void:
 		return
 
 	if action == "goto":
-		await _teleport_go_to_them(body)
+		# No `body` passed: with no position on the server there is nothing to
+		# stand beside, so this needs no character to measure from. It gets one
+		# back the day saves carry coordinates.
+		await _teleport_go_to_them()
 		return
 
 	if action == "everyone":
@@ -609,7 +620,7 @@ func _on_teleport_pressed(action: String) -> void:
 			% [username, str(data.get("area", ""))])
 
 
-func _teleport_go_to_them(body: CharacterBody2D) -> void:
+func _teleport_go_to_them() -> void:
 	var username: String = "" if username_input == null else username_input.text.strip_edges()
 	if username == "":
 		_set_teleport_status("[GM] type a username first.")
@@ -647,23 +658,31 @@ func _teleport_go_to_them(body: CharacterBody2D) -> void:
 			% [username, area])
 		return
 
-	var them := Vector2(float(best.get("x", 0.0)), float(best.get("y", 0.0)))
-
-	# BESIDE THEM, NEVER ON THEM - start_ring 1. And if this build cannot find a
-	# clear spot, do not go: landing in the scenery or off the edge of the map is
-	# worse than a line saying it did not happen.
-	var spot: Vector2 = SafeSpot.find(body, them, 1)
-	if spot == Vector2.INF:
-		_set_teleport_status("[GM] no clear spot next to '%s' - they may be in a corner."
-			% username)
-		return
-
-	# NO REQUEST. Position is client-written, so moving yourself is a local act;
-	# posting for permission to do it would be theatre, and /api/staff/teleport
-	# would refuse anyway - it runs through can_act_on(), which is strictly
-	# greater and so refuses acting on yourself.
-	_set_teleport_status("[GM] going to '%s' in %s." % [username, area])
-	AreaRegistry.go_to(area, spot)
+	# THEIR AREA, AND THAT IS ALL THERE IS. The server stores saves.area and
+	# nothing finer - /api/players/nearby says so in its own comment, "there is
+	# no position on the server and no heartbeat carrying one". So this button
+	# goes to the ROOM they are in, at its ordinary arrival point, and cannot put
+	# you next to them.
+	#
+	# An earlier version of this read x and y off the staff route and stood you
+	# beside them. Those columns do not exist; asking for them broke
+	# /api/staff/user outright, and test_security.py caught it on the next run.
+	# The x/y that DO exist are on pending_teleports - where a teleport is going,
+	# not where a player is.
+	#
+	# WHEN POSITIONS ARRIVE this becomes one line: pass their coordinates to
+	# SafeSpot.find(body, them, 1) and land beside them. The helper is already
+	# written and already used by the other two buttons. See CLAUDE.md,
+	# "Decided, not built: PvP and the world boss" - step 1 is this exact gap.
+	#
+	# NO REQUEST EITHER WAY. Position is client-written, so moving yourself is a
+	# local act; posting for permission would be theatre, and /api/staff/teleport
+	# runs through can_act_on(), which is strictly-greater and refuses acting on
+	# yourself.
+	_set_teleport_status("[GM] going to %s, where '%s' is. The server does not"
+		% [area.capitalize(), username]
+		+ " know where in it.")
+	AreaRegistry.go_to(area)
 
 
 func _set_teleport_status(line: String) -> void:
@@ -671,6 +690,64 @@ func _set_teleport_status(line: String) -> void:
 		return
 	teleport_status.text = line
 	teleport_status.visible = line != ""
+
+
+# =============================================================================
+# PVP
+# =============================================================================
+# SERVER STATE, not panel state, and not client state - which is the whole
+# reason to build the switch before the combat that reads it. "May other players
+# hurt me" has to be answered by the server; a flag in a client is a flag an
+# attacker sets. Putting it in the right place first means the damage path has
+# an authority to ask when it exists, rather than growing one in a hurry beside
+# the thing that needed it.
+#
+# WHAT IT DOES TODAY, and the button's tooltip says the same: it announces in
+# chat - the same broadcast path the maintenance notice uses - and it appears on
+# /api/status for every client including one on the login screen. It does NOT
+# make anybody damageable, because nothing in this game can damage another
+# player yet. Saying otherwise on this panel would be a control describing a
+# wire nobody ran.
+
+func _refresh_pvp() -> void:
+	# /api/status carries it and needs no token, so this works even in the
+	# moment after a session ends.
+	var res: Dictionary = await Api.get_json("/api/status")
+	if not is_instance_valid(self) or not is_inside_tree() or pvp_button == null:
+		return
+	if not res.get("ok", false):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	# NO SIGNAL. Writing button_pressed fires toggled, which would post the
+	# state we are only trying to display.
+	pvp_button.set_pressed_no_signal(bool(data.get("pvp", false)))
+	pvp_button.disabled = not Api.is_owner
+
+
+func _on_pvp_toggled(pressed: bool) -> void:
+	# OWNER ONLY, checked here and again on the server, which answers 404 rather
+	# than 403 so the route does not confirm itself to anyone else.
+	if not Api.is_owner:
+		await _refresh_pvp()
+		_set_testing_status("[GM] PvP is the owner's switch.")
+		return
+
+	var res: Dictionary = await Api.post("/api/server/pvp", {"on": pressed})
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+
+	if not res.get("ok", false):
+		# PUT BACK. The switch shows SERVER state, so a refused press must not
+		# leave the button claiming something the server never agreed to.
+		await _refresh_pvp()
+		_set_testing_status("[GM] the server refused that: %s" % str(res.get("error", "")))
+		return
+
+	if pressed:
+		_set_testing_status("[GM] %s has gone hostile. Announced in chat."
+			% Api.username)
+	else:
+		_set_testing_status("[GM] %s has cooled off. Announced in chat." % Api.username)
 
 
 func _refresh_maintenance() -> void:

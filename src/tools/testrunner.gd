@@ -107,6 +107,7 @@ func _run_all() -> void:
 	_test_skills_are_not_pushed()
 	_test_god_mode_earns_nothing()
 	_test_teleport_is_wired()
+	_test_players_menu_and_pvp_are_honest()
 	_test_unauthorized_is_answered()
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
@@ -1313,16 +1314,23 @@ func _test_teleport_is_wired() -> void:
 	check("a teleport here asks for a spot beside the issuer",
 		panel.contains("SafeSpot.find(body, body.global_position, 1)"),
 		"start_ring 0 would put somebody inside whoever pressed the button")
-	check("and going to a player lands beside them too",
-		panel.contains("SafeSpot.find(body, them, 1)"),
-		"landing on a player is what 'teleport to player' must not mean")
+	# NOT "beside them" - the server has no position to land beside. saves holds
+	# the AREA and nothing finer, which is why this button says "Go to area".
+	# An earlier version read x/y off /api/staff/user, and those columns do not
+	# exist: the request broke that route outright and test_security.py caught
+	# it. This check pins the honest version so the claim cannot come back
+	# without the positions that would make it true.
+	check("going to a player travels to their area, and says so",
+		panel.contains("The server does not")
+			and panel.contains("AreaRegistry.go_to(area)"),
+		"there is no position on the server to stand beside")
 
 	# GOING SOMEWHERE IS LOCAL. Position is client-written, so asking the server
 	# for permission to move yourself would be theatre - and can_act_on() is
 	# strictly-greater, so the route would refuse acting on yourself anyway.
 	var goto_at: int = panel.find("func _teleport_go_to_them(")
 	check("going to a player moves you locally", goto_at != -1
-		and panel.find("AreaRegistry.go_to(area, spot)", goto_at) != -1,
+		and panel.find("AreaRegistry.go_to(area)", goto_at) != -1,
 		"a request to move yourself would be refused by can_act_on anyway")
 	# COMMENTS STRIPPED, AND BOUNDED TO THE FUNCTION. This went red first on
 	# correct code, for the reason the entry in CLAUDE.md now describes: the
@@ -1373,6 +1381,91 @@ func _test_teleport_is_wired() -> void:
 		"without the entry the button reads Confirm? for ever after a timeout")
 
 	print("  server spaces the group, the client keeps it out of the walls")
+
+
+# =============================================================================
+# THE PLAYERS MENU, AND THE PVP SWITCH THAT DOES NOT LIE
+# =============================================================================
+# A list anyone can open of who is playing, and an owner switch that announces
+# hostility. The second one is the interesting half, because it is a control for
+# something that DOES NOT EXIST YET: nothing in this game can damage another
+# player - no positions on the server, no remote bodies in the client.
+#
+# That makes it precisely the shape of the bug this project spent a day removing:
+# api.gd's comment saying characterhud.gd answered a signal that nothing was
+# connected to. A switch labelled "PvP" that implied combat would be the same
+# lie with a nicer font.
+#
+# So the rule for this feature is that EVERY PLACE IT SPEAKS SAYS WHAT IT IS.
+# The button's tooltip, the panel's banner and the route's own response all state
+# that nothing is damageable yet, and these checks hold them to it.
+func _test_players_menu_and_pvp_are_honest() -> void:
+	section("PLAYERS & PVP — a list anyone can read, and a switch that admits what it is")
+
+	var panel: String = FileAccess.get_file_as_string("res://src/ui/players/playerspanel.gd")
+	var scene: String = FileAccess.get_file_as_string("res://scene/ui/players/playerspanel.tscn")
+	var hud: String = FileAccess.get_file_as_string("res://src/ui/characterhud.gd")
+	var owner_panel: String = FileAccess.get_file_as_string("res://src/ui/owner/ownerpanel.gd")
+	var owner_scene: String = FileAccess.get_file_as_string("res://scene/ui/owner/ownerpanel.tscn")
+	check("every file is readable",
+		panel.length() > 0 and scene.length() > 0 and owner_panel.length() > 0)
+
+	# ANYONE CAN OPEN IT. A button on the nav row, not behind a rank.
+	check("the HUD has a Players button", hud.contains("\"playersbutton\""),
+		"a menu nobody can open is not a menu")
+	check("and it builds the panel on first use, like every other one",
+		hud.contains("PLAYERS_PANEL_SCENE.instantiate()"),
+		"a panel instantiated at spawn polls for a screen nobody asked for")
+	check("the scene carries the rows container the script reads",
+		scene.contains("name=\"playersrows\"") and panel.contains("%playersrows"),
+		"a unique name the scene lacks is a null the panel silently skips")
+
+	# THE WORDING FOLLOWS THE SERVER'S OWN precision FIELD rather than promising
+	# a distance nobody measured - the same rule the trade panel already keeps.
+	check("the heading reads the server's precision field",
+		panel.contains("data.get(\"precision\", \"area\")"),
+		"the server says how precise it is; assuming is how a lie ships")
+
+	# ONLY WHILE OPEN, and never two reads at once.
+	# SCOPED TO THE TIMER, because "if visible:" also appears in toggle() - so an
+	# unscoped search passed a sabotage that removed the guard from the poll.
+	# The same shape as every other text check here: a phrase that is true
+	# somewhere else in the file is not evidence about the place that matters.
+	var tick: int = panel.find("func _on_refresh_timeout(")
+	var tick_end: int = panel.find("\nfunc ", tick + 8)
+	var guard: int = _first_code_index(panel, "if visible:", tick)
+	check("it only polls while open",
+		tick != -1 and guard != -1 and (tick_end == -1 or guard < tick_end),
+		"a closed panel polling every 15 seconds for a whole session")
+	check("and never overlaps its own request", panel.contains("if _loading:"),
+		"two replies out of order paint the older one last")
+	check("it guards after the await", panel.contains("not is_inside_tree()"),
+		"the panel can be closed, or the scene changed, while a request is out")
+
+	# THE SWITCH. Server state, asked rather than remembered.
+	check("the owner panel has a PvP switch", owner_scene.contains("name=\"pvpbutton\""))
+	check("and it posts to the server rather than flipping a local flag",
+		owner_panel.contains("\"/api/server/pvp\""),
+		"a flag in a client is a flag an attacker sets")
+	check("it reads the state back rather than remembering it",
+		owner_panel.contains("func _refresh_pvp("),
+		"the owner may have thrown it from another machine")
+	check("mirrors without re-emitting",
+		owner_panel.contains("pvp_button.set_pressed_no_signal("),
+		"writing button_pressed fires toggled, which would post what it displays")
+	check("and puts the switch back when the server refuses",
+		owner_panel.contains("await _refresh_pvp()"),
+		"a refused press must not leave the button claiming something untrue")
+
+	# THE HONESTY, which is the whole point of this section.
+	check("the panel's banner says nobody can be damaged yet",
+		panel.contains("Nobody can damage anybody"),
+		"a PvP banner implying combat is a comment describing a wire nobody ran")
+	check("and the switch's tooltip says it too",
+		owner_scene.contains("does NOT make anybody damageable"),
+		"the tooltip is where somebody reads what the button will do")
+
+	print("  a switch for combat that does not exist, and it says so everywhere")
 
 
 func _first_code_index(src: String, needle: String, from: int) -> int:

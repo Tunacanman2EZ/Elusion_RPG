@@ -456,10 +456,10 @@ text = "Bring here"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "Go to them instead. This moves only you, locally - no order is queued for anybody else."
+tooltip_text = "Travel to the AREA they are in. The server stores which room a character is in and nothing finer, so this cannot put you next to them. Moves only you, locally - no order is queued for anybody."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
-text = "Go to them"
+text = "Go to area"
 
 [node name="tpeveryonebutton" type="Button" parent="frame/margin/rows/teleportrow"]
 unique_name_in_owner = true
@@ -490,6 +490,15 @@ tooltip_text = "Owner only. Damage is ignored entirely - the hit never lands, so
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "God mode"
+
+[node name="pvpbutton" type="CheckButton" parent="frame/margin/rows/godmoderow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Owner only. Announces in chat that you have gone hostile, and every client - even one on the login screen - can read it from /api/status. It does NOT make anybody damageable yet: nothing in this game can hurt another player. See CLAUDE.md, Decided not built: PvP and the world boss."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "PvP"
 
 [node name="testingstatus" type="Label" parent="frame/margin/rows" unique_id=1900112290]
 unique_name_in_owner = true

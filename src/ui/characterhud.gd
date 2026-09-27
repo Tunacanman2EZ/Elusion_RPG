@@ -52,6 +52,7 @@ const TRADE_PANEL_SCENE   := preload("res://scene/ui/trade/tradepanel.tscn")
 const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
 const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
 const FRIENDS_PANEL_SCENE := preload("res://scene/ui/friends/friendspanel.tscn")
+const PLAYERS_PANEL_SCENE := preload("res://scene/ui/players/playerspanel.tscn")
 const GUILD_PANEL_SCENE := preload("res://scene/ui/guild/guildpanel.tscn")
 
 
@@ -106,6 +107,7 @@ var trade_panel:      Control         = null
 var owner_panel:      Control         = null
 var chat_panel:       Control         = null
 var friends_panel:    Control         = null
+var players_panel:    Control         = null
 var guild_panel:      Control         = null
 
 # The server's announcements, and the cursor into them. 0 means "I just got
@@ -475,6 +477,7 @@ func _wire_nav_buttons() -> void:
 		"optionsbutton":           "_on_options_pressed",
 		"chatbutton":              "_on_chat_pressed",
 		"friendsbutton":           "_on_friends_pressed",
+		"playersbutton":           "_on_players_pressed",
 		"guildbutton":             "_on_guild_pressed",
 		"logoutbutton":            "_on_logout_pressed",
 		# NEW: distinct from logout — returns to character select without
@@ -1707,6 +1710,10 @@ func _on_friends_pressed() -> void:
 	toggle_friends()
 
 
+func _on_players_pressed() -> void:
+	toggle_players()
+
+
 func _on_guild_pressed() -> void:
 	toggle_guild()
 
@@ -1735,6 +1742,17 @@ func toggle_friends() -> void:
 
 	if friends_panel.has_method("toggle"):
 		friends_panel.toggle()
+
+
+func toggle_players() -> void:
+	# BUILT ON FIRST USE, like every other panel here. It polls while open, so a
+	# player who never presses the button never starts that timer.
+	if players_panel == null:
+		players_panel = PLAYERS_PANEL_SCENE.instantiate()
+		add_child(players_panel)
+
+	if players_panel.has_method("toggle"):
+		players_panel.toggle()
 
 
 func toggle_guild() -> void:

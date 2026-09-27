@@ -1,0 +1,123 @@
+[gd_scene format=3 uid="uid://cp1ay3rsp4nel"]
+
+[ext_resource type="Script" path="res://src/ui/players/playerspanel.gd" id="1_playerspanel"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_playerstheme"]
+
+[node name="playerspanel" type="Control"]
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -190.0
+offset_top = -240.0
+offset_right = 190.0
+offset_bottom = 240.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_playerstheme")
+script = ExtResource("1_playerspanel")
+
+[node name="frame" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margin" type="MarginContainer" parent="frame"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="rows" type="VBoxContainer" parent="frame/margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="headerpanel" type="PanelContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="headerbox" type="HBoxContainer" parent="frame/margin/rows/headerpanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="titlelabel" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 16
+text = "Who is playing"
+vertical_alignment = 1
+
+[node name="playerscount" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.58, 0.52, 1)
+theme_override_font_sizes/font_size = 11
+text = "0 online"
+vertical_alignment = 1
+
+[node name="playersrefreshbutton" type="Button" parent="frame/margin/rows/headerpanel/headerbox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 24)
+layout_mode = 2
+tooltip_text = "Read the list again"
+focus_mode = 0
+theme_override_font_sizes/font_size = 11
+text = "R"
+
+[node name="playersclosebutton" type="Button" parent="frame/margin/rows/headerpanel/headerbox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+focus_mode = 0
+text = "x"
+
+[node name="playerspvp" type="PanelContainer" parent="frame/margin/rows"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"PanelSub"
+
+[node name="pvpmargin" type="MarginContainer" parent="frame/margin/rows/playerspvp"]
+layout_mode = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 5
+
+[node name="playerspvplabel" type="Label" parent="frame/margin/rows/playerspvp/pvpmargin"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.55, 0.42, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 3
+text = "PvP is on."
+
+[node name="playersnotice" type="Label" parent="frame/margin/rows"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.82, 0.42, 1)
+theme_override_font_sizes/font_size = 11
+autowrap_mode = 3
+
+[node name="hseparator" type="HSeparator" parent="frame/margin/rows"]
+layout_mode = 2
+
+[node name="scroll" type="ScrollContainer" parent="frame/margin/rows"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="playersrows" type="VBoxContainer" parent="frame/margin/rows/scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
