@@ -1015,11 +1015,11 @@ Do not "fix" these.
 - **`SOUNDS` in `audio.gd` is 31 empty strings.** An unassigned id is a silent
   no-op by design. That is what lets the call sites exist now and the audio
   arrive later, one file at a time.
-- **Eight signals are emitted with nothing connected, and that is the
+- **Seven signals are emitted with nothing connected, and that is the
   convention, not an oversight.** `took_damage` and `xp_gained_signal`
   (player.gd), `damaged` (baseenemy.gd), `wave_started` (bossgauntlet.gd),
   `cook_requested` (firepit.gd), `cast_failed` (fishingspot.gd),
-  `raised_changed` (spikedoor.gd), `unauthorized_seen` (api.gd).
+  `raised_changed` (spikedoor.gd).
 
   Each sits **alongside** a direct call that already does the work — the
   "signal as well as the direct call" shape `fishingspot.gd` documents at
@@ -1027,6 +1027,24 @@ Do not "fix" these.
   hear an event without the emitting script knowing about it; it is never the
   only thing that happens, which is the failure that made `cast_failed` worth
   writing about in the first place.
+
+  **`unauthorized_seen` (api.gd) was the eighth and is now connected**, because
+  it was the one entry on this list that did *not* have a direct call doing the
+  work. api.gd's comment on it said "characterhud.gd answers it with an
+  immediate heartbeat()", and nothing did — the sentence described a wire nobody
+  had run. The cost was measurable: `/api/staff/ban` deletes the account's
+  session rows in the same transaction that sets the ban, so the server revokes
+  instantly, while the client only noticed on the broadcast poll. A banned player
+  kept playing for up to `BROADCAST_POLL_SECONDS` (10s).
+
+  `characterhud.gd::_on_unauthorized_seen()` now answers it, and the shape is
+  worth keeping: **a 401 is a prompt to ask, not a verdict.** Changing a password
+  answers 401 for a mistyped *current* password, so a client that signs people
+  out on any 401 signs them out for typos. The handler calls `Api.heartbeat()`,
+  `heartbeat_verdict()` decides, and only `"revoked"` acts. It is debounced,
+  because chat, friends and the guild list can each 401 in the same moment, and
+  `_request()` excludes `/api/auth/session` from the signal so the probe's own
+  401 cannot call it back. `_test_unauthorized_is_answered()` holds all of that.
 
   This is **not** the `gamestate.gd` case, and the difference is the whole
   rule. Those thirteen were the sole mechanism, heard by nothing, and

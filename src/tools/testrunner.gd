@@ -102,6 +102,7 @@ func _run_all() -> void:
 	_test_third_party_licences()
 	_test_audio_paths()
 	_test_chat_picture_sweep()
+	_test_unauthorized_is_answered()
 	_test_no_import_cache_references()
 	_test_no_unused_parameters()
 	_test_floor_coverage()
@@ -912,6 +913,52 @@ func _test_chat_picture_sweep() -> void:
 		"closing and reopening a picture would refetch it from the server")
 
 	print("  the log window bounds the cache; no separate size to tune")
+
+
+# =============================================================================
+# A 401 HAS TO REACH SOMEBODY
+# =============================================================================
+# api.gd emits unauthorized_seen when an authenticated request comes back 401
+# while this client holds a token. Its own comment says characterhud.gd answers
+# it with an immediate heartbeat() - and for a long time nothing was connected,
+# so that sentence described a wire nobody had run.
+#
+# The cost was measurable rather than theoretical. /api/staff/ban deletes the
+# account's session rows in the same transaction that sets the ban, so the server
+# revokes instantly; the client only noticed on the broadcast poll, which means a
+# banned player went on playing for up to BROADCAST_POLL_SECONDS.
+#
+# WHY A 401 IS NOT ITSELF THE ANSWER, which is the part worth not losing:
+# changing a password answers 401 for a mistyped CURRENT password. A client that
+# treats every 401 as revocation signs people out for typos. So the signal is a
+# prompt to ask, heartbeat_verdict() decides, and only "revoked" acts.
+#
+# Text checks, because the alternative is standing up a HUD, a live server and a
+# real ban to watch one signal fire.
+func _test_unauthorized_is_answered() -> void:
+	section("A 401 REACHES SOMEBODY — the revocation shortcut is wired")
+
+	var api_src: String = FileAccess.get_file_as_string("res://src/systems/api.gd")
+	var hud_src: String = FileAccess.get_file_as_string("res://src/ui/characterhud.gd")
+
+	check("api.gd still emits unauthorized_seen", api_src.contains("unauthorized_seen.emit()"))
+	check("and something connects it",
+		hud_src.contains("Api.unauthorized_seen.connect("),
+		"emitted and unheard means a ban lands up to BROADCAST_POLL_SECONDS late")
+	check("the handler asks heartbeat() rather than deciding for itself",
+		hud_src.contains("await Api.heartbeat()"),
+		"a 401 is not proof - a mistyped current password answers 401 too")
+	check("and only a revoked verdict signs anyone out",
+		hud_src.contains("if verdict == \"revoked\":"),
+		"acting on anything else turns a server hiccup into a mass kick")
+	check("the probe cannot storm",
+		hud_src.contains("_revocation_probe_in_flight"),
+		"several panels can each 401 in the same moment; one probe answers all")
+	check("and api.gd still excludes the probe's own path from the signal",
+		api_src.contains("path != \"/api/auth/session\""),
+		"without it the probe's own 401 calls the handler back forever")
+
+	print("  server revokes in one transaction; the client now asks at once")
 
 
 # =============================================================================

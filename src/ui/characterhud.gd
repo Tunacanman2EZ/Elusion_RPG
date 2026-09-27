@@ -755,7 +755,58 @@ func _push_message(text: String, color: Color) -> void:
 		message_box.visible = true
 
 
+# Guards against a storm. Several panels can each hold a request that 401s at the
+# same moment - chat, friends and the guild list all poll - and every one of them
+# makes api.gd emit. One probe answers all of them.
+var _revocation_probe_in_flight: bool = false
+
+
+func _on_unauthorized_seen() -> void:
+	"""A 401 arrived somewhere. Ask the one question that decides, now.
+
+	WHY THIS IS NOT "SHOW A NOT-AUTHORIZED OVERLAY". api.gd's comment on the
+	signal is emphatic and it is right: a 401 is not proof the session is gone.
+	Changing a password answers 401 for a mistyped CURRENT password, so a client
+	that treats every 401 as revocation signs people out for typos. The 401 means
+	"ask now rather than in up to ten seconds". heartbeat() is what decides, and
+	_forced_signout() is the only thing that acts.
+
+	WHAT THIS BUYS. Revocation on the server is instant - /api/staff/ban deletes
+	the session rows in the same transaction that sets the ban. The client used
+	to find out on the broadcast poll, so a banned player kept going for up to
+	BROADCAST_POLL_SECONDS. The signal existed for this and nothing was listening;
+	api.gd's comment described a wire that was never run.
+
+	NO LOOP. heartbeat() asks /api/auth/session, and _request() deliberately
+	excludes that path from emitting unauthorized_seen - otherwise this probe's
+	own 401 would call it straight back.
+	"""
+	if _revocation_probe_in_flight or not Api.is_logged_in():
+		return
+	_revocation_probe_in_flight = true
+
+	var verdict: String = await Api.heartbeat()
+
+	# PAST AN AWAIT. Up to PROBE_TIMEOUT has passed and this node may be gone -
+	# the same guard, for the same reason, as _on_broadcast_poll_timeout().
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	_revocation_probe_in_flight = false
+
+	# Only "revoked" acts. "offline" and "stale" say nothing about the login, and
+	# throwing somebody to the login screen over a hiccup is the failure the
+	# whole verdict function exists to prevent.
+	if verdict == "revoked":
+		_forced_signout()
+
+
 func _start_broadcast_poll() -> void:
+	# THE 401 SHORTCUT IS WIRED HERE, beside the poll it shortcuts, because the
+	# two are the same job at two speeds: the timer is the floor, and the signal
+	# is what makes a ban land before the next tick.
+	if not Api.unauthorized_seen.is_connected(_on_unauthorized_seen):
+		Api.unauthorized_seen.connect(_on_unauthorized_seen)
+
 	if has_node("BroadcastPoll"):
 		return
 	var timer := Timer.new()
