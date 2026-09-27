@@ -14,15 +14,17 @@ with a single extra sentence scores 93%, and the threshold is 98%. So the
 carve-out lives here instead. Adding it back to `LICENSE` would make the code's
 licence *less* clear, not more.
 
-This repository contains art from three sources under three different licences.
+This repository contains art and fonts from several sources under different
+licences.
 They are not interchangeable, and the distinction matters if you are reading
 this to work out what you may do with these files.
 
 ## Original art — © 2026 Elusion Studios
 
-Everything under `/art` and `/assets` **except** the two sections below. This
-includes characters, enemies, tilesets, buildings, interiors, doors, teleporters
-and menu art.
+Everything under `/art`, `/assets` and `/audio` **except** the three sections
+below. This includes characters, enemies, tilesets, buildings, interiors, doors,
+teleporters, menu art, and the original audio (`/audio/ambience`, plus the REAPER
+session it was produced from).
 
 Commissioned from Ahvassa (https://ahvassa.itch.io/) with rights assigned to
 Elusion Studios, plus original work by Robert Ashley Clear.
@@ -161,6 +163,33 @@ forever and keeps the files behind them alive with it.
 
 If you are an artist and you recognise anything here as yours, please write to
 elusionrpg@gmail.com.
+
+## The emoji font — © Google, SIL Open Font License 1.1
+
+`assets/fonts/NotoColorEmoji.ttf` is **not** Elusion Studios' and is not covered
+by the section above. Read from the font's own metadata rather than assumed:
+
+```
+Copyright   Copyright 2022 Google Inc.
+Family      Noto Color Emoji
+Version     2.047 (noto-emoji:20240827)
+License     SIL Open Font License, Version 1.1
+License URL http://scripts.sil.org/OFL
+```
+
+The chat panel uses it so emoji render in colour rather than as boxes; the test
+suite checks it ships.
+
+**The OFL requires its text to travel with the font**, and that file is missing
+here. `assets/fonts/OFL.txt` should be copied from the `noto-emoji` release the
+font came from — it is shipped alongside it, and it is not reproduced from
+memory here because a mangled licence is worse than an absent one.
+`_test_third_party_licences()` fails until that file exists, so this cannot
+quietly stay unfixed.
+
+Nothing about that licence restricts using the font in this game, including
+commercially. The obligations are the notice, the licence text, and not selling
+the font on its own.
 
 ## Source code — MIT
 

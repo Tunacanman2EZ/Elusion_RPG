@@ -99,6 +99,8 @@ func _run_all() -> void:
 	_test_await_does_not_lose_work()
 	_test_helper_scripts_ascii()
 	_test_art_folders_are_licensed()
+	_test_third_party_licences()
+	_test_audio_paths()
 	_test_no_import_cache_references()
 	_test_no_unused_parameters()
 	_test_floor_coverage()
@@ -458,8 +460,14 @@ const LICENSED_ART_FOLDERS := {
 	"art/shophouses": "elusion",
 	"art/teleport": "elusion",
 	"art/tiles": "elusion",
-	"assets/fonts": "elusion",
 	"assets/themes": "elusion",
+	"audio/ambience": "elusion",
+
+	# Google, SIL Open Font License 1.1 - NOT Elusion Studios', and not
+	# Clockwork Raven's either. It held the folder's only file while the folder
+	# was classified "elusion", which is the fourth time a claim in
+	# assetlicense.md outlived the files it described.
+	"assets/fonts": "google-ofl",
 
 	# Caio Carlos / Clockwork Raven Studios, purchased under their asset licence.
 	# Credit is REQUIRED, not courtesy. The private submodule lives here.
@@ -480,7 +488,7 @@ func _test_art_folders_are_licensed() -> void:
 	var missing: Array[String] = []
 	var found: Array[String] = []
 
-	for root in ["res://art", "res://assets"]:
+	for root in ["res://art", "res://assets", "res://audio"]:
 		var dir := DirAccess.open(root)
 		if dir == null:
 			continue
@@ -538,7 +546,11 @@ func _test_art_folders_are_licensed() -> void:
 		% [found.size(), LICENSED_ART_FOLDERS.size()])
 
 
-const ART_EXTENSIONS := ["png", "jpg", "jpeg", "webp", "svg", "ttf", "otf", "tres"]
+# Audio counts: audio/ is an asset root like the others, and was scanned by
+# nothing until a font turned out to be misfiled and the same question got asked
+# of every folder that holds something somebody owns.
+const ART_EXTENSIONS := ["png", "jpg", "jpeg", "webp", "svg", "ttf", "otf", "tres",
+	"ogg", "wav", "mp3", "rpp"]
 
 
 func dir_path_of(root: String, entry: String) -> String:
@@ -742,6 +754,129 @@ func _mentions_word(haystack: String, word: String) -> bool:
 
 func _is_word_char(c: String) -> bool:
 	return c == "_" or (c >= "0" and c <= "9") or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z")
+
+
+# =============================================================================
+# A THIRD-PARTY LICENCE HAS TO SHIP WITH THE THING IT LICENCES
+# =============================================================================
+# Some licences are not just permission, they are an OBLIGATION to carry the
+# text. The SIL Open Font License is one: you may use the font in anything,
+# commercially included, provided the notice and the licence travel with it.
+#
+# assets/fonts/NotoColorEmoji.ttf is Google's, under OFL 1.1 - read out of the
+# font's own name table, not assumed:
+#
+#     Copyright 2022 Google Inc.
+#     SIL Open Font License, Version 1.1
+#     http://scripts.sil.org/OFL
+#
+# It shipped here with no licence file beside it, inside a folder assetlicense.md
+# claimed for Elusion Studios. That is the same mistake as the item tiles and the
+# behemoth crown, in a folder nobody had thought to look at, and it is the reason
+# this check exists rather than a note somewhere.
+#
+# THE FILE IS NOT WRITTEN FROM MEMORY. A licence transcribed approximately is
+# worse than one that is absent, because it looks discharged. OFL.txt ships in
+# the noto-emoji release the font came from; copy that one in.
+#
+# Keyed on the LICENSED file, not the folder: a font added later without its
+# licence is the failure to catch, and a folder-level rule would pass the moment
+# any one licence file existed.
+#
+# SEVERAL ACCEPTABLE NAMES, because the upstream project does not agree with
+# itself. googlefonts/noto-emoji's README links fonts/LICENSE and that link 404s;
+# a Google Fonts family download ships OFL.txt. Both are the same text. Insisting
+# on one spelling would mean fighting the check over a filename instead of
+# satisfying the licence, which is how a check gets switched off.
+const THIRD_PARTY_LICENCES := {
+	"res://assets/fonts/NotoColorEmoji.ttf": "res://assets/fonts",
+}
+
+const LICENCE_FILENAMES := ["OFL.txt", "OFL", "LICENSE", "LICENSE.txt", "LICENCE", "LICENCE.txt"]
+
+
+func _test_third_party_licences() -> void:
+	section("THIRD-PARTY LICENCES — the text ships with the thing it licences")
+
+	for asset in THIRD_PARTY_LICENCES:
+		var folder: String = THIRD_PARTY_LICENCES[asset]
+		if not FileAccess.file_exists(asset):
+			# The asset is gone, so the obligation is too. Say so rather than
+			# failing, and rather than silently passing.
+			print("  note  %s is not present; its licence is not required"
+				% asset.get_file())
+			continue
+
+		var found: String = ""
+		for name in LICENCE_FILENAMES:
+			if FileAccess.file_exists(folder.path_join(name)):
+				found = name
+				break
+
+		check("%s ships with its licence text" % asset.get_file(), found != "",
+			"none of %s found in %s. Copy it from the release the asset came from - a licence written out by hand is worse than an absent one, because it looks discharged."
+				% [", ".join(LICENCE_FILENAMES), folder])
+		if found != "":
+			print("         found %s" % folder.path_join(found))
+
+	print("  %d licensed third-party asset(s) checked" % THIRD_PARTY_LICENCES.size())
+
+
+# =============================================================================
+# AUDIO — A FILLED SLOT MUST POINT AT A FILE THAT EXISTS
+# =============================================================================
+# audio.gd's SOUNDS table is 31 named slots, each starting as "". Empty means
+# "not recorded yet", and audio.gd is explicit that this is silence on purpose
+# rather than an error - which is right, and is why the slots can be filled one
+# at a time as the sounds get made.
+#
+# A FILLED SLOT IS A DIFFERENT THING. audio.gd already guards it: a path that
+# does not resolve gets one push_warning and returns null. The gap is WHEN. That
+# warning fires the first time the sound is actually triggered, so a typo in
+# "music_crypt" stays invisible until somebody walks into the crypt, and a typo
+# in "player_death" until somebody dies. It is correct behaviour reported at the
+# wrong moment - the whole project's recurring failure shape.
+#
+# This asserts the same thing at commit time, before anyone plays.
+#
+# THE BUSES TOO, because they fail even more quietly. Every pooled player is
+# assigned to "SFX" and the music player to "Music". Rename a bus in
+# default_bus_layout.tres and Godot does not error - it silently routes those
+# players to Master, so the sound still plays and the volume sliders stop
+# working, which is a thing you would chase in the options screen for an hour.
+const AUDIO_BUSES := ["Master", "Music", "SFX"]
+
+
+func _test_audio_paths() -> void:
+	section("AUDIO — filled slots resolve, and the buses they play on exist")
+
+	var audio_script := require_script("res://src/systems/audio.gd", "audio.gd")
+	if audio_script == null:
+		return
+	var sounds: Dictionary = audio_script.get_script_constant_map().get("SOUNDS", {})
+
+	check("the SOUNDS table is readable", not sounds.is_empty(), "%d slots" % sounds.size())
+
+	var missing: Array[String] = []
+	var filled: int = 0
+	for id in sounds:
+		var path: String = String(sounds[id])
+		if path == "":
+			continue          # not recorded yet - silent on purpose
+		filled += 1
+		if not ResourceLoader.exists(path):
+			missing.append("%s -> %s" % [id, path])
+	missing.sort()
+	check("every filled sound slot points at a file that exists",
+		missing.is_empty(), "\n         ".join(missing))
+
+	for bus_name in AUDIO_BUSES:
+		check("the '%s' audio bus exists" % bus_name,
+			AudioServer.get_bus_index(bus_name) >= 0,
+			"players assigned to a missing bus fall back to Master, silently")
+
+	print("  %d of %d slots filled; %d bus(es) checked"
+		% [filled, sounds.size(), AUDIO_BUSES.size()])
 
 
 # =============================================================================
