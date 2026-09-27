@@ -434,9 +434,18 @@ func _add_line(channel: String, line: Dictionary) -> void:
 
 	# OLDEST OFF THE TOP, at LINES_KEPT. Without a ceiling a long session turns
 	# the log into a slowly growing pile of nodes nobody can scroll back to.
+	var trimmed: bool = false
 	while kept.size() > LINES_KEPT:
 		kept.pop_front()
 		feed["unread"] = true
+		trimmed = true
+
+	# AND THE SAME CEILING HAS TO REACH THE PICTURES. _pictures held every image
+	# anybody had ever posted, decoded, for the whole session - the line above it
+	# was long gone and the frames were not. Swept here rather than on a timer,
+	# because this is the moment a line stops being reachable.
+	if trimmed:
+		_sweep_pictures()
 
 	if channel == _channel and visible:
 		_render()
@@ -805,6 +814,45 @@ func _on_picture_clicked(event: InputEvent, image_id: String) -> void:
 	if click.button_index != MOUSE_BUTTON_LEFT:
 		return
 	_open_viewer(image_id)
+
+
+func _sweep_pictures() -> void:
+	"""Drop decoded pictures no line can reach any more.
+
+	WHY THIS EXISTS. _add_line caps each channel's log at LINES_KEPT and its
+	comment is explicit about why: an uncapped log is a slowly growing pile of
+	nodes. That cap was applied to the LINES and not to the pictures, so
+	_pictures kept the decoded frames of every image ever posted, keyed by id,
+	for as long as the session lasted. The line scrolled away; the memory did
+	not. In a busy world channel with UPLOAD_MAX_SIDE at 1024 that is megabytes
+	per picture, and animated ones hold one texture per frame.
+
+	It is a sweep rather than an eviction policy on purpose. An LRU would need a
+	size to tune and a guess at the right number; the log's own window is
+	already the correct answer, because an image nothing can scroll to is an
+	image nobody can ask to see.
+
+	NOTHING ON SCREEN BREAKS. Textures are reference counted, so a thumbnail or
+	the open viewer keeps its own frames alive after the id leaves this
+	dictionary. _viewing is held anyway, so closing and reopening the overlay
+	does not refetch.
+	"""
+	var live: Dictionary = {}
+	for channel in CHANNELS:
+		if not _feeds.has(channel):
+			continue
+		for line in _feeds[channel]["lines"]:
+			if not (line is Dictionary):
+				continue
+			var id: String = str(line.get("image", ""))
+			if id != "":
+				live[id] = true
+	if _viewing != "":
+		live[_viewing] = true
+
+	for id in _pictures.keys():
+		if not live.has(id):
+			_pictures.erase(id)
 
 
 func _open_viewer(image_id: String) -> void:

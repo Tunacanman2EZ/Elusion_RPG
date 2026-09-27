@@ -101,6 +101,7 @@ func _run_all() -> void:
 	_test_art_folders_are_licensed()
 	_test_third_party_licences()
 	_test_audio_paths()
+	_test_chat_picture_sweep()
 	_test_no_import_cache_references()
 	_test_no_unused_parameters()
 	_test_floor_coverage()
@@ -877,6 +878,40 @@ func _test_audio_paths() -> void:
 
 	print("  %d of %d slots filled; %d bus(es) checked"
 		% [filled, sounds.size(), AUDIO_BUSES.size()])
+
+
+# =============================================================================
+# THE CHAT PICTURE CACHE IS BOUNDED BY THE LOG, NOT BY THE SESSION
+# =============================================================================
+# chatpanel.gd caps each channel at LINES_KEPT and its own comment says why: an
+# uncapped log is "a slowly growing pile of nodes nobody can scroll back to".
+# That cap reached the LINES and not the pictures. _pictures held the decoded
+# frames of every image anybody had posted, keyed by id, for the whole session -
+# the line was long gone and the megabytes were not. At UPLOAD_MAX_SIDE 1024 that
+# is a few MB per picture, and an animated one holds a texture per frame.
+#
+# _sweep_pictures() drops any id no kept line can reach, called at the moment a
+# line is trimmed. No cache size to tune: the log's window is already the right
+# answer, because an image nothing can scroll to is an image nobody can open.
+#
+# A TEXT CHECK, and openly a regression guard rather than a behavioural test.
+# Asserting the real thing would mean driving a live panel through 100+ lines
+# with pictures attached, and the failure has no symptom short of watching memory
+# climb over an hour of busy chat - which is exactly how it went unnoticed.
+func _test_chat_picture_sweep() -> void:
+	section("CHAT PICTURES — the cache is swept, not kept for the session")
+
+	var src: String = FileAccess.get_file_as_string("res://src/ui/chat/chatpanel.gd")
+	check("chatpanel.gd is readable", src.length() > 0)
+	check("_pictures is erased somewhere", src.contains("_pictures.erase("),
+		"without this every image posted stays decoded in memory for the session")
+	check("and the sweep is wired to the line trim",
+		src.contains("_sweep_pictures()") and src.contains("if trimmed:"),
+		"the sweep exists but nothing calls it when a line scrolls off")
+	check("the open viewer is spared", src.contains("live[_viewing]"),
+		"closing and reopening a picture would refetch it from the server")
+
+	print("  the log window bounds the cache; no separate size to tune")
 
 
 # =============================================================================
