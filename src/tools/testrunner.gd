@@ -106,6 +106,7 @@ func _run_all() -> void:
 	_test_security_policy()
 	_test_skills_are_not_pushed()
 	_test_god_mode_earns_nothing()
+	_test_teleport_is_wired()
 	_test_unauthorized_is_answered()
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
@@ -1268,6 +1269,110 @@ func _test_god_mode_earns_nothing() -> void:
 		"the surprising half is not that you stopped dying")
 
 	print("  no damage, no death, no floating number, and no XP")
+
+
+# =============================================================================
+# TELEPORT IS JOINED UP, AND NOBODY LANDS IN A WALL
+# =============================================================================
+# POST /api/staff/teleport has existed for a while and characterhud.gd has always
+# known how to RECEIVE one. Nothing had ever ISSUED one - the feature was built
+# from both ends and never joined in the middle.
+#
+# TWO SEPARATE RULES, and the second is the one with teeth:
+#
+#   NOBODY STACKS. The server already handles this: teleport_offset() packs a
+#   group into hexagonal rings at TELEPORT_SPACING and hands each client its own
+#   final coordinates. But slot 0 is (0,0) - dead on the destination - and the
+#   destination is wherever the person who pressed the button is standing. So
+#   the panel asks for a spot BESIDE itself, never its own.
+#
+#   NOBODY LANDS IN THE SCENERY. That one the server cannot do, because it has
+#   no idea where the walls are. Fifty people in the town square puts the outer
+#   ring 192px out. The client holds the collision shapes, so the nudge lives
+#   there - in the RECEIVE path, which every teleported player goes through, not
+#   only the one issued from this panel.
+func _test_teleport_is_wired() -> void:
+	section("TELEPORT — issued, and landed somewhere a character fits")
+
+	var panel: String = FileAccess.get_file_as_string("res://src/ui/owner/ownerpanel.gd")
+	var hud: String = FileAccess.get_file_as_string("res://src/ui/characterhud.gd")
+	var spot: String = FileAccess.get_file_as_string("res://src/shared/safespot.gd")
+	check("the three files are readable",
+		panel.length() > 0 and hud.length() > 0 and spot.length() > 0)
+
+	# SOMETHING ISSUES ONE NOW. This is the whole gap that was there.
+	check("the panel posts to /api/staff/teleport",
+		panel.contains("\"/api/staff/teleport\""),
+		"the route and the landing both existed; nothing ever asked")
+	for action in ["\"bring\"", "\"goto\"", "\"everyone\""]:
+		check("the panel binds %s" % action, panel.contains(".bind(%s)" % action),
+			"three buttons, three actions, one handler")
+
+	# BESIDE, NOT ON. start_ring 1 is what "never the anchor itself" means, and
+	# an anchor of body.global_position is what makes it "beside ME".
+	check("a teleport here asks for a spot beside the issuer",
+		panel.contains("SafeSpot.find(body, body.global_position, 1)"),
+		"start_ring 0 would put somebody inside whoever pressed the button")
+	check("and going to a player lands beside them too",
+		panel.contains("SafeSpot.find(body, them, 1)"),
+		"landing on a player is what 'teleport to player' must not mean")
+
+	# GOING SOMEWHERE IS LOCAL. Position is client-written, so asking the server
+	# for permission to move yourself would be theatre - and can_act_on() is
+	# strictly-greater, so the route would refuse acting on yourself anyway.
+	var goto_at: int = panel.find("func _teleport_go_to_them(")
+	check("going to a player moves you locally", goto_at != -1
+		and panel.find("AreaRegistry.go_to(area, spot)", goto_at) != -1,
+		"a request to move yourself would be refused by can_act_on anyway")
+	# COMMENTS STRIPPED, AND BOUNDED TO THE FUNCTION. This went red first on
+	# correct code, for the reason the entry in CLAUDE.md now describes: the
+	# comment inside _teleport_go_to_them() explaining why it does NOT post
+	# names the route it does not post to.
+	var goto_end: int = panel.find("\nfunc ", goto_at + 8)
+	var posts_at: int = _first_code_index(panel, "/api/staff/teleport", goto_at)
+	check("...and posts no teleport order for it",
+		posts_at == -1 or (goto_end != -1 and posts_at > goto_end),
+		"nobody else is being moved, so nothing should be queued for anybody")
+
+	# THE RECEIVE PATH IS THE ONE THAT PROTECTS EVERY PLAYER, not just this panel.
+	check("an arriving teleport is checked against the map",
+		hud.contains("SafeSpot.find(body, spot, 0)"),
+		"the server chose those coordinates knowing nothing about walls")
+	check("...trying the server's own spot first",
+		hud.contains(", spot, 0)"),
+		"start_ring 1 would move a correctly-spaced group off its arrangement")
+	check("...and going anyway if nothing is clear",
+		hud.contains("landing = spot"),
+		"refusing would strand somebody being moved OUT of a bad place")
+
+	# THE HELPER'S OWN CONTRACT.
+	check("SafeSpot refuses rather than inventing a spot",
+		spot.contains("return Vector2.INF"),
+		"landing outside the map is worse than not moving")
+	check("it mirrors the server's spacing", spot.contains("const SPACING := 48.0"),
+		"TELEPORT_SPACING in app.py is 48.0 - these are kept in step by hand")
+	check("it tests the floor AND the walls",
+		spot.contains("_on_navigable_ground(") and spot.contains("_nothing_in_the_way("),
+		"navigation answers 'off the map'; physics answers 'in a wall'")
+	check("and a scene with no navmesh is not refused outright",
+		spot.contains("NavigationServer2D.map_get_regions(map).is_empty()"),
+		"elusion.tscn has no NavigationRegion2D; town would fail every check")
+	check("the shape query excludes the body itself",
+		spot.contains("query.exclude = [body.get_rid()]"),
+		"a character collides with its own position, so nowhere would read clear")
+	check("and uses the body's own mask rather than a typed number",
+		spot.contains("query.collision_mask = body.collision_mask"),
+		"a layer added later would not reach a number written here")
+
+	# THE ARMING. "Move everyone" broadcasts to the whole server.
+	check("moving everyone is armed before it fires",
+		panel.contains("_armed_action != \"everyone\""),
+		"the widest button on the panel, one press from a typo")
+	check("and _button_for knows it, so it disarms",
+		panel.contains("return tp_everyone_button"),
+		"without the entry the button reads Confirm? for ever after a timeout")
+
+	print("  server spaces the group, the client keeps it out of the walls")
 
 
 func _first_code_index(src: String, needle: String, from: int) -> int:

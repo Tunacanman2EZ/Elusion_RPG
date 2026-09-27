@@ -439,6 +439,45 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Give item"
 
+[node name="teleportrow" type="HBoxContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="tpbringbutton" type="Button" parent="frame/margin/rows/teleportrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Move the account in the box to where you are standing - your area AND your coordinates. Refused by the server for anyone who outranks you."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Bring here"
+
+[node name="tpgotobutton" type="Button" parent="frame/margin/rows/teleportrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Go to them instead. This moves only you, locally - no order is queued for anybody else."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Go to them"
+
+[node name="tpeveryonebutton" type="Button" parent="frame/margin/rows/teleportrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+tooltip_text = "Move EVERY account on the server to where you are standing, spaced out so they do not stack, and announce it in chat. Owner only. Press twice to confirm."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Bring everyone"
+
+[node name="teleportstatus" type="Label" parent="frame/margin/rows"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94902, 0.85098, 0.61961, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 3
+
 [node name="godmoderow" type="HBoxContainer" parent="frame/margin/rows"]
 layout_mode = 2
 theme_override_constants/separation = 5

@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 720 checks at the time of writing; if that number and the one the suite
+failure. 740 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -304,6 +304,67 @@ straggler and now delegates. What is left:
   the thing it is testing it tests nothing. Its own comment says so. Leave it.
 - Nothing else. If a grep turns up a third, it is new and it is a mistake.
 
+### Teleport: the server spaces the group, the client keeps it out of the walls
+
+`POST /api/staff/teleport` existed and `characterhud.gd` had always known how to
+*receive* one. **Nothing ever issued one** — the feature was built from both ends
+and never joined in the middle. The owner panel has the three buttons now:
+**Bring here**, **Go to them**, **Bring everyone**.
+
+Two separate rules, and mixing them up is how somebody ends up in the scenery.
+
+**Nobody stacks — and the server already handles that.** `teleport_offset()`
+packs a group into hexagonal rings at `TELEPORT_SPACING` (48px) and hands each
+client its own final coordinates, with a comment saying the client must not
+repeat the arithmetic. Correct, and untouched. The one gap: `teleport_offset(0)`
+is `(0, 0)`, dead on the destination — and the destination is wherever the person
+who pressed the button is standing. So the panel asks `SafeSpot.find(..., 1)` for
+a spot **beside** itself, never its own.
+
+**Nobody lands in a wall — and the server cannot help.** It has no collision
+data. Fifty people in the town square puts the outer ring 192px out, which in a
+tight room is inside the scenery. The client holds the shapes, so the nudge lives
+in the **receive** path, where *every* teleported player goes through it rather
+than only the one issued from this panel.
+
+`SafeSpot` tests **both**, because neither is enough alone:
+
+- **Navigation** answers *"off the map"* — a point past the edge of the world is
+  clear of every collider precisely because there is nothing there. But only
+  `field.tscn` and `bossarena.tscn` carry a `NavigationRegion2D`; `elusion.tscn`
+  does not, so a navigation-only test silently passes everything in town.
+  `map_get_closest_point()` always returns *something*, so the **distance back**
+  is the answer, not the call succeeding.
+- **Physics** answers *"in a wall"*, works everywhere, uses the body's own
+  `collision_mask` rather than a number typed in the helper, and excludes the
+  body's own RID — a character collides with its own position, so without that
+  exclusion nowhere ever reads as clear.
+
+**It refuses rather than inventing.** Nothing clear within three rings returns
+`Vector2.INF` and the caller says so. Landing a player outside the map is worse
+than not moving them: *"it did nothing and told me"* is a bug report, *"it put me
+in the void"* is a lost character. The one exception is an **arriving** teleport,
+which goes anyway to the spot it was given — refusing would strand somebody being
+moved *out* of a bad place, and that is the single case where the server knows
+something the client does not.
+
+**"Go to them" sends no request.** Position is client-written, so moving yourself
+is a local act; `AreaRegistry.go_to()` does it. Asking permission would be
+theatre — and `/api/staff/teleport` runs through `can_act_on()`, which is
+strictly-greater and so refuses acting on yourself anyway.
+
+**"Bring everyone" is armed-then-confirmed**, like a ban. It moves every account
+on the server and posts a broadcast; it is the widest button on the panel.
+`_button_for()` has an `"everyone"` entry so `_disarm()` can put the label back —
+without it the button reads `Confirm?` for ever after a timeout, which is the
+trap `ARM_SECONDS` exists to prevent.
+
+`/api/staff/user/<username>` now returns `x` and `y` beside the `area` it already
+returned, which is what "go to them" needs to land beside rather than at an
+area's default spawn. Position is where a character is standing in a game, not
+personal data about a person — unlike the addresses on that route, which is why
+those are gated by `can_act_on()` and this is not.
+
 ### God mode is dev-and-owner, and the ordering is the whole feature
 
 `Ctrl+G`, or the switch on the owner panel, turns damage off so the people who
@@ -459,6 +520,28 @@ will.
 
 Scenes are worse: there are 25 `preload("res://scene/...")` paths. That is the
 reason `src/` was reorganised to mirror `scene/` and not the other way round.
+
+### A brand-new `class_name` is invisible until the editor rescans
+
+Same cache as the next entry, different direction, and it costs the same
+afternoon. `src/shared/safespot.gd` was added with `class_name SafeSpot` and the
+next headless run reported **`characterhud.gd will not compile`** — because
+`.godot/global_script_class_cache.cfg` had never heard of `SafeSpot`, and a
+headless run only *reads* that file.
+
+So after adding any file with a new `class_name`, **open the editor once before
+running the suite**, or:
+
+```
+godot --headless --editor --quit
+```
+
+which does the filesystem scan and writes the cache without opening a window.
+Confirmed on 4.6.1: `SafeSpot NOT in the class cache` → rescan → 740 passed.
+
+The compile check catches it immediately and names the file, which is the whole
+reason that check runs first — the failure otherwise arrives as "every teleport
+test failed" and sends you looking at teleports.
 
 ### Moving a script leaves Godot's caches lying about where it is
 
@@ -696,8 +779,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 720 passed, 0 failed | 0 |
-| absent | 688 passed, 0 failed, 12 skipped | **0** |
+| present | 740 passed, 0 failed | 0 |
+| absent | 708 passed, 0 failed, 12 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.

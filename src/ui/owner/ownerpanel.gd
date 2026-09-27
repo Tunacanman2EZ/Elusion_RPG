@@ -78,6 +78,13 @@ extends Control
 @onready var item_input: LineEdit = get_node_or_null("%iteminput")
 @onready var item_count_input: LineEdit = get_node_or_null("%itemcountinput")
 @onready var item_button: Button = get_node_or_null("%itembutton")
+# THE TELEPORT ROW. Reuses %usernameinput, the same box the view and sanction
+# rows read, so there is one place a name is typed.
+@onready var tp_bring_button: Button = get_node_or_null("%tpbringbutton")
+@onready var tp_goto_button: Button = get_node_or_null("%tpgotobutton")
+@onready var tp_everyone_button: Button = get_node_or_null("%tpeveryonebutton")
+@onready var teleport_status: Label = get_node_or_null("%teleportstatus")
+
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
 @onready var testing_status: Label = get_node_or_null("%testingstatus")
 
@@ -157,6 +164,15 @@ func _ready() -> void:
 		item_button.pressed.connect(_on_item_pressed)
 	if item_input != null:
 		item_input.text_submitted.connect(func(_t): _on_item_pressed())
+
+	if tp_bring_button != null and not tp_bring_button.pressed.is_connected(_on_teleport_pressed):
+		tp_bring_button.pressed.connect(_on_teleport_pressed.bind("bring"))
+	if tp_goto_button != null and not tp_goto_button.pressed.is_connected(_on_teleport_pressed):
+		tp_goto_button.pressed.connect(_on_teleport_pressed.bind("goto"))
+	if tp_everyone_button != null \
+			and not tp_everyone_button.pressed.is_connected(_on_teleport_pressed):
+		tp_everyone_button.pressed.connect(_on_teleport_pressed.bind("everyone"))
+	_set_teleport_status("")
 
 	# GOD MODE. A CheckButton rather than a Button, because it has two states
 	# and the control should say which one it is in without being pressed.
@@ -253,6 +269,11 @@ func _button_for(action: String) -> Button:
 			return unban_button
 		"maintenance":
 			return maintenance_button
+		"everyone":
+			# So _disarm() puts "Bring everyone" back. Without this entry the
+			# button stays reading "Confirm?" for ever after a timeout, which is
+			# the trap ARM_SECONDS exists to prevent.
+			return tp_everyone_button
 	return null
 
 
@@ -487,6 +508,169 @@ func _on_god_mode_toggled(pressed: bool) -> void:
 		_set_testing_status("[GM] god mode OFF.")
 
 	print("[GM] god mode %s (%s)" % ["ON" if pressed else "OFF", Api.username])
+
+
+# =============================================================================
+# TELEPORT
+# =============================================================================
+# The server has had POST /api/staff/teleport for a while and characterhud.gd has
+# always known how to RECEIVE one. Nothing had ever ISSUED one - the feature was
+# built from both ends and never joined in the middle.
+#
+# THREE ACTIONS, AND ONLY TWO OF THEM ARE REQUESTS:
+#
+#   bring     the named account comes to where you are standing
+#   everyone  every account on the server does, spaced by the server, announced
+#             in chat - owner only, and armed-then-confirmed like a ban
+#   goto      YOU move to them. No order is queued for anybody: position is
+#             client-written, so going somewhere is a local act and sending a
+#             request for it would be theatre.
+#
+# WHY A SAFE SPOT IS COMPUTED FOR EVERY ONE OF THEM. teleport_offset(0) in
+# app.py is (0, 0), so a single teleport lands exactly on the destination - and
+# the destination is wherever the person who pressed the button is standing. Two
+# characters in one spot is what the request asked for and not what anybody
+# meant. For "everyone" it is worse: slot 0 is somebody, and they land inside
+# the owner.
+
+func _on_teleport_pressed(action: String) -> void:
+	# The client gate is a courtesy; require_role("dev") and the owner check on
+	# `everyone` are the real ones, on the side the player does not control.
+	if not Api.role_at_least("dev") and not Api.is_owner:
+		return
+
+	var body: CharacterBody2D = get_tree().get_first_node_in_group("player") as CharacterBody2D
+	if body == null:
+		_set_teleport_status("[GM] no character in the world to teleport to or from.")
+		return
+
+	if action == "goto":
+		await _teleport_go_to_them(body)
+		return
+
+	if action == "everyone":
+		# ARMED, like a ban. This moves every account on the server and posts a
+		# broadcast; it is the single widest button on this panel.
+		if _armed_action != "everyone":
+			_disarm()
+			_armed_action = "everyone"
+			_armed_until = Time.get_ticks_msec() / 1000.0 + ARM_SECONDS
+			if tp_everyone_button != null:
+				_armed_label = tp_everyone_button.text
+				tp_everyone_button.text = "Confirm?"
+			_set_teleport_status("[GM] move EVERYONE here? press again within %d seconds."
+				% int(ARM_SECONDS))
+			return
+		_disarm()
+
+	var username: String = "" if username_input == null else username_input.text.strip_edges()
+	if action == "bring" and username == "":
+		_set_teleport_status("[GM] type a username first.")
+		return
+
+	# WHERE THEY LAND: beside the person who pressed the button, never on them.
+	# start_ring 1 skips the anchor itself for exactly that reason.
+	var spot: Vector2 = SafeSpot.find(body, body.global_position, 1)
+	if spot == Vector2.INF:
+		_set_teleport_status("[GM] nowhere clear to put anybody here - move and try again.")
+		return
+
+	var payload: Dictionary = {"x": spot.x, "y": spot.y}
+	if action == "everyone":
+		payload["everyone"] = true
+	else:
+		payload["username"] = username
+
+	var res: Dictionary = await Api.post("/api/staff/teleport", payload)
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+
+	if not res.get("ok", false):
+		var status: int = int(res.get("status", 0))
+		if status == 0:
+			_set_teleport_status("[GM] could not reach the server.")
+		elif status == 403:
+			_set_teleport_status("[GM] %s" % str(res.get("error", "refused")))
+		elif status == 404:
+			_set_teleport_status("[GM] no account called '%s' - or out of your reach." % username)
+		else:
+			_set_teleport_status("[GM] refused (%d): %s" % [status, str(res.get("error", ""))])
+		return
+
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if action == "everyone":
+		_set_teleport_status("[GM] moving %d players to %s, spaced %dpx apart."
+			% [int(data.get("moved", 0)), str(data.get("area", "")),
+			   int(float(data.get("spacing", 0.0)))])
+	else:
+		# QUEUED, NOT DONE. The order sits until their client polls and acks it,
+		# so saying "moved" would be a lie about somebody who is offline.
+		_set_teleport_status("[GM] '%s' will be moved to %s on their next poll."
+			% [username, str(data.get("area", ""))])
+
+
+func _teleport_go_to_them(body: CharacterBody2D) -> void:
+	var username: String = "" if username_input == null else username_input.text.strip_edges()
+	if username == "":
+		_set_teleport_status("[GM] type a username first.")
+		return
+
+	var res: Dictionary = await Api.get_json("/api/staff/user/%s" % username.uri_encode())
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_set_teleport_status("[GM] no account called '%s' - or this account is not staff."
+			% username)
+		return
+
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	var characters: Array = data.get("characters", []) if data.get("characters") is Array else []
+	if characters.is_empty():
+		_set_teleport_status("[GM] '%s' has no characters to stand next to." % username)
+		return
+
+	# THE ONE THEY PLAYED LAST. A staff account with four slots is four places,
+	# and the one they are actually in is the most recently saved.
+	var best: Dictionary = {}
+	for entry in characters:
+		if not (entry is Dictionary):
+			continue
+		if best.is_empty() or int(entry.get("updated_at", 0)) > int(best.get("updated_at", 0)):
+			best = entry
+	if best.is_empty():
+		_set_teleport_status("[GM] '%s' has no readable character." % username)
+		return
+
+	var area: String = str(best.get("area", ""))
+	if not AreaRegistry.has_area(area):
+		_set_teleport_status("[GM] '%s' is in '%s', which this build does not know."
+			% [username, area])
+		return
+
+	var them := Vector2(float(best.get("x", 0.0)), float(best.get("y", 0.0)))
+
+	# BESIDE THEM, NEVER ON THEM - start_ring 1. And if this build cannot find a
+	# clear spot, do not go: landing in the scenery or off the edge of the map is
+	# worse than a line saying it did not happen.
+	var spot: Vector2 = SafeSpot.find(body, them, 1)
+	if spot == Vector2.INF:
+		_set_teleport_status("[GM] no clear spot next to '%s' - they may be in a corner."
+			% username)
+		return
+
+	# NO REQUEST. Position is client-written, so moving yourself is a local act;
+	# posting for permission to do it would be theatre, and /api/staff/teleport
+	# would refuse anyway - it runs through can_act_on(), which is strictly
+	# greater and so refuses acting on yourself.
+	_set_teleport_status("[GM] going to '%s' in %s." % [username, area])
+	AreaRegistry.go_to(area, spot)
+
+
+func _set_teleport_status(line: String) -> void:
+	if teleport_status == null:
+		return
+	teleport_status.text = line
+	teleport_status.visible = line != ""
 
 
 func _refresh_maintenance() -> void:

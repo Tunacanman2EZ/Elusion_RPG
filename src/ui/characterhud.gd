@@ -886,7 +886,31 @@ func _read_teleport(order) -> void:
 	var of_many: int = int(order.get("of", 1))
 
 	if AreaRegistry.has_area(area):
-		AreaRegistry.go_to(area, spot)
+		# THE SERVER PICKED THIS SPOT WITH NO IDEA WHERE THE WALLS ARE.
+		#
+		# It spaces a group properly - teleport_offset() packs everyone into
+		# hexagonal rings at TELEPORT_SPACING so nobody stacks, and it hands each
+		# client its own final coordinates rather than the arithmetic. That part
+		# is right and this code does not second-guess it.
+		#
+		# What it cannot do is look at the map. Move fifty people into the town
+		# square and the outer ring is 192px out, which in a tight room is inside
+		# the scenery. So the spot is checked here, where the collision shapes
+		# are, and nudged to the nearest clear one on the same hex grid the
+		# server used. start_ring 0: the server's own choice is tried first,
+		# because it is usually right and it is what keeps a moved group looking
+		# arranged.
+		var body: CharacterBody2D = get_tree().get_first_node_in_group("player") as CharacterBody2D
+		var landing: Vector2 = SafeSpot.find(body, spot, 0)
+		if landing == Vector2.INF:
+			# NOTHING CLEAR WITHIN THREE RINGS. Go anyway, to the spot we were
+			# given: refusing a staff teleport would strand somebody who was
+			# being moved OUT of a bad place, and this is the one case where the
+			# server knows something the client does not.
+			push_warning("Teleport %d: no clear spot near (%.0f, %.0f) in %s."
+				% [teleport_id, spot.x, spot.y, area])
+			landing = spot
+		AreaRegistry.go_to(area, landing)
 		if of_many > 1:
 			_push_message("%s moved everyone to %s." % [by, area], Color(1.0, 0.82, 0.42))
 		else:
