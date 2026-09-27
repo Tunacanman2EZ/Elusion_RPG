@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 688 checks at the time of writing; if that number and the one the suite
+failure. 700 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -606,8 +606,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 688 passed, 0 failed | 0 |
-| absent | 656 passed, 0 failed, 12 skipped | **0** |
+| present | 700 passed, 0 failed | 0 |
+| absent | 668 passed, 0 failed, 12 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.
@@ -875,6 +875,49 @@ All three sabotage-tested, and `_test_chat_deletions_reach_the_client()` is a
 all `_ready()` would have done that the function reads), and asks. Only the two
 wiring facts — that the poll reads `removed`, and that it does so after the
 additions — are checked as text, because no bare instance can prove them.
+
+### Deleting inert code is how you find out what it was for
+
+E-2 closed by making all six skills server-granted, which left machinery behind
+that *looks* dead and is not the same kind of dead:
+
+- **`PUT /api/character/skills` writes nothing.** `VALID_SKILLS` and
+  `SERVER_OWNED_SKILLS` are the same six, so the drop filter empties the parsed
+  rows every time. The route validates a body thoroughly and discards it.
+- The route's **skill-level clamp**, its **DELETE** and its **INSERT** therefore
+  all run on rows that never land.
+
+The instinct is to delete all of it. **Don't.** There are two different things
+here and only one is rot:
+
+**Rot is a comment that is false.** That block said *"skills have no server-side
+grant path yet"* and *"fine for the four skills the client still grants"* — there
+are none, and there has been a grant path since E-2 closed. A false comment is
+worse than no comment because it is trusted. Those are corrected.
+
+**Inert is generic code with nothing to do today.** The clamp is the thing
+standing between a modified client and a level of 2³¹ *the day a seventh skill is
+the client's to grant* — which is exactly when the drop filter stops catching
+everything. It is not wrong, not a duplicate, not stale. It has no work right
+now. Deleting a guardrail because it currently has nothing to guard is how you
+find out what it was for.
+
+The distinction that decides it: **does this code state something false, or is it
+simply not on today's path?** The first gets fixed, the second gets a comment
+saying why it stays.
+
+The ceiling that *is* load-bearing today is in `_grant_skill_xp()`, which caps
+every server grant — the path everything actually takes.
+
+**What was genuinely worth removing is on the client.** `serverstorage.gd` pushed
+all six skills through `_put_if_changed()` on every save. Since the SERVER moves
+those levels on almost every kill, the fingerprint changed constantly — so nearly
+every save bought a round trip whose entire effect was to be validated and thrown
+away. The push and `_skills_body()` are gone; `SKILL_IDS` stays, because the read
+side still unpacks what the server sends down.
+
+That asymmetry is the shape of the whole thing: **the useless work was the
+request, not the code that received it.**
 
 ### Godot's warnings don't reach the headless suite, so one is checked by text
 

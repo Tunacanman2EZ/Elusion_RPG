@@ -156,7 +156,8 @@ func _seed_fingerprints(slots: Array, account: Dictionary) -> void:
 		_last_pushed["save:%d" % index] = JSON.stringify(_save_fingerprint(index, slot))
 		_last_pushed["status:%d" % index] = JSON.stringify(_status_body(index, slot))
 		_last_pushed["inventory:%d" % index] = JSON.stringify(_inventory_body(index, slot))
-		_last_pushed["skills:%d" % index] = JSON.stringify(_skills_body(index, slot))
+		# No "skills:%d" seed, because nothing pushes skills any more. See
+		# _push_slot().
 
 	_last_pushed["lusions"] = JSON.stringify(_lusions_body(account))
 	_last_pushed["bank"] = JSON.stringify(_bank_body(account))
@@ -417,16 +418,6 @@ func _inventory_body(index: int, slot: Dictionary) -> Dictionary:
 	}
 
 
-func _skills_body(index: int, slot: Dictionary) -> Dictionary:
-	var skills: Dictionary = {}
-	for skill_id in SKILL_IDS:
-		skills[skill_id] = {
-			"level": _int(slot.get(skill_id, 1), 1),
-			"xp":    _int(slot.get(skill_id + "_xp", 0)),
-		}
-	return {"slot": index, "skills": skills}
-
-
 func _lusions_body(account: Dictionary) -> Dictionary:
 	return {"lusions": _int(account.get("lusions", 0))}
 
@@ -446,7 +437,32 @@ func _push_slot(index: int, slot: Dictionary) -> void:
 		_save_fingerprint(index, slot))
 	await _put_if_changed("status:%d" % index, "/api/player/status", _status_body(index, slot))
 	await _put_if_changed("inventory:%d" % index, "/api/character/inventory", _inventory_body(index, slot))
-	await _put_if_changed("skills:%d" % index, "/api/character/skills", _skills_body(index, slot))
+
+	# SKILLS ARE NOT PUSHED, and this is the last piece of E-2.
+	#
+	# All six are server-granted now - attack at the kill, fishing and cooking
+	# against items the server consumed, defense/agility/magic through
+	# /api/skill/train. PUT /api/character/skills drops every skill name it
+	# accepts, so the call could not write anything: VALID_SKILLS and
+	# SERVER_OWNED_SKILLS are the same six on the server, and test_gathering.py
+	# holds that ("every skill the route accepts is a skill it drops").
+	#
+	# WHICH MADE THIS THE MOST EXPENSIVE NO-OP IN THE CLIENT. _put_if_changed
+	# only sends when the body changes - and the body is the six skill levels,
+	# which the SERVER moves on almost every kill. So the fingerprint changed
+	# constantly, and each change bought a round trip whose entire effect was to
+	# be validated and thrown away. A quiet request per kill, for nothing.
+	#
+	# THE ROUTE STAYS ON THE SERVER and still answers 200. That is deliberate and
+	# not about this client: an un-updated build still sends all six every save,
+	# and a 400 over a field it may no longer set would break saving for it
+	# entirely. This is the client catching up with the server, not the server
+	# changing.
+	#
+	# TO PUT IT BACK, if a seventh skill is ever the client's to grant: rebuild
+	# the body from SKILL_IDS and add one _put_if_changed line here. SKILL_IDS
+	# stays either way - the READ side still needs it to unpack what the server
+	# sends down.
 
 
 func _push_account(account: Dictionary) -> void:

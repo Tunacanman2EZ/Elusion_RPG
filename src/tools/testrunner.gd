@@ -104,6 +104,7 @@ func _run_all() -> void:
 	_test_chat_picture_sweep()
 	_test_chat_deletions_reach_the_client()
 	_test_security_policy()
+	_test_skills_are_not_pushed()
 	_test_unauthorized_is_answered()
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
@@ -1088,6 +1089,75 @@ func _test_security_policy() -> void:
 		"a documented security address is a documented spam target")
 
 	print("  the page is checked against the client, not trusted")
+
+
+# =============================================================================
+# THE CLIENT DOES NOT PUSH SKILLS
+# =============================================================================
+# The last piece of E-2. All six skills are server-granted, and
+# PUT /api/character/skills drops every skill name it accepts - so the client's
+# push could not write anything.
+#
+# It was not free, though, which is why this is a check and not a tidy-up.
+# _put_if_changed() only sends when the body changes, and the body is the six
+# skill levels, which the SERVER moves on almost every kill. The fingerprint
+# changed constantly, so nearly every save bought a round trip whose whole effect
+# was to be validated and thrown away.
+#
+# Text checks, because proving it needs a live server, a character and a kill.
+func _test_skills_are_not_pushed() -> void:
+	section("SKILLS — the client stopped pushing what it cannot write")
+
+	var src: String = FileAccess.get_file_as_string("res://src/systems/serverstorage.gd")
+	check("serverstorage.gd is readable", src.length() > 0)
+
+	check("nothing pushes /api/character/skills any more",
+		not src.contains("\"/api/character/skills\""),
+		"the route drops every skill it accepts; the request buys nothing")
+	check("and the body builder went with it",
+		not src.contains("func _skills_body("),
+		"an uncalled builder is the thing that gets wired back up by accident")
+
+	# THE OTHER THREE SECTIONS MUST STILL GO. Removing one line from a list of
+	# four awaits is a very easy way to remove two.
+	for path in ["/api/save", "/api/player/status", "/api/character/inventory"]:
+		check("%s is still pushed" % path, src.contains("\"%s\"" % path),
+			"this is a skills change, not a save change")
+
+	# THE SEED HAS TO MATCH THE PUSH. _last_pushed is seeded on load so the first
+	# save of a session does not push everything; a seed for a section nobody
+	# pushes is harmless, but a seed MISSING for one that is pushed makes that
+	# section push once per session forever.
+	for key in ["save:%d", "status:%d", "inventory:%d"]:
+		check("the seed still covers %s" % key.replace("%d", "N"),
+			src.contains("_last_pushed[\"%s\"" % key),
+			"a section pushed but not seeded sends once every session for nothing")
+	check("and no longer seeds skills",
+		not src.contains("_last_pushed[\"skills:%d\"] = JSON"),
+		"seeding a section nobody pushes is a fingerprint nobody compares")
+
+	# THE READ SIDE HAS TO SURVIVE THE PUSH BEING REMOVED. The server still SENDS
+	# all six on every character load; if unpacking them goes too, a character
+	# comes back with no skills and nothing errors.
+	#
+	# THESE TWO CHECKS USED TO NAME SKILL_IDS, AND BOTH PASSED A SABOTAGE THAT
+	# RENAMED IT. `src.contains("const SKILL_IDS")` matches inside
+	# "const SKILL_IDS_UNUSED" - the same whole-word trap
+	# _test_no_unused_parameters() documents, where a parameter called `slot`
+	# counts itself as used because the body says `slot_index`.
+	#
+	# Tightening the match would have been the wrong fix. A consistent RENAME
+	# breaks nothing, so a check that fails on one is noise; what must not happen
+	# is the unpacking DISAPPEARING. So these ask about the behaviour instead of
+	# the name, which is both correct and rename-proof.
+	check("the read side still takes skills off the server response",
+		src.contains("data.get(\"skills\", {})"),
+		"the server sends all six on every load; nothing would read them")
+	check("and still writes both halves onto the slot",
+		src.contains("_xp\"] = _int(entry.get(\"xp\"") or src.contains("+ \"_xp\"] = _int("),
+		"a level with no xp beside it is a character that forgets its progress")
+
+	print("  server grants them, the client reads them, nobody pushes them")
 
 
 func _feed_holds_id(lines: Array, id: int) -> bool:
