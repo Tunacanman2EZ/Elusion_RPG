@@ -105,6 +105,7 @@ func _run_all() -> void:
 	_test_chat_deletions_reach_the_client()
 	_test_security_policy()
 	_test_skills_are_not_pushed()
+	_test_god_mode_earns_nothing()
 	_test_unauthorized_is_answered()
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
@@ -1158,6 +1159,103 @@ func _test_skills_are_not_pushed() -> void:
 		"a level with no xp beside it is a character that forgets its progress")
 
 	print("  server grants them, the client reads them, nobody pushes them")
+
+
+# =============================================================================
+# GOD MODE EARNS NOTHING
+# =============================================================================
+# The owner can turn damage off to test without dying a hundred times. The whole
+# risk in that feature is one ordering decision.
+#
+# take_damage() ends by calling gain_defense_xp(), which reports the RAW amount
+# to /api/skill/train - and the server GRANTS AND STORES that XP. So the obvious
+# implementation, "let the hit land and then heal back to full", would train
+# defense continuously at no risk, and E-2's rate cap would not catch it: that
+# cap bounds XP per second, and an invincible character parked in a pile of
+# enemies sits at the honest ceiling all day.
+#
+# So the guard must come BEFORE the hp change and before the XP. This checks
+# that ordering by position, which is the one thing that actually matters.
+func _test_god_mode_earns_nothing() -> void:
+	section("GOD MODE — the hit never happened, so nothing is earned")
+
+	var src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
+	check("player.gd is readable", src.length() > 0)
+
+	var guard: int = src.find("if GameState.god_mode and Api.is_owner:")
+	check("take_damage() has a god-mode guard", guard != -1,
+		"without it the feature does not exist")
+
+	var body: int = src.find("func take_damage(")
+	var xp_call: int = _first_code_index(src, "gain_defense_xp(", body)
+	var hp_write: int = _first_code_index(src, "hp = clamp(hp - reduced_amount", body)
+	check("the guard is inside take_damage()", guard > body and body != -1, [body, guard])
+	check("THE GUARD COMES BEFORE THE HP CHANGE", guard < hp_write and hp_write != -1,
+		"a guard after the write is a heal, not immunity")
+	check("AND BEFORE THE DEFENSE XP", guard < xp_call and xp_call != -1,
+		"this is the one that matters: past it, god mode mints server-granted XP")
+
+	# The toggle is owner-only. Not mod, not dev - a dev is technical trust,
+	# someone met through a pull request.
+	var toggle: int = src.find("func _toggle_god_mode(")
+	check("there is a toggle", toggle != -1)
+	check("and it refuses anyone who is not the owner",
+		src.find("if not Api.is_owner:", toggle) != -1
+			and src.find("if not Api.is_owner:", toggle) < src.find("GameState.god_mode = not", toggle),
+		"the refusal has to come before the flip, not after it")
+
+	# The flag lives where a scene change cannot clear it and a restart must.
+	var gs: String = FileAccess.get_file_as_string("res://src/systems/gamestate.gd")
+	check("the flag is transient state on GameState", gs.contains("var god_mode: bool = false"),
+		"on the player it would switch itself off at every town gate")
+	check("and GameState is still the never-saved file it says it is",
+		gs.contains("must NOT survive a restart"),
+		"god mode persisted across sessions is god mode somebody forgot about")
+
+	# The player has to be TOLD what it costs, because a flat defense bar an
+	# hour later is a worse way to find out.
+	check("the notice names the defense XP cost",
+		src.contains("no damage taken, and no defense XP"),
+		"the surprising half is not that you stopped dying")
+
+	print("  no damage, no death, no floating number, and no XP")
+
+
+func _first_code_index(src: String, needle: String, from: int) -> int:
+	"""Where `needle` first appears in CODE at or after `from`, ignoring comments.
+
+	THIS EXISTS BECAUSE THE CHECK ABOVE FAILED ON CORRECT CODE. It looked for the
+	first `gain_defense_xp(` after take_damage() and found it in the god-mode
+	guard's own COMMENT - the paragraph explaining why the guard must come before
+	that call names the call, three lines before the guard. So the check read
+	"the XP happens before the guard" and went red on a file that is right.
+
+	AND IT IS NOT A ONE-OFF. It is the fifth time in one day that a text check
+	here has matched prose instead of code: a search for "already taken" hit the
+	comment explaining why that phrase must never be used; a search for
+	"backpack ledger" missed a page that says it, because markdown had wrapped
+	the line; "const SKILL_IDS" matched inside "const SKILL_IDS_UNUSED".
+
+	The pattern is structural rather than unlucky. This project deliberately
+	explains its rules at length beside the code that implements them, so THE
+	COMMENT EXPLAINING A RULE RELIABLY CONTAINS THE RULE'S OWN TEXT. Any text
+	check written here is searching a haystack that is mostly made of needles.
+
+	So: strip the comments, the way code_only() does in the API's
+	test_ownership.py. Indices stay usable because each line is blanked in place
+	rather than removed, which keeps every offset exactly where it was.
+	"""
+	var lines: PackedStringArray = src.split("\n")
+	var rebuilt: PackedStringArray = PackedStringArray()
+	for line in lines:
+		var hash_at: int = line.find("#")
+		if hash_at == -1:
+			rebuilt.append(line)
+		else:
+			# Blank the comment, keep the length, so find() returns an index
+			# into the ORIGINAL string.
+			rebuilt.append(line.substr(0, hash_at).rpad(line.length(), " "))
+	return "\n".join(rebuilt).find(needle, from)
 
 
 func _feed_holds_id(lines: Array, id: int) -> bool:

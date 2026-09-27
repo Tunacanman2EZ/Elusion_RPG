@@ -22,6 +22,13 @@ the client can grant themselves items with or without that gate; the backpack
 ledger is still client-declared, and that is named as an open limit on the
 server's page rather than pretended away.
 
+The same is true of **god mode** (`Ctrl+G`, owner only), which turns damage off
+so the server's owner can test without dying repeatedly. It grants nothing: the
+guard returns before the hit is applied *and* before the defense XP that
+`/api/skill/train` would otherwise bank, so an invincible character earns exactly
+as much as a stationary one. `hp` is client-written in any case, so a modified
+client could always refuse to die — the gate keeps an honest build honest.
+
 **No secrets are in this repository**, and none should ever be. No keys, no
 tokens, no database. The session token lives in `user://session.cfg` on the
 player's own machine and is a bearer credential — anyone with that file can act as

@@ -1292,6 +1292,25 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	if is_dying:
 		return
 
+	# GOD MODE: THE HIT NEVER HAPPENED.
+	#
+	# Before everything, and that ordering is the entire feature. The obvious
+	# version - take the damage, then heal back to full - leaves the bottom of
+	# this function running, and the bottom of this function calls
+	# gain_defense_xp(), which reports the RAW amount to /api/skill/train, which
+	# grants and stores real defense XP on the server. An invincible character
+	# parked in a pile of enemies would train defense continuously at no risk,
+	# and E-2's rate cap would not catch it - that cap bounds XP per second and
+	# this would simply sit at the honest ceiling all day.
+	#
+	# So: no hp change, no floating number, no hit flash, no death, and no XP.
+	# Returning here is the only version that earns nothing.
+	#
+	# Api.is_owner is re-read per hit rather than trusted from the toggle. It is
+	# one bool and it means the flag alone is never the authority.
+	if GameState.god_mode and Api.is_owner:
+		return
+
 	_set_active()
 
 	# NEW: tiered defense reduction — see PlayerStats.DEFENSE_TIERS. XP gain
@@ -1791,6 +1810,33 @@ func _staff_debug_allowed() -> bool:
 	return OS.is_debug_build() and Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)
 
 
+func _toggle_god_mode() -> void:
+	# OWNER, not mod, not dev — see the key binding for why this one is narrower
+	# than the grants. A dev is technical trust, someone met through a pull
+	# request; CLAUDE.md says so plainly under Ranks.
+	#
+	# The refusal says nothing useful, deliberately. Anyone who reaches this
+	# already holds a staff rank and a debug build, so there is no ladder to
+	# hide — but there is also no reason to teach a mod that the key exists.
+	if not Api.is_owner:
+		return
+
+	GameState.god_mode = not GameState.god_mode
+
+	# THE NOTICE NAMES THE COST, because the surprising half is not "you stopped
+	# dying" - it is that defense stops training. take_damage() returns before
+	# gain_defense_xp(), so a session spent testing in god mode trains no defense
+	# at all, and finding that out from a flat skill bar an hour later is worse
+	# than reading it here.
+	if GameState.god_mode:
+		show_notice("God mode ON — no damage taken, and no defense XP")
+	else:
+		show_notice("God mode OFF")
+
+	print("[PLR] god mode %s (owner: %s)"
+		% ["ON" if GameState.god_mode else "OFF", Api.username])
+
+
 # =============================================================================
 # NAMEPLATE  (who this is, over their head)
 # =============================================================================
@@ -2089,6 +2135,21 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5: _debug_give_lusions(20)
 			KEY_F6: _debug_give_item("lusions", 5)
 			KEY_F7: _debug_give_item("tinymanapotion", 5)
+
+		# GOD MODE — Ctrl+G, and OWNER ONLY.
+		#
+		# Behind Ctrl with the other letters, by the rule two blocks down: bare
+		# letters belong to the keymap, not to the debug block. G is free across
+		# the whole project, and it is the mnemonic.
+		#
+		# NARROWER THAN EVERY OTHER KEY HERE. The block above needs mod; this
+		# needs owner, the same rank that may move the whole server. The keys
+		# above hand out things a player is supposed to earn, which is a
+		# fairness question. This one changes whether the game can be lost,
+		# which is a different kind of decision.
+		if event.keycode == KEY_G and event.ctrl_pressed:
+			_toggle_god_mode()
+			return
 
 		# LETTERS, BEHIND CTRL — and that modifier is the whole fix.
 		#

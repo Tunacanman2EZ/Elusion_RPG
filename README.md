@@ -204,9 +204,9 @@ test_catalogue.py    13 checks    the shipped catalogue arms every protection
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **700 checks, 0 failures.** It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 112 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **710 checks, 0 failures.** It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 112 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `668 passed, 0 failed, 12 skipped` and exit 0.** That is correct, and the twelve are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `678 passed, 0 failed, 12 skipped` and exit 0.** That is correct, and the twelve are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 

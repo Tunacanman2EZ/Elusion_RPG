@@ -86,3 +86,36 @@ var next_spawn_id: String = ""
 # class_name, and a class_name only exists once Godot has rescanned the file —
 # which is a bootstrapping problem the autoload simply doesn't have.
 var ui_absorbed_right_click: bool = false
+
+
+# =============================================================================
+# GOD MODE  (the owner's, and only while the game is running)
+# =============================================================================
+
+# true while the owner has damage turned off for themselves.
+#
+# WHY IT LIVES HERE rather than on the player: the player node is rebuilt on
+# every scene change, so a flag on it would switch itself off at the town gate -
+# and "test the game without dying" means walking into the field, into the boss
+# arena and back. This file is exactly the set of values that must survive a
+# scene change and must NOT survive a restart, which is the right shape for it:
+# god mode can never be left on across sessions, because there is nowhere for it
+# to be left.
+#
+# WHAT IT MUST NEVER DO IS EARN ANYTHING, and that is the whole design. The
+# obvious implementation - let the hit land, then heal back to full - would keep
+# calling gain_defense_xp(), which reports the raw amount to /api/skill/train,
+# which GRANTS AND STORES REAL DEFENSE XP. An invincible character standing in a
+# pile of enemies would train defense continuously at no risk, and E-2's rate cap
+# would not stop it: that cap bounds XP per second, and this would sit at the
+# honest ceiling all day. So Player.take_damage() returns BEFORE the hp change,
+# before the floating number, and before the XP - it is "the hit never happened",
+# not "the hit healed".
+#
+# It is gated on Api.is_owner, the narrowest rank in the game and the same one
+# that guards moving the whole server. Note that gate is about keeping an HONEST
+# build honest: hp is client-written and only clamped server-side (E-9), so a
+# modified client could always refuse to die. This grants an attacker nothing
+# they did not have; it grants the owner a way to test without dying a hundred
+# times.
+var god_mode: bool = false

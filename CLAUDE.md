@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 700 checks at the time of writing; if that number and the one the suite
+failure. 710 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -303,6 +303,70 @@ straggler and now delegates. What is left:
   what `Facing` replaced on a grid of vectors, and the moment it delegates to
   the thing it is testing it tests nothing. Its own comment says so. Leave it.
 - Nothing else. If a grep turns up a third, it is new and it is a mistake.
+
+### God mode is owner-only, and the ordering is the whole feature
+
+`Ctrl+G` turns damage off so the owner can test without dying a hundred times.
+`GameState.god_mode` holds it — transient, survives a scene change, cannot
+survive a restart, which is exactly the contract that file states.
+
+**The risk in it is one ordering decision.** `take_damage()` ends by calling
+`gain_defense_xp()`, which reports the **raw** amount to `/api/skill/train`, and
+the server *grants and stores* that XP. So the obvious implementation — let the
+hit land, then heal back to full — would train defense continuously at no risk,
+and **E-2's rate cap would not catch it**: that cap bounds XP per second, and an
+invincible character parked in a pile of enemies sits at the honest ceiling all
+day. It would be a god mode that farms.
+
+So the guard returns **before** the hp change, before the floating number, before
+the death and before the XP. The hit never happened; it was not healed.
+`_test_god_mode_earns_nothing()` checks that by **position** — guard index before
+the `hp = clamp(...)` index and before the `gain_defense_xp(` index — because
+position is the only thing that actually matters here. Sabotage-tested with the
+heal version, which fails both.
+
+Owner, not mod, not dev. The grants above need mod; this needs the narrowest rank
+in the game, the one that may also move the whole server. Handing out an item a
+player should earn is a fairness question; turning off whether the game can be
+lost is a different kind of decision, and a dev is technical trust — someone met
+through a pull request.
+
+**It gives an attacker nothing.** `hp` is client-written and only clamped
+server-side (E-9), so a modified client could always refuse to die. The gate
+keeps an *honest* build honest, which is the same thing the debug keys below buy.
+
+### A text check here is searching a haystack made of needles
+
+Five times in one day a text check in this project matched **prose instead of
+code**, or missed code because of how prose was laid out:
+
+- a search for `"already taken"` went red on the comment explaining why that
+  phrase must never be used
+- a search for `"backpack ledger is still client-declared"` failed on a page that
+  says exactly that, because markdown had wrapped the line between the two words
+- `src.contains("const SKILL_IDS")` matched inside `const SKILL_IDS_UNUSED`
+- a search for the first `gain_defense_xp(` after `func take_damage(` found it in
+  the god-mode guard's own comment, three lines above the guard
+- and the API's source scan reported five false alarms because Python
+  concatenates adjacent string literals and it read them one at a time
+
+**This is structural, not bad luck.** The house style is to explain a rule at
+length beside the code implementing it, so *the comment explaining a rule
+reliably contains the rule's own text*. Three rules follow, and all three are now
+in the suite:
+
+1. **Strip comments before searching for code.** `_first_code_index()` blanks
+   comments in place — keeping line lengths, so indices still point into the
+   original — the same job `code_only()` does in the API's `test_ownership.py`.
+2. **Collapse whitespace before searching prose.** Markdown wraps wherever the
+   column ran out; `"backpack\nledger"` does not contain `"backpack ledger"`.
+3. **Match whole words, or match behaviour instead of names.** A consistent
+   rename breaks nothing, so failing on one is noise — ask what the code *does*,
+   not what it is called.
+
+The general form: **a check that has never been watched go red on the exact
+mistake it is meant to catch is not a check.** Every one of those five was found
+by sabotaging it, and four of them were wrong in a direction that *passed*.
 
 ### The debug keys are staff-only, and that is a rule, not a defence
 
@@ -606,8 +670,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 700 passed, 0 failed | 0 |
-| absent | 668 passed, 0 failed, 12 skipped | **0** |
+| present | 710 passed, 0 failed | 0 |
+| absent | 678 passed, 0 failed, 12 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.
