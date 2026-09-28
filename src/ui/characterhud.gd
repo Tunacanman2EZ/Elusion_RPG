@@ -1232,23 +1232,36 @@ func _read_maintenance(notice) -> void:
 		set_world_status("maintenance", "")
 		return
 
+	var seconds: int = int(notice.get("seconds_left", 0))
+
+	# THE STRIP IS A STATE AND IS RE-SET ON EVERY POLL, ABOVE THE ONCE-ONLY
+	# GUARD. That placement is the whole fix and it is worth saying why, because
+	# the previous version sat BELOW the guard with a comment claiming it was
+	# re-set every poll. It was not: _maintenance_warned returned early from the
+	# second poll onward, so set_world_status ran exactly once and the number
+	# froze at whatever the first poll happened to read.
+	#
+	# The server sends a fresh seconds_left on every broadcast poll (10s) and
+	# every heartbeat (15s) - maintenance_public() recomputes it per request -
+	# so every one of those numbers was being thrown away. A player who read
+	# "closes in 4:00" went on reading 4:00 until the room emptied underneath
+	# them, which is precisely the failure the comment above it warned about.
+	#
+	# It is also how a closing that ALREADY HAPPENED becomes permanent. Log in
+	# after the window is spent and the first poll reads seconds_left 0, paints
+	# "Server closes in 0:00 - your progress is being saved", and never touches
+	# it again. Reported as a server that "never actually shut down".
+	set_world_status("maintenance", _maintenance_line(seconds),
+		Color(1.0, 0.65, 0.25) if seconds > 0 else Color(0.95, 0.45, 0.35))
+
+	# THE TOAST AND THE FLUSH ARE AN EVENT, and events happen once. A closing
+	# server deserves the louder treatment, but it deserves it on the poll that
+	# first sees it - not every ten seconds for four minutes.
 	if _maintenance_warned:
 		return
 	_maintenance_warned = true
 
-	var seconds: int = int(notice.get("seconds_left", 0))
-
-	# THE STRIP CARRIES IT FROM HERE. The toast below still fires once, because
-	# a closing server deserves the louder treatment - but "closing in 47s" is a
-	# STATE, and a state that was announced once and then scrolled away is how
-	# somebody gets disconnected mid-fight having read the warning four minutes
-	# earlier. Re-set on every poll, so the number counts down for real.
-	set_world_status("maintenance",
-		"Server closes in %s - your progress is being saved" % _clock(seconds),
-		Color(1.0, 0.65, 0.25))
-
-	_push_message("The server is closing in %ds. Saving your progress now." % seconds,
-		Color(0.95, 0.45, 0.35))
+	_push_message(_maintenance_announcement(seconds), Color(0.95, 0.45, 0.35))
 
 	# THE CLIENT'S HALF OF "SAVE EVERYONE BEFORE DISCONNECTING". The server
 	# holds the door open for a grace window precisely so this can happen; a
@@ -1256,6 +1269,49 @@ func _read_maintenance(notice) -> void:
 	# when the room is about to empty.
 	if CharacterData != null and CharacterData.has_method("flush_save"):
 		CharacterData.flush_save()
+
+
+static func _maintenance_line(seconds: int) -> String:
+	"""What the status strip says about a closing or closed server.
+
+	STATIC AND PURE so the suite can ask it directly for each of the three
+	states rather than driving a poll. It reads Api.is_owner, which is a global
+	rather than an argument - so the one input that cannot be passed in is the
+	one the suite sets on Api itself.
+
+	THREE STATES, NOT TWO, AND THE THIRD IS THE ONE THAT WAS MISSING.
+
+	  counting down   the window is open, everyone is saving
+	  spent, player   the window is over; the next request ends this session
+	  spent, owner    the window is over; the owner is EXEMPT and still playing
+
+	The owner line exists because maintenance_refusal() and
+	maintenance_disconnect() both skip the owner by name - deliberately, so
+	nobody can lock themselves out of their own server. The consequence is that
+	throwing the switch does nothing visible from the owner's chair: the players
+	are gone, the owner is not, and the only thing on screen is a banner.
+	Saying "you are exempt" is what turns that from a switch that looks broken
+	into a switch that reports what it did.
+
+	AND "your progress is being saved" IS ONLY TRUE WHILE THE WINDOW IS OPEN.
+	Past it the saving is over, and a line promising it is a line that lies to
+	the one player who most needs to know the session is about to end."""
+	if seconds > 0:
+		return "Server closes in %s - your progress is being saved" % _clock(seconds)
+	if Api != null and Api.is_owner:
+		return "Server is CLOSED to players - you are exempt as owner"
+	return "Server is closed - you will be signed out"
+
+
+static func _maintenance_announcement(seconds: int) -> String:
+	"""The one-off chat line. Same three states, past tense once the window is
+	spent - a notice saying "closing in 0s" is a countdown nobody can act on,
+	and it was appearing in the log of players who arrived long afterwards."""
+	if seconds > 0:
+		return "The server is closing in %ds. Saving your progress now." % seconds
+	if Api != null and Api.is_owner:
+		return "The server is closed to players. You are exempt as owner."
+	return "The server is closed. You will be signed out."
 
 
 func _forced_signout() -> void:
