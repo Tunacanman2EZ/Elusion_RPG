@@ -214,7 +214,18 @@ var _world_wait_read_at: float = 0.0
 @onready var attach_remove: Button = get_node_or_null("%attachremove")
 
 
+# Drag by the header, resize from any edge, and come back where it was left.
+# One component for all sixteen panels - see src/shared/panelwindow.gd for why
+# this is not thirty lines copied into each of them.
+#
+# HELD IN A MEMBER, not discarded. It is a RefCounted carrying the drag state
+# and the signal connections; letting it go frees it and the panel quietly
+# stops responding.
+var _window: PanelWindow
+
+
 func _ready() -> void:
+	_window = PanelWindow.attach(self, "chat")
 	add_to_group("chatpanel")
 	visible = false
 

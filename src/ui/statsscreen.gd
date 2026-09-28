@@ -24,8 +24,6 @@ signal close_requested()
 # NODE REFERENCES — STRUCTURE
 # =============================================================================
 
-@onready var main_panel:   PanelContainer = $mainpanel
-@onready var header_panel: PanelContainer = $mainpanel/margincontainer/vboxcontainer/headerpanel
 @onready var close_button: Button         = $mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/closebutton
 
 
@@ -78,32 +76,24 @@ signal close_requested()
 
 var current_player: Node = null
 
-var _is_dragging: bool = false
-var _drag_offset: Vector2 = Vector2.ZERO
-
-
-# =============================================================================
-# SESSION-PERSISTENT POSITION
-# =============================================================================
-
-static var _last_position: Vector2 = Vector2(-1, -1)
-static var _has_saved_position: bool = false
-
 
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
 
+# Drag by the header, resize from any edge, and come back where it was left.
+# One component for all sixteen panels - see src/shared/panelwindow.gd for why
+# this is not thirty lines copied into each of them.
+#
+# HELD IN A MEMBER, not discarded. It is a RefCounted carrying the drag state
+# and the signal connections; letting it go frees it and the panel quietly
+# stops responding.
+var _window: PanelWindow
+
+
 func _ready() -> void:
+	_window = PanelWindow.attach(self, "stats")
 	_wire_close_button()
-	_wire_header_drag()
-	_restore_last_position()
-
-
-func _process(_delta: float) -> void:
-	if _is_dragging and main_panel != null:
-		main_panel.global_position = get_global_mouse_position() - _drag_offset
-		_save_position()
 
 
 # =============================================================================
@@ -115,42 +105,6 @@ func _wire_close_button() -> void:
 		return
 	if not close_button.pressed.is_connected(_on_close_button_pressed):
 		close_button.pressed.connect(_on_close_button_pressed)
-
-
-func _wire_header_drag() -> void:
-	if header_panel == null:
-		return
-	if not header_panel.gui_input.is_connected(_on_header_gui_input):
-		header_panel.gui_input.connect(_on_header_gui_input)
-
-
-func _restore_last_position() -> void:
-	if _has_saved_position and main_panel != null:
-		main_panel.position = _last_position
-
-
-# =============================================================================
-# DRAG HANDLING
-# =============================================================================
-
-func _on_header_gui_input(event: InputEvent) -> void:
-	if not (event is InputEventMouseButton):
-		return
-	if event.button_index != MOUSE_BUTTON_LEFT:
-		return
-
-	if event.pressed:
-		_is_dragging = true
-		_drag_offset = get_global_mouse_position() - main_panel.global_position
-	else:
-		_is_dragging = false
-		_save_position()
-
-
-func _save_position() -> void:
-	if main_panel != null:
-		_last_position = main_panel.position
-		_has_saved_position = true
 
 
 # =============================================================================

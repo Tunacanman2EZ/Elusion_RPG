@@ -89,7 +89,18 @@ var _name_check := RegEx.new()
 @onready var disband_button: Button = get_node_or_null("%guilddisbandbutton")
 
 
+# Drag by the header, resize from any edge, and come back where it was left.
+# One component for all sixteen panels - see src/shared/panelwindow.gd for why
+# this is not thirty lines copied into each of them.
+#
+# HELD IN A MEMBER, not discarded. It is a RefCounted carrying the drag state
+# and the signal connections; letting it go frees it and the panel quietly
+# stops responding.
+var _window: PanelWindow
+
+
 func _ready() -> void:
+	_window = PanelWindow.attach(self, "guild")
 	add_to_group("guildpanel")
 	visible = false
 	_name_check.compile(NAME_PATTERN)

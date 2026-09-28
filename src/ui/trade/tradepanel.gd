@@ -69,7 +69,18 @@ const NEARBY_REFRESH_SECONDS := 6.0
 var _seconds_to_nearby: float = 0.0
 
 
+# Drag by the header, resize from any edge, and come back where it was left.
+# One component for all sixteen panels - see src/shared/panelwindow.gd for why
+# this is not thirty lines copied into each of them.
+#
+# HELD IN A MEMBER, not discarded. It is a RefCounted carrying the drag state
+# and the signal connections; letting it go frees it and the panel quietly
+# stops responding.
+var _window: PanelWindow
+
+
 func _ready() -> void:
+	_window = PanelWindow.attach(self, "trade")
 	close_button.pressed.connect(close_panel)
 	offer_button.pressed.connect(_on_offer_pressed)
 	confirm_button.pressed.connect(_on_confirm_pressed)

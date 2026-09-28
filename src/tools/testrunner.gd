@@ -113,6 +113,7 @@ func _run_all() -> void:
 	_test_timestamps_are_the_servers()
 	_test_board_says_what_it_is_made_of()
 	_test_the_guild_tag_is_drawn_everywhere()
+	_test_panels_are_windows()
 	_test_unauthorized_is_answered()
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
@@ -2427,6 +2428,323 @@ func _test_the_guild_tag_is_drawn_everywhere() -> void:
 		drawn.contains("2026") and not drawn.contains(":"), drawn)
 
 	print("  guilds: twelve characters, one tag, four surfaces, drawn from the poll")
+
+
+
+# =============================================================================
+# PANELS BEHAVE LIKE WINDOWS
+# =============================================================================
+# Every panel drags by its header and resizes from any edge, through ONE
+# component. The three checks that matter are the three defects in the drag
+# statsscreen.gd used to carry on its own: a panel you can lose off the screen,
+# a position that dies with the scene, and a per-frame poll.
+
+const WINDOW_PANELS := [
+	["res://src/ui/bank/bankinventory.gd", "res://scene/ui/bank/bankinventory.tscn", "bank"],
+	["res://src/ui/chat/chatpanel.gd", "res://scene/ui/chat/chatpanel.tscn", "chat"],
+	["res://src/ui/cooking/cookingscreen.gd", "res://scene/ui/cooking/cookingscreen.tscn", "cooking"],
+	["res://src/ui/equipment/equipmentpanel.gd", "res://scene/ui/equipment/equipmentpanel.tscn", "equipment"],
+	["res://src/ui/friends/friendspanel.gd", "res://scene/ui/friends/friendspanel.tscn", "friends"],
+	["res://src/ui/guild/guildpanel.gd", "res://scene/ui/guild/guildpanel.tscn", "guild"],
+	["res://src/ui/inventory/inventoryscreen.gd", "res://scene/ui/inventory/inventory.tscn", "inventory"],
+	["res://src/ui/kingdom/kingdomboard.gd", "res://scene/ui/kingdom/kingdomboard.tscn", "kingdom"],
+	["res://src/ui/lootbag/lootbaginventory.gd", "res://scene/ui/lootbag/lootbaginventory.tscn", "lootbag"],
+	["res://src/ui/menus/mapscreen.gd", "res://scene/ui/menus/mapscreen.tscn", "map"],
+	["res://src/ui/menus/optionsscreen.gd", "res://scene/ui/menus/optionsscreen.tscn", "options"],
+	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
+	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
+	["res://src/ui/staff/staffpanel.gd", "res://scene/ui/staff/staffpanel.tscn", "staff"],
+	["res://src/ui/statsscreen.gd", "res://scene/ui/statsscreen.tscn", "stats"],
+	["res://src/ui/trade/tradepanel.gd", "res://scene/ui/trade/tradepanel.tscn", "trade"],
+]
+
+
+func _test_panels_are_windows() -> void:
+	section("PANELS - drag by the header, resize from any edge, stay reachable")
+
+	# =========================================================================
+	# YOU CAN ALWAYS GET IT BACK
+	# =========================================================================
+	# The whole lost-panel fix, and it is checked first because it is the one
+	# defect with no way out from inside the game. clamp_to() is static and pure
+	# precisely so this can be asked in one line instead of built in a viewport.
+	var screen := Vector2(1920, 1080)
+	var panel := Vector2(400, 500)
+	var keep: Vector2 = PanelWindow.KEEP_VISIBLE
+
+	var far_right: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(9000, 100), panel), screen)
+	check("a panel shoved off the right edge comes back",
+		far_right.position.x <= screen.x - keep.x, far_right.position)
+	check("and enough of it is left to grab",
+		far_right.position.x + panel.x >= keep.x)
+
+	var far_left: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(-9000, 100), panel), screen)
+	check("shoved off the left edge, it comes back too",
+		far_left.position.x + panel.x >= keep.x, far_left.position)
+
+	var below: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(100, 9000), panel), screen)
+	check("dragged off the bottom, the header is still on screen",
+		below.position.y <= screen.y - keep.y, below.position)
+
+	# UP IS DIFFERENT FROM DOWN, and that asymmetry is the point. A panel pushed
+	# down still shows its top edge, which is the part you grab. Pushed up, the
+	# header leaves first and there is nothing underneath it to take hold of.
+	var above: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(100, -500), panel), screen)
+	check("it can never be pushed above the top of the screen",
+		above.position.y >= 0.0, above.position)
+
+	# A PANEL LARGER THAN THE SCREEN is the case that breaks a naive clamp -
+	# the allowed range inverts and clampf returns whichever bound it was
+	# handed last.
+	var huge: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(-50, -50), Vector2(3000, 2000)), screen)
+	check("a panel bigger than the screen is still grabbable",
+		huge.position.y >= 0.0 and huge.position.x <= screen.x - keep.x
+			and huge.position.x + 3000.0 >= keep.x, huge.position)
+
+	# ALREADY ON SCREEN MEANS UNTOUCHED. A clamp that nudges a panel nobody
+	# dragged is a panel that drifts.
+	var settled: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(300, 200), panel), screen)
+	check("a panel already on screen is not moved",
+		settled.position == Vector2(300, 200), settled.position)
+
+	check("the grab area is smaller than the smallest panel",
+		keep.x <= PanelWindow.MIN_SIZE.x and keep.y <= PanelWindow.MIN_SIZE.y,
+		"%s vs %s" % [keep, PanelWindow.MIN_SIZE])
+	check("and both are positive",
+		keep.x > 0.0 and keep.y > 0.0
+			and PanelWindow.MIN_SIZE.x > 0.0 and PanelWindow.MIN_SIZE.y > 0.0)
+
+	# =========================================================================
+	# EIGHT GRIPS, BUILT ON A REAL CONTROL
+	# =========================================================================
+	# Behavioural rather than textual: attach() is asked to dress a bare Control
+	# and the result is inspected. It works outside the tree because every call
+	# that needs a viewport is guarded - which is worth having anyway, since a
+	# panel is attached in _ready() and may be built before it is added.
+	var host := Control.new()
+	# AUTHORED CENTRED, exactly as every real panel is. The first version of
+	# this built a bare Control - whose anchors are already zero - so the
+	# "taken off its centre anchor" check below passed whether or not the code
+	# under test ran at all. Sabotage caught it: deleting _take_control() left
+	# the suite green. A check whose subject already satisfies it is not a
+	# check.
+	host.anchor_left = 0.5
+	host.anchor_top = 0.5
+	host.anchor_right = 0.5
+	host.anchor_bottom = 0.5
+	host.offset_left = -200.0
+	host.offset_top = -150.0
+	host.offset_right = 200.0
+	host.offset_bottom = 150.0
+	var grip_bar := Control.new()
+	host.add_child(grip_bar)
+	# KEY "" MEANS DO NOT PERSIST. A suite that writes user://panels.cfg would
+	# scribble over the player's real layout on every run.
+	var dressed: PanelWindow = PanelWindow.attach(host, "", grip_bar)
+
+	check("a panel with an explicit header attaches", dressed != null)
+	if dressed == null:
+		host.queue_free()
+		print("  panels: attach refused, section cut short")
+		return
+
+	var names := ["gripleft", "gripright", "griptop", "gripbottom",
+		"griptopleft", "griptopright", "gripbottomleft", "gripbottomright"]
+	var found := 0
+	for grip_name in names:
+		if host.has_node(NodePath(grip_name)):
+			found += 1
+	check("all eight grips exist", found == 8, "%d of 8" % found)
+
+	# THE CORNERS ARE ADDED LAST so they receive input in front of the edges
+	# they overlap. Without that, a drag from the very corner resizes one axis
+	# and the player quietly cannot make a panel smaller in both directions.
+	var edge_at: int = host.get_node("gripright").get_index()
+	var corner_at: int = host.get_node("gripbottomright").get_index()
+	check("corners sit in front of edges", corner_at > edge_at,
+		"corner %d vs edge %d" % [corner_at, edge_at])
+
+	check("every grip stops the mouse rather than ignoring it",
+		host.get_node("gripleft").mouse_filter == Control.MOUSE_FILTER_STOP)
+	check("and says so with the cursor",
+		host.get_node("gripleft").mouse_default_cursor_shape == Control.CURSOR_HSIZE
+		and host.get_node("griptop").mouse_default_cursor_shape == Control.CURSOR_VSIZE
+		and host.get_node("gripbottomright").mouse_default_cursor_shape == Control.CURSOR_FDIAGSIZE
+		and host.get_node("griptopright").mouse_default_cursor_shape == Control.CURSOR_BDIAGSIZE)
+	check("the header is the move handle",
+		grip_bar.mouse_default_cursor_shape == Control.CURSOR_MOVE)
+
+	check("the panel is taken off its centre anchor",
+		host.anchor_left == 0.0 and host.anchor_top == 0.0
+		and host.anchor_right == 0.0 and host.anchor_bottom == 0.0,
+		"%s %s %s %s" % [host.anchor_left, host.anchor_top, host.anchor_right, host.anchor_bottom])
+
+	# =========================================================================
+	# RESIZING HAS A FLOOR, AND THE LEFT EDGE IS THE HARD ONE
+	# =========================================================================
+	host.position = Vector2(500, 400)
+	host.size = Vector2(400, 300)
+	dressed._resizing = PanelWindow.EDGE_RIGHT | PanelWindow.EDGE_BOTTOM
+	dressed._resize_from = Rect2(host.position, host.size)
+	dressed._resize_mouse = Vector2(900, 700)
+	dressed._resize_to(Vector2(1100, 800))
+	check("dragging a corner outward grows the panel",
+		host.size == Vector2(600, 400), host.size)
+	check("and does not move it", host.position == Vector2(500, 400), host.position)
+
+	# Crushed from the bottom-right: the size stops at the floor.
+	dressed._resize_to(Vector2(0, 0))
+	var floor_size: Vector2 = Vector2(
+		maxf(host.custom_minimum_size.x, PanelWindow.MIN_SIZE.x),
+		maxf(host.custom_minimum_size.y, PanelWindow.MIN_SIZE.y))
+	check("it cannot be crushed below the minimum",
+		host.size.x >= floor_size.x and host.size.y >= floor_size.y,
+		"%s vs floor %s" % [host.size, floor_size])
+
+	# DRAGGING A LEFT EDGE MOVES THE PANEL AS WELL AS SIZING IT, so the floor
+	# has to stop the LEFT EDGE rather than the width. Bounding the width
+	# instead lets the panel keep sliding right after it has hit its minimum,
+	# which reads as the panel running away from the cursor.
+	host.position = Vector2(500, 400)
+	host.size = Vector2(400, 300)
+	dressed._resizing = PanelWindow.EDGE_LEFT
+	dressed._resize_from = Rect2(host.position, host.size)
+	dressed._resize_mouse = Vector2(500, 500)
+	dressed._resize_to(Vector2(5000, 500))
+	var right_edge: float = host.position.x + host.size.x
+	check("dragging the left edge past the right one stops at the minimum",
+		host.size.x >= floor_size.x, host.size)
+	check("and the right edge has not moved", is_equal_approx(right_edge, 900.0),
+		right_edge)
+
+	host.queue_free()
+
+	# =========================================================================
+	# FLATTENING THE ANCHORS MUST NOT MOVE THE PANEL
+	# =========================================================================
+	# THIS ONE NEEDS A REAL PARENT, IN THE TREE, and that is the whole reason it
+	# is a block of its own. An orphan Control has no parent rectangle, so an
+	# anchor of 0.5 and an anchor of 0 resolve to the same place and the claim
+	# cannot be wrong. Sabotage proved it: passing `true` to set_anchors_preset
+	# - the one real mistake available in that call - left the suite green.
+	#
+	# Measured on 4.6.1, a 400x300 control centred in an 800x600 parent:
+	#     keep_offsets=false  rect stays (200, 150)
+	#     keep_offsets=true   rect jumps to (-200, -150)
+	# and it settles synchronously, so no frame has to be awaited here.
+	var stage := Control.new()
+	stage.size = Vector2(800, 600)
+	add_child(stage)
+	var centred := Control.new()
+	stage.add_child(centred)
+	centred.anchor_left = 0.5
+	centred.anchor_top = 0.5
+	centred.anchor_right = 0.5
+	centred.anchor_bottom = 0.5
+	centred.offset_left = -200.0
+	centred.offset_top = -150.0
+	centred.offset_right = 200.0
+	centred.offset_bottom = 150.0
+	var authored := Rect2(centred.position, centred.size)
+	var bar := Control.new()
+	centred.add_child(bar)
+	var flattened: PanelWindow = PanelWindow.attach(centred, "", bar)
+
+	check("a centred panel is flattened to the top left",
+		flattened != null and centred.anchor_left == 0.0 and centred.anchor_top == 0.0
+		and centred.anchor_right == 0.0 and centred.anchor_bottom == 0.0)
+	check("and it does not move while that happens",
+		centred.position.is_equal_approx(authored.position)
+		and centred.size.is_equal_approx(authored.size),
+		"%s -> %s" % [authored, Rect2(centred.position, centred.size)])
+
+	stage.queue_free()
+
+	# =========================================================================
+	# EVERY PANEL IS WIRED, AND EVERY HEADER IS WHERE THE COMPONENT LOOKS
+	# =========================================================================
+	var keys_seen := {}
+	for entry in WINDOW_PANELS:
+		var script_path: String = entry[0]
+		var scene_path: String = entry[1]
+		var layout_key: String = entry[2]
+		var short: String = script_path.get_file()
+
+		var body: String = _code_only(FileAccess.get_file_as_string(script_path))
+		check("%s attaches a window" % short,
+			body.contains('PanelWindow.attach(self, "%s")' % layout_key),
+			script_path)
+
+		# THE KEY IS READ OUT OF THE FILE, not taken from the table above. The
+		# first version checked WINDOW_PANELS against itself for duplicates -
+		# and that table is written by hand with unique keys, so the check was
+		# a tautology that could never fail however the panels were wired.
+		# Sabotage caught it: giving two panels the same key left it green.
+		var declared := ""
+		var opener := 'PanelWindow.attach(self, "'
+		var at: int = body.find(opener)
+		if at != -1:
+			var from: int = at + opener.length()
+			var to: int = body.find('"', from)
+			if to != -1:
+				declared = body.substr(from, to - from)
+
+		# A DUPLICATE KEY MAKES TWO PANELS SHARE ONE SAVED RECTANGLE, so
+		# opening the second moves the first. Invisible until somebody notices
+		# a panel jumping.
+		check("%s has a key of its own" % short,
+			declared != "" and not keys_seen.has(declared),
+			"'%s' (already seen: %s)" % [declared, keys_seen.keys()])
+		keys_seen[declared] = true
+
+		# THE HEADER IS WHERE attach() LOOKS FOR IT. Read out of the scene TEXT
+		# rather than by loading it: a scene that names art from the private
+		# pack will not load in a clone without it, and a check that fails on a
+		# clone and passes here is the worst kind.
+		var scene_text: String = FileAccess.get_file_as_string(scene_path)
+		var marker: int = scene_text.find('[node name="headerpanel"')
+		var resolved := ""
+		if marker != -1:
+			var line_end: int = scene_text.find("]", marker)
+			var line: String = scene_text.substr(marker, line_end - marker)
+			var parent_at: int = line.find('parent="')
+			if parent_at != -1:
+				var from: int = parent_at + 8
+				var to: int = line.find('"', from)
+				resolved = line.substr(from, to - from) + "/headerpanel"
+		check("%s keeps its header where the component looks" % scene_path.get_file(),
+			PanelWindow.HEADER_PATHS.has(resolved),
+			"found '%s'; known: %s" % [resolved, ", ".join(PanelWindow.HEADER_PATHS)])
+
+	check("sixteen panels are windows", keys_seen.size() == 16, keys_seen.size())
+
+	# =========================================================================
+	# AND THERE IS ONLY ONE IMPLEMENTATION
+	# =========================================================================
+	# statsscreen.gd carried its own drag. Leaving it in place beside the
+	# component would mean two things moving one panel, which is worse than
+	# either - and it is the copy that would have been pasted into the other
+	# fifteen.
+	var stats: String = _code_only(FileAccess.get_file_as_string(
+		"res://src/ui/statsscreen.gd"))
+	check("the old hand-rolled drag is gone, not left beside the new one",
+		not stats.contains("_is_dragging") and not stats.contains("_on_header_gui_input"),
+		"two implementations moving one panel")
+	check("and its per-frame mouse poll went with it",
+		not stats.contains("func _process("),
+		"_process polled the cursor every frame whether or not anything was moving")
+
+	# NOBODY ELSE POLLS EITHER. The component reads motion events; a panel that
+	# grew its own _process to chase the cursor would be the same defect
+	# returning by a different door.
+	var pollers: Array[String] = []
+	for entry in WINDOW_PANELS:
+		var body: String = _code_only(FileAccess.get_file_as_string(entry[0]))
+		if body.contains("get_global_mouse_position()"):
+			pollers.append(entry[0].get_file())
+	check("no panel chases the cursor itself", pollers.is_empty(), pollers)
+
+	print("  panels: %d windows, 8 grips each, one component" % keys_seen.size())
 
 
 func _test_unauthorized_is_answered() -> void:
