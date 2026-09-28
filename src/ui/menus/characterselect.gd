@@ -136,7 +136,8 @@ func _select_character(idx: int) -> void:
 	var slot = CharacterData.character_slots[idx]
 	if not _is_slot_valid(slot):
 		if OS.is_debug_build():
-			print("[CHAR] slot %d is empty — nothing to select" % [idx + 1])
+			# THE INDEX, NOT THE INDEX PLUS ONE. See the note in the print below.
+			print("[CHAR] slot %d is empty — nothing to select" % [idx])
 		return
 
 	if OS.is_debug_build():
@@ -187,9 +188,22 @@ func _select_character(idx: int) -> void:
 		if cells_saved > 0:
 			bag = "%d items in %d/%d cells" % [item_count, cells_used, cells_saved]
 
+		# THE SAME NUMBER EVERY OTHER LOG USES, and it was not.
+		#
+		# This printed idx + 1, so the character that `saves.slot`, every
+		# server log line, deathwatch.py and every API payload call slot 0
+		# appeared here as "slot 1". Reading the two side by side while
+		# chasing a save bug, that is a number you have to keep converting -
+		# and the first time you forget, you are looking at the wrong
+		# character's row.
+		#
+		# A ONE-BASED SLOT NUMBER IS A UI DECISION, and this is not the UI.
+		# The buttons on this screen can say "Slot 1" if they ever say
+		# anything; a debug line exists to be matched against the server's,
+		# so it uses the server's numbering.
 		print("[CHAR] %s slot %d — lv %d, %d gold, %s" % [
 			slot["character"],
-			idx + 1,
+			idx,
 			int(slot.get("level", 1)),
 			int(slot.get("gold", 0)),
 			bag,

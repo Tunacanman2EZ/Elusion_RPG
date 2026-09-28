@@ -91,28 +91,29 @@ Projectiles are released on a specific animation frame rather than at the start 
 
 ### Gathering that the server owns outright — `src/world/fishingspot.gd`, `src/ui/cooking/cookingscreen.gd`
 
-Fishing and cooking are the first two skills the client cannot lie about. The rod and bait are checked, the catch is rolled and the XP granted by the server against items it consumed itself; `PUT /api/character/skills` then *drops* fishing and cooking from whatever the client sends, because a client's next routine sync would otherwise overwrite a grant the server just made. The fishing spot draws its own tell — ripples that fade in by proximity — in `_draw()` rather than using art.
+Fishing and cooking were the first two skills the client cannot lie about, and the pattern they proved now covers all six. The rod and bait are checked, the catch is rolled and the XP granted by the server against items it consumed itself; `PUT /api/character/skills` then *drops every skill it accepts* from whatever the client sends, because a client's next routine sync would otherwise overwrite a grant the server just made. The fishing spot draws its own tell — ripples that fade in by proximity — in `_draw()` rather than using art.
 
 ### An audit I ran against my own API — `SECURITY_NOTES.md` (API repo)
 
-I attacked my own server as a logged-in player with a modified client and wrote down what I got away with, then kept the file honest as the code moved. Fourteen findings now: twelve closed, one partly closed, one open and still listed because naming it is the point. Each has a one-line risk and a one-line fix:
+I attacked my own server as a logged-in player with a modified client and wrote down what I got away with, then kept the file honest as the code moved. Fifteen findings now: fourteen closed, one open and still listed because naming it is the point. A sixteenth entry, E-15, is an audit that went looking for broken access control and **found nothing** — it is in the notes because a search that comes back empty is still a result. Each has a one-line risk and a one-line fix:
 
 | # | Risk if exploited | Fix |
 |---|-------------------|-----|
 | E-1 | Any item, any quantity, written straight into the bag or bank. | Server-side authority — saves reconciled against what the server granted. |
-| E-2 | Any skill level claimed, skipping all progression. | Hard cap at 99; three of six skills now granted only by the server. *Partly closed.* |
+| E-2 | Any skill level claimed, skipping all progression. | Server-side authority — all six skills are granted only by the server and dropped from client saves; the hard cap at 99 is the guardrail behind it. |
 | E-3 | Kills reported without fighting, farming XP and loot. | Rate limit and a cap from the world's own respawners. *Open — needs server-side combat.* |
 | E-4 | A crash on a reachable server hands out a shell next to every password hash. | Safe default + refusal — the debugger is off unless deliberately switched on, and the server refuses to start if anything else asks for it. |
 | E-5 | Passwords guessed at machine speed. | Rate limit — per-account lockout plus per-address ceilings. |
 | E-6 | A leaked token works for a month, even after a password change. | Revocation and rotation — log out everywhere; a password change ends every session. |
 | E-7 | Gear and potions used without the level or skill they need. | Server-side authority — the server checks requirements and destroys the item itself. |
 | E-8 | Infinite gold, destroying the economy and progression. | Server-side authority — gold is server-owned on every write path. |
-| E-9 | Heal to full at will; never die. | Extra check — rises past what regen and potions explain are trimmed. |
+| E-9 | Heal to full at will; never die. | Extra check — rises past what regen and potions explain are trimmed. *A bound on the rate, not a proof — and it earned its keep: it is what caught E-16.* |
 | E-10 | Free revives, so death costs nothing. | Server-side authority — the server charges the revive from its own balance. |
-| E-11 | A ban lasts as long as it takes to register a new account. | Extra check — no sign-ups from an address holding a live ban; linked accounts shown to staff. |
+| E-11 | A ban lasts as long as it takes to register a new account. | Extra check — no sign-ups from an address holding a live ban; linked accounts shown to staff. *Closed as far as addresses honestly allow; a VPN still defeats it.* |
 | E-12 | Removing anyone required a ban, the harshest response available. | New tool — a kick that ends sessions without banning. |
 | E-13 | Four closed fixes silently off in production, every test green. | Deployment check — a suite and a boot-time error for any protection running unarmed. |
 | E-14 | A kicked or banned player keeps playing as long as the game stays open. | Heartbeat — the game re-checks its session and a dead one returns it to login. |
+| E-16 | Accepting death healed you on your own machine, and the gold it took came back at the next login. | Server-side authority — `POST /api/character/respawn` refuses a living character, burns the carried gold through the ledger and refills from the class curve. *Found by dying, not by auditing.* |
 
 The one I'd actually point at is **E-8**, because I found it by accident. Every other finding came from attacking the API deliberately; that one turned up while wiring an unrelated endpoint. `gold` was a writable field on the status endpoint and had never been marked server-owned, so one request set any balance a player liked and the supply invariant broke on the spot. What makes it worth writing down is *why the tests missed it*: all 268 of them moved gold through a server path and then asserted the books balanced. None tried the front door of the balance itself.
 
@@ -204,9 +205,9 @@ test_catalogue.py    13 checks    the shipped catalogue arms every protection
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **755 checks, 0 failures.** It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 112 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **826 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 112 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `723 passed, 0 failed, 12 skipped` and exit 0.** That is correct, and the twelve are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `794 passed, 0 failed, 13 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twelve are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
@@ -241,7 +242,7 @@ Gold is double-entry on top of that. Every coin that enters or leaves the world 
 
 Item use is server-authoritative too now — the server checks the level and skill requirement against the character it owns and destroys the item itself, so the gates stopped being advisory the day trading made them matter. So is reviving: the server refuses anyone who is not dead by its own reckoning, takes the cost in lusions itself, and restores the resources from the class curve, which is what puts a price back on dying.
 
-Two gaps remain, both named and tracked in the API repo's `SECURITY_NOTES.md`: three of the six skills still have no server-side XP grant (fishing, cooking and attack do), and the kill *event* is still asserted rather than verified — the server does not watch the fight. Health used to be the third, and is closed the way the backpack was: measured in log-only mode first, then clamped, so a rise that regeneration and an authorised potion cannot explain is trimmed rather than stored.
+One gap remains, named and tracked in the API repo's `SECURITY_NOTES.md`: the kill *event* is still asserted rather than verified — the server does not watch the fight. Skills used to be the second: three of the six had no server-side grant, and `/api/skill/train` closed it by having the client report raw activity and the server clamp it, rather than waiting for an event that does not exist. Health was the third, and is closed the way the backpack was — measured in log-only mode first, then clamped, so a rise that regeneration and an authorised potion cannot explain is trimmed rather than stored. That clamp is also what caught E-16, which is the best argument I have for building controls you hope never fire.
 
 `devlog.md` records the architecture decisions and the reasoning behind them, including the ones that turned out to be wrong.
 

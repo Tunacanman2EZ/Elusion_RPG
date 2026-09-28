@@ -91,7 +91,7 @@ Windows neither the editor's Output panel nor the terminal could be relied on to
 show the results, for three different reasons in one afternoon.
 
 Same shape as `test_api.py` on purpose — a line per check, non-zero exit on any
-failure. 755 checks at the time of writing; if that number and the one the suite
+failure. 826 checks at the time of writing; if that number and the one the suite
 prints disagree, this file is the stale one — trust the suite. It covers what can
 be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
@@ -450,6 +450,26 @@ in the suite:
 3. **Match whole words, or match behaviour instead of names.** A consistent
    rename breaks nothing, so failing on one is noise — ask what the code *does*,
    not what it is called.
+4. **A count is not evidence about a place.** `hud.count("_note_server_contact()") >= 2`
+   was wrong twice in one line: `func _note_server_contact() -> void:` contains
+   the string, so the *definition* counted as a call — and removing one of the
+   two real calls still left the total at two. Assert each call site by the name
+   of the function it must be in.
+5. **Bound the search to the function you meant.** `_first_code_index()` answers
+   *"in code rather than in a comment"*; it does not answer *"inside which
+   function"*. Searching for something common — `save_character_state`,
+   `if visible:`, `/api/staff/teleport` — finds it in a later function and reads
+   as a pass. `_within(index, limit)` is the companion, and this was needed three
+   separate times before it got a name — and twice more since, on
+   `set_world_status("connection", "")`, which appears in the recovery path and
+   in the give-up path and in the not-logged-in branch.
+
+**And the check itself can be the thing that is wrong.**
+`_test_no_unused_parameters()` split a signature on every comma, so
+`colour: Color = Color(0.95, 0.45, 0.35)` became three parameters, the last of
+them named `0.35)`, reported as unused. It would have fired on any `Vector2(x, y)`
+default. `_split_params()` counts bracket depth now. A false alarm is how a check
+gets switched off, and this file says so twice already.
 
 The general form: **a check that has never been watched go red on the exact
 mistake it is meant to catch is not a check.** Every one of those five was found
@@ -693,6 +713,68 @@ compile" was previously only provable by launching a separate scene by hand, so
 `run_tests.ps1` — the thing a person who clones this repo actually runs, and the
 thing CI runs — did not prove it.
 
+### But the suite cannot report that the suite is broken
+
+The section above is only true of the files the suite *reads*. It is not true of
+the suite itself, and the difference shows up as a **hang with no output at
+all**.
+
+A parse error was planted in `testrunner.gd` — one call with two arguments where
+the helper takes three. `_run_tests.tscn` loaded, the script failed to attach,
+`_ready()` therefore never ran, and nothing ever called `get_tree().quit()`. So
+`godot --headless` sat there with an empty main loop until it was killed. Not one
+line of test output, no parse error on screen (the engine prints it, but the boot
+log is hundreds of lines of `.tres` UID warnings and it scrolls past), and an
+exit code that only ever says "timed out".
+
+**A silent hang is what a broken test suite looks like from the outside.** Every
+other failure mode in here announces itself; this one is indistinguishable from a
+slow machine, and the first guess is always that the last test added is slow.
+
+So when `run_tests.ps1` produces nothing and does not return:
+
+```
+godot --headless --path . --script-check src/tools/testrunner.gd
+```
+
+or load it from any other scene and print the result — `load()` returns a
+GDScript whose `can_instantiate()` is **false** and whose method list is
+**empty**, which is exactly what `_test_every_script_compiles()` looks for and
+exactly what it cannot look for in itself. Two seconds, and it names the line.
+
+### A runtime error inside a section aborts it and still reports 0 failed
+
+The sibling of the one above, and the one that nearly shipped a section doing
+half its job. A new check called `board._build_row()`; the real function is
+`_make_row()`. GDScript raised, **unwound the rest of that test function**, and
+the suite finished:
+
+```
+SCRIPT ERROR: Invalid call. Nonexistent function '_build_row' ...
+...
+  824 passed, 0 failed, 1 skipped
+```
+
+Five checks in that section had already run and passed. The two after the bad
+line never existed, and nothing anywhere said so. **The count cannot see a check
+that was never reached**, so a section that dies halfway is indistinguishable
+from a section that is shorter than you thought.
+
+`require_script()` covers the version of this where a whole section's dependency
+is missing. It does not cover a typo in the middle of one, and nothing can:
+GDScript has no exception to catch.
+
+So the defence is a convention, and it is worth keeping deliberately:
+
+- **Every section ends with a `print()` line summarising it.** That line is not
+  decoration. It is the marker that says the function reached its end, and a
+  section header in the output with no closing line under it is a section that
+  died.
+- **Read the output when you add a check, not just the total.** The total went
+  *up* on the run that lost two checks, because the section before it had
+  gained some.
+- **`SCRIPT ERROR` in a green run is a failure**, whatever the last line says.
+
 ### Work that vanishes past an await is checked now too
 
 `_test_await_does_not_lose_work()` reads every `await` in `enemies`,
@@ -783,8 +865,8 @@ the author would be worse than a confusing report.
 
 | pack | result | exit |
 |---|---|---|
-| present | 755 passed, 0 failed | 0 |
-| absent | 723 passed, 0 failed, 12 skipped | **0** |
+| present | 826 passed, 0 failed, 1 skipped | 0 |
+| absent | 794 passed, 0 failed, 13 skipped | **0** |
 
 The exit code is the point: `run_tests.ps1` gates a commit on it, and CI gates a
 merge on it, so a public clone now passes rather than looking abandoned.
@@ -1013,6 +1095,188 @@ branch explaining why the phrase must not be used. What is forbidden is *saying*
 it, so the check now reads only lines containing `_say(`. Same family as the
 five entries under "Before you trust a check" — the measurement was right and
 the frame around it was wrong.
+
+### Events scroll away, states must not
+
+The HUD had one surface for everything the world said, and it treated the two
+kinds identically — four *"Tunacan has gone hostile"* lines sitting in the corner
+for ever with no timestamps. `app.py` makes the same distinction about deaths and
+gets it right: *"A death is a TRANSITION, NOT A STATE, and counting it as a state
+is the bug worth not writing."*
+
+- **The message box holds events.** They happened, they are history, chat keeps
+  them. A hostile announcement, a level-up, loot.
+- **The status strip holds states.** True right now, must not scroll away, and
+  must vanish the moment they stop being true. Connection lost, server closing,
+  PvP on.
+
+Mixing them is not a tidiness problem: a connection warning arriving beside four
+old announcements looks exactly like more old news.
+
+**The one that mattered was already answered and thrown away.**
+`heartbeat_verdict()` has returned three values all along — `ok`, `revoked`,
+`offline` — and the broadcast poll ended with a bare `if verdict != "ok": return`.
+So a client that could not reach the server went on playing with **nothing on
+screen to say so**, and everything since the last successful save was lost
+without a word. The fourth time that exact shape has turned up here: an answer
+that existed and nothing acting on it.
+
+Three numbers, each with a reason rather than a guess:
+
+- `OFFLINE_GRACE_SECONDS` **25** — the broadcast poll is every 10s and the
+  heartbeat every 15s, so one missed request is ordinary and announcing it would
+  make the strip flicker. Two missed polls is not ordinary.
+- `OFFLINE_SIGNOUT_SECONDS` **90** — a lid, a lift, a router reboot all fit
+  inside it, and the countdown is visible for the last 65 so nobody is surprised.
+  Past it the client stops pretending and sends the player back with the reason,
+  because playing on into a dead session loses everything after the last save.
+- Priority **connection > maintenance > pvp** — if the server cannot be reached,
+  nothing else on the strip can be trusted to still be true.
+
+**Recovery is as automatic as the warning.** `_note_server_contact()` runs on
+every `ok` from *both* polls and clears the alarm; a strip that keeps its last
+message is a strip that lies.
+
+**The ban countdown deliberately does not tick.** A ticking clock earns its keep
+at 90 seconds, where every one counts. A ban is measured in days, nobody watches
+it, and redrawing the login screen each second would be work spent on a number
+that changes meaningfully once an hour. `describe_ban_remaining()` is static and
+pure, so the suite asks it directly: 0 and negatives say nothing (a ban the next
+login will simply ignore), "1 day" is not "1 days", and forty seconds left never
+reads as "0 minutes".
+
+### The death screen has two exits and only one was migrated
+
+`_pay_and_revive()` in `gameover.gd` carries a long comment beginning **"THE
+SERVER DOES ALL THREE THINGS THAT USED TO HAPPEN HERE"**. The button beside it —
+*return to character select*, the one that pays nothing — went on doing all of
+them locally:
+
+```gdscript
+slot_data["hp"] = int(slot_data.get("max_hp", 100))   # in two places
+slot_data["gold"] = 0
+```
+
+Both lines were wrong, in opposite directions, which is why neither was noticed.
+
+**The heal was a client decision.** The next status push reached the server as a
+rise from hp 0 to hp 504 with nothing authorising it, and `_reconcile_heals()`
+clamped it to what a few seconds of regeneration could produce:
+
+```
+unexplained heal: hp +504 vs regen 53 + granted 0
+heal clamped: hp 504 -> 52
+```
+
+Full bars on this screen, a corpse on 52 hp after a relog. **The reconciler was
+not the bug** — it was the only part of the system telling the truth, and
+`granted 0` in that line named the missing piece exactly: no route had
+authorised anything.
+
+**The penalty was also a client decision, and it did nothing.** `gold` is in the
+server's `SERVER_OWNED_STATS`, so the zero never arrived — the carry gold came
+back in full on the next login. The empty inventory *did* stick, because losing
+items is a loss and only gains are reconciled. True death took the items,
+refunded the gold, and left the character unplayable.
+
+`POST /api/character/respawn` is the other half now, and
+`_clear_carry_on_death()` writes no hp at all. What is left in it is a **mirror**
+of decisions the server has already committed, so the UI does not show stale
+numbers for a frame.
+
+**A failed request must not fall back to the local restore**, and the suite
+checks that specifically — falling back puts the character back exactly where
+the clamp will find it. Better to leave the player on the death screen with a
+reason on it.
+
+**The general lesson is about forks.** When a decision moves to the server, the
+thing to search for is not the function that moved — it is every other branch
+that reached the same state. Two buttons on one screen both ended with a
+character alive at full health.
+
+### A timestamp made on receipt measures when the reader turned up
+
+The sibling of the rule above, and the same mistake one step further on. Events
+were finally scrolling and states were finally staying put — and every server
+notice on screen was still lying about **when**.
+
+`GET /api/server/broadcasts` has returned an `at` per message since the table was
+created. `characterhud.gd` read `body` and `kind` out of each entry and dropped
+the rest. So a notice was stamped, once system lines were stamped at all, with
+the moment *this client happened to receive it*.
+
+That is correct for exactly one player: the one who was already logged in when it
+went out. **And the first poll after login asks `since=0`, which the server
+answers with the tail of the table — up to a week of notices, delivered in one
+second.** So the player who most needs the time is handed a week of history with
+every line claiming to be now. It does not fail to inform. It misinforms.
+
+Three things came out of fixing it, all worth keeping:
+
+- **`push_system_line()` takes the server's `at`**, and 0 — meaning "now" — is
+  right for exactly one kind of caller: a notice this client invented about
+  itself ("Lost connection."), which has no server row behind it because the
+  server was never involved.
+- **A bare clock is only unambiguous for today.** `LocalTime.stamp()` grows the
+  date only as far as it has to: `14:32` today, `Sat 14:32` inside six days,
+  `Sep 21 14:32` beyond. Six and not seven, because at seven "Sat" means either
+  of two Saturdays, which is the exact ambiguity the date is there to remove. The
+  full date on every line would spend a third of a chat row repeating the same
+  eight characters down the whole log.
+- **The record is written whether or not anybody is looking.** `_push_message()`
+  used to send a notice to the chat log *or* the fading message box, never both —
+  so a player with chat closed got a few seconds of "Tunacan has gone hostile."
+  and no trace of it afterwards. The box is an announcement and should fade; the
+  log is a record and should not. They are different things and the old code
+  treated them as two outputs for one message.
+
+**And one conversion, in one place.** `unix seconds + system bias, then
+decompose` was written four times in this project — `chatpanel.gd`,
+`loginmenu.gd`, `staffpanel.gd`, `ownerpanel.gd` — and the fourth copy had lost
+the bias, so every date in the owner panel was UTC under no label: seven hours
+out in Denver, thirteen in Sydney, and wrong in the way that looks like right.
+It is `src/shared/localtime.gd` now, and the suite fails if any of those four
+files grows its own `Time.get_time_zone_from_system()` again.
+
+The honest limit, stated rather than hidden: that call reports the offset in
+force **today**, DST included, so a stamp from the other side of a DST change is
+an hour out. For chat, which is minutes old, never. For a week-old broadcast,
+twice a year. Fixing it properly needs a timezone database, which is not worth
+shipping to make an old server notice an hour righter.
+
+### The fatal hit is the one that never saved
+
+Deaths on the kingdom board were never going up, and the server was not the
+problem. `PUT /api/player/status` counts a death on the **transition** — stored
+`hp` above zero, arriving `hp` at or below it — and `test_economy.py` covers it
+three ways: *"a death is counted"*, *"staying dead is not five more deaths"*,
+*"healing up does not count as anything"*. All correct, all passing.
+
+**The zero never arrived.** `take_damage()` ends by calling `gain_defense_xp()`,
+which is the only call on that path that reaches
+`CharacterData.save_character_state()` — and on the fatal hit it returns two
+lines earlier, at `if hp <= 0`. So the one hit that mattered was the one hit that
+never saved. By the time anything else did, the player had either revived (hp
+restored) or gone back to character select, and the server saw a healthy number
+both times.
+
+`_start_death_sequence()` now saves, and three details are load-bearing:
+
+- **Flushed, not queued.** `save_data()` marks the save pending and `_process()`
+  writes it on a later frame — and there is no later frame, because
+  `_change_to_game_over()` replaces the scene. A queued save here is a save that
+  never happens.
+- **Not awaited.** This node is about to be freed, and Godot silently **drops** a
+  coroutine whose object is gone (see the measured table under *"Never await on
+  something about to be freed"*). `flush_save()` is called on `CharacterData`, an
+  autoload, so the waiting is done by something that survives the scene change —
+  the same reason `combat.gd` is an autoload rather than code inside `BaseEnemy`.
+- **Before the scene change**, which the check verifies by index rather than by
+  reading it.
+
+**The general shape, which is most of this project's bugs:** a server half that
+was right *and tested*, and a client half nobody had wired to it. `unauthorized_seen`,
+the chat deletions, the teleport route with nothing issuing one, and this.
 
 ### A feed that can only grow cannot be moderated
 
@@ -1550,13 +1814,19 @@ src/ui/             characterhud, hotbar, statsscreen, floatinglabel, storyscene
 src/ui/bank/        src/ui/inventory/   src/ui/lootbag/   src/ui/menus/
 src/ui/owner/       owner-only tooling, gated on Api.is_owner
 src/world/          levels (elusion, field), interactables, lootbag, roofswap
-src/shared/         pure helpers used across characters, enemies and pets
+src/shared/         pure helpers used across characters, enemies and pets —
+                    facing, formation, homing, safespot, and localtime, which
+                    is the ONLY place unix seconds become a wall clock
 src/tools/          the gamedata exporter, the test runner and the atlas
                     audit — none of them ship
 scene/tests/        tests.tscn, the headless entry point for the test runner
 data/items/         ItemData      data/enemies/  EnemyData
 data/classes/       ClassData     data/gamedata.json  the exported contract
 docs/apicontract.md   what the client and server promise each other
+docs/audio.md         the 31 sound ids, where each fires, and what the suite
+                      does about a registry that is half filled in. The game
+                      is silent: every entry in Audio.SOUNDS is empty, on
+                      purpose, and the boot log says so at every launch.
 ```
 
 **`src/` mirrors `scene/` folder for folder.** A script lives beside where its

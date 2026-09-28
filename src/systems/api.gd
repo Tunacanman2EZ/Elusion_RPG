@@ -275,6 +275,40 @@ func colour_for_role(which: String) -> Color:
 	return RANK_COLOURS.get(which, RANK_COLOURS["player"])
 
 
+# THE GUILD TAG'S COLOUR, in one place for the same reason RANK_COLOURS is one
+# place. The tag is drawn on every chat line, on the players menu, on the
+# kingdom board and over your own head, and four opinions about what a guild
+# looks like is how it stops being recognisable at a glance - which is the
+# entire point of having a tag.
+#
+# DELIBERATELY NOT A RANK COLOUR, and not near one. A guild is not a rank: the
+# owner and a brand-new player can be in the same guild, and a tag tinted like
+# staff would say something about its members that is not true. The violet is
+# outside the four rank colours on purpose, so the tag and the name beside it
+# are read as two different facts.
+const GUILD_TAG_COLOUR := Color(0.72, 0.68, 0.86)
+
+
+func guild_tag_text(tag: String) -> String:
+	"""The tag as it is drawn anywhere: "[ELUSION]", or "" for no guild.
+
+	THE BRACKETS LIVE HERE rather than at four call sites, so changing how a
+	guild is written is one edit instead of four that can disagree.
+
+	THE CLIENT DECIDES NOTHING ABOUT THE LETTERS. guild_tag() in app.py
+	uppercases the name and bounds it at MAX_GUILD_NAME, and this only wraps
+	what it sent. That is what stops a 24-character name founded under the old
+	rule from drawing a banner over somebody's head: the bound is applied on the
+	side that cannot be edited by whoever is holding the client.
+
+	BBCODE IS NOT ESCAPED HERE, and a caller rendering into a RichTextLabel must
+	pass this through its own escape exactly as it does a username. chatpanel's
+	_escape() turns "[" into "[lb]", and this string begins with one.
+	"""
+	var trimmed: String = tag.strip_edges()
+	return "" if trimmed == "" else "[%s]" % trimmed
+
+
 func role_at_least(minimum: String) -> bool:
 	# Mirrors role_at_least() in app.py, and for the same reason: "mod or
 	# above" should be one comparison rather than an expression repeated at

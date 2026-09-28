@@ -1418,6 +1418,39 @@ func _start_death_sequence() -> void:
 	is_dying = true
 	velocity = Vector2.ZERO
 
+	# THE DEATH HAS TO REACH THE SERVER, AND THIS IS THE ONLY MOMENT IT CAN.
+	#
+	# The kingdom board counts deaths, and they were never going up. The server
+	# counts one the right way - PUT /api/player/status compares the STORED hp
+	# against the one arriving and counts a death when it crosses from above
+	# zero to at or below it. Its own comment explains why a transition rather
+	# than a state: a dead client keeps reporting hp 0 while the death screen is
+	# open, and counting that would let anybody run their total to a million by
+	# leaving the screen up.
+	#
+	# That logic is right and untouched. THE ZERO SIMPLY NEVER ARRIVED.
+	#
+	# take_damage() ends by calling gain_defense_xp(), which is the call that
+	# reaches CharacterData.save_character_state() - and on the fatal hit it
+	# returns two lines earlier, at `if hp <= 0`. So the one hit that matters is
+	# the one hit that never saved. By the time anything else did, the player had
+	# either revived (hp restored) or gone back to character select, and the
+	# server saw a healthy number both times.
+	#
+	# FLUSHED, NOT QUEUED. save_data() marks the save pending and _process()
+	# writes it on a later frame - and there is no later frame here, because
+	# _change_to_game_over() replaces the scene. A queued save would be a save
+	# that never happened.
+	#
+	# NOT AWAITED, and that is the trap this project already has a table for.
+	# This node is about to be freed by the scene change, and Godot silently
+	# DROPS a coroutine whose object is gone - see the measured table in
+	# combat.gd. flush_save() is called on CharacterData, an autoload, so the
+	# waiting is done by something that survives the scene change. The same
+	# reason combat.gd is an autoload rather than code inside BaseEnemy.
+	CharacterData.save_character_state(self)
+	CharacterData.flush_save()
+
 	# THERE WAS A REVIVE-TOKEN BRANCH HERE and it could never run: nothing in
 	# the project ever set has_active_revive true, so the flag, the branch and
 	# the early return were all unreachable. The revive that exists is
@@ -1986,17 +2019,55 @@ func _setup_nameplate() -> void:
 		Settings.changed.connect(_on_setting_changed)
 
 
-func set_nameplate(display_name: String, rank: String) -> void:
-	"""Who this body is. Public so a remote player can be told."""
+func set_nameplate(display_name: String, rank: String, guild_tag: String = "") -> void:
+	"""Who this body is. Public so a remote player can be told.
+
+	THE GUILD IS A DEFAULTED THIRD ARGUMENT, not a fourth thing to remember.
+	Every existing caller keeps working and gets no tag, which is correct: the
+	two that pass no guild are the login path and the rank-change path, and
+	both are immediately followed by a broadcast poll that does pass one.
+
+	AND IT IS AN ARGUMENT RATHER THAN A READ OF Api, for exactly the reason
+	stated over _setup_nameplate(): the day a remote player is spawned, its
+	plate is built by being TOLD who it is. A guild read out of Api here would
+	put the local player's guild over everybody's head."""
 	if _nameplate == null:
 		return
 
 	var text: String = display_name.strip_edges()
+	# THE TAG SITS ABOVE THE NAME, on its own line, and that is the only place
+	# it fits. Beside the name it widens the plate by the length of a guild
+	# name - and the comment on NAMEPLATE_CROWN_GAP already explains why a wide
+	# plate is the thing this design is trying to avoid: "the wider a nameplate
+	# is the sooner it runs into somebody else's".
+	#
+	# Which puts it under the crown and over the name, so an owner in a guild
+	# reads crown, guild, name, top to bottom - largest claim to smallest.
+	var tag: String = Api.guild_tag_text(guild_tag)
+	if text != "" and tag != "":
+		text = "%s\n%s" % [tag, text]
+
+	# AFTER THE TAG IS FOLDED IN, NOT BEFORE. Writing the label first and then
+	# building the two-line string would put the name on screen and leave the
+	# guild in a local variable.
+	#
+	# THIS LINE WAS ONCE DELETED BY ACCIDENT while the tag was being added, and
+	# the entire 823-check suite still passed - because the nameplate is
+	# verified by reading this file rather than by running it, which is the
+	# limit CLAUDE.md states in the words "most of it checks agreement, not
+	# correctness". Every plate in the game would have been blank. It was
+	# caught by diffing against the working copy, and there is now a check
+	# below asserting this assignment exists and comes after the tag.
 	_nameplate.text = text
 	# NOTHING TO SAY, NOTHING ON SCREEN. A game run straight from the editor
 	# has no login and so no name, and an empty plate is an outline box
 	# hovering over the character for no reason.
 	_nameplate.visible = text != ""
+	# THE WHOLE PLATE TAKES THE RANK COLOUR, including the tag line above the
+	# name. Colouring the tag separately needs BBCode, which means a
+	# RichTextLabel, which means this plate stops being one Label whose width
+	# _place_nameplate() can measure - and a two-pixel gain in prettiness is
+	# not worth making the positioning arithmetic guess.
 	_nameplate.add_theme_color_override("font_color", _nameplate_colour(rank))
 	if _nameplate_crown != null:
 		_nameplate_crown.visible = (text != "" and rank == NAMEPLATE_CROWN_RANK)

@@ -197,9 +197,7 @@ static func describe_ban(ban: Variant) -> String:
 	if not bool(ban.get("permanent", false)):
 		# Local time, to the minute - see describe_login_refusal() in
 		# loginmenu.gd for why not the raw UTC string.
-		var local: int = int(ban.get("expires_at", 0)) \
-			+ int(Time.get_time_zone_from_system().get("bias", 0)) * 60
-		until = "until " + Time.get_datetime_string_from_unix_time(local, true).substr(0, 16)
+		until = "until " + LocalTime.full(int(ban.get("expires_at", 0)))
 	var line: String = "Banned %s by %s" % [until, str(ban.get("banned_by", "?"))]
 	var reason: String = str(ban.get("reason", ""))
 	if reason != "":

@@ -42,6 +42,17 @@ const REASON_LABELS := {
 	# out of a death. Named for what the player did rather than for the
 	# endpoint that did it.
 	"revive": "paid to cheat death",
+	# The fourth, and the pair to the one above it: what the players who did
+	# NOT pay left behind. It arrived the moment the true-death path moved onto
+	# the server - before that the carry gold was zeroed on the client, never
+	# destroyed, and quietly came back on the next login.
+	#
+	# THE COMMENT ABOVE THIS TABLE SAID A NEW SINK WOULD RENDER AS ITS OWN ID,
+	# AND IT DID: for one build this line read "4,120 death", which is exactly
+	# the "looks unfinished and is meant to" that was promised. That is the
+	# mechanism working - a missing label is visible rather than a missing line
+	# in a breakdown that then does not add up.
+	"death": "lost by the dead",
 }
 
 # The three colours this board adds on top of the theme, named rather than
@@ -398,6 +409,14 @@ func _render(data: Dictionary) -> void:
 	total_label.tooltip_text = _exact_tooltip(total, "gold")
 	if total_taxed > 0:
 		total_label.tooltip_text += "\n%s of it the trade tax" % _commas(total_taxed)
+	# AND WHAT WAS LOST RATHER THAN GIVEN, on the same hover and for the same
+	# reason the tax share is here: the headline number does not say what it is
+	# made of, and a total that is mostly deaths means something different from
+	# one that is mostly spending.
+	var total_lost: int = int(data.get("total_lost", 0))
+	if total_lost > 0:
+		total_label.tooltip_text += "\n%s of it lost by the dead, not given" \
+			% _commas(total_lost)
 	if total_deaths > 0:
 		total_label.tooltip_text += "\nand %s death%s along the way" % [
 			_commas(total_deaths), "" if total_deaths == 1 else "s"]
@@ -422,13 +441,37 @@ func _render(data: Dictionary) -> void:
 	# what this line is for is a figure worth putting on its own, and "how many
 	# times has this world killed somebody" is a better one than a sink total
 	# nobody can act on.
-	headline_label.text = ("%s death%s across the realm" % [_commas(total_deaths),
-		"" if total_deaths == 1 else "s"]) \
-		if total_deaths > 0 else "Nobody has died yet."
+	# AND WHAT THEY LEFT BEHIND, on the end of the line that is already about
+	# dying. This is the second small figure the board needed once death became
+	# a gold sink: contribution counts every coin destroyed, so dying now climbs
+	# the ranking, and a reader is entitled to know how much of the realm's
+	# total arrived that way rather than by anybody choosing to spend it.
+	#
+	# ON THIS LINE RATHER THAN A NEW COLUMN. Four columns of numbers in a panel
+	# this narrow is how the deaths column nearly did not fit; this is one
+	# clause on a line that already exists, and the per-player split is on the
+	# gold cell's hover where somebody asking about one player will look.
+	if total_deaths > 0:
+		headline_label.text = "%s death%s across the realm" % [
+			_commas(total_deaths), "" if total_deaths == 1 else "s"]
+		if total_lost > 0:
+			headline_label.text += " — %s gold left behind" % _compact(total_lost)
+	else:
+		headline_label.text = "Nobody has died yet."
 	headline_label.add_theme_color_override("font_color",
 		DEATH_COLOUR if total_deaths > 0 else RANK_COLOUR)
 
 	you_label.text = _your_line(you, int(data.get("contributors", 0)))
+
+	# THE GUILD STANDING GOES ON THE END OF YOUR OWN LINE, not in a second
+	# table. A table of guilds beside a table of players is two rankings
+	# competing for the same narrow panel, and the question a member actually
+	# has - "where do WE come" - is answered by one sentence.
+	var standing: String = _guild_standing(
+		data.get("your_guild"),
+		data.get("guilds", []) if data.get("guilds", []) is Array else [])
+	if standing != "":
+		you_label.text += "\n" + standing
 	you_label.add_theme_color_override("font_color",
 		YOU_COLOUR if (int(you.get("contributed", 0)) > 0
 			or int(you.get("lusions", 0)) > 0) else RANK_COLOUR)
@@ -468,6 +511,48 @@ func _breakdown_text(by_reason: Dictionary, lusions_by_reason: Dictionary,
 	return line
 
 
+func _guild_standing(your_guild: Variant, guilds: Array) -> String:
+	"""Your guild's line on this board, or "" when you are not in one.
+
+	WHY A GUILD BOARD EXISTS AT ALL, and it is worth saying here because this
+	sentence is the answer a player actually reads. A guild needs a reason to
+	be in one that is not a power bonus: a bonus is a balance problem AND a new
+	thing to make server-authoritative, which is another surface and another
+	finding waiting. A shared number to chase costs nothing to secure, because
+	it is derived from a ledger already kept honest for other reasons.
+
+	`members` MEANS "MEMBERS WHO HAVE GIVEN SOMETHING", which is what the
+	server calls it and what it is. A guild of fifty where two people have ever
+	spent a coin contributes what those two gave, and saying "2 of you" rather
+	than "50 of you" is the difference between a figure and a flattering one."""
+	if not (your_guild is Dictionary):
+		# NOT IN A GUILD, and the board is a reasonable place to learn that one
+		# exists - but only as a fact, never as a nag. One clause, no verb
+		# telling anybody what to do.
+		if guilds.is_empty():
+			return ""
+		var best: Dictionary = guilds[0] if guilds[0] is Dictionary else {}
+		if best.is_empty():
+			return ""
+		return "Top guild: %s, %s gold." % [
+			str(best.get("tag", best.get("name", "?"))),
+			_commas(int(best.get("contributed", 0)))]
+
+	var mine: Dictionary = your_guild
+	var rank: int = int(mine.get("rank", 0))
+	var members: int = int(mine.get("members", 0))
+	var line: String = "%s has given %s gold" % [
+		str(mine.get("tag", mine.get("name", "?"))),
+		_commas(int(mine.get("contributed", 0)))]
+	if members > 0:
+		line += " between %d of you" % members
+	# RANKED ONLY WHEN THERE IS SOMEBODY TO BE RANKED AGAINST. "Ranked 1 of 1"
+	# is not a standing, it is arithmetic about the only entry.
+	if rank > 0 and guilds.size() > 1:
+		line += ", ranked %d of %d" % [rank, guilds.size()]
+	return line + "."
+
+
 func _your_line(you: Dictionary, contributors: int = 0) -> String:
 	var given: int = int(you.get("contributed", 0))
 	var lusions: int = int(you.get("lusions", 0))
@@ -503,6 +588,18 @@ func _your_line(you: Dictionary, contributors: int = 0) -> String:
 	lines.append("You have given %s gold and %s Lusions." % [
 		_commas(given), _commas(lusions),
 	])
+
+	# WHAT YOU DID NOT CHOOSE TO GIVE. Death destroys the gold you were
+	# carrying, and the board counts every destroyed coin as a contribution -
+	# so a player who dies a lot climbs it without ever having decided to give
+	# anything. That rule is kept, and this clause is what stops it being
+	# flattering: "given" and "lost" are different verbs and the line says so.
+	#
+	# ONLY WHEN THERE IS SOME, like the deaths line below it. "0 of it lost" on
+	# somebody who has never died is a sentence about nothing.
+	var lost: int = int(you.get("lost", 0))
+	if lost > 0:
+		lines.append("%s of that was lost, not given." % _commas(lost))
 
 	# YOUR OWN DEATHS, only when there are some. "You have died 0 times" on the
 	# line of somebody who has never died reads as a taunt rather than a fact.
@@ -650,6 +747,29 @@ func _make_row() -> HBoxContainer:
 	name_label.clip_text = true
 	row.add_child(name_label)
 
+	# WHO THEY RUN WITH, AND DELIBERATELY NOT A COLUMN.
+	#
+	# The note over the deaths label below says the panel is narrow enough that
+	# the fourth column of figures nearly did not fit, and a guild tag is twelve
+	# characters plus brackets - wider than any of them. A fifth fixed column
+	# would have pushed the money off the edge on the exact screens this board
+	# is read on.
+	#
+	# So it has NO custom_minimum_size at all: it takes the width of its own
+	# text and nothing more, and the name beside it is the only thing set to
+	# EXPAND_FILL, so the name absorbs whatever is left and clips itself first.
+	# A row for somebody in no guild has an empty label taking no space, which
+	# is why there is no column of blanks down the board either.
+	var guild_label := Label.new()
+	guild_label.name = "guild"
+	guild_label.add_theme_font_size_override("font_size", 10)
+	# THE SAME VIOLET AS CHAT, THE PLAYERS MENU AND THE NAMEPLATE. Api owns it
+	# for the reason it owns colour_for_role.
+	guild_label.add_theme_color_override("font_color", Api.GUILD_TAG_COLOUR)
+	guild_label.clip_text = true
+	guild_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	row.add_child(guild_label)
+
 	var given_label := Label.new()
 	given_label.name = "gold"
 	# A Label ignores the mouse by default, and a tooltip on a node that cannot
@@ -719,9 +839,28 @@ func _fill_row(row: HBoxContainer, rank: int, entry: Dictionary) -> void:
 	else:
 		name_label.remove_theme_color_override("font_color")
 
+	# A REUSED ROW MAY HAVE BEEN SOMEBODY ELSE'S, so this is set both ways round
+	# for the same reason the name tint above is: a field only ever written when
+	# there is something to say is a field that keeps the last thing it said,
+	# and the tag would creep down the board as ranks moved.
+	var guild_label: Label = row.get_node("guild")
+	var tag: String = Api.guild_tag_text(str(entry.get("guild_tag", "")))
+	guild_label.text = tag
+	guild_label.tooltip_text = "" if tag == "" \
+		else "In %s" % str(entry.get("guild", tag))
+
 	var given_label: Label = row.get_node("gold")
 	given_label.text = _compact(given)
 	given_label.tooltip_text = _exact_tooltip(given, "gold")
+	# THE PER-PLAYER SPLIT LIVES HERE, because this is where somebody asking
+	# "how did THEY get to the top" is already pointing. _exact_tooltip()
+	# returns "" for a figure the column did not round, so the split has to
+	# stand on its own when it does.
+	var lost: int = int(entry.get("lost", 0))
+	if lost > 0:
+		if given_label.tooltip_text != "":
+			given_label.tooltip_text += "\n"
+		given_label.tooltip_text += "%s of it lost, not given" % _commas(lost)
 
 	# A dash rather than a zero when someone has given none, because a column of
 	# zeroes reads as a broken feature and a column of dashes reads as "not this

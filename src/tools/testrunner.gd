@@ -108,6 +108,11 @@ func _run_all() -> void:
 	_test_god_mode_earns_nothing()
 	_test_teleport_is_wired()
 	_test_players_menu_and_pvp_are_honest()
+	_test_death_reaches_the_server()
+	_test_world_status_is_shown()
+	_test_timestamps_are_the_servers()
+	_test_board_says_what_it_is_made_of()
+	_test_the_guild_tag_is_drawn_everywhere()
 	_test_unauthorized_is_answered()
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
@@ -732,7 +737,13 @@ func _scan_unused_params(dir_path: String, offenders: Array[String], funcs: Arra
 					if not raw.strip_edges().begins_with("#"):
 						body += raw + "\n"
 
-				for piece in arglist.split(","):
+				# SPLIT AT TOP-LEVEL COMMAS ONLY. A plain split(",") breaks on
+				# any default value that contains one -
+				# `colour: Color = Color(0.95, 0.45, 0.35)` became three
+				# "parameters", the last of them named "0.35)", and this check
+				# reported it as unused. A false alarm is how a check gets
+				# switched off, which CLAUDE.md says in as many words.
+				for piece in _split_params(arglist):
 					var pname: String = piece.strip_edges().split(":")[0].split("=")[0].strip_edges()
 					if pname == "" or pname.begins_with("_"):
 						continue
@@ -741,6 +752,46 @@ func _scan_unused_params(dir_path: String, offenders: Array[String], funcs: Arra
 							% [full.trim_prefix("res://"), i + 1, fname, pname])
 		entry = dir.get_next()
 	dir.list_dir_end()
+
+
+func _split_params(arglist: String) -> PackedStringArray:
+	"""One entry per parameter, ignoring commas nested inside brackets.
+
+	`a: int, colour: Color = Color(1, 0, 0), flags: Array = [1, 2]` is three
+	parameters, not seven. Depth counting is enough here: GDScript signatures
+	nest brackets but never contain an unbalanced one, and a comma inside a
+	string default would need quotes, which are counted too so that a default of
+	"a, b" stays one parameter.
+	"""
+	var out := PackedStringArray()
+	var depth: int = 0
+	var in_string: bool = false
+	var quote: String = ""
+	var current: String = ""
+	for index in arglist.length():
+		var ch: String = arglist[index]
+		if in_string:
+			current += ch
+			if ch == quote:
+				in_string = false
+			continue
+		if ch == "\"" or ch == "'":
+			in_string = true
+			quote = ch
+			current += ch
+			continue
+		if ch == "(" or ch == "[" or ch == "{":
+			depth += 1
+		elif ch == ")" or ch == "]" or ch == "}":
+			depth -= 1
+		if ch == "," and depth == 0:
+			out.append(current)
+			current = ""
+			continue
+		current += ch
+	if current.strip_edges() != "":
+		out.append(current)
+	return out
 
 
 func _mentions_word(haystack: String, word: String) -> bool:
@@ -867,15 +918,18 @@ func _test_audio_paths() -> void:
 	check("the SOUNDS table is readable", not sounds.is_empty(), "%d slots" % sounds.size())
 
 	var missing: Array[String] = []
+	var empty: Array[String] = []
 	var filled: int = 0
 	for id in sounds:
 		var path: String = String(sounds[id])
 		if path == "":
+			empty.append(String(id))
 			continue          # not recorded yet - silent on purpose
 		filled += 1
 		if not ResourceLoader.exists(path):
 			missing.append("%s -> %s" % [id, path])
 	missing.sort()
+	empty.sort()
 	check("every filled sound slot points at a file that exists",
 		missing.is_empty(), "\n         ".join(missing))
 
@@ -884,8 +938,100 @@ func _test_audio_paths() -> void:
 			AudioServer.get_bus_index(bus_name) >= 0,
 			"players assigned to a missing bus fall back to Master, silently")
 
-	print("  %d of %d slots filled; %d bus(es) checked"
-		% [filled, sounds.size(), AUDIO_BUSES.size()])
+	# =========================================================================
+	# EVERY ID ANYTHING PLAYS IS REGISTERED
+	# =========================================================================
+	# THIS ONE HAS ALREADY HAPPENED. "cook" was played by cookingscreen.gd
+	# before it was registered, so every fish finishing on the fire produced a
+	# push_warning instead of a sound - and a push_warning in a running game is
+	# a line nobody sees. An unassigned id is a deliberate no-op; an id that is
+	# not in the table at all is a typo, and only the table can tell them apart.
+	#
+	# READ OUT OF THE CALL EXPRESSION, NOT OFF THE LINE, because of that very
+	# call site:
+	#
+	#     Audio.play("refused" if burnt else "cook")
+	#
+	# A check matching Audio.play("<id>") sees "refused" and never learns that
+	# "cook" is played at all - so the check would have missed the one bug it
+	# is named after. Every string literal between the parentheses is taken.
+	#
+	# WHAT IT CANNOT SEE, said plainly rather than implied: an id held in a
+	# variable. There is no such call today and this would not notice one.
+	var played: Dictionary = {}
+	var unregistered: Array[String] = []
+	for script_path in _scripts_under("res://src"):
+		# THE SCANNER DOES NOT SCAN ITSELF. This file contains the string
+		# "Audio.play" in the code above - inside find() - so including it made
+		# the check read its own source and report the literal as an id. A
+		# scanner that is part of what it scans is measuring itself.
+		if script_path == "res://src/tools/testrunner.gd":
+			continue
+		var body: String = _code_only(FileAccess.get_file_as_string(script_path))
+		var at: int = body.find("Audio.play")
+		while at != -1:
+			var open_at: int = body.find("(", at)
+			var close_at: int = body.find(")", open_at)
+			if open_at == -1 or close_at == -1:
+				break
+			var args: String = body.substr(open_at, close_at - open_at)
+			var quote: int = args.find("\"")
+			while quote != -1:
+				var end_quote: int = args.find("\"", quote + 1)
+				if end_quote == -1:
+					break
+				var id: String = args.substr(quote + 1, end_quote - quote - 1)
+				if id != "" and not sounds.has(id):
+					var note: String = "%s (%s)" % [id, script_path.get_file()]
+					if not unregistered.has(note):
+						unregistered.append(note)
+				if id != "":
+					played[id] = true
+				quote = args.find("\"", end_quote + 1)
+			at = body.find("Audio.play", close_at)
+
+	check("something in the game asks for a sound at all", played.size() > 0,
+		played.size())
+	check("and every id it asks for is registered", unregistered.is_empty(),
+		unregistered)
+
+	# =========================================================================
+	# ASSIGNED, OR HONESTLY EMPTY, BUT NEVER HALF
+	# =========================================================================
+	# Nobody ships a game and fails to notice it makes no noise at all. What
+	# ships unnoticed is twenty-six sounds assigned and five forgotten, because
+	# the boot line still prints a number and nothing reads it.
+	#
+	# So zero is a SKIP - the game is deliberately silent today and saying so
+	# twice does not make it truer - all is a PASS, and the middle FAILS and
+	# names what is missing. docs/audio.md is the list to work from.
+	if filled == 0:
+		skipped += 1
+		skips.append("the sound registry is filled in   (0 of %d assigned; the "
+			% sounds.size() + "game is deliberately silent - see docs/audio.md)")
+		_say("  skip  the sound registry is filled in   (0 of %d assigned, the game is silent)"
+			% sounds.size())
+	else:
+		check("the sound registry is filled in", empty.is_empty(),
+			"%d of %d assigned, still empty: %s"
+				% [filled, sounds.size(), ", ".join(empty)])
+
+	# REGISTERED AND NEVER ASKED FOR: printed, not checked. These are hooks not
+	# yet written rather than mistakes, and a check that went red on day one
+	# for six of them would be switched off within a week. The list belongs in
+	# front of whoever fills the table, not discovered by wondering why a sound
+	# never plays.
+	var unplayed: Array[String] = []
+	for id in sounds:
+		if not played.has(String(id)):
+			unplayed.append(String(id))
+	unplayed.sort()
+	if not unplayed.is_empty():
+		print("  %d registered that nothing plays yet: %s"
+			% [unplayed.size(), ", ".join(unplayed)])
+
+	print("  %d of %d slots filled; %d ids played; %d bus(es) checked"
+		% [filled, sounds.size(), played.size(), AUDIO_BUSES.size()])
 
 
 # =============================================================================
@@ -1468,6 +1614,524 @@ func _test_players_menu_and_pvp_are_honest() -> void:
 	print("  a switch for combat that does not exist, and it says so everywhere")
 
 
+# =============================================================================
+# A DEATH HAS TO REACH THE SERVER
+# =============================================================================
+# The kingdom board counts deaths and they were never going up, and the server
+# was not the problem: PUT /api/player/status counts a death on the TRANSITION
+# from stored hp above zero to an arriving hp at or below it, and test_economy.py
+# already covers it three ways - "a death is counted", "staying dead is not five
+# more deaths", "healing up does not count as anything".
+#
+# THE ZERO SIMPLY NEVER ARRIVED. take_damage() ends by calling gain_defense_xp(),
+# which is the only call on that path reaching CharacterData - and on the fatal
+# hit it returns two lines earlier at `if hp <= 0`. So the one hit that mattered
+# was the one hit that never saved, and by the time anything else did the player
+# had revived or left, both with a healthy number.
+#
+# The same shape as half the bugs found in this project: a server half that was
+# right and tested, and a client half nobody had wired to it.
+func _test_death_reaches_the_server() -> void:
+	section("DEATH — the fatal hit is the one that has to be saved")
+
+	var src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
+	check("player.gd is readable", src.length() > 0)
+
+	var seq: int = src.find("func _start_death_sequence(")
+	check("there is a death sequence", seq != -1)
+	if seq == -1:
+		return
+
+	# COMMENTS STRIPPED. The block explaining this fix names every symbol these
+	# checks look for - _change_to_game_over, gain_defense_xp, flush_save - so a
+	# plain find() would be reading the explanation rather than the code.
+	# BOUNDED TO THE FUNCTION, and the first version was not - which a sabotage
+	# proved by removing the save and leaving this check green.
+	# save_character_state() is called from four other places in this file, all
+	# of them BELOW _start_death_sequence(), so a search that ran to the end of
+	# the file found one of those and reported the death path as saving.
+	#
+	# The third time bounding has been needed here. _first_code_index() answers
+	# "where is this in code rather than in a comment"; it does not answer
+	# "inside which function", and a search for something common needs both.
+	var seq_end: int = src.find("\nfunc ", seq + 8)
+	var saved: int = _within(_first_code_index(src, "CharacterData.save_character_state(self)", seq), seq_end)
+	var flushed: int = _within(_first_code_index(src, "CharacterData.flush_save()", seq), seq_end)
+	check("the death sequence saves the character", saved != -1,
+		"the fatal hit returns before gain_defense_xp, which is what saves")
+	check("and FLUSHES it rather than queueing it", flushed != -1,
+		"save_data() writes on a later frame, and the scene change means there "
+		+ "is no later frame")
+
+	# ORDER. The scene change is what frees this node; a save after it is a save
+	# that never happens.
+	var gone: int = _within(_first_code_index(src, "_change_to_game_over", seq), seq_end)
+	check("both happen before the scene change",
+		saved != -1 and flushed != -1 and gone != -1 and saved < gone and flushed < gone,
+		"change_scene_to_file replaces the scene; anything after it is gone")
+
+	# THE AWAIT TRAP, which this project has a measured table for. This node is
+	# about to be freed, and Godot silently DROPS a coroutine whose object is
+	# gone - so the waiting must be done by the autoload, not by the player.
+	var line_start: int = src.rfind("\n", flushed) + 1
+	var flush_line: String = src.substr(line_start, flushed - line_start + 32)
+	check("and the flush is not awaited from the dying node",
+		not flush_line.contains("await"),
+		"a coroutine owned by a node that is being freed is dropped silently")
+
+	# THE SAVE HAS TO CARRY hp, or it is a write with nothing in it.
+	var data: String = FileAccess.get_file_as_string("res://src/systems/characterdata.gd")
+	check("hp is one of the saved stats", data.contains("\"hp\":"),
+		"the zero is the whole message; a save without it says nothing")
+	check("and save_character_state still queues a save",
+		data.contains("save_data()"),
+		"flush_save() only writes when something is pending")
+
+	# =========================================================================
+	# AND THE OTHER WAY OUT OF THE DEATH SCREEN
+	# =========================================================================
+	# The screen has two exits. /api/character/revive was migrated to the
+	# server under a comment beginning "THE SERVER DOES ALL THREE THINGS THAT
+	# USED TO HAPPEN HERE" - and the button beside it went on writing full hp
+	# into the save slot itself.
+	#
+	# It produced a character on 52 hp. The client healed itself to 504, the
+	# next status push read as a rise from zero with nothing authorising it,
+	# and _reconcile_heals() clamped it to what a few seconds of regeneration
+	# could produce. Full bars on screen, a corpse after a relog.
+	var over: String = FileAccess.get_file_as_string("res://src/ui/menus/gameover.gd")
+	check("gameover.gd is readable", over.length() > 0)
+
+	var ret: int = over.find("func _on_return_pressed(")
+	var ret_end: int = over.find("\nfunc ", ret + 8)
+	check("the return path exists", ret != -1)
+	check("and it asks the server to respawn",
+		_within(_first_code_index(over, "/api/character/respawn", ret), ret_end) != -1,
+		"accepting death is a fact; full health and an empty purse are decisions")
+
+	# THE CHECK THAT WOULD HAVE CAUGHT IT. Not "does it call the route" - a
+	# version that calls the route AND still writes its own hp is the same bug
+	# with a network request in front of it.
+	var clear_at: int = over.find("func _clear_carry_on_death(")
+	var clear_end: int = over.find("\nfunc ", clear_at + 8)
+	check("and nothing on that path writes its own hp",
+		_within(_first_code_index(over, "slot_data[\"hp\"]", ret), ret_end) == -1
+			and _within(_first_code_index(over, "slot_data[\"hp\"]", clear_at), clear_end) == -1,
+		"the client deciding its own health is exactly what the reconciler clamped")
+
+	# A FAILED REQUEST MUST NOT FALL BACK TO THE LOCAL RESTORE, because the
+	# local restore IS the bug. Better to leave the player on the death screen
+	# with a reason than to put them back where the clamp will find them.
+	check("a refusal is reported rather than worked around",
+		_within(_first_code_index(over, "_restore_character_resources(", ret), ret_end) == -1,
+		"falling back locally reintroduces the unauthorised heal")
+
+	print("  the server counted transitions correctly all along")
+
+
+# =============================================================================
+# A PLAYER HAS TO BE TOLD WHAT IS TRUE RIGHT NOW
+# =============================================================================
+# The HUD had one surface for everything the world said, and it treated an EVENT
+# and a STATE identically - four "has gone hostile" lines sitting there for ever
+# with no timestamps. app.py makes the same distinction about deaths and gets it
+# right: "A death is a TRANSITION, NOT A STATE, and counting it as a state is
+# the bug worth not writing."
+#
+# So there are two surfaces now. The message box keeps events, which are history
+# and belong in chat. The status strip carries states, which are true now, must
+# not scroll away, and must vanish the moment they stop being true.
+#
+# THE ONE THAT MATTERS IS THE CONNECTION. heartbeat_verdict() has returned three
+# values all along - ok, revoked, offline - and the broadcast poll threw the
+# third away with a bare `return`. So a client that could not reach the server
+# went on playing with nothing on screen to say so, and everything since the
+# last successful save was lost without a word. The answer existed; nothing
+# acted on it. The fourth time that exact shape has turned up in this project.
+func _test_world_status_is_shown() -> void:
+	section("STATUS STRIP — what is true now, separate from what happened")
+
+	var hud: String = FileAccess.get_file_as_string("res://src/ui/characterhud.gd")
+	check("characterhud.gd is readable", hud.length() > 0)
+
+	check("there is a strip, built beside the message box",
+		hud.contains("func _build_status_strip(") and hud.contains("_build_status_strip()"),
+		"a builder nothing calls is a panel nobody sees")
+	check("and it never eats a click",
+		_within(_first_code_index(hud, "MOUSE_FILTER_IGNORE",
+			hud.find("func _build_status_strip(")),
+			hud.find("\nfunc ", hud.find("func _build_status_strip(") + 8)) != -1,
+		"it sits over the play area; swallowing input would kill the world under it")
+
+	# STATES ARE KEYED AND CLEARABLE. A strip that can only be set is a strip
+	# that lies as soon as the thing it announced stops being true.
+	check("states are set by key", hud.contains("func set_world_status(key: String"))
+	check("and an empty text clears one", hud.contains("_status_states.erase(key)"),
+		"otherwise a reopened server keeps its closing warning on screen")
+	check("one line at a time, by priority", hud.contains("const STATUS_PRIORITY :="),
+		"two stacked warnings is how neither gets read")
+
+	# THE OFFLINE VERDICT IS FINALLY ACTED ON.
+	check("a good verdict records contact", hud.contains("func _note_server_contact("))
+	# BOTH CALL SITES, EACH BY NAME. Counting occurrences was the first version
+	# and it was wrong twice over: `func _note_server_contact() -> void:`
+	# contains the string too, so the definition counted as a call, and removing
+	# one of the two real calls still left the total at two. A count is not
+	# evidence about a place.
+	for caller in ["_on_broadcast_poll_timeout", "_on_unauthorized_seen"]:
+		var at: int = hud.find("func %s(" % caller)
+		var at_end: int = hud.find("\nfunc ", at + 8)
+		check("%s() records contact" % caller,
+			at != -1 and _within(_first_code_index(hud, "_note_server_contact()", at), at_end) != -1,
+			"both polls answer the same question; only counting one leaves a gap")
+	check("the countdown runs every frame, not on a timer",
+		hud.contains("_tick_connection_status()") and hud.contains("func _process("),
+		"a countdown that updates every ten seconds does not read as a countdown")
+	check("it waits out a grace before crying wolf",
+		hud.contains("const OFFLINE_GRACE_SECONDS :="),
+		"one missed poll is ordinary; announcing it makes the strip flicker")
+	check("and it eventually gives up rather than pretending",
+		hud.contains("const OFFLINE_SIGNOUT_SECONDS :="),
+		"playing on into a lost session loses everything since the last save")
+	check("the reason travels to the login screen",
+		hud.contains("Lost connection to the server."),
+		"a silent return to the menu gets reported as a crash")
+
+	# RECOVERY IS AS AUTOMATIC AS THE WARNING.
+	# SCOPED TO _note_server_contact(). set_world_status("connection", "") also
+	# appears in the give-up path and in the not-logged-in branch, so an
+	# unscoped search is evidence about the wrong function - which a sabotage
+	# proved by removing the recovery and leaving this green.
+	var contact: int = hud.find("func _note_server_contact(")
+	var contact_end: int = hud.find("\nfunc ", contact + 8)
+	check("reconnecting clears the warning",
+		_within(_first_code_index(hud, "set_world_status(\"connection\", \"\")", contact),
+			contact_end) != -1,
+		"a player who reconnects should not be left reading a stale alarm")
+
+	# THE MAINTENANCE NOTICE IS A STATE NOW, NOT ONLY A TOAST.
+	check("the closing server counts down on the strip",
+		hud.contains("set_world_status(\"maintenance\","),
+		"announced once and scrolled away is how somebody is disconnected mid-fight")
+	check("and reopening takes it down",
+		hud.contains("set_world_status(\"maintenance\", \"\")"))
+
+	# PVP RIDES THE SAME POLL.
+	check("PvP shows for somebody who logged in after the announcement",
+		hud.contains("set_world_status(\"pvp\","),
+		"a broadcast only reaches the people who were already there")
+
+	# THE BAN, WHICH IS THE ONE COUNTDOWN THAT DOES NOT TICK.
+	var login: String = FileAccess.get_file_as_string("res://src/ui/menus/loginmenu.gd")
+	check("a ban says how long is left, not only the date",
+		login.contains("func describe_ban_remaining(") and login.contains("left)"),
+		"a date makes somebody count on their fingers")
+
+	# Pure and static, so it can be asked directly rather than inferred.
+	var menu: Script = load("res://src/ui/menus/loginmenu.gd") as Script
+	check("the ban wording is readable without a server", menu != null)
+	if menu != null:
+		check("a ban that has run out says nothing",
+			str(menu.describe_ban_remaining(0)) == ""
+				and str(menu.describe_ban_remaining(-50)) == "",
+			"counting down a ban the next login will simply ignore")
+		check("days and hours read as days and hours",
+			str(menu.describe_ban_remaining(86400 * 2 + 3600 * 4)) == "2 days, 4 hours",
+			menu.describe_ban_remaining(86400 * 2 + 3600 * 4))
+		check("one day is not 1 days",
+			str(menu.describe_ban_remaining(86400 + 60)) == "1 day",
+			menu.describe_ban_remaining(86400 + 60))
+		check("under an hour never reads as zero",
+			str(menu.describe_ban_remaining(40)) != "0 minutes"
+				and str(menu.describe_ban_remaining(40)) != "",
+			menu.describe_ban_remaining(40))
+
+	print("  events scroll away, states do not")
+
+
+func _test_timestamps_are_the_servers() -> void:
+	section("TIMESTAMPS — when a thing happened, not when you read about it")
+
+	# =========================================================================
+	# ONE CONVERSION, IN ONE PLACE
+	# =========================================================================
+	# There were four copies of "unix seconds plus the system bias, then
+	# decompose" in this project. The fourth, in ownerpanel.gd, had lost the
+	# bias and was printing UTC under no label at all - seven hours out in
+	# Denver, thirteen in Sydney, and wrong in the way that looks like right.
+
+	check("LocalTime exists", LocalTime.bias_minutes() == LocalTime.bias_minutes(),
+		"the bias must be stable within a run or every stamp disagrees with the last")
+
+	check("an unrecorded time says so rather than showing the epoch",
+		LocalTime.stamp(0) == "--:--" and LocalTime.stamp(-5) == "--:--",
+		LocalTime.stamp(0))
+	check("and full() agrees with it", LocalTime.full(0) == "--:--", LocalTime.full(0))
+
+	# THE SHIFT IS APPLIED, AND EXACTLY ONCE. Compared against Godot's own UTC
+	# decomposition rather than against a hardcoded hour, so this check means
+	# the same thing on his machine in MST as it does on a build server in UTC.
+	var moment: int = int(Time.get_unix_time_from_datetime_dict({
+		"year": 2026, "month": 6, "day": 15, "hour": 12, "minute": 0, "second": 0}))
+	var utc: Dictionary = Time.get_datetime_dict_from_unix_time(moment)
+	var local: Dictionary = LocalTime.parts(moment)
+	var shifted: int = (int(local["hour"]) * 60 + int(local["minute"])) \
+		- (int(utc["hour"]) * 60 + int(utc["minute"]))
+	while shifted <= -720:
+		shifted += 1440
+	while shifted > 720:
+		shifted -= 1440
+	check("the local clock is the UTC clock plus the system offset",
+		shifted == LocalTime.bias_minutes(),
+		"%d vs %d" % [shifted, LocalTime.bias_minutes()])
+
+	# =========================================================================
+	# A BARE CLOCK IS ONLY TRUE FOR TODAY
+	# =========================================================================
+	# The first poll after login asks since=0, and the server answers with the
+	# TAIL of the broadcast table - up to a week of notices at once. Stamped
+	# "14:32" apiece they read as a week of things happening now, which is
+	# worse than no stamp: it does not fail to inform, it misinforms.
+	var now: int = int(Time.get_unix_time_from_system())
+	check("something from minutes ago is just a clock",
+		LocalTime.stamp(now - 300) == LocalTime.clock(now - 300),
+		LocalTime.stamp(now - 300))
+	check("something from three days ago carries the weekday",
+		LocalTime.WEEKDAYS.has(LocalTime.stamp(now - 3 * 86400).substr(0, 3)),
+		LocalTime.stamp(now - 3 * 86400))
+	# SIX DAYS, NOT SEVEN. At seven, "Sat" means either this Saturday or the
+	# one before it - the exact ambiguity a date is here to remove.
+	check("six days back is still a weekday",
+		LocalTime.WEEKDAYS.has(LocalTime.stamp(now - 6 * 86400 + 3600).substr(0, 3)),
+		LocalTime.stamp(now - 6 * 86400 + 3600))
+	check("seven days back is a date instead",
+		not LocalTime.WEEKDAYS.has(LocalTime.stamp(now - 7 * 86400 - 3600).substr(0, 3)),
+		LocalTime.stamp(now - 7 * 86400 - 3600))
+	check("and a month back names the month",
+		LocalTime.stamp(now - 30 * 86400).substr(0, 3)
+			== LocalTime.MONTHS[int(LocalTime.parts(now - 30 * 86400)["month"])],
+		LocalTime.stamp(now - 30 * 86400))
+
+	# =========================================================================
+	# THE SERVER NOTICE, WHICH IS THE ONE THAT HAD NO TIME AT ALL
+	# =========================================================================
+	var chat: Node = (load("res://scene/ui/chat/chatpanel.tscn") as PackedScene).instantiate()
+	add_child(chat)
+
+	# A KNOWN, OLD TIMESTAMP. Using "now" here would let a client that ignores
+	# the argument and stamps with its own clock pass every check below.
+	var sent: int = now - (2 * 86400) - 7200
+	chat.push_system_line("Tunacan has gone hostile.", Color(1, 1, 1), sent)
+	var lines: Array = chat._feeds["world"]["lines"]
+	check("a server notice lands in the world channel", lines.size() == 1, lines.size())
+	check("and keeps the moment it was SENT, not the moment it was shown",
+		lines.size() == 1 and int(lines[-1].get("at", 0)) == sent,
+		lines[-1].get("at", 0) if lines.size() == 1 else "no line")
+
+	# THE RENDERED LINE, not the dictionary behind it. The dictionary carrying
+	# an `at` is worth nothing if the branch that draws it returns before the
+	# stamp is used - which is exactly what kind == "system" did.
+	var drawn: Control = chat._node_for(lines[-1])
+	var shown: String = ""
+	if drawn is RichTextLabel:
+		shown = (drawn as RichTextLabel).get_parsed_text()
+	check("the notice is drawn with its stamp on it",
+		shown.contains(LocalTime.stamp(sent)),
+		"%s (wanted %s)" % [shown, LocalTime.stamp(sent)])
+	check("and it is still marked as the server speaking",
+		shown.contains("[SERVER]"), shown)
+	# HELD IN A VARIABLE SO IT CAN BE FREED. The first version compared the
+	# result of _node_for() inline, which built a RichTextLabel nobody owned -
+	# and a RichTextLabel is three font RIDs and a shaped-text buffer, so the
+	# run ended with "resources still in use at exit". A leak in a test is
+	# still a leak, and it hides the next one.
+	var player_line: Control = chat._node_for({"kind": "chat", "by": "someone",
+		"role": "player", "body": "hi", "at": sent})
+	check("a player line is stamped the same way",
+		String((player_line as RichTextLabel).get_parsed_text()).contains(
+			LocalTime.stamp(sent)),
+		(player_line as RichTextLabel).get_parsed_text())
+	player_line.free()
+	drawn.free()
+
+	# NO TIMESTAMP MEANS NOW, and only for a line this client invented about
+	# itself - there is no server row behind one, so there is nothing to read.
+	chat.push_system_line("Lost connection.", Color(1, 1, 1))
+	check("a notice this client made up is stamped now",
+		absi(int(chat._feeds["world"]["lines"][-1].get("at", 0)) - now) <= 5,
+		chat._feeds["world"]["lines"][-1].get("at", 0))
+	chat.free()
+
+	# =========================================================================
+	# THE PATH TO THE BUTTON, WHICH IS WHERE THE BUG ACTUALLY WAS
+	# =========================================================================
+	# push_system_line() taking an `at` proves nothing on its own: the defect
+	# was that the poll handler never passed one. chatpanel.gd's own comment
+	# about the delete button says it - the button was tested, the path to the
+	# button was not - so this reads the loop that feeds it.
+	var hud: String = FileAccess.get_file_as_string("res://src/ui/characterhud.gd")
+	var loop: int = hud.find("func _read_broadcast_messages(")
+	var loop_end: int = hud.find("\nfunc ", loop + 8)
+	check("the broadcast loop is a function with a name",
+		loop != -1, "six lines inside a poll handler cannot be called, so cannot be tested")
+	check("and it reads the server's at off each entry",
+		_within(_first_code_index(hud, "entry.get(\"at\"", loop), loop_end) != -1,
+		"without this every notice is stamped with the reader's arrival time")
+	check("_push_message carries a timestamp through",
+		hud.contains("func _push_message(text: String, color: Color, at: int = 0)"),
+		"the argument has to survive the hop or the loop above is decorative")
+
+	# THE RECORD IS WRITTEN EVEN WHEN NOBODY IS LOOKING. The old code sent the
+	# notice to the chat log OR the fading box, never both, so a player with
+	# chat closed got a few seconds of it and no trace afterwards - which is
+	# the whole complaint: log in, see nothing, have no idea.
+	var push: int = hud.find("func _push_message(")
+	var push_end: int = hud.find("\nfunc ", push + 8)
+	var writes_log: int = _within(_first_code_index(hud, "push_system_line(", push), push_end)
+	var reads_visible: int = _within(_first_code_index(hud, ".visible", push), push_end)
+	# ORDER, NOT PRESENCE, AND THAT DISTINCTION COST A SABOTAGE. The first
+	# version of this check asked whether _push_message() calls
+	# push_system_line() at all and whether it does so before it touches
+	# message_rows - and the broken version did BOTH. It called the log, just
+	# behind `if chat_panel.visible`, which is the entire bug. A check that
+	# passes the thing it was written to catch is worse than no check.
+	#
+	# So: the log write must come before this function has looked at whether
+	# anything is visible. A record that is conditional on somebody already
+	# looking is not a record.
+	check("the log is written before anything asks what is on screen",
+		writes_log != -1 and (reads_visible == -1 or writes_log < reads_visible),
+		"log at %d, first visibility test at %d - a notice that only ever went to a fading box is one nobody can go back to"
+			% [writes_log, reads_visible])
+
+	# =========================================================================
+	# PVP SAYS SINCE WHEN
+	# =========================================================================
+	var pvp: int = hud.find("func _read_pvp(")
+	var pvp_end: int = hud.find("\nfunc ", pvp + 8)
+	check("the pvp state is read by a named function too", pvp != -1)
+	check("and it is told when the switch was thrown",
+		_within(_first_code_index(hud, "pvp_at", pvp), pvp_end) != -1,
+		"\"PvP is ON\" does not answer the question somebody who just arrived is asking")
+	check("with the time rendered locally, not pasted in raw",
+		_within(_first_code_index(hud, "LocalTime.stamp(", pvp), pvp_end) != -1)
+
+	# =========================================================================
+	# NO SECOND COPY OF THE CONVERSION
+	# =========================================================================
+	# This is the check that keeps the fifth copy from being written. Matching
+	# on the CALL rather than on any comment, because this file's house style
+	# means a comment about the timezone contains the timezone's own name.
+	for path in ["res://src/ui/chat/chatpanel.gd", "res://src/ui/owner/ownerpanel.gd",
+			"res://src/ui/staff/staffpanel.gd", "res://src/ui/menus/loginmenu.gd"]:
+		var body: String = FileAccess.get_file_as_string(path)
+		check("%s asks LocalTime rather than converting its own" % path.get_file(),
+			_first_code_index(body, "Time.get_time_zone_from_system(", 0) == -1,
+			"four copies is how ownerpanel.gd ended up printing UTC")
+
+	print("  a timestamp made on receipt measures when the reader turned up")
+
+
+# =============================================================================
+# GIVEN AND LOST ARE DIFFERENT VERBS
+# =============================================================================
+# Death destroys the gold you were carrying, and the board counts every
+# destroyed coin as a contribution - so a player who dies a lot climbs it
+# without ever having decided to give anything. That rule is kept, because
+# "contribution is every gold destroyed" is the board's whole claim and
+# carving an exception into it would make the total stop adding up.
+#
+# What is NOT kept is the flattery. A ranking whose top entry is mostly deaths
+# says something different from one whose top entry is mostly spending, and the
+# panel has to be able to tell a reader which it is looking at.
+func _test_board_says_what_it_is_made_of() -> void:
+	section("THE COFFERS — given and lost are different verbs")
+
+	var scene: PackedScene = load("res://scene/ui/kingdom/kingdomboard.tscn")
+	check("the board scene loads", scene != null)
+	if scene == null:
+		return
+	var board: Control = scene.instantiate()
+	add_child(board)
+
+	# ---- your own line ------------------------------------------------------
+	var plain: String = board._your_line({"contributed": 900, "lusions": 0,
+		"lost": 0, "rank": 1}, 1)
+	check("somebody who has never died is not told about losses",
+		not plain.to_lower().contains("lost"), plain)
+
+	var bereaved: String = board._your_line({"contributed": 900, "lusions": 0,
+		"lost": 400, "rank": 1}, 1)
+	check("and somebody who has is told how much of it was not a gift",
+		bereaved.to_lower().contains("lost"), bereaved)
+	check("with the figure in it, not just the word",
+		bereaved.contains("400"), bereaved)
+	# THE WHOLE CONTRIBUTION MUST STILL BE THERE. The point is to qualify the
+	# number, not to quietly subtract from it - a line that showed 500 would be
+	# a second, disagreeing answer to "what have I given".
+	check("and the contribution itself is unchanged",
+		bereaved.contains("900"), bereaved)
+
+	# ---- a row on the list --------------------------------------------------
+	var built: Control = board._make_row()
+	board._fill_row(built, 1, {"username": "someone", "contributed": 900,
+		"lusions": 0, "deaths": 3, "lost": 400})
+	var gold_cell: Label = built.get_node("gold")
+	check("a row whose gold was mostly lost says so on the hover",
+		gold_cell.tooltip_text.contains("400"), gold_cell.tooltip_text)
+
+	board._fill_row(built, 1, {"username": "someone", "contributed": 900,
+		"lusions": 0, "deaths": 0, "lost": 0})
+	# REUSED ROWS ARE THE TRAP HERE, and this file has already been bitten by
+	# it once with the name tint: an attribute that is only ever ADDED is an
+	# attribute that never goes away, so the note would creep down the board as
+	# ranks moved.
+	check("and a reused row does not keep the last player's losses",
+		not gold_cell.tooltip_text.contains("400"), gold_cell.tooltip_text)
+
+	built.free()
+	board.free()
+
+	print("  the ranking is kept, and it admits what it is made of")
+
+
+func _scripts_under(dir_path: String, found: Array[String] = []) -> Array[String]:
+	"""Every .gd under a folder, recursively. Sorted, so a failure list is
+	stable between runs rather than in whatever order the filesystem hands
+	them over."""
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return found
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		var full := dir_path.path_join(entry)
+		if dir.current_is_dir():
+			if not entry.begins_with("."):
+				_scripts_under(full, found)
+		elif entry.ends_with(".gd"):
+			found.append(full)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	found.sort()
+	return found
+
+
+func _within(index: int, limit: int) -> int:
+	"""`index`, or -1 if it falls past `limit`. A limit of -1 means end of file.
+
+	The companion to _first_code_index(): that one says "in code, not in a
+	comment", this one says "and inside the function I meant". Needed three
+	separate times in this suite, every time because the thing being searched
+	for is common enough to appear in a later function - which reads as a pass.
+	"""
+	if index == -1:
+		return -1
+	if limit != -1 and index > limit:
+		return -1
+	return index
+
+
 func _first_code_index(src: String, needle: String, from: int) -> int:
 	"""Where `needle` first appears in CODE at or after `from`, ignoring comments.
 
@@ -1492,6 +2156,15 @@ func _first_code_index(src: String, needle: String, from: int) -> int:
 	test_ownership.py. Indices stay usable because each line is blanked in place
 	rather than removed, which keeps every offset exactly where it was.
 	"""
+	return _code_only(src).find(needle, from)
+
+
+func _code_only(src: String) -> String:
+	"""The same text with every comment blanked and every offset preserved.
+
+	SPLIT OUT of _first_code_index() when a second caller needed the stripped
+	TEXT rather than one index into it - the audio scan reads whole call
+	expressions out of it. One copy of the rule; two ways to ask."""
 	var lines: PackedStringArray = src.split("\n")
 	var rebuilt: PackedStringArray = PackedStringArray()
 	for line in lines:
@@ -1502,7 +2175,7 @@ func _first_code_index(src: String, needle: String, from: int) -> int:
 			# Blank the comment, keep the length, so find() returns an index
 			# into the ORIGINAL string.
 			rebuilt.append(line.substr(0, hash_at).rpad(line.length(), " "))
-	return "\n".join(rebuilt).find(needle, from)
+	return "\n".join(rebuilt)
 
 
 func _feed_holds_id(lines: Array, id: int) -> bool:
@@ -1532,6 +2205,230 @@ func _feed_holds_id(lines: Array, id: int) -> bool:
 #
 # Text checks, because the alternative is standing up a HUD, a live server and a
 # real ban to watch one signal fire.
+
+func _test_the_guild_tag_is_drawn_everywhere() -> void:
+	section("GUILDS - a name twelve characters long, drawn on every surface")
+
+	# =========================================================================
+	# TWELVE, AND THE CLIENT AGREES WITH ITSELF ABOUT IT
+	# =========================================================================
+	# The cap dropped from 24 because the name is now drawn above a head, on
+	# every chat line its members write, on the players menu and on the kingdom
+	# board. At 24 characters that is a banner following somebody around.
+	#
+	# THE SERVER IS THE RULE AND THIS IS THE COURTESY. app.py's
+	# GUILD_NAME_PATTERN is what actually refuses; the panel refuses early so a
+	# hopeless name does not cost a round trip. What this suite can check is
+	# that the client does not disagree with ITSELF - the regex, the number and
+	# the sentence shown to the player all saying twelve.
+	var panel: Script = require_script("res://src/ui/guild/guildpanel.gd",
+		"the guild panel")
+	if panel == null:
+		print("  guild panel: not loadable, section skipped")
+		return
+
+	var panel_const: Dictionary = panel.get_script_constant_map()
+	check("the panel caps a guild name at twelve",
+		int(panel_const.get("MAX_NAME", 0)) == 12,
+		panel_const.get("MAX_NAME"))
+	check("and a username at twenty, which is a different limit",
+		int(panel_const.get("MAX_USERNAME", 0)) == 20,
+		panel_const.get("MAX_USERNAME"))
+
+	# THE PATTERN IS MEASURED, NOT READ. Asserting the regex SPELLING would
+	# pass on "{2,11}" written into a comment and fail on a harmless rewrite;
+	# compiling it and asking what it accepts is the only version that tests
+	# behaviour. Twelve characters in, thirteen out.
+	var rule := RegEx.new()
+	rule.compile(str(panel_const.get("NAME_PATTERN", "")))
+	check("a twelve-character name is accepted",
+		rule.search("Exactlytwelv") != null)
+	check("a thirteen-character one is not",
+		rule.search("Exactlythirte") == null)
+	check("two characters is still too few", rule.search("No") == null)
+	check("a bracket cannot get into a guild name",
+		rule.search("A[color=red]") == null)
+
+	var panel_src: String = FileAccess.get_file_as_string(
+		"res://src/ui/guild/guildpanel.gd")
+	# THE SENTENCE THE PLAYER READS MUST NOT NAME A DIFFERENT NUMBER. A refusal
+	# that says "3 to 24" while the box stops at 12 is worse than no sentence.
+	check("the refusal sentence is built from the constant, not typed again",
+		_code_only(panel_src).contains("% MAX_NAME"),
+		"a literal number here is a second copy of the rule")
+	check("and no stale twenty-four is left in the panel's code",
+		not _code_only(panel_src).contains("24"),
+		"the cap moved; a 24 in code is the old one")
+
+	# =========================================================================
+	# ONE STATEMENT OF WHAT A TAG LOOKS LIKE
+	# =========================================================================
+	# The tag is drawn in four places. Four opinions about what a guild looks
+	# like is how it stops being recognisable at a glance, which is the entire
+	# point of having one.
+
+	check("an empty guild draws nothing at all",
+		Api.guild_tag_text("") == "" and Api.guild_tag_text("   ") == "",
+		Api.guild_tag_text("  "))
+	check("a guild is drawn in brackets",
+		Api.guild_tag_text("ELUSION") == "[ELUSION]",
+		Api.guild_tag_text("ELUSION"))
+	check("and is stripped before it is wrapped",
+		Api.guild_tag_text("  ELUSION  ") == "[ELUSION]",
+		Api.guild_tag_text("  ELUSION  "))
+
+	# THE CLIENT DOES NOT UPPERCASE, AND THAT IS THE POINT. guild_tag() in
+	# app.py decides the letters and the bound; this only wraps what arrived.
+	# A client that shaped the tag itself would be a client that could be
+	# edited to draw something else.
+	check("the client does not invent the letters",
+		Api.guild_tag_text("Elusion") == "[Elusion]",
+		"uppercasing here would be the client deciding what the server said")
+
+	var api_const: Dictionary = Api.get_script().get_script_constant_map()
+	var tag_colour = api_const.get("GUILD_TAG_COLOUR")
+	check("the tag has one colour, owned by Api", tag_colour is Color, tag_colour)
+	# NOT A RANK COLOUR. A guild is not a rank - the owner and a new player can
+	# be in the same one - so a tag tinted like staff would say something about
+	# its members that is not true.
+	var ranks: Dictionary = api_const.get("RANK_COLOURS", {})
+	var clashes: Array = []
+	for rank_name in ranks:
+		if ranks[rank_name] == tag_colour:
+			clashes.append(rank_name)
+	check("and it is none of the four rank colours", clashes.is_empty(), clashes)
+
+	# =========================================================================
+	# EVERY SURFACE READS IT OFF THE WIRE, AND FROM Api
+	# =========================================================================
+	var surfaces := {
+		"res://src/ui/chat/chatpanel.gd": "a chat line",
+		"res://src/ui/players/playerspanel.gd": "the players menu",
+		"res://src/ui/kingdom/kingdomboard.gd": "the kingdom board",
+		"res://src/characters/player.gd": "the nameplate",
+	}
+	for path in surfaces:
+		var body: String = _code_only(FileAccess.get_file_as_string(path))
+		check("%s asks Api for the tag" % surfaces[path],
+			body.contains("Api.guild_tag_text("), path)
+		check("%s takes Api's colour rather than its own" % surfaces[path],
+			body.contains("GUILD_TAG_COLOUR") or path.ends_with("player.gd"),
+			path)
+
+	# =========================================================================
+	# THE SEAM THE FILE ITSELF WARNS ABOUT
+	# =========================================================================
+	# _line_from_server() carries a long note saying the chat id was once
+	# dropped HERE and every test passed, because every test built its own
+	# dictionary by hand. A renderer cannot draw a field this function does not
+	# copy, so the field is asserted in the function that makes the line rather
+	# than in the one that paints it.
+	var chat_src: String = FileAccess.get_file_as_string(
+		"res://src/ui/chat/chatpanel.gd")
+	var maker: int = _first_code_index(chat_src, "func _line_from_server(", 0)
+	var maker_end: int = _first_code_index(chat_src, "\nfunc ", maker + 10)
+	check("the line the poll makes carries the guild",
+		_within(_first_code_index(chat_src, "\"guild_tag\"", maker), maker_end) != -1,
+		"a field _line_from_server() does not copy cannot be drawn")
+
+	# AND BOTH KINDS OF LINE DRAW IT. A picture posted by somebody in a guild
+	# that did not say so would be the one message where the tag went missing.
+	# _node_for(), NOT _line_label(). The first version of this check named a
+	# function that does not exist in this file, _first_code_index() answered
+	# -1, and the check failed by name - which is the good outcome and the
+	# reason it is worth writing down: the sibling mistake in this suite's
+	# history called board._build_row() instead of _make_row(), and GDScript
+	# unwound the REST of that section while the run still reported 0 failed.
+	var text_line: int = _first_code_index(chat_src, "func _node_for(", 0)
+	var picture: int = _first_code_index(chat_src, "func _picture_node(", 0)
+	check("a text line draws the tag",
+		_within(_first_code_index(chat_src, "_guild_part(line)", text_line),
+			_first_code_index(chat_src, "\nfunc ", text_line + 10)) != -1)
+	check("and so does a picture",
+		_within(_first_code_index(chat_src, "_guild_part(line)", picture),
+			_first_code_index(chat_src, "\nfunc ", picture + 10)) != -1)
+
+	# THE TAG IS ESCAPED LIKE EVERYTHING ELSE THAT REACHES THAT RENDERER. It
+	# arrives wrapped in square brackets, which is the one character a public
+	# chat log must never hand a BBCode parser: "[img]some-url[/img] makes the
+	# client FETCH that url".
+	var guild_part: int = _first_code_index(chat_src, "func _guild_part(", 0)
+	check("and it is escaped before it is rendered",
+		_within(_first_code_index(chat_src, "_escape(tag)", guild_part),
+			_first_code_index(chat_src, "\nfunc ", guild_part + 10)) != -1,
+		"an unescaped tag is a BBCode injection wearing a guild's name")
+
+	# =========================================================================
+	# THE NAMEPLATE IS TOLD, NOT LEFT TO ASK
+	# =========================================================================
+	# GET /api/guild is the only other route that says which guild you are in,
+	# and NOTHING calls it on a timer. A tag fed from the guild panel would
+	# appear whenever that panel happened to be opened and then go on being
+	# whatever it was - including after you were kicked out. That is the shape
+	# this project has spent the most time removing.
+	var player_src: String = FileAccess.get_file_as_string(
+		"res://src/characters/player.gd")
+	check("set_nameplate takes a guild as well as a name and a rank",
+		_code_only(player_src).contains(
+			"func set_nameplate(display_name: String, rank: String, guild_tag: String"),
+		"an argument, so a remote player can be told its own")
+
+	# AND IT STILL WRITES THE LABEL, WHICH IS NOT AS OBVIOUS AS IT SOUNDS.
+	# While the tag was being added, `_nameplate.text = text` was deleted by
+	# accident and every check in this suite still passed - the plate is
+	# verified by reading the file rather than by running it, so a blank
+	# nameplate on every character in the game looked exactly like a green run.
+	# Caught by diffing against the working copy; pinned here so it cannot
+	# happen twice.
+	var plate: int = _first_code_index(player_src, "func set_nameplate(", 0)
+	var plate_end: int = _first_code_index(player_src, "\nfunc ", plate + 10)
+	var writes: int = _first_code_index(player_src, "_nameplate.text = text", plate)
+	check("and it actually writes the name onto the label",
+		_within(writes, plate_end) != -1,
+		"a plate that is positioned, coloured and never given any text")
+
+	# AFTER the tag is folded in. Writing the label first would put the name on
+	# screen and leave the guild in a local variable - which is the same defect
+	# wearing a subtler hat, so it is checked by POSITION rather than presence.
+	var folds: int = _first_code_index(player_src, "text = \"%s\\n%s\"", plate)
+	check("after the guild has been folded into it, not before",
+		_within(folds, plate_end) != -1 and folds < writes,
+		"%d vs %d" % [folds, writes])
+
+	var hud_src: String = FileAccess.get_file_as_string(
+		"res://src/ui/characterhud.gd")
+	var reader: int = _first_code_index(hud_src, "func _read_guild(", 0)
+	var reader_end: int = _first_code_index(hud_src, "\nfunc ", reader + 10)
+	check("the HUD reads the guild off the poll",
+		_within(_first_code_index(hud_src, "data.get(\"guild_tag\"", reader),
+			reader_end) != -1,
+		"read from anywhere else and the plate is only as fresh as a panel")
+	check("and puts it on the plate",
+		_within(_first_code_index(hud_src, "set_nameplate(", reader), reader_end) != -1)
+
+	# CALLED FROM THE POLL, not merely defined. A function nothing schedules is
+	# a comment with a body on it - which is the defect this whole section is
+	# about, so checking it by name is not optional.
+	var poll_end: int = _first_code_index(hud_src, "func _read_pvp(", 0)
+	check("_read_guild is called from the broadcast poll",
+		_within(_first_code_index(hud_src, "_read_guild(data)", 0), poll_end) != -1,
+		"defined but never called is the bug, not the fix")
+
+	# =========================================================================
+	# A DATE, FOR A THING THAT HAPPENED ON A DAY
+	# =========================================================================
+	check("a guild with no founding date shows nothing rather than a clock face",
+		LocalTime.date(0) == "" and LocalTime.date(-1) == "",
+		LocalTime.date(0))
+	var founded: int = int(Time.get_unix_time_from_datetime_dict({
+		"year": 2026, "month": 9, "day": 21, "hour": 12, "minute": 0, "second": 0}))
+	var drawn: String = LocalTime.date(founded)
+	check("and a real one reads as a date, not a timestamp",
+		drawn.contains("2026") and not drawn.contains(":"), drawn)
+
+	print("  guilds: twelve characters, one tag, four surfaces, drawn from the poll")
+
+
 func _test_unauthorized_is_answered() -> void:
 	section("A 401 REACHES SOMEBODY — the revocation shortcut is wired")
 
@@ -2027,8 +2924,13 @@ func _test_frame_budget() -> void:
 
 	var rows: Array = []
 	for i in range(200):
+		# `lost` IS IN THE SYNTHETIC ROWS so the measurement covers what the
+		# panel actually does. It builds a second tooltip string per row, and a
+		# per-row cost left out of the benchmark is a per-row cost nobody has
+		# measured. Every third player, so both branches are exercised.
 		rows.append({"username": "player%04d" % i, "contributed": 1_000_000 - i,
-			"lusions": i, "deaths": i % 50, "rank": i + 1})
+			"lusions": i, "deaths": i % 50, "rank": i + 1,
+			"lost": (1_000_000 - i) / 2 if i % 3 == 0 else 0})
 
 	# FIRST PAINT IS SPREAD ACROSS FRAMES on purpose - building two hundred
 	# rows in one go measured at 79ms, which is two and a half frames of
@@ -2090,9 +2992,17 @@ func _test_frame_budget() -> void:
 	# READ OFF THE REAL CONSTANTS, so this goes stale the moment somebody
 	# changes an interval - which is exactly when the arithmetic stops being
 	# true and somebody should look at it again.
+	# HEARTBEAT_SECONDS WAS IN THIS SUM AND IT SHOULD NOT HAVE BEEN. Nothing
+	# fires Api.heartbeat() on a timer - the only caller is the 401 handler -
+	# so this was charging every player a request per fifteen seconds that was
+	# never sent. The budget was pessimistic by 0.067 req/s, which is harmless;
+	# the arithmetic being about an imaginary request is not, because this sum
+	# is the thing that decides whether a new panel's poll is affordable.
+	#
+	# The broadcast poll carries the beat now (app.py, stamp_presence), and it
+	# is already counted below.
 	var always: float = (
-		1.0 / Api.HEARTBEAT_SECONDS
-		+ 1.0 / load("res://src/ui/characterhud.gd").BROADCAST_POLL_SECONDS
+		1.0 / load("res://src/ui/characterhud.gd").BROADCAST_POLL_SECONDS
 		+ 1.0 / load("res://src/systems/skilltrainer.gd").FLUSH_INTERVAL
 	)
 	var with_chat: float = always + 1.0 / load(
@@ -2168,8 +3078,11 @@ func _pack_present() -> bool:
 func check_needs_pack(label: String, condition: bool, detail: Variant = "") -> void:
 	"""check(), unless the private art pack is absent - then it is a skip."""
 	if not _pack_present():
+		# THE REASON TRAVELS WITH THE LABEL, because the summary at the end no
+		# longer supplies one for the whole list - see _report().
 		skipped += 1
-		skips.append(label)
+		skips.append("%s   (private art pack not present; it holds purchased "
+			% label + "art that may not be redistributed - see assetlicense.md)")
 		_say("  skip  %s   (private art pack not present)" % label)
 		return
 	check(label, condition, detail)
@@ -2262,8 +3175,19 @@ func _report() -> void:
 			_say("    - " + label)
 	if skipped > 0:
 		_say("")
-		_say("  skipped — the private art pack (art/pack/) is not present.")
-		_say("  These need purchased art that may not be redistributed; see assetlicense.md.")
+		# EACH SKIP CARRIES ITS OWN REASON NOW, and it had to.
+		#
+		# This block used to say "skipped — the private art pack is not
+		# present. These need purchased art that may not be redistributed" over
+		# EVERY skip, because for a long time there was only one kind. The
+		# first skip from somewhere else - the empty sound registry - was
+		# therefore reported as a licensing matter, which is not true and is
+		# the sort of untrue that gets believed: it is in the summary, in bold
+		# type, at the end of a green run.
+		#
+		# A summary that explains a list it does not actually know the contents
+		# of is a comment with a number in front of it.
+		_say("  skipped — each with its reason:")
 		for label in skips:
 			_say("    - " + label)
 	_say("=".repeat(60))
@@ -4350,10 +5274,33 @@ func _test_staff_panel() -> void:
 	for status in [0, 404, 500, 503]:
 		check("HTTP %d signs nobody out" % status,
 			Api.heartbeat_verdict({"ok": false, "status": status}) == "offline")
-	# Three beats inside app.py's ONLINE_WINDOW_SECONDS, which is 45. Written
-	# out because the two numbers live in different repositories.
-	check("three heartbeats fit inside the server's 45 s online window",
-		Api.HEARTBEAT_SECONDS * 3.0 <= 45.0, Api.HEARTBEAT_SECONDS)
+	# THE BEAT IS THE BROADCAST POLL, AND THIS CHECK USED TO NAME THE WRONG
+	# CONSTANT.
+	#
+	# It asserted HEARTBEAT_SECONDS * 3 <= 45 and passed for months while the
+	# thing it describes was not happening: Api.heartbeat() is called from
+	# exactly one place in this project - the 401 handler - and nothing fires
+	# it on a timer. So the arithmetic was sound and about a request nobody
+	# made, and sessions.last_seen_at was stamped once at login and never
+	# again. Forty-five seconds later the friends list, the guild roster and
+	# the players menu all read the player as offline. It showed up in game as
+	# a guild panel saying "0 online of 1" to the only member, who was reading
+	# it at the time.
+	#
+	# The stamp rides the broadcast poll now (app.py, stamp_presence), so THIS
+	# is the interval that has to fit inside the window - and it is the one a
+	# timer actually drives.
+	var beat: float = load("res://src/ui/characterhud.gd").BROADCAST_POLL_SECONDS
+	check("three beats fit inside the server's 45 s online window",
+		beat * 3.0 <= 45.0, beat)
+	# READ FRESH, because `hud_src` is not in scope here and reaching for a
+	# variable from another section is how a check ends up measuring whichever
+	# file happened to be loaded last.
+	var hud_text: String = FileAccess.get_file_as_string(
+		"res://src/ui/characterhud.gd")
+	check("and the beat is the poll a timer really runs",
+		hud_text.contains("timer.wait_time = BROADCAST_POLL_SECONDS"),
+		"a constant nothing schedules is a comment with a number in it")
 
 	# ---- what a banned player is told ----
 	var login_script: Script = require_script(

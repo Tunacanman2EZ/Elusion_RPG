@@ -1024,9 +1024,15 @@ func _say(line: String) -> void:
 
 
 func _when(unix_seconds: int) -> String:
+	# THIS WAS PRINTING UTC AND SAYING NOTHING ABOUT IT. It was the fourth copy
+	# of the unix-to-wall-clock conversion in this project and the only one
+	# that had lost the timezone offset, so every last-login and ban date in
+	# the owner panel was seven hours out in Denver and thirteen in Sydney -
+	# wrong in a way that looks exactly like right. Four copies is how that
+	# happens; there is one now, in src/shared/localtime.gd.
 	if unix_seconds <= 0:
 		return "never"
-	return Time.get_datetime_string_from_unix_time(unix_seconds, true)
+	return LocalTime.full(unix_seconds)
 
 
 # =============================================================================

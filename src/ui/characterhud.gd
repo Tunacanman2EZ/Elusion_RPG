@@ -222,6 +222,7 @@ func _ready() -> void:
 	_wire_nav_buttons()
 	_add_owner_button()
 	_build_message_box()
+	_build_status_strip()
 	_start_broadcast_poll()
 	_wire_hotbar()
 
@@ -331,6 +332,11 @@ func _process(_delta: float) -> void:
 	# runs before the active_character guard below on purpose — a drag can be
 	# in flight during a scene change, and the cursor still has to come back.
 	_update_drag_cursor()
+
+	# ALSO BEFORE THE GUARD. Losing the server is exactly as true with no
+	# character loaded as with one, and a countdown that stopped ticking while
+	# the player was in a menu would be a countdown that lied.
+	_tick_connection_status()
 
 	if active_character == null:
 		return
@@ -724,18 +730,218 @@ func _build_message_box() -> void:
 	message_rows = rows
 
 
-func _push_message(text: String, color: Color) -> void:
+# =============================================================================
+# THE WORLD STATUS STRIP
+# =============================================================================
+# THE MESSAGE BOX BELOW AND THIS ARE NOT THE SAME THING, and keeping them apart
+# is the whole design. app.py says it about deaths and it is just as true here:
+# "A death is a TRANSITION, NOT A STATE, and counting it as a state is the bug
+# worth not writing."
+#
+#   The message box holds EVENTS. They happened, they are history, chat keeps
+#   them. "Tunacan has gone hostile." "You found a gold pile."
+#
+#   This strip holds STATES. They are true right now and they stop being true
+#   later. "Connection lost." "Server closes in 47s." "PvP is on."
+#
+# Mixing them is what the box was doing: four hostile announcements sitting
+# there for ever with no timestamps, so a connection warning arriving beside
+# them would have looked exactly like two-minute-old news. A state must never
+# scroll away and must vanish the moment it stops being true.
+#
+# ONE LINE, BY PRIORITY, because two stacked warnings is how neither gets read.
+# Connection beats everything - if the server cannot be reached, nothing else on
+# this list can be trusted to still be true.
+const STATUS_PRIORITY := ["connection", "maintenance", "pvp"]
+
+# HOW LONG WITHOUT THE SERVER BEFORE THE PLAYER IS TOLD.
+#
+# The broadcast poll runs every BROADCAST_POLL_SECONDS (10) and the heartbeat
+# every HEARTBEAT_SECONDS (15), so a single missed request is ordinary and
+# announcing it would make the strip flicker on every hiccup. Two missed polls
+# is not ordinary.
+const OFFLINE_GRACE_SECONDS := 25.0
+
+# AND HOW LONG BEFORE GIVING UP. Past this the client stops pretending: the
+# player goes back to the login screen with the reason, because everything done
+# since the last successful save is not coming back and letting somebody keep
+# playing into that is worse than interrupting them.
+#
+# Ninety seconds is deliberately generous - a laptop lid, a lift, a router
+# reboot all fit inside it, and the countdown is visible for the last sixty-five
+# of them so nobody is surprised.
+const OFFLINE_SIGNOUT_SECONDS := 90.0
+
+var status_strip: PanelContainer = null
+var status_label: Label = null
+
+# WHEN THE SERVER WAS LAST HEARD FROM. Set on every verdict of "ok" - the
+# broadcast poll and the heartbeat both produce one - and read by _process to
+# decide whether this client is alone.
+var _last_contact_msec: int = 0
+
+# The live states, by key. Empty string means "not true right now".
+var _status_states: Dictionary = {}
+
+
+func _build_status_strip() -> void:
+	# TOP CENTRE, which is empty on this HUD and is where a player's eye goes
+	# for something wrong. The message box owns the bottom-left corner.
+	var frame := PanelContainer.new()
+	frame.name = "statusstrip"
+	frame.anchor_left = 0.5
+	frame.anchor_top = 0.0
+	frame.anchor_right = 0.5
+	frame.anchor_bottom = 0.0
+	frame.offset_left = -260.0
+	frame.offset_top = 10.0
+	frame.offset_right = 260.0
+	frame.offset_bottom = 44.0
+
+	# NEVER EATS A CLICK, same as the message box: this sits over the play area.
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.visible = false
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.10, 0.06, 0.06, 0.92)
+	style.border_width_bottom = 2
+	style.border_color = Color(0.95, 0.45, 0.35)
+	style.corner_radius_bottom_left = 4
+	style.corner_radius_bottom_right = 4
+	style.content_margin_left = 14.0
+	style.content_margin_top = 6.0
+	style.content_margin_right = 14.0
+	style.content_margin_bottom = 6.0
+	frame.add_theme_stylebox_override("panel", style)
+
+	var label := Label.new()
+	label.name = "line"
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 14)
+	frame.add_child(label)
+
+	add_child(frame)
+	status_strip = frame
+	status_label = label
+
+
+func set_world_status(key: String, text: String, colour: Color = Color(0.95, 0.45, 0.35)) -> void:
+	"""Say that `key` is true, with this wording. An empty text clears it.
+
+	KEYED, so each state can be set and cleared by whatever knows about it
+	without any of them having to know about the others. The strip decides what
+	is shown; the callers only report what is true.
+	"""
+	if text == "":
+		_status_states.erase(key)
+	else:
+		_status_states[key] = {"text": text, "colour": colour}
+	_paint_status_strip()
+
+
+func _paint_status_strip() -> void:
+	if status_strip == null or status_label == null:
+		return
+
+	for key in STATUS_PRIORITY:
+		if _status_states.has(key):
+			var state: Dictionary = _status_states[key]
+			status_label.text = str(state["text"])
+			status_label.add_theme_color_override("font_color", state["colour"])
+			status_strip.visible = true
+			return
+
+	# NOTHING IS TRUE, so there is nothing to say. A strip that lingers on its
+	# last message is a strip that lies.
+	status_strip.visible = false
+
+
+func _note_server_contact() -> void:
+	# CALLED ON EVERY "ok", from both polls. Recovery has to be as automatic as
+	# the warning was, or a player who reconnects sits looking at a stale alarm.
+	_last_contact_msec = Time.get_ticks_msec()
+	if _status_states.has("connection"):
+		set_world_status("connection", "")
+		_push_message("Reconnected.", Color(0.55, 0.85, 0.5))
+
+
+func _tick_connection_status() -> void:
+	# NOT A TIMER. This has to count down every frame to read as a countdown,
+	# and _process is already running for the bars.
+	if not Api.is_logged_in():
+		# On the login screen or between characters: there is nothing to warn
+		# about, and _last_contact_msec from a previous session would fire
+		# immediately on the next login.
+		if _status_states.has("connection"):
+			set_world_status("connection", "")
+		return
+
+	if _last_contact_msec == 0:
+		# FIRST FRAME OF A SESSION. Nothing has answered yet and that is not the
+		# same as having gone quiet - start the clock rather than the alarm.
+		_last_contact_msec = Time.get_ticks_msec()
+		return
+
+	var silent: float = float(Time.get_ticks_msec() - _last_contact_msec) / 1000.0
+	if silent < OFFLINE_GRACE_SECONDS:
+		return
+
+	var left: int = int(ceil(OFFLINE_SIGNOUT_SECONDS - silent))
+	if left <= 0:
+		# GIVING UP. The reason travels to the login screen, because "it just
+		# went back to the menu" is the version of this that gets reported as a
+		# crash.
+		set_world_status("connection", "")
+		CharacterData.clear_current_user()
+		Api.forget_session("Lost connection to the server. Anything since your"
+			+ " last save is not saved.")
+		if is_instance_valid(self) and is_inside_tree():
+			get_tree().change_scene_to_file(LOGIN_MENU_PATH)
+		return
+
+	set_world_status("connection",
+		"Connection lost - retrying. Signing out in %s" % _clock(left),
+		Color(1.0, 0.45, 0.35))
+
+
+static func _clock(seconds: int) -> String:
+	# m:ss, because "89 seconds" is a number to work out and "1:29" is a time.
+	var whole: int = maxi(0, seconds)
+	# The truncation IS the minute hand, and the remainder below is the second
+	# hand - so nothing is being lost. Annotated in the same style chatpanel.gd
+	# uses for its atlas row, because an unexplained integer division reads like
+	# somebody forgot a .0, and four of these were filling his editor log.
+	@warning_ignore("integer_division")
+	var minutes: int = whole / 60
+	return "%d:%02d" % [minutes, whole % 60]
+
+
+func _push_message(text: String, color: Color, at: int = 0) -> void:
 	if text.strip_edges() == "":
 		return
 
-	# ONE NOTICE, ONE PLACE. With world chat open the conversation IS the
-	# message log, so the line goes there and the floating box stays down;
-	# with it closed the box is the only channel the player has and it pops as
-	# it always did. Printing to both would double every maintenance warning.
-	if chat_panel != null and chat_panel.visible:
-		if chat_panel.has_method("push_system_line"):
-			chat_panel.push_system_line(text, color)
-			return
+	# THE LOG ALWAYS GETS IT. THE BOX ONLY POPS WHEN NOBODY IS LOOKING.
+	#
+	# This used to be either/or: into the chat log if chat happened to be OPEN
+	# at that instant, otherwise into the floating box - which fades. So a
+	# player with chat closed got a few seconds of "Tunacan has gone hostile."
+	# and then nothing, and opening chat afterwards showed no trace of it. The
+	# notice reached exactly the people who did not need telling twice and
+	# nobody else.
+	#
+	# The old comment here said printing to both would double every warning,
+	# and that was true of the BOX, not of the log. They are different things:
+	# the box is an announcement, which is an event and should fade; the log is
+	# a record, which should not. So the record is written either way and the
+	# announcement is skipped when the record is already on screen - which is
+	# also the only case where it would genuinely have been a duplicate.
+	var logged: bool = false
+	if chat_panel != null and chat_panel.has_method("push_system_line"):
+		chat_panel.push_system_line(text, color, at)
+		logged = true
+	if logged and chat_panel.visible:
+		return
 
 	if message_rows == null:
 		return
@@ -796,6 +1002,13 @@ func _on_unauthorized_seen() -> void:
 		return
 	_revocation_probe_in_flight = false
 
+	# THE PROBE IS ALSO CONTACT. It asked /api/auth/session and got an answer, so
+	# whatever it decided about the login, the server is plainly there - and not
+	# saying so here would let the offline countdown run while a request was
+	# succeeding every few seconds.
+	if verdict == "ok":
+		_note_server_contact()
+
 	# Only "revoked" acts. "offline" and "stale" say nothing about the login, and
 	# throwing somebody to the login screen over a hiccup is the failure the
 	# whole verdict function exists to prevent.
@@ -848,7 +1061,16 @@ func _on_broadcast_poll_timeout() -> void:
 		_forced_signout()
 		return
 	if verdict != "ok":
+		# "offline" WAS ALREADY THE ANSWER AND NOTHING ACTED ON IT.
+		# heartbeat_verdict() has returned three values all along - ok, revoked,
+		# offline - and this line threw the third away. So a client that could
+		# not reach the server went on playing with nothing on screen to say so,
+		# and whatever happened after the last successful save was lost quietly.
+		# _tick_connection_status() is what acts on it now; this just stops
+		# pretending the silence was contact.
 		return
+
+	_note_server_contact()
 
 	var data = res.get("data", {})
 	if not (data is Dictionary):
@@ -857,16 +1079,84 @@ func _on_broadcast_poll_timeout() -> void:
 	_read_maintenance(data.get("maintenance"))
 	_read_teleport(data.get("teleport"))
 
-	for entry in data.get("messages", []):
-		if not (entry is Dictionary):
-			continue
-		var body: String = str(entry.get("body", ""))
-		var kind: String = str(entry.get("kind", "system"))
-		_push_message(body, Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94))
+	_read_pvp(data)
+	_read_guild(data)
+	_read_broadcast_messages(data.get("messages", []))
 
 	var newest: int = int(data.get("latest_id", _broadcast_cursor))
 	if newest > _broadcast_cursor:
 		_broadcast_cursor = newest
+
+
+func _read_pvp(data: Dictionary) -> void:
+	"""PVP IS A STATE, and the quietest of the three - which is exactly why it
+	belongs on a strip rather than in a message that scrolls. A player who logs
+	in after the announcement has gone out has no other way to know.
+
+	AND SINCE WHEN. "PvP is ON" answers a different question from the one
+	somebody who just arrived is asking, and the server already knew the
+	answer: server_settings has stamped updated_at on every key since the table
+	was created, so pvp_since() on that side is a read, not a new column.
+
+	NAMED RATHER THAN INLINE, like _read_maintenance() and _read_teleport()
+	beside it, because a thing that cannot be called cannot be tested."""
+	if not bool(data.get("pvp", false)):
+		set_world_status("pvp", "")
+		return
+	var thrown: int = int(data.get("pvp_at", 0))
+	set_world_status("pvp",
+		"PvP is ON" if thrown <= 0 else "PvP is ON since %s" % LocalTime.stamp(thrown),
+		Color(1.0, 0.55, 0.42))
+
+
+func _read_guild(data: Dictionary) -> void:
+	"""Your own guild, from the poll, onto your own nameplate.
+
+	A NAMEPLATE HAS TO BE TRUE RIGHT NOW. GET /api/guild is the only other
+	route that says which guild you are in and nothing calls it on a timer, so
+	a tag fed from the guild panel would appear whenever that panel happened to
+	be opened and then go on being whatever it was - including after you were
+	kicked out. That is the shape of defect this project has spent the most
+	time removing: a display fed by something nobody schedules.
+
+	SO IT RIDES THE POLL THAT ALREADY RUNS, beside pvp and maintenance and for
+	the same reason they are there. Being removed from a guild, or a mod
+	renaming or disbanding it, reaches the plate within one poll.
+
+	WRITTEN EVERY POLL RATHER THAN ON CHANGE. set_nameplate() is three property
+	writes and a reposition; comparing first would buy nothing and would need a
+	cached copy that could fall out of step with the plate it describes."""
+	var body: Node = get_tree().get_first_node_in_group("player")
+	if body == null or not body.has_method("set_nameplate"):
+		return
+	body.set_nameplate(Api.username, Api.role, str(data.get("guild_tag", "")))
+
+
+func _read_broadcast_messages(messages: Variant) -> void:
+	"""Everything the server has said since the last poll, onto the screen.
+
+	entry["at"] IS THE SERVER'S OWN STAMP AND IT WAS BEING DROPPED HERE.
+
+	read_broadcasts() has always returned it. This loop read `body` and `kind`
+	and threw the rest away, so every notice was stamped - once system lines
+	were stamped at all - with the moment THIS client read it. For a player who
+	was already online that is the same number. For everybody else it is wrong
+	by however long ago they logged in, and a first poll asks since=0, which
+	returns the TAIL: up to a week of notices, all arriving in one second.
+
+	That is the shape of bug this project keeps finding: the server half right
+	and tested, the client half never wired to it. Which is also why this is a
+	function with a name - the previous version of this code was six lines
+	inside a poll handler, and the only way to test it was to read it."""
+	if not (messages is Array):
+		return
+	for entry in messages:
+		if not (entry is Dictionary):
+			continue
+		var kind: String = str(entry.get("kind", "system"))
+		_push_message(str(entry.get("body", "")),
+			Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94),
+			int(entry.get("at", 0)))
 
 
 func _read_teleport(order) -> void:
@@ -936,6 +1226,10 @@ func _read_maintenance(notice) -> void:
 	if not (notice is Dictionary) or not bool(notice.get("on", false)):
 		# Reopened. Arm the warning again so the NEXT closing is announced.
 		_maintenance_warned = false
+		# AND TAKE THE STATE DOWN. The one-off message below announced the
+		# closing and nothing ever un-announced it, so a server that reopened
+		# left its warning on screen until the player happened to scroll it off.
+		set_world_status("maintenance", "")
 		return
 
 	if _maintenance_warned:
@@ -943,6 +1237,16 @@ func _read_maintenance(notice) -> void:
 	_maintenance_warned = true
 
 	var seconds: int = int(notice.get("seconds_left", 0))
+
+	# THE STRIP CARRIES IT FROM HERE. The toast below still fires once, because
+	# a closing server deserves the louder treatment - but "closing in 47s" is a
+	# STATE, and a state that was announced once and then scrolled away is how
+	# somebody gets disconnected mid-fight having read the warning four minutes
+	# earlier. Re-set on every poll, so the number counts down for real.
+	set_world_status("maintenance",
+		"Server closes in %s - your progress is being saved" % _clock(seconds),
+		Color(1.0, 0.65, 0.25))
+
 	_push_message("The server is closing in %ds. Saving your progress now." % seconds,
 		Color(0.95, 0.45, 0.35))
 

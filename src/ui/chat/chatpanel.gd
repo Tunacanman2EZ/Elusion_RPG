@@ -162,7 +162,6 @@ var _channel: String = "world"
 var _whisper_with: String = ""
 var _in_flight: bool = false
 var _sending: bool = false
-var _timezone_minutes: int = 0
 
 # channel -> {"cursor": int, "lines": Array[Dictionary], "unread": bool}
 var _feeds: Dictionary = {}
@@ -218,11 +217,6 @@ var _world_wait_read_at: float = 0.0
 func _ready() -> void:
 	add_to_group("chatpanel")
 	visible = false
-
-	# READ ONCE. get_time_zone_from_system() is a system call and the offset
-	# does not change while somebody is playing.
-	var zone: Dictionary = Time.get_time_zone_from_system()
-	_timezone_minutes = int(zone.get("bias", 0))
 
 	for channel in CHANNELS:
 		_feeds[channel] = {"cursor": 0, "lines": [], "unread": false}
@@ -414,8 +408,20 @@ func _on_whisper_target_changed(text: String) -> void:
 # WHAT GOES IN THE LOG
 # =============================================================================
 
-func push_system_line(text: String, colour: Color) -> void:
-	"""A server announcement, shown in the conversation and marked as one."""
+func push_system_line(text: String, colour: Color, at: int = 0) -> void:
+	"""A server announcement, shown in the conversation and marked as one.
+
+	`at` IS THE SERVER'S OWN TIMESTAMP, and passing it is the difference
+	between a record and a guess. The broadcast table stamps every notice when
+	it is WRITTEN, and the poll has always returned that - so the caller can
+	say when a thing happened rather than when this client noticed it. They
+	are the same number for a player who was already here and nothing like it
+	for one who just logged in, which is precisely who the tail is for.
+
+	0 MEANS "NOW", and it is right for exactly one kind of caller: a notice
+	this client generated about itself, which has no server timestamp because
+	the server was never involved. Defaulting rather than requiring keeps
+	those callers honest-looking instead of making them invent a zero."""
 	if text.strip_edges() == "":
 		return
 	# ALWAYS INTO THE WORLD CHANNEL. A maintenance notice is not a whisper and
@@ -424,6 +430,7 @@ func push_system_line(text: String, colour: Color) -> void:
 		"kind": "system",
 		"body": text,
 		"colour": colour,
+		"at": at if at > 0 else int(Time.get_unix_time_from_system()),
 	})
 
 
@@ -650,23 +657,52 @@ func _node_for(line: Dictionary) -> Control:
 	if kind == "system":
 		var colour: Color = line.get("colour", Color(1.0, 0.82, 0.42))
 		var hex: String = colour.to_html(false)
-		label.append_text("[color=#%s][SERVER][/color] [color=#%s]%s[/color]"
-			% [hex, hex, _escape(str(line.get("body", "")))])
+		# THE ONE LINE THAT MOST NEEDED A TIME WAS THE ONE THAT HAD NONE.
+		#
+		# This branch returned before the stamp below was ever reached, so
+		# every player line carried a clock and every SERVER line did not -
+		# and the server lines are the ones a player is handed in bulk the
+		# moment they log in. "Tunacan has gone hostile." with no time on it
+		# reads as now, whether it happened four seconds or four days ago.
+		label.append_text("[color=#6b6055]%s[/color] [color=#%s][SERVER][/color] [color=#%s]%s[/color]"
+			% [LocalTime.stamp(int(line.get("at", 0))), hex, hex,
+				_escape(str(line.get("body", "")))])
 		return label
 
 	var who: String = str(line.get("by", "?"))
 	var rank: String = str(line.get("role", "player"))
-	var stamp: String = _clock(int(line.get("at", 0)))
+	var stamp: String = LocalTime.stamp(int(line.get("at", 0)))
 	var name_colour: String = Api.colour_for_role(rank).to_html(false)
 	var crown: String = CROWN_TAG if rank == CROWN_RANK else ""
 	# YOUR OWN NAME IS MARKED. In a channel everybody can write to, finding
 	# where you last spoke is otherwise a scan of the whole box.
 	var mark: String = " <" if who.to_lower() == Api.username.to_lower() else ""
 
-	label.append_text("[color=#6b6055]%s[/color] %s[color=#%s]%s%s[/color]: %s" % [
-		stamp, crown, name_colour, _escape(who), mark,
+	label.append_text("[color=#6b6055]%s[/color] %s%s[color=#%s]%s%s[/color]: %s" % [
+		stamp, crown, _guild_part(line), name_colour, _escape(who), mark,
 		_escape(str(line.get("body", "")))])
 	return label
+
+
+func _guild_part(line: Dictionary) -> String:
+	"""The guild tag, coloured and ready to sit before a name. "" for no guild.
+
+	BEFORE THE NAME, AFTER THE CROWN. A rank is a fact about the person and a
+	guild is a fact about who they run with, so the guild reads as the thing
+	they arrived with rather than as part of what they are called.
+
+	ESCAPED, LIKE EVERYTHING ELSE THAT REACHES THIS RENDERER. The tag comes
+	from a guild name somebody chose, and it arrives wrapped in square brackets
+	- which is the one character this log must never hand the renderer raw. See
+	_escape(): "[img]some-url[/img] makes the client FETCH that url". The
+	server's pattern already refuses a bracket inside a name, so this is the
+	second lock on a door that is bolted, which is the correct number of locks
+	for a public channel."""
+	var tag: String = Api.guild_tag_text(str(line.get("guild_tag", "")))
+	if tag == "":
+		return ""
+	return "[color=#%s]%s[/color] " % [
+		Api.GUILD_TAG_COLOUR.to_html(false), _escape(tag)]
 
 
 # The chat typeface, with the bundled colour emoji font behind it. Pulled off
@@ -696,8 +732,11 @@ func _picture_node(line: Dictionary) -> Control:
 	if typeface != null:
 		header.add_theme_font_override("normal_font", typeface)
 	var crown: String = CROWN_TAG if rank == CROWN_RANK else ""
-	header.append_text("[color=#6b6055]%s[/color] %s[color=#%s]%s[/color]: %s" % [
-		_clock(int(line.get("at", 0))), crown,
+	# THE SAME HEADER AS A TEXT LINE, including the guild. A picture posted by
+	# somebody in a guild that did not say so would be the one kind of message
+	# where the tag went missing, and nobody would ever work out why.
+	header.append_text("[color=#6b6055]%s[/color] %s%s[color=#%s]%s[/color]: %s" % [
+		LocalTime.stamp(int(line.get("at", 0))), crown, _guild_part(line),
 		Api.colour_for_role(rank).to_html(false), _escape(who),
 		_escape(caption) if caption != "" else "[color=#6b6055](a picture)[/color]"])
 	holder.add_child(header)
@@ -812,12 +851,10 @@ func _escape(text: String) -> String:
 	return text.replace("[", "[lb]")
 
 
-func _clock(unix_time: int) -> String:
-	if unix_time <= 0:
-		return "--:--"
-	var local: Dictionary = Time.get_datetime_dict_from_unix_time(
-		unix_time + _timezone_minutes * 60)
-	return "%02d:%02d" % [int(local.get("hour", 0)), int(local.get("minute", 0))]
+# _clock() USED TO LIVE HERE and it is now LocalTime.stamp(). It was one of
+# four copies of "unix seconds plus the system bias, then decompose", and the
+# copy in ownerpanel.gd had lost the bias entirely and was printing UTC. Four
+# copies is how that happens; see src/shared/localtime.gd.
 
 
 func _set_notice(text: String) -> void:
@@ -1196,6 +1233,17 @@ func _line_from_server(entry_data: Dictionary, pictures: Variant) -> Dictionary:
 		"id": int(entry_data.get("id", 0)),
 		"by": entry_data.get("by", "?"),
 		"role": entry_data.get("role", "player"),
+		# WHAT THEY WERE FLYING WHEN THEY SAID IT. The server denormalises the
+		# guild onto the row beside username and role, for the reasons its own
+		# comment gives: the read is a poll every three seconds and must not
+		# grow a join, and the line should still make sense after the author has
+		# left the guild or the guild is gone. So this is a SNAPSHOT, not a
+		# lookup, and it is right that an old line keeps an old tag.
+		#
+		# CARRIED HERE, which is the whole point of the note above this
+		# function. A renderer cannot draw a field this dictionary does not
+		# have, and a test that builds its own dictionary would never find out.
+		"guild_tag": str(entry_data.get("guild_tag", "")),
 		"body": entry_data.get("body", ""),
 		"at": int(entry_data.get("at", 0)),
 	}

@@ -880,16 +880,72 @@ static func describe_login_refusal(res: Dictionary) -> String:
 		if not bool(ban.get("permanent", false)):
 			# LOCAL TIME, to the minute. The server's clock is unix time and
 			# get_datetime_string_from_unix_time() reads it as UTC, which for
-			# most players is a date that is off by hours.
-			var local: int = int(ban.get("expires_at", 0)) \
-				+ int(Time.get_time_zone_from_system().get("bias", 0)) * 60
+			# most players is a date that is off by hours. LocalTime.full() is
+			# the one place that conversion lives now - there were four copies
+			# of it and one of them had lost the offset entirely.
 			line = "This account is banned until %s." % \
-				Time.get_datetime_string_from_unix_time(local, true).substr(0, 16)
+				LocalTime.full(int(ban.get("expires_at", 0)))
+
+			# AND HOW LONG THAT IS, because a date is a fact and a duration is
+			# the answer to the question actually being asked. "Until Fri 3 Oct
+			# 14:22" makes somebody count on their fingers; "2 days, 4 hours"
+			# does not.
+			#
+			# COMPUTED ONCE, NOT TICKING, and that is deliberate rather than
+			# lazy. A ticking clock earns its keep when the number is about to
+			# matter - the connection countdown in the HUD is ninety seconds and
+			# every one of them counts. A ban is measured in days, nobody sits
+			# watching it, and a second-by-second redraw on the login screen
+			# would be work spent on a number that changes meaningfully once an
+			# hour.
+			var left: int = int(ban.get("expires_at", 0)) - int(Time.get_unix_time_from_system())
+			var remaining: String = describe_ban_remaining(left)
+			if remaining != "":
+				line += "  (%s left)" % remaining
 		var reason: String = str(ban.get("reason", ""))
 		if reason != "":
 			line += "\nReason: %s" % reason
 		return line
 	return str(res.get("error", ""))
+
+
+static func describe_ban_remaining(seconds: int) -> String:
+	"""How much of a ban is left, in the largest two units that say something.
+
+	Static and pure so the suite can check it without a server or a ban: hand it
+	a number of seconds, read the sentence.
+
+	EMPTY WHEN IT HAS RUN OUT, rather than "0 minutes". A ban whose clock has
+	passed but whose row the server has not cleared yet is not something to
+	announce a countdown for - the next login attempt will simply succeed.
+	"""
+	if seconds <= 0:
+		return ""
+
+	# Each remainder is handed to the next line, so every discarded fraction is
+	# accounted for by the unit below it - the truncation is the arithmetic, not
+	# a slip. Said out loud with the annotation, as chatpanel.gd does.
+	@warning_ignore("integer_division")
+	var days: int = seconds / 86400
+	@warning_ignore("integer_division")
+	var hours: int = (seconds % 86400) / 3600
+	@warning_ignore("integer_division")
+	var minutes: int = (seconds % 3600) / 60
+
+	if days > 0:
+		if hours > 0:
+			return "%d day%s, %d hour%s" % [days, "" if days == 1 else "s",
+				hours, "" if hours == 1 else "s"]
+		return "%d day%s" % [days, "" if days == 1 else "s"]
+	if hours > 0:
+		if minutes > 0:
+			return "%d hour%s, %d minute%s" % [hours, "" if hours == 1 else "s",
+				minutes, "" if minutes == 1 else "s"]
+		return "%d hour%s" % [hours, "" if hours == 1 else "s"]
+	# UNDER AN HOUR, rounded UP to the next minute. Telling somebody "0 minutes"
+	# when there are forty seconds left is the one version of this that is wrong.
+	return "%d minute%s" % [maxi(1, int(ceil(float(minutes + 1)))),
+		"" if minutes == 0 else "s"]
 
 
 func is_valid_username(input_str: String) -> bool:

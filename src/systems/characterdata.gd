@@ -1047,25 +1047,23 @@ func save_character_state(player: Node) -> void:
 	if "active_pet_id" in player:
 		character_slots[slot]["active_pet_id"] = player.active_pet_id
 
-	# EQUIPMENT IS RECONCILED AGAINST THE BAG, HERE, and this is the one place
-	# in the running game where that can honestly be done.
+	# THIS IS WHERE A NINETEEN-LINE COMMENT USED TO EXPLAIN A RECONCILE THAT NO
+	# LONGER HAPPENS. It opened "EQUIPMENT IS RECONCILED AGAINST THE BAG, HERE,
+	# and this is the one place in the running game where that can honestly be
+	# done", and twenty lines below it a second comment said the reconcile was
+	# obsolete and why. Two comments in one function, flatly contradicting each
+	# other, and only one of them true.
 	#
-	# A slot holds an item_id, not an item — see player.gd's note on `equipped`
-	# for why that shape was chosen. The price of it is that a slot can name
-	# something you no longer own: you sold the sword you were swinging, banked
-	# it, dropped it, or lost it on death. Nothing about that throws. The slot
-	# simply points at nothing and, once combat reads equipment, quietly stops
-	# paying out.
+	# That is the failure this project has now paid for three times - api.gd
+	# describing a wire nobody had run, MAX_MOD_BAN_DAYS naming a mute that does
+	# not exist, and this. A comment cannot fail, so it goes unexamined from the
+	# day it is written until the day somebody trusts it.
 	#
-	# WHY NOT IN player.gd. Because the player does not know what is in its own
-	# bag. `inventory_data` is assigned once at load and never updated after —
-	# the live contents live in the HUD's inventory container, which is what
-	# _capture_inventory() above just read. A prune written on the player would
-	# check a list that went stale the first time anything was picked up.
-	#
-	# `bag` rather than character_slots[slot]["inventory"] deliberately: the
-	# same array, but naming the local says this reads what was JUST captured
-	# rather than whatever the slot held a moment ago.
+	# WHAT ACTUALLY HAPPENS NOW is at `if "equipped" in player` below: the item
+	# leaves the bag when it is worn, /api/character/equip is what moves it, and
+	# the save carries `equipment` as the client's opinion rather than as a
+	# claim the server acts on.
+
 	# THE MAP YOU HAVE UNCOVERED, asked of WorldMap rather than of the player.
 	# It is per character but it is not a property of the character node — the
 	# autoload owns it, because it has to survive the scene change that frees
@@ -1092,8 +1090,12 @@ func save_character_state(player: Node) -> void:
 		# the endpoints does not get undressed - but the server treats it as
 		# the client's opinion, and only /api/character/equip and /unequip
 		# actually move anything.
+		# `player.equipped = worn` USED TO SIT HERE AND DID NOTHING. `equipped`
+		# is a plain Dictionary field with no setter, so assigning the same
+		# reference back to it is a no-op - the leftover of the version that
+		# built a pruned copy and wrote it back. It read like the line that
+		# made the prune stick, which is worse than no line at all.
 		var worn: Dictionary = player.equipped
-		player.equipped = worn
 		# DUPLICATED INTO THE SLOT, not aliased into it. The player keeps
 		# wearing `worn`; if the slot held the same instance, equipping one more
 		# thing would edit the saved copy without a save ever happening — and

@@ -184,6 +184,28 @@ func _row(entry: Dictionary) -> Control:
 		Api.colour_for_role(str(entry.get("role", "player"))))
 	line.add_child(name_label)
 
+	# WHO THEY RUN WITH, in its own label rather than glued onto the name. The
+	# name label above expands to fill and would push the tag off the edge on a
+	# long character name; a separate label keeps the tag and the level column
+	# together at the right, where the eye is already scanning for facts about
+	# the row rather than for the person's name.
+	#
+	# ADDED ONLY WHEN THERE IS ONE. An empty bracket pair beside everybody in no
+	# guild would be a column of nothing, and the server sends "" rather than a
+	# null precisely so this is one test.
+	var tag: String = Api.guild_tag_text(str(entry.get("guild_tag", "")))
+	if tag != "":
+		var guild_label := Label.new()
+		guild_label.text = tag
+		guild_label.add_theme_font_size_override("font_size", 10)
+		# THE SAME VIOLET AS THE CHAT LINE AND THE BOARD. Api owns it for the
+		# same reason it owns colour_for_role: a guild that is a different
+		# colour on each screen is not recognisable on any of them.
+		guild_label.add_theme_color_override("font_color", Api.GUILD_TAG_COLOUR)
+		guild_label.tooltip_text = "In %s" % str(entry.get("guild", tag))
+		guild_label.mouse_filter = Control.MOUSE_FILTER_STOP
+		line.add_child(guild_label)
+
 	var where := Label.new()
 	var area: String = str(entry.get("area", ""))
 	where.text = "lvl %d  %s" % [int(entry.get("level", 1)), area.capitalize()]

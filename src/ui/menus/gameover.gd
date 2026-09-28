@@ -8,9 +8,15 @@
 # - CharacterData.account_data.lusions: account-shared currency pool.
 #   never lost on death — survives this screen regardless of choice.
 #
-# the two paths:
-# - revive: deduct lusions, restore full HP, mark reviving=true, reload world
-# - return: clear carry gold + carry inventory (TRUE death), back to select
+# the two paths, and BOTH OF THEM ARE SERVER CALLS NOW:
+# - revive: POST /api/character/revive  — takes the price, refills the pools
+# - return: POST /api/character/respawn — burns the carry gold through the
+#           ledger, empties the carry bag, refills the pools
+#
+# The return path was local until it produced a character on 52 hp. The rule
+# both halves now follow is the one in CLAUDE.md: the client sends what it DID,
+# never what it now HAS. "I accepted death" is a fact. "I have full health and
+# no gold" is two decisions, and decisions live on the server.
 #
 # both paths persist atomically to disk so a force-quit between scenes can't
 # duplicate items or undo the lusions spend.
@@ -332,11 +338,20 @@ func _set_notice(message: String) -> void:
 
 
 func _restore_character_resources(char_name: String) -> void:
-	# write full HP, mana, and stamina to the character's save slot. used by
-	# both revive (full resources at death position) and the return path
-	# (full resources at starting area). the player node may not exist at
-	# this point, so we update the slot data directly. the slot stores
-	# max_mana / max_stamina (schema version 2), so we fill from those.
+	# THE FALLBACK, AND NOTHING ELSE CALLS IT DIRECTLY ANY MORE. Its comment
+	# used to say "used by both revive and the return path", and that sentence
+	# outlived both facts: revive moved to the server, and the return path has
+	# now followed it. It survives for the one case _apply_restored_status()
+	# describes - a 200 that carries no status block - where the server has
+	# already done the work and the client just needs numbers to draw.
+	#
+	# It must NOT be called when a request FAILED. That is what it was doing on
+	# the return path, and it is how the client came to be deciding its own hp.
+	#
+	# write full HP, mana, and stamina to the character's save slot. the player
+	# node may not exist at this point, so we update the slot data directly.
+	# the slot stores max_mana / max_stamina (schema version 2), so we fill
+	# from those.
 	var slot_data: Dictionary = CharacterData.get_character_by_name(char_name)
 	if slot_data.is_empty():
 		return
@@ -353,21 +368,71 @@ func _on_return_pressed() -> void:
 	# accept death's full penalty — player loses carry items + carry gold.
 	# bank items, bank gold, and lusions persist (soulbound / account-shared).
 	# this is the "true death" path: the consequence that makes banking matter.
+	#
+	# THE SERVER DOES BOTH HALVES NOW, and it is the same sentence that sits
+	# over _pay_and_revive(). This screen has two exits and only one of them was
+	# ever migrated; this one went on writing full hp into the save slot and
+	# zeroing the carry gold in the same local dictionary, and BOTH of those
+	# were wrong, in opposite directions.
+	#
+	# THE HEAL WAS A CLIENT DECISION. So the next status push arrived at the
+	# server as a rise from hp 0 to hp 504 with nothing authorising it, and
+	# _reconcile_heals() clamped it to what a few seconds of regeneration could
+	# produce. The log line was exact:
+	#
+	#     unexplained heal: hp +504 vs regen 53 + granted 0
+	#     heal clamped: hp 504 -> 52
+	#
+	# The player came back on screen with full bars, logged out, logged back in,
+	# and found a corpse on 52 hp. The reconciler was not the bug. It was the
+	# only part of the system telling the truth.
+	#
+	# THE PENALTY WAS ALSO A CLIENT DECISION, AND IT DID NOTHING. `gold` is in
+	# the server's SERVER_OWNED_STATS, so the zero written below never reached
+	# it — the carry gold was still there and came back in full on the next
+	# login. The empty inventory DID stick, because losing items is a loss and
+	# only gains are reconciled. True death took the items, refunded the gold,
+	# and left the character unplayable.
 	var death_state: Dictionary = GameState.death_state
 	var char_name: String = death_state.get("character_name", "")
 
-	if char_name != "":
-		_clear_carry_on_death(char_name)
-		# RESOURCES COME BACK EVEN ON THE TRUE-DEATH PATH, and this call had
-		# gone missing — _restore_character_resources()'s own docstring still
-		# says it is "used by both revive and the return path".
-		#
-		# It did not matter while player.gd refilled on every scene load. It
-		# does now: health persists across a load, so a character saved at 0
-		# would be re-selected, spawn, and be a corpse. The penalty for dying
-		# is the carry gold and the inventory cleared on the line above, which
-		# is quite enough without also being unplayable.
-		_restore_character_resources(char_name)
+	if char_name == "":
+		GameState.death_state = {}
+		GameState.reviving = false
+		get_tree().change_scene_to_file(character_select_path)
+		return
+
+	# ONE AT A TIME, the same guard the revive uses and for the same reason: a
+	# double-click here used to mean two local restores, which was harmless, and
+	# now means two requests, the second answered "that character is not dead" —
+	# true, confusing, and avoidable.
+	if _reviving:
+		return
+	_reviving = true
+
+	var slot: int = CharacterData.active_character_index
+	var res: Dictionary = await Api.post("/api/character/respawn",
+		{"slot": slot}, REVIVE_TIMEOUT)
+
+	# PAST AN AWAIT — this screen can be gone by now.
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+
+	_reviving = false
+
+	if not res.get("ok", false):
+		# NO LOCAL FALLBACK ON A FAILED CALL, and that is the whole point of
+		# the change. Restoring here would put the character back exactly where
+		# the clamp found it. Say so and let them press it again.
+		_set_notice(str(res.get("error", "Could not reach the server.")))
+		return
+
+	# The server has destroyed the gold, emptied the carry bag and refilled the
+	# three pools. Bring the local copies into line rather than recomputing
+	# them, so the client never disagrees with the row it was just handed.
+	_clear_carry_on_death(char_name)
+	_apply_restored_status(char_name, res.get("data", {}).get("status", {})
+		if res.get("data", {}) is Dictionary else {})
 
 	# clear the death state and head back to character select
 	GameState.death_state = {}
@@ -405,11 +470,18 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# load_character_state() reads this key back on the next load.
 	slot_data["hotbar_assignments"] = ["", "", "", "", "", "", "", "", ""]
 
-	# HP restored to full so when player loads the character again from select,
-	# they spawn at the starting area with full health (not corpse-state).
-	# this is the "respawned at town with empty pockets" experience.
-	slot_data["hp"] = int(slot_data.get("max_hp", 100))
-
+	# HP IS NOT SET HERE ANY MORE, and that line is the bug this whole path was
+	# rewritten for. It wrote full health into the slot on the client's own
+	# authority; the server saw the next sync as an unexplained heal from zero
+	# and clamped it, so the character that looked healthy on this screen was a
+	# corpse on 52 hp after a relog.
+	#
+	# POST /api/character/respawn decides it now, and _apply_restored_status()
+	# copies the answer in. Everything left in this function is a MIRROR of a
+	# decision the server has already made and committed - the gold above is
+	# gone from `saves` through the ledger, the bag is gone from `carry_items` -
+	# so these writes only stop the UI showing stale numbers for a frame.
+	#
 	# write back to disk — atomic save protects against force-quit exploits
 	CharacterData.save_character_slot(char_name, slot_data)
 

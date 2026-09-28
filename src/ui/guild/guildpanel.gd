@@ -27,7 +27,24 @@ const REFRESH_SECONDS := 15.0
 
 # Matches the server's own rule, so an impossible name is refused at the
 # keyboard rather than by a round trip. See GUILD_NAME_PATTERN in app.py.
-const NAME_PATTERN := "^[A-Za-z0-9][A-Za-z0-9 '\\-]{2,23}$"
+#
+# TWELVE, DOWN FROM TWENTY-FOUR, and the reason is on the other side of the
+# screen rather than in the database: the name is now drawn above a head, on
+# every chat line its members write, on the players menu and on the kingdom
+# board. At 24 characters that is a banner following somebody around.
+#
+# THIS REFUSES; IT DOES NOT DECIDE. The server's pattern is the rule and this is
+# a courtesy that saves a round trip - which is why MAX_NAME below is also sent
+# to the LineEdit rather than being a second, quietly different number.
+const NAME_PATTERN := "^[A-Za-z0-9][A-Za-z0-9 '\\-]{2,11}$"
+
+# The same twelve, as a number, because a LineEdit needs one and reading it out
+# of the pattern above would be parsing a regex to find out what it says.
+const MAX_NAME := 12
+
+# A username, which is a different limit and always was. Kept beside MAX_NAME so
+# the two cannot be confused for copies of each other.
+const MAX_USERNAME := 20
 
 # The server's own ladder, lowest first. Used only to decide which buttons to
 # offer; the server decides whether they work.
@@ -80,7 +97,7 @@ func _ready() -> void:
 	if action_button != null:
 		action_button.pressed.connect(_on_action_pressed)
 	if entry != null:
-		entry.max_length = 24
+		entry.max_length = MAX_NAME
 		entry.text_submitted.connect(func(_t): _on_action_pressed())
 	if close_button != null:
 		close_button.pressed.connect(close)
@@ -217,7 +234,43 @@ func _dress_header(guild: Dictionary) -> void:
 	for person in guild.get("members", []):
 		if person is Dictionary and bool(person.get("online", false)):
 			online += 1
-	count_label.text = "%d online of %d" % [online, int(guild.get("size", 0))]
+
+	var size: int = int(guild.get("size", 0))
+
+	# "1 online of 1" IS ARITHMETIC ABOUT ONE PERSON, and that person is reading
+	# it. A guild of one is the state every guild starts in and the state this
+	# panel should be most helpful in, so it gets a sentence instead of a sum -
+	# and the sentence says what to do next, because founding one and then
+	# finding no way forward is how a feature gets abandoned on day one.
+	#
+	# The earlier version of this line said "0 online of 1" to its only member,
+	# which was a presence bug rather than a wording one. The presence is fixed;
+	# the wording was still arithmetic nobody needed.
+	var parts := PackedStringArray()
+
+	# THE TAG FIRST, because this is the one screen where a member finds out
+	# what everybody else sees. It is drawn on their chat lines, on the players
+	# menu and on the kingdom board, and a player who has never been shown it
+	# has no idea their guild is visible at all.
+	var tag: String = Api.guild_tag_text(str(guild.get("tag", "")))
+	if tag != "":
+		parts.append(tag)
+
+	if size <= 1:
+		parts.append("Just you, so far." if _rank_at_least("officer")
+			else "Just you, so far. Ask an officer to invite somebody.")
+	else:
+		parts.append("%d online of %d" % [online, size])
+
+	# FOUNDED, ON THE END OF THE LINE THAT IS ALREADY THERE. `created_at` has
+	# been on the wire since /api/guild was written and nothing had ever drawn
+	# it. It is the one fact that makes a guild feel like it has a history
+	# rather than a roster, and it costs a clause.
+	var founded: String = LocalTime.date(int(guild.get("created_at", 0)))
+	if founded != "":
+		parts.append("founded %s" % founded)
+
+	count_label.text = "  ·  ".join(parts)
 
 
 func _dress_controls(_guild: Dictionary) -> void:
@@ -231,7 +284,7 @@ func _dress_controls(_guild: Dictionary) -> void:
 	if entry != null:
 		entry.placeholder_text = "Who do you want to invite?" if may_invite \
 			else "Name your guild..."
-		entry.max_length = 20 if may_invite else 24
+		entry.max_length = MAX_USERNAME if may_invite else MAX_NAME
 	if action_button != null:
 		action_button.text = "Invite" if may_invite else "Found"
 		action_button.tooltip_text = (
@@ -435,7 +488,7 @@ func _on_action_pressed() -> void:
 			"Asked %s. They will see it next time they look." % typed)
 	else:
 		if _name_check.search(typed) == null:
-			_show("A guild name is 3 to 24 characters: letters, numbers,"
+			_show("A guild name is 3 to %d characters: letters, numbers," % MAX_NAME
 				+ " spaces, apostrophes and hyphens.")
 			return
 		# THE COST COMES OUT OF THE CHARACTER YOU ARE PLAYING, so the slot
