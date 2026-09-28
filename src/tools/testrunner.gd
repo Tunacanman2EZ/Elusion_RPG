@@ -1604,6 +1604,91 @@ func _test_players_menu_and_pvp_are_honest() -> void:
 		owner_panel.contains("await _refresh_pvp()"),
 		"a refused press must not leave the button claiming something untrue")
 
+	# =========================================================================
+	# EVERY ROW SITS ON A BOX, AND YOURS IS THE BRIGHT ONE
+	# =========================================================================
+	# BEHAVIOURAL, NOT TEXTUAL. _row() is pure node-building over a Dictionary
+	# and touches none of the @onready vars, so the script can be instantiated
+	# bare and asked - which is the only way to prove the box is actually AROUND
+	# the row rather than beside it, and the only way the own-row test can be
+	# fed a name and checked.
+	var players_script: Script = load("res://src/ui/players/playerspanel.gd") as Script
+	check("the players panel is readable without a server", players_script != null)
+	if players_script != null:
+		var bare: Control = players_script.new()
+		var was_name: String = Api.username
+		Api.username = "Tunacan"
+
+		var stranger: Control = bare._row({
+			"username": "Ahvassa", "name": "mage", "level": 12,
+			"area": "field", "role": "player", "guild_tag": ""})
+
+		check("a player row sits on a box", stranger is PanelContainer,
+			stranger.get_class())
+
+		# A VARIATION THE THEME DOES NOT DEFINE FALLS BACK TO THE PLAIN
+		# PanelContainer STYLE, silently - so a renamed variation is a box that
+		# is still there and no longer the right one. Checked against the theme
+		# file rather than assumed.
+		var theme_src: String = FileAccess.get_file_as_string(
+			"res://assets/themes/rpg_ui_theme.tres")
+		check("and the theme actually defines the variation it asks for",
+			theme_src.contains("%s/styles/panel" % players_script.ROW_BOX)
+				and theme_src.contains("%s/styles/panel" % players_script.OWN_ROW_BOX),
+			"%s / %s" % [players_script.ROW_BOX, players_script.OWN_ROW_BOX])
+		check("somebody else's row wears the subtle one",
+			stranger.theme_type_variation == players_script.ROW_BOX,
+			stranger.theme_type_variation)
+
+		# THE ROW ITSELF MUST SURVIVE THE WRAPPING. A box with the content
+		# dropped on the floor is a tidy empty box, and it would pass every
+		# check above.
+		check("the name is still in there after being boxed",
+			_labels_under(stranger).find("Ahvassa  (mage)") != -1,
+			_labels_under(stranger))
+
+		var mine: Control = bare._row({
+			"username": "tunacan", "name": "warrior", "level": 29,
+			"area": "elusion", "role": "owner", "guild_tag": ""})
+		check("your own row wears the bright one",
+			mine.theme_type_variation == players_script.OWN_ROW_BOX,
+			mine.theme_type_variation)
+		# LOWERCASE ON PURPOSE ABOVE: the users table is COLLATE NOCASE, so the
+		# server treats Tunacan and tunacan as one account. A case-sensitive
+		# test would fail to find you in your own list depending on how you
+		# happened to type it at the login screen.
+		check("and the two boxes are not the same box",
+			players_script.ROW_BOX != players_script.OWN_ROW_BOX,
+			"one variation for both is no highlight at all")
+
+		# THE ACCOUNT NAME, NOT THE CHARACTER NAME. One account has several
+		# characters and nothing stops two accounts naming a character the same
+		# thing, so matching on `name` puts the bright box on a stranger.
+		var impostor: Control = bare._row({
+			"username": "SomebodyElse", "name": "Tunacan", "level": 3,
+			"area": "field", "role": "player", "guild_tag": ""})
+		check("a stranger whose CHARACTER shares your account name is not you",
+			impostor.theme_type_variation == players_script.ROW_BOX,
+			impostor.theme_type_variation)
+
+		# SIGNED OUT MATCHES NOBODY. Api.username is "" before login and after
+		# sign-out, and "" == "" against an absent username would put the bright
+		# box on whichever row happened to be missing one.
+		Api.username = ""
+		var nameless: Control = bare._row({
+			"username": "", "name": "warrior", "level": 1,
+			"area": "elusion", "role": "player", "guild_tag": ""})
+		check("with nobody signed in, no row is yours",
+			nameless.theme_type_variation == players_script.ROW_BOX,
+			nameless.theme_type_variation)
+
+		Api.username = was_name
+		stranger.free()
+		mine.free()
+		impostor.free()
+		nameless.free()
+		bare.free()
+
 	# THE HONESTY, which is the whole point of this section.
 	check("the panel's banner says nobody can be damaged yet",
 		panel.contains("Nobody can damage anybody"),
@@ -1810,12 +1895,100 @@ func _test_world_status_is_shown() -> void:
 			contact_end) != -1,
 		"a player who reconnects should not be left reading a stale alarm")
 
-	# THE MAINTENANCE NOTICE IS A STATE NOW, NOT ONLY A TOAST.
-	check("the closing server counts down on the strip",
-		hud.contains("set_world_status(\"maintenance\","),
-		"announced once and scrolled away is how somebody is disconnected mid-fight")
+	# THE MAINTENANCE NOTICE IS A STATE, WHICH MEANS THE STRIP HAS TO BE PAINTED
+	# ABOVE THE ONCE-ONLY GUARD.
+	#
+	# THE CHECK THAT USED TO BE HERE WAS ITSELF THE BUG, and it is the cleanest
+	# example this suite has of the trap the file above keeps warning about. It
+	# was named "the closing server counts down on the strip" and its body asked
+	# whether the substring set_world_status("maintenance", appeared ANYWHERE in
+	# the file. It did - three lines BELOW `if _maintenance_warned: return`, so
+	# it ran on exactly one poll and the number never moved once. The comment
+	# beside it in characterhud.gd said "Re-set on every poll, so the number
+	# counts down for real", and that was false too.
+	#
+	# So: a check named after a behaviour, a comment describing that behaviour,
+	# and code doing the opposite - and the only thing that could ever have told
+	# them apart is ORDER. It is checked by index for that reason, the same way
+	# _test_god_mode_earns_nothing() checks its guard.
+	var read_at: int = hud.find("func _read_maintenance(")
+	var read_end: int = hud.find("\nfunc ", read_at + 8)
+	var strip_at: int = _within(_first_code_index(
+		hud, "set_world_status(\"maintenance\", _maintenance_line", read_at), read_end)
+	var guard_at: int = _within(_first_code_index(
+		hud, "if _maintenance_warned:", read_at), read_end)
+	check("the countdown is painted BEFORE the once-only guard",
+		strip_at != -1 and guard_at != -1 and strip_at < guard_at,
+		"strip %d, guard %d - below the guard it paints once and freezes there"
+			% [strip_at, guard_at])
 	check("and reopening takes it down",
 		hud.contains("set_world_status(\"maintenance\", \"\")"))
+
+	# WHAT THE STRIP ACTUALLY SAYS, asked directly. _maintenance_line() is
+	# static and pure apart from Api.is_owner, so the three states can be read
+	# off rather than inferred from a substring - which is what let the old
+	# check pass on frozen code.
+	var hud_script: Script = load("res://src/ui/characterhud.gd") as Script
+	check("the HUD's closing wording is readable without a server", hud_script != null)
+	if hud_script != null:
+		var was_owner: bool = Api.is_owner
+		Api.is_owner = false
+
+		check("while the window is open it says how long and that saving is on",
+			str(hud_script._maintenance_line(125))
+				== "Server closes in 2:05 - your progress is being saved",
+			hud_script._maintenance_line(125))
+
+		# ZERO IS A DIFFERENT STATE, NOT A SMALLER NUMBER. This is the exact
+		# line that shipped: log in after the window is spent and the first poll
+		# reads seconds_left 0, so the strip read "Server closes in 0:00 - your
+		# progress is being saved" and stayed there. Both halves are false at
+		# once - it is not closing, it has closed, and nothing is being saved.
+		var spent: String = str(hud_script._maintenance_line(0))
+		check("spent, it stops promising a save that is already over",
+			not spent.contains("being saved"), spent)
+		check("and stops counting down to something already done",
+			not spent.contains("0:00"), spent)
+		check("a player is told the session is ending",
+			spent.contains("signed out"), spent)
+
+		# THE OWNER IS EXEMPT BY NAME on the server - maintenance_refusal() and
+		# maintenance_disconnect() both skip them so nobody can lock themselves
+		# out of their own server. The cost is that throwing the switch looks
+		# like it did nothing from the one chair that threw it.
+		Api.is_owner = true
+		var owner_line: String = str(hud_script._maintenance_line(0))
+		var owner_open: String = str(hud_script._maintenance_line(125))
+		Api.is_owner = was_owner
+
+		check("the owner is told they are the exception",
+			owner_line.contains("exempt"), owner_line)
+		check("and that it is the PLAYERS who are shut out",
+			owner_line.contains("CLOSED to players"), owner_line)
+		check("which is not what a player reads", owner_line != spent,
+			"one line for two situations is the switch looking broken")
+		# AND THE CLAIM ITSELF, not just that the two strings differ. Sabotage
+		# found this gap: adding "(exempt)" to the PLAYER's line left the two
+		# readings unequal, so the check above stayed green while the client
+		# told a player about to be signed out that they were exempt. Inequality
+		# is a weaker claim than it looks - it is satisfied by any difference,
+		# including the wrong one.
+		check("and a player is never told they are exempt when they are not",
+			not spent.to_lower().contains("exempt"), spent)
+		check("but while the window is open there is one line for everybody",
+			owner_open == "Server closes in 2:05 - your progress is being saved",
+			owner_open)
+
+		# THE CHAT LINE IS AN EVENT AND MUST NOT COUNT DOWN TO ZERO EITHER.
+		# "The server is closing in 0s. Saving your progress now." was landing
+		# in the log of players who arrived long after it happened, stamped as
+		# news, because it was built from the same frozen number.
+		check("the chat notice does not announce a countdown of zero",
+			not str(hud_script._maintenance_announcement(0)).contains("in 0s"),
+			hud_script._maintenance_announcement(0))
+		check("and still counts down while there is something to count",
+			str(hud_script._maintenance_announcement(90)).contains("90"),
+			hud_script._maintenance_announcement(90))
 
 	# PVP RIDES THE SAME POLL.
 	check("PvP shows for somebody who logged in after the announcement",
@@ -2115,6 +2288,22 @@ func _scripts_under(dir_path: String, found: Array[String] = []) -> Array[String
 		entry = dir.get_next()
 	dir.list_dir_end()
 	found.sort()
+	return found
+
+
+func _labels_under(node: Node) -> PackedStringArray:
+	"""Every Label text in `node`'s subtree, in tree order.
+
+	SO A WRAPPER CAN BE PROVEN NOT TO HAVE EATEN ITS CONTENT. Wrapping a row in
+	a box is two lines and it is entirely possible to build the box, return it,
+	and never parent the row - which produces a tidy empty box that satisfies
+	every check about the box itself. Reading the text back is the only question
+	that notices."""
+	var found := PackedStringArray()
+	if node is Label:
+		found.append((node as Label).text)
+	for child in node.get_children():
+		found.append_array(_labels_under(child))
 	return found
 
 
@@ -2459,60 +2648,223 @@ const WINDOW_PANELS := [
 ]
 
 
+func _outer_margins(scene_text: String, header_parent: String) -> Dictionary:
+	"""The four padding values of the MarginContainer a header sits inside.
+
+	READ FROM THE SCENE TEXT rather than by loading it, for the same reason the
+	header check beside it is: a scene naming art from the private pack will not
+	load in a clone without the pack, and a check that fails on a clone and
+	passes here is the worst kind.
+
+	`header_parent` is the chain attach() found the header down — for example
+	`mainpanel/margincontainer/vboxcontainer`. The SECOND segment is the outer
+	MarginContainer, which is the one whose padding a grip sits in; the first is
+	the frame and the third is the row box inside it.
+
+	Returns {} when there is nothing to read, and the caller treats that as a
+	failure rather than as permission."""
+	var segments: PackedStringArray = header_parent.split("/")
+	if segments.size() < 2:
+		return {}
+
+	var opener := '[node name="%s"' % segments[1]
+	var parent := 'parent="%s"' % segments[0]
+	var at: int = -1
+	var scan: int = scene_text.find(opener)
+	while scan != -1:
+		var head_end: int = scene_text.find("]", scan)
+		if head_end == -1:
+			break
+		if scene_text.substr(scan, head_end - scan).contains(parent):
+			at = head_end
+			break
+		scan = scene_text.find(opener, scan + 1)
+	if at == -1:
+		return {}
+
+	# BOUNDED TO THIS NODE'S OWN BLOCK. A margin constant belongs to whichever
+	# [node] header it sits under, and reading past the next one would pick up a
+	# child's padding and report it as the panel's — the same "bound the search
+	# to the thing you meant" rule _within() exists for.
+	var next_node: int = scene_text.find("[node ", at)
+	var block: String = scene_text.substr(at, (next_node if next_node != -1
+		else scene_text.length()) - at)
+
+	var found := {}
+	for side in ["left", "top", "right", "bottom"]:
+		var key := "theme_override_constants/margin_%s = " % side
+		var key_at: int = block.find(key)
+		if key_at == -1:
+			continue
+		var from: int = key_at + key.length()
+		var to: int = block.find("\n", from)
+		if to == -1:
+			to = block.length()
+		found[side] = block.substr(from, to - from).strip_edges().to_int()
+	return found
+
+
 func _test_panels_are_windows() -> void:
 	section("PANELS - drag by the header, resize from any edge, stay reachable")
 
 	# =========================================================================
-	# YOU CAN ALWAYS GET IT BACK
+	# THE SCREEN EDGES ARE WALLS
 	# =========================================================================
-	# The whole lost-panel fix, and it is checked first because it is the one
-	# defect with no way out from inside the game. clamp_to() is static and pure
-	# precisely so this can be asked in one line instead of built in a viewport.
+	# Checked first because it is the one defect with no way out from inside the
+	# game. fit_to() is static and pure precisely so this can be asked in one
+	# line instead of built in a viewport.
+	#
+	# THE RULE THIS REPLACED WAS DEFENSIBLE AND WRONG. It let a panel hang off an
+	# edge and only guaranteed that a corner of the header stayed reachable -
+	# which means a panel half off the bottom has its bottom edge past the glass,
+	# so it cannot be resized from the bottom at all. That is what "i cant strech
+	# down" is. So the rule now is the blunt one: a panel is ALWAYS ENTIRELY ON
+	# SCREEN, and every edge is therefore always reachable.
 	var screen := Vector2(1920, 1080)
 	var panel := Vector2(400, 500)
-	var keep: Vector2 = PanelWindow.KEEP_VISIBLE
 
-	var far_right: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(9000, 100), panel), screen)
-	check("a panel shoved off the right edge comes back",
-		far_right.position.x <= screen.x - keep.x, far_right.position)
-	check("and enough of it is left to grab",
-		far_right.position.x + panel.x >= keep.x)
+	var far_right: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(9000, 100), panel), screen, PanelWindow.MIN_SIZE)
+	check("a panel shoved off the right stops WITH ITS RIGHT EDGE AT THE WALL",
+		is_equal_approx(far_right.position.x + far_right.size.x, screen.x),
+		far_right)
+	check("and it is not resized on the way",
+		far_right.size.is_equal_approx(panel), far_right.size)
 
-	var far_left: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(-9000, 100), panel), screen)
-	check("shoved off the left edge, it comes back too",
-		far_left.position.x + panel.x >= keep.x, far_left.position)
+	var far_left: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(-9000, 100), panel), screen, PanelWindow.MIN_SIZE)
+	check("shoved off the left, its left edge stops at zero",
+		is_equal_approx(far_left.position.x, 0.0), far_left.position)
 
-	var below: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(100, 9000), panel), screen)
-	check("dragged off the bottom, the header is still on screen",
-		below.position.y <= screen.y - keep.y, below.position)
+	var below: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(100, 9000), panel), screen, PanelWindow.MIN_SIZE)
+	check("pushed off the bottom, THE BOTTOM EDGE IS STILL GRABBABLE",
+		is_equal_approx(below.position.y + below.size.y, screen.y), below)
 
-	# UP IS DIFFERENT FROM DOWN, and that asymmetry is the point. A panel pushed
-	# down still shows its top edge, which is the part you grab. Pushed up, the
-	# header leaves first and there is nothing underneath it to take hold of.
-	var above: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(100, -500), panel), screen)
-	check("it can never be pushed above the top of the screen",
-		above.position.y >= 0.0, above.position)
+	var above: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(100, -500), panel), screen, PanelWindow.MIN_SIZE)
+	check("and pushed off the top, the top edge is",
+		is_equal_approx(above.position.y, 0.0), above.position)
 
-	# A PANEL LARGER THAN THE SCREEN is the case that breaks a naive clamp -
-	# the allowed range inverts and clampf returns whichever bound it was
-	# handed last.
-	var huge: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(-50, -50), Vector2(3000, 2000)), screen)
-	check("a panel bigger than the screen is still grabbable",
-		huge.position.y >= 0.0 and huge.position.x <= screen.x - keep.x
-			and huge.position.x + 3000.0 >= keep.x, huge.position)
+	# A PANEL LARGER THAN THE SCREEN is the case a position-only clamp cannot
+	# answer at all: there is nowhere to put it that is inside. It has to be
+	# COMPRESSED, which is the whole reason fit_to settles the size first.
+	var huge: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(-50, -50), Vector2(3000, 2000)), screen, PanelWindow.MIN_SIZE)
+	check("a panel bigger than the screen is compressed, not moved off it",
+		huge == Rect2(Vector2.ZERO, screen), huge)
 
-	# ALREADY ON SCREEN MEANS UNTOUCHED. A clamp that nudges a panel nobody
+	# THE SCREEN BEATS THE MINIMUM. Honouring a minimum size is worth less than
+	# being able to reach the thing, and a panel wider than the window has an
+	# edge nobody can get to.
+	var tiny: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(0, 0), Vector2(400, 500)), Vector2(120, 90), PanelWindow.MIN_SIZE)
+	check("on a screen smaller than the minimum, the screen wins",
+		tiny.size.is_equal_approx(Vector2(120, 90)), tiny.size)
+
+	# BUT THE MINIMUM WINS WHEN THERE IS ROOM FOR IT. A panel restored from a
+	# config file written by hand, or by an older version, must not come back
+	# crushed.
+	var crushed: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(10, 10), Vector2(4, 4)), screen, PanelWindow.MIN_SIZE)
+	check("a panel smaller than the minimum is grown back to it",
+		crushed.size.is_equal_approx(PanelWindow.MIN_SIZE), crushed.size)
+
+	# GROWN IN THE CORNER IS THE CASE THAT PINS THE ORDER OF THE TWO HALVES,
+	# and it was missing until a sabotage run went green without it. Settling
+	# the position before the size looks identical on every check above - an
+	# oversized panel compresses either way - and differs only here, where the
+	# size is about to GROW and a position bounded by the old small size is
+	# looser than the grown panel needs. Sabotage: swap the two blocks in
+	# fit_to() and this is the only line that goes red.
+	var grown: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(1900, 1060), Vector2(4, 4)), screen, PanelWindow.MIN_SIZE)
+	check("a crushed panel in the corner is grown AND pulled back on screen",
+		is_equal_approx(grown.position.x + grown.size.x, screen.x)
+			and is_equal_approx(grown.position.y + grown.size.y, screen.y),
+		grown)
+
+	# ALREADY ON SCREEN MEANS UNTOUCHED. A fit that nudges a panel nobody
 	# dragged is a panel that drifts.
-	var settled: Rect2 = PanelWindow.clamp_to(Rect2(Vector2(300, 200), panel), screen)
-	check("a panel already on screen is not moved",
-		settled.position == Vector2(300, 200), settled.position)
+	var settled: Rect2 = PanelWindow.fit_to(
+		Rect2(Vector2(300, 200), panel), screen, PanelWindow.MIN_SIZE)
+	check("a panel already on screen is not moved or resized",
+		settled == Rect2(Vector2(300, 200), panel), settled)
 
-	check("the grab area is smaller than the smallest panel",
-		keep.x <= PanelWindow.MIN_SIZE.x and keep.y <= PanelWindow.MIN_SIZE.y,
-		"%s vs %s" % [keep, PanelWindow.MIN_SIZE])
-	check("and both are positive",
-		keep.x > 0.0 and keep.y > 0.0
-			and PanelWindow.MIN_SIZE.x > 0.0 and PanelWindow.MIN_SIZE.y > 0.0)
+	check("the smallest panel is positive in both axes",
+		PanelWindow.MIN_SIZE.x > 0.0 and PanelWindow.MIN_SIZE.y > 0.0)
+
+	# =========================================================================
+	# AND THE WALL STOPS A RESIZE RATHER THAN BOUNCING IT
+	# =========================================================================
+	# THE BUG THIS EXISTS FOR IS THE ONE THAT LOOKS LIKE IT IS ALREADY FIXED.
+	# resize_rect() could have left the wall to fit_to() and every check above
+	# would still pass - but fit_to() is a rule about a FINISHED rectangle. Drag
+	# the bottom edge 3000px below the floor of the screen and it settles the
+	# size first: the panel is too tall, so it is shortened, and the shortened
+	# panel then has to go somewhere inside the screen, which is the TOP. The
+	# panel leaves the cursor and jumps to the other end of the glass.
+	#
+	# So every one of these asserts the OPPOSITE EDGE HAS NOT MOVED. That is the
+	# difference between a wall and a bounce, and it is the only thing that tells
+	# the two implementations apart.
+	var start := Rect2(Vector2(700, 600), Vector2(400, 300))
+	var floor2: Vector2 = PanelWindow.MIN_SIZE
+
+	var pushed_down: Rect2 = PanelWindow.resize_rect(
+		start, Vector2(0, 3000), PanelWindow.EDGE_BOTTOM, floor2, screen)
+	check("the bottom edge stops at the floor of the screen",
+		is_equal_approx(pushed_down.position.y + pushed_down.size.y, screen.y),
+		pushed_down)
+	check("AND THE TOP EDGE DOES NOT MOVE - the panel does not jump",
+		is_equal_approx(pushed_down.position.y, 600.0), pushed_down.position)
+
+	var pushed_right: Rect2 = PanelWindow.resize_rect(
+		start, Vector2(3000, 0), PanelWindow.EDGE_RIGHT, floor2, screen)
+	check("the right edge stops at the right wall",
+		is_equal_approx(pushed_right.position.x + pushed_right.size.x, screen.x),
+		pushed_right)
+	check("and the left edge does not move",
+		is_equal_approx(pushed_right.position.x, 700.0), pushed_right.position)
+
+	var pushed_up: Rect2 = PanelWindow.resize_rect(
+		start, Vector2(0, -3000), PanelWindow.EDGE_TOP, floor2, screen)
+	check("the top edge stops at zero",
+		is_equal_approx(pushed_up.position.y, 0.0), pushed_up)
+	check("and the bottom edge does not move",
+		is_equal_approx(pushed_up.position.y + pushed_up.size.y, 900.0), pushed_up)
+
+	var pushed_left: Rect2 = PanelWindow.resize_rect(
+		start, Vector2(-3000, 0), PanelWindow.EDGE_LEFT, floor2, screen)
+	check("the left edge stops at zero",
+		is_equal_approx(pushed_left.position.x, 0.0), pushed_left)
+	check("and the right edge does not move",
+		is_equal_approx(pushed_left.position.x + pushed_left.size.x, 1100.0),
+		pushed_left)
+
+	# A CORNER INTO A CORNER is the case he described - "like forcing something
+	# in a corner is like a wall" - and it is worth its own check because it is
+	# the one where both axes clamp at once.
+	var cornered: Rect2 = PanelWindow.resize_rect(
+		start, Vector2(3000, 3000),
+		PanelWindow.EDGE_RIGHT | PanelWindow.EDGE_BOTTOM, floor2, screen)
+	check("driven into the bottom-right corner it fills the room left and stops",
+		cornered == Rect2(Vector2(700, 600), Vector2(screen.x - 700.0, screen.y - 600.0)),
+		cornered)
+
+	# A DRAG THAT NEVER REACHES A WALL MUST BE UNTOUCHED BY IT. Without this,
+	# "clamp everything to the screen" passes every check above while quietly
+	# rounding every ordinary resize.
+	var ordinary: Rect2 = PanelWindow.resize_rect(
+		start, Vector2(60, 40),
+		PanelWindow.EDGE_RIGHT | PanelWindow.EDGE_BOTTOM, floor2, screen)
+	check("an ordinary resize is exactly the mouse movement",
+		ordinary == Rect2(Vector2(700, 600), Vector2(460, 340)), ordinary)
+
+	# AN EDGE NOT BEING DRAGGED IS NOT TOUCHED AT ALL.
+	check("dragging one edge moves one edge",
+		is_equal_approx(ordinary.position.x, 700.0)
+			and is_equal_approx(ordinary.position.y, 600.0))
 
 	# =========================================================================
 	# EIGHT GRIPS, BUILT ON A REAL CONTROL
@@ -2703,7 +3055,7 @@ func _test_panels_are_windows() -> void:
 		# clone and passes here is the worst kind.
 		var scene_text: String = FileAccess.get_file_as_string(scene_path)
 		var marker: int = scene_text.find('[node name="headerpanel"')
-		var resolved := ""
+		var chain := ""
 		if marker != -1:
 			var line_end: int = scene_text.find("]", marker)
 			var line: String = scene_text.substr(marker, line_end - marker)
@@ -2711,12 +3063,70 @@ func _test_panels_are_windows() -> void:
 			if parent_at != -1:
 				var from: int = parent_at + 8
 				var to: int = line.find('"', from)
-				resolved = line.substr(from, to - from) + "/headerpanel"
+				chain = line.substr(from, to - from)
 		check("%s keeps its header where the component looks" % scene_path.get_file(),
-			PanelWindow.HEADER_PATHS.has(resolved),
-			"found '%s'; known: %s" % [resolved, ", ".join(PanelWindow.HEADER_PATHS)])
+			PanelWindow.HEADER_PATHS.has(chain + "/headerpanel"),
+			"found '%s'; known: %s" % [chain, ", ".join(PanelWindow.HEADER_PATHS)])
+
+		# A GRIP THICKER THAN THE PADDING IT LIVES IN IS A GRIP THAT STEALS
+		# CLICKS, and it steals them invisibly, because a grip draws nothing.
+		# CORNER was 12 and the overhang landed on the HEADER - the one thing a
+		# panel must be grabbable by - which reached him as "i cannot grab the
+		# header". Then 8, which was still two pixels too many on chat and
+		# equipment. This reads the padding out of each scene rather than
+		# trusting the number written next to the constant, because that number
+		# was wrong twice and looked right both times.
+		var pad: Dictionary = _outer_margins(scene_text, chain)
+		# NO PADDING AT ALL IS A FAILURE, not a pass. A MarginContainer with no
+		# overrides pads by whatever the theme says, which is nothing, and then
+		# EVERY grip is on top of the content. Letting an empty reading through
+		# would make this check disappear the moment it was needed most.
+		var thinnest: float = 1.0e9
+		for side in pad:
+			thinnest = minf(thinnest, float(pad[side]))
+		check("%s: no grip reaches past its padding onto the content" % short,
+			not pad.is_empty() and PanelWindow.GRIP <= thinnest
+				and PanelWindow.CORNER <= thinnest,
+			"padding %s, thinnest %s; grip %s, corner %s"
+				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
 	check("sixteen panels are windows", keys_seen.size() == 16, keys_seen.size())
+
+	# THE PADDING READER, ASKED DIRECTLY, because one thing it does cannot be
+	# proven by any scene in the project. _outer_margins() stops at the next
+	# [node] header so a CHILD's padding is never reported as the panel's - and
+	# removing that bound changes nothing on all sixteen, because every outer
+	# container happens to declare its own margins first. Sabotage went green.
+	#
+	# A guard that no real input exercises is the thing this file keeps finding
+	# in its own checks, so it gets an input made for it instead of a comment
+	# promising it works. The fabricated scene below is a panel whose
+	# MarginContainer declares NOTHING and whose child declares 3 - the exact
+	# shape that would otherwise report a 3-pixel ceiling for a panel that has
+	# no padding at all, and quietly fail the wrong panels for the wrong reason.
+	var fake := """[node name="mainpanel" type="PanelContainer"]
+[node name="margin" type="MarginContainer" parent="mainpanel"]
+[node name="rows" type="VBoxContainer" parent="mainpanel/margin"]
+theme_override_constants/margin_left = 3
+theme_override_constants/margin_top = 3
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margin/rows"]
+"""
+	check("the padding reader stops at its own node and does not read a child's",
+		_outer_margins(fake, "mainpanel/margin/rows").is_empty(),
+		_outer_margins(fake, "mainpanel/margin/rows"))
+
+	# And it does read the real thing when the real thing is there, so the
+	# check above cannot be satisfied by a reader that always returns nothing.
+	var fake_padded := """[node name="mainpanel" type="PanelContainer"]
+[node name="margin" type="MarginContainer" parent="mainpanel"]
+theme_override_constants/margin_left = 9
+theme_override_constants/margin_top = 7
+[node name="rows" type="VBoxContainer" parent="mainpanel/margin"]
+theme_override_constants/margin_left = 3
+"""
+	check("and it reads the node it was actually asked about",
+		_outer_margins(fake_padded, "mainpanel/margin/rows") == {"left": 9, "top": 7},
+		_outer_margins(fake_padded, "mainpanel/margin/rows"))
 
 	# =========================================================================
 	# AND THERE IS ONLY ONE IMPLEMENTATION

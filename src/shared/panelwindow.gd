@@ -52,26 +52,58 @@ const HEADER_PATHS: Array[String] = [
 
 # How thick the invisible resize grips are, in pixels.
 #
-# FIVE, AND THE PANEL MARGINS ARE WHY. Every panel puts its content inside a
-# MarginContainer with 8 to 10 pixels of padding, so a five-pixel grip sits on
-# the frame's border and touches nothing — including the vertical scrollbar a
+# THE PANEL MARGINS DECIDE BOTH OF THESE NUMBERS, and they are a measurement
+# rather than a preference. Every panel puts its content inside a
+# MarginContainer, and a grip is invisible, so a grip THICKER THAN THAT PADDING
+# does not look like anything — it just silently takes the clicks meant for
+# whatever is underneath it.
+#
+# MEASURED ACROSS ALL SIXTEEN PANELS, on the outer MarginContainer that each
+# header sits inside:
+#
+#     margin_left / margin_right    8 to 16
+#     margin_top / margin_bottom    6 to 15     <- chatpanel and equipmentpanel
+#
+# So SIX is the ceiling, and it is set by two panels rather than by the typical
+# one. _test_panels_are_windows() reads those numbers out of the scenes and
+# fails if either constant outgrows the thinnest of them, because this is
+# exactly the kind of number that gets nudged up by someone who remembers the
+# typical panel and not the thin one.
+#
+# Five for an edge also keeps it clear of the vertical scrollbar a
 # ScrollContainer parks at the right edge, which is the one piece of content
 # that would otherwise fight the right grip for the same few pixels.
 const GRIP := 5.0
 
-# A corner grip is square and bigger than the edges, because hitting an exact
-# five-pixel corner with a mouse is a test of patience rather than of skill.
-const CORNER := 12.0
+# A corner grip is a square, and bigger than an edge is thick, because hitting
+# an exact five-pixel corner with a mouse is a test of patience rather than of
+# skill. Six is as big as that can get — see the measurement above.
+#
+# IT WAS TWELVE, and the overhang landed on the corners of the HEADER. The
+# header is the only thing you can drag a panel by, so the result was a window
+# that could not be moved, reported as "i cannot grab the header". Eight was the
+# first fix and it was still wrong by two pixels on chat and equipment, which is
+# how this stopped being a remembered number and became a checked one.
+const CORNER := 6.0
 
 # Nothing may be shrunk below this. A panel crushed to nothing is a panel with
 # no header, which is a panel you cannot grab — the same way out as dragging one
 # off screen, so it gets the same kind of floor.
 const MIN_SIZE := Vector2(220.0, 140.0)
 
-# HOW MUCH OF THE HEADER MUST STAY ON SCREEN. This is the whole answer to the
-# lost-panel bug: you can put a panel almost entirely off the edge, but never so
-# far that there is nothing left to take hold of.
-const KEEP_VISIBLE := Vector2(80.0, 24.0)
+# THE SCREEN EDGES ARE WALLS, AND THAT REPLACES AN EARLIER, WORSE RULE.
+#
+# The first version let a panel hang off an edge and only guaranteed that a
+# corner of the header stayed reachable. It is a defensible rule and it was the
+# wrong one, for a reason that only shows up in play: a panel half off the
+# bottom cannot be resized from the bottom, because the edge you need to grab is
+# past the glass. "i cant strech down" is what that feels like.
+#
+# So: a panel is ALWAYS ENTIRELY ON SCREEN. Push it into an edge and it stops
+# like furniture against a wall; push it into a corner when it is bigger than
+# the space left and it COMPRESSES rather than going through. Every edge is
+# therefore always reachable, and the header is always grabbable - not because
+# something guards it, but because there is nowhere for it to go.
 
 # Panel geometry lives in its OWN FILE, and that is not a preference.
 # Settings.save_settings() builds a fresh ConfigFile from its own section and
@@ -190,8 +222,10 @@ func _wire() -> void:
 
 
 func _on_viewport_resized() -> void:
+	# THE WINDOW SHRINKING IS THE SAME EVENT AS A PANEL BEING PUSHED INTO A
+	# WALL, so it gets the same answer: compress to fit, do not hang off.
 	if is_instance_valid(window):
-		_clamp()
+		_fit()
 
 
 # =============================================================================
@@ -270,13 +304,13 @@ func _on_header_input(event: InputEvent) -> void:
 			_drag_offset = window.get_global_mouse_position() - window.global_position
 		else:
 			_dragging = false
-			_clamp()
+			_fit()
 			_remember()
 		return
 
 	if event is InputEventMouseMotion and _dragging:
 		window.global_position = window.get_global_mouse_position() - _drag_offset
-		_clamp()
+		_fit()
 
 
 # =============================================================================
@@ -293,7 +327,7 @@ func _on_grip_input(event: InputEvent, edges: int) -> void:
 			_resize_mouse = window.get_global_mouse_position()
 		else:
 			_resizing = 0
-			_clamp()
+			_fit()
 			_remember()
 		return
 
@@ -302,36 +336,61 @@ func _on_grip_input(event: InputEvent, edges: int) -> void:
 
 
 func _resize_to(mouse: Vector2) -> void:
-	"""The new rectangle, from the one we started with and how far the mouse
-	has moved.
+	var fitted: Rect2 = resize_rect(
+		_resize_from, mouse - _resize_mouse, _resizing, _minimum(), _screen())
+	window.global_position = fitted.position
+	window.size = fitted.size
+
+
+static func resize_rect(start: Rect2, moved: Vector2, edges: int,
+		minimum: Vector2, screen: Vector2) -> Rect2:
+	"""The rectangle an edge-drag produces: `start`, with `edges` moved by
+	`moved`, held above `minimum` and inside `screen`.
 
 	MEASURED FROM THE START OF THE DRAG, not from the previous frame. Applying
 	a delta per event accumulates every rounding error and every clamp, so a
 	panel dragged to its minimum size and back does not come back to the size it
-	started at. This way the arithmetic is the same however many events arrive."""
-	var moved: Vector2 = mouse - _resize_mouse
-	var left: float = _resize_from.position.x
-	var top: float = _resize_from.position.y
-	var right: float = left + _resize_from.size.x
-	var bottom: float = top + _resize_from.size.y
+	started at. This way the arithmetic is the same however many events arrive.
 
-	var floor_size: Vector2 = _minimum()
+	THE WALL IS APPLIED HERE RATHER THAN LEFT TO fit_to(), and that is the whole
+	difference between stopping and jumping. fit_to() is a rule about a finished
+	rectangle: it settles the SIZE first, so a bottom edge dragged 300px past the
+	floor of the screen becomes a panel too tall, which it shortens — and then it
+	has to put that shortened panel somewhere inside the screen, which sends it
+	to the TOP. The panel leaves the cursor entirely.
 
-	if _resizing & EDGE_LEFT:
+	Clamping the EDGE instead is what a wall does. The bottom edge stops at the
+	floor, the top edge stays where it was, and the panel is simply as tall as
+	the room left. Pull back and it follows the cursor again from there.
+
+	THE WALL IS APPLIED AFTER THE FLOOR, in the same order fit_to() uses and for
+	the same reason: a panel that cannot have its minimum size because the screen
+	is smaller than that must still be on screen. It cannot bite in practice - a
+	fitted panel's left edge is already at most `screen.x - minimum.x`, so the
+	opposite edge can always reach the minimum without leaving the glass - but
+	the order says what wins if it ever does."""
+	var left: float = start.position.x
+	var top: float = start.position.y
+	var right: float = left + start.size.x
+	var bottom: float = top + start.size.y
+
+	if edges & EDGE_LEFT:
 		# DRAGGING A LEFT EDGE MOVES THE PANEL AS WELL AS SIZING IT, and the
 		# floor has to stop the left edge rather than the width — otherwise the
 		# panel keeps sliding right once it has hit its minimum.
-		left = minf(left + moved.x, right - floor_size.x)
-	if _resizing & EDGE_RIGHT:
-		right = maxf(right + moved.x, left + floor_size.x)
-	if _resizing & EDGE_TOP:
-		top = minf(top + moved.y, bottom - floor_size.y)
-	if _resizing & EDGE_BOTTOM:
-		bottom = maxf(bottom + moved.y, top + floor_size.y)
+		left = minf(left + moved.x, right - minimum.x)
+		left = maxf(left, 0.0)
+	if edges & EDGE_RIGHT:
+		right = maxf(right + moved.x, left + minimum.x)
+		right = minf(right, screen.x)
+	if edges & EDGE_TOP:
+		top = minf(top + moved.y, bottom - minimum.y)
+		top = maxf(top, 0.0)
+	if edges & EDGE_BOTTOM:
+		bottom = maxf(bottom + moved.y, top + minimum.y)
+		bottom = minf(bottom, screen.y)
 
-	window.global_position = Vector2(left, top)
-	window.size = Vector2(right - left, bottom - top)
-	_clamp()
+	return Rect2(left, top, right - left, bottom - top)
 
 
 func _minimum() -> Vector2:
@@ -347,46 +406,73 @@ func _minimum() -> Vector2:
 # STAYING REACHABLE
 # =============================================================================
 
-func _clamp() -> void:
+func _screen() -> Vector2:
+	"""How much room there is, or a screen with no walls in it.
+
+	INF RATHER THAN ZERO when there is no viewport. A panel not yet in the tree
+	has no screen to be inside, and answering zero would clamp it to nothing —
+	a wall at the origin is a worse lie than no wall at all."""
 	if window == null or not is_instance_valid(window):
-		return
+		return Vector2(INF, INF)
 	var view: Viewport = window.get_viewport()
 	if view == null:
+		return Vector2(INF, INF)
+	return view.get_visible_rect().size
+
+
+func _fit() -> void:
+	if window == null or not is_instance_valid(window):
 		return
-	window.global_position = clamp_to(
-		Rect2(window.global_position, window.size),
-		view.get_visible_rect().size).position
+	var screen: Vector2 = _screen()
+	if not is_finite(screen.x) or not is_finite(screen.y):
+		return
+	var fitted: Rect2 = fit_to(
+		Rect2(window.global_position, window.size), screen, _minimum())
+	window.global_position = fitted.position
+	window.size = fitted.size
 
 
-static func clamp_to(rect: Rect2, screen: Vector2) -> Rect2:
-	"""Push `rect` back until enough of its top edge is on screen to grab.
+static func fit_to(rect: Rect2, screen: Vector2, minimum: Vector2) -> Rect2:
+	"""`rect`, compressed and pushed until it sits entirely inside `screen`.
 
 	STATIC AND PURE, so the suite can ask it directly rather than building a
-	viewport to find out what it does. This is the whole lost-panel fix and it
-	is worth being able to test in one line.
+	viewport to find out what it does. This is the whole rule, and it is worth
+	being able to test in one line.
 
-	THE TOP EDGE, NOT THE WHOLE PANEL. Letting a panel hang off the bottom or
-	the right is useful — it is how you park something you want half out of the
-	way. What must never happen is the HEADER leaving the screen, because the
-	header is the only part you can take hold of. So the rule is expressed as a
-	bound on the top-left corner:
+	SIZE IS SETTLED BEFORE POSITION, and the reason is narrower than it first
+	looks - which is worth writing down, because the first version of this
+	docstring gave a reason that sounded right and was not.
 
-	    x may run from -(width - KEEP_VISIBLE.x) to screen.x - KEEP_VISIBLE.x
-	    y may run from 0 to screen.y - KEEP_VISIBLE.y
+	It claimed the order is what makes an oversized panel COMPRESS rather than
+	slide. It is not: an oversized panel compresses either way, because
+	`screen - size` is already at or below zero whichever size the bound is
+	computed from, so the position clamps to 0 in both orders. Sabotage proved
+	it - swapping these two blocks left every check green.
 
-	y never goes negative: a panel pushed up loses its header off the top of the
-	screen first, and there is nothing below it to grab."""
+	The order matters when the size GROWS, which is the other half of this
+	function: a panel restored below the minimum is grown back up to it. Settle
+	the position first and it is bounded by `screen - the small size`, which is a
+	LOOSER bound than the panel is about to need. A 4x4 panel saved at x=1900
+	stays at 1900 and is then grown to 220 wide, and 200 pixels of it are off the
+	right of a 1920 screen - put there by the function whose job is to prevent
+	exactly that.
+
+	THE SCREEN BEATS THE MINIMUM. A panel may not be shrunk below `minimum` -
+	except when the window itself is smaller than that, in which case the window
+	wins. A panel larger than the window has an edge nobody can reach, and
+	honouring a minimum size is worth less than being able to move the thing."""
 	var size: Vector2 = rect.size
-	var out: Vector2 = rect.position
 
-	var min_x: float = minf(-(size.x - KEEP_VISIBLE.x), 0.0)
-	var max_x: float = maxf(screen.x - KEEP_VISIBLE.x, 0.0)
-	out.x = clampf(out.x, min_x, max_x)
+	size.x = minf(size.x, screen.x)
+	size.y = minf(size.y, screen.y)
+	size.x = maxf(size.x, minf(minimum.x, screen.x))
+	size.y = maxf(size.y, minf(minimum.y, screen.y))
 
-	var max_y: float = maxf(screen.y - KEEP_VISIBLE.y, 0.0)
-	out.y = clampf(out.y, 0.0, max_y)
+	var at: Vector2 = rect.position
+	at.x = clampf(at.x, 0.0, maxf(screen.x - size.x, 0.0))
+	at.y = clampf(at.y, 0.0, maxf(screen.y - size.y, 0.0))
 
-	return Rect2(out, size)
+	return Rect2(at, size)
 
 
 # =============================================================================
@@ -436,7 +522,7 @@ func _restore() -> void:
 	# than it was when this was written — a different monitor, a windowed launch
 	# after a fullscreen one — and a position that was reachable then is not
 	# necessarily reachable now.
-	_clamp()
+	_fit()
 
 
 static func forget_all() -> void:
