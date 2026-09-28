@@ -177,6 +177,27 @@ func _load() -> void:
 			rows.add_child(_row(entry))
 
 
+# The box behind a row, and the brighter one behind YOUR row.
+#
+# BOTH ARE THEME VARIATIONS RATHER THAN StyleBoxFlats BUILT HERE, and that is
+# the same argument Api owns colour_for_role and GUILD_TAG_COLOUR for: a colour
+# written at the call site is a colour that stops matching the moment the theme
+# moves. rpg_ui_theme.tres already carries both of these and the rest of the UI
+# already wears them - PanelStatBg is the stat chip, PanelSub is the PvP banner.
+#
+# THE SUBTLE ONE IS THE DEFAULT ON PURPOSE. PanelStatBg is a translucent fill
+# with no border, so a list of twenty reads as twenty rows. PanelSub has a 2px
+# border, and twenty of those inside a panel that already has a border is a
+# stack of boxes competing with the frame around them - which is why the one
+# with the border is spent on the single row worth finding fast.
+const ROW_BOX := &"PanelStatBg"
+const OWN_ROW_BOX := &"PanelSub"
+
+# Breathing room inside the box. Without it the text sits on the border.
+const ROW_PAD_X := 6
+const ROW_PAD_Y := 3
+
+
 func _row(entry: Dictionary) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 6)
@@ -224,7 +245,50 @@ func _row(entry: Dictionary) -> Control:
 	where.add_theme_color_override("font_color", Color(0.62, 0.58, 0.52))
 	line.add_child(where)
 
-	return line
+	return _boxed(line, _is_me(entry))
+
+
+func _boxed(line: Control, mine: bool) -> Control:
+	"""`line`, on a background.
+
+	A PanelContainer around a MarginContainer around the row. The margin is a
+	node rather than content_margin on the style because BOTH variations are
+	shared with other screens - PanelStatBg is the stat chip and PanelSub is the
+	PvP banner - and padding written into the style would follow them there.
+	Padding is this list's business; the fill and the border are the theme's."""
+	var box := PanelContainer.new()
+	box.theme_type_variation = OWN_ROW_BOX if mine else ROW_BOX
+
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", ROW_PAD_X)
+	pad.add_theme_constant_override("margin_right", ROW_PAD_X)
+	pad.add_theme_constant_override("margin_top", ROW_PAD_Y)
+	pad.add_theme_constant_override("margin_bottom", ROW_PAD_Y)
+
+	box.add_child(pad)
+	pad.add_child(line)
+	return box
+
+
+func _is_me(entry: Dictionary) -> bool:
+	"""Is this row the person reading it?
+
+	THE ACCOUNT NAME, NOT THE CHARACTER NAME. One account can have several
+	characters and nothing stops two accounts naming a character the same thing,
+	so matching on `name` would highlight a stranger. `username` is what the
+	server keys the session on and what Api.username holds.
+
+	CASE-INSENSITIVE, because the users table is declared COLLATE NOCASE - the
+	server treats Tunacan and tunacan as one account, so a case-sensitive test
+	here could fail to find you in your own list depending on how you typed it
+	at the login screen.
+
+	AN EMPTY Api.username MATCHES NOBODY. It is empty before login and after
+	sign-out, and `"" == ""` against an absent username would put the bright box
+	on a row belonging to somebody else."""
+	if Api == null or Api.username == "":
+		return false
+	return str(entry.get("username", "")).to_lower() == Api.username.to_lower()
 
 
 func _heading(text: String) -> Control:
