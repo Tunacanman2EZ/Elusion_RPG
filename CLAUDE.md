@@ -2335,6 +2335,39 @@ From the day-1 sweep of creating and picking a character.
 - Not changed, noted: logging in always starts in town (`WORLD_AREA`); the
   saved `area` is where other players see you, not where you appear.
 
+### Moving between areas: arrive clear of the doors, on a floor with walls
+
+From the day-1 sweep, walking the real game from the town gate to the Crowned
+and back up the ladder.
+
+- **The boss room could not be reached.** Its arrival marker (`boss_entrance`)
+  had never been moved off (0, 0), which is where its ladder up stands, so the
+  arena's victory door put the winner on the exit and the ladder sent them
+  back to the field. The marker is at the room's own default spot now, the
+  west end of the corridor.
+- **The boss room had no walls.** Its TileSet uses `underground.png`, the same
+  sheet as the arena, and the arena's copy carries the wall shapes; the boss
+  room's copy had none, so a player walked off the corridor into the black.
+  Its atlas now has the arena's 48 polygons, tile for tile. A TileSet is a
+  sub-resource of each scene, so **the same sheet in two scenes is two sets of
+  collision** - painting a room from a sheet another room already uses does
+  not bring its walls along.
+- **The field's welcome played on every arrival**: from the town gate, the
+  boss room's ladder, a revive and a staff teleport. It plays once a login now
+  (`GameState.opening_story_told`, reset by `clear_current_user()`). It carries
+  the credits, so it must still play once.
+- `_test_every_area_can_be_walked` copies each area's tiles and static bodies
+  into the tree and floods it with the warrior's own feet: every arrival must
+  land clear of every door, nothing reachable may be off the map, and every
+  door must be reachable from where players arrive. It found both boss room
+  bugs, and it reads the doors, markers and walls off the scenes, so a new
+  room is checked the day it is saved. A hole a single tile high can still hide
+  between its steps; one two tiles high cannot.
+- Not changed, noted: the field has no way back to town but dying or Switch.
+  `leavetown.gd` says that is on purpose ("life is a gamble"). `easteregg` is
+  in `AreaRegistry.AREAS` and is an empty scene with no script, so "Go to area"
+  to it arrives nowhere.
+
 ### Chat safety: ignore, report, mute, the filter, new messages below
 
 Asked for after the chat sweep, for day 1. `_test_chat_filter`,

@@ -34,6 +34,10 @@ var current_player: Node = null
 func _ready() -> void:
 	spawn_player_from_selection()
 	_position_player_at_spawn()
+	# ONCE PER LOGIN - see GameState.opening_story_told.
+	if GameState.opening_story_told:
+		return
+	GameState.opening_story_told = true
 	_freeze_enemies()
 
 	var screen := StoryScreen.new()

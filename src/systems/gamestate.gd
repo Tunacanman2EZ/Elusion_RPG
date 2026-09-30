@@ -66,6 +66,16 @@ var reviving: bool = false
 var next_spawn_id: String = ""
 
 
+# true once the field's opening narration has played for this login.
+#
+# field.gd plays it on arrival, and the field is arrived in from the town gate,
+# the boss room's ladder, a revive and a staff teleport - so it played every
+# time, and a player coming up from the Crowned sat through the welcome again.
+# Once per login: CharacterData.clear_current_user(), which every login and
+# logout runs, puts it back. The credits are on it, so it must still play once.
+var opening_story_told: bool = false
+
+
 # =============================================================================
 # GLOBAL STATE
 # =============================================================================

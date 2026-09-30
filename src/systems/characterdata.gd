@@ -317,6 +317,8 @@ func clear_current_user() -> void:
 	character_slots = [null, null, null, null]
 	active_character_index = 0
 	account_data = DEFAULT_ACCOUNT_DATA.duplicate(true)
+	# The next login hears the field's opening narration again.
+	GameState.opening_story_told = false
 
 
 # =============================================================================

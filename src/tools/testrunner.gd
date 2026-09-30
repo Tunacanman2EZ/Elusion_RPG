@@ -178,6 +178,8 @@ func _run_all() -> void:
 	_test_staff_reports_and_mutes()
 	await _test_a_failed_load_is_not_an_empty_account()
 	_test_character_select_has_a_way_out()
+	await _test_every_area_can_be_walked()
+	_test_the_welcome_plays_once_a_login()
 
 
 # =============================================================================
@@ -5714,6 +5716,327 @@ func _collect_portal_ids(node: Node, into: Array) -> void:
 		into.append(str(node.portal_id))
 	for child in node.get_children():
 		_collect_portal_ids(child, into)
+
+
+# =============================================================================
+# EVERY AREA CAN BE WALKED: you arrive clear of the doors, the walls hold, and
+# every door can be walked to
+# =============================================================================
+# Found by walking the real game from the town gate to the Crowned and back.
+# The boss room - the finale - failed both halves at once:
+#
+#   - its arrival marker had never been moved off (0, 0), which is where its
+#     ladder UP stands. The arena's victory door put the winner on the exit, and
+#     the ladder sent them straight back to the field. The last fight in the game
+#     could not be reached.
+#   - its tiles had no collision at all. The room's TileSet uses the same
+#     underground sheet as the arena, and the arena's copy carries the wall
+#     shapes; the boss room's copy had none, so a player walked off the corridor
+#     into the black and kept going.
+#
+# Neither needs a player to see, so neither was seen: the BOSS ARENA section
+# above checks that the marker EXISTS, and a marker at (0, 0) exists.
+#
+# HOW IT WALKS. Each area is instanced but never entered - no _ready, no player,
+# no HUD, no requests. What it collides with is copied into a bare holder in the
+# tree: every TileMapLayer (its tile_set and tile_map_data, so the tile shapes
+# are the real ones) and every StaticBody2D with its shapes. A probe body wearing
+# the warrior's own foot circle and collision mask then floods outward from every
+# place a player arrives, a step at a time with test_move(). A spot whose feet
+# touch a door counts as leaving and goes no further; an in-area teleporter hops
+# to its destination. Nothing here is typed from the maps: the doors, markers,
+# tiles and walls are read off the scenes, so a new door or a repainted room is
+# checked the day it is saved.
+
+# Four pixels, not a tile: the feet are 14 across, so a one-tile hole in a wall
+# is a two-pixel window for them, and an 8px step walked straight past one.
+# Measured: a hole a tile high still hides between even these steps (the feet
+# have to be exactly aligned to fit), and a hole two tiles high is caught. The
+# whole suite takes about sixteen seconds with this.
+const WALK_STEP := 4.0
+# How far past the painted map the flood may go before it counts as escaping.
+const WALK_BOUND_MARGIN := 160.0
+const DOOR_SCRIPTS := ["res://src/world/ladder.gd", "res://src/world/leavetown.gd",
+	"res://src/world/victoryteleporter.gd", "res://src/world/teleporter.gd"]
+
+
+func _test_every_area_can_be_walked() -> void:
+	section("AREAS - you arrive clear of the doors, the walls hold, every door can be walked to")
+
+	var warrior: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	var feet_node: CollisionShape2D = warrior.get_node_or_null("bodyshape") as CollisionShape2D
+	var feet: CircleShape2D = feet_node.shape as CircleShape2D if feet_node != null else null
+	check("the player's feet are a circle this can stand in for", feet != null,
+		"warrior.tscn bodyshape is not a CircleShape2D any more - the overlap maths below assumes one")
+	if feet == null:
+		warrior.free()
+		return
+	var feet_offset: Vector2 = feet_node.position
+	var probe := CharacterBody2D.new()
+	probe.collision_layer = 0
+	probe.collision_mask = (warrior as CollisionObject2D).collision_mask
+	var probe_shape := CollisionShape2D.new()
+	probe_shape.shape = feet
+	probe_shape.position = feet_offset
+	probe.add_child(probe_shape)
+	warrior.free()
+
+	var walked: Array = []
+	var skipped: Array = []
+	for area_id in AreaRegistry.area_ids():
+		var packed: PackedScene = load(AreaRegistry.AREAS[area_id]) as PackedScene
+		if packed == null:
+			check("%s loads" % area_id, false)
+			continue
+		var area: Node = packed.instantiate()
+		var report: Dictionary = await _walk_area(area, probe, feet_offset, feet.radius)
+		area.free()
+		if report.is_empty():
+			skipped.append(area_id)
+			continue
+		walked.append(area_id)
+
+		check("%s: every arrival lands clear of every door" % area_id,
+			report.landed_in.is_empty(), "arrives standing in a door: %s" % [report.landed_in])
+		check("%s: the walls hold - nowhere a player can walk is off the map" % area_id,
+			report.void_spots.is_empty() and not report.escaped,
+			"%d spots with no tile under them%s, e.g. %s" % [report.void_spots.size(),
+				" and it walked clean off the edge" if report.escaped else "", report.void_spots.slice(0, 4)])
+		check("%s: every door can be walked to from where players arrive" % area_id,
+			report.unreached.is_empty(), "never reached: %s" % [report.unreached])
+
+	probe.free()
+	check("the town, the field, the arena and the boss room were all walked",
+		walked.has("elusion") and walked.has("field") and walked.has("bossarena") and walked.has("boss"), walked)
+	print("  walked %s; no map to walk in %s" % [walked, skipped])
+
+
+func _walk_area(area: Node, probe: CharacterBody2D, feet_offset: Vector2, radius: float) -> Dictionary:
+	# Empty when the area has no tiles at all - nothing to walk.
+	var holder := Node2D.new()
+	add_child(holder)
+	var layers: Array = []
+	for node in area.find_children("*", "TileMapLayer", true, false):
+		var layer: TileMapLayer = node
+		if layer.tile_map_data.size() <= 2:
+			continue
+		var copy := TileMapLayer.new()
+		copy.tile_set = layer.tile_set
+		copy.tile_map_data = layer.tile_map_data
+		copy.collision_enabled = layer.collision_enabled
+		copy.enabled = layer.enabled
+		copy.transform = _area_xform(layer, area)
+		holder.add_child(copy)
+		layers.append(copy)
+	if layers.is_empty():
+		holder.free()
+		return {}
+	for node in area.find_children("*", "StaticBody2D", true, false):
+		var wall: StaticBody2D = node
+		var copy := StaticBody2D.new()
+		copy.collision_layer = wall.collision_layer
+		copy.transform = _area_xform(wall, area)
+		for child in wall.get_children():
+			if child is CollisionShape2D or child is CollisionPolygon2D:
+				copy.add_child(child.duplicate())
+		holder.add_child(copy)
+	holder.add_child(probe)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	# Doors that lead somewhere, and the in-area teleporters' hops.
+	var doors: Array = []
+	var hops: Array = []
+	for script_path in DOOR_SCRIPTS:
+		var found: Array = []
+		_collect_by_script(area, script_path, found)
+		for door in found:
+			var rects: Array = _door_rects(door, area)
+			if rects.is_empty():
+				continue
+			if script_path.ends_with("/teleporter.gd"):
+				var to: Node = door.get_node_or_null("destinationpoint")
+				if to != null:
+					hops.append({"name": str(door.name), "rects": rects,
+						"to": _area_xform(to, area).origin})
+				continue
+			if script_path.ends_with("/leavetown.gd") and door.get("destination_scene") == null:
+				continue
+			if script_path.ends_with("/ladder.gd") and str(door.get("destination_scene_path")) == "":
+				continue
+			doors.append({"name": str(door.name), "rects": rects})
+
+	# Where players arrive: every FieldPortal marker, the town's playerspawn, and
+	# the "player" container a player stands on when no marker is named.
+	var starts: Array = []
+	for node in area.find_children("*", "Node2D", true, false):
+		if ("portal_id" in node and str(node.portal_id) != "") \
+				or (node.name == "playerspawn" and node.get_parent() == area) \
+				or (node.name == "player" and node.get_parent() != null and node.get_parent().name == "ysortworld"):
+			starts.append({"name": str(node.get("portal_id")) if "portal_id" in node else str(node.name),
+				"at": _area_xform(node, area).origin})
+
+	var door_rects: Array = []
+	for door in doors + hops:
+		door_rects.append_array(door.rects)
+
+	var landed_in: Array = []
+	for start in starts:
+		for door in doors + hops:
+			if _feet_touch(start.at + feet_offset, radius, door.rects):
+				landed_in.append("%s is in %s" % [start.name, door.name])
+
+	var bound := Rect2()
+	for i in layers.size():
+		var layer: TileMapLayer = layers[i]
+		var used: Rect2i = layer.get_used_rect()
+		var box := layer.transform * Rect2(layer.map_to_local(used.position) - Vector2(layer.tile_set.tile_size) / 2.0,
+			Vector2(used.size * layer.tile_set.tile_size))
+		bound = box if i == 0 else bound.merge(box)
+	bound = bound.grow(WALK_BOUND_MARGIN)
+
+	var step := Vector2(WALK_STEP, WALK_STEP)
+	var seen := {}
+	var queue: Array = []
+	for start in starts:
+		var at: Vector2 = (start.at as Vector2).snapped(step)
+		if not seen.has(at):
+			seen[at] = true
+			queue.append(at)
+	var reached := {}
+	var void_spots: Array = []
+	var escaped := false
+	var dirs := [Vector2(WALK_STEP, 0), Vector2(-WALK_STEP, 0), Vector2(0, WALK_STEP), Vector2(0, -WALK_STEP)]
+	while not queue.is_empty():
+		var at: Vector2 = queue.pop_back()
+		var foot: Vector2 = at + feet_offset
+		var leaving := false
+		for door in doors:
+			if _feet_touch(foot, radius, door.rects):
+				reached[door.name] = true
+				leaving = true
+		for hop in hops:
+			if _feet_touch(foot, radius, hop.rects):
+				reached[hop.name] = true
+				leaving = true
+				var there: Vector2 = (hop.to as Vector2).snapped(step)
+				if not seen.has(there):
+					seen[there] = true
+					queue.append(there)
+		if leaving:
+			continue
+		# A gate is a sprite drawn over the ground, often over a hole in it, and
+		# its trigger is smaller than its art: the town gate's step has no tile
+		# under it. So a spot within one step of a door's edge is standing on the
+		# door, not off the map.
+		if not _tile_under(layers, foot) and not _feet_touch(foot, radius + WALK_STEP, door_rects):
+			void_spots.append(at)
+		for d in dirs:
+			var next: Vector2 = at + d
+			if seen.has(next):
+				continue
+			if not bound.has_point(next):
+				escaped = true
+				continue
+			if probe.test_move(Transform2D(0.0, at), d):
+				continue
+			seen[next] = true
+			queue.append(next)
+
+	var unreached: Array = []
+	for door in doors + hops:
+		if not reached.has(door.name):
+			unreached.append(door.name)
+	holder.remove_child(probe)
+	holder.free()
+	return {"landed_in": landed_in, "void_spots": void_spots, "escaped": escaped,
+		"unreached": unreached}
+
+
+func _area_xform(node: Node, area: Node) -> Transform2D:
+	# The node's transform in the area's own space, without the tree: every
+	# Node2D from the area root down, multiplied. Nothing here has entered the
+	# tree, so global_transform is not available.
+	var xform := Transform2D.IDENTITY
+	var at: Node = node
+	while at != null:
+		if at is Node2D:
+			xform = (at as Node2D).transform * xform
+		if at == area:
+			break
+		at = at.get_parent()
+	return xform
+
+
+func _door_rects(door: Node, area: Node) -> Array:
+	var rects: Array = []
+	for child in door.get_children():
+		if child is CollisionShape2D and (child as CollisionShape2D).shape != null:
+			rects.append(_area_xform(child, area) * (child as CollisionShape2D).shape.get_rect())
+	return rects
+
+
+func _feet_touch(centre: Vector2, radius: float, rects: Array) -> bool:
+	for rect in rects:
+		var r: Rect2 = rect
+		var nearest := Vector2(clampf(centre.x, r.position.x, r.end.x), clampf(centre.y, r.position.y, r.end.y))
+		if nearest.distance_to(centre) < radius:
+			return true
+	return false
+
+
+func _tile_under(layers: Array, point: Vector2) -> bool:
+	for node in layers:
+		var layer: TileMapLayer = node
+		if layer.get_cell_source_id(layer.local_to_map(layer.to_local(point))) != -1:
+			return true
+	return false
+
+
+# =============================================================================
+# THE FIELD'S WELCOME PLAYS ONCE A LOGIN
+# =============================================================================
+# field.gd played its opening narration - the welcome and the credits - on
+# every arrival in the field, and the field is arrived in from the town gate,
+# the boss room's ladder, a revive and a staff teleport. Walking up from the
+# Crowned put the welcome on screen again, and every death in the field replayed
+# it after the revive. GameState.opening_story_told keeps it to once a login,
+# and CharacterData.clear_current_user(), which every login and logout runs,
+# puts it back. It still has to play once: the credits are on it.
+
+func _test_the_welcome_plays_once_a_login() -> void:
+	section("THE FIELD'S WELCOME - once a login, not on every arrival")
+
+	check("GameState remembers whether this login has heard it",
+		"opening_story_told" in GameState)
+
+	var field: String = FileAccess.get_file_as_string("res://src/world/field.gd")
+	var ready_at: int = _first_code_index(field, "func _ready(", 0)
+	var ready_end: int = _first_code_index(field, "\nfunc ", ready_at + 1)
+	var guard: int = _within(_first_code_index(field, "if GameState.opening_story_told:", ready_at), ready_end)
+	var told: int = _within(_first_code_index(field, "GameState.opening_story_told = true", ready_at), ready_end)
+	var freeze: int = _within(_first_code_index(field, "_freeze_enemies()", ready_at), ready_end)
+	var story: int = _within(_first_code_index(field, "StoryScreen.new()", ready_at), ready_end)
+	var skip: int = _within(_first_code_index(field, "return", guard), told) if guard != -1 else -1
+	check("the field asks before it plays the welcome",
+		guard != -1 and story != -1 and guard < story, "guard at %d, story at %d" % [guard, story])
+	check("  and a login that heard it goes no further", skip != -1,
+		"nothing returns between the question and the answer")
+	check("  and playing it marks it heard",
+		told != -1 and guard < told and told < story, "marked at %d" % told)
+	check("  and the enemies are frozen only for a welcome that plays",
+		freeze != -1 and guard < freeze, "freeze at %d" % freeze)
+
+	var data: String = FileAccess.get_file_as_string("res://src/systems/characterdata.gd")
+	var clear_at: int = _first_code_index(data, "func clear_current_user(", 0)
+	var clear_end: int = _first_code_index(data, "\nfunc ", clear_at + 1)
+	check("every login and logout puts it back",
+		_within(_first_code_index(data, "GameState.opening_story_told = false", clear_at), clear_end) != -1)
+	var load_at: int = _first_code_index(data, "func load_for_user(", 0)
+	var load_end: int = _first_code_index(data, "\nfunc ", load_at + 1)
+	check("  and a login runs that reset",
+		_within(_first_code_index(data, "clear_current_user()", load_at), load_end) != -1)
+	print("  the welcome plays on the first field arrival of a login, and not again until the next")
 
 
 # =============================================================================
