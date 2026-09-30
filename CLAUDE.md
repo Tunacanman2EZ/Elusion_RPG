@@ -2312,6 +2312,39 @@ measured: two whispers, chat shut, then open on World, and nothing anywhere.
 - This state is static on the HUD, per login. Every area has its own HUD, and
   kept per HUD, the same whisper was said again in every area walked into.
 
+### Signing in, the way players will on day 1
+
+A sweep of the login screen with the real game against the real server found
+these. Each is held by a suite section.
+
+- **Signing in never makes an account** (`_test_signing_in_never_makes_an_account`).
+  The button used to register the name on a 401, so a typo in your own name
+  made a new, empty account, asked for its recovery email, and every
+  character was "gone". A 401 now says "Wrong name or password", and
+  "Create an account" (built in code, like the staff code box) turns the form
+  into sign-up with the password asked twice. It is the one `Api.register()`
+  call on the screen, so its 409 simply means the name is taken.
+- **Remember me means it** (`_test_remember_me_means_it`). `Api.keep_signed_in`
+  comes from the box. Off, the token is never written to `session.cfg`, and
+  closing the game signs you out. It used to be written either way, so on a
+  shared computer the next person walked into your account. A remembered login
+  that still owes a recovery address now goes in; the prompt comes back at the
+  next typed sign-in.
+- **One game per account** (`_test_one_game_per_account`). The server ends an
+  account's other sessions on every login, and a remembered login is reopened
+  through `POST /api/auth/resume`, which swaps the token, so a second copy of
+  the game cannot share one either. Two games on one account lost items. The
+  game left behind reads `signed_in_elsewhere` off the 401 (heartbeat or
+  broadcast poll; `Api.signout_notice_for()`) and says "This account signed in
+  somewhere else" instead of "signed out by the server".
+- **The recovery email can wait** (`_test_email_prompt_can_wait`). The prompt
+  had only Exit if a code never came. "Not now" goes into the game, and the
+  prompt returns at the next typed sign-in. A server with no mail set up does
+  not ask at all.
+- **Smaller things.** The attempt that locks an account says so, in minutes
+  (it used to be one more "incorrect password"). "Can't reach the server"
+  under the button clears when the banner turns green again.
+
 ### Staff logins take a code from the email
 
 Staff names are public (the crown, the MOD and DEV badges), so theirs are the
@@ -2325,8 +2358,8 @@ server's side is STAFF LOGIN CODES in app.py and the API's CLAUDE.md.
   signed in as nobody. `Api.needs_login_code(res)` is the test, for the 202
   and for a wrong code (400).
 - **The login screen checks for the code step before `res.ok` and before the
-  401 branch.** A wrong code is a 400 on purpose: a 401 here makes the screen
-  try to register the name.
+  401 branch.** A wrong code is a 400 on purpose: a 401 reads as "Wrong name
+  or password", and the password was right.
 - **The code box is built in `loginmenu.gd`, not the scene**, right under the
   password, hidden until a 202. The same button sends the login again with the
   code. Spaces are fine ("183 774", as copied from the mail). Changing the

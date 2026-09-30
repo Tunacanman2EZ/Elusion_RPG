@@ -169,6 +169,10 @@ func _run_all() -> void:
 	await _test_chat_keeps_your_place()
 	await _test_whispers_reach_you()
 	_test_black_past_the_map()
+	_test_signing_in_never_makes_an_account()
+	_test_remember_me_means_it()
+	_test_one_game_per_account()
+	_test_email_prompt_can_wait()
 
 
 # =============================================================================
@@ -3429,12 +3433,10 @@ func _test_unauthorized_is_answered() -> void:
 # the player to try again and a ban does not, and a ban in the typo colour asks
 # somebody to retype a password that was never the problem.
 #
-# THE 409 IS THE PART MOST LIKELY TO BE "FIXED" BY MISTAKE, so it is pinned here.
-# A 409 means "username already taken" everywhere else, and this screen must never
-# say that: register() is only ever called one line after a 401, so a 409 cannot
-# mean a free name was refused - it can only mean the account exists and the
-# password was wrong. Writing the server's own 409 message here would send a
-# player off to invent a second username for an account that is already theirs.
+# THE 409 HAS ONE HOME: the "Create account" form, where it means exactly what
+# it says - the name is taken. Signing in used to fall back to registering the
+# name, and there a 409 meant a wrong password; that fallback is gone (see
+# _test_signing_in_never_makes_an_account), and so is the need to translate it.
 #
 # Text checks. The alternative is driving a real form against a live server
 # through four different refusals, and a colour has no symptom a headless run can
@@ -3483,24 +3485,25 @@ func _test_login_states_are_distinct() -> void:
 		src.contains("if Api.username != \"\":"),
 		"username is UNIQUE COLLATE NOCASE; the stored case is the real one")
 
-	# The deliberate deviation, pinned so it survives the next reader.
-	check("the 409 is read as a wrong password",
-		src.contains("if created.status == 409:") and src.contains("_say(\"Incorrect password.\", SAY_REFUSED)"),
-		"here a 409 can only mean the account exists - see the comment there")
-	# PER LINE, AND ONLY LINES THAT SPEAK. A whole-file search for the phrase went
-	# red on the comment three lines above the branch that explains why the phrase
-	# must not be used - the check caught the explanation instead of the mistake.
-	# What is actually forbidden is SAYING it, so look only at _say() calls.
+	# THE 409 BELONGS TO THE SIGN-UP FORM. Signing in used to fall back to
+	# registering the name, so a 409 there meant "the account exists, the
+	# password was wrong" and the screen had to say "Incorrect password" for it.
+	# Sign-in never registers now (_test_signing_in_never_makes_an_account), so
+	# the only 409 this screen sees is from "Create account" - where "taken" is
+	# simply true - and "taken" must not be said anywhere else.
+	var create_body: String = _func_body(src, "func _create_account(")
+	check("a 409 on the sign-up form says the name is taken",
+		create_body.contains("if created.status == 409:")
+			and create_body.contains("_say(\"That name is taken."),
+		"a sign-up form that will not say a name is taken is not a sign-up form")
 	var says_taken: String = ""
 	for line in src.split("\n"):
 		var lower: String = line.to_lower()
-		if not lower.contains("_say("):
-			continue
-		if lower.contains("already taken") or lower.contains("already exists"):
+		if lower.contains("_say(") and lower.contains("taken") and not create_body.contains(line):
 			says_taken = line.strip_edges()
 			break
-	check("and the screen never says a name is taken", says_taken == "",
-		"that message is true on /register and false in this flow: %s" % says_taken)
+	check("and nothing else on the screen says a name is taken", says_taken == "",
+		"only the sign-up form has a name to be taken: %s" % says_taken)
 
 	# A ban is not a typo.
 	check("403, 429 and 503 are not dressed as typos",
@@ -3510,7 +3513,7 @@ func _test_login_states_are_distinct() -> void:
 		src.contains("_say(Api.signout_notice, SAY_BLOCKED)"),
 		"a kick read as a failed login is the one player who must not misread it")
 
-	print("  four server answers, four colours; the 409 reading is deliberate")
+	print("  four server answers, four colours; a 409 is the sign-up form's")
 
 
 func _all_colours_differ(colours: Array[Color]) -> bool:
@@ -12817,3 +12820,194 @@ func _test_black_past_the_map() -> void:
 			[layers, cover.size()])
 		scene.free()
 	print("  backdrop: the editor's grey, black at runtime, exact rectangles, big tiles, under everything, every area")
+
+
+func _login_screen_for_test() -> Node:
+	"""The real login scene, out of the tree: _ready() never runs, so nothing
+	probes a server. The @onready fields the tested code reads are filled by
+	hand from the same unique names."""
+	var login: Node = (load("res://scene/ui/menus/loginmenu.tscn") as PackedScene).instantiate()
+	login.login_form = login.get_node_or_null("%loginform")
+	login.email_form = login.get_node_or_null("%emailform")
+	login.email_confirm_button = login.get_node_or_null("%emailconfirmbutton")
+	login.email_status = login.get_node_or_null("%emailstatus")
+	return login
+
+
+func _test_signing_in_never_makes_an_account() -> void:
+	section("SIGNING IN - never makes an account; creating one asks the password twice")
+
+	var src: String = _code_src("res://src/ui/menus/loginmenu.gd")
+	var pressed: String = _func_body(src, "func _on_login_button_pressed(")
+	var create: String = _func_body(src, "func _create_account(")
+	# THE BUG: a mistyped name got a 401, the 401 fell through to register(),
+	# and the player was in a brand new, empty account - asked for a recovery
+	# email for it, with every character "gone".
+	check("the sign-in button never registers a name",
+		not pressed.contains("Api.register("), "a typo in your own name made a new account")
+	check("  a 401 says wrong name or password, and points a new player at the sign-up link",
+		pressed.contains("if res.status == 401:") and pressed.contains("Wrong name or password")
+		and pressed.contains("CREATE_LINK_TEXT"))
+	check("there is exactly one register() call on the screen, in the sign-up form",
+		src.count("Api.register(") == 1 and create.contains("Api.register("))
+	check("  and it comes after the two passwords are compared",
+		create.find("if again != password:") != -1
+		and create.find("if again != password:") < create.find("Api.register("))
+
+	var login: Node = _login_screen_for_test()
+	login._build_create_account()
+	var form: Node = login.get_node("%loginform")
+	var password: Node = login.get_node("%passwordlineedit")
+	var forgot: Control = login.get_node("%recoverlinkbutton")
+	var button: Button = login.get_node("%loginbutton")
+	var said: Label = login.get_node("%errorlabel")
+	var sign_in_text: String = button.text
+	check("the second password box is built hidden, right under the password",
+		login.confirm_box != null and not login.confirm_box.visible and login.confirm_box.secret
+		and login.confirm_box.get_parent() == form and login.confirm_box.get_index() == password.get_index() + 1)
+	check("  and the sign-up link sits under \"Forgot password?\"",
+		login.create_link != null and login.create_link.get_index() == forgot.get_index() + 1
+		and login.create_link.text == login.CREATE_LINK_TEXT)
+	login.create_link.pressed.emit()
+	check("the link turns the form into sign-up: second box, button says so, no \"Forgot password?\"",
+		login._creating and login.confirm_box.visible and button.text == login.CREATE_BUTTON_TEXT
+		and not forgot.visible and login.create_link.text == login.SIGN_IN_LINK_TEXT, button.text)
+	login.confirm_box.text = "not the same"
+	login._create_account("newplayer", "correcthorse1")
+	check("  two different passwords are refused on the spot, in red",
+		said.text.contains("not the same") and said.get_theme_color("font_color") == login.SAY_REFUSED
+		and not login._request_in_flight, said.text)
+	login.create_link.pressed.emit()
+	check("and the link takes it back: one box, the scene's own button text, \"Forgot password?\"",
+		not login._creating and not login.confirm_box.visible and button.text == sign_in_text
+		and forgot.visible and said.text == "", [button.text, said.text])
+	login._set_busy(true)
+	check("  a request in flight locks the second box and the link too",
+		not login.confirm_box.editable and login.create_link.disabled)
+	login._set_busy(false)
+
+	# The line a dead server left under the button goes when the server is back.
+	login._say("Can't reach the server.", login.SAY_REFUSED)
+	login._no_answer_line = "Can't reach the server."
+	login._on_connection_changed(true)
+	var cleared: bool = said.text == ""
+	login._say("Wrong name or password.", login.SAY_REFUSED)
+	login._on_connection_changed(true)
+	check("\"can't reach the server\" is cleared when it answers again - and nothing else is",
+		cleared and said.text == "Wrong name or password.", said.text)
+	login.free()
+	print("  sign-in: no register on a 401, one register behind two passwords, the form both ways, the stale offline line")
+
+
+func _test_remember_me_means_it() -> void:
+	section("REMEMBER ME - off means closing the game signs you out")
+
+	# THE REAL FILE IS SOMEBODY'S LOGIN. This runs in the developer's own
+	# user:// folder, so whatever session.cfg holds is put back afterwards.
+	var had_file: bool = FileAccess.file_exists(Api.SESSION_PATH)
+	var kept: String = FileAccess.get_file_as_string(Api.SESSION_PATH) if had_file else ""
+	var was := [Api.token, Api.username, Api.keep_signed_in]
+
+	Api.token = "test-token-not-real"
+	Api.username = "rememberer"
+	Api.keep_signed_in = false
+	Api._save_session()
+	var off_file: bool = FileAccess.file_exists(Api.SESSION_PATH)
+	Api.keep_signed_in = true
+	Api._save_session()
+	var on_file: bool = FileAccess.file_exists(Api.SESSION_PATH)
+	Api.keep_signed_in = false
+	Api.token = ""
+	Api._load_session()
+	var loaded: Array = [Api.token, Api.keep_signed_in]
+	Api.keep_signed_in = false
+	Api._save_session()
+	var cleared_file: bool = FileAccess.file_exists(Api.SESSION_PATH)
+	check("with the box clear, no login is written to this computer",
+		not off_file, "the next person to open the game walked into the account")
+	check("with it ticked, it is", on_file)
+	check("  and a login read back from disk counts as remembered", loaded == ["test-token-not-real", true], loaded)
+	check("  and clearing the box later takes the file away", not cleared_file)
+
+	if had_file:
+		var f := FileAccess.open(Api.SESSION_PATH, FileAccess.WRITE)
+		if f != null:
+			f.store_string(kept)
+			f.close()
+	else:
+		DirAccess.remove_absolute(Api.SESSION_PATH)
+	Api.token = was[0]
+	Api.username = was[1]
+	Api.keep_signed_in = was[2]
+
+	var pressed: String = _func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _on_login_button_pressed(")
+	check("the login screen sets it from the box before signing in or signing up",
+		pressed.contains("Api.keep_signed_in = %rememberme.button_pressed")
+		and pressed.find("Api.keep_signed_in") < pressed.find("_create_account(")
+		and pressed.find("Api.keep_signed_in") < pressed.find("Api.login("))
+	var resume: String = _func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _check_connection_and_resume(")
+	check("a remembered login goes in even while it owes a recovery address",
+		not resume.contains("if Api.needs_email:"),
+		"it used to stop and ask for a typed sign-in every time, so Remember me did nothing")
+	print("  remember me: nothing on disk when off, on disk when on, read back as remembered, the file restored")
+
+
+func _test_one_game_per_account() -> void:
+	section("ONE GAME PER ACCOUNT - the game signed in over says so")
+
+	var elsewhere := {"ok": false, "status": 401, "error": "",
+		"data": {"error": "Unauthorized", "signed_in_elsewhere": true}}
+	var kicked := {"ok": false, "status": 401, "error": "", "data": {"error": "Unauthorized"}}
+	check("a 401 marked signed_in_elsewhere reads as another login, not a kick",
+		Api.signout_notice_for(elsewhere) == Api.SIGNED_IN_ELSEWHERE_NOTICE
+		and Api.signout_notice_for(kicked) == Api.SIGNED_OUT_NOTICE
+		and Api.signout_notice_for({}) == Api.SIGNED_OUT_NOTICE)
+
+	var api_src: String = _code_src("res://src/systems/api.gd")
+	var probe: String = _func_body(api_src, "func probe_and_resume(")
+	check("reopening the game carries a remembered login on a NEW token",
+		probe.contains("post(\"/api/auth/resume\"") and probe.contains("res.data.get(\"token\"")
+		and probe.contains("_save_session()"),
+		"a second copy of the game found the same token and ran beside the first")
+	check("  and falls back to the plain check on a server from before the route",
+		probe.contains("== 404:") and probe.contains("get_json(\"/api/auth/session\""))
+	var beat: String = _func_body(api_src, "func heartbeat(")
+	check("the heartbeat keeps the refusal it was given, so the screen can say why",
+		beat.contains("last_refusal = res"))
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	var signout: String = _func_body(hud_src, "func _forced_signout(")
+	check("the HUD signs out with that reason, from the poll or the heartbeat",
+		signout.contains("Api.signout_notice_for(") and signout.contains("Api.forget_session(notice)")
+		and _func_body(hud_src, "func _on_broadcast_poll_timeout(").contains("_forced_signout(res)"))
+	print("  one game per account: the notice, the resume swap, the old-server fallback, the reason carried")
+
+
+func _test_email_prompt_can_wait() -> void:
+	section("RECOVERY EMAIL - \"Not now\" instead of a door with only Exit")
+
+	var login: Node = _login_screen_for_test()
+	if login.email_form == null:
+		check("the login scene has its email prompt", false)
+		login.free()
+		return
+	# THROUGH THE WIRING _ready() runs, not the builder alone - a builder
+	# nobody calls is a button nobody sees.
+	login._wire_email_prompt()
+	var later: Button = login.email_later_button
+	check("the prompt has a \"Not now\" under its confirm button",
+		later != null and later.get_parent() == login.email_form
+		and later.get_index() == login.email_confirm_button.get_index() + 1
+		and later.text == login.EMAIL_LATER_TEXT)
+	login._wire_email_prompt()
+	var copies: int = 0
+	for child in login.email_form.get_children():
+		if child is Button and (child as Button).text == login.EMAIL_LATER_TEXT:
+			copies += 1
+	check("  built once, however often the prompt is wired", copies == 1, copies)
+	login.free()
+
+	var src: String = _code_src("res://src/ui/menus/loginmenu.gd")
+	var pressed: String = _func_body(src, "func _on_email_later_pressed(")
+	check("\"Not now\" drops the held password and carries on into the game",
+		pressed.contains("_password_for_email = \"\"") and pressed.contains("_complete_login(_pending_username)"))
+	print("  recovery email: Not now exists, once, in place, forgets the password, goes on in")

@@ -1281,7 +1281,7 @@ func _on_broadcast_poll_timeout() -> void:
 	# screen over a hiccup would turn every restart of app.py into a mass kick.
 	var verdict: String = Api.heartbeat_verdict(res)
 	if verdict == "revoked":
-		_forced_signout()
+		_forced_signout(res)
 		return
 	if verdict != "ok":
 		# "offline" WAS ALREADY THE ANSWER AND NOTHING ACTED ON IT.
@@ -1747,17 +1747,23 @@ static func _maintenance_announcement(seconds: int) -> String:
 	return "The server is closed. You will be signed out."
 
 
-func _forced_signout() -> void:
-	# The server has already destroyed this session - kicked, banned, or the
-	# grace window on a closing server ran out. Api.logout() would spend a
-	# request on a token that no longer exists, which is exactly what
-	# forget_session() exists for: keep the reason for the login screen, drop
-	# the token, and go.
-	_push_message("Signed out by the server.", Color(0.95, 0.45, 0.35))
+func _forced_signout(refusal: Dictionary = {}) -> void:
+	# The server has already destroyed this session - kicked, banned, the
+	# grace window on a closing server ran out, or the account signed in
+	# somewhere else. Api.logout() would spend a request on a token that no
+	# longer exists, which is exactly what forget_session() exists for: keep the
+	# reason for the login screen, drop the token, and go.
+	#
+	# THE REASON COMES FROM THE 401 ITSELF - the broadcast poll's, or the one
+	# heartbeat() kept. See Api.signout_notice_for().
+	var notice: String = Api.signout_notice_for(refusal if not refusal.is_empty() else Api.last_refusal)
+	Api.last_refusal = {}
+	_push_message("Signed in somewhere else." if notice == Api.SIGNED_IN_ELSEWHERE_NOTICE
+		else "Signed out by the server.", Color(0.95, 0.45, 0.35))
 
 	# Flushes any pending debounced save on the way out.
 	CharacterData.clear_current_user()
-	Api.forget_session("You were signed out by the server.")
+	Api.forget_session(notice)
 
 	if not is_instance_valid(self) or not is_inside_tree():
 		return

@@ -17,13 +17,12 @@
 #   Old local accounts do NOT migrate — players register once against the
 #   server. There are few enough testers for that to be fine.
 #
-# ONE BUTTON, TWO OUTCOMES: the original screen logged you in if the
-# account existed and silently created it if not. That's preserved, but it
-# takes two calls now — the server deliberately returns the same error for
-# "no such user" and "wrong password" so the endpoint can't be used to
-# discover which usernames exist. The client therefore can't tell those
-# apart either, so it tries login first (the common case for a returning
-# player, one call) and only falls back to register on failure.
+# SIGNING IN NEVER MAKES AN ACCOUNT. The button used to log you in if the
+# account existed and silently create it if not - so a returning player who
+# mistyped their own name got a brand new, empty account, a recovery-email
+# prompt for it, and every character "gone". A new player now chooses
+# "Create an account", types the password twice, and only then is one made.
+# See CREATE AN ACCOUNT below.
 #
 # RANK: not decided here, and never mirrored into a save. It used to be a
 # hardcoded username comparison running on the player's own machine, which
@@ -33,7 +32,8 @@
 #
 # SECURITY NOTES (read before touching):
 # - no password ever touches disk here. "remember me" stores the USERNAME
-#   and the session token — never the password.
+#   and the session token — never the password — and with the box clear it
+#   stores neither (Api.keep_signed_in).
 # - the token in user://session.cfg is a bearer credential. Anyone with
 #   the file can act as that account until it expires, same as a browser
 #   cookie. That's the accepted tradeoff for not retyping a password.
@@ -226,6 +226,7 @@ func _ready() -> void:
 	if not %passwordlineedit.text_submitted.is_connected(_on_login_field_submitted):
 		%passwordlineedit.text_submitted.connect(_on_login_field_submitted)
 	_build_code_box()
+	_build_create_account()
 
 	# NEW: the banner follows reachability for as long as this screen is open,
 	# not just at startup. If the player leaves the game sitting here and
@@ -335,6 +336,117 @@ func _put_code_box_away() -> void:
 		login_code_box.visible = false
 
 
+# =============================================================================
+# CREATE AN ACCOUNT
+# =============================================================================
+# The one way an account is made. The same form, with the password asked twice
+# and the button saying what it will do - a player can see which of the two
+# they are about to press. Built here, like the code box, so the scene file does
+# not have to change and an editor re-save cannot lose it.
+#
+# TWICE, because a new account's password has never been typed before: one
+# slip on the first go and nobody - the player included - knows what it is.
+
+const CREATE_LINK_TEXT := "Create an account"
+const SIGN_IN_LINK_TEXT := "Have an account? Sign in"
+const CREATE_BUTTON_TEXT := "Create account"
+
+var create_link: Button = null
+var confirm_box: LineEdit = null
+var _creating: bool = false
+# What the scene calls the sign-in button, so leaving create mode puts it back.
+var _sign_in_text: String = ""
+# The last "no answer" line said under the button - see _on_connection_changed().
+var _no_answer_line: String = ""
+
+
+func _build_create_account() -> void:
+	var form: Node = get_node_or_null("%loginform")
+	var password: Node = get_node_or_null("%passwordlineedit")
+	if form == null or password == null or confirm_box != null:
+		return
+	confirm_box = LineEdit.new()
+	confirm_box.name = "confirmpassword"
+	confirm_box.placeholder_text = "Password again"
+	confirm_box.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	confirm_box.secret = true
+	confirm_box.visible = false
+	form.add_child(confirm_box)
+	form.move_child(confirm_box, password.get_index() + 1)
+	confirm_box.text_submitted.connect(_on_login_field_submitted)
+
+	# Under "Forgot password?", dressed the same: a small flat link.
+	create_link = Button.new()
+	create_link.name = "createlink"
+	create_link.flat = true
+	create_link.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	create_link.add_theme_font_size_override("font_size", 12)
+	create_link.text = CREATE_LINK_TEXT
+	var anchor: Node = get_node_or_null("%recoverlinkbutton")
+	form.add_child(create_link)
+	if anchor != null:
+		form.move_child(create_link, anchor.get_index() + 1)
+	create_link.pressed.connect(func() -> void: _set_creating(not _creating))
+
+	var button: Button = get_node_or_null("%loginbutton")
+	_sign_in_text = button.text if button != null else "Sign in"
+
+
+func _set_creating(on: bool) -> void:
+	"""Between signing in and making an account. What was typed stays; what was
+	said about the other form goes."""
+	_creating = on
+	_put_code_box_away()
+	if confirm_box != null:
+		confirm_box.text = ""
+		confirm_box.visible = on
+	if create_link != null:
+		create_link.text = SIGN_IN_LINK_TEXT if on else CREATE_LINK_TEXT
+	var button: Button = get_node_or_null("%loginbutton")
+	if button != null:
+		button.text = CREATE_BUTTON_TEXT if on else _sign_in_text
+	var forgot: Control = get_node_or_null("%recoverlinkbutton")
+	if forgot != null:
+		forgot.visible = not on
+	_say("Choose a name and a password - you will type the password twice." if on else "",
+		SAY_WORKING)
+	var name_box: LineEdit = get_node_or_null("%usernamelineedit")
+	if name_box != null and name_box.is_inside_tree():
+		name_box.grab_focus()
+
+
+func _create_account(username: String, password: String) -> void:
+	var again: String = Api.clean_password(confirm_box.text) if confirm_box != null else password
+	if again != password:
+		_say("The two passwords are not the same. Type them again.", SAY_REFUSED)
+		return
+
+	_say("Creating your account...", SAY_WORKING)
+	_set_busy(true)
+	var created: Dictionary = await Api.register(username, password)
+	_set_busy(false)
+
+	if created.ok:
+		_set_creating(false)
+		_welcome(username)
+		await _enter_game(username, password)
+		_say("", SAY_WORKING)
+		return
+
+	# HERE, AND ONLY HERE, "TAKEN" IS THE RIGHT WORD. This is a sign-up form,
+	# so a 409 is the name somebody already has - possibly the player, who
+	# meant to sign in. Names are not case-sensitive, so "tunacan" is taken
+	# when "Tunacan" exists.
+	if created.status == 409:
+		_say("That name is taken. Pick another - or, if it is yours, go back and sign in.",
+			SAY_REFUSED)
+		return
+	var line: String = describe_login_refusal(created)
+	_say(line, _refusal_colour(created))
+	if int(created.get("status", 0)) == 0:
+		_no_answer_line = line
+
+
 func _on_connection_changed(online: bool) -> void:
 	# The banner tracks the SERVER's state from open to close: green the moment
 	# it answers, amber while it is unreachable. It is a separate line from
@@ -343,6 +455,14 @@ func _on_connection_changed(online: bool) -> void:
 	# server is there. The two answer different questions and never contradict.
 	if online:
 		_set_status(Api.describe_online(), STATUS_ONLINE)
+		# AND THE LINE THAT SAID IT WAS NOT. A login pressed while the server was
+		# down left "Can't reach the server" under the button, and it stayed
+		# there under a green "Server online" banner until the next press - two
+		# lines on one panel saying opposite things.
+		var said: Label = get_node_or_null("%errorlabel") as Label
+		if said != null and _no_answer_line != "" and said.text == _no_answer_line:
+			_say("", SAY_WORKING)
+		_no_answer_line = ""
 	else:
 		_set_status(Api.describe_offline(), STATUS_OFFLINE)
 
@@ -551,9 +671,11 @@ func _on_recover_submit_pressed() -> void:
 # existing account picks one up the next time its owner signs in, and a typo
 # does not count.
 #
-# IT IS A PROMPT, NOT A PERMISSION. The server refuses nothing over this; it is
-# gated here because the only person it protects is the player being asked. A
-# client that skipped it would simply have an account nobody can recover.
+# IT IS A PROMPT, NOT A PERMISSION. The server refuses nothing over this, and
+# the player can say "Not now" (see below): the only person it protects is the
+# player being asked, and an account with no address is one nobody can recover
+# - which is theirs to decide, not ours to hold them at the door over. A server
+# with no mail set up does not ask at all (needs_recovery_email() in app.py).
 
 func _wire_email_prompt() -> void:
 	if email_send_button != null:
@@ -568,6 +690,41 @@ func _wire_email_prompt() -> void:
 
 	if email_form != null:
 		email_form.visible = false
+		_build_email_later()
+
+
+# "NOT NOW". The prompt had no way past it but a code arriving, and a code
+# depends on a mail server this screen cannot see: a slow inbox, a spam folder,
+# a sending limit reached on launch day, and a new player sat at a form with
+# only Exit to press. The address matters - it is the only way back into an
+# account - so the prompt still comes at every typed sign-in until one is
+# confirmed, and Options has the same form. It just no longer holds the door.
+const EMAIL_LATER_TEXT := "Not now - add one later in Options"
+var email_later_button: Button = null
+
+
+func _build_email_later() -> void:
+	if email_form == null or email_later_button != null:
+		return
+	email_later_button = Button.new()
+	email_later_button.name = "emaillaterbutton"
+	email_later_button.flat = true
+	email_later_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	email_later_button.add_theme_font_size_override("font_size", 12)
+	email_later_button.text = EMAIL_LATER_TEXT
+	email_form.add_child(email_later_button)
+	if email_confirm_button != null and email_confirm_button.get_parent() == email_form:
+		email_form.move_child(email_later_button, email_confirm_button.get_index() + 1)
+	email_later_button.pressed.connect(_on_email_later_pressed)
+
+
+func _on_email_later_pressed() -> void:
+	# The password was held only for the address; it goes now either way.
+	_password_for_email = ""
+	if email_form != null:
+		email_form.visible = false
+	_email_say("", STATUS_WORKING)
+	await _complete_login(_pending_username)
 
 
 func _show_email_prompt(username: String, password: String) -> void:
@@ -721,15 +878,13 @@ func _check_connection_and_resume() -> void:
 	if %passwordlineedit.text != "":
 		return
 
-	# A RESUMED SESSION CANNOT SET ONE. POST /api/account/email demands the
-	# password, and a bearer token is precisely what it refuses to take
-	# instead - that refusal is what stops a stolen session redirecting
-	# recovery. So an account that still owes an address signs in by hand this
-	# once, rather than being carried into the game still owing it.
-	if Api.needs_email:
-		_set_status("Please sign in to add a recovery email.", STATUS_WORKING)
-		return
-
+	# A RESUMED SESSION GOES IN, EVEN OWING AN ADDRESS. The prompt needs the
+	# password (POST /api/account/email will not take a token instead - that is
+	# what stops a stolen session redirecting recovery), and a resumed login
+	# has none to offer. It used to stop here and ask for a typed sign-in every
+	# time, which made "Remember me" do nothing for anyone who had pressed "Not
+	# now" on the prompt. The prompt comes back at the next typed sign-in, and
+	# Options has the same form.
 	await _complete_login(Api.username)
 
 
@@ -765,11 +920,18 @@ func _on_login_button_pressed() -> void:
 		_say("Password must be at least %d characters." % MIN_PASSWORD_LENGTH, SAY_REFUSED)
 		return
 
-	# --- remember me (username only — see class comment) ---
+	# --- remember me: the name in the box, and staying signed in ---
+	# Both or neither. See Api.keep_signed_in: with the box clear, closing the
+	# game signs you out, and nothing on this computer opens your account.
 	if %rememberme.button_pressed:
 		save_remembered_user(username)
 	else:
 		save_remembered_user("")
+	Api.keep_signed_in = %rememberme.button_pressed
+
+	if _creating:
+		await _create_account(username, password)
+		return
 
 	_say("Connecting...", SAY_WORKING)
 	_set_busy(true)
@@ -779,7 +941,7 @@ func _on_login_button_pressed() -> void:
 
 	# BEFORE res.ok, because the first step is a 202 - a 2xx with no token -
 	# and BEFORE the 401 branch below: a wrong code is a 400 on purpose, since a
-	# 401 here means "try registering the name".
+	# 401 here reads "Wrong name or password", and the password was right.
 	if Api.needs_login_code(res):
 		_set_busy(false)
 		_show_code_step(username, res)
@@ -793,45 +955,21 @@ func _on_login_button_pressed() -> void:
 		_say("", SAY_WORKING)
 		return
 
-	# a 401 means the credentials didn't match — but the server won't say
-	# whether that's a wrong password or an account that doesn't exist yet,
-	# so the only way to find out is to try creating it.
+	# A 401 IS "WRONG NAME OR PASSWORD", AND THAT IS ALL IT IS. The server will
+	# not say which - so the endpoint cannot be used to find out who plays - and
+	# this screen no longer tries to find out by registering the name. That
+	# guess is what turned a typo in your own name into a new, empty account.
+	# The hint is for the new player who pressed the big button first.
+	_set_busy(false)
 	if res.status == 401:
-		var created: Dictionary = await Api.register(username, password)
-
-		_set_busy(false)
-
-		if created.ok:
-			_welcome(username)
-			await _enter_game(username, password)
-			_say("", SAY_WORKING)
-			return
-
-		# 409 means the account DOES exist, so the original login failure
-		# was a genuinely wrong password.
-		#
-		# AND THAT IS WHY THIS SCREEN NEVER SAYS "username already taken", which
-		# is what a 409 means everywhere else and what you would write if you
-		# were handling the status code rather than the flow. Register is only
-		# ever called HERE, one line after a 401, so a 409 cannot mean a free
-		# name was refused - it can only mean the account exists and the password
-		# was wrong. Printing the server's own 409 message would send the player
-		# off to invent a second username for an account that is already theirs.
-		#
-		# It is also the one place the client learns something /login refuses to
-		# tell it. The server hides "does this name exist" on /login and answers
-		# it outright on /register, on purpose, because a signup form has to say
-		# when a name is taken - see the comment above the 409 in app.py, and the
-		# REGISTER_MAX_CONFLICTS throttle that stops it being an oracle.
-		if created.status == 409:
-			_say("Incorrect password.", SAY_REFUSED)
-		else:
-			_say(created.error, _refusal_colour(created))
+		_say("Wrong name or password. New here? Choose \"%s\"." % CREATE_LINK_TEXT, SAY_REFUSED)
 		return
 
 	# anything else — server down, validation rejection, unexpected status
-	_set_busy(false)
-	_say(describe_login_refusal(res), _refusal_colour(res))
+	var line: String = describe_login_refusal(res)
+	_say(line, _refusal_colour(res))
+	if int(res.get("status", 0)) == 0:
+		_no_answer_line = line
 
 
 # COROUTINE — callers must await. CharacterData.load_for_user() fetches every
@@ -905,14 +1043,20 @@ func _set_busy(busy: bool, lock_fields: bool = true) -> void:
 	# actually requires.
 	_request_in_flight = busy
 	%loginbutton.disabled = busy
+	if create_link != null:
+		create_link.disabled = busy
 	if lock_fields:
 		%usernamelineedit.editable = not busy
 		%passwordlineedit.editable = not busy
+		if confirm_box != null:
+			confirm_box.editable = not busy
 	elif not busy:
 		# Releasing a background wait must never leave a field disabled, even
 		# if a submit locked them in the meantime.
 		%usernamelineedit.editable = true
 		%passwordlineedit.editable = true
+		if confirm_box != null:
+			confirm_box.editable = true
 
 
 func _say(message: String, color: Color) -> void:

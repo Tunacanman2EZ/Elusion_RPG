@@ -75,13 +75,33 @@ with `{"error": "Unauthorized", "message": "..."}`.
 **`400`** on a short password or illegal username characters.
 **`409`** if the username is taken.
 
+Only the login screen's **Create an account** form calls this. Signing in never
+does: it used to fall back to registering the name on a 401, so a typo in your
+own name made a new, empty account.
+
 ### `POST /api/auth/login`
 
 Same body → **`200`** with a token. **`401`** on failure.
 
 A wrong password and an unknown username return an **identical** 401. That is
 deliberate: a distinguishable answer turns this route into a username
-enumerator.
+enumerator. The game says "Wrong name or password" for it.
+
+The miss that locks an account (`LOGIN_MAX_ATTEMPTS` in a row) is **`429`**
+"Too many failed attempts. Try again in 15 minutes." - as is every attempt
+until the lock runs out, the right password included. Waits are in minutes.
+
+**One login at a time.** A `200` ends every other session the account holds.
+The game left behind is refused on its next request with:
+
+```json
+{ "error": "Unauthorized", "signed_in_elsewhere": true,
+  "message": "This account signed in somewhere else, so this game was signed out." }
+```
+
+and goes back to the login screen saying so (`Api.signout_notice_for()`). Two
+games on one account used to lose items: each held its own picture of the bag,
+and the bag write replaces the whole bag.
 
 **Staff accounts take a second step.** For a mod, dev or the owner with a
 confirmed recovery address, on a server that can send mail, a correct password
@@ -94,15 +114,29 @@ answers **`202`** with no token:
 
 The same body sent again with `"code": "183774"` gets the ordinary **`200`**.
 A wrong, spent or expired code is **`400`** with `"code_required": true` -
-never 401, because the client answers a 401 by trying to register the name.
+never 401, because the game reads a 401 as "wrong name or password".
 Sending no code asks for a new one (at most one a minute). A 200 carries
 `"staff_unprotected": true` when a staff account got in on the password alone.
 `Api.login(user, password, code)` and `Api.needs_login_code()` handle it.
 
 ### `GET /api/auth/session`
 
-**`200`** if the token is still good, **`401`** if not. The client calls this
-on boot to decide whether it can skip the login screen.
+**`200`** if the token is still good, **`401`** if not. This is the heartbeat,
+every 15 seconds in the world; a 401 there is how a kick, a ban or a login
+somewhere else reaches the game.
+
+### `POST /api/auth/resume`
+
+What the game calls on boot when it has a remembered login. **`200`** with the
+same fields as `/api/auth/session` plus a **new `token`**, which ends when the
+old one would have (resuming never renews a login). Every other session on the
+account ends - including the one it came in on - so a second copy of the game
+that found the same remembered token is signed out, with `signed_in_elsewhere`.
+A server without this route answers 404 and the game falls back to
+`GET /api/auth/session`.
+
+"Remember me" decides whether the token is written to `user://session.cfg` at
+all (`Api.keep_signed_in`). With it off, closing the game signs you out.
 
 ### `POST /api/auth/logout`
 

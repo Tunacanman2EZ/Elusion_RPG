@@ -357,6 +357,23 @@ var role: String = "player"
 # forget_session(), shown once by loginmenu.gd, and cleared there.
 var signout_notice: String = ""
 
+# "REMEMBER ME", AND WHAT IT HAS TO MEAN. The login screen sets this from its
+# checkbox before signing in; a token loaded from disk sets it too, since only a
+# remembered login is ever written there.
+#
+# Off, the token lives in memory only and session.cfg is removed - so closing
+# the game signs you out. It used to be written either way, and the box only
+# decided whether the NAME was filled in: on a school or library computer the
+# next person to open the game walked straight into your account.
+var keep_signed_in: bool = false
+
+# The last 401 heartbeat() was given, so the screen that acts on it can say WHY
+# - see signout_notice_for().
+var last_refusal: Dictionary = {}
+
+const SIGNED_OUT_NOTICE := "You were signed out by the server."
+const SIGNED_IN_ELSEWHERE_NOTICE := "This account signed in somewhere else, so this game was signed out."
+
 
 # The rank the in-game debug shortcuts require. Defined here rather than in
 # player.gd so there is ONE statement of the policy - the test suite asserts
@@ -830,7 +847,7 @@ func _read_answer(http: HTTPRequest, sent_token: String, path: String) -> Dictio
 	# heartbeat() is already the thing deciding - announcing its answer back to
 	# the listener that asked for it would just ask again.
 	if status == 401 and sent_token != "" and sent_token == token \
-			and path != "/api/auth/session":
+			and path != "/api/auth/session" and path != "/api/auth/resume":
 		unauthorized_seen.emit()
 
 	# 426 UPGRADE REQUIRED - this build is older than the server's minimum.
@@ -947,7 +964,20 @@ func probe_and_resume() -> Dictionary:
 	# and it is the only moment the answer matters.
 	await refresh_build_info()
 
-	var res: Dictionary = await get_json("/api/auth/session", PROBE_TIMEOUT)
+	# A REMEMBERED LOGIN IS CARRIED ON A NEW TOKEN. One login at a time: a
+	# second copy of the game opened on this computer finds this same token,
+	# and checking it with GET /api/auth/session would let both run on one
+	# session. POST /api/auth/resume swaps it, and ends every other session on
+	# the account - the other copy is told it was signed in somewhere else.
+	# Nothing remembered: the plain check, which only asks "are you there".
+	var res: Dictionary
+	if token != "":
+		res = await post("/api/auth/resume", {}, PROBE_TIMEOUT)
+		# A server from before the route: check the token the old way.
+		if int(res.get("status", 0)) == 404:
+			res = await get_json("/api/auth/session", PROBE_TIMEOUT)
+	else:
+		res = await get_json("/api/auth/session", PROBE_TIMEOUT)
 
 	if int(res.get("status", 0)) == 0:
 		return {"online": false, "resumed": false}
@@ -956,6 +986,10 @@ func probe_and_resume() -> Dictionary:
 		return {"online": true, "resumed": false}
 
 	if res.get("ok", false):
+		var fresh: String = str(res.data.get("token", ""))
+		if fresh != "":
+			token = fresh
+			_save_session()
 		_set_identity(
 			str(res.data.get("username", username)),
 			str(res.data.get("role", "player")),
@@ -990,6 +1024,8 @@ func heartbeat() -> String:
 	if token != asked_with:
 		return "stale"
 	var verdict: String = heartbeat_verdict(res)
+	if verdict == "revoked":
+		last_refusal = res
 	if verdict == "ok" and res.get("data") is Dictionary:
 		# Username is passed through unchanged: this response carries one, but
 		# a heartbeat is not where an account gets renamed, and reading it here
@@ -1094,6 +1130,19 @@ func heartbeat_verdict(res: Dictionary) -> String:
 	return "offline"
 
 
+static func signout_notice_for(res: Dictionary) -> String:
+	"""What the login screen says after the server ended this game's session.
+
+	SOMEWHERE ELSE IS ITS OWN SENTENCE. One login at a time (app.py): signing
+	in on another computer, or opening a second copy of the game, ends this
+	one's session, and the server's 401 says so. "Signed out by the server"
+	would read as a kick - to a player who did it themselves a minute ago."""
+	var data: Variant = res.get("data", {})
+	if data is Dictionary and bool(data.get("signed_in_elsewhere", false)):
+		return SIGNED_IN_ELSEWHERE_NOTICE
+	return SIGNED_OUT_NOTICE
+
+
 func adopt_new_token(new_token: String) -> void:
 	# A PASSWORD CHANGE DESTROYS EVERY SESSION AND ISSUES ONE REPLACEMENT in the
 	# same response, so the player who made the change stays logged in while
@@ -1146,6 +1195,11 @@ func _clear_session() -> void:
 
 
 func _save_session() -> void:
+	# Not remembered: nothing on disk, and nothing left over from a login that
+	# was. See keep_signed_in.
+	if not keep_signed_in:
+		DirAccess.remove_absolute(SESSION_PATH)
+		return
 	var config := ConfigFile.new()
 	config.set_value("session", "token", token)
 	config.set_value("session", "username", username)
@@ -1158,6 +1212,8 @@ func _load_session() -> void:
 		return
 	token = config.get_value("session", "token", "")
 	username = config.get_value("session", "username", "")
+	# Only a remembered login is ever written, so one on disk was remembered.
+	keep_signed_in = token != ""
 
 
 # =============================================================================
