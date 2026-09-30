@@ -173,6 +173,9 @@ func _run_all() -> void:
 	_test_remember_me_means_it()
 	_test_one_game_per_account()
 	_test_email_prompt_can_wait()
+	_test_chat_filter()
+	_test_chat_safety_menu()
+	_test_staff_reports_and_mutes()
 
 
 # =============================================================================
@@ -5392,7 +5395,7 @@ func _test_settings() -> void:
 		"volume_sfx": "sfxvolume",         "fullscreen": "fullscreentoggle",
 		"vsync": "vsyncmode",              "frame_cap": "framecap",
 		"window_width": "windowsize",      "window_height": "windowsize",
-		"damage_numbers": "damagenumbers",
+		"damage_numbers": "damagenumbers",   "chat_filter": "chatfilter",
 		"render_resolution": "renderresolution", "lighting": "lighting",
 		"background_fps_limit": "backgroundlimit",
 		# BOTH OF THESE WERE MISSING FROM THE TABLE, not from the game.
@@ -8849,9 +8852,10 @@ func _test_the_staff_desk() -> void:
 	check("it is attached as a window", panel.get("_window") != null)
 	var tabs: TabContainer = panel.tabs
 	var detail_tabs: TabContainer = panel.detail_tabs
-	check("Players and Log are tabs",
-		tabs.get_tab_count() == 2 and tabs.get_tab_title(0) == "Players" and tabs.get_tab_title(1) == "Log",
-		[tabs.get_tab_title(0), tabs.get_tab_title(1)])
+	check("Players, Log and Reports are tabs",
+		tabs.get_tab_count() == 3 and tabs.get_tab_title(0) == "Players" and tabs.get_tab_title(1) == "Log"
+			and tabs.get_tab_title(2).begins_with("Reports"),
+		[tabs.get_tab_title(0), tabs.get_tab_title(1), tabs.get_tab_title(2) if tabs.get_tab_count() > 2 else ""])
 	check("a player's Actions, Record and Trades are tabs",
 		detail_tabs.get_tab_count() == 3 and detail_tabs.get_tab_title(0) == "Actions"
 		and detail_tabs.get_tab_title(1) == "Record" and detail_tabs.get_tab_title(2) == "Trades",
@@ -12588,6 +12592,9 @@ func _test_chat_keeps_your_place() -> void:
 	check("a new line is added to the log, not the log rebuilt",
 		log_box.get_child(0) == first_before and log_box.get_child_count() == 61, log_box.get_child_count())
 	check("and a player reading further up stays where they were", sc.scroll_vertical == 40, sc.scroll_vertical)
+	check("  and is told there is something new below",
+		chat.new_below != null and chat.new_below.visible and chat.new_below.get_parent() == sc.get_parent()
+		and chat.new_below.get_index() == sc.get_index() + 1)
 
 	chat._apply_read("world", {"channel": "world", "available": true, "messages": [],
 		"removed": [50000 + 59], "latest_id": 50060})
@@ -12603,6 +12610,19 @@ func _test_chat_keeps_your_place() -> void:
 		await get_tree().process_frame
 	check("a player reading the newest lines follows the new one",
 		float(sc.scroll_vertical) + bar.page >= bar.max_value - 2, [sc.scroll_vertical, bar.page, bar.max_value])
+	check("  and reaching the bottom puts the \"new messages\" bar away", not chat.new_below.visible)
+	sc.scroll_vertical = 40
+	await get_tree().process_frame
+	chat._add_line("world", said.call(9990))
+	for i in 3:
+		await get_tree().process_frame
+	var shown_again: bool = chat.new_below.visible
+	chat.new_below.pressed.emit()
+	for i in 3:
+		await get_tree().process_frame
+	check("clicking the bar goes to the newest line and puts it away",
+		shown_again and not chat.new_below.visible
+		and float(sc.scroll_vertical) + bar.page >= bar.max_value - 2, [shown_again, sc.scroll_vertical])
 
 	for i in range(62, 62 + chat.LINES_KEPT):
 		chat._add_line("world", said.call(i))
@@ -13011,3 +13031,226 @@ func _test_email_prompt_can_wait() -> void:
 	check("\"Not now\" drops the held password and carries on into the game",
 		pressed.contains("_password_for_email = \"\"") and pressed.contains("_complete_login(_pending_username)"))
 	print("  recovery email: Not now exists, once, in place, forgets the password, goes on in")
+
+
+func _test_chat_filter() -> void:
+	section("CHAT FILTER - whole words, their disguises, and never the words around them")
+
+	var Filter: Script = load("res://src/ui/chat/chatfilter.gd") as Script
+	check("the filter script loads", Filter != null)
+	if Filter == null:
+		return
+	var masked := {
+		"fuck": "f***", "Fuck!!": "F***!!", "$hit": "$***", "sh1t": "s***",
+		"fuuuuuck": "f*******", "shithead": "s*******", "motherfuckers": "m************",
+		"what the fuck is this": "what the f*** is this",
+	}
+	var wrong: Array = []
+	for said in masked:
+		if Filter.clean(said) != masked[said]:
+			wrong.append([said, Filter.clean(said)])
+	check("a listed word is masked, with its endings and its disguises", wrong.is_empty(), wrong)
+	var clean_words := ["class", "assess", "Scunthorpe", "cocktail", "cocky", "as", "pass", "grape",
+		"raccoon", "cumin", "spice", "Dickens", "therapist", "hello there", "sooooo good", "1v1 me"]
+	var hit: Array = []
+	for said in clean_words:
+		if Filter.clean(said) != said:
+			hit.append([said, Filter.clean(said)])
+	check("and nothing that merely contains one is touched", hit.is_empty(), hit)
+	var src: String = FileAccess.get_file_as_string("res://src/ui/chat/chatfilter.gd")
+	check("  the list is not readable as a list in the source", not src.contains(" fuck ") and not src.contains("\"fuck"))
+
+	var ChatPanel: Script = load("res://src/ui/chat/chatpanel.gd") as Script
+	check("the chat window shows filtered text only when asked to",
+		ChatPanel.shown_text("oh\nshit", true) == "oh s***" and ChatPanel.shown_text("oh\nshit", false) == "oh shit")
+	check("the setting exists and is on by default", Settings.DEFAULTS.get("chat_filter") == true)
+	var node_src: String = _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _node_for(")
+	var picture_src: String = _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _picture_node(")
+	var hud_src: String = _func_body(_code_src("res://src/ui/characterhud.gd"), "func _whisper_from(")
+	check("every place a player's words are drawn goes through it: the line, a caption, the whisper pop-up",
+		node_src.contains("shown_text(") and picture_src.contains("shown_text(")
+		and hud_src.contains("shown_text(") and hud_src.contains("\"chat_filter\""))
+	check("turning it on or off redraws what is on screen",
+		_func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _on_setting_changed(").contains("_render(true)"))
+	print("  chat filter: masks words and disguises, spares Scunthorpe, is a setting, reaches every drawn line")
+
+
+func _test_chat_safety_menu() -> void:
+	section("CHAT SAFETY - the name menu, commands, and a muted box")
+
+	var packed: PackedScene = load("res://scene/ui/chat/chatpanel.tscn") as PackedScene
+	var chat: Control = packed.instantiate() as Control
+	# Out of the tree: _ready() never runs, so nothing polls a server. The
+	# nodes these read are filled by hand.
+	chat.entry = chat.get_node_or_null("%chatentry")
+	chat.notice = chat.get_node_or_null("%chatnotice")
+	for channel in chat.CHANNELS:
+		chat._feeds[channel] = {"cursor": 0, "lines": [], "unread": false}
+	var was := [Api.username, Api.role, Api.is_owner]
+	Api.username = "me_myself"
+	Api.role = "player"
+	Api.is_owner = false
+
+	var line := {"kind": "chat", "by": "rowdy", "role": "player", "id": 77, "at": 0, "body": "a line"}
+	var label: RichTextLabel = chat._node_for(line) as RichTextLabel
+	label.meta_clicked.emit("name")
+	var menu: PopupMenu = chat.line_menu
+	var items: Array = []
+	if menu != null:
+		for i in menu.item_count:
+			if not menu.is_item_separator(i):
+				items.append(menu.get_item_text(i))
+	check("clicking a name opens its menu: whisper, ignore, and the five reasons to report",
+		menu != null and chat._menu_line.get("by") == "rowdy"
+		and items == ["Whisper", "Ignore", "Spam", "Harassment", "Hate speech", "Cheating or scams", "Something else"],
+		items)
+	check("  and a player is offered no mute", not items.has("Unmute"))
+	var own: RichTextLabel = chat._node_for({"kind": "chat", "by": "me_myself", "role": "player",
+		"id": 78, "at": 0, "body": "mine"}) as RichTextLabel
+	chat._menu_line = {}
+	chat.open_line_menu({"kind": "chat", "by": "me_myself", "id": 78})
+	check("your own name has no menu", chat._menu_line.is_empty())
+	chat.open_line_menu({"kind": "chat", "by": "themod", "role": "mod", "id": 79, "body": "x"})
+	var ignore_at: int = menu.get_item_index(chat.MENU_IGNORE)
+	check("staff cannot be ignored, so it is not offered", menu.is_item_disabled(ignore_at))
+	Api.role = "mod"
+	chat.open_line_menu(line)
+	var staff_items: Array = []
+	for i in menu.item_count:
+		if not menu.is_item_separator(i):
+			staff_items.append(menu.get_item_text(i))
+	check("staff get mutes and unmute for a player's line",
+		staff_items.has("Mute 10 minutes") and staff_items.has("Mute 1 day") and staff_items.has("Unmute"), staff_items)
+	chat.open_line_menu({"kind": "chat", "by": "othermod", "role": "mod", "id": 80, "body": "x"})
+	var peer_items: Array = []
+	for i in menu.item_count:
+		peer_items.append(menu.get_item_text(i))
+	check("  and none for a line by their own rank", not peer_items.has("Unmute"), peer_items)
+	Api.role = "player"
+
+	chat._feeds["world"]["lines"] = [line, {"by": "Rowdy", "id": 81}, {"by": "fine", "id": 82}]
+	chat._feeds["private"]["lines"] = [{"by": "rowdy", "id": 83}]
+	var gone: int = chat.forget_author("ROWDY")
+	check("ignoring somebody takes their lines out of every feed at once",
+		gone == 3 and chat._feeds["world"]["lines"].size() == 1 and chat._feeds["private"]["lines"].is_empty(), gone)
+
+	check("a line starting with / and a letter is a command, and never said out loud",
+		chat._looks_like_command("/ignore bob") and chat._looks_like_command("/Help")
+		and not chat._looks_like_command("/ ") and not chat._looks_like_command("//x")
+		and not chat._looks_like_command("hi /ignore"))
+	chat._run_command("/frobnicate now")
+	check("an unknown command says so", chat.notice.text.contains("There is no /frobnicate command"), chat.notice.text)
+	chat._run_command("/help")
+	check("/help lists them", chat.notice.text.contains("/ignore") and chat.notice.text.contains("/unignore"),
+		chat.notice.text)
+	chat._run_command("/ignore")
+	check("a command missing its name says how to use it", chat.notice.text == "Try: /ignore name", chat.notice.text)
+	var send_src: String = _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _on_send_pressed(")
+	check("  commands are caught before anything is sent",
+		send_src.find("_looks_like_command(text)") != -1
+		and send_src.find("_looks_like_command(text)") < send_src.find("await _send(_channel, text"))
+
+	var default_hint: String = chat.entry.placeholder_text
+	chat._set_muted({"until": 0, "seconds_left": 600, "reason": "spamming world"})
+	check("a muted player's box says so before they type",
+		chat.entry.placeholder_text == "You are muted for 10 minutes more - spamming world", chat.entry.placeholder_text)
+	chat._set_muted(null)
+	check("  and goes back when the mute lifts", chat.entry.placeholder_text == default_hint, chat.entry.placeholder_text)
+	check("the read carries it", _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _apply_read(")
+		.contains("_set_muted(data.get(\"muted\"))"))
+	check("a 429 is said in the server's words - typing fast is not about pictures",
+		chat._refusal({"status": 429, "error": "Messages are arriving faster than one every 1 seconds."})
+			.begins_with("Messages are arriving"))
+
+	Api.username = was[0]
+	Api.role = was[1]
+	Api.is_owner = was[2]
+	label.free()
+	own.free()
+	chat.free()
+	print("  chat safety: the menu for others, not yourself, no ignoring staff, mutes for rank, forgetting lines, commands, the muted box")
+
+
+func _test_staff_reports_and_mutes() -> void:
+	section("STAFF - reported lines, and chat mutes")
+
+	var Staff: Script = load("res://src/ui/staff/staffpanel.gd") as Script
+	var player := {"username": "rowdy", "role": "player", "actionable": true}
+	var can: Dictionary = Staff.actions_for("mod", player)
+	check("a mod can mute a player, and there is nothing to unmute yet", can["mute"] and not can["unmute"], can)
+	player["mute"] = {"until": 100, "seconds_left": 3600, "reason": "spam"}
+	check("  unmute appears once they are muted", Staff.actions_for("mod", player)["unmute"])
+	check("  and a mod cannot mute another mod",
+		not Staff.actions_for("mod", {"username": "m", "role": "mod", "actionable": true})["mute"])
+	check("mute lengths read as people say them",
+		[Staff.describe_minutes(600), Staff.describe_minutes(3600), Staff.describe_minutes(86400),
+			Staff.describe_minutes(172800), Staff.describe_minutes(5400)]
+		== ["10 minutes", "1 hour", "1 day", "2 days", "90 minutes"])
+	check("mutes count on a player's record, after bans and kicks",
+		Staff.describe_record({"mute": 2, "ban": 1}) == "1 ban · 2 mutes"
+		and Staff.describe_record({"mute": 1}, Staff.ROW_RECORD_KINDS) == "1 mute",
+		Staff.describe_record({"mute": 2, "ban": 1}))
+	check("a mute says how long is left and why",
+		Staff.describe_mute(player["mute"]).contains("1 hour left") and Staff.describe_mute(player["mute"]).contains("spam")
+		and Staff.describe_mute(null) == "Can talk in chat")
+	check("the log names mutes, unmutes and closed reports in words",
+		Staff.describe_entry({"by": "m", "action": "mute", "target": "rowdy", "detail": "1 hour: spam"})
+			== "m muted rowdy - 1 hour: spam"
+		and Staff.KIND_LABELS.has("mute") and Staff.KIND_LABELS.has("report") and Staff.ACCOUNT_KINDS.has("mute"))
+
+	var panel: Control = (load("res://scene/ui/staff/staffpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(panel)
+	var role_was: String = Api.role
+	Api.role = "mod"
+	panel._show_detail(player)
+	Api.role = role_was
+	check("the Actions tab has the mute buttons and the mute on show",
+		panel._mute_buttons.size() == Staff.MUTE_PRESETS.size() and not panel._mute_buttons[0].disabled
+		and panel.unmute_button != null and not panel.unmute_button.disabled
+		and panel.mute_label.text.contains("spam"))
+	var report := {"message_id": 5, "reported": "rowdy", "reported_role": "player", "channel": "world",
+		"body": "buy gold here", "said_at": 100, "reports": 2, "reporters": ["ann", "cat"],
+		"reasons": {"spam": 2}, "actionable": true, "line_exists": true}
+	var peer := {"message_id": 6, "reported": "othermod", "reported_role": "mod", "channel": "world",
+		"body": "rude", "said_at": 100, "reports": 1, "reporters": ["ann"], "reasons": {"harassment": 1},
+		"actionable": false, "line_exists": true}
+	panel.apply_reports({"reports": [report, peer], "open": 2, "now": 400})
+	var rows: Array = panel.reports_list.get_children()
+	var buttons := func(row: Node) -> Array:
+		var out: Array = []
+		for b in row.find_children("*", "Button", true, false):
+			out.append((b as Button).text)
+		return out
+	check("the Reports tab shows each reported line, and its count in the tab",
+		rows.size() == 2 and panel.tabs.get_tab_title(Staff.REPORTS_TAB) == "Reports (2)",
+		[rows.size(), panel.tabs.get_tab_title(Staff.REPORTS_TAB)])
+	check("  a line you can act on: open the player, delete the line, mute, dismiss",
+		buttons.call(rows[0]) == ["Open rowdy", "Delete line", "Mute 1 hour", "Dismiss"], buttons.call(rows[0]))
+	check("  a line about your own rank: only open the player, and why",
+		buttons.call(rows[1]) == ["Open othermod"], buttons.call(rows[1]))
+	check("  what was said is on the row, with who reported it",
+		Staff.describe_report(report, 400).contains("reported 2x (spam) by ann, cat"), Staff.describe_report(report, 400))
+	panel.apply_reports({"reports": [], "open": 0, "now": 400})
+	check("  and an empty tab says so", panel.reports_empty.visible and panel.tabs.get_tab_title(Staff.REPORTS_TAB) == "Reports")
+	panel.queue_free()
+
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var staff_button: Button = hud.get_node("%staffbutton") as Button
+	var was := [Api.role, Api.is_owner]
+	Api.role = "mod"
+	hud._mark_open_reports(3)
+	var lit: String = staff_button.text
+	hud._mark_open_reports(0)
+	var dark: String = staff_button.text
+	Api.role = "player"
+	hud._mark_open_reports(5)
+	var as_player: String = staff_button.text
+	Api.role = was[0]
+	Api.is_owner = was[1]
+	check("the Staff button counts reported lines waiting, and only for staff",
+		lit == "Staff (3)" and dark == "Staff" and as_player == "Staff", [lit, dark, as_player])
+	check("  from the poll", _func_body(_code_src("res://src/ui/characterhud.gd"), "func _apply_broadcast(")
+		.contains("_mark_open_reports(int(data.get(\"open_reports\", 0)))"))
+	hud.free()
+	print("  staff: mute rules and words, the Actions row, the Reports tab both ways, the Staff button count")
+

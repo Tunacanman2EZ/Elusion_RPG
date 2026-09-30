@@ -409,6 +409,22 @@ vertical_alignment = 1
 unique_name_in_owner = true
 layout_mode = 2
 
+[node name="chatfilterrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/chatfilterrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Filter bad language in chat"
+vertical_alignment = 1
+
+[node name="chatfilter" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol/chatfilterrow"]
+unique_name_in_owner = true
+layout_mode = 2
+
 [node name="accountsep" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer/columns/leftcol" unique_id=1900114001]
 layout_mode = 2
 

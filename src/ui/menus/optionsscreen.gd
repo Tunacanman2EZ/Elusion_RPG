@@ -62,6 +62,7 @@ signal closed
 @onready var pacing_hint:       Label        = get_node_or_null("%pacinghint")
 @onready var window_size:       OptionButton = get_node_or_null("%windowsize")
 @onready var damage_toggle:     CheckButton = get_node_or_null("%damagenumbers")
+@onready var chat_filter_toggle: CheckButton = get_node_or_null("%chatfilter")
 @onready var camera_zoom:       HSlider      = get_node_or_null("%camerazoom")
 @onready var camera_zoom_value: Label        = get_node_or_null("%camerazoomvalue")
 @onready var name_hue:          HSlider      = get_node_or_null("%namehue")
@@ -234,6 +235,8 @@ func _connect_controls() -> void:
 		window_size.item_selected.connect(_on_window_size_selected)
 	if damage_toggle != null:
 		damage_toggle.toggled.connect(_on_damage_numbers_toggled)
+	if chat_filter_toggle != null:
+		chat_filter_toggle.toggled.connect(_on_chat_filter_toggled)
 
 	if render_resolution != null:
 		render_resolution.clear()
@@ -312,6 +315,8 @@ func refresh() -> void:
 	_update_pacing_readout()
 	if damage_toggle != null:
 		damage_toggle.button_pressed = bool(Settings.get_value("damage_numbers"))
+	if chat_filter_toggle != null:
+		chat_filter_toggle.button_pressed = bool(Settings.get_value("chat_filter"))
 
 	if render_resolution != null:
 		render_resolution.selected = Settings.RENDER_RESOLUTIONS.find(
@@ -831,6 +836,12 @@ func _on_damage_numbers_toggled(pressed: bool) -> void:
 	if _refreshing:
 		return
 	Settings.set_value("damage_numbers", pressed)
+
+
+func _on_chat_filter_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("chat_filter", pressed)
 
 
 func _on_reset_pressed() -> void:

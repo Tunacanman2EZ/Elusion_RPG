@@ -2312,6 +2312,42 @@ measured: two whispers, chat shut, then open on World, and nothing anywhere.
 - This state is static on the HUD, per login. Every area has its own HUD, and
   kept per HUD, the same whisper was said again in every area walked into.
 
+### Chat safety: ignore, report, mute, the filter, new messages below
+
+Asked for after the chat sweep, for day 1. `_test_chat_filter`,
+`_test_chat_safety_menu` and `_test_staff_reports_and_mutes` hold the client;
+the server's rules are in the API's CLAUDE.md, "Chat: ignore, report, mute".
+
+- **Click a name in chat** for a menu: Whisper, Ignore, Report (five reasons),
+  and for staff above that player, Mute 10 minutes / 1 hour / 1 day and
+  Unmute. Not on your own name; Ignore is greyed on staff, which the server
+  refuses. The name is a `[url]` in the line's RichTextLabel
+  (`_clickable_name`, `_wire_name_click`), and the menu is one PopupMenu built
+  on first use.
+- **Commands**: `/help`, `/ignore`, `/unignore`, `/ignored`, and for staff
+  `/mute name minutes reason`, `/unmute`. Anything starting `/` and a letter
+  is a command and is never sent - a typo'd command said out loud in world is
+  worse than it not working.
+- **Ignoring takes their lines off the screen at once** (`forget_author`),
+  every tab, rather than waiting for the next poll to leave them out.
+- **A muted player's box says so before they type** (`_set_muted`, from the
+  read's `muted`), and a send refused for it says how long and why.
+- **The language filter** (`src/ui/chat/chatfilter.gd`, the `chat_filter`
+  setting, on by default, in Options). Whole words and their endings only -
+  "class", "assess" and Scunthorpe are left alone - with look-alike symbols
+  and stretched letters caught. Display only: the server keeps what was said.
+  `ChatPanel.shown_text()` is the one door, used by the log, captions and the
+  HUD's whisper pop-up. The list is ROT13 in the source.
+- **"New messages below"** under the log when a line arrives while the player
+  is reading further up. It goes when they reach the bottom or click it.
+- **Staff**: a Reports tab (one row per reported line, with who, why and how
+  many; Delete line, Mute 1 hour, Dismiss, or only "Open player" for a report
+  about your own rank), mute buttons and the mute's state in a player's
+  Actions tab, mutes on the record, and the Staff button counts open reports
+  from the poll (`_mark_open_reports`).
+- **Fixed while here**: a 429 in chat showed "one picture every few seconds"
+  for every kind, so typing fast was reported as a picture problem.
+
 ### Signing in, the way players will on day 1
 
 A sweep of the login screen with the real game against the real server found

@@ -149,6 +149,7 @@ const ENTRY_PLACEHOLDER_WEB := "Say something, or drop a picture on the game..."
 # list cannot drift apart. The crown is still inline BBCode at the art's own
 # 26x15 - a line of chat is one label and the badge has to flow with it.
 const NameTag := preload("res://src/shared/nametag.gd")
+const ChatFilter := preload("res://src/ui/chat/chatfilter.gd")
 const WebPage := preload("res://src/systems/webpage.gd")
 
 # The tint on the tab you are reading, against the ones you are not.
@@ -259,6 +260,9 @@ func _ready() -> void:
 		window.files_dropped.connect(_on_files_dropped)
 
 	_set_notice("")
+	_build_new_below()
+	if not Settings.changed.is_connected(_on_setting_changed):
+		Settings.changed.connect(_on_setting_changed)
 	_show_channel("world")
 
 	var timer := Timer.new()
@@ -577,8 +581,10 @@ func _append_to_log() -> void:
 	if follow:
 		if not _batching:
 			_scroll_to_end.call_deferred()
-	elif dropped > 0.0 and scroll != null:
-		scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - int(dropped))
+	else:
+		_show_new_below(true)
+		if dropped > 0.0 and scroll != null:
+			scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - int(dropped))
 
 
 var _batching: bool = false
@@ -696,6 +702,7 @@ func _render(keep_place: bool = false) -> void:
 	if reading_at >= 0:
 		_scroll_to.call_deferred(reading_at)
 	else:
+		_show_new_below(false)
 		_scroll_to_end.call_deferred()
 
 
@@ -837,8 +844,9 @@ func _node_for(line: Dictionary) -> Control:
 	# written in, exactly as it keeps the guild it was said from.
 	label.append_text("[color=#6b6055]%s[/color] %s%s%s: %s" % [
 		stamp, NameTag.bbcode_mark(rank), _guild_part(line),
-		NameTag.bbcode_name(_escape(who) + mark, line.get("name_hue")),
-		_escape(one_line(str(line.get("body", ""))))])
+		_clickable_name(line, NameTag.bbcode_name(_escape(who) + mark, line.get("name_hue"))),
+		_escape(shown_text(str(line.get("body", "")), _filtering()))])
+	_wire_name_click(label, line)
 	return label
 
 
@@ -877,7 +885,7 @@ func _picture_node(line: Dictionary) -> Control:
 	var holder := VBoxContainer.new()
 	holder.add_theme_constant_override("separation", 2)
 
-	var caption: String = one_line(str(line.get("body", "")))
+	var caption: String = shown_text(str(line.get("body", "")), _filtering())
 	var who: String = str(line.get("by", "?"))
 	var rank: String = str(line.get("role", "player"))
 	var header := RichTextLabel.new()
@@ -894,8 +902,9 @@ func _picture_node(line: Dictionary) -> Control:
 	# where the tag went missing, and nobody would ever work out why.
 	header.append_text("[color=#6b6055]%s[/color] %s%s%s: %s" % [
 		LocalTime.stamp(int(line.get("at", 0))), NameTag.bbcode_mark(rank), _guild_part(line),
-		NameTag.bbcode_name(_escape(who), line.get("name_hue")),
+		_clickable_name(line, NameTag.bbcode_name(_escape(who), line.get("name_hue"))),
 		_escape(caption) if caption != "" else "[color=#6b6055](a picture)[/color]"])
+	_wire_name_click(header, line)
 	holder.add_child(header)
 
 	var frame := TextureRect.new()
@@ -996,6 +1005,18 @@ func _process(delta: float) -> void:
 	_playing = alive
 	if _playing.is_empty():
 		set_process(false)
+
+
+static func shown_text(text: String, filtered: bool) -> String:
+	"""A player's words as the chat window draws them: one line, and with the
+	language filter over them when the player has it on. The HUD's whisper
+	pop-up uses this too, so the two never disagree."""
+	var line: String = one_line(text)
+	return ChatFilter.clean(line) if filtered else line
+
+
+func _filtering() -> bool:
+	return bool(Settings.get_value("chat_filter"))
 
 
 static func one_line(text: String) -> String:
@@ -1448,6 +1469,10 @@ func _apply_read(asked: String, data: Dictionary) -> void:
 	if data.has("world_image_wait"):
 		_world_wait = maxi(0, int(data.get("world_image_wait", 0)))
 		_world_wait_read_at = float(Time.get_ticks_msec()) / 1000.0
+	# AND WHETHER YOU MAY SPEAK AT ALL, for the same reason: said in the box
+	# before you type, not after you press Enter.
+	if data.has("muted"):
+		_set_muted(data.get("muted"))
 
 	# THE ANSWER MAY BE FOR A CHANNEL NOBODY IS LOOKING AT ANY MORE. Three
 	# seconds is long enough to change tab twice, and filing a world reply into
@@ -1487,6 +1512,8 @@ func _apply_read(asked: String, data: Dictionary) -> void:
 		_batching = false
 		if _batch_follow and not _redraw_on_next_read:
 			_scroll_to_end.call_deferred()
+		elif not _redraw_on_next_read:
+			_show_new_below(true)
 	# THE FIRST READ AFTER A RESET REPLACES THE SCREEN, empty answer or not.
 	if _redraw_on_next_read and asked == _channel:
 		_redraw_on_next_read = false
@@ -1556,6 +1583,299 @@ func _line_from_server(entry_data: Dictionary, pictures: Variant) -> Dictionary:
 	return line
 
 
+# =============================================================================
+# IGNORE, REPORT, MUTE - and the name you click to reach them
+# =============================================================================
+# Click a name in the log for a small menu: whisper, ignore, report the line,
+# and for staff, mute. The same things are commands (/help lists them). The
+# server decides every one of them - see IGNORE, REPORT, MUTE in app.py; this
+# is only the way to ask.
+
+const REPORT_CHOICES := [["spam", "Spam"], ["harassment", "Harassment"],
+	["hate", "Hate speech"], ["cheating", "Cheating or scams"], ["other", "Something else"]]
+const MUTE_CHOICES := [[10, "Mute 10 minutes"], [60, "Mute 1 hour"], [1440, "Mute 1 day"]]
+const MENU_WHISPER := 1
+const MENU_IGNORE := 2
+const MENU_REPORT := 10
+const MENU_MUTE := 20
+const MENU_UNMUTE := 30
+const RANK_ORDER := ["player", "mod", "dev", "owner"]
+const NEW_BELOW_TEXT := "New messages below - click to see them"
+const COMMANDS_HELP := "/w name text  whisper   /r text  answer the last whisper\n" \
+	+ "/ignore name   /unignore name   /ignored  who you are ignoring"
+const STAFF_COMMANDS_HELP := "\n/mute name minutes reason   /unmute name"
+
+var line_menu: PopupMenu = null
+var _menu_line: Dictionary = {}
+var new_below: Button = null
+# null, or {until, seconds_left, reason} from the last read - see _set_muted().
+var _muted: Variant = null
+
+
+func _clickable_name(line: Dictionary, name_bbcode: String) -> String:
+	"""The name wrapped in a link to its line's menu - not your own name, and
+	not a line the server has not numbered."""
+	var who: String = str(line.get("by", ""))
+	if int(line.get("id", 0)) <= 0 or who == "" or who.to_lower() == Api.username.to_lower():
+		return name_bbcode
+	return "[url=name]%s[/url]" % name_bbcode
+
+
+func _wire_name_click(label: RichTextLabel, line: Dictionary) -> void:
+	label.meta_underlined = false
+	label.meta_clicked.connect(func(_meta: Variant) -> void: open_line_menu(line))
+
+
+func _ensure_line_menu() -> PopupMenu:
+	if line_menu == null:
+		line_menu = PopupMenu.new()
+		line_menu.name = "linemenu"
+		add_child(line_menu)
+		line_menu.id_pressed.connect(func(id: int) -> void: _on_line_menu_id(id))
+	return line_menu
+
+
+static func rank_at(rank: String) -> int:
+	return maxi(0, RANK_ORDER.find(rank))
+
+
+func open_line_menu(line: Dictionary) -> void:
+	"""The menu for one line's author, at the mouse."""
+	var who: String = str(line.get("by", ""))
+	if who == "" or who.to_lower() == Api.username.to_lower():
+		return
+	var menu: PopupMenu = _ensure_line_menu()
+	menu.clear()
+	_menu_line = line
+	var rank: String = str(line.get("role", "player"))
+	menu.add_separator(who)
+	menu.add_item("Whisper", MENU_WHISPER)
+	menu.add_item("Ignore", MENU_IGNORE)
+	# STAFF CANNOT BE IGNORED - the server refuses it, so it is not offered.
+	if rank_at(rank) >= rank_at("mod"):
+		var at: int = menu.get_item_index(MENU_IGNORE)
+		menu.set_item_disabled(at, true)
+		menu.set_item_tooltip(at, "Staff cannot be ignored. Report the message instead.")
+	if int(line.get("id", 0)) > 0:
+		menu.add_separator("Report this message")
+		for i in REPORT_CHOICES.size():
+			menu.add_item(REPORT_CHOICES[i][1], MENU_REPORT + i)
+	var mine: int = rank_at("owner" if Api.is_owner else Api.role)
+	if mine >= rank_at("mod") and mine > rank_at(rank):
+		menu.add_separator("Staff")
+		for i in MUTE_CHOICES.size():
+			menu.add_item(MUTE_CHOICES[i][1], MENU_MUTE + i)
+		menu.add_item("Unmute", MENU_UNMUTE)
+	menu.reset_size()
+	if is_inside_tree():
+		menu.position = Vector2i(get_viewport().get_mouse_position())
+		menu.popup()
+
+
+func _on_line_menu_id(id: int) -> void:
+	var line: Dictionary = _menu_line
+	var who: String = str(line.get("by", ""))
+	if who == "":
+		return
+	if id == MENU_WHISPER:
+		_aim_whisper(who)
+		_show_channel("private")
+		if entry != null and entry.is_inside_tree():
+			entry.grab_focus()
+	elif id == MENU_IGNORE:
+		await ignore_player(who)
+	elif id >= MENU_REPORT and id < MENU_REPORT + REPORT_CHOICES.size():
+		await report_line(int(line.get("id", 0)), REPORT_CHOICES[id - MENU_REPORT][0])
+	elif id >= MENU_MUTE and id < MENU_MUTE + MUTE_CHOICES.size():
+		# THE LINE IS THE REASON. A mute needs one on the record, and the line
+		# that earned it is the most useful thing to put there.
+		await mute_player(who, int(MUTE_CHOICES[id - MENU_MUTE][0]),
+			"Said: \"%s\"" % one_line(str(line.get("body", ""))).left(120))
+	elif id == MENU_UNMUTE:
+		await unmute_player(who)
+
+
+func ignore_player(who: String) -> void:
+	var res: Dictionary = await Api.post("/api/ignores", {"username": who})
+	if not is_instance_valid(self):
+		return
+	if not res.get("ok", false):
+		_set_notice(_refusal(res))
+		return
+	var ignored: String = str(res.get("data", {}).get("username", who))
+	forget_author(ignored)
+	_set_notice("You will not see %s's messages. /unignore %s to undo." % [ignored, ignored])
+
+
+func forget_author(who: String) -> int:
+	"""Every line by `who`, out of every feed - ignoring somebody takes their
+	lines off the screen now, not when the next poll happens to leave them out."""
+	var gone: int = 0
+	for channel in _feeds:
+		var kept: Array = []
+		for line in _feeds[channel]["lines"]:
+			if line is Dictionary and str(line.get("by", "")).to_lower() == who.to_lower():
+				gone += 1
+				continue
+			kept.append(line)
+		_feeds[channel]["lines"] = kept
+	if gone > 0 and visible:
+		_render(true)
+	return gone
+
+
+func unignore_player(who: String) -> void:
+	var res: Dictionary = await Api.post("/api/ignores/remove", {"username": who})
+	if not is_instance_valid(self):
+		return
+	if not res.get("ok", false):
+		_set_notice(_refusal(res))
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	var heard: String = str(data.get("username", who))
+	if not bool(data.get("was_ignored", true)):
+		_set_notice("You were not ignoring %s." % heard)
+		return
+	_set_notice("You will see %s's messages again." % heard)
+	# Read the room again from its tail, with their lines in it.
+	_reset_feed(_channel)
+	_poll()
+
+
+func list_ignored() -> void:
+	var res: Dictionary = await Api.get_json("/api/ignores")
+	if not is_instance_valid(self):
+		return
+	if not res.get("ok", false):
+		_set_notice(_refusal(res))
+		return
+	var names: PackedStringArray = []
+	for row in res.get("data", {}).get("ignored", []):
+		if row is Dictionary:
+			names.append(str(row.get("username", "")))
+	_set_notice("You are not ignoring anybody." if names.is_empty()
+		else "Ignoring: %s. /unignore name to stop." % ", ".join(names))
+
+
+func report_line(message_id: int, reason: String) -> void:
+	var res: Dictionary = await Api.post("/api/chat/report", {"id": message_id, "reason": reason})
+	if not is_instance_valid(self):
+		return
+	if not res.get("ok", false):
+		_set_notice(_refusal(res))
+		return
+	_set_notice("You already reported that message." if bool(res.get("data", {}).get("already", false))
+		else "Reported. Thank you - staff will look at it.")
+
+
+func mute_player(who: String, minutes: int, reason: String) -> void:
+	var res: Dictionary = await Api.post("/api/staff/mute",
+		{"username": who, "minutes": minutes, "reason": reason})
+	if not is_instance_valid(self):
+		return
+	if not res.get("ok", false):
+		_set_notice(_refusal(res))
+		return
+	_set_notice("Muted %s for %s." % [who, _readable_wait(minutes * 60)])
+
+
+func unmute_player(who: String) -> void:
+	var res: Dictionary = await Api.post("/api/staff/unmute", {"username": who})
+	if not is_instance_valid(self):
+		return
+	_set_notice(_refusal(res) if not res.get("ok", false) else "%s can talk again." % who)
+
+
+static func _looks_like_command(text: String) -> bool:
+	return text.length() >= 2 and text.begins_with("/") and \
+		((text[1] >= "a" and text[1] <= "z") or (text[1] >= "A" and text[1] <= "Z"))
+
+
+func _run_command(text: String) -> void:
+	var bits: PackedStringArray = text.strip_edges().split(" ", false)
+	var command: String = bits[0].to_lower()
+	var arg: String = bits[1] if bits.size() > 1 else ""
+	match command:
+		"/help", "/commands", "/?":
+			_set_notice(COMMANDS_HELP + (STAFF_COMMANDS_HELP if Api.role_at_least("mod") else ""))
+		"/ignore", "/block":
+			if arg == "":
+				_set_notice("Try: /ignore name")
+			else:
+				await ignore_player(arg)
+		"/unignore", "/unblock":
+			if arg == "":
+				_set_notice("Try: /unignore name")
+			else:
+				await unignore_player(arg)
+		"/ignored", "/ignorelist", "/blocked":
+			await list_ignored()
+		"/mute":
+			var minutes: int = int(bits[2]) if bits.size() > 2 and bits[2].is_valid_int() else 0
+			if arg == "" or minutes <= 0 or bits.size() < 4:
+				_set_notice("Try: /mute name minutes reason")
+			else:
+				await mute_player(arg, minutes, " ".join(bits.slice(3)))
+		"/unmute":
+			if arg == "":
+				_set_notice("Try: /unmute name")
+			else:
+				await unmute_player(arg)
+		_:
+			_set_notice("There is no %s command. /help lists them." % command)
+
+
+func _set_muted(state: Variant) -> void:
+	"""The server's word on whether this player may speak, onto the box."""
+	_muted = state if state is Dictionary else null
+	if entry == null:
+		return
+	if _muted == null:
+		if entry.placeholder_text.begins_with("You are muted"):
+			entry.placeholder_text = entry_placeholder(WebPage.in_browser())
+		return
+	var line: String = "You are muted for %s more" % _readable_wait(int(_muted.get("seconds_left", 0)))
+	var reason: String = str(_muted.get("reason", ""))
+	entry.placeholder_text = line + (" - %s" % reason if reason != "" else "")
+
+
+func _build_new_below() -> void:
+	"""A bar under the log, shown when a line arrives while the player is
+	reading further up. Without it, the only sign that anybody spoke was a
+	scroll bar that got a little shorter."""
+	if scroll == null or new_below != null:
+		return
+	var rows: Node = scroll.get_parent()
+	if rows == null:
+		return
+	new_below = Button.new()
+	new_below.name = "newbelow"
+	new_below.text = NEW_BELOW_TEXT
+	new_below.focus_mode = Control.FOCUS_NONE
+	new_below.add_theme_font_size_override("font_size", 11)
+	new_below.add_theme_color_override("font_color", TAB_UNREAD)
+	new_below.visible = false
+	rows.add_child(new_below)
+	rows.move_child(new_below, scroll.get_index() + 1)
+	new_below.pressed.connect(func() -> void:
+		_show_new_below(false)
+		_scroll_to_end())
+	scroll.get_v_scroll_bar().value_changed.connect(func(_value: float) -> void:
+		if new_below.visible and _at_bottom():
+			_show_new_below(false))
+
+
+func _show_new_below(on: bool) -> void:
+	if new_below != null:
+		new_below.visible = on
+
+
+func _on_setting_changed(key: String, _value: Variant) -> void:
+	# THE FILTER APPLIES TO WHAT IS ALREADY ON SCREEN, both ways.
+	if key == "chat_filter" and visible:
+		_render(true)
+
+
 func _on_entry_submitted(_text: String) -> void:
 	_on_send_pressed()
 
@@ -1603,6 +1923,15 @@ func _on_send_pressed() -> void:
 		_whisper_with = bits[0].strip_edges()
 		_show_channel("private")
 		await _send("private", bits[1].strip_edges(), "")
+		return
+
+	# THE OTHER COMMANDS - /ignore, /report's cousins, /help. A line that starts
+	# with "/" and a letter is never sent to chat: a mistyped command said
+	# out loud in world is the one thing worse than it not working.
+	if _looks_like_command(text):
+		if entry != null:
+			entry.text = ""
+		await _run_command(text)
 		return
 
 	# A LINK ON ITS OWN IS A PICTURE. Nobody should have to find a button to
@@ -2268,8 +2597,12 @@ func _refusal(res: Dictionary) -> String:
 		return Api.no_answer_text()
 	if status == 401:
 		return "You are not signed in."
+	# THE SERVER'S WORDS FOR A 429 TOO. There are four of them - typing too
+	# fast, a picture too soon after the last, too many reports - and this
+	# used to answer all of them "one picture every few seconds", so a player
+	# typing quickly was told off about pictures.
 	if status == 429:
-		return "Slow down a moment - one picture every few seconds."
+		return said if said != "" else "Slow down a moment."
 	if status == 503:
 		return "This server cannot handle pictures yet (Pillow is not installed)." \
 			if OS.is_debug_build() else "This server cannot take pictures right now."

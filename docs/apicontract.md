@@ -528,12 +528,35 @@ the HUD polls anyway, carries:
 }
 ```
 
+The same answer carries **`open_reports`**: the number of reported chat lines
+waiting, for mod and up (`0` for everyone else). The HUD puts it on the Staff
+button.
+
 `whisper` is the newest private line sent TO the caller by somebody else
 (`null` if none; a picture alone reads `"(a picture)"`). `guild` and `friends`
 are the newest line ids in the caller's guild and among their friends, said by
 somebody else, `0` when none. The client keeps the last ids it has seen per
 login and treats a larger one as news: a whisper pops a message and marks the
 Chat button, and a room lights its tab. An older client ignores the key.
+
+**Ignore, report, mute.** Every chat read leaves out the players the caller
+ignores, and carries `"muted": null` or `{"until", "seconds_left", "reason"}`
+for the caller.
+
+| Route | Body | Answers |
+|---|---|---|
+| `GET /api/ignores` | | `{"ignored": [{"username", "since"}], "limit"}` |
+| `POST /api/ignores` | `{"username"}` | `200`; `400` yourself; `403` staff; `404`; `409` list full |
+| `POST /api/ignores/remove` | `{"username"}` | `200` with `was_ignored` |
+| `POST /api/chat/report` | `{"id", "reason"}` - spam, harassment, hate, cheating, other | `200` (`already` on a repeat); `400` your own line; `404` a line you were not shown; `429` |
+| `GET /api/staff/reports?state=open\|all` | mod | one entry per line: `reported`, `body`, `reports`, `reporters`, `reasons`, `actionable`, `line_exists` |
+| `POST /api/staff/reports/resolve` | mod; `{"message_id", "outcome": "dismissed"\|"actioned"}` | `200`; `404` nothing open, or out of your reach |
+| `POST /api/staff/mute` | mod; `{"username", "minutes", "reason"}` | `200`; `403` a mod over a day; `404` out of reach |
+| `POST /api/staff/unmute` | mod; `{"username"}` | `200` |
+
+A whisper, friend request or trade to somebody who ignores you is `403` with a
+sentence saying so. A muted player's `POST /api/chat/send` is `403` with how
+long is left and why.
 
 ---
 

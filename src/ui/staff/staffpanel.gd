@@ -71,6 +71,9 @@ const RANKS: PackedStringArray = ["player", "mod", "dev", "owner"]
 # takes. All within MAX_MOD_BAN_DAYS, so a mod gets every one of them and only
 # "Permanent" depends on rank.
 const BAN_PRESETS: Array[int] = [1, 7, 30]
+# Chat mutes, in minutes: ten, an hour, a day. A mod's ceiling is the day.
+const MUTE_PRESETS: Array[int] = [10, 60, 1440]
+const REPORTS_TAB := 2
 
 const ARM_SECONDS := 4.0
 const ARMED_PROMPT := "Press again within %d seconds to confirm." % int(ARM_SECONDS)
@@ -109,8 +112,8 @@ const SHOW_FILTERS: Array = [
 # What the record line counts, in the order it says them. The list row leaves
 # notes out - a note is not a sanction, and a row saying "4 notes" reads as
 # trouble when it may be four mods writing "helpful in chat".
-const RECORD_KINDS: PackedStringArray = ["ban", "kick", "warn", "note"]
-const ROW_RECORD_KINDS: PackedStringArray = ["ban", "kick", "warn"]
+const RECORD_KINDS: PackedStringArray = ["ban", "kick", "mute", "warn", "note"]
+const ROW_RECORD_KINDS: PackedStringArray = ["ban", "kick", "mute", "warn"]
 
 # The dropdown's words for the server's action names. A kind this build has
 # never heard of still appears, under its own name - the list itself comes
@@ -119,6 +122,7 @@ const KIND_LABELS: Dictionary = {
 	"ban": "Bans", "unban": "Unbans", "kick": "Kicks", "warn": "Warnings",
 	"note": "Notes", "role": "Rank changes", "grant": "Item grants",
 	"teleport": "Teleports", "chat_delete": "Chat deletions",
+	"mute": "Chat mutes", "unmute": "Unmutes", "report": "Reports closed",
 	"guild_rename": "Guild renames", "guild_disband": "Guild disbands",
 	"maintenance": "Maintenance", "minbuild": "Minimum build", "pvp": "PvP switch",
 }
@@ -127,6 +131,7 @@ const KIND_LABELS: Dictionary = {
 # that player. Guild actions name a guild; maintenance names "server".
 const ACCOUNT_KINDS: PackedStringArray = [
 	"ban", "unban", "kick", "warn", "note", "role", "grant", "teleport", "chat_delete",
+	"mute", "unmute", "report",
 ]
 
 const COLOUR_ONLINE := Color(0.55, 0.9, 0.5)
@@ -292,6 +297,10 @@ static func actions_for(viewer_rank: String, entry: Dictionary) -> Dictionary:
 
 	return {
 		"kick": reach,
+		# A chat mute is within the reach of any rank that can kick; unmute
+		# only when there is a mute to lift.
+		"mute": reach,
+		"unmute": reach and entry.get("mute") is Dictionary,
 		"ban": reach,
 		"ban_permanent": reach and senior,
 		"unban": reach and bool(entry.get("banned", false)),
@@ -383,7 +392,7 @@ static func describe_record(tally: Variant, kinds: PackedStringArray = RECORD_KI
 	if not (tally is Dictionary):
 		return ""
 	var words: Dictionary = {
-		"ban": ["ban", "bans"], "kick": ["kick", "kicks"],
+		"ban": ["ban", "bans"], "kick": ["kick", "kicks"], "mute": ["mute", "mutes"],
 		"warn": ["warning", "warnings"], "note": ["note", "notes"],
 	}
 	var parts: PackedStringArray = []
@@ -426,6 +435,12 @@ static func describe_entry(entry: Dictionary) -> String:
 			line = "%s teleported %s" % [by, target]
 		"chat_delete":
 			line = "%s deleted a chat line by %s" % [by, target]
+		"mute":
+			line = "%s muted %s" % [by, target]
+		"unmute":
+			line = "%s unmuted %s" % [by, target]
+		"report":
+			line = "%s closed a report on %s" % [by, target]
 		"guild_rename":
 			line = "%s renamed the guild %s" % [by, target]
 		"guild_disband":
@@ -441,6 +456,49 @@ static func describe_entry(entry: Dictionary) -> String:
 	return line
 
 
+static func describe_mute(mute: Variant) -> String:
+	if not (mute is Dictionary):
+		return "Can talk in chat"
+	var line: String = "Muted in chat until %s  (%s left)" % [
+		LocalTime.full(int(mute.get("until", 0))),
+		describe_minutes(int(mute.get("seconds_left", 0)))]
+	var reason: String = str(mute.get("reason", ""))
+	if reason != "":
+		line += "\n\"%s\"" % reason
+	return line
+
+
+static func describe_minutes(seconds: int) -> String:
+	# "10 minutes", "1 hour", "1 day" - for a mute button and a mute's time left.
+	var minutes: int = maxi(1, int(ceil(seconds / 60.0)))
+	@warning_ignore("integer_division")
+	var days: int = minutes / 1440
+	@warning_ignore("integer_division")
+	var hours: int = minutes / 60
+	if minutes % 1440 == 0:
+		return "%d day%s" % [days, "" if days == 1 else "s"]
+	if minutes >= 60 and minutes % 60 == 0:
+		return "%d hour%s" % [hours, "" if hours == 1 else "s"]
+	return "%d minute%s" % [minutes, "" if minutes == 1 else "s"]
+
+
+static func describe_report(report: Dictionary, server_now: int) -> String:
+	# "bob in world, 3 min ago - reported 2x (spam, cheating) by ann, cat"
+	var reasons: PackedStringArray = []
+	var tally: Variant = report.get("reasons", {})
+	if tally is Dictionary:
+		for reason in tally:
+			reasons.append(str(reason))
+	var reporters: PackedStringArray = []
+	for who in report.get("reporters", []):
+		reporters.append(str(who))
+	var times: int = int(report.get("reports", 1))
+	return "%s in %s, %s - reported%s (%s) by %s" % [
+		str(report.get("reported", "?")), str(report.get("channel", "?")),
+		LocalTime.ago(int(report.get("said_at", 0)), server_now) if server_now > 0 else "earlier",
+		"" if times <= 1 else " %dx" % times, ", ".join(reasons), ", ".join(reporters)]
+
+
 static func target_is_account(entry: Dictionary) -> bool:
 	# Whether a log line's target is a player the panel can open. "everyone"
 	# is what a mass teleport names, and a guild action names a guild.
@@ -452,11 +510,11 @@ static func colour_for_kind(kind: String) -> Color:
 	match kind:
 		"ban":
 			return COLOUR_BANNED
-		"kick", "warn":
+		"kick", "warn", "mute":
 			return COLOUR_PROBLEM
 		"note":
 			return COLOUR_NOTE
-		"unban":
+		"unban", "unmute":
 			return COLOUR_OK
 	return COLOUR_ENTRY
 
@@ -500,6 +558,7 @@ func _ready() -> void:
 	# after its child, and node names in this project are lowercase.
 	tabs.set_tab_title(0, "Players")
 	tabs.set_tab_title(1, "Log")
+	_build_reports_tab()
 	tabs.tab_changed.connect(_on_tab_changed)
 	detail_tabs.set_tab_title(0, "Actions")
 	detail_tabs.set_tab_title(1, "Record")
@@ -547,6 +606,7 @@ func _ready() -> void:
 		ban_row.move_child(button, ban_row.get_child_count() - 2)
 		_preset_buttons.append(button)
 
+	_build_mute_row()
 	_show_detail({})
 
 
@@ -568,6 +628,8 @@ func _process(delta: float) -> void:
 		# Not mid-search either: the box holds half a name until the pause.
 		if tabs.current_tab == 0 and _search_countdown <= 0.0:
 			_load("refresh")
+		elif tabs.current_tab == REPORTS_TAB:
+			_load_reports()
 
 
 # =============================================================================
@@ -605,12 +667,17 @@ func _on_tab_changed(index: int) -> void:
 	# visits to this panel are to act on somebody, not to read history.
 	if index == 1 and not _log_loaded:
 		await _load_log("fresh")
+	elif index == REPORTS_TAB:
+		await _load_reports()
 
 
 func _on_refresh_pressed() -> void:
 	_seconds_until_refresh = AUTO_REFRESH_SECONDS
 	if tabs.current_tab == 1:
 		await _load_log("fresh")
+		return
+	if tabs.current_tab == REPORTS_TAB:
+		await _load_reports()
 		return
 	await _load("refresh")
 	if _selected != "":
@@ -884,6 +951,14 @@ func _show_detail(entry: Dictionary) -> void:
 		button.disabled = not can["ban"]
 	permanent_button.disabled = not can["ban_permanent"]
 	unban_button.disabled = not can["unban"]
+	if mute_label != null:
+		mute_label.text = describe_mute(entry.get("mute"))
+		mute_label.add_theme_color_override("font_color",
+			COLOUR_PROBLEM if entry.get("mute") is Dictionary else COLOUR_OFFLINE)
+	for button in _mute_buttons:
+		button.disabled = not can["mute"]
+	if unmute_button != null:
+		unmute_button.disabled = not can["unmute"]
 	note_input.editable = can["note"]
 	note_button.disabled = not can["note"]
 	warn_button.disabled = not can["note"]
@@ -1335,6 +1410,11 @@ func _on_action_pressed(button: Button, action: String, days: int) -> void:
 
 	var key: String = "%s:%d:%s" % [action, days, _selected]
 
+	if action == "mute" and reason_input.text.strip_edges() == "":
+		_say("Type a reason first - every mute needs one.", false)
+		reason_input.grab_focus()
+		return
+
 	if action == "ban" and reason_input.text.strip_edges() == "":
 		# Asked for BEFORE arming. The server requires one, and a confirm
 		# that then fails on a missing reason is two clicks for an error.
@@ -1371,6 +1451,10 @@ func _confirm_text(key: String) -> String:
 			return "Confirm permanent?" if days < 0 else "Confirm %dd?" % days
 		"unban":
 			return "Confirm unban?"
+		"mute":
+			return "Confirm %s?" % describe_minutes(days * 60)
+		"unmute":
+			return "Confirm unmute?"
 		"promote", "demote":
 			return "Confirm?"
 	return "Confirm?"
@@ -1410,6 +1494,11 @@ func _perform(action: String, days: int, entry: Dictionary) -> void:
 			res = await Api.post("/api/staff/ban", body)
 		"unban":
 			res = await Api.post("/api/staff/unban", {"username": username})
+		"mute":
+			# `days` carries minutes for a mute - see MUTE_PRESETS.
+			res = await Api.post("/api/staff/mute", {"username": username, "minutes": days, "reason": reason})
+		"unmute":
+			res = await Api.post("/api/staff/unmute", {"username": username})
 		"promote", "demote":
 			var to: String = str(can["promote_to" if action == "promote" else "demote_to"])
 			res = await Api.put("/api/staff/role", {"username": username, "role": to})
@@ -1441,6 +1530,10 @@ func _perform(action: String, days: int, entry: Dictionary) -> void:
 			_say("Banned %s %s." % [username, "permanently" if days < 0 else "for %d day%s" % [days, "" if days == 1 else "s"]], true)
 		"unban":
 			_say("Unbanned %s. They can log in again." % username, true)
+		"mute":
+			_say("Muted %s in chat for %s." % [username, describe_minutes(days * 60)], true)
+		"unmute":
+			_say("%s can talk in chat again." % username, true)
 		"promote", "demote":
 			_say("%s is now %s." % [username, str(data.get("role", "?")) if data is Dictionary else "?"], true)
 
@@ -1453,3 +1546,214 @@ func _perform(action: String, days: int, entry: Dictionary) -> void:
 func _say(line: String, good: bool) -> void:
 	notice_label.text = line
 	notice_label.add_theme_color_override("font_color", COLOUR_OK if good else COLOUR_PROBLEM)
+
+
+# =============================================================================
+# CHAT MUTES - in the Actions tab, under the bans
+# =============================================================================
+
+var mute_label: Label = null
+var unmute_button: Button = null
+var _mute_buttons: Array[Button] = []
+
+
+func _build_mute_row() -> void:
+	"""Built here like the ban presets, so the lengths live in MUTE_PRESETS and
+	an editor re-save of the scene cannot lose them."""
+	if unban_button == null or mute_label != null:
+		return
+	if reason_input != null:
+		reason_input.placeholder_text = "Reason (needed to ban or mute)"
+	var actions: Node = unban_button.get_parent()
+	mute_label = Label.new()
+	mute_label.name = "staffmutelabel"
+	mute_label.add_theme_font_size_override("font_size", 12)
+	mute_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	actions.add_child(mute_label)
+	actions.move_child(mute_label, unban_button.get_index() + 1)
+	var row := HBoxContainer.new()
+	row.name = "staffmuterow"
+	actions.add_child(row)
+	actions.move_child(row, mute_label.get_index() + 1)
+	for minutes in MUTE_PRESETS:
+		var button := Button.new()
+		button.text = "Mute %s" % describe_minutes(minutes * 60)
+		button.focus_mode = Control.FOCUS_NONE
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.tooltip_text = "Stops them talking in every chat channel. Needs a reason. A mod's longest is a day."
+		button.pressed.connect(_on_action_pressed.bind(button, "mute", minutes))
+		row.add_child(button)
+		_mute_buttons.append(button)
+	unmute_button = Button.new()
+	unmute_button.text = "Unmute"
+	unmute_button.focus_mode = Control.FOCUS_NONE
+	unmute_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	unmute_button.pressed.connect(_on_action_pressed.bind(unmute_button, "unmute", 0))
+	row.add_child(unmute_button)
+
+
+# =============================================================================
+# REPORTS - chat lines players handed to staff
+# =============================================================================
+# One row per reported line, with how many people reported it and why. The
+# line is the server's copy, so it reads the same after it is deleted. What
+# can be done is what the server says YOU can do: a mod does not close a
+# report about another mod.
+
+var reports_box: VBoxContainer = null
+var reports_list: VBoxContainer = null
+var reports_empty: Label = null
+var _reports: Array = []
+var _reports_now: int = 0
+var _reports_open: int = 0
+var _reports_generation: int = 0
+
+
+func _build_reports_tab() -> void:
+	if tabs == null or reports_box != null:
+		return
+	reports_box = VBoxContainer.new()
+	reports_box.name = "reports"
+	reports_box.add_theme_constant_override("separation", 6)
+	tabs.add_child(reports_box)
+	tabs.move_child(reports_box, REPORTS_TAB)
+	reports_empty = Label.new()
+	reports_empty.text = "No reported lines waiting."
+	reports_empty.add_theme_color_override("font_color", COLOUR_OFFLINE)
+	reports_box.add_child(reports_empty)
+	var scroller := ScrollContainer.new()
+	scroller.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroller.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	reports_box.add_child(scroller)
+	reports_list = VBoxContainer.new()
+	reports_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reports_list.add_theme_constant_override("separation", 8)
+	scroller.add_child(reports_list)
+	_title_reports_tab()
+
+
+func _title_reports_tab() -> void:
+	if tabs != null and reports_box != null:
+		tabs.set_tab_title(reports_box.get_index(),
+			"Reports" if _reports_open <= 0 else "Reports (%d)" % _reports_open)
+
+
+func _load_reports() -> void:
+	_reports_generation += 1
+	var asked: int = _reports_generation
+	var res: Dictionary = await Api.get_json("/api/staff/reports")
+	if not is_instance_valid(self) or not is_inside_tree() or asked != _reports_generation:
+		return
+	if not res.get("ok", false):
+		_say("Could not read the reports: %s" % str(res.get("error", "?")), false)
+		return
+	apply_reports(res.get("data", {}))
+
+
+func apply_reports(data: Variant) -> void:
+	"""One answer from GET /api/staff/reports onto the tab. Split from the
+	request so the suite can hand it an answer and look."""
+	if not (data is Dictionary):
+		return
+	_reports = []
+	for report in data.get("reports", []):
+		if report is Dictionary:
+			_reports.append(report)
+	_reports_now = int(data.get("now", 0))
+	_reports_open = int(data.get("open", _reports.size()))
+	_title_reports_tab()
+	_render_reports()
+
+
+func _render_reports() -> void:
+	if reports_list == null:
+		return
+	for child in reports_list.get_children():
+		reports_list.remove_child(child)
+		child.queue_free()
+	reports_empty.visible = _reports.is_empty()
+	for report in _reports:
+		reports_list.add_child(_make_report_row(report))
+
+
+func _make_report_row(report: Dictionary) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	var head := Label.new()
+	head.text = describe_report(report, _reports_now)
+	head.add_theme_font_size_override("font_size", 11)
+	head.add_theme_color_override("font_color", COLOUR_PROBLEM)
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(head)
+	var said := Label.new()
+	var body: String = str(report.get("body", ""))
+	said.text = "\"%s\"" % body if body != "" else "(a picture)"
+	said.add_theme_color_override("font_color", COLOUR_ENTRY)
+	said.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(said)
+
+	var row := HBoxContainer.new()
+	var who: String = str(report.get("reported", ""))
+	var message_id: int = int(report.get("message_id", 0))
+	var open_button := Button.new()
+	open_button.text = "Open %s" % who
+	open_button.focus_mode = Control.FOCUS_NONE
+	open_button.pressed.connect(func() -> void: _open_player(who))
+	row.add_child(open_button)
+	if bool(report.get("actionable", false)):
+		if bool(report.get("line_exists", false)):
+			var delete := Button.new()
+			delete.text = "Delete line"
+			delete.focus_mode = Control.FOCUS_NONE
+			delete.pressed.connect(func() -> void: _act_on_report("delete", message_id, who, body))
+			row.add_child(delete)
+		var mute := Button.new()
+		mute.text = "Mute 1 hour"
+		mute.focus_mode = Control.FOCUS_NONE
+		mute.pressed.connect(func() -> void: _act_on_report("mute", message_id, who, body))
+		row.add_child(mute)
+		var dismiss := Button.new()
+		dismiss.text = "Dismiss"
+		dismiss.tooltip_text = "Nothing wrong with it. Closes every report on this line."
+		dismiss.focus_mode = Control.FOCUS_NONE
+		dismiss.pressed.connect(func() -> void: _act_on_report("dismissed", message_id, who, body))
+		row.add_child(dismiss)
+	else:
+		var note := Label.new()
+		note.text = "Not yours to judge (%s)." % str(report.get("reported_role", "staff"))
+		note.add_theme_color_override("font_color", COLOUR_OFFLINE)
+		row.add_child(note)
+	box.add_child(row)
+	box.add_child(HSeparator.new())
+	return box
+
+
+func _act_on_report(what: String, message_id: int, who: String, body: String) -> void:
+	"""Delete the line, mute who said it, or dismiss - then close the report
+	as actioned or dismissed. Deleting closes it on the server by itself."""
+	if _acting:
+		return
+	_acting = true
+	var res: Dictionary
+	match what:
+		"delete":
+			res = await Api.post("/api/chat/delete", {"id": message_id})
+		"mute":
+			res = await Api.post("/api/staff/mute", {"username": who, "minutes": 60,
+				"reason": "Reported: \"%s\"" % body.left(120)})
+			if res.get("ok", false):
+				res = await Api.post("/api/staff/reports/resolve",
+					{"message_id": message_id, "outcome": "actioned"})
+		_:
+			res = await Api.post("/api/staff/reports/resolve",
+				{"message_id": message_id, "outcome": what})
+	_acting = false
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_say("Refused: %s" % str(res.get("error", "unknown error")), false)
+	else:
+		_say({"delete": "Deleted %s's line." % who, "mute": "Muted %s for an hour." % who}.get(
+			what, "Dismissed the report on %s's line." % who), true)
+	await _load_reports()
+

@@ -135,6 +135,11 @@ const DEFAULTS := {
 	# because a screen full of them is a real complaint.
 	"damage_numbers": true,
 
+	# THE CHAT LANGUAGE FILTER. On by default: a new player's first minute in
+	# world chat should not be the worst of it, and anyone who wants it raw
+	# can say so. Display only - see src/ui/chat/chatfilter.gd.
+	"chat_filter": true,
+
 	# HOW CLOSE THE CAMERA SITS. 3.0 is what all four class scenes were built
 	# with and is the default, so nobody who never opens this sees a change.
 	# Lower numbers pull back and show more of the world.
@@ -859,6 +864,9 @@ func _apply(key: String, value: Variant) -> void:
 		"damage_numbers":
 			# Read where the labels are spawned rather than pushed anywhere —
 			# see player.gd and baseenemy.gd. Nothing to apply.
+			pass
+		"chat_filter":
+			# The chat window listens on `changed` and redraws its log.
 			pass
 
 

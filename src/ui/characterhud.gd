@@ -670,6 +670,21 @@ func _style_staff_row_button(button: Button) -> void:
 	button.add_theme_color_override("font_color", Color(1.0, 0.78, 0.35))
 
 
+const STAFF_BUTTON_TEXT := "Staff"
+
+
+func _mark_open_reports(count: int) -> void:
+	"""Lines players reported, still waiting for staff, on the Staff button -
+	a report nobody sees is a report nobody reads. The server sends 0 to
+	anyone who is not staff."""
+	var staff_button: Button = get_node_or_null("%staffbutton") as Button
+	if staff_button == null or not is_staff():
+		return
+	staff_button.text = STAFF_BUTTON_TEXT if count <= 0 else "%s (%d)" % [STAFF_BUTTON_TEXT, count]
+	staff_button.tooltip_text = "Players, sanctions, notes and the moderation log" + (
+		"" if count <= 0 else "\n%d reported line%s waiting - see the Reports tab." % [count, "" if count == 1 else "s"])
+
+
 static func is_staff() -> bool:
 	# Mod and up, which is what require_role("mod") admits on the server.
 	# The owner is asked for by name as well as by rank, because Api.role is
@@ -1317,6 +1332,7 @@ func _apply_broadcast(data: Dictionary) -> void:
 	_read_trade(data.get("trade"))
 	_read_trade_resync(data.get("trade_resync"))
 	_read_chat_news(data.get("chat_news"))
+	_mark_open_reports(int(data.get("open_reports", 0)))
 	# THE FIRST ANSWER IS HISTORY, NOT NEWS. A poll from cursor 0 is answered
 	# with the recent TAIL - up to a week of notices at once - and every one of
 	# them used to pop the box on login: "Update in progress", "The server is
@@ -1472,7 +1488,8 @@ func _whisper_from(who: String, body: String) -> void:
 		chat_panel.whisper_arrived(who)
 	if not chat_open:
 		_whisper_waiting = true
-		_pop_message("%s whispers: %s" % [who, ChatPanelScript.one_line(body)], WHISPER_COLOUR)
+		_pop_message("%s whispers: %s" % [who, ChatPanelScript.shown_text(body,
+			bool(Settings.get_value("chat_filter")))], WHISPER_COLOUR)
 		_mark_chat_button(true)
 
 
