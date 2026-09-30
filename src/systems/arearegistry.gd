@@ -88,8 +88,19 @@ var _has_pending_spawn: bool = false
 var _spawn_wait_left: float = 0.0
 
 
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
+
+
 func _ready() -> void:
 	_update_processing()
+
+	# BLACK PAST THE EDGE OF THE MAP, GREY IN THE GAPS OF ITS TILES. The screen
+	# is made black here, at runtime, and each area is given a backdrop the
+	# grey the tiles were painted over (mapbackdrop.gd has the whole story).
+	# project.godot keeps the engine's grey, so the editor shows a scene the
+	# way the game does.
+	RenderingServer.set_default_clear_color(MapBackdrop.OUTSIDE)
+	get_tree().scene_changed.connect(_on_scene_changed)
 
 	if not OS.is_debug_build():
 		return
@@ -106,6 +117,14 @@ func _ready() -> void:
 				% [area_id, path] + "because WorldMap.area_id() derives it that way.")
 
 	print("[BOOT] AreaRegistry: %d areas" % AREAS.size())
+
+
+func _on_scene_changed() -> void:
+	var scene: Node = get_tree().current_scene
+	if scene == null or not AREAS.values().has(scene.scene_file_path):
+		return
+	if scene.get_node_or_null("mapbackdrop") == null:
+		MapBackdrop.add_to(scene)
 
 
 # =============================================================================

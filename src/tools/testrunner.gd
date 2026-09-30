@@ -165,6 +165,10 @@ func _run_all() -> void:
 	_test_skill_xp_rounds_like_the_server()
 	await _test_game_keys_are_not_menu_keys()
 	_test_staff_logins_take_a_code()
+	_test_chat_is_one_line_per_message()
+	await _test_chat_keeps_your_place()
+	await _test_whispers_reach_you()
+	_test_black_past_the_map()
 
 
 # =============================================================================
@@ -12134,9 +12138,11 @@ func _test_the_browser_build() -> void:
 		and field_code.find("player.reset_physics_interpolation()") != -1
 		and tele_code.find("snap_camera()") > tele_code.find("body.reset_physics_interpolation()")
 		and tele_code.find("body.reset_physics_interpolation()") != -1)
+	# BLACK AT RUNTIME, NOT IN project.godot. Set there, the editor drew every
+	# gap in every tile black as well; see the MAP BACKDROP section.
 	check("  and a frame with no scene in it yet is black, not the engine's grey",
-		ProjectSettings.get_setting("rendering/environment/defaults/default_clear_color") == Color(0, 0, 0, 1),
-		ProjectSettings.get_setting("rendering/environment/defaults/default_clear_color"))
+		RenderingServer.get_default_clear_color().is_equal_approx(Color(0, 0, 0, 1)),
+		RenderingServer.get_default_clear_color())
 
 	# ---- pictures in chat, the browser's way ------------------------------------
 	var Chat: Script = load("res://src/ui/chat/chatpanel.gd")
@@ -12479,3 +12485,335 @@ func _test_staff_logins_take_a_code() -> void:
 		adopt.contains("staff_unprotected = bool(data.get(\"staff_unprotected\", false))")
 		and hud_ready.contains("_warn_unprotected_staff()"))
 	print("  staff code: the step, the adopt gate, the box, the order, the once-only notice")
+
+
+func _test_chat_is_one_line_per_message() -> void:
+	section("CHAT - one message is one line, with nothing invisible in it")
+
+	var ChatPanel: Script = load("res://src/ui/chat/chatpanel.gd") as Script
+	check("the chat panel script loads", ChatPanel != null and ChatPanel.can_instantiate())
+	if ChatPanel == null or not ChatPanel.can_instantiate():
+		return
+	check("newlines are spaces: 150 of them used to be 150 blank lines on every screen",
+		ChatPanel.one_line("top" + "\n".repeat(150) + "bottom") == "top bottom")
+	check("  so a player cannot put a fake [SERVER] line on a line of its own",
+		not ChatPanel.one_line("hi\n12:00 [SERVER] restarting").contains("\n"))
+	check("a bidi override and zero-width characters are dropped",
+		ChatPanel.one_line(String.chr(0x202E) + "evil" + String.chr(0x200B) + String.chr(0xFEFF)) == "evil")
+	check("  and a message of nothing else comes out empty",
+		ChatPanel.one_line(String.chr(0x200B) + String.chr(0x2060)) == "")
+	var family: String = String.chr(0x1F468) + String.chr(0x200D) + String.chr(0x1F469)
+	check("emoji joined with ZWJ keep the joiner", ChatPanel.one_line(family + " hi") == family + " hi")
+	check("tabs and runs of spaces are one space", ChatPanel.one_line("a\t\t b   c") == "a b c")
+
+	# THE REAL LINE, as the log builds it - not the helper alone.
+	var chat: Node = ChatPanel.new()
+	var label: RichTextLabel = chat._node_for({"kind": "chat", "by": "griefer", "role": "player",
+		"body": "hi\n\n\n\n12:00 [SERVER] Server restarting", "at": 1700000000}) as RichTextLabel
+	var drawn: String = label.get_parsed_text() if label != null else ""
+	check("a chat line is drawn as one line, and the [ stays a literal bracket",
+		label != null and not drawn.contains("\n") and drawn.contains("hi 12:00 [SERVER] Server restarting"), drawn)
+	var picture: Control = chat._node_for({"kind": "image", "by": "griefer", "role": "player",
+		"image": "", "body": "look\n\n\nhere", "at": 1700000000})
+	var header: RichTextLabel = null
+	if picture != null:
+		for child in picture.get_children():
+			if child is RichTextLabel:
+				header = child
+				break
+	check("  and so is a picture's caption", header != null and header.get_parsed_text().contains("look here")
+		and not header.get_parsed_text().contains("\n"), header.get_parsed_text() if header else "")
+	if label != null:
+		label.free()
+	if picture != null:
+		picture.free()
+	chat.free()
+	print("  chat lines: newlines, fake server lines, invisible characters, emoji, spaces, the drawn line, captions")
+
+
+func _test_chat_keeps_your_place() -> void:
+	section("CHAT - a new line is added, not the log rebuilt; reading up stays put")
+
+	var packed: PackedScene = load("res://scene/ui/chat/chatpanel.tscn") as PackedScene
+	if packed == null or not packed.can_instantiate():
+		check("chatpanel.tscn loads", false)
+		return
+	var chat: Control = packed.instantiate() as Control
+	add_child(chat)
+	chat.visible = true
+	chat.set_process(false)
+	# NOTHING ELSE WRITES THE FEED WHILE THIS RUNS. The panel polls a real
+	# server if one is answering on this machine - it did, and its hundred
+	# lines of world chat landed in the middle of these checks. The first poll
+	# is let finish, then the timer is stopped and the gate held shut.
+	var poll_timer: Timer = chat.get_node_or_null("ChatPoll") as Timer
+	if poll_timer != null:
+		poll_timer.stop()
+	for i in 300:
+		if not chat._in_flight:
+			break
+		await get_tree().process_frame
+	chat._in_flight = true
+	await get_tree().process_frame
+	var now: int = int(Time.get_unix_time_from_system())
+	var said := func(n: int) -> Dictionary:
+		return {"kind": "chat", "by": "someone", "role": "player", "at": now, "id": 50000 + n,
+			"body": "line %d - long enough to take up most of a row in the chat window, and then some" % n}
+	# THE REAL PATH: a tab opened (a reset), and its first read arriving.
+	chat._show_channel("world")
+	var tail: Array = []
+	for i in 60:
+		tail.append(said.call(i))
+	chat._apply_read("world", {"channel": "world", "available": true, "messages": tail,
+		"removed": [], "latest_id": 50059})
+	for i in 4:
+		await get_tree().process_frame
+	check("the first read after a tab opens is drawn once, with nothing left over",
+		chat.lines_box.get_child_count() == 60 and not chat._redraw_on_next_read,
+		chat.lines_box.get_child_count())
+	var sc: ScrollContainer = chat.scroll
+	var bar: VScrollBar = sc.get_v_scroll_bar()
+	var log_box: Node = chat.lines_box
+	check("sixty lines make a log taller than the window", bar.max_value > bar.page + 200,
+		[bar.max_value, bar.page])
+	var first_before: Node = log_box.get_child(0)
+	sc.scroll_vertical = 40
+	await get_tree().process_frame
+	chat._add_line("world", said.call(60))
+	for i in 3:
+		await get_tree().process_frame
+	check("a new line is added to the log, not the log rebuilt",
+		log_box.get_child(0) == first_before and log_box.get_child_count() == 61, log_box.get_child_count())
+	check("and a player reading further up stays where they were", sc.scroll_vertical == 40, sc.scroll_vertical)
+
+	chat._apply_read("world", {"channel": "world", "available": true, "messages": [],
+		"removed": [50000 + 59], "latest_id": 50060})
+	for i in 3:
+		await get_tree().process_frame
+	check("a line taken down by staff does not pull a reader to the bottom either",
+		sc.scroll_vertical == 40 and log_box.get_child_count() == 60, [sc.scroll_vertical, log_box.get_child_count()])
+
+	sc.scroll_vertical = int(bar.max_value)
+	await get_tree().process_frame
+	chat._add_line("world", said.call(61))
+	for i in 3:
+		await get_tree().process_frame
+	check("a player reading the newest lines follows the new one",
+		float(sc.scroll_vertical) + bar.page >= bar.max_value - 2, [sc.scroll_vertical, bar.page, bar.max_value])
+
+	for i in range(62, 62 + chat.LINES_KEPT):
+		chat._add_line("world", said.call(i))
+	await get_tree().process_frame
+	var kept: Array = chat._feeds["world"]["lines"]
+	var top: RichTextLabel = log_box.get_child(0) as RichTextLabel
+	check("past the cap, the oldest line leaves the screen with the feed",
+		log_box.get_child_count() == kept.size() and kept.size() == chat.LINES_KEPT
+		and top != null and top.get_parsed_text().contains("line %d " % int(kept[0]["id"] - 50000)),
+		[log_box.get_child_count(), kept.size()])
+
+	# SWITCHING AWAY AND BACK: the old lines stay up while the tail comes, and
+	# the tail replaces them rather than landing underneath.
+	chat._show_channel("guild")
+	chat._show_channel("world")
+	var drawn_while_waiting: int = log_box.get_child_count()
+	chat._apply_read("world", {"channel": "world", "available": true,
+		"messages": [said.call(900), said.call(901)], "removed": [], "latest_id": 50901})
+	await get_tree().process_frame
+	check("coming back to a tab shows its old lines until the tail arrives, then only the tail",
+		drawn_while_waiting > 2 and log_box.get_child_count() == 2, [drawn_while_waiting, log_box.get_child_count()])
+
+	# A READ THAT LEFT BEFORE A RESET is thrown away: its lines came after the
+	# old cursor, and /r showed a reply with none of the conversation.
+	var poll_body := _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _poll(")
+	check("a poll answer from before a feed reset is dropped, and the tail asked for",
+		poll_body.contains("if generation != _feed_generation:")
+		and poll_body.find("if generation != _feed_generation:") < poll_body.find("_apply_read(asked, data)"))
+
+	var send_body := _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _send(")
+	check("your own line brings the log to the end, even scrolled up",
+		send_body.find("_stick_to_bottom = true") != -1
+		and send_body.find("_stick_to_bottom = true") < send_body.find("_poll()"))
+	var add_body := _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _add_line(")
+	check("the open channel's new line goes through the append, never a full render",
+		add_body.contains("_append_to_log()") and not add_body.contains("_render()"))
+	chat.queue_free()
+	print("  chat place: appended not rebuilt, reading up kept, newest followed, the cap, your own line")
+
+
+func _test_whispers_reach_you() -> void:
+	section("WHISPERS - said to you with chat shut, or open on another tab, and answered with /r")
+
+	var now: int = int(Time.get_unix_time_from_system())
+	var hud_script: Script = load("res://src/ui/characterhud.gd") as Script
+	hud_script._forget_chat_news()
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	hud._build_message_box()
+	var rows: Control = hud.message_rows
+	var chat_button: Button = hud.get_node("%navbuttons").get_node("chatbutton") as Button
+	var news := func(whisper_id: int, who: String, body: String, at: int, guild: int) -> Dictionary:
+		return {"latest_id": 0, "messages": [], "chat_news": {
+			"whisper": {"id": whisper_id, "from": who, "body": body, "at": at} if whisper_id > 0 else null,
+			"guild": guild, "friends": 0}}
+
+	hud._apply_broadcast(news.call(7, "yesterday", "old news", now - 3600, 3))
+	check("the first poll's old whisper and guild lines are where 'new' starts, not news",
+		rows.get_child_count() == 0 and chat_button.text == "Chat", [rows.get_child_count(), chat_button.text])
+	hud._apply_broadcast(news.call(8, "chatter2", "hey\n\n\nwant to trade?", now, 3))
+	var toast: String = (rows.get_child(0) as Label).text if rows.get_child_count() > 0 else ""
+	check("a new whisper with chat shut pops the box with who said what, on one line",
+		toast == "chatter2 whispers: hey want to trade?", toast)
+	check("  lights the Chat button", chat_button.text == "Chat •", chat_button.text)
+	check("  and waits for the chat window, which does not exist yet",
+		hud_script._whisper_waiting and hud_script._last_whisper_from == "chatter2")
+	hud._mark_chat_button(false)
+	hud._apply_broadcast(news.call(8, "chatter2", "hey", now, 4))
+	check("a new guild line lights the Chat button too", chat_button.text == "Chat •", chat_button.text)
+	check("  and the same whisper is not said twice", rows.get_child_count() == 1, rows.get_child_count())
+	hud.free()
+
+	# THROUGH A DOOR. Every area has its own HUD; a whisper from a minute ago
+	# was said again in each one, and the lit Chat button went dark.
+	var next_area: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	next_area._build_message_box()
+	next_area._apply_broadcast(news.call(8, "chatter2", "hey", now, 4))
+	check("the next area's HUD does not say the same whisper again",
+		next_area.message_rows.get_child_count() == 0, next_area.message_rows.get_child_count())
+	check("  and the waiting whisper still waits for the chat window",
+		hud_script._whisper_waiting and hud_script._last_whisper_from == "chatter2")
+	var ready_src := _func_body(_code_src("res://src/ui/characterhud.gd"), "func _ready(")
+	check("  and a new area's HUD lights the Chat button again", ready_src.contains("if _chat_dot and _chat_seen_by == Api.username:"))
+	next_area.free()
+
+	# ANOTHER ACCOUNT ON THIS MACHINE starts from nothing: the last one's ids
+	# are not where "new" starts for it.
+	hud_script._chat_seen_by = "someoneelse"
+	hud_script._chat_seen = {"whisper": 999999, "guild": 999999, "friends": 999999}
+	var other_login: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	other_login._build_message_box()
+	other_login._apply_broadcast(news.call(10, "friend", "welcome back", now - 20, 0))
+	check("a different account's first poll is its own, not the last player's",
+		other_login.message_rows.get_child_count() == 1 and hud_script._chat_seen_by == Api.username,
+		other_login.message_rows.get_child_count())
+	other_login.free()
+
+	hud_script._forget_chat_news()
+	var fresh: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	fresh._build_message_box()
+	fresh._apply_broadcast(news.call(9, "justnow", "you there?", now - 30, 0))
+	check("a whisper from a moment before you logged in is still said",
+		fresh.message_rows.get_child_count() == 1, fresh.message_rows.get_child_count())
+	fresh.free()
+	hud_script._forget_chat_news()
+
+	var toggle := _func_body(_code_src("res://src/ui/characterhud.gd"), "func toggle_chat(")
+	check("the chat window, when it is built, is handed the waiting whisper",
+		toggle.contains("chat_panel.whisper_arrived(_last_whisper_from)")
+		and toggle.contains("chat_panel.last_whisper_from = _last_whisper_from"))
+
+	# ---- the chat window ----
+	var chat: Control = (load("res://scene/ui/chat/chatpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(chat)
+	var poll_timer: Timer = chat.get_node_or_null("ChatPoll") as Timer
+	if poll_timer != null:
+		poll_timer.stop()
+	for i in 300:
+		if not chat._in_flight:
+			break
+		await get_tree().process_frame
+	chat._in_flight = true
+	chat.visible = false
+	chat.whisper_arrived("chatter2")
+	check("shut, a whisper aims the Whisper tab at who sent it and lights it",
+		chat._whisper_with == "chatter2" and chat._feeds["private"]["unread"] and chat._whisper_waiting)
+	chat.open()
+	check("  and the window opens on that conversation, not World",
+		chat.visible and chat._channel == "private" and chat._whisper_with == "chatter2", chat._channel)
+	chat.close()
+	chat.whisper_arrived("newperson")
+	chat.open()
+	check("  even with another conversation in the box: the window opens on who whispered",
+		chat._channel == "private" and chat._whisper_with == "newperson", chat._whisper_with)
+	chat._show_channel("world")
+	chat._aim_whisper("somebodyelse")
+	chat.whisper_arrived("thirdperson")
+	check("open on another tab, it says who whispered and how to answer",
+		chat.notice.text == "thirdperson whispered you. /r to answer."
+		and chat._whisper_with == "somebodyelse", [chat.notice.text, chat._whisper_with])
+	chat.room_news("guild")
+	chat.room_news("world")
+	check("a guild line lights the Guild tab; the open tab is not marked",
+		chat._feeds["guild"]["unread"] and not chat._feeds["world"]["unread"])
+	chat.last_whisper_from = ""
+	chat.entry.text = "/r hello"
+	await chat._on_send_pressed()
+	check("/r with nobody to answer says so", chat.notice.text == "Nobody has whispered you yet.", chat.notice.text)
+	var send_src := _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _on_send_pressed(")
+	check("  and otherwise answers whoever whispered last, in the Whisper tab",
+		send_src.contains("_aim_whisper(last_whisper_from)") and send_src.contains("await _send(\"private\", answer, \"\")"))
+	chat.queue_free()
+
+	var hud_src := _func_body(_code_src("res://src/ui/characterhud.gd"), "func _apply_broadcast(")
+	check("the broadcast poll's answer is where the news is read",
+		hud_src.contains("_read_chat_news(data.get(\"chat_news\"))"))
+	print("  whispers: the baseline, the toast, the button, the waiting window, other tabs, guild, /r, the wiring")
+
+
+func _test_black_past_the_map() -> void:
+	section("MAP BACKDROP - grey in the gaps of the tiles, black past the edge of the map")
+
+	var Backdrop: Script = load("res://src/world/mapbackdrop.gd") as Script
+	check("mapbackdrop.gd compiles", Backdrop != null and Backdrop.can_instantiate())
+	if Backdrop == null or not Backdrop.can_instantiate():
+		return
+	# THE EDITOR DRAWS A SCENE OVER THE PROJECT'S CLEAR COLOUR. Set black, every
+	# gap in every tile went black there too - the "graphics trip out" report.
+	var project_clear: Color = ProjectSettings.get_setting("rendering/environment/defaults/default_clear_color")
+	check("project.godot keeps the engine's grey, which is what the tiles were painted over",
+		project_clear.is_equal_approx(Color(0.3, 0.3, 0.3, 1.0)), project_clear)
+	check("  and the gaps are filled with that same grey in the game",
+		Backdrop.GAPS.is_equal_approx(project_clear), Backdrop.GAPS)
+	check("the game makes the screen black at runtime, for past the edge of the map",
+		RenderingServer.get_default_clear_color().is_equal_approx(Backdrop.OUTSIDE)
+		and Backdrop.OUTSIDE.is_equal_approx(Color.BLACK), RenderingServer.get_default_clear_color())
+	check("every area that opens is given one", get_tree().scene_changed.is_connected(AreaRegistry._on_scene_changed))
+
+	# ---- exactly the tiles, as they are drawn ----
+	var area := Node2D.new()
+	var layer := TileMapLayer.new()
+	var tiles := TileSet.new()
+	tiles.tile_size = Vector2i(16, 16)
+	var atlas := TileSetAtlasSource.new()
+	atlas.texture = load("res://art/tiles/tiles4.png") as Texture2D
+	atlas.texture_region_size = Vector2i(16, 16)
+	atlas.create_tile(Vector2i(0, 0))
+	atlas.create_tile(Vector2i(2, 0), Vector2i(2, 2))
+	var source_id: int = tiles.add_source(atlas)
+	layer.tile_set = tiles
+	area.add_child(layer)
+	for x in 3:
+		layer.set_cell(Vector2i(x, 0), source_id, Vector2i(0, 0))
+	layer.set_cell(Vector2i(10, 10), source_id, Vector2i(2, 0))
+	var rects: Array = Backdrop.cover(area)
+	check("a row of three small tiles is one rectangle, exactly under them",
+		rects.has(Rect2(0, 0, 48, 16)), rects)
+	check("a 32x32 tile on a 16 grid is covered where it is DRAWN - centred on its cell - not as the cell",
+		rects.has(Rect2(152, 152, 32, 32)) and rects.size() == 2, rects)
+	var added: Node2D = Backdrop.add_to(area)
+	check("the backdrop goes under everything in the area",
+		added != null and area.get_child(0) == added and not added.z_as_relative
+		and added.z_index == RenderingServer.CANVAS_ITEM_Z_MIN)
+	area.free()
+
+	# ---- every real area is covered, cheaply ----
+	for area_id in AreaRegistry.AREAS:
+		var packed: PackedScene = load(AreaRegistry.AREAS[area_id]) as PackedScene
+		if packed == null:
+			continue
+		var scene: Node = packed.instantiate()
+		var cover: Array = Backdrop.cover(scene)
+		var layers: int = scene.find_children("*", "TileMapLayer", true, false).size()
+		check("%s: every tile layer is covered, in a few hundred rectangles at most" % area_id,
+			(layers == 0 and cover.is_empty()) or (not cover.is_empty() and cover.size() < 600),
+			[layers, cover.size()])
+		scene.free()
+	print("  backdrop: the editor's grey, black at runtime, exact rectangles, big tiles, under everything, every area")

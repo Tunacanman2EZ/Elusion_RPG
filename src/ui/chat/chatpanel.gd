@@ -287,15 +287,21 @@ func open() -> void:
 	visible = true
 	set_process(not _playing.is_empty())
 
-	# START FROM THE TAIL, NOT FROM WHERE WE LEFT OFF. A cursor kept across a
-	# close would ask for everything said since, which after an hour away is a
-	# page of context nobody wants and a truncated page at that. Zero means
-	# "give me the recent conversation", which is what opening a chat window
-	# is asking for.
-	_feeds[_channel]["cursor"] = 0
-	_feeds[_channel]["lines"] = []
-	_render()
-	_poll()
+	# A WHISPER WAITING OPENS ON IT. The HUD said "X whispers: ..." and lit the
+	# Chat button; the window opened next shows that conversation, not World.
+	if _whisper_waiting and last_whisper_from != "":
+		_whisper_waiting = false
+		_aim_whisper(last_whisper_from)
+		_show_channel("private")
+	else:
+		# START FROM THE TAIL, NOT FROM WHERE WE LEFT OFF. A cursor kept across a
+		# close would ask for everything said since, which after an hour away is a
+		# page of context nobody wants and a truncated page at that. Zero means
+		# "give me the recent conversation", which is what opening a chat window
+		# is asking for.
+		_reset_feed(_channel)
+		_render()
+		_poll()
 
 	if entry != null:
 		# FOCUS GOES TO THE BOX, because opening chat is something you do in
@@ -395,9 +401,57 @@ func _show_channel(channel: String) -> void:
 	# A CHANNEL IS RE-READ FROM ITS TAIL WHEN YOU SWITCH TO IT, for the same
 	# reason opening the window is: what you want when you look at a
 	# conversation is the last of it, not everything since you last looked.
-	_feeds[channel]["cursor"] = 0
-	_feeds[channel]["lines"] = []
+	_reset_feed(channel)
 	_poll()
+
+
+# =============================================================================
+# WHAT WAS SAID TO YOU ELSEWHERE
+# =============================================================================
+# This window reads only the tab that is open, while it is open. The HUD's
+# broadcast poll reports what was said to this player everywhere else
+# (chat_news, _chat_news() in app.py) and hands it here.
+
+# Who whispered last: /r answers them, and a waiting whisper opens on them.
+var last_whisper_from: String = ""
+var _whisper_waiting: bool = false
+
+
+func whisper_arrived(who: String) -> void:
+	"""Somebody whispered this player. The Whisper tab lights and is aimed at
+	them, unless another conversation is already in it; if the window is shut,
+	it opens on them next time."""
+	if who == "":
+		return
+	last_whisper_from = who
+	if visible and _channel == "private" and _whisper_with.to_lower() == who.to_lower():
+		return
+	# AN EMPTY WHISPER BOX TAKES THE NAME; one already in use keeps it. A
+	# window that is shut is aimed when it opens (open()).
+	if _whisper_with == "":
+		_aim_whisper(who)
+	_feeds["private"]["unread"] = true
+	_paint_tabs()
+	if not visible:
+		_whisper_waiting = true
+	else:
+		# OPEN ON ANOTHER TAB, OR ANOTHER CONVERSATION: say it where the
+		# player is looking, and how to answer.
+		_set_notice("%s whispered you. /r to answer." % who)
+
+
+func room_news(room: String) -> void:
+	"""A new line in the guild or among friends while this tab is not open."""
+	if not _feeds.has(room) or (visible and _channel == room):
+		return
+	_feeds[room]["unread"] = true
+	_paint_tabs()
+
+
+func _aim_whisper(who: String) -> void:
+	_whisper_with = who
+	if whisper_to != null:
+		whisper_to.text = who
 
 
 func _on_whisper_target_changed(text: String) -> void:
@@ -407,8 +461,7 @@ func _on_whisper_target_changed(text: String) -> void:
 	_whisper_with = wanted
 	if _channel != "private":
 		return
-	_feeds["private"]["cursor"] = 0
-	_feeds["private"]["lines"] = []
+	_reset_feed("private")
 	_render()
 	if _whisper_with == "":
 		_set_notice("Type who you want to whisper to, up in the corner.")
@@ -468,10 +521,85 @@ func _add_line(channel: String, line: Dictionary) -> void:
 		_sweep_pictures()
 
 	if channel == _channel and visible:
-		_render()
+		_append_to_log()
 	elif channel != _channel:
 		feed["unread"] = true
 		_paint_tabs()
+
+
+# How close to the end of the log still counts as "reading the newest".
+const AT_BOTTOM_SLACK := 24
+
+# Set by a send that went through: the player's own line brings the log to the
+# end even if they had scrolled up to read, because they just spoke.
+var _stick_to_bottom: bool = false
+
+
+func _append_to_log() -> void:
+	"""The newest line of the open channel onto the log, and the oldest off it
+	when the feed has trimmed one - without rebuilding the rest.
+
+	THIS USED TO BE _render() FOR EVERY LINE, and that did two things wrong.
+	Every line destroyed and rebuilt the whole log - measured, 35 ms a line
+	with fifty kept, so a busy world chat stuttered the game while it was
+	open. And every rebuild scrolled to the end, so a player who had scrolled
+	up to read was pulled back down whenever anybody spoke.
+
+	Now the log follows new lines only when the player is already reading the
+	newest ones, or has just sent one."""
+	if lines_box == null or _redraw_on_next_read:
+		return
+	var lines: Array = _feeds[_channel]["lines"]
+	if lines.is_empty():
+		return
+	# A POLL'S LINES ARRIVE TOGETHER, in one frame, and the layout does not
+	# catch up between them - so the first one decides for the batch
+	# (_apply_read), and the batch scrolls once at the end.
+	var follow: bool = _batch_follow if _batching else _should_follow()
+
+	var node: Control = _node_for(lines[-1])
+	if node != null:
+		lines_box.add_child(_with_staff_controls(lines[-1], node))
+
+	# THE OLDEST LEAVES THE SCREEN WHEN IT LEAVES THE FEED, and a reader
+	# further up keeps their place: the log above them got shorter by exactly
+	# that line, so the scroll moves up by it.
+	var gap: float = float(lines_box.get_theme_constant("separation"))
+	var dropped: float = 0.0
+	while lines_box.get_child_count() > lines.size():
+		var oldest: Node = lines_box.get_child(0)
+		if oldest is Control:
+			dropped += (oldest as Control).size.y + gap
+		lines_box.remove_child(oldest)
+		oldest.queue_free()
+
+	set_process(visible and not _playing.is_empty())
+	if follow:
+		if not _batching:
+			_scroll_to_end.call_deferred()
+	elif dropped > 0.0 and scroll != null:
+		scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - int(dropped))
+
+
+var _batching: bool = false
+var _batch_follow: bool = false
+
+
+func _should_follow() -> bool:
+	"""Whether the log should go to the end for what arrives next: the player
+	just spoke, the log is empty (a tab just opened), or they are reading the
+	newest lines already."""
+	var follow: bool = _stick_to_bottom or lines_box == null \
+		or lines_box.get_child_count() == 0 or _at_bottom()
+	_stick_to_bottom = false
+	return follow
+
+
+func _at_bottom() -> bool:
+	if scroll == null or not is_instance_valid(scroll):
+		return true
+	var bar: VScrollBar = scroll.get_v_scroll_bar()
+	return float(scroll.scroll_vertical) + bar.page >= bar.max_value - AT_BOTTOM_SLACK
 
 
 func _remove_lines(channel: String, ids: Array) -> int:
@@ -539,9 +667,14 @@ func _remove_lines(channel: String, ids: Array) -> int:
 	return went
 
 
-func _render() -> void:
+func _render(keep_place: bool = false) -> void:
+	# keep_place: a reader scrolled up stays where they were - for a line taken
+	# down, which is not news. Opening the log or changing tab goes to the end.
 	if lines_box == null:
 		return
+	var reading_at: int = -1
+	if keep_place and not _at_bottom():
+		reading_at = scroll.scroll_vertical
 
 	for child in lines_box.get_children():
 		lines_box.remove_child(child)
@@ -560,7 +693,18 @@ func _render() -> void:
 	# TO THE BOTTOM, AFTER A FRAME. The ScrollContainer does not know how tall
 	# its contents are until the layout has run, so asking it to scroll to the
 	# end right now scrolls it to the end of the OLD contents.
-	_scroll_to_end.call_deferred()
+	if reading_at >= 0:
+		_scroll_to.call_deferred(reading_at)
+	else:
+		_scroll_to_end.call_deferred()
+
+
+func _scroll_to(at: int) -> void:
+	if scroll == null or not is_instance_valid(scroll):
+		return
+	await get_tree().process_frame
+	if is_instance_valid(scroll):
+		scroll.scroll_vertical = at
 
 
 func _scroll_to_end() -> void:
@@ -641,8 +785,7 @@ func _delete_message(message_id: int, who: String) -> void:
 	# the only honest way to show that is to ask what is there now - dropping
 	# it from the local list would leave this client's idea of the log one edit
 	# ahead of everyone else's.
-	_feeds[_channel]["cursor"] = 0
-	_feeds[_channel]["lines"] = []
+	_reset_feed(_channel)
 	_render()
 	_poll()
 
@@ -695,7 +838,7 @@ func _node_for(line: Dictionary) -> Control:
 	label.append_text("[color=#6b6055]%s[/color] %s%s%s: %s" % [
 		stamp, NameTag.bbcode_mark(rank), _guild_part(line),
 		NameTag.bbcode_name(_escape(who) + mark, line.get("name_hue")),
-		_escape(str(line.get("body", "")))])
+		_escape(one_line(str(line.get("body", ""))))])
 	return label
 
 
@@ -734,7 +877,7 @@ func _picture_node(line: Dictionary) -> Control:
 	var holder := VBoxContainer.new()
 	holder.add_theme_constant_override("separation", 2)
 
-	var caption: String = str(line.get("body", "")).strip_edges()
+	var caption: String = one_line(str(line.get("body", "")))
 	var who: String = str(line.get("by", "?"))
 	var rank: String = str(line.get("role", "player"))
 	var header := RichTextLabel.new()
@@ -853,6 +996,42 @@ func _process(delta: float) -> void:
 	_playing = alive
 	if _playing.is_empty():
 		set_process(false)
+
+
+static func one_line(text: String) -> String:
+	"""A player's message as one line with nothing invisible in it: the
+	server's clean_player_text() done again as it is drawn, for lines stored
+	before that rule or by a server without it. A newline, tab or control
+	character is a space; a bidi override, zero-width space or other invisible
+	format character is dropped (ZWJ stays, for emoji); runs of spaces are one.
+	One message of 150 newlines used to be 150 blank lines on every screen."""
+	var out := PackedStringArray()
+	var last_was_space := true
+	for i in text.length():
+		var code: int = text.unicode_at(i)
+		if code < 32 or code == 127 or (code >= 0x80 and code < 0xA0) \
+				or code == 0x2028 or code == 0x2029 or code == 0xA0:
+			code = 32
+		elif _is_invisible(code):
+			continue
+		if code == 32:
+			if last_was_space:
+				continue
+			last_was_space = true
+		else:
+			last_was_space = false
+		out.append(String.chr(code))
+	return "".join(out).strip_edges()
+
+
+static func _is_invisible(code: int) -> bool:
+	# Unicode's format characters (category Cf) that change nothing but what a
+	# line looks like, less U+200D, which joins emoji.
+	return code == 0x00AD or code == 0x061C or code == 0x180E \
+		or code == 0x200B or code == 0x200C or code == 0x200E or code == 0x200F \
+		or (code >= 0x202A and code <= 0x202E) or (code >= 0x2060 and code <= 0x2064) \
+		or (code >= 0x2066 and code <= 0x206F) or code == 0xFEFF \
+		or (code >= 0xFFF9 and code <= 0xFFFB) or (code >= 0xE0000 and code <= 0xE007F)
 
 
 func _escape(text: String) -> String:
@@ -1161,6 +1340,26 @@ func _on_poll_timeout() -> void:
 	_poll()
 
 
+# Moved on every feed reset. A poll that left before a reset is answering a
+# question nobody is asking any more: see _poll().
+var _feed_generation: int = 0
+
+
+func _reset_feed(channel: String) -> void:
+	"""Empty a feed so the next read fetches its tail."""
+	_feeds[channel]["cursor"] = 0
+	_feeds[channel]["lines"] = []
+	_feed_generation += 1
+	# WHAT IS ON SCREEN IS NOW THE OLD FEED - a tab switch draws what it had
+	# while the tail is fetched, rather than a blank window. The tail replaces
+	# it in one render; appending it below would show everything twice.
+	if channel == _channel:
+		_redraw_on_next_read = true
+
+
+var _redraw_on_next_read: bool = false
+
+
 func _poll() -> void:
 	# Never two at once, and nothing to ask on behalf of nobody. Same guard as
 	# the HUD's broadcast poll and for the same reason: a slow server must not
@@ -1171,6 +1370,7 @@ func _poll() -> void:
 	if path == "":
 		return
 	var asked: String = _channel
+	var generation: int = _feed_generation
 
 	_in_flight = true
 	var res: Dictionary = await Api.get_json(path, Api.PROBE_TIMEOUT)
@@ -1180,6 +1380,18 @@ func _poll() -> void:
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	_in_flight = false
+
+	# THE FEED WAS RESET WHILE THIS WAS IN FLIGHT - a tab opened, /r or /w to
+	# the same person, a message removed. This answer carries only what came
+	# after the OLD cursor, and applying it would set the cursor past the
+	# history the reset asked for: /r showed your reply and none of the
+	# conversation it answered. Dropped, and the tail asked for instead -
+	# straight away, not a poll later: a whisper opened from the HUD's notice
+	# sat empty for three seconds.
+	if generation != _feed_generation:
+		if visible:
+			_poll()
+		return
 
 	# SILENT ON FAILURE, DELIBERATELY. The HUD's own poll is what decides that
 	# a session has ended, and it is already running; a chat window that threw
@@ -1249,6 +1461,7 @@ func _apply_read(asked: String, data: Dictionary) -> void:
 	if not bool(data.get("available", true)):
 		_feeds[asked]["lines"] = []
 		if asked == _channel:
+			_redraw_on_next_read = false
 			_room_notice = str(data.get("notice", "This channel is not open to you."))
 			_set_notice(_room_notice)
 			if visible:
@@ -1262,10 +1475,23 @@ func _apply_read(asked: String, data: Dictionary) -> void:
 	_room_notice = ""
 
 	var pictures = data.get("images", {})
-	for entry_data in data.get("messages", []):
+	var batch: Array = data.get("messages", []) if data.get("messages") is Array else []
+	if asked == _channel and visible and not batch.is_empty():
+		_batch_follow = _should_follow()
+		_batching = true
+	for entry_data in batch:
 		if not (entry_data is Dictionary):
 			continue
 		_add_line(asked, _line_from_server(entry_data, pictures))
+	if _batching:
+		_batching = false
+		if _batch_follow and not _redraw_on_next_read:
+			_scroll_to_end.call_deferred()
+	# THE FIRST READ AFTER A RESET REPLACES THE SCREEN, empty answer or not.
+	if _redraw_on_next_read and asked == _channel:
+		_redraw_on_next_read = false
+		if visible:
+			_render()
 
 	# WHAT HAS BEEN TAKEN BACK DOWN. After the additions, so a line deleted in
 	# the same three seconds it was posted cannot arrive and then be spared
@@ -1273,7 +1499,7 @@ func _apply_read(asked: String, data: Dictionary) -> void:
 	var removed = data.get("removed", [])
 	if removed is Array and not removed.is_empty():
 		if _remove_lines(asked, removed) > 0 and asked == _channel and visible:
-			_render()
+			_render(true)
 
 	var newest: int = int(data.get("latest_id", _feeds[asked]["cursor"]))
 	if newest > int(_feeds[asked]["cursor"]):
@@ -1348,6 +1574,20 @@ func _on_send_pressed() -> void:
 		return
 
 	if text == "":
+		return
+
+	# /r MESSAGE answers whoever whispered you last - the other half of /w.
+	if text == "/r" or text.begins_with("/r "):
+		var answer: String = text.substr(2).strip_edges()
+		if last_whisper_from == "":
+			_set_notice("Nobody has whispered you yet.")
+			return
+		if answer == "":
+			_set_notice("Try: /r what you want to say back")
+			return
+		_aim_whisper(last_whisper_from)
+		_show_channel("private")
+		await _send("private", answer, "")
 		return
 
 	# /w NAME MESSAGE, from any channel. It is what people type, and it saves
@@ -1988,6 +2228,7 @@ func _send(channel: String, text: String, image_id: String) -> void:
 		# STRAIGHT TO THE NEXT POLL rather than echoing it locally. The line
 		# has an id and a server timestamp now, and drawing our own guess at
 		# those would show a message that looks subtly unlike everyone else's.
+		_stick_to_bottom = true
 		_poll()
 		if entry != null:
 			entry.grab_focus()

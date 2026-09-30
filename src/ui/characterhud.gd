@@ -62,6 +62,7 @@ const TRADE_PANEL_SCENE   := preload("res://scene/ui/trade/tradepanel.tscn")
 # The script as well, for its static result_line() - the one wording of "what a
 # trade gave you", shared by the window's history and the HUD's announcement.
 const TradePanelScript    := preload("res://src/ui/trade/tradepanel.gd")
+const ChatPanelScript     := preload("res://src/ui/chat/chatpanel.gd")
 # Owner-only save-viewer panel (see ownerpanel.gd). preload is fine
 # here even though most players will never see it — the panel itself
 # fails closed via Api.is_owner, so preloading the scene
@@ -248,6 +249,10 @@ func _ready() -> void:
 	_add_owner_button()
 	_build_message_box()
 	_warn_unprotected_staff()
+	# A NEW AREA'S HUD KEEPS THE DOT: something said to you before the door
+	# is still unread after it.
+	if _chat_dot and _chat_seen_by == Api.username:
+		_mark_chat_button(true)
 	_build_status_strip()
 	_start_broadcast_poll()
 	_wire_hotbar()
@@ -1097,7 +1102,12 @@ func _push_message(text: String, color: Color, at: int = 0, announce: bool = tru
 		return
 	if not announce:
 		return
+	_pop_message(text, color)
 
+
+func _pop_message(text: String, color: Color) -> void:
+	"""The fading box alone, with no record in the chat log. For a whisper:
+	its record is the conversation itself, on the Whisper tab."""
 	if message_rows == null:
 		return
 
@@ -1306,6 +1316,7 @@ func _apply_broadcast(data: Dictionary) -> void:
 	_read_guild(data)
 	_read_trade(data.get("trade"))
 	_read_trade_resync(data.get("trade_resync"))
+	_read_chat_news(data.get("chat_news"))
 	# THE FIRST ANSWER IS HISTORY, NOT NEWS. A poll from cursor 0 is answered
 	# with the recent TAIL - up to a week of notices at once - and every one of
 	# them used to pop the box on login: "Update in progress", "The server is
@@ -1389,6 +1400,100 @@ func _mark_trade_button(lit: bool, who: String = "") -> void:
 	button.tooltip_text = "%s is waiting on you" % who if lit else ""
 	if lit:
 		button.add_theme_color_override("font_color", Color(0.62, 0.86, 1.0))
+	else:
+		button.remove_theme_color_override("font_color")
+
+
+# =============================================================================
+# WHAT WAS SAID TO YOU IN CHAT
+# =============================================================================
+# The chat window reads only the tab that is open, and only while it is open.
+# So a whisper reached nobody - chat closed, or open on World - and the Whisper
+# tab shows only a conversation with a name you already typed. The broadcast
+# poll now carries the newest whisper to this player, and the newest line in
+# their guild and among their friends (chat_news, _chat_news() in app.py).
+
+const WHISPER_COLOUR := Color(0.93, 0.62, 0.95)
+
+# A whisper already on the server when this client arrives is said only if it
+# is this recent: enough to catch somebody who spoke a moment before you logged
+# in, not so much that yesterday's greets you at every login.
+const WHISPER_CATCH_UP_SECONDS := 600
+
+# PER LOGIN, NOT PER HUD. Every area has its own HUD, so anything kept on one
+# was forgotten at the next door: a whisper from two minutes ago was said again
+# in every area walked into, and a lit Chat button went dark. Static, and
+# forgotten when a different account is playing.
+#
+# The newest id seen of each, -1 until the first poll has set where "new" starts.
+static var _chat_seen: Dictionary = {"whisper": -1, "guild": -1, "friends": -1}
+static var _chat_seen_by: String = ""
+static var _last_whisper_from: String = ""
+# A whisper not yet looked at: the chat window opens on it, in any area.
+static var _whisper_waiting: bool = false
+static var _chat_dot: bool = false
+
+
+static func _forget_chat_news() -> void:
+	_chat_seen = {"whisper": -1, "guild": -1, "friends": -1}
+	_chat_seen_by = ""
+	_last_whisper_from = ""
+	_whisper_waiting = false
+	_chat_dot = false
+
+
+func _read_chat_news(news: Variant) -> void:
+	if not (news is Dictionary):
+		return
+	if _chat_seen_by != Api.username:
+		_forget_chat_news()
+		_chat_seen_by = Api.username
+	var first: bool = int(_chat_seen["whisper"]) < 0
+	var whisper: Variant = news.get("whisper")
+	var whisper_id: int = int(whisper.get("id", 0)) if whisper is Dictionary else 0
+	if whisper_id > int(_chat_seen["whisper"]):
+		var at: int = int(whisper.get("at", 0)) if whisper is Dictionary else 0
+		var recent: bool = int(Time.get_unix_time_from_system()) - at <= WHISPER_CATCH_UP_SECONDS
+		if whisper_id > 0 and (not first or recent):
+			_whisper_from(str(whisper.get("from", "?")), str(whisper.get("body", "")))
+		_chat_seen["whisper"] = whisper_id
+	for room in ["guild", "friends"]:
+		var newest: int = int(news.get(room, 0))
+		if newest > int(_chat_seen[room]):
+			if not first:
+				_room_news(room)
+			_chat_seen[room] = newest
+
+
+func _whisper_from(who: String, body: String) -> void:
+	_last_whisper_from = who
+	var chat_open: bool = chat_panel != null and chat_panel.visible
+	if chat_panel != null:
+		chat_panel.whisper_arrived(who)
+	if not chat_open:
+		_whisper_waiting = true
+		_pop_message("%s whispers: %s" % [who, ChatPanelScript.one_line(body)], WHISPER_COLOUR)
+		_mark_chat_button(true)
+
+
+func _room_news(room: String) -> void:
+	if chat_panel != null:
+		chat_panel.room_news(room)
+	if chat_panel == null or not chat_panel.visible:
+		_mark_chat_button(true)
+
+
+func _mark_chat_button(lit: bool) -> void:
+	_chat_dot = lit
+	var nav: Node = get_node_or_null("%navbuttons")
+	var button: Button = nav.get_node_or_null("chatbutton") as Button if nav != null else null
+	if button == null:
+		return
+	# A DOT, like Trade: something was said to you and the window is shut.
+	button.text = "Chat •" if lit else "Chat"
+	button.tooltip_text = "Something was said to you" if lit else ""
+	if lit:
+		button.add_theme_color_override("font_color", WHISPER_COLOUR)
 	else:
 		button.remove_theme_color_override("font_color")
 
@@ -2421,9 +2526,16 @@ func toggle_chat() -> void:
 		chat_panel = CHAT_PANEL_SCENE.instantiate()
 		add_child(chat_panel)
 		_flush_unlogged_lines()
+		# A whisper that came before the window existed: it opens on it.
+		chat_panel.last_whisper_from = _last_whisper_from
+		if _whisper_waiting:
+			chat_panel.whisper_arrived(_last_whisper_from)
 
 	if chat_panel.has_method("toggle"):
 		chat_panel.toggle()
+	if chat_panel.visible:
+		_mark_chat_button(false)
+		_whisper_waiting = false
 
 	# THE FLOATING BOX STANDS DOWN WHILE CHAT IS UP. The two live in the same
 	# corner and would otherwise overlap, and every server notice would be

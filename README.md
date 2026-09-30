@@ -210,24 +210,24 @@ test_loot.py           234 checks    every finished item is actually obtainable
 test_equipment.py      194 checks    the equipment system, client and server
 test_gearbonus.py      164 checks    what gear adds, counted by the server
 test_guilds.py         161 checks    founding, joining, ranks, taking a guild down
+test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
-test_chatrooms.py      132 checks    chat channels, and pictures posted by link
 test_moderation.py     127 checks    the moderation record
 test_refusals.py        94 checks    401, 403, and the 404 that is really a 403
 test_ownership.py       82 checks    no route hands over a row that is not yours
 test_friends.py         70 checks    asking, answering and ending a friendship
 test_pacing.py          69 checks    the pace of the game, as the server pays it
 test_security_doc.py    69 checks    SECURITY.md is checked, not trusted
+test_chat.py            67 checks    world chat, end to end, one line as typed
 test_throttle.py        61 checks    login lockout, per-IP spray, token rotation
 test_broadcast.py       59 checks    the server's voice, end to end
-test_chat.py            55 checks    world chat, end to end
 test_maintenance.py     53 checks    the owner's kill switch
 test_recovery.py        53 checks    account recovery, adversarially
-test_staffcode.py       38 checks    a staff password alone opens nothing
 test_settings.py        49 checks    the options screen's rules
 test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
 test_gathering.py       47 checks    fishing and cooking authority
+test_staffcode.py       38 checks    a staff password alone opens nothing
 test_clientbuild.py     37 checks    the client build gate
 test_guildlife.py       37 checks    what members are playing, what happened
 test_revocation.py      34 checks    what it costs to change your mind
@@ -241,14 +241,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					3,484 checks, 0 failures
+					3,506 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The thirty-eighth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,010 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 118 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,064 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 119 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `1975 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2028 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 

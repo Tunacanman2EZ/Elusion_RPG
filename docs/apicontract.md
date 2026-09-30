@@ -151,6 +151,11 @@ Write one slot. Upsert: writing an occupied slot overwrites it.
 **`400`** on a bad slot, unknown class, empty name, or a malformed
 `active_pet_id`.
 
+`name` is shown to other players, so it goes through the same
+`clean_player_text()` as chat (see *Chat* below): line breaks and tabs become
+spaces, invisible format characters are dropped. A name that is nothing once
+cleaned is an empty name, and a `400`.
+
 `level` is **not** writable here — see *Who owns what*. A new character starts
 at 1 and only a kill moves it.
 
@@ -463,6 +468,41 @@ display decision; if the two disagree, the player should lose the bag to the
 
 ---
 
+## Chat
+
+The chat routes are not listed here in full; `api/CLAUDE.md` is their home.
+Two things the client depends on:
+
+**Every line is one line, as typed.** The server cleans chat text before it is
+stored (`clean_player_text()`): newlines, tabs and other control characters
+become a space, runs of spaces become one, invisible format characters (bidi
+overrides, zero-width spaces) are dropped except U+200D, which emoji are built
+from, and at most three accents stack on one letter. What is stored is what
+every reader gets. A message that is nothing once cleaned is a `400`, like an
+empty one. The chat window also flattens what it draws
+(`ChatPanel.one_line()`), so a line stored before this rule cannot break the
+window either.
+
+**`chat_news` rides the broadcast poll.** `GET /api/server/broadcasts`, which
+the HUD polls anyway, carries:
+
+```json
+"chat_news": {
+  "whisper": { "id": 812, "from": "amy", "body": "you there?", "at": 1788900000 },
+  "guild": 811,
+  "friends": 790
+}
+```
+
+`whisper` is the newest private line sent TO the caller by somebody else
+(`null` if none; a picture alone reads `"(a picture)"`). `guild` and `friends`
+are the newest line ids in the caller's guild and among their friends, said by
+somebody else, `0` when none. The client keeps the last ids it has seen per
+login and treats a larger one as news: a whisper pops a message and marks the
+Chat button, and a room lights its tab. An older client ignores the key.
+
+---
+
 ## Server health
 
 ### `GET /api/status`
@@ -483,7 +523,13 @@ Every failure, everywhere:
 ```
 
 `message` may also be an array of strings for multi-field validation.
-`Api._describe_api_error()` (`src/systems/api.gd:385`) already reads both forms.
+`Api._describe_api_error()` (`src/systems/api.gd`) already reads both forms.
+
+**A body holding a lone UTF-16 surrogate (`"\ud800"` with no partner) is not
+JSON as far as any route is concerned** — it is legal JSON text, but it cannot
+be stored, and it used to reach the database and come back a `500`. It is now
+refused while parsing, so every route answers the `400` it gives any body that
+is not JSON. No keyboard types one.
 
 ---
 

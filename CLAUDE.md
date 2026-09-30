@@ -2112,7 +2112,8 @@ desktop too: canvas origin (0, 0) on the first frame of each arrival. Now
 - at the field's arrival portal
 - in the teleporter
 
-A frame with no scene in it yet is black (`default_clear_color`), not grey.
+A frame with no scene in it yet is black, not grey. The black is set at runtime by
+`AreaRegistry`, not in project.godot; see "Grey in the gaps, black past the map".
 
 **In a browser, Options hides window size, V-Sync, the renderer and the graphics
 API.** The browser owns the window and paces the frames, and Compatibility is
@@ -2214,6 +2215,102 @@ E are not game keys, so a menu keeps them.
 The `ui_` bindings are left as they are, so the login screen and character
 select can still be walked with WASD. `_test_game_keys_are_not_menu_keys` builds
 the bug first, then shows the hand-back stops it.
+
+### Grey in the gaps, black past the map
+
+Many floor tiles have transparent gaps: the town's cobblestones are a third
+transparent pixels. A gap shows whatever is behind the tiles, and the art was
+painted over the engine's grey, so the gaps read as mortar. The browser round set
+`default_clear_color` to black in project.godot. The editor draws a scene over
+that colour too, so every gap in every scene turned black, in the editor and in
+the game. It was reported as "my graphics trip out". The field's `Black` layer was
+painted by hand to make its outside black before that.
+
+The two jobs are separate now:
+
+- **project.godot keeps the engine's grey** (no `default_clear_color` line), so the
+  editor shows a scene the way the game does.
+- **`AreaRegistry` makes the screen black at runtime**
+  (`RenderingServer.set_default_clear_color`). Outside the map is black, and so
+  is a frame with no scene in it yet.
+- **Every area gets a `MapBackdrop`** (`src/world/mapbackdrop.gd`) when it opens,
+  through `SceneTree.scene_changed`. It is grey (`GAPS`, the engine's colour)
+  under every tile any visible `TileMapLayer` draws, and nothing past the edge.
+  There is no layer to paint and nothing to keep in step. A new or repainted
+  area is covered as soon as it is saved.
+
+Three details that matter:
+
+- **It covers the tile as drawn, not the cell.** The town's water is 32x32 tiles
+  on a 16x16 grid, drawn centred on their cell. Covering cells left three
+  quarters of each water tile bare, and rounding to whole cells put a grey band
+  past the map's edge.
+- **Runs, not tiles.** Tiles in a band that touch are merged, so the field is
+  108 rectangles instead of about 18,000 draw commands a frame.
+- **Once per area per session.** The cover is cached by scene path. The field's
+  takes tens of milliseconds to work out.
+
+`_test_black_past_the_map` holds all of it, and checks every real area.
+
+### Chat, the way players will use it on day 1
+
+A sweep of chat with the real game against the real server found these. Each is
+held by a suite section.
+
+**One message is one line** (`_test_chat_is_one_line_per_message`). The server
+stored whatever was typed. Some real damage:
+
+- One message of 150 newlines was 150 blank lines on every screen, which wiped
+  the window.
+- A newline let a player print "12:00 [SERVER] Server restarting" on a line of
+  its own.
+- A bidi override printed a message backwards.
+- A message of nothing but zero-width spaces was a blank line under a name.
+
+The server now cleans all of this (`clean_player_text()`, see the API's
+CLAUDE.md). `ChatPanel.one_line()` does the same as a line is drawn, for lines
+stored before the rule. ZWJ stays, since emoji are built with it.
+
+**A new line is added, not the log rebuilt** (`_test_chat_keeps_your_place`).
+Every arriving line used to call `_render()`, which destroyed and rebuilt the
+whole log and scrolled to the end. Measured with fifty lines:
+
+- A line cost 35 ms, so a busy world chat stuttered the game while it was open.
+- A player who scrolled up to read was pulled back down whenever anybody spoke.
+
+Now `_append_to_log()` adds the one line (about 1 ms) and drops the oldest past
+`LINES_KEPT`.
+
+- The log follows only a player already reading the newest lines, or one who just
+  sent a line (`_stick_to_bottom`).
+- A reader further up keeps their place, including when staff remove a line
+  (`_render(true)`).
+- A poll's lines decide once, as a batch, because the layout does not catch up
+  between them.
+- Two things keep a tab switch correct:
+  - A feed reset moves `_feed_generation`, and a poll answer that left before the
+    reset is dropped. Otherwise `/r` showed the reply and none of the
+    conversation it answered.
+  - The first read after a reset replaces the screen in one render
+    (`_redraw_on_next_read`), instead of landing under the old lines.
+
+**Whispers reach you** (`_test_whispers_reach_you`). The chat window reads only
+its open tab, while it is open, and the Whisper tab shows only a conversation with
+a name you already typed. So a whisper sent to a player reached nobody. That was
+measured: two whispers, chat shut, then open on World, and nothing anywhere.
+
+- The broadcast poll now carries `chat_news`: the newest whisper to you (who,
+  what, when), and the newest guild and friends lines by somebody else.
+- `_read_chat_news()` pops "X whispers: ..." and lights the Chat button with a
+  dot.
+- The chat window opens on that conversation.
+- Open on another tab, the Whisper tab lights and the notice says
+  "X whispered you. /r to answer."
+- `/r` answers whoever whispered last.
+- The first poll is where "new" starts. A whisper from within
+  `WHISPER_CATCH_UP_SECONDS` before logging in is still said.
+- This state is static on the HUD, per login. Every area has its own HUD, and
+  kept per HUD, the same whisper was said again in every area walked into.
 
 ### Staff logins take a code from the email
 
@@ -2504,7 +2601,8 @@ src/types/          ClassData, EnemyData, ItemData, ItemStack. The Resource TYPE
 src/ui/             characterhud, hotbar, statsscreen, floatinglabel, storyscene
 src/ui/bank/        src/ui/inventory/   src/ui/lootbag/   src/ui/menus/
 src/ui/owner/       owner-only tooling, gated on Api.is_owner
-src/world/          levels (elusion, field), interactables, lootbag, roofswap
+src/world/          levels (elusion, field), interactables, lootbag, roofswap,
+                    mapbackdrop (grey under the tiles, black past the map)
 src/shared/         pure helpers used across characters, enemies and pets —
                     facing, formation, homing, safespot, and localtime, which
                     is the ONLY place unix seconds become a wall clock
