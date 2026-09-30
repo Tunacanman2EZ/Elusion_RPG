@@ -430,7 +430,8 @@ func _create_account(username: String, password: String) -> void:
 		_set_creating(false)
 		_welcome(username)
 		await _enter_game(username, password)
-		_say("", SAY_WORKING)
+		if not CharacterData.load_failed:
+			_say("", SAY_WORKING)
 		return
 
 	# HERE, AND ONLY HERE, "TAKEN" IS THE RIGHT WORD. This is a sign-up form,
@@ -906,6 +907,21 @@ func _on_login_button_pressed() -> void:
 	if _request_in_flight:
 		return
 
+	# SIGNED IN, BUT THE CHARACTERS DID NOT LOAD: the button tries the load
+	# again rather than the login. Logging in a second time would work too,
+	# but it would send a staff member another code and end the session this
+	# screen already has. Only for the same name - a player who typed another
+	# one wants that account.
+	if _retry_load and Api.is_logged_in() \
+			and %usernamelineedit.text.strip_edges().to_lower() == Api.username.to_lower():
+		_retry_load = false
+		_say("Loading your characters...", SAY_WORKING)
+		_set_busy(true)
+		await _complete_login(Api.username)
+		_set_busy(false)
+		return
+	_retry_load = false
+
 	var username: String = %usernamelineedit.text.strip_edges()
 	var password: String = Api.clean_password(%passwordlineedit.text)
 
@@ -952,7 +968,10 @@ func _on_login_button_pressed() -> void:
 		_welcome(username)
 		await _enter_game(username, password)
 		_set_busy(false)
-		_say("", SAY_WORKING)
+		# Not over the line saying the characters did not load - see
+		# _complete_login().
+		if not CharacterData.load_failed:
+			_say("", SAY_WORKING)
 		return
 
 	# A 401 IS "WRONG NAME OR PASSWORD", AND THAT IS ALL IT IS. The server will
@@ -1014,7 +1033,34 @@ func _complete_login(typed_username: String) -> void:
 	# against empty slots and the data would arrive after the screen had already
 	# decided there were no characters.
 	await CharacterData.load_for_user(canonical_username)
+	# A LOAD THAT DID NOT ARRIVE IS NOT FOUR EMPTY SLOTS. Going on to character
+	# select from here showed exactly that, and "Create" over a slot the server
+	# still held pushed an empty backpack over the real one. Stay, say so, and
+	# let the button try again.
+	if CharacterData.load_failed:
+		_show_load_failed()
+		return
 	_go_to_character_select()
+
+
+# Set when the characters did not load; the next press retries the load.
+var _retry_load: bool = false
+const LOAD_FAILED_TEXT := "Your characters did not load - the server did not answer. Press %s to try again."
+
+
+func _show_load_failed() -> void:
+	_retry_load = true
+	if email_form != null:
+		email_form.visible = false
+	if recover_form != null:
+		recover_form.visible = false
+	if login_form != null:
+		login_form.visible = true
+	var box: LineEdit = get_node_or_null("%usernamelineedit")
+	if box != null and box.text.strip_edges() == "":
+		box.text = Api.username
+	var button: Button = get_node_or_null("%loginbutton")
+	_say(LOAD_FAILED_TEXT % ("\"%s\"" % button.text if button != null else "the button"), SAY_BLOCKED)
 
 
 func _go_to_character_select() -> void:

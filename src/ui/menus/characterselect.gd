@@ -56,6 +56,7 @@ func _ready() -> void:
 	# Normally already under way from the login screen, and then a no-op. This
 	# covers arriving here any other way - back from the world, say.
 	AreaRegistry.prefetch(WORLD_AREA)
+	_build_logout_row()
 	update_slot_labels()
 
 
@@ -77,7 +78,7 @@ func update_slot_labels() -> void:
 
 		if is_valid:
 			# slot has a character — show name and level, enable select only
-			labels[i].text = "%s  |  level: %d" % [slot["character"], slot["level"]]
+			labels[i].text = slot_text(slot, SLOT_CLASSES[i])
 			create_btns[i].disabled = true
 			select_btns[i].disabled = false
 		else:
@@ -85,6 +86,18 @@ func update_slot_labels() -> void:
 			labels[i].text = "empty slot"
 			create_btns[i].disabled = false
 			select_btns[i].disabled = true
+
+
+static func slot_text(slot: Dictionary, slot_class: String) -> String:
+	"""What an occupied slot says. A character is named after its class, and
+	the class is already the heading over the slot - "warrior  |  level: 1"
+	under WARRIOR said it twice. A character with a name of its own still
+	shows it."""
+	var level: int = int(slot.get("level", 1))
+	var name_of: String = str(slot.get("character", ""))
+	if name_of == "" or name_of.to_lower() == slot_class.to_lower():
+		return "Level %d" % level
+	return "%s  |  Level %d" % [name_of, level]
 
 
 func _is_slot_valid(slot) -> bool:
@@ -293,3 +306,53 @@ func _show_loading(idx: int) -> void:
 	for button in [%createbutton1, %createbutton2, %createbutton3, %createbutton4,
 			%selectbutton1, %selectbutton2, %selectbutton3, %selectbutton4]:
 		button.disabled = true
+
+
+# =============================================================================
+# LOG OUT
+# =============================================================================
+# THIS SCREEN HAD NO WAY OUT. With "Remember me" on, reopening the game comes
+# straight here, and the only door back to the login screen was to walk into
+# the world and press Logout on the HUD - so a player who wanted another
+# account, or to sign out of a shared computer, had to enter the game first.
+
+const LOGIN_MENU_PATH := "res://scene/ui/menus/loginmenu.tscn"
+
+var logout_button: Button = null
+var _leaving: bool = false
+
+
+func _build_logout_row() -> void:
+	if logout_button != null:
+		return
+	var grid: Node = get_node_or_null("centercontainer/mainpanel/margincontainer/vboxcontainer/gridcontainer")
+	if grid == null:
+		return
+	var column: Node = grid.get_parent()
+	var row := HBoxContainer.new()
+	row.name = "logoutrow"
+	row.alignment = BoxContainer.ALIGNMENT_END
+	column.add_child(row)
+	column.move_child(row, grid.get_index() + 1)
+	logout_button = Button.new()
+	logout_button.name = "logoutbutton"
+	logout_button.text = "Log out"
+	logout_button.tooltip_text = "Back to the login screen. On a shared computer, this is how you leave."
+	logout_button.custom_minimum_size = Vector2(110, 0)
+	row.add_child(logout_button)
+	logout_button.pressed.connect(_on_logout_pressed)
+
+
+func _on_logout_pressed() -> void:
+	if _leaving or _entering:
+		return
+	_leaving = true
+	logout_button.disabled = true
+	# The same order as the HUD's Logout: anything still waiting to be saved
+	# goes first, then the server's session, then the screen.
+	await CharacterData.finish_saving()
+	CharacterData.clear_current_user()
+	await Api.logout()
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	get_tree().change_scene_to_file(LOGIN_MENU_PATH)

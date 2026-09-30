@@ -176,6 +176,8 @@ func _run_all() -> void:
 	_test_chat_filter()
 	_test_chat_safety_menu()
 	_test_staff_reports_and_mutes()
+	await _test_a_failed_load_is_not_an_empty_account()
+	_test_character_select_has_a_way_out()
 
 
 # =============================================================================
@@ -13254,3 +13256,105 @@ func _test_staff_reports_and_mutes() -> void:
 	hud.free()
 	print("  staff: mute rules and words, the Actions row, the Reports tab both ways, the Staff button count")
 
+
+func _test_a_failed_load_is_not_an_empty_account() -> void:
+	section("CHARACTERS - a load that did not arrive is not four empty slots")
+
+	# THE BUG, reproduced live: the character list timed out after the login,
+	# character select showed four empty slots, and Create over the warrior
+	# pushed an empty backpack over the real one.
+	var store_src: String = _func_body(_code_src("res://src/systems/serverstorage.gd"), "func load(")
+	check("every part of the load that fails is a failed load - the list, a character, the account",
+		store_src.count("return LOAD_FAILED.duplicate()") == 4 and not store_src.contains("continue\n\n\t\tslots[index]"),
+		store_src.count("return LOAD_FAILED.duplicate()"))
+
+	# A storage whose load fails, so CharacterData can be watched reading it.
+	var failing := GDScript.new()
+	failing.source_code = "extends SaveStorage\nvar saves := 0\nfunc load() -> Dictionary:\n\treturn {\"load_failed\": true}\nfunc save(_payload: Dictionary) -> bool:\n\tsaves += 1\n\treturn true\n"
+	failing.reload()
+	var was := [CharacterData.storage, CharacterData.load_failed, CharacterData.character_slots,
+		CharacterData.account_data, CharacterData._save_pending, CharacterData.current_username]
+	CharacterData.storage = failing.new()
+	CharacterData.load_failed = false
+	var loaded: bool = await CharacterData.load_data()
+	var flagged: bool = CharacterData.load_failed
+	CharacterData._save_pending = false
+	var queued: bool = CharacterData.save_data()
+	var pending_after: bool = CharacterData._save_pending
+	var wrote: bool = CharacterData._write_save_now()
+	var handed: int = int(CharacterData.storage.saves)
+	CharacterData.storage = was[0]
+	CharacterData.load_failed = was[1]
+	CharacterData.character_slots = was[2]
+	CharacterData.account_data = was[3]
+	CharacterData._save_pending = was[4]
+	CharacterData.current_username = was[5]
+	check("CharacterData marks it as failed, not as a fresh account", not loaded and flagged)
+	check("  and saves nothing from it - not queued, not written, nothing handed to the server",
+		not queued and not pending_after and not wrote and handed == 0, [queued, pending_after, wrote, handed])
+	var ld_src: String = _func_body(_code_src("res://src/systems/characterdata.gd"), "func load_for_user(")
+	check("  a new load starts unflagged", ld_src.find("load_failed = false") != -1
+		and ld_src.find("load_failed = false") < ld_src.find("await load_data()"))
+
+	var login_src: String = _code_src("res://src/ui/menus/loginmenu.gd")
+	var complete: String = _func_body(login_src, "func _complete_login(")
+	check("the login screen does not go to character select on a failed load",
+		complete.find("if CharacterData.load_failed:") != -1
+		and complete.find("if CharacterData.load_failed:") < complete.find("_go_to_character_select()"))
+	var pressed: String = _func_body(login_src, "func _on_login_button_pressed(")
+	check("  the button tries the load again, not the login - for the same name",
+		pressed.find("if _retry_load and Api.is_logged_in()") != -1
+		and pressed.find("if _retry_load and Api.is_logged_in()") < pressed.find("Api.login(")
+		and pressed.contains("await _complete_login(Api.username)"))
+	check("  and nothing wipes the message on the way back",
+		pressed.contains("if not CharacterData.load_failed:\n\t\t\t_say(\"\", SAY_WORKING)")
+		and _func_body(login_src, "func _create_account(").contains("if not CharacterData.load_failed:"))
+
+	var login: Node = _login_screen_for_test()
+	login.email_form.visible = true
+	login.login_form.visible = false
+	var name_was: String = Api.username
+	Api.username = "robert"
+	login._show_load_failed()
+	Api.username = name_was
+	var said: Label = login.get_node("%errorlabel")
+	check("it says so, on the sign-in form, with the name filled in",
+		login._retry_load and login.login_form.visible and not login.email_form.visible
+		and said.text.begins_with("Your characters did not load")
+		and said.get_theme_color("font_color") == login.SAY_BLOCKED
+		and login.get_node("%usernamelineedit").text == "robert", said.text)
+	login.free()
+	print("  failed load: every part counts, flagged not fresh, nothing saved, the screen stays and retries")
+
+
+func _test_character_select_has_a_way_out() -> void:
+	section("CHARACTER SELECT - a way back to the login screen, and a slot that says what it holds")
+
+	var Select: Script = load("res://src/ui/menus/characterselect.gd") as Script
+	check("an occupied slot says its level, not its class twice",
+		Select.slot_text({"character": "warrior", "level": 12}, "warrior") == "Level 12"
+		and Select.slot_text({"character": "Warrior", "level": 3}, "warrior") == "Level 3"
+		and Select.slot_text({"character": "Grimnir", "level": 5}, "warrior") == "Grimnir  |  Level 5")
+
+	var screen: Node = (load("res://scene/ui/menus/characterselect.tscn") as PackedScene).instantiate()
+	screen._build_logout_row()
+	var button: Button = screen.logout_button
+	var grid: Node = screen.get_node("centercontainer/mainpanel/margincontainer/vboxcontainer/gridcontainer")
+	check("there is a Log out button, under the four heroes",
+		button != null and button.text == "Log out" and button.get_parent().get_parent() == grid.get_parent()
+		and button.get_parent().get_index() == grid.get_index() + 1)
+	screen._build_logout_row()
+	check("  built once, and by the screen itself",
+		grid.get_parent().find_children("logoutrow*", "", false, false).size() == 1
+		and _func_body(_code_src("res://src/ui/menus/characterselect.gd"), "func _ready(").contains("_build_logout_row()"))
+	screen.free()
+
+	var src: String = _func_body(_code_src("res://src/ui/menus/characterselect.gd"), "func _on_logout_pressed(")
+	var saved: int = src.find("await CharacterData.finish_saving()")
+	var cleared: int = src.find("CharacterData.clear_current_user()")
+	var out: int = src.find("await Api.logout()")
+	var gone: int = src.find("change_scene_to_file(LOGIN_MENU_PATH)")
+	check("it saves, clears, signs out, then leaves - in that order, like the HUD's",
+		saved != -1 and saved < cleared and cleared < out and out < gone, [saved, cleared, out, gone])
+	check("  and not while the world is loading", src.contains("if _leaving or _entering:"))
+	print("  character select: the level, Log out in place and once, and its order")

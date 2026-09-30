@@ -66,6 +66,10 @@ var _failed_keys: Dictionary = {}
 var _sent_leaving: Dictionary = {}
 
 
+# What load() answers when any part of it did not arrive.
+const LOAD_FAILED := {"load_failed": true}
+
+
 func _init() -> void:
 	# The server is the authority — see SaveStorage.is_authoritative.
 	is_authoritative = true
@@ -77,17 +81,23 @@ func _init() -> void:
 
 func load() -> Dictionary:
 	# Rebuilds the blob CharacterData expects out of however many calls it
-	# takes. Returns {} on failure, which CharacterData already treats as
-	# "fresh install" — and that is the correct reading here too, because a
-	# player who cannot reach the server has no characters to show.
+	# takes.
+	#
+	# A FAILED LOAD IS NOT AN EMPTY ACCOUNT. This used to return {} for both,
+	# and CharacterData read {} as a fresh install: a server slow to answer at
+	# login showed four empty slots, and pressing Create in one of them pushed
+	# a brand new character's EMPTY backpack over the real one. Reproduced
+	# live - the bag was gone. Now any part that does not load - the list, a
+	# character on it, the account - is LOAD_FAILED, and nothing is shown or
+	# saved from a view that never arrived. See CharacterData.load_failed.
 	if not Api.is_logged_in():
-		push_warning("ServerStorage: load() with no session — returning empty.")
-		return {}
+		push_warning("ServerStorage: load() with no session — nothing loaded.")
+		return LOAD_FAILED.duplicate()
 
 	var listing: Dictionary = await Api.get_json("/api/save")
 	if not listing.get("ok", false):
 		push_warning("ServerStorage: could not list characters — %s" % listing.get("error", ""))
-		return {}
+		return LOAD_FAILED.duplicate()
 
 	var slots: Array = [null, null, null, null]
 	var listed: Array = _array(_dict(listing.get("data", {})).get("slots", []))
@@ -104,14 +114,20 @@ func load() -> Dictionary:
 		# keyed on the same (user, slot) and none is useful without the others.
 		var res: Dictionary = await Api.get_json("/api/character?slot=%d" % index)
 		if not res.get("ok", false):
+			# NOT SKIPPED. A character that did not load would be shown as an
+			# empty slot, which is the same trap one slot at a time.
 			push_warning("ServerStorage: slot %d failed to load — %s" % [index, res.get("error", "")])
-			continue
+			return LOAD_FAILED.duplicate()
 
 		slots[index] = _slot_from_server(_dict(res.get("data", {})))
 
 	var account: Dictionary = await Api.get_json("/api/account")
 	if not account.get("ok", false):
+		# AND NOT THE ACCOUNT EITHER. It holds the shared bank, and the bank
+		# save replaces the whole bank: shown empty, one deposit would have
+		# written "this and nothing else" over everything in it.
 		push_warning("ServerStorage: could not load account data — %s" % account.get("error", ""))
+		return LOAD_FAILED.duplicate()
 
 	var account_data: Dictionary = _account_from_server(_dict(account.get("data", {})))
 

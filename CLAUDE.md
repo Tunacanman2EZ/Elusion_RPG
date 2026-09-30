@@ -2312,6 +2312,29 @@ measured: two whispers, chat shut, then open on World, and nothing anywhere.
 - This state is static on the HUD, per login. Every area has its own HUD, and
   kept per HUD, the same whisper was said again in every area walked into.
 
+### Characters: a load that did not arrive, and a way out of character select
+
+From the day-1 sweep of creating and picking a character.
+
+- **A failed load is not an empty account** (`_test_a_failed_load_is_not_an_empty_account`).
+  `ServerStorage.load()` returned `{}` when the character list, a character or
+  the account did not arrive, and `{}` reads as a fresh install. Reproduced
+  live: the list timed out after the login, character select showed four
+  empty slots, and Create over the warrior pushed an empty backpack over the
+  real one - the bag was gone. Now any part failing returns `LOAD_FAILED`,
+  `CharacterData.load_failed` is set, `save_data()` and `_write_save_now()`
+  refuse, and the login screen stays put: "Your characters did not load...
+  Press Enter Elysium to try again", which retries the LOAD (not the login -
+  that would send a staff member another code).
+- **Character select has a Log out button** (`_test_character_select_has_a_way_out`).
+  With Remember me on, reopening the game lands there, and the only way to the
+  login screen was to enter the world first. It saves, clears, signs out and
+  leaves, in the HUD's order.
+- An occupied slot says "Level 12" rather than "warrior | level: 12" under a
+  WARRIOR heading.
+- Not changed, noted: logging in always starts in town (`WORLD_AREA`); the
+  saved `area` is where other players see you, not where you appear.
+
 ### Chat safety: ignore, report, mute, the filter, new messages below
 
 Asked for after the chat sweep, for day 1. `_test_chat_filter`,

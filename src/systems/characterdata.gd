@@ -221,6 +221,13 @@ var character_slots: Array = [null, null, null, null]
 # which slot the player picked at character select — read by elusion.gd
 var active_character_index: int = 0
 
+# THE LAST LOAD DID NOT ARRIVE - the server did not answer, or answered with an
+# error, for the character list, a character, or the account. Nothing that
+# was never loaded is shown or saved while this is true: the login screen
+# stays put and offers to try again, and save_data() refuses. See
+# ServerStorage.load() for the backpack it cost to learn this.
+var load_failed: bool = false
+
 # account-wide shared data — initialized in _ready, refilled on load
 var account_data: Dictionary = DEFAULT_ACCOUNT_DATA.duplicate(true)
 
@@ -287,6 +294,7 @@ func load_for_user(username: String) -> bool:
 	# function that is not a coroutine just returns its value, so this line is
 	# correct for a file read too.
 	storage = ServerStorage.new()
+	load_failed = false
 	return await load_data()
 
 
@@ -305,6 +313,7 @@ func clear_current_user() -> void:
 
 	current_username = ""
 	storage = null
+	load_failed = false
 	character_slots = [null, null, null, null]
 	active_character_index = 0
 	account_data = DEFAULT_ACCOUNT_DATA.duplicate(true)
@@ -709,6 +718,9 @@ func _write_save_now() -> bool:
 	if storage == null:
 		push_warning("CharacterData: save attempted with no user loaded — ignoring")
 		return false
+	if load_failed:
+		_save_pending = false
+		return false
 
 	var payload := _save_payload()
 	# THE FLAG IS CLEARED ONLY IF THE BACKEND TOOK IT.
@@ -790,6 +802,10 @@ func save_data() -> bool:
 	# a safe change, but it is a change in meaning worth knowing about.
 	if storage == null:
 		push_warning("CharacterData: save_data() called with no user loaded — ignoring")
+		return false
+	# NOTHING IS SAVED FROM A VIEW THAT NEVER LOADED. See load_failed.
+	if load_failed:
+		push_warning("CharacterData: save_data() refused - the characters never loaded")
 		return false
 
 	# THE AGE CLOCK STARTS ON THE FIRST CHANGE OF A BATCH, not on every one.
@@ -973,6 +989,11 @@ func load_data() -> bool:
 	# see which one is in the variable.
 	@warning_ignore("redundant_await")
 	var data: Dictionary = await storage.load()
+	if bool(data.get("load_failed", false)):
+		load_failed = true
+		_ensure_slot_array()
+		_ensure_account_data()
+		return false
 	if data.is_empty():
 		_ensure_slot_array()
 		_ensure_account_data()
