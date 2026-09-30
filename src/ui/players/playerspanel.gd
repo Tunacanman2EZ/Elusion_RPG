@@ -30,6 +30,9 @@ extends Control
 # reason, and it only runs while the panel is open.
 const REFRESH_SECONDS := 15.0
 
+# How a name is drawn - its player's colour, and the crown or MOD / DEV.
+const NameTag := preload("res://src/shared/nametag.gd")
+
 @onready var count_label: Label = get_node_or_null("%playerscount")
 @onready var refresh_button: Button = get_node_or_null("%playersrefreshbutton")
 @onready var close_button: Button = get_node_or_null("%playersclosebutton")
@@ -166,7 +169,7 @@ func _load() -> void:
 			# THE SERVER'S OWN WORD FOR HOW PRECISE THIS IS. It says "area"
 			# today, so the heading says the room rather than implying a
 			# distance nobody measured.
-			heading = "In %s with you" % where.capitalize()
+			heading = "In %s with you" % AreaRegistry.display_name(where)
 		rows.add_child(_heading(heading))
 		for entry in here:
 			rows.add_child(_row(entry))
@@ -202,19 +205,16 @@ func _row(entry: Dictionary) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 6)
 
-	var name_label := Label.new()
 	var who: String = str(entry.get("username", "?"))
 	var character: String = str(entry.get("name", ""))
-	name_label.text = who if character == "" else "%s  (%s)" % [who, character]
+	# THE SAME NAME THE WORLD DRAWS: their own colour, and the crown or MOD /
+	# DEV in front. nametag.gd is shared by chat, friends and the guild roster,
+	# because a fourth opinion about what staff look like is how they stop
+	# being recognisable.
+	var name_label: Label = NameTag.add_to(line,
+		who if character == "" else "%s  (%s)" % [who, character],
+		str(entry.get("role", "player")), entry.get("name_hue"))
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.add_theme_font_size_override("font_size", 12)
-
-	# THE SAME COLOUR THE WORLD USES. Api.colour_for_role is what paints the
-	# nameplate over their head and their name in chat; a fourth opinion about
-	# what a dev looks like is how they stop being recognisable.
-	name_label.add_theme_color_override("font_color",
-		Api.colour_for_role(str(entry.get("role", "player"))))
-	line.add_child(name_label)
 
 	# WHO THEY RUN WITH, in its own label rather than glued onto the name. The
 	# name label above expands to fill and would push the tag off the edge on a
@@ -240,7 +240,7 @@ func _row(entry: Dictionary) -> Control:
 
 	var where := Label.new()
 	var area: String = str(entry.get("area", ""))
-	where.text = "lvl %d  %s" % [int(entry.get("level", 1)), area.capitalize()]
+	where.text = "lvl %d  %s" % [int(entry.get("level", 1)), AreaRegistry.display_name(area)]
 	where.add_theme_font_size_override("font_size", 11)
 	where.add_theme_color_override("font_color", Color(0.62, 0.58, 0.52))
 	line.add_child(where)

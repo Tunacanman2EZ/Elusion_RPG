@@ -313,12 +313,12 @@ const FLEE_RELEASE_FACTOR := 1.8
 @export var bag_drop_chance: float = 0.30
 
 # How good this enemy's drops can get. Gates item rolls (nothing above this
-# tier can appear — see _pick_weighted_item_id), scales gold, and now sets the
+# tier can appear — see gamedata.roll_loot_tier), scales gold, and sets the
 # pet odds via PET_ODDS_BY_TIER below.
 #
 # EVERY ENEMY LEFT THIS AT 1 UNTIL NOW, which had a consequence nobody would
-# have guessed from reading it: _pick_weighted_item_id() skips any item whose
-# tier exceeds max_tier, so tinyhealthpotion (tier 2) could not drop from
+# have guessed from reading it: the old item picker skipped any item whose
+# tier exceeded max_tier, so tinyhealthpotion (tier 2) could not drop from
 # ANYTHING in the game. It wasn't rare, it was unreachable. Each subclass sets
 # this in _ready() now, next to its max_hp.
 @export var max_loot_tier: int = 1

@@ -81,13 +81,14 @@ static func defense_tier(defense_level: int) -> Dictionary:
 # =============================================================================
 # DAMAGE BONUSES
 # =============================================================================
-# +0.5% damage per point above 1, universal across every class. Each class keeps
-# its own primary damage formula unchanged; these layer ON TOP, specifically for
-# whichever stat is NOT already that class's primary driver, so attack and magic
-# both matter for everyone without double-counting a stat a class already scales
-# off. Warrior multiplies its attack-based melee by magic_damage_bonus();
-# mage and healer multiply their magic-based spells by attack_damage_bonus();
-# tank has no clear primary and applies both to its flat aura damage.
+# NOT APPLIED ANYWHERE, and this used to say otherwise. The plan was +0.5% per
+# point of whichever stat is NOT a class's primary driver - warrior melee times
+# magic_damage_bonus(), mage and healer spells times attack_damage_bonus(), tank
+# both - and no class ever calls either function. damage_multiplier() below
+# superseded it: attack and magic already add 1% a level each to every hit of
+# every class, which is what the top-up was for. Kept, with the suite's checks
+# on its arithmetic, as the seam if an off-stat bonus is ever wanted; wiring it
+# in is a balance change, not a fix.
 const DAMAGE_BONUS_PER_POINT := 0.005
 
 
@@ -109,8 +110,8 @@ static func magic_damage_bonus(magic_level: int) -> float:
 # effect on their damage at all — only warrior's melee formula ever read it.
 #
 # Separate constants from DAMAGE_BONUS_PER_POINT above on purpose. That one is
-# the cross-stat top-up a class applies to its off-stat; this is the multiplier
-# every attack goes through regardless of class. They are tuned independently.
+# the unused cross-stat top-up; this is the multiplier every attack actually
+# goes through regardless of class.
 const ATTACK_DAMAGE_PERCENT_PER_LEVEL: float = 0.01
 const MAGIC_DAMAGE_PERCENT_PER_LEVEL:  float = 0.01
 
@@ -119,6 +120,17 @@ static func damage_multiplier(attack_level: int, magic_level: int) -> float:
 	return 1.0 \
 		+ (attack_level - 1) * ATTACK_DAMAGE_PERCENT_PER_LEVEL \
 		+ (magic_level - 1) * MAGIC_DAMAGE_PERCENT_PER_LEVEL
+
+
+# WORN DAMAGE, as a factor: a Fury amulet's +10% is 1.10.
+#
+# MULTIPLIED WITH the skill multiplier above rather than added to it. Added, a
+# +10% amulet would be worth exactly ten attack levels to everyone; multiplied,
+# it is worth a tenth of whatever the character already hits for, which is what
+# "+10% damage" says on the tooltip. Negative percentages are floored at 0 so a
+# bad number in a .tres can never make a hit heal.
+static func gear_damage_factor(percent: int) -> float:
+	return 1.0 + maxf(float(percent), 0.0) / 100.0
 
 
 # =============================================================================

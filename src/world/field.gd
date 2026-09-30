@@ -217,6 +217,9 @@ func _position_player_at_spawn() -> void:
 			# It reads as the entire view sliding into place because the camera
 			# is parented to the player and inherits the blend.
 			player.reset_physics_interpolation()
+			# And the camera with it, now - see Player.snap_camera().
+			if player.has_method("snap_camera"):
+				player.snap_camera()
 			if OS.is_debug_build():
 				print("[WORLD] field — spawn '%s' -> %s" % [target_id, portal.global_position])
 			return

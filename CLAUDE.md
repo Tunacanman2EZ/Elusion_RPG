@@ -71,7 +71,7 @@ repository — run this from *its* folder, not from this one:
 .\venv\Scripts\python.exe test_api.py
 ```
 
-454 checks, exits non-zero on any failure. It uses a throwaway database in your
+506 checks at the time of writing, exits non-zero on any failure. It uses a throwaway database in your
 temp folder and never touches `elusion.db`.
 
 No relative path is given on purpose. The two repositories are separate
@@ -256,10 +256,43 @@ values directly and never call methods on the scenes it inspects.
 `InventoryContainer.to_save_array()` appends `null` for every empty cell so
 positions stay stable across a save and load. Two consequences:
 
-- `.size()` is the number of cells, never an item count.
+- `.size()` is the number of cells, never an item count. For the backpack that
+  is **30**, not 20 — see the next entry.
 - An empty array is a legitimate state, not a corrupt one. `gameover.gd`
   assigns `[]` outright when you decline a revive, and a fresh character starts
   the same way.
+
+### The hotbar's keys are the backpack's cells 20-29
+
+The keys hold items. Dragging a potion onto key 1 moves it out of the bag, the
+way equipping moves a piece onto the character, and the server stores it as a
+`carry_items` row at position 20. It used to be an item id pointing *into* the
+bag, so the same potion was drawn twice; the gold "linked" tint, the "Linked
+from inventory" tooltip, the drag that cleared a reference and the trash that
+refused a key all existed to explain that, and all went with it.
+
+The backpack's `InventoryContainer` owns the keys, which is what makes every
+endpoint's answer land on them for free — but it means three things are not
+what they look like:
+
+- **`slots` is every cell, `capacity` is only the grid.** `slots` is the twenty
+  grid cells then the ten keys, and `slots[i].slot_index == i` for all thirty.
+  Anything meaning "the bag" — a drop in a gap, `set_slot_type()` — loops to
+  `capacity`, not `slots.size()`.
+- **A key's parent is not its container.** It is a child of the hotbar's row.
+  Ask `slot.home_container` for "the container that saves this cell"; the trash
+  does, and falling back to `get_parent()` there deletes the item from the
+  screen without telling the save.
+- **The keys can arrive before the hotbar does.** The HUD loads the bag, then
+  attaches the hotbar. Cells past the grid wait in `_unattached_tail`, go out
+  again on a save, and are handed over on `attach_remote_slots()` — which is
+  all or nothing, because a missing key would shift every later one a cell left.
+
+The server's half is two rules, both in `write_inventory()` and
+`_add_to_backpack()`: an array replaces the bag always and a key only if it
+reaches it, and nothing is ever *placed* on a key. `consume`, `equip` and
+`bank/items` take the cell used as `position`, because with the keys in the
+same rows "the highest cell holding it" is usually a key.
 
 ### Things that look uncalled and are not
 
@@ -612,6 +645,27 @@ scripts in ASCII, or save them as UTF-8 **with** a BOM.
 parameter `position` shadows it and Godot warns at parse time. In a grid, the
 word you want is `cell` — it is also more accurate.
 
+### A Label that shares a row gives way
+
+A guild called "the first" was drawn as **"the"** in its own panel. The name
+and a status line ("[THE FIRST] · Just you, so far. · founded …") shared one
+`HBoxContainer`; the name could be trimmed and the status could not, so the
+name was the thing cut to make room for a sentence about it. Nothing errors —
+it just looks like the guild has a different name.
+
+Two rules came out of it, both checked in `_test_the_guild_panel_reads_well()`
+by measuring the text against the width it was given rather than by reading
+the scene:
+
+- **The thing a panel is about gets a row of its own.** The guild's name is on
+  one line and everything said about it is on the line below.
+- **A Label that clips or trims asks for almost no width.** Measured on 4.6:
+  a twenty-character name wants 161px plain and **1px** with `clip_text` or an
+  ellipsis overrun. That is how the name lost: it could trim, so its claim on
+  the row was one pixel. Beside an expanding spacer such a Label is given
+  nothing and vanishes. Clip or trim only a Label that is itself set to expand
+  and has the row to itself.
+
 ### An invalid property assignment aborts the whole function
 
 GDScript does not skip a bad assignment and carry on. It raises, and everything
@@ -804,12 +858,25 @@ assigned. It became false the day the Clockwork Raven pack arrived, and nothing
 went back to reread it. Adding art does not feel like touching licensing, so
 nobody does, and the sentence quietly grew to cover another artist's copyright.
 
-The second instance was found while fixing the first: `art/thirdparty/` holds
+The second instance was found while fixing the first: `art/thirdparty/` held
 tilesets `split_art.ps1` itself calls "of unconfirmed origin", and the catch-all
 in `assetlicense.md` — everything under `/art` except the item art — was
-claiming them. One of those files, `houses read to use.png`, is drawn by
-`scene/walls/shop.tscn`, so it ships. `assetlicense.md` now has a third section
-claiming it for nobody and asking whoever recognises it to get in touch.
+claiming them.
+
+**That folder is gone now, and this paragraph spent a while saying otherwise.**
+It read: *"One of those files, `houses read to use.png`, **is drawn by**
+`scene/walls/shop.tscn`, **so it ships**"* — present tense, and by then neither
+file existed. The picture was reachable only from `shop.tscn`, and `shop.tscn`
+was the OLD shop, which nothing instanced by path or by uid. The shop the game
+actually builds is `scene/walls/shophouse.tscn`, on `art/shophouses/`. So it was
+a file kept alive by a scene that nothing could reach, and both were deleted.
+
+Which is the whole lesson in miniature, twice over. Art gets replaced by editing
+the scenes that use it; a scene that stops being used stops being edited, so it
+keeps its old references for ever and keeps the files behind them alive with it.
+And then the note explaining that is written in the present tense and outlives
+the thing it describes. **A comment cannot fail** — and this one was a licensing
+claim, which is the most expensive kind in this repository to leave wrong.
 
 A licence file is a claim about a *set of files*, and the set changes without the
 claim changing. Pinning it to names means the next new source of art fails a test
@@ -1229,6 +1296,14 @@ Three things came out of fixing it, all worth keeping:
   and no trace of it afterwards. The box is an announcement and should fade; the
   log is a record and should not. They are different things and the old code
   treated them as two outputs for one message.
+- **"Should fade" was a sentence, not a feature.** Nothing faded the box: a line
+  left only when a newer one pushed it off the top, so the last five notices sat
+  above the menu bar all session. `_age_messages()` fades each line on its own
+  clock now (`MESSAGE_SHOW_SECONDS`, then `MESSAGE_FADE_SECONDS`). And the first
+  poll's catch-up — the week-long tail — is written to the log without popping
+  the box; only what arrives after it is news. "The log always gets it" had a
+  hole too: chat is built on first open, so before that there was no log at all.
+  Notices wait in `_unlogged_lines` until it exists.
 
 **And one conversion, in one place.** `unix seconds + system bias, then
 decompose` was written four times in this project — `chatpanel.gd`,
@@ -1316,6 +1391,144 @@ All three sabotage-tested, and `_test_chat_deletions_reach_the_client()` is a
 all `_ready()` would have done that the function reads), and asks. Only the two
 wiring facts — that the poll reads `removed`, and that it does so after the
 additions — are checked as text, because no bare instance can prove them.
+
+### The staff desk had no door
+
+The Staff panel was built, drawn, tested — and **nothing opened it.**
+`characterhud.tscn` carried a hidden Staff button, `_add_owner_button()` hid the
+whole row from everybody except the owner, and no line anywhere instanced
+`staffpanel.tscn`. A mod had no way in. Found while adding the moderation log,
+which would have been a second room behind the same missing door.
+
+`_add_owner_button()` now shows the row to `is_staff()` — mod and up — with the
+Staff button on it; Owner and Powers stay owner-only. `_test_the_staff_desk()`
+builds the real HUD and asks the row who it is for and what the button is
+connected to. **Every check before that one was about the panel in isolation,
+and every one of them passed.** Same shape as `unauthorized_seen` and the
+teleport route: a finished half with nothing joined to it.
+
+What the desk is now, and the rules in it that are not obvious:
+
+- **Players** is a page from the server, not the server. `GET /api/staff/users`
+  searches, filters and orders; the panel holds what it was sent and asks for
+  more after the server's cursor (`next_after`). It used to fetch every account
+  every ten seconds and search them locally — fine at forty players, the heaviest
+  request in the game at forty thousand, sent by exactly the people trying to keep
+  order while it is busy.
+- **Generations, not a busy flag.** A search typed while the last one is in
+  flight must win, so each request takes a number and an answer holding an old
+  one is dropped. A flag that refused the second request would show results for
+  what was typed a keystroke ago.
+- **A null cursor is not a string.** The last page's `next_after` arrives as
+  `null`, and `str(null)` is `"<null>"` — a name to page after. `read_page()`
+  turns every page into what it must be, and "no cursor" also means "no more",
+  whatever `more` said.
+- **The picked player survives a page that does not carry them.** A new search
+  can leave them off the list; the buttons stay aimed at them rather than quietly
+  unpicking.
+- **Record** is `GET /api/staff/actions?player=` — every sanction, note and
+  warning about them, with a tally over the whole record on the tab. A note or a
+  warning is **staff-only in the strict sense**: the server reads them under
+  `can_act_on()`, so a mod never sees what a dev wrote about another mod, and the
+  panel never has them to hide. "Log a warning" records that one was given; the
+  game sends the player nothing, and the confirmation line says so.
+- **Log** is the whole moderation log, filterable by player, staff and kind. The
+  kinds come from the server's `kinds`, not a list typed here. A line about an
+  account opens that account.
+
+The suite hands the real panel answers in the server's shape through the same
+function a real answer lands in — `_apply_list_page()`, `_apply_record_page()`,
+`_apply_log_page()` — and reads what it drew and what it would ask next
+(`_list_params()` and its siblings). The three `Api.get_json` lines are the only
+part checked as text, bounded to the function they belong in.
+
+### Colour is yours, rank is a badge
+
+Names used to be painted by rank — owner gold, dev blue, mod green, everyone
+else parchment — and the colour a player picked in Options was drawn over their
+own head and nowhere else. For staff the slider did nothing at all, because a
+staff name was locked to its rank colour. It was reported as "name colours did
+not update", which was exactly right.
+
+The rule now:
+
+- **The colour is the player's.** The server stores the hue (`users.name_hue`,
+  `PUT /api/account/name-colour`) and sends it with every name: chat lines,
+  friends, the players menu, the guild roster. Chat keeps it as a snapshot per
+  line, like the guild tag. `null` means "never chose" and draws Settings'
+  default — the default lives in one place, `settings.gd`.
+- **Rank is a badge a player cannot choose.** The owner's crown, and `MOD` /
+  `DEV` in the rank colour (`Api.RANK_COLOURS` colour the badge now, not the
+  name). Once colours are free a colour proves nothing — a player can pick the
+  owner's gold — so the badge, drawn from the server's `role`, is the part that
+  has to be true.
+- **One function draws a name in every list:** `src/shared/nametag.gd`,
+  preloaded (no `class_name`, so a fresh checkout does not need an editor
+  rescan). Chat, friends, players and guild all go through it; the suite fails
+  if any of them paints a name with `colour_for_role()` again.
+- **`Api` keeps the setting and the server in step.** The login's hue is written
+  into Settings (a second machine draws the first one's choice); moving the
+  slider pushes the new hue once it stops (`NAME_HUE_PUSH_DELAY`); a colour
+  picked before the server kept one is uploaded rather than lost.
+
+**The first live run found the trap `_line_from_server()` warns about.** Every
+name in chat came out in the default gold while the friends list beside it had
+the real colours: the server sent `name_hue`, and chat's line copy did not carry
+it. The suite now hands that function a real server message and reads the line
+it draws, instead of checking for the key by text.
+
+### A trade changes two bags and only one of them asked
+
+Found by driving a trade between two real accounts, with the game client as one
+of them. Four defects, each invisible from the side that was doing the testing:
+
+- **Whoever accepts FIRST was told nothing.** The second accept's request runs
+  the trade and gets the result; the first player's window just emptied, their
+  bag went on showing what it had, and their next ordinary save - a whole-bag
+  `PUT /api/character/inventory` - **deleted the item they had just received.**
+  Now the server flags both characters and refuses that stale save with the bag
+  it holds (409); the trade poll and the HUD's broadcast poll deliver the same
+  result. All three routes hand it to `CharacterData.apply_server_carry()`,
+  which adopts it (the live character AND the cached slot, so switching back
+  cannot resurrect the old copy) and emits `carry_adopted`; the HUD announces
+  it once, in the same sentence the history uses (`TradePanel.result_line`).
+- **The person asked was never told.** The window polled the trade only while
+  open, and nothing made them open it. The broadcast poll now carries a one-line
+  `trade` summary; `_read_trade()` lights the strip and the Trade button (a
+  dot) and toasts once per trade.
+- **A typed name went to the other player's first character.** The window sent
+  `to_slot` 0. It now sends no slot, the poll tells the server which character
+  this is (`_broadcast_path()`, and one poll on arrival rather than ten seconds
+  later), and the server decides.
+- **Accept agreed to whatever was standing when it landed.** It now sends the
+  revision the window drew; a 409 redraws the offer and says it changed, and a
+  change the poll brings in is pointed out and flashed, never slipped in.
+
+**Guild chat was the same bug, reported the same week.** The server had guild
+chat from the day guilds landed - send, read, the "are you in one" check - and
+the chat window refused it in four places without asking: opening the tab, the
+poll, Say and the picture button, all saying "Guilds are not in the game yet."
+Now `_local_refusal()` is the one gate (only a whisper to nobody is refused
+locally), `_poll_path()` asks for guild chat like any other room, and
+`_apply_read()` shows the server's own `notice` when `available` is false and
+takes exactly that notice down when the room opens. The server words "no guild"
+once (`GUILD_CHAT_NO_GUILD`) for both reading and writing.
+
+**Staff can read a trade now.** The desk's third tab under a player, Trades,
+pages `GET /api/staff/trades` by its pair cursor (`trade_cursor()`), says each
+trade in the player's own words (`TradePanel.exchange_text`), carries the trade
+id the ledger names in the tooltip, and opens the other person on a click.
+Loaded when the tab is opened and when a new pick is made with it open.
+
+**The Friends header is the guild header's shape** - a title over a line in
+words ("2 of 4 friends online", "nobody on your list yet") and requests
+waiting called out beside it, one flat ×, and no R: the list re-reads itself.
+
+**The HUD's poll handler is `_apply_broadcast(data)`, split from the request.**
+Every reader is called from there, so a reader written and tested but never
+called from the poll - this project's most repeated bug - fails a check that
+drives `_apply_broadcast()` with a server-shaped answer. The two old checks on
+the cursor, which read the source, became checks on what it does.
 
 ### Deleting inert code is how you find out what it was for
 
@@ -1553,6 +1766,454 @@ Appending stays green; inserting goes red and names every element that moved
 and what it now contradicts (*"EARTH is now 6, but every .tres that says 5
 means EARTH"*). 102 files carry an element integer and every value 0-9 is in
 use, so an insertion silently rewrites the meaning of 101 of them.
+
+### The login screen does not wait for the world
+
+`characterselect.gd` used to `preload("res://scene/elusion.tscn")`, and
+`loginmenu.tscn` exports `characterselect.tscn` — so the login screen's first
+frame waited on the town, the field it exports, the HUD, every panel and about
+sixty scripts compiling. Measured cold in the sandbox: a login box at **2.6 s**,
+1.8 s of it the world. `gameover.tscn`, which pulls none of it, loads in 25 ms.
+
+Now `loginmenu.gd` calls `AreaRegistry.prefetch("elusion")` as it opens, the town
+loads on a worker thread while the player types, and character select takes it
+with `AreaRegistry.scene_for()` — waiting by the frame, with "Loading the
+world..." on the slot, only if the player beat the loader. The login box is up
+at **0.95 s**; picking a character after three seconds of typing reaches the town
+in the same ~150 ms it always did. Once in the world, `prefetch_all()` loads the
+other areas one at a time (0.3–0.4 s in all), which halved the hop down the
+ladder to the boss (210 ms to 95 ms).
+
+**Never `preload()` an area scene.** A preload is invisible to
+`ResourceLoader.get_dependencies()`, which is how this chain went unnoticed:
+nothing in any scene file named the town. `_test_the_world_loads_in_the_background()`
+walks the login screen's whole load, script preloads included, and fails naming
+the chain if any area turns up in it.
+
+### A load() of an area loading in the background never returns
+
+Godot 4.6.1, reproduced in the sandbox: `load_threaded_request()` an area, then
+`load()` the same path on the main thread, and the main thread waits forever.
+It happens with `boss.tscn` and `bossarena.tscn`, not with a small scene and not
+with any of their dependencies. It was found because a sabotage of `scene_for()`
+made the suite **hang** instead of fail — and then reproduced in the running game:
+the old `ladder.gd`, walked into while the arena was still loading, froze the
+game with no error.
+
+So **an area's path is only ever resolved through `AreaRegistry`**:
+`scene_for(area_id)`, or `scene_at(path)` for the doors that name their
+destination by file (`ladder.gd`, `victoryteleporter.gd`, `gameover.gd`).
+Both collect a background load with `load_threaded_get()`, the one call that is
+safe while it runs. `change_scene_to_file()` on an area path is a `load()` too.
+The suite scans `src/` for any `load(`, `preload(`, `change_scene_to_file(` or
+`load_threaded_request(` given an area's path or one of the two exported path
+variables — a hang cannot be a FAIL line, so the rule is held by reading the code.
+
+### Rarity is a tier's name and colour, and it is drawn everywhere
+
+`GameConstants.RARITY_NAMES` and `RARITY_COLOURS` give every item tier a word
+and a colour: Common (iron grey), Uncommon (jade), Rare (cobalt), Epic
+(amethyst), Legendary (ember), Mythic past that. The colours are the gear
+materials, so an ember piece, its name and its bag's glow are one orange.
+
+- **Every slot** that inherits `InventorySlot` - backpack, bank, loot bag,
+  shop, hotbar, equipment - frames uncommon and up in that colour. The frame
+  is built in code (`_build_rarity_frame`) and sits under the stack count.
+  Common draws no frame: outlining most of what a player owns marks nothing.
+- **The tooltip** colours the name from uncommon up and adds a rarity line.
+- **A loot bag on the ground glows** for epic or better, in the colour of its
+  rarest item (`lootbag.gd`'s `rare_tier_of`; a pet counts as legendary, coins
+  never count). It replaced `petbeam`, a flat Line2D that lit only for pets.
+  **Ordinary blending, not additive**: added light went pale cyan over water.
+
+The loot bag panel fits its items (`rows_needed`, no 200-pixel scroll area),
+packs its cells like the inventory's, shows stack counts at a readable size and
+has **Take all**, which walks the cells in order, skips a cell that will not
+fit (409) or is already gone (404), and stops on anything else.
+`take_request` is the suite's door into a take.
+
+**Nine cells, and the server's `LOOT_BAG_CAPACITY` must match.** It was six,
+coins came first, and a boss bag's coins, gear, potion and pet ran past it -
+the server cut the tail, which was the pet. See the API's CLAUDE.md, "Loot".
+
+### Amulets add to the character, and the server has to count it
+
+Fifteen amulets in `data/items/amulets/`, four families, and **the family is
+the colour**: green is Vitality (`bonus_max_hp`), blue is Arcana
+(`bonus_max_mana`), crimson is Fury (`bonus_damage_percent`), purple is Ward
+(plain `armor_value`). Lesser / plain / Greater / Exalted are tiers 2-5 at
+levels 5/10/16/22 (Vitality starts at 3). The plainest pack icon of a colour
+is the lowest tier. The five plain tier amulets (iron..ember) are unchanged.
+
+- `ItemData` carries the three `bonus_*` fields; 0 means none, so they are
+  absent from every other .tres. The exporter refuses a negative bonus, a bonus
+  on something with no equip_slot, and a damage percent over 100.
+- **`Player._recompute_max_stats()` adds worn health and mana; the server's
+  `gamedata.max_stats_for()` adds the same.** They must agree: the status route
+  clamps hp to the server's maximum, so a bonus the server could not see would
+  be taken away on every save. That is why the bonuses are in gamedata.json.
+- **`refresh_gear_stats()` is the only place a gear change clamps hp and
+  mana**, and it never raises them: putting an amulet on lifts the ceiling, not
+  the health. `_recompute_max_stats()` must never clamp, because it runs
+  through the `level` setter in the middle of `load_character_state()`, before
+  hp has been read. `equip()`, `unequip()` and `CharacterData._apply_equip_result()`
+  call it.
+- **Fury multiplies** the skill multiplier in `get_damage_multiplier()`, which
+  every class's hit and the pet's shot go through. `PlayerStats.gear_damage_factor()`
+  floors a negative percent so a hit can never heal.
+
+`_test_amulets_carry_their_bonus` holds the fifteen files against gamedata.json
+(re-run the exporter after changing one) and the maths on a warrior built
+outside the tree; the API's `test_gearbonus.py` holds the server half.
+
+### The pace: element bands, the level curve, slimes and the finale
+
+**Eight hours to level 22** at about five kills a minute in the band that
+matches your level. `GameConstants.XP_BASE` 1,250 and `XP_GROWTH` 1.27 (was
+100 x 1.15); no level cap by design. `_test_the_game_has_a_pace` recomputes
+the hours from the .tres files and fails if they drift.
+
+| Band | Levels | Elements | Drops up to | Normal health | Normal hit |
+|---|---|---|---|---|---|
+| 1 | 1-4 | light, wind | iron | ~270 | ~14 |
+| 2 | 5-9 | water, ice | jade | ~400 | ~20 |
+| 3 | 10-15 | earth | cobalt | ~600 | ~28 |
+| 4 | 16-21 | fire | amethyst | ~925 | ~40 |
+| 5 | 22+ | dark | ember | ~1,400 | ~55 |
+
+- Each element's normals were scaled together, so the families keep their
+  spread and health still climbs light < wind < water < ice < earth < fire <
+  dark. XP and attack XP scaled with health (about 0.37 XP a point), so skill
+  XP per second of fighting did not change. The plain bush mage is earth and
+  the plain fire sprite is fire; the bush sniper and electric sprite are
+  specials outside the bands.
+- **Normals' pet odds are held at 1 in 216 at best** (`pet_odds_override`) so
+  a band-5 mob does not drop pets like a boss.
+- **`bushmage.gd` now uses `projectile_damage`**; every mage used to hit for
+  `attack_power` 8. So do the bosses now - see "Bosses hit for their band".
+- **Slimes are placed as larges** (`<element>slimelarge.tscn`). A large
+  copies itself once and each large bursts into four smalls at half health: two
+  larges, then eight archers. `EnemyData.split_into` names the small, and
+  `_spawn_slime()` gives a twin the large's data and a small the split_into
+  data (it used to be poisonslimesmall for every element). Large = 2x the
+  band's normal health, small = a third, arrow = three quarters of a hit. The
+  large grants nothing; the exporter credits the small with 8 placements per
+  placed large, which is its kill ceiling on the server.
+- **A splitting large emits `died` before its hitflash await**, so the
+  respawner brings it back (it never did) and the signal cannot be lost.
+- **The Crowned is the finale**: 13,800 health, tier 6, and the arena's
+  victory door now leads to its room (`boss_entrance`); that room's ladder goes
+  up to the field. Fire boss 9,200.
+
+### Every tier from jade up carries a bonus, and legendary is rare
+
+Loot is rewarding past its armour or damage number. Iron is Common and plain;
+from jade up every piece adds a bonus that grows with the tier (the
+`bonus_*` fields from the amulets):
+
+| Gear | Bonus | Jade | Cobalt | Amethyst | Ember |
+|---|---|---|---|---|---|
+| Plate set (helm, chest, legs, boots, shield) | health | +20 | +40 | +65 | +100 |
+| Cloth set (hood, robe, trousers, slippers) | mana | +24 | +48 | +78 | +120 |
+| Each weapon | damage | +2% | +3% | +5% | +8% |
+
+Plain amulets and rings (iron to ember) add a little of all three plus their
+armour, the all-rounders; a ring never gives more than the amulet of its tier,
+and **each bonus family must still beat the plain amulet of its tier at its own
+stat**, or the specialist becomes the vendor loot.
+
+**Legendary (ember) is rare**, through `tier_odds`, which may carry zeros:
+dark-band normals put ember on 3% of their item slots (about one an hour at
+five kills a minute); the fire boss and the Crowned are `(0, 0.25, 0.75)` from
+tier 6, so legendary 1 in 4; the other five bosses never drop ember (amethyst
+35%, cobalt otherwise). Zeros keep `max_loot_tier` - and with it gold and pet
+odds - where it was. `_test_better_loot_carries_more` and the API's
+`test_rewards.py` hold both halves.
+
+### Bosses hit for their band
+
+All seven bosses run `bossenemy.gd`, and all seven used to hit for its
+`attack_power` 34, `melee_power` 45 and the stalker's 22, whatever their .tres
+said. The six elemental ones had a `projectile_damage` nothing read (the spike
+is placed by `_spawn_one_eruption()`, not `spawn_projectile_node()`), so once
+the normals were banded the Crowned's spike (37 after dark's profile) hit softer
+than a dark bush mage (55) and the light boss nearly three times its band.
+
+- **The spike is the .tres's `projectile_damage`**, 1.5x its band's normal hit:
+  light and wind 21, water and ice 30, earth 42, fire 60, the Crowned 83.
+- **The swing and the trail are shares of it** (`MELEE_SHARE` 45/34,
+  `TRAIL_SHARE` 22/34, the ratios the fight was tuned at), through
+  `spike_damage()`, `melee_damage()` and `trail_damage()`. The stalker is
+  handed its number in `setup()`. The exports are only the fallback now.
+- **The element profile still scales the spike and the trail**, so a real
+  spike lands for 24 / 19 / 26 / 27 / 53 / 60 / 91 (light to the Crowned) and
+  a trail pillar for 16 / 13 / 16 / 17 / 34 / 39 / 59.
+  Relative to the class health pools, the Crowned at level 22 is about as
+  dangerous as the original 34/45 fight was at level 1; the early bosses are
+  gentler than that, as their bands are.
+- **The stalker stamps the boss's element on its pillars** (`setup()`'s last
+  argument). The variant scene alone was not enough: there is no dark pillar
+  scene, so the Crowned's trail used to be plain - 54 and a full-strength
+  ring - while its spikes were dark. It is dark now: 59, ring alpha 0.22.
+- `_damage_data()` answers with `ENEMY_DATA` while `enemy_data` is still null,
+  as `_ready()` does, so a bare `bossenemy.tscn` reports the Crowned's numbers.
+
+`_test_bosses_hit_for_their_band` spawns a real spike and a real stalker
+pillar for each of the seven.
+
+### Gear bonuses are shown
+
+- **The Gear window sums them**: Health / Mana / Damage from gear, from the
+  character's own `equipped_bonus()` - the sums its maxima and hits use - as
+  "+150" in green, or a dash for none (not "+0").
+- **A tooltip over gear compares it with what is worn in that slot**: a
+  heading ("Compared with your Cobalt Cuirass:" or "Nothing worn there yet:")
+  and one row per stat that would change, gains green and losses red, in the
+  tooltip's `statscontainer` rows the scene always had and nothing filled.
+  Not shown for the piece on the doll itself, for gear this class can never
+  wear, or with nobody playing; a level requirement does not hide it.
+- **The tooltip fits itself** (`reset_size()`) each time it is shown. It used
+  to keep the size of the largest thing it had held and end every tooltip in
+  a rule with an empty band under it.
+
+`_test_gear_bonuses_are_shown` holds the panel, the arithmetic and each case.
+Gear over an **empty** slot gets the heading alone ("Nothing is worn there yet -
+all of it is a gain."): against nothing, every row is the stat line again.
+
+### Attack XP is the server's, and the bar copies it
+
+Attack trains **only at the kill**, on the server. The client used to add its
+own on top: 5 per enemy per warrior swing, 2 per enemy per tank aura tick, 5
+per stalagmite and turret hit - and it scaled the kill's amount by its own
+`skill_proficiency` as well. None of that was ever reported, so the attack bar
+climbed on screen, and the level and the damage it carries fell back at the
+next login.
+
+- **`Player.apply_server_attack(level, xp, xp_next)`** copies the kill's answer
+  (`attack_level`, `attack_xp`, `attack_xp_to_next`) onto the bar;
+  `combat._apply_xp()` calls it. `gain_attack_xp()` is only the fallback for an
+  answer without those fields, and adds what it is given, unscaled.
+- **The warrior's 1.5 is applied by the server now** (`proficient_amount()` in
+  app.py, the same rule `/api/skill/train` uses). It sat in `SKILL_PROFICIENCY`
+  and nothing honoured it for attack.
+- No swing, tick, spell or shot calls `gain_attack_xp()`; the suite fails if
+  one does. Defense and magic still show an optimistic copy and report the raw
+  amount (`SkillTrainer`), because those do train per hit. What they show is
+  rounded the way the server rounds it; see "Shown skill XP rounds like the
+  server".
+
+### A push that failed after it was accepted is retried
+
+`save()` returns "taken", not "stored". `ServerStorage` pushes after it has
+returned true, and a refused or unanswered section stayed dirty - but only the
+**next** save retried it, so a player who changed nothing more before quitting
+lost it. `has_unpushed()` existed on `SaveStorage`, said exactly this, returned
+false, and nothing called it.
+
+- `ServerStorage._record_push()` keeps `_failed_keys`; `has_unpushed()` reports
+  them. A section whose current body the server already holds clears its mark.
+- `CharacterData.flush_save()` writes when anything is unpushed, not only when
+  a save is queued, and `_process()` retries every `UNPUSHED_RETRY_SECONDS`
+  (10) with nobody changing anything.
+
+### Small wires, joined (the sweep)
+
+Each of these existed, looked finished, and was connected to nothing:
+
+- **Gate spikes hit at full height.** `bossprojectile.gd` had `const
+  IMPACT_FRAME := 1`; `secondbossprojectile.tscn` and its six copies set
+  `impact_frame = 2`, which Godot dropped without a word. It is an export now.
+- **Bosses are not shoved.** `player.gd` skips the `"unpushable"` group; the
+  boss joins it in `_ready()`.
+- **M opens the map** (`minimap_toggle`), beside I, C and G in the HUD.
+- **The electric orb animates.** `magicprojectile.gd` looked for
+  `animatedsprite2d` and played `projectile`; the scenes say `AnimatedSprite2D`
+  and `default`.
+- **An update is announced.** `Api.build_notice()` reads the two build numbers
+  `refresh_build_info()` always fetched; the login screen shows it ("Refresh
+  the page to update" in a browser).
+- **One password rule.** `Api.clean_password()` trims, everywhere: login,
+  Options and recovery. Only the login screen used to, so a password set in
+  Options with a trailing space could never be typed in again.
+- **The revive price is read** from `GameConstants.REVIVE_COST`, not copied.
+- `PlayerStats.attack_damage_bonus()` / `magic_damage_bonus()` are **not
+  applied** and now say so; `damage_multiplier()` superseded them.
+
+And the words: `LocalTime.ago()` is the one "5 min ago / 1 day ago",
+`GameConstants.counted()` the one "1 day / 3 days", `AreaRegistry.display_name()`
+the one area name (no "Bossarena"), `Api.no_answer_text()` the one "no answer"
+(a player never reads "Is it running?"). The restore line on a potion is said
+once, from the data; rods no longer claim level requirements they do not have;
+every close button is ×. `_test_the_sweep_wiring` and `_test_the_sweep_words`
+hold all of it.
+
+### The browser build
+
+**Export:** Project > Export > **Web** (`export_presets.cfg`). The preset builds
+without threads, uses Elusion's own loader (`web/shell.html`), has no service
+worker, leaves `src/tools/` and `scene/tests/` out, and writes to `builds/web/`.
+`builds/` is gitignored and must stay that way: an export contains the private
+art pack. The site serves those files to players; git must never hold them.
+
+**Try it at home:** start Flask, then `python web/serve.py` and open
+`http://localhost:8060`. It serves the export and passes `/api/` to the API, as
+the real site does. The Caddy and nginx blocks for the real site, both tested
+against this export in the sandbox, are in the API repo's `DEPLOY.md`.
+
+**One address.** A browser build calls the address it was loaded from
+(`WebPage.origin()`, step 0 of `Api._resolve_base_url()`). The API sends no
+cross-site headers, so the browser refuses any other address. Measured: a page on
+:8061 calling :5000 had every request blocked. So the site serves the game and
+`/api/` from one host.
+
+**No threads, so nothing loads ahead.** In a no-threads build,
+`load_threaded_request()` does the whole load inside the call. Asking for the town
+as the login screen opened held that screen 2.2 s longer: the box appeared at
+4.35 s instead of 2.1-2.25 s. `AreaRegistry.loads_in_background()` is false when
+the build has the `nothreads` feature, and then `prefetch()` asks for nothing.
+
+The town loads when a character is picked, under "Loading the world...".
+Character select waits **two** frames before that load, because the first one
+resumes inside the click's own frame, before it is drawn. With one frame, the
+label never reached the screen in Chromium. A thread-support export was tried and
+dropped: it took 40 s from the pick to the town in the same browser, and it needs
+isolation headers.
+
+**A closing tab still saves.** A hidden page draws no frames, and
+HTTPRequest starts its fetch on the next frame. So a save queued as a tab closed
+was lost, as was a push that was still in flight. `CharacterData._on_page_leaving()`
+runs on visibilitychange and pagehide (`WebPage.watch_leaving()`). It sends every
+section the server has not confirmed as a keepalive fetch, which the browser
+finishes after the page is gone (`Api.send_before_leaving()`,
+`ServerStorage.requests_before_leaving()`).
+
+- The browser holds at most 64 KB of keepalive in flight, and the explored map
+  can fill that alone. So the save goes last and without the map. `/api/save`
+  keeps a map the body does not mention.
+- Measured: a potion moved, then the tab closed 0.2 s later, and the server had
+  it. With the watch removed, the server kept the old bag.
+- A hidden tab saved within 0.5 s, against a 2 s debounce.
+
+**An export lists every `.tres` as `.tres.remap`.** `ItemRegistry` walked
+`data/items/` with DirAccess looking for `.tres`, so **every exported build ran
+with an empty registry**. That included a Windows export: no item could be named,
+drawn or validated. It was found in the browser ("ItemRegistry not populated
+yet" at every login). It now uses `ResourceLoader.list_directory()`, and the
+suite fails if anything that ships walks `res://` with DirAccess.
+
+**An arrival draws the right map from its first frame.** The class cameras run
+on the physics clock, so an area's first frame was often drawn before the first
+tick, with no camera: the map from its corner, unzoomed. This was measured on the
+desktop too: canvas origin (0, 0) on the first frame of each arrival. Now
+`Player.snap_camera()` runs:
+
+- in `_ready()`
+- in `AreaRegistry.place_player()`, after `reset_physics_interpolation()`
+- at the field's arrival portal
+- in the teleporter
+
+A frame with no scene in it yet is black (`default_clear_color`), not grey.
+
+**In a browser, Options hides window size, V-Sync, the renderer and the graphics
+API.** The browser owns the window and paces the frames, and Compatibility is
+the only renderer there. The readout says "paced by the browser". The login
+screen has no Exit, since a page cannot close its own tab.
+
+**Measured** in headless Chromium through Caddy and nginx, with SwiftShader
+software GL (a real GPU draws much faster):
+
+- The export is 51.8 MB, or 21.4 MB with gzip. On 40 Mbps the login screen is up
+  at 7.3 s.
+- From picking the warrior to standing in the town takes 3.2-3.5 s.
+- A return visit gets 304s and downloads nothing.
+- After an upload, the next visit runs the new build.
+
+**Pictures in chat.** In a browser Godot's FileDialog shows the engine's virtual
+disk, a folder of nothing. There, + asks the page's own file picker
+(`WebPage.pick_file()`), writes the file to `/tmp` in the page's memory and
+attaches it as a dropped one. Dropping a file on the game works as it is. A page
+gets text from the clipboard, never a picture, so the chat box there says
+"drop a picture" rather than "Ctrl+V".
+
+Tested in Chromium:
+
+- + opened the picker, and the chosen file arrived byte for byte.
+- A dropped picture was attached, sent through `/api/`, and drawn in chat.
+- **Remember me survives a reload**: `user://` lives in the browser's
+  IndexedDB.
+- **The tab keeps the game's name.** The engine renames it after the project
+  ("ElusionRPG") as it starts, and the loader puts "Elusion RPG" back.
+
+**A ticked box under the pointer** was found in the browser, and it is true on
+the desktop too. The theme had no `hover_pressed` button style, so a toggled
+button under the mouse fell back to the engine's own: no border, the text pushed
+right, and "Remember me" read "Remember m". `Button/styles/hover_pressed` is the
+pressed style now, with its font colour.
+
+`_test_the_browser_build` holds every wire a desktop run can see.
+
+**Still open:**
+
+- The tab icon is Godot's, because the project sets no `config/icon`.
+- There is no audio to test, since every sound id is empty.
+
+### Leaving waits for the save
+
+`flush_save()` only **starts** a push. On the desktop, the window's X ran it and
+the engine quit in the same frame, before the first request left. Measured
+against the real server: a bag changed and the window closed at once, and the
+server kept the old bag.
+
+The X now waits:
+
+- `CharacterData` turns off the engine's own quit (`set_auto_accept_quit(false)`).
+- `_quit_after_saving()` takes the live character's state and sends
+  SkillTrainer's batch.
+- `finish_saving()` then waits until the server has everything, for at most
+  `QUIT_SAVE_SECONDS` (3), and quits.
+
+Measured: the bag went, and the game closed 0.2 s after the X.
+
+A logout now waits too, with `await CharacterData.finish_saving()` before
+`clear_current_user()` and `Api.logout()`. Before, the revoke raced the push's
+PUTs, which go one after another. On localhost the push won five times out of
+five, but the order should be settled by the code, not by the network.
+`_test_leaving_waits_for_the_save` covers both.
+
+### Shown skill XP rounds like the server
+
+The server grants `int(raw x specialty)` for each batch SkillTrainer sends
+(`proficient_amount()`). Defence and magic rounded each hit instead, with a
+floor of 1. A tank's 1-point hits showed 1 each against the server's 1.5, so the
+bar ran a third behind and jumped at the next login. A hit worth nothing showed
+1.
+
+`SkillTrainer.report(skill, raw, factor)` now returns what to show: the batch's
+`int(raw x factor)` less what the batch has already shown. It starts again at
+each flush, as the server does. The bar and the record now agree to the point.
+`_test_skill_xp_rounds_like_the_server` holds it.
+
+### A game key takes the keyboard back from a clicked menu
+
+`project.godot` binds WASD and the arrows to `ui_left`/`ui_right`/`ui_up`/`ui_down`
+as well as the `move_` actions, and Space to `ui_accept` as well as `attack`. A
+click gives a Button or a slider the keyboard focus, and the GUI then read every
+step as menu navigation. Measured in Options:
+
+- After one click on Damage numbers, walking moved the focus from button to
+  button, and Space swung the sword and flipped the setting too.
+- After a click on the master volume, walking right turned the volume up.
+
+`CharacterHUD._input()` runs before the GUI does. When a move key or attack is
+pressed, it takes the focus off whatever has it (`release_for_world_key()`), so
+the GUI never sees the key as navigation. Movement is polled, so the character
+walks either way. An editable text box keeps the keyboard, since those keys are
+letters in it: the same test as `player.gd`'s `_typing_in_ui()`. Enter, Tab and
+E are not game keys, so a menu keeps them.
+
+The `ui_` bindings are left as they are, so the login screen and character
+select can still be walked with WASD. `_test_game_keys_are_not_menu_keys` builds
+the bug first, then shows the hand-back stops it.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 
@@ -1827,6 +2488,8 @@ docs/audio.md         the 31 sound ids, where each fires, and what the suite
                       does about a registry that is half filled in. The game
                       is silent: every entry in Audio.SOUNDS is empty, on
                       purpose, and the boot log says so at every launch.
+web/shell.html        the browser build's loader page (export_presets.cfg)
+web/serve.py          serves an export at localhost:8060, /api/ passed through
 ```
 
 **`src/` mirrors `scene/` folder for folder.** A script lives beside where its

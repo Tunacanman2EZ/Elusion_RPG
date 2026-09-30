@@ -336,6 +336,38 @@ func _validate(constants: Dictionary, items: Array, enemies: Array, classes: Arr
 	var odds_without_pet := PackedStringArray()
 
 	for enemy in enemies:
+		# Odds that do not add up to one are not a tuning choice, they are a
+		# typo: short of one and the last step silently soaks up the rest,
+		# over one and the later steps can never be reached.
+		var odds: Array = enemy.get("tier_odds", [])
+		var total: float = 0.0
+		var negative: bool = false
+		for p in odds:
+			total += float(p)
+			negative = negative or float(p) < 0.0
+		if odds.is_empty() or negative or absf(total - 1.0) > 0.001:
+			_fail("enemy '%s' has tier_odds %s — they must be non-negative and add up to 1." % [enemy["enemy_id"], str(odds)])
+		# A SPLITTER AND WHAT IT SPLITS INTO. The smalls must exist, must pay
+		# (everything the large is worth leaves as them), must be the large's own
+		# element (a wind slime bursts into wind archers), and the large itself
+		# must pay nothing or one encounter would be paid for twice.
+		var into: String = String(enemy.get("split_into", ""))
+		if into != "":
+			var small: Dictionary = {}
+			for other in enemies:
+				if String(other.get("enemy_id", "")) == into:
+					small = other
+			if small.is_empty():
+				_fail("enemy '%s' splits into '%s', which is not an exported enemy." % [enemy["enemy_id"], into])
+			else:
+				if not bool(small.get("grants_rewards", true)):
+					_fail("enemy '%s' splits into '%s', which grants no rewards - the whole encounter would pay nothing." % [enemy["enemy_id"], into])
+				if int(small.get("element", -1)) != int(enemy.get("element", -2)):
+					_fail("enemy '%s' (element %d) splits into '%s' (element %d). The smalls must be the large's element." % [
+						enemy["enemy_id"], int(enemy.get("element", -1)), into, int(small.get("element", -1))])
+			if bool(enemy.get("grants_rewards", true)):
+				_fail("enemy '%s' splits into '%s' but also grants rewards itself - set grants_rewards off on the large." % [enemy["enemy_id"], into])
+
 		for field in ["pet_drop_id", "rare_pet_drop_id"]:
 			var item_id: String = String(enemy.get(field, ""))
 			if item_id == "":
@@ -428,6 +460,26 @@ func _validate_equipment(items: Array, classes: Array) -> void:
 					item_id, String(class_id), CLASSES_PATH,
 				])
 
+		# WORN BONUSES: never negative, never on something that cannot be worn,
+		# and a damage percent that stays a percent. The server adds the first
+		# two into a character's maximum, so a stray -500 would be a character
+		# who dies on login, and a bonus on a potion would be a number nothing
+		# can ever collect.
+		for field in ["bonus_max_hp", "bonus_max_mana", "bonus_damage_percent"]:
+			var amount: int = int(item.get(field, 0))
+			if amount < 0:
+				_fail("'%s' has %s = %d. Bonuses add to the character; a negative one is a curse nobody asked for." % [
+					item_id, field, amount,
+				])
+			elif amount > 0 and slot == "NONE":
+				_fail("'%s' has %s = %d but no equip_slot, so nothing can ever wear it to collect it." % [
+					item_id, field, amount,
+				])
+		if int(item.get("bonus_damage_percent", 0)) > 100:
+			_fail("'%s' has bonus_damage_percent = %d. That doubles every hit on its own; if it is meant, raise this limit on purpose." % [
+				item_id, int(item.get("bonus_damage_percent", 0)),
+			])
+
 		if slot == "NONE":
 			# TYPED AS GEAR, WEARABLE NOWHERE. Warned rather than failed: a
 			# trophy filed as ARMOR to keep it out of the loot tables is a real
@@ -444,11 +496,15 @@ func _validate_equipment(items: Array, classes: Array) -> void:
 				_fail("'%s' occupies the WEAPON slot with damage = %d — equipping it would be the same as holding nothing." % [
 					item_id, int(item.get("damage", 0)),
 				])
-		elif int(item.get("armor_value", 0)) <= 0:
+		elif int(item.get("armor_value", 0)) <= 0 \
+				and int(item.get("bonus_max_hp", 0)) <= 0 \
+				and int(item.get("bonus_max_mana", 0)) <= 0 \
+				and int(item.get("bonus_damage_percent", 0)) <= 0:
 			# The defensive half of the same mistake. A warning, because a
 			# cosmetic or utility piece with no armour is a legitimate design
-			# and this is the door it would come through.
-			_warn("'%s' occupies the %s slot but has armor_value = 0 — wearing it changes nothing." % [item_id, slot])
+			# and this is the door it would come through. A Vitality amulet has
+			# no armour and is not this: its health bonus is what wearing it does.
+			_warn("'%s' occupies the %s slot but has no armour and no bonus — wearing it changes nothing." % [item_id, slot])
 
 		# GEAR THAT IS NOT TYPED AS GEAR. type drives the loot filters and the
 		# consume handler; a slotted item typed MATERIAL would be equippable and
@@ -675,6 +731,27 @@ func _annotate_placement(enemies: Array) -> void:
 				var eid: String = String(scene_to_enemy[scene_path])
 				counts[eid] = int(counts.get(eid, 0)) + n
 
+	# A SPLITTER PUTS MORE INTO THE WORLD THAN ITSELF. One placed large slime
+	# duplicates once and each large bursts into small_count smalls, so every
+	# respawn of it releases (1 + 1) x small_count of the enemy it splits into.
+	# Crediting only the placements in the scene files would put a ceiling of 0
+	# on the smalls - which the server reads as "do not judge" - or, once the
+	# small is also placed somewhere, a ceiling eight times too low that refuses
+	# honest players. The yield is read off the large's own scene, so a variant
+	# that changes small_count is counted as it plays.
+	var by_id: Dictionary = {}
+	for row in enemies:
+		by_id[String(row.get("enemy_id", ""))] = row
+	var split_yield: Dictionary = {}
+	for scene_path in scene_to_enemy.keys():
+		var large_id: String = String(scene_to_enemy[scene_path])
+		if split_yield.has(large_id) or String(by_id.get(large_id, {}).get("split_into", "")) == "":
+			continue
+		split_yield[large_id] = _split_yield(String(scene_path))
+	for large_id in split_yield.keys():
+		var into: String = String(by_id[large_id]["split_into"])
+		counts[into] = int(counts.get(into, 0)) + int(counts.get(large_id, 0)) * int(split_yield[large_id])
+
 	for row in enemies:
 		row["placed_count"] = int(counts.get(String(row.get("enemy_id", "")), 0))
 
@@ -822,9 +899,29 @@ func _report_unplaced_enemies() -> void:
 			if text.find(enemy_scene) != -1:
 				referenced[enemy_scene] = true
 
+	# SPAWNED BY SPLITTING IS PLACED. A large slime's EnemyData names the small
+	# it bursts into (split_into), so windslime.tscn standing in no scene is
+	# not a lost enemy - every placed windslimelarge makes eight of them. Any
+	# EnemyData named by another's split_into is reachable that way.
+	var split_targets: Dictionary = {}
+	for data_path in _find_files("res://data/enemies/", ".tres"):
+		var data_text: String = FileAccess.get_file_as_string(data_path)
+		if data_text.find("\nsplit_into = ") == -1:
+			continue
+		for other_path in _find_files("res://data/enemies/", ".tres"):
+			if other_path != data_path and data_text.find('path="%s"' % other_path) != -1:
+				split_targets[other_path] = true
+
 	var unplaced: Array = []
 	for enemy_scene in enemy_scenes:
-		if not referenced.has(enemy_scene):
+		if referenced.has(enemy_scene):
+			continue
+		var scene_text: String = FileAccess.get_file_as_string(enemy_scene)
+		var spawned: bool = false
+		for target in split_targets.keys():
+			if scene_text.find(String(target)) != -1:
+				spawned = true
+		if not spawned:
 			unplaced.append(String(enemy_scene).get_file())
 
 	if unplaced.is_empty():
@@ -969,7 +1066,7 @@ func _export_items() -> Array:
 			"restore_amount": item.restore_amount,
 
 			# Whether an enemy may roll it at all, independent of its tier.
-			# pick_weighted_item_id() has to skip a false here or a cooked fish
+			# gamedata.loot_pool() has to skip a false here or a cooked fish
 			# drops off a slime — see the field's own comment in itemdata.gd.
 			"droppable": item.droppable,
 
@@ -1009,6 +1106,15 @@ func _export_items() -> Array:
 			"damage": item.damage,
 			"damage_spread": item.damage_spread,
 			"armor_value": item.armor_value,
+
+			# WHAT WEARING IT ADDS. gamedata.max_stats_for() sums the first two
+			# into the character's maxima, because the status route clamps hp to
+			# the server's maximum and a bonus it could not see would be clamped
+			# away on every save. The damage percent is exported for the same
+			# single source of truth, though only the client applies it today.
+			"bonus_max_hp": item.bonus_max_hp,
+			"bonus_max_mana": item.bonus_max_mana,
+			"bonus_damage_percent": item.bonus_damage_percent,
 
 			# THE COOKING RECIPE, because /api/cooking/cook is the thing that
 			# decides what a raw fish becomes and it cannot be trusted to the
@@ -1164,14 +1270,46 @@ func _export_enemies(constants: Dictionary) -> Array:
 			"max_loot_tier":     enemy.max_loot_tier,
 			"max_item_slots":    enemy.max_item_slots,
 			"slot_fill_chance":  enemy.slot_fill_chance,
+			# Rounded because a PackedFloat32Array holds 0.15 as
+			# 0.15000000596, and the server compares these as odds.
+			"tier_odds":         _rounded_odds(enemy.tier_odds),
+			"tier_up_chance":    snappedf(enemy.tier_up_chance, 0.0001),
+			"slots_are_gear":    enemy.slots_are_gear,
+			"bonus_potion_chance": snappedf(enemy.bonus_potion_chance, 0.0001),
 			"pet_drop_id":       enemy.pet_drop_id,
 			"rare_pet_drop_id":  enemy.rare_pet_drop_id,
 			"rare_pet_chance":   enemy.rare_pet_chance,
 			"pet_odds_override": enemy.pet_odds_override,
 			"pet_odds":          _resolve_pet_odds(enemy.pet_odds_override, enemy.max_loot_tier, constants),
+			# What a large slime bursts into. The server reads nothing here yet -
+			# the smalls' kill ceiling arrives through their placed_count, below -
+			# but the pairing is checked in _validate() and the suites read it.
+			"split_into":        enemy.split_into.enemy_id if enemy.split_into != null else "",
 		})
 
 	out.sort_custom(func(a, b): return a["enemy_id"] < b["enemy_id"])
+	return out
+
+
+func _split_yield(scene_path: String) -> int:
+	# How many smalls one placed large puts into the world: itself plus the one
+	# twin it makes when a player comes near (only if duplicate_range is on),
+	# each bursting into small_count. Read from an instance of the scene so a
+	# variant's overrides count; freed without entering the tree.
+	var packed: PackedScene = load(scene_path) as PackedScene
+	if packed == null:
+		return 0
+	var node: Node = packed.instantiate()
+	var smalls: int = int(node.get("small_count")) if "small_count" in node else 0
+	var larges: int = 2 if ("duplicate_range" in node and float(node.get("duplicate_range")) > 0.0) else 1
+	node.free()
+	return larges * smalls
+
+
+func _rounded_odds(odds: PackedFloat32Array) -> Array:
+	var out: Array = []
+	for p in odds:
+		out.append(snappedf(p, 0.0001))
 	return out
 
 

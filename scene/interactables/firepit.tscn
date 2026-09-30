@@ -83,6 +83,9 @@ animations = [{
 [sub_resource type="CircleShape2D" id="CircleShape2D_k5h5w"]
 radius = 27.0
 
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_firepitbody"]
+size = Vector2(20, 17)
+
 [node name="firepit" type="Area2D" unique_id=258032866]
 texture_filter = 1
 position = Vector2(0, -11)
@@ -106,6 +109,12 @@ volume_db = -6.0
 max_distance = 400.0
 panning_strength = 0.5
 bus = &"SFX"
+
+[node name="body" type="StaticBody2D" parent="." unique_id=258032867]
+
+[node name="collision" type="CollisionShape2D" parent="body" unique_id=258032868]
+position = Vector2(2.5, 1)
+shape = SubResource("RectangleShape2D_firepitbody")
 
 [connection signal="body_entered" from="." to="." method="_on_body_entered"]
 [connection signal="body_exited" from="." to="." method="_on_body_exited"]

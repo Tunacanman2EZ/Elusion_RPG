@@ -148,7 +148,7 @@ func _update_progression() -> void:
 	var xp_next = current_player.get("xp_next")
 	if xp != null and xp_next != null:
 		if xp_label != null:
-			xp_label.text = "%d / %d" % [xp, xp_next]
+			xp_label.text = "%s / %s" % [GameConstants.commas(int(xp)), GameConstants.commas(int(xp_next))]
 		if xp_bar != null:
 			xp_bar.max_value = xp_next
 			xp_bar.value = xp
@@ -203,14 +203,16 @@ func _update_skill_bar(skill: String, bar: ProgressBar, label: Label) -> void:
 
 	if xp == null or xp_next == null or xp_next <= 0:
 		bar.value = 0
-		label.text = "0/100"
+		label.text = "0%"
 		return
 
 	var percent: int = int(clamp((float(xp) / float(xp_next)) * 100.0, 0.0, 100.0))
 	bar.min_value = 0
 	bar.max_value = 100
 	bar.value = percent
-	label.text = "%d/100" % percent
+	# A PERCENTAGE, SAID AS ONE. "%d/100" read as 37 XP out of 100 - the level
+	# curve's first threshold - on every skill, whatever it really needed.
+	label.text = "%d%%" % percent
 
 
 # =============================================================================
@@ -219,7 +221,7 @@ func _update_skill_bar(skill: String, bar: ProgressBar, label: Label) -> void:
 
 func _set_bar_and_label(value: int, max_value: int, label: Label, bar: ProgressBar) -> void:
 	if label != null:
-		label.text = "%d / %d" % [value, max_value]
+		label.text = "%s / %s" % [GameConstants.commas(value), GameConstants.commas(max_value)]
 	if bar != null:
 		bar.max_value = max_value
 		bar.value = value

@@ -34,8 +34,8 @@ enum Type {
 	CURRENCY,    # gold and lusions — converts to a pool on use/pickup
 
 	# RAW FISH. Its own type rather than MATERIAL, and the reason is loot:
-	# gamedata.py picks mob drops with pick_weighted_item_id(), which excludes
-	# by TYPE NAME and lets every MATERIAL through. Filed as MATERIAL, a tier 8
+	# gamedata.py builds its loot pool (loot_pool(), used by pick_loot_item()) by
+	# excluding TYPE NAMES, and every MATERIAL used to get through. Filed as MATERIAL, a tier 8
 	# Reef Clown became a legal drop from any high-tier enemy — free from a
 	# slime, which is the whole point of the fishing skill handed out for
 	# nothing. FISH is in EXCLUDED_FROM_LOOT server-side, so fish come out of
@@ -302,10 +302,36 @@ static func slot_names() -> Array:
 # whose whole character is reliability, if one is ever authored.
 @export var damage_spread: float = 0.25
 
-# The defensive mirror of damage, for Type.ARMOR. Nothing wears armour yet and
-# there is no armour item, but the field exists so the two halves of equipment
-# are designed together rather than one being retrofitted around the other.
+# The defensive mirror of damage, for Type.ARMOR. Summed across every worn
+# piece by Player.equipped_armor_value() and turned into a share of each hit by
+# PlayerStats.armour_reduction().
 @export var armor_value: int = 0
+
+# WHAT WEARING IT ADDS TO THE CHARACTER, beyond armour and a weapon's hit.
+#
+# Three numbers rather than a list of named affixes, because three is all the
+# amulets need and a list would have to be parsed, validated and ported to the
+# server as a little language. Each is 0 on everything that does not carry it,
+# so like damage_spread they are absent from every .tres that does not use
+# them.
+#
+#   bonus_max_hp           added to max health while worn
+#   bonus_max_mana         added to max mana while worn
+#   bonus_damage_percent   every hit is this many percent bigger while worn,
+#                          multiplied with the attack/magic skill bonus
+#
+# THE SERVER COUNTS THE FIRST TWO. max_hp and max_mana are server-derived
+# (gamedata.max_stats_for), and the status route clamps hp to that maximum -
+# so a bonus only the client knew about would be clamped away on the next
+# save. The exporter writes all three into gamedata.json for exactly that
+# reason. Player._recompute_max_stats() and gamedata.max_stats_for() are the
+# two halves of one rule and _test_amulets_carry_their_bonus holds them level.
+#
+# The amulet families follow their colour: green is health, blue is mana,
+# crimson is damage, purple is armour (plain armor_value, above).
+@export var bonus_max_hp: int = 0
+@export var bonus_max_mana: int = 0
+@export var bonus_damage_percent: int = 0
 
 
 # =============================================================================

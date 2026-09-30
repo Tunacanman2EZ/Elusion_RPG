@@ -106,8 +106,19 @@ const REVIVE_GOLD_MINIMUM: int = 100
 # sitting behind it.
 #
 # Both callers now read this one function. There is one curve.
-const XP_BASE: float = 100.0
-const XP_GROWTH: float = 1.15
+#
+# 1,250 x 1.27, SET BY THE PACE, NOT BY FEEL. It was 100 x 1.15, which with the
+# element bands' rewards reached level 22 in about ten minutes. At about five
+# kills a minute in the band that matches your level, this curve gives level 5
+# in 15 minutes, 10 in under an hour, 16 in about 3 hours and 22 in about 8 -
+# the plan in the Economy and Progression doc. _test_the_game_has_a_pace
+# recomputes those hours from the enemy data and fails if they drift.
+#
+# NO LEVEL CAP. Past 22 the dark band keeps paying and the curve keeps rising;
+# CharacterData.MAX_LEVEL (99) is a sanity clamp on a loaded save, not a
+# design limit, and at this growth level 99 is still inside int64.
+const XP_BASE: float = 1250.0
+const XP_GROWTH: float = 1.27
 
 
 # NOT static, deliberately. Both callers reach this through the GameConstants
@@ -117,8 +128,8 @@ const XP_GROWTH: float = 1.15
 # without either caller changing.
 func xp_needed_for_level(level: int) -> int:
 	# Level 1 needs XP_BASE; each level after multiplies by XP_GROWTH.
-	# At level 99 this is roughly 89 million for that single level — large, but
-	# comfortably inside int64, which the old doubling curve was not.
+	# At level 99 this is roughly 19 trillion for that single level — absurd,
+	# but inside int64 (9.2 quintillion), which the old doubling curve was not.
 	# max() guards a corrupted level of 0 or below producing a fractional power.
 	return int(XP_BASE * pow(XP_GROWTH, max(level - 1, 0)))
 
@@ -142,6 +153,50 @@ func xp_needed_for_level(level: int) -> int:
 # animation is fair; losing it to a phantom is not. Raise both together if 45
 # is still not enough.
 const LOOT_BAG_DESPAWN_SECONDS: float = 45.0
+
+
+# =============================================================================
+# RARITY — what a tier looks like
+# =============================================================================
+# One name and one colour per item tier, read by slot borders, the tooltip and
+# the loot bag's glow. Nothing marked an item as rare before this: an Ember
+# Cuirass sat in a bag looking exactly like an iron one.
+#
+# THE COLOURS ARE THE MATERIALS. Gear tiers were already named iron, jade,
+# cobalt, amethyst and ember, so rarity follows them: an ember piece, its name
+# and its bag's glow are all the same orange. Potions and fish carry tiers too
+# and take the same colours, so a greater potion reads as a legendary one.
+#
+# Indexed by tier; index 0 is there so tier 1 can be read directly, and every
+# tier past the end is Mythic (cooked fish reach tier 8).
+const RARITY_NAMES: Array[String] = [
+	"Common", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic",
+]
+const RARITY_COLOURS: Array[Color] = [
+	Color(0.80, 0.80, 0.78), Color(0.80, 0.80, 0.78),  # iron grey
+	Color(0.36, 0.86, 0.48),                           # jade
+	Color(0.36, 0.64, 1.00),                           # cobalt
+	Color(0.78, 0.48, 1.00),                           # amethyst
+	Color(1.00, 0.62, 0.20),                           # ember
+	Color(1.00, 0.38, 0.38),                           # mythic
+]
+
+# The lowest tier that draws a coloured frame round its slot. COMMON DRAWS
+# NONE: it is most of what a player owns, and outlining it would put a border
+# on everything and so mark nothing.
+const RARITY_FRAME_MIN_TIER: int = 2
+
+# The lowest tier that makes a loot bag glow on the ground. Pets count as
+# legendary: they were the one rare drop that already had a beam.
+const RARE_GLOW_MIN_TIER: int = 4
+
+
+func rarity_name(tier: int) -> String:
+	return RARITY_NAMES[clampi(tier, 0, RARITY_NAMES.size() - 1)]
+
+
+func rarity_colour(tier: int) -> Color:
+	return RARITY_COLOURS[clampi(tier, 0, RARITY_COLOURS.size() - 1)]
 
 
 # =============================================================================
@@ -254,6 +309,15 @@ func commas(amount: int) -> String:
 		if count % 3 == 0 and index > 0:
 			out = "," + out
 	return ("-" + out) if amount < 0 else out
+
+
+func counted(amount: int, word: String, many: String = "") -> String:
+	# "1 day" / "3 days" / "1,204 lusions". A count and the word that goes with
+	# it, so "1 days ago", "1 seconds" and "between 1 of you" cannot be written
+	# again by formatting a number into a plural that was typed once. `many` is
+	# for a plural that is not word + "s".
+	var noun: String = word if amount == 1 else (many if many != "" else word + "s")
+	return "%s %s" % [commas(amount), noun]
 
 
 func gold_text(amount: int) -> String:

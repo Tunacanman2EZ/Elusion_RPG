@@ -53,6 +53,12 @@ const REASON_LABELS := {
 	# mechanism working - a missing label is visible rather than a missing line
 	# in a breakdown that then does not add up.
 	"death": "lost by the dead",
+	# Two more the server has been burning under these ids, rendering as
+	# "guild found" and "staff gold": the fee for founding a guild, and gold a
+	# member of staff took back (a staff grant is a mint and never reaches this
+	# board; only a negative one burns).
+	"guild_found": "spent founding guilds",
+	"staff_gold": "taken back by staff",
 }
 
 # The three colours this board adds on top of the theme, named rather than
@@ -555,7 +561,8 @@ func _guild_standing(your_guild: Variant, guilds: Array) -> String:
 	var line: String = "%s has given %s gold" % [
 		str(mine.get("tag", mine.get("name", "?"))),
 		_commas(int(mine.get("contributed", 0)))]
-	if members > 0:
+	# "between 1 of you" is not a phrase; a guild of one gave it alone.
+	if members > 1:
 		line += " between %d of you" % members
 	# RANKED ONLY WHEN THERE IS SOMEBODY TO BE RANKED AGAINST. "Ranked 1 of 1"
 	# is not a standing, it is arithmetic about the only entry.

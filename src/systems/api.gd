@@ -29,6 +29,7 @@ extends Node
 
 # WHERE THE SERVER IS. Resolved once at startup, in this order:
 #
+#   0. the page's own address, in a browser build - and nothing else there
 #   1. --server=https://host  on the command line
 #   2. ELUSION_SERVER         in the environment
 #   3. user://server.cfg      a one-line override beside the save data
@@ -48,10 +49,122 @@ extends Node
 const DEFAULT_BASE_URL := "http://127.0.0.1:5000"
 const SERVER_OVERRIDE_FILE := "user://server.cfg"
 
+const WebPage := preload("res://src/systems/webpage.gd")
+
+# WHICH BUILD THIS IS, stamped on every request.
+#
+# THE SERVER COULD NOT TELL ONE BUILD FROM ANOTHER BEFORE THIS. It could not
+# refuse a build with a known bug, could not ask a player to update, and - the
+# worst of the three - a change to the wire did not FAIL on an old build, it
+# half-worked. Quietly, on exactly the copies nobody can reach.
+#
+# IT HAD TO SHIP WITH THE FIRST BUILD OR NEVER COVER IT. The header can be
+# added at any time and its absence read as "from before this existed", which
+# works - but every copy released before then is permanently in that bucket,
+# and it is the oldest code, which is the code most worth being able to reason
+# about.
+#
+# MONOTONIC INTEGER, NOT A VERSION STRING. The only question the server asks is
+# "older than", and integers answer it without a parser. DISPLAY_VERSION is for
+# humans and the server never reads it - so the two can be renumbered
+# independently and neither can break the other.
+#
+# RAISE THIS WHENEVER THE WIRE CHANGES, not on every build. It is what the
+# server compares against, so a number that moves for cosmetic reasons makes
+# the minimum meaningless.
+const BUILD := 1
+const DISPLAY_VERSION := "0.1.0"
+
+# The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
+# that is a contract: renaming one without the other disables the gate silently,
+# because an absent header reads as a very old client and the server is not
+# refusing anybody by default.
+const BUILD_HEADER := "X-Elusion-Build"
+
 static var BASE_URL: String = DEFAULT_BASE_URL
+
+# WHAT THE SERVER SAID ABOUT BUILDS, last time anything asked /api/status.
+#
+# -1 MEANS "NOT ASKED YET" rather than 0, because 0 is a real answer from the
+# server meaning "the gate is off". A client that treated "no answer" as "gate
+# off" would look identical to one that had checked, which is the difference
+# between knowing and assuming.
+static var server_min_build: int = -1
+static var server_current_build: int = -1
+
+
+static func clean_password(text: String) -> String:
+	"""THE ONE RULE FOR A PASSWORD FIELD: surrounding spaces are not part of it.
+
+	The login screen always trimmed, and the server never does - so the login
+	screen's rule IS the rule for every account made there. Options (change
+	password, confirm email) and account recovery sent what was typed as it
+	was, so a new password set there with a trailing space was stored with it,
+	and the login screen could never send it again: 401, then 409 from the
+	register attempt, then "Incorrect password." on a password the player had
+	typed correctly. Every password field goes through this now."""
+	return text.strip_edges()
+
+
+static func build_is_outdated() -> bool:
+	"""True when the server knows of a newer build than this one.
+
+	NOT THE SAME QUESTION AS "will I be refused". The refusal threshold is
+	server_min_build; this is server_current_build, which is only "there is
+	something newer". They are deliberately separate so the client can say
+	"an update is available" long before the day anything is turned away -
+	which is the whole value of shipping the gate disarmed."""
+	return server_current_build > BUILD
+
+
+static func build_is_refused() -> bool:
+	"""True when this build is below the server's minimum and will be refused."""
+	return server_min_build > 0 and BUILD < server_min_build
+
+
+static func no_answer_text() -> String:
+	"""The line for a request nothing answered.
+
+	"Is it running?" is a question for whoever runs the server, and it was the
+	sentence every player got - in chat, friends, guilds and the transport
+	error below. A debug build keeps it, because there it is almost always you
+	and app.py; a shipped one says something a player can act on."""
+	if OS.is_debug_build():
+		return "No answer from the server. Is it running?"
+	return "No answer from the server. Try again in a moment."
+
+
+static func build_notice() -> String:
+	"""What the login screen says about this build, or "" when it is current.
+
+	THE TWO FUNCTIONS ABOVE HAD NO CALLER. Their docstring says the gate ships
+	disarmed so the client can say "an update is available" long before
+	anything is turned away - and nothing said it. refresh_build_info() fetched
+	both numbers on every login screen and nothing read server_current_build.
+
+	A browser build updates by being reloaded, so it says that instead of
+	asking for a download."""
+	var how: String = "Refresh the page to update." if OS.has_feature("web") \
+		else "Please update to keep playing."
+	if build_is_refused():
+		return "This version of the game is too old to connect. " + how
+	if build_is_outdated():
+		return "A newer version of the game is out. " + how.replace("to keep playing", "when you can")
+	return ""
 
 
 static func _resolve_base_url() -> String:
+	# A BROWSER BUILD TALKS TO THE ADDRESS IT WAS LOADED FROM. The API sends no
+	# cross-site headers, so a browser refuses any other address - it was
+	# measured doing exactly that to 127.0.0.1:5000 from a page on :8061. The
+	# site serves the game and passes /api/ to the server (DEPLOY.md in the API
+	# repository), which makes the page's origin the one address that works.
+	# No override is read there: none of the three can name a working address.
+	if OS.has_feature("web"):
+		var from_page: String = web_base_url(WebPage.origin())
+		if from_page != "":
+			return from_page
+
 	for argument in OS.get_cmdline_args():
 		if argument.begins_with("--server="):
 			# CHECKED LIKE THE OTHER TWO. A bare `--server=` with nothing after
@@ -79,6 +192,17 @@ static func _resolve_base_url() -> String:
 				return _clean_base_url(line)
 
 	return DEFAULT_BASE_URL
+
+
+static func web_base_url(origin: String) -> String:
+	"""The API address for a page served from `origin`, or "" for none.
+
+	window.location.origin is the string "null" for a page opened from disk,
+	and the engine cannot start from one anyway; only http(s) is an answer."""
+	var cleaned: String = origin.strip_edges()
+	if not (cleaned.begins_with("https://") or cleaned.begins_with("http://")):
+		return ""
+	return _clean_base_url(cleaned)
 
 
 static func _clean_base_url(raw: String) -> String:
@@ -253,13 +377,16 @@ const DEBUG_KEYS_MIN_ROLE := "mod"
 const GOD_MODE_MIN_ROLE := "dev"
 
 
-# WHAT EACH RANK LOOKS LIKE. Defined here, with the rank itself, because two
-# places now paint it - the nameplate above a player and their name in world
-# chat - and a rank that is gold in one and orange in the other reads as two
-# different people.
+# WHAT EACH RANK LOOKS LIKE - ON ITS BADGE. These used to paint the NAME: the
+# owner's gold, a dev's blue, a mod's green, and the colour a player picked in
+# Options was drawn over their own head and nowhere else. Names are the colour
+# each player chose now (users.name_hue, drawn by src/shared/nametag.gd), and
+# rank is worn as a badge - MOD, DEV - which these colour, and the owner's
+# crown. Defined here, with the rank itself, so a MOD over a head and a MOD in
+# chat cannot be two different greens.
 #
-# The player colour is the theme's own font colour, so an ordinary name looks
-# like ordinary text rather than like a rank nobody has.
+# The player entry is still here for colour_for_role()'s fallback, and a
+# player wears no badge to put it on.
 const RANK_COLOURS := {
 	"owner":  Color(1.0, 0.78, 0.35),
 	"dev":    Color(0.62, 0.82, 1.0),
@@ -526,7 +653,12 @@ func post_bytes(path: String, payload: PackedByteArray, content_type: String,
 	http.timeout = timeout_override if timeout_override > 0.0 else TIMEOUT
 	add_child(http)
 
-	var headers := PackedStringArray(["Content-Type: " + content_type])
+	var headers := PackedStringArray(["Content-Type: " + content_type,
+		# STAMPED HERE TOO, and this is the one most likely to be forgotten:
+		# three functions in this file build headers and the gate is only as
+		# good as the least of them. A route reached through a builder that
+		# omitted this would read as a pre-versioning client forever.
+		BUILD_HEADER + ": " + str(BUILD)])
 	var sent_token: String = token
 	if token != "":
 		headers.append("Authorization: Bearer " + token)
@@ -556,7 +688,7 @@ func get_bytes(path: String, timeout_override: float = 0.0) -> Dictionary:
 	http.timeout = timeout_override if timeout_override > 0.0 else TIMEOUT
 	add_child(http)
 
-	var headers := PackedStringArray()
+	var headers := PackedStringArray([BUILD_HEADER + ": " + str(BUILD)])
 	if token != "":
 		headers.append("Authorization: Bearer " + token)
 
@@ -579,6 +711,25 @@ func get_bytes(path: String, timeout_override: float = 0.0) -> Dictionary:
 	}
 
 
+func send_before_leaving(method: String, path: String, body: Dictionary) -> bool:
+	"""A request for a page that is closing or hidden: sent before this
+	returns, finished by the browser whether or not the page survives, and its
+	answer never read. False off the web, or with nobody signed in.
+
+	Only for writes the server takes whole and as often as it is given them -
+	the save sections are; a sale or a take from a loot bag is not. Nothing is
+	learned from the answer, so a refusal here changes nothing on this side and
+	the ordinary push, if the page comes back, sends the same thing again."""
+	if not WebPage.in_browser() or token == "":
+		return false
+	# THE SAME THREE HEADERS AS EVERY OTHER REQUEST, the build among them.
+	var headers := PackedStringArray(["Content-Type: application/json",
+		BUILD_HEADER + ": " + str(BUILD),
+		"Authorization: Bearer " + token])
+	_note_request()
+	return WebPage.send_now(BASE_URL + path, method, headers, JSON.stringify(body))
+
+
 func _request(method: int, path: String, body: Dictionary, timeout_override: float = 0.0) -> Dictionary:
 	var http := HTTPRequest.new()
 	# 0.0 means "use the normal budget" rather than "no timeout" — an explicit
@@ -587,7 +738,13 @@ func _request(method: int, path: String, body: Dictionary, timeout_override: flo
 	http.timeout = timeout_override if timeout_override > 0.0 else TIMEOUT
 	add_child(http)
 
-	var headers := PackedStringArray(["Content-Type: application/json"])
+	var headers := PackedStringArray(["Content-Type: application/json",
+		# EVERY REQUEST CARRIES THE BUILD. Not only the authenticated ones:
+		# login and register are gated too, deliberately, because being let in
+		# and then refused on the next call is worse than being told at the
+		# door - and the login screen is the one place this client already
+		# knows how to show a refusal.
+		BUILD_HEADER + ": " + str(BUILD)])
 	# Remembered, because the answer is only about THIS token. A logout and a
 	# fresh login can both happen while a slow request is in flight, and a 401
 	# for the old token says nothing about the new one.
@@ -661,6 +818,25 @@ func _read_answer(http: HTTPRequest, sent_token: String, path: String) -> Dictio
 			and path != "/api/auth/session":
 		unauthorized_seen.emit()
 
+	# 426 UPGRADE REQUIRED - this build is older than the server's minimum.
+	#
+	# LEARNED FROM THE REFUSAL ITSELF rather than waiting for the next poll of
+	# /api/status, because by the time this fires the client has already been
+	# turned away from everything except that one route. The numbers are in the
+	# body: the server names both the minimum and what this client claimed to
+	# be, precisely so a player can read them back to somebody.
+	#
+	# NOT A SIGNAL. unauthorized_seen is a prompt to go and ASK - a 401 might be
+	# a mistyped password and heartbeat() decides. This is not ambiguous: there
+	# is one reason a server answers 426 and no probe would tell us more. So it
+	# is recorded where every caller already looks, and signout_notice carries
+	# the words to the login screen the same way a ban does.
+	if status == 426:
+		if data is Dictionary:
+			server_min_build = int(data.get("min_build", server_min_build))
+		signout_notice = "This version of the game is too old to connect." \
+			+ " Please update to keep playing."
+
 	return {
 		"ok": false,
 		"status": status,
@@ -672,6 +848,27 @@ func _read_answer(http: HTTPRequest, sent_token: String, path: String) -> Dictio
 # =============================================================================
 # AUTH
 # =============================================================================
+
+func refresh_build_info() -> void:
+	"""Ask /api/status what it thinks of builds, and remember the answer.
+
+	/api/status IS THE ONE ROUTE THE BUILD GATE NEVER REFUSES, which is what
+	makes this reachable exactly when it is needed. A client turned away from
+	everything else can still get here and find out why, instead of being
+	refused into silence.
+
+	NOTHING IS WRITTEN WHEN THE SERVER CANNOT BE REACHED. A failed request
+	leaves both statics at whatever they were - -1 if never asked - because
+	"could not ask" and "the gate is off" are different answers and only one of
+	them is worth acting on. A client that read a timeout as `min_build = 0`
+	would cheerfully report that it was current, which is the failure this whole
+	feature exists to remove."""
+	var res: Dictionary = await get_json("/api/status", PROBE_TIMEOUT)
+	if not res.get("ok", false) or not (res.get("data") is Dictionary):
+		return
+	server_min_build = int(res.data.get("min_client_build", server_min_build))
+	server_current_build = int(res.data.get("current_client_build", server_current_build))
+
 
 func login(user: String, password: String) -> Dictionary:
 	var res := await post("/api/auth/login", {"username": user, "password": password})
@@ -708,6 +905,18 @@ func probe_and_resume() -> Dictionary:
 	# "online" is deliberately independent of "resumed". A rejected token on a
 	# healthy server is not a connection problem, and telling the player it is
 	# would send them off to check their internet over an expired login.
+	# THE BUILD NUMBERS FIRST, and this IS a second request where the comment
+	# above argues against paying twice. The argument changed, for one reason:
+	# /api/status is the only route the build gate never refuses, so it is the
+	# only one that still answers when this build is the problem. Asking
+	# /api/auth/session first and stopping on its refusal would leave the player
+	# reading "could not resume your session" about a version mismatch.
+	#
+	# ONE EXTRA REQUEST, ONCE, ON THE LOGIN SCREEN. Not per frame and not per
+	# poll - this runs where somebody is already waiting for a server to answer,
+	# and it is the only moment the answer matters.
+	await refresh_build_info()
+
 	var res: Dictionary = await get_json("/api/auth/session", PROBE_TIMEOUT)
 
 	if int(res.get("status", 0)) == 0:
@@ -722,6 +931,7 @@ func probe_and_resume() -> Dictionary:
 			str(res.data.get("role", "player")),
 			bool(res.data.get("is_owner", false)))
 		needs_email = bool(res.data.get("needs_email", false))
+		adopt_name_hue(res.data)
 		return {"online": true, "resumed": true}
 
 	# Reached the server and it said no — the token expired or was revoked.
@@ -758,6 +968,83 @@ func heartbeat() -> String:
 			str(res.data.get("role", role)),
 			bool(res.data.get("is_owner", is_owner)))
 	return verdict
+
+
+# =============================================================================
+# THE NAME COLOUR, KEPT ON THE SERVER
+# =============================================================================
+# The hue a player picks in Options used to live in options.cfg and nowhere
+# else, so it was drawn over their own head and nowhere else. The server keeps
+# it now (users.name_hue) and sends it with every name; this is the half that
+# keeps the two in step.
+#
+#   SERVER WINS ON LOGIN. A second machine draws the colour chosen on the
+#   first, so the login answer's hue is written into Settings.
+#   THE SLIDER WINS AFTER THAT. Moving it pushes the new hue, once the slider
+#   has stopped for NAME_HUE_PUSH_DELAY - a drag across the wheel is dozens of
+#   changes and should be one request.
+#   A COLOUR CHOSEN BEFORE THE SERVER KEPT ONE IS UPLOADED, not lost: an
+#   account the server has no hue for, on a machine that has a non-default
+#   one, sends it.
+
+const NAME_HUE_PUSH_DELAY := 0.6
+
+# What the server last confirmed it holds, or null for "nothing chosen". A push
+# that would send the same number is not sent, which is also what stops the
+# login's own write into Settings from echoing straight back up.
+var _synced_name_hue: Variant = null
+var _name_hue_push: int = 0
+
+
+func adopt_name_hue(data: Dictionary) -> void:
+	_watch_name_hue()
+	var theirs: Variant = data.get("name_hue")
+	if theirs is int or theirs is float:
+		_synced_name_hue = int(theirs)
+		if int(round(float(Settings.get_value("name_hue")))) != int(theirs):
+			Settings.set_value("name_hue", float(theirs))
+		return
+	_synced_name_hue = null
+	if not is_equal_approx(float(Settings.get_value("name_hue")),
+			float(Settings.DEFAULTS["name_hue"])):
+		push_name_hue_soon()
+
+
+func _watch_name_hue() -> void:
+	# CONNECTED HERE, not in _ready(). Settings is declared after Api in
+	# project.godot, so at Api's _ready() it may not exist yet; by the time
+	# anybody has logged in, every autoload has.
+	if not Settings.changed.is_connected(_on_setting_changed):
+		Settings.changed.connect(_on_setting_changed)
+
+
+func _on_setting_changed(key: String, _value: Variant) -> void:
+	if key == "name_hue":
+		push_name_hue_soon()
+
+
+func name_hue_to_push() -> int:
+	"""The hue the server should hold, or -1 when it already holds it."""
+	var hue: int = wrapi(int(round(float(Settings.get_value("name_hue")))), 0, 360)
+	if _synced_name_hue != null and int(_synced_name_hue) == hue:
+		return -1
+	return hue
+
+
+func push_name_hue_soon() -> void:
+	# A GENERATION, like the staff panel's searches: every change takes a
+	# number, and only the last one to finish waiting is sent.
+	_name_hue_push += 1
+	var mine: int = _name_hue_push
+	await get_tree().create_timer(NAME_HUE_PUSH_DELAY).timeout
+	if mine != _name_hue_push or token == "":
+		return
+	var hue: int = name_hue_to_push()
+	if hue < 0:
+		return
+	var res: Dictionary = await put("/api/account/name-colour", {"hue": hue})
+	if res.get("ok", false):
+		_synced_name_hue = hue
 
 
 func heartbeat_verdict(res: Dictionary) -> String:
@@ -811,6 +1098,7 @@ func _adopt_session(data: Dictionary) -> void:
 		str(data.get("role", "player")),
 		bool(data.get("is_owner", false)))
 	needs_email = bool(data.get("needs_email", false))
+	adopt_name_hue(data)
 
 	# _save_session() writes the token and username only. is_owner is
 	# deliberately not among them — it is re-read from the server on every
@@ -899,7 +1187,8 @@ func _describe_transport_failure(request_result: int) -> String:
 	# "you forgot to start app.py".
 	match request_result:
 		HTTPRequest.RESULT_CANT_CONNECT, HTTPRequest.RESULT_CANT_RESOLVE:
-			return "Can't reach the server. Is it running?"
+			return "Can't reach the server. Is it running?" if OS.is_debug_build() \
+				else "Can't reach the server. Check your connection and try again."
 		HTTPRequest.RESULT_TIMEOUT:
 			return "The server took too long to respond."
 		_:
@@ -944,7 +1233,12 @@ func _describe_api_error(data: Variant, status: int) -> String:
 	#
 	# Ordered by likelihood, because a message is read top-down and the first
 	# line is the one that gets acted on.
+	#
+	# A SHIPPED BUILD SAYS NEITHER, and never prints the address - the rule
+	# describe_offline() states. A player cannot restart anybody's server.
 	if status == 404:
+		if not OS.is_debug_build():
+			return "The server cannot do that right now."
 		return ("%s has no such route. If you just added it, restart the "
 			+ "server — otherwise another local Flask project may have taken "
 			+ "the port.") % BASE_URL

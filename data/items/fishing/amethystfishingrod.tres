@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "amethystfishingrod"
 display_name = "Amethyst Fishing Rod"
-description = "Something in the stone draws fish that should know better. Requires fishing level 50."
+description = "Something in the stone draws fish that should know better."
 icon = ExtResource("1_icon")
 max_stack = 1
 value = 11280

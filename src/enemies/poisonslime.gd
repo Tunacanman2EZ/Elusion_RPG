@@ -37,10 +37,16 @@ extends BaseEnemy
 class_name PoisonSlime
 
 # TWO PROFILES, ONE SCENE. This is the clearest case for making rewards data:
-# poisonslime.tscn is a 35 hp mob that drops loot and carries both slime pets,
-# AND a 220 hp one that drops nothing at all because it never dies — _die()
+# poisonslime.tscn is a small mob that drops loot and carries both slime pets,
+# AND a large one that drops nothing at all because it never dies — _die()
 # routes it into _begin_split() and it is consumed. The server has to be able to
-# tell those apart, and a name is the only way it ever will.
+# tell those apart, and a name is the only way it ever will. (Health lives in
+# the .tres files; the numbers that used to be written here had drifted.)
+#
+# THE ELEMENT SLIMES ARE THE SAME TWO FORMS. <element>slimelarge.tscn places a
+# large whose EnemyData.split_into is the element's small (<element>slime.tres),
+# so a wind slime is two larges and then eight wind archers, all reporting
+# "windslime". These two constants are only the poison slime's fallback.
 const SMALL_DATA := preload("res://data/enemies/poisonslimesmall.tres")
 const LARGE_DATA := preload("res://data/enemies/poisonslimelarge.tres")
 
@@ -236,8 +242,8 @@ func _ready() -> void:
 	# The 864 is exactly 4 x 216, and that is the whole point: a large slime
 	# always becomes four smalls, so clearing one encounter is four rolls at
 	# 1 in 864, and 1 - (863/864)^4 = 1 in 216. That lands a full slime fight
-	# on the same odds as a single bush mage kill — fair, given it is 220 hp
-	# plus four 35 hp smalls. Retune it in the .tres, not here.
+	# on the same odds as a single bush mage kill. Retune it in the .tres, not
+	# here.
 
 	super._ready()
 
@@ -514,6 +520,19 @@ func _begin_split() -> void:
 	_has_split = true
 	_is_resolving = true
 
+	# THE PLACED LARGE IS GOING, AND THE RESPAWNER HAS TO HEAR IT. enemyrespawner.gd
+	# brings an enemy back on its `died` signal, and a large never reached
+	# BaseEnemy._die() - it is consumed below - so a placed large slime split once
+	# and was never seen again until the area reloaded. The respawner's own header
+	# says "kill the large slime and a large slime comes back"; this is what makes
+	# that true. Emitted without a kill report: the large grants nothing, its
+	# smalls do. The only other listener, bossgauntlet.gd, watches bosses.
+	#
+	# BEFORE THE AWAIT, NOT AFTER THE SPLIT. A node freed during the hitflash
+	# never resumes its coroutine, silently, and a signal below the await would
+	# go with it - _test_await_does_not_lose_work holds that rule.
+	died.emit()
+
 	_stop_acting()
 	_set_animation("hitflash" + attack_direction)
 
@@ -561,6 +580,18 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	# block in _ready(), and add_child() is what runs _ready() — set it
 	# afterwards and the slime has already initialised as the wrong form.
 	slime.is_small = small
+
+	# AND THE SAME PROFILE. A twin is this large again; a small is whatever this
+	# large's EnemyData says it splits into (EnemyData.split_into). Without it a
+	# child falls back to the poison profiles in _ready(), which is still right
+	# for the original poison slime and wrong for every element variant - a
+	# large wind slime burst into four poisonslimesmall that reported the wrong
+	# id and hit for the arrow scene's 7.
+	if enemy_data != null:
+		if not small:
+			slime.enemy_data = enemy_data
+		elif enemy_data.split_into != null:
+			slime.enemy_data = enemy_data.split_into
 
 	# THE CHILDREN ARE THE SAME CREATURE. _ready() resolves enemy_data from
 	# is_small alone, so without this a child takes the SMALL profile's element

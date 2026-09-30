@@ -17,4 +17,5 @@ type = 2
 equip_slot = 4
 required_classes = Array[String](["warrior", "tank"])
 armor_value = 16
+bonus_max_hp = 9
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

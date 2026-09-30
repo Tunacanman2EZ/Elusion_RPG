@@ -37,8 +37,11 @@ class_name EquipmentSlot
 # dropped on it; it does not know whether the character may wear the thing,
 # where that is saved, or what else on screen has to redraw afterwards. The
 # panel owns all of that, so the slot's whole job is to say what happened.
-
-signal equip_requested(slot_name: String, item_id: String)
+#
+# `from_cell` is the carried cell the piece was dragged from - a bag cell or a
+# hotbar key - or -1 when the drag did not come from one. The server spends
+# that cell, so the same sword in two places is not a guess.
+signal equip_requested(slot_name: String, item_id: String, from_cell: int)
 
 
 # =============================================================================
@@ -123,7 +126,10 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	# saves, and repaints every square including this one. Writing the icon
 	# here as well would be a second source of truth that is right until the
 	# save is refused.
-	equip_requested.emit(equip_slot_name, incoming.data.item_id)
+	var source: Variant = data.get("source_slot")
+	var from_cell: int = source.slot_index \
+		if source is InventorySlot and is_instance_valid(source) else -1
+	equip_requested.emit(equip_slot_name, incoming.data.item_id, from_cell)
 
 
 # =============================================================================

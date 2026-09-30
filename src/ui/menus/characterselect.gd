@@ -12,10 +12,24 @@ extends Control
 # CONSTANTS
 # =============================================================================
 
-# preloaded reference to the main game scene. preloading here means any
-# parse error in elusion.tscn surfaces at characterselect.tscn load time,
-# not on first click — easier to catch broken references early.
-const ELUSION_SCENE := preload("res://scene/elusion.tscn")
+# The area the game starts in, BY NAME - not a preload any more.
+#
+# THE PRELOAD WAS WHAT MADE THE LOGIN SCREEN SLOW. loginmenu.tscn exports this
+# scene, so preloading the town here put the town, the field, the HUD, every
+# panel and about sixty scripts in front of the login screen's first frame -
+# 1.8 of the 2.6 seconds from launch to a login box, measured cold. The reason
+# it was a preload - "a broken elusion.tscn shows up early" - is the suite's
+# job now: _test_the_world_loads_in_the_background() walks the login screen's
+# whole load and loads the town itself.
+#
+# The login screen starts the town loading in the background (see
+# AreaRegistry.prefetch), so by the time a character is picked it is
+# normally already there.
+const WORLD_AREA := "elusion"
+
+# Set once a character has been picked, so a second click while the town
+# finishes loading cannot start a second trip.
+var _entering: bool = false
 
 # class assigned to each slot — slot index maps to class name.
 # the order here defines which class each slot creates.
@@ -38,6 +52,10 @@ func _ready() -> void:
 	# but appeared to be actively re-triggering signature verification
 	# against a freshly round-tripped copy of the same data, which was
 	# revoking permissions even without real tampering.
+	#
+	# Normally already under way from the login screen, and then a no-op. This
+	# covers arriving here any other way - back from the world, say.
+	AreaRegistry.prefetch(WORLD_AREA)
 	update_slot_labels()
 
 
@@ -133,6 +151,11 @@ func _select_character(idx: int) -> void:
 	# to the main game scene. the player's _ready() will then call
 	# CharacterData.load_character_state(self) to pull saved stats into
 	# the freshly instanced player.
+	#
+	# ONE TRIP. Checked here, not only in _enter_world(): by then a second
+	# click would already have changed which character is active.
+	if _entering:
+		return
 	var slot = CharacterData.character_slots[idx]
 	if not _is_slot_valid(slot):
 		if OS.is_debug_build():
@@ -215,4 +238,58 @@ func _select_character(idx: int) -> void:
 	CharacterData.active_character_index = idx
 	CharacterData.save_data()
 
-	get_tree().change_scene_to_packed(ELUSION_SCENE)
+	_enter_world(idx)
+
+
+func _enter_world(idx: int) -> void:
+	"""Into the town - once it has loaded, which it almost always has.
+
+	WAITS BY THE FRAME, NOT BY BLOCKING. If the player picked a character
+	faster than the town loaded, scene_for() would freeze the window until it
+	finished; waiting here keeps the screen drawing and says why."""
+	if _entering:
+		return
+	_entering = true
+
+	if not AreaRegistry.is_ready(WORLD_AREA):
+		_show_loading(idx)
+		while not AreaRegistry.is_ready(WORLD_AREA) and AreaRegistry.is_loading(WORLD_AREA):
+			await get_tree().process_frame
+			# PAST AN AWAIT. Logging out or closing the window frees this screen.
+			if not is_instance_valid(self) or not is_inside_tree():
+				return
+		# NOT LOADING AT ALL - a build without threads loads nothing ahead
+		# (AreaRegistry.loads_in_background()), so scene_for() below holds the
+		# screen while it loads. It must hold on this label, not on a click that
+		# seems to have done nothing - and that takes TWO frames: the first
+		# resumes inside the frame the click arrived in, before that frame is
+		# drawn. Watched in Chromium: with one, the label never reached the screen.
+		if not AreaRegistry.is_ready(WORLD_AREA):
+			for _frame in 2:
+				await get_tree().process_frame
+				if not is_instance_valid(self) or not is_inside_tree():
+					return
+
+	var world: PackedScene = AreaRegistry.scene_for(WORLD_AREA)
+	if world == null:
+		# The error naming the file already came from AreaRegistry. Say it
+		# here too, where the player is looking, and let them try again.
+		_entering = false
+		update_slot_labels()
+		_slot_labels()[idx].text = "The world failed to load - try again"
+		return
+
+	# Everything else loads behind the player now, so no door waits on the disk.
+	AreaRegistry.prefetch_all()
+	get_tree().change_scene_to_packed(world)
+
+
+func _slot_labels() -> Array:
+	return [%label1, %label2, %label3, %label4]
+
+
+func _show_loading(idx: int) -> void:
+	_slot_labels()[idx].text = "Loading the world..."
+	for button in [%createbutton1, %createbutton2, %createbutton3, %createbutton4,
+			%selectbutton1, %selectbutton2, %selectbutton3, %selectbutton4]:
+		button.disabled = true

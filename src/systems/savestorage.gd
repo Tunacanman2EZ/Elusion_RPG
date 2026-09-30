@@ -67,7 +67,8 @@ func has_unpushed() -> bool:
 	returned true. So the only thing that knows a write did not land is the
 	backend, and CharacterData has no way to ask.
 
-	It could not ask, and that was a data-loss path. CharacterData cleared
+	It could not ask - nothing called this and ServerStorage did not override
+	it - and that was a data-loss path. CharacterData cleared
 	_save_pending before calling save(), a rejected PUT left the section dirty
 	but nothing queued, and flush_save() at quit then returned early because
 	nothing looked pending. The progress since the last successful push was

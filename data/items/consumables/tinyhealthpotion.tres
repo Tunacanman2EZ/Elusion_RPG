@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "tinyhealthpotion"
 display_name = "Tiny Health Potion"
-description = "A thimble of crimson tonic. Restores 20 HP."
+description = "A thimble of crimson tonic."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

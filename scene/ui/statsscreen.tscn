@@ -171,7 +171,7 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "HP:"
+text = "Health:"
 
 [node name="hpicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat/vbox/hbox" unique_id=1355658789]
 layout_mode = 2
@@ -320,7 +320,7 @@ theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
 theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 12
-text = "0/100"
+text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -340,7 +340,7 @@ custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
 size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "Defense:"
+text = "Defence:"
 
 [node name="defensebaricon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=873388737]
 layout_mode = 2
@@ -369,7 +369,7 @@ theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
 theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 12
-text = "0/100"
+text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -418,7 +418,7 @@ theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
 theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 12
-text = "0/100"
+text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -467,7 +467,7 @@ theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
 theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 12
-text = "0/100"
+text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -539,7 +539,7 @@ theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
 theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 12
-text = "0/100"
+text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -588,7 +588,7 @@ theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
 theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 12
-text = "0/100"
+text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 

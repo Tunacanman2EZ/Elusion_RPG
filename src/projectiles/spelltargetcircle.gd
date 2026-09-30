@@ -50,14 +50,10 @@ var explosion_damage: int = 0
 # throughout in case something ever spawns this scene without setting it.
 var caster: Node = null
 
-# NEW: XP granted PER ENEMY hit, not once per cast — matches warrior's
-# melee precedent (_try_damage() in warrior.gd grants XP per enemy inside
-# its cleave hitbox, not once per swing), so an AoE cast that catches 3
-# enemies grants 3x the XP of a single-target hit, same as landing 3
-# separate melee hits would. exported so both can be tuned independently
-# without touching code. attack XP is universal (any class — see
-# player.gd's gain_attack_xp()); magic XP is mage's boosted specialty.
-@export var attack_xp_on_hit: int = 5
+# Magic XP PER ENEMY hit, not once per cast, so an AoE that catches three
+# enemies trains magic three times. Reported to the server (SkillTrainer),
+# which applies the mage's specialty. There is no attack XP here: attack
+# trains at the kill, on the server - see Player.apply_server_attack().
 @export var magic_xp_on_hit: int = 5
 
 # visual radius of the target ring drawn on the ground.
@@ -195,16 +191,11 @@ func _apply_area_damage() -> void:
 
 
 func _grant_caster_xp() -> void:
-	# NEW: grants XP back to whoever cast this spell, once per enemy hit
-	# (see attack_xp_on_hit/magic_xp_on_hit above for why). attack XP is
-	# universal (any class, any hit — see player.gd's gain_attack_xp());
-	# magic XP is mage's boosted specialty via skill_proficiency. null-
-	# guarded since caster isn't guaranteed to be set if something spawns
+	# Magic XP to whoever cast this, once per enemy hit (see magic_xp_on_hit).
+	# null-guarded since caster isn't guaranteed to be set if something spawns
 	# this scene without going through mage.gd's normal cast flow.
 	if caster == null:
 		return
-	if caster.has_method("gain_attack_xp"):
-		caster.gain_attack_xp(attack_xp_on_hit)
 	if caster.has_method("gain_magic_xp"):
 		caster.gain_magic_xp(magic_xp_on_hit)
 

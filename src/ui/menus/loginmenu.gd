@@ -56,6 +56,8 @@ extends Control
 # if they ever disagree the server wins and the player sees its message.
 const MIN_PASSWORD_LENGTH := 8
 
+const WebPage := preload("res://src/systems/webpage.gd")
+
 # Colours for the connection banner. Deliberately NOT the red that %errorlabel
 # uses: "the server is down" is a statement about the world, not a complaint
 # about what the player typed, and colouring it like a validation error makes
@@ -171,6 +173,14 @@ var _pending_username: String = ""
 # =============================================================================
 
 func _ready() -> void:
+	# THE TOWN STARTS LOADING NOW, ON A WORKER THREAD, WHILE THE PLAYER TYPES.
+	# It used to load before this screen could appear at all - see the notes in
+	# AreaRegistry's "LOADING AHEAD". The name is characterselect.gd's
+	# WORLD_AREA; the suite holds the two to the same area. In a build without
+	# threads (the browser's) this asks for nothing - there the load would BE
+	# the wait; see AreaRegistry.loads_in_background().
+	AreaRegistry.prefetch("elusion")
+
 	# HIDDEN IN THE SCENE FILE, SHOWN HERE.
 	#
 	# Both this and the player HUD are CanvasLayers, so the 2D editor draws them
@@ -193,6 +203,17 @@ func _ready() -> void:
 		%loginbutton.pressed.connect(_on_login_button_pressed)
 	if not %exitbutton.pressed.is_connected(_on_exit_button_pressed):
 		%exitbutton.pressed.connect(_on_exit_button_pressed)
+
+	# A PAGE CANNOT CLOSE ITS OWN TAB. In a browser quit() stops the engine and
+	# leaves a frozen picture where the game was, so there is no Exit to offer -
+	# and its row and the rule above it go too, or the panel ends in a line
+	# over an empty band.
+	if WebPage.in_browser():
+		_hide_exit_row()
+		# The loader in web/shell.html covers the canvas until this screen has
+		# drawn once, so the engine's boot splash never shows between the two.
+		RenderingServer.frame_post_draw.connect(func() -> void: WebPage.mark_ready(),
+			CONNECT_ONE_SHOT)
 
 	# NEW: pressing Enter while either field is focused submits the form,
 	# same as clicking Login. LineEdit's text_submitted signal passes the
@@ -408,8 +429,8 @@ func _on_recover_send_pressed() -> void:
 func _on_recover_submit_pressed() -> void:
 	var address: String = "" if recover_email == null else recover_email.text.strip_edges()
 	var code: String = "" if recover_code == null else recover_code.text.strip_edges()
-	var new_password: String = "" if recover_new_password == null else recover_new_password.text
-	var confirm: String = "" if recover_confirm_password == null else recover_confirm_password.text
+	var new_password: String = "" if recover_new_password == null else Api.clean_password(recover_new_password.text)
+	var confirm: String = "" if recover_confirm_password == null else Api.clean_password(recover_confirm_password.text)
 
 	if address == "":
 		_recover_say("Type the email address on your account.", STATUS_OFFLINE)
@@ -604,6 +625,15 @@ func _check_connection_and_resume() -> void:
 
 	_set_status(Api.describe_online(), STATUS_ONLINE)
 
+	# THE BUILD, now that /api/status has been asked. Amber when this build will
+	# be turned away, grey when there is simply something newer; nothing at all
+	# when it is current. A notice the server already gave (a kick, a ban, a
+	# refused build) is not written over.
+	var build_note: String = Api.build_notice()
+	var said: Label = get_node_or_null("%errorlabel") as Label
+	if build_note != "" and (said == null or said.text == ""):
+		_say(build_note, SAY_BLOCKED if Api.build_is_refused() else SAY_WORKING)
+
 	if not probe.get("resumed", false):
 		# Either there was no cached token, or the server rejected it. Neither
 		# is worth a message — the form is right there.
@@ -648,7 +678,7 @@ func _on_login_button_pressed() -> void:
 		return
 
 	var username: String = %usernamelineedit.text.strip_edges()
-	var password: String = %passwordlineedit.text.strip_edges()
+	var password: String = Api.clean_password(%passwordlineedit.text)
 
 	# --- input validation (courtesy only — the server validates too) ---
 	if username.is_empty() or password.is_empty():
@@ -862,6 +892,13 @@ func _set_status(message: String, color: Color) -> void:
 
 func _on_exit_button_pressed() -> void:
 	get_tree().quit()
+
+
+func _hide_exit_row() -> void:
+	var row: Node = %exitbutton.get_parent()
+	for node in [row, get_node_or_null("centercontainer/mainpanel/margincontainer/vboxcontainer/hseparator2")]:
+		if node is CanvasItem:
+			node.visible = false
 
 
 # =============================================================================

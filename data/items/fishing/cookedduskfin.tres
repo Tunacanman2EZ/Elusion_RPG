@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "cookedduskfin"
 display_name = "Cooked Duskfin"
-description = "Only rises after the light goes. Restores 55 HP."
+description = "Only rises after the light goes."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

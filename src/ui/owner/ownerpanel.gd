@@ -10,20 +10,23 @@
 # (ELUSION_OWNER) and is the one account that cannot be granted or revoked.
 # Reading other people's saves belongs to the narrowest of the four.
 #
-# v1 deliberately keeps this simple: results print to the Output console
-# rather than a dedicated display widget, matching this project's existing
-# debug-key workflow (print-based diagnostics) rather than building a new
-# visual result panel before knowing what owner tooling actually gets used.
+# RESULTS ARE ON SCREEN. They used to go to the Output console only, through
+# _say(), which also printed nothing at all outside a debug build - so in an
+# exported game "View account", a kick, a ban, a rank change and closing the
+# server all did their work in silence, and the one panel for acting on other
+# people was the one that never said what it had done. Every _say() now lands
+# in the results box at the bottom of the panel (and still in the console in a
+# debug build, tagged, for grepping).
 #
-# IT NOW READS THE SERVER. GET /api/staff/user/<name> exists, so this panel no
-# longer says "not built" - it shows rank, ban state, characters, the login
-# summary, grouped kill reports and the staff history. The console is still
-# where it lands; drawing it into the panel needs scene work.
+# A WINDOW LIKE THE OTHER SIXTEEN. PanelWindow gives it a header to drag, edges
+# to resize and a remembered position, and the x in the header closes it - as
+# do backquote and Esc. It was a fixed box pinned to the top-left with no way
+# out but the key that opened it.
 #
-# SCENE SETUP (can't be done from chat — do this in the editor):
-# - a Control (or PanelContainer) root with this script attached
-# - a child LineEdit, marked unique name "usernameinput"
-# - a child Button, marked unique name "viewbutton"
+# THREE TABS, NO SCROLLING. Account (look up, sanctions, rank, moving people),
+# Testing (your own character) and Server (the switch). The tab strip sizes to
+# its tallest tab - use_hidden_tabs_for_min_size - so switching tabs never
+# resizes the window under the mouse, and the results box takes what is left.
 extends Control
 
 
@@ -33,6 +36,36 @@ extends Control
 
 @onready var username_input: LineEdit = %usernameinput
 @onready var view_button: Button = %viewbutton
+
+# THE WINDOW'S OWN PARTS. get_node_or_null like the rest, for the same reason.
+@onready var close_button: Button = get_node_or_null("%ownerclosebutton")
+@onready var tabs: TabContainer = get_node_or_null("%ownertabs")
+@onready var results: RichTextLabel = get_node_or_null("%ownerresults")
+@onready var results_clear: Button = get_node_or_null("%ownerresultsclear")
+
+# The tab titles. Written here rather than taken from the node names, which are
+# lowercase like every other node in the project.
+const TAB_TITLES := ["Account", "Testing", "Server"]
+
+# What each kind of result looks like in the box. Four, because there are four
+# answers: it worked, it did not, it needs you to do something first, and the
+# plain facts of an account view.
+const SAY_GOOD := Color(0.55, 0.86, 0.6)
+const SAY_BAD := Color(0.95, 0.55, 0.5)
+const SAY_WARN := Color(0.95, 0.82, 0.5)
+const SAY_NOTE := Color(0.78, 0.82, 0.87)
+const SAY_HEAD := Color(0.93, 0.73, 0.3)
+# The colour the old inline status lines were, kept for the quick answers the
+# Testing tab and the teleport row give.
+const SAY_STATUS := Color(0.95, 0.85, 0.62)
+
+# Held, not discarded: PanelWindow is a RefCounted carrying the drag state, and
+# letting it go frees it and the panel quietly stops being draggable.
+var _window: PanelWindow
+
+# Matches the "[GM] " / "[OWNER] " / "[SERVER] " tag the console lines carry.
+# On screen it is noise - the whole panel is the GM's.
+var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 
 # THE SANCTION BUTTONS ARE OPTIONAL, and every one of them is null-guarded.
 #
@@ -83,11 +116,9 @@ extends Control
 @onready var tp_bring_button: Button = get_node_or_null("%tpbringbutton")
 @onready var tp_goto_button: Button = get_node_or_null("%tpgotobutton")
 @onready var tp_everyone_button: Button = get_node_or_null("%tpeveryonebutton")
-@onready var teleport_status: Label = get_node_or_null("%teleportstatus")
 
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
 @onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
-@onready var testing_status: Label = get_node_or_null("%testingstatus")
 
 # What the switch looked like the last time we asked. The button has to know
 # whether pressing it closes or reopens, and asking the server at press time
@@ -137,6 +168,16 @@ var _armed_until: float = 0.0
 
 func _ready() -> void:
 	visible = false
+	_window = PanelWindow.attach(self, "owner")
+
+	if close_button != null and not close_button.pressed.is_connected(close):
+		close_button.pressed.connect(close)
+	if results_clear != null and results != null \
+			and not results_clear.pressed.is_connected(results.clear):
+		results_clear.pressed.connect(results.clear)
+	if tabs != null:
+		for i in range(mini(tabs.get_tab_count(), TAB_TITLES.size())):
+			tabs.set_tab_title(i, TAB_TITLES[i])
 	if view_button != null and not view_button.pressed.is_connected(_on_view_pressed):
 		view_button.pressed.connect(_on_view_pressed)
 
@@ -198,6 +239,12 @@ func _ready() -> void:
 	_refresh_maintenance()
 
 
+func close() -> void:
+	# The x, and Esc through characterhud.gd's hide_panel(). Hiding is the whole
+	# of closing: _on_visibility_changed() disarms anything half-confirmed.
+	visible = false
+
+
 func _process(_delta: float) -> void:
 	# Disarm on a timer rather than on the next click. A button left reading
 	# "Confirm ban?" is a trap for whoever looks at this panel next.
@@ -241,22 +288,22 @@ func _on_view_pressed() -> void:
 	if not res.get("ok", false):
 		var status: int = int(res.get("status", 0))
 		if status == 0:
-			_say("[OWNER] could not reach the server: %s" % str(res.get("error", "")))
+			_say("[OWNER] could not reach the server: %s" % str(res.get("error", "")), SAY_BAD)
 		elif status == 404:
 			# 404 IS TWO ANSWERS HERE, and they cannot be told apart on purpose.
 			# require_role() answers "Not found" to a non-staff caller so a 403
 			# does not confirm the route exists - so this is either "no such
 			# account" or "you are not staff". Say both rather than guess.
-			_say("[OWNER] no account called '%s' - or this account is not staff." % username)
+			_say("[OWNER] no account called '%s' - or this account is not staff." % username, SAY_BAD)
 		else:
-			_say("[OWNER] server refused (%d): %s" % [status, str(res.get("error", ""))])
+			_say("[OWNER] server refused (%d): %s" % [status, str(res.get("error", ""))], SAY_BAD)
 		return
 
 	var data = res.get("data", {})
 	if data is Dictionary:
 		_print_save_summary(username, data)
 	else:
-		_say("[OWNER] unexpected response shape for '%s'" % username)
+		_say("[OWNER] unexpected response shape for '%s'" % username, SAY_BAD)
 
 
 # =============================================================================
@@ -305,7 +352,7 @@ func _on_sanction_pressed(action: String) -> void:
 
 	var username: String = "" if username_input == null else username_input.text.strip_edges()
 	if username == "":
-		_say("[GM] type a username first.")
+		_say("[GM] type a username first.", SAY_WARN)
 		return
 
 	var button: Button = _button_for(action)
@@ -318,7 +365,7 @@ func _on_sanction_pressed(action: String) -> void:
 		if button != null:
 			_armed_label = button.text
 			button.text = "Confirm %s?" % action
-		_say("[GM] %s '%s'? press again within %d seconds." % [action, username, int(ARM_SECONDS)])
+		_say("[GM] %s '%s'? press again within %d seconds." % [action, username, int(ARM_SECONDS)], SAY_WARN)
 		return
 
 	_disarm()
@@ -348,22 +395,22 @@ func _on_sanction_pressed(action: String) -> void:
 	if not res.get("ok", false):
 		var status: int = int(res.get("status", 0))
 		if status == 0:
-			_say("[GM] could not reach the server: %s" % str(res.get("error", "")))
+			_say("[GM] could not reach the server: %s" % str(res.get("error", "")), SAY_BAD)
 		elif status == 404:
 			# The same two answers the view button gets, and for the same
 			# reason - require_role() hides itself behind "Not found", and so
 			# does a target you cannot act on. Do not guess which.
-			_say("[GM] no account called '%s' - or it is out of your reach." % username)
+			_say("[GM] no account called '%s' - or it is out of your reach." % username, SAY_BAD)
 		else:
-			_say("[GM] %s refused (%d): %s" % [action, status, str(res.get("error", ""))])
+			_say("[GM] %s refused (%d): %s" % [action, status, str(res.get("error", ""))], SAY_BAD)
 		return
 
 	var data = res.get("data", {})
 	if action == "kick" and data is Dictionary:
 		# The count is the useful part: zero means they were already gone.
-		_say("[GM] signed '%s' out of %s place(s)." % [username, str(data.get("sessions_ended", 0))])
+		_say("[GM] signed '%s' out of %s place(s)." % [username, str(data.get("sessions_ended", 0))], SAY_GOOD)
 	else:
-		_say("[GM] %s ok: %s" % [action, str(data)])
+		_say("[GM] %s ok: %s" % [action, str(data)], SAY_GOOD)
 
 	# Re-read, so the panel shows the result rather than the state before it.
 	_on_view_pressed()
@@ -414,14 +461,14 @@ func _on_role_pressed() -> void:
 
 	var username: String = "" if username_input == null else username_input.text.strip_edges()
 	if username == "":
-		_say("[GM] type a username first.")
+		_say("[GM] type a username first.", SAY_WARN)
 		return
 
 	var new_role: String = ""
 	if role_option != null and role_option.selected >= 0:
 		new_role = str(RANKS[role_option.get_selected_id()])
 	if new_role == "":
-		_say("[GM] pick a rank first.")
+		_say("[GM] pick a rank first.", SAY_WARN)
 		return
 
 	if role_button != null:
@@ -433,20 +480,20 @@ func _on_role_pressed() -> void:
 	if not res.get("ok", false):
 		var status: int = int(res.get("status", 0))
 		if status == 0:
-			_say("[GM] could not reach the server: %s" % str(res.get("error", "")))
+			_say("[GM] could not reach the server: %s" % str(res.get("error", "")), SAY_BAD)
 		elif status == 404:
 			# The same two answers every other target lookup gives, for the same
 			# reason - require_role() hides behind "Not found" and so does a
 			# target out of your reach. Do not guess which.
-			_say("[GM] no account called '%s' - or it is out of your reach." % username)
+			_say("[GM] no account called '%s' - or it is out of your reach." % username, SAY_BAD)
 		else:
-			_say("[GM] rank change refused (%d): %s" % [status, str(res.get("error", ""))])
+			_say("[GM] rank change refused (%d): %s" % [status, str(res.get("error", ""))], SAY_BAD)
 		return
 
 	var data = res.get("data", {})
 	if data is Dictionary:
 		_say("[GM] %s: %s -> %s" % [
-			username, str(data.get("was", "?")), str(data.get("role", new_role))])
+			username, str(data.get("was", "?")), str(data.get("role", new_role))], SAY_GOOD)
 	_on_view_pressed()
 
 
@@ -511,7 +558,7 @@ func _on_god_mode_toggled(pressed: bool) -> void:
 	# trains no defense at all, and a flat skill bar an hour later is a worse way
 	# to find that out.
 	if pressed:
-		_set_testing_status("[GM] god mode ON - no damage taken, and no defense XP.")
+		_set_testing_status("[GM] god mode ON - no damage taken, and no defence XP.")
 	else:
 		_set_testing_status("[GM] god mode OFF.")
 
@@ -680,16 +727,18 @@ func _teleport_go_to_them() -> void:
 	# runs through can_act_on(), which is strictly-greater and refuses acting on
 	# yourself.
 	_set_teleport_status("[GM] going to %s, where '%s' is. The server does not"
-		% [area.capitalize(), username]
+		% [AreaRegistry.display_name(area), username]
 		+ " know where in it.")
 	AreaRegistry.go_to(area)
 
 
 func _set_teleport_status(line: String) -> void:
-	if teleport_status == null:
-		return
-	teleport_status.text = line
-	teleport_status.visible = line != ""
+	# INTO THE RESULTS BOX, like everything else. It was a label under the
+	# buttons that appeared when there was something to say - which made the
+	# tab taller than the window it was in the moment it spoke. "" meant
+	# "clear the label"; with no label there is nothing to clear.
+	if line != "":
+		_say(line, SAY_STATUS)
 
 
 # =============================================================================
@@ -837,7 +886,7 @@ func _on_maintenance_pressed(action: String) -> void:
 			_armed_label = maintenance_button.text
 			maintenance_button.text = "Confirm close?"
 		_say("[SERVER] close the server? everyone is signed out once the save window "
-			+ "runs out. press again within %d seconds." % int(ARM_SECONDS))
+			+ "runs out. press again within %d seconds." % int(ARM_SECONDS), SAY_WARN)
 		return
 
 	_disarm()
@@ -857,20 +906,20 @@ func _on_maintenance_pressed(action: String) -> void:
 	if not res.get("ok", false):
 		var status: int = int(res.get("status", 0))
 		if status == 0:
-			_say("[SERVER] could not reach the server: %s" % str(res.get("error", "")))
+			_say("[SERVER] could not reach the server: %s" % str(res.get("error", "")), SAY_BAD)
 		elif status == 404:
-			_say("[SERVER] refused - this account is not the owner.")
+			_say("[SERVER] refused - this account is not the owner.", SAY_BAD)
 		else:
-			_say("[SERVER] refused (%d): %s" % [status, str(res.get("error", ""))])
+			_say("[SERVER] refused (%d): %s" % [status, str(res.get("error", ""))], SAY_BAD)
 		return
 
 	var data = res.get("data", {})
 	if data is Dictionary:
 		if bool(data.get("maintenance", false)):
 			_say("[SERVER] CLOSED. %d online; they have %ds to save before being signed out."
-				% [int(data.get("online_now", 0)), int(data.get("grace_seconds", 0))])
+				% [int(data.get("online_now", 0)), int(data.get("grace_seconds", 0))], SAY_GOOD)
 		else:
-			_say("[SERVER] reopened - players can log in again.")
+			_say("[SERVER] reopened - players can log in again.", SAY_GOOD)
 	await _refresh_maintenance()
 
 
@@ -888,10 +937,10 @@ func _on_maintenance_pressed(action: String) -> void:
 # SELF ONLY, AND THE SERVER SAYS SO. /api/staff/gold is @require_owner and
 # takes no target; these boxes cannot reach another account even by trying.
 #
-# IT SPEAKS ON SCREEN, NOT THROUGH _say(). Everything else in this panel
-# reports with _say(), which prints only in a debug build - so in an exported
-# build the panel does its work in total silence. That is a bug of its own;
-# this section at least does not repeat it.
+# IT SPEAKS ON SCREEN. This comment used to say the rest of the panel worked
+# "in total silence" in an exported build, and it did - every other result went
+# through _say(), console only. Now everything, these included, lands in the
+# results box at the bottom of the panel.
 
 func _on_gold_pressed(to_bank: bool) -> void:
 	if gold_input == null:
@@ -1010,17 +1059,40 @@ func _refused(res: Dictionary) -> String:
 
 
 func _set_testing_status(line: String) -> void:
-	if testing_status == null:
-		return
-	testing_status.text = line
-	testing_status.visible = line != ""
+	# The same, and for the same reason as _set_teleport_status().
+	if line != "":
+		_say(line, SAY_STATUS)
 
 
-func _say(line: String) -> void:
-	# One place that decides whether console output happens, so the debug-build
-	# guard is not repeated at every call site and cannot drift between them.
+func _say(line: String, colour: Color = SAY_NOTE) -> void:
+	# ONE PLACE EVERY RESULT GOES THROUGH. On screen always; in the console only
+	# in a debug build, and there with its tag, so the old grep still works.
 	if OS.is_debug_build():
 		print(line)
+	if results != null:
+		# A fresh result is followed; an account view turns this off while it
+		# writes, so it can be read from the top.
+		results.scroll_following = true
+	_write(line, colour)
+
+
+func _write(line: String, colour: Color) -> void:
+	# add_text, never append_text: a username or an error from the server is
+	# data, and BBCode in it would be markup.
+	if results == null:
+		return
+	results.push_color(colour)
+	results.add_text(_tag.sub(line, ""))
+	results.pop()
+	results.newline()
+
+
+func _view_line(line: String, colour: Color = SAY_NOTE) -> void:
+	# A line of an account view: into the box without turning following back
+	# on, and to the console in a debug build like everything else.
+	if OS.is_debug_build():
+		print(line)
+	_write(line, colour)
 
 
 func _when(unix_seconds: int) -> String:
@@ -1036,7 +1108,7 @@ func _when(unix_seconds: int) -> String:
 
 
 # =============================================================================
-# DISPLAY (console-printed — see class comment on why, for now)
+# DISPLAY - the results box, and the console in a debug build
 # =============================================================================
 
 func _print_save_summary(username: String, data: Dictionary) -> void:
@@ -1046,28 +1118,35 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 	# moved into the database. It is the endpoint's payload now, and the two are
 	# kept in step by GET /api/staff/user/<name> being the only source.
 	#
-	# STILL PRINTED RATHER THAN DRAWN. Adding result widgets needs scene edits,
-	# which is the same "for now" the class comment has carried for a while. The
-	# guard lives in _say() rather than here so a Release build silently shows
-	# nothing rather than half of this.
-	_say("========== OWNER VIEW: %s ==========" % str(data.get("username", username)))
-	_say("rank      : %s" % str(data.get("role", "?")))
-	_say("created   : %s" % _when(int(data.get("created_at", 0))))
-	_say("lusions   : %s" % str(data.get("lusions", 0)))
+	# READ FROM THE TOP. Following is turned off so thirty lines do not scroll
+	# the name you asked about out of sight, and the box is scrolled back to
+	# where this view starts once it is written.
+	#
+	# NOT CLEARED FIRST. A rank change reports "mod -> dev" and then shows the
+	# account again; clearing here wiped the confirmation the moment it landed.
+	# The box is a log, and Clear is a button.
+	var start: int = 0
+	if results != null:
+		results.scroll_following = false
+		start = maxi(results.get_paragraph_count() - 1, 0)
+	_view_line("========== %s ==========" % str(data.get("username", username)), SAY_HEAD)
+	_view_line("rank      : %s" % str(data.get("role", "?")))
+	_view_line("created   : %s" % _when(int(data.get("created_at", 0))))
+	_view_line("lusions   : %s" % str(data.get("lusions", 0)))
 
 	var ban = data.get("ban")
 	if ban is Dictionary:
-		_say("BANNED    : %s" % str(ban))
+		_view_line("BANNED    : %s" % str(ban), SAY_BAD)
 	else:
-		_say("banned    : no")
+		_view_line("banned    : no")
 
 	var characters: Array = data.get("characters", [])
-	_say("--- characters (%d) ---" % characters.size())
+	_view_line("--- characters (%d) ---" % characters.size(), SAY_HEAD)
 	if characters.is_empty():
-		_say("  none")
+		_view_line("  none")
 	for entry in characters:
 		if entry is Dictionary:
-			_say("  [%s] %s the %s - level %s, in %s, saved %s" % [
+			_view_line("  [%s] %s the %s - level %s, in %s, saved %s" % [
 				str(entry.get("slot")), str(entry.get("name")),
 				str(entry.get("class_id")), str(entry.get("level")),
 				str(entry.get("area")), _when(int(entry.get("updated_at", 0))),
@@ -1075,24 +1154,25 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 
 	var logins = data.get("logins", {})
 	if logins is Dictionary:
-		_say("--- logins ---")
-		_say("  %s attempts, %s failed, from %s address(es)" % [
-			str(logins.get("total", 0)), str(logins.get("failed", 0)),
-			str(logins.get("addresses", 0)),
+		_view_line("--- logins ---", SAY_HEAD)
+		_view_line("  %s, %s failed, from %s" % [
+			GameConstants.counted(int(logins.get("total", 0)), "attempt"),
+			str(logins.get("failed", 0)),
+			GameConstants.counted(int(logins.get("addresses", 0)), "address", "addresses"),
 		])
 		var locked: int = int(logins.get("locked_until", 0))
 		if locked > Time.get_unix_time_from_system():
-			_say("  LOCKED OUT until %s" % _when(locked))
+			_view_line("  LOCKED OUT until %s" % _when(locked), SAY_BAD)
 		elif int(logins.get("consecutive_failures", 0)) > 0:
-			_say("  %s consecutive failures right now" % str(logins.get("consecutive_failures")))
+			_view_line("  %s consecutive failures right now" % str(logins.get("consecutive_failures")))
 
 		# The count is always shown; the addresses themselves only to someone
 		# who could act on this account. See the note on can_act_on() in app.py.
 		if not logins.get("addresses_visible", false):
-			_say("  (addresses withheld - you cannot act on this account)")
+			_view_line("  (addresses withheld - you cannot act on this account)")
 		for attempt in logins.get("recent", []):
 			if attempt is Dictionary:
-				_say("  %s  %s  %s %s" % [
+				_view_line("  %s  %s  %s %s" % [
 					_when(int(attempt.get("at", 0))),
 					"ok  " if attempt.get("ok", false) else "FAIL",
 					str(attempt.get("reason", "")),
@@ -1109,9 +1189,9 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 	var sessions = data.get("sessions", {})
 	if sessions is Dictionary:
 		var live: int = int(sessions.get("active", 0))
-		_say("--- signed in now (%d) ---" % live)
+		_view_line("--- signed in now (%d) ---" % live, SAY_HEAD)
 		if live == 0:
-			_say("  nowhere - a kick would do nothing")
+			_view_line("  nowhere - a kick would do nothing")
 		for entry in sessions.get("list", []):
 			if entry is Dictionary:
 				# Days remaining rather than a date: against a fixed token ttl
@@ -1128,9 +1208,9 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 				# make a day-old session look brand new.
 				@warning_ignore("integer_division")
 				var days_left: int = int(entry.get("expires_in", 0)) / 86400
-				_say("  expires %s  (%d day(s) left)" % [
+				_view_line("  expires %s  (%s left)" % [
 					_when(int(entry.get("expires_at", 0))),
-					days_left,
+					GameConstants.counted(days_left, "day"),
 				])
 
 	# OTHER ACCOUNTS ON THE SAME ADDRESSES. Surfaced, never acted on - see
@@ -1140,48 +1220,52 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 	if linked is Dictionary:
 		var accounts: Array = linked.get("accounts", [])
 		if not linked.get("visible", false):
-			_say("--- linked accounts ---")
-			_say("  (withheld - you cannot act on this account)")
+			_view_line("--- linked accounts ---", SAY_HEAD)
+			_view_line("  (withheld - you cannot act on this account)")
 		elif accounts.is_empty():
-			_say("--- linked accounts (0) ---")
+			_view_line("--- linked accounts (0) ---", SAY_HEAD)
 		else:
-			_say("--- linked accounts (%d%s) ---" % [
+			_view_line("--- linked accounts (%d%s) ---" % [
 				accounts.size(), ", more exist" if linked.get("truncated", false) else "",
-			])
+			], SAY_HEAD)
 			for entry in accounts:
 				if entry is Dictionary:
 					var banned = entry.get("ban")
-					_say("  %-18s %-6s %s%s" % [
+					_view_line("  %-18s %-6s %s%s" % [
 						str(entry.get("username")),
 						str(entry.get("strength")),
-						"shares %s address(es), quietest holds %s" % [
-							str(entry.get("shared_addresses")),
+						"shares %s, quietest holds %s" % [
+							GameConstants.counted(int(entry.get("shared_addresses", 0)), "address", "addresses"),
 							str(entry.get("quietest_address_accounts")),
 						],
 						"  [BANNED]" if banned is Dictionary else "",
 					])
-			_say("  'weak' means the shared address is crowded - a carrier or a")
-			_say("  campus links strangers. Read it, do not act on it alone.")
+			_view_line("  'weak' means the shared address is crowded - a carrier or a")
+			_view_line("  campus links strangers. Read it, do not act on it alone.")
 
 	var kills: Array = data.get("kills", [])
-	_say("--- kills reported (%d kinds) ---" % kills.size())
+	_view_line("--- kills reported (%d kinds) ---" % kills.size(), SAY_HEAD)
 	if kills.is_empty():
-		_say("  none")
+		_view_line("  none")
 	for kill in kills:
 		if kill is Dictionary:
-			_say("  %-18s x%-5s %s xp, last %s" % [
+			_view_line("  %-18s x%-5s %s xp, last %s" % [
 				str(kill.get("enemy_id")), str(kill.get("count")),
 				str(kill.get("xp_total")), _when(int(kill.get("last_at", 0))),
 			])
 
 	var history: Array = data.get("staff_history", [])
 	if not history.is_empty():
-		_say("--- staff history ---")
+		_view_line("--- staff history ---", SAY_HEAD)
 		for entry in history:
 			if entry is Dictionary:
-				_say("  %s  %s by %s  %s" % [
+				_view_line("  %s  %s by %s  %s" % [
 					_when(int(entry.get("at", 0))), str(entry.get("action")),
 					str(entry.get("by")), str(entry.get("detail", "")),
 				])
 
-	_say("=====================================")
+	_view_line("=====================================", SAY_HEAD)
+	if results != null:
+		# Deferred: the lines above are laid out on the next frame, and a
+		# scroll asked for before then lands on a box that has no height yet.
+		results.call_deferred("scroll_to_paragraph", start)

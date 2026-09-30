@@ -20,9 +20,6 @@ animations = [{
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ickyf"]
 
-[sub_resource type="Gradient" id="Gradient_51ybt"]
-colors = PackedColorArray(0.84313726, 0.5058824, 0.105882354, 1, 0.49803922, 1, 1, 0)
-
 [node name="lootbag" type="Area2D" unique_id=1233554956]
 collision_layer = 4
 collision_mask = 6
@@ -37,11 +34,3 @@ position = Vector2(0, -1)
 shape = SubResource("CircleShape2D_ickyf")
 
 [node name="despawntimer" type="Timer" parent="." unique_id=1813109740]
-
-[node name="petbeam" type="Line2D" parent="." unique_id=1091666137]
-visible = false
-show_behind_parent = true
-points = PackedVector2Array(0, 0, 0, -149)
-width = 5.0
-default_color = Color(0.25566, 0.72894365, 0.52790177, 1)
-gradient = SubResource("Gradient_51ybt")

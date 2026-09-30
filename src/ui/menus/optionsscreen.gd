@@ -229,11 +229,7 @@ func _connect_controls() -> void:
 		for api in Settings.GRAPHICS_APIS:
 			graphics_api.add_item(API_LABELS.get(api, api))
 		graphics_api.item_selected.connect(_on_graphics_api_selected)
-	# WINDOWS ONLY. The setting the picker writes is driver.windows, and on any
-	# other platform the row would be a control that does nothing - which is
-	# this project's least favourite kind of control.
-	if api_row != null and OS.get_name() != "Windows":
-		api_row.visible = false
+	_hide_rows_for(OS.get_name())
 	if window_size != null:
 		window_size.item_selected.connect(_on_window_size_selected)
 	if damage_toggle != null:
@@ -433,7 +429,7 @@ func _on_account_password_button() -> void:
 
 func _on_account_email_send() -> void:
 	var address: String = "" if account_email_input == null else account_email_input.text.strip_edges()
-	var password: String = "" if account_email_password == null else account_email_password.text
+	var password: String = "" if account_email_password == null else Api.clean_password(account_email_password.text)
 	if address == "" or password == "":
 		_account_say("Enter the new address and your current password.", ACCOUNT_BAD)
 		return
@@ -483,9 +479,9 @@ func _on_account_email_verify() -> void:
 
 
 func _on_account_password_save() -> void:
-	var current: String = "" if account_current_password == null else account_current_password.text
-	var fresh: String = "" if account_new_password == null else account_new_password.text
-	var again: String = "" if account_confirm_password == null else account_confirm_password.text
+	var current: String = "" if account_current_password == null else Api.clean_password(account_current_password.text)
+	var fresh: String = "" if account_new_password == null else Api.clean_password(account_new_password.text)
+	var again: String = "" if account_confirm_password == null else Api.clean_password(account_confirm_password.text)
 
 	if current == "" or fresh == "":
 		_account_say("Fill in your current and new password.", ACCOUNT_BAD)
@@ -684,6 +680,50 @@ func _process(delta: float) -> void:
 	_update_pacing_readout()
 
 
+static func rows_hidden_on(os_name: String) -> Array:
+	"""The display rows that would be a control doing nothing on `os_name` -
+	this project's least favourite kind of control.
+
+	- "api": the picker writes driver.windows, so the row is Windows only.
+	- A browser ("Web") owns the window and its size, paces every frame itself
+	  whatever V-Sync is set to, and has one renderer, Compatibility - with no
+	  folder beside an executable for override.cfg to keep a choice in."""
+	var hidden: Array = []
+	if os_name != "Windows":
+		hidden.append("api")
+	if os_name == "Web":
+		hidden.append_array(["window", "vsync", "renderer"])
+	return hidden
+
+
+func _hide_rows_for(os_name: String) -> void:
+	var rows: Dictionary = {
+		"api": [api_row],
+		"window": [window_size.get_parent() if window_size != null else null],
+		"vsync": [vsync_mode.get_parent() if vsync_mode != null else null],
+		"renderer": [renderer.get_parent() if renderer != null else null, renderer_note],
+	}
+	for row_name in rows_hidden_on(os_name):
+		for row in rows[row_name]:
+			if row != null:
+				row.visible = false
+
+
+static func pacing_line(r: Dictionary, os_name: String) -> String:
+	"""The readout for a Settings.pacing_report().
+
+	A browser paces every frame itself and reports no refresh rate, so there it
+	says so, rather than "Screen ? Hz" and a V-Sync setting with no row."""
+	var cap_text: String = "" if int(r["cap"]) == 0 else ", cap %d" % int(r["cap"])
+	if os_name == "Web":
+		return "Drawing %d fps  -  paced by the browser%s" % [int(round(float(r["fps"]))), cap_text]
+	return "Screen %s Hz  -  drawing %d fps  -  V-Sync %s%s" % [
+		("%.0f" % float(r["refresh"])) if float(r["refresh"]) > 0.0 else "?",
+		int(round(float(r["fps"]))),
+		VSYNC_LABELS.get(str(r["vsync"]), str(r["vsync"])).to_lower(),
+		cap_text]
+
+
 func _update_pacing_readout() -> void:
 	# THE LINE THIS SCREEN EXISTS FOR. Every other control here is a request;
 	# this is the answer. "Screen 60 Hz - drawing 60 fps - V-Sync on" means the
@@ -694,12 +734,7 @@ func _update_pacing_readout() -> void:
 	if pacing_readout == null:
 		return
 	var r: Dictionary = Settings.pacing_report()
-	var cap_text: String = "" if int(r["cap"]) == 0 else ", cap %d" % int(r["cap"])
-	pacing_readout.text = "Screen %s Hz  -  drawing %d fps  -  V-Sync %s%s" % [
-		("%.0f" % float(r["refresh"])) if float(r["refresh"]) > 0.0 else "?",
-		int(round(float(r["fps"]))),
-		VSYNC_LABELS.get(str(r["vsync"]), str(r["vsync"])).to_lower(),
-		cap_text]
+	pacing_readout.text = pacing_line(r, OS.get_name())
 	if pacing_hint != null:
 		pacing_hint.visible = bool(r["overridden"])
 		if bool(r["overridden"]):

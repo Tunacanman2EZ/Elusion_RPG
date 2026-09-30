@@ -150,84 +150,144 @@ texture = ExtResource("1_a2lp7")
 physics_layer_0/collision_layer = 1
 sources/1 = SubResource("TileSetAtlasSource_enowg")
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk0"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcidle0"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(0, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk1"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcidle1"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(64, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk2"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcidle2"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(128, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk3"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcidle3"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(192, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk4"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcidle4"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(256, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk5"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcidle5"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(320, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk6"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcidle6"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(384, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk7"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave0"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(448, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk8"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave1"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(512, 0, 64, 64)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_sk9"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave2"]
 atlas = ExtResource("8_shopkeeperart")
 region = Rect2(576, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave3"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(640, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave4"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(704, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave5"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(768, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave6"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(832, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave7"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(896, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave8"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(960, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave9"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(1024, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_npcwave10"]
+atlas = ExtResource("8_shopkeeperart")
+region = Rect2(1088, 0, 64, 64)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_shopkeep"]
 animations = [{
 "frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_sk0")
+"duration": 30.0,
+"texture": SubResource("AtlasTexture_npcidle0")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_sk1")
+"texture": SubResource("AtlasTexture_npcidle1")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_sk2")
+"texture": SubResource("AtlasTexture_npcidle2")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_sk3")
+"texture": SubResource("AtlasTexture_npcidle3")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_sk4")
+"texture": SubResource("AtlasTexture_npcidle4")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_sk5")
+"texture": SubResource("AtlasTexture_npcidle5")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_sk6")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_sk7")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_sk8")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_sk9")
+"texture": SubResource("AtlasTexture_npcidle6")
 }],
 "loop": true,
+"name": &"idledown",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave7")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave8")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave9")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_npcwave10")
+}],
+"loop": false,
 "name": &"wavedown",
 "speed": 7.0
 }]
-
 [sub_resource type="CircleShape2D" id="CircleShape2D_vendorrange"]
 radius = 62.008064
 
@@ -254,7 +314,7 @@ shop_data = ExtResource("7_generalstore")
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="interiorfurniture/shopvendor" unique_id=160488180]
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_shopkeep")
-animation = &"wavedown"
+animation = &"idledown"
 offset = Vector2(0, -7)
 script = ExtResource("9_shopanim")
 

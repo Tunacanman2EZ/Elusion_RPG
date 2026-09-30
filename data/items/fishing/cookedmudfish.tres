@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "cookedmudfish"
 display_name = "Cooked Mudfish"
-description = "Bottom-feeder. Bones like needles. Restores 10 HP."
+description = "Bottom-feeder. Bones like needles."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

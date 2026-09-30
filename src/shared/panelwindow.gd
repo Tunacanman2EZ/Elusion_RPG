@@ -263,7 +263,13 @@ func _build_grips() -> void:
 		Vector2(1, 1), Vector2(1, 1), Vector2(-CORNER, -CORNER), Vector2(0, 0))
 
 
-func _add_grip(grip_name: String, edges: int, cursor: int,
+# `cursor` IS TYPED AS THE ENUM, NOT AS int. Every call site already passes a
+# Control.CURSOR_* constant, but an `int` parameter assigned to
+# mouse_default_cursor_shape makes the editor warn INT_AS_ENUM_WITHOUT_CAST -
+# and that warning never reaches the headless suite, so it only shows up when
+# somebody next opens the project. Typing the parameter is the fix that needs
+# no cast at the assignment and no `as` at any of the eight callers.
+func _add_grip(grip_name: String, edges: int, cursor: Control.CursorShape,
 		anchor_begin: Vector2, anchor_end: Vector2,
 		offset_begin: Vector2, offset_end: Vector2) -> void:
 	if window.has_node(NodePath(grip_name)):
@@ -394,12 +400,41 @@ static func resize_rect(start: Rect2, moved: Vector2, edges: int,
 
 
 func _minimum() -> Vector2:
-	"""The smallest this panel may be: its own declared minimum, or the floor.
+	"""The smallest this panel may be: the largest of its own declared minimum,
+	what its CONTENT needs, and the floor.
 
-	A panel that has set custom_minimum_size has said something about itself and
-	is believed; MIN_SIZE is what everything else gets."""
+	THE CONTENT TERM IS WHAT KEEPS THE GRIPS ON THE BORDER. The grips sit on
+	`window`; what the player sees is the panel drawn inside it. A full-rect
+	PanelContainer cannot be smaller than its own contents, so shrinking the
+	window below what the header, separators and scroll need left the panel
+	overflowing the window - drawn past the very edge the grips were on, which
+	is the inventory bug arriving through a second door. Asking the children
+	means the window cannot be dragged smaller than what it holds, so the drawn
+	edge and the grab edge are the same line at every size.
+
+	custom_minimum_size is still believed when a panel sets it: a panel that has
+	said something about itself is taken at its word. MIN_SIZE is the floor under
+	everything."""
 	var declared: Vector2 = window.custom_minimum_size
-	return Vector2(maxf(declared.x, MIN_SIZE.x), maxf(declared.y, MIN_SIZE.y))
+	var content: Vector2 = content_minimum(window)
+	return Vector2(maxf(maxf(declared.x, content.x), MIN_SIZE.x),
+		maxf(maxf(declared.y, content.y), MIN_SIZE.y))
+
+
+static func content_minimum(host: Control) -> Vector2:
+	"""The largest combined minimum among `host`'s direct Control children.
+
+	A plain Control's own get_combined_minimum_size() ignores its children -
+	only CONTAINERS add theirs up - so the window cannot simply be asked. Static,
+	so the suite can put a panel together and ask it in one line."""
+	var out: Vector2 = Vector2.ZERO
+	if host == null:
+		return out
+	for child in host.get_children():
+		var c: Control = child as Control
+		if c != null and c.visible:
+			out = out.max(c.get_combined_minimum_size())
+	return out
 
 
 # =============================================================================

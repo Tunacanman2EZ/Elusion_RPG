@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bheo6x32rki46"]
+
+[ext_resource type="Texture2D" path="res://art/pack/amulets/a8054.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "greaterarcanaamulet"
+display_name = "Greater Arcana Amulet"
+description = "The red heart of it glows a little brighter every time you cast."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 7380
+tier = 4
+required_level = 16
+type = 2
+equip_slot = 8
+bonus_max_mana = 55
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

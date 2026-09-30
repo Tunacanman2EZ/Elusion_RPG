@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "ironfishingrod"
 display_name = "Iron Fishing Rod"
-description = "Plain and heavy. It will pull a mudfish out of anything wet. Requires fishing level 1."
+description = "Plain and heavy. It will pull a mudfish out of anything wet."
 icon = ExtResource("1_icon")
 max_stack = 1
 value = 640

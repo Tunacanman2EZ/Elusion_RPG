@@ -47,37 +47,56 @@ theme_type_variation = &"PanelHeader"
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="titlelabel" type="Label" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1820044307]
+[node name="titlemargin" type="MarginContainer" parent="frame/margin/rows/headerpanel/headerbox"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 2
+theme_override_constants/margin_bottom = 3
+
+[node name="titlebox" type="VBoxContainer" parent="frame/margin/rows/headerpanel/headerbox/titlemargin"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="friendstitle" type="Label" parent="frame/margin/rows/headerpanel/headerbox/titlemargin/titlebox" unique_id=1820044307]
+unique_name_in_owner = true
+layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 18
 text = "Friends"
 vertical_alignment = 1
 
-[node name="friendscount" type="Label" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1820044308]
+[node name="subline" type="HBoxContainer" parent="frame/margin/rows/headerpanel/headerbox/titlemargin/titlebox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="friendscount" type="Label" parent="frame/margin/rows/headerpanel/headerbox/titlemargin/titlebox/subline" unique_id=1820044308]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.62, 0.58, 0.52, 1)
 theme_override_font_sizes/font_size = 11
-text = "0 online of 0"
+text = "nobody on your list yet"
 vertical_alignment = 1
 
-[node name="friendsrefreshbutton" type="Button" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1820044309]
+[node name="friendsrequests" type="Label" parent="frame/margin/rows/headerpanel/headerbox/titlemargin/titlebox/subline"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(28, 24)
+visible = false
 layout_mode = 2
-tooltip_text = "Read the list again"
-focus_mode = 0
+theme_override_colors/font_color = Color(1, 0.82, 0.42, 1)
 theme_override_font_sizes/font_size = 11
-text = "R"
+vertical_alignment = 1
 
 [node name="friendsclosebutton" type="Button" parent="frame/margin/rows/headerpanel/headerbox" unique_id=1820044310]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(24, 24)
+custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
+size_flags_vertical = 0
 focus_mode = 0
-text = "x"
+theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
+theme_override_colors/font_hover_color = Color(1, 0.5, 0.4, 1)
+theme_override_font_sizes/font_size = 18
+text = "×"
+flat = true
 
 [node name="addpanel" type="PanelContainer" parent="frame/margin/rows" unique_id=1820044311]
 layout_mode = 2

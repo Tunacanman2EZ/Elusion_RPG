@@ -189,9 +189,17 @@ func _apply_xp(killer: Node, data: Dictionary) -> void:
 	if xp > 0 and killer.has_method("gain_xp"):
 		killer.gain_xp(xp)
 
-	var attack_xp: int = _int(data.get("attack_xp_gained", 0))
-	if attack_xp > 0 and killer.has_method("gain_attack_xp"):
-		killer.gain_attack_xp(attack_xp)
+	# ATTACK IS COPIED, NOT RE-RUN. Unlike the level above there is no reason to
+	# recompute it: the answer carries where the skill now stands, and setting
+	# the bar to that is the only way the screen and the record cannot drift.
+	# gain_attack_xp() is the fallback for an answer without those fields.
+	if data.has("attack_level") and data.has("attack_xp") and killer.has_method("apply_server_attack"):
+		killer.apply_server_attack(_int(data.get("attack_level", 1), 1),
+			_int(data.get("attack_xp", 0)), _int(data.get("attack_xp_to_next", 0)))
+	else:
+		var attack_xp: int = _int(data.get("attack_xp_gained", 0))
+		if attack_xp > 0 and killer.has_method("gain_attack_xp"):
+			killer.gain_attack_xp(attack_xp)
 
 
 func _spawn_loot_bag(data: Dictionary, killer: Node, at_position: Vector2) -> void:

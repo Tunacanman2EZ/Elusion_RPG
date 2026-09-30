@@ -65,16 +65,26 @@ class_name BossStalker
 
 var pillar_scene: PackedScene = null
 
+# The boss's element, stamped on every pillar; -1 leaves the scene's own. See
+# _drop_pillar() for why the scene's own was not enough.
+var pillar_element: int = -1
+
 var _player: Node2D = null
 var _age: float = 0.0
 var _drop_accumulator: float = 0.0
 
 
-func setup(player_node: Node2D, scene: PackedScene) -> void:
+func setup(player_node: Node2D, scene: PackedScene, damage: int = 0, element: int = -1) -> void:
 	# Passed in rather than looked up, because the boss already has both and a
 	# second group lookup is a second thing that can disagree with the first.
 	_player = player_node
 	pillar_scene = scene
+	# The boss's band decides how hard the trail hits (BossEnemy.trail_damage());
+	# 0 keeps pillar_damage as authored. Read in _drop_pillar(), so setting it
+	# here, after the stalker entered the tree, is in time.
+	if damage > 0:
+		pillar_damage = damage
+	pillar_element = element
 
 
 func _physics_process(delta: float) -> void:
@@ -143,11 +153,17 @@ func _drop_pillar() -> void:
 	# 0.50s and hit for 22 whether it was lightning or earth, while the boss's
 	# own cast pillars, spawned correctly, varied 0.25s-0.68s and 19-28.
 	#
-	# pillar_scene is already the elemental variant (bossenemy hands us
-	# Projectiles.variant_of(...) and those scenes author their own `element`),
-	# so nothing needs stamping here — the profile only has to run last.
+	# THE ELEMENT IS STAMPED TOO, and this used to say it did not need to be:
+	# pillar_scene is the elemental variant, and those scenes author their own
+	# `element`. True for six bosses. There is no DARK variant, so the Crowned
+	# was handed the plain scene and its trail was element NONE - plain damage,
+	# a full-strength ring - while its own spikes, which _spawn_one_eruption()
+	# stamps, were dark at x1.1 with the faint dark ring. Stamping the boss's
+	# element makes the trail match the spikes for all seven.
 	pillar.damage = pillar_damage
 	pillar.telegraph_seconds = pillar_telegraph
+	if pillar_element >= 0 and "element" in pillar:
+		pillar.element = pillar_element
 
 	# NO ACID FROM THE TRAIL. The stalker drops a pillar every half second for
 	# seven seconds; if each one left a pool, a single stalker would lay a

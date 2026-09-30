@@ -43,7 +43,7 @@ alignment = 1
 [node name="title" type="Label" parent="PanelContainer/VBoxContainer" unique_id=672343612]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
-text = "GAME - OVER"
+text = "GAME OVER"
 horizontal_alignment = 1
 
 [node name="flavortext" type="Label" parent="PanelContainer/VBoxContainer" unique_id=1558198365]
@@ -87,4 +87,4 @@ text = "Revive for (gold)"
 [node name="returnbutton" type="Button" parent="PanelContainer/VBoxContainer" unique_id=1498233587]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Return To (Character selection)"
+text = "Return to character select"

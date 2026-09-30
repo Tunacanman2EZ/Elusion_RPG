@@ -229,10 +229,29 @@ without the others.
 { "slot": 0, "inventory": [ { "item_id": "ironsword", "quantity": 1 }, null ] }
 ```
 
-**Positional.** The array is `INVENTORY_CAPACITY` (20) cells long with `null`
-in every empty one, and the index *is* the grid cell. Returning a packed list
-would make the client responsible for rebuilding the gaps; it would get that
-right the first time and wrong the first time someone changed the capacity.
+**Positional.** The array is `CARRY_CAPACITY` (30) cells long with `null` in
+every empty one, and the index *is* the cell: the bag's `INVENTORY_CAPACITY`
+(20), then the hotbar's ten keys, 1-9 then 0. Returning a packed list would make
+the client responsible for rebuilding the gaps; it would get that right the
+first time and wrong the first time someone changed the capacity.
+
+**The hotbar's keys hold items**, as cells 20-29. Dragging a stack onto a key is
+a reorder of this one array, so the ledger, the stack ceiling and respawning's
+wipe all cover the keys with no rule of their own. Two rules exist because of
+them:
+
+- **The bag is always replaced; a key only if the array reaches it.** A
+  twenty-cell array - or `[]` - still means "the bag holds this and nothing
+  else", and leaves the keys exactly as they are, out of the ledger the write
+  is checked against.
+- **Nothing is placed on a key.** Loot, the shop, withdrawals, trades, catches
+  and grants only top up or open cells below 20. "Your backpack is full" means
+  the twenty.
+
+`POST /api/character/consume`, `POST /api/character/equip` and
+`POST /api/bank/items` take an optional `position`: the cell the player used,
+spent first when it holds the item. Without it a take starts at the highest
+cell holding the item, which with the keys in the same rows is usually a key.
 
 `item_id` matches an `ItemData` id from `data/items/`. The server stores the id
 and the quantity and nothing else — item definition stays client-side, and the
@@ -330,13 +349,21 @@ whatever dropped as a bag it owns.
   "bag_id": "k3Jx9_QpZ2mNvRt1",
   "enemy_id": "bushmage",
   "xp_gained": 20,
-  "attack_xp_gained": 5,
+  "attack_xp_gained": 7,
+  "attack_level": 4, "attack_xp": 61, "attack_xp_to_next": 164,
+  "attack_levelled_up": false,
   "levels_gained": 1,
   "level": 8, "xp": 40, "xp_to_next": 240,
   "pet_won": false,
   "contents": [ { "position": 0, "item_id": "smallamountofgold", "quantity": 19 } ]
 }
 ```
+
+**Attack is banked here, with the class specialty** (`SKILL_PROFICIENCY`: a
+warrior 1.5x), and nowhere else - nothing a client does between kills trains
+it. `attack_xp_gained` is what was banked; the three `attack_*` fields are where
+the skill now stands, and the client sets its attack bar to them rather than
+adding up its own.
 
 An empty `bag_id` means nothing dropped and the client spawns no bag. **Every
 entry carries its `position`** — that number is the only thing

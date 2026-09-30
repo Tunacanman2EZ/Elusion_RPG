@@ -67,6 +67,8 @@ A sink nobody can see is a tax; a sink with a scoreboard is a contribution. `GET
 
 Both sides confirm before anything moves, and a trade that fails validation at execution is refused through one path that marks it dead for *both* players. That one came out of a test I wrote speculatively: `db.rollback()` undoes the confirmation made in the current request and not the one the other player committed minutes ago, which left trades stuck half-confirmed until `_trade_refuse()` existed.
 
+Confirming means the offer that was on the screen: every change moves a revision the accept has to name, so an offer swapped a moment before the click is refused rather than executed. And a trade changes two bags while only one player's request runs it, so both are flagged in the same transaction; until a client has been handed its new bag, a whole-bag save from it is refused. That is what stopped the player who accepted first from losing what they received the next time they moved a potion.
+
 ### Real accounts, not a local profile gate — `src/systems/api.gd`
 
 Passwords are salted and hashed server-side; the client holds a bearer token and never sees a hash. Login and "no such user" return an identical 401 so the endpoint can't be used to enumerate usernames. Rank is a ladder — player, mod, dev, owner — decided on the server, and **owner cannot be stored at all**: it comes from an environment variable, so no request and no database edit can grant it.
@@ -120,6 +122,18 @@ The one I'd actually point at is **E-8**, because I found it by accident. Every 
 It happened twice. **E-10** is the same mistake one endpoint over: lusions were client-written too, and since reviving after death is the only thing lusions are for, dying was free for anyone who skipped one line. After the second one the question stopped being "is this endpoint safe" and became "which fields can a client still write, and who decided that" — which is a list now rather than an assumption.
 
 Player trading arrived after the audit and gets its own section there, because it is the first feature where two clients can cooperate against the server rather than one lying alone. The login endpoint that came out of it throttles per account *and* per source address — the second one because eight consecutive misses on one account does nothing about one host trying the same password against a thousand usernames.
+
+### Plays in a browser, from the API's own address — `export_presets.cfg`, `web/shell.html`, `src/systems/webpage.gd`
+
+The Web preset builds without threads. That makes it run on any current browser, and its host needs no special headers. The page is a loader in the game's own art. It stays in front of the canvas until the login screen has drawn, so the player goes from one straight to the other.
+
+The build calls the API at the address it was loaded from, because a browser refuses calls to any other one. `web/serve.py` stands in for the real site locally, and `DEPLOY.md` in the API repo has the Caddy and nginx blocks, both tested against a real export in headless Chromium.
+
+Building it turned up three things the desktop never showed:
+
+- **Every export had an empty item registry.** An export lists `.tres` files as `.tres.remap`, and the scan looked for `.tres`.
+- **The world was loading in the login screen's first frame.** A no-threads build loads a "background" request on the spot.
+- **A closed tab lost its last two seconds.** A hidden page draws no frames, and every save was sent from a frame. Now the unsaved sections go out as `keepalive` fetches as the tab hides, and the browser finishes them without the page.
 
 ### Data-driven items — `src/systems/itemregistry.gd`, `src/types/itemdata.gd`
 
@@ -175,11 +189,11 @@ cd <your-path>/game/api
 
 Calling the virtualenv's interpreter directly is deliberate: it skips having to activate the environment and guarantees you're on the venv's Python rather than whatever `python` happens to resolve to on `PATH`.
 
-That serves forty-five endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves eighty-nine endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-Forty-two of the forty-five require a bearer token. The three that do not are `register`, `login` and `status`, and that is the whole public surface.
+Eighty-four of the eighty-nine require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has twelve test suites, run together with one command:
+The backend has thirty-seven test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -187,27 +201,51 @@ cd <your-path>\game\api
 ```
 
 ```
-test_api.py         454 checks    the endpoint surface, moderation, presence
-test_economy.py     295 checks    the gold ledger and the supply invariant
-test_security.py    248 checks    the audit's findings, held closed
-test_equipment.py   197 checks    the equipment system, client and server
-test_loot.py        182 checks    every finished item is actually obtainable
-test_throttle.py     55 checks    login lockout, per-IP spray, token rotation
-test_settings.py     49 checks    the options screen's rules
-test_map.py          48 checks    the map's fog rules and their storage
-test_gathering.py    44 checks    fishing and cooking authority
-test_healing.py      28 checks    the heal clamp stays quiet for honest play
-test_equipmove.py    22 checks    equipping moves the item, never copies it
-test_catalogue.py    13 checks    the shipped catalogue arms every protection
+test_api.py            512 checks    the endpoint surface, moderation, presence
+test_economy.py        363 checks    the gold ledger and the supply invariant
+test_security.py       270 checks    the audit's findings, held closed
+test_loot.py           234 checks    every finished item is actually obtainable
+test_equipment.py      194 checks    the equipment system, client and server
+test_gearbonus.py      164 checks    what gear adds, counted by the server
+test_guilds.py         161 checks    founding, joining, ranks, taking a guild down
+test_trades.py         136 checks    a trade reaches the right person and means what they saw
+test_chatrooms.py      132 checks    chat channels, and pictures posted by link
+test_moderation.py     127 checks    the moderation record
+test_refusals.py        94 checks    401, 403, and the 404 that is really a 403
+test_ownership.py       82 checks    no route hands over a row that is not yours
+test_friends.py         70 checks    asking, answering and ending a friendship
+test_pacing.py          69 checks    the pace of the game, as the server pays it
+test_security_doc.py    65 checks    SECURITY.md is checked, not trusted
+test_throttle.py        61 checks    login lockout, per-IP spray, token rotation
+test_broadcast.py       59 checks    the server's voice, end to end
+test_chat.py            55 checks    world chat, end to end
+test_maintenance.py     53 checks    the owner's kill switch
+test_recovery.py        53 checks    account recovery, adversarially
+test_settings.py        49 checks    the options screen's rules
+test_teleport.py        49 checks    moving players and landing them spread out
+test_map.py             48 checks    the map's fog rules and their storage
+test_gathering.py       47 checks    fishing and cooking authority
+test_clientbuild.py     37 checks    the client build gate
+test_guildlife.py       37 checks    what members are playing, what happened
+test_revocation.py      34 checks    what it costs to change your mind
+test_rewards.py         30 checks    better loot carries more; legendary is rare
+test_healing.py         28 checks    the heal clamp stays quiet for honest play
+test_namecolour.py      27 checks    the colour a player chose, on every name
+test_playing.py         25 checks    which character an account is playing
+test_equipmove.py       22 checks    equipping moves the item, never copies it
+test_killwatch.py       20 checks    the kill-fraud watch fires when it must
+test_catalogue.py       13 checks    the shipped catalogue arms every protection
+test_attackxp.py        12 checks    attack XP is banked at the kill
+test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					1,635 checks, 0 failures
+					3,442 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The thirty-seventh, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **826 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 112 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **1,999 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 118 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `794 passed, 0 failed, 13 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twelve are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `1964 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
@@ -222,13 +260,15 @@ Some of the suite is there to catch things the engine will not tell you about:
 
 Without the service running, the login screen will tell you it can't reach the server — the game does not fall back to local accounts by design.
 
+**In a browser:** export the **Web** preset (Project → Export), which writes `builds/web/`, then run `python web/serve.py` and open `http://localhost:8060`. It serves the export and passes `/api/` through to the service, as the real site does.
+
 ### A clone is missing the item art on purpose
 
 `art/pack/` is a private submodule. It holds item, weapon, armour and icon art purchased from [Clockwork Raven Studios](https://www.clockworkravenstudios.com/) under a licence that permits using it in this game and **not** redistributing it. Publishing this repository with those files in it would be redistribution, so they are not here.
 
 What that means if you clone: 134 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
 
-The test suite understands the difference. The twelve checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
+The test suite understands the difference. The fifteen checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
 
 This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on two of those textures, and `preload` resolves at compile time — so in a clone that script did not compile and `KingdomBoard` did not exist. One missing decoration removed an entire screen, silently. It now holds paths and loads lazily, and the header keeps its column widths when the texture is null.
 

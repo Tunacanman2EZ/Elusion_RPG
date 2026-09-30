@@ -4,7 +4,8 @@
 # BACKSLASH toggles it, and the key space is more crowded than it looks. The
 # audit, so nobody repeats it:
 #
-#   F1-F7, F9-F12, 1-9, M, I O P T U Y   player.gd's staff debug rows
+#   F1-F7, F9-F12, M, I O P T U Y        player.gd's staff debug rows
+#   1-9, 0                               hotbar.gd's ten slot keys
 #   `  (backtick)                        characterhud.gd's owner panel
 #   M                                    also the minimap_toggle action
 #   W A S D, space, arrows, shift        movement, attack, interact, sprint

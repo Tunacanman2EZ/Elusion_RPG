@@ -77,7 +77,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 focus_mode = 0
-text = "x"
+text = "×"
 
 [node name="playerspvp" type="PanelContainer" parent="frame/margin/rows"]
 unique_name_in_owner = true

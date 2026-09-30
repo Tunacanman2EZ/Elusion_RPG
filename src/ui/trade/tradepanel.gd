@@ -11,8 +11,24 @@
 # that will actually charge it. Computing it here would be a second opinion that
 # can disagree, and the one moment a player must not be surprised is the moment
 # they press Accept.
+#
+# ACCEPT MEANS WHAT YOU SAW. Every change to either side moves the trade's
+# revision, and Accept sends the revision this window last drew. The server
+# refuses an accept for any other - so the sword that was swapped for a stick
+# a moment before you clicked cannot be "accepted" as the stick. When that
+# happens the window redraws the offer as it now stands and says it changed.
+#
+# THE ONE WHO ACCEPTS FIRST IS TOLD HOW IT ENDED. They are not the one whose
+# request runs the trade, so for a long time their window just emptied and
+# their bag went on showing what it had - and their next save deleted what the
+# trade gave them. The poll now carries the result (see _apply_poll()) and
+# CharacterData adopts it.
 extends Control
 
+
+const NameTag := preload("res://src/shared/nametag.gd")
+# ago_text(), the guild panel's "2 h ago", aged against the server's clock.
+const GuildPanelScript := preload("res://src/ui/guild/guildpanel.gd")
 
 const REQUEST_TIMEOUT := 6.0
 
@@ -22,6 +38,23 @@ const REQUEST_TIMEOUT := 6.0
 # a second is well inside how fast either of them can click.
 const POLL_SECONDS := 1.5
 
+# How many finished trades the start view lists. The server keeps ten; five is
+# what fits under the nearby list without a scrollbar.
+const RECENT_SHOWN := 5
+
+# Rows: icon, then the name over its value.
+const ICON_SIZE := Vector2(24, 24)
+const ROW_FONT_SIZE := 11
+const HINT_FONT_SIZE := 9
+
+const COLOUR_HINT := Color(0.7, 0.66, 0.6)
+const COLOUR_GOLD := Color(1, 0.9, 0.5)
+const COLOUR_AGREED := Color(0.55, 0.9, 0.55)
+const COLOUR_WAITING := Color(0.62, 0.86, 1.0)
+const COLOUR_WARN := Color(1, 0.6, 0.5)
+const COLOUR_ONLINE := Color(0.45, 0.85, 0.45)
+const COLOUR_OFFLINE := Color(0.55, 0.55, 0.55)
+
 
 @onready var header_label: Label = %headerlabel
 @onready var close_button: Button = %closebutton
@@ -30,26 +63,43 @@ const POLL_SECONDS := 1.5
 @onready var nearby_list: VBoxContainer = %nearbylist
 @onready var username_edit: LineEdit = %usernameedit
 @onready var offer_button: Button = %offerbutton
+@onready var recent_caption: Label = %recentcaption
+@onready var recent_list: VBoxContainer = %recentlist
 @onready var trade_box: VBoxContainer = %tradebox
+@onready var with_row: HBoxContainer = %withrow
+@onready var you_panel: PanelContainer = %youpanel
 @onready var you_header: Label = %youheader
 @onready var you_list: VBoxContainer = %youlist
 @onready var gold_spin: SpinBox = %goldspin
-@onready var you_tax: Label = %youtax
+@onready var you_worth: Label = %youworth
+@onready var them_panel: PanelContainer = %thempanel
 @onready var them_header: Label = %themheader
 @onready var them_list: VBoxContainer = %themlist
 @onready var them_gold: Label = %themgold
-@onready var them_tax: Label = %themtax
+@onready var them_worth: Label = %themworth
+@onready var summary_label: Label = %summarylabel
 @onready var confirm_button: Button = %confirmbutton
 @onready var cancel_button: Button = %cancelbutton
 @onready var notice_label: Label = %noticelabel
 
 
-# The player who opened this, for show_notice() and for reading gold.
+# The player who opened this, for reading gold.
 var _player: Node = null
 
 # Which half of the trade row is ours, "a" or "b". Resolved by comparing
-# Api.username against the names the server sends.
+# Api.username against the names the server sends. Side a is whoever opened it.
 var _my_side: String = ""
+
+# THE REVISION THIS WINDOW LAST DREW, which is what Accept sends. See the header.
+var _revision: int = -1
+
+# The trade this window is showing, so that when it disappears from the poll
+# the window can say how it ended rather than silently going back to the list.
+var _watched_trade_id: String = ""
+
+# What the other side was offering when we last drew it, as text - so a change
+# can be pointed out rather than slipped in. "" means "not drawn yet".
+var _their_signature: String = ""
 
 # ONE REQUEST AT A TIME. The poll, the confirm and an edit can all fire at once,
 # and two updates in flight would each replace the whole of our side - so the
@@ -120,6 +170,7 @@ func open_panel(player: Node) -> void:
 	_seconds_to_nearby = NEARBY_REFRESH_SECONDS
 	await _poll(true)
 	if start_box.visible:
+		_load_recent()
 		await _load_nearby()
 
 
@@ -127,11 +178,13 @@ func close_panel() -> void:
 	# DOES NOT CANCEL THE TRADE. Closing a window is not withdrawing an offer,
 	# and a player who clicks the X to see their own backpack would otherwise
 	# pull the rug out from under whoever they were negotiating with. The trade
-	# lives on the server; reopening this panel picks it straight back up.
+	# lives on the server; reopening this panel picks it straight back up, and
+	# the HUD's poll says if the other side does anything meanwhile.
 	visible = false
 	_clear(you_list)
 	_clear(them_list)
 	_clear(nearby_list)
+	_clear(recent_list)
 
 
 func toggle_panel(player: Node) -> void:
@@ -158,22 +211,64 @@ func _poll(render_our_side: bool = false) -> void:
 		_set_notice(_refusal_text(res, "Could not read the trade."), true)
 		return
 
-	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+	_apply_poll(res.get("data", {}) if res.get("data", {}) is Dictionary else {}, render_our_side)
+
+
+func _apply_poll(data: Dictionary, render_our_side: bool = false) -> void:
+	"""One answer from GET /api/trade, onto the window. SPLIT FROM _poll() so the
+	suite can hand it a made-up answer and look at the result.
+
+	THREE THINGS CAN BE IN IT. "trade", the open trade or null. "resync", a bag
+	and purse to adopt because a trade finished while we were not the one
+	asking. And "last", how the most recent trade ended - which is what lets a
+	window that was watching a trade say "complete" or "called off" instead of
+	quietly going back to the list as if nothing had happened."""
+	var resync = data.get("resync")
+	if resync is Dictionary:
+		# CharacterData adopts it and the HUD announces it; see apply_server_carry().
+		CharacterData.apply_server_carry(resync, _player)
+
 	var trade = data.get("trade")
 	if trade is Dictionary:
 		_render(trade, render_our_side)
-	else:
+		return
+
+	if _watched_trade_id != "":
+		_set_notice(ending_text(_watched_trade_id, data.get("last"), resync), false)
+		_watched_trade_id = ""
 		_show_start()
+	elif not start_box.visible:
+		_show_start()
+
+
+static func ending_text(watched: String, last: Variant, resync: Variant) -> String:
+	"""What to say when the trade this window was showing is no longer open."""
+	if resync is Dictionary and resync.get("trade") is Dictionary \
+			and str((resync["trade"] as Dictionary).get("trade_id", "")) == watched:
+		return "Trade complete."
+	if last is Dictionary and str((last as Dictionary).get("trade_id", "")) == watched:
+		match str((last as Dictionary).get("state", "")):
+			"done":
+				return "Trade complete."
+			"cancelled":
+				return "The trade was called off."
+	# NOT THE LAST ONE, AND NOT FINISHED: it ran out of time. A trade nobody
+	# touches for ten minutes is dropped by the server rather than kept open.
+	return "The trade expired."
 
 
 func _show_start() -> void:
 	_my_side = ""
+	_revision = -1
+	_their_signature = ""
 	start_box.visible = true
 	trade_box.visible = false
 	header_label.text = "Trade"
 	_clear(you_list)
 	_clear(them_list)
+	_clear(with_row)
 	_seconds_to_nearby = 0.0
+	_load_recent()
 
 
 # =============================================================================
@@ -193,8 +288,10 @@ func _load_nearby() -> void:
 	# it is not worth a red message over something the player did not ask for.
 	if not res.get("ok", false) or not start_box.visible:
 		return
+	_apply_nearby(res.get("data", {}) if res.get("data", {}) is Dictionary else {})
 
-	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+
+func _apply_nearby(data: Dictionary) -> void:
 	var players: Array = data.get("players", []) if data.get("players", []) is Array else []
 
 	# WORDED FROM THE SERVER'S OWN precision FIELD rather than assumed. It says
@@ -203,17 +300,13 @@ func _load_nearby() -> void:
 	# rather than keep promising a distance the server never measured.
 	var where: String = str(data.get("area", ""))
 	if str(data.get("precision", "area")) == "area" and where != "":
-		start_label.text = "In %s with you" % where.capitalize()
+		start_label.text = "In %s with you" % AreaRegistry.display_name(where)
 	else:
 		start_label.text = "Nearby"
 
 	_clear(nearby_list)
 	if players.is_empty():
-		var none := Label.new()
-		none.text = "Nobody else is here right now."
-		none.add_theme_font_size_override("font_size", 11)
-		none.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
-		nearby_list.add_child(none)
+		nearby_list.add_child(_hint_label("Nobody else is here right now."))
 		return
 
 	for entry in players:
@@ -228,25 +321,31 @@ func _build_nearby_row(entry: Dictionary) -> Control:
 	row.add_theme_constant_override("separation", 6)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-	var label := Label.new()
-	# The CHARACTER name is what you see in the world; the ACCOUNT name is what
-	# the trade endpoint takes. Showing both means the button you press and the
-	# person you meant are never two different people.
-	label.text = "%s  (%s)" % [str(entry.get("name", username)), username]
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.add_theme_font_size_override("font_size", 11)
-	row.add_child(label)
+	# THE CHARACTER NAME, drawn the way every other list draws a name: in the
+	# colour its owner chose, with the rank as a badge. See nametag.gd.
+	NameTag.add_to(row, str(entry.get("name", username)), str(entry.get("role", "player")),
+		entry.get("name_hue"), ROW_FONT_SIZE + 1)
+
+	# The ACCOUNT name is what the trade endpoint takes. Showing both means the
+	# button you press and the person you meant are never two different people.
+	var account := Label.new()
+	account.text = "(%s)" % username
+	account.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	account.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
+	account.add_theme_color_override("font_color", COLOUR_HINT)
+	row.add_child(account)
 
 	var level := Label.new()
 	level.text = "lv %d" % int(entry.get("level", 1))
-	level.add_theme_font_size_override("font_size", 11)
-	level.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
+	level.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
+	level.add_theme_color_override("font_color", COLOUR_HINT)
 	row.add_child(level)
 
 	var button := Button.new()
+	button.name = "tradewith"
 	button.text = "Trade"
 	button.custom_minimum_size = Vector2(60, 24)
-	button.add_theme_font_size_override("font_size", 11)
+	button.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
 	# bind() rather than a lambda closing over the loop variable, which on the
 	# last iteration would make every button open a trade with the same person.
 	button.pressed.connect(_open_with.bind(username, int(entry.get("slot", 0))))
@@ -260,18 +359,148 @@ func _open_with(username: String, to_slot: int) -> void:
 	await _send_offer(username, to_slot)
 
 
+# =============================================================================
+# YOUR RECENT TRADES
+# =============================================================================
+
+func _load_recent() -> void:
+	# ONCE PER VISIT TO THE LIST, not on the poll. History only changes when a
+	# trade finishes, and every finish brings the window back here - which is
+	# exactly when this runs.
+	if not is_inside_tree():
+		return
+	var res: Dictionary = await Api.get_json("/api/trade/history", REQUEST_TIMEOUT)
+	if not is_instance_valid(self) or not is_inside_tree() or not start_box.visible:
+		return
+	if not res.get("ok", false):
+		return
+	_apply_recent(res.get("data", {}) if res.get("data", {}) is Dictionary else {})
+
+
+func _apply_recent(data: Dictionary) -> void:
+	var trades: Array = data.get("trades", []) if data.get("trades", []) is Array else []
+	var now: int = int(data.get("now", 0))
+	_clear(recent_list)
+	recent_caption.visible = true
+	if trades.is_empty():
+		recent_list.add_child(_hint_label("None yet. Finished trades are listed here."))
+		return
+	for record in trades.slice(0, RECENT_SHOWN):
+		if record is Dictionary:
+			recent_list.add_child(_build_recent_row(record, now))
+
+
+func _build_recent_row(record: Dictionary, now: int) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.tooltip_text = result_line(record)
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+
+	var what := Label.new()
+	what.text = history_line(record)
+	what.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	what.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
+	# THIS ONE MAY CLIP, and it is the only label in the window that may: it is
+	# a one-line summary with the whole sentence in the tooltip. See CLAUDE.md
+	# on the Label that gives way - the name that loses a row is the thing a
+	# panel is about, and here the thing the row is about is the whole line.
+	what.clip_text = true
+	what.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	what.custom_minimum_size = Vector2(120, 0)
+	row.add_child(what)
+
+	var when := Label.new()
+	when.text = GuildPanelScript.ago_text(int(record.get("at", 0)), now)
+	when.add_theme_font_size_override("font_size", HINT_FONT_SIZE + 1)
+	when.add_theme_color_override("font_color", COLOUR_HINT)
+	row.add_child(when)
+	return row
+
+
+static func item_name(item_id: String) -> String:
+	var data: ItemData = ItemRegistry.get_item(item_id)
+	return data.display_name if data != null and data.display_name != "" else item_id
+
+
+static func goods_text(items: Variant, gold: int) -> String:
+	"""'Iron Sword, 3 x Tiny Health Potion and 300 gold' - or 'nothing'."""
+	var parts: PackedStringArray = []
+	for entry in (items if items is Array else []):
+		if not (entry is Dictionary):
+			continue
+		var quantity: int = int(entry.get("quantity", 1))
+		var called: String = item_name(str(entry.get("item_id", "")))
+		parts.append(called if quantity == 1 else "%d x %s" % [quantity, called])
+	if gold > 0:
+		parts.append(GameConstants.gold_text(gold))
+	if parts.is_empty():
+		return "nothing"
+	if parts.size() == 1:
+		return parts[0]
+	return "%s and %s" % [", ".join(parts.slice(0, parts.size() - 1)), parts[parts.size() - 1]]
+
+
+static func exchange_text(record: Dictionary) -> String:
+	"""'got X for Y', or 'got X' / 'gave Y' when one side put up nothing - a
+	gift reads as a gift, not as a trade "for nothing"."""
+	var got: String = goods_text(record.get("got"), int(record.get("gold_got", 0)))
+	var gave: String = goods_text(record.get("gave"), int(record.get("gold_gave", 0)))
+	if got != "nothing" and gave != "nothing":
+		return "got %s for %s" % [got, gave]
+	if got != "nothing":
+		return "got %s" % got
+	if gave != "nothing":
+		return "gave %s" % gave
+	return "nothing changed hands"
+
+
+static func history_line(record: Dictionary) -> String:
+	"""One finished trade, short: who, and what came to you for what went."""
+	var who: String = str(record.get("with_name", ""))
+	if who == "":
+		who = str(record.get("with", "?"))
+	return "%s: %s" % [who, exchange_text(record)]
+
+
+static func result_line(record: Dictionary) -> String:
+	"""The sentence a finished trade gets in the message box and the history
+	tooltip - from YOUR side, which is how the server words the record."""
+	var exchange: String = exchange_text(record)
+	var line: String = "Trade with %s complete: %s." % [str(record.get("with", "?")),
+		exchange if exchange == "nothing changed hands" else "you " + exchange]
+	var tax: int = int(record.get("tax", 0))
+	if tax > 0:
+		line += " The kingdom took %s." % GameConstants.gold_text(tax)
+	return line
+
+
+# =============================================================================
+# DRAWING AN OPEN TRADE
+# =============================================================================
+
 func _render(trade: Dictionary, render_our_side: bool) -> void:
 	var mine: String = Api.username
 	var side_a: Dictionary = trade.get("a", {}) if trade.get("a", {}) is Dictionary else {}
 	var side_b: Dictionary = trade.get("b", {}) if trade.get("b", {}) is Dictionary else {}
+	var new_trade: bool = str(trade.get("trade_id", "")) != _watched_trade_id
 	_my_side = "a" if str(side_a.get("username", "")) == mine else "b"
+	_watched_trade_id = str(trade.get("trade_id", ""))
+	_revision = int(trade.get("revision", -1))
 
 	var us: Dictionary = side_a if _my_side == "a" else side_b
 	var them: Dictionary = side_b if _my_side == "a" else side_a
 
+	# A DIFFERENT TRADE IS A FRESH LOOK, including at our own column - a window
+	# reopened on a new trade must not keep the quantity boxes of the last one.
+	if new_trade:
+		_their_signature = ""
+		render_our_side = true
+
 	start_box.visible = false
 	trade_box.visible = true
-	header_label.text = "Trading with %s" % str(them.get("username", "?"))
+	header_label.text = "Trade"
+	_render_with_row(them)
 
 	# THEIR SIDE, EVERY POLL. This is the half that changes without us doing
 	# anything, and it is the whole reason the panel polls at all.
@@ -287,14 +516,46 @@ func _render(trade: Dictionary, render_our_side: bool) -> void:
 	else:
 		_update_our_summary(us)
 
+	summary_label.text = summary_text(us, them)
 	_update_buttons(us, them)
+
+
+func _render_with_row(them: Dictionary) -> void:
+	"""Who this trade is with: a presence dot, their character in their colour
+	with their rank, their account and level."""
+	_clear(with_row)
+	var online: bool = bool(them.get("online", true))
+	var dot := Label.new()
+	dot.name = "presence"
+	dot.text = "●" if online else "○"
+	dot.tooltip_text = "online" if online else "offline"
+	dot.add_theme_color_override("font_color", COLOUR_ONLINE if online else COLOUR_OFFLINE)
+	dot.add_theme_font_size_override("font_size", 12)
+	with_row.add_child(dot)
+
+	var caption := Label.new()
+	caption.text = "Trading with"
+	caption.add_theme_color_override("font_color", COLOUR_HINT)
+	caption.add_theme_font_size_override("font_size", 13)
+	with_row.add_child(caption)
+
+	var shown: String = str(them.get("name", ""))
+	if shown == "":
+		shown = str(them.get("username", "?"))
+	NameTag.add_to(with_row, shown, str(them.get("role", "player")), them.get("name_hue"), 14)
+
+	var detail := Label.new()
+	detail.name = "detail"
+	detail.text = "(%s) · lv %d" % [str(them.get("username", "?")), int(them.get("level", 1))]
+	detail.add_theme_color_override("font_color", COLOUR_HINT)
+	detail.add_theme_font_size_override("font_size", 12)
+	with_row.add_child(detail)
 
 
 func _render_our_side(us: Dictionary) -> void:
 	_loading_our_side = true
 
 	_clear(you_list)
-	you_header.text = "You%s" % (" — accepted" if bool(us.get("confirmed", false)) else "")
 
 	# Prefill from what the server already has us offering, so reopening the
 	# panel shows the offer that is actually standing rather than an empty one.
@@ -305,11 +566,7 @@ func _render_our_side(us: Dictionary) -> void:
 
 	var held: Dictionary = _held_items()
 	if held.is_empty():
-		var empty := Label.new()
-		empty.text = "Your backpack is empty."
-		empty.add_theme_font_size_override("font_size", 11)
-		empty.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
-		you_list.add_child(empty)
+		you_list.add_child(_hint_label("Your backpack is empty."))
 	else:
 		for item_id in held:
 			you_list.add_child(_build_our_row(item_id, int(held[item_id]), int(offered.get(item_id, 0))))
@@ -317,57 +574,128 @@ func _render_our_side(us: Dictionary) -> void:
 	var purse: int = _current_gold()
 	gold_spin.max_value = float(purse)
 	gold_spin.value = float(min(int(us.get("gold", 0)), purse))
+	gold_spin.tooltip_text = "You carry %d gold" % purse
 
 	_loading_our_side = false
 	_update_our_summary(us)
 
 
 func _update_our_summary(us: Dictionary) -> void:
-	you_header.text = "You%s" % (" — accepted" if bool(us.get("confirmed", false)) else "")
-	you_tax.text = _tax_text(us)
+	var agreed: bool = bool(us.get("confirmed", false))
+	you_header.text = "You give%s" % ("  ✓ accepted" if agreed else "")
+	you_header.add_theme_color_override("font_color", COLOUR_AGREED if agreed else Color(0.6, 0.9, 0.7))
+	you_worth.text = worth_text(us.get("offering_value"))
 
 
 func _render_their_side(them: Dictionary) -> void:
+	var signature: String = offer_signature(them)
+	var changed: bool = _their_signature != "" and signature != _their_signature
+	_their_signature = signature
+
 	_clear(them_list)
-	them_header.text = "%s%s" % [
-		str(them.get("username", "?")),
-		" — accepted" if bool(them.get("confirmed", false)) else "",
-	]
+	var agreed: bool = bool(them.get("confirmed", false))
+	them_header.text = "They give%s" % ("  ✓ accepted" if agreed else "")
+	them_header.add_theme_color_override("font_color", COLOUR_AGREED if agreed else Color(0.95, 0.85, 0.6))
 
 	var items: Array = them.get("items", []) if them.get("items", []) is Array else []
 	if items.is_empty():
-		var empty := Label.new()
-		empty.text = "Nothing offered yet."
-		empty.add_theme_font_size_override("font_size", 11)
-		empty.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
-		them_list.add_child(empty)
+		them_list.add_child(_hint_label("Nothing offered yet."))
 	else:
 		for entry in items:
 			if entry is Dictionary:
 				them_list.add_child(_build_their_row(entry))
 
-	them_gold.text = "Gold %d" % int(them.get("gold", 0))
-	them_tax.text = _tax_text(them)
+	them_gold.text = "Gold %s" % GameConstants.commas(int(them.get("gold", 0)))
+	them_worth.text = worth_text(them.get("offering_value"))
+
+	# A CHANGE IS POINTED OUT, NOT SLIPPED IN. The server has already withdrawn
+	# any acceptance; this is the half that tells the person looking why, and
+	# makes them look again before they press anything.
+	if changed:
+		_set_notice("%s changed their offer. Check it before you accept."
+			% _display_name(them), true)
+		_flash(them_panel)
 
 
-func _tax_text(side: Dictionary) -> String:
-	# The tax a side pays is charged on what they RECEIVE, so the server quotes
-	# it on that side's own row already - this only has to print it.
-	var tax = side.get("tax")
-	if tax == null:
-		return ""
+static func offer_signature(side: Dictionary) -> String:
+	"""What a side is offering, as comparable text: items in the server's order,
+	then gold. Two answers with the same signature are the same offer."""
+	var parts: PackedStringArray = []
+	for entry in (side.get("items", []) if side.get("items", []) is Array else []):
+		if entry is Dictionary:
+			parts.append("%s:%d" % [str(entry.get("item_id", "")), int(entry.get("quantity", 0))])
+	parts.append("gold:%d" % int(side.get("gold", 0)))
+	return ",".join(parts)
+
+
+static func worth_text(value: Variant) -> String:
+	# NULL MEANS THE SERVER CANNOT VALUE IT - an item it does not know - which
+	# is a refusal at execution, not a zero. Saying "worth 0" would be a lie
+	# about exactly the case that matters.
+	if value == null:
+		return "contains something the server cannot value"
+	return "worth %s" % GameConstants.gold_text(int(value))
+
+
+static func summary_text(us: Dictionary, them: Dictionary) -> String:
+	"""The line above the buttons: what you are about to receive, and the cut.
+
+	THE TAX IS THE SERVER'S QUOTE for this side - charged on what you RECEIVE,
+	after the swap, so the gold you are handed can pay it."""
+	var tax = us.get("tax")
+	var receiving = them.get("offering_value")
+	if tax == null or receiving == null:
+		return "This trade contains an item the server does not know, and it cannot go through."
+	if int(receiving) <= 0:
+		return "You receive nothing yet."
 	if int(tax) <= 0:
-		return "no kingdom cut"
-	return "kingdom takes %d" % int(tax)
+		return "You receive %s gold's worth. No kingdom cut." % GameConstants.commas(int(receiving))
+	return "You receive %s gold's worth. The kingdom takes %s from you." % [
+		GameConstants.commas(int(receiving)), GameConstants.gold_text(int(tax))]
+
+
+static func accept_state(us: Dictionary, them: Dictionary) -> Dictionary:
+	"""{text, disabled, colour} for the Accept button. Named and static so the
+	four states can be checked without a window."""
+	var who: String = str(them.get("name", ""))
+	if who == "":
+		who = str(them.get("username", "them"))
+	if bool(us.get("confirmed", false)):
+		return {"text": "Waiting for %s…" % who, "disabled": true, "colour": COLOUR_HINT}
+	if not bool(them.get("online", true)):
+		# ACCEPTING IS HARMLESS BUT POINTLESS - nobody is there to accept back -
+		# and a lit button invites the wait. Cancel stays live.
+		return {"text": "%s is offline" % who, "disabled": true, "colour": COLOUR_OFFLINE}
+	if bool(them.get("confirmed", false)):
+		return {"text": "Accept (%s has)" % who, "disabled": false, "colour": COLOUR_AGREED}
+	return {"text": "Accept", "disabled": false, "colour": Color(0.95, 0.9, 0.8)}
+
+
+static func cancel_text(my_side: String, us: Dictionary) -> String:
+	# SIDE B WAS ASKED. Until they have agreed to anything, turning it down is
+	# a decline, and the button should say the word they are thinking.
+	if my_side == "b" and not bool(us.get("confirmed", false)):
+		return "Decline"
+	return "Cancel trade"
 
 
 func _update_buttons(us: Dictionary, them: Dictionary) -> void:
-	var we_agreed: bool = bool(us.get("confirmed", false))
-	confirm_button.text = "Waiting for them…" if we_agreed else "Accept"
-	confirm_button.disabled = we_agreed
+	var state: Dictionary = accept_state(us, them)
+	confirm_button.text = str(state["text"])
+	confirm_button.disabled = bool(state["disabled"])
+	confirm_button.add_theme_color_override("font_color", state["colour"])
+	cancel_button.text = cancel_text(_my_side, us)
 
-	if we_agreed and not bool(them.get("confirmed", false)):
-		_set_notice("You have accepted. Waiting for the other side.", false)
+	if not bool(them.get("online", true)):
+		_set_notice("%s has gone offline. The trade cannot finish until they are back."
+			% _display_name(them), true)
+	elif bool(us.get("confirmed", false)) and not bool(them.get("confirmed", false)):
+		_set_notice("You have accepted. Waiting for %s." % _display_name(them), false)
+
+
+static func _display_name(side: Dictionary) -> String:
+	var shown: String = str(side.get("name", ""))
+	return shown if shown != "" else str(side.get("username", "They"))
 
 
 # =============================================================================
@@ -376,7 +704,10 @@ func _update_buttons(us: Dictionary, them: Dictionary) -> void:
 
 func _held_items() -> Dictionary:
 	# item_id -> total held, merged across cells, because the offer is a
-	# quantity per item and the server merges it the same way.
+	# quantity per item and the server merges it the same way. The hotbar's keys
+	# are cells of the same container and count too - the server takes from the
+	# bag before the keys, so offering five of your ten potions leaves key 1
+	# alone.
 	var totals: Dictionary = {}
 	var container: Node = _player_inventory_container()
 	if container == null or not container.has_method("get_all_stacks"):
@@ -390,16 +721,7 @@ func _held_items() -> Dictionary:
 
 
 func _build_our_row(item_id: String, held: int, offered: int) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-
-	var label := Label.new()
-	var data: ItemData = ItemRegistry.get_item(item_id)
-	label.text = data.display_name if data != null else item_id
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.add_theme_font_size_override("font_size", 11)
-	row.add_child(label)
+	var row := _item_row(item_id)
 
 	var spin := SpinBox.new()
 	spin.min_value = 0
@@ -407,35 +729,103 @@ func _build_our_row(item_id: String, held: int, offered: int) -> Control:
 	spin.step = 1
 	spin.value = clampi(offered, 0, held)
 	spin.custom_minimum_size = Vector2(62, 0)
+	spin.tooltip_text = "You have %d" % held
 	# The id travels on the node so _collect_offer() does not have to parse it
 	# back out of a label the player never sees the real value of.
 	spin.set_meta("item_id", item_id)
 	spin.value_changed.connect(_on_offer_edited)
 	row.add_child(spin)
 
+	var of := Label.new()
+	of.text = "/%d" % held
+	of.add_theme_font_size_override("font_size", HINT_FONT_SIZE + 1)
+	of.add_theme_color_override("font_color", COLOUR_HINT)
+	row.add_child(of)
 	return row
 
 
 func _build_their_row(entry: Dictionary) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-
 	var item_id: String = str(entry.get("item_id", ""))
-	var label := Label.new()
-	var data: ItemData = ItemRegistry.get_item(item_id)
-	label.text = data.display_name if data != null else item_id
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.add_theme_font_size_override("font_size", 11)
-	row.add_child(label)
+	var row := _item_row(item_id)
 
 	var qty := Label.new()
+	qty.name = "quantity"
 	qty.text = "x%d" % int(entry.get("quantity", 0))
-	qty.add_theme_font_size_override("font_size", 11)
-	qty.add_theme_color_override("font_color", Color(1, 0.9, 0.5))
+	qty.add_theme_font_size_override("font_size", ROW_FONT_SIZE + 1)
+	qty.add_theme_color_override("font_color", COLOUR_GOLD)
 	row.add_child(qty)
-
 	return row
+
+
+func _item_row(item_id: String) -> HBoxContainer:
+	"""Icon, then the name over its value. Both columns start the same way so
+	the two sides of a trade read as one table."""
+	var data: ItemData = ItemRegistry.get_item(item_id)
+
+	var row := HBoxContainer.new()
+	row.name = "item_%s" % item_id
+	row.add_theme_constant_override("separation", 6)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.tooltip_text = item_tooltip(item_id)
+
+	# THE ICON'S SPACE IS KEPT EVEN WITHOUT AN ICON, so names line up down the
+	# column. EXPAND_IGNORE_SIZE or custom_minimum_size is only a floor and the
+	# art sets the real width - the trap nametag.gd's crown notes.
+	var icon := TextureRect.new()
+	icon.name = "icon"
+	icon.custom_minimum_size = ICON_SIZE
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if data != null and data.icon != null:
+		icon.texture = data.icon
+		icon.modulate = data.icon_tint
+	row.add_child(icon)
+
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", -2)
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(words)
+
+	var label := Label.new()
+	label.name = "name"
+	label.text = item_name(item_id)
+	label.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
+	words.add_child(label)
+
+	var hint := Label.new()
+	hint.name = "value"
+	hint.text = value_hint(data)
+	hint.add_theme_font_size_override("font_size", HINT_FONT_SIZE)
+	hint.add_theme_color_override("font_color", COLOUR_HINT)
+	words.add_child(hint)
+	return row
+
+
+static func value_hint(data: ItemData) -> String:
+	# "EACH" ONLY WHERE THERE CAN BE MORE THAN ONE. A companion or a sword is
+	# one of a kind in a cell, and "16,000 gold each" reads as if it were not.
+	if data == null or data.value <= 0:
+		return ""
+	if data.stackable:
+		return "%s each" % GameConstants.gold_text(data.value)
+	return "worth %s" % GameConstants.gold_text(data.value)
+
+
+static func item_tooltip(item_id: String) -> String:
+	var data: ItemData = ItemRegistry.get_item(item_id)
+	if data == null:
+		return item_id
+	var lines: PackedStringArray = [data.display_name]
+	if data.description != "":
+		lines.append(data.description)
+	var hint: String = value_hint(data)
+	if hint != "":
+		lines.append(hint[0].to_upper() + hint.substr(1))
+	return "\n".join(lines)
 
 
 func _collect_offer() -> Array:
@@ -493,18 +883,26 @@ func _on_offer_pressed() -> void:
 	if who == "":
 		_set_notice("Pick somebody, or type their account name.", true)
 		return
-	await _send_offer(who, 0)
+	# NO SLOT. A typed name means "that person", and the server works out which
+	# character they are playing. This used to send 0 - their first character,
+	# whoever they were actually playing.
+	await _send_offer(who, -1)
+
+
+func _offer_body(who: String, to_slot: int) -> Dictionary:
+	var body := {"slot": CharacterData.active_character_index, "username": who}
+	# A slot from the nearby list is the one the server reported them playing,
+	# and sending it back lets the server refuse if they have switched since.
+	if to_slot >= 0:
+		body["to_slot"] = to_slot
+	return body
 
 
 func _send_offer(who: String, to_slot: int) -> void:
 	if _busy:
 		return
 	_busy = true
-	var res: Dictionary = await Api.post("/api/trade/offer", {
-		"slot": CharacterData.active_character_index,
-		"username": who,
-		"to_slot": to_slot,
-	}, REQUEST_TIMEOUT)
+	var res: Dictionary = await Api.post("/api/trade/offer", _offer_body(who, to_slot), REQUEST_TIMEOUT)
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	_busy = false
@@ -516,7 +914,13 @@ func _send_offer(who: String, to_slot: int) -> void:
 	var trade: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 	if not trade.is_empty():
 		_render(trade, true)
-	_set_notice("", false)
+	_set_notice("Trade opened. %s has been asked." % who, false)
+
+
+func _confirm_body() -> Dictionary:
+	# THE REVISION THIS WINDOW DREW. See the header: this is what makes Accept
+	# mean the offer on the screen.
+	return {"revision": _revision}
 
 
 func _on_confirm_pressed() -> void:
@@ -524,27 +928,42 @@ func _on_confirm_pressed() -> void:
 		return
 	_busy = true
 	var acting: Node = _player if is_instance_valid(_player) else null
-	var res: Dictionary = await Api.post("/api/trade/confirm", {}, REQUEST_TIMEOUT)
+	var res: Dictionary = await Api.post("/api/trade/confirm", _confirm_body(), REQUEST_TIMEOUT)
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	_busy = false
+	_apply_confirm(res, acting)
 
+
+func _apply_confirm(res: Dictionary, acting: Node) -> void:
+	"""The answer to Accept, onto the window. Split out so the suite can hand it
+	each of the answers the server gives."""
 	if not res.get("ok", false):
+		var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+		# THE OFFER CHANGED UNDER THE BUTTON. The refusal carries the offer as it
+		# now stands, so it is drawn at once - with the change pointed out -
+		# rather than left for the next poll to reveal.
+		if int(res.get("status", 0)) == 409 and data.get("trade") is Dictionary:
+			_render(data["trade"], false)
+			var them: Dictionary = data["trade"].get("b" if _my_side == "a" else "a", {})
+			_set_notice("%s changed the offer before your accept arrived. Look again, then accept."
+				% _display_name(them if them is Dictionary else {}), true)
+			_flash(them_panel)
+			return
 		# A REFUSAL IS NOT A CRASH AND NOT A LOSS. The server rolls the whole
 		# attempt back and clears both acceptances, so the trade is still open
 		# and still exactly as it was - see _trade_refuse(). Saying why and
 		# re-reading is the right response.
 		_set_notice(_refusal_text(res, "The trade did not go through."), true)
-		await _poll(true)
+		_poll(true)
 		return
 
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 	if str(data.get("state", "")) == "done":
 		_apply_result(data, acting)
-	else:
+	elif not data.is_empty():
 		# Only our half landed; the other side has not accepted yet.
-		if not data.is_empty():
-			_render(data, false)
+		_render(data, false)
 
 
 func _on_cancel_pressed() -> void:
@@ -559,8 +978,9 @@ func _on_cancel_pressed() -> void:
 	if not res.get("ok", false):
 		_set_notice(_refusal_text(res, "Could not cancel."), true)
 		return
+	_watched_trade_id = ""
 	_show_start()
-	_set_notice("Trade cancelled.", false)
+	_set_notice("Trade called off.", false)
 
 
 func _apply_result(data: Dictionary, acting: Node) -> void:
@@ -574,7 +994,7 @@ func _apply_result(data: Dictionary, acting: Node) -> void:
 	# new balance; recomputing here would be a second opinion that can disagree,
 	# and the disagreement shows up as a purse that drifts.
 	if ours.has("gold"):
-		_write_gold(int(ours["gold"]))
+		_write_gold(int(ours["gold"]), acting)
 
 	var cells: Array = ours.get("inventory", []) if ours.get("inventory", []) is Array else []
 	if not cells.is_empty():
@@ -586,12 +1006,13 @@ func _apply_result(data: Dictionary, acting: Node) -> void:
 
 	Audio.play("coin")
 
-	var paid: Dictionary = data.get("tax_paid", {}) if data.get("tax_paid", {}) is Dictionary else {}
-	var our_tax: int = int(paid.get(_my_side, 0))
-	_notify(acting, "Trade complete. The kingdom took %d gold." % our_tax)
-
+	# NO TOAST HERE. The server flags this character for a re-read as well
+	# (in case this very response had been lost), the window's next poll picks
+	# that up, and the HUD announces it in the same words the other side sees.
+	_watched_trade_id = ""
 	_show_start()
-	_set_notice("Trade complete — the kingdom took %d gold in total." % int(data.get("kingdom_take", 0)), false)
+	_set_notice("Trade complete. The kingdom took %s in total."
+		% GameConstants.gold_text(int(data.get("kingdom_take", 0))), false)
 
 
 # =============================================================================
@@ -602,6 +1023,8 @@ func _player_inventory_container() -> Node:
 	# Reached through the HUD rather than held as a reference: the inventory
 	# screen is lazily created and freed on logout, so a cached node here would
 	# dangle the first time someone logs out and back in.
+	if not is_inside_tree():
+		return null
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud == null:
 		return null
@@ -618,8 +1041,8 @@ func _current_gold() -> int:
 	return 0
 
 
-func _write_gold(amount: int) -> void:
-	var player: Node = _player if is_instance_valid(_player) else null
+func _write_gold(amount: int, acting: Node = null) -> void:
+	var player: Node = acting if is_instance_valid(acting) else (_player if is_instance_valid(_player) else null)
 	if player == null:
 		return
 	if player.has_method("set_gold"):
@@ -632,17 +1055,34 @@ func _write_gold(amount: int) -> void:
 # MESSAGES
 # =============================================================================
 
-func _clear(list: VBoxContainer) -> void:
+func _clear(list: Container) -> void:
 	for child in list.get_children():
+		list.remove_child(child)
 		child.queue_free()
+
+
+func _hint_label(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
+	label.add_theme_color_override("font_color", COLOUR_HINT)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return label
+
+
+func _flash(panel: Control) -> void:
+	# A SHORT PULSE on the column that changed - enough to pull the eye, not
+	# enough to be mistaken for a button.
+	if panel == null or not is_inside_tree():
+		return
+	panel.modulate = Color(1.35, 1.2, 0.85)
+	var tween := create_tween()
+	tween.tween_property(panel, "modulate", Color.WHITE, 0.9)
 
 
 func _set_notice(message: String, is_error: bool) -> void:
 	notice_label.text = message
-	notice_label.add_theme_color_override(
-		"font_color",
-		Color(1, 0.6, 0.5) if is_error else Color(0.7, 0.66, 0.6),
-	)
+	notice_label.add_theme_color_override("font_color", COLOUR_WARN if is_error else COLOUR_HINT)
 
 
 func _refusal_text(res: Dictionary, fallback: String) -> String:
@@ -658,8 +1098,3 @@ func _refusal_text(res: Dictionary, fallback: String) -> String:
 		push_warning("TradePanel: no /api/trade route — is app.py current and restarted?")
 		return "The server does not know about trading yet."
 	return message if message != "" else "%s (HTTP %d)" % [fallback, status]
-
-
-func _notify(player: Node, message: String) -> void:
-	if is_instance_valid(player) and player.has_method("show_notice"):
-		player.show_notice(message)

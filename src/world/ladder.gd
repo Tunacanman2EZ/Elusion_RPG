@@ -50,7 +50,10 @@ func _on_body_entered(body):
 		if destination_scene_path == "":
 			push_warning("Ladder (%s): destination_scene_path not assigned in the Inspector" % name)
 			return
-		var destination_scene: PackedScene = load(destination_scene_path)
+		# THROUGH THE REGISTRY, NOT load(): the area may be loading in the
+		# background, and a plain load() of it then never returns. See
+		# AreaRegistry.scene_at().
+		var destination_scene: PackedScene = AreaRegistry.scene_at(destination_scene_path)
 		if destination_scene == null:
 			push_warning("Ladder (%s): failed to load scene at %s" % [name, destination_scene_path])
 			return
@@ -85,5 +88,5 @@ func _init() -> void:
 func map_landmark() -> Dictionary:
 	var where: String = "Ladder"
 	if destination_scene_path != "":
-		where = "Ladder to " + destination_scene_path.get_file().get_basename().capitalize()
+		where = "Ladder to " + AreaRegistry.display_name(destination_scene_path.get_file().get_basename())
 	return {"kind": "ladder", "label": where}

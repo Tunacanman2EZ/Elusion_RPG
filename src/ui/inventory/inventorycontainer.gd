@@ -7,8 +7,8 @@
 # - slot signals (click, right-click, double-click) relay up to
 #   whoever owns this container
 # - save format is item_id + quantity per slot — small + MMO-ready
-# - linked_item_ids tracks which items are referenced by hotbar slots so
-#   matching inventory items can be tinted gold to show the connection
+# - the player's backpack also owns the hotbar's ten keys, as cells past the
+#   grid; see "CELLS PAST THE GRID" below
 #
 # THIS CONTAINER NO LONGER DECIDES WHERE AN ITEM GOES. It had a full local
 # placement API — add_stack, add_stack_partial, add_stack_at, can_add_stack,
@@ -22,7 +22,7 @@
 # 2. _ready instantiates slots based on grid_width × grid_height
 # 3. an endpoint answers, and the parent calls load_server_array()
 # 4. inventory_changed signal fires on every mutation for save sync
-# 5. hotbar calls set_linked_item_ids to keep inventory tinting in sync
+# 5. the hotbar hands over its slots with attach_remote_slots()
 extends GridContainer
 class_name InventoryContainer
 
@@ -71,10 +71,30 @@ var capacity: int:
 
 
 # =============================================================================
-# LINKED ITEM TRACKING
+# CELLS PAST THE GRID
 # =============================================================================
+# THE HOTBAR'S KEYS ARE THIS BACKPACK'S CELLS capacity .. capacity + 9. The
+# server stores them as carry_items rows after the bag and hands them back in
+# the same array, so the one container that applies that array has to own them
+# - otherwise every endpoint answer would update the bag and leave a key
+# showing an item the server had just moved. They are drawn by the hotbar,
+# which is why they are not children of this grid.
+#
+# `slots` is therefore EVERY cell, in position order: the grid, then the keys.
+# slots[i].slot_index == i holds for all of them, which is what lets
+# remove_quantity_at(), remove_stack_at() and a trash drop work on a key with
+# no code that knows it is one. `capacity` is still only the grid.
+#
+# UNTIL THE HOTBAR ATTACHES, THE KEYS ARE KEPT AS DATA. The HUD loads the bag
+# before it wires the hotbar, and a container with nowhere to put cells 20-29
+# must not simply drop them - the next save would then send twenty cells, and
+# although the server leaves keys alone for a short array (see
+# write_inventory() in app.py), the player would still see an empty hotbar.
+# So they wait in _unattached_tail, go out again on a save, and are handed to
+# the hotbar's slots the moment they exist.
 
-var linked_item_ids: Dictionary = {}
+var _remote_slots: Array[InventorySlot] = []
+var _unattached_tail: Array = []
 
 
 # =============================================================================
@@ -104,6 +124,7 @@ func _create_slots() -> void:
 			return
 
 		slot_instance.slot_index = i
+		slot_instance.home_container = self
 
 		# connect each slot's signals to this container's relay handlers.
 		#
@@ -166,6 +187,7 @@ func remove_quantity_at(index: int, amount: int) -> int:
 func clear_inventory() -> void:
 	for slot in slots:
 		slot.clear_stack()
+	_unattached_tail.clear()
 	inventory_changed.emit()
 
 
@@ -177,8 +199,11 @@ func set_slot_type(type_name: String) -> void:
 	#
 	# Applied here rather than in the scene because the slots are instantiated
 	# by _create_slots() at runtime, so there is nothing in the .tscn to set.
-	for slot in slots:
-		slot.slot_type = type_name
+	#
+	# THE GRID ONLY. A hotbar key keeps its own "hotbar" type whatever this
+	# container is being used as.
+	for i in range(mini(capacity, slots.size())):
+		slots[i].slot_type = type_name
 
 
 # =============================================================================
@@ -227,51 +252,74 @@ func find_first_index_of(item_id: String) -> int:
 
 
 # =============================================================================
-# LINKED ITEM TINTING
+# CELLS PAST THE GRID — ATTACHING THE HOTBAR
 # =============================================================================
 
-func set_linked_item_ids(item_ids: Array) -> void:
-	linked_item_ids.clear()
-	for item_id in item_ids:
-		var s: String = str(item_id)
-		if s != "":
-			linked_item_ids[s] = true
-
-	_refresh_all_slot_styles()
-
-	# TEMPORARY DIAGNOSTIC — delete once the gold border is confirmed working.
+func attach_remote_slots(remote: Array) -> void:
+	# The hotbar's slots become cells capacity, capacity + 1, ... of this
+	# container, in the order given.
 	#
-	# Every link in this chain reads correctly: the hotbar pushes ids here, this
-	# repopulates and restyles, the slot asks is_item_linked() and the gold
-	# stylebox has a real 4px border. Static reading cannot say which link is
-	# actually failing, so this prints all three at once.
-	#
-	# WHAT THE LINE TELLS YOU:
-	#   never printed          set_linked_item_ids() is not being reached
-	#   hotbar says []         nothing assigned, or get_item_id() returns ""
-	#   ids and bag disagree   the strings do not match (case, prefix, suffix)
-	#   matches > 0, no gold   the logic is right and it is purely visual
-	if OS.is_debug_build():
-		var bag: PackedStringArray = []
-		var hits: int = 0
-		for slot in slots:
-			if slot != null and slot.stack != null and slot.stack.is_valid():
-				var id: String = slot.stack.data.item_id
-				bag.append(id)
-				if linked_item_ids.has(id):
-					hits += 1
-		print("[HOTBARLINK] hotbar says %s | bag holds %s | matches %d"
-			% [str(linked_item_ids.keys()), str(bag), hits])
+	# ALL OR NOTHING. A key missing from the middle would shift every key after
+	# it one cell to the left, so potions saved on key 4 would load onto key 3.
+	# A partial set is refused outright and the keys stay kept as data, which
+	# loses nothing - the next save still sends them.
+	for entry in remote:
+		if not (entry is InventorySlot) or not is_instance_valid(entry):
+			push_error("InventoryContainer: attach_remote_slots() given a missing or non-slot entry - hotbar not attached")
+			return
+
+	# Carried over rather than lost if the hotbar is re-attached: whatever the
+	# old keys held is what the new ones must show.
+	var carried: Array = _remote_cells()
+
+	for old in _remote_slots:
+		if is_instance_valid(old):
+			_disconnect_slot(old)
+	_remote_slots.clear()
+	slots.resize(capacity)
+
+	for i in range(remote.size()):
+		var slot: InventorySlot = remote[i] as InventorySlot
+		slot.slot_index = capacity + i
+		slot.home_container = self
+		# NOT slot_clicked OR slot_right_clicked. The hotbar answers a
+		# right-click on a key itself, and relaying it too would use the item
+		# twice. What the backpack needs from a key is to hear that it changed
+		# (so the carry saves), and the two gestures the bank listens for.
+		slot.slot_changed.connect(_on_slot_changed)
+		slot.transfer_requested.connect(_on_slot_transfer_requested)
+		slot.slot_double_clicked.connect(_on_slot_double_clicked)
+		slots.append(slot)
+		_remote_slots.append(slot)
+
+	for i in range(_remote_slots.size()):
+		var entry = carried[i] if i < carried.size() else null
+		var stack: ItemStack = _stack_from_entry(entry)
+		if stack == null:
+			_remote_slots[i].clear_stack()
+		else:
+			_remote_slots[i].set_stack(stack)
+	_unattached_tail.clear()
 
 
-func is_item_linked(item_id: String) -> bool:
-	return linked_item_ids.has(item_id)
+func _remote_cells() -> Array:
+	# What cells past the grid hold right now, as save entries - from the
+	# attached keys, or from the tail while nothing is attached.
+	if _remote_slots.is_empty():
+		return _unattached_tail.duplicate()
+	var out: Array = []
+	for slot in _remote_slots:
+		out.append(null if not is_instance_valid(slot) or slot.is_empty() else slot.stack.to_dict())
+	return out
 
 
-func _refresh_all_slot_styles() -> void:
-	for slot in slots:
-		if slot != null:
-			slot.refresh_display()
+func _disconnect_slot(slot: InventorySlot) -> void:
+	if slot.slot_changed.is_connected(_on_slot_changed):
+		slot.slot_changed.disconnect(_on_slot_changed)
+	if slot.transfer_requested.is_connected(_on_slot_transfer_requested):
+		slot.transfer_requested.disconnect(_on_slot_transfer_requested)
+	if slot.slot_double_clicked.is_connected(_on_slot_double_clicked):
+		slot.slot_double_clicked.disconnect(_on_slot_double_clicked)
 
 
 # =============================================================================
@@ -279,12 +327,15 @@ func _refresh_all_slot_styles() -> void:
 # =============================================================================
 
 func to_save_array() -> Array:
+	# Every cell, the hotbar's keys included - attached or still waiting as data.
 	var result: Array = []
 	for slot in slots:
 		if slot.is_empty():
 			result.append(null)
 		else:
 			result.append(slot.stack.to_dict())
+	if _remote_slots.is_empty():
+		result.append_array(_unattached_tail)
 	return result
 
 
@@ -306,7 +357,8 @@ func load_server_array(cells: Array) -> void:
 	#
 	# AN EMPTY ARRAY IS NOT AN EMPTY BACKPACK, and applying one would be data
 	# loss. inventory_payload() always returns CARRY_CAPACITY cells with null in
-	# the gaps, so a genuinely empty bag arrives as [null, null, ...] of length 20.
+	# the gaps - the bag's twenty and then the hotbar's ten - so a genuinely
+	# empty carry arrives as [null, null, ...] of length 30.
 	# A ZERO-LENGTH array means the key was missing - a malformed reply, a 500
 	# body, a renamed field - and load_save_array() opens with clear_inventory().
 	# Doing nothing is the only safe reading of "the server told me nothing".
@@ -335,23 +387,32 @@ func load_save_array(save_array: Array) -> void:
 	clear_inventory()
 
 	for i in range(min(save_array.size(), slots.size())):
-		var entry = save_array[i]
-		if entry == null or typeof(entry) != TYPE_DICTIONARY:
-			continue
+		var stack: ItemStack = _stack_from_entry(save_array[i])
+		if stack != null:
+			slots[i].set_stack(stack)
 
-		var stack: ItemStack = ItemStack.from_dict(entry)
-		if stack == null:
-			continue
-
-		if stack.data.stackable and stack.quantity > stack.data.max_stack:
-			push_warning("InventoryContainer: clamped %s quantity %d -> %d on load" % [
-				stack.data.item_id, stack.quantity, stack.data.max_stack
-			])
-			stack.quantity = stack.data.max_stack
-
-		slots[i].set_stack(stack)
+	# Cells past everything this container can draw yet - the hotbar's keys,
+	# before the hotbar has attached. Kept, not dropped; see CELLS PAST THE GRID.
+	if _remote_slots.is_empty() and save_array.size() > slots.size():
+		_unattached_tail = save_array.slice(slots.size())
 
 	inventory_changed.emit()
+
+
+func _stack_from_entry(entry: Variant) -> ItemStack:
+	if entry == null or typeof(entry) != TYPE_DICTIONARY:
+		return null
+
+	var stack: ItemStack = ItemStack.from_dict(entry)
+	if stack == null:
+		return null
+
+	if stack.data.stackable and stack.quantity > stack.data.max_stack:
+		push_warning("InventoryContainer: clamped %s quantity %d -> %d on load" % [
+			stack.data.item_id, stack.quantity, stack.data.max_stack
+		])
+		stack.quantity = stack.data.max_stack
+	return stack
 
 
 # =============================================================================
@@ -386,14 +447,6 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	var source_slot: InventorySlot = data["source_slot"]
 
 	if source_slot == null or not is_instance_valid(source_slot):
-		return
-
-	# a hotbar slot only ever holds a reference to an item that really lives
-	# in an inventory. dropping it on open space breaks the link and must not
-	# move or copy anything — same rule as InventorySlot._drop_data()'s CASE A.
-	if source_slot is HotbarSlot:
-		source_slot.clear()
-		source_slot.slot_changed.emit(source_slot)
 		return
 
 	# THE BANK RULE HAS TO BE REPEATED HERE, exactly like the loot-bag one in
@@ -436,9 +489,11 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 
 
 func _first_empty_slot() -> InventorySlot:
-	for slot in slots:
-		if slot.is_empty():
-			return slot
+	# THE GRID ONLY. A stack dropped in the gap between two bag cells belongs in
+	# the bag, not on whichever hotbar key happens to be the first empty cell.
+	for i in range(mini(capacity, slots.size())):
+		if slots[i].is_empty():
+			return slots[i]
 	return null
 
 

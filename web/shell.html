@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+<title>Elusion RPG</title>
+<!--
+	Elusion's loader: the page a player sees while the game downloads.
+
+	Set as html/custom_html_shell in export_presets.cfg. The $GODOT_ names are
+	filled in by the exporter. The picture behind the loader is the login
+	screen's own, art/menu/original size.png, embedded so the export is still
+	one folder; if that picture changes, re-embed it:
+	    python -c "import base64;print(base64.b64encode(open('art/menu/original size.png','rb').read()).decode())"
+	The loader stays over the game until the login screen has drawn once
+	(window.elusionReady, called from loginmenu.gd), so the page goes from this
+	straight to that screen with nothing in between.
+-->
+<style>
+:root {
+	--night: #0b0a0f;
+	--panel: rgba(24, 20, 16, 0.92);
+	--edge: #8c734d;
+	--edge-bright: #a68c59;
+	--title-bg: #33291f;
+	--parchment: #ecdcb8;
+	--muted: #bfb79e;
+	--gold: #d9b86b;
+	--amber: #e19339;
+	--error: #ff8a7a;
+}
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+body {
+	background: var(--night);
+	color: var(--parchment);
+	overflow: hidden;
+	touch-action: none;
+	font-family: "Noto Sans", "Open Sans", "Segoe UI", system-ui, sans-serif;
+}
+#canvas {
+	display: block;
+}
+#canvas:focus {
+	outline: none;
+}
+#loader {
+	position: absolute;
+	inset: 0;
+	background: var(--night) url("data:image/png;base64,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") center / cover no-repeat;
+	image-rendering: pixelated;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	padding-right: max(19vw, 16px);
+	transition: opacity 0.35s ease;
+	z-index: 1;
+}
+#loader.gone {
+	opacity: 0;
+	pointer-events: none;
+}
+.panel {
+	box-sizing: border-box;
+	width: min(300px, calc(100vw - 32px));
+	padding: 26px 26px 24px;
+	background: var(--panel);
+	border: 3px solid var(--edge);
+	border-radius: 3px;
+	text-align: center;
+	image-rendering: auto;
+}
+.title {
+	margin: 0 0 20px;
+	padding: 6px 0 7px;
+	background: var(--title-bg);
+	border: 2px solid var(--edge-bright);
+	border-radius: 3px;
+	font-size: 26px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	color: var(--parchment);
+}
+#status {
+	min-height: 20px;
+	margin: 0 0 12px;
+	font-size: 13px;
+	line-height: 1.45;
+	color: var(--muted);
+}
+#status.error {
+	color: var(--error);
+	text-align: left;
+}
+.bar {
+	height: 10px;
+	border: 2px solid var(--edge);
+	border-radius: 2px;
+	background: #120f0c;
+	overflow: hidden;
+}
+#fill {
+	height: 100%;
+	width: 0;
+	background: linear-gradient(#e8c983, #b8914a);
+	transition: width 0.2s linear;
+}
+.bar.waiting #fill {
+	width: 30%;
+	animation: sweep 1.2s ease-in-out infinite alternate;
+}
+@keyframes sweep {
+	from { margin-left: 0; }
+	to { margin-left: 70%; }
+}
+#amount {
+	margin-top: 8px;
+	font-size: 12px;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+#retry {
+	display: none;
+	margin: 16px auto 0;
+	padding: 8px 22px;
+	font: inherit;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--gold);
+	background: var(--title-bg);
+	border: 2px solid var(--edge);
+	border-radius: 3px;
+	cursor: pointer;
+}
+#retry:hover {
+	border-color: var(--gold);
+}
+@media (max-aspect-ratio: 4/3) {
+	#loader {
+		justify-content: center;
+		padding-right: 0;
+	}
+}
+</style>
+$GODOT_HEAD_INCLUDE
+</head>
+<body>
+<canvas id="canvas">Your browser does not support the canvas element.</canvas>
+<noscript>Elusion runs in your browser and needs JavaScript switched on for this page.</noscript>
+
+<div id="loader">
+	<div class="panel">
+		<div class="title">ELUSION RPG</div>
+		<div id="status">Getting the game ready...</div>
+		<div class="bar waiting" id="bar"><div id="fill"></div></div>
+		<div id="amount">&nbsp;</div>
+		<button id="retry" type="button">Try again</button>
+	</div>
+</div>
+
+<script src="$GODOT_URL"></script>
+<script>
+const GODOT_CONFIG = $GODOT_CONFIG;
+const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const loader = document.getElementById('loader');
+	const status = document.getElementById('status');
+	const bar = document.getElementById('bar');
+	const fill = document.getElementById('fill');
+	const amount = document.getElementById('amount');
+	const retry = document.getElementById('retry');
+	let done = false;
+	// The engine names the tab after the project ("ElusionRPG") as it starts;
+	// the page's own title is the game's name, so it goes back when the game
+	// is up.
+	const pageTitle = document.title;
+
+	function megabytes(bytes) {
+		return (bytes / 1048576).toFixed(1);
+	}
+
+	// THE GAME SAYS WHEN IT IS UP. loginmenu.gd calls this once its screen has
+	// drawn; until then the canvas holds the engine's boot splash, and taking
+	// the loader away early shows it.
+	function reveal() {
+		if (done) {
+			return;
+		}
+		done = true;
+		document.title = pageTitle;
+		loader.classList.add('gone');
+		setTimeout(function () { loader.remove(); }, 400);
+		document.getElementById('canvas').focus();
+	}
+	window.elusionReady = reveal;
+
+	function fail(message) {
+		done = true;
+		bar.style.display = 'none';
+		amount.style.display = 'none';
+		status.className = 'error';
+		status.textContent = message;
+		retry.style.display = 'block';
+	}
+	retry.addEventListener('click', function () { window.location.reload(); });
+
+	const missing = Engine.getMissingFeatures({ threads: GODOT_THREADS_ENABLED });
+	if (missing.length !== 0) {
+		// In the words a player can act on. The list is still there for a
+		// report: a browser too old for WebGL 2 says so by name.
+		fail('This browser cannot run Elusion. It needs WebGL 2 and WebAssembly, '
+			+ 'which every current Chrome, Edge, Firefox and Safari has. Missing: '
+			+ missing.join(', ') + '.');
+		retry.style.display = 'none';
+		return;
+	}
+
+	status.textContent = 'Downloading the game...';
+	engine.startGame({
+		'onProgress': function (current, total) {
+			if (current > 0 && total > 0) {
+				bar.classList.remove('waiting');
+				fill.style.width = Math.min(100, (100 * current) / total).toFixed(1) + '%';
+				amount.textContent = megabytes(current) + ' of ' + megabytes(total) + ' MB';
+				if (current >= total) {
+					status.textContent = 'Starting...';
+				}
+			} else {
+				bar.classList.add('waiting');
+			}
+		},
+	}).then(function () {
+		status.textContent = 'Starting...';
+		amount.innerHTML = '&nbsp;';
+		// A build that never calls elusionReady still gets its canvas back.
+		setTimeout(reveal, 15000);
+	}, function (err) {
+		console.error(err);
+		fail('The game could not load (' + (err && err.message ? err.message : String(err))
+			+ '). Check your connection and try again.');
+	});
+}());
+</script>
+</body>
+</html>

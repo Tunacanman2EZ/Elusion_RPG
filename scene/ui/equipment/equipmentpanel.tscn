@@ -24,7 +24,7 @@ anchor_right = 1.0
 offset_left = -551.0
 offset_top = 27.0
 offset_right = -291.0
-offset_bottom = 407.0
+offset_bottom = 479.0
 grow_horizontal = 0
 mouse_filter = 2
 theme = ExtResource("3_eqtheme")
@@ -69,7 +69,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 focus_mode = 0
-text = "x"
+text = "×"
 
 [node name="dollrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1930055409]
 layout_mode = 2
@@ -257,4 +257,70 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 theme_override_font_sizes/font_size = 11
 text = "0% less"
+horizontal_alignment = 2
+
+[node name="healthbonusrow" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/summary" unique_id=1930055434]
+layout_mode = 2
+theme_type_variation = &"PanelStatBg"
+
+[node name="box" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary/healthbonusrow" unique_id=1930055435]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/healthbonusrow/box" unique_id=1930055436]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 11
+text = "Health from gear:"
+
+[node name="equiphealthbonusvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/healthbonusrow/box" unique_id=1930055437]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "-"
+horizontal_alignment = 2
+
+[node name="manabonusrow" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/summary" unique_id=1930055438]
+layout_mode = 2
+theme_type_variation = &"PanelStatBg"
+
+[node name="box" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary/manabonusrow" unique_id=1930055439]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/manabonusrow/box" unique_id=1930055440]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 11
+text = "Mana from gear:"
+
+[node name="equipmanabonusvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/manabonusrow/box" unique_id=1930055441]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "-"
+horizontal_alignment = 2
+
+[node name="damagebonusrow" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/summary" unique_id=1930055442]
+layout_mode = 2
+theme_type_variation = &"PanelStatBg"
+
+[node name="box" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary/damagebonusrow" unique_id=1930055443]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/damagebonusrow/box" unique_id=1930055444]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 11
+text = "Damage from gear:"
+
+[node name="equipdamagebonusvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/damagebonusrow/box" unique_id=1930055445]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "-"
 horizontal_alignment = 2

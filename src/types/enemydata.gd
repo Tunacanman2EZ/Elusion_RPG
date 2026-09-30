@@ -95,6 +95,32 @@ class_name EnemyData
 @export var max_item_slots: int = 3
 @export_range(0.0, 1.0, 0.01) var slot_fill_chance: float = 0.15
 
+# WHICH TIER A FILLED SLOT ROLLS, TOP FIRST: index 0 is max_loot_tier itself,
+# index 1 one tier below, and so on. The tier is picked FIRST, then an item
+# inside it, evenly.
+#
+# IT USED TO BE ONE WEIGHT PER ITEM, 2^(max_loot_tier - tier), and that let the
+# catalogue decide the odds instead of this file. Eleven iron pieces outvoted
+# everything, so 58% of what a boss dropped was iron. Now "15% of slots are this
+# enemy's own tier" means exactly that, however many items the tier holds.
+#
+# Never below iron: steps that would fall under tier 1 land on tier 1, and a
+# tier with nothing droppable in it rolls the nearest tier below that has
+# something. The odds should add up to 1; the exporter refuses them otherwise.
+@export var tier_odds: PackedFloat32Array = PackedFloat32Array([0.15, 0.45, 0.40])
+
+# Chance a filled slot rolls ONE TIER ABOVE max_loot_tier instead of using
+# tier_odds. Zero for ordinary enemies; it is what makes an elite worth hunting.
+@export_range(0.0, 1.0, 0.01) var tier_up_chance: float = 0.0
+
+# The item slots only hold weapons and armour. A boss's one guaranteed slot is
+# a piece of gear, never a potion that happened to win the roll.
+@export var slots_are_gear: bool = false
+
+# Chance of one extra potion (a consumable, same tier odds) on top of the
+# slots, so a boss bag is the gear piece plus a potion half the time.
+@export_range(0.0, 1.0, 0.01) var bonus_potion_chance: float = 0.0
+
 
 # =============================================================================
 # PETS
@@ -282,4 +308,32 @@ class_name EnemyData
 #
 # Applied in BaseEnemy.spawn_projectile_node(), beside the tint, for the same
 # reason: one place that every enemy's shot already passes through.
+#
+# TWO SHOTS DO NOT PASS THROUGH IT, and both read this field themselves: the
+# bush mage's vine (bushmage.gd) and a boss's spikes, swing and stalker trail
+# (BossEnemy.spike_damage() and its two siblings). A boss's value is its
+# SPIKE, 1.5x its band's normal hit; the swing and trail are shares of it.
 @export var projectile_damage: int = 0
+
+
+# =============================================================================
+# SPLITTING
+# =============================================================================
+
+# WHAT THIS ENEMY BURSTS INTO, for a large slime: the EnemyData its smalls are
+# given when it splits at half health. Null means "use the script's own
+# default", which is how the original poison slime still works.
+#
+# WHY THE DATA HAS TO SAY IT. poisonslime.gd spawns its children from the base
+# scene, and without an EnemyData a child falls back to poisonslimesmall - so a
+# large wind slime used to burst into four generic poison smalls that reported
+# the wrong id, rolled the wrong loot and hit for the arrow scene's 7. The
+# element came through (element_override) and nothing else did.
+#
+# ALSO WHAT THE SERVER'S KILL CEILING COUNTS. The exporter credits the enemy
+# named here with (1 twin + 1) x small_count placements for every large placed,
+# because that is how many of them one placed large can put into the world per
+# respawn - see exportgamedata.gd, _annotate_placement(). A large that splits
+# should itself have grants_rewards off: everything it is worth walks away as
+# its smalls.
+@export var split_into: EnemyData = null

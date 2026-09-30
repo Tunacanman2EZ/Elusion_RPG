@@ -34,18 +34,9 @@
 # - damages enemies in $aura collision area every aura_tick seconds
 # - auto-deactivates when mana hits 0 OR tank dies
 #
-# XP ON HIT:
-# grants Attack XP (universal — see player.gd's gain_attack_xp()) per enemy
-# per aura tick, same place damage already applies in _deal_aura_damage().
-# WORTH WATCHING: unlike warrior's discrete swings, mage's discrete casts,
-# or healer's discrete shots, the aura is a CONTINUOUS tick (every
-# aura_tick seconds, for as long as it's active) — a tank parked in a
-# crowd accumulates attack XP considerably faster than the other classes'
-# discrete-hit pattern. The per-hit default (5) is the same as everywhere
-# else rather than a guessed-at "corrected" lower value — tune
-# attack_xp_on_aura_tick down if playtesting shows it's too fast. That is a
-# balance dial and nothing else: the rate here has never been changed to
-# make the code cheaper, only the number of times it is written down.
+# NO ATTACK XP PER TICK. The aura used to add 2 attack XP per enemy per tick
+# on this screen only; attack trains at the kill, on the server, and the bar
+# shows that (Player.apply_server_attack()).
 extends "res://src/characters/player.gd"
 
 # This class's stat curve. See ClassData — hp_base and friends used to be
@@ -67,19 +58,6 @@ const CLASS_DATA := preload("res://data/classes/tank.tres")
 @export var aura_tick: float = 0.25
 @export var mana_drain_tick: float = 0.5
 @export var mana_drain_cost: int = 2
-
-# Attack XP per enemy per aura tick. See the class comment's XP ON HIT
-# section for the tick-rate caveat.
-#
-# LOWERED FROM 5 TO MATCH THE OTHER CLASSES, and the old comment above it
-# predicted exactly this. Warrior pays 5 attack XP per enemy per swing and
-# swings about every 0.6s — 8.3 XP/sec against one target. The aura ticks four
-# times a second, so 5 per tick was 20 XP/sec against one target and four times
-# that in a pack of four. 2 brings a single target to 8 XP/sec, level with
-# warrior, and leaves the pack bonus as the tank's genuine advantage rather
-# than a multiplier on top of an already-higher rate.
-@export var attack_xp_on_aura_tick: int = 2
-
 
 # =============================================================================
 # NODE REFERENCES
@@ -393,33 +371,14 @@ func _deal_aura_damage() -> void:
 	var scaled_aura_damage: int = roundi(
 		(aura_damage + weapon_damage_roll()) * get_damage_multiplier())
 
-	# ONE XP GRANT PER TICK, NOT ONE PER ENEMY.
-	#
-	# gain_attack_xp() ends in CharacterData.save_character_state(), which
-	# looks up the HUD by group and serialises the whole inventory into fresh
-	# dictionaries before handing off to the debounced save. This loop ran that
-	# once per enemy, four times a second (aura_tick = 0.25), for as long as
-	# the aura was up — so standing in a pack of six meant twenty-four full
-	# inventory walks every second, to record one number. It is the same
-	# mistake warrior.gd's _deal_melee_damage() made, in a far hotter loop:
-	# warrior paid it per swing, tank paid it per tick, forever.
-	#
-	# The XP is identical, not merely close. The proficiency multiplier
-	# truncates to an int, which is what made warrior's batched total differ
-	# slightly from its per-hit one — but tank boosts "defense", not "attack",
-	# so attack sits at 1.0 here and n * int(5 * 1.0) == int(5n * 1.0).
-	var hits: int = 0
-
+	# NO XP HERE - see the class comment. Attack trains at the kill, on the
+	# server; this loop only hurts things.
 	for body in _aura.get_overlapping_bodies():
 		if not body.is_in_group("enemies"):
 			continue
 		if not body.has_method("take_damage"):
 			continue
 		body.take_damage(scaled_aura_damage)
-		hits += 1
-
-	if hits > 0:
-		gain_attack_xp(attack_xp_on_aura_tick * hits)
 
 
 # =============================================================================

@@ -12,3 +12,6 @@ pet_drop_id = "petelectricsprite"
 xp_reward = 45
 attack_xp_reward = 10
 max_hp = 130
+bag_drop_chance = 0.3
+max_item_slots = 1
+slot_fill_chance = 0.3

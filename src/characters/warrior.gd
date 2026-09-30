@@ -128,10 +128,6 @@ const OCTANT_DIRECTIONS := [
 var _last_swing_cardinal: String = ""
 
 
-# Attack XP granted per enemy a swing connects with. Paid out in one call at
-# the end of each damage pass rather than per enemy — see _deal_melee_damage().
-const ATTACK_XP_PER_HIT: int = 5
-
 # A direction vector shorter than this counts as "no direction at all", which
 # happens when the cursor sits exactly on the player. Compared against
 # length_squared() so neither of the two hot paths that use it takes a sqrt:
@@ -292,10 +288,10 @@ func _set_stat_curve() -> void:
 # =============================================================================
 
 func _set_skill_proficiency() -> void:
-	# warrior's specialty: attack climbs 50% faster than any other class
-	# landing the same hits. every class still gains SOME attack XP from
-	# any hit (see player.gd's gain_attack_xp()) — this is what keeps
-	# warrior true to its melee identity despite that being universal now.
+	# warrior's specialty: attack climbs 50% faster than any other class.
+	# Attack trains at the kill and the SERVER applies this (its own
+	# SKILL_PROFICIENCY, the same 1.5), so this entry is the client's copy of
+	# the table rather than a multiplier anything here applies to attack.
 	#
 	# This replaced a flat +1 attack / +1 defense granted on every character
 	# level-up. That fired no matter how the level was earned, so a warrior who
@@ -629,29 +625,14 @@ func _deal_melee_damage() -> void:
 	if _swing_hitbox == null:
 		return
 
-	# ONE XP GRANT PER PASS, NOT ONE PER ENEMY.
-	#
-	# gain_attack_xp() ends in CharacterData.save_character_state(), which
-	# looks up the HUD by group and serialises the entire inventory into fresh
-	# dictionaries before handing off to the debounced save. Calling it once
-	# per enemy meant a five-target cleave did all of that five times inside a
-	# single frame, to record one number.
-	#
-	# The XP total is not quite identical, and it is the batched one that is
-	# right: the proficiency multiplier used to be truncated to an int on every
-	# individual hit (5 × 1.5 -> 7, five times, = 35) where it is now truncated
-	# once on the sum (25 × 1.5 -> 37). Rounding down five times loses more
-	# than rounding down once.
-	var hits: int = 0
-
+	# NO XP HERE. A swing used to add 5 attack XP per enemy it touched, on this
+	# screen only - attack trains at the kill, on the server, and that is the
+	# number the bar shows now (Player.apply_server_attack()).
 	for area in _swing_hitbox.get_overlapping_areas():
-		hits += _try_damage(area.get_parent())
+		_try_damage(area.get_parent())
 
 	for body in _swing_hitbox.get_overlapping_bodies():
-		hits += _try_damage(body)
-
-	if hits > 0:
-		gain_attack_xp(ATTACK_XP_PER_HIT * hits)
+		_try_damage(body)
 
 
 func _try_damage(target: Node) -> int:

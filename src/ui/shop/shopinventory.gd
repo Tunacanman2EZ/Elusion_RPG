@@ -163,9 +163,15 @@ func _build_row(entry: Dictionary) -> Control:
 	text_column.add_child(name_label)
 
 	var sub_label := Label.new()
-	sub_label.text = "Tier %d  ·  %s%s" % [
-		int(entry.get("tier", 1)),
-		str(entry.get("type_name", "")).capitalize(),
+	# THE RARITY WORD AND THE GAME'S SPELLING. It said "Tier 3  ·  Armor" beside
+	# a tooltip that calls the same piece "Rare" and its stat "Armour" - the
+	# server's enum name, capitalised, and a number the rest of the UI never uses.
+	var type_word: String = str(entry.get("type_name", "")).capitalize()
+	if type_word == "Armor":
+		type_word = "Armour"
+	sub_label.text = "%s  ·  %s%s" % [
+		GameConstants.rarity_name(int(entry.get("tier", 1))),
+		type_word,
 		_requirement_suffix(entry),
 	]
 	sub_label.add_theme_font_size_override("font_size", 10)
@@ -434,7 +440,7 @@ func _refusal_text(res: Dictionary, fallback: String) -> String:
 	# an app.py older than the shop.
 	if status == 404:
 		push_warning("ShopInventory: the server has no /api/shop route — is app.py current and restarted?")
-		return "The server doesn't know this shop yet."
+		return "This shop is not open right now."
 
 	var message: String = str(res.get("error", ""))
 	if message != "":

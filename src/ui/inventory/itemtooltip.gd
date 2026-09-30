@@ -28,6 +28,21 @@ const CURSOR_OFFSET := Vector2(16, 16)
 # z_index used to render above all other UI elements
 const TOOLTIP_Z_INDEX := 100
 
+# WHAT CHANGES IF YOU PUT IT ON. Every tier from jade up carries a bonus now,
+# and "+45 max health" on its own does not say whether that is more than the
+# piece you are already wearing - which is the only thing a player hovering a
+# drop wants to know. [field, label, suffix], in the order they are listed.
+const COMPARED_STATS := [
+	["damage", "Damage", ""],
+	["armor_value", "Armour", ""],
+	["bonus_max_hp", "Max health", ""],
+	["bonus_max_mana", "Max mana", ""],
+	["bonus_damage_percent", "Damage bonus", "%"],
+]
+const COMPARE_BETTER := Color(0.55, 0.85, 0.5)
+const COMPARE_WORSE := Color(0.9, 0.45, 0.4)
+const COMPARE_SAME := Color(0.8, 0.75, 0.65)
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -50,6 +65,14 @@ const TOOLTIP_Z_INDEX := 100
 # on its own.
 @onready var quantity_label:    Label = get_node_or_null("%tooltipquantity")
 
+# THE STAT ROWS THE SCENE HAS ALWAYS HAD AND NOTHING FILLED. itemtooltip.tscn
+# carries a statscontainer with a hidden row template under a second rule, and
+# until the comparison below used them every tooltip ended in a rule with an
+# empty band under it. They are shown only when there is something to compare.
+@onready var stats_box:     VBoxContainer = get_node_or_null("%statscontainer")
+@onready var stat_template: Control = get_node_or_null("%stattemplate")
+@onready var stats_rule:    Control = get_node_or_null("margincontainer/vboxcontainer/hseparator2")
+
 
 # =============================================================================
 # STATE
@@ -70,9 +93,43 @@ const TOOLTIP_Z_INDEX := 100
 # LIFECYCLE
 # =============================================================================
 
+# The name label's own colour from the scene, for common items.
+var _name_default_colour: Color = Color(1, 0.9, 0.6, 1)
+
+# One line under the name saying how rare the thing is, in its colour. Built in
+# code so the scene stays the artist-facing layout it is.
+var rarity_label: Label = null
+
+# "Compared with your Jade Cuirass", over the comparison rows. Built in code for
+# the same reason, and wrapped, because an item's name can be long.
+var compare_heading: Label = null
+
+
 func _ready() -> void:
 	# register so slots can find this via group lookup
 	add_to_group("itemtooltip")
+
+	if name_label != null:
+		_name_default_colour = name_label.get_theme_color("font_color")
+		rarity_label = Label.new()
+		rarity_label.name = "tooltiprarity"
+		rarity_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rarity_label.add_theme_font_size_override("font_size", 11)
+		var header: Node = name_label.get_parent()
+		header.get_parent().add_child(rarity_label)
+		header.get_parent().move_child(rarity_label, header.get_index() + 1)
+
+	if stats_box != null:
+		compare_heading = Label.new()
+		compare_heading.name = "compareheading"
+		compare_heading.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		compare_heading.add_theme_font_size_override("font_size", 10)
+		compare_heading.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55, 1))
+		compare_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		compare_heading.custom_minimum_size = Vector2(180, 0)
+		stats_box.add_child(compare_heading)
+		stats_box.move_child(compare_heading, 0)
+	_show_comparison(false)
 
 	# tooltip never captures mouse events — it just displays info, never
 	# intercepts clicks meant for slots underneath
@@ -99,25 +156,25 @@ func _process(_delta: float) -> void:
 # PUBLIC API
 # =============================================================================
 
-func show_for_stack(stack: ItemStack, _source_slot: Node, description_suffix: String = "") -> void:
-	# UNDERSCORED, AND KEPT. Nothing reads _source_slot: the tracker it fed was
-	# removed because it was written and never read (see the note at the top of
-	# this file). The parameter stays so the three call sites keep working and so
-	# the slot is still handed over if the stale-exit guard described up there
-	# ever gets built - the underscore is GDScript's way of saying "deliberately
-	# unused", and without it every parse of this file prints a warning.
+func show_for_stack(stack: ItemStack, source_slot: Node) -> void:
+	# THE SLOT IS READ NOW, for one question: is this the piece being worn? A
+	# square on the equipment doll compares with nothing - it IS what everything
+	# else is compared with. (It was underscored and unused for a while after a
+	# tracker that fed it was removed; see the note at the top of this file.)
 	#
-	# The docstring here used to claim the slot was "tracked so we can verify
-	# hide requests come from the same slot". That was inherited from the removed
-	# code and was describing something the file never did.
-	#
-	# description_suffix is optional extra text appended below the description.
-	# used by HotbarSlot to add "linked from inventory" hint so players
-	# understand the hotbar mirrors inventory items rather than duplicating.
+	# There was a third parameter, a line appended under the description, and
+	# its only caller was a hotbar key adding "Linked from inventory". The keys
+	# hold their items now, so there is no link to explain and it is gone.
 	if stack == null or not stack.is_valid():
 		return
 
-	_populate_labels(stack, description_suffix)
+	_populate_labels(stack)
+	populate_comparison(stack.data, source_slot, get_tree().get_first_node_in_group("player"))
+
+	# FITTED TO WHAT IT NOW HOLDS. A PanelContainer grows to its content and
+	# never shrinks back, so without this a short tooltip after a long one
+	# keeps the long one's height as empty space.
+	reset_size()
 
 	visible = true
 
@@ -134,10 +191,8 @@ func hide_tooltip() -> void:
 # LABEL POPULATION
 # =============================================================================
 
-func _populate_labels(stack: ItemStack, description_suffix: String = "") -> void:
+func _populate_labels(stack: ItemStack) -> void:
 	# fill in the three labels from the stack's ItemData.
-	# description_suffix is appended below the base description for
-	# context-aware tooltips (e.g., hotbar slots show "linked from inventory").
 
 	if icon_rect != null:
 		# The item's own icon, the same art the backpack cell draws. The node is
@@ -149,6 +204,17 @@ func _populate_labels(stack: ItemStack, description_suffix: String = "") -> void
 
 	if name_label != null:
 		name_label.text = stack.data.display_name
+		# THE NAME TAKES THE RARITY COLOUR from uncommon up; a common name keeps
+		# the tooltip's own gold, so an iron sword looks the way it always did.
+		var tier: int = int(stack.data.tier)
+		var colour: Color = _name_default_colour
+		if tier >= GameConstants.RARITY_FRAME_MIN_TIER:
+			colour = GameConstants.rarity_colour(tier)
+		name_label.add_theme_color_override("font_color", colour)
+
+	if rarity_label != null:
+		rarity_label.text = GameConstants.rarity_name(int(stack.data.tier))
+		rarity_label.add_theme_color_override("font_color", GameConstants.rarity_colour(int(stack.data.tier)))
 
 	if description_label != null:
 		# description is optional on ItemData — fall back to empty string
@@ -196,12 +262,6 @@ func _populate_labels(stack: ItemStack, description_suffix: String = "") -> void
 				desc += "\n"
 			desc += worth
 
-		# append context suffix on its own line if provided
-		if description_suffix != "":
-			if desc != "":
-				desc += "\n"
-			desc += description_suffix
-
 		description_label.text = desc
 
 	if quantity_label != null:
@@ -212,6 +272,96 @@ func _populate_labels(stack: ItemStack, description_suffix: String = "") -> void
 		else:
 			quantity_label.visible = false
 
+
+
+# =============================================================================
+# COMPARED WITH WHAT YOU ARE WEARING
+# =============================================================================
+
+static func compare_rows(candidate: ItemData, worn: ItemData) -> Array:
+	# One {label, delta, suffix} per stat that would change, in COMPARED_STATS
+	# order. `worn` null means the slot is empty, so every stat is a gain.
+	var rows: Array = []
+	if candidate == null:
+		return rows
+	for spec in COMPARED_STATS:
+		var field: String = spec[0]
+		var gets: int = int(candidate.get(field)) if field in candidate else 0
+		var has: int = int(worn.get(field)) if worn != null and field in worn else 0
+		if gets != has:
+			rows.append({"label": spec[1], "delta": gets - has, "suffix": spec[2]})
+	return rows
+
+
+static func compare_heading_text(worn: ItemData) -> String:
+	if worn == null:
+		return "Nothing is worn there yet - all of it is a gain."
+	return "Compared with your %s:" % worn.display_name
+
+
+func populate_comparison(data: ItemData, source_slot: Node, wearer: Node) -> void:
+	# NOTHING TO COMPARE, and the rows stay hidden, when the thing is not gear,
+	# when it is the worn piece itself, when nobody is playing, or when this
+	# class could never wear it - "+40 armour" on plate over a mage's robe is
+	# a comparison with a choice nobody has. A level requirement does not hide
+	# it: what a piece will be worth at level 16 is worth knowing at 12.
+	var slot_name: String = ItemData.slot_name(int(data.equip_slot)) if data != null else ""
+	if slot_name == "" or source_slot is EquipmentSlot or wearer == null \
+			or not wearer.has_method("equipped_id") or not wearer.has_method("equip_check"):
+		_show_comparison(false)
+		return
+	if str(wearer.equip_check(str(data.item_id)).get("reason", "")) == "class":
+		_show_comparison(false)
+		return
+
+	var worn: ItemData = ItemRegistry.get_item(wearer.equipped_id(slot_name))
+	# AN EMPTY SLOT GETS THE HEADING AND NO ROWS. Against nothing, every row is
+	# the item's own number again - the stat line above, said twice in a
+	# different case - so the heading says so in one line instead.
+	var rows: Array = compare_rows(data, worn) if worn != null else []
+	_clear_compare_rows()
+	if compare_heading != null:
+		compare_heading.text = compare_heading_text(worn)
+	if rows.is_empty() and worn != null:
+		_add_compare_row("No change", "", COMPARE_SAME)
+	for row in rows:
+		var delta: int = int(row["delta"])
+		_add_compare_row(str(row["label"]), "%+d%s" % [delta, str(row["suffix"])],
+			COMPARE_BETTER if delta > 0 else COMPARE_WORSE)
+	_show_comparison(true)
+
+
+func _show_comparison(on: bool) -> void:
+	if stats_box != null:
+		stats_box.visible = on
+	if stats_rule != null:
+		stats_rule.visible = on
+
+
+func _clear_compare_rows() -> void:
+	if stats_box == null:
+		return
+	for child in stats_box.get_children():
+		if child.has_meta("compare_row"):
+			# Out of the container NOW, so this frame's size does not count it.
+			stats_box.remove_child(child)
+			child.queue_free()
+
+
+func _add_compare_row(label: String, value: String, colour: Color) -> void:
+	if stats_box == null or stat_template == null:
+		return
+	var row: Control = stat_template.duplicate() as Control
+	row.set_meta("compare_row", true)
+	row.visible = true
+	var name_cell: Label = row.get_node_or_null("hboxcontainer/statlabel") as Label
+	var value_cell: Label = row.get_node_or_null("hboxcontainer/statvalue") as Label
+	if name_cell != null:
+		name_cell.text = label
+	if value_cell != null:
+		value_cell.text = value
+		value_cell.add_theme_color_override("font_color", colour)
+	stats_box.add_child(row)
 
 
 # =============================================================================
@@ -231,11 +381,28 @@ func _requirement_lines(data: ItemData) -> String:
 		stats.append("%d damage" % int(data.damage))
 	if "armor_value" in data and int(data.armor_value) > 0:
 		stats.append("%d armour" % int(data.armor_value))
+	# WHAT THE AMULETS ADD. Signed, because these are added to the character
+	# rather than being the item's own number the way damage and armour are.
+	if "bonus_max_hp" in data and int(data.bonus_max_hp) > 0:
+		stats.append("+%d max health" % int(data.bonus_max_hp))
+	if "bonus_max_mana" in data and int(data.bonus_max_mana) > 0:
+		stats.append("+%d max mana" % int(data.bonus_max_mana))
+	if "bonus_damage_percent" in data and int(data.bonus_damage_percent) > 0:
+		# "damage bonus", not "damage": a sword's line read "32 Damage, +2%
+		# Damage", one word for two different numbers. The comparison rows and
+		# the Gear window call it the same thing.
+		stats.append("+%d%% damage bonus" % int(data.bonus_damage_percent))
 	if "restore_amount" in data and int(data.restore_amount) > 0:
 		var pool: String = ItemData.RestoreTarget.keys()[int(data.restore_target)] \
 			if int(data.restore_target) < ItemData.RestoreTarget.size() else ""
+		# THE ONLY PLACE THE NUMBER IS SAID. Every potion and cooked fish used to
+		# end its description with "Restores 260 HP." as well, so the tooltip
+		# said it twice - once as typed, once from the data, and capitalize()
+		# turned the second "hp" into "Hp". The descriptions are flavour now and
+		# this line, which cannot drift from restore_amount, is the number.
 		if pool != "" and pool != "NONE":
-			stats.append("restores %d %s" % [int(data.restore_amount), pool.to_lower()])
+			var noun: String = "health" if pool == "HP" else pool.to_lower()
+			stats.append("restores %d %s" % [int(data.restore_amount), noun])
 	if not stats.is_empty():
 		lines.append(", ".join(stats).capitalize())
 
@@ -292,9 +459,9 @@ func _worth_line(data: ItemData, quantity: int) -> String:
 		# THE SAME TEST inventoryscreen.gd::_use_currency_pile() routes on, and
 		# deliberately so: if the tooltip and the right-click ever disagreed about
 		# which pool a pile feeds, the tooltip would be the one lying.
-		var noun: String = "lusions" if "lusion" in str(data.item_id).to_lower() \
-			else "gold"
-		return "Cash in for %s %s" % [GameConstants.commas(total), noun]
+		if "lusion" in str(data.item_id).to_lower():
+			return "Cash in for %s" % GameConstants.counted(total, "lusion")
+		return "Cash in for %s" % GameConstants.gold_text(total)
 
 	if count > 1:
 		return "Worth %s each  (%s for %d)" % [

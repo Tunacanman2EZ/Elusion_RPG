@@ -33,13 +33,6 @@ extends SaveStorage
 # SKILL_GROWTH_FACTORS in characterdata.gd. All three spell it "defense".
 const SKILL_IDS := ["attack", "defense", "agility", "magic", "fishing", "cooking"]
 
-# The hotbar is nine keys, because the HUD draws nine. The server pads and
-# trims to the same number rather than refusing a body of the wrong length —
-# an older client sending seven is not lying about anything, it just predates
-# two of the keys, and 400-ing an otherwise honest save over the shape of a
-# convenience feature would stop that client saving at all.
-const HOTBAR_SIZE := 9
-
 # Mirrors the client's own SAVE_VERSION. Stamped onto loaded payloads so
 # CharacterData's migration path sees a current save rather than a versionless
 # one it would try to upgrade.
@@ -48,11 +41,11 @@ const PAYLOAD_VERSION := 3
 
 # What was last successfully pushed, per endpoint, as JSON text.
 #
-# WHY: save() runs on a two-second debounce during play, and a full push is four
+# WHY: save() runs on a two-second debounce during play, and a full push is three
 # requests per character plus two for the account. With four characters that is
-# eighteen requests every two seconds, almost all of them re-sending bytes the
+# fourteen requests every two seconds, almost all of them re-sending bytes the
 # server already has. Comparing against the last push turns a quiet minute into
-# zero requests instead of five hundred and forty.
+# zero requests instead of four hundred and twenty.
 var _last_pushed: Dictionary = {}
 
 # True while a push is in flight, so a debounce tick landing mid-push does not
@@ -63,6 +56,14 @@ var _pushing: bool = false
 # beats dropping it, and _push() for how it is drained.
 var _queued_payload: Dictionary = {}
 var _has_queued: bool = false
+
+# Sections whose last push was refused or never answered, by the same key as
+# _last_pushed. See has_unpushed().
+var _failed_keys: Dictionary = {}
+
+# Sections already handed to a closing page, by key, with the fingerprint that
+# went. See requests_before_leaving().
+var _sent_leaving: Dictionary = {}
 
 
 func _init() -> void:
@@ -173,20 +174,12 @@ func _slot_from_server(data: Dictionary) -> Dictionary:
 		"character":     str(data.get("class_id", "")),
 		"active_pet_id": str(data.get("active_pet_id", "")),
 
-		# GEAR AND THE HOTBAR, read back under the names CharacterData uses.
+		# GEAR, read back under the name CharacterData uses.
 		#
-		# The hotbar is the reason this pair exists at all. It lived only in the
-		# local slot dictionary, so it survived a scene change and did not
-		# survive a re-login — the pet came back, because active_pet_id has a
-		# column, and the hotbar did not, because it had none. Nobody decided
-		# that; it was simply never wired, and equipment would have inherited
-		# the same hole on its first day.
-		#
-		# "hotbar" on the wire, "hotbar_assignments" in the slot. The client's
-		# name predates the column, and renaming a saved key would cost a
-		# migration to fix a spelling.
+		# The hotbar used to come back beside it as a list of item ids, one per
+		# key. The keys hold items now, and arrive as cells 20-29 of "inventory"
+		# below - there is no separate hotbar on the wire in either direction.
 		"equipment":          _dict(data.get("equipment", {})),
-		"hotbar_assignments": _string_array(data.get("hotbar", []), HOTBAR_SIZE),
 
 		# The map you have uncovered. Opaque here on purpose — WorldMap knows
 		# what the bytes mean and this layer does not need to.
@@ -200,7 +193,7 @@ func _slot_from_server(data: Dictionary) -> Dictionary:
 		"xp":          _int(status.get("xp", 0)),
 		# The server's xp_to_next is the client's xp_next. Different name for
 		# the same number; the sanitizer recomputes it from level anyway.
-		"xp_next":     _int(status.get("xp_to_next", 100), 100),
+		"xp_next":     _int(status.get("xp_to_next", int(GameConstants.XP_BASE)), int(GameConstants.XP_BASE)),
 		"gold":        _int(status.get("gold", 0)),
 
 		"hp":          _int(status.get("hp", 0)),
@@ -339,8 +332,8 @@ func _save_body(index: int, slot: Dictionary) -> Dictionary:
 	}
 
 	# OMITTED MEANS "LEAVE IT ALONE", and that is the server's rule, not a
-	# convenience here. /api/save keeps whatever the row holds for any of these
-	# three keys the body does not mention — so a slot that has never had gear
+	# convenience here. /api/save keeps whatever the row holds for either of
+	# these keys when the body does not mention it — so a slot that has never had gear
 	# must not send `{}`, which is the explicit "take everything off".
 	#
 	# The distinction is only load-bearing for one case, and it is the case
@@ -349,12 +342,10 @@ func _save_body(index: int, slot: Dictionary) -> Dictionary:
 	# character the server had already dressed.
 	if slot.has("equipment"):
 		body["equipment"] = _dict(slot["equipment"])
-	if slot.has("hotbar_assignments"):
-		body["hotbar"] = _string_array(slot["hotbar_assignments"], HOTBAR_SIZE)
 	if slot.has("explored"):
 		body["explored"] = _dict(slot["explored"])
 
-	# SAME "OMITTED MEANS LEAVE IT ALONE" RULE as the three above. A save from
+	# SAME "OMITTED MEANS LEAVE IT ALONE" RULE as the two above. A save from
 	# before this field existed has no area, and sending "" would move that
 	# character to the server's default instead of leaving it where it was.
 	#
@@ -407,7 +398,7 @@ func _status_body(index: int, slot: Dictionary) -> Dictionary:
 		"max_stamina": _int(slot.get("max_stamina", 0)),
 		"gold":        _int(slot.get("gold", 0)),
 		"xp":          _int(slot.get("xp", 0)),
-		"xp_to_next":  _int(slot.get("xp_next", 100), 100),
+		"xp_to_next":  _int(slot.get("xp_next", int(GameConstants.XP_BASE)), int(GameConstants.XP_BASE)),
 	}
 
 
@@ -433,10 +424,8 @@ func _push_slot(index: int, slot: Dictionary) -> void:
 		push_warning("ServerStorage: slot %d has no character class — not pushed." % index)
 		return
 
-	await _put_if_changed("save:%d" % index, "/api/save", _save_body(index, slot),
-		_save_fingerprint(index, slot))
-	await _put_if_changed("status:%d" % index, "/api/player/status", _status_body(index, slot))
-	await _put_if_changed("inventory:%d" % index, "/api/character/inventory", _inventory_body(index, slot))
+	for section in _slot_sections(index, slot):
+		await _put_if_changed(section[0], section[1], section[2], section[3])
 
 	# SKILLS ARE NOT PUSHED, and this is the last piece of E-2.
 	#
@@ -466,12 +455,76 @@ func _push_slot(index: int, slot: Dictionary) -> void:
 
 
 func _push_account(account: Dictionary) -> void:
-	await _put_if_changed("lusions", "/api/account/lusions", _lusions_body(account))
-	await _put_if_changed("bank", "/api/account/bank", _bank_body(account))
+	for section in _account_sections(account):
+		await _put_if_changed(section[0], section[1], section[2], section[3])
 	# bank_gold is NOT pushed. It only ever moves through /api/bank/gold, which
 	# is the one endpoint that can verify anything here — it holds both balances
 	# and conserves the total. Letting a blanket save overwrite it would throw
 	# that away and make the bank as forgeable as everything else.
+
+
+# THE SECTIONS, ONE LIST EACH: [key, path, body, compare]. A push walks them,
+# and so does a page that is closing, so the two cannot disagree about what a
+# save is. `compare` is what the fingerprint is taken of when it is not the body
+# itself - see _put_if_changed().
+
+func _slot_sections(index: int, slot: Dictionary) -> Array:
+	return [
+		["save:%d" % index, "/api/save", _save_body(index, slot), _save_fingerprint(index, slot)],
+		["status:%d" % index, "/api/player/status", _status_body(index, slot), {}],
+		["inventory:%d" % index, "/api/character/inventory", _inventory_body(index, slot), {}],
+	]
+
+
+func _account_sections(account: Dictionary) -> Array:
+	return [
+		["lusions", "/api/account/lusions", _lusions_body(account), {}],
+		["bank", "/api/account/bank", _bank_body(account), {}],
+	]
+
+
+func requests_before_leaving(payload: Dictionary) -> Array:
+	"""What a closing page must send now: every section of `payload` the
+	server does not hold, as {"method", "path", "body"}.
+
+	A PAGE THAT IS HIDDEN OR CLOSING HAS NO NEXT FRAME, and _push() needs one
+	per request - so a save queued then is sent when the player comes back, or
+	never. The caller sends these at once instead (Api.send_before_leaving()).
+
+	What is returned is remembered as sent, so a tab closed from the strip -
+	hidden first, then unloaded - does not send each section twice. The mark
+	goes when the server confirms a push of that section (_record_push).
+
+	THE BROWSER HOLDS AT MOST 64 KB OF THESE IN FLIGHT, and a save carries the
+	explored map, which the server allows up to 64 KB per area. So the save goes
+	LAST and WITHOUT the map - omitted means "leave it alone" to /api/save, and
+	the next ordinary push brings the map - and the bag, the vitals and the
+	purse go first, whatever the save weighs."""
+	var out: Array = []
+	var sections: Array = []
+	var slots: Array = _array(payload.get("character_slots", []))
+	for index in slots.size():
+		var slot = slots[index]
+		if slot is Dictionary and str(slot.get("character", "")) != "":
+			sections.append_array(_slot_sections(index, slot))
+	sections.append_array(_account_sections(_dict(payload.get("account_data", {}))))
+	var saves: Array = []
+	for section in sections:
+		var key: String = section[0]
+		var body: Dictionary = section[2]
+		var compare: Dictionary = section[3]
+		var fingerprint: String = JSON.stringify(body if compare.is_empty() else compare)
+		if _last_pushed.get(key, "") == fingerprint or _sent_leaving.get(key, "") == fingerprint:
+			continue
+		_sent_leaving[key] = fingerprint
+		if section[1] == "/api/save":
+			var light: Dictionary = body.duplicate()
+			light.erase("explored")
+			saves.append({"method": "PUT", "path": section[1], "body": light})
+		else:
+			out.append({"method": "PUT", "path": section[1], "body": body})
+	out.append_array(saves)
+	return out
 
 
 func _items_to_server(cells: Array) -> Array:
@@ -509,17 +562,68 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 	# every other section wants.
 	var fingerprint: String = JSON.stringify(body if compare.is_empty() else compare)
 	if _last_pushed.get(key, "") == fingerprint:
+		# The server already holds exactly this, so a failure recorded for a
+		# later version of it no longer matters.
+		_failed_keys.erase(key)
 		return
 
 	var res: Dictionary = await Api.put(path, body)
+	_record_push(key, res.get("ok", false), fingerprint)
 	if not res.get("ok", false):
+		# A BAG THE SERVER HAS MOVED ON FROM. PUT /api/character/inventory
+		# refuses with 409 when a trade changed this character's bag after the
+		# client last saw it, and hands back what the server holds - because
+		# this write is a whole-bag replace, and letting it through deleted
+		# whatever the trade had just given. Adopting that answer is the only
+		# correct response; retrying the same body would be refused again.
+		_adopt_refusal(res)
 		# NOT recorded as pushed. A rejected section stays dirty, so the next
 		# save retries it rather than deciding it is already up to date — which
 		# is exactly how a failed write becomes silent data loss.
 		push_warning("ServerStorage: %s rejected — %s" % [key, res.get("error", "")])
 		return
 
-	_last_pushed[key] = fingerprint
+
+func is_pushing() -> bool:
+	"""True while a push is on its way to the server, or one is queued behind it."""
+	return _pushing or _has_queued
+
+
+func has_unpushed() -> bool:
+	"""True while any section's last push failed. See SaveStorage.has_unpushed().
+
+	THIS OVERRIDE WAS MISSING, and so was every caller. The base class said the
+	gap existed and returned false; nothing asked. A push refused or timed out
+	after save() had already returned true stayed dirty in _last_pushed - but
+	only the NEXT save would retry it, and a player who changed nothing more
+	before quitting never made one. CharacterData asks this now."""
+	return not _failed_keys.is_empty()
+
+
+func _record_push(key: String, ok: bool, fingerprint: String) -> void:
+	# NAMED so the bookkeeping can be driven without a server. A success is
+	# remembered as pushed and clears the section's failure; a failure is
+	# remembered as a failure and NOT as pushed, so the retry sends it again.
+	if ok:
+		_last_pushed[key] = fingerprint
+		_failed_keys.erase(key)
+		_sent_leaving.erase(key)
+	else:
+		_failed_keys[key] = true
+
+
+func _adopt_refusal(res: Dictionary) -> bool:
+	"""A refused save that carries the server's bag: adopt it. True if it did.
+
+	NAMED, so it can be called with a made-up refusal and checked - the rest of
+	_put_if_changed() needs a live server to reach. The next save after this is
+	built from the adopted bag, so it goes through."""
+	if int(res.get("status", 0)) != 409:
+		return false
+	var data: Dictionary = _dict(res.get("data", {}))
+	if not (data.get("resync") is Dictionary):
+		return false
+	return CharacterData.apply_server_carry(data["resync"])
 
 
 func _int(value: Variant, fallback: int = 0) -> int:
@@ -543,19 +647,3 @@ func _dict(value: Variant) -> Dictionary:
 
 func _array(value: Variant) -> Array:
 	return value if value is Array else []
-
-
-func _string_array(value: Variant, size: int) -> Array:
-	# A fixed-length array of plain Strings, padded with "" and trimmed to fit.
-	#
-	# BOTH DIRECTIONS USE THIS, which is the point: the hotbar arrives from the
-	# server and leaves for it in the same shape, so one function is all that
-	# is needed and there is no pair of half-matching converters to drift. The
-	# length is forced because the HUD indexes the array directly — a short one
-	# is an out-of-range read on the eighth key, and a long one silently drops
-	# whatever is past the end.
-	var out: Array = []
-	var source: Array = _array(value)
-	for index in size:
-		out.append(str(source[index]) if index < source.size() else "")
-	return out

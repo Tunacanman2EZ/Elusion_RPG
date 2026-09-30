@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "cookedmarshcarp"
 display_name = "Cooked Marsh Carp"
-description = "Tastes of the water it came out of. Restores 18 HP."
+description = "Tastes of the water it came out of."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

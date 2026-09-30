@@ -1,9 +1,15 @@
-# victoryteleporter.gd — the way home, and it exists only once you have won.
+# victoryteleporter.gd — the way on, and it exists only once you have won.
 #
 # Sits in the boss arena, hidden and untouchable, until the gauntlet is
 # cleared. When the last boss falls it appears, and stepping onto it takes the
-# player back to the start — the town — the same fade-and-swap every other
-# scene change uses.
+# player to wherever destination_scene_path says, with the same fade-and-swap
+# every other scene change uses.
+#
+# THE ARENA'S DOOR LEADS TO THE CROWNED NOW (bossarena.tscn sets boss.tscn and
+# its "boss_entrance" marker), because the original boss is the finale and no
+# door reached its room. That room's ladder goes up to the field, so this is
+# still a way out - just one that passes the last fight. The default below is
+# the town, for any other place that uses this node.
 #
 # IT IS THE ONLY WAY OUT. The arena used to also have a ladder back up to the
 # field, so this node was the reward and the ladder was the escape hatch. The
@@ -196,7 +202,8 @@ func _on_body_entered(body: Node) -> void:
 		push_warning("victoryteleporter: destination_scene_path is empty")
 		can_teleport = true
 		return
-	var destination_scene: PackedScene = load(destination_scene_path)
+	# THROUGH THE REGISTRY, NOT load() - see AreaRegistry.scene_at().
+	var destination_scene: PackedScene = AreaRegistry.scene_at(destination_scene_path)
 	if destination_scene == null:
 		push_warning("victoryteleporter: failed to load '%s'" % destination_scene_path)
 		can_teleport = true

@@ -221,8 +221,9 @@ func use_item(slot: InventorySlot) -> void:
 
 	# ONE GATE, AND IT HAS TO BE HERE rather than inside _use_consumable().
 	# The hotbar has no use path of its own: hotbar.gd::_use_slot() emits
-	# item_used, characterhud.gd::_on_hotbar_item_used() finds the slot and
-	# calls straight back into this function. A check further down would be one
+	# slot_used with the key, and characterhud.gd::_on_hotbar_slot_used() calls
+	# straight back into this function with it - a key is a carried cell like
+	# any bag cell. A check further down would be one
 	# a hotbar key walks past, which is the difference between a gate and a
 	# gate-shaped decoration.
 	if not _meets_requirements(data):
@@ -240,7 +241,7 @@ func use_item(slot: InventorySlot) -> void:
 		ItemData.Type.PET:
 			_use_pet(slot)
 		ItemData.Type.WEAPON, ItemData.Type.ARMOR:
-			await _equip_item(data)
+			await _equip_item(data, slot.slot_index)
 		_:
 			# push_warning, not print, and not debug-gated: reaching this
 			# branch means an item exists that the game has no idea how to
@@ -252,7 +253,7 @@ func use_item(slot: InventorySlot) -> void:
 # ITEM USE — EQUIPMENT
 # =============================================================================
 
-func _equip_item(data: ItemData) -> void:
+func _equip_item(data: ItemData, position: int = -1) -> void:
 	# RIGHT-CLICK PUTS IT ON, which is what every other item type in this match
 	# already does with a right-click and what gear did not do at all — a sword
 	# in the backpack was the one thing you could click and have nothing
@@ -280,10 +281,12 @@ func _equip_item(data: ItemData) -> void:
 			match str(verdict.get("reason", "")):
 				"class":
 					var allowed: Array = verdict.get("allowed", [])
+					# " or ", like the tooltip's "Needs Warrior or Tank" - a
+					# comma read as needing to be both.
 					var names: PackedStringArray = PackedStringArray()
 					for class_id in allowed:
-						names.append(String(class_id).capitalize())
-					_notify("Only %s can wear that." % ", ".join(names))
+						names.append(String(class_id).to_lower() + "s")
+					_notify("Only %s can wear that." % " or ".join(names))
 				"level":
 					_notify("Requires level %d." % int(verdict.get("needs", 1)))
 				_:
@@ -300,7 +303,7 @@ func _equip_item(data: ItemData) -> void:
 	# why, with the server's own words - "your bag is full", "your class cannot
 	# wear that" - and a second generic line on top of a specific one is worse
 	# than either alone.
-	if not await CharacterData.equip_item(player, data.item_id):
+	if not await CharacterData.equip_item(player, data.item_id, position):
 		return
 
 	# The doll is a view of player.equipped and has just gone stale. Found by
@@ -417,9 +420,15 @@ func _use_consumable(slot: InventorySlot) -> void:
 	if _consuming:
 		return
 	_consuming = true
+	# THE CELL IS NAMED. A hotbar key is a carried cell like any bag cell, so
+	# the same potion can sit in both; without `position` the server spends
+	# whichever is highest - usually the key - while this client takes one off
+	# the cell that was clicked. slot_index IS the carried position, keys
+	# included (InventoryContainer keeps them equal).
 	var res: Dictionary = await Api.post("/api/character/consume", {
 		"slot": CharacterData.active_character_index,
 		"item_id": data.item_id,
+		"position": slot.slot_index,
 	}, CONSUME_TIMEOUT)
 	_consuming = false
 

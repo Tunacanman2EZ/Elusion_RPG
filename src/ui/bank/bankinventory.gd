@@ -52,11 +52,20 @@ var player: Node = null
 # with the carry inventory's slots.
 @onready var bank_container: InventoryContainer = %bankcontainer
 
-# gold UI controls — paths match the bankinventory.tscn scene structure
-@onready var gold_label:   Label    = $mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldcontainer/goldlabel
-@onready var gold_input:   LineEdit = $mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldinput
-@onready var deposit_btn:  Button   = $mainpanel/margincontainer/vboxcontainer/goldbuttons/depositbuttons
-@onready var withdraw_btn: Button   = $mainpanel/margincontainer/vboxcontainer/goldbuttons/withdrawbutton
+# gold UI controls — BY UNIQUE NAME, not by path.
+#
+# These were five-level $paths that "match the bankinventory.tscn scene
+# structure", and the gold area was rebuilt: the buttons moved beside the amount
+# they act on, the balance moved up. Every one of those paths would have
+# silently resolved to null, and a null here does not fail to compile - it is a
+# bank whose Deposit button does nothing and says nothing. The four nodes were
+# already marked unique in the scene; reaching them by %name means the layout
+# can be rearranged again without this block knowing.
+@onready var gold_label:   Label    = %goldlabel
+@onready var carry_label:  Label    = %carrylabel
+@onready var gold_input:   LineEdit = %goldinput
+@onready var deposit_btn:  Button   = %depositbuttons
+@onready var withdraw_btn: Button   = %withdrawbutton
 
 # close button at the top-right of the panel
 @onready var close_button: Button = $mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/closebutton
@@ -315,7 +324,13 @@ const TRANSFER_TIMEOUT := 4.0
 var _transferring: bool = false
 
 
-func request_transfer(op: String, item_id: String, quantity: int) -> void:
+func request_transfer(op: String, item_id: String, quantity: int, position: int = -1) -> void:
+	# `position` is the source cell the player dragged or double-clicked - a
+	# carried cell (bag or hotbar key) for a deposit, a bank cell for a
+	# withdrawal. The server spends that cell first. Without it a deposit takes
+	# from the highest carried cell holding the item, which with the hotbar in
+	# the same rows is usually a KEY: drag the potions in your bag to the bank
+	# and watch the ones on key 1 go instead.
 	if item_id == "" or quantity <= 0:
 		return
 
@@ -345,12 +360,15 @@ func request_transfer(op: String, item_id: String, quantity: int) -> void:
 		acting_player = null
 
 	_transferring = true
-	var res: Dictionary = await Api.post("/api/bank/items", {
+	var body: Dictionary = {
 		"slot": character_slot,
 		"op": op,
 		"item_id": item_id,
 		"quantity": quantity,
-	}, TRANSFER_TIMEOUT)
+	}
+	if position >= 0:
+		body["position"] = position
+	var res: Dictionary = await Api.post("/api/bank/items", body, TRANSFER_TIMEOUT)
 
 	# PAST A FOUR-SECOND AWAIT. Everything this function needs was captured
 	# before it — character_slot, acting_player — but nothing checked that THIS
@@ -439,13 +457,14 @@ func _on_transfer_requested(source_slot: InventorySlot, _target_slot: InventoryS
 		return
 
 	var op: String = "withdraw" if source_slot.slot_type == InventorySlot.BANK_SLOT_TYPE else "deposit"
-	request_transfer(op, source_slot.stack.data.item_id, source_slot.stack.quantity)
+	request_transfer(op, source_slot.stack.data.item_id, source_slot.stack.quantity,
+		source_slot.slot_index)
 
 
 func _on_bank_slot_double_clicked(slot: InventorySlot) -> void:
 	if not visible or slot == null or slot.is_empty():
 		return
-	request_transfer("withdraw", slot.stack.data.item_id, slot.stack.quantity)
+	request_transfer("withdraw", slot.stack.data.item_id, slot.stack.quantity, slot.slot_index)
 
 
 func _on_carry_slot_double_clicked(slot: InventorySlot) -> void:
@@ -454,7 +473,7 @@ func _on_carry_slot_double_clicked(slot: InventorySlot) -> void:
 	# items vanishing into the bank from the field, so it is worth two lines.
 	if not visible or slot == null or slot.is_empty():
 		return
-	request_transfer("deposit", slot.stack.data.item_id, slot.stack.quantity)
+	request_transfer("deposit", slot.stack.data.item_id, slot.stack.quantity, slot.slot_index)
 
 
 func _notify(message: String) -> void:
@@ -489,11 +508,16 @@ func _update_gold_ui() -> void:
 	# called after deposit/withdraw and when the bank first opens.
 	if gold_label != null:
 		var banked: int = CharacterData.get_bank_gold()
-		gold_label.text = "Bank Gold: %s" % GameConstants.commas(banked)
+		gold_label.text = "%s in bank" % GameConstants.commas(banked)
 		# THE BANKED pile, not the carried one. This panel is about the gold
 		# that death cannot touch, so the coin over it should be the coin that
 		# pile would be paid in.
 		GameConstants.apply_gold_icon(get_node_or_null("%goldicon"), banked)
+	# BOTH PILES, SIDE BY SIDE. Deposit and Withdraw move gold between these two
+	# numbers, and with only the banked one on screen a player had to open the
+	# inventory to find out what a deposit could even take.
+	if carry_label != null:
+		carry_label.text = "carrying %s" % GameConstants.commas(_carry_gold())
 	if gold_input != null:
 		gold_input.text = ""
 

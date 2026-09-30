@@ -32,9 +32,13 @@ extends Control
 # EXPORTED SETTINGS
 # =============================================================================
 
-# the cost in lusions to revive from this screen.
-# tune up for hardcore mode, down for casual.
-@export var revive_cost: int = 20
+# The cost in lusions to revive from this screen - READ, NOT COPIED. It was an
+# export holding its own 20 beside GameConstants.REVIVE_COST, which is the one
+# the exporter sends the server. Retune the constant and this button would have
+# gone on showing the old price while the server charged the new one.
+var revive_cost: int:
+	get:
+		return GameConstants.REVIVE_COST
 
 # scene paths — exposed so they can be retargeted without editing code
 @export var character_select_path: String = "res://scene/ui/menus/characterselect.tscn"
@@ -258,7 +262,14 @@ func _revive_paying_with(method: String) -> void:
 	# to position the player at death_state.death_position instead of the
 	# default spawn point.
 	GameState.reviving = true
-	get_tree().change_scene_to_file(world_scene_path)
+	# NOT change_scene_to_file(): that is a load() of an area's path, and a
+	# load() of an area still loading in the background never returns. See
+	# AreaRegistry.scene_at().
+	var world: PackedScene = AreaRegistry.scene_at(world_scene_path)
+	if world == null:
+		push_warning("GameOver: the world scene %s did not load" % world_scene_path)
+		return
+	get_tree().change_scene_to_packed(world)
 
 
 func _gold_revive_held() -> int:
@@ -456,19 +467,11 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# carry gold lost — players bank gold to avoid this
 	slot_data["gold"] = 0
 
-	# carry inventory cleared — players bank items to keep them safe
+	# carry inventory cleared — players bank items to keep them safe. The
+	# hotbar's keys go with it: they are cells 20-29 of this same array, not a
+	# separate list, which is also why there is no hotbar line here any more.
+	# The server's respawn deletes every carried row, keys included.
 	slot_data["inventory"] = []
-
-	# HOTBAR CLEARED WITH THE ITEMS IT POINTED AT. The bar holds item ids, not
-	# items, so leaving it alone left nine buttons naming potions this character
-	# no longer owns — they look usable and do nothing. CharacterData had a
-	# second copy of this whole function that did clear the hotbar and was never
-	# called from anywhere; this is the half of it that was worth keeping.
-	#
-	# Written into the SAVE SLOT, not onto a player node, because by the time
-	# this screen exists the world scene and its player are gone.
-	# load_character_state() reads this key back on the next load.
-	slot_data["hotbar_assignments"] = ["", "", "", "", "", "", "", "", ""]
 
 	# HP IS NOT SET HERE ANY MORE, and that line is the bug this whole path was
 	# rewritten for. It wrote full health into the slot on the client's own

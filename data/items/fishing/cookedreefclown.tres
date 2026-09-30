@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "cookedreefclown"
 display_name = "Cooked Reef Clown"
-description = "Nobody agrees on where these come from. Restores 115 HP."
+description = "Nobody agrees on where these come from."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

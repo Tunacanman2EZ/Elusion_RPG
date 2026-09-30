@@ -27,6 +27,10 @@ const FLOATING_LABEL_SCENE := preload("res://scene/ui/floatinglabel.tscn")
 # The soft light the player carries in dark scenes. One scene, tuned in one
 # place, instanced onto every class rather than copied into four .tscn files.
 const PLAYER_LIGHT_SCENE := preload("res://scene/characters/playerlight.tscn")
+
+# How a name and its rank mark are drawn - the colour from a hue, the badge from
+# a rank. Preloaded rather than a class_name; nametag.gd says why.
+const NameTag := preload("res://src/shared/nametag.gd")
 var _carried_light: PointLight2D = null
 
 # The name that floats over this character's head. Built in code for the same
@@ -37,6 +41,16 @@ var _nameplate: Label = null
 # The crown beside the owner's name. Built alongside the plate and shown to
 # exactly one account - see _setup_nameplate().
 var _nameplate_crown: TextureRect = null
+
+# MOD or DEV, worn where the owner wears the crown. The colour of the name is
+# the player's own choice now, so rank is shown by something they cannot
+# choose - see src/shared/nametag.gd.
+var _nameplate_badge: Label = null
+
+# The guild tag last drawn, so a repaint for some other reason - a new colour
+# picked in Options, a rank change - keeps it instead of dropping it until the
+# next broadcast poll puts it back.
+var _nameplate_tag: String = ""
 
 # FloatingLabel.Type.NOTICE.
 #
@@ -71,24 +85,44 @@ var character_name := "player"
 # LEVEL AND XP
 # =============================================================================
 
-# NEW: setter added so max_hp/mana/stamina recompute whenever level changes
-# by ANY means — not just the natural level_up() flow below, but also
-# typing a new value directly into the Remote Inspector while the game is
-# running (e.g. testing "what does level 50 feel like against this boss")
-# or a debug key setting it directly. previously max stats only
-# recomputed at _ready() and inside level_up() — manually editing level
-# any other way left max_hp/mana/stamina stale at whatever they were
-# before, not matching the new level at all. runs _recompute_max_stats()
-# during the class's own initial declaration too, before _set_stat_curve()
-# has set this class's real hp_base/hp_per_lvl/etc — harmless, since
-# _ready() calls both again right after in the correct order regardless.
+# Setter so max_hp/mana/stamina recompute whenever level changes by ANY means —
+# not just the natural level_up() flow below, but also typing a new value
+# straight into the Remote Inspector while the game is running (e.g. testing
+# "what does level 50 feel like against this boss"). Without it, max stats only
+# recomputed at _ready() and inside level_up(), so editing level any other way
+# left the three maxima stale at whatever they were before, not matching the new
+# level at all. It fires during the class's own initial declaration too, before
+# _set_stat_curve() has set this class's real hp_base/hp_per_lvl — harmless,
+# since _ready() calls it again afterwards in the correct order.
+#
+# IT USED TO CALL _fill_all_resources() HERE TOO, AND THAT WAS A LOADED GUN.
+#
+# _fill_all_resources() sets hp = max_hp, mana = max_mana, stamina = max_stamina
+# unconditionally. CharacterData.load_character_state() assigns every key of
+# SAVEABLE_STATS in turn, and `level` is the FIRST key in that dictionary — so
+# every single load fired a full refill of all three pools.
+#
+# It was invisible because hp, max_hp, mana, max_mana, stamina and max_stamina
+# all sit further down the same dictionary and overwrote it a few iterations
+# later. Which means the whole "what was full stays full, what was hurt stays
+# hurt" rule below — the death penalty, the server's healing reconciler, the
+# point of not refilling on a loading screen — was resting on the INSERTION
+# ORDER OF A CONST DICTIONARY IN ANOTHER FILE. Move `hp` above `level`, or add
+# a key before it, and every login silently becomes a free full heal again.
+#
+# Nothing could have caught that. There is no symptom until the order changes,
+# and then the symptom is "the game feels generous". So the refill is gone from
+# here and lives only where it is actually meant: level_up(). The Inspector case
+# this setter exists for wants the MAXIMA to follow the level, not the pools to
+# top themselves up.
+#
+# _test_only_levelling_up_refills() holds it.
 var level: int = 1:
 	set(value):
 		level = value
 		_recompute_max_stats()
-		_fill_all_resources()
 var xp: int = 0
-var xp_next: int = 100
+var xp_next: int = int(GameConstants.XP_BASE)
 
 
 # =============================================================================
@@ -327,13 +361,11 @@ var _default_modulate: Color = Color.WHITE
 # =============================================================================
 
 var inventory_data: Array = []
-var hotbar_assignments: Array = ["", "", "", "", "", "", "", "", ""]
 
 # NEW: which pet (an item_id, e.g. "petsniper") is currently active, if
 # any. "" means no active pet. a String, not a node reference — nodes
 # don't survive scene changes, this does, since it's handled specially in
-# CharacterData.gd's save/load (parallel to hotbar_assignments above,
-# outside the int-only SAVEABLE_STATS loop).
+# CharacterData.gd's save/load (outside the int-only SAVEABLE_STATS loop).
 var active_pet_id: String = ""
 
 # WHAT THIS CHARACTER IS WEARING: {slot_name: item_id}, e.g.
@@ -489,6 +521,7 @@ func _ready() -> void:
 
 	_setup_carried_light()
 	_setup_nameplate()
+	snap_camera()
 
 
 # =============================================================================
@@ -523,6 +556,23 @@ func _ready() -> void:
 		if OS.is_debug_build():
 			print("[PLR]  loaded at 0 hp - dead before this session, to game over")
 		call_deferred("_change_to_game_over")
+
+func snap_camera() -> void:
+	"""Puts the camera on the player now rather than at its next physics tick.
+
+	The class scenes run their Camera2D on the physics clock (process_callback
+	0), which is right for interpolation and wrong for an arrival: the first
+	frame of an area is often drawn before the first tick, and it was drawn
+	with no camera at all - the map from its corner, unzoomed. Measured on
+	4.6.1 with a real renderer: canvas origin (0, 0) on the first frame of
+	every arrival, (640, 360) from the next. A flash on the desktop; a tenth of
+	a second of the wrong map in a browser, where it was first seen."""
+	var camera: Camera2D = get_node_or_null("camera2d") as Camera2D
+	if camera == null or not camera.is_inside_tree():
+		return
+	camera.reset_smoothing()
+	camera.force_update_scroll()
+
 
 func _setup_carried_light() -> void:
 	if not is_instance_valid(_carried_light):
@@ -852,15 +902,17 @@ func _set_stat_curve() -> void:
 # =============================================================================
 # SKILL PROFICIENCY  (NEW)
 # =============================================================================
-# every class can train every skill from the same universal triggers
-# (attack XP from any hit — melee or spell; defense XP from taking damage,
-# already true above in take_damage(); magic XP from any spell) — but each
-# class climbs its OWN specialty faster. base class = 1.0 (no bias) for all
-# six skills. subclasses override _set_skill_proficiency() to boost their
-# specialty: warrior -> attack, tank -> defense, mage/healer -> magic.
-# applied inside gain_attack_xp()/gain_defense_xp()/gain_magic_xp() below,
-# so every caller (existing or new) gets the right scaling automatically —
-# no call site needs to know or care which class it's running on.
+# every class trains every skill from the same triggers (attack XP at the
+# kill; defense XP from taking damage, in take_damage(); magic XP from any
+# spell) — but each class climbs its OWN specialty faster. base class = 1.0
+# for all six skills; subclasses override _set_skill_proficiency() to boost
+# their specialty: warrior -> attack, tank -> defense, mage/healer -> magic.
+#
+# THE SERVER'S TABLE IS THE ONE THAT COUNTS (app.py SKILL_PROFICIENCY, the same
+# numbers). gain_defense_xp() and gain_magic_xp() scale their on-screen copy by
+# this so the bar moves at the rate the server will bank; attack is not scaled
+# here at all, because the kill's answer already carries the banked amount and
+# apply_server_attack() copies it.
 var skill_proficiency: Dictionary = {
 	"attack":  1.0,
 	"defense": 1.0,
@@ -911,9 +963,39 @@ func _apply_class_data(data: ClassData) -> void:
 
 
 func _recompute_max_stats() -> void:
-	max_hp      = PlayerStats.max_for(hp_base,   hp_per_lvl,   level)
-	max_mana    = PlayerStats.max_for(mana_base, mana_per_lvl, level)
+	# The class curve at this level, plus what is worn. gamedata.max_stats_for()
+	# on the server is the same sum over the same fields; if the two ever
+	# disagree, the status route clamps this character's hp to the server's
+	# figure on its next save.
+	max_hp      = PlayerStats.max_for(hp_base,   hp_per_lvl,   level) + equipped_bonus("bonus_max_hp")
+	max_mana    = PlayerStats.max_for(mana_base, mana_per_lvl, level) + equipped_bonus("bonus_max_mana")
 	max_stamina = PlayerStats.max_for(stam_base, stam_per_lvl, level)
+
+
+func refresh_gear_stats() -> void:
+	# SOMETHING WAS PUT ON OR TAKEN OFF: move the maxima, and bring the pools
+	# down if they now sit above them. Never up - putting on a Vitality amulet
+	# raises the ceiling, not the health, the same as a level-up does before its
+	# refill. Taking one off at full health leaves you at the lower full.
+	#
+	# Not folded into _recompute_max_stats(), because that one runs in the
+	# middle of CharacterData.load_character_state() through the level setter,
+	# before hp has been loaded - clamping there would clamp the wrong number.
+	_recompute_max_stats()
+	hp = clampi(hp, 0, max_hp)
+	mana = clampi(mana, 0, max_mana)
+
+
+func equipped_bonus(field: String) -> int:
+	# One bonus field summed over everything worn: "bonus_max_hp",
+	# "bonus_max_mana" or "bonus_damage_percent". Same walk as
+	# equipped_armor_value(), and a missing or unknown id adds nothing.
+	var total: int = 0
+	for slot_name in equipped:
+		var data: ItemData = ItemRegistry.get_item(str(equipped[slot_name]))
+		if data != null and field in data:
+			total += int(data.get(field))
+	return total
 
 
 func _fill_all_resources() -> void:
@@ -1153,7 +1235,7 @@ func _spawn_defense_tier_popup(tier_name: String) -> void:
 	# into place — see BaseEnemy.spawn_projectile_node() for the mechanism.
 	lbl.reset_physics_interpolation()
 	if lbl.has_method("show_text"):
-		lbl.show_text("DEFENSE TIER\n%s" % tier_name, 3, 2.0, 1.5)
+		lbl.show_text("DEFENCE TIER\n%s" % tier_name, 3, 2.0, 1.5)
 
 
 func _spawn_skillup_popup(skill_code: String, new_level: int) -> void:
@@ -1575,7 +1657,11 @@ const ATTACK_DAMAGE_PERCENT_PER_LEVEL := PlayerStats.ATTACK_DAMAGE_PERCENT_PER_L
 const MAGIC_DAMAGE_PERCENT_PER_LEVEL  := PlayerStats.MAGIC_DAMAGE_PERCENT_PER_LEVEL
 
 func get_damage_multiplier() -> float:
-	return PlayerStats.damage_multiplier(attack, magic)
+	# Skills, then whatever is worn. Every class's hit and the pet's shot come
+	# through here, so a Fury amulet reaches all of them without a line in any
+	# class file.
+	return PlayerStats.damage_multiplier(attack, magic) \
+		* PlayerStats.gear_damage_factor(equipped_bonus("bonus_damage_percent"))
 
 
 const AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL := PlayerStats.AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL
@@ -1678,15 +1764,35 @@ func _xp_is_earned() -> bool:
 	return false
 
 
+# ATTACK IS THE SERVER'S, AND IT IS SET, NOT ADDED UP.
+#
+# Attack trains only at the kill: /api/combat/kill rolls the enemy's attack XP,
+# applies the class specialty (a warrior's 1.5) and banks it. This used to be an
+# optimistic local copy - every swing, aura tick, stalagmite and turret shot
+# added its own 2-5 XP here, and the kill's amount was scaled again by
+# skill_proficiency - none of which the server ever saw. A healer watched attack
+# climb tens of XP a second, a warrior half again as fast as it was recorded,
+# and both lost it at the next login, levels and the damage they carry included.
+#
+# So the kill's answer is copied onto the bar: the level, the XP inside it and
+# the next threshold, exactly as banked. A level-up still pops.
+func apply_server_attack(level: int, xp: int, xp_next: int) -> void:
+	var before: int = attack
+	attack = maxi(level, 1)
+	attack_xp = maxi(xp, 0)
+	attack_xp_next = xp_next if xp_next > 0 else xp_needed_for_skill_id("attack", attack)
+	if attack > before:
+		_spawn_skillup_popup("attack", attack)
+	CharacterData.save_character_state(self)
+
+
+# The fallback for an answer that carries only the amount (a server older than
+# apply_server_attack()). The amount is already what the server banked, so it
+# is added as it is - no proficiency, no AFK gate; both were the server's call.
 func gain_attack_xp(amount: int) -> void:
-	if not _xp_is_earned():
+	if amount <= 0:
 		return
-	# NEW: scaled by skill_proficiency["attack"] — this is what makes
-	# attack XP universal (any class can call this) while still letting
-	# warrior climb it faster than everyone else. see SKILL PROFICIENCY
-	# section above.
-	var scaled_amount: int = maxi(1, int(amount * skill_proficiency.get("attack", 1.0)))
-	attack_xp += scaled_amount
+	attack_xp += amount
 	while attack_xp >= attack_xp_next:
 		attack += 1
 		attack_xp -= attack_xp_next
@@ -1698,10 +1804,12 @@ func gain_attack_xp(amount: int) -> void:
 func gain_defense_xp(amount: int) -> void:
 	if not _xp_is_earned():
 		return
-	# NEW: scaled by skill_proficiency["defense"] — take_damage() above
-	# already grants this universally to every class; this is what lets
-	# tank climb it faster without touching take_damage() at all.
-	var scaled_amount: int = maxi(1, int(amount * skill_proficiency.get("defense", 1.0)))
+	# SERVER-OWNED (E-2): the RAW amount goes to the server, which applies the
+	# class specialty (a tank's 1.5) and stores the record. The bar here is
+	# optimistic, and SkillTrainer says how much of it to show: the server's
+	# rounding, so the two agree. See SkillTrainer.report().
+	var scaled_amount: int = SkillTrainer.report("defense", amount,
+		float(skill_proficiency.get("defense", 1.0)))
 	var tier_before: String = _get_defense_tier()["name"]
 	defense_xp += scaled_amount
 	while defense_xp >= defense_xp_next:
@@ -1716,10 +1824,6 @@ func gain_defense_xp(amount: int) -> void:
 	if tier_after != tier_before:
 		_spawn_defense_tier_popup(tier_after)
 	CharacterData.save_character_state(self)
-	# SERVER-OWNED (E-2): the level above is optimistic display only. The RAW,
-	# pre-proficiency amount is reported to the server, which grants and stores
-	# the real number and loads it next session. See skilltrainer.gd.
-	SkillTrainer.report("defense", amount)
 
 
 func gain_agility_xp(amount: int) -> void:
@@ -1730,25 +1834,25 @@ func gain_agility_xp(amount: int) -> void:
 	# inconsistency that later reads as an oversight rather than a decision.
 	if not _xp_is_earned():
 		return
-	agility_xp += amount
+	# SERVER-OWNED (E-2): reported raw; agility has no class specialty, so what
+	# is shown is what was earned.
+	var shown: int = SkillTrainer.report("agility", amount)
+	agility_xp += shown
 	while agility_xp >= agility_xp_next:
 		agility += 1
 		agility_xp -= agility_xp_next
 		agility_xp_next = xp_needed_for_skill_id("agility", agility)
 		_spawn_skillup_popup("agility", agility)
 	CharacterData.save_character_state(self)
-	# SERVER-OWNED (E-2): optimistic display above; the server owns the record.
-	# agility has no class proficiency, so raw and scaled are the same number.
-	SkillTrainer.report("agility", amount)
 
 
 func gain_magic_xp(amount: int) -> void:
 	if not _xp_is_earned():
 		return
-	# NEW: scaled by skill_proficiency["magic"] — this is what lets
-	# mage/healer climb magic faster than a class that only occasionally
-	# lands a spell hit.
-	var scaled_amount: int = maxi(1, int(amount * skill_proficiency.get("magic", 1.0)))
+	# SERVER-OWNED (E-2): reported raw; the server applies mage and healer's 1.5
+	# and stores the record. SkillTrainer answers with the server's rounding.
+	var scaled_amount: int = SkillTrainer.report("magic", amount,
+		float(skill_proficiency.get("magic", 1.0)))
 	magic_xp += scaled_amount
 	while magic_xp >= magic_xp_next:
 		magic += 1
@@ -1756,9 +1860,6 @@ func gain_magic_xp(amount: int) -> void:
 		magic_xp_next = xp_needed_for_skill_id("magic", magic)
 		_spawn_skillup_popup("magic", magic)
 	CharacterData.save_character_state(self)
-	# SERVER-OWNED (E-2): optimistic display above; the RAW, pre-proficiency
-	# amount goes to the server, which scales and stores the record.
-	SkillTrainer.report("magic", amount)
 
 
 # =============================================================================
@@ -1867,7 +1968,7 @@ func _toggle_god_mode() -> void:
 	# at all, and finding that out from a flat skill bar an hour later is worse
 	# than reading it here.
 	if GameState.god_mode:
-		show_notice("God mode ON — no damage taken, and no defense XP")
+		show_notice("God mode ON — no damage taken, and no defence XP")
 	else:
 		show_notice("God mode OFF")
 
@@ -1938,6 +2039,10 @@ const NAMEPLATE_CROWN_GAP := 1.0
 # one person can be wearing is not a badge.
 const NAMEPLATE_CROWN_RANK := "owner"
 
+# The MOD / DEV badge, worn where the crown is. Smaller than the name: it is a
+# mark about the name, and at the name's size it would read as a second name.
+const NAMEPLATE_BADGE_FONT_SIZE := 9
+
 # For a class this table has never heard of. The frame's own top edge, worked
 # out from the sprite, is closer than any fixed number would be.
 const NAMEPLATE_FALLBACK_HEAD_Y := -40.0
@@ -2003,6 +2108,22 @@ func _setup_nameplate() -> void:
 		add_child(crown)
 		_nameplate_crown = crown
 
+	# THE BADGE, built like the plate: outlined, unfiltered, above the sprite.
+	# Coloured by rank - the rank colours still mean rank, they are just worn on
+	# the badge now rather than painted over the name.
+	var badge := Label.new()
+	badge.name = "nameplatebadge"
+	badge.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge.z_index = NAMEPLATE_Z
+	badge.add_theme_font_size_override("font_size", NAMEPLATE_BADGE_FONT_SIZE)
+	badge.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	badge.add_theme_constant_override("outline_size", 4)
+	badge.visible = false
+	add_child(badge)
+	_nameplate_badge = badge
+
 	set_nameplate(Api.username, Api.role)
 
 	# RANK CAN CHANGE MID-SESSION. api.gd re-reads it on every heartbeat, so a
@@ -2019,7 +2140,8 @@ func _setup_nameplate() -> void:
 		Settings.changed.connect(_on_setting_changed)
 
 
-func set_nameplate(display_name: String, rank: String, guild_tag: String = "") -> void:
+func set_nameplate(display_name: String, rank: String, guild_tag: String = "",
+		hue: Variant = null) -> void:
 	"""Who this body is. Public so a remote player can be told.
 
 	THE GUILD IS A DEFAULTED THIRD ARGUMENT, not a fourth thing to remember.
@@ -2035,6 +2157,7 @@ func set_nameplate(display_name: String, rank: String, guild_tag: String = "") -
 		return
 
 	var text: String = display_name.strip_edges()
+	_nameplate_tag = guild_tag
 	# THE TAG SITS ABOVE THE NAME, on its own line, and that is the only place
 	# it fits. Beside the name it widens the plate by the length of a guild
 	# name - and the comment on NAMEPLATE_CROWN_GAP already explains why a wide
@@ -2063,35 +2186,46 @@ func set_nameplate(display_name: String, rank: String, guild_tag: String = "") -
 	# has no login and so no name, and an empty plate is an outline box
 	# hovering over the character for no reason.
 	_nameplate.visible = text != ""
-	# THE WHOLE PLATE TAKES THE RANK COLOUR, including the tag line above the
+	# THE WHOLE PLATE TAKES THE NAME'S COLOUR, including the tag line above the
 	# name. Colouring the tag separately needs BBCode, which means a
 	# RichTextLabel, which means this plate stops being one Label whose width
 	# _place_nameplate() can measure - and a two-pixel gain in prettiness is
 	# not worth making the positioning arithmetic guess.
-	_nameplate.add_theme_color_override("font_color", _nameplate_colour(rank))
+	_nameplate.add_theme_color_override("font_color", _nameplate_colour(hue))
 	if _nameplate_crown != null:
 		_nameplate_crown.visible = (text != "" and rank == NAMEPLATE_CROWN_RANK)
+	if _nameplate_badge != null:
+		var word: String = NameTag.badge(rank)
+		_nameplate_badge.text = word
+		_nameplate_badge.visible = text != "" and word != ""
+		if word != "":
+			_nameplate_badge.add_theme_color_override("font_color", NameTag.badge_colour(rank))
 	_place_nameplate()
 
 
-func _nameplate_colour(rank: String) -> Color:
+func _nameplate_colour(hue: Variant = null) -> Color:
 	"""
-	What colour this name is drawn in.
+	What colour this name is drawn in: the one its player chose.
 
-	A PLAYER PICKS THEIRS. Names overlap the moment two people stand together,
-	and two names in the same parchment colour are one smear - so the hue
-	slider in Options exists to pull them apart.
+	A PLAYER PICKS THEIRS, AND SO DOES STAFF. Names overlap the moment two
+	people stand together, and two names in the same parchment colour are one
+	smear - so the hue slider in Options exists to pull them apart.
 
-	STAFF DO NOT GET THE CHOICE. Rank is the one thing a nameplate says that
-	has to be true: if anybody could set their name to the owner's gold, then
-	the colour would stop meaning rank and start meaning "somebody picked
-	gold", which is worth less than nothing. Their own colour still shows up in
-	world chat and the friends list, where the rank comes from the server and
-	cannot be dressed up.
+	THIS USED TO REFUSE STAFF. Rank is the one thing a nameplate says that has
+	to be true, and while rank was a colour, letting the owner pick blue meant
+	letting a player pick gold. So staff names were locked to their rank colour
+	and the slider silently did nothing for them. Rank is worn above the name
+	now - the crown, or MOD / DEV - and a player cannot pick either, so the
+	colour is free for everybody.
+
+	NULL MEANS THIS CLIENT'S OWN PLAYER, whose colour is the local setting and
+	changes the instant the slider moves. A body told about somebody else is
+	given their hue, off the wire, so it is never painted in the local
+	player's colour by mistake.
 	"""
-	if rank != "" and rank != "player":
-		return Api.colour_for_role(rank)
-	return Settings.name_colour()
+	if hue == null:
+		return Settings.name_colour()
+	return NameTag.colour(hue)
 
 
 func _nameplate_zoom() -> float:
@@ -2162,9 +2296,20 @@ func _place_nameplate() -> void:
 		_nameplate_crown.position = Vector2(-crown_w * 0.5, crown_bottom - crown_h)
 		_nameplate_crown.reset_physics_interpolation()
 
+	# THE BADGE IS WORN LIKE THE CROWN: centred, just above the letters. Same
+	# arithmetic and the same reason - the name is placed first and does not
+	# move whether or not anything is worn above it.
+	if _nameplate_badge != null and _nameplate_badge.visible:
+		_nameplate_badge.scale = plate_scale
+		_nameplate_badge.size = Vector2.ZERO
+		var badge_size: Vector2 = _nameplate_badge.get_combined_minimum_size() * plate_scale
+		var badge_bottom: float = (bottom - text_h) - NAMEPLATE_CROWN_GAP * plate_scale.y
+		_nameplate_badge.position = Vector2(-badge_size.x * 0.5, badge_bottom - badge_size.y)
+		_nameplate_badge.reset_physics_interpolation()
+
 
 func _on_identity_changed(new_username: String, new_role: String) -> void:
-	set_nameplate(new_username, new_role)
+	set_nameplate(new_username, new_role, _nameplate_tag)
 
 
 func _on_setting_changed(key: String, _value: Variant) -> void:
@@ -2174,7 +2319,7 @@ func _on_setting_changed(key: String, _value: Variant) -> void:
 		# Repainted through set_nameplate() rather than by writing the colour
 		# here, so the staff rule above stays in ONE place - a second copy of
 		# it is a second chance to let a player paint themselves gold.
-		set_nameplate(Api.username, Api.role)
+		set_nameplate(Api.username, Api.role, _nameplate_tag)
 
 
 func _typing_in_ui() -> bool:
@@ -2491,6 +2636,7 @@ func equip(item_id: String) -> bool:
 	if not verdict["ok"]:
 		return false
 	equipped[str(verdict["slot"])] = item_id
+	refresh_gear_stats()
 	return true
 
 
@@ -2500,6 +2646,7 @@ func unequip(slot_name: String) -> String:
 	var was: String = equipped_id(slot_name)
 	if was != "":
 		equipped.erase(slot_name)
+		refresh_gear_stats()
 	return was
 
 

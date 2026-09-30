@@ -229,7 +229,7 @@ func refresh() -> void:
 		view.custom_minimum_size = Vector2(image.get_size()) * float(_scale)
 
 	if header_label != null:
-		header_label.text = _area.capitalize() if _area != "" else "Map"
+		header_label.text = AreaRegistry.display_name(_area) if _area != "" else "Map"
 
 	if explored_label != null:
 		explored_label.text = "%d%% explored" % roundi(

@@ -103,7 +103,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
 focus_mode = 0
-text = "x"
+text = "×"
 
 [node name="chattabs" type="HBoxContainer" parent="frame/margin/rows" unique_id=1710044223]
 unique_name_in_owner = true
@@ -186,7 +186,7 @@ layout_mode = 2
 size_flags_vertical = 4
 tooltip_text = "Take this picture off the message"
 focus_mode = 0
-text = "x"
+text = "×"
 
 [node name="entryrow" type="HBoxContainer" parent="frame/margin/rows" unique_id=1710044211]
 layout_mode = 2

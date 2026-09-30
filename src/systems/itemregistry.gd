@@ -77,28 +77,26 @@ func _scan_folder(path: String) -> void:
 	# recursively walks the folder tree and loads every .tres file as ItemData.
 	# subfolders like data/items/consumables/ and data/items/weapons/ are
 	# scanned automatically — you don't need to register folders manually.
-	var dir: DirAccess = DirAccess.open(path)
-	if dir == null:
+	#
+	# ResourceLoader.list_directory(), NOT DirAccess. An export converts every
+	# .tres to binary and lists it as "<name>.tres.remap", so a DirAccess walk
+	# looking for ".tres" found nothing: EVERY EXPORTED BUILD RAN WITH AN EMPTY
+	# REGISTRY - no item could be named, drawn or validated. It showed first in
+	# the browser build ("ItemRegistry not populated yet" on every login), and
+	# it was true of a Windows export all along. list_directory() answers with
+	# the names as the editor shows them, remapped or not; folders end in "/".
+	if not DirAccess.dir_exists_absolute(path):
 		push_error("ItemRegistry: cannot open folder %s" % path)
 		return
 
-	dir.list_dir_begin()
-	var entry: String = dir.get_next()
-	while entry != "":
-		# skip hidden files and current/parent dir markers (".", "..", ".hidden")
+	for entry in ResourceLoader.list_directory(path):
+		# skip hidden files (".hidden") - list_directory gives no "." or ".."
 		if entry.begins_with("."):
-			entry = dir.get_next()
 			continue
-
-		var full_path: String = path + entry
-		if dir.current_is_dir():
-			# recurse into subfolder — trailing slash is required for DirAccess
-			_scan_folder(full_path + "/")
+		if entry.ends_with("/"):
+			_scan_folder(path + entry)
 		elif entry.ends_with(".tres"):
-			_load_item(full_path)
-
-		entry = dir.get_next()
-	dir.list_dir_end()
+			_load_item(path + entry)
 
 func _load_item(path: String) -> void:
 	# loads a single .tres file, validates it's ItemData with a valid item_id,

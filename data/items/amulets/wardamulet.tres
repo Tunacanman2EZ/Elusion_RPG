@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://p4spq4p0tsoh"]
+
+[ext_resource type="Texture2D" path="res://art/pack/amulets/a8021.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "wardamulet"
+display_name = "Ward Amulet"
+description = "Thin as a thread, and somehow stiff enough to stop a knife."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 2820
+tier = 3
+required_level = 10
+type = 2
+equip_slot = 8
+armor_value = 8
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

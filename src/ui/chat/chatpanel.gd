@@ -138,19 +138,18 @@ const ATTACH_THUMB_SIDE := 128
 # sent or taken off.
 const ENTRY_PLACEHOLDER := "Say something, or paste a picture with Ctrl+V..."
 const ENTRY_PLACEHOLDER_ATTACHED := "Add something to say, or just hit Enter"
+# A browser hands a page text from the clipboard, never a picture, so there the
+# box points at the two ways that do work: + and dropping a file on the game.
+const ENTRY_PLACEHOLDER_WEB := "Say something, or drop a picture on the game..."
 
-# THE CROWNED'S CROWN, beside the owner's name here as well as over their head.
-# Inline BBCode rather than a node, because a line of chat is one label and a
-# badge has to flow with the text it belongs to.
-#
-# SIZED EXPLICITLY AT THE ART'S OWN 26x15. RichTextLabel will scale an [img] to
-# whatever it is given, and anything but native size turns 26 columns of pixel
-# art into a smear.
-const CROWN_TAG := "[img=26x15]res://art/enemy/behemothcrown.png[/img] "
-
-# The one rank that wears it. Anything else - dev, mod, player - gets its
-# colour and nothing more.
-const CROWN_RANK := "owner"
+# HOW A NAME IS DRAWN: in the colour its player chose, with the owner's crown
+# or a MOD / DEV badge in front. It used to be the rank's colour, and the crown
+# lived here as a constant of its own; both moved to nametag.gd, which every
+# list that draws a name shares, so a crown in chat and a crown in the friends
+# list cannot drift apart. The crown is still inline BBCode at the art's own
+# 26x15 - a line of chat is one label and the badge has to flow with it.
+const NameTag := preload("res://src/shared/nametag.gd")
+const WebPage := preload("res://src/systems/webpage.gd")
 
 # The tint on the tab you are reading, against the ones you are not.
 const TAB_ON := Color(1.0, 0.88, 0.62)
@@ -236,6 +235,7 @@ func _ready() -> void:
 
 	if entry != null:
 		entry.max_length = MAX_LENGTH
+		entry.placeholder_text = entry_placeholder(WebPage.in_browser())
 		entry.text_submitted.connect(_on_entry_submitted)
 	if send_button != null:
 		send_button.pressed.connect(_on_send_pressed)
@@ -344,7 +344,8 @@ func _tab_hint(channel: String) -> String:
 		"private":
 			return "One person, and nobody else can read it"
 		"guild":
-			return "Waiting on guilds"
+			# It said "Waiting on guilds" long after guild chat went live.
+			return "Your guild, and only its members"
 	return ""
 
 
@@ -383,11 +384,12 @@ func _show_channel(channel: String) -> void:
 	_paint_tabs()
 	_render()
 
-	if channel == "guild":
-		_set_notice("Guilds are not in the game yet.")
-		return
-	if whispering and _whisper_with == "":
-		_set_notice("Type who you want to whisper to, up in the corner.")
+	# THE ONLY CHANNEL THIS CLIENT REFUSES ON ITS OWN is a whisper to nobody.
+	# Whether you may read or write guild chat is the SERVER's question - it
+	# knows whether you are in a guild - and it answers it; see _apply_read().
+	var refusal: String = _local_refusal(channel)
+	if refusal != "":
+		_set_notice(refusal)
 		return
 
 	# A CHANNEL IS RE-READ FROM ITS TAIL WHEN YOU SWITCH TO IT, for the same
@@ -683,14 +685,16 @@ func _node_for(line: Dictionary) -> Control:
 	var who: String = str(line.get("by", "?"))
 	var rank: String = str(line.get("role", "player"))
 	var stamp: String = LocalTime.stamp(int(line.get("at", 0)))
-	var name_colour: String = Api.colour_for_role(rank).to_html(false)
-	var crown: String = CROWN_TAG if rank == CROWN_RANK else ""
 	# YOUR OWN NAME IS MARKED. In a channel everybody can write to, finding
 	# where you last spoke is otherwise a scan of the whole box.
 	var mark: String = " <" if who.to_lower() == Api.username.to_lower() else ""
 
-	label.append_text("[color=#6b6055]%s[/color] %s%s[color=#%s]%s%s[/color]: %s" % [
-		stamp, crown, _guild_part(line), name_colour, _escape(who), mark,
+	# CROWN OR BADGE, GUILD, NAME. The hue and the rank are a snapshot on the
+	# line - what it was said with - so an old line keeps the colour it was
+	# written in, exactly as it keeps the guild it was said from.
+	label.append_text("[color=#6b6055]%s[/color] %s%s%s: %s" % [
+		stamp, NameTag.bbcode_mark(rank), _guild_part(line),
+		NameTag.bbcode_name(_escape(who) + mark, line.get("name_hue")),
 		_escape(str(line.get("body", "")))])
 	return label
 
@@ -742,13 +746,12 @@ func _picture_node(line: Dictionary) -> Control:
 	var typeface: Font = _chat_font()
 	if typeface != null:
 		header.add_theme_font_override("normal_font", typeface)
-	var crown: String = CROWN_TAG if rank == CROWN_RANK else ""
 	# THE SAME HEADER AS A TEXT LINE, including the guild. A picture posted by
 	# somebody in a guild that did not say so would be the one kind of message
 	# where the tag went missing, and nobody would ever work out why.
-	header.append_text("[color=#6b6055]%s[/color] %s%s[color=#%s]%s[/color]: %s" % [
-		LocalTime.stamp(int(line.get("at", 0))), crown, _guild_part(line),
-		Api.colour_for_role(rank).to_html(false), _escape(who),
+	header.append_text("[color=#6b6055]%s[/color] %s%s%s: %s" % [
+		LocalTime.stamp(int(line.get("at", 0))), NameTag.bbcode_mark(rank), _guild_part(line),
+		NameTag.bbcode_name(_escape(who), line.get("name_hue")),
 		_escape(caption) if caption != "" else "[color=#6b6055](a picture)[/color]"])
 	holder.add_child(header)
 
@@ -866,6 +869,12 @@ func _escape(text: String) -> String:
 # four copies of "unix seconds plus the system bias, then decompose", and the
 # copy in ownerpanel.gd had lost the bias entirely and was printing UTC. Four
 # copies is how that happens; see src/shared/localtime.gd.
+
+
+# The notice the server gave for a room this player may not read, so the
+# moment it opens up - a guild founded with the tab open - exactly that notice
+# is taken down. See _apply_read().
+var _room_notice: String = ""
 
 
 func _set_notice(text: String) -> void:
@@ -1156,21 +1165,12 @@ func _poll() -> void:
 	# Never two at once, and nothing to ask on behalf of nobody. Same guard as
 	# the HUD's broadcast poll and for the same reason: a slow server must not
 	# end up with a queue of requests stacked behind each other.
-	# ONE GUARD, FOUR REASONS. Never two polls at once, nothing to ask on
-	# behalf of nobody, nothing behind the guild tab yet, and a whisper with
-	# no recipient is not a conversation to read.
-	var nothing_to_ask: bool = (_in_flight
-		or not Api.is_logged_in()
-		or _channel == "guild"
-		or (_channel == "private" and _whisper_with == ""))
-	if nothing_to_ask:
+	if _in_flight or not Api.is_logged_in():
 		return
-
+	var path: String = _poll_path()
+	if path == "":
+		return
 	var asked: String = _channel
-	var path: String = "/api/chat?channel=%s&since=%d" % [
-		asked, int(_feeds[asked]["cursor"])]
-	if asked == "private":
-		path += "&with=" + _whisper_with.uri_encode()
 
 	_in_flight = true
 	var res: Dictionary = await Api.get_json(path, Api.PROBE_TIMEOUT)
@@ -1191,7 +1191,44 @@ func _poll() -> void:
 	var data = res.get("data", {})
 	if not (data is Dictionary):
 		return
+	_apply_read(asked, data)
 
+
+func _poll_path() -> String:
+	"""What the poll asks for the open tab, or "" when there is nothing to ask.
+
+	THE GUILD TAB USED TO BE "" HERE, with "Guilds are not in the game yet."
+	on the screen, long after guilds were in the game. The server had guild
+	chat - send, read, and the membership check - and this client never asked
+	for it: the same finished-half-with-nothing-joined-to-it that this project
+	keeps finding. Now only a whisper with nobody to whisper to is "". """
+	if _local_refusal(_channel) != "":
+		return ""
+	var path: String = "/api/chat?channel=%s&since=%d" % [
+		_channel, int(_feeds[_channel]["cursor"])]
+	if _channel == "private":
+		path += "&with=" + _whisper_with.uri_encode()
+	return path
+
+
+func _local_refusal(channel: String) -> String:
+	"""The one thing this client refuses without asking: a whisper to nobody.
+
+	ONE FUNCTION FOR THE TAB, THE POLL, THE SAY BUTTON AND THE PICTURE BUTTON.
+	Those were four copies of the same two refusals, which is how the guild one
+	outlived guilds in all four at once."""
+	if channel == "private" and _whisper_with == "":
+		return "Type who you want to whisper to, up in the corner."
+	return ""
+
+
+func _apply_read(asked: String, data: Dictionary) -> void:
+	"""One answer from GET /api/chat, onto the feed it was asked for. Split
+	from the request so the suite can hand it an answer and look.
+
+	`available: false` IS THE SERVER SAYING THIS ROOM IS NOT YOURS - today only
+	guild chat, for somebody not in a guild - and its `notice` is shown as it
+	is, because it is the one that knows why."""
 	# TAKEN FROM EVERY ANSWER, INCLUDING ONE FOR THE WRONG CHANNEL. How long
 	# until a picture may go to world does not depend on which channel was
 	# read, and throwing the number away below because the tab changed would
@@ -1205,6 +1242,24 @@ func _poll() -> void:
 	# an open whisper would be a small disaster.
 	if str(data.get("channel", asked)) != asked:
 		return
+
+	# NOT YOURS TO READ - the server's word, and its words. The feed is
+	# emptied as well: somebody removed from a guild should not go on reading
+	# the last page of it from their own screen.
+	if not bool(data.get("available", true)):
+		_feeds[asked]["lines"] = []
+		if asked == _channel:
+			_room_notice = str(data.get("notice", "This channel is not open to you."))
+			_set_notice(_room_notice)
+			if visible:
+				_render()
+		return
+	# AND WHEN IT OPENS AGAIN - you founded or joined a guild with this tab
+	# open - that notice goes, and only that one: a refusal from a send that
+	# happened meanwhile is still the thing to read.
+	if asked == _channel and _room_notice != "" and notice != null and notice.text == _room_notice:
+		_set_notice("")
+	_room_notice = ""
 
 	var pictures = data.get("images", {})
 	for entry_data in data.get("messages", []):
@@ -1255,6 +1310,13 @@ func _line_from_server(entry_data: Dictionary, pictures: Variant) -> Dictionary:
 		# function. A renderer cannot draw a field this dictionary does not
 		# have, and a test that builds its own dictionary would never find out.
 		"guild_tag": str(entry_data.get("guild_tag", "")),
+		# THE COLOUR THEY HAD CHOSEN WHEN THEY SAID IT - a snapshot, like the
+		# tag. Left out, every name in chat is drawn in the default colour
+		# while the friends list beside it shows the real one: which is exactly
+		# what the first live run of this showed, and exactly what the note
+		# above this function says will happen to any field not copied here.
+		# null stays null ("never chose"), so it is not coerced.
+		"name_hue": entry_data.get("name_hue"),
 		"body": entry_data.get("body", ""),
 		"at": int(entry_data.get("at", 0)),
 	}
@@ -1310,11 +1372,9 @@ func _on_send_pressed() -> void:
 		await _send_link(text)
 		return
 
-	if _channel == "guild":
-		_set_notice("Guilds are not in the game yet.")
-		return
-	if _channel == "private" and _whisper_with == "":
-		_set_notice("Type who you want to whisper to, up in the corner.")
+	var refusal: String = _local_refusal(_channel)
+	if refusal != "":
+		_set_notice(refusal)
 		return
 
 	await _send(_channel, text, "")
@@ -1400,6 +1460,13 @@ func _on_image_pressed() -> void:
 	if _sending:
 		return
 
+	# IN A BROWSER THE PICKER IS THE PAGE'S. Godot's own FileDialog there shows
+	# the engine's virtual disk, a folder of nothing, so + asks the browser.
+	if WebPage.in_browser():
+		var accept: Array = UPLOAD_KINDS.map(func(kind: String) -> String: return "." + kind)
+		_web_pick = WebPage.pick_file(",".join(PackedStringArray(accept)), _on_web_file_picked)
+		return
+
 	if _file_dialog == null:
 		_file_dialog = FileDialog.new()
 		_file_dialog.title = "Pick a picture"
@@ -1418,6 +1485,29 @@ func _on_image_pressed() -> void:
 		add_child(_file_dialog)
 
 	_file_dialog.popup_centered_ratio(0.6)
+
+
+# The browser picker's input and callbacks, kept until the file arrives.
+var _web_pick: Array = []
+
+
+func _on_web_file_picked(bytes: PackedByteArray, file_name: String) -> void:
+	"""A file from the browser's picker: written where a dropped file lands, in
+	the page's own memory, then attached exactly as a dropped one is."""
+	_web_pick = []
+	if bytes.is_empty():
+		_set_notice("That file could not be read.")
+		return
+	var folder: String = "/tmp/elusion-pick"
+	DirAccess.make_dir_recursive_absolute(folder)
+	var path: String = folder.path_join(file_name.get_file().replace("\\", "_"))
+	var out: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	if out == null:
+		_set_notice("That file could not be read.")
+		return
+	out.store_buffer(bytes)
+	out.close()
+	_attach_file(path)
 
 
 # ---------------------------------------------------------------------------
@@ -1545,10 +1635,14 @@ func _hold(payload: PackedByteArray, label: String, preview: Image,
 	var waiting: int = _world_wait_left() if _channel == "world" else 0
 	if waiting > 0:
 		_set_notice("Ready - but world chat takes one picture every half hour, "
-			+ "and there is %s to go. Whisper it, or send it to friends."
+			+ "and the next can go in %s. Whisper it, or send it to friends."
 			% _readable_wait(waiting))
 	else:
 		_set_notice("Ready - press Enter to send it.")
+
+
+static func entry_placeholder(in_browser: bool) -> String:
+	return ENTRY_PLACEHOLDER_WEB if in_browser else ENTRY_PLACEHOLDER
 
 
 func _clear_pending() -> void:
@@ -1558,7 +1652,7 @@ func _clear_pending() -> void:
 	if attach_thumb != null:
 		attach_thumb.texture = null
 	if entry != null:
-		entry.placeholder_text = ENTRY_PLACEHOLDER
+		entry.placeholder_text = entry_placeholder(WebPage.in_browser())
 
 
 func _thumbnail(picture: Image) -> Texture2D:
@@ -1739,7 +1833,7 @@ func _readable_wait(seconds: int) -> String:
 		return "%d minutes" % int(ceil(float(seconds) / 60.0))
 	if seconds >= 60:
 		return "a minute"
-	return "%d seconds" % seconds
+	return GameConstants.counted(seconds, "second")
 
 
 func _postable_channel() -> String:
@@ -1747,11 +1841,9 @@ func _postable_channel() -> String:
 	# nowhere. Previously a picture posted to a channel you were not really in
 	# was quietly redirected to world, which is a surprising place for a
 	# private one to turn up.
-	if _channel == "guild":
-		_set_notice("Guilds are not in the game yet.")
-		return ""
-	if _channel == "private" and _whisper_with == "":
-		_set_notice("Type who you want to whisper to, up in the corner.")
+	var refusal: String = _local_refusal(_channel)
+	if refusal != "":
+		_set_notice(refusal)
 		return ""
 
 	# THE WORLD LIMIT, CHECKED BEFORE THE UPLOAD RATHER THAN AFTER IT. The
@@ -1932,13 +2024,14 @@ func _refusal(res: Dictionary) -> String:
 	# These few read better in this panel's voice than the server's, and they
 	# are the ones where the server has nothing extra to add anyway.
 	if status == 0:
-		return "No answer from the server. Is it running?"
+		return Api.no_answer_text()
 	if status == 401:
 		return "You are not signed in."
 	if status == 429:
 		return "Slow down a moment - one picture every few seconds."
 	if status == 503:
-		return "This server cannot handle pictures yet (Pillow is not installed)."
+		return "This server cannot handle pictures yet (Pillow is not installed)." \
+			if OS.is_debug_build() else "This server cannot take pictures right now."
 
 	# EVERYTHING ELSE DEFERS. A 400 is the server telling you exactly what was
 	# wrong with the file, and no sentence written here could be better.
@@ -1952,5 +2045,6 @@ func _refusal(res: Dictionary) -> String:
 		# is never in doubt - a "method not allowed" means the running server
 		# does not have this route and something ELSE answered on that path.
 		# In practice: it was started before the route was added.
-		return "The server does not have that route. Restart it."
+		return "The server does not have that route. Restart it." if OS.is_debug_build() \
+			else "The server could not take that right now."
 	return "That did not send (HTTP %d)." % status

@@ -14,9 +14,9 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -283.0
-offset_top = 27.0
+offset_top = 3.0
 offset_right = -9.0
-offset_bottom = 373.0
+offset_bottom = 415.0
 grow_horizontal = 0
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -29,8 +29,6 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -24.0
-offset_bottom = 42.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -123,11 +121,11 @@ text = "Lusions: 0"
 layout_mode = 2
 
 [node name="inventoryscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1050388235]
-custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
+vertical_scroll_mode = 0
 
 [node name="scrollcontent" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/inventoryscroll" unique_id=454690486]
 layout_mode = 2
@@ -138,25 +136,39 @@ size_flags_vertical = 3
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/h_separation = 4
-theme_override_constants/v_separation = 4
+theme_override_constants/h_separation = -4
+theme_override_constants/v_separation = -4
 columns = 5
 script = ExtResource("3_x3yba")
 
 [node name="HSeparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=186729775]
 layout_mode = 2
 
-[node name="texturebutton" type="TextureButton" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1386625385]
+[node name="trashrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1386625390]
 layout_mode = 2
-texture_normal = ExtResource("6_1hfxc")
+theme_override_constants/separation = 10
+
+[node name="trashslot" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/trashrow" unique_id=1386625385]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_type_variation = &"PanelSocket"
 script = ExtResource("7_y42jl")
 
-[node name="confirmationdialog" type="ConfirmationDialog" parent="mainpanel/margincontainer/vboxcontainer/texturebutton" unique_id=319561101]
+[node name="centercontainer" type="CenterContainer" parent="mainpanel/margincontainer/vboxcontainer/trashrow/trashslot" unique_id=1386625391]
+layout_mode = 2
+mouse_filter = 2
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/texturebutton" unique_id=1453206382]
-layout_mode = 0
-offset_left = 47.0
-offset_top = 10.0
-offset_right = 202.0
-offset_bottom = 33.0
-text = "Put your trash here!"
+[node name="icon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/trashrow/trashslot/centercontainer" unique_id=1386625392]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("6_1hfxc")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="confirmationdialog" type="ConfirmationDialog" parent="mainpanel/margincontainer/vboxcontainer/trashrow/trashslot" unique_id=319561101]
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/trashrow" unique_id=1453206382]
+layout_mode = 2
+size_flags_vertical = 4
+text = "Drag here to destroy"

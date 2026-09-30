@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "tinymanapotion"
 display_name = "Tiny Mana Potion"
-description = "A thimble of cobalt tonic. Restores 20 mana."
+description = "A thimble of cobalt tonic."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

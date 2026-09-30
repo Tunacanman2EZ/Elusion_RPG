@@ -67,8 +67,20 @@ var _spent: bool = false
 
 
 func _ready() -> void:
-	if has_node("animatedsprite2d"):
-		$animatedsprite2d.play("projectile")
+	# THE ORB NEVER MOVED. This asked for "animatedsprite2d" and played
+	# "projectile"; all seven orb scenes name the node AnimatedSprite2D and call
+	# their only animation "default", with no autoplay - so has_node() said no
+	# and every electric sprite's orb flew as a still of frame 0. Both spellings
+	# are looked for, and whichever animation the frames actually have plays.
+	var sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	if sprite == null:
+		sprite = get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	if sprite != null and sprite.sprite_frames != null:
+		var names: PackedStringArray = sprite.sprite_frames.get_animation_names()
+		if sprite.sprite_frames.has_animation(&"projectile"):
+			sprite.play(&"projectile")
+		elif not names.is_empty():
+			sprite.play(StringName(names[0]))
 
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)

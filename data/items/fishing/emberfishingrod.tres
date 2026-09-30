@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "emberfishingrod"
 display_name = "Ember Fishing Rod"
-description = "Warm to the touch. Nothing in the water is out of its reach. Requires fishing level 75."
+description = "Warm to the touch. Nothing in the water is out of its reach."
 icon = ExtResource("1_icon")
 max_stack = 1
 value = 29280

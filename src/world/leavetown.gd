@@ -164,5 +164,5 @@ func map_landmark() -> Dictionary:
 		return {}
 	var where: String = "Exit"
 	if destination_scene != null and destination_scene.resource_path != "":
-		where = "To " + destination_scene.resource_path.get_file().get_basename().capitalize()
+		where = "To " + AreaRegistry.display_name(destination_scene.resource_path.get_file().get_basename())
 	return {"kind": "exit", "label": where}

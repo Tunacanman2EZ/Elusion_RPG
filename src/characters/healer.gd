@@ -100,9 +100,9 @@ func _set_stat_curve() -> void:
 
 func _set_skill_proficiency() -> void:
 	# healer's specialty: magic climbs 50% faster than any other class
-	# landing the same shots. attack XP is still gained from projectile
-	# hits too (universal now — see player.gd's gain_attack_xp()), just at
-	# the base 1.0 rate. starting value, tune to taste.
+	# landing the same shots. The server applies it to what /api/skill/train
+	# is told (its own SKILL_PROFICIENCY). Attack trains only at the kill, at
+	# the base rate for this class.
 	#
 	# This replaced a flat +1 magic granted on every character level-up, which
 	# paid out however the level was earned. This only pays for landed shots.

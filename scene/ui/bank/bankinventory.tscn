@@ -4,6 +4,8 @@
 [ext_resource type="Script" uid="uid://drsoebtbbsv8h" path="res://src/ui/bank/bankinventory.gd" id="2_2qeky"]
 [ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventory/inventorycontainer.gd" id="3_2qeky"]
 [ext_resource type="Texture2D" uid="uid://d0i8mhcexu4d" path="res://art/pack/currency/goldcoin.png" id="4_goldicon"]
+[ext_resource type="Script" uid="uid://blldfbqitghhi" path="res://src/ui/inventory/trashslot.gd" id="5_trash"]
+[ext_resource type="Texture2D" uid="uid://y7ytomwyv8c6" path="res://art/pack/tiles/lootbag2.png" id="6_trashicon"]
 
 [node name="bankinventory" type="Control" unique_id=1169906003]
 visible = false
@@ -56,7 +58,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
 theme_override_font_sizes/font_size = 20
-text = "Bank"
+text = "BANK"
 horizontal_alignment = 1
 
 [node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1719753082]
@@ -78,22 +80,17 @@ theme_type_variation = &"PanelSub"
 
 [node name="currencyvbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel" unique_id=778557311]
 layout_mode = 2
-theme_override_constants/separation = 20
-
-[node name="goldinput" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox" unique_id=244134073]
-unique_name_in_owner = true
-layout_mode = 2
-placeholder_text = "Enter amount"
+theme_override_constants/separation = 8
 
 [node name="goldcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox" unique_id=1715886666]
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 6
+theme_override_constants/separation = 8
 
 [node name="goldicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldcontainer" unique_id=839725113]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(16, 16)
+custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
+size_flags_vertical = 4
 texture = ExtResource("4_goldicon")
 expand_mode = 1
 stretch_mode = 5
@@ -103,19 +100,34 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
-theme_override_font_sizes/font_size = 12
-text = "Gold: 0"
+theme_override_font_sizes/font_size = 16
+text = "0 in bank"
 
-[node name="goldbuttons" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=594480210]
+[node name="carrylabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/goldcontainer" unique_id=1715886670]
+unique_name_in_owner = true
 layout_mode = 2
-alignment = 1
+size_flags_vertical = 4
+theme_override_colors/font_color = Color(0.75, 0.68, 0.55, 1)
+theme_override_font_sizes/font_size = 12
+text = "carrying 0"
+horizontal_alignment = 2
 
-[node name="depositbuttons" type="Button" parent="mainpanel/margincontainer/vboxcontainer/goldbuttons" unique_id=536358147]
+[node name="actionrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox" unique_id=594480210]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="goldinput" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/actionrow" unique_id=244134073]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Gold amount"
+
+[node name="depositbuttons" type="Button" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/actionrow" unique_id=536358147]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Deposit"
 
-[node name="withdrawbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/goldbuttons" unique_id=1926912019]
+[node name="withdrawbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/actionrow" unique_id=1926912019]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Withdraw"
@@ -124,19 +136,53 @@ text = "Withdraw"
 layout_mode = 2
 
 [node name="bankscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1050388235]
-custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
+vertical_scroll_mode = 0
 
 [node name="bankcontainer" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/bankscroll" unique_id=1727293017]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+theme_override_constants/h_separation = -4
+theme_override_constants/v_separation = -4
 columns = 5
 script = ExtResource("3_2qeky")
 grid_width = 10
 grid_height = 5
 metadata/_custom_type_script = "uid://dfssy5oqbqqkh"
+
+[node name="hseparator3" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1707617660]
+layout_mode = 2
+
+[node name="trashrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1707617661]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="trashslot" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/trashrow" unique_id=1707617662]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+theme_type_variation = &"PanelSocket"
+script = ExtResource("5_trash")
+
+[node name="centercontainer" type="CenterContainer" parent="mainpanel/margincontainer/vboxcontainer/trashrow/trashslot" unique_id=1707617663]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="icon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/trashrow/trashslot/centercontainer" unique_id=1707617664]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("6_trashicon")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="confirmationdialog" type="ConfirmationDialog" parent="mainpanel/margincontainer/vboxcontainer/trashrow/trashslot" unique_id=1707617665]
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/trashrow" unique_id=1707617666]
+layout_mode = 2
+size_flags_vertical = 4
+text = "Drag here to destroy"

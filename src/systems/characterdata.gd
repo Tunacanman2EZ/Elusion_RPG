@@ -19,19 +19,36 @@
 # from a real bug (not cheating) doesn't lose progress outright.
 #
 # IMPORTANT — what this does and doesn't cover:
-# hp/max_hp/mana/max_mana/stamina/max_stamina are already effectively
-# tamper-proof today as a side effect of existing design: player.gd's
-# _ready() calls _recompute_max_stats() + _fill_all_resources() right after
-# load_character_state(), unconditionally overwriting all six from `level`
-# + the class's own stat-curve constants. editing them in the save file
-# currently has zero live effect. this file still clamps them defensively
-# (MAX_STAT_POOL below) in case something later reads the raw save dict
-# without going through that pipeline (e.g. a character-select stat
-# preview) — but it CANNOT validate "is max_hp correct for this class at
-# this level," since per-class curves (hp_base/hp_per_lvl etc.) live in
-# each player script's _set_stat_curve(), not here. that would require
-# either exposing those curves as static data this script can read, or
-# doing the check player-side instead.
+#
+# THIS PARAGRAPH USED TO SAY ALL SIX VITALS WERE TAMPER-PROOF, and it has not
+# been true since the death penalty was fixed. It read: "player.gd's _ready()
+# calls _recompute_max_stats() + _fill_all_resources() right after
+# load_character_state(), unconditionally overwriting all six ... editing them
+# in the save file currently has zero live effect."
+#
+# _ready() has not called _fill_all_resources() for some time, and deliberately:
+# refilling on a loading screen threw away the whole death penalty and made the
+# server's healing reconciler fire on honest players. It now RESTORES what was
+# saved — what was full stays full, what was hurt stays hurt. A comment cannot
+# fail, so this one went on asserting a security property the code had stopped
+# providing, in the file whose subject is anti-tamper.
+#
+# THE THREE ARE NOT THE SIX. What is true now, split:
+#
+#   max_hp / max_mana / max_stamina  — still overwritten on every load by
+#     _recompute_max_stats(), a pure function of `level` and the class curve.
+#     Editing these in a save genuinely has no live effect.
+#   hp / mana / stamina              — RESTORED FROM THE SAVE, clamped to the
+#     maximum above. Editing these does have a live effect, bounded by that
+#     clamp. The client is not what stops it: the server's _reconcile_heals()
+#     is, by refusing a rise it cannot explain from regeneration or a grant.
+#     See E-9 and docs/apicontract.md.
+#
+# So the clamps below (MAX_STAT_POOL) stay defensive rather than decorative, and
+# this file still CANNOT validate "is max_hp correct for this class at this
+# level" — the per-class curves (hp_base/hp_per_lvl etc.) live in each player
+# script's _set_stat_curve(), not here. That would need either those curves
+# exposed as static data this script can read, or the check done player-side.
 #
 # level/skill caps (MAX_LEVEL, MIN/MAX_SKILL_LEVEL) below are placeholders —
 # confirm against your actual design before relying on them.
@@ -57,6 +74,8 @@ extends Node
 # version of the save file format — increment when format changes incompatibly
 const SAVE_VERSION := 2
 
+const WebPage := preload("res://src/systems/webpage.gd")
+
 # bank holds up to this many item slots, fixed-size for stable indices
 const BANK_MAX_SLOTS := 50
 
@@ -70,6 +89,12 @@ const SAVE_DEBOUNCE_SECONDS := 2.0
 # waiting on (a push finishing, a session returning) usually clears in well
 # under a second.
 const SAVE_RETRY_SECONDS: float = 0.5
+
+# How often a push that failed after being accepted is sent again. Slower than
+# SAVE_RETRY_SECONDS on purpose: that one retries a save the backend refused to
+# take at all, this one re-sends over the network to a server that just failed
+# to answer, and ten seconds is one request per failed section, not sixty.
+const UNPUSHED_RETRY_SECONDS: float = 10.0
 
 # THE CEILING ON COALESCING, and the bug it closes.
 #
@@ -101,7 +126,7 @@ const SAVE_MAX_DELAY_SECONDS: float = 10.0
 const SAVEABLE_STATS := {
 	"level":        1,
 	"xp":           0,
-	"xp_next":      100,
+	"xp_next":      1250,   # GameConstants.xp_needed_for_level(1); a const cannot call the autoload, so the suite holds them equal
 	"gold":         0,            # per-character carry gold (lost on death without revive)
 
 	# WHERE THIS CHARACTER IS, as an AreaRegistry id (the scene's filename).
@@ -199,6 +224,11 @@ var active_character_index: int = 0
 # account-wide shared data — initialized in _ready, refilled on load
 var account_data: Dictionary = DEFAULT_ACCOUNT_DATA.duplicate(true)
 
+# A bag and purse the server changed without this client asking were just
+# adopted - see apply_server_carry(). The HUD says what happened; the argument
+# is the server's resync, whose "trade" says which trade and what it gave.
+signal carry_adopted(resync: Dictionary)
+
 
 # =============================================================================
 # LIFECYCLE
@@ -216,6 +246,12 @@ func _ready() -> void:
 	# user" yet to load for. state stays at defaults until load_for_user()
 	# is called after a successful login (see loginmenu.gd).
 	_initialize_account_data()
+	# In a browser, a tab closed two seconds after a pickup must still save.
+	# Nothing on the desktop; see _on_page_leaving().
+	_page_watch = WebPage.watch_leaving(_on_page_leaving)
+	# On the desktop, closing the window waits for the save; see
+	# _quit_after_saving(). The engine would otherwise quit in the same frame.
+	get_tree().set_auto_accept_quit(false)
 
 
 # =============================================================================
@@ -639,20 +675,16 @@ func _validate_item_array(items: Array, context: String) -> Array:
 # SAVE / LOAD
 # =============================================================================
 
-func _write_save_now() -> bool:
-	# does the ACTUAL disk write. Only ever called by flush_save() — every
-	# gameplay caller goes through save_data(), which queues instead.
-	# the storage backend handles the file I/O.
-	# NEW: storage can legitimately be null if no user is currently loaded
-	# (before login, or after clear_current_user()) — guard rather than
-	# crash, since this function has many callsites throughout this file.
-	if storage == null:
-		push_warning("CharacterData: save attempted with no user loaded — ignoring")
-		return false
+func _storage_has_unpushed() -> bool:
+	return storage != null and storage.has_unpushed()
 
+
+func _save_payload() -> Dictionary:
+	# What a save is. One builder, because a push and a closing page both send
+	# it and must mean the same thing by it.
 	_ensure_slot_array()
 	_ensure_account_data()
-	var payload := {
+	return {
 		"version":                 SAVE_VERSION,
 		"character_slots":         character_slots,
 		"active_character_index":  active_character_index,
@@ -665,6 +697,20 @@ func _write_save_now() -> bool:
 		# non-whole-number float in the whole signed payload.
 		"saved_at":                int(Time.get_unix_time_from_system()),
 	}
+
+
+func _write_save_now() -> bool:
+	# does the ACTUAL disk write. Only ever called by flush_save() — every
+	# gameplay caller goes through save_data(), which queues instead.
+	# the storage backend handles the file I/O.
+	# NEW: storage can legitimately be null if no user is currently loaded
+	# (before login, or after clear_current_user()) — guard rather than
+	# crash, since this function has many callsites throughout this file.
+	if storage == null:
+		push_warning("CharacterData: save attempted with no user loaded — ignoring")
+		return false
+
+	var payload := _save_payload()
 	# THE FLAG IS CLEARED ONLY IF THE BACKEND TOOK IT.
 	#
 	# It used to be cleared on the line before the call, unconditionally, and
@@ -733,6 +779,9 @@ var _save_age: float = 0.0
 # again. It clears on the first write the backend takes.
 var _save_retrying: bool = false
 
+# Counts down to the next retry of a failed push. See _process().
+var _unpushed_clock: float = UNPUSHED_RETRY_SECONDS
+
 
 func save_data() -> bool:
 	# Queues a save rather than performing one. Returns true when the save
@@ -758,7 +807,13 @@ func save_data() -> bool:
 func flush_save() -> bool:
 	# Writes immediately if anything is pending. Safe to call when nothing
 	# is dirty — it just does nothing and reports success.
-	if not _save_pending:
+	#
+	# "PENDING" INCLUDES A PUSH THAT FAILED AFTER IT WAS ACCEPTED. save()
+	# returning true means "taken", not "stored"; a server push that is refused
+	# or times out afterwards leaves nothing queued here. Quitting then flushed
+	# nothing and that progress was gone. storage.has_unpushed() is the backend
+	# saying so.
+	if not _save_pending and not _storage_has_unpushed():
 		return true
 	if storage == null:
 		_save_pending = false
@@ -767,6 +822,15 @@ func flush_save() -> bool:
 
 
 func _process(delta: float) -> void:
+	# A PUSH THAT FAILED AFTER IT WAS ACCEPTED IS RETRIED, on its own clock. It
+	# used to wait for the next change, which a player standing still never made.
+	if not _save_pending and storage != null:
+		_unpushed_clock -= delta
+		if _unpushed_clock <= 0.0:
+			_unpushed_clock = UNPUSHED_RETRY_SECONDS
+			if _storage_has_unpushed():
+				_write_save_now()
+		return
 	if not _save_pending:
 		return
 
@@ -795,15 +859,99 @@ func _process(delta: float) -> void:
 		_write_save_now()
 
 
+# The two callbacks WebPage.watch_leaving() made. Held for as long as this
+# autoload lives: a dropped one stops firing without a word.
+var _page_watch: Array = []
+
+
+func _on_page_leaving() -> void:
+	"""The browser tab is being hidden or closed.
+
+	A HIDDEN PAGE DRAWS NO FRAMES, and every push goes out from a frame - so on
+	the desktop's terms a closed tab takes the last two seconds with it, or a
+	push that failed and was waiting to retry. This sends what the server does
+	not hold yet, at once, as requests the browser finishes without the page.
+
+	flush_save() runs as well. If the player comes back, the ordinary push then
+	sends the same sections through the path that reads the answers - a 409 over
+	a traded bag included - and marks them pushed."""
+	# NOT GATED ON _save_pending. A push already in flight is a fetch the
+	# browser drops with the tab; requests_before_leaving() compares with what
+	# the server CONFIRMED, so those sections are sent too, and nothing that is
+	# already there is.
+	if storage == null or not storage.has_method("requests_before_leaving"):
+		return
+	for request in storage.requests_before_leaving(_save_payload()):
+		Api.send_before_leaving(request["method"], request["path"], request["body"])
+	flush_save()
+
+
 func _notification(what: int) -> void:
-	# NOTIFICATION_WM_CLOSE_REQUEST fires when the window's X is clicked.
+	# NOTIFICATION_WM_CLOSE_REQUEST fires when the window's X is clicked, and
+	# now waits for the save before quitting - see _quit_after_saving().
 	# NOTIFICATION_EXIT_TREE covers get_tree().quit() paths, like the login
 	# screen's Exit button — an autoload stays in the tree across scene
 	# changes and only leaves it at shutdown, so this doesn't fire spuriously.
-	# Between them, a pending save survives the player closing the game two
-	# seconds after picking up gold.
-	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_quit_after_saving()
+	elif what == NOTIFICATION_EXIT_TREE:
 		flush_save()
+
+
+# How long closing the window may wait for the server to take the last save.
+# A push is a few requests of a few hundred milliseconds; this is the ceiling
+# for a server that is slow or gone, after which the window closes anyway.
+const QUIT_SAVE_SECONDS: float = 3.0
+
+var _quitting: bool = false
+
+
+func is_saving() -> bool:
+	"""True while a save is queued here or a push is on its way to the server."""
+	return _save_pending or (storage != null and storage.has_method("is_pushing")
+		and storage.is_pushing())
+
+
+func finish_saving(limit: float = QUIT_SAVE_SECONDS) -> bool:
+	"""Writes what is unsaved and waits, up to `limit` seconds, until the server
+	has it. True if it all went. COROUTINE - for the moments a player leaves.
+
+	flush_save() alone only STARTS a push. That was the whole of quitting and
+	logging out. Closing the window quit in the same frame, before the first
+	request left - measured against the real server: a bag changed and the
+	window closed at once kept its old bag; with this wait the bag went, and
+	the game closed 0.2 s later. A logout raced its revoke against the push's
+	PUTs, which go one after another; on localhost the PUT won five times out
+	of five, and the order is now fixed rather than left to the network."""
+	flush_save()
+	var until: int = Time.get_ticks_msec() + int(limit * 1000.0)
+	while is_saving() and Time.get_ticks_msec() < until:
+		await get_tree().process_frame
+	return not is_saving() and not _storage_has_unpushed()
+
+
+func _quit_after_saving(quit: Callable = Callable()) -> void:
+	"""The window's X: take the character's state as it stands, send it and the
+	skill XP still waiting, then quit - within QUIT_SAVE_SECONDS whatever the
+	server does. `quit` is for the suite; the game quits the tree."""
+	if _quitting:
+		return
+	_quitting = true
+	var until: int = Time.get_ticks_msec() + int(QUIT_SAVE_SECONDS * 1000.0)
+	if storage != null:
+		var player: Node = get_tree().get_first_node_in_group("player")
+		if player != null:
+			save_character_state(player)
+		# NOT AWAITED: it has its own 4 s timeout, and the clock here bounds the
+		# whole exit rather than each wait in turn.
+		SkillTrainer.flush()
+		await finish_saving(QUIT_SAVE_SECONDS)
+		while SkillTrainer._flushing and Time.get_ticks_msec() < until:
+			await get_tree().process_frame
+	if quit.is_valid():
+		quit.call()
+	else:
+		get_tree().quit()
 
 
 func load_data() -> bool:
@@ -1032,15 +1180,13 @@ func save_character_state(player: Node) -> void:
 	if here != "":
 		character_slots[slot]["area"] = here
 
-	# save hotbar assignments alongside the int stats.
-	# must happen BEFORE save_data() or the assignments wait one save cycle
-	# to actually hit disk.
-	if "hotbar_assignments" in player:
-		character_slots[slot]["hotbar_assignments"] = player.hotbar_assignments
+	# NO HOTBAR HERE. It used to be saved as a list of item ids, one per key;
+	# the keys hold items now and are cells 20-29 of the inventory saved above.
+	# A slot dictionary from before may still carry "hotbar_assignments", and
+	# nothing reads or sends it.
 
-	# NEW: same reasoning as hotbar_assignments above — active_pet_id is a
-	# String (an item_id), not part of the int-only SAVEABLE_STATS loop,
-	# so it's handled here explicitly. this is what actually makes a pet
+	# NEW: active_pet_id is a String (an item_id), not part of the int-only
+	# SAVEABLE_STATS loop, so it's handled here explicitly. this is what actually makes a pet
 	# survive a scene transition: the pet NODE gets freed with the old
 	# scene, but this string persists and player.gd re-spawns from it on
 	# the next _ready().
@@ -1138,15 +1284,6 @@ func load_character_state(player: Node) -> void:
 		else:
 			player.inventory_data = []
 
-	# load hotbar assignments — defaults to 9 empty strings if not in save
-	# (covers fresh characters and pre-hotbar save files)
-	if "hotbar_assignments" in player:
-		var saved_hotbar = slot.get("hotbar_assignments", [])
-		if typeof(saved_hotbar) == TYPE_ARRAY:
-			player.hotbar_assignments = saved_hotbar
-		else:
-			player.hotbar_assignments = ["", "", "", "", "", "", "", "", ""]
-
 	# NEW: load active_pet_id — defaults to "" (no pet) if not in save,
 	# which covers both fresh characters and saves that predate this
 	# feature. player.gd's _ready() calls _restore_active_pet() right
@@ -1231,7 +1368,7 @@ func _capture_inventory(player: Node) -> Array:
 #
 # The gear-loss bug it caused is written up at _sanitize_character_slot().
 
-func equip_item(player: Node, item_id: String) -> bool:
+func equip_item(player: Node, item_id: String, position: int = -1) -> bool:
 	# THE SERVER MOVES THE ITEM. Equipping used to be one assignment on the
 	# player - `equipped[slot] = item_id` - because a slot POINTED at a bag
 	# item rather than holding one. Nothing moved, so nothing could be lost.
@@ -1250,10 +1387,16 @@ func equip_item(player: Node, item_id: String) -> bool:
 	if player == null:
 		return false
 
-	var res: Dictionary = await Api.post("/api/character/equip", {
+	# `position` is the carried cell the piece came from, when the caller knows
+	# it - a bag cell or a hotbar key. The same sword in two cells is two
+	# swords, and the server spends the one named. -1 leaves it to the server.
+	var body: Dictionary = {
 		"slot": active_character_index,
 		"item_id": item_id,
-	})
+	}
+	if position >= 0:
+		body["position"] = position
+	var res: Dictionary = await Api.post("/api/character/equip", body)
 	if not res.get("ok", false):
 		_notify_equip_refusal(player, res)
 		return false
@@ -1295,6 +1438,11 @@ func _apply_equip_result(player: Node, data: Dictionary) -> void:
 
 	if "equipment" in data and data["equipment"] is Dictionary:
 		player.equipped = (data["equipment"] as Dictionary).duplicate()
+		# WHAT IS WORN MOVES THE MAXIMA. A Vitality amulet coming off takes its
+		# health with it, and the server has already clamped its own copy of hp
+		# to the lower ceiling in the same request - this keeps the two level.
+		if player.has_method("refresh_gear_stats"):
+			player.refresh_gear_stats()
 
 	# THE WHOLE BACKPACK, laid out the way the server laid it out. Same
 	# reasoning as /api/loot/take: the server tops up a part-used stack before
@@ -1303,6 +1451,16 @@ func _apply_equip_result(player: Node, data: Dictionary) -> void:
 	var cells: Array = data.get("inventory", []) if data.get("inventory", []) is Array else []
 	if cells.is_empty():
 		return
+	_adopt_server_bag(player, cells)
+
+
+func _adopt_server_bag(player: Node, cells: Array) -> void:
+	"""The server's whole carry, onto the live grid - or onto the cached array
+	the next save reads, when there is no grid to repaint.
+
+	ONE PLACE, shared by the equip result and apply_server_carry(). The two were
+	about to be the same six lines twice, and the half that matters - the
+	fallback to inventory_data - is exactly the half a second copy forgets."""
 	var container: Node = _live_inventory_container(player)
 	if container != null and container.has_method("load_server_array"):
 		container.load_server_array(cells)
@@ -1311,6 +1469,76 @@ func _apply_equip_result(player: Node, data: Dictionary) -> void:
 		# array is what the next save reads, and leaving it stale is how an
 		# item comes back.
 		player.inventory_data = _normalise_item_array(cells)
+
+
+func apply_server_carry(resync: Variant, player: Node = null) -> bool:
+	"""A bag and purse the SERVER changed without this client asking - a trade
+	the other player finished - adopted as the truth. True if anything landed.
+
+	`resync` is what app.py's _take_resync() builds: {"slot", "gold",
+	"inventory", "trade"}. It arrives by whichever of three routes gets here
+	first - the trade window's poll, the HUD's broadcast poll, or a refused
+	inventory save - and all three hand it here.
+
+	WHY THIS EXISTS. Whoever accepts a trade FIRST is not the one whose request
+	runs it, so their client was told nothing and went on showing the bag it
+	had. The next ordinary save sent that bag - a whole-bag replace - and the
+	item the trade had just given them was deleted. The server now refuses that
+	save; this is the other half, the client adopting what it is told.
+
+	THE CACHED SLOT ALWAYS, THE LIVE PLAYER ONLY IF IT IS THAT CHARACTER. A
+	result for a character you are not playing right now - you accepted, then
+	switched - still has to reach character_slots, or switching back would
+	load the stale copy and save it straight over the trade.
+
+	THE SERVER'S NUMBERS, NOT A MERGE. The bag and purse arriving here were read
+	when they were sent, so they are the newest truth there is; applying them
+	twice is harmless and there is nothing older that could arrive after."""
+	if not (resync is Dictionary):
+		return false
+	var landed: bool = _apply_server_carry(resync, player)
+	if landed:
+		# ONE ANNOUNCEMENT, whichever of the three routes delivered it. The HUD
+		# listens and says what the trade gave you; the routes themselves stay
+		# quiet, so a result that arrives twice is not announced twice by two
+		# different wordings.
+		carry_adopted.emit(resync)
+	return landed
+
+
+func _apply_server_carry(resync: Dictionary, player: Node) -> bool:
+	var cells: Array = resync.get("inventory", []) if resync.get("inventory", []) is Array else []
+	var slot_index: int = int(resync.get("slot", -1))
+	# AN EMPTY ARRAY IS NOT AN EMPTY BAG - see load_server_array(). The server
+	# always sends every cell, nulls included; zero cells means it said nothing.
+	if cells.is_empty() or slot_index < 0:
+		return false
+	_ensure_slot_array()
+	if slot_index >= character_slots.size():
+		return false
+	var gold: int = int(resync.get("gold", -1))
+
+	var slot = character_slots[slot_index]
+	if slot is Dictionary:
+		slot["inventory"] = _normalise_item_array(cells)
+		if gold >= 0:
+			slot["gold"] = gold
+
+	if slot_index != active_character_index:
+		return true
+
+	if player == null and is_inside_tree():
+		player = get_tree().get_first_node_in_group("player")
+	if player == null or not is_instance_valid(player):
+		return true
+
+	_adopt_server_bag(player, cells)
+	if gold >= 0:
+		if player.has_method("set_gold"):
+			player.set_gold(gold)
+		elif "gold" in player:
+			player.gold = gold
+	return true
 
 
 func _live_inventory_container(player: Node) -> Node:

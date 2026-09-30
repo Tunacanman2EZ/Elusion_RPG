@@ -17,4 +17,5 @@ type = 2
 equip_slot = 5
 required_classes = Array[String](["mage", "healer"])
 armor_value = 3
+bonus_max_mana = 5
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

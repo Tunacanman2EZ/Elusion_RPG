@@ -1,5 +1,8 @@
-# boss.gd — root script for boss.tscn, the final floor reached via
-# the ladder down from field.tscn. mirrors field.gd's structure closely:
+# boss.gd — root script for boss.tscn, the final floor: the Crowned's room,
+# reached through the boss arena's victory door once the six element bosses are
+# down (it used to be the field's ladder, which now leads to the arena; for a
+# while nothing led here but a staff teleport). Its ladder goes up to the
+# field. mirrors field.gd's structure closely:
 # spawns the actual player character (same responsibility elusion.gd has
 # for town), positions them at the correct FieldPortal arrival marker.
 #

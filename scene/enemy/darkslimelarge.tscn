@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://cph38fjj17n0a"]
+
+[ext_resource type="PackedScene" uid="uid://dtffi4janv50h" path="res://scene/enemy/poisonslime.tscn" id="1_base"]
+[ext_resource type="Resource" uid="uid://myq3tg6idpnuh" path="res://data/enemies/darkslimelarge.tres" id="2_data"]
+
+[node name="darkslimelarge" instance=ExtResource("1_base")]
+is_small = false
+enemy_data = ExtResource("2_data")

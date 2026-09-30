@@ -25,19 +25,11 @@ const REFRESH_SECONDS := 15.0
 # impossible name is refused at the keyboard rather than by a round trip.
 const NAME_PATTERN := "^[A-Za-z0-9_]{3,20}$"
 
-# THE CROWN, AND THE THIRD PLACE THAT DRAWS IT.
-# It is over the owner's head in the world (player.gd) and beside their name in
-# chat (chatpanel.gd), and it was missing here - so the one account that is
-# meant to be recognisable everywhere looked like anybody else on the one screen
-# that is nothing but a list of names.
-#
-# SIZED AT THE ART'S OWN 26x15, for the same reason chat pins its [img] to those
-# numbers: this is pixel art with an outline, and any other size smears it.
-const CROWN_PATH := "res://art/enemy/behemothcrown.png"
-const CROWN_SIZE := Vector2(26, 15)
-
-# The one rank that wears it. Dev, mod and player get their colour and no more.
-const CROWN_RANK := "owner"
+# HOW A NAME IS DRAWN: in its player's own colour, with the owner's crown or a
+# MOD / DEV badge in front. The crown used to be three constants here, a third
+# copy beside chat's and the nameplate's; it lives in nametag.gd now, which
+# every list that draws a name shares.
+const NameTag := preload("res://src/shared/nametag.gd")
 
 
 var _in_flight: bool = false
@@ -48,9 +40,9 @@ var _name_check := RegEx.new()
 @onready var add_entry: LineEdit = get_node_or_null("%friendsaddentry")
 @onready var add_button: Button = get_node_or_null("%friendsaddbutton")
 @onready var close_button: Button = get_node_or_null("%friendsclosebutton")
-@onready var refresh_button: Button = get_node_or_null("%friendsrefreshbutton")
 @onready var notice: Label = get_node_or_null("%friendsnotice")
 @onready var count_label: Label = get_node_or_null("%friendscount")
+@onready var requests_label: Label = get_node_or_null("%friendsrequests")
 
 
 # Drag by the header, resize from any edge, and come back where it was left.
@@ -76,8 +68,10 @@ func _ready() -> void:
 		add_entry.text_submitted.connect(func(_t): _on_add_pressed())
 	if close_button != null:
 		close_button.pressed.connect(close)
-	if refresh_button != null:
-		refresh_button.pressed.connect(func(): _load())
+	# NO REFRESH BUTTON, and that is the tidy-up. The list re-reads itself
+	# every REFRESH_SECONDS while open, on opening, and after every answer to
+	# every button - an "R" beside the close button was a second control for
+	# something that already happens, drawn in a style nothing else used.
 
 	_set_notice("")
 
@@ -162,11 +156,10 @@ func _repaint(data: Dictionary) -> void:
 	var now: int = int(data.get("now", 0))
 
 	if count_label != null:
-		var online: int = 0
-		for person in friends:
-			if person is Dictionary and bool(person.get("online", false)):
-				online += 1
-		count_label.text = "%d online of %d" % [online, friends.size()]
+		count_label.text = header_line(friends)
+	if requests_label != null:
+		requests_label.text = requests_text(incoming.size())
+		requests_label.visible = requests_label.text != ""
 
 	# REQUESTS FIRST. They are the only thing in this panel that is waiting on
 	# the player to do something, and burying them under the friends list is
@@ -190,6 +183,38 @@ func _repaint(data: Dictionary) -> void:
 		for person in outgoing:
 			if person is Dictionary:
 				_add_row(person, now, "outgoing")
+
+
+static func header_line(friends: Array) -> String:
+	"""The line under the title, in words: "2 of 4 friends online".
+
+	WORDS, NOT ARITHMETIC. It used to read "0 online of 0" to somebody with no
+	friends yet - true, and the least helpful way to say it. Same lesson as the
+	guild header's "just you"."""
+	var total: int = 0
+	var online: int = 0
+	for person in friends:
+		if person is Dictionary:
+			total += 1
+			if bool(person.get("online", false)):
+				online += 1
+	if total == 0:
+		return "nobody on your list yet"
+	if total == 1:
+		return "1 friend, online" if online == 1 else "1 friend, offline"
+	if online == 0:
+		return "%d friends, none online" % total
+	if online == total:
+		return "%d friends, all online" % total
+	return "%d of %d friends online" % [online, total]
+
+
+static func requests_text(waiting: int) -> String:
+	"""Requests waiting on YOU, said in the header too - so a request is seen
+	from the top of the panel, not only by somebody who scrolls to it."""
+	if waiting <= 0:
+		return ""
+	return "· 1 request waiting" if waiting == 1 else "· %d requests waiting" % waiting
 
 
 func _add_heading(text: String, colour: Color) -> void:
@@ -229,37 +254,19 @@ func _add_row(person: Dictionary, now: int, kind: String) -> void:
 
 	if kind == "friend":
 		var dot := Label.new()
-		dot.text = "+" if bool(person.get("online", false)) else "-"
+		# SHAPES, not + and -, which read as buttons that add and remove.
+		dot.text = "●" if bool(person.get("online", false)) else "○"
 		dot.add_theme_color_override("font_color",
 			Color(0.45, 0.9, 0.5) if bool(person.get("online", false))
 			else Color(0.45, 0.42, 0.38))
 		dot.add_theme_font_size_override("font_size", 13)
 		line.add_child(dot)
 
-	# The crown goes BEFORE the name, where chat puts it, so the two read the
-	# same way round.
-	var role: String = str(person.get("role", "player"))
-	if role == CROWN_RANK:
-		var crown := TextureRect.new()
-		crown.texture = load(CROWN_PATH) as Texture2D
-		# EXPAND_IGNORE_SIZE or custom_minimum_size is only a floor and the art
-		# sets the real width - the same trap the board header and the inventory
-		# icon both hit. With it, 26x15 is exactly 26x15.
-		crown.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		crown.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		crown.custom_minimum_size = CROWN_SIZE
-		crown.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		crown.tooltip_text = "Owner"
-		line.add_child(crown)
-
-	var name_label := Label.new()
-	name_label.text = who
+	# CROWN OR BADGE, THEN THE NAME IN THE COLOUR ITS PLAYER CHOSE. The same
+	# as chat and the guild roster, because it is the same function.
+	var name_label: Label = NameTag.add_to(line, who, str(person.get("role", "player")),
+		person.get("name_hue"))
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# SAME COLOUR AS OVER THEIR HEAD AND IN CHAT. Api owns the mapping so the
-	# three cannot drift apart.
-	name_label.add_theme_color_override("font_color", Api.colour_for_role(role))
-	name_label.add_theme_font_size_override("font_size", 12)
-	line.add_child(name_label)
 
 	if kind == "friend":
 		var status := Label.new()
@@ -303,12 +310,7 @@ func _presence_text(person: Dictionary, now: int) -> String:
 	# AGED AGAINST THE SERVER'S CLOCK, which is why the response carries one.
 	# Measuring against this machine's clock shows "last seen in 3 hours" to
 	# anybody whose system time is wrong, and plenty of them are.
-	var gap: int = max(0, now - seen)
-	if gap < 3600:
-		return "%d min ago" % int(gap / 60.0)
-	if gap < 86400:
-		return "%d h ago" % int(gap / 3600.0)
-	return "%d days ago" % int(gap / 86400.0)
+	return LocalTime.ago(seen, now)
 
 
 # =============================================================================
@@ -380,7 +382,7 @@ func _failure_text(res: Dictionary) -> String:
 	var said: String = str(res.get("error", "")).strip_edges()
 
 	if status == 0:
-		return "No answer from the server. Is it running?"
+		return Api.no_answer_text()
 	if status == 401:
 		return "You are not signed in."
 	if status == 404:

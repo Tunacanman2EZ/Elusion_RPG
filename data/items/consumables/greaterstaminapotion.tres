@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "greaterstaminapotion"
 display_name = "Greater Stamina Potion"
-description = "A decanter of amber tonic. Restores 260 stamina."
+description = "A decanter of amber tonic."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

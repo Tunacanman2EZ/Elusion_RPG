@@ -98,7 +98,20 @@ var _is_open: bool = false
 
 @onready var anim: AnimatedSprite2D = $animatedsprite2d
 @onready var despawn_timer: Timer = $despawntimer
-@onready var pet_beam: Node = get_node_or_null("petbeam")
+
+# THE RARE-DROP GLOW, built in code by _build_glow(). It replaced "petbeam", a
+# flat five-pixel Line2D 149 pixels tall that only ever lit for pets and read as
+# a stick poking out of the sack. Now any bag holding an epic or legendary item
+# glows in that rarity's colour: a soft pillar, a pool of light on the ground,
+# and a few motes drifting up, pulsing gently.
+var _glow: Node2D = null
+var _glow_tween: Tween = null
+var _glow_tier: int = 0
+
+const GLOW_PILLAR_HEIGHT := 56
+const GLOW_PILLAR_WIDTH := 12
+const GLOW_CORE_WIDTH := 4
+const GLOW_POOL_SIZE := Vector2i(34, 12)
 
 
 # =============================================================================
@@ -131,7 +144,7 @@ func _ready() -> void:
 			despawn_timer.timeout.connect(_on_despawn_timeout)
 		despawn_timer.start()
 
-	_apply_beam_state()
+	_apply_glow()
 
 
 func _process(_delta: float) -> void:
@@ -222,6 +235,7 @@ func set_contents(contents: Array) -> void:
 	# Position-aligned, nulls included. The panel writes back through here too,
 	# and it deliberately hands over an array that is still the full length.
 	_contents = contents
+	_apply_glow()
 
 
 func get_contents() -> Array:
@@ -234,18 +248,126 @@ func set_owner_player(player: Node) -> void:
 
 func set_has_pet(has_pet: bool) -> void:
 	_has_pet = has_pet
-	_apply_beam_state()
+	_apply_glow()
 
 
-func _apply_beam_state() -> void:
-	if pet_beam == null:
+static func rare_tier_of(contents: Array, has_pet: bool) -> int:
+	"""The rarest thing in the bag, as a tier. A pet counts as legendary.
+
+	Currency is left out: a heap of coins rolls a tier for its SIZE, not for
+	how rare it is, and a big pile of gold glowing like an ember sword would
+	teach the player the glow means nothing."""
+	var best: int = 5 if has_pet else 0
+	for entry in contents:
+		if not (entry is Dictionary):
+			continue
+		var data: ItemData = ItemRegistry.get_item(str(entry.get("item_id", "")))
+		if data == null or data.type == ItemData.Type.CURRENCY:
+			continue
+		best = maxi(best, int(data.tier))
+	return best
+
+
+func glow_tier() -> int:
+	"""The tier the bag is glowing for, or 0 when it is not glowing."""
+	return _glow_tier if _glow != null and _glow.visible else 0
+
+
+func _apply_glow() -> void:
+	var tier: int = rare_tier_of(_contents, _has_pet)
+	var lit: bool = tier >= GameConstants.RARE_GLOW_MIN_TIER
+	if not lit:
+		_glow_tier = 0
+		if _glow != null:
+			_glow.visible = false
+		if _glow_tween != null:
+			_glow_tween.kill()
+			_glow_tween = null
 		return
-	if "visible" in pet_beam:
-		pet_beam.visible = _has_pet
-	if pet_beam is GPUParticles2D:
-		pet_beam.emitting = _has_pet
-	elif pet_beam is CPUParticles2D:
-		pet_beam.emitting = _has_pet
+	if _glow == null:
+		_build_glow()
+	_glow_tier = tier
+	var colour: Color = GameConstants.rarity_colour(tier)
+	for part in _glow.get_children():
+		if part is Sprite2D:
+			var tex: GradientTexture2D = (part as Sprite2D).texture
+			var g: Gradient = tex.gradient
+			g.set_color(0, Color(colour, g.get_color(0).a))
+			g.set_color(1, Color(colour, 0.0))
+		elif part is CPUParticles2D:
+			var ramp: Gradient = (part as CPUParticles2D).color_ramp
+			ramp.set_color(0, Color(colour, 0.9))
+			ramp.set_color(1, Color(colour, 0.0))
+	_glow.visible = true
+	if _glow_tween == null and is_inside_tree():
+		_glow_tween = create_tween().set_loops()
+		_glow_tween.tween_property(_glow, "modulate:a", 0.65, 0.9).set_trans(Tween.TRANS_SINE)
+		_glow_tween.tween_property(_glow, "modulate:a", 1.0, 0.9).set_trans(Tween.TRANS_SINE)
+
+
+func _glow_sprite(size: Vector2i, top_alpha: float, radial: bool) -> Sprite2D:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, top_alpha))
+	g.set_color(1, Color(1, 1, 1, 0.0))
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.width = size.x
+	tex.height = size.y
+	if radial:
+		tex.fill = GradientTexture2D.FILL_RADIAL
+		tex.fill_from = Vector2(0.5, 0.5)
+		tex.fill_to = Vector2(1.0, 0.5)
+	else:
+		# Bright at the sack, gone at the top.
+		tex.fill_from = Vector2(0.5, 1.0)
+		tex.fill_to = Vector2(0.5, 0.0)
+	# ORDINARY BLENDING, NOT ADDITIVE. Added light washes toward white over
+	# anything bright: an ember glow over water came out pale cyan. Mixed, it
+	# stays the rarity's own colour on grass, stone and water alike.
+	var sprite := Sprite2D.new()
+	sprite.texture = tex
+	return sprite
+
+
+func _build_glow() -> void:
+	_glow = Node2D.new()
+	_glow.name = "rareglow"
+	_glow.show_behind_parent = true
+	add_child(_glow)
+
+	var pool: Sprite2D = _glow_sprite(GLOW_POOL_SIZE, 0.6, true)
+	pool.name = "pool"
+	pool.position = Vector2(0, 4)
+	_glow.add_child(pool)
+
+	var pillar: Sprite2D = _glow_sprite(Vector2i(GLOW_PILLAR_WIDTH, GLOW_PILLAR_HEIGHT), 0.4, false)
+	pillar.name = "pillar"
+	pillar.position = Vector2(0, -GLOW_PILLAR_HEIGHT / 2.0 + 2)
+	_glow.add_child(pillar)
+
+	var core: Sprite2D = _glow_sprite(Vector2i(GLOW_CORE_WIDTH, GLOW_PILLAR_HEIGHT), 0.8, false)
+	core.name = "core"
+	core.position = pillar.position
+	_glow.add_child(core)
+
+	var motes := CPUParticles2D.new()
+	motes.name = "motes"
+	motes.amount = 10
+	motes.lifetime = 1.6
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(5, 2)
+	motes.direction = Vector2.UP
+	motes.spread = 12.0
+	motes.gravity = Vector2.ZERO
+	motes.initial_velocity_min = 14.0
+	motes.initial_velocity_max = 24.0
+	motes.scale_amount_min = 1.0
+	motes.scale_amount_max = 2.0
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.9))
+	ramp.set_color(1, Color(1, 1, 1, 0.0))
+	motes.color_ramp = ramp
+	_glow.add_child(motes)
 
 
 # =============================================================================

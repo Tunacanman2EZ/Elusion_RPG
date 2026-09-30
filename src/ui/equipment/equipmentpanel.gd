@@ -73,6 +73,12 @@ const COLOUR_GOOD    := Color(0.55, 0.85, 0.5)
 @onready var armour_label:  Label   = get_node_or_null("%equiparmourvalue")
 @onready var soak_label:    Label   = get_node_or_null("%equipsoakvalue")
 
+# WHAT THE GEAR ADDS TO THE CHARACTER. Every tier from jade up carries a bonus
+# and the only place a player could see them was one tooltip at a time.
+@onready var health_bonus_label: Label = get_node_or_null("%equiphealthbonusvalue")
+@onready var mana_bonus_label:   Label = get_node_or_null("%equipmanabonusvalue")
+@onready var damage_bonus_label: Label = get_node_or_null("%equipdamagebonusvalue")
+
 # THE LIVING DOLL. An AnimatedSprite2D in the middle of the squares, walking on
 # the spot, so the panel shows who is wearing all this rather than a grid of
 # icons belonging to nobody.
@@ -205,7 +211,7 @@ func hide_panel() -> void:
 
 
 func refresh() -> void:
-	# REPAINTED WHOLE, EVERY TIME. Eight squares and a four-line summary is
+	# REPAINTED WHOLE, EVERY TIME. Eight squares and a seven-line summary is
 	# nothing to rebuild, and a partial update is how a panel ends up showing a
 	# piece that the save refused or the prune took back off.
 	for slot_name in _slots:
@@ -363,19 +369,37 @@ func _refresh_summary() -> void:
 		soak_label.add_theme_color_override("font_color",
 			COLOUR_GOOD if reduction > 0.0 else COLOUR_NEUTRAL)
 
+	# SUMMED BY THE CHARACTER, the same equipped_bonus() that raises max_hp and
+	# max_mana and multiplies every hit, so the panel cannot show a total the
+	# character is not actually getting. The damage row above already includes
+	# the percent; this row says how much of it came from gear.
+	if player.has_method("equipped_bonus"):
+		_show_bonus(health_bonus_label, player.equipped_bonus("bonus_max_hp"), "")
+		_show_bonus(mana_bonus_label, player.equipped_bonus("bonus_max_mana"), "")
+		_show_bonus(damage_bonus_label, player.equipped_bonus("bonus_damage_percent"), "%")
+
+
+func _show_bonus(label: Label, amount: int, suffix: String) -> void:
+	# "+150" in the good colour, or a dash - not "+0", which reads as a bonus
+	# of nothing rather than no bonus.
+	if label == null:
+		return
+	label.text = "+%d%s" % [amount, suffix] if amount > 0 else "-"
+	label.add_theme_color_override("font_color", COLOUR_GOOD if amount > 0 else COLOUR_NEUTRAL)
+
 
 # =============================================================================
 # EQUIP AND UNEQUIP
 # =============================================================================
 
-func _on_equip_requested(_slot_name: String, item_id: String) -> void:
+func _on_equip_requested(_slot_name: String, item_id: String, from_cell: int) -> void:
 	# The square's name is ignored on purpose: player.equip() derives the slot
 	# from the item, so there is nothing for the two to disagree about. The
 	# square already refused anything that does not belong in it.
-	await equip(item_id)
+	await equip(item_id, from_cell)
 
 
-func equip(item_id: String) -> bool:
+func equip(item_id: String, from_cell: int = -1) -> bool:
 	# THE RULE IS NOT HERE. CharacterData.equip_item() asks the player whether
 	# the piece may be worn and saves if it may — because the backpack's
 	# right-click does the same thing, and a UI panel owning the only copy of
@@ -385,7 +409,7 @@ func equip(item_id: String) -> bool:
 	# await: equip_item() is a server round trip now. Repainting before the
 	# answer lands would draw a character wearing something the server may be
 	# about to refuse.
-	if not await CharacterData.equip_item(player, item_id):
+	if not await CharacterData.equip_item(player, item_id, from_cell):
 		return false
 	refresh()
 	return true

@@ -48,7 +48,9 @@
 extends Control
 
 
-const LOOT_SIZE := 6
+# NINE CELLS, three rows of three, and the server's LOOT_BAG_CAPACITY must match.
+# It was six, and a boss bag's coins, gear, potion and pet ran past that.
+const LOOT_SIZE := 9
 const LUSION_ITEM_ID := "lusions"
 
 # Matches Combat.KILL_TIMEOUT's reasoning. A take is a request the player made
@@ -60,6 +62,20 @@ const TAKE_TIMEOUT := 4.0
 
 @onready var loot_container: Node = %lootcontainer
 @onready var close_button: Button = %closebutton
+@onready var take_all_button: Button = get_node_or_null("%takeallbutton")
+
+# Cells per row. The grid shows only the rows its items reach, so a bag with
+# one piece of gear and a coin is one row tall, not two with a blank under it.
+const LOOT_COLUMNS := 3
+
+# While Take all is walking the bag, so a second press cannot start a second
+# walk over the same cells.
+var _taking_all: bool = false
+
+# THE SUITE'S DOOR INTO A TAKE. Left invalid in the game, where a take is
+# Api.post("/api/loot/take"). The suite sets it to answer as the server would,
+# so Take all's order and its stop-and-skip rules are tested without a server.
+var take_request: Callable = Callable()
 
 
 var _world_bag: Node = null
@@ -118,6 +134,9 @@ func _ready() -> void:
 	if loot_container.has_signal("slot_double_clicked"):
 		if not loot_container.slot_double_clicked.is_connected(_on_slot_double_clicked):
 			loot_container.slot_double_clicked.connect(_on_slot_double_clicked)
+
+	if take_all_button != null and not take_all_button.pressed.is_connected(_on_take_all_pressed):
+		take_all_button.pressed.connect(_on_take_all_pressed)
 
 	visible = false
 
@@ -260,6 +279,26 @@ func _load_contents(contents: Array) -> void:
 		])
 
 	loot_container.load_save_array(resolved)
+	_show_rows(rows_needed(resolved, LOOT_COLUMNS))
+
+
+static func rows_needed(cells: Array, columns: int) -> int:
+	"""How many grid rows the bag's items reach: never fewer than one."""
+	var last: int = -1
+	for i in cells.size():
+		if cells[i] is Dictionary and str(cells[i].get("item_id", "")) != "":
+			last = i
+	return maxi(1, ceili(float(last + 1) / float(maxi(columns, 1))))
+
+
+func _show_rows(rows: int) -> void:
+	# FIT TO THE ITEMS. The panel used to hold a 200-pixel scroll area whatever
+	# the bag held, so a two-item bag sat above a blank the size of itself.
+	# Rows past the last item are hidden; open_for_bag()'s reset_size() then
+	# shrinks the window round what is left.
+	for slot in loot_container.get_children():
+		if slot is InventorySlot:
+			slot.visible = slot.slot_index < rows * LOOT_COLUMNS
 
 
 # =============================================================================
@@ -267,14 +306,20 @@ func _load_contents(contents: Array) -> void:
 # =============================================================================
 
 func _on_slot_double_clicked(slot: InventorySlot) -> void:
+	_take_slot(slot)
+
+
+func _take_slot(slot: InventorySlot) -> Dictionary:
+	"""Ask the server for one cell. Returns the answer ({} when nothing was
+	asked), so Take all can tell a full backpack from a lost connection."""
 	if slot == null or slot.is_empty():
-		return
+		return {}
 
 	if _taking:
 		# Silent. The player double-clicked twice inside the time one request
 		# takes, which is not a mistake worth a message — and the request
 		# already out is about to redraw the grid underneath them anyway.
-		return
+		return {}
 
 	if _bag_id == "":
 		# NO LOCAL FALLBACK, deliberately. Handing the item over because the
@@ -282,11 +327,11 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 		# produce loot by making a request fail does not need permission for
 		# anything.
 		_notify("This bag isn't registered with the server.")
-		return
+		return {}
 
-	if not Api.is_logged_in():
+	if not take_request.is_valid() and not Api.is_logged_in():
 		_notify("Not connected — can't take that.")
-		return
+		return {}
 
 	# CAPTURED BEFORE THE AWAIT, ALL OF IT.
 	#
@@ -300,16 +345,20 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 	var player: Node = _player if is_instance_valid(_player) else null
 
 	_taking = true
-	var res: Dictionary = await Api.post("/api/loot/take", {
-		"bag_id": bag_id,
-		"position": cell,
-	}, TAKE_TIMEOUT)
+	var res: Dictionary = {}
+	if take_request.is_valid():
+		res = await take_request.call(bag_id, cell)
+	else:
+		res = await Api.post("/api/loot/take", {
+			"bag_id": bag_id,
+			"position": cell,
+		}, TAKE_TIMEOUT)
 
 	# PAST A FOUR-SECOND AWAIT — see bankinventory.request_transfer() for the
 	# full version. This file is careful about its captured values and was not
 	# careful about itself.
 	if not is_instance_valid(self) or not is_inside_tree():
-		return
+		return res
 
 	_taking = false
 
@@ -318,7 +367,7 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 
 	if not res.get("ok", false):
 		_handle_refusal(res, player, bag_id, cell)
-		return
+		return res
 
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 
@@ -335,6 +384,49 @@ func _on_slot_double_clicked(slot: InventorySlot) -> void:
 			str(data.get("granted_item_id", "")),
 			str(data.get("credited", "")),
 		])
+
+	return res
+
+
+func _on_take_all_pressed() -> void:
+	take_all()
+
+
+func take_all() -> int:
+	"""Take every item, in cell order. Returns how many came out.
+
+	A FULL BACKPACK SKIPS, IT DOES NOT STOP. Gold and lusions go to a balance
+	and always fit, so a bag whose sword will not fit still hands over its
+	coins; the sword stays in the bag and the player hears "Inventory full"
+	once per cell, the same line a double-click gives. A cell already gone is
+	skipped too. Anything else - no connection, the bag expired - stops the
+	walk, because every cell after it would fail the same way."""
+	if _taking_all:
+		return 0
+	_taking_all = true
+	if take_all_button != null:
+		take_all_button.disabled = true
+	var taken: int = 0
+	var bag_id: String = _bag_id
+	for slot in loot_container.get_children():
+		if not (slot is InventorySlot) or slot.is_empty():
+			continue
+		if _bag_id != bag_id or not visible:
+			break
+		var res: Dictionary = await _take_slot(slot)
+		if not is_instance_valid(self):
+			return taken
+		if res.get("ok", false):
+			taken += 1
+			continue
+		var code: int = int(res.get("status", 0))
+		if code == 409 or code == 404:
+			continue
+		break
+	_taking_all = false
+	if take_all_button != null:
+		take_all_button.disabled = false
+	return taken
 
 
 func _apply_grant(player: Node, data: Dictionary) -> void:
@@ -372,9 +464,9 @@ func _apply_grant(player: Node, data: Dictionary) -> void:
 			Audio.play("coin")
 
 			if bool(data.get("duplicate_pet", false)):
-				_notify_player(player, "Already owned — +%d lusions" % granted_qty)
+				_notify_player(player, "Already owned — +%s" % GameConstants.counted(granted_qty, "lusion"))
 			else:
-				_notify_player(player, "+%d lusions" % granted_qty)
+				_notify_player(player, "+%s" % GameConstants.counted(granted_qty, "lusion"))
 
 		"inventory":
 			var applied: bool = _apply_inventory(data)

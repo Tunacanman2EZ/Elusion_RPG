@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://ibwtty78dv7e"]
+
+[ext_resource type="PackedScene" uid="uid://dtffi4janv50h" path="res://scene/enemy/poisonslime.tscn" id="1_base"]
+[ext_resource type="Resource" uid="uid://nvj8mjh03i5rs" path="res://data/enemies/windslimelarge.tres" id="2_data"]
+
+[node name="windslimelarge" instance=ExtResource("1_base")]
+is_small = false
+enemy_data = ExtResource("2_data")

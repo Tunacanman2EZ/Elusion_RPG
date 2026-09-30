@@ -7,6 +7,8 @@
 # interact flow:
 # 1. player walks into Area2D → player_in_range gets set
 # 2. player presses interact → an unlit firepit KINDLES, a lit one OPENS COOKING
+#    — and a kindle that finishes with the player still here opens cooking by
+#    itself, so a cold fire is one press, not two
 # 3. player walks out of Area2D → reference cleared, any open panel closes
 # 4. the panel closes, OR the player walks away → the fire burns out a second
 #    later, whichever came last
@@ -515,6 +517,27 @@ func _kindle() -> void:
 		return
 
 	light_fire()
+
+	# THEN STRAIGHT INTO COOKING. You lit this fire to cook on it - every firepit
+	# goes out again a second after you finish, so nobody kindles one for any
+	# other reason - and making the player press interact a second time to say
+	# so was a step that only ever meant "yes, the thing I just did". The kindle
+	# IS the wait: embers, the stone warming over KINDLE_SECONDS, then the flame.
+	# The panel arrives the moment that is over, which is what "once it is fully
+	# lit" means here.
+	#
+	# HERE, AND NOT IN light_fire(). light_fire() is also what _ready() calls on
+	# a pit authored lit, and what a quest script or toggle_fire() reaches.
+	# Opening the panel from there would pop the cooking screen at anybody who
+	# walked into an area with a camp already burning. The kindle is the one path
+	# that began with this player pressing interact at this fire, so it is the
+	# one path that has earned the panel.
+	#
+	# Walking away during the kindle still cancels everything, panel included -
+	# that return is above. And the second-press path in _process() is kept: a
+	# pit authored lit, or a fire still burning in the second after you closed
+	# the panel, still opens on interact.
+	_open_cooking()
 
 
 func _ensure_embers() -> void:

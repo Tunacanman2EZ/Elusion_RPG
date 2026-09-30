@@ -130,9 +130,10 @@ const SPRITE_CENTRE := Vector2(0, 8)
 # it so a water slime's shot IS water without a second scene existing.
 @export var element: int = Element.Type.NONE
 
-# NEW: magic XP granted to `caster` on a successful enemy hit. matches
-# melee's hardcoded gain_attack_xp(5) for parity — tune independently if
-# ranged/magic progression should feel faster or slower than melee.
+# NEW: magic XP granted to `caster` on a successful enemy hit, and reported
+# to the server like every magic grant. (The "parity with melee's 5 attack XP"
+# this used to cite is gone: melee pays no XP per hit now - attack trains at
+# the kill.)
 @export var magic_xp_on_hit: int = 5
 
 # NEW: the impact flourish. destroy_wave() used to be a bare queue_free(),

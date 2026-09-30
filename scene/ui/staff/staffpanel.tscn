@@ -3,6 +3,54 @@
 [ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_theme"]
 [ext_resource type="Script" path="res://src/ui/staff/staffpanel.gd" id="2_script"]
 
+[sub_resource type="StyleBoxFlat" id="SB_tabpanel"]
+content_margin_left = 0.0
+content_margin_top = 8.0
+content_margin_right = 0.0
+content_margin_bottom = 2.0
+bg_color = Color(0, 0, 0, 0)
+border_width_top = 1
+border_color = Color(0.5, 0.42, 0.28, 1)
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_on"]
+content_margin_left = 14.0
+content_margin_top = 4.0
+content_margin_right = 14.0
+content_margin_bottom = 4.0
+bg_color = Color(0.25, 0.2, 0.15, 1)
+border_width_left = 1
+border_width_top = 2
+border_width_right = 1
+border_color = Color(0.95, 0.8, 0.45, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_off"]
+content_margin_left = 14.0
+content_margin_top = 4.0
+content_margin_right = 14.0
+content_margin_bottom = 4.0
+bg_color = Color(0.12, 0.1, 0.08, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_color = Color(0.35, 0.3, 0.22, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_hover"]
+content_margin_left = 14.0
+content_margin_top = 4.0
+content_margin_right = 14.0
+content_margin_bottom = 4.0
+bg_color = Color(0.2, 0.16, 0.12, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_color = Color(0.7, 0.6, 0.4, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+
 [node name="staffpanel" type="Control"]
 visible = false
 layout_mode = 3
@@ -11,6 +59,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
+offset_left = -380.0
+offset_top = -280.0
+offset_right = 380.0
+offset_bottom = 280.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -18,17 +70,11 @@ theme = ExtResource("1_theme")
 script = ExtResource("2_script")
 
 [node name="mainpanel" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(660, 470)
+custom_minimum_size = Vector2(760, 560)
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -330.0
-offset_top = -235.0
-offset_right = 330.0
-offset_bottom = 235.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -77,77 +123,107 @@ theme_override_font_sizes/font_size = 18
 text = "×"
 flat = true
 
-[node name="body" type="HBoxContainer" parent="mainpanel/margin/rows"]
+[node name="stafftabs" type="TabContainer" parent="mainpanel/margin/rows"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 10
+theme_override_colors/font_selected_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_colors/font_hovered_color = Color(1, 0.95, 0.7, 1)
+theme_override_colors/font_unselected_color = Color(0.62, 0.58, 0.52, 1)
+theme_override_constants/side_margin = 0
+theme_override_font_sizes/font_size = 13
+theme_override_styles/panel = SubResource("SB_tabpanel")
+theme_override_styles/tab_selected = SubResource("SB_tab_on")
+theme_override_styles/tab_unselected = SubResource("SB_tab_off")
+theme_override_styles/tab_hovered = SubResource("SB_tab_hover")
+current_tab = 0
+use_hidden_tabs_for_min_size = true
 
-[node name="left" type="VBoxContainer" parent="mainpanel/margin/rows/body"]
-custom_minimum_size = Vector2(250, 0)
+[node name="players" type="HBoxContainer" parent="mainpanel/margin/rows/stafftabs"]
+layout_mode = 2
+theme_override_constants/separation = 10
+metadata/_tab_index = 0
+
+[node name="left" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players"]
+custom_minimum_size = Vector2(260, 0)
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="staffsearch" type="LineEdit" parent="mainpanel/margin/rows/body/left"]
+[node name="staffsearch" type="LineEdit" parent="mainpanel/margin/rows/stafftabs/players/left"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-placeholder_text = "Search players"
+placeholder_text = "Search any part of a name"
+max_length = 64
 clear_button_enabled = true
 
-[node name="filters" type="HBoxContainer" parent="mainpanel/margin/rows/body/left"]
+[node name="filters" type="HBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/left"]
 layout_mode = 2
+theme_override_constants/separation = 6
 
-[node name="staffonlineonly" type="CheckBox" parent="mainpanel/margin/rows/body/left/filters"]
+[node name="staffshowfilter" type="OptionButton" parent="mainpanel/margin/rows/stafftabs/players/left/filters"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 0)
 layout_mode = 2
 focus_mode = 0
 theme_override_font_sizes/font_size = 12
-text = "Online only"
 
-[node name="staffcountlabel" type="Label" parent="mainpanel/margin/rows/body/left/filters"]
+[node name="staffcountlabel" type="Label" parent="mainpanel/margin/rows/stafftabs/players/left/filters"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
 theme_override_font_sizes/font_size = 11
 horizontal_alignment = 2
 vertical_alignment = 1
+clip_text = true
 
-[node name="staffemptylabel" type="Label" parent="mainpanel/margin/rows/body/left"]
+[node name="staffemptylabel" type="Label" parent="mainpanel/margin/rows/stafftabs/players/left"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
 theme_override_font_sizes/font_size = 12
 text = "No accounts loaded."
 horizontal_alignment = 1
+autowrap_mode = 2
 
-[node name="scroll" type="ScrollContainer" parent="mainpanel/margin/rows/body/left"]
+[node name="scroll" type="ScrollContainer" parent="mainpanel/margin/rows/stafftabs/players/left"]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="staffaccountlist" type="VBoxContainer" parent="mainpanel/margin/rows/body/left/scroll"]
+[node name="staffaccountlist" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/left/scroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 2
 
-[node name="right" type="PanelContainer" parent="mainpanel/margin/rows/body"]
+[node name="staffmorebutton" type="Button" parent="mainpanel/margin/rows/stafftabs/players/left"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Load more"
+
+[node name="right" type="PanelContainer" parent="mainpanel/margin/rows/stafftabs/players"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"PanelSub"
 
-[node name="margin" type="MarginContainer" parent="mainpanel/margin/rows/body/right"]
+[node name="margin" type="MarginContainer" parent="mainpanel/margin/rows/stafftabs/players/right"]
 layout_mode = 2
 theme_override_constants/margin_left = 10
 theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 8
 
-[node name="rightbox" type="VBoxContainer" parent="mainpanel/margin/rows/body/right/margin"]
+[node name="rightbox" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin"]
 layout_mode = 2
 
-[node name="staffpickhint" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox"]
+[node name="staffpickhint" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 6
@@ -156,37 +232,37 @@ theme_override_font_sizes/font_size = 13
 text = "Pick a player on the left."
 horizontal_alignment = 1
 
-[node name="staffdetail" type="VBoxContainer" parent="mainpanel/margin/rows/body/right/margin/rightbox"]
+[node name="staffdetail" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 5
+theme_override_constants/separation = 4
 
-[node name="staffnamelabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffnamelabel" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
 theme_override_font_sizes/font_size = 18
 
-[node name="staffpresencelabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffpresencelabel" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 
-[node name="staffranklabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffranklabel" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 
-[node name="staffbanlabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffbanlabel" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(1, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 2
 
-[node name="staffreachlabel" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffreachlabel" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(1, 0)
 layout_mode = 2
@@ -194,65 +270,270 @@ theme_override_colors/font_color = Color(1, 0.65, 0.25, 1)
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 2
 
-[node name="sep" type="HSeparator" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffrecordsummary" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
 layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Record: clean"
+autowrap_mode = 2
 
-[node name="staffreason" type="LineEdit" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffdetailtabs" type="TabContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_selected_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_colors/font_hovered_color = Color(1, 0.95, 0.7, 1)
+theme_override_colors/font_unselected_color = Color(0.62, 0.58, 0.52, 1)
+theme_override_constants/side_margin = 0
+theme_override_font_sizes/font_size = 12
+theme_override_styles/panel = SubResource("SB_tabpanel")
+theme_override_styles/tab_selected = SubResource("SB_tab_on")
+theme_override_styles/tab_unselected = SubResource("SB_tab_off")
+theme_override_styles/tab_hovered = SubResource("SB_tab_hover")
+current_tab = 0
+use_hidden_tabs_for_min_size = true
+
+[node name="actions" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs"]
+layout_mode = 2
+theme_override_constants/separation = 5
+metadata/_tab_index = 0
+
+[node name="staffreason" type="LineEdit" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 placeholder_text = "Reason (needed to ban)"
-max_length = 200
+max_length = 500
 clear_button_enabled = true
 
-[node name="staffkickbutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffkickbutton" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions"]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 text = "Kick (sign out now)"
 
-[node name="bancaption" type="Label" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="bancaption" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
 theme_override_font_sizes/font_size = 11
 text = "Ban for"
 
-[node name="staffbanrow" type="HBoxContainer" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffbanrow" type="HBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="staffpermanentbutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail/staffbanrow"]
+[node name="staffpermanentbutton" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions/staffbanrow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 0
 text = "Permanent"
 
-[node name="staffunbanbutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffunbanbutton" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions"]
 unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 text = "Unban"
 
-[node name="staffrankrow" type="HBoxContainer" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail"]
+[node name="staffrankrow" type="HBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="staffpromotebutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail/staffrankrow"]
+[node name="staffpromotebutton" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions/staffrankrow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 0
 text = "Promote"
 
-[node name="staffdemotebutton" type="Button" parent="mainpanel/margin/rows/body/right/margin/rightbox/staffdetail/staffrankrow"]
+[node name="staffdemotebutton" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/actions/staffrankrow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 0
 text = "Demote"
+
+[node name="record" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+metadata/_tab_index = 1
+
+[node name="recordscroll" type="ScrollContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/record"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="staffrecordlist" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/record/recordscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+
+[node name="staffrecordempty" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/record"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "Nothing on record."
+autowrap_mode = 2
+
+[node name="staffrecordmore" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/record"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Older entries"
+
+[node name="staffnoteinput" type="LineEdit" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/record"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+placeholder_text = "Staff-only note - the player never sees it"
+max_length = 500
+clear_button_enabled = true
+
+[node name="noterow" type="HBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/record"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="staffnotebutton" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/record/noterow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Add note"
+
+[node name="staffwarnbutton" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/record/noterow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+tooltip_text = "Records that you warned them. The game does not send them anything."
+text = "Log a warning"
+
+[node name="trades" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+metadata/_tab_index = 2
+
+[node name="stafftradesummary" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/trades"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.6, 0.56, 1)
+theme_override_font_sizes/font_size = 12
+text = "Trades"
+autowrap_mode = 2
+
+[node name="tradescroll" type="ScrollContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/trades"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="stafftradelist" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/trades/tradescroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+
+[node name="stafftradeempty" type="Label" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/trades"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "No trades."
+autowrap_mode = 2
+
+[node name="stafftrademore" type="Button" parent="mainpanel/margin/rows/stafftabs/players/right/margin/rightbox/staffdetail/staffdetailtabs/trades"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Older trades"
+
+[node name="log" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+metadata/_tab_index = 1
+
+[node name="logfilters" type="HBoxContainer" parent="mainpanel/margin/rows/stafftabs/log"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="stafflogplayer" type="LineEdit" parent="mainpanel/margin/rows/stafftabs/log/logfilters"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+placeholder_text = "About player"
+max_length = 64
+clear_button_enabled = true
+
+[node name="stafflogstaff" type="LineEdit" parent="mainpanel/margin/rows/stafftabs/log/logfilters"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 12
+placeholder_text = "By staff member"
+max_length = 64
+clear_button_enabled = true
+
+[node name="stafflogkind" type="OptionButton" parent="mainpanel/margin/rows/stafftabs/log/logfilters"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+
+[node name="stafflogsearch" type="Button" parent="mainpanel/margin/rows/stafftabs/log/logfilters"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Search"
+
+[node name="stafflogempty" type="Label" parent="mainpanel/margin/rows/stafftabs/log"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(1, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "Nothing has been logged yet."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="logscroll" type="ScrollContainer" parent="mainpanel/margin/rows/stafftabs/log"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="stafflogentries" type="VBoxContainer" parent="mainpanel/margin/rows/stafftabs/log/logscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+
+[node name="stafflogmore" type="Button" parent="mainpanel/margin/rows/stafftabs/log"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 12
+text = "Older entries"
 
 [node name="footer" type="HBoxContainer" parent="mainpanel/margin/rows"]
 layout_mode = 2

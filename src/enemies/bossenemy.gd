@@ -58,7 +58,9 @@ const PLAYER_PHYSICS_LAYER := 4
 # EXPORTED SETTINGS
 # =============================================================================
 
-# Damage the spike deals, passed to each eruption on spawn.
+# Damage the spike deals when the boss's EnemyData does not say. Every boss's
+# .tres says now (projectile_damage), so this is the fallback - see
+# spike_damage() for why the data has to win.
 @export var attack_power: int = 34
 
 # Frame of the cast animation where the eruption is placed. FRAME 7 IS THE
@@ -798,7 +800,18 @@ const PATTERN_BREATHER := 0.05
 # Two and a half times the spike's 18, which is the shape this fight wants: the
 # ranged attack is constant chip you dodge by moving, and the melee is the price
 # of being close enough to hit back.
+#
+# THIS IS NOW THE FALLBACK, like attack_power. With a projectile_damage in the
+# .tres the swing is MELEE_SHARE of it - the 45-against-34 this was tuned at -
+# so each band's boss keeps this fight's shape at its own size. The swing still
+# has its own number; it is a ratio now instead of a constant.
 @export var melee_power: int = 45
+
+# THE SHAPE OF THE FIGHT, AS RATIOS OF THE SPIKE. The swing and the stalker's
+# trail were tuned at 45 and 22 against a 34 spike, and the band sets the
+# spike. Written as the fractions they came from so the history is readable.
+const MELEE_SHARE := 45.0 / 34.0
+const TRAIL_SHARE := 22.0 / 34.0
 
 
 # =============================================================================
@@ -850,6 +863,12 @@ func _ready() -> void:
 	# set in the Inspector still wins.
 	if enemy_data == null:
 		enemy_data = ENEMY_DATA
+
+	# NOT SHOVED. player.gd's wade query skips anything in "unpushable" - its
+	# comment names the boss as the thing that group is for - and nothing ever
+	# joined it, so walking into a boss slowed you like a crowd and pushed it
+	# across the floor like a slime.
+	add_to_group(&"unpushable")
 
 	# COMBAT TUNING LIVES HERE, not in the .tres — the .tres is the reward
 	# profile. attack_range in particular is a statement about how this fight
@@ -1024,13 +1043,60 @@ func _land_swing() -> void:
 			continue
 		already_hit.append(id)
 
-		target.take_damage(melee_power, current_element())
+		target.take_damage(melee_damage(), current_element())
 
 
 func _is_damageable_player(node: Node) -> bool:
 	return node != null \
 		and node.is_in_group(&"player") \
 		and node.has_method(&"take_damage")
+
+
+# =============================================================================
+# HOW HARD IT HITS: THE BAND, FROM THE BOSS'S OWN DATA
+# =============================================================================
+# All seven bosses run this script, and all seven used to hit for the same
+# 34 / 45 / 22 whatever their .tres said - projectile_damage was set on six of
+# them and read by nothing, because the spike is placed here rather than
+# through BaseEnemy.spawn_projectile_node(). So when the normals moved into
+# element bands the bosses stayed put: the Crowned's spike (37 after dark's
+# profile) hit softer than a dark bush mage (55), and the light boss hit
+# nearly three times as hard as anything around it.
+#
+# The spike is projectile_damage now, 1.5x its band's normal hit, and the swing
+# and the trail follow it by the shares above. The element profile still
+# scales the spike and the trail on top (earth x1.25 down to water x0.85), so
+# the bosses of one band still differ by element; the band sets the size.
+#
+# Read from ENEMY_DATA when enemy_data is still null, which is exactly what
+# _ready() does - so a bare bossenemy.tscn outside the tree answers as the
+# Crowned it will become, not as the fallback.
+
+func _damage_data() -> EnemyData:
+	return enemy_data if enemy_data != null else ENEMY_DATA
+
+
+func spike_damage() -> int:
+	var data: EnemyData = _damage_data()
+	if data != null and data.projectile_damage > 0:
+		return data.projectile_damage
+	return attack_power
+
+
+func melee_damage() -> int:
+	var data: EnemyData = _damage_data()
+	if data != null and data.projectile_damage > 0:
+		return maxi(1, roundi(data.projectile_damage * MELEE_SHARE))
+	return melee_power
+
+
+# 0 means "the stalker's own pillar_damage", the same convention
+# projectile_damage itself uses.
+func trail_damage() -> int:
+	var data: EnemyData = _damage_data()
+	if data != null and data.projectile_damage > 0:
+		return maxi(1, roundi(data.projectile_damage * TRAIL_SHARE))
+	return 0
 
 
 func _setup_spike_timer() -> void:
@@ -1507,7 +1573,8 @@ func _spawn_stalker() -> void:
 	# it the resolved variant means its trail wears the boss's element without
 	# the stalker needing to know elements exist, and its pillars pick up the
 	# element from the scene rather than staying NONE, which is what they were.
-	stalker.setup(player, Projectiles.variant_of(eruption_scene, current_element()))
+	stalker.setup(player, Projectiles.variant_of(eruption_scene, current_element()), trail_damage(),
+		current_element())
 
 	if debug_patterns:
 		print("[BOSS] stalker released (phase %d)" % [_current_phase() + 1])
@@ -2048,7 +2115,7 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	# add_child and the profile multiplies values that do not exist yet, so
 	# every spike comes out at the scene defaults. poisonslime._spawn_slime()
 	# carries the same note for is_small, and for exactly the same reason.
-	eruption.damage = attack_power
+	eruption.damage = spike_damage()
 
 	# GUARDED, AND THE GUARD IS NOT DEFENSIVE PROGRAMMING - it is load-bearing.
 	#

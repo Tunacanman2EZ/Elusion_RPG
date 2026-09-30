@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "cookedcopperscale"
 display_name = "Cooked Copperscale"
-description = "Scales bright enough to see from the bank. Restores 28 HP."
+description = "Scales bright enough to see from the bank."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

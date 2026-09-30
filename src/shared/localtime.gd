@@ -42,6 +42,27 @@ const MONTHS := ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
 const UNKNOWN := "--:--"
 
 
+static func ago(at: int, now: int) -> String:
+	"""How long ago, in words: "just now", "5 min ago", "2 h ago", "1 day ago".
+
+	FOUR COPIES OF THIS, AND ONE WAS RIGHT. The guild panel's history had it;
+	its roster, the friends list and the staff desk each wrote their own, and
+	said "1 days ago" and "0 min ago". Both clocks are unix seconds, and `now`
+	should be the server's (every list that shows this carries one), so a
+	machine with the wrong time does not age everybody by hours."""
+	if at <= 0 or now <= 0:
+		return ""
+	var gap: int = maxi(0, now - at)
+	if gap < 60:
+		return "just now"
+	if gap < 3600:
+		return "%d min ago" % int(gap / 60.0)
+	if gap < 86400:
+		return "%d h ago" % int(gap / 3600.0)
+	var days: int = int(gap / 86400.0)
+	return "1 day ago" if days == 1 else "%d days ago" % days
+
+
 static func bias_minutes() -> int:
 	if not _bias_known:
 		_bias_minutes = int(Time.get_time_zone_from_system().get("bias", 0))

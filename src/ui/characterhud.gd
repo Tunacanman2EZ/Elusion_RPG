@@ -2,7 +2,8 @@
 # CanvasLayer renders on top of the world. polls active player every frame
 # for stat changes and updates bars accordingly. owns lazy-instantiated
 # panels (stats, bank, lootbag) so they persist across opens. inventory is
-# eagerly instantiated so the hotbar can resolve item lookups from spawn.
+# eagerly instantiated so the hotbar's keys have a backpack to belong to from
+# spawn - they are its cells 20-29.
 #
 # atomic save policy:
 # every inventory mutation triggers a full save via the inventory_changed
@@ -32,6 +33,20 @@ const BROADCAST_POLL_SECONDS := 10.0
 # How many announcements stay on screen. Old ones scroll off the top.
 const MESSAGES_KEPT := 5
 
+# HOW LONG AN ANNOUNCEMENT STAYS UP, then how long it takes to fade out. The
+# box is for news, and news that never leaves stops being news and starts being
+# furniture - five lines of last week's maintenance parked above the menu bar.
+# Eight seconds reads a two-line notice twice over; the chat log keeps every
+# one of them for good (see _push_message).
+const MESSAGE_SHOW_SECONDS := 8.0
+const MESSAGE_FADE_SECONDS := 1.5
+
+# Notices that had nowhere to be RECORDED yet. The chat panel is built the first
+# time it is opened, and until then _push_message() had no log to write to - so
+# a notice that faded from the box was simply gone. They wait here, oldest
+# first, and are written into chat the moment it exists.
+const UNLOGGED_KEPT := 50
+
 # preloaded panel scenes
 const INVENTORY_SCENE     := preload("res://scene/ui/inventory/inventory.tscn")
 const STATSSCREEN_SCENE   := preload("res://scene/ui/statsscreen.tscn")
@@ -44,12 +59,16 @@ const COOKING_PANEL_SCENE := preload("res://scene/ui/cooking/cookingscreen.tscn"
 const SHOP_PANEL_SCENE    := preload("res://scene/ui/shop/shopinventory.tscn")
 const KINGDOM_PANEL_SCENE := preload("res://scene/ui/kingdom/kingdomboard.tscn")
 const TRADE_PANEL_SCENE   := preload("res://scene/ui/trade/tradepanel.tscn")
+# The script as well, for its static result_line() - the one wording of "what a
+# trade gave you", shared by the window's history and the HUD's announcement.
+const TradePanelScript    := preload("res://src/ui/trade/tradepanel.gd")
 # Owner-only save-viewer panel (see ownerpanel.gd). preload is fine
 # here even though most players will never see it — the panel itself
 # fails closed via Api.is_owner, so preloading the scene
 # doesn't expose anything, it's just an inert resource until the owner
 # actually toggles it with the backquote key.
 const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
+const STAFF_PANEL_SCENE   := preload("res://scene/ui/staff/staffpanel.tscn")
 const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
 const FRIENDS_PANEL_SCENE := preload("res://scene/ui/friends/friendspanel.tscn")
 const PLAYERS_PANEL_SCENE := preload("res://scene/ui/players/playerspanel.tscn")
@@ -105,6 +124,7 @@ var shop_panel:       Control         = null
 var kingdom_panel:    Control         = null
 var trade_panel:      Control         = null
 var owner_panel:      Control         = null
+var staff_panel:      Control         = null
 var chat_panel:       Control         = null
 var friends_panel:    Control         = null
 var players_panel:    Control         = null
@@ -115,6 +135,7 @@ var guild_panel:      Control         = null
 # table. See read_broadcasts() in app.py.
 var message_box:      PanelContainer   = null
 var message_rows:     VBoxContainer    = null
+var _unlogged_lines:  Array            = []
 var _broadcast_cursor: int = 0
 var _broadcast_poll_in_flight: bool = false
 
@@ -125,6 +146,10 @@ var _maintenance_warned: bool = false
 # twice while the acknowledgement is still in flight - the poll can come round
 # again before the server has been told.
 var _teleport_done: int = 0
+
+# The trade someone opened WITH you that this client has already announced, so
+# the toast is said once per trade and not every ten seconds. See _read_trade().
+var _trade_announced: String = ""
 var options_screen:   Control         = null
 var map_screen:       Control         = null
 
@@ -227,6 +252,60 @@ func _ready() -> void:
 	_wire_hotbar()
 
 
+# The keys that play the game. project.godot puts WASD and the arrows in
+# ui_left/right/up/down as well as the move_ actions, and Space in ui_accept as
+# well as attack.
+const WORLD_KEYS: Array[StringName] = [&"move_left", &"move_right", &"move_up", &"move_down", &"attack"]
+
+
+func _input(event: InputEvent) -> void:
+	# A GAME KEY TAKES THE KEYBOARD BACK FROM A CLICKED CONTROL. A click gives a
+	# button or slider the keyboard focus, and the GUI then reads the same
+	# presses as the player. Measured in Options: after one click on Damage
+	# numbers, walking moved the focus from button to button, and Space swung
+	# the sword and flipped the setting. After a click on the volume slider,
+	# walking right turned the volume up.
+	#
+	# _input runs before the GUI does, so releasing focus here means the GUI
+	# never sees the key as navigation. Movement is polled, so the character
+	# walks whether or not this runs. A text box keeps the keyboard, since those
+	# keys are letters in it.
+	release_for_world_key(event, get_viewport())
+
+
+static func release_for_world_key(event: InputEvent, viewport: Viewport) -> bool:
+	"""Takes the focus off a clicked control when `event` is a game key being
+	pressed. True when it did."""
+	var key := event as InputEventKey
+	if key == null or not key.pressed or not is_world_key(key):
+		return false
+	var focused: Control = viewport.gui_get_focus_owner()
+	if focused == null or keeps_the_keyboard(focused):
+		return false
+	focused.release_focus()
+	return true
+
+
+static func is_world_key(event: InputEvent) -> bool:
+	# Not exact_match: Shift is sprint, and Shift+W is still walking up.
+	for action in WORLD_KEYS:
+		if event.is_action(action):
+			return true
+	return false
+
+
+static func keeps_the_keyboard(control: Control) -> bool:
+	"""True for a text box the player can type in. The same test as
+	player.gd's _typing_in_ui(), which stops those keys moving the character."""
+	if not control.is_visible_in_tree():
+		return false
+	if control is LineEdit:
+		return (control as LineEdit).editable
+	if control is TextEdit:
+		return (control as TextEdit).editable
+	return false
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	# ESCAPE CLOSES WHATEVER IS OPEN. hide_panel() and is_panel_open() were
 	# written for this handler and then sat uncalled for months — every panel
@@ -291,6 +370,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
+	# M, THE MAP. The comment above has named minimap_toggle as one of these
+	# keys since the debug block gave M back - and there was no branch for it,
+	# so M did nothing and the map opened only from the nav bar.
+	if event.is_action_pressed("minimap_toggle"):
+		toggle_map()
+		get_viewport().set_input_as_handled()
+		return
+
 	# Backquote / tilde toggles the owner panel. Anyone who is not the owner
 	# gets no response at all by design, not even an error — see
 	# _toggle_owner_panel().
@@ -337,6 +424,10 @@ func _process(_delta: float) -> void:
 	# character loaded as with one, and a countdown that stopped ticking while
 	# the player was in a menu would be a countdown that lied.
 	_tick_connection_status()
+
+	# ALSO BEFORE THE GUARD, for the same reason: a notice that arrives while
+	# no character is loaded must still fade, or it sits there until one is.
+	_age_messages(Time.get_ticks_msec())
 
 	if active_character == null:
 		return
@@ -496,18 +587,23 @@ func _wire_nav_buttons() -> void:
 
 
 func _add_owner_button() -> void:
-	# THE OWNER'S WAY IN, using the row the scene already reserved.
+	# THE STAFF ROW: Staff for mods and up, and Owner and Powers for the owner.
 	#
-	# characterhud.tscn has carried a "staffrow" with a hidden Staff button and
-	# nothing driving it - a second row put aside for exactly this. Building a
-	# THIRD row in code, which is what this used to do, stacked the menu three
-	# deep for no reason. These go in the row that was waiting for them.
+	# characterhud.tscn has carried a "staffrow" with a hidden Staff button
+	# since the staff panel was built - and for all that time NOTHING SHOWED
+	# IT. This function made the row for the owner's two buttons and hid it
+	# from everybody else, mods included, so the moderation desk a mod was
+	# meant to run the game from had no door. It was tested, drawn, and
+	# unreachable: the recurring bug in this project, a finished half with
+	# nothing joined to it. _test_the_staff_desk() now presses the button.
 	#
-	# STILL BUILT IN CODE, AND ONLY FOR THE OWNER. A button that exists in the
-	# .tscn exists for every player - hidden, but present, and one `visible =
-	# true` in a modified client away from being pressed. The server refuses
-	# every one of these calls to anyone else regardless, so this is about not
-	# shipping a door rather than about the lock.
+	# OWNER AND POWERS ARE STILL BUILT IN CODE, AND ONLY FOR THE OWNER. A
+	# button that exists in the .tscn exists for every player - hidden, but
+	# present, and one `visible = true` in a modified client away from being
+	# pressed. The server refuses every one of these calls to anyone else
+	# regardless, so this is about not shipping a door rather than about the
+	# lock. The Staff button is the exception because it was always in the
+	# scene, and what it opens asks require_role("mod") for every byte.
 	var row: Control = get_node_or_null("%staffrow") as Control
 	if row == null:
 		return
@@ -517,17 +613,25 @@ func _add_owner_button() -> void:
 	# on every ordinary player's screen. Hidden, navframe shrinks to exactly one
 	# row of buttons.
 	#
-	# AND ONLY THE OWNER'S BAR IS TWO ROWS TALL: 6 top + 24 + 4 + 28 + 6 bottom =
-	# 68 against everyone else's 40. Since navframe grows upward from the floor,
-	# that difference is spent on the staff row and the ordinary menu does not
-	# move - which is why staffrow is declared FIRST in the scene, above
-	# navbuttons rather than below it.
-	if not Api.is_owner:
+	# AND ONLY A STAFF BAR IS TWO ROWS TALL: 6 top + 24 + 4 + 28 + 6 bottom = 68
+	# against a player's 40. Since navframe grows upward from the floor, that
+	# difference is spent on the staff row and the ordinary menu does not move -
+	# which is why staffrow is declared FIRST in the scene, above navbuttons
+	# rather than below it.
+	if not is_staff():
 		row.visible = false
 		return
 	row.visible = true
 
-	if row.has_node("ownerbutton"):
+	var staff_button: Button = get_node_or_null("%staffbutton") as Button
+	if staff_button != null:
+		staff_button.visible = true
+		staff_button.tooltip_text = "Players, sanctions, notes and the moderation log"
+		_style_staff_row_button(staff_button)
+		if not staff_button.pressed.is_connected(_toggle_staff_panel):
+			staff_button.pressed.connect(_toggle_staff_panel)
+
+	if not Api.is_owner or row.has_node("ownerbutton"):
 		return
 
 	for spec in [
@@ -542,18 +646,41 @@ func _add_owner_button() -> void:
 		button.name = String(spec[0])
 		button.text = String(spec[1])
 		button.tooltip_text = String(spec[2])
-		button.focus_mode = Control.FOCUS_NONE
-		button.add_theme_font_size_override("font_size", 12)
-		# Matched to the nav row above by hand. That row gets its height from a
-		# custom_minimum_size on the container, which cannot be used here - it
-		# would hold the row open at that height for every player who is not the
-		# owner, and this row has to collapse to nothing.
-		button.custom_minimum_size = Vector2(0.0, 24.0)
-		# Staff tools read warmer than the ordinary menu, so a glance tells you
-		# which row can close the server and which one opens your bag.
-		button.add_theme_color_override("font_color", Color(1.0, 0.78, 0.35))
+		_style_staff_row_button(button)
 		button.pressed.connect(spec[3])
 		row.add_child(button)
+
+
+func _style_staff_row_button(button: Button) -> void:
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 12)
+	# Matched to the nav row below by hand. That row gets its height from a
+	# custom_minimum_size on the container, which cannot be used here - it
+	# would hold the row open at that height for every player who is not
+	# staff, and this row has to collapse to nothing.
+	button.custom_minimum_size = Vector2(0.0, 24.0)
+	# Staff tools read warmer than the ordinary menu, so a glance tells you
+	# which row can close the server and which one opens your bag.
+	button.add_theme_color_override("font_color", Color(1.0, 0.78, 0.35))
+
+
+static func is_staff() -> bool:
+	# Mod and up, which is what require_role("mod") admits on the server.
+	# The owner is asked for by name as well as by rank, because Api.role is
+	# whatever the login answer said and is_owner is the one flag that
+	# cannot be granted.
+	return Api.is_owner or Api.role_at_least("mod")
+
+
+func _toggle_staff_panel() -> void:
+	# Cosmetic, like the owner's: every route the desk calls is
+	# require_role("mod") on the server, which is the gate that counts.
+	if not is_staff():
+		return
+	if staff_panel == null:
+		staff_panel = STAFF_PANEL_SCENE.instantiate()
+		add_child(staff_panel)
+	await staff_panel.toggle_panel()
 
 
 func _toggle_powers_panel() -> void:
@@ -752,7 +879,10 @@ func _build_message_box() -> void:
 # ONE LINE, BY PRIORITY, because two stacked warnings is how neither gets read.
 # Connection beats everything - if the server cannot be reached, nothing else on
 # this list can be trusted to still be true.
-const STATUS_PRIORITY := ["connection", "maintenance", "pvp"]
+# "trade" SITS ABOVE "pvp" ON PURPOSE. PvP is a state of the world that lasts
+# hours; a trade request is somebody waiting for you right now, and it goes
+# away the moment you answer it. The one you can act on wins the strip.
+const STATUS_PRIORITY := ["connection", "maintenance", "trade", "pvp"]
 
 # HOW LONG WITHOUT THE SERVER BEFORE THE PLAYER IS TOLD.
 #
@@ -917,7 +1047,9 @@ static func _clock(seconds: int) -> String:
 	return "%d:%02d" % [minutes, whole % 60]
 
 
-func _push_message(text: String, color: Color, at: int = 0) -> void:
+func _push_message(text: String, color: Color, at: int = 0, announce: bool = true) -> void:
+	# `announce` false writes the record and pops nothing - for the backlog a
+	# first poll catches up on. See _on_broadcast_poll_timeout().
 	if text.strip_edges() == "":
 		return
 
@@ -936,11 +1068,23 @@ func _push_message(text: String, color: Color, at: int = 0) -> void:
 	# a record, which should not. So the record is written either way and the
 	# announcement is skipped when the record is already on screen - which is
 	# also the only case where it would genuinely have been a duplicate.
+	#
+	# AND "ALWAYS" NOW MEANS ALWAYS. The chat panel is built the first time it
+	# is opened, so for a player who has not opened it there was no log at all
+	# - the notice went to the box, the box faded, and it was gone. It waits in
+	# _unlogged_lines until chat exists instead.
 	var logged: bool = false
 	if chat_panel != null and chat_panel.has_method("push_system_line"):
 		chat_panel.push_system_line(text, color, at)
 		logged = true
+	else:
+		_unlogged_lines.append({"text": text, "color": color,
+			"at": at if at > 0 else int(Time.get_unix_time_from_system())})
+		while _unlogged_lines.size() > UNLOGGED_KEPT:
+			_unlogged_lines.pop_front()
 	if logged and chat_panel.visible:
+		return
+	if not announce:
 		return
 
 	if message_rows == null:
@@ -952,6 +1096,9 @@ func _push_message(text: String, color: Color, at: int = 0) -> void:
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_color_override("font_color", color)
 	label.add_theme_font_size_override("font_size", 13)
+	# Stamped on this machine's clock, not the server's `at`: what fades a line
+	# is how long it has been ON SCREEN, which only this client knows.
+	label.set_meta("shown_msec", Time.get_ticks_msec())
 	message_rows.add_child(label)
 
 	# Oldest off the top, so the box never grows past its corner.
@@ -962,6 +1109,48 @@ func _push_message(text: String, color: Color, at: int = 0) -> void:
 
 	if message_box != null:
 		message_box.visible = true
+
+
+func _age_messages(now_msec: int) -> void:
+	"""Fade and drop announcements by how long each has been on screen, and
+	hide the box once it is empty.
+
+	THE BOX WAS NEVER TOLD TO FADE. Every comment about it said it did - "the
+	floating box, which fades", "the box is an announcement ... and should
+	fade" - and nothing anywhere faded it. Lines left only by being pushed off
+	the top by newer ones, so the last five notices of the week sat above the
+	menu bar for as long as the game was open. A comment describing a wire
+	nobody ran, again.
+
+	TAKES THE CLOCK AS AN ARGUMENT so the suite can age a line by ten seconds
+	without waiting ten seconds."""
+	if message_rows == null or message_box == null:
+		return
+	var show_ms: float = MESSAGE_SHOW_SECONDS * 1000.0
+	var fade_ms: float = MESSAGE_FADE_SECONDS * 1000.0
+	for line in message_rows.get_children():
+		var age: float = float(now_msec - int(line.get_meta("shown_msec", now_msec)))
+		if age >= show_ms + fade_ms:
+			message_rows.remove_child(line)
+			line.queue_free()
+		elif age > show_ms:
+			line.modulate.a = 1.0 - (age - show_ms) / fade_ms
+		else:
+			line.modulate.a = 1.0
+	# EMPTY IS HIDDEN, and so is anything while chat is up - the two share a
+	# corner, and chat already shows the same lines.
+	var chat_up: bool = chat_panel != null and chat_panel.visible
+	message_box.visible = message_rows.get_child_count() > 0 and not chat_up
+
+
+func _flush_unlogged_lines() -> void:
+	"""Write every notice that arrived before chat existed into chat, in order,
+	each with the time it happened rather than the time it was flushed."""
+	if chat_panel == null or not chat_panel.has_method("push_system_line"):
+		return
+	for line in _unlogged_lines:
+		chat_panel.push_system_line(str(line["text"]), line["color"], int(line["at"]))
+	_unlogged_lines.clear()
 
 
 # Guards against a storm. Several panels can each hold a request that 401s at the
@@ -1023,6 +1212,12 @@ func _start_broadcast_poll() -> void:
 	if not Api.unauthorized_seen.is_connected(_on_unauthorized_seen):
 		Api.unauthorized_seen.connect(_on_unauthorized_seen)
 
+	# A TRADE RESULT, HOWEVER IT ARRIVED. The broadcast poll below is one of
+	# three routes that can deliver one; all three hand it to CharacterData, and
+	# CharacterData tells us here - so it is announced once, in one wording.
+	if not CharacterData.carry_adopted.is_connected(_on_carry_adopted):
+		CharacterData.carry_adopted.connect(_on_carry_adopted)
+
 	if has_node("BroadcastPoll"):
 		return
 	var timer := Timer.new()
@@ -1033,6 +1228,14 @@ func _start_broadcast_poll() -> void:
 	timer.timeout.connect(_on_broadcast_poll_timeout)
 	add_child(timer)
 
+	# ONE POLL NOW, NOT TEN SECONDS FROM NOW. The poll is also how the server
+	# learns which character this is (see _broadcast_path()), and until it
+	# hears, a trade opened by typing your name goes to whichever character you
+	# saved last. It is also what paints the guild tag and the pvp strip, which
+	# had been arriving a full poll after you walked in. Deferred so the HUD
+	# has finished building before the answer lands on it.
+	_on_broadcast_poll_timeout.call_deferred()
+
 
 func _on_broadcast_poll_timeout() -> void:
 	# Nothing to ask on behalf of nobody, and never two at once - a slow or
@@ -1041,8 +1244,7 @@ func _on_broadcast_poll_timeout() -> void:
 		return
 	_broadcast_poll_in_flight = true
 
-	var res: Dictionary = await Api.get_json(
-		"/api/server/broadcasts?since=%d" % _broadcast_cursor, Api.PROBE_TIMEOUT)
+	var res: Dictionary = await Api.get_json(_broadcast_path(), Api.PROBE_TIMEOUT)
 
 	# PAST AN AWAIT. Up to the timeout has passed and this node may be gone -
 	# the player died, or something else changed scenes. Same guard and same
@@ -1075,17 +1277,128 @@ func _on_broadcast_poll_timeout() -> void:
 	var data = res.get("data", {})
 	if not (data is Dictionary):
 		return
+	_apply_broadcast(data)
 
+
+func _apply_broadcast(data: Dictionary) -> void:
+	"""One answer from the broadcast poll, onto the HUD.
+
+	SPLIT FROM THE REQUEST so the suite can hand it an answer and look. Every
+	reader below is fed from here and nowhere else - so a reader that is written
+	and tested but never called from the poll (this project's most repeated
+	bug) shows up as a failing check on THIS function, not as a feature that
+	silently never runs."""
 	_read_maintenance(data.get("maintenance"))
 	_read_teleport(data.get("teleport"))
 
 	_read_pvp(data)
 	_read_guild(data)
-	_read_broadcast_messages(data.get("messages", []))
+	_read_trade(data.get("trade"))
+	_read_trade_resync(data.get("trade_resync"))
+	# THE FIRST ANSWER IS HISTORY, NOT NEWS. A poll from cursor 0 is answered
+	# with the recent TAIL - up to a week of notices at once - and every one of
+	# them used to pop the box on login: "Update in progress", "The server is
+	# open again", "Everyone has been moved to elusion", all long over. They
+	# still go to the chat log, where history belongs. Only what arrives after
+	# this client has caught up is announced. Anything that is still TRUE -
+	# maintenance, pvp - is on the status strip, which is where a player who
+	# just arrived needs it.
+	_read_broadcast_messages(data.get("messages", []), _broadcast_cursor > 0)
 
 	var newest: int = int(data.get("latest_id", _broadcast_cursor))
 	if newest > _broadcast_cursor:
 		_broadcast_cursor = newest
+
+
+func _broadcast_path() -> String:
+	"""The poll's URL: where the cursor is, and WHICH CHARACTER THIS IS.
+
+	The slot is how the server knows who you are playing (stamp_presence in
+	app.py). It used to guess from whichever save was written last, and a save
+	is only written when something changes - so for the first minute after
+	picking a character the server thought you were still the one you played
+	yesterday, and a trade opened by typing your name went to her."""
+	return "/api/server/broadcasts?since=%d&slot=%d" % [
+		_broadcast_cursor, CharacterData.active_character_index]
+
+
+func _read_trade(summary: Variant) -> void:
+	"""Somebody opened a trade with you: say so, and keep saying so until it is
+	answered.
+
+	BEFORE THIS NOTHING DID. The trade window polls the trade, but only while it
+	is open - and the person being asked had no reason to open it. So a trade
+	sat there unseen until it expired, and the one who opened it assumed they
+	were being ignored.
+
+	THE STRIP IS THE STATE, THE TOAST IS THE EVENT - the same split as the
+	maintenance notice. The toast is said once per trade; the strip and the
+	Trade button stay lit for as long as the trade is waiting on you."""
+	var window_open: bool = trade_panel != null and trade_panel.visible
+	if not (summary is Dictionary):
+		_trade_announced = ""
+		set_world_status("trade", "")
+		_mark_trade_button(false)
+		return
+
+	var who: String = str(summary.get("with", "?"))
+	var they_asked: bool = bool(summary.get("from_them", false))
+	var they_accepted: bool = bool(summary.get("they_accepted", false))
+	var you_accepted: bool = bool(summary.get("you_accepted", false))
+
+	# WAITING ON YOU is the only case worth a light: they asked and you have not
+	# answered, or they have accepted and you have not. A trade you opened and
+	# are waiting on them for is not news to you.
+	var waiting_on_you: bool = (they_asked or they_accepted) and not you_accepted
+	if not waiting_on_you or window_open:
+		set_world_status("trade", "")
+		_mark_trade_button(false)
+	else:
+		set_world_status("trade",
+			"%s accepted your trade - waiting on you" % who if they_accepted
+				else "%s wants to trade with you" % who,
+			Color(0.62, 0.86, 1.0))
+		_mark_trade_button(true, who)
+
+	var trade_id: String = str(summary.get("trade_id", ""))
+	if they_asked and trade_id != "" and trade_id != _trade_announced and not window_open:
+		_trade_announced = trade_id
+		_push_message("%s wants to trade with you. Open Trade to see the offer." % who,
+			Color(0.62, 0.86, 1.0))
+
+
+func _mark_trade_button(lit: bool, who: String = "") -> void:
+	var nav: Node = get_node_or_null("%navbuttons")
+	var button: Button = nav.get_node_or_null("tradebutton") as Button if nav != null else null
+	if button == null:
+		return
+	# A DOT, NOT A NUMBER. There is only ever one trade, so a count would always
+	# say 1; the dot says "something is waiting here", which is the whole message.
+	button.text = "Trade •" if lit else "Trade"
+	button.tooltip_text = "%s is waiting on you" % who if lit else ""
+	if lit:
+		button.add_theme_color_override("font_color", Color(0.62, 0.86, 1.0))
+	else:
+		button.remove_theme_color_override("font_color")
+
+
+func _read_trade_resync(resync: Variant) -> void:
+	"""A trade finished without this client asking - hand the result over.
+
+	The broadcast poll is the route for a player whose trade window is shut:
+	they accepted, closed the window, and the other side accepted a minute
+	later. CharacterData does the adopting and announces it; see
+	_on_carry_adopted()."""
+	if resync is Dictionary:
+		CharacterData.apply_server_carry(resync)
+
+
+func _on_carry_adopted(resync: Dictionary) -> void:
+	var record = resync.get("trade")
+	if record is Dictionary:
+		_push_message(TradePanelScript.result_line(record), Color(0.55, 0.85, 0.5))
+	else:
+		_push_message("Your backpack was updated by the server.", Color(0.55, 0.85, 0.5))
 
 
 func _read_pvp(data: Dictionary) -> void:
@@ -1126,13 +1439,17 @@ func _read_guild(data: Dictionary) -> void:
 	WRITTEN EVERY POLL RATHER THAN ON CHANGE. set_nameplate() is three property
 	writes and a reposition; comparing first would buy nothing and would need a
 	cached copy that could fall out of step with the plate it describes."""
+	# OUT OF THE TREE THERE IS NO PLAYER TO LABEL - and get_tree() is null, so
+	# asking it would stop every reader after this one.
+	if not is_inside_tree():
+		return
 	var body: Node = get_tree().get_first_node_in_group("player")
 	if body == null or not body.has_method("set_nameplate"):
 		return
 	body.set_nameplate(Api.username, Api.role, str(data.get("guild_tag", "")))
 
 
-func _read_broadcast_messages(messages: Variant) -> void:
+func _read_broadcast_messages(messages: Variant, announce: bool = true) -> void:
 	"""Everything the server has said since the last poll, onto the screen.
 
 	entry["at"] IS THE SERVER'S OWN STAMP AND IT WAS BEING DROPPED HERE.
@@ -1156,7 +1473,7 @@ func _read_broadcast_messages(messages: Variant) -> void:
 		var kind: String = str(entry.get("kind", "system"))
 		_push_message(str(entry.get("body", "")),
 			Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94),
-			int(entry.get("at", 0)))
+			int(entry.get("at", 0)), announce)
 
 
 func _read_teleport(order) -> void:
@@ -1334,8 +1651,8 @@ func _forced_signout() -> void:
 func _wire_hotbar() -> void:
 	if hotbar == null:
 		return
-	if not hotbar.item_used.is_connected(_on_hotbar_item_used):
-		hotbar.item_used.connect(_on_hotbar_item_used)
+	if not hotbar.slot_used.is_connected(_on_hotbar_slot_used):
+		hotbar.slot_used.connect(_on_hotbar_slot_used)
 
 
 # =============================================================================
@@ -1402,8 +1719,9 @@ func set_active_character(character: Node) -> void:
 	if stats_screen != null:
 		stats_screen.setup_for_player(active_character)
 
-	if hotbar != null:
-		hotbar.set_player(active_character)
+	# NO hotbar.set_player() ANY MORE. The keys hold items, and those arrive
+	# with the backpack: _load_player_inventory_into_container() fills cells
+	# 20-29 along with the bag.
 
 
 # =============================================================================
@@ -1678,7 +1996,7 @@ func _on_logout_pressed() -> void:
 	#
 	# The await further down can sit for the full 10-second request timeout
 	# against a dead server, and this HUD keeps running the whole time: _process
-	# ticks, hotbar keys 1-9 still fire, _unhandled_input still routes. Every
+	# ticks, hotbar keys 1-9 and 0 still fire, _unhandled_input still routes. Every
 	# guard on these references is `!= null`, and a queue_freed node is NOT null
 	# — bankinventory.gd says exactly this ("the cache holds a freed instance,
 	# which is not null"). So a hotbar key pressed during a slow logout reached
@@ -1695,6 +2013,7 @@ func _on_logout_pressed() -> void:
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
+	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
 	stats_screen     = null
@@ -1705,6 +2024,7 @@ func _on_logout_pressed() -> void:
 	kingdom_panel    = null
 	trade_panel      = null
 	owner_panel      = null
+	staff_panel      = null
 
 	# NEW (E-2): send any training XP (defense/agility/magic) that has not hit
 	# its 20s flush timer yet, while the token and active slot are still valid.
@@ -1714,6 +2034,13 @@ func _on_logout_pressed() -> void:
 	# an abrupt window-close still loses at most one flush interval. See
 	# skilltrainer.gd.
 	await SkillTrainer.flush()
+
+	# AND THE SAVE, WAITED FOR. clear_current_user() below only STARTS the last
+	# push, whose PUTs go one after another, and Api.logout() revokes the token
+	# and clears it here - a race the push won on localhost, and one the order
+	# should decide, not the network. Bounded, so a dead server cannot hold the
+	# logout past CharacterData.QUIT_SAVE_SECONDS.
+	await CharacterData.finish_saving()
 
 	# NEW: reset CharacterData's in-memory state too — logout was only ever
 	# clearing the UI panels, never actually telling CharacterData the user
@@ -1769,7 +2096,7 @@ func _on_switch_character_pressed() -> void:
 	#
 	# The await further down can sit for the full 10-second request timeout
 	# against a dead server, and this HUD keeps running the whole time: _process
-	# ticks, hotbar keys 1-9 still fire, _unhandled_input still routes. Every
+	# ticks, hotbar keys 1-9 and 0 still fire, _unhandled_input still routes. Every
 	# guard on these references is `!= null`, and a queue_freed node is NOT null
 	# — bankinventory.gd says exactly this ("the cache holds a freed instance,
 	# which is not null"). So a hotbar key pressed during a slow logout reached
@@ -1786,6 +2113,7 @@ func _on_switch_character_pressed() -> void:
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
+	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
 	stats_screen     = null
@@ -1796,6 +2124,7 @@ func _on_switch_character_pressed() -> void:
 	kingdom_panel    = null
 	trade_panel      = null
 	owner_panel      = null
+	staff_panel      = null
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
 
@@ -1804,22 +2133,12 @@ func _on_switch_character_pressed() -> void:
 # HOTBAR DISPATCH
 # =============================================================================
 
-func _on_hotbar_item_used(item_id: String) -> void:
-	if inventory_screen == null:
+func _on_hotbar_slot_used(slot: HotbarSlot) -> void:
+	# THE KEY ITSELF IS USED, not the first bag cell holding the same item. It
+	# is one of the backpack's cells, so use_item() spends from it and names it
+	# to the server, and the count on the key is the count that goes down.
+	if inventory_screen == null or slot == null or slot.is_empty():
 		return
-
-	var container: Node = inventory_screen.get_node_or_null("%inventorycontainer")
-	if container == null:
-		return
-
-	var slot_index: int = container.find_first_index_of(item_id)
-	if slot_index == -1:
-		return
-
-	var slot: InventorySlot = container.get_slot_at(slot_index)
-	if slot == null:
-		return
-
 	inventory_screen.use_item(slot)
 
 
@@ -2046,6 +2365,12 @@ func toggle_trade() -> void:
 		trade_panel = TRADE_PANEL_SCENE.instantiate()
 		add_child(trade_panel)
 
+	# OPENING IT IS THE ANSWER to "somebody is waiting on you", so the light
+	# goes out now rather than a poll later. If the window is shut again with
+	# the trade still waiting, the next poll lights it again.
+	set_world_status("trade", "")
+	_mark_trade_button(false)
+
 	if trade_panel.has_method("toggle_panel"):
 		await trade_panel.toggle_panel(active_character)
 
@@ -2084,6 +2409,7 @@ func toggle_chat() -> void:
 	if chat_panel == null:
 		chat_panel = CHAT_PANEL_SCENE.instantiate()
 		add_child(chat_panel)
+		_flush_unlogged_lines()
 
 	if chat_panel.has_method("toggle"):
 		chat_panel.toggle()
@@ -2192,6 +2518,15 @@ func hide_panel() -> void:
 		friends_panel.close()
 	if guild_panel != null and guild_panel.visible:
 		guild_panel.close()
+	# The GM panel too, since it has an x now - Esc closing everything except
+	# the one panel that sits on top of the others was the odd one out.
+	if owner_panel != null and owner_panel.visible and owner_panel.has_method("close"):
+		owner_panel.close()
+	# And the staff desk, which is counted in is_panel_open() below for the
+	# reason the chat panel gives: closed here, counted there, or Escape falls
+	# through to whatever is behind it.
+	if staff_panel != null and staff_panel.visible:
+		staff_panel.close_panel()
 
 
 func is_panel_open() -> bool:
@@ -2208,8 +2543,9 @@ func is_panel_open() -> bool:
 	# behind it - the comment over the chat panel says the same thing, and it
 	# is the exact mistake this pair of lists exists to prevent.
 	var guild_open: bool = guild_panel     != null and guild_panel.visible
+	var staff_open: bool = staff_panel     != null and staff_panel.visible
 	return (inv_open or stats_open or bank_open or cook_open or opts_open
-		or map_open or chat_open or mates_open or guild_open)
+		or map_open or chat_open or mates_open or guild_open or staff_open)
 
 
 func _any_panel_visible() -> bool:
@@ -2231,7 +2567,7 @@ func _any_panel_visible() -> bool:
 	# how the pairing quietly stops being true.
 	for panel in [inventory_screen, equipment_panel, stats_screen, bank_screen,
 			lootbag_panel, cooking_panel, shop_panel, kingdom_panel,
-			trade_panel, owner_panel, options_screen, map_screen]:
+			trade_panel, owner_panel, staff_panel, options_screen, map_screen]:
 		if panel != null and panel.visible:
 			return true
 	return false

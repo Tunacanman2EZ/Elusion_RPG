@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://c7nrc34pvdr5x"]
+
+[ext_resource type="Texture2D" path="res://art/pack/amulets/a8023.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "exaltedwardamulet"
+display_name = "Exalted Ward Amulet"
+description = "Every bead on the chain is a blow it has already taken for someone."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 19200
+tier = 5
+required_level = 22
+type = 2
+equip_slot = 8
+armor_value = 18
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

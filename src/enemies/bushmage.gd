@@ -328,7 +328,13 @@ func _spawn_vine() -> void:
 	# the call that runs _ready(). Uniform beats individually-justified: the
 	# rule is now checkable, and a rule with one documented exception is a rule
 	# nobody can apply without reading the exception first.
-	vine.damage = attack_power
+	# THE PROFILE'S NUMBER WHEN IT HAS ONE. Every other enemy's shot takes
+	# EnemyData.projectile_damage through BaseEnemy.spawn_projectile_node(); the
+	# vine is placed by hand here and never passed through it, so every mage in
+	# the game hit for attack_power's 8 whatever its .tres said - a dark mage and
+	# a light one alike. attack_power stays the fallback for a profile with none.
+	vine.damage = enemy_data.projectile_damage \
+		if enemy_data != null and enemy_data.projectile_damage > 0 else attack_power
 
 	var container: Node = get_tree().get_first_node_in_group("groundeffects")
 	if container == null:

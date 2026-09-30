@@ -74,8 +74,8 @@ extends Area2D
 # enemy.
 @export var max_lifetime: float = 3.5
 
-# XP granted to the caster on a successful hit.
-@export var attack_xp_on_hit: int = 5
+# Magic XP to the caster on a successful hit, reported to the server. No attack
+# XP: attack trains at the kill, on the server (Player.apply_server_attack()).
 @export var magic_xp_on_hit: int = 5
 
 # HOMING — degrees per second the orb may turn to follow the enemy it latched
@@ -301,7 +301,5 @@ func _grant_caster_xp() -> void:
 	# turret variant shouldn't grant the player skill XP at all).
 	if caster == null:
 		return
-	if caster.has_method("gain_attack_xp"):
-		caster.gain_attack_xp(attack_xp_on_hit)
 	if caster.has_method("gain_magic_xp"):
 		caster.gain_magic_xp(magic_xp_on_hit)

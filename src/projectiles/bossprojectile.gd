@@ -34,7 +34,15 @@ extends Area2D
 # five frames are: 0 a nub breaking the surface, 1 FULL HEIGHT, 2 full height
 # narrowing, 3 sinking, 4 nearly gone. The midpoint frame is already on the way
 # back down, so damage there lands after the spike visibly passed the player.
-const IMPACT_FRAME := 1
+#
+# AN EXPORT, BECAUSE THE TWO SPIKE SCENES DISAGREE, and it was a const that
+# silently ignored the one that said so. secondbossprojectile.tscn (the gate
+# spikes, and its six elemental copies) is four frames held 1,1,4,1 - full
+# height is frame 2 - and has always carried `impact_frame = 2`. A const cannot
+# be set from a scene, Godot drops the line without a word, and every gate
+# spike hit one frame (a sixth of a second) before it was fully up. bossenemy's
+# timing probe already asked `"impact_frame" in probe` and always heard no.
+@export var impact_frame: int = 1
 
 # The animation's name inside the scene's SpriteFrames.
 const RISE_ANIM := &"projectile"
@@ -50,7 +58,7 @@ const RISE_ANIM := &"projectile"
 # player cannot cross in time.
 @export var telegraph_seconds: float = 0.9
 
-# Damage applied once, on IMPACT_FRAME, to every player inside the ring.
+# Damage applied once, on impact_frame, to every player inside the ring.
 @export var damage: int = 22
 
 # Named so a future armour or resistance system has something to match on,
@@ -377,9 +385,9 @@ func _validate_animation() -> bool:
 	if not anim.sprite_frames.has_animation(RISE_ANIM):
 		push_error("bossprojectile: SpriteFrames missing '%s' animation" % RISE_ANIM)
 		return false
-	if anim.sprite_frames.get_frame_count(RISE_ANIM) <= IMPACT_FRAME:
-		push_error("bossprojectile: '%s' has too few frames for IMPACT_FRAME %d"
-			% [RISE_ANIM, IMPACT_FRAME])
+	if anim.sprite_frames.get_frame_count(RISE_ANIM) <= impact_frame:
+		push_error("bossprojectile: '%s' has too few frames for impact_frame %d"
+			% [RISE_ANIM, impact_frame])
 		return false
 	return true
 
@@ -611,7 +619,7 @@ func _on_frame_changed() -> void:
 		return
 	if anim.animation != RISE_ANIM:
 		return
-	if anim.frame != IMPACT_FRAME:
+	if anim.frame != impact_frame:
 		return
 
 	_spent = true

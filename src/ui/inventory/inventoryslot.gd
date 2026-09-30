@@ -7,16 +7,19 @@
 # any slot can drop onto any other slot, which is what lets items move freely
 # between inventory, bank, hotbar, and loot bags.
 #
-# visual state:
-# three styleboxes — normal, hover, and linked (gold border for items with
-# a hotbar assignment). the linked style is queried per-frame from the parent
-# container so hotbar changes are reflected immediately across all slots.
+# visual state: two styleboxes, normal and hover.
 #
 # drop cases:
-# - CASE A: source is HotbarSlot → reference-clear only (no item transfer)
+# - CASE T: the drag crosses between the bank and the carry → a request
 # - CASE B1: target empty → move stack from source to here
 # - CASE B2: target matches → merge stacks with overflow to source
 # - CASE B3: target differs → swap stacks
+#
+# A HOTBAR KEY IS ONE OF THESE, with no special case. It holds a real stack,
+# so a drag between the bag and a key moves, merges or swaps exactly like a
+# drag between two bag cells. There used to be a CASE A here for a key that
+# only pointed at a bag item, and a gold "linked" face for the bag cell it
+# pointed at; both went when the keys started holding items.
 extends PanelContainer
 class_name InventorySlot
 
@@ -76,6 +79,13 @@ const BANK_SLOT_TYPE := "bank"
 var stack: ItemStack = null
 var slot_index: int = -1
 
+# THE CONTAINER THIS CELL BELONGS TO, which is not always its parent. A bag
+# cell's parent is its grid; a hotbar key's parent is the hotbar's row, while
+# the cell it IS belongs to the player's backpack (see InventoryContainer's
+# "CELLS PAST THE GRID"). Anything that needs "the container that saves this
+# cell" - the trash, above all - asks this rather than get_parent().
+var home_container: Node = null
+
 var is_hovered: bool = false
 
 # StyleBox, NOT StyleBoxFlat. A slot's face is whatever the theme hands over,
@@ -86,7 +96,6 @@ var is_hovered: bool = false
 # it can't be of type StyleBoxTexture."
 var style_normal: StyleBox = null
 var style_hover:  StyleBox = null
-var style_linked: StyleBox = null
 
 
 # =============================================================================
@@ -96,6 +105,12 @@ var style_linked: StyleBox = null
 @onready var icon_rect: TextureRect = $centercontainer/icon
 @onready var quantity_label: Label = $quantitylabel
 
+# The coloured border a rare item draws round its slot. Built in code rather
+# than in inventoryslot.tscn so every slot that inherits this script - bank,
+# loot bag, shop, hotbar - gets it without a scene edit each.
+var _rarity_frame: Panel = null
+var _rarity_box: StyleBoxFlat = null
+
 
 # =============================================================================
 # LIFECYCLE
@@ -103,6 +118,7 @@ var style_linked: StyleBox = null
 
 func _ready() -> void:
 	_build_styles()
+	_build_rarity_frame()
 	_update_style()
 	refresh_display()
 
@@ -114,16 +130,46 @@ func _ready() -> void:
 # STYLE
 # =============================================================================
 
-# A SLOT'S THREE FACES - resting, hovered, and linked to the hotbar - are all
-# DERIVED from whatever stylebox the theme hands over, never written out here.
+# A SLOT'S TWO FACES - resting and hovered - are both DERIVED from whatever
+# stylebox the theme hands over, never written out here.
 # That is what lets one slot be a flat panel drawn by the theme and another be
 # a piece of the artist's own tile art, with no code between them knowing
 # which.
 #
 # HOW A STATE IS SHOWN DEPENDS ON WHAT THE STYLE IS. A flat box has a bg and a
 # border to change; a texture has neither - it has art that must not be
-# repainted, so it is TINTED instead. Same three states, same meaning, two
-# ways of saying it.
+# repainted, so it is TINTED instead. Same two states, same meaning, two ways
+# of saying it.
+func _build_rarity_frame() -> void:
+	# A BORDER, NOT A FILL. The slot's face is the artist's socket art, and the
+	# icon sits in it; a tinted background would repaint the one and fight the
+	# other. Drawn under the stack count, so the number stays readable.
+	if _rarity_frame != null:
+		return
+	_rarity_box = StyleBoxFlat.new()
+	_rarity_box.draw_center = false
+	_rarity_box.set_border_width_all(2)
+	_rarity_box.set_corner_radius_all(3)
+	_rarity_frame = Panel.new()
+	_rarity_frame.name = "rarityframe"
+	_rarity_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rarity_frame.visible = false
+	_rarity_frame.add_theme_stylebox_override("panel", _rarity_box)
+	add_child(_rarity_frame)
+	if quantity_label != null:
+		move_child(_rarity_frame, quantity_label.get_index())
+
+
+func _paint_rarity() -> void:
+	if _rarity_frame == null:
+		return
+	var tier: int = 0 if is_empty() else int(stack.data.tier)
+	var framed: bool = tier >= GameConstants.RARITY_FRAME_MIN_TIER
+	_rarity_frame.visible = framed
+	if framed:
+		_rarity_box.border_color = GameConstants.rarity_colour(tier)
+
+
 func _build_styles() -> void:
 	var base: StyleBox = get_theme_stylebox("panel")
 
@@ -135,29 +181,22 @@ func _build_styles() -> void:
 		var flat: StyleBoxFlat = base as StyleBoxFlat
 		var flat_hover: StyleBoxFlat = flat.duplicate() as StyleBoxFlat
 		flat_hover.bg_color = flat.bg_color.lightened(0.15)
-		var flat_linked: StyleBoxFlat = flat.duplicate() as StyleBoxFlat
-		flat_linked.border_color = Color(0.95, 0.80, 0.30, 1.0)
 
 		style_normal = flat.duplicate() as StyleBoxFlat
 		style_hover = flat_hover
-		style_linked = flat_linked
 	elif base is StyleBoxTexture:
-		# THE ART IS THE SLOT. Lightening it for a hover and warming it for a
-		# link keeps the artist's outline, highlight and corners exactly as
-		# drawn - a border colour would have nothing to colour.
+		# THE ART IS THE SLOT. Lightening it for a hover keeps the artist's
+		# outline, highlight and corners exactly as drawn - a border colour
+		# would have nothing to colour.
 		var art: StyleBoxTexture = base as StyleBoxTexture
 		var art_hover: StyleBoxTexture = art.duplicate() as StyleBoxTexture
 		art_hover.modulate_color = Color(1.22, 1.20, 1.10, 1.0)
-		var art_linked: StyleBoxTexture = art.duplicate() as StyleBoxTexture
-		art_linked.modulate_color = Color(1.25, 1.05, 0.55, 1.0)
 
 		style_normal = art.duplicate() as StyleBoxTexture
 		style_hover = art_hover
-		style_linked = art_linked
 	else:
 		style_normal = StyleBoxFlat.new()
 		style_hover = StyleBoxFlat.new()
-		style_linked = StyleBoxFlat.new()
 
 
 func _update_style() -> void:
@@ -170,23 +209,8 @@ func _update_style() -> void:
 	# because a state that renders is a state a reader assumes works.
 	if is_hovered:
 		add_theme_stylebox_override("panel", style_hover)
-	elif _is_linked_to_hotbar() and style_linked != null:
-		add_theme_stylebox_override("panel", style_linked)
 	else:
 		add_theme_stylebox_override("panel", style_normal)
-
-
-func _is_linked_to_hotbar() -> bool:
-	if is_empty():
-		return false
-
-	var parent_container: Node = get_parent()
-	if parent_container == null:
-		return false
-	if not parent_container.has_method("is_item_linked"):
-		return false
-
-	return parent_container.is_item_linked(stack.data.item_id)
 
 
 # =============================================================================
@@ -218,6 +242,7 @@ func refresh_display() -> void:
 		# behind on whatever lands there next.
 		icon_rect.modulate = Color.WHITE
 		quantity_label.text = ""
+		_paint_rarity()
 		_update_style()
 		return
 
@@ -228,6 +253,7 @@ func refresh_display() -> void:
 	else:
 		quantity_label.text = ""
 
+	_paint_rarity()
 	_update_style()
 
 
@@ -297,9 +323,9 @@ func _hide_tooltip() -> void:
 # =============================================================================
 
 func make_drag_preview(texture: Texture2D, tint: Color = Color.WHITE) -> Control:
-	# Builds the icon that follows the pointer during a drag. Shared with
-	# HotbarSlot so both kinds of slot drag identically — they used to keep
-	# separate copies of this and could drift apart.
+	# Builds the icon that follows the pointer during a drag. Every kind of
+	# slot drags through this one - HotbarSlot used to keep a separate copy,
+	# and the two drifted apart.
 	#
 	# CENTRED ON THE POINTER, WHICH IT PREVIOUSLY WAS NOT.
 	#
@@ -333,8 +359,8 @@ func make_drag_preview(texture: Texture2D, tint: Color = Color.WHITE) -> Control
 
 	var icon := TextureRect.new()
 	icon.texture = texture
-	# Defaulted so HotbarSlot's call site keeps working unchanged; it passes its
-	# own icon_rect.modulate, which is the same value by construction.
+	# The item's own tint (ItemData.icon_tint), so a recoloured item does not
+	# turn back into its base colour the moment it is picked up.
 	icon.modulate = tint
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -397,14 +423,6 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	var source_slot: InventorySlot = data["source_slot"]
 
 	if source_slot == self:
-		return
-
-	# CASE A — drag from HotbarSlot. hotbar is just a reference layer; the
-	# actual stack already lives in inventory. clearing the hotbar removes
-	# the link without touching real inventory contents.
-	if source_slot is HotbarSlot:
-		source_slot.clear()
-		source_slot.slot_changed.emit(source_slot)
 		return
 
 	# CASE T — THE DRAG CROSSES BETWEEN THE BANK AND THE BACKPACK.

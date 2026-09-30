@@ -357,7 +357,7 @@ func _root_layers(scene: Node) -> Array:
 	# DIRECT CHILDREN OF THE SCENE ROOT ONLY.
 	#
 	# There are TileMapLayer nodes inside instanced props too — bush.tscn,
-	# shop.tscn, largetree.tscn — and those hold their cells in their OWN
+	# shophouse.tscn, largetree.tscn — and those hold their cells in their OWN
 	# coordinate space, positioned by the instance's transform. Painting them
 	# by cell coordinate would stack every shop in the game on top of each
 	# other at the world origin.

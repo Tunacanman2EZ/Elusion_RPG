@@ -69,6 +69,13 @@ var _pending: Dictionary = {"agility": 0, "defense": 0, "magic": 0}
 # fire again during a slow round trip.
 var _flushing: bool = false
 
+# How much of each skill's pending batch the player has been SHOWN, after the
+# class specialty and rounded as the server rounds it. See report().
+var _shown: Dictionary = {"agility": 0, "defense": 0, "magic": 0}
+
+# The specialty each skill was last reported with, for a batch that comes back.
+var _factor: Dictionary = {"agility": 1.0, "defense": 1.0, "magic": 1.0}
+
 
 func _ready() -> void:
 	var timer := Timer.new()
@@ -80,14 +87,24 @@ func _ready() -> void:
 
 
 # Called by player.gd's gain_defense_xp / gain_agility_xp / gain_magic_xp with
-# the RAW amount the activity was worth — the same number those functions scale
-# for their own optimistic level-up. Accumulated, not sent; the timer sends.
-func report(skill: String, raw_amount: int) -> void:
-	if not _pending.has(skill):
-		return
-	if raw_amount <= 0:
-		return
+# the RAW amount the activity was worth. Accumulated, not sent; the timer sends.
+func report(skill: String, raw_amount: int, factor: float = 1.0) -> int:
+	"""Queues RAW XP for the server and answers how much of it to SHOW now.
+
+	THE SERVER ROUNDS PER BATCH: proficient_amount() grants int(raw x factor)
+	for each batch this sends. player.gd used to round each hit instead, with a
+	floor of 1 - so a tank's 1-point hits showed 1 each against the server's
+	1.5, the bar ran a third behind, and it jumped at the next login. This
+	answers with the batch's int(raw x factor) less what the batch has shown
+	already, so the bar and the record agree to the point."""
+	if not _pending.has(skill) or raw_amount <= 0:
+		return 0
+	_factor[skill] = factor
 	_pending[skill] = mini(int(_pending[skill]) + raw_amount, PENDING_CAP)
+	var due: int = int(float(_pending[skill]) * factor)
+	var now: int = maxi(0, due - int(_shown[skill]))
+	_shown[skill] = maxi(due, int(_shown[skill]))
+	return now
 
 
 func _on_flush_timer() -> void:
@@ -123,6 +140,8 @@ func flush() -> void:
 		"magic":   int(_pending["magic"]),
 	}
 	_pending = {"agility": 0, "defense": 0, "magic": 0}
+	# A new batch: the server rounds this one on its own, and so does report().
+	_shown = {"agility": 0, "defense": 0, "magic": 0}
 
 	_flushing = true
 
@@ -144,6 +163,8 @@ func flush() -> void:
 		if status == 0 or status == 429 or status >= 500:
 			for skill in TRAINABLE:
 				_pending[skill] = mini(int(_pending[skill]) + batch[skill], PENDING_CAP)
+				# All of it was shown already, as its own batch.
+				_shown[skill] = int(float(_pending[skill]) * float(_factor[skill]))
 		if OS.is_debug_build():
 			print("[TRAIN] flush failed (%d) — %s" % [status, res.get("error", "")])
 		return

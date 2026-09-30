@@ -16,4 +16,7 @@ required_level = 1
 type = 2
 equip_slot = 7
 armor_value = 1
+bonus_max_hp = 3
+bonus_max_mana = 3
+bonus_damage_percent = 1
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -65,19 +65,27 @@ text = "×"
 flat = true
 
 [node name="lootscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1050388235]
-custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
+vertical_scroll_mode = 0
 
 [node name="lootcontainer" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/lootscroll" unique_id=1727293017]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 4
 size_flags_vertical = 3
-columns = 6
+theme_override_constants/h_separation = -4
+theme_override_constants/v_separation = -4
+columns = 3
 script = ExtResource("3_qlwm7")
 grid_width = 3
-grid_height = 2
+grid_height = 3
 metadata/_custom_type_script = "uid://dfssy5oqbqqkh"
+
+[node name="takeallbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1727293101]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Take all"

@@ -91,7 +91,7 @@ texture_filter = 1
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.9037094, 0.82587767, 0.98370844, 1)
-text = "Goal: slay the Beholder"
+text = "Goal: slay the Crowned"
 label_settings = SubResource("LabelSettings_372dn")
 horizontal_alignment = 1
 

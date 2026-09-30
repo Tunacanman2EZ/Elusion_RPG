@@ -52,6 +52,10 @@ func _on_body_entered(body):
 		# is covered by this same call — without that the view would smear
 		# even if the sprite itself didn't.
 		body.reset_physics_interpolation()
+		# The camera moves on the physics clock and may already have had its
+		# tick this step; without this it spends a frame where the player was.
+		if body.has_method("snap_camera"):
+			body.snap_camera()
 
 		if OS.is_debug_build():
 			print("[WORLD] teleported %s to %s" % [body.name, destination_point.global_position])

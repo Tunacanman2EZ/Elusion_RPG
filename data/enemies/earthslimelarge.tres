@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3 uid="uid://bp2q7idu7xymc"]
+
+[ext_resource type="Script" uid="uid://bbmcaokoqjh1i" path="res://src/types/enemydata.gd" id="1_enemydata"]
+[ext_resource type="Resource" path="res://data/enemies/earthslime.tres" id="2_small"]
+
+[resource]
+script = ExtResource("1_enemydata")
+enemy_id = "earthslimelarge"
+display_name = "Large Earth Slime"
+element = 5
+recolour_to_element = true
+saturation_scale = 1.0
+grants_rewards = false
+xp_reward = 0
+attack_xp_reward = 0
+bag_drop_chance = 0.0
+projectile_damage = 28
+max_hp = 1200
+max_loot_tier = 3
+split_into = ExtResource("2_small")
+metadata/_custom_type_script = "uid://bbmcaokoqjh1i"

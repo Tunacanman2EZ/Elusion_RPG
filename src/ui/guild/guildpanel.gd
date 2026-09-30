@@ -56,16 +56,62 @@ const RANK_LABELS := {
 	"member": "Member",
 }
 
+# For a sentence: "Ana is now an officer.", not "Ana is now Officer."
+const RANK_WITH_ARTICLE := {
+	"leader": "the leader",
+	"officer": "an officer",
+	"member": "a member",
+}
+
+# GUILD RANK, as a colour and a mark. Names are drawn in the colour each
+# player chose - the same colour they have in chat and over their head - so
+# guild rank is worn beside the name instead: a gold crown for the leader and a
+# blue diamond for an officer, and the group headings in the same colours.
+# Members wear nothing, which is what makes the other two stand out.
 const RANK_COLOURS := {
 	"leader": Color(1.0, 0.84, 0.42),
-	"officer": Color(0.72, 0.86, 1.0),
+	"officer": Color(0.62, 0.8, 1.0),
 	"member": Color(0.78, 0.74, 0.66),
+}
+const RANK_MARKS := {"leader": "♛", "officer": "◆"}
+
+# How a name is drawn: its player's colour, with the owner's crown or MOD / DEV
+# in front. Shared with chat, friends and the players menu.
+const NameTag := preload("res://src/shared/nametag.gd")
+
+# The roster's groups, in the order drawn, and what each is called over its
+# rows. PLURAL BY COUNT - "Officers" over one officer reads as a typo.
+const GROUP_HEADINGS := {
+	"leader": ["Leader", "Leader"],
+	"officer": ["Officer", "Officers"],
+	"member": ["Member", "Members"],
 }
 
 const ONLINE_COLOUR := Color(0.45, 0.9, 0.5)
 const OFFLINE_COLOUR := Color(0.45, 0.42, 0.38)
 const HEADING_COLOUR := Color(0.85, 0.78, 0.62)
 const WAITING_COLOUR := Color(1.0, 0.82, 0.42)
+const DANGER_COLOUR := Color(0.85, 0.45, 0.4)
+const QUIET_COLOUR := Color(0.62, 0.58, 0.52)
+
+# Online and not, as SHAPES as well as colours - a filled dot and a hollow one
+# - so the difference does not depend on telling green from grey. They were
+# "+" and "-", which read as buttons that add and remove somebody.
+const DOT_ONLINE := "●"
+const DOT_OFFLINE := "○"
+
+# The dot's column, so a name and the character line under it start at the
+# same x whatever the dot's glyph measures.
+const DOT_WIDTH := 12
+
+# The "3 h ago" column in the activity list, right-aligned so the sentences
+# beside it start in one line.
+const ACTIVITY_WHEN_WIDTH := 64
+
+# HOW LONG A "SURE?" STAYS ARMED. The same four seconds as the staff and GM
+# panels, for the same reason: long enough to mean it, short enough that a
+# button left armed by a stray click does not go off a minute later.
+const ARM_SECONDS := 4.0
 
 
 var _in_flight: bool = false
@@ -75,14 +121,28 @@ var _in_guild: bool = false
 var _found_cost: int = 0
 var _name_check := RegEx.new()
 
+# The last answer, kept so a click can redraw without asking the server again.
+var _last_data: Dictionary = {}
+
+# WHOSE ACTIONS ARE OPEN, by name, so the fifteen-second refresh redraws the
+# roster with the same row still open instead of snapping it shut under the
+# cursor of somebody about to press Promote.
+var _open_member: String = ""
+
+# ARMED BY KEY, NOT BY BUTTON. Every repaint builds new buttons, so a flag on a
+# button would be forgotten by the refresh landing between the two presses; the
+# key outlives the button and the new one is drawn armed.
+var _armed: Dictionary = {}        # {"key": String, "until": float}
+
 @onready var rows: VBoxContainer = get_node_or_null("%guildrows")
 @onready var title: Label = get_node_or_null("%guildtitle")
+@onready var tag_label: Label = get_node_or_null("%guildtag")
 @onready var count_label: Label = get_node_or_null("%guildcount")
+@onready var fill_bar: ProgressBar = get_node_or_null("%guildfill")
 @onready var entry: LineEdit = get_node_or_null("%guildentry")
 @onready var action_button: Button = get_node_or_null("%guildactionbutton")
 @onready var action_panel: PanelContainer = get_node_or_null("%actionpanel")
 @onready var close_button: Button = get_node_or_null("%guildclosebutton")
-@onready var refresh_button: Button = get_node_or_null("%guildrefreshbutton")
 @onready var notice: Label = get_node_or_null("%guildnotice")
 @onready var footer: HBoxContainer = get_node_or_null("%footerbox")
 @onready var leave_button: Button = get_node_or_null("%guildleavebutton")
@@ -112,8 +172,9 @@ func _ready() -> void:
 		entry.text_submitted.connect(func(_t): _on_action_pressed())
 	if close_button != null:
 		close_button.pressed.connect(close)
-	if refresh_button != null:
-		refresh_button.pressed.connect(func(): _load())
+	# NO REFRESH BUTTON. There was one, labelled "R", beside the x - a letter
+	# nobody could read as "refresh" - for a roster that already re-reads
+	# itself every REFRESH_SECONDS and after every button pressed here.
 	if leave_button != null:
 		leave_button.pressed.connect(_on_leave_pressed)
 	if disband_button != null:
@@ -149,6 +210,8 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+	_armed = {}
+	_open_member = ""
 	if entry != null:
 		entry.release_focus()
 
@@ -194,6 +257,7 @@ func _load() -> void:
 func _repaint(data: Dictionary) -> void:
 	if rows == null:
 		return
+	_last_data = data
 
 	for child in rows.get_children():
 		rows.remove_child(child)
@@ -207,6 +271,15 @@ func _repaint(data: Dictionary) -> void:
 	var invites: Array = data.get("invites", [])
 	var guild: Dictionary = data.get("guild", {}) if data.get("guild") is Dictionary \
 		else {}
+	var members: Array = guild.get("members", []) if guild.get("members") is Array else []
+
+	# A ROW THAT HAS GONE CANNOT STAY OPEN. Somebody removed by another officer
+	# between two refreshes would otherwise leave _open_member naming nobody,
+	# and the next person to join under that name would arrive with their
+	# actions already showing.
+	if _open_member != "" and not members.any(
+			func(p): return p is Dictionary and str(p.get("username", "")) == _open_member):
+		_open_member = ""
 
 	_dress_header(guild)
 	_dress_controls(guild)
@@ -226,65 +299,188 @@ func _repaint(data: Dictionary) -> void:
 				+ " or wait for somebody to invite you.")
 		return
 
-	_add_heading(RANK_LABELS.get(_rank, "Members"), HEADING_COLOUR)
-	for person in guild.get("members", []):
-		if person is Dictionary:
+	# GROUPED BY RANK, each under its own heading. The heading used to be the
+	# VIEWER's rank over the whole roster - so a member saw "Member" printed
+	# above the leader's name, and the leader saw "Leader" above everybody.
+	for group in group_members(members):
+		var rank_name: String = group[0]
+		var people: Array = group[1]
+		_add_heading(heading_for(rank_name, people.size()),
+			RANK_COLOURS.get(rank_name, HEADING_COLOUR))
+		for person in people:
 			_add_member(person, now)
+
+	# A GUILD OF ONE IS WHERE EVERY GUILD STARTS, and it used to be a single row
+	# above a panel of empty space. What that space is for, on the first day, is
+	# the three things a new leader does not know yet.
+	if members.size() <= 1:
+		_add_heading("Getting started", HEADING_COLOUR)
+		for line in guide_for(str(guild.get("tag", "")), _rank_at_least("officer")):
+			_add_note(line)
+
+	# WHAT HAS HAPPENED, at the bottom: who joined, left, was promoted or
+	# removed, and when. The server writes it (guild_events) and sends the
+	# newest dozen; a member who was away finds out here rather than by
+	# noticing somebody is missing.
+	var history: Array = guild.get("activity", []) if guild.get("activity") is Array else []
+	if not history.is_empty():
+		_add_heading("Recent activity", HEADING_COLOUR)
+		for event in history:
+			if event is Dictionary:
+				_add_activity(event, now)
+
+
+static func group_members(members: Array) -> Array:
+	"""The roster as [[rank, [people...]], ...], leader first, empty groups left out.
+
+	GROUPED HERE RATHER THAN TRUSTING THE ORDER. The server sorts leader, officer,
+	member and the panel drew the rows in that order - but a heading drawn on the
+	assumption that the rows arrive sorted is a heading one query change away from
+	sitting over the wrong people. A rank this build has never heard of is a
+	member, the lowest, as everywhere else on this ladder.
+	"""
+	var buckets := {"leader": [], "officer": [], "member": []}
+	for person in members:
+		if not (person is Dictionary):
+			continue
+		var rank_name: String = str(person.get("rank", "member"))
+		if not buckets.has(rank_name):
+			rank_name = "member"
+		buckets[rank_name].append(person)
+	var out: Array = []
+	for rank_name in ["leader", "officer", "member"]:
+		if not buckets[rank_name].is_empty():
+			var people: Array = buckets[rank_name]
+			people.sort_custom(func(x, y): return _before(x, y))
+			out.append([rank_name, people])
+	return out
+
+
+static func _before(a: Dictionary, b: Dictionary) -> bool:
+	# ONLINE FIRST - the people you can talk to right now - then whoever was
+	# on most recently, then by name so the order is the same every time.
+	var a_on: bool = bool(a.get("online", false))
+	var b_on: bool = bool(b.get("online", false))
+	if a_on != b_on:
+		return a_on
+	var a_seen: int = int(a.get("last_seen_at", 0))
+	var b_seen: int = int(b.get("last_seen_at", 0))
+	if not a_on and a_seen != b_seen:
+		return a_seen > b_seen
+	return str(a.get("username", "")).naturalnocasecmp_to(str(b.get("username", ""))) < 0
+
+
+static func heading_for(rank_name: String, count: int) -> String:
+	var words: Array = GROUP_HEADINGS.get(rank_name, ["Member", "Members"])
+	if count <= 1:
+		return str(words[0])
+	return "%s · %d" % [words[1], count]
+
+
+static func guide_for(tag: String, may_invite: bool) -> PackedStringArray:
+	"""What a brand-new guild needs to know, in the space it used to leave empty."""
+	var out := PackedStringArray()
+	var shown: String = Api.guild_tag_text(tag)
+	if shown != "":
+		out.append("%s is your guild's tag. Everyone sees it beside your name -" % shown
+			+ " above your head, in chat and on the players list.")
+	if may_invite:
+		out.append("Invite somebody by typing their name above. They answer from"
+			+ " their own Guild panel.")
+	out.append("Talk to the guild on the Guild tab in chat.")
+	return out
+
+
+static func header_line(guild: Dictionary, rank_name: String) -> String:
+	"""The quiet line under the guild's name: how many, how many on, since when.
+
+	ITS OWN LINE NOW, and that is the fix for the name. It used to share one row
+	with the name, and a Label that shares a row gives way - so a guild called
+	"the first" was drawn as "the", its own name cut short by a sentence about
+	it. The name has the whole width to itself now.
+	"""
+	var members: Array = guild.get("members", []) if guild.get("members") is Array else []
+	var online: int = 0
+	for person in members:
+		if person is Dictionary and bool(person.get("online", false)):
+			online += 1
+
+	# NOT `size`. Control already has one, and shadowing it warns at parse time -
+	# see "Shadowing a base class property" in CLAUDE.md. A headcount, not a
+	# dimension.
+	var member_count: int = int(guild.get("size", members.size()))
+
+	var parts := PackedStringArray()
+	# "1 online of 1" IS ARITHMETIC ABOUT ONE PERSON, and that person is reading
+	# it. A guild of one is the state every guild starts in, so it gets words.
+	if member_count <= 1:
+		parts.append("just you" if RANKS.find(rank_name) >= RANKS.find("officer")
+			else "just you - ask an officer to invite somebody")
+	else:
+		parts.append("%d members, %d online" % [member_count, online])
+
+	# FOUNDED. `created_at` had been on the wire since /api/guild was written and
+	# nothing drew it; it is the one fact that makes a guild feel like it has a
+	# history rather than a roster.
+	var founded: String = LocalTime.date(int(guild.get("created_at", 0)))
+	if founded != "":
+		parts.append("founded %s" % founded)
+	return "  ·  ".join(parts)
 
 
 func _dress_header(guild: Dictionary) -> void:
 	if title != null:
 		title.text = str(guild.get("name", "Guild")) if _in_guild else "Guild"
+
+	# THE TAG IN ITS OWN COLOUR, the one Api gives it everywhere else. This is
+	# the one screen where a member finds out what everybody else sees, and it
+	# should look here exactly as it looks beside their name in chat.
+	if tag_label != null:
+		var tag: String = Api.guild_tag_text(str(guild.get("tag", ""))) if _in_guild else ""
+		tag_label.text = tag
+		tag_label.visible = tag != ""
+		tag_label.add_theme_color_override("font_color", Api.GUILD_TAG_COLOUR)
+
+	# HOW FULL IT IS, as a thin bar under the line: a guild of 5 in 50 places
+	# and one of 48 in 50 are different situations, and a number in a sentence
+	# is the slowest way to tell them apart.
+	if fill_bar != null:
+		var members: Array = guild.get("members", []) if guild.get("members") is Array else []
+		var capacity: int = int(guild.get("capacity", 0))
+		fill_bar.visible = _in_guild and capacity > 0
+		fill_bar.max_value = maxi(1, capacity)
+		fill_bar.value = int(guild.get("size", members.size()))
+		fill_bar.tooltip_text = "%d of %d places filled" % [int(fill_bar.value), capacity]
+
 	if count_label == null:
 		return
 	if not _in_guild:
 		count_label.text = "%s to found one" % GameConstants.gold_text(_found_cost)
 		return
-
-	var online: int = 0
-	for person in guild.get("members", []):
-		if person is Dictionary and bool(person.get("online", false)):
-			online += 1
-
-	var size: int = int(guild.get("size", 0))
-
-	# "1 online of 1" IS ARITHMETIC ABOUT ONE PERSON, and that person is reading
-	# it. A guild of one is the state every guild starts in and the state this
-	# panel should be most helpful in, so it gets a sentence instead of a sum -
-	# and the sentence says what to do next, because founding one and then
-	# finding no way forward is how a feature gets abandoned on day one.
-	#
-	# The earlier version of this line said "0 online of 1" to its only member,
-	# which was a presence bug rather than a wording one. The presence is fixed;
-	# the wording was still arithmetic nobody needed.
-	var parts := PackedStringArray()
-
-	# THE TAG FIRST, because this is the one screen where a member finds out
-	# what everybody else sees. It is drawn on their chat lines, on the players
-	# menu and on the kingdom board, and a player who has never been shown it
-	# has no idea their guild is visible at all.
-	var tag: String = Api.guild_tag_text(str(guild.get("tag", "")))
-	if tag != "":
-		parts.append(tag)
-
-	if size <= 1:
-		parts.append("Just you, so far." if _rank_at_least("officer")
-			else "Just you, so far. Ask an officer to invite somebody.")
-	else:
-		parts.append("%d online of %d" % [online, size])
-
-	# FOUNDED, ON THE END OF THE LINE THAT IS ALREADY THERE. `created_at` has
-	# been on the wire since /api/guild was written and nothing had ever drawn
-	# it. It is the one fact that makes a guild feel like it has a history
-	# rather than a roster, and it costs a clause.
-	var founded: String = LocalTime.date(int(guild.get("created_at", 0)))
-	if founded != "":
-		parts.append("founded %s" % founded)
-
-	count_label.text = "  ·  ".join(parts)
+	count_label.text = header_line(guild, _rank)
 
 
-func _dress_controls(_guild: Dictionary) -> void:
+static func footer_for(in_guild: bool, rank_name: String, member_count: int) -> Dictionary:
+	"""Which footer buttons show, and what the dangerous one says.
+
+	A LEADER ALONE HAS ONE WAY OUT, so they get one button. Leaving as the last
+	member folds the guild on the server (see guild_leave(): "the last one out
+	takes the guild with them"), which made Leave and Disband two buttons for the
+	same act, one of them without a warning. It is called what it does.
+
+	A leader with people under them keeps Leave, though the server refuses it:
+	the refusal is the sentence that tells them how to get out.
+	"""
+	if not in_guild:
+		return {"leave": false, "disband": false, "disband_text": ""}
+	if rank_name == "leader" and member_count <= 1:
+		return {"leave": false, "disband": true, "disband_text": "Close the guild"}
+	if rank_name == "leader":
+		return {"leave": true, "disband": true, "disband_text": "Disband"}
+	return {"leave": true, "disband": false, "disband_text": ""}
+
+
+func _dress_controls(guild: Dictionary) -> void:
 	# THE BOX CHANGES JOB WITH YOUR RANK. Outside a guild it names a new one;
 	# inside, and only for an officer or the leader, it invites somebody. A
 	# member sees no box at all rather than one that always refuses.
@@ -304,19 +500,23 @@ func _dress_controls(_guild: Dictionary) -> void:
 			else "Found a guild. It costs %d gold, and the gold is destroyed."
 				% _found_cost)
 
+	var members: Array = guild.get("members", []) if guild.get("members") is Array else []
+	var shape: Dictionary = footer_for(_in_guild, _rank, int(guild.get("size", members.size())))
 	if footer != null:
 		footer.visible = _in_guild
 	if leave_button != null:
-		leave_button.visible = _in_guild
-		# A LEADER WITH PEOPLE UNDER THEM CANNOT WALK OUT, and the server says
-		# so. The button stays, because the sentence it produces is the useful
-		# part - hiding it would leave somebody wondering how to get out.
+		leave_button.visible = bool(shape["leave"])
 		leave_button.tooltip_text = (
-			"Hand the guild on first, or disband it."
+			"Hand the guild on first - open an officer's row - or disband it."
 			if _rank == "leader"
-			else "Leave this guild.")
+			else "Leave this guild. An officer can invite you back.")
 	if disband_button != null:
-		disband_button.visible = _in_guild and _rank == "leader"
+		disband_button.visible = bool(shape["disband"])
+		disband_button.text = "Sure?" if _is_armed("disband") else str(shape["disband_text"])
+		disband_button.tooltip_text = (
+			"You are its only member. Closing it frees the name, and there is no undo."
+			if str(shape["disband_text"]) == "Close the guild"
+			else "Take the whole guild down. There is no undo.")
 
 
 func _rank_at_least(minimum: String) -> bool:
@@ -332,6 +532,12 @@ func _rank_at_least(minimum: String) -> bool:
 # =============================================================================
 
 func _add_heading(text: String, colour: Color) -> void:
+	# A LITTLE AIR ABOVE EACH GROUP but the first, so "Officers" reads as the
+	# start of something rather than one more row.
+	if rows.get_child_count() > 0:
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(0, 4)
+		rows.add_child(gap)
 	var label := Label.new()
 	label.text = text
 	label.add_theme_color_override("font_color", colour)
@@ -343,12 +549,16 @@ func _add_note(text: String) -> void:
 	var label := Label.new()
 	label.text = text
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_color_override("font_color", Color(0.6, 0.56, 0.5))
+	# A wrapping Label needs a width it is allowed to be narrower than, or it
+	# asks for the whole sentence on one line and pushes the panel wider.
+	label.custom_minimum_size = Vector2(1, 0)
+	label.add_theme_color_override("font_color", QUIET_COLOUR)
 	label.add_theme_font_size_override("font_size", 11)
 	rows.add_child(label)
 
 
-func _row_frame() -> HBoxContainer:
+func _row_frame() -> VBoxContainer:
+	# A framed row: the line itself, and room under it for what opens.
 	var frame := PanelContainer.new()
 	frame.theme_type_variation = &"PanelSlot"
 	rows.add_child(frame)
@@ -360,9 +570,16 @@ func _row_frame() -> HBoxContainer:
 	margin.add_theme_constant_override("margin_bottom", 3)
 	frame.add_child(margin)
 
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	margin.add_child(box)
+	return box
+
+
+func _line_in(box: VBoxContainer) -> HBoxContainer:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 6)
-	margin.add_child(line)
+	box.add_child(line)
 	return line
 
 
@@ -371,14 +588,17 @@ func _small_button(text: String, hint: String, on_press: Callable) -> Button:
 	button.text = text
 	button.tooltip_text = hint
 	button.focus_mode = Control.FOCUS_NONE
-	button.add_theme_font_size_override("font_size", 11)
+	button.add_theme_font_size_override("font_size", 12)
+	# WIDE ENOUGH TO READ. At the text's own width "No" was a 20px box with a
+	# frame thicker than its letters.
+	button.custom_minimum_size = Vector2(60, 22)
 	button.pressed.connect(on_press)
 	return button
 
 
 func _add_invite(one: Dictionary) -> void:
 	var which: String = str(one.get("guild", "?"))
-	var line := _row_frame()
+	var line := _line_in(_row_frame())
 
 	var label := Label.new()
 	label.text = "%s, from %s" % [which, str(one.get("by", "somebody"))]
@@ -390,7 +610,7 @@ func _add_invite(one: Dictionary) -> void:
 
 	line.add_child(_small_button("Join", "Join %s" % which,
 		func(): _respond(which, true)))
-	line.add_child(_small_button("No", "Turn it down. They are not told.",
+	line.add_child(_small_button("Decline", "Turn it down. They are not told.",
 		func(): _respond(which, false)))
 
 
@@ -398,75 +618,323 @@ func _add_member(person: Dictionary, now: int) -> void:
 	var who: String = str(person.get("username", "?"))
 	var their_rank: String = str(person.get("rank", "member"))
 	var online: bool = bool(person.get("online", false))
-	var line := _row_frame()
+	var mine: bool = who.to_lower() == Api.username.to_lower()
+	var actions: PackedStringArray = actions_for(_rank, Api.username, who, their_rank)
+	var box := _row_frame()
+	var frame: PanelContainer = box.get_parent().get_parent() as PanelContainer
+	frame.set_meta("username", who)
+	box.add_theme_constant_override("separation", 1)
+	var line := _line_in(box)
 
 	var dot := Label.new()
-	dot.text = "+" if online else "-"
-	dot.add_theme_color_override("font_color",
-		ONLINE_COLOUR if online else OFFLINE_COLOUR)
-	dot.add_theme_font_size_override("font_size", 13)
+	dot.name = "dot"
+	dot.text = DOT_ONLINE if online else DOT_OFFLINE
+	dot.add_theme_color_override("font_color", ONLINE_COLOUR if online else OFFLINE_COLOUR)
+	dot.add_theme_font_size_override("font_size", 11)
+	dot.custom_minimum_size = Vector2(DOT_WIDTH, 0)
+	dot.tooltip_text = "Online" if online else "Offline"
+	dot.mouse_filter = Control.MOUSE_FILTER_PASS
 	line.add_child(dot)
 
-	var name_label := Label.new()
-	name_label.text = who
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# SAME COLOUR AS OVER THEIR HEAD AND IN CHAT. Api owns the mapping so the
-	# three cannot drift apart. Guild rank is shown separately, beside it -
-	# the two ladders are different things and colouring by both would say
-	# neither clearly.
-	name_label.add_theme_color_override("font_color",
-		Api.colour_for_role(str(person.get("role", "player"))))
-	name_label.add_theme_font_size_override("font_size", 12)
-	line.add_child(name_label)
+	# THEIR NAME, IN THE COLOUR THEY CHOSE, with the owner's crown or MOD / DEV
+	# in front - the same function chat and the friends list draw with.
+	#
+	# NOT CLIPPED. A clipping Label asks for no width at all, and beside the
+	# expanding spacer it would be given none - the name would vanish. A
+	# username is at most twenty characters and fits the row at full length.
+	NameTag.add_to(line, who, str(person.get("role", "player")), person.get("name_hue"), 13)
 
-	var rank_label := Label.new()
-	rank_label.text = RANK_LABELS.get(their_rank, their_rank)
-	rank_label.add_theme_color_override("font_color",
-		RANK_COLOURS.get(their_rank, OFFLINE_COLOUR))
-	rank_label.add_theme_font_size_override("font_size", 10)
-	line.add_child(rank_label)
+	# THE GUILD RANK, WORN BESIDE THE NAME, since the name's colour is theirs.
+	var mark: String = str(RANK_MARKS.get(their_rank, ""))
+	if mark != "":
+		var worn := Label.new()
+		worn.name = "rankmark"
+		worn.text = mark
+		worn.add_theme_color_override("font_color", RANK_COLOURS.get(their_rank, HEADING_COLOUR))
+		worn.add_theme_font_size_override("font_size", 12)
+		worn.tooltip_text = "Guild leader" if their_rank == "leader" else "Officer"
+		worn.mouse_filter = Control.MOUSE_FILTER_PASS
+		line.add_child(worn)
 
-	var seen := Label.new()
-	seen.text = "online" if online else _last_seen_text(person, now)
-	seen.add_theme_color_override("font_color", Color(0.62, 0.58, 0.52))
-	seen.add_theme_font_size_override("font_size", 10)
-	line.add_child(seen)
+	if mine:
+		var you := Label.new()
+		you.text = "you"
+		you.add_theme_color_override("font_color", QUIET_COLOUR)
+		you.add_theme_font_size_override("font_size", 10)
+		line.add_child(you)
 
-	for spec in _buttons_for(who, their_rank):
-		line.add_child(_small_button(String(spec[0]), String(spec[1]), spec[2]))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_PASS
+	line.add_child(spacer)
+
+	# WHERE THEY ARE, IF THEY ARE ON; WHEN THEY WERE, IF NOT. The dot already
+	# says which. An area beside somebody who left three days ago would read
+	# as now, so the server sends it either way and this shows it only live.
+	var where := Label.new()
+	where.name = "where"
+	where.text = place_text(person) if online else presence_text(person, now)
+	where.add_theme_color_override("font_color", QUIET_COLOUR)
+	where.add_theme_font_size_override("font_size", 10)
+	if where.text != "":
+		line.add_child(where)
+
+	# WHO THEY ARE PLAYING, on a quiet second line under the name: character,
+	# class and level. Indented past the dot so the names stay one column.
+	var playing: String = character_text(person)
+	if playing != "":
+		var second := HBoxContainer.new()
+		second.add_theme_constant_override("separation", 6)
+		box.add_child(second)
+		var indent := Control.new()
+		indent.custom_minimum_size = Vector2(DOT_WIDTH, 0)
+		indent.mouse_filter = Control.MOUSE_FILTER_PASS
+		second.add_child(indent)
+		var who_as := Label.new()
+		who_as.name = "character"
+		who_as.text = playing
+		who_as.add_theme_color_override("font_color", QUIET_COLOUR)
+		who_as.add_theme_font_size_override("font_size", 10)
+		second.add_child(who_as)
+
+	if actions.is_empty():
+		return
+
+	# ACTIONS ON CLICK, not on every row. Two or three buttons on each line -
+	# Demote, Hand on, Remove - squeezed the names and put Remove one slip away
+	# from Promote on every row at once. Now a row that has something to offer
+	# says so with an arrow, lights up under the pointer, and opens under
+	# itself when clicked.
+	var is_open: bool = _open_member == who
+	var arrow := Label.new()
+	arrow.name = "arrow"
+	arrow.text = "▾" if is_open else "▸"
+	arrow.add_theme_color_override("font_color", HEADING_COLOUR)
+	arrow.add_theme_font_size_override("font_size", 13)
+	line.add_child(arrow)
+
+	frame.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	frame.tooltip_text = "What you can do about %s" % who
+	frame.gui_input.connect(_on_member_input.bind(who))
+	_light_up(frame, is_open)
+	frame.mouse_entered.connect(func(): _light_up(frame, true))
+	frame.mouse_exited.connect(func(): _light_up(frame, _open_member == who))
+
+	if not is_open:
+		return
+	var strip := HBoxContainer.new()
+	strip.name = "actions"
+	strip.add_theme_constant_override("separation", 4)
+	strip.alignment = BoxContainer.ALIGNMENT_END
+	box.add_child(strip)
+	for action in actions:
+		strip.add_child(_action_button(action, who))
 
 
-func _buttons_for(who: String, their_rank: String) -> Array:
-	# YOURSELF GETS NOTHING. Leaving is the footer's job, and a Remove button
-	# beside your own name is a different action wearing the same word.
-	if who.to_lower() == Api.username.to_lower():
-		return []
+func _light_up(frame: PanelContainer, lit: bool) -> void:
+	# THE ROW UNDER THE POINTER, AND THE OPEN ONE, LOOK PICKED UP: a shade
+	# lighter, with a gold edge. Built from the theme's own slot box, so it is
+	# the same shape and only brighter, rather than a second design.
+	if not is_instance_valid(frame):
+		return
+	if not lit:
+		frame.remove_theme_stylebox_override("panel")
+		return
+	var base: StyleBox = frame.get_theme_stylebox("panel", &"PanelSlot")
+	var bright: StyleBox = base.duplicate() if base != null else StyleBoxFlat.new()
+	if bright is StyleBoxFlat:
+		var flat: StyleBoxFlat = bright as StyleBoxFlat
+		flat.bg_color = flat.bg_color.lightened(0.08)
+		flat.border_color = Color(0.85, 0.72, 0.42)
+	frame.add_theme_stylebox_override("panel", bright)
 
-	var out: Array = []
-	var theirs: int = RANKS.find(their_rank)
-	var mine: int = RANKS.find(_rank)
 
-	# STRICTLY ABOVE, the same rule the server enforces. An officer sees no
-	# buttons beside another officer, because pressing one would be refused.
-	if mine <= theirs:
+static func character_text(person: Dictionary) -> String:
+	"""'Kaelen · Warrior · lvl 12', or "" for a member with no character yet."""
+	var character: String = str(person.get("character", ""))
+	if character == "":
+		return ""
+	var parts := PackedStringArray([character])
+	var class_id: String = str(person.get("class_id", ""))
+	if class_id != "":
+		parts.append(class_id.capitalize())
+	var level: int = int(person.get("level", 0))
+	if level > 0:
+		parts.append("lvl %d" % level)
+	return " · ".join(parts)
+
+
+static func place_text(person: Dictionary) -> String:
+	"""Where an online member is: 'in Field'. "" when the server did not say."""
+	var area: String = str(person.get("area", ""))
+	return "" if area == "" else "in %s" % AreaRegistry.display_name(area)
+
+
+static func describe_event(event: Dictionary) -> String:
+	"""One line of the guild's history, in words: 'lead made offi an officer'.
+
+	A KIND THIS BUILD HAS NEVER HEARD OF still says who did what to whom, in
+	the server's own word for it, rather than vanishing.
+	"""
+	var actor: String = str(event.get("actor", ""))
+	var target: String = str(event.get("target", ""))
+	match str(event.get("kind", "")):
+		"founded":
+			return "%s founded the guild" % actor
+		"joined":
+			return "%s joined" % actor
+		"left":
+			return "%s left" % actor
+		"invited":
+			return "%s invited %s" % [actor, target]
+		"promoted":
+			return "%s made %s an officer" % [actor, target]
+		"demoted":
+			return "%s made %s a member" % [actor, target]
+		"leader":
+			return "%s handed the guild to %s" % [actor, target]
+		"removed":
+			return "%s removed %s" % [actor, target]
+		"renamed":
+			# NO NAME FOR WHO DID IT - the server leaves it out on purpose.
+			return "Staff renamed the guild from %s" % str(event.get("detail", "?"))
+	return ("%s %s %s" % [actor, str(event.get("kind", "?")), target]).strip_edges()
+
+
+func _add_activity(event: Dictionary, now: int) -> void:
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 8)
+	rows.add_child(line)
+
+	var when := Label.new()
+	when.text = ago_text(int(event.get("at", 0)), now)
+	when.custom_minimum_size = Vector2(ACTIVITY_WHEN_WIDTH, 0)
+	when.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	when.add_theme_color_override("font_color", OFFLINE_COLOUR.lightened(0.15))
+	when.add_theme_font_size_override("font_size", 10)
+	when.tooltip_text = LocalTime.full(int(event.get("at", 0)))
+	when.mouse_filter = Control.MOUSE_FILTER_PASS
+	line.add_child(when)
+
+	var what := Label.new()
+	what.text = describe_event(event)
+	what.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	what.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	what.custom_minimum_size = Vector2(1, 0)
+	what.add_theme_color_override("font_color", QUIET_COLOUR)
+	what.add_theme_font_size_override("font_size", 11)
+	line.add_child(what)
+
+
+static func ago_text(at: int, now: int) -> String:
+	# The one copy lives in LocalTime now; this name stays for the trade panel.
+	return LocalTime.ago(at, now)
+
+
+static func actions_for(my_rank: String, me: String, who: String, their_rank: String) -> PackedStringArray:
+	"""What the viewer may do to one member, as action ids, in the order offered.
+
+	YOURSELF GETS NOTHING. Leaving is the footer's job, and a Remove button beside
+	your own name is a different action wearing the same word.
+
+	STRICTLY ABOVE, the same rule the server enforces: an officer is offered
+	nothing against another officer, because pressing it would be refused.
+	"""
+	var out := PackedStringArray()
+	if who.to_lower() == me.to_lower():
 		return out
-
-	if _rank == "leader":
+	var theirs: int = RANKS.find(their_rank)
+	var mine: int = RANKS.find(my_rank)
+	if mine < 0 or mine <= theirs:
+		return out
+	if my_rank == "leader":
 		if their_rank == "member":
-			out.append(["Promote", "Make %s an officer" % who,
-				func(): _set_rank(who, "officer")])
+			out.append("promote")
 		elif their_rank == "officer":
-			out.append(["Demote", "Make %s a member again" % who,
-				func(): _set_rank(who, "member")])
-			out.append(["Hand on", "Make %s the leader. You become an officer."
-				% who, func(): _set_rank(who, "leader")])
-
-	out.append(["Remove", "Remove %s from the guild" % who,
-		func(): _kick(who)])
+			out.append("demote")
+			out.append("handon")
+	out.append("remove")
 	return out
 
 
-func _last_seen_text(person: Dictionary, now: int) -> String:
+func _action_button(action: String, who: String) -> Button:
+	# THE TWO THAT CANNOT BE TAKEN BACK ASK TWICE. Promote and demote undo each
+	# other; handing the guild on and removing somebody do not - one gives away
+	# the leadership, the other takes somebody out of the guild and its channel.
+	var key: String = "%s:%s" % [action, who]
+	var spec: Array = {
+		"promote": ["Promote", "Make %s an officer" % who],
+		"demote": ["Demote", "Make %s a member again" % who],
+		"handon": ["Make leader", "Hand the guild to %s. You become an officer." % who],
+		"remove": ["Remove", "Remove %s from the guild" % who],
+	}.get(action, [action, ""])
+	var button := _small_button(
+		"Sure?" if _is_armed(key) else str(spec[0]), str(spec[1]),
+		func(): _on_action(action, who))
+	button.set_meta("action", action)
+	if action == "remove" or action == "handon":
+		button.add_theme_color_override("font_color", DANGER_COLOUR)
+	return button
+
+
+func _on_member_input(event: InputEvent, who: String) -> void:
+	if not (event is InputEventMouseButton) or not event.pressed \
+			or event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	_open_member = "" if _open_member == who else who
+	_armed = {}
+	_set_notice("")
+	_repaint(_last_data)
+
+
+func _on_action(action: String, who: String) -> void:
+	if action == "remove" or action == "handon":
+		if not _arm_or_fire("%s:%s" % [action, who],
+				"Press again to remove %s from the guild." % who if action == "remove"
+				else "Press again to make %s the leader. You become an officer." % who):
+			return
+	match action:
+		"promote":
+			await _set_rank(who, "officer")
+		"demote":
+			await _set_rank(who, "member")
+		"handon":
+			await _set_rank(who, "leader")
+		"remove":
+			await _kick(who)
+
+
+func _is_armed(key: String) -> bool:
+	return str(_armed.get("key", "")) == key \
+		and Time.get_ticks_msec() / 1000.0 < float(_armed.get("until", 0.0))
+
+
+func _arm_or_fire(key: String, warning: String) -> bool:
+	# First press: arm, say what the second one will do, and return false.
+	# Second press inside ARM_SECONDS: disarm and return true - go ahead.
+	if _is_armed(key):
+		_armed = {}
+		return true
+	_armed = {"key": key, "until": Time.get_ticks_msec() / 1000.0 + ARM_SECONDS}
+	_show(warning)
+	_repaint(_last_data)
+	_disarm_later(key)
+	return false
+
+
+func _disarm_later(key: String) -> void:
+	# PUT THE WORD BACK. A button left reading "Sure?" after the window has shut
+	# says the next press will act when it will only arm again.
+	await get_tree().create_timer(ARM_SECONDS).timeout
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if str(_armed.get("key", "")) == key and not _is_armed(key):
+		_armed = {}
+		_set_notice("")
+		_repaint(_last_data)
+
+
+static func presence_text(person: Dictionary, now: int) -> String:
 	var seen: int = int(person.get("last_seen_at", 0))
 	if seen <= 0 or now <= 0:
 		return "offline"
@@ -474,12 +942,7 @@ func _last_seen_text(person: Dictionary, now: int) -> String:
 	# AGED AGAINST THE SERVER'S CLOCK, which is why the answer carries one.
 	# Measuring against this machine's clock shows "last seen in 3 hours" to
 	# anybody whose system time is wrong, and plenty of them are.
-	var gap: int = max(0, now - seen)
-	if gap < 3600:
-		return "%d min ago" % int(gap / 60.0)
-	if gap < 86400:
-		return "%d h ago" % int(gap / 3600.0)
-	return "%d days ago" % int(gap / 86400.0)
+	return LocalTime.ago(seen, now)
 
 
 # =============================================================================
@@ -526,7 +989,7 @@ func _kick(who: String) -> void:
 
 func _set_rank(who: String, rank: String) -> void:
 	var said: String = "%s is now the leader. You are an officer." % who \
-		if rank == "leader" else "%s is now %s." % [who, RANK_LABELS.get(rank, rank)]
+		if rank == "leader" else "%s is now %s." % [who, RANK_WITH_ARTICLE.get(rank, rank)]
 	await _act("/api/guild/rank", {"username": who, "rank": rank}, said)
 
 
@@ -535,26 +998,13 @@ func _on_leave_pressed() -> void:
 
 
 func _on_disband_pressed() -> void:
-	# TWO PRESSES, UNLIKE EVERY OTHER BUTTON HERE. Removing one person is a
-	# thing to undo by inviting them back; disbanding takes the name, the
-	# roster and the channel with it and nothing brings those back. The
-	# confirmation is the only place in this panel where the extra click is
-	# worth what it costs.
-	if disband_button == null:
+	# TWO PRESSES. Removing one person is a thing to undo by inviting them back;
+	# disbanding takes the name, the roster and the channel with it and nothing
+	# brings those back. Armed by key, like Remove, so a refresh landing between
+	# the presses redraws the button still reading "Sure?".
+	if not _arm_or_fire("disband",
+			"Press again to close the guild for good. This cannot be undone."):
 		return
-	if not disband_button.has_meta("armed"):
-		disband_button.set_meta("armed", true)
-		disband_button.text = "Sure?"
-		_show("Press again to take the guild down. This cannot be undone.")
-		await get_tree().create_timer(4.0).timeout
-		if is_instance_valid(disband_button) and disband_button.has_meta("armed"):
-			disband_button.remove_meta("armed")
-			disband_button.text = "Disband"
-			_set_notice("")
-		return
-
-	disband_button.remove_meta("armed")
-	disband_button.text = "Disband"
 	await _act("/api/guild/disband", {}, "The guild is gone.")
 
 
@@ -576,6 +1026,9 @@ func _act(path: String, body: Dictionary, success_text: String) -> void:
 
 	if res.get("ok", false):
 		_show(success_text + _payment_note(res))
+		# THE ROW'S JOB IS DONE. Promoted, demoted or gone, what it offered has
+		# changed, and leaving it open would show the old choices for a moment.
+		_open_member = ""
 	else:
 		_show(_failure_text(res))
 
@@ -610,7 +1063,7 @@ func _failure_text(res: Dictionary) -> String:
 	var said: String = str(res.get("error", "")).strip_edges()
 
 	if status == 0:
-		return "No answer from the server. Is it running?"
+		return Api.no_answer_text()
 	if status == 401:
 		return "You are not signed in."
 	if status == 404:

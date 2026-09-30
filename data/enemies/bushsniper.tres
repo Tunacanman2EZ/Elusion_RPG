@@ -12,3 +12,6 @@ attack_xp_reward = 14
 max_loot_tier = 2
 pet_drop_id = "petsniper"
 max_hp = 175
+bag_drop_chance = 0.3
+max_item_slots = 1
+slot_fill_chance = 0.3

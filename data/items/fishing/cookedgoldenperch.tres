@@ -7,7 +7,7 @@
 script = ExtResource("2_script")
 item_id = "cookedgoldenperch"
 display_name = "Cooked Golden Perch"
-description = "Worth more than most people's boots. Restores 72 HP."
+description = "Worth more than most people's boots."
 icon = ExtResource("1_icon")
 stackable = true
 max_stack = 20

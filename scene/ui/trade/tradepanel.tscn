@@ -20,7 +20,7 @@ theme = ExtResource("1_theme")
 script = ExtResource("2_script")
 
 [node name="mainpanel" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(520, 440)
+custom_minimum_size = Vector2(580, 500)
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -69,7 +69,7 @@ flat = true
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="startlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/startbox"]
 unique_name_in_owner = true
@@ -80,7 +80,7 @@ text = "Looking for anyone here…"
 horizontal_alignment = 1
 
 [node name="nearbyscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/startbox"]
-custom_minimum_size = Vector2(0, 230)
+custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
@@ -118,6 +118,24 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Open trade"
 
+[node name="recentcaption" type="Label" parent="mainpanel/margincontainer/vboxcontainer/startbox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 12
+text = "Your recent trades"
+
+[node name="recentscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/startbox"]
+custom_minimum_size = Vector2(0, 104)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="recentlist" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/startbox/recentscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+
 [node name="tradebox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 unique_name_in_owner = true
 visible = false
@@ -125,12 +143,19 @@ layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
+[node name="withrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 6
+
 [node name="columns" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox"]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
 
 [node name="youpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"PanelSub"
@@ -144,7 +169,7 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.6, 0.9, 0.7, 1)
 theme_override_font_sizes/font_size = 13
-text = "You"
+text = "You give"
 horizontal_alignment = 1
 
 [node name="youscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
@@ -157,7 +182,7 @@ horizontal_scroll_mode = 0
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 2
+theme_override_constants/separation = 3
 
 [node name="goldrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
 layout_mode = 2
@@ -177,7 +202,7 @@ max_value = 0.0
 step = 1.0
 allow_greater = false
 
-[node name="youtax" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
+[node name="youworth" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
@@ -187,6 +212,7 @@ horizontal_alignment = 1
 autowrap_mode = 2
 
 [node name="thempanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"PanelSub"
@@ -200,7 +226,7 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
 theme_override_font_sizes/font_size = 13
-text = "Them"
+text = "They give"
 horizontal_alignment = 1
 
 [node name="themscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
@@ -213,21 +239,32 @@ horizontal_scroll_mode = 0
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 2
+theme_override_constants/separation = 3
 
 [node name="themgold" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 31)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
 theme_override_font_sizes/font_size = 12
 text = "Gold 0"
 horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="themtax" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
+[node name="themworth" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
 theme_override_font_sizes/font_size = 11
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="summarylabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/tradebox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.8, 0.7, 1)
+theme_override_font_sizes/font_size = 12
 text = ""
 horizontal_alignment = 1
 autowrap_mode = 2
