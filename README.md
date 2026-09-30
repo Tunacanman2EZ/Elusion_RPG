@@ -79,6 +79,8 @@ Mods, devs and the owner get a Staff button on the HUD: every account with who i
 
 The interesting part was what a kick looked like from the other side: nothing. The server deleted the session, but the game never asked again after the login screen, so a kicked player played on until they restarted. The game now sends a heartbeat every fifteen seconds and re-checks at once on any refused request — a kick lands in about a second — and only a 401 counts, so restarting the server never signs everyone out.
 
+Staff names are public - the crown and the MOD and DEV badges say exactly whose password is worth guessing - so a staff password alone opens nothing. For a staff account with a confirmed recovery address, a correct password gets a six-digit code by email instead of a session, and only the code logs in. A wrong code counts toward the same lockout as a wrong password.
+
 ### Runs on modest hardware, measured rather than guessed — `src/systems/settings.gd`
 
 Before adding a single graphics option, the real scenes were benchmarked on the slowest machine available: a graphics card simulated in software on two CPU cores. Two things carried almost all the cost — the candle and lantern lights, which double the frame time of any area they are in, and drawing at a 1440p or 4K window's full resolution, which is 4x or 9x the pixels for pixel art that gains nothing from them. Those became the options: **Simple lighting** (2x faster in lit areas), **1280 × 720 rendering** (3–5x faster on big screens), a **Compatibility (OpenGL) renderer** for hardware whose Vulkan is weak, a **30 fps cap** for machines that cannot hold 60 smoothly, and a **background limit** that drops to 15 fps when the game is not the focused window. Everything that trades looks for speed is off by default, and the table of measurements lives in the code beside the options it justified.
@@ -193,7 +195,7 @@ That serves eighty-nine endpoints — accounts and sessions, character saves, th
 
 Eighty-four of the eighty-nine require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has thirty-seven test suites, run together with one command:
+The backend has thirty-eight test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -215,12 +217,13 @@ test_refusals.py        94 checks    401, 403, and the 404 that is really a 403
 test_ownership.py       82 checks    no route hands over a row that is not yours
 test_friends.py         70 checks    asking, answering and ending a friendship
 test_pacing.py          69 checks    the pace of the game, as the server pays it
-test_security_doc.py    65 checks    SECURITY.md is checked, not trusted
+test_security_doc.py    69 checks    SECURITY.md is checked, not trusted
 test_throttle.py        61 checks    login lockout, per-IP spray, token rotation
 test_broadcast.py       59 checks    the server's voice, end to end
 test_chat.py            55 checks    world chat, end to end
 test_maintenance.py     53 checks    the owner's kill switch
 test_recovery.py        53 checks    account recovery, adversarially
+test_staffcode.py       38 checks    a staff password alone opens nothing
 test_settings.py        49 checks    the options screen's rules
 test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
@@ -238,14 +241,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					3,442 checks, 0 failures
+					3,484 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The thirty-seventh, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The thirty-eighth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **1,999 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 118 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,010 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 118 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `1964 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `1975 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 

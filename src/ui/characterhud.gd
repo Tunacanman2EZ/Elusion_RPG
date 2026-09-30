@@ -247,6 +247,7 @@ func _ready() -> void:
 	_wire_nav_buttons()
 	_add_owner_button()
 	_build_message_box()
+	_warn_unprotected_staff()
 	_build_status_strip()
 	_start_broadcast_poll()
 	_wire_hotbar()
@@ -1045,6 +1046,16 @@ static func _clock(seconds: int) -> String:
 	@warning_ignore("integer_division")
 	var minutes: int = whole / 60
 	return "%d:%02d" % [minutes, whole % 60]
+
+
+func _warn_unprotected_staff() -> void:
+	# This staff login needed no code: the account has no confirmed recovery
+	# address, or the server cannot send mail (STAFF LOGIN CODES in app.py).
+	# Once per login, not once per area.
+	if Api.take_staff_unprotected_notice():
+		_push_message("Your staff login needed no code from your email. Confirm a recovery "
+			+ "email in Options, or, if you have one, the server's mail is off.",
+			Color(1.0, 0.82, 0.42))
 
 
 func _push_message(text: String, color: Color, at: int = 0, announce: bool = true) -> void:

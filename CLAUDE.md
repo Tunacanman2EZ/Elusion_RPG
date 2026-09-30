@@ -2215,6 +2215,36 @@ The `ui_` bindings are left as they are, so the login screen and character
 select can still be walked with WASD. `_test_game_keys_are_not_menu_keys` builds
 the bug first, then shows the hand-back stops it.
 
+### Staff logins take a code from the email
+
+Staff names are public (the crown, the MOD and DEV badges), so theirs are the
+passwords worth guessing. For a mod, dev or the owner with a confirmed recovery
+address, the server answers a correct password with **202** and emails a
+six-digit code. Only the same login sent again with the code gets a token. The
+server's side is STAFF LOGIN CODES in app.py and the API's CLAUDE.md.
+
+- **`Api.login(user, password, code)` never adopts a 202.** It is a 2xx with no
+  token, and adopting it would save an empty session and walk into the game
+  signed in as nobody. `Api.needs_login_code(res)` is the test, for the 202
+  and for a wrong code (400).
+- **The login screen checks for the code step before `res.ok` and before the
+  401 branch.** A wrong code is a 400 on purpose: a 401 here makes the screen
+  try to register the name.
+- **The code box is built in `loginmenu.gd`, not the scene**, right under the
+  password, hidden until a 202. The same button sends the login again with the
+  code. Spaces are fine ("183 774", as copied from the mail). Changing the
+  username puts the box away, since a code is for one account. An empty box
+  asks for a new code (the server sends at most one a minute).
+- **A staff login that needed no code is told once** (`staff_unprotected`,
+  `Api.take_staff_unprotected_notice()`, `_warn_unprotected_staff()` in the HUD):
+  the account has no confirmed address, or the server cannot send mail.
+
+Measured live against the real server with its mail printed to the log: the
+password alone showed the box and "we emailed a code to b\*\*s@example.test"
+with one mail sent. A wrong code kept the box and said so in red. The right
+code, typed with a space, reached character select. `_test_staff_logins_take_a_code`
+holds the client side.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

@@ -164,6 +164,7 @@ func _run_all() -> void:
 	await _test_leaving_waits_for_the_save()
 	_test_skill_xp_rounds_like_the_server()
 	await _test_game_keys_are_not_menu_keys()
+	_test_staff_logins_take_a_code()
 
 
 # =============================================================================
@@ -12402,3 +12403,79 @@ func _test_game_keys_are_not_menu_keys() -> void:
 	check("the HUD's _input hands the keyboard back",
 		input_body.contains("release_for_world_key(event, get_viewport())"), input_body.strip_edges())
 	print("  game keys: the bug, buttons, arrows, space, slider, text boxes, other keys, the wiring")
+
+
+func _test_staff_logins_take_a_code() -> void:
+	section("STAFF LOGIN CODE — the password, then the code from the email")
+
+	# ---- what counts as the code step ----
+	var first_step := {"ok": true, "status": 202, "error": "",
+		"data": {"code_required": true, "sent_to": "b***s@example.test", "expires_in": 900}}
+	var wrong_code := {"ok": false, "status": 400, "error": "That code is not right.",
+		"data": {"error": "Bad Code", "code_required": true, "sent_to": "b***s@example.test",
+			"message": "That code is not right, or it has run out."}}
+	var logged_in := {"ok": true, "status": 200, "error": "", "data": {"token": "t", "username": "boss"}}
+	var wrong_password := {"ok": false, "status": 401, "error": "Incorrect username or password.", "data": {}}
+	check("the first step (202) and a wrong code (400) are the code step; a login and a 401 are not",
+		Api.needs_login_code(first_step) and Api.needs_login_code(wrong_code)
+		and not Api.needs_login_code(logged_in) and not Api.needs_login_code(wrong_password))
+	var api_login := _func_body(_code_src("res://src/systems/api.gd"), "func login(")
+	check("Api.login sends the code, and never adopts a 202 - a 2xx with no token",
+		api_login.contains("body[\"code\"] = code")
+		and api_login.contains("if res.ok and not needs_login_code(res):"), api_login.left(400))
+
+	# ---- the login screen ----
+	var login: Node = (load("res://scene/ui/menus/loginmenu.tscn") as PackedScene).instantiate()
+	login._build_code_box()
+	var box: LineEdit = login.login_code_box
+	var form: Node = login.get_node("%loginform")
+	var password: Node = login.get_node("%passwordlineedit")
+	check("the code box is built hidden, right under the password",
+		box != null and not box.visible and box.get_parent() == form
+		and box.get_index() == password.get_index() + 1)
+	login._show_code_step("boss", first_step)
+	var said: Label = login.get_node("%errorlabel")
+	check("a 202 shows the box and says where the code went, in the working grey",
+		box.visible and said.text.contains("b***s@example.test")
+		and said.get_theme_color("font_color") == login.SAY_WORKING, said.text)
+	box.text = "183 774"
+	check("  the typed code goes with the login, spaces out", login._typed_login_code("boss") == "183774",
+		login._typed_login_code("boss"))
+	check("  but only for the account it was asked for", login._typed_login_code("someoneelse") == "")
+	login._show_code_step("boss", wrong_code)
+	check("a wrong code keeps the box and what was typed, and says so in red",
+		box.visible and box.text == "183 774" and said.text.contains("not right")
+		and said.get_theme_color("font_color") == login.SAY_REFUSED, said.text)
+	login.get_node("%usernamelineedit").text_changed.emit("somebody")
+	check("changing the username puts the box away", not box.visible and box.text == ""
+		and login._typed_login_code("boss") == "")
+	login.free()
+
+	var pressed := _func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _on_login_button_pressed(")
+	var step_at := pressed.find("if Api.needs_login_code(res):")
+	check("the button sends the typed code, and checks for the code step before res.ok and the 401",
+		pressed.contains("Api.login(username, password, _typed_login_code(username))")
+		and step_at != -1 and step_at < pressed.find("if res.ok:")
+		and step_at < pressed.find("if res.status == 401:"), step_at)
+
+	# ---- a staff login that needed no code is told, once ----
+	var was := [Api.staff_unprotected, Api._told_staff_unprotected, Api.role]
+	Api.staff_unprotected = true
+	Api._told_staff_unprotected = false
+	Api.role = "mod"
+	var first_time: bool = Api.take_staff_unprotected_notice()
+	var second_time: bool = Api.take_staff_unprotected_notice()
+	Api._told_staff_unprotected = false
+	Api.role = "player"
+	var as_player: bool = Api.take_staff_unprotected_notice()
+	Api.staff_unprotected = was[0]
+	Api._told_staff_unprotected = was[1]
+	Api.role = was[2]
+	check("a staff login without a code is told once per login, and a player never",
+		first_time and not second_time and not as_player, [first_time, second_time, as_player])
+	var adopt := _func_body(_code_src("res://src/systems/api.gd"), "func _adopt_session(")
+	var hud_ready := _func_body(_code_src("res://src/ui/characterhud.gd"), "func _ready(")
+	check("  the flag comes from the login, and the HUD asks on its way in",
+		adopt.contains("staff_unprotected = bool(data.get(\"staff_unprotected\", false))")
+		and hud_ready.contains("_warn_unprotected_staff()"))
+	print("  staff code: the step, the adopt gate, the box, the order, the once-only notice")

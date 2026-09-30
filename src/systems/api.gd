@@ -339,6 +339,13 @@ var is_owner: bool = false
 # asking. Nothing on disk has a say.
 var needs_email: bool = false
 
+# A staff account the server let in on its password alone, because there was
+# nowhere to send a login code: no confirmed address, or no mail on the server
+# (STAFF LOGIN CODES in app.py). Memory only, re-read on every login. The HUD
+# says so once per login; _told_staff_unprotected is what makes it once.
+var staff_unprotected: bool = false
+var _told_staff_unprotected: bool = false
+
 # This account's rank, as the server understands it. The chain of command runs
 # owner > dev > mod > player, and there is no fifth rank. Same rules as is_owner
 # - memory only, re-read on every login and resume, never written to
@@ -434,6 +441,14 @@ func guild_tag_text(tag: String) -> String:
 	"""
 	var trimmed: String = tag.strip_edges()
 	return "" if trimmed == "" else "[%s]" % trimmed
+
+
+func take_staff_unprotected_notice() -> bool:
+	"""True once per login when this staff account came in without a code."""
+	if not staff_unprotected or _told_staff_unprotected or not role_at_least("mod"):
+		return false
+	_told_staff_unprotected = true
+	return true
 
 
 func role_at_least(minimum: String) -> bool:
@@ -870,11 +885,26 @@ func refresh_build_info() -> void:
 	server_current_build = int(res.data.get("current_client_build", server_current_build))
 
 
-func login(user: String, password: String) -> Dictionary:
-	var res := await post("/api/auth/login", {"username": user, "password": password})
-	if res.ok:
+func login(user: String, password: String, code: String = "") -> Dictionary:
+	# `code` is the staff login code from the email; see needs_login_code().
+	var body := {"username": user, "password": password}
+	if code != "":
+		body["code"] = code
+	var res := await post("/api/auth/login", body)
+	# A 202 is a 2xx with no token in it. Adopting it would save an empty
+	# session and walk into the game signed in as nobody.
+	if res.ok and not needs_login_code(res):
 		_adopt_session(res.data)
 	return res
+
+
+static func needs_login_code(res: Dictionary) -> bool:
+	"""True when the login is a staff account's and wants the emailed code:
+	the first step (202), or a code that was wrong or has run out (400). The
+	server only asks after the password and the ban check have passed - see
+	STAFF LOGIN CODES in app.py."""
+	var data: Variant = res.get("data", {})
+	return data is Dictionary and bool(data.get("code_required", false))
 
 
 func register(user: String, password: String) -> Dictionary:
@@ -1098,6 +1128,8 @@ func _adopt_session(data: Dictionary) -> void:
 		str(data.get("role", "player")),
 		bool(data.get("is_owner", false)))
 	needs_email = bool(data.get("needs_email", false))
+	staff_unprotected = bool(data.get("staff_unprotected", false))
+	_told_staff_unprotected = false
 	adopt_name_hue(data)
 
 	# _save_session() writes the token and username only. is_owner is
@@ -1108,6 +1140,7 @@ func _adopt_session(data: Dictionary) -> void:
 
 func _clear_session() -> void:
 	token = ""
+	staff_unprotected = false
 	_set_identity("", "player", false)
 	DirAccess.remove_absolute(SESSION_PATH)
 

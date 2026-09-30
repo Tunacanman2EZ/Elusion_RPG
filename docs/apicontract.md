@@ -83,6 +83,22 @@ A wrong password and an unknown username return an **identical** 401. That is
 deliberate: a distinguishable answer turns this route into a username
 enumerator.
 
+**Staff accounts take a second step.** For a mod, dev or the owner with a
+confirmed recovery address, on a server that can send mail, a correct password
+answers **`202`** with no token:
+
+```json
+{ "code_required": true, "sent_to": "t****n@example.com", "expires_in": 900,
+  "message": "Staff login: we emailed a code to t****n@example.com." }
+```
+
+The same body sent again with `"code": "183774"` gets the ordinary **`200`**.
+A wrong, spent or expired code is **`400`** with `"code_required": true` -
+never 401, because the client answers a 401 by trying to register the name.
+Sending no code asks for a new one (at most one a minute). A 200 carries
+`"staff_unprotected": true` when a staff account got in on the password alone.
+`Api.login(user, password, code)` and `Api.needs_login_code()` handle it.
+
 ### `GET /api/auth/session`
 
 **`200`** if the token is still good, **`401`** if not. The client calls this

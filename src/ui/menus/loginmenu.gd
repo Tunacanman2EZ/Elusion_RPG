@@ -225,6 +225,7 @@ func _ready() -> void:
 		%usernamelineedit.text_submitted.connect(_on_login_field_submitted)
 	if not %passwordlineedit.text_submitted.is_connected(_on_login_field_submitted):
 		%passwordlineedit.text_submitted.connect(_on_login_field_submitted)
+	_build_code_box()
 
 	# NEW: the banner follows reachability for as long as this screen is open,
 	# not just at startup. If the player leaves the game sitting here and
@@ -259,6 +260,79 @@ func _ready() -> void:
 
 func _on_login_field_submitted(_new_text: String) -> void:
 	_on_login_button_pressed()
+
+
+# =============================================================================
+# STAFF LOGIN CODE
+# =============================================================================
+# A staff account with a confirmed address needs a code from its email as well
+# as the password (STAFF LOGIN CODES in app.py). The server answers the first
+# login with 202 and where the code went; this box appears under the password,
+# and the same button sends the login again with the code in it.
+
+# Built here rather than in loginmenu.tscn: a node the scene does not have
+# cannot be lost by the editor re-saving it, and most players never see it.
+var login_code_box: LineEdit = null
+# The account the code box belongs to. A code is for one account, so changing
+# the username puts the box away.
+var _code_for: String = ""
+
+
+func _build_code_box() -> void:
+	var form: Node = get_node_or_null("%loginform")
+	var password: Node = get_node_or_null("%passwordlineedit")
+	if form == null or password == null or login_code_box != null:
+		return
+	login_code_box = LineEdit.new()
+	login_code_box.name = "logincode"
+	login_code_box.placeholder_text = "6-digit code from your email"
+	login_code_box.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Room for "183 774", as it was copied out of the mail.
+	login_code_box.max_length = 7
+	login_code_box.visible = false
+	form.add_child(login_code_box)
+	form.move_child(login_code_box, password.get_index() + 1)
+	login_code_box.text_submitted.connect(_on_login_field_submitted)
+	var name_box: LineEdit = get_node_or_null("%usernamelineedit")
+	if name_box != null:
+		name_box.text_changed.connect(func(_text: String) -> void: _put_code_box_away())
+
+
+func _typed_login_code(username: String) -> String:
+	"""What goes in the login's `code`: the box, for the account it was asked
+	for, spaces out. "" sends none - which asks the server for a new code."""
+	if login_code_box == null or not login_code_box.visible or username != _code_for:
+		return ""
+	return login_code_box.text.replace(" ", "").strip_edges()
+
+
+func _show_code_step(username: String, res: Dictionary) -> void:
+	"""The server wants the emailed code. 202: one is on its way. 400: the one
+	typed was wrong or has run out, and the box stays for another go."""
+	if login_code_box == null:
+		_build_code_box()
+	_code_for = username
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if login_code_box != null:
+		login_code_box.visible = true
+		if int(res.get("status", 0)) == 202:
+			login_code_box.text = ""
+		if login_code_box.is_inside_tree():
+			login_code_box.grab_focus()
+	if int(res.get("status", 0)) == 202:
+		var button: Button = get_node_or_null("%loginbutton")
+		_say("Staff login: we emailed a code to %s. Type it in and press %s." % [
+			str(data.get("sent_to", "your recovery address")),
+			button.text if button != null else "the button"], SAY_WORKING)
+	else:
+		_say(str(data.get("message", res.get("error", "That code is not right."))), SAY_REFUSED)
+
+
+func _put_code_box_away() -> void:
+	_code_for = ""
+	if login_code_box != null:
+		login_code_box.text = ""
+		login_code_box.visible = false
 
 
 func _on_connection_changed(online: bool) -> void:
@@ -701,9 +775,18 @@ func _on_login_button_pressed() -> void:
 	_set_busy(true)
 
 	# --- try to log in first ---
-	var res: Dictionary = await Api.login(username, password)
+	var res: Dictionary = await Api.login(username, password, _typed_login_code(username))
+
+	# BEFORE res.ok, because the first step is a 202 - a 2xx with no token -
+	# and BEFORE the 401 branch below: a wrong code is a 400 on purpose, since a
+	# 401 here means "try registering the name".
+	if Api.needs_login_code(res):
+		_set_busy(false)
+		_show_code_step(username, res)
+		return
 
 	if res.ok:
+		_put_code_box_away()
 		_welcome(username)
 		await _enter_game(username, password)
 		_set_busy(false)
