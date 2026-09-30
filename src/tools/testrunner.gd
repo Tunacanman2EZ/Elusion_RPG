@@ -180,6 +180,7 @@ func _run_all() -> void:
 	_test_character_select_has_a_way_out()
 	await _test_every_area_can_be_walked()
 	_test_the_welcome_plays_once_a_login()
+	_test_a_character_can_be_deleted()
 
 
 # =============================================================================
@@ -6040,6 +6041,157 @@ func _test_the_welcome_plays_once_a_login() -> void:
 
 
 # =============================================================================
+# CHARACTER SELECT - a line about each class, and deleting a character
+# =============================================================================
+# Both asked for on day 1. Every account has four fixed slots, one per class,
+# and there was no way to start a class again; and nothing on the screen said
+# what a class is before you picked it.
+#
+# The screen is instanced but not entered, so its buttons are real and nothing
+# is sent anywhere. What needs the server - the delete itself - is the API's
+# test_chardelete.py; here are the order of what the game does around it and
+# what the player is shown.
+
+func _test_a_character_can_be_deleted() -> void:
+	section("CHARACTER SELECT - a line about each class, and Delete that asks first")
+
+	var Select: Script = load("res://src/ui/menus/characterselect.gd") as Script
+	for class_id in ["warrior", "mage", "tank", "healer"]:
+		var line: String = Select.class_line(class_id)
+		check("the %s has a line saying how it plays" % class_id,
+			line.length() >= 20 and line.length() <= 64 and not line.contains("\n"), line)
+
+	var screen: Control = (load("res://scene/ui/menus/characterselect.tscn") as PackedScene).instantiate()
+	screen._build_slot_extras()
+	screen._build_slot_extras()
+	var grid: Node = screen.get_node(screen.GRID_PATH)
+	var placed: bool = true
+	var once: bool = true
+	var narrow: bool = true
+	for i in 4:
+		var column: Node = grid.get_node("%s/vbox" % screen.SLOT_CLASSES[i])
+		var line: Label = screen.class_lines[i]
+		placed = placed and line != null and line.get_parent() == column \
+			and line.get_index() == column.get_node("classname").get_index() + 1 \
+			and line.text == Select.class_line(screen.SLOT_CLASSES[i])
+		once = once and column.find_children("classline*", "", false, false).size() == 1
+		narrow = narrow and line.custom_minimum_size.x <= 210.0 and line.autowrap_mode != TextServer.AUTOWRAP_OFF
+	check("each line is under its class's name", placed)
+	check("  built once, and by the screen itself", once
+		and _func_body(_code_src("res://src/ui/menus/characterselect.gd"), "func _ready(").contains("_build_slot_extras()"))
+	check("  and it wraps inside the panel rather than widening all four", narrow)
+
+	# ---- Delete, where Create was ----
+	var kept: Array = CharacterData.character_slots.duplicate(true)
+	CharacterData.character_slots = [{"character": "warrior", "level": 12, "gold": 1204}, null, null, null]
+	screen.update_slot_labels()
+	var buttons: Array = screen.delete_buttons
+	check("an occupied slot offers Delete in place of Create",
+		buttons[0].visible and not buttons[0].disabled and not screen.get_node("%createbutton1").visible,
+		[buttons[0].visible, screen.get_node("%createbutton1").visible])
+	check("  an empty one offers Create and no Delete",
+		not buttons[1].visible and screen.get_node("%createbutton2").visible)
+	var two: bool = true
+	for i in 4:
+		var shown: int = 0
+		for child in buttons[i].get_parent().get_children():
+			if child is Button and child.visible:
+				shown += 1
+		two = two and shown == 2
+	check("  and every slot still has two buttons, so the panels keep their width", two)
+
+	# ---- it asks ----
+	screen._ask_delete(0)
+	check("Delete asks first", screen.confirm_box != null and screen.confirm_box.visible)
+	check("  naming the character", screen.confirm_title.text == "Delete your Warrior?", screen.confirm_title.text)
+	var body: String = screen.confirm_body.text
+	check("  and what goes with it, and what stays",
+		body.contains("Level 12") and body.contains("1,204 gold") and body.contains("bank")
+		and body.contains("cannot be undone"), body)
+	check("  and it wants the name typed", screen.confirm_name.placeholder_text == "Type WARRIOR to delete it"
+		and screen.confirm_delete_button.disabled, screen.confirm_name.placeholder_text)
+	screen._on_confirm_name_changed("warr")
+	var half: bool = screen.confirm_delete_button.disabled
+	screen._on_confirm_name_changed("mage")
+	var wrong: bool = screen.confirm_delete_button.disabled
+	screen._on_confirm_name_changed("  Warrior ")
+	check("half the name, or another name, does not arm it; the name in any case does",
+		half and wrong and not screen.confirm_delete_button.disabled)
+	screen._close_confirm()
+	check("Keep it closes the question and forgets the slot",
+		not screen.confirm_box.visible and screen._deleting_slot == -1)
+	screen._ask_delete(1)
+	check("an empty slot is not asked about", not screen.confirm_box.visible)
+	screen._entering = true
+	screen._ask_delete(0)
+	check("  nor anything while the world is loading", not screen.confirm_box.visible)
+	screen._entering = false
+	check("a character with no gold is not said to have any",
+		not screen.delete_warning({"level": 1, "gold": 0}).contains("gold"),
+		screen.delete_warning({"level": 1, "gold": 0}))
+	CharacterData.character_slots = kept
+	screen.free()
+
+	# ---- the order around the request ----
+	var confirm: String = _func_body(_code_src("res://src/ui/menus/characterselect.gd"), "func _confirm_delete(")
+	var sent: int = confirm.find("await CharacterData.delete_character(")
+	var guard: int = confirm.find("if not is_instance_valid(self) or not is_inside_tree():")
+	var redrawn: int = confirm.find("update_slot_labels()")
+	check("the box sends what was typed, and redraws the slots only if the screen is still there",
+		sent != -1 and sent < guard and guard < redrawn, [sent, guard, redrawn])
+	check("  and says the server's reason when it refuses", confirm.contains("res.get(\"error\""))
+	var data: String = _func_body(_code_src("res://src/systems/characterdata.gd"), "func delete_character(")
+	var flushed: int = data.find("await finish_saving()")
+	var posted: int = data.find("Api.post(\"/api/character/delete\"")
+	var refused: int = data.find("if not res.get(\"ok\", false):")
+	var emptied: int = data.find("character_slots[slot_idx] = null")
+	var forgot: int = data.find("storage.forget_slot(slot_idx)")
+	check("CharacterData saves what is on its way before it asks the server to delete",
+		flushed != -1 and flushed < posted, [flushed, posted])
+	check("  and empties the slot only once the server said yes",
+		posted < refused and refused < emptied and emptied != -1 and forgot > refused, [posted, refused, emptied, forgot])
+	var select_src: String = _func_body(_code_src("res://src/ui/menus/characterselect.gd"), "func _select_character(")
+	check("a character cannot be picked while a delete is on its way",
+		select_src.contains("if _entering or _deleting:"))
+
+	# ---- a new character in the slot is pushed, not skipped ----
+	var store := ServerStorage.new()
+	for key in ["save:1", "status:1", "inventory:1", "save:2", "lusions"]:
+		store._last_pushed[key] = "pushed"
+	store._failed_keys["inventory:1"] = true
+	store.forget_slot(1)
+	check("the storage forgets what it pushed for a deleted slot, so the next character there is sent",
+		not store._last_pushed.has("save:1") and not store._last_pushed.has("status:1")
+		and not store._last_pushed.has("inventory:1") and not store._failed_keys.has("inventory:1"),
+		store._last_pushed)
+	check("  and nothing about the other slots or the account",
+		store._last_pushed.has("save:2") and store._last_pushed.has("lusions"))
+	check("  by the same names its pushes use",
+		ServerStorage._slot_keys(3) == store._slot_sections(3, {"character": "healer"}).map(
+			func(section: Array) -> String: return section[0]))
+
+	# ---- a character made again starts whole ----
+	# Found by deleting and making a warrior live: the new character was pushed
+	# with SAVEABLE_STATS' 100s, the server took that as damage from its 180,
+	# and the full bars the game then drew were clamped as an unexplained heal.
+	var whole: bool = true
+	var seen: Array = []
+	for class_id in ["warrior", "mage", "tank", "healer"]:
+		var made: Dictionary = CharacterData.new_character(class_id)
+		var cls: ClassData = load("res://data/classes/%s.tres" % class_id) as ClassData
+		var ok: bool = cls != null and int(made["hp"]) == cls.hp_base and int(made["max_hp"]) == cls.hp_base \
+			and int(made["mana"]) == cls.mana_base and int(made["max_mana"]) == cls.mana_base \
+			and int(made["stamina"]) == cls.stam_base and int(made["max_stamina"]) == cls.stam_base
+		whole = whole and ok
+		seen.append("%s %s/%s" % [class_id, made["hp"], made["max_hp"]])
+	check("a new character starts on its class's full pools, not a flat 100", whole, seen)
+	check("  and Create makes it that way",
+		_func_body(_code_src("res://src/systems/characterdata.gd"), "func create_character(")
+			.contains("new_character(character_name)"))
+	print("  character select: the class lines, Delete in Create's place, the question, and the order")
+
+
+# =============================================================================
 # STAFF PANEL - what it offers each rank, and how a kick reaches a player
 # =============================================================================
 # The server decides every one of these; the panel only declines to offer what
@@ -10649,8 +10801,8 @@ func _test_the_world_loads_in_the_background() -> void:
 		_within(select_src.find("AreaRegistry.prefetch_all()", enter_at), enter_end) != -1)
 	var pick_at: int = select_src.find("func _select_character(")
 	check("a second click cannot change the character mid-load",
-		select_src.find("if _entering:", pick_at) != -1
-		and select_src.find("if _entering:", pick_at) < select_src.find("active_character_index = idx", pick_at))
+		select_src.find("if _entering", pick_at) != -1
+		and select_src.find("if _entering", pick_at) < select_src.find("active_character_index = idx", pick_at))
 
 	# Forget the town first, or a town already held would pass this for free.
 	var settle_first: int = Time.get_ticks_msec() + 20000

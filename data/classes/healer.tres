@@ -6,6 +6,7 @@
 script = ExtResource("1_classdata")
 class_id = "healer"
 display_name = "Healer"
+description = "Hold to fire a steady stream of bolts, one mana each."
 hp_base = 140
 hp_per_lvl = 7
 mana_base = 220

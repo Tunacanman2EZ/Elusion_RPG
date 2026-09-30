@@ -57,6 +57,7 @@ func _ready() -> void:
 	# covers arriving here any other way - back from the world, say.
 	AreaRegistry.prefetch(WORLD_AREA)
 	_build_logout_row()
+	_build_slot_extras()
 	update_slot_labels()
 
 
@@ -86,6 +87,13 @@ func update_slot_labels() -> void:
 			labels[i].text = "empty slot"
 			create_btns[i].disabled = false
 			select_btns[i].disabled = true
+		# CREATE OR DELETE, IN THE SAME PLACE. An occupied slot's Create did
+		# nothing, and a third button would widen all four panels past the
+		# window.
+		create_btns[i].visible = not is_valid
+		if i < delete_buttons.size() and delete_buttons[i] != null:
+			delete_buttons[i].visible = is_valid
+			delete_buttons[i].disabled = not is_valid
 
 
 static func slot_text(slot: Dictionary, slot_class: String) -> String:
@@ -134,6 +142,8 @@ func _on_createbutton4_pressed() -> void:
 func _create_in_slot(idx: int) -> void:
 	# shared logic for all 4 create buttons. delegates to CharacterData
 	# which handles the actual character creation and disk save.
+	if _deleting:
+		return
 	CharacterData.create_character(idx, SLOT_CLASSES[idx])
 	update_slot_labels()
 
@@ -167,7 +177,7 @@ func _select_character(idx: int) -> void:
 	#
 	# ONE TRIP. Checked here, not only in _enter_world(): by then a second
 	# click would already have changed which character is active.
-	if _entering:
+	if _entering or _deleting:
 		return
 	var slot = CharacterData.character_slots[idx]
 	if not _is_slot_valid(slot):
@@ -304,8 +314,9 @@ func _slot_labels() -> Array:
 func _show_loading(idx: int) -> void:
 	_slot_labels()[idx].text = "Loading the world..."
 	for button in [%createbutton1, %createbutton2, %createbutton3, %createbutton4,
-			%selectbutton1, %selectbutton2, %selectbutton3, %selectbutton4]:
-		button.disabled = true
+			%selectbutton1, %selectbutton2, %selectbutton3, %selectbutton4] + delete_buttons:
+		if button != null:
+			button.disabled = true
 
 
 # =============================================================================
@@ -356,3 +367,250 @@ func _on_logout_pressed() -> void:
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	get_tree().change_scene_to_file(LOGIN_MENU_PATH)
+
+
+# =============================================================================
+# WHAT EACH CLASS IS, AND DELETING ONE
+# =============================================================================
+# Both asked for on day 1. A line under each class's name, from its ClassData,
+# so somebody choosing knows what they are choosing. And Delete on an occupied
+# slot: each class has one slot, and there was no way to start one again.
+# Built in code, like the Log out row.
+#
+# Deleting asks for the character's name, typed. The server checks the same
+# name again (POST /api/character/delete), so the box is not the only thing
+# standing between a stray click and a character.
+
+const GRID_PATH := "centercontainer/mainpanel/margincontainer/vboxcontainer/gridcontainer"
+const CLASS_DATA_PATH := "res://data/classes/%s.tres"
+# The width of a slot's two buttons, so a class line wraps inside the panel
+# instead of widening it.
+const CLASS_LINE_WIDTH := 210.0
+const CLASS_LINE_COLOUR := Color(0.82, 0.78, 0.68)
+const DELETE_COLOUR := Color(1, 0.55, 0.45)
+
+var class_lines: Array = []
+var delete_buttons: Array = []
+var confirm_box: ColorRect = null
+var confirm_title: Label = null
+var confirm_body: Label = null
+var confirm_name: LineEdit = null
+var confirm_status: Label = null
+var confirm_delete_button: Button = null
+var confirm_keep_button: Button = null
+# Which slot the open question is about, and whether its answer is on its way.
+var _deleting_slot: int = -1
+var _deleting: bool = false
+
+
+static func class_line(class_id: String) -> String:
+	"""What character select says about a class: its ClassData's description."""
+	var data: Resource = load(CLASS_DATA_PATH % class_id)
+	if data == null or not ("description" in data):
+		return ""
+	return str(data.get("description"))
+
+
+func _build_slot_extras() -> void:
+	if not delete_buttons.is_empty():
+		return
+	var grid: Node = get_node_or_null(GRID_PATH)
+	if grid == null:
+		return
+	for i in SLOT_CLASSES.size():
+		var column: Node = grid.get_node_or_null("%s/vbox" % SLOT_CLASSES[i])
+		var row: Node = column.get_node_or_null("buttons") if column != null else null
+		if row == null:
+			class_lines.append(null)
+			delete_buttons.append(null)
+			continue
+
+		var line := Label.new()
+		line.name = "classline"
+		line.text = class_line(SLOT_CLASSES[i])
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		line.custom_minimum_size = Vector2(CLASS_LINE_WIDTH, 0)
+		line.add_theme_font_size_override("font_size", 13)
+		line.add_theme_color_override("font_color", CLASS_LINE_COLOUR)
+		column.add_child(line)
+		var heading: Node = column.get_node_or_null("classname")
+		column.move_child(line, heading.get_index() + 1 if heading != null else 0)
+		class_lines.append(line)
+
+		var button := Button.new()
+		button.name = "deletebutton%d" % (i + 1)
+		button.text = "Delete"
+		button.tooltip_text = "Delete this character for good. You will be asked to type its name."
+		button.custom_minimum_size = Vector2(100, 35)
+		# In the colour of the question it opens, so it does not read as a
+		# second Select.
+		button.add_theme_color_override("font_color", DELETE_COLOUR)
+		button.add_theme_color_override("font_hover_color", DELETE_COLOUR.lightened(0.25))
+		button.visible = false
+		row.add_child(button)
+		button.pressed.connect(_ask_delete.bind(i))
+		delete_buttons.append(button)
+
+
+func _build_confirm_box() -> void:
+	if confirm_box != null:
+		return
+	confirm_box = ColorRect.new()
+	confirm_box.name = "deleteconfirm"
+	confirm_box.color = Color(0, 0, 0, 0.6)
+	confirm_box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	confirm_box.mouse_filter = Control.MOUSE_FILTER_STOP
+	confirm_box.visible = false
+	add_child(confirm_box)
+
+	var centre := CenterContainer.new()
+	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
+	confirm_box.add_child(centre)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(440, 0)
+	centre.add_child(panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 18)
+	panel.add_child(margin)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 12)
+	margin.add_child(column)
+
+	confirm_title = Label.new()
+	confirm_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	confirm_title.add_theme_font_size_override("font_size", 20)
+	confirm_title.add_theme_color_override("font_color", Color(1, 0.4, 0.4))
+	column.add_child(confirm_title)
+	confirm_body = Label.new()
+	confirm_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	confirm_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(confirm_body)
+	confirm_name = LineEdit.new()
+	confirm_name.name = "deletename"
+	confirm_name.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	confirm_name.text_changed.connect(_on_confirm_name_changed)
+	confirm_name.text_submitted.connect(_on_confirm_submitted)
+	column.add_child(confirm_name)
+	confirm_status = Label.new()
+	confirm_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	confirm_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	confirm_status.add_theme_color_override("font_color", DELETE_COLOUR)
+	confirm_status.visible = false
+	column.add_child(confirm_status)
+
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 12)
+	column.add_child(row)
+	confirm_keep_button = Button.new()
+	confirm_keep_button.text = "Keep it"
+	confirm_keep_button.custom_minimum_size = Vector2(130, 35)
+	confirm_keep_button.pressed.connect(_close_confirm)
+	row.add_child(confirm_keep_button)
+	confirm_delete_button = Button.new()
+	confirm_delete_button.text = "Delete forever"
+	confirm_delete_button.custom_minimum_size = Vector2(150, 35)
+	confirm_delete_button.pressed.connect(_confirm_delete)
+	row.add_child(confirm_delete_button)
+
+
+func _character_name(idx: int) -> String:
+	"""The name the player types: the character's own, which is its class."""
+	var slot = CharacterData.character_slots[idx]
+	var named: String = str(slot.get("character", "")) if slot is Dictionary else ""
+	return named if named != "" else SLOT_CLASSES[idx]
+
+
+func delete_warning(slot: Dictionary) -> String:
+	"""What deleting takes, said before it does."""
+	var gold: int = int(slot.get("gold", 0))
+	var goes: String = "Its bag and its skills go with it"
+	if gold > 0:
+		goes = "Its bag, its %s and its skills go with it" % GameConstants.gold_text(gold)
+	return "Level %d. %s; your bank and lusions stay. This cannot be undone." % [
+		int(slot.get("level", 1)), goes]
+
+
+func _ask_delete(idx: int) -> void:
+	if _entering or _leaving or _deleting:
+		return
+	var slot = CharacterData.character_slots[idx]
+	if not _is_slot_valid(slot):
+		return
+	_build_confirm_box()
+	_deleting_slot = idx
+	var named: String = _character_name(idx)
+	confirm_title.text = "Delete your %s?" % named.capitalize()
+	confirm_body.text = delete_warning(slot)
+	confirm_name.text = ""
+	confirm_name.placeholder_text = "Type %s to delete it" % named.to_upper()
+	confirm_name.editable = true
+	_say_status("")
+	confirm_keep_button.disabled = false
+	confirm_delete_button.disabled = true
+	confirm_box.visible = true
+	if confirm_name.is_inside_tree():
+		confirm_name.grab_focus()
+
+
+func _typed_matches(text: String) -> bool:
+	return _deleting_slot >= 0 \
+		and text.strip_edges().to_lower() == _character_name(_deleting_slot).to_lower()
+
+
+func _on_confirm_name_changed(text: String) -> void:
+	confirm_delete_button.disabled = _deleting or not _typed_matches(text)
+
+
+func _on_confirm_submitted(_text: String) -> void:
+	if not confirm_delete_button.disabled:
+		_confirm_delete()
+
+
+func _say_status(text: String) -> void:
+	# Hidden when there is nothing to say, or the box keeps an empty line.
+	confirm_status.text = text
+	confirm_status.visible = text != ""
+
+
+func _close_confirm() -> void:
+	if _deleting or confirm_box == null:
+		return
+	confirm_box.visible = false
+	_deleting_slot = -1
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if confirm_box != null and confirm_box.visible and event.is_action_pressed("ui_cancel"):
+		_close_confirm()
+		get_viewport().set_input_as_handled()
+
+
+func _confirm_delete() -> void:
+	if _deleting or not _typed_matches(confirm_name.text):
+		return
+	var idx: int = _deleting_slot
+	_deleting = true
+	confirm_delete_button.disabled = true
+	confirm_keep_button.disabled = true
+	confirm_name.editable = false
+	_say_status("Deleting...")
+	var res: Dictionary = await CharacterData.delete_character(idx, confirm_name.text.strip_edges())
+	# PAST AN AWAIT. Closing the window frees this screen.
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	_deleting = false
+	if res.get("ok", false):
+		confirm_box.visible = false
+		_deleting_slot = -1
+		update_slot_labels()
+		return
+	# The server's own reason - a trade to finish first, a name that did not
+	# match - or, with no answer at all, the line every screen uses for that.
+	var reason: String = str(res.get("error", ""))
+	_say_status(reason if reason != "" else Api.no_answer_text())
+	confirm_keep_button.disabled = false
+	confirm_name.editable = true
+	confirm_delete_button.disabled = not _typed_matches(confirm_name.text)

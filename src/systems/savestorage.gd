@@ -58,6 +58,15 @@ func load() -> Dictionary:
 	return {}
 
 
+func forget_slot(_index: int) -> void:
+	"""A character in this slot was deleted: forget anything remembered about it.
+
+	Nothing to forget in the base class. ServerStorage remembers what it last
+	pushed for each slot, so it can skip a section the server already holds -
+	see its override for why that memory has to go with the character."""
+	pass
+
+
 func has_unpushed() -> bool:
 	"""True when this backend accepted a save it has since failed to persist.
 

@@ -6,6 +6,7 @@
 script = ExtResource("1_classdata")
 class_id = "tank"
 display_name = "Tank"
+description = "The most health, and a ring of fire around you fed by mana."
 hp_base = 260
 hp_per_lvl = 22
 mana_base = 200

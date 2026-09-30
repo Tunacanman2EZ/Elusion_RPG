@@ -2368,6 +2368,38 @@ and back up the ladder.
   in `AreaRegistry.AREAS` and is an empty scene with no script, so "Go to area"
   to it arrives nowhere.
 
+### Characters: a line about each class, and deleting one
+
+Asked for on day 1: four fixed slots, one per class, and no way to start a
+class again; and nothing on the screen said what a class is.
+`_test_a_character_can_be_deleted` holds the client; the API's
+`test_chardelete.py` holds the route.
+
+- **A line under each class's name** comes from its ClassData's `description`
+  (`data/classes/*.tres`). Not in gamedata.json: the server has no use for it.
+  The label wraps inside the panel's width, so the four panels stay the size
+  they were.
+- **Delete takes Create's place** on an occupied slot. A third button would
+  widen all four panels past the window.
+- **It asks, and wants the name typed.** "Delete your Mage?", what goes (bag,
+  gold, skills) and what stays (bank, lusions), and "Delete forever" only arms
+  when the typed name matches. The server checks the same name again
+  (`POST /api/character/delete`), so a stray call cannot take a character.
+  It refuses while a trade names the character; the box shows the reason.
+- **`CharacterData.delete_character()` saves first** (`finish_saving()`), so a
+  push still on its way cannot land after the delete and write the character
+  back, and it empties the slot only once the server says yes.
+  `ServerStorage.forget_slot()` then forgets what was last pushed for the
+  slot: a level 1 warrior deleted and made again sends the same save body, and
+  without this the push would be skipped as already stored.
+- **A new character starts on its class's full pools**
+  (`CharacterData.new_character()`). It was pushed with SAVEABLE_STATS' flat
+  100s, the server (which had given it full pools) took that as damage, and
+  the full bars the game then drew were clamped as an unexplained heal: a new
+  warrior came back from a relog on 107 of 180 hp, and every new character
+  wrote the warning that is there to catch cheats. Found by deleting and
+  making a warrior live.
+
 ### Chat safety: ignore, report, mute, the filter, new messages below
 
 Asked for after the chat sweep, for day 1. `_test_chat_filter`,

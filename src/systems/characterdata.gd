@@ -1159,15 +1159,58 @@ func create_character(slot_idx: int, character_name: String) -> void:
 	# overwrites any existing character in that slot — caller is responsible
 	# for confirming that's intended.
 	_ensure_slot_array()
-	var new_char := {"character": character_name}
-	for stat in SAVEABLE_STATS:
-		new_char[stat] = SAVEABLE_STATS[stat]
-	new_char["inventory"] = []
-	new_char["active_pet_id"] = ""  # NEW — fresh characters start with no pet
-	new_char["equipment"] = {}      # and wearing nothing
-	new_char["explored"] = {}       # and having seen nowhere
-	character_slots[slot_idx] = new_char
+	character_slots[slot_idx] = new_character(character_name)
 	save_data()
+
+
+static func new_character(character_name: String) -> Dictionary:
+	"""A character as it is on the moment it is made.
+
+	FULL POOLS, FROM ITS CLASS. SAVEABLE_STATS says 100 of everything, and a new
+	character used to be pushed with those 100s. The server had already given it
+	its class's full pools - 180 for a warrior - so it took the 100 as damage;
+	the game then drew full bars, the next push was an "unexplained heal", and
+	the server clamped it. A warrior made a minute ago came back from a relog
+	on 107 of 180, and every new character on the server wrote a warning to the
+	log that is there to catch cheats. Level 1's pools are the class's bases."""
+	var made := {"character": character_name}
+	for stat in SAVEABLE_STATS:
+		made[stat] = SAVEABLE_STATS[stat]
+	var path: String = "res://data/classes/%s.tres" % character_name.to_lower()
+	var data: Resource = load(path) if ResourceLoader.exists(path) else null
+	if data is ClassData:
+		var cls: ClassData = data
+		made["hp"] = cls.hp_base
+		made["max_hp"] = cls.hp_base
+		made["mana"] = cls.mana_base
+		made["max_mana"] = cls.mana_base
+		made["stamina"] = cls.stam_base
+		made["max_stamina"] = cls.stam_base
+	made["inventory"] = []
+	made["active_pet_id"] = ""  # NEW — fresh characters start with no pet
+	made["equipment"] = {}      # and wearing nothing
+	made["explored"] = {}       # and having seen nowhere
+	return made
+
+
+# COROUTINE - callers must await. Deletes the character in a slot, on the
+# server first: POST /api/character/delete takes its save, bag, gold and
+# skills, and checks the typed name again. Returns the request's result; the
+# slot is emptied here only if the server said yes.
+func delete_character(slot_idx: int, confirm: String) -> Dictionary:
+	# EVERYTHING ON ITS WAY GOES FIRST. A push still in flight that landed
+	# after the delete would write the character back - a level 1 husk of it,
+	# since the server keeps level, but back on the select screen all the same.
+	await finish_saving()
+	var res: Dictionary = await Api.post("/api/character/delete",
+		{"slot": slot_idx, "confirm": confirm})
+	if not res.get("ok", false):
+		return res
+	_ensure_slot_array()
+	character_slots[slot_idx] = null
+	if storage != null:
+		storage.forget_slot(slot_idx)
+	return res
 
 
 # =============================================================================

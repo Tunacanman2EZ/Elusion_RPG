@@ -6,6 +6,7 @@
 script = ExtResource("1_classdata")
 class_id = "mage"
 display_name = "Mage"
+description = "Drops stone spikes where you aim. Least health, most mana."
 hp_base = 110
 hp_per_lvl = 5
 mana_base = 250

@@ -6,6 +6,7 @@
 script = ExtResource("1_classdata")
 class_id = "warrior"
 display_name = "Warrior"
+description = "Free sword swings, and a slash wave that costs mana."
 hp_base = 180
 hp_per_lvl = 12
 mana_base = 180

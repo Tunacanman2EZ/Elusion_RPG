@@ -485,11 +485,18 @@ func _push_account(account: Dictionary) -> void:
 # itself - see _put_if_changed().
 
 func _slot_sections(index: int, slot: Dictionary) -> Array:
+	var keys: Array = _slot_keys(index)
 	return [
-		["save:%d" % index, "/api/save", _save_body(index, slot), _save_fingerprint(index, slot)],
-		["status:%d" % index, "/api/player/status", _status_body(index, slot), {}],
-		["inventory:%d" % index, "/api/character/inventory", _inventory_body(index, slot), {}],
+		[keys[0], "/api/save", _save_body(index, slot), _save_fingerprint(index, slot)],
+		[keys[1], "/api/player/status", _status_body(index, slot), {}],
+		[keys[2], "/api/character/inventory", _inventory_body(index, slot), {}],
 	]
+
+
+# What a slot's sections are called, in _slot_sections()'s order. One list, so
+# forget_slot() cannot miss a section added there.
+static func _slot_keys(index: int) -> Array:
+	return ["save:%d" % index, "status:%d" % index, "inventory:%d" % index]
 
 
 func _account_sections(account: Dictionary) -> Array:
@@ -598,6 +605,21 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 		# is exactly how a failed write becomes silent data loss.
 		push_warning("ServerStorage: %s rejected — %s" % [key, res.get("error", "")])
 		return
+
+
+func forget_slot(index: int) -> void:
+	"""A deleted character's sections are no longer anything the server holds.
+
+	_last_pushed is how an unchanged section is skipped, and it is keyed by
+	slot. Left alone, a new character made in the slot the old one left could
+	match what was last pushed for the OLD one - a level 1 warrior deleted and
+	made again sends exactly the same save body - and that push would be
+	skipped as already stored, when the server holds nothing for the slot at
+	all. The new character would never exist on the server."""
+	for key in _slot_keys(index):
+		_last_pushed.erase(key)
+		_failed_keys.erase(key)
+		_sent_leaving.erase(key)
 
 
 func is_pushing() -> bool:

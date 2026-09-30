@@ -199,6 +199,30 @@ unequip the pet. That distinction matters more than it looks: a pet is a
 table to lose, and the obvious implementation — treat a missing key as empty —
 would silently unequip it on the next save from any caller that did not send it.
 
+### `POST /api/character/delete`
+
+Delete one of your own characters, for good.
+
+```json
+{ "slot": 1, "confirm": "mage" }
+```
+
+`confirm` is the character's name as the player typed it, in any case. The
+game asks for it before sending, and the server checks it again.
+
+**`200`** — `{ "slot": 1, "deleted": true, "gold_lost": 345, "items_lost": 3 }`.
+The save, the bag, the skills, the loot bags and the heal grants go. The
+carried gold is burned through the ledger (reason `character-deleted`). The
+bank, the lusions and everything else on the account stay.
+**`400`** on a bad slot, or a `confirm` that is not the character's name.
+**`404`** when the slot is empty. There is no way to name another account's
+character: the slot is always yours.
+**`409`** while an open trade names this character, from either side.
+
+The server keeps a copy of what was deleted in `character_deletions` (the
+newest ten per account), for putting a character back by hand. Nothing reads
+it automatically.
+
 ---
 
 ## Live stats

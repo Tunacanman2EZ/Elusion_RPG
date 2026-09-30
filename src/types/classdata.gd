@@ -40,6 +40,11 @@ class_name ClassData
 
 @export var display_name: String = ""
 
+# What character select says under the class's name: how it plays, in one
+# short line. Shown to somebody choosing, and nothing else reads it - it is not
+# in gamedata.json, because the server has no use for it.
+@export var description: String = ""
+
 
 # =============================================================================
 # STAT CURVE
