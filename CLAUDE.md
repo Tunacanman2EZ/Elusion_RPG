@@ -1930,6 +1930,38 @@ tier 6, so legendary 1 in 4; the other five bosses never drop ember (amethyst
 odds - where it was. `_test_better_loot_carries_more` and the API's
 `test_rewards.py` hold both halves.
 
+### The store sells iron to amethyst; ember is found
+
+Decided by the owner on day 1, so a player farming one band can save up for
+the next band's set. `generalstore.tres` stocks the nine potions, the fishing
+worm and the iron to amethyst rods, and every weapon and armour piece from iron
+(tier 1) to amethyst (tier 4), bonus amulets included, at its value
+(`price_multiplier` 1.0). Ember, the ember rod and the boss trophies stay
+drop-only.
+
+- **Anyone may buy any piece; it is worn at its level.** The row says "Lv 5"
+  before you pay, and the server's equip check refuses it until then.
+- **The next set is about three to four hours away.** At five kills a minute
+  in the band you are in, a jade plate set (4,584) is 3.7 hours of iron-band
+  gold, cobalt (11,920) 3.2 hours of jade-band gold, amethyst (30,920) 3.1
+  hours of cobalt-band gold; each cloth set is within a quarter of an hour of
+  its plate set. The API's `test_pacing.py` measures it through the real kill
+  roll.
+- **One shelf per band.** `show_catalogue()` starts a heading whenever
+  `shelf_of()` changes, so the stock is listed potions first, then fishing
+  ("Fishing · rods and worms": a rod is any id ending `fishingrod` and the bait
+  is `FISHING_BAIT_ID`, the same rules the pond uses), then tier by tier. A heading reads "Jade  ·  the Water and Ice lands  ·  level 5": the
+  material (`GameConstants.TIER_MATERIALS`), the lands that drop it
+  (`TIER_ELEMENTS`, through `tier_lands()`) and the level.
+- **`TIER_ELEMENTS` must agree with the enemies.** If an element moves band,
+  its normals' `max_loot_tier` and this table change together; the suite reads
+  every normal enemy and fails on a mismatch.
+- **The server sells from `gamedata.json`, not from the .tres.** After
+  changing the stock, re-export, copy the file to the API and restart Flask.
+  Until then the suite fails "data/gamedata.json carries the same stock".
+
+`_test_the_store_sells_the_next_set` holds the game side.
+
 ### Bosses hit for their band
 
 All seven bosses run `bossenemy.gd`, and all seven used to hit for its
@@ -2114,6 +2146,24 @@ desktop too: canvas origin (0, 0) on the first frame of each arrival. Now
 
 A frame with no scene in it yet is black, not grey. The black is set at runtime by
 `AreaRegistry`, not in project.godot; see "Grey in the gaps, black past the map".
+
+**A proxy's 502 or 504 is the server not answering.** In a browser the game
+reaches the API through the site, so with app.py down the page still gets an
+HTTP answer from the proxy. `Api._read_answer()` took any HTTP status as proof
+the server was up, so on day 1, with the API stopped, the login screen said
+"Connected to the Elusion server." and a login showed serve.py's own text
+("The API at http://127.0.0.1:5000 did not answer: <urlopen error ...>"). A 502
+or 504 is now status 0 and offline, the same as no answer at all; app.py never
+sends either, and its 503 (maintenance) is still an answer.
+`_test_a_gateway_saying_no_answer_is_no_answer` hands `_read_answer()` each
+status with no network.
+
+**The login screen asks without a login.** Its five-second probe asked
+`/api/auth/session`, which answers 401 to nobody signed in, and opening the
+game with nothing remembered asked it once more. In a browser every 401 is a
+red "Failed to load resource" line in the console, twelve a minute. Both ask
+`/api/status` now (the opening reuses the answer `refresh_build_info()` already
+has). `_test_the_login_screen_asks_without_a_login`.
 
 **In a browser, Options hides window size, V-Sync, the renderer and the graphics
 API.** The browser owns the window and paces the frames, and Compatibility is
@@ -2499,6 +2549,228 @@ with one mail sent. A wrong code kept the box and said so in red. The right
 code, typed with a space, reached character select. `_test_staff_logins_take_a_code`
 holds the client side.
 
+**Once per computer, not once per login.** A code on every staff login was the
+owner's own complaint the first day he had it. A login that gets in with a
+code is answered with a `device_token`; `Api.login()` keeps it per account in
+`user://devices.cfg` (`_remember_device()`) and sends it as `device` with the
+next login (`device_token_for()`), and the server lets a live one through with
+no code. Its own file, not session.cfg: the session goes with Log out and
+with "Remember me" off, and a mod who never ticks the box would otherwise be
+asked every time. The server's rules - thirty days, a new code after any rank
+change, forgotten on a password change, a reset or log-out-everywhere - are
+TRUSTED DEVICES in app.py. Measured live: the first login asked and the
+second went straight to character select; after a promotion it asked once
+more. `_test_one_code_per_computer` holds the client side.
+
+### The editor's debugger lists GDScript warnings, and the game has none
+
+The editor shows script warnings in the Debugger's Errors tab when the game
+runs. There were 26 in game code on 1 October, found and cleared at once:
+
+- **A static function called through an autoload** (`Api.clean_password()`,
+  `Api.no_answer_text()`...) is `STATIC_CALLED_ON_INSTANCE`: `Api` is the
+  autoload's instance. The UI calls them on the script instead -
+  `const ApiScript := preload("res://src/systems/api.gd")`, the same shape as
+  the `WebPage` preload - so a static helper stays static.
+- A parameter or local named after something already there (`position` on a
+  Control, `level` and `xp` on the player, `hidden`, `is_open`), a ternary
+  mixing `null` with a typed value, and one integer division in a tool
+  (`@warning_ignore("integer_division")`, because it is meant).
+
+The headless suite cannot see these (see "Godot's warnings don't reach the
+headless suite"), so the count was taken from Godot's own language server,
+which reports exactly what the editor shows. `testrunner.gd` still carries
+some of its own; they appear only when the suite is run from the editor.
+
+### A window is never made bigger than the screen
+
+Options offered 2560x1440 and 3840x2160 whatever the monitor, and on day 1
+the owner picked one on a smaller screen: the window's title bar went off the
+top, Options with it, and the way back was editing `options.cfg` by hand
+(`%APPDATA%\Godot\app_userdata\ElusionRPG`). Now:
+
+- **The picker greys out a size that does not fit** and says "too big for
+  this screen", asked on every open because the window may be on another
+  monitor by now (`_mark_window_sizes()` in optionsscreen.gd).
+- **A size that arrives anyway is brought down as it is read.**
+  `Settings._normalise()` puts `window_width` / `window_height` through
+  `fit_window_side()`, so a file saved too big, or saved on a bigger monitor,
+  fixes itself at the next launch and the file is rewritten.
+- **"Fits" is the usable screen less the window's own frame** -
+  `Settings.window_room()`: the taskbar is not usable, and a title bar is not
+  part of the window's size. On a 1080p screen that is about 1904x1001, so the
+  biggest window is 1600x900; fullscreen is the way to fill it. Headless and
+  the browser have no screen to measure, and nothing is shrunk there.
+
+`_test_a_window_never_outgrows_the_screen()` holds it, sabotage-checked.
+
+### Inventory, bank and shop on day 1
+
+A sweep of the backpack, the bank chest and the vendor, driven through the
+real panels against the real server.
+
+- **Banking gold did nothing on the server.** The panel's deposit and
+  withdraw moved the purse and the bank on this machine, and nothing called
+  `POST /api/bank/gold` - gold is server-owned, so the status push ignores the
+  purse, and serverstorage.gd deliberately pushes no `bank_gold`. Banking 200
+  of 257 showed 57 carried and 200 banked while the server held 257 and 0; a
+  relog put it back in the purse, and a death would have burned it all.
+  `CharacterData._move_bank_gold()` asks the server now and copies its two
+  figures in; the panel sends one move at a time and says why a refusal was
+  refused. `bank_gold_request` is the suite's door, so the test never moves
+  real gold. `_test_banked_gold_goes_through_the_server` holds it.
+- Worked as they should: moving, swapping and merging cells, a stack onto a
+  hotbar key and drinking from the key, equip and unequip, items in and out
+  of the bank, the bank shared by every character on the account, buying,
+  "You cannot afford that", the server's own refusal, a full backpack (409,
+  no gold taken), and all of it identical after a relog.
+- Not changed, noted: vendors sell and never buy. The server says so on
+  purpose ("the whole reason vendors sell rather than buy" - the shop is the
+  gold sink), so loot a player does not wear is only worth a trade.
+
+### Friends, guilds and trades on day 1
+
+A sweep with two real accounts: the game on one, a scripted second player on
+the other, against the real server.
+
+- **Founding a guild did not show what it cost.** The server took 5,000 (1,000
+  carried, 4,000 from the bank) and the game went on showing 1,000 and 4,500
+  until a relog, so the shop offered what the server then refused. The
+  founding answer carries `carried_gold` and `bank_gold` now, and the guild
+  panel's `_act()` hands any answer to `CharacterData.adopt_server_gold()`,
+  which copies whichever of the two it finds. The owner's gold grant had the
+  same half-copy (the purse, never the bank) and uses it too.
+  `_test_founding_a_guild_shows_what_it_cost` holds it, through the panel's
+  `post_request` door.
+- **A friend request or a guild invitation reached nobody.** Both are answered
+  from a panel, and nothing told the player to open it. The broadcast poll
+  carries `asks` now: how many of each are waiting, and the newest. The HUD
+  lights "Friends •" and "Guild •" while anything waits and says the newest
+  once ("caster asked to be your friend. Open Friends to answer."). The state
+  is static per login, like the chat dot, so a door neither repeats the toast
+  nor darkens the button. `_test_a_request_waiting_on_you_lights_its_button`
+  holds it; the asker's notice says so now instead of "They will see it next
+  time they look".
+- Worked as they should: asking, refusing yourself, a name that does not exist,
+  accepting, online and "1 min ago" presence, removing; founding (a bad name
+  refused before anything is sent, the cost paid from both piles), inviting,
+  joining, guild chat with the tag over the name, promoting, demoting,
+  removing, the two-press disband; a trade of two potions for 100 gold, taxed,
+  with both bags right on the server and on screen.
+
+### A bag save names the bag it was built on
+
+Found cooking on day 1: a stack of twelve raw fish made five cooked ones where
+the cooking XP said six, and three cooks in a row lost the one fish they
+cooked. The bag is
+saved whole (`PUT /api/character/inventory`) on a two-second debounce, and the
+cook, the catch, the loot take, the purchase and the equip all change it on
+the server too. A save built after one cook and landing after the next deleted
+the fish the next cook made (a loss, so the server took it), and the save after
+that had its copy trimmed as a gain.
+
+- **Every bag save carries `based_on`**: `CharacterData.bag_fingerprint()` of
+  the last bag the server gave this client, kept per character as `bag_base`.
+  The server refuses a save built on a bag it no longer holds, with 409 and its
+  own bag, which `apply_server_carry()` adopts without a message (the HUD skips
+  `reason: "stale_save"`).
+- **Where the base comes from:** the load (`_slot_from_server`), every answer
+  that carries the bag (they all reach the carry grid's `load_server_array()`,
+  which reports when the grid `is_carry`; the bank's grid does not), a refusal's
+  resync, and a save's own answer. A save leaving makes its bag the base
+  (`bag_sent()`), so a save built while it is in flight builds on it; its answer
+  is used only when nothing newer has come from the server since
+  (`bag_saved()`).
+- **The fingerprint is shared with the server**: sha1 of
+  `position:item_id:quantity` for each filled cell, joined with `|`. Both suites
+  pin the same bag to the same string.
+
+Measured after: twelve cooked from twelve, with two stale saves refused on the
+way. `_test_a_save_cannot_undo_a_server_change` holds the client half; the API's
+`test_gathering.py` reproduces the loss.
+
+### Fishing and cooking on day 1
+
+Driven at the town pond and firepit against the real server: a cast, a strike
+too early ("Too early", no worm spent), a catch every time the float went
+under (one worm each, fishing XP from the server), lighting the fire, the
+cooking screen, single cooks and a whole stack, burns, and the skill bars.
+Everything but the loss above worked. Two gaps, both closed by the store on
+the owner's call:
+
+- **Only the iron rod could be had.** Jade to ember rods are not droppable and
+  were not sold, so the deeper fish were out of reach (`fish_ceiling()` is rod
+  tier plus fishing level / 20). Iron to amethyst rods are sold now; ember is
+  still found only.
+- **Worms came one at a time from loot**, about 1.6 an hour in the first two
+  bands and none past the third, and every catch spends one. They are 24 gold
+  each in the store. Measured after: twenty worms and a jade rod bought by a
+  fresh character, and a marsh carp (tier 2) on the third cast.
+
+### Pets, the map, the kingdom board, Options and the owner panel on day 1
+
+Driven in the game against the real server.
+
+- **The map was blank at every login.** Two faults, each enough on its own:
+  - `ServerStorage.load()` built each character from `/api/character`, which
+    carries no map; the listing (`/api/save`) does. Every login started with
+    none, and the first save after a walk wrote that session's tiles over
+    everything the character had uncovered. `with_listing()` takes the map from
+    the listing now.
+  - The map rides `/api/save` only when WorldMap's revision moves, at most
+    every `SAVE_REVISION_SECONDS` (45). A walk then a logout inside that window
+    left the walk behind. `finish_saving()` calls `WorldMap.flush_pending()`
+    first, so leaving counts it; 45 s is now a cost only a crash pays.
+
+  Measured after: 6% of the field walked, a logout at once, and 6% back on the
+  next login. `_test_the_map_comes_back`.
+- **Pets worked:** summoned from the bag, through a door, through a relog, and
+  put away with a second use; the sniper followed and took 84 health off a dark
+  sprite in eight seconds. The server stored whatever `active_pet_id` a save
+  named, owned or not, so a modified client could walk out a pet it never
+  won; on the owner's call it now keeps only a pet the carry or the bank holds
+  (API `test_api.py`). The game needs no change: a pet is summoned from the
+  bag, so it is always held.
+- **The kingdom board** opened with the coffers, the death count, the player's
+  own line and the ranking.
+- **A staff teleport** (a dev sending the player to the field) reached the
+  game within one poll and landed on the field's arrival dais.
+- **Options** worked: the name colour reached the server and came back after a
+  relog, the toggles and the camera zoom stuck, a wrong current password was
+  refused without signing anyone out, the right one changed it and the game
+  kept its session, a recovery address was confirmed with the mailed code (a
+  wrong code refused first), and Reset put everything back.
+- **The owner panel** worked: gold to the bank and to the purse (both shown at
+  once now), an item grant, PvP on and off on the strip, and closing the
+  server with a message and reopening it before the countdown ran out.
+
+### Saving and reconnecting on day 1
+
+Measured against the real server, on the desktop build and in Chromium:
+
+- **The server gone 15 s, a bag change made meanwhile.** The change reached the
+  server once it was back, with no relog. The strip showed "Connection lost"
+  for 12 s after the restart, because the next poll was up to ten seconds
+  away. While the strip is up the poll now runs every `OFFLINE_POLL_SECONDS`
+  (5) and goes back to ten on the first answer; a 30 s outage then cleared
+  within 10 s of the restart. `_test_a_lost_server_is_asked_for_more_often`.
+- **Gone 100 s.** The countdown ran from 1:05, and at 0:00 the game went to the
+  login screen with "Lost connection to the server. Anything since your last
+  save is not saved." Signing back in worked, and the change made while the
+  server was down was gone, as the line says.
+- **A kill with the server down** paid nothing on either side ("Server offline
+  — no reward."). The next kill after it came back levelled the character, and
+  the game and server agreed.
+- **The game killed outright** 2.5 s after a bag change kept it; 0.3 s after,
+  it lost it, inside the two-second save debounce. Gold, loot and trades are
+  server routes and are never in that window.
+- **Log out and back in** kept the bag, the gear, the level, the purse and the
+  pools. It starts in town, not where you left (noted at the login sweep).
+- **Browser:** a bag change with the tab closed 0.2 s later reached the server;
+  the API down and back mid-game showed the countdown and cleared it.
+
+Fixed: the two browser findings in "The browser build" above.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —
@@ -2507,6 +2779,19 @@ to see. This project is tabs only. Alignment *after* the first non-space
 character is fine; leading whitespace must be tabs and nothing else.
 
 ## Traps on the server side
+
+### Two requests sent together used to read the same old number
+
+A warrior's slash wave that kills two enemies sends two kill reports at once.
+The server read the character's XP for each before either wrote it back, so
+one kill's XP was lost - six sent together banked 99 of 676. The game had
+added up all 676 itself (combat.gd re-runs `gain_xp()` with each answer),
+levelled up before the server did, refilled its mana, and the server's healing
+check clamped that as a cheat. The same shape let a loot cell pay twice and a
+purse be deposited twice. Every write route now takes the database's write
+lock before its first read - THE WRITE LOCK in app.py, held by
+`test_concurrency.py` - so nothing changes on this side: the game was right to
+send them together.
 
 ### CREATE TABLE IF NOT EXISTS does nothing to an existing table
 
@@ -2899,9 +3184,13 @@ question god mode answered by returning before the XP.
 - The backpack ledger is still whatever the client pushes on save.
   `POST /api/loot/take` closed where items come from, not what you claim to hold.
 - ~~`has_active_revive` in `player.gd` is never set true.~~ Closed — the flag
-  and its unreachable branch are gone. The real revive is `GameState.reviving`,
-  set by `gameover.gd` after death. The ordering the dead branch needed is
+  and its unreachable branch are gone. The real revive is `gameover.gd`'s,
+  after the server has been paid. The ordering the dead branch needed is
   recorded where it was, in case a token-style revive is ever added.
+- **A paid revive lands in town**, at its usual spawn, as every login does.
+  Decided by the owner on day 1. `GameState.reviving` was set "so the world
+  can put the player back at `death_position`" and nothing ever read it; it is
+  gone, so nobody builds on the promise.
 - ~~`gamestate.gd` declares eleven signals that are never emitted or connected.~~
   Closed. There were thirteen, not eleven, which is its own small lesson about
   counts written down by hand. All removed — `gamestate.gd` is now the four

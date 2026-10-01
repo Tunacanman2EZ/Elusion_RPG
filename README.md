@@ -195,7 +195,7 @@ That serves ninety-nine endpoints — accounts and sessions, character saves, th
 
 Ninety-four of the ninety-nine require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has forty-one test suites, run together with one command:
+The backend has forty-two test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -203,55 +203,56 @@ cd <your-path>\game\api
 ```
 
 ```
-test_api.py            512 checks    the endpoint surface, moderation, presence
+test_api.py            515 checks    the endpoint surface, moderation, presence
 test_economy.py        363 checks    the gold ledger and the supply invariant
 test_security.py       270 checks    the audit's findings, held closed
 test_loot.py           234 checks    every finished item is actually obtainable
 test_equipment.py      194 checks    the equipment system, client and server
 test_gearbonus.py      164 checks    what gear adds, counted by the server
-test_guilds.py         161 checks    founding, joining, ranks, taking a guild down
+test_guilds.py         167 checks    founding, joining, ranks, taking a guild down
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
 test_moderation.py     127 checks    the moderation record
 test_refusals.py       102 checks    401, 403, and the 404 that is really a 403
+test_pacing.py          95 checks    the pace of the game: what the server pays and the store charges
+test_security_doc.py    88 checks    SECURITY.md is checked, not trusted
 test_ownership.py       82 checks    no route hands over a row that is not yours
-test_security_doc.py    79 checks    SECURITY.md is checked, not trusted
+test_friends.py         76 checks    asking, answering and ending a friendship
 test_chatsafety.py      74 checks    ignore, report and mute
 test_chardelete.py      72 checks    deleting a character, and only the character
-test_friends.py         70 checks    asking, answering and ending a friendship
-test_pacing.py          69 checks    the pace of the game, as the server pays it
 test_chat.py            67 checks    world chat, end to end, one line as typed
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
+test_staffcode.py       60 checks    a staff password alone opens nothing, once per computer
 test_broadcast.py       59 checks    the server's voice, end to end
+test_gathering.py       57 checks    fishing and cooking authority, and a save that cannot undo a cook
 test_recovery.py        54 checks    account recovery, adversarially
 test_maintenance.py     53 checks    the owner's kill switch
 test_settings.py        49 checks    the options screen's rules
 test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
-test_gathering.py       47 checks    fishing and cooking authority
 test_accounts.py        43 checks    signing in: one game per account, locks, no mail
-test_staffcode.py       38 checks    a staff password alone opens nothing
 test_clientbuild.py     37 checks    the client build gate
 test_guildlife.py       37 checks    what members are playing, what happened
 test_revocation.py      34 checks    what it costs to change your mind
+test_healing.py         34 checks    the heal clamp stays quiet for honest play
 test_rewards.py         30 checks    better loot carries more; legendary is rare
-test_healing.py         28 checks    the heal clamp stays quiet for honest play
 test_namecolour.py      27 checks    the colour a player chose, on every name
 test_playing.py         25 checks    which character an account is playing
+test_concurrency.py     23 checks    requests sent together cannot both spend the same thing
 test_equipmove.py       22 checks    equipping moves the item, never copies it
 test_killwatch.py       20 checks    the kill-fraud watch fires when it must
 test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					3,715 checks, 0 failures
+					3,826 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-first, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,193 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 120 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,286 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 120 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `2158 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2164 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
