@@ -19,6 +19,10 @@
 # 403 so the refusal does not confirm what it refused.
 extends Control
 
+# Api's static helpers, called on the script and not on the autoload: a static
+# function called through an instance is a warning in the editor's debugger.
+const ApiScript := preload("res://src/systems/api.gd")
+
 
 # How often an open panel re-reads. Presence is the only thing here that goes
 # stale on its own, and the server calls somebody offline after 45 seconds of
@@ -133,6 +137,11 @@ var _open_member: String = ""
 # button would be forgotten by the refresh landing between the two presses; the
 # key outlives the button and the new one is drawn armed.
 var _armed: Dictionary = {}        # {"key": String, "until": float}
+
+# THE SUITE'S DOOR INTO A REQUEST. Left invalid in the game, where every button
+# here is Api.post(). The suite sets it to answer as the server would, so what
+# the panel does with an answer is tested without a server.
+var post_request: Callable = Callable()
 
 @onready var rows: VBoxContainer = get_node_or_null("%guildrows")
 @onready var title: Label = get_node_or_null("%guildtitle")
@@ -705,10 +714,10 @@ func _add_member(person: Dictionary, now: int) -> void:
 	# from Promote on every row at once. Now a row that has something to offer
 	# says so with an arrow, lights up under the pointer, and opens under
 	# itself when clicked.
-	var is_open: bool = _open_member == who
+	var open_here: bool = _open_member == who
 	var arrow := Label.new()
 	arrow.name = "arrow"
-	arrow.text = "▾" if is_open else "▸"
+	arrow.text = "▾" if open_here else "▸"
 	arrow.add_theme_color_override("font_color", HEADING_COLOUR)
 	arrow.add_theme_font_size_override("font_size", 13)
 	line.add_child(arrow)
@@ -716,11 +725,11 @@ func _add_member(person: Dictionary, now: int) -> void:
 	frame.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	frame.tooltip_text = "What you can do about %s" % who
 	frame.gui_input.connect(_on_member_input.bind(who))
-	_light_up(frame, is_open)
+	_light_up(frame, open_here)
 	frame.mouse_entered.connect(func(): _light_up(frame, true))
 	frame.mouse_exited.connect(func(): _light_up(frame, _open_member == who))
 
-	if not is_open:
+	if not open_here:
 		return
 	var strip := HBoxContainer.new()
 	strip.name = "actions"
@@ -959,7 +968,7 @@ func _on_action_pressed() -> void:
 
 	if _in_guild and _rank_at_least("officer"):
 		await _act("/api/guild/invite", {"username": typed},
-			"Asked %s. They will see it next time they look." % typed)
+			"Invited %s. Their Guild button lights up until they answer." % typed)
 	else:
 		if _name_check.search(typed) == null:
 			_show("A guild name is 3 to %d characters: letters, numbers," % MAX_NAME
@@ -1018,13 +1027,25 @@ func _act(path: String, body: Dictionary, success_text: String) -> void:
 	_busy = true
 	_set_notice("")
 
-	var res: Dictionary = await Api.post(path, body)
+	var res: Dictionary = {}
+	if post_request.is_valid():
+		res = await post_request.call(path, body)
+	else:
+		res = await Api.post(path, body)
 
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	_busy = false
 
 	if res.get("ok", false):
+		# GOLD THE SERVER TOOK, COPIED IN. Founding is paid from the purse and
+		# then the bank, and the answer carries both balances after it. On day 1
+		# nothing read them: a founder who paid 1,000 carried and 4,000 banked
+		# went on seeing 1,000 and 4,500 until a relog, and the shop offered
+		# what the server then refused.
+		var paid = res.get("data", {})
+		if paid is Dictionary:
+			CharacterData.adopt_server_gold(paid, get_tree().get_first_node_in_group("player"))
 		_show(success_text + _payment_note(res))
 		# THE ROW'S JOB IS DONE. Promoted, demoted or gone, what it offered has
 		# changed, and leaving it open would show the old choices for a moment.
@@ -1063,7 +1084,7 @@ func _failure_text(res: Dictionary) -> String:
 	var said: String = str(res.get("error", "")).strip_edges()
 
 	if status == 0:
-		return Api.no_answer_text()
+		return ApiScript.no_answer_text()
 	if status == 401:
 		return "You are not signed in."
 	if status == 404:

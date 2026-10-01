@@ -44,16 +44,11 @@ extends Node
 # the gameover scene reads this to display info and route the revive choice.
 var death_state: Dictionary = {}
 
-# true between gameover screen and world scene reload when player chose to
-# revive. the world scene checks this on load to teleport the player to
-# death_state.death_position and skip default spawn behavior.
-var reviving: bool = false
-
 
 # =============================================================================
 # SCENE ARRIVAL
 # =============================================================================
-# same transient, in-memory-only philosophy as death_state/reviving above —
+# same transient, in-memory-only philosophy as death_state above —
 # set by a portal/teleport trigger (see leavetown.gd's target_spawn_id)
 # just before changing scenes, so the new scene knows WHICH of its
 # (possibly multiple) named arrival points to place the player at — see

@@ -14,6 +14,10 @@
 # friends table in app.py. This panel is the answering.
 extends Control
 
+# Api's static helpers, called on the script and not on the autoload: a static
+# function called through an instance is a warning in the editor's debugger.
+const ApiScript := preload("res://src/systems/api.gd")
+
 
 # How often an open panel re-reads. Presence is the only thing here that goes
 # stale on its own, and the server calls somebody offline after 45 seconds of
@@ -333,7 +337,7 @@ func _on_add_pressed() -> void:
 		return
 
 	await _act("/api/friends/request", {"username": who},
-		"Asked %s. They will see it next time they look." % who)
+		"Asked %s. Their Friends button lights up until they answer." % who)
 	if is_instance_valid(self) and add_entry != null:
 		add_entry.text = ""
 
@@ -382,7 +386,7 @@ func _failure_text(res: Dictionary) -> String:
 	var said: String = str(res.get("error", "")).strip_edges()
 
 	if status == 0:
-		return Api.no_answer_text()
+		return ApiScript.no_answer_text()
 	if status == 401:
 		return "You are not signed in."
 	if status == 404:

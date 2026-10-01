@@ -980,13 +980,13 @@ func _on_gold_pressed(to_bank: bool) -> void:
 	_set_testing_status("Carrying %d, bank %d." % [
 		int(data.get("gold", 0)), int(data.get("bank_gold", 0))])
 
-	# THE SERVER'S FIGURE, HANDED STRAIGHT TO THE PLAYER. set_gold() takes the
-	# balance rather than a delta for exactly this reason - see its own note -
-	# so there is no adding up to get wrong here.
-	if not to_bank:
-		var body: Node = get_tree().get_first_node_in_group("player")
-		if body != null and body.has_method("set_gold"):
-			body.set_gold(int(data.get("gold", 0)))
+	# THE SERVER'S FIGURES, HANDED STRAIGHT OVER: the purse to the player, the
+	# bank to CharacterData. It answers with both whichever pile it grew. The
+	# bank one was not copied before, so a grant to the bank showed nowhere
+	# until a relog.
+	var body: Node = get_tree().get_first_node_in_group("player")
+	CharacterData.adopt_server_gold({"carried_gold": int(data.get("gold", 0)),
+		"bank_gold": int(data.get("bank_gold", 0))}, body)
 
 
 func _on_item_pressed() -> void:

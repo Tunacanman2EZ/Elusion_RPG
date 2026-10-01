@@ -86,6 +86,7 @@ func _wire_close_button() -> void:
 func _wire_inventory_container() -> void:
 	if has_node("%inventorycontainer"):
 		_container = get_node("%inventorycontainer")
+		_container.is_carry = true
 		_container.slot_right_clicked.connect(_on_slot_right_clicked)
 	else:
 		push_warning("InventoryScreen: inventorycontainer not found")
@@ -253,7 +254,7 @@ func use_item(slot: InventorySlot) -> void:
 # ITEM USE — EQUIPMENT
 # =============================================================================
 
-func _equip_item(data: ItemData, position: int = -1) -> void:
+func _equip_item(data: ItemData, cell: int = -1) -> void:
 	# RIGHT-CLICK PUTS IT ON, which is what every other item type in this match
 	# already does with a right-click and what gear did not do at all — a sword
 	# in the backpack was the one thing you could click and have nothing
@@ -303,7 +304,7 @@ func _equip_item(data: ItemData, position: int = -1) -> void:
 	# why, with the server's own words - "your bag is full", "your class cannot
 	# wear that" - and a second generic line on top of a specific one is worse
 	# than either alone.
-	if not await CharacterData.equip_item(player, data.item_id, position):
+	if not await CharacterData.equip_item(player, data.item_id, cell):
 		return
 
 	# The doll is a view of player.equipped and has just gone stale. Found by

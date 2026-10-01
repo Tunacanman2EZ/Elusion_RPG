@@ -24,6 +24,10 @@
 # nobody is reading - and four channels polling at once is four of those.
 extends Control
 
+# Api's static helpers, called on the script and not on the autoload: a static
+# function called through an instance is a warning in the editor's debugger.
+const ApiScript := preload("res://src/systems/api.gd")
+
 
 # HOW OFTEN AN OPEN WINDOW ASKS. Chat is a conversation and three seconds is
 # already at the edge of feeling slow; the broadcast poll next door runs at ten
@@ -2594,7 +2598,7 @@ func _refusal(res: Dictionary) -> String:
 	# These few read better in this panel's voice than the server's, and they
 	# are the ones where the server has nothing extra to add anyway.
 	if status == 0:
-		return Api.no_answer_text()
+		return ApiScript.no_answer_text()
 	if status == 401:
 		return "You are not signed in."
 	# THE SERVER'S WORDS FOR A 429 TOO. There are four of them - typing too

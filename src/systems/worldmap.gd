@@ -506,6 +506,20 @@ func save_revision() -> int:
 	return _revision
 
 
+func flush_pending() -> bool:
+	"""Count a pending revision now, whatever the clock says. True if there was
+	one. For leaving: SAVE_REVISION_SECONDS is a cost a crash may pay, not a
+	logout. On day 1 a walk of the field followed by a logout inside the
+	forty-five seconds kept none of the walk, because the logout's save saw the
+	same revision as the last push and left the map out."""
+	if not _revision_pending:
+		return false
+	_revision += 1
+	_revision_pending = false
+	_revision_at_ms = Time.get_ticks_msec()
+	return true
+
+
 func explored_fraction(area: String) -> float:
 	# For a "37% explored" line on the panel. Counts bits rather than tracking
 	# a running total: a counter is a second copy of the truth that a resize,

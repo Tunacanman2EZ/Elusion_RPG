@@ -352,7 +352,9 @@ static func read_page(data: Variant, list_key: String, cursor_key: String) -> Di
 	if cursor is String:
 		out["cursor"] = cursor if cursor != "" else null
 	elif cursor is int or cursor is float:
-		out["cursor"] = int(cursor) if int(cursor) > 0 else null
+		out["cursor"] = null
+		if int(cursor) > 0:
+			out["cursor"] = int(cursor)
 	if out["cursor"] == null:
 		# No cursor means no next page, whatever `more` claimed. A "Load more"
 		# with nothing to follow would load the first page again.

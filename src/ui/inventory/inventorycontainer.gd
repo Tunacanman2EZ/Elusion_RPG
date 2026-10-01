@@ -66,6 +66,11 @@ signal transfer_requested(source_slot: InventorySlot, target_slot: InventorySlot
 
 var slots: Array[InventorySlot] = []
 
+# THE PLAYER'S OWN CARRY, as opposed to the bank's grid, which is the same kind
+# of container. Set by InventoryScreen. A server array loaded into the carry is
+# also the bag the next save is built on - see CharacterData.note_server_bag().
+var is_carry: bool = false
+
 var capacity: int:
 	get: return grid_width * grid_height
 
@@ -309,7 +314,10 @@ func _remote_cells() -> Array:
 		return _unattached_tail.duplicate()
 	var out: Array = []
 	for slot in _remote_slots:
-		out.append(null if not is_instance_valid(slot) or slot.is_empty() else slot.stack.to_dict())
+		if not is_instance_valid(slot) or slot.is_empty():
+			out.append(null)
+		else:
+			out.append(slot.stack.to_dict())
 	return out
 
 
@@ -381,6 +389,8 @@ func load_server_array(cells: Array) -> void:
 		}
 
 	load_save_array(cleaned)
+	if is_carry:
+		CharacterData.note_server_bag(cells)
 
 
 func load_save_array(save_array: Array) -> void:

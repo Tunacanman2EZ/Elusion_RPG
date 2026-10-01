@@ -191,6 +191,38 @@ const RARITY_FRAME_MIN_TIER: int = 2
 const RARE_GLOW_MIN_TIER: int = 4
 
 
+# THE LANDS EACH GEAR TIER COMES FROM, indexed by tier like the two above. The
+# element bands decide what drops where - light and wind creatures drop up to
+# iron, water and ice up to jade, earth cobalt, fire amethyst, dark ember - and
+# the shop heads each tier's shelf with the lands a player fights in for it, so
+# saving for the next set reads as a place to go. The suite holds this against
+# data/enemies/*.tres (every normal of these elements drops up to this tier), so
+# it cannot drift away from the drops it describes.
+const TIER_ELEMENTS: Array = [
+	[],
+	[Element.Type.LIGHT, Element.Type.WIND],
+	[Element.Type.WATER, Element.Type.ICE],
+	[Element.Type.EARTH],
+	[Element.Type.FIRE],
+	[Element.Type.DARK],
+]
+
+# Gear tiers are named for their material. The shop sells iron to amethyst;
+# ember (legendary) is found, never bought - decided by the owner on day 1.
+const TIER_MATERIALS: Array[String] = ["", "Iron", "Jade", "Cobalt", "Amethyst", "Ember"]
+
+
+func tier_lands(tier: int) -> String:
+	"""'Water and Ice' for tier 2 - the elements that drop this tier, said as
+	the lands a player goes to. Empty past the table."""
+	if tier < 1 or tier >= TIER_ELEMENTS.size():
+		return ""
+	var words := PackedStringArray()
+	for element in TIER_ELEMENTS[tier]:
+		words.append(Element.name_for(int(element)).capitalize())
+	return " and ".join(words)
+
+
 func rarity_name(tier: int) -> String:
 	return RARITY_NAMES[clampi(tier, 0, RARITY_NAMES.size() - 1)]
 

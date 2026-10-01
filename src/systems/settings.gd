@@ -219,6 +219,52 @@ const WINDOW_SIZES := [
 ]
 
 
+# A WINDOW BIGGER THAN THE SCREEN IS SHRUNK TO THE BIGGEST SIZE THAT FITS.
+#
+# Found on day 1 by the owner: Options offered 2560x1440 and 3840x2160 on a
+# smaller monitor, and picking one left a window hanging off the screen with
+# its title bar out of reach - Options and the window's own controls with it.
+# The way back was editing options.cfg by hand. Now a size that does not fit
+# is greyed out in the picker, and one that arrives anyway - from the file,
+# or from a session on a bigger monitor - is brought down when it is read
+# (_normalise), so the window is never made bigger than the screen.
+#
+# Per side, against the list: on a 1920x1080 screen with a taskbar and a title
+# bar, 2560 becomes 1600 and 1440 becomes 900. Every size on the list is 16:9,
+# so the two sides land on the same entry. Nothing fits below 1280x720, which
+# is also the smallest window the game allows, so that is the floor.
+static func fit_window_side(value: int, room: int, side: int) -> int:
+	if room <= 0 or value <= room:
+		return value
+	var best: int = WINDOW_SIZES[0][side]
+	for option in WINDOW_SIZES:
+		if option[side] <= room:
+			best = maxi(best, option[side])
+	return best
+
+
+static func window_fits(want: Vector2i, room: Vector2i) -> bool:
+	if room.x <= 0 or room.y <= 0:
+		return true
+	return want.x <= room.x and want.y <= room.y
+
+
+func window_room() -> Vector2i:
+	"""The biggest window this screen has room for: the usable part of the
+	screen the window is on (the taskbar is not usable), less the window's own
+	title bar and borders. ZERO when the platform cannot say - headless, or a
+	browser - and then nothing is shrunk or greyed out."""
+	if DisplayServer.get_name() == "headless" or OS.has_feature("web"):
+		return Vector2i.ZERO
+	var usable: Vector2i = DisplayServer.screen_get_usable_rect(
+		DisplayServer.window_get_current_screen()).size
+	if usable.x <= 0 or usable.y <= 0:
+		return Vector2i.ZERO
+	var frame: Vector2i = DisplayServer.window_get_size_with_decorations() \
+		- DisplayServer.window_get_size()
+	return usable - Vector2i(maxi(frame.x, 0), maxi(frame.y, 0))
+
+
 # =============================================================================
 # STATE
 # =============================================================================
@@ -770,6 +816,11 @@ func _normalise(key: String, typed: Variant) -> Variant:
 			# WRAPPED, because the thing it names is a circle. 400 is 40 and
 			# -20 is 340; neither is a mistake worth refusing.
 			return wrapf(float(typed), 0.0, 360.0)
+		"window_width":
+			# SHRUNK TO FIT THE SCREEN. See fit_window_side().
+			return fit_window_side(int(typed), window_room().x, 0)
+		"window_height":
+			return fit_window_side(int(typed), window_room().y, 1)
 		_:
 			return typed
 

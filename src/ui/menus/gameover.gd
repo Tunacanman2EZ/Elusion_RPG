@@ -4,7 +4,8 @@
 # data sources:
 # - GameState.death_state (in-memory): character_name, death_position, max_hp
 #   set by player.gd just before this scene loads. used to identify which
-#   character is dying and where to revive them.
+#   character is dying. A revive goes to town, not to death_position - see
+#   REVIVED IN TOWN below.
 # - CharacterData.account_data.lusions: account-shared currency pool.
 #   never lost on death — survives this screen regardless of choice.
 #
@@ -182,9 +183,7 @@ func _revive_paying_with(method: String) -> void:
 	# 2. tell the server the character is dead, then ask it to revive them —
 	#    it takes the cost and restores the resources, not this script
 	# 3. copy the result into the local slot
-	# 4. set GameState.reviving so the world scene knows to teleport
-	#    the player to their death position on load
-	# 5. transition to world scene
+	# 4. back to town, at its usual spawn - see REVIVED IN TOWN below
 	var death_state: Dictionary = GameState.death_state
 	if death_state.is_empty():
 		push_warning("gameover: no death_state to revive from")
@@ -258,10 +257,13 @@ func _revive_paying_with(method: String) -> void:
 	# the price out of it before reaching for the bank.
 	_apply_restored_status(char_name, data.get("status", {}))
 
-	# mark that we're returning from a revive — world scene checks this on load
-	# to position the player at death_state.death_position instead of the
-	# default spawn point.
-	GameState.reviving = true
+	# REVIVED IN TOWN, at its usual spawn - where every login starts too.
+	# This used to set GameState.reviving "so the world scene can put the
+	# player back at death_state.death_position", and nothing ever read it: a
+	# revive always landed in town. The owner chose town on day 1 rather than
+	# building the other thing - coming back to life beside whatever killed
+	# you is mostly a second death. The flag is gone so no one builds on it.
+	GameState.death_state = {}
 	# NOT change_scene_to_file(): that is a load() of an area's path, and a
 	# load() of an area still loading in the background never returns. See
 	# AreaRegistry.scene_at().
@@ -409,7 +411,6 @@ func _on_return_pressed() -> void:
 
 	if char_name == "":
 		GameState.death_state = {}
-		GameState.reviving = false
 		get_tree().change_scene_to_file(character_select_path)
 		return
 
@@ -447,7 +448,6 @@ func _on_return_pressed() -> void:
 
 	# clear the death state and head back to character select
 	GameState.death_state = {}
-	GameState.reviving = false
 	get_tree().change_scene_to_file(character_select_path)
 
 

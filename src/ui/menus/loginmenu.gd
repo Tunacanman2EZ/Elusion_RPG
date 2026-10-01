@@ -47,6 +47,10 @@
 # that can go stale if a node gets renamed later.
 extends Control
 
+# Api's static helpers, called on the script and not on the autoload: a static
+# function called through an instance is a warning in the editor's debugger.
+const ApiScript := preload("res://src/systems/api.gd")
+
 
 # =============================================================================
 # CONSTANTS
@@ -322,7 +326,7 @@ func _show_code_step(username: String, res: Dictionary) -> void:
 			login_code_box.grab_focus()
 	if int(res.get("status", 0)) == 202:
 		var button: Button = get_node_or_null("%loginbutton")
-		_say("Staff login: we emailed a code to %s. Type it in and press %s." % [
+		_say("Staff login: we emailed a code to %s. Type it in and press %s. This computer is then remembered for 30 days." % [
 			str(data.get("sent_to", "your recovery address")),
 			button.text if button != null else "the button"], SAY_WORKING)
 	else:
@@ -416,7 +420,7 @@ func _set_creating(on: bool) -> void:
 
 
 func _create_account(username: String, password: String) -> void:
-	var again: String = Api.clean_password(confirm_box.text) if confirm_box != null else password
+	var again: String = ApiScript.clean_password(confirm_box.text) if confirm_box != null else password
 	if again != password:
 		_say("The two passwords are not the same. Type them again.", SAY_REFUSED)
 		return
@@ -509,7 +513,14 @@ func _on_reconnect_poll_timeout() -> void:
 	# any change — the signal, not this return value, is what moves the banner.
 	# This call exists only to make the request happen. PROBE_TIMEOUT, not the
 	# full budget: nobody is watching this one.
-	await Api.get_json("/api/auth/session", Api.PROBE_TIMEOUT)
+	#
+	# /api/status, NOT /api/auth/session. Nobody is signed in on this screen, so
+	# the session route answered 401 every five seconds. That was fine as an
+	# answer, but in a browser every 401 is a red "Failed to load resource" line
+	# in the console, twelve a minute for as long as the screen was open, and a
+	# 401 in the server's log for every idle player. /api/status needs no login
+	# and exists for exactly this question (see the API's CLAUDE.md).
+	await Api.get_json("/api/status", Api.PROBE_TIMEOUT)
 	_reconnect_probe_in_flight = false
 
 
@@ -624,8 +635,8 @@ func _on_recover_send_pressed() -> void:
 func _on_recover_submit_pressed() -> void:
 	var address: String = "" if recover_email == null else recover_email.text.strip_edges()
 	var code: String = "" if recover_code == null else recover_code.text.strip_edges()
-	var new_password: String = "" if recover_new_password == null else Api.clean_password(recover_new_password.text)
-	var confirm: String = "" if recover_confirm_password == null else Api.clean_password(recover_confirm_password.text)
+	var new_password: String = "" if recover_new_password == null else ApiScript.clean_password(recover_new_password.text)
+	var confirm: String = "" if recover_confirm_password == null else ApiScript.clean_password(recover_confirm_password.text)
 
 	if address == "":
 		_recover_say("Type the email address on your account.", STATUS_OFFLINE)
@@ -861,10 +872,10 @@ func _check_connection_and_resume() -> void:
 	# be turned away, grey when there is simply something newer; nothing at all
 	# when it is current. A notice the server already gave (a kick, a ban, a
 	# refused build) is not written over.
-	var build_note: String = Api.build_notice()
+	var build_note: String = ApiScript.build_notice()
 	var said: Label = get_node_or_null("%errorlabel") as Label
 	if build_note != "" and (said == null or said.text == ""):
-		_say(build_note, SAY_BLOCKED if Api.build_is_refused() else SAY_WORKING)
+		_say(build_note, SAY_BLOCKED if ApiScript.build_is_refused() else SAY_WORKING)
 
 	if not probe.get("resumed", false):
 		# Either there was no cached token, or the server rejected it. Neither
@@ -923,7 +934,7 @@ func _on_login_button_pressed() -> void:
 	_retry_load = false
 
 	var username: String = %usernamelineedit.text.strip_edges()
-	var password: String = Api.clean_password(%passwordlineedit.text)
+	var password: String = ApiScript.clean_password(%passwordlineedit.text)
 
 	# --- input validation (courtesy only — the server validates too) ---
 	if username.is_empty() or password.is_empty():
@@ -958,7 +969,7 @@ func _on_login_button_pressed() -> void:
 	# BEFORE res.ok, because the first step is a 202 - a 2xx with no token -
 	# and BEFORE the 401 branch below: a wrong code is a 400 on purpose, since a
 	# 401 here reads "Wrong name or password", and the password was right.
-	if Api.needs_login_code(res):
+	if ApiScript.needs_login_code(res):
 		_set_busy(false)
 		_show_code_step(username, res)
 		return

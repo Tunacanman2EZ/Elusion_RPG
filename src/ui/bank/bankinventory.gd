@@ -16,8 +16,8 @@
 # gold transfers:
 # typed amount + deposit/withdraw buttons. transfers carry gold (per-character)
 # <-> bank_gold (account-shared) via CharacterData.deposit_gold_to_bank() and
-# withdraw_gold_from_bank(). both methods are atomic — player gold AND bank
-# gold update in a single save_data() call.
+# withdraw_gold_from_bank(), which ask POST /api/bank/gold and copy in the two
+# balances it answers with. One at a time (_moving_gold).
 extends Control
 class_name BankInventory
 
@@ -324,8 +324,8 @@ const TRANSFER_TIMEOUT := 4.0
 var _transferring: bool = false
 
 
-func request_transfer(op: String, item_id: String, quantity: int, position: int = -1) -> void:
-	# `position` is the source cell the player dragged or double-clicked - a
+func request_transfer(op: String, item_id: String, quantity: int, cell: int = -1) -> void:
+	# `cell` is the source cell the player dragged or double-clicked - a
 	# carried cell (bag or hotbar key) for a deposit, a bank cell for a
 	# withdrawal. The server spends that cell first. Without it a deposit takes
 	# from the highest carried cell holding the item, which with the hotbar in
@@ -366,8 +366,8 @@ func request_transfer(op: String, item_id: String, quantity: int, position: int 
 		"item_id": item_id,
 		"quantity": quantity,
 	}
-	if position >= 0:
-		body["position"] = position
+	if cell >= 0:
+		body["position"] = cell
 	var res: Dictionary = await Api.post("/api/bank/items", body, TRANSFER_TIMEOUT)
 
 	# PAST A FOUR-SECOND AWAIT. Everything this function needs was captured
@@ -583,6 +583,12 @@ func _on_gold_input_submitted(_text: String) -> void:
 # GOLD DEPOSIT / WITHDRAW
 # =============================================================================
 
+# One gold move at a time. A second press while the first is on its way would
+# reach the server after it and be refused for gold that has already moved,
+# which reads as the button failing.
+var _moving_gold: bool = false
+
+
 func _on_deposit_pressed() -> void:
 	# move gold from carry pool to account-shared bank.
 	# clamps to actual carry gold so input field can't be exploited
@@ -606,9 +612,15 @@ func _on_deposit_pressed() -> void:
 	if amount <= 0:
 		return
 
-	if CharacterData.deposit_gold_to_bank(amount, p):
-		_update_gold_ui()
-		_refresh_player_currency_displays()
+	if _moving_gold:
+		return
+	_moving_gold = true
+	var moved: bool = await CharacterData.deposit_gold_to_bank(amount, p)
+	if not is_instance_valid(self):
+		return
+	_moving_gold = false
+	if moved:
+		_after_gold_moved()
 
 
 func _on_withdraw_pressed() -> void:
@@ -627,9 +639,24 @@ func _on_withdraw_pressed() -> void:
 	if amount <= 0:
 		return
 
-	if CharacterData.withdraw_gold_from_bank(amount, p):
-		_update_gold_ui()
-		_refresh_player_currency_displays()
+	if _moving_gold:
+		return
+	_moving_gold = true
+	var moved: bool = await CharacterData.withdraw_gold_from_bank(amount, p)
+	if not is_instance_valid(self):
+		return
+	_moving_gold = false
+	if moved:
+		_after_gold_moved()
+
+
+func _after_gold_moved() -> void:
+	# PAST AN AWAIT - the panel may have been closed or freed while the server
+	# answered.
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	_update_gold_ui()
+	_refresh_player_currency_displays()
 
 
 # =============================================================================

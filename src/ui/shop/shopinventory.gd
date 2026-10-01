@@ -117,7 +117,22 @@ func _load_catalogue() -> void:
 		_set_notice(_refusal_text(res, "Could not reach the shop."), true)
 		return
 
-	var data: Dictionary = res.get("data", {})
+	show_catalogue(res.get("data", {}) if res.get("data", {}) is Dictionary else {})
+
+
+# THE ANSWER, DRAWN. Split from the request so the suite can hand it a
+# catalogue in the server's shape and read what the shelf shows.
+#
+# A HEADING PER SHELF. The store sells every gear tier below legendary, eighty
+# rows, and a flat list of them is a list nobody reads. Potions come first,
+# then the fishing rods and worms, then one shelf per tier, each headed with
+# the lands that drop it and the level it is worn from ("Jade  ·  the Water
+# and Ice lands  ·  level 5"), so a player saving for the next set can see what
+# it is and where its band is.
+# The headings follow the catalogue's order and start a new shelf whenever the
+# kind of row changes; the store's stock is listed tier by tier for that reason.
+func show_catalogue(data: Dictionary) -> void:
+	_clear_rows()
 	header_label.text = str(data.get("display_name", "Shop"))
 
 	var stock: Array = data.get("stock", []) if data.get("stock", []) is Array else []
@@ -126,9 +141,63 @@ func _load_catalogue() -> void:
 		return
 
 	_set_notice("", false)
+	var shelf: String = ""
 	for entry in stock:
-		if entry is Dictionary:
-			stock_list.add_child(_build_row(entry))
+		if not (entry is Dictionary):
+			continue
+		var this_shelf: String = shelf_of(entry)
+		if this_shelf != shelf:
+			shelf = this_shelf
+			stock_list.add_child(_build_heading(entry))
+		stock_list.add_child(_build_row(entry))
+
+
+# The pond's bait. fishingspot.gd's bait_item_id defaults to the same id.
+const FISHING_BAIT_ID := "fishingworm"
+
+
+static func shelf_of(entry: Dictionary) -> String:
+	"""Which shelf a catalogue row sits on: "gear 3" for a tier-3 weapon or
+	piece of armour, "fishing" for a rod or the bait, "supplies" for everything
+	else."""
+	var kind: String = str(entry.get("type_name", ""))
+	if kind == "WEAPON" or kind == "ARMOR":
+		return "gear %d" % int(entry.get("tier", 1))
+	# BY ID, the way fishingspot.gd knows a rod (ends_with("fishingrod")) and
+	# its bait (bait_item_id), so the shelf and the pond cannot disagree.
+	var item_id: String = str(entry.get("item_id", ""))
+	if item_id.ends_with("fishingrod") or item_id == FISHING_BAIT_ID:
+		return "fishing"
+	return "supplies"
+
+
+func shelf_title(entry: Dictionary) -> String:
+	if shelf_of(entry) == "supplies":
+		return "Potions and supplies"
+	if shelf_of(entry) == "fishing":
+		return "Fishing  ·  rods and worms"
+	var tier: int = int(entry.get("tier", 1))
+	var material_name: String = GameConstants.TIER_MATERIALS[tier] \
+		if tier >= 0 and tier < GameConstants.TIER_MATERIALS.size() else GameConstants.rarity_name(tier)
+	var parts := PackedStringArray([material_name])
+	var lands: String = GameConstants.tier_lands(tier)
+	if lands != "":
+		parts.append("the %s lands" % lands)
+	parts.append("level %d" % maxi(int(entry.get("required_level", 1)), 1))
+	return "  ·  ".join(parts)
+
+
+func _build_heading(entry: Dictionary) -> Label:
+	var heading := Label.new()
+	heading.name = "shelf_%s" % shelf_of(entry).replace(" ", "_")
+	heading.text = shelf_title(entry)
+	heading.add_theme_font_size_override("font_size", 12)
+	# The tier's own colour, the one its slot frames and tooltip use; supplies
+	# in the panel's parchment.
+	heading.add_theme_color_override("font_color",
+		GameConstants.rarity_colour(int(entry.get("tier", 1))) if shelf_of(entry).begins_with("gear")
+		else Color(0.85, 0.78, 0.62))
+	return heading
 
 
 func _build_row(entry: Dictionary) -> Control:
@@ -284,7 +353,10 @@ func _requirement_suffix(entry: Dictionary) -> String:
 
 
 func _clear_rows() -> void:
+	# Out of the list now, freed later: a redraw in the same frame must not
+	# find last time's rows still in it.
 	for child in stock_list.get_children():
+		stock_list.remove_child(child)
 		child.queue_free()
 
 

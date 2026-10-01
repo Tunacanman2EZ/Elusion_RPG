@@ -941,6 +941,17 @@ func finish_saving(limit: float = QUIT_SAVE_SECONDS) -> bool:
 	the game closed 0.2 s later. A logout raced its revoke against the push's
 	PUTs, which go one after another; on localhost the PUT won five times out
 	of five, and the order is now fixed rather than left to the network."""
+	# THE FOG WALKED SINCE THE LAST COUNT GOES TOO. The map rides /api/save only
+	# when WorldMap's revision moves, at most every SAVE_REVISION_SECONDS, so a
+	# walk then a logout inside that window left the walk behind.
+	if WorldMap.flush_pending():
+		_ensure_slot_array()
+		var slot = character_slots[active_character_index] \
+			if active_character_index >= 0 and active_character_index < character_slots.size() else null
+		if slot is Dictionary:
+			slot["explored"] = WorldMap.to_save()
+			slot["explored_rev"] = WorldMap.save_revision()
+			save_data()
 	flush_save()
 	var until: int = Time.get_ticks_msec() + int(limit * 1000.0)
 	while is_saving() and Time.get_ticks_msec() < until:
@@ -1520,6 +1531,69 @@ func _apply_equip_result(player: Node, data: Dictionary) -> void:
 	_adopt_server_bag(player, cells)
 
 
+# =============================================================================
+# THE BAG A SAVE IS BUILT ON
+# =============================================================================
+# PUT /api/character/inventory replaces the whole bag, so a save built before a
+# server route changed the bag, and landing after it, undoes that change. Day 1,
+# cooking a stack of twelve: a save built after one cook and sent during the
+# next deleted the fish the next cook made, and the save after had its copy
+# trimmed as a gain. One cooked fish in every few was gone.
+#
+# Every save now names the bag it was built on: `based_on`, the fingerprint of
+# the last bag the server gave this client, kept per character as "bag_base".
+# The server refuses a save whose base it no longer holds and hands back its bag
+# (409, resync), which apply_server_carry() adopts like a trade's.
+#
+# WHERE THE BASE COMES FROM: the load at login, every answer that carries the
+# bag (they all reach the carry grid through load_server_array(), which reports
+# here), a refusal's resync, and a save's own answer.
+
+func bag_fingerprint(cells: Array) -> String:
+	"""app.py's bag_fingerprint(): sha1 of "position:item_id:quantity" for every
+	filled cell, joined with "|". Both test suites pin the same bag to the same
+	string, so the two cannot drift apart."""
+	var parts := PackedStringArray()
+	for i in cells.size():
+		var cell = cells[i]
+		if cell is Dictionary and str(cell.get("item_id", "")) != "":
+			parts.append("%d:%s:%d" % [i, str(cell["item_id"]), int(cell.get("quantity", 1))])
+	return "|".join(parts).sha1_text()
+
+
+# How many times a server bag has been noted. A save's answer is only used when
+# nothing newer has come from the server since the save was sent.
+var _bag_notes: int = 0
+
+
+func note_server_bag(cells: Array, slot_index: int = -1) -> void:
+	"""The server holds this bag for this character: the next save builds on it."""
+	if cells.is_empty():
+		return
+	var index: int = active_character_index if slot_index < 0 else slot_index
+	_ensure_slot_array()
+	if index < 0 or index >= character_slots.size() or not (character_slots[index] is Dictionary):
+		return
+	character_slots[index]["bag_base"] = bag_fingerprint(cells)
+	_bag_notes += 1
+
+
+func bag_sent(slot_index: int, cells: Array) -> int:
+	"""A save of these cells is on its way. If it lands, the server holds them,
+	so a save built after this one builds on them. Returns a mark for
+	bag_saved(); called by ServerStorage as the request leaves."""
+	note_server_bag(cells, slot_index)
+	return _bag_notes
+
+
+func bag_saved(slot_index: int, cells: Array, sent_mark: int) -> void:
+	"""A save's answer: the bag as the server stored it. Ignored when another
+	server bag has been noted since that save was sent, because this one is
+	older than it."""
+	if _bag_notes == sent_mark:
+		note_server_bag(cells, slot_index)
+
+
 func _adopt_server_bag(player: Node, cells: Array) -> void:
 	"""The server's whole carry, onto the live grid - or onto the cached array
 	the next save reads, when there is no grid to repaint.
@@ -1535,6 +1609,7 @@ func _adopt_server_bag(player: Node, cells: Array) -> void:
 		# array is what the next save reads, and leaving it stale is how an
 		# item comes back.
 		player.inventory_data = _normalise_item_array(cells)
+		note_server_bag(cells)
 
 
 func apply_server_carry(resync: Variant, player: Node = null) -> bool:
@@ -1587,6 +1662,8 @@ func _apply_server_carry(resync: Dictionary, player: Node) -> bool:
 	var slot = character_slots[slot_index]
 	if slot is Dictionary:
 		slot["inventory"] = _normalise_item_array(cells)
+		slot["bag_base"] = bag_fingerprint(cells)
+		_bag_notes += 1
 		if gold >= 0:
 			slot["gold"] = gold
 
@@ -1734,6 +1811,29 @@ func set_bank_gold(value: int) -> void:
 	save_data()
 
 
+func adopt_server_gold(data: Dictionary, player: Node = null) -> void:
+	"""The server's gold figures after it spent some, copied in.
+
+	`carried_gold` is the playing character's purse and `bank_gold` the
+	account's bank, the names /api/bank/gold and /api/guild/create answer with.
+	A key that is absent is left alone: most answers move neither. Nothing is
+	worked out here; the server holds both balances and these are its numbers.
+	"""
+	if data.has("bank_gold"):
+		set_bank_gold(int(data["bank_gold"]))
+	if not data.has("carried_gold"):
+		return
+	var carried: int = maxi(int(data["carried_gold"]), 0)
+	if player != null and is_instance_valid(player) and player.has_method("set_gold"):
+		# set_gold() repaints the purse and saves the slot.
+		player.set_gold(carried)
+		return
+	_ensure_slot_array()
+	if active_character_index >= 0 and active_character_index < character_slots.size() \
+			and character_slots[active_character_index] is Dictionary:
+		character_slots[active_character_index]["gold"] = carried
+
+
 # --- bank inventory (account-shared, fixed-size) ---
 
 func get_bank_inventory() -> Array:
@@ -1758,38 +1858,59 @@ func set_bank_inventory(items: Array) -> void:
 # =============================================================================
 # BANK TRANSFERS
 # =============================================================================
-# atomic gold transfers between player carry pool and account-shared bank.
-# both sides of the transfer happen in one save_data() so a crash mid-transfer
-# can't desync the totals.
+# GOLD MOVES THROUGH POST /api/bank/gold, AND IT DID NOT. These two functions
+# took the gold out of the purse and added it to account_data here, on this
+# machine, and nothing else happened: gold is server-owned, so the status push
+# ignored the purse, and serverstorage.gd pushes no bank_gold on purpose
+# ("it only ever moves through /api/bank/gold") - and nothing called that
+# route. Found on day 1 by banking 200 of 257: the panel said 57 carried and
+# 200 banked, the server still held 257 carried and 0 banked, a relog put it
+# all back in the purse, and a death would have burned the lot. Banking gold is
+# what keeps it safe from death, so the one thing the button promised was the
+# thing it did not do.
+#
+# The server holds both balances and conserves the total; its answer is copied
+# in. COROUTINES - callers must await.
+
+const BANK_GOLD_TIMEOUT := 6.0
+
+# THE SUITE'S DOOR INTO A GOLD MOVE, like lootbaginventory.gd's take_request.
+# Left invalid in the game, where a move is Api.post("/api/bank/gold"); the
+# suite answers as the server would, so it never moves anybody's real gold.
+var bank_gold_request: Callable = Callable()
+
 
 func deposit_gold_to_bank(amount: int, player: Node) -> bool:
-	# transfer gold from the player's carry pool to the account-shared bank.
-	# returns false if amount invalid or player can't afford it.
-	var player_gold: int = int(player.get("gold")) if player.get("gold") != null else 0
-	if amount <= 0 or player_gold < amount:
-		return false
-
-	player.set("gold", player_gold - amount)
-	_ensure_account_data()
-	account_data["bank_gold"] = int(account_data.get("bank_gold", 0)) + amount
-
-	save_character_state(player)  # includes save_data() at the end
-	return true
+	return await _move_bank_gold("deposit", amount, player)
 
 
 func withdraw_gold_from_bank(amount: int, player: Node) -> bool:
-	# transfer gold from the account-shared bank to player's carry pool.
-	# returns false if amount invalid or bank can't cover it.
-	var player_gold: int = int(player.get("gold")) if player.get("gold") != null else 0
-	_ensure_account_data()
-	var current_bank: int = int(account_data.get("bank_gold", 0))
-	if amount <= 0 or current_bank < amount:
+	return await _move_bank_gold("withdraw", amount, player)
+
+
+func _move_bank_gold(op: String, amount: int, player: Node) -> bool:
+	if amount <= 0 or player == null:
 		return false
-
-	account_data["bank_gold"] = current_bank - amount
-	player.set("gold", player_gold + amount)
-
-	save_character_state(player)
+	var body: Dictionary = {"slot": active_character_index, "op": op, "amount": amount}
+	var res: Dictionary = {}
+	if bank_gold_request.is_valid():
+		res = await bank_gold_request.call(body)
+	else:
+		res = await Api.post("/api/bank/gold", body, BANK_GOLD_TIMEOUT)
+	# PAST AN AWAIT: the character may be gone by now. Collapse it to null once.
+	var target: Node = player if is_instance_valid(player) else null
+	if not res.get("ok", false):
+		# api.gd has already turned the answer into a sentence ("Cannot deposit
+		# 200 - only 57 carried."), which is the thing the player needs.
+		var message: String = str(res.get("error", "")).strip_edges()
+		if target != null and target.has_method("show_notice"):
+			target.show_notice(message if message != "" else "The bank could not move that gold.")
+		return false
+	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+	set_bank_gold(int(data.get("bank_gold", get_bank_gold())))
+	if target != null and data.has("carried_gold"):
+		target.set("gold", int(data["carried_gold"]))
+		save_character_state(target)
 	return true
 
 

@@ -29,6 +29,12 @@
 # rather than that the feature is absent.
 extends Control
 
+# Api's and Settings' static helpers, called on the script and not on the
+# autoload: a static function called through an instance is a warning in the
+# editor's debugger.
+const ApiScript := preload("res://src/systems/api.gd")
+const SettingsScript := preload("res://src/systems/settings.gd")
+
 
 # =============================================================================
 # SIGNALS
@@ -186,6 +192,24 @@ func _populate_window_sizes() -> void:
 		window_size.add_item("%d x %d   (%s)" % [option.x, option.y, shown])
 
 
+# A SIZE BIGGER THAN THIS SCREEN IS GREYED OUT, AND SAYS WHY. Picking one used
+# to put the window's title bar off the top of the screen, with no way back but
+# editing options.cfg - see fit_window_side() in settings.gd. Asked on every
+# open rather than once, because the window may be on a different monitor by
+# now. `room` is a parameter so the test can hand it a small screen.
+const TOO_BIG_SUFFIX := "  - too big for this screen"
+
+
+func _mark_window_sizes(room: Vector2i) -> void:
+	if window_size == null:
+		return
+	for i in mini(window_size.item_count, Settings.WINDOW_SIZES.size()):
+		var fits: bool = SettingsScript.window_fits(Settings.WINDOW_SIZES[i], room)
+		var text: String = window_size.get_item_text(i).trim_suffix(TOO_BIG_SUFFIX)
+		window_size.set_item_text(i, text if fits else text + TOO_BIG_SUFFIX)
+		window_size.set_item_disabled(i, not fits)
+
+
 func _connect_controls() -> void:
 	# value_changed FIRES CONTINUOUSLY WHILE DRAGGING, which is what makes a
 	# volume slider usable at all — you hear the result while your hand is
@@ -338,6 +362,7 @@ func refresh() -> void:
 		# silently reporting 1280x720 at that point would be the panel telling
 		# them something they can see is untrue.
 		window_size.selected = index
+		_mark_window_sizes(Settings.window_room())
 
 	_update_window_size_enabled()
 
@@ -434,7 +459,7 @@ func _on_account_password_button() -> void:
 
 func _on_account_email_send() -> void:
 	var address: String = "" if account_email_input == null else account_email_input.text.strip_edges()
-	var password: String = "" if account_email_password == null else Api.clean_password(account_email_password.text)
+	var password: String = "" if account_email_password == null else ApiScript.clean_password(account_email_password.text)
 	if address == "" or password == "":
 		_account_say("Enter the new address and your current password.", ACCOUNT_BAD)
 		return
@@ -484,9 +509,9 @@ func _on_account_email_verify() -> void:
 
 
 func _on_account_password_save() -> void:
-	var current: String = "" if account_current_password == null else Api.clean_password(account_current_password.text)
-	var fresh: String = "" if account_new_password == null else Api.clean_password(account_new_password.text)
-	var again: String = "" if account_confirm_password == null else Api.clean_password(account_confirm_password.text)
+	var current: String = "" if account_current_password == null else ApiScript.clean_password(account_current_password.text)
+	var fresh: String = "" if account_new_password == null else ApiScript.clean_password(account_new_password.text)
+	var again: String = "" if account_confirm_password == null else ApiScript.clean_password(account_confirm_password.text)
 
 	if current == "" or fresh == "":
 		_account_say("Fill in your current and new password.", ACCOUNT_BAD)
@@ -693,12 +718,12 @@ static func rows_hidden_on(os_name: String) -> Array:
 	- A browser ("Web") owns the window and its size, paces every frame itself
 	  whatever V-Sync is set to, and has one renderer, Compatibility - with no
 	  folder beside an executable for override.cfg to keep a choice in."""
-	var hidden: Array = []
+	var rows: Array = []
 	if os_name != "Windows":
-		hidden.append("api")
+		rows.append("api")
 	if os_name == "Web":
-		hidden.append_array(["window", "vsync", "renderer"])
-	return hidden
+		rows.append_array(["window", "vsync", "renderer"])
+	return rows
 
 
 func _hide_rows_for(os_name: String) -> void:

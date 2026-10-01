@@ -1536,7 +1536,7 @@ func _start_death_sequence() -> void:
 	# THERE WAS A REVIVE-TOKEN BRANCH HERE and it could never run: nothing in
 	# the project ever set has_active_revive true, so the flag, the branch and
 	# the early return were all unreachable. The revive that exists is
-	# GameState.reviving, set by gameover.gd after the server has been paid.
+	# gameover.gd's, after the server has been paid, and it lands in town.
 	#
 	# If a token-style revive is ever added, the ordering it needed is worth
 	# keeping: check it BEFORE the line below. A consumed token is not a death,
@@ -1776,11 +1776,11 @@ func _xp_is_earned() -> bool:
 #
 # So the kill's answer is copied onto the bar: the level, the XP inside it and
 # the next threshold, exactly as banked. A level-up still pops.
-func apply_server_attack(level: int, xp: int, xp_next: int) -> void:
+func apply_server_attack(new_level: int, new_xp: int, new_xp_next: int) -> void:
 	var before: int = attack
-	attack = maxi(level, 1)
-	attack_xp = maxi(xp, 0)
-	attack_xp_next = xp_next if xp_next > 0 else xp_needed_for_skill_id("attack", attack)
+	attack = maxi(new_level, 1)
+	attack_xp = maxi(new_xp, 0)
+	attack_xp_next = new_xp_next if new_xp_next > 0 else xp_needed_for_skill_id("attack", attack)
 	if attack > before:
 		_spawn_skillup_popup("attack", attack)
 	CharacterData.save_character_state(self)

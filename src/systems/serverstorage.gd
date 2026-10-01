@@ -119,7 +119,7 @@ func load() -> Dictionary:
 			push_warning("ServerStorage: slot %d failed to load — %s" % [index, res.get("error", "")])
 			return LOAD_FAILED.duplicate()
 
-		slots[index] = _slot_from_server(_dict(res.get("data", {})))
+		slots[index] = _slot_from_server(with_listing(_dict(res.get("data", {})), entry))
 
 	var account: Dictionary = await Api.get_json("/api/account")
 	if not account.get("ok", false):
@@ -152,6 +152,22 @@ func load() -> Dictionary:
 		# file; there is nothing to detect when the bytes came from the server.
 		# CharacterData skips verification when storage.is_authoritative.
 	}
+
+
+static func with_listing(character: Dictionary, listed: Dictionary) -> Dictionary:
+	"""A character from /api/character, with what only the listing carries.
+
+	THE EXPLORED MAP COMES FROM /api/save, NOT /api/character. The listing
+	returns each character's whole save row, the map included; the character
+	route returns identity, vitals, bag and skills and no map. Built from the
+	character route alone, every login started with no map at all, and the
+	first save after a walk wrote that session's few tiles over everything the
+	character had uncovered before. Found on day 1: a walk of the field, a
+	logout, and the map was blank again when the character came back."""
+	var out: Dictionary = character.duplicate()
+	if not out.has("explored") and listed.get("explored") is Dictionary:
+		out["explored"] = listed["explored"]
+	return out
 
 
 func _seed_fingerprints(slots: Array, account: Dictionary) -> void:
@@ -220,6 +236,9 @@ func _slot_from_server(data: Dictionary) -> Dictionary:
 		"max_stamina": _int(status.get("max_stamina", 0)),
 
 		"inventory":   _items_from_server(_array(data.get("inventory", []))),
+
+		# THE BAG THE NEXT SAVE IS BUILT ON - see CharacterData.note_server_bag().
+		"bag_base":    CharacterData.bag_fingerprint(_array(data.get("inventory", []))),
 	}
 
 	# Skills arrive as {"attack": {"level": 12, "xp": 340}} and live on the slot
@@ -419,10 +438,18 @@ func _status_body(index: int, slot: Dictionary) -> Dictionary:
 
 
 func _inventory_body(index: int, slot: Dictionary) -> Dictionary:
-	return {
+	var body := {
 		"slot": index,
 		"inventory": _items_to_server(_array(slot.get("inventory", []))),
 	}
+	# WHICH BAG THIS WAS BUILT ON, so the server can refuse it if it has moved
+	# on since. Left out when it is not known - a character made this session
+	# has never had a bag from the server - and the server then takes it as
+	# before. See CharacterData.note_server_bag().
+	var base: String = str(slot.get("bag_base", ""))
+	if base != "":
+		body["based_on"] = base
+	return body
 
 
 func _lusions_body(account: Dictionary) -> Dictionary:
@@ -590,8 +617,18 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 		_failed_keys.erase(key)
 		return
 
+	# A BAG ON ITS WAY. If it lands, the server holds it, so a save built while
+	# it is in flight builds on it; the answer then says what was stored.
+	var bag_slot: int = -1
+	var sent_mark: int = 0
+	if path == "/api/character/inventory":
+		bag_slot = _int(body.get("slot", -1), -1)
+		sent_mark = CharacterData.bag_sent(bag_slot, _array(body.get("inventory", [])))
+
 	var res: Dictionary = await Api.put(path, body)
 	_record_push(key, res.get("ok", false), fingerprint)
+	if bag_slot >= 0 and res.get("ok", false) and res.get("data") is Dictionary:
+		CharacterData.bag_saved(bag_slot, _array(res.data.get("inventory", [])), sent_mark)
 	if not res.get("ok", false):
 		# A BAG THE SERVER HAS MOVED ON FROM. PUT /api/character/inventory
 		# refuses with 409 when a trade changed this character's bag after the

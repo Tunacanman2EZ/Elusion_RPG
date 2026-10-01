@@ -7,6 +7,10 @@
 # buttons will silently fail to respond.
 extends Control
 
+# Api's static helpers, called on the script and not on the autoload: a static
+# function called through an instance is a warning in the editor's debugger.
+const ApiScript := preload("res://src/systems/api.gd")
+
 
 # =============================================================================
 # CONSTANTS
@@ -610,7 +614,7 @@ func _confirm_delete() -> void:
 	# The server's own reason - a trade to finish first, a name that did not
 	# match - or, with no answer at all, the line every screen uses for that.
 	var reason: String = str(res.get("error", ""))
-	_say_status(reason if reason != "" else Api.no_answer_text())
+	_say_status(reason if reason != "" else ApiScript.no_answer_text())
 	confirm_keep_button.disabled = false
 	confirm_name.editable = true
 	confirm_delete_button.disabled = not _typed_matches(confirm_name.text)

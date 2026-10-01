@@ -10,6 +10,10 @@
 # signal hook. loot bag transfers also save atomically (in the loot panel).
 extends CanvasLayer
 
+# Api's static helpers, called on the script and not on the autoload: a static
+# function called through an instance is a warning in the editor's debugger.
+const ApiScript := preload("res://src/systems/api.gd")
+
 
 # =============================================================================
 # CONSTANTS
@@ -253,6 +257,9 @@ func _ready() -> void:
 	# is still unread after it.
 	if _chat_dot and _chat_seen_by == Api.username:
 		_mark_chat_button(true)
+	# AND THE FRIENDS AND GUILD DOTS, for a request still waiting on you.
+	if _asks_said_by == Api.username:
+		_paint_ask_buttons()
 	_build_status_strip()
 	_start_broadcast_poll()
 	_wire_hotbar()
@@ -923,6 +930,15 @@ const OFFLINE_GRACE_SECONDS := 25.0
 # of them so nobody is surprised.
 const OFFLINE_SIGNOUT_SECONDS := 90.0
 
+# AND HOW OFTEN TO ASK WHILE THE STRIP IS UP. At the usual ten seconds, a
+# server back after a short restart was heard up to ten seconds late, so
+# "Connection lost" stayed on screen after the server was answering again
+# (measured on day 1: a 16-second restart showed the strip for 12 seconds
+# after the server was back). Five, not less: every player who lost the
+# server asks at this pace the moment it returns, and the poll is the route
+# they all ask.
+const OFFLINE_POLL_SECONDS := 5.0
+
 var status_strip: PanelContainer = null
 var status_label: Label = null
 
@@ -1012,9 +1028,22 @@ func _note_server_contact() -> void:
 	# CALLED ON EVERY "ok", from both polls. Recovery has to be as automatic as
 	# the warning was, or a player who reconnects sits looking at a stale alarm.
 	_last_contact_msec = Time.get_ticks_msec()
+	_set_poll_pace(BROADCAST_POLL_SECONDS)
 	if _status_states.has("connection"):
 		set_world_status("connection", "")
 		_push_message("Reconnected.", Color(0.55, 0.85, 0.5))
+
+
+func _set_poll_pace(seconds: float) -> void:
+	"""How often the broadcast poll asks. Faster while the server is lost, so its
+	return is heard soon; the usual pace again on the first answer."""
+	var timer: Timer = get_node_or_null("BroadcastPoll") as Timer
+	if timer == null or is_equal_approx(timer.wait_time, seconds):
+		return
+	timer.wait_time = seconds
+	# A SHORTER PACE STARTS NOW, not when the old ten seconds run out.
+	if timer.is_inside_tree() and timer.time_left > seconds:
+		timer.start(seconds)
 
 
 func _tick_connection_status() -> void:
@@ -1051,6 +1080,7 @@ func _tick_connection_status() -> void:
 			get_tree().change_scene_to_file(LOGIN_MENU_PATH)
 		return
 
+	_set_poll_pace(OFFLINE_POLL_SECONDS)
 	set_world_status("connection",
 		"Connection lost - retrying. Signing out in %s" % _clock(left),
 		Color(1.0, 0.45, 0.35))
@@ -1332,6 +1362,7 @@ func _apply_broadcast(data: Dictionary) -> void:
 	_read_trade(data.get("trade"))
 	_read_trade_resync(data.get("trade_resync"))
 	_read_chat_news(data.get("chat_news"))
+	_read_asks(data.get("asks"))
 	_mark_open_reports(int(data.get("open_reports", 0)))
 	# THE FIRST ANSWER IS HISTORY, NOT NEWS. A poll from cursor 0 is answered
 	# with the recent TAIL - up to a week of notices at once - and every one of
@@ -1515,6 +1546,91 @@ func _mark_chat_button(lit: bool) -> void:
 		button.remove_theme_color_override("font_color")
 
 
+# =============================================================================
+# WHAT IS WAITING ON YOUR ANSWER
+# =============================================================================
+# A friend request or a guild invitation is answered from its own panel, and
+# on day 1 nothing told the player to open it: a request to somebody standing
+# next to you sat there until they happened to look. The broadcast poll
+# carries `asks` now (_waiting_asks() in app.py): how many of each are
+# waiting, and the newest one's name and time.
+#
+# THE BUTTON IS THE STATE, THE TOAST IS THE EVENT, as with Trade. "Friends •"
+# and "Guild •" stay lit while anything is waiting; the newest is said once.
+#
+# PER LOGIN, NOT PER HUD, for the reason _chat_seen is: every area has its own
+# HUD, and a toast remembered on one would be said again at every door.
+
+const ASK_COLOUR := Color(1.0, 0.82, 0.42)
+
+# The newest request's time already said, of each kind.
+static var _asks_said: Dictionary = {"friends": 0, "guild": 0}
+static var _asks_said_by: String = ""
+# The last answer, so a new area's HUD can light its buttons before its first poll.
+static var _asks_last: Dictionary = {}
+
+
+static func _forget_asks() -> void:
+	_asks_said = {"friends": 0, "guild": 0}
+	_asks_said_by = ""
+	_asks_last = {}
+
+
+static func ask_text(kind: String, newest: String, count: int) -> String:
+	"""What the toast says about the newest request of a kind."""
+	var more: String = " and %d more" % (count - 1) if count > 1 else ""
+	if kind == "guild":
+		return "%s%s invited you to join. Open Guild to answer." % [newest, more]
+	return "%s%s asked to be your friend. Open Friends to answer." % [newest, more]
+
+
+func _read_asks(asks: Variant) -> void:
+	if not (asks is Dictionary):
+		return
+	if _asks_said_by != Api.username:
+		_forget_asks()
+		_asks_said_by = Api.username
+	_asks_last = asks.duplicate(true)
+	_paint_ask_buttons()
+	for kind in ["friends", "guild"]:
+		var one: Variant = asks.get(kind)
+		if not (one is Dictionary):
+			continue
+		var count: int = int(one.get("count", 0))
+		var at: int = int(one.get("at", 0))
+		# A REQUEST THAT WAS WAITING BEFORE THIS LOGIN IS SAID TOO. Unlike an
+		# old whisper, it is still waiting on an answer.
+		if count > 0 and at > int(_asks_said.get(kind, 0)):
+			_asks_said[kind] = at
+			_push_message(ask_text(kind, str(one.get("newest", "")), count), ASK_COLOUR)
+
+
+func _paint_ask_buttons() -> void:
+	var nav: Node = get_node_or_null("%navbuttons")
+	if nav == null:
+		return
+	for kind in ["friends", "guild"]:
+		var button: Button = nav.get_node_or_null("%sbutton" % kind) as Button
+		if button == null:
+			continue
+		var one: Variant = _asks_last.get(kind)
+		var count: int = int(one.get("count", 0)) if one is Dictionary else 0
+		# The button's own words and hint, kept from the scene the first time,
+		# so a dot that goes out puts back exactly what was there.
+		if not button.has_meta("ask_base"):
+			button.set_meta("ask_base", [button.text, button.tooltip_text])
+		var base: Array = button.get_meta("ask_base")
+		if count > 0:
+			button.text = "%s •" % base[0]
+			button.tooltip_text = "%s is waiting on your answer" % str(one.get("newest", "")) if count == 1 \
+				else "%d are waiting on your answer" % count
+			button.add_theme_color_override("font_color", ASK_COLOUR)
+		else:
+			button.text = base[0]
+			button.tooltip_text = base[1]
+			button.remove_theme_color_override("font_color")
+
+
 func _read_trade_resync(resync: Variant) -> void:
 	"""A trade finished without this client asking - hand the result over.
 
@@ -1527,6 +1643,12 @@ func _read_trade_resync(resync: Variant) -> void:
 
 
 func _on_carry_adopted(resync: Dictionary) -> void:
+	# A SAVE BUILT ON AN OLD BAG is said nothing about. The bag the server sent
+	# back is the one this screen was already showing, nearly always - the cook
+	# or the pickup that moved it on had been shown when it happened - so a
+	# message would announce a change nobody saw.
+	if str(resync.get("reason", "")) == "stale_save":
+		return
 	var record = resync.get("trade")
 	if record is Dictionary:
 		_push_message(TradePanelScript.result_line(record), Color(0.55, 0.85, 0.5))
@@ -1773,7 +1895,7 @@ func _forced_signout(refusal: Dictionary = {}) -> void:
 	#
 	# THE REASON COMES FROM THE 401 ITSELF - the broadcast poll's, or the one
 	# heartbeat() kept. See Api.signout_notice_for().
-	var notice: String = Api.signout_notice_for(refusal if not refusal.is_empty() else Api.last_refusal)
+	var notice: String = ApiScript.signout_notice_for(refusal if not refusal.is_empty() else Api.last_refusal)
 	Api.last_refusal = {}
 	_push_message("Signed in somewhere else." if notice == Api.SIGNED_IN_ELSEWHERE_NOTICE
 		else "Signed out by the server.", Color(0.95, 0.45, 0.35))

@@ -181,6 +181,17 @@ func _run_all() -> void:
 	await _test_every_area_can_be_walked()
 	_test_the_welcome_plays_once_a_login()
 	_test_a_character_can_be_deleted()
+	_test_one_code_per_computer()
+	_test_a_window_never_outgrows_the_screen()
+	await _test_banked_gold_goes_through_the_server()
+	_test_the_store_sells_the_next_set()
+	await _test_founding_a_guild_shows_what_it_cost()
+	_test_a_request_waiting_on_you_lights_its_button()
+	_test_the_login_screen_asks_without_a_login()
+	_test_a_gateway_saying_no_answer_is_no_answer()
+	_test_a_lost_server_is_asked_for_more_often()
+	_test_a_save_cannot_undo_a_server_change()
+	await _test_the_map_comes_back()
 
 
 # =============================================================================
@@ -1872,6 +1883,16 @@ func _test_death_reaches_the_server() -> void:
 	check("a refusal is reported rather than worked around",
 		_within(_first_code_index(over, "_restore_character_resources(", ret), ret_end) == -1,
 		"falling back locally reintroduces the unauthorised heal")
+
+	# A PAID REVIVE LANDS IN TOWN, decided on day 1. It always did; what was
+	# wrong was a GameState.reviving flag and three comments promising a
+	# return to death_position that nothing ever read.
+	var screen: Node = (load("res://src/ui/menus/gameover.gd") as Script).new()
+	check("a revive goes to the town, where every login starts",
+		str(screen.get("world_scene_path")) == "res://scene/elusion.tscn", screen.get("world_scene_path"))
+	screen.free()
+	check("  and no flag pretends it goes back to where you died",
+		not ("reviving" in GameState) and over.find("GameState.reviving =") == -1)
 
 	print("  the server counted transitions correctly all along")
 
@@ -6177,7 +6198,7 @@ func _test_a_character_can_be_deleted() -> void:
 	var whole: bool = true
 	var seen: Array = []
 	for class_id in ["warrior", "mage", "tank", "healer"]:
-		var made: Dictionary = CharacterData.new_character(class_id)
+		var made: Dictionary = (load("res://src/systems/characterdata.gd") as GDScript).new_character(class_id)
 		var cls: ClassData = load("res://data/classes/%s.tres" % class_id) as ClassData
 		var ok: bool = cls != null and int(made["hp"]) == cls.hp_base and int(made["max_hp"]) == cls.hp_base \
 			and int(made["mana"]) == cls.mana_base and int(made["max_mana"]) == cls.mana_base \
@@ -6192,6 +6213,51 @@ func _test_a_character_can_be_deleted() -> void:
 
 
 # =============================================================================
+# STAFF LOGINS: ONE CODE PER COMPUTER
+# =============================================================================
+# A code on every staff login was the owner's own complaint the first day he
+# had it. A login that got in with a code is answered with a device token
+# (TRUSTED DEVICES in app.py, test_staffcode.py); the game keeps it per account
+# and sends it with the next login from this computer.
+
+func _test_one_code_per_computer() -> void:
+	section("STAFF LOGINS - the code once per computer, not once per login")
+
+	# The suite's own writes go in a copy it puts back afterwards.
+	var kept: String = FileAccess.get_file_as_string(Api.DEVICES_PATH) \
+		if FileAccess.file_exists(Api.DEVICES_PATH) else ""
+	check("an account never proved on this computer has no device token",
+		Api.device_token_for("nobody-proved-this") == "")
+	Api._remember_device("  Warden ", "device-abc")
+	check("a token kept for an account is found again, whatever case the name is typed in",
+		Api.device_token_for("warden") == "device-abc" and Api.device_token_for("WARDEN") == "device-abc")
+	Api._remember_device("keeper", "device-xyz")
+	check("  each account keeps its own", Api.device_token_for("warden") == "device-abc"
+		and Api.device_token_for("keeper") == "device-xyz")
+	check("it is kept apart from the session, which Remember me and Log out throw away",
+		Api.DEVICES_PATH != Api.SESSION_PATH
+		and not _func_body(_code_src("res://src/systems/api.gd"), "func _clear_session(").contains("DEVICES_PATH"))
+
+	var login_src: String = _func_body(_code_src("res://src/systems/api.gd"), "func login(")
+	var sent: int = login_src.find("body[\"device\"] = device")
+	var posted: int = login_src.find("await post(\"/api/auth/login\", body)")
+	var adopted: int = login_src.find("_adopt_session(res.data)")
+	var kept_at: int = login_src.find("_remember_device(user,")
+	check("the login sends this computer's token with the password",
+		sent != -1 and sent < posted, [sent, posted])
+	check("  and keeps the one the server hands back, only on a login that got in",
+		adopted != -1 and posted < adopted and adopted < kept_at, [posted, adopted, kept_at])
+
+	if kept == "":
+		DirAccess.remove_absolute(Api.DEVICES_PATH)
+	else:
+		var file := FileAccess.open(Api.DEVICES_PATH, FileAccess.WRITE)
+		file.store_string(kept)
+		file.close()
+	print("  staff logins: a device token per account, apart from the session, sent and kept")
+
+
+# =============================================================================
 # STAFF PANEL - what it offers each rank, and how a kick reaches a player
 # =============================================================================
 # The server decides every one of these; the panel only declines to offer what
@@ -6201,6 +6267,615 @@ func _test_a_character_can_be_deleted() -> void:
 # static functions on staffpanel.gd precisely so they can be pinned here
 # without a server. The live run - real panel, real app.py, every button
 # pressed - is in the commit that added this.
+
+func _test_a_window_never_outgrows_the_screen() -> void:
+	section("OPTIONS - a window size bigger than the screen")
+	# Called on the script, not the autoload: they are static.
+	const SettingsScript := preload("res://src/systems/settings.gd")
+
+	# Day 1: 2560x1440 picked on a smaller monitor put the window's title bar
+	# off the top of the screen, Options with it, and the way back was editing
+	# options.cfg by hand. A 1920x1080 screen with a taskbar and a title bar
+	# has about 1904x1001 of room.
+	var room := Vector2i(1904, 1001)
+	check("a window too wide for the screen comes down to the widest size that fits",
+		SettingsScript.fit_window_side(2560, room.x, 0) == 1600, SettingsScript.fit_window_side(2560, room.x, 0))
+	check("  and one too tall to the tallest, which is the same size",
+		SettingsScript.fit_window_side(1440, room.y, 1) == 900, SettingsScript.fit_window_side(1440, room.y, 1))
+	check("  3840x2160 too",
+		SettingsScript.fit_window_side(3840, room.x, 0) == 1600 and SettingsScript.fit_window_side(2160, room.y, 1) == 900)
+	check("  a size that fits is left alone",
+		SettingsScript.fit_window_side(1280, room.x, 0) == 1280 and SettingsScript.fit_window_side(1920, 2544, 0) == 1920)
+	check("  a screen too small for any of them gets 1280x720, the smallest window the game allows",
+		SettingsScript.fit_window_side(1600, 1350, 0) == 1280 and SettingsScript.fit_window_side(900, 700, 1) == 720)
+	check("  and a screen that cannot be measured shrinks nothing",
+		SettingsScript.fit_window_side(3840, 0, 0) == 3840
+		and SettingsScript.window_fits(Vector2i(3840, 2160), Vector2i.ZERO))
+
+	# THE FILE GOES THROUGH IT TOO, which is what fixes a window already saved
+	# too big: the next launch reads options.cfg through _normalise(). This run
+	# is headless and has no screen to measure, so the wiring is read instead.
+	var source: String = (load("res://src/systems/settings.gd") as GDScript).source_code
+	var normalise: String = source.substr(source.find("func _normalise("))
+	normalise = normalise.substr(0, normalise.find("\nfunc ", 10))
+	check("  a size read from options.cfg is shrunk to fit as it is read",
+		normalise.contains("fit_window_side(int(typed), window_room().x, 0)")
+		and normalise.contains("fit_window_side(int(typed), window_room().y, 1)"))
+
+	# THE PICKER greys out what does not fit, and says why.
+	var screen: Node = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate()
+	screen.window_size = screen.get_node("%windowsize")
+	screen._populate_window_sizes()
+	screen._mark_window_sizes(room)
+	var picker: OptionButton = screen.window_size
+	var offered: Array = []
+	var refused: Array = []
+	for i in picker.item_count:
+		(refused if picker.is_item_disabled(i) else offered).append(Settings.WINDOW_SIZES[i])
+	check("Options offers only the sizes this screen has room for",
+		offered == [Vector2i(1280, 720), Vector2i(1600, 900)], offered)
+	check("  the rest are greyed out and say why",
+		refused.size() == 3 and picker.get_item_text(4).ends_with("too big for this screen"),
+		picker.get_item_text(4))
+	screen._mark_window_sizes(Vector2i(7680, 4320))
+	var all_back := true
+	for i in picker.item_count:
+		if picker.is_item_disabled(i) or picker.get_item_text(i).contains("too big"):
+			all_back = false
+	check("  and on a bigger screen they all come back", all_back)
+	screen.free()
+
+
+func _test_banked_gold_goes_through_the_server() -> void:
+	section("BANK - gold is moved by the server, or not at all")
+
+	# Day 1: banking 200 of 257 showed 57 carried and 200 banked, and the server
+	# still held 257 carried and 0 banked. The two functions moved the numbers
+	# on this machine and nothing ever called /api/bank/gold, so a relog put the
+	# gold back in the purse and a death would have burned all of it.
+	var holder := GDScript.new()
+	holder.source_code = "extends Node\nvar gold: int = 257\nvar notices: Array = []\nfunc show_notice(m): notices.append(m)\n"
+	holder.reload()
+	var fake: Node = holder.new()
+	var kept_bank: int = CharacterData.get_bank_gold()
+	var kept_slot: int = CharacterData.active_character_index
+	var kept_slots: Array = CharacterData.character_slots.duplicate(true)
+	CharacterData.account_data["bank_gold"] = 0
+	var asked: Array = []
+
+	# A REFUSAL MOVES NOTHING, and says why.
+	CharacterData.bank_gold_request = func(body: Dictionary) -> Dictionary:
+		asked.append(body)
+		return {"ok": false, "status": 400, "error": "Cannot deposit 200 - only 57 carried."}
+	var moved: bool = await CharacterData.deposit_gold_to_bank(200, fake)
+	check("a deposit asks the server, with the amount and the operation",
+		asked.size() == 1 and asked[0].get("op") == "deposit" and int(asked[0].get("amount", 0)) == 200
+			and asked[0].has("slot"), asked)
+	check("  and when it refuses, neither the purse nor the bank moves",
+		not moved and fake.gold == 257 and CharacterData.get_bank_gold() == 0,
+		[moved, fake.gold, CharacterData.get_bank_gold()])
+	check("  and the player is told why", fake.notices.size() == 1 and str(fake.notices[0]).contains("only 57"),
+		fake.notices)
+
+	# AN ANSWER IS COPIED, NOT ADDED UP. The server's two figures are what the
+	# screen shows, even when they are not what this side would have worked out.
+	CharacterData.bank_gold_request = func(body: Dictionary) -> Dictionary:
+		asked.append(body)
+		return {"ok": true, "status": 200, "data": {"carried_gold": 50, "bank_gold": 207}}
+	moved = await CharacterData.deposit_gold_to_bank(200, fake)
+	check("a deposit the server took shows the server's purse and bank",
+		moved and fake.gold == 50 and CharacterData.get_bank_gold() == 207,
+		[moved, fake.gold, CharacterData.get_bank_gold()])
+	CharacterData.bank_gold_request = func(body: Dictionary) -> Dictionary:
+		asked.append(body)
+		return {"ok": true, "status": 200, "data": {"carried_gold": 80, "bank_gold": 177}}
+	moved = await CharacterData.withdraw_gold_from_bank(30, fake)
+	check("  and so does a withdrawal",
+		moved and asked[-1].get("op") == "withdraw" and fake.gold == 80 and CharacterData.get_bank_gold() == 177,
+		[asked[-1], fake.gold, CharacterData.get_bank_gold()])
+
+	CharacterData.bank_gold_request = Callable()
+	CharacterData.account_data["bank_gold"] = kept_bank
+	CharacterData.active_character_index = kept_slot
+	CharacterData.character_slots = kept_slots
+	fake.free()
+	print("  gold between the purse and the bank is the server's to move")
+
+
+func _test_the_store_sells_the_next_set() -> void:
+	section("SHOP - iron to amethyst on sale, a shelf per band")
+
+	# Day 1, decided by the owner: the general store sells every weapon and
+	# armour piece from iron to amethyst at its value, so a player farming one
+	# band saves for the next band's set. Ember stays drop-only. Anyone may buy
+	# any piece; the level gate is on wearing it (test_pacing.py holds that,
+	# and the saving pace, against the real server).
+	var store: ShopData = load("res://data/shops/generalstore.tres") as ShopData
+	check("generalstore.tres loads as a ShopData", store != null)
+	if store == null:
+		return
+	# THE REGISTRY NEEDS THE PACK: every item's icon is in art/pack, and an item
+	# whose icon will not load is not registered. Without it these are skips.
+	var stock: Array[String] = store.stock
+	var missing: Array = []
+	var too_good: Array = []
+	var gear_seen := 0
+	for item in ItemRegistry.get_all_items():
+		if item.type != ItemData.Type.WEAPON and item.type != ItemData.Type.ARMOR:
+			continue
+		gear_seen += 1
+		if item.tier >= 1 and item.tier <= 4 and not stock.has(item.item_id):
+			missing.append(item.item_id)
+		if item.tier >= 5 and stock.has(item.item_id):
+			too_good.append(item.item_id)
+	check_needs_pack("every weapon and armour piece of iron to amethyst is stocked",
+		gear_seen > 0 and missing.is_empty(), missing)
+	check_needs_pack("  and nothing of ember or above", too_good.is_empty(), too_good)
+	var unknown: Array = stock.filter(func(id: String) -> bool: return not ItemRegistry.has_item(id))
+	check_needs_pack("  every stocked id is a real item", unknown.is_empty(), unknown)
+	check("  sold at its value", is_equal_approx(store.price_multiplier, 1.0), store.price_multiplier)
+
+	# THE SERVER SELLS FROM gamedata.json, not from the .tres. An export that
+	# was not re-run (or not copied across) leaves the server on the old shelf.
+	var exported: Dictionary = {}
+	for shop in _load_gamedata().get("shops", []):
+		if shop is Dictionary and str(shop.get("shop_id", "")) == store.shop_id:
+			exported = shop
+	check("data/gamedata.json carries the same stock in the same order",
+		Array(exported.get("stock", [])) == Array(stock), "re-run src/tools/exportgamedata.gd")
+
+	# ONE SHELF PER BAND, which needs the stock in shelf order: show_catalogue()
+	# starts a heading whenever the kind of row changes, so a tier that came
+	# back after another would get a second heading. Read from the export, which
+	# carries each item's type and tier without needing the art.
+	var panel_script: GDScript = load("res://src/ui/shop/shopinventory.gd") as GDScript
+	var exported_items: Dictionary = {}
+	for row in _load_gamedata().get("items", []):
+		if row is Dictionary:
+			exported_items[str(row.get("item_id", ""))] = row
+	var shelves: Array = []
+	for id in stock:
+		var shelf: String = panel_script.shelf_of(exported_items.get(id, {}))
+		if shelves.is_empty() or shelves[-1] != shelf:
+			shelves.append(shelf)
+	check("the stock runs potions, fishing, then iron, jade, cobalt, amethyst, each once",
+		shelves == ["supplies", "fishing", "gear 1", "gear 2", "gear 3", "gear 4"], shelves)
+
+	# FISHING: the worm and every rod but ember, decided by the owner on day 1.
+	# Only the iron rod could be had before, and worms dropped one at a time.
+	var fishing: Array = stock.filter(func(id: String) -> bool:
+		return panel_script.shelf_of(exported_items.get(id, {"item_id": id})) == "fishing")
+	check("the fishing shelf has the worm and the iron to amethyst rods, and no ember rod",
+		fishing == ["fishingworm", "ironfishingrod", "jadefishingrod", "cobaltfishingrod", "amethystfishingrod"],
+		fishing)
+	var pond: Node = (load("res://scene/interactables/fishingspot.tscn") as PackedScene).instantiate()
+	check("  the shelf's bait is the pond's", panel_script.FISHING_BAIT_ID == str(pond.bait_item_id),
+		pond.bait_item_id)
+	pond.free()
+
+	# THE LANDS ON A HEADING ARE THE LANDS THAT DROP THE TIER. Read off every
+	# normal enemy, so moving an element to another band without updating
+	# TIER_ELEMENTS fails here instead of sending players to the wrong place.
+	var listed: Dictionary = {}
+	for tier in GameConstants.TIER_ELEMENTS.size():
+		for element in GameConstants.TIER_ELEMENTS[tier]:
+			check("  %s is listed under one tier" % Element.name_for(int(element)), not listed.has(element))
+			listed[element] = tier
+	var wrong: Array = []
+	var normals := 0
+	var dir := DirAccess.open("res://data/enemies")
+	for file in dir.get_files():
+		if not file.ends_with(".tres"):
+			continue
+		var enemy: EnemyData = load("res://data/enemies/" + file) as EnemyData
+		if enemy == null or enemy.slots_are_gear or not listed.has(enemy.element):
+			continue
+		normals += 1
+		if enemy.max_loot_tier != listed[enemy.element]:
+			wrong.append("%s drops tier %d, listed under %d" % [enemy.enemy_id, enemy.max_loot_tier, listed[enemy.element]])
+	if normals == 0:
+		wrong.append("no normal enemies were read")
+	check("every normal enemy drops the tier its element is listed under", wrong.is_empty(), wrong)
+	check("  tier 2 is the Water and Ice lands", GameConstants.tier_lands(2) == "Water and Ice",
+		GameConstants.tier_lands(2))
+	var named_ok := true
+	for tier in range(1, GameConstants.TIER_MATERIALS.size()):
+		var sword: Dictionary = exported_items.get(GameConstants.TIER_MATERIALS[tier].to_lower() + "sword", {})
+		if int(sword.get("tier", -1)) != tier:
+			named_ok = false
+	check("  each tier's material names its sword", named_ok)
+
+	# THE PANEL, drawn from an answer in the server's shape - the rows the
+	# server builds from the same export.
+	var panel: Node = (load("res://scene/ui/shop/shopinventory.tscn") as PackedScene).instantiate()
+	panel.header_label = panel.get_node("%headerlabel")
+	panel.stock_list = panel.get_node("%stocklist")
+	panel.notice_label = panel.get_node("%noticelabel")
+	var rows: Array = []
+	for id in ["tinyhealthpotion", "fishingworm", "jadefishingrod", "ironsword", "ironhelm", "jadesword",
+			"cobaltsword", "amethystsword"]:
+		var item: Dictionary = exported_items.get(id, {})
+		rows.append({"item_id": id, "display_name": str(item.get("display_name", id)),
+			"price": int(item.get("value", 0)), "tier": int(item.get("tier", 1)),
+			"type_name": str(item.get("type_name", "")), "required_level": int(item.get("required_level", 1)),
+			"required_classes": []})
+	panel.show_catalogue({"display_name": "General Store", "stock": rows})
+	var headings: Array = []
+	var row_count := 0
+	for child in panel.stock_list.get_children():
+		if child is Label:
+			headings.append(child.text)
+		else:
+			row_count += 1
+	check("the panel heads each shelf once, in order", headings == [
+		"Potions and supplies",
+		"Fishing  ·  rods and worms",
+		"Iron  ·  the Light and Wind lands  ·  level 1",
+		"Jade  ·  the Water and Ice lands  ·  level 5",
+		"Cobalt  ·  the Earth lands  ·  level 10",
+		"Amethyst  ·  the Fire lands  ·  level 16"], headings)
+	check("  with every row under them", row_count == rows.size(), row_count)
+	panel.show_catalogue({"display_name": "General Store", "stock": rows})
+	check("  and drawing it again does not double it",
+		panel.stock_list.get_child_count() == rows.size() + 6, panel.stock_list.get_child_count())
+	panel.free()
+	print("  the store sells the next set, and the shelf says where its band is")
+
+
+func _test_founding_a_guild_shows_what_it_cost() -> void:
+	section("GUILD - founding shows the purse and bank the server left")
+
+	# Day 1: founding cost 5,000, paid 1,000 carried and 4,000 from the bank,
+	# and the game went on showing 1,000 and 4,500 until a relog. The server
+	# held 0 and 500; the panel read only the sentence out of its answer.
+	var holder := GDScript.new()
+	holder.source_code = "extends Node\nvar gold: int = 1000\nfunc set_gold(total: int) -> void:\n\tgold = total\n"
+	holder.reload()
+	var fake: Node = holder.new()
+	add_child(fake)
+	var others: Array = get_tree().get_nodes_in_group("player")
+	fake.add_to_group("player")
+	var kept_bank: int = CharacterData.get_bank_gold()
+	CharacterData.account_data["bank_gold"] = 4500
+	var panel: Control = (load("res://scene/ui/guild/guildpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(panel)
+	var asked: Array = []
+	panel.post_request = func(path: String, _body: Dictionary) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": {"guild": {}, "rank": "leader", "gold": 0,
+			"carried_gold": 0, "bank_gold": 500, "paid": 5000, "from_carried": 1000, "from_bank": 4000}}
+	await panel._act("/api/guild/create", {"name": "Day One", "slot": 0},
+		"Day One is founded. You are its leader.")
+	check("founding asks the server", asked == ["/api/guild/create"], asked)
+	check("  the purse shows what the server left", others.is_empty() and fake.gold == 0, [others.size(), fake.gold])
+	check("  and so does the bank", CharacterData.get_bank_gold() == 500, CharacterData.get_bank_gold())
+	check("  and the notice says which pile paid",
+		panel.notice.text.ends_with("1000 carried and 4000 from the bank."), panel.notice.text)
+
+	fake.gold = 77
+	panel.post_request = func(_path: String, _body: Dictionary) -> Dictionary:
+		return {"ok": false, "status": 400, "error": "Founding a guild costs 5000 gold."}
+	await panel._act("/api/guild/create", {"name": "Day Two", "slot": 0}, "founded")
+	check("a refusal moves neither", fake.gold == 77 and CharacterData.get_bank_gold() == 500,
+		[fake.gold, CharacterData.get_bank_gold()])
+	panel.post_request = func(_path: String, _body: Dictionary) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"invited": "caster"}}
+	await panel._act("/api/guild/invite", {"username": "caster"}, "Invited caster.")
+	check("  nor does an answer with no gold in it", fake.gold == 77 and CharacterData.get_bank_gold() == 500,
+		[fake.gold, CharacterData.get_bank_gold()])
+
+	# THE OWNER'S GOLD GRANT had the same half: the purse was copied, the bank was not.
+	check("the owner's gold grant copies the bank as well as the purse",
+		_func_body(_code_src("res://src/ui/owner/ownerpanel.gd"), "func _on_gold_pressed(")
+			.contains("CharacterData.adopt_server_gold("))
+
+	panel.free()
+	fake.free()
+	CharacterData.account_data["bank_gold"] = kept_bank
+	print("  gold the server took for a guild shows at once")
+
+
+func _test_a_request_waiting_on_you_lights_its_button() -> void:
+	section("FRIENDS AND GUILD - a request waiting on you lights its button")
+
+	# Day 1: a friend request or guild invitation to somebody standing next to
+	# you sat unseen until they opened the panel. The poll carries `asks` now.
+	var hud_script: Script = load("res://src/ui/characterhud.gd") as Script
+	hud_script._forget_asks()
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	hud._build_message_box()
+	var rows: Control = hud.message_rows
+	var nav: Node = hud.get_node("%navbuttons")
+	var friends_button: Button = nav.get_node("friendsbutton") as Button
+	var guild_button: Button = nav.get_node("guildbutton") as Button
+	var guild_tip: String = guild_button.tooltip_text
+	var asks := func(friends: int, who: String, at: int, guilds: int, guild: String, g_at: int) -> Dictionary:
+		return {"latest_id": 0, "messages": [], "asks": {
+			"friends": {"count": friends, "newest": who, "at": at},
+			"guild": {"count": guilds, "newest": guild, "at": g_at}}}
+	var toasts := func() -> Array:
+		var out: Array = []
+		for child in rows.get_children():
+			out.append((child as Label).text)
+		return out
+
+	hud._apply_broadcast(asks.call(0, "", 0, 0, "", 0))
+	check("nothing waiting: the buttons read as they always did",
+		friends_button.text == "Friends" and guild_button.text == "Guild" and rows.get_child_count() == 0,
+		[friends_button.text, guild_button.text])
+	hud._apply_broadcast(asks.call(1, "caster", 1000, 0, "", 0))
+	check("a friend request lights Friends", friends_button.text == "Friends •", friends_button.text)
+	check("  says who is waiting", friends_button.tooltip_text == "caster is waiting on your answer",
+		friends_button.tooltip_text)
+	check("  and is said once", toasts.call() == ["caster asked to be your friend. Open Friends to answer."],
+		toasts.call())
+	hud._apply_broadcast(asks.call(1, "caster", 1000, 1, "Day One", 1005))
+	check("an invitation lights Guild and is said", guild_button.text == "Guild •"
+		and toasts.call().size() == 2 and toasts.call()[1] == "Day One invited you to join. Open Guild to answer.",
+		[guild_button.text, toasts.call()])
+	check("  and the same request is not said again", toasts.call().size() == 2, toasts.call())
+	hud._apply_broadcast(asks.call(2, "medic", 1010, 1, "Day One", 1005))
+	check("a second request is said, with the count",
+		toasts.call()[-1] == "medic and 1 more asked to be your friend. Open Friends to answer."
+		and friends_button.tooltip_text == "2 are waiting on your answer", [toasts.call()[-1], friends_button.tooltip_text])
+	hud.free()
+
+	# THROUGH A DOOR the new HUD lights its buttons from the last answer and
+	# says nothing again.
+	var next_area: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	next_area._build_message_box()
+	next_area._paint_ask_buttons()
+	next_area._apply_broadcast(asks.call(2, "medic", 1010, 1, "Day One", 1005))
+	check("the next area's HUD keeps both lit and says nothing again",
+		(next_area.get_node("%navbuttons/friendsbutton") as Button).text == "Friends •"
+		and (next_area.get_node("%navbuttons/guildbutton") as Button).text == "Guild •"
+		and next_area.message_rows.get_child_count() == 0, next_area.message_rows.get_child_count())
+	check("  and a new area's HUD lights them before its first poll",
+		_func_body(_code_src("res://src/ui/characterhud.gd"), "func _ready(").contains("_paint_ask_buttons()"))
+	next_area._apply_broadcast(asks.call(0, "", 0, 0, "", 0))
+	var after_guild: Button = next_area.get_node("%navbuttons/guildbutton") as Button
+	check("answered, both go out, and Guild gets its own hint back",
+		(next_area.get_node("%navbuttons/friendsbutton") as Button).text == "Friends"
+		and after_guild.text == "Guild" and after_guild.tooltip_text == guild_tip, [after_guild.text, after_guild.tooltip_text])
+	next_area.free()
+
+	# ANOTHER ACCOUNT ON THIS MACHINE starts from nothing.
+	hud_script._asks_said_by = "someoneelse"
+	hud_script._asks_said = {"friends": 999999, "guild": 999999}
+	var other: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	other._build_message_box()
+	other._apply_broadcast(asks.call(1, "caster", 1000, 0, "", 0))
+	check("a different account's waiting request is said to it",
+		other.message_rows.get_child_count() == 1, other.message_rows.get_child_count())
+	other.free()
+	hud_script._forget_asks()
+	print("  friend requests and guild invitations reach the player they wait on")
+
+
+func _test_the_login_screen_asks_without_a_login() -> void:
+	section("LOGIN - the screen asks if the server is there without a login")
+
+	# Found in the browser build on day 1: the login screen's five-second probe
+	# asked /api/auth/session, which answers 401 to nobody signed in, so the
+	# console filled with a red "Failed to load resource" line every five
+	# seconds and the server logged a 401 for every idle player.
+	var probe := _func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _on_reconnect_poll_timeout(")
+	check("the login screen's probe asks /api/status",
+		probe.contains("Api.get_json(\"/api/status\"") and not probe.contains("Api.get_json(\"/api/auth/session\""),
+		probe.length())
+	# AND OPENING THE GAME WITH NOTHING REMEMBERED asks nothing that needs a login:
+	# the /api/status answer it already has says whether the server is there.
+	var opening := _func_body(_code_src("res://src/systems/api.gd"), "func probe_and_resume(")
+	var nothing_remembered: String = opening.substr(opening.find("\telse:"), 80)
+	check("  and so does opening the game with no login remembered",
+		opening.contains("var status_res: Dictionary = await refresh_build_info()")
+		and nothing_remembered.contains("res = status_res") and not nothing_remembered.contains("auth/session"),
+		nothing_remembered)
+
+
+func _test_a_gateway_saying_no_answer_is_no_answer() -> void:
+	section("API - a gateway's 502 or 504 is the server not answering")
+
+	# Found in the browser build on day 1: behind the site's proxy, app.py down
+	# answers 502 from the proxy, and the login screen said "Connected to the
+	# Elusion server." Each answer below is handed to Api._read_answer() as an
+	# HTTPRequest would hand it over, with no network.
+	var kept_online: bool = Api.server_online
+	var kept_known: bool = Api.reachability_known
+	var seen: Dictionary = {}
+	for status in [502, 504, 503, 500, 401, 200]:
+		Api.server_online = status == 502 or status == 504
+		var http := HTTPRequest.new()
+		add_child(http)
+		var got: Array = []
+		var reading := func() -> void:
+			got.append(await Api._read_answer(http, "", "/api/status"))
+		reading.call()
+		http.request_completed.emit(HTTPRequest.RESULT_SUCCESS, status, PackedStringArray(),
+			"{}".to_utf8_buffer())
+		var res: Dictionary = got[0] if not got.is_empty() else {}
+		seen[status] = [int(res.get("status", -1)), Api.server_online]
+	check("a 502 from the proxy reads as no answer, and offline", seen.get(502) == [0, false], seen.get(502))
+	check("  so does a 504", seen.get(504) == [0, false], seen.get(504))
+	check("  but the server's own 503, 500 and 401 are answers",
+		seen.get(503) == [503, true] and seen.get(500) == [500, true] and seen.get(401) == [401, true],
+		[seen.get(503), seen.get(500), seen.get(401)])
+	check("  and a 200 is a 200", seen.get(200) == [200, true], seen.get(200))
+	Api.server_online = kept_online
+	Api.reachability_known = kept_known
+
+
+func _test_a_lost_server_is_asked_for_more_often() -> void:
+	section("CONNECTION - a lost server is asked for more often until it answers")
+
+	# Day 1: a 16-second server restart showed "Connection lost" for 12 seconds
+	# after the server was back, because the next poll was up to ten seconds
+	# away. While the strip is up the poll runs every OFFLINE_POLL_SECONDS.
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	hud._build_status_strip()
+	hud._build_message_box()
+	var timer := Timer.new()
+	timer.name = "BroadcastPoll"
+	timer.wait_time = hud.BROADCAST_POLL_SECONDS
+	hud.add_child(timer)
+	var kept_token: String = Api.token
+	Api.token = "test-not-a-real-token"
+	hud._last_contact_msec = Time.get_ticks_msec() - int((hud.OFFLINE_GRACE_SECONDS + 5.0) * 1000.0)
+	hud._tick_connection_status()
+	check("past the grace, the strip is up and the poll asks every %.0f s" % hud.OFFLINE_POLL_SECONDS,
+		hud.status_strip.visible and is_equal_approx(timer.wait_time, hud.OFFLINE_POLL_SECONDS),
+		[hud.status_strip.visible, timer.wait_time])
+	check("  which is quicker than the usual pace", hud.OFFLINE_POLL_SECONDS < hud.BROADCAST_POLL_SECONDS)
+	hud._note_server_contact()
+	check("the first answer puts the usual pace back and takes the strip down",
+		is_equal_approx(timer.wait_time, hud.BROADCAST_POLL_SECONDS) and not hud.status_strip.visible,
+		[timer.wait_time, hud.status_strip.visible])
+	Api.token = kept_token
+	hud.free()
+
+
+func _test_a_save_cannot_undo_a_server_change() -> void:
+	section("SAVING - a bag save names the bag it was built on")
+
+	# Day 1, cooking a stack of twelve: a whole-bag save built after one cook
+	# and landing after the next deleted the fish the next cook made. Every bag
+	# save now carries `based_on`, the fingerprint of the last bag the server
+	# gave this client, and the server refuses one it has moved on from.
+	var fp := func(cells: Array) -> String:
+		return CharacterData.bag_fingerprint(cells)
+	check("the fingerprint is the server's, pinned to the same string as test_gathering.py",
+		fp.call([{"item_id": "rawmudfish", "quantity": 2}, null, {"item_id": "cookedmudfish", "quantity": 1.0}])
+			== "805ee8515ba7334b57fc01675e92d96b98ae28f3"
+		and fp.call([null, null]) == "da39a3ee5e6b4b0d3255bfef95601890afd80709")
+
+	var kept_slots: Array = CharacterData.character_slots.duplicate(true)
+	var kept_index: int = CharacterData.active_character_index
+	CharacterData.character_slots = [{"character": "warrior", "inventory": []}, {"character": "mage", "inventory": []},
+		null, null]
+	CharacterData.active_character_index = 0
+	var storage = load("res://src/systems/serverstorage.gd").new()
+
+	# THE LOAD sets the base.
+	var from_server: Array = [{"item_id": "rawmudfish", "quantity": 3}, null]
+	var loaded: Dictionary = storage._slot_from_server({"class_id": "warrior", "inventory": from_server})
+	check("a character loaded from the server knows the bag it was given",
+		loaded.get("bag_base", "") == fp.call(from_server), loaded.get("bag_base"))
+	check("  and a save of it names that bag",
+		storage._inventory_body(0, loaded).get("based_on", "") == fp.call(from_server))
+	check("a character the server has never sent a bag for names none, and is taken as before",
+		not storage._inventory_body(0, {"inventory": []}).has("based_on"))
+
+	# AN ANSWER THAT CARRIES THE BAG, through the carry grid every route uses.
+	var carry := InventoryContainer.new()
+	carry.is_carry = true
+	add_child(carry)
+	var bank := InventoryContainer.new()
+	add_child(bank)
+	# NO AWAIT before this point: add_child() has already built the grids, and
+	# a frame lets other parts of the suite touch CharacterData.character_slots.
+	var cooked: Array = [{"item_id": "rawmudfish", "quantity": 2}, null, {"item_id": "cookedmudfish", "quantity": 1}]
+	carry.load_server_array(cooked)
+	check("a cook's answer, loaded into the carry, becomes the base",
+		CharacterData.character_slots[0].get("bag_base", "") == fp.call(cooked))
+	bank.load_server_array([{"item_id": "ironsword", "quantity": 1}])
+	check("  the bank's grid loading its own array does not",
+		CharacterData.character_slots[0].get("bag_base", "") == fp.call(cooked))
+
+	# A SAVE ON ITS WAY, and its answer arriving late.
+	var sent_cells: Array = [{"item_id": "rawmudfish", "quantity": 2}, {"item_id": "cookedmudfish", "quantity": 1}]
+	var mark: int = CharacterData.bag_sent(0, sent_cells)
+	check("a save leaving makes its bag the base for the next one",
+		CharacterData.character_slots[0].get("bag_base", "") == fp.call(sent_cells))
+	var after_next_cook: Array = [{"item_id": "rawmudfish", "quantity": 1}, {"item_id": "cookedmudfish", "quantity": 2}]
+	carry.load_server_array(after_next_cook)
+	CharacterData.bag_saved(0, sent_cells, mark)
+	check("  and its answer, older than a cook's that came in meanwhile, is not used",
+		CharacterData.character_slots[0].get("bag_base", "") == fp.call(after_next_cook))
+	mark = CharacterData.bag_sent(0, after_next_cook)
+	CharacterData.bag_saved(0, after_next_cook, mark)
+	check("  an answer with nothing newer in between is",
+		CharacterData.character_slots[0].get("bag_base", "") == fp.call(after_next_cook))
+
+	# THE REFUSAL is adopted, for a character not being played as well.
+	var refused: Dictionary = {"ok": false, "status": 409, "data": {"resync": {"slot": 1, "gold": 5,
+		"inventory": [{"item_id": "rawmudfish", "quantity": 4}], "trade": null, "reason": "stale_save"}}}
+	storage._adopt_refusal(refused)
+	check("a refused save's bag is adopted, and is the base, for the other character too",
+		CharacterData.character_slots[1].get("bag_base", "") == fp.call([{"item_id": "rawmudfish", "quantity": 4}])
+		and CharacterData.character_slots[1].get("gold", 0) == 5, CharacterData.character_slots[1])
+
+	# THE WIRING the two halves above need, read from the code: the game's carry
+	# grid is the one marked, and a bag save going out and coming back is noted.
+	check("the inventory screen marks its grid as the carry",
+		_func_body(_code_src("res://src/ui/inventory/inventoryscreen.gd"), "func _wire_inventory_container(")
+			.contains("_container.is_carry = true"))
+	var put_body := _func_body(_code_src("res://src/systems/serverstorage.gd"), "func _put_if_changed(")
+	check("a bag save notes its bag as it leaves and its answer as it returns",
+		put_body.contains("CharacterData.bag_sent(") and put_body.contains("CharacterData.bag_saved(")
+		and put_body.find("CharacterData.bag_sent(") < put_body.find("await Api.put("))
+
+	# AND SAID NOTHING ABOUT. The cook that moved the bag on was shown when it happened.
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	hud._build_message_box()
+	hud._on_carry_adopted({"reason": "stale_save", "inventory": [], "trade": null})
+	check("a stale save's resync puts up no message", hud._unlogged_lines.is_empty(), hud._unlogged_lines)
+	hud._on_carry_adopted({"inventory": [], "trade": null})
+	check("  a resync for anything else still does", hud._unlogged_lines.size() == 1, hud._unlogged_lines)
+	hud.free()
+
+	carry.queue_free()
+	bank.queue_free()
+	CharacterData.character_slots = kept_slots
+	CharacterData.active_character_index = kept_index
+
+
+func _test_the_map_comes_back() -> void:
+	section("MAP - what you uncovered comes back at the next login")
+
+	# Day 1: a walk of the field, a logout, and the map was blank again. Two
+	# faults. The load built each character from /api/character, which carries
+	# no map (the listing, /api/save, does), so every login started with none;
+	# and the map rides a save only when WorldMap's revision moves, at most
+	# every SAVE_REVISION_SECONDS, so a logout inside that window left the walk
+	# behind. The first save after the next walk then wrote the few new tiles
+	# over everything before.
+	var storage_script: GDScript = load("res://src/systems/serverstorage.gd") as GDScript
+	var map: Dictionary = {"field": {"w": 2, "h": 2, "ox": 0, "oy": 0, "bits": "x"}}
+	var merged: Dictionary = storage_script.with_listing({"class_id": "warrior"}, {"slot": 0, "explored": map})
+	check("a character from /api/character takes the map from the listing", merged.get("explored") == map,
+		merged.get("explored"))
+	var own: Dictionary = {"class_id": "warrior", "explored": {"elusion": {}}}
+	check("  and one that already has a map keeps its own",
+		storage_script.with_listing(own, {"explored": map}).get("explored") == {"elusion": {}})
+	check("  the load builds every character that way",
+		_func_body(_code_src("res://src/systems/serverstorage.gd"), "func load(")
+			.contains("_slot_from_server(with_listing("))
+
+	var kept_rev: int = WorldMap._revision
+	var kept_pending: bool = WorldMap._revision_pending
+	WorldMap._revision_pending = true
+	WorldMap._revision_at_ms = Time.get_ticks_msec()
+	var before: int = WorldMap.save_revision()
+	check("a walk inside the window has not moved the revision yet", before == kept_rev, [before, kept_rev])
+	check("flush_pending() counts it now", WorldMap.flush_pending() and WorldMap.save_revision() == before + 1)
+	check("  and only once", not WorldMap.flush_pending())
+	# LEAVING, through the real finish_saving(), with no time to wait: the walk
+	# is counted and the character's save carries the map at the new revision.
+	var kept_slots: Array = CharacterData.character_slots.duplicate(true)
+	var kept_index: int = CharacterData.active_character_index
+	CharacterData.character_slots = [{"character": "warrior"}, null, null, null]
+	CharacterData.active_character_index = 0
+	WorldMap._revision_pending = true
+	var walked_at: int = WorldMap.save_revision()
+	await CharacterData.finish_saving(0.0)
+	check("leaving counts the walk and puts it in the save",
+		int(CharacterData.character_slots[0].get("explored_rev", -1)) == walked_at + 1
+		and CharacterData.character_slots[0].has("explored"), CharacterData.character_slots[0])
+	CharacterData.character_slots = kept_slots
+	CharacterData.active_character_index = kept_index
+	WorldMap._revision = kept_rev
+	WorldMap._revision_pending = kept_pending
+
 
 func _test_staff_panel() -> void:
 	section("STAFF PANEL")
@@ -12266,7 +12941,7 @@ func _test_the_sweep_wiring() -> void:
 	check("a newer build on the server is announced", newer_note.contains("newer version"), newer_note)
 	check("a refused build says it is too old", refused_note.contains("too old"), refused_note)
 	check("and the login screen shows it once it has asked",
-		_func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _check_connection_and_resume(").contains("Api.build_notice()"))
+		_func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _check_connection_and_resume(").contains("build_notice()"))
 
 	# ---- the revive price is read, not copied ------------------------------------
 	var go: Node = (load("res://src/ui/menus/gameover.gd") as Script).new()
@@ -12353,7 +13028,7 @@ func _test_the_sweep_words() -> void:
 	var talking: Array = []
 	for path in ["res://src/ui/chat/chatpanel.gd", "res://src/ui/friends/friendspanel.gd", "res://src/ui/guild/guildpanel.gd"]:
 		var code := _code_src(path)
-		if code.contains("Is it running?") or not code.contains("Api.no_answer_text()"):
+		if code.contains("Is it running?") or not code.contains("no_answer_text()"):
 			talking.append(path.get_file())
 	check("chat, friends and guilds say 'no answer' in a player's words, not 'Is it running?'",
 		talking.is_empty(), talking)
@@ -12942,7 +13617,7 @@ func _test_staff_logins_take_a_code() -> void:
 	login.free()
 
 	var pressed := _func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _on_login_button_pressed(")
-	var step_at := pressed.find("if Api.needs_login_code(res):")
+	var step_at := pressed.find("if ApiScript.needs_login_code(res):")
 	check("the button sends the typed code, and checks for the code step before res.ok and the 401",
 		pressed.contains("Api.login(username, password, _typed_login_code(username))")
 		and step_at != -1 and step_at < pressed.find("if res.ok:")
@@ -13474,7 +14149,7 @@ func _test_one_game_per_account() -> void:
 	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
 	var signout: String = _func_body(hud_src, "func _forced_signout(")
 	check("the HUD signs out with that reason, from the poll or the heartbeat",
-		signout.contains("Api.signout_notice_for(") and signout.contains("Api.forget_session(notice)")
+		signout.contains("signout_notice_for(") and signout.contains("Api.forget_session(notice)")
 		and _func_body(hud_src, "func _on_broadcast_poll_timeout(").contains("_forced_signout(res)"))
 	print("  one game per account: the notice, the resume swap, the old-server fallback, the reason carried")
 

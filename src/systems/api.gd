@@ -817,8 +817,21 @@ func _read_answer(http: HTTPRequest, sent_token: String, path: String) -> Dictio
 		_set_online(false)
 		return _failure(status, _describe_transport_failure(request_result))
 
-	# Any HTTP status at all proves something is listening and answering. A
-	# 401 or a 500 is still a server. This is the single place reachability is
+	# A GATEWAY SAYING THE SERVER DID NOT ANSWER IS NOT THE SERVER ANSWERING.
+	# In a browser the game reaches the API through the site (Caddy, or
+	# web/serve.py at home), so with app.py down the page still gets an HTTP
+	# answer: 502 Bad Gateway, or 504 when the proxy gave up waiting. Read as
+	# "something answered", the login screen said "Connected to the Elusion
+	# server." with the API down, and a login showed the proxy's own text ("The
+	# API at http://127.0.0.1:5000 did not answer: <urlopen error ...>"). app.py
+	# never answers 502 or 504 itself; 503 is its maintenance answer and stays
+	# an answer. Status 0, so every caller reads it as "no answer", as it is.
+	if status == 502 or status == 504:
+		_set_online(false)
+		return _failure(0, "Can't reach the server. Check your connection and try again.")
+
+	# Any other HTTP status proves the server is listening and answering. A 401
+	# or a 500 is still a server. This is the single place reachability is
 	# decided, so every call in the game keeps it current for free.
 	_set_online(true)
 
@@ -881,7 +894,7 @@ func _read_answer(http: HTTPRequest, sent_token: String, path: String) -> Dictio
 # AUTH
 # =============================================================================
 
-func refresh_build_info() -> void:
+func refresh_build_info() -> Dictionary:
 	"""Ask /api/status what it thinks of builds, and remember the answer.
 
 	/api/status IS THE ONE ROUTE THE BUILD GATE NEVER REFUSES, which is what
@@ -894,12 +907,16 @@ func refresh_build_info() -> void:
 	"could not ask" and "the gate is off" are different answers and only one of
 	them is worth acting on. A client that read a timeout as `min_build = 0`
 	would cheerfully report that it was current, which is the failure this whole
-	feature exists to remove."""
+	feature exists to remove.
+
+	Returns the answer, so probe_and_resume() can read "is the server there"
+	from it rather than asking again."""
 	var res: Dictionary = await get_json("/api/status", PROBE_TIMEOUT)
 	if not res.get("ok", false) or not (res.get("data") is Dictionary):
-		return
+		return res
 	server_min_build = int(res.data.get("min_client_build", server_min_build))
 	server_current_build = int(res.data.get("current_client_build", server_current_build))
+	return res
 
 
 func login(user: String, password: String, code: String = "") -> Dictionary:
@@ -907,12 +924,50 @@ func login(user: String, password: String, code: String = "") -> Dictionary:
 	var body := {"username": user, "password": password}
 	if code != "":
 		body["code"] = code
+	# THIS COMPUTER'S PROOF, if a code has been typed on it before. A staff
+	# login with it needs no code. Sent for every account: the server ignores
+	# it for players, and this client does not know who is staff until after.
+	var device: String = device_token_for(user)
+	if device != "":
+		body["device"] = device
 	var res := await post("/api/auth/login", body)
 	# A 202 is a 2xx with no token in it. Adopting it would save an empty
 	# session and walk into the game signed in as nobody.
 	if res.ok and not needs_login_code(res):
 		_adopt_session(res.data)
+		if res.data is Dictionary and str(res.data.get("device_token", "")) != "":
+			_remember_device(user, str(res.data["device_token"]))
 	return res
+
+
+# =============================================================================
+# ONE CODE PER COMPUTER
+# =============================================================================
+# A staff login that got in with an emailed code is answered with a device
+# token (TRUSTED DEVICES in app.py). Kept here, per account, and sent with the
+# next login from this computer so it is not asked again - for thirty days, or
+# until the account's rank or password changes.
+#
+# ITS OWN FILE, NOT session.cfg. The session goes when "Remember me" is off or
+# the player logs out; this is about the computer, not the session, and a mod
+# who never ticks Remember me would otherwise be asked every single time -
+# which is the complaint this exists to answer. It is no password: the server
+# checks it only after the password and the ban.
+const DEVICES_PATH := "user://devices.cfg"
+
+
+func device_token_for(user: String) -> String:
+	var file := ConfigFile.new()
+	if file.load(DEVICES_PATH) != OK:
+		return ""
+	return str(file.get_value("devices", user.strip_edges().to_lower(), ""))
+
+
+func _remember_device(user: String, device: String) -> void:
+	var file := ConfigFile.new()
+	file.load(DEVICES_PATH)
+	file.set_value("devices", user.strip_edges().to_lower(), device)
+	file.save(DEVICES_PATH)
 
 
 static func needs_login_code(res: Dictionary) -> bool:
@@ -962,14 +1017,16 @@ func probe_and_resume() -> Dictionary:
 	# ONE EXTRA REQUEST, ONCE, ON THE LOGIN SCREEN. Not per frame and not per
 	# poll - this runs where somebody is already waiting for a server to answer,
 	# and it is the only moment the answer matters.
-	await refresh_build_info()
+	var status_res: Dictionary = await refresh_build_info()
 
 	# A REMEMBERED LOGIN IS CARRIED ON A NEW TOKEN. One login at a time: a
 	# second copy of the game opened on this computer finds this same token,
 	# and checking it with GET /api/auth/session would let both run on one
 	# session. POST /api/auth/resume swaps it, and ends every other session on
 	# the account - the other copy is told it was signed in somewhere else.
-	# Nothing remembered: the plain check, which only asks "are you there".
+	# Nothing remembered: the /api/status answer above already says whether the
+	# server is there. This asked /api/auth/session again, which answers 401 to
+	# nobody signed in, and in a browser every 401 is a red line in the console.
 	var res: Dictionary
 	if token != "":
 		res = await post("/api/auth/resume", {}, PROBE_TIMEOUT)
@@ -977,7 +1034,7 @@ func probe_and_resume() -> Dictionary:
 		if int(res.get("status", 0)) == 404:
 			res = await get_json("/api/auth/session", PROBE_TIMEOUT)
 	else:
-		res = await get_json("/api/auth/session", PROBE_TIMEOUT)
+		res = status_res
 
 	if int(res.get("status", 0)) == 0:
 		return {"online": false, "resumed": false}

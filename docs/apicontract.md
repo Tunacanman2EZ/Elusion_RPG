@@ -119,6 +119,14 @@ Sending no code asks for a new one (at most one a minute). A 200 carries
 `"staff_unprotected": true` when a staff account got in on the password alone.
 `Api.login(user, password, code)` and `Api.needs_login_code()` handle it.
 
+**Once per computer.** The `200` for a login that got in with a code also
+carries `"device_token"`. Sent back as `"device"` with a later login from the
+same computer, it lets a staff login through with no code: for 30 days, at
+the rank the account had when the code was typed, and until a password
+change, a recovery reset or `logout-all`. Only its hash is stored, and it is
+checked after the password and the ban. The game keeps it per account in
+`user://devices.cfg`.
+
 ### `GET /api/auth/session`
 
 **`200`** if the token is still good, **`401`** if not. This is the heartbeat,
@@ -305,7 +313,8 @@ without the others.
 ### `PUT /api/character/inventory`
 
 ```json
-{ "slot": 0, "inventory": [ { "item_id": "ironsword", "quantity": 1 }, null ] }
+{ "slot": 0, "inventory": [ { "item_id": "ironsword", "quantity": 1 }, null ],
+  "based_on": "805ee8515ba7334b57fc01675e92d96b98ae28f3" }
 ```
 
 **Positional.** The array is `CARRY_CAPACITY` (30) cells long with `null` in
@@ -326,6 +335,17 @@ them:
 - **Nothing is placed on a key.** Loot, the shop, withdrawals, trades, catches
   and grants only top up or open cells below 20. "Your backpack is full" means
   the twenty.
+
+**`based_on`: the bag the save was built on.** An optional string, the
+fingerprint of the last bag the server gave this client: sha1 of
+`position:item_id:quantity` for every filled cell, joined with `|`
+(`bag_fingerprint()` on both sides; both suites pin the same bag to the same
+string). When the server no longer holds that bag (a loot take, a cook, a
+catch, a purchase, an equip or a trade changed it since), the write is refused
+with `409` and `resync`: `{"slot", "gold", "inventory", "trade": null,
+"reason": "stale_save"}`, the same shape the trade rule sends. The game adopts
+it without a message. Without the field the write is taken as before, so an
+older client still saves.
 
 `POST /api/character/consume`, `POST /api/character/equip` and
 `POST /api/bank/items` take an optional `position`: the cell the player used,
@@ -411,6 +431,12 @@ slot is empty.
 
 Both sides move in a single `UPDATE`, so there is no instant where the gold
 exists in neither place.
+
+**The game calls it** - `CharacterData.deposit_gold_to_bank()` and
+`withdraw_gold_from_bank()`, from the bank panel - and copies `carried_gold`
+and `bank_gold` from the answer. Until day 1 nothing did: the panel moved the
+two numbers on the client, which the server never heard about, so banked gold
+went back to the purse at the next login.
 
 ---
 
@@ -562,6 +588,25 @@ are the newest line ids in the caller's guild and among their friends, said by
 somebody else, `0` when none. The client keeps the last ids it has seen per
 login and treats a larger one as news: a whisper pops a message and marks the
 Chat button, and a room lights its tab. An older client ignores the key.
+
+**`asks` rides it too**: the friend requests and guild invitations waiting on
+the caller's answer, how many of each, and the newest.
+
+```json
+"asks": {
+  "friends": { "count": 1, "newest": "caster", "at": 1790800000 },
+  "guild":   { "count": 0, "newest": "", "at": 0 }
+}
+```
+
+`newest` is the asker's account name for a friend request and the guild's name
+for an invitation. The HUD lights "Friends •" or "Guild •" while a count is
+above zero and says the newest once per login, keyed on `at`.
+
+**`POST /api/guild/create` answers with both balances after paying**:
+`carried_gold` and `bank_gold`, beside `paid`, `from_carried` and `from_bank`
+(`gold` is the carried figure, kept for older clients). The game copies them in
+through `CharacterData.adopt_server_gold()`.
 
 **Ignore, report, mute.** Every chat read leaves out the players the caller
 ignores, and carries `"muted": null` or `{"until", "seconds_left", "reason"}`

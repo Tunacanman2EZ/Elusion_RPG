@@ -353,6 +353,7 @@ func _audit_scene(path: String, totals: Dictionary, where: Dictionary,
 
 		if data.size() < HEADER_BYTES:
 			continue
+		@warning_ignore("integer_division")
 		var cells: int = (data.size() - HEADER_BYTES) / CELL_BYTES
 		var counts: Dictionary = {}
 		for i in cells:

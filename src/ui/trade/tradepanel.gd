@@ -939,13 +939,13 @@ func _apply_confirm(res: Dictionary, acting: Node) -> void:
 	"""The answer to Accept, onto the window. Split out so the suite can hand it
 	each of the answers the server gives."""
 	if not res.get("ok", false):
-		var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+		var refusal: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 		# THE OFFER CHANGED UNDER THE BUTTON. The refusal carries the offer as it
 		# now stands, so it is drawn at once - with the change pointed out -
 		# rather than left for the next poll to reveal.
-		if int(res.get("status", 0)) == 409 and data.get("trade") is Dictionary:
-			_render(data["trade"], false)
-			var them: Dictionary = data["trade"].get("b" if _my_side == "a" else "a", {})
+		if int(res.get("status", 0)) == 409 and refusal.get("trade") is Dictionary:
+			_render(refusal["trade"], false)
+			var them: Dictionary = refusal["trade"].get("b" if _my_side == "a" else "a", {})
 			_set_notice("%s changed the offer before your accept arrived. Look again, then accept."
 				% _display_name(them if them is Dictionary else {}), true)
 			_flash(them_panel)
