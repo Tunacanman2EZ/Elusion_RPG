@@ -621,8 +621,10 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 	# it is in flight builds on it; the answer then says what was stored.
 	var bag_slot: int = -1
 	var sent_mark: int = 0
+	var base_before: String = ""
 	if path == "/api/character/inventory":
 		bag_slot = _int(body.get("slot", -1), -1)
+		base_before = CharacterData.bag_base_of(bag_slot)
 		sent_mark = CharacterData.bag_sent(bag_slot, _array(body.get("inventory", [])))
 
 	var res: Dictionary = await Api.put(path, body)
@@ -630,6 +632,9 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 	if bag_slot >= 0 and res.get("ok", false) and res.get("data") is Dictionary:
 		CharacterData.bag_saved(bag_slot, _array(res.data.get("inventory", [])), sent_mark)
 	if not res.get("ok", false):
+		# NOT LANDED, so not the base: see CharacterData.bag_unsent().
+		if bag_slot >= 0:
+			CharacterData.bag_unsent(bag_slot, base_before, sent_mark)
 		# A BAG THE SERVER HAS MOVED ON FROM. PUT /api/character/inventory
 		# refuses with 409 when a trade changed this character's bag after the
 		# client last saw it, and hands back what the server holds - because

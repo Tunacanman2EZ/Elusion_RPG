@@ -23,7 +23,12 @@ extends CanvasLayer
 # EXPORTED SETTINGS
 # =============================================================================
 
-@export var fade_duration: float = 0.3
+# Each way. A door is two of these plus two frames, so 0.15 makes it about a
+# third of a second; it was 0.3, and measured on day 1 the fade alone was 0.6 s
+# of every 0.65 s trip. The area is already loaded by then (AreaRegistry), and
+# building it happens while the screen is black, so a shorter fade hides the
+# same hitch.
+@export var fade_duration: float = 0.15
 
 
 # =============================================================================

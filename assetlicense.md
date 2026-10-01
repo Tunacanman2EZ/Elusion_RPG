@@ -180,12 +180,19 @@ License URL http://scripts.sil.org/OFL
 The chat panel uses it so emoji render in colour rather than as boxes; the test
 suite checks it ships.
 
-**The OFL requires its text to travel with the font**, and that file is missing
-here. `assets/fonts/OFL.txt` should be copied from the `noto-emoji` release the
-font came from — it is shipped alongside it, and it is not reproduced from
-memory here because a mangled licence is worse than an absent one.
-`_test_third_party_licences()` fails until that file exists, so this cannot
-quietly stay unfixed.
+**The OFL requires its text to travel with the font.** It does:
+`assets/fonts/OFL.txt`, copied from the release rather than written from
+memory, and `_test_third_party_licences()` fails if it goes missing.
+
+**The shipped copy is modified.** Its pictures are scaled from 109 ppem down to
+32 ppem by `tools/shrink_emoji_font.py`, because chat draws emoji at 10 to 16
+px and Google's 10.8 MB file was most of the browser download. Every emoji is
+kept; the file is 4.6 MB. The OFL allows modifying the font on the same terms:
+the modified font stays under the OFL, keeps Google's copyright notice, and
+ships with the licence. The font declares no Reserved Font Name, so it keeps
+its name; its version string ends "; Elusion chat size 32 ppem" so the build
+can be told apart. To rebuild it, run the script on Google's release, not on
+this copy.
 
 Nothing about that licence restricts using the font in this game, including
 commercially. The obligations are the notice, the licence text, and not selling

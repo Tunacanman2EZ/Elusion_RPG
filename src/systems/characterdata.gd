@@ -1586,6 +1586,32 @@ func bag_sent(slot_index: int, cells: Array) -> int:
 	return _bag_notes
 
 
+func bag_base_of(slot_index: int) -> String:
+	_ensure_slot_array()
+	if slot_index < 0 or slot_index >= character_slots.size() or not (character_slots[slot_index] is Dictionary):
+		return ""
+	return str(character_slots[slot_index].get("bag_base", ""))
+
+
+func bag_unsent(slot_index: int, base_before: String, sent_mark: int) -> void:
+	"""A save that did not land: the server still holds the bag it held before,
+	so the next save builds on that again.
+
+	FOUND ON DAY 1, taking the server down mid-play: a bag change made while it
+	was gone was lost when it came back. bag_sent() had made the unsent bag the
+	base, so the retry claimed to be built on a bag the server never had, was
+	refused as stale, and the server's older bag was adopted over the change.
+
+	Left alone when a server bag has been noted since the save was sent (a
+	refusal's resync, say): that one is newer than both."""
+	if _bag_notes != sent_mark:
+		return
+	_ensure_slot_array()
+	if slot_index < 0 or slot_index >= character_slots.size() or not (character_slots[slot_index] is Dictionary):
+		return
+	character_slots[slot_index]["bag_base"] = base_before
+
+
 func bag_saved(slot_index: int, cells: Array, sent_mark: int) -> void:
 	"""A save's answer: the bag as the server stored it. Ignored when another
 	server bag has been noted since that save was sent, because this one is

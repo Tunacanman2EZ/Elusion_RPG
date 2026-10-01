@@ -28,6 +28,8 @@ extends Node
 # How a name is drawn in every list - checked directly, and through the panels
 # that use it. Preloaded, like everywhere else; nametag.gd says why.
 const NameTag := preload("res://src/shared/nametag.gd")
+const ApiForTests := preload("res://src/systems/api.gd")
+const PoolForTests := preload("res://src/systems/connectionpool.gd")
 
 
 # WHERE THE RESULTS GO
@@ -192,6 +194,11 @@ func _run_all() -> void:
 	_test_a_lost_server_is_asked_for_more_often()
 	_test_a_save_cannot_undo_a_server_change()
 	await _test_the_map_comes_back()
+	_test_a_bag_changed_offline_still_lands()
+	_test_enemies_keep_their_place_in_the_ring()
+	_test_a_door_is_quick()
+	_test_the_emoji_font_is_chat_sized()
+	await _test_connections_are_kept_open()
 
 
 # =============================================================================
@@ -6875,6 +6882,412 @@ func _test_the_map_comes_back() -> void:
 	CharacterData.active_character_index = kept_index
 	WorldMap._revision = kept_rev
 	WorldMap._revision_pending = kept_pending
+
+
+func _test_a_bag_changed_offline_still_lands() -> void:
+	section("SAVING - a bag changed while the server is gone reaches it when it is back")
+
+	# Day 1, taking the server down mid-play: two cells swapped while it was
+	# gone, and when it came back the swap was undone. The save that left made
+	# its bag the base; it never landed, so the retry was built on a bag the
+	# server never had, was refused as stale, and the old bag was adopted.
+	var kept_slots: Array = CharacterData.character_slots.duplicate(true)
+	var kept_index: int = CharacterData.active_character_index
+	CharacterData.character_slots = [{"character": "warrior"}, null, null, null]
+	CharacterData.active_character_index = 0
+	var held := [{"item_id": "ironsword", "quantity": 1}, null]
+	var moved := [null, {"item_id": "ironsword", "quantity": 1}]
+	CharacterData.note_server_bag(held, 0)
+	var server_base: String = CharacterData.bag_base_of(0)
+	var mark: int = CharacterData.bag_sent(0, moved)
+	check("a save on its way is the base while it is in flight",
+		CharacterData.bag_base_of(0) == CharacterData.bag_fingerprint(moved))
+	CharacterData.bag_unsent(0, server_base, mark)
+	check("  one that did not land puts back the bag the server still holds",
+		CharacterData.bag_base_of(0) == server_base, CharacterData.bag_base_of(0))
+	var third := [{"item_id": "jadesword", "quantity": 1}, null]
+	mark = CharacterData.bag_sent(0, moved)
+	CharacterData.note_server_bag(third, 0)
+	CharacterData.bag_unsent(0, server_base, mark)
+	check("  unless a newer bag came from the server meanwhile, which stays",
+		CharacterData.bag_base_of(0) == CharacterData.bag_fingerprint(third), CharacterData.bag_base_of(0))
+	var put_body := _func_body(_code_src("res://src/systems/serverstorage.gd"), "func _put_if_changed(")
+	var failed_at := put_body.find("if not res.get(\"ok\", false):")
+	check("  and a bag save that fails says so",
+		failed_at != -1 and put_body.find("CharacterData.bag_unsent(", failed_at) != -1
+		and put_body.find("CharacterData.bag_base_of(") < put_body.find("CharacterData.bag_sent("))
+	CharacterData.character_slots = kept_slots
+	CharacterData.active_character_index = kept_index
+
+
+func _test_enemies_keep_their_place_in_the_ring() -> void:
+	section("FORMATION - a chasing enemy keeps its place on the ring")
+
+	# Day 1, measured while timing the field: within a second 37 of the 40 ring
+	# slots were owned by enemies not standing on them and none of 12 chasers
+	# held one. Each 0.4 s review that found nothing better forgot the slot it
+	# had without releasing it, so every enemy ran at the player's own position.
+	var kept_owners: Dictionary = BaseEnemy._slot_owners.duplicate()
+	BaseEnemy._slot_owners.clear()
+	var holder := Node2D.new()
+	add_child(holder)
+	var anchor := CharacterBody2D.new()
+	holder.add_child(anchor)
+	anchor.global_position = Vector2(9000, 9000)
+	var pack: PackedScene = load("res://scene/enemy/darkbushmage.tscn") as PackedScene
+	var pack_of: Array = []
+	for i in 6:
+		var e: Node = pack.instantiate()
+		holder.add_child(e)
+		e.set_physics_process(false)
+		e.set_process(false)
+		e.global_position = anchor.global_position + Vector2.RIGHT.rotated(TAU * i / 6.0) * 150.0
+		e.player = anchor
+		pack_of.append(e)
+	var holding := func() -> Array:
+		var out: Array = []
+		for e in pack_of:
+			if e._claimed_slot != -1 and BaseEnemy._slot_owners.get(e._claimed_slot) == e:
+				out.append(e._claimed_slot)
+		return out
+	var leaked := func() -> int:
+		var n := 0
+		for slot in BaseEnemy._slot_owners:
+			var who = BaseEnemy._slot_owners[slot]
+			if is_instance_valid(who) and who._claimed_slot != slot:
+				n += 1
+		return n
+	for e in pack_of:
+		e._ensure_slot_claimed()
+	var first: Array = holding.call()
+	check("six chasers each claim a slot of their own", first.size() == 6, first)
+	# Five reviews each, the way 0.4 s ticks would bring them.
+	for round_i in 5:
+		for e in pack_of:
+			e._slot_review_time = 0.0
+			e._ensure_slot_claimed()
+	var after: Array = holding.call()
+	check("  and still hold one after five reviews", after.size() == 6, after)
+	check("  no slot is owned by an enemy not standing on it", leaked.call() == 0, leaked.call())
+	check("  six slots owned, not more", BaseEnemy._slot_owners.size() == 6, BaseEnemy._slot_owners.size())
+	var leaver: Node = pack_of[0]
+	var its_slot: int = leaver._claimed_slot
+	leaver._release_slot()
+	check("one that gives up its slot frees it for the others",
+		not BaseEnemy._slot_owners.has(its_slot) and BaseEnemy._slot_owners.size() == 5, BaseEnemy._slot_owners.keys())
+	holder.queue_free()
+	BaseEnemy._slot_owners.clear()
+	BaseEnemy._slot_owners.merge(kept_owners)
+	print("  formation: %d chasers, %d held after the reviews" % [pack_of.size(), after.size()])
+
+
+func _test_a_door_is_quick() -> void:
+	section("DOORS - the fade is short, and the area is built under it")
+
+	# 0.6 s of every 0.65 s door was the fade. Halved each way on day 1.
+	check("a door fades for 0.15 s each way", is_equal_approx(SceneTransition.fade_duration, 0.15),
+		SceneTransition.fade_duration)
+	var body := _func_body(_code_src("res://src/systems/scenetransition.gd"), "func change_scene(")
+	var out_at := body.find("await _fade_out()")
+	var swap_at := body.find("change_scene_to_packed(")
+	var in_at := body.find("await _fade_in()")
+	check("  the new area is built while the screen is black",
+		out_at != -1 and swap_at > out_at and in_at > swap_at, [out_at, swap_at, in_at])
+
+
+const EMOJI_FONT := "res://assets/fonts/NotoColorEmoji.ttf"
+const EMOJI_FONT_MAX_BYTES := 6_000_000
+
+
+func _emoji_strike_ppem(bytes: PackedByteArray) -> int:
+	# The ppem of the font's first CBLC strike, read from the table directory:
+	# 12-byte header, then 16-byte records of tag, checksum, offset, length.
+	# A BitmapSize record follows CBLC's 8-byte header; ppemX is its byte 44.
+	if bytes.size() < 12:
+		return -1
+	var tables: int = (bytes[4] << 8) | bytes[5]
+	for i in tables:
+		var at: int = 12 + i * 16
+		if bytes.slice(at, at + 4).get_string_from_ascii() == "CBLC":
+			var offset: int = (bytes[at + 8] << 24) | (bytes[at + 9] << 16) | (bytes[at + 10] << 8) | bytes[at + 11]
+			return bytes[offset + 8 + 44] if offset + 52 < bytes.size() else -1
+	return -1
+
+
+func _test_the_emoji_font_is_chat_sized() -> void:
+	section("EMOJI - the colour font is drawn at chat size, so it ships at chat size")
+
+	# Google's Noto Color Emoji is 10.8 MB of 136x128 pictures, and it was three
+	# quarters of the browser's game file. Chat draws emoji at 10-16 px, so the
+	# shipped copy is scaled to 32 ppem by tools/shrink_emoji_font.py: every
+	# emoji kept, 4.6 MB. Dropping Google's file back in adds 6 MB to every
+	# browser player's download, on the first visit and after every update.
+	var bytes := FileAccess.get_file_as_bytes(EMOJI_FONT)
+	check("the emoji font is the chat-size build, under %.0f MB" % (EMOJI_FONT_MAX_BYTES / 1_000_000.0),
+		bytes.size() > 0 and bytes.size() < EMOJI_FONT_MAX_BYTES, bytes.size())
+	var ppem := _emoji_strike_ppem(bytes)
+	check("  its pictures are one strike of 32 ppem", ppem == 32, ppem)
+	var font := load(EMOJI_FONT) as FontFile
+	var missing: Array = []
+	for code in [0x1F600, 0x1F44D, 0x1F525, 0x1F41F, 0x2694, 0x1F6E1, 0x1F4B0, 0x1F389, 0x2764, 0x1F602, 0x1F62D, 0x1F64F]:
+		if font == null or not font.has_char(code):
+			missing.append("%X" % code)
+	check("  and still has every emoji: the common ones are there", missing.is_empty(), missing)
+	var supported: int = font.get_supported_chars().length() if font != null else 0
+	# 1,493 is what Godot reports for Google's own file too (its cmap lists 1,494).
+	check("  as many characters as Google's release", supported >= 1493, supported)
+
+
+# A small HTTP/1.1 server inside the suite, so the connection pool can be
+# watched against every way a real server or proxy behaves, with no network.
+# mode: "keep" answers and keeps the connection; "close" answers with
+# Connection: close and closes half a second later, as Flask's own server
+# does, reading nothing more from it; "drop" answers and closes without saying so;
+# "eat_next" reads the next request, closes, and goes back to "keep".
+# /slow is answered two seconds late; /gz is answered gzip-compressed when asked
+# for.
+class FakeHttpServer extends Node:
+	var server := TCPServer.new()
+	var port := 0
+	var accepted := 0
+	var seen: Array[String] = []
+	var mode := "keep"
+	var _peers: Array = []
+	var _late: Array = []
+
+	func open_connections() -> int:
+		var n := 0
+		for c in _peers:
+			(c.peer as StreamPeerTCP).poll()
+			if (c.peer as StreamPeerTCP).get_status() == StreamPeerTCP.STATUS_CONNECTED:
+				n += 1
+		return n
+
+	func shutdown() -> void:
+		server.stop()
+		for c in _peers:
+			(c.peer as StreamPeerTCP).disconnect_from_host()
+		_peers.clear()
+
+	func start() -> bool:
+		for p in range(47100, 47200):
+			if server.listen(p, "127.0.0.1") == OK:
+				port = p
+				return true
+		return false
+
+	func _process(_delta: float) -> void:
+		for c in _peers.duplicate():
+			if c.get("closing_at", 0) > 0 and Time.get_ticks_msec() >= c.closing_at:
+				(c.peer as StreamPeerTCP).disconnect_from_host()
+				_peers.erase(c)
+		for late in _late.duplicate():
+			if Time.get_ticks_msec() >= late.at:
+				_late.erase(late)
+				var peer_late: StreamPeerTCP = late.peer
+				if peer_late.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+					peer_late.put_data(late.out)
+		while server.is_connection_available():
+			_peers.append({"peer": server.take_connection(), "buf": PackedByteArray()})
+			accepted += 1
+		for c in _peers.duplicate():
+			var peer: StreamPeerTCP = c.peer
+			peer.poll()
+			if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+				_peers.erase(c)
+				continue
+			var waiting := peer.get_available_bytes()
+			if waiting > 0:
+				c.buf.append_array(peer.get_data(waiting)[1])
+			if c.get("closing_at", 0) > 0:
+				# Said it would close: whatever else arrives is never read.
+				c.buf = PackedByteArray()
+				continue
+			var text: String = c.buf.get_string_from_ascii()
+			var end := text.find("\r\n\r\n")
+			if end == -1:
+				continue
+			var head := text.substr(0, end)
+			var length := 0
+			for h in head.split("\r\n"):
+				if h.to_lower().begins_with("content-length:"):
+					length = int(h.get_slice(":", 1).strip_edges())
+			if c.buf.size() < end + 4 + length:
+				continue
+			c.buf = c.buf.slice(end + 4 + length)
+			var first := head.get_slice("\r\n", 0)
+			seen.append(first.get_slice(" ", 0) + " " + first.get_slice(" ", 1))
+			_answer(c, peer, first.get_slice(" ", 1), head)
+
+	func _answer(c: Dictionary, peer: StreamPeerTCP, path: String, head: String) -> void:
+		if mode == "eat_next":
+			mode = "keep"
+			peer.disconnect_from_host()
+			_peers.erase(c)
+			return
+		var body := JSON.stringify({"path": path, "n": seen.size()}).to_utf8_buffer()
+		var extra := ""
+		if path == "/gz" and head.to_lower().contains("accept-encoding: gzip"):
+			body = body.compress(FileAccess.COMPRESSION_GZIP)
+			extra = "Content-Encoding: gzip\r\n"
+		if mode == "close":
+			extra += "Connection: close\r\n"
+		var out := ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n%s\r\n"
+			% [body.size(), extra]).to_ascii_buffer()
+		out.append_array(body)
+		if path == "/slow":
+			_late.append({"peer": peer, "out": out, "at": Time.get_ticks_msec() + 2000})
+			return
+		peer.put_data(out)
+		if mode == "close":
+			c["closing_at"] = Time.get_ticks_msec() + 500
+		elif mode == "drop":
+			peer.disconnect_from_host()
+			_peers.erase(c)
+
+
+func _test_connections_are_kept_open() -> void:
+	section("NETWORK - the desktop game keeps its connections to the server open")
+
+	# Day 1, measured at a 50 ms ping and 60 fps: a request on a new connection
+	# took 133 ms, one on a connection kept open 67 ms; the login's four requests
+	# went from 0.7 s to 0.4 s. Over HTTPS a new connection costs one more round
+	# trip again. See connectionpool.gd for the rules checked here.
+	var pool = Api._pool
+	check("the desktop game sends its JSON through kept-open connections", pool != null)
+	if pool == null:
+		return
+	var fake := FakeHttpServer.new()
+	add_child(fake)
+	if not fake.start():
+		check("a free local port for the suite's own server", false)
+		fake.queue_free()
+		return
+	var kept_url: String = ApiForTests.BASE_URL
+	var kept_online: bool = Api.server_online
+	var kept_known: bool = Api.reachability_known
+	var kept_token: String = Api.token
+	Api.token = ""
+	ApiForTests.BASE_URL = "http://127.0.0.1:%d" % fake.port
+	var opened: int = pool.connections_opened
+
+	var oks := 0
+	var seen_at := 0
+	for i in 5:
+		var one: Dictionary = await Api.get_json("/one")
+		if one.get("ok", false) and one.data is Dictionary and one.data.get("path") == "/one":
+			oks += 1
+	check("five requests in a row are answered", oks == 5, oks)
+	check("  over one connection", fake.accepted == 1 and pool.connections_opened - opened == 1,
+		[fake.accepted, pool.connections_opened - opened])
+
+	var together: Array = []
+	for i in 3:
+		(func() -> void: together.append(await Api.get_json("/together"))).call()
+	var waited := 0.0
+	while together.size() < 3 and waited < 3.0:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	var all_ok := together.size() == 3
+	for r in together:
+		all_ok = all_ok and r.get("ok", false)
+	check("three at once are all answered, each on its own connection",
+		all_ok and fake.accepted == 3, [together.size(), fake.accepted])
+
+	var gz: Dictionary = await Api.get_json("/gz")
+	check("a compressed answer is unpacked", gz.get("ok", false) and gz.data is Dictionary
+		and gz.data.get("path") == "/gz", gz)
+
+	# Up to three connections are open now, so six requests to a server that
+	# closes after each answer need at least three new ones - and no timeouts.
+	fake.mode = "close"
+	var before: int = fake.accepted
+	var closing_from := Time.get_ticks_msec()
+	oks = 0
+	for i in 6:
+		if (await Api.get_json("/closing")).get("ok", false):
+			oks += 1
+	seen_at = fake.seen.size()
+	var closing_post: Dictionary = await Api.post("/closing", {"n": 1})
+	check("a server that says it will close gets every request, without waiting for it (Flask's own does this)",
+		oks == 6 and closing_post.get("ok", false) and fake.accepted - before >= 3
+		and Time.get_ticks_msec() - closing_from < 2000,
+		[oks, closing_post.get("status"), fake.accepted - before, Time.get_ticks_msec() - closing_from])
+
+	fake.mode = "keep"
+	await Api.get_json("/warm")
+	fake.mode = "eat_next"
+	seen_at = fake.seen.size()
+	var again: Dictionary = await Api.get_json("/again")
+	check("a GET lost on a reused connection is asked again once, and answered",
+		again.get("ok", false) and fake.seen.slice(seen_at) == ["GET /again", "GET /again"],
+		[again.get("status"), fake.seen.slice(seen_at)])
+
+	await Api.get_json("/warm")
+	fake.mode = "eat_next"
+	seen_at = fake.seen.size()
+	var buy: Dictionary = await Api.post("/buy", {"item_id": "ironsword"})
+	check("a POST lost the same way is never sent twice: it fails as no answer",
+		not buy.get("ok", true) and int(buy.get("status", -1)) == 0
+		and fake.seen.slice(seen_at) == ["POST /buy"], [buy.get("status"), fake.seen.slice(seen_at)])
+
+	fake.mode = "drop"
+	await Api.get_json("/warm")
+	fake.mode = "keep"
+	await get_tree().create_timer(0.2).timeout
+	seen_at = fake.seen.size()
+	var after_drop: Dictionary = await Api.get_json("/after_drop")
+	check("a connection the server dropped while idle is not used: the next request goes once and is answered",
+		after_drop.get("ok", false) and fake.seen.slice(seen_at) == ["GET /after_drop"],
+		[after_drop.get("status"), fake.seen.slice(seen_at)])
+	# A POST is never asked twice, so this one only works if the dropped
+	# connection is noticed before anything is sent on it.
+	fake.mode = "drop"
+	await Api.get_json("/warm")
+	fake.mode = "keep"
+	await get_tree().create_timer(0.2).timeout
+	seen_at = fake.seen.size()
+	var post_after_drop: Dictionary = await Api.post("/after_drop", {"n": 1})
+	check("  and so is a POST: it is checked before it is sent on it",
+		post_after_drop.get("ok", false) and fake.seen.slice(seen_at) == ["POST /after_drop"],
+		[post_after_drop.get("status"), fake.seen.slice(seen_at)])
+
+	pool.idle_close_seconds = 0.3
+	await Api.get_json("/idle")
+	var open_before: int = fake.open_connections()
+	await get_tree().create_timer(0.6).timeout
+	check("a connection left idle is closed by the game, before a server or proxy would",
+		open_before >= 1 and fake.open_connections() == 0, [open_before, fake.open_connections()])
+	pool.idle_close_seconds = pool.IDLE_CLOSE_SECONDS
+
+	var started := Time.get_ticks_msec()
+	var slow: Dictionary = await Api.get_json("/slow", 0.4)
+	var took := Time.get_ticks_msec() - started
+	check("a server that never answers times out on time", not slow.get("ok", true)
+		and int(slow.get("status", -1)) == 0 and took < 1500, [slow.get("status"), took])
+	var next_one: Dictionary = await Api.get_json("/after_slow")
+	check("  and the request after it is answered, not handed the late reply",
+		next_one.get("ok", false) and next_one.data is Dictionary and next_one.data.get("path") == "/after_slow",
+		next_one.get("data"))
+
+	fake.shutdown()
+	await get_tree().create_timer(0.1).timeout
+	var nothing: Dictionary = await Api.get_json("/nobody", 2.0)
+	check("nothing listening is no answer, at once", int(nothing.get("status", -1)) == 0, nothing.get("status"))
+
+	check("an address the pool cannot use is refused, not guessed at",
+		PoolForTests.parse_base_url("example.com").is_empty() and PoolForTests.parse_base_url("ftp://x").is_empty())
+	check("  and one it can is read in full",
+		PoolForTests.parse_base_url("https://api.elusionrpg.com") == {"tls": true, "host": "api.elusionrpg.com", "port": 443, "prefix": ""}
+		and PoolForTests.parse_base_url("http://127.0.0.1:5000/") == {"tls": false, "host": "127.0.0.1", "port": 5000, "prefix": ""}
+		and PoolForTests.parse_base_url("https://example.com:8443/game") == {"tls": true, "host": "example.com", "port": 8443, "prefix": "/game"})
+
+	ApiForTests.BASE_URL = kept_url
+	Api.token = kept_token
+	Api.server_online = kept_online
+	Api.reachability_known = kept_known
+	fake.queue_free()
+	print("  network: %d connections opened by the pool for %d requests" % [pool.connections_opened - opened, fake.seen.size()])
 
 
 func _test_staff_panel() -> void:

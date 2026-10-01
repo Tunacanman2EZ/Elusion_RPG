@@ -2173,8 +2173,9 @@ screen has no Exit, since a page cannot close its own tab.
 **Measured** in headless Chromium through Caddy and nginx, with SwiftShader
 software GL (a real GPU draws much faster):
 
-- The export is 51.8 MB, or 21.4 MB with gzip. On 40 Mbps the login screen is up
-  at 7.3 s.
+- The export is 46.2 MB, or 15.7 MB with gzip, since the emoji font ships at
+  chat size (see "Speed on day 1"); it was 51.8 MB and 21.4 MB, and on 40 Mbps
+  the login screen was up at 7.3 s at that size.
 - From picking the warrior to standing in the town takes 3.2-3.5 s.
 - A return visit gets 304s and downloads nothing.
 - After an upload, the next visit runs the new build.
@@ -2770,6 +2771,83 @@ Measured against the real server, on the desktop build and in Chromium:
   the API down and back mid-game showed the countdown and cleared it.
 
 Fixed: the two browser findings in "The browser build" above.
+
+### Speed on day 1
+
+Measured in the sandbox (two slow cores, software GL), with the frame rate held
+at 60 and the server put 50 ms away by a delaying proxy:
+
+- The login box is up 0.85 s after launch; picking a character to standing in
+  town is 0.1 s; every other area is loaded within 0.1 s of arriving.
+- Panels open in under 30 ms the first time and under 7 ms after; game scripts
+  cost about 0.4 ms a frame; the server answers a request in about 2 ms.
+- The field's physics is 3.6 ms a tick at 80 ticks a second. Fine on a desktop;
+  60 ticks would save a quarter of it, and is a feel decision, so it is left.
+
+Four things changed:
+
+- **The desktop game keeps its connections to the server open**
+  (`src/systems/connectionpool.gd`, owned by `Api` as `_pool`). HTTPRequest
+  opened a new connection for every request: on the real site a TCP and a TLS
+  handshake before the request. Measured: 133 ms a request before, 67 ms after;
+  the login's four requests 0.70 s before, 0.40 s after. Against Flask's own
+  server at home, 83 ms became 17 ms. The rules, each held by
+  `_test_connections_are_kept_open` against a small HTTP server inside the
+  suite (`FakeHttpServer`) and each watched failing when broken:
+  - up to six connections, one request at a time each, a queue past that;
+  - a connection unused for 20 s is closed by the game, before nginx (75 s),
+    waitress (120 s) or Caddy (5 min) would close it, and every connection is
+    checked just before use, so a request almost never goes out on a dead one;
+  - **a GET lost on a reused connection is asked again once; nothing else ever
+    is.** A purchase, a loot take or a kill report sent twice is the expensive
+    mistake; one that fails says "no answer", as it always could;
+  - "Connection: close" is obeyed (Flask's own server says it to everything,
+    and HTTPClient still reads CONNECTED for a moment after the last byte);
+  - an answer is complete when all its bytes are in, whatever the connection's
+    state says: HTTPClient reports a connection error the moment a server that
+    closes after answering has been read to the end;
+  - gzip is unpacked, as HTTPRequest did.
+  Pictures (`post_bytes`, `get_bytes`) and the whole browser build still use
+  HTTPRequest: a browser keeps its own connections open. The site's proxy keeps
+  connections to players open by default (Caddy and nginx both do); nothing in
+  DEPLOY.md needs to change for it.
+- **Doors fade 0.15 s each way** (`SceneTransition.fade_duration`, was 0.3).
+  The fade was 0.6 s of every 0.65 s trip. The area is built while the screen
+  is black either way. `_test_a_door_is_quick`.
+- **The emoji font ships at chat size.** Google's Noto Color Emoji is 10.8 MB
+  of 136x128 pictures, three quarters of the browser's game file, for emoji
+  drawn at 10-16 px. `tools/shrink_emoji_font.py` scales the pictures to 32 ppem
+  (every emoji kept, 4.6 MB); the browser download went from 21.4 MB to 15.7 MB
+  compressed, and the game file from 14.2 MB to 8.2 MB, which is the part every
+  player downloads again after every update. Checked side by side at 11, 16,
+  24 and 32 px, and in the browser's chat. **Rebuild it from Google's release,
+  never from this copy** (the script refuses a strike already that small). The
+  licence notes are in assetlicense.md. `_test_the_emoji_font_is_chat_sized`
+  fails if Google's full file is dropped back in.
+- **Enemies keep their place on the ring.** Found while timing the field: each
+  0.4 s review that found no better slot forgot the slot it held without
+  releasing it, so within a second 37 of the 40 slots were owned by enemies not
+  standing on them and none of 12 chasers held one. Every enemy ran at the
+  player's own position and rescanned all forty slots every physics tick. Now
+  9 to 12 of 12 hold a slot, and the lookup is 7 us instead of 24. **This
+  changes how a fight looks**: enemies spread round the player as the formation
+  was built to, instead of piling onto one spot.
+  `_test_enemies_keep_their_place_in_the_ring`.
+
+And one regression, found while testing the connections: **a bag changed while
+the server was down was lost when it came back.** `bag_sent()` makes the bag on
+its way the base for the next save (see "A bag save names the bag it was built
+on"); when that save never landed, the retry claimed a base the server never
+had, was refused as stale, and the server's older bag was adopted over the
+change. `CharacterData.bag_unsent()` puts the old base back when a bag save
+fails, unless a newer server bag has been noted since. Measured after: two cells
+swapped during a 15 s outage reached the server, through Flask's own server and
+through a kept-open one. `_test_a_bag_changed_offline_still_lands`.
+
+Noted, not changed: during a fight the server logs "unexplained heal" for mana
+(+13 against 9 of regeneration over two seconds) and clamps it, on the old
+request code and the new alike. The game regenerates mana a little faster than
+the server's model of it; worth a look on its own.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

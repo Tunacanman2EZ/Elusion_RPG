@@ -1271,8 +1271,16 @@ func _ensure_slot_claimed() -> void:
 		_last_released_slot = -1
 		return
 
-	if not holds:
-		_claimed_slot = -1
+	# NOTHING CLEARLY BETTER: KEEP THE SLOT YOU HAVE. This used to fall through
+	# to the `_claimed_slot = -1` below, which forgot the slot without letting go
+	# of it - `_slot_owners` still named this enemy, so nobody else could take it,
+	# and the next tick this enemy skipped it too (owned by a living enemy). Every
+	# review leaked a slot. Measured in the field on day 1: within a second, 37 of
+	# the 40 slots were owned by enemies not standing on them and none of 12
+	# chasers held one, so every enemy ran at the player's own position and
+	# rescanned all forty slots every physics tick.
+	if holds:
+		return
 
 	# every slot already taken by a still-valid enemy — none available
 	# right now (would need more than 28 simultaneous chasers).

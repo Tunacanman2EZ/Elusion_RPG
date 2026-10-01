@@ -11,9 +11,12 @@
 #     if res.ok:
 #         print(res.data["token"])
 #
-# CONCURRENCY: a fresh HTTPRequest node is created per call and freed
-# afterwards. Reusing one shared node breaks the moment two systems call
-# at once — the second request clobbers the first's in-flight state.
+# CONCURRENCY: on the desktop, every JSON request goes through _pool (see
+# connectionpool.gd), which keeps up to six connections open and reuses them,
+# one request at a time each. In a browser, and for pictures, a fresh
+# HTTPRequest node is created per call and freed afterwards. Reusing one shared
+# node breaks the moment two systems call at once — the second request
+# clobbers the first's in-flight state.
 #
 # RESULT SHAPE: every method resolves to a Dictionary:
 #   ok      bool    — true for 2xx
@@ -21,6 +24,8 @@
 #   data    Variant — parsed JSON body, or {} when there wasn't one
 #   error   String  — human-readable reason, "" on success
 extends Node
+
+const ConnectionPool := preload("res://src/systems/connectionpool.gd")
 
 
 # =============================================================================
@@ -516,6 +521,12 @@ func _ready() -> void:
 	BASE_URL = _resolve_base_url()
 	if BASE_URL != DEFAULT_BASE_URL:
 		print("[BOOT] Api: server override in effect — %s" % BASE_URL)
+	# KEPT-OPEN CONNECTIONS, off the web. A browser keeps its own connections
+	# open, and a no-threads web build has no HTTPClient sockets to keep anyway.
+	if not OS.has_feature("web"):
+		_pool = ConnectionPool.new()
+		_pool.name = "connections"
+		add_child(_pool)
 	_load_session()
 
 	# deliberately NOT awaited. _ready() stays an ordinary function and no
@@ -763,12 +774,10 @@ func send_before_leaving(method: String, path: String, body: Dictionary) -> bool
 
 
 func _request(method: int, path: String, body: Dictionary, timeout_override: float = 0.0) -> Dictionary:
-	var http := HTTPRequest.new()
 	# 0.0 means "use the normal budget" rather than "no timeout" — an explicit
 	# zero on HTTPRequest.timeout disables the timeout entirely, which is the
 	# opposite of what a caller passing a smaller number wants.
-	http.timeout = timeout_override if timeout_override > 0.0 else TIMEOUT
-	add_child(http)
+	var timeout: float = timeout_override if timeout_override > 0.0 else TIMEOUT
 
 	var headers := PackedStringArray(["Content-Type: application/json",
 		# EVERY REQUEST CARRIES THE BUILD. Not only the authenticated ones:
@@ -789,6 +798,14 @@ func _request(method: int, path: String, body: Dictionary, timeout_override: flo
 		payload = JSON.stringify(body)
 
 	_note_request()
+	if _pool != null:
+		var job: ConnectionPool.Job = _pool.send(BASE_URL, method, path, headers, payload.to_utf8_buffer(), timeout)
+		var answer: Array = await job.done
+		return _answer_from(answer, sent_token, path)
+
+	var http := HTTPRequest.new()
+	http.timeout = timeout
+	add_child(http)
 	var err := http.request(BASE_URL + path, headers, method, payload)
 	if err != OK:
 		http.queue_free()
@@ -796,6 +813,10 @@ func _request(method: int, path: String, body: Dictionary, timeout_override: flo
 		return _failure(0, "Could not reach the server.")
 
 	return await _read_answer(http, sent_token, path)
+
+
+# The kept-open connections, or null in a browser. See connectionpool.gd.
+var _pool: ConnectionPool = null
 
 
 # EVERY JSON ANSWER COMES THROUGH HERE, whatever shape the request was. Split
@@ -806,7 +827,11 @@ func _read_answer(http: HTTPRequest, sent_token: String, path: String) -> Dictio
 	# has to await. result[] is [result, response_code, headers, body].
 	var result: Array = await http.request_completed
 	http.queue_free()
+	return _answer_from(result, sent_token, path)
 
+
+# The pool's answers are the same array, so both paths are read here.
+func _answer_from(result: Array, sent_token: String, path: String) -> Dictionary:
 	var request_result: int = result[0]
 	var status: int = result[1]
 	var raw_body: PackedByteArray = result[3]
