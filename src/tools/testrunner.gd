@@ -199,6 +199,7 @@ func _run_all() -> void:
 	_test_a_door_is_quick()
 	_test_the_emoji_font_is_chat_sized()
 	await _test_connections_are_kept_open()
+	_test_the_powers_panel_closes()
 
 
 # =============================================================================
@@ -7288,6 +7289,30 @@ func _test_connections_are_kept_open() -> void:
 	Api.reachability_known = kept_known
 	fake.queue_free()
 	print("  network: %d connections opened by the pool for %d requests" % [pool.connections_opened - opened, fake.seen.size()])
+
+
+func _test_the_powers_panel_closes() -> void:
+	section("POWERS - the owner's ranks window has a × like every other")
+
+	# Asked for on day 1: the only way out of it was the button that opened it.
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var kept_owner: bool = Api.is_owner
+	Api.is_owner = true
+	hud._toggle_powers_panel()
+	var panel: Control = hud.get_node_or_null("powerspanel")
+	var x: Button = hud.get_node_or_null("powerspanel/body/header/powersclosebutton")
+	check("the Powers window opens with a × in its header",
+		panel != null and panel.visible and x != null and x.text == "×" and x.focus_mode == Control.FOCUS_NONE,
+		[panel != null, x.text if x != null else "no button"])
+	if x != null:
+		x.pressed.emit()
+	check("  pressing it closes the window", panel != null and not panel.visible)
+	hud._toggle_powers_panel()
+	check("  and the Powers button opens it again", panel != null and panel.visible)
+	check("  its list is still where the server's answer is written",
+		hud.get_node_or_null(hud.POWERS_ROWS) is VBoxContainer)
+	Api.is_owner = kept_owner
+	hud.free()
 
 
 func _test_staff_panel() -> void:

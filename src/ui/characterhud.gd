@@ -752,17 +752,51 @@ func _toggle_powers_panel() -> void:
 	style.content_margin_bottom = 12.0
 	frame.add_theme_stylebox_override("panel", style)
 
+	# A HEADER WITH THE PANEL'S ×, like every other window. The only way out
+	# used to be the button that opened it.
+	var body := VBoxContainer.new()
+	body.name = "body"
+	body.add_theme_constant_override("separation", 6)
+	var header := HBoxContainer.new()
+	header.name = "header"
+	var title := Label.new()
+	title.text = "RANKS AND POWERS"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_color_override("font_color", Color(0.93, 0.73, 0.30))
+	title.add_theme_font_size_override("font_size", 17)
+	header.add_child(title)
+	var powers_close := Button.new()
+	powers_close.name = "powersclosebutton"
+	powers_close.text = "×"
+	powers_close.custom_minimum_size = Vector2(24, 24)
+	powers_close.focus_mode = Control.FOCUS_NONE
+	powers_close.tooltip_text = "Close"
+	powers_close.pressed.connect(_close_powers_panel)
+	header.add_child(powers_close)
+	body.add_child(header)
+
 	var scroll := ScrollContainer.new()
 	scroll.name = "scroll"
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var rows := VBoxContainer.new()
 	rows.name = "rows"
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows.add_theme_constant_override("separation", 4)
 	scroll.add_child(rows)
-	frame.add_child(scroll)
+	body.add_child(scroll)
+	frame.add_child(body)
 	add_child(frame)
 
 	_load_powers()
+
+
+func _close_powers_panel() -> void:
+	var panel: Control = get_node_or_null("powerspanel")
+	if panel != null:
+		panel.visible = false
+
+
+const POWERS_ROWS := "powerspanel/body/scroll/rows"
 
 
 func _powers_line(rows: VBoxContainer, text: String, color: Color, size: int) -> void:
@@ -775,20 +809,19 @@ func _powers_line(rows: VBoxContainer, text: String, color: Color, size: int) ->
 
 
 func _load_powers() -> void:
-	var rows: VBoxContainer = get_node_or_null("powerspanel/scroll/rows")
+	var rows: VBoxContainer = get_node_or_null(POWERS_ROWS)
 	if rows == null:
 		return
 	for child in rows.get_children():
 		child.queue_free()
 
-	_powers_line(rows, "RANKS AND POWERS", Color(0.93, 0.73, 0.30), 17)
 	_powers_line(rows, "Read from the server's own route decorators, not a hand-kept list.",
 		Color(0.45, 0.50, 0.58), 11)
 
 	var res: Dictionary = await Api.get_json("/api/staff/powers", Api.PROBE_TIMEOUT)
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
-	rows = get_node_or_null("powerspanel/scroll/rows")
+	rows = get_node_or_null(POWERS_ROWS)
 	if rows == null:
 		return
 

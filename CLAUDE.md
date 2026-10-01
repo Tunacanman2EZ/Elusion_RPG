@@ -2077,7 +2077,9 @@ the one area name (no "Bossarena"), `Api.no_answer_text()` the one "no answer"
 (a player never reads "Is it running?"). The restore line on a potion is said
 once, from the data; rods no longer claim level requirements they do not have;
 every close button is ×. `_test_the_sweep_wiring` and `_test_the_sweep_words`
-hold all of it.
+hold all of it. The owner's Powers window is built in code rather than a scene,
+so that check could not see it, and it had no × until day 1
+(`_close_powers_panel()`, `_test_the_powers_panel_closes`).
 
 ### The browser build
 
