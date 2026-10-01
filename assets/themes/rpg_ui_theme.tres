@@ -197,6 +197,40 @@ corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu"]
+content_margin_left = 6.0
+content_margin_top = 4.0
+content_margin_right = 6.0
+content_margin_bottom = 4.0
+bg_color = Color(0.07, 0.055, 0.035, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.85, 0.72, 0.42, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu_hover"]
+bg_color = Color(0.25, 0.2, 0.15, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.85, 0.75, 0.45, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_menu"]
+color = Color(0.7, 0.6, 0.4, 0.8)
+thickness = 1
+
 [resource]
 Button/colors/font_color = Color(0.95, 0.85, 0.6, 1)
 Button/colors/font_disabled_color = Color(0.5, 0.45, 0.4, 1)
@@ -231,6 +265,18 @@ PanelSub/base_type = &"PanelContainer"
 PanelSub/styles/panel = SubResource("StyleBoxFlat_panel_sub")
 PanelTooltip/base_type = &"PanelContainer"
 PanelTooltip/styles/panel = SubResource("StyleBoxFlat_tooltip")
+PopupMenu/colors/font_color = Color(0.9, 0.85, 0.75, 1)
+PopupMenu/colors/font_disabled_color = Color(0.5, 0.45, 0.4, 1)
+PopupMenu/colors/font_hover_color = Color(1, 0.95, 0.7, 1)
+PopupMenu/colors/font_separator_color = Color(0.95, 0.8, 0.45, 1)
+PopupMenu/constants/v_separation = 6
+PopupMenu/font_sizes/font_separator_size = 12
+PopupMenu/font_sizes/font_size = 14
+PopupMenu/styles/hover = SubResource("StyleBoxFlat_menu_hover")
+PopupMenu/styles/labeled_separator_left = SubResource("StyleBoxLine_menu")
+PopupMenu/styles/labeled_separator_right = SubResource("StyleBoxLine_menu")
+PopupMenu/styles/panel = SubResource("StyleBoxFlat_menu")
+PopupMenu/styles/separator = SubResource("StyleBoxLine_menu")
 ProgressBar/styles/background = SubResource("StyleBoxFlat_progress_bg")
 ProgressBar/styles/fill = SubResource("StyleBoxFlat_progress_fill")
 VScrollBar/styles/grabber = SubResource("StyleBoxFlat_scroll_grabber")

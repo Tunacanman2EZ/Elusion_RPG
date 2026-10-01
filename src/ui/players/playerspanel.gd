@@ -43,6 +43,22 @@ const NameTag := preload("res://src/shared/nametag.gd")
 
 var _loading: bool = false
 
+# RIGHT-CLICK A NAME: Whisper, Add friend, Trade. This window only asks - the
+# HUD connects these to the chat window, the friends window and the trade
+# window, which already know how to do each, so a second way to send a friend
+# request cannot check names differently from the first.
+signal whisper_asked(who: String)
+signal friend_asked(who: String)
+signal trade_asked(who: String)
+
+const MENU_WHISPER := 1
+const MENU_FRIEND := 2
+const MENU_TRADE := 3
+const ROW_HINT := "Right-click to whisper, add as a friend or trade"
+
+var row_menu: PopupMenu = null
+var _menu_who: String = ""
+
 
 # Drag by the header, resize from any edge, and come back where it was left.
 # One component for all sixteen panels - see src/shared/panelwindow.gd for why
@@ -235,7 +251,9 @@ func _row(entry: Dictionary) -> Control:
 		# colour on each screen is not recognisable on any of them.
 		guild_label.add_theme_color_override("font_color", Api.GUILD_TAG_COLOUR)
 		guild_label.tooltip_text = "In %s" % str(entry.get("guild", tag))
-		guild_label.mouse_filter = Control.MOUSE_FILTER_STOP
+		# PASS, not STOP: the tooltip still shows, and a right-click on the tag
+		# still reaches the row's menu instead of stopping here.
+		guild_label.mouse_filter = Control.MOUSE_FILTER_PASS
 		line.add_child(guild_label)
 
 	var where := Label.new()
@@ -245,7 +263,65 @@ func _row(entry: Dictionary) -> Control:
 	where.add_theme_color_override("font_color", Color(0.62, 0.58, 0.52))
 	line.add_child(where)
 
-	return _boxed(line, _is_me(entry))
+	var box: Control = _boxed(line, _is_me(entry))
+	# NOT ON YOUR OWN ROW - nobody whispers, befriends or trades with themselves,
+	# and the server refuses all three. Not on a row with no account name either.
+	if who != "" and who != "?" and not _is_me(entry):
+		box.tooltip_text = ROW_HINT
+		box.gui_input.connect(_on_row_input.bind(who, box))
+	return box
+
+
+# =============================================================================
+# THE RIGHT-CLICK MENU
+# =============================================================================
+
+func _on_row_input(event: InputEvent, who: String, box: Control) -> void:
+	var click := event as InputEventMouseButton
+	if click == null or click.button_index != MOUSE_BUTTON_RIGHT or not click.pressed:
+		return
+	box.accept_event()
+	open_row_menu(who)
+
+
+func _ensure_row_menu() -> PopupMenu:
+	if row_menu == null:
+		row_menu = PopupMenu.new()
+		row_menu.name = "rowmenu"
+		add_child(row_menu)
+		row_menu.id_pressed.connect(_on_row_menu_id)
+	return row_menu
+
+
+func open_row_menu(who: String) -> void:
+	"""The menu for one player, at the mouse. Same shape as the chat log's name
+	menu: their name on top, then what you can do."""
+	if who == "" or (Api.username != "" and who.to_lower() == Api.username.to_lower()):
+		return
+	var menu: PopupMenu = _ensure_row_menu()
+	menu.clear()
+	_menu_who = who
+	menu.add_separator(who)
+	menu.add_item("Whisper", MENU_WHISPER)
+	menu.add_item("Add friend", MENU_FRIEND)
+	menu.add_item("Trade", MENU_TRADE)
+	menu.reset_size()
+	if is_inside_tree():
+		menu.position = Vector2i(get_viewport().get_mouse_position())
+		menu.popup()
+
+
+func _on_row_menu_id(id: int) -> void:
+	var who: String = _menu_who
+	if who == "":
+		return
+	match id:
+		MENU_WHISPER:
+			whisper_asked.emit(who)
+		MENU_FRIEND:
+			friend_asked.emit(who)
+		MENU_TRADE:
+			trade_asked.emit(who)
 
 
 func _boxed(line: Control, mine: bool) -> Control:

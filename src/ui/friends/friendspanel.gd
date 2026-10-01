@@ -324,22 +324,45 @@ func _presence_text(person: Dictionary, now: int) -> String:
 func _on_add_pressed() -> void:
 	if add_entry == null or _busy:
 		return
+	if await ask(add_entry.text) and is_instance_valid(self) and add_entry != null:
+		add_entry.text = ""
 
-	var who: String = add_entry.text.strip_edges()
+
+func ask(who: String) -> bool:
+	"""Ask `who` to be friends. False when it was refused here, before anything
+	was sent. The box at the top and the Players window's right-click menu both
+	come here, so the two cannot check a name differently."""
+	if _busy:
+		return false
+	who = who.strip_edges()
 	if who == "":
-		return
+		return false
 
 	if _name_check.search(who) == null:
 		_show_message("A name is 3 to 20 letters, numbers or underscores.")
-		return
+		return false
 	if who.to_lower() == Api.username.to_lower():
 		_show_message("You cannot add yourself.")
-		return
+		return false
 
 	await _act("/api/friends/request", {"username": who},
 		"Asked %s. Their Friends button lights up until they answer." % who)
-	if is_instance_valid(self) and add_entry != null:
-		add_entry.text = ""
+	return true
+
+
+func ask_from_elsewhere(who: String) -> void:
+	"""Open the window and ask `who` - from the Players window's menu. Opened
+	so the answer, and their row under the requests you sent, are on screen.
+
+	NOT open(). That starts a read of the list, and the ask's own re-read
+	after it would be dropped while that one is out - so the window could
+	show the list from before the ask until the next refresh."""
+	if not visible:
+		visible = true
+		_set_notice("")
+	# Refused before sending: nothing re-reads the list, so read it here.
+	if not await ask(who) and is_instance_valid(self):
+		_load()
 
 
 func _respond(who: String, accept: bool) -> void:

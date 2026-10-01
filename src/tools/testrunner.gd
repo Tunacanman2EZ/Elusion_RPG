@@ -200,6 +200,8 @@ func _run_all() -> void:
 	_test_the_emoji_font_is_chat_sized()
 	await _test_connections_are_kept_open()
 	_test_the_powers_panel_closes()
+	_test_the_staff_windows_share_one_look()
+	await _test_players_right_click_menu()
 
 
 # =============================================================================
@@ -7300,7 +7302,7 @@ func _test_the_powers_panel_closes() -> void:
 	Api.is_owner = true
 	hud._toggle_powers_panel()
 	var panel: Control = hud.get_node_or_null("powerspanel")
-	var x: Button = hud.get_node_or_null("powerspanel/body/header/powersclosebutton")
+	var x: Button = panel.find_child("powersclosebutton", true, false) as Button if panel != null else null
 	check("the Powers window opens with a × in its header",
 		panel != null and panel.visible and x != null and x.text == "×" and x.focus_mode == Control.FOCUS_NONE,
 		[panel != null, x.text if x != null else "no button"])
@@ -7313,6 +7315,218 @@ func _test_the_powers_panel_closes() -> void:
 		hud.get_node_or_null(hud.POWERS_ROWS) is VBoxContainer)
 	Api.is_owner = kept_owner
 	hud.free()
+
+
+func _test_the_staff_windows_share_one_look() -> void:
+	section("STAFF WINDOWS - Owner, Staff and Powers wear one navy and gold theme")
+
+	# Asked for on day 1: the three staff windows had three looks (navy, brown,
+	# navy) and none had the inventory's gold boxes. They now share
+	# staff_ui_theme.tres, so a colour changed there changes all three.
+	const STAFF_THEME_PATH := "res://assets/themes/staff_ui_theme.tres"
+	var theme: Theme = load(STAFF_THEME_PATH) as Theme
+	check("the staff theme loads", theme != null)
+	if theme == null:
+		return
+	var window: StyleBoxFlat = theme.get_stylebox("panel", "PanelContainer") as StyleBoxFlat
+	var tab_on: StyleBoxFlat = theme.get_stylebox("tab_selected", "TabContainer") as StyleBoxFlat
+	var tab_box: StyleBoxFlat = theme.get_stylebox("panel", "TabContainer") as StyleBoxFlat
+	var is_navy := func(c: Color) -> bool: return c.b > c.r and c.b > c.g and c.v < 0.2
+	var is_gold := func(c: Color) -> bool: return c.r > c.g and c.g > c.b and c.r > 0.45
+	check("  its windows are navy with a gold frame",
+		window != null and is_navy.call(window.bg_color) and is_gold.call(window.border_color)
+		and window.border_width_left >= 2,
+		str(window.bg_color) + " " + str(window.border_color) if window != null else "no window style")
+	check("  its tabs and the page under them are boxed in gold",
+		tab_on != null and tab_box != null and is_gold.call(tab_on.border_color)
+		and is_gold.call(tab_box.border_color) and tab_box.border_width_top >= 1)
+	check("  it has the header box and the inner box every window uses",
+		theme.get_type_variation_base(&"PanelHeader") == &"PanelContainer"
+		and theme.get_type_variation_base(&"PanelSub") == &"PanelContainer")
+	var staff_menu: StyleBoxFlat = theme.get_stylebox("panel", "PopupMenu") as StyleBoxFlat
+	check("  and its dropdown lists and menus are navy in a gold frame, not Godot's grey",
+		theme.has_stylebox("panel", "PopupMenu") and staff_menu != null
+		and is_navy.call(staff_menu.bg_color) and is_gold.call(staff_menu.border_color))
+
+	# NO WINDOW MAY QUIETLY KEEP ITS OLD LOOK. A per-node style override beats
+	# the theme, so one left behind keeps an old colour no matter what the theme
+	# says. Only the red and green action buttons keep their own colours.
+	const KEEP_OWN_COLOURS := ["banbutton", "unbanbutton", "maintenancebutton"]
+	var leftovers := func(root: Node) -> Array:
+		var found: Array = []
+		var nodes: Array = [root]
+		nodes.append_array(root.find_children("*", "", true, false))
+		for node in nodes:
+			if not (node is Button or node is LineEdit or node is TabContainer or node is PanelContainer):
+				continue
+			if str(node.name) in KEEP_OWN_COLOURS:
+				continue
+			for style in ["normal", "hover", "pressed", "focus", "panel",
+					"tab_selected", "tab_unselected", "tab_hovered"]:
+				if (node as Control).has_theme_stylebox_override(style):
+					found.append("%s/%s" % [node.name, style])
+		return found
+
+	var owner_panel: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate()
+	var owner_left: Array = leftovers.call(owner_panel)
+	check("the Owner window wears the staff theme",
+		owner_panel.theme != null and owner_panel.theme.resource_path == STAFF_THEME_PATH,
+		owner_panel.theme.resource_path if owner_panel.theme != null else "no theme")
+	check("  with no button, field, tab or box keeping its own old style", owner_left.is_empty(), owner_left)
+	var owner_header: Control = owner_panel.find_child("headerpanel", true, false)
+	check("  and its title sits in the gold header box",
+		owner_header != null and owner_header.theme_type_variation == &"PanelHeader")
+	owner_panel.free()
+
+	var staff_panel: Control = (load("res://scene/ui/staff/staffpanel.tscn") as PackedScene).instantiate()
+	var staff_main: Control = staff_panel.get_node_or_null("mainpanel")
+	var staff_left: Array = leftovers.call(staff_panel)
+	check("the Staff window wears the staff theme, not the brown one",
+		staff_main != null and staff_main.theme != null and staff_main.theme.resource_path == STAFF_THEME_PATH,
+		staff_main.theme.resource_path if staff_main != null and staff_main.theme != null else "no theme")
+	check("  with no button, field, tab or box keeping its own old style", staff_left.is_empty(), staff_left)
+	staff_panel.free()
+
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var kept_owner: bool = Api.is_owner
+	Api.is_owner = true
+	hud._toggle_powers_panel()
+	var powers: Control = hud.get_node_or_null("powerspanel")
+	var powers_header: Control = powers.find_child("header", true, false) if powers != null else null
+	check("the Powers window wears the staff theme",
+		powers != null and powers.theme != null and powers.theme.resource_path == STAFF_THEME_PATH)
+	check("  with its title in the gold header box and no style of its own",
+		powers_header != null and powers_header.theme_type_variation == &"PanelHeader"
+		and powers != null and leftovers.call(powers).is_empty(),
+		leftovers.call(powers) if powers != null else "no window")
+	Api.is_owner = kept_owner
+	hud.free()
+
+
+func _test_players_right_click_menu() -> void:
+	section("PLAYERS - right-click a name to whisper, add as a friend or trade")
+
+	# Asked for on day 1. Out of the tree, like the chat menu's test: _ready()
+	# never runs, so nothing polls a server, and with no token nothing is sent.
+	var was := [Api.username, Api.token]
+	Api.username = "me_myself"
+	Api.token = ""
+	var panel: Control = (load("res://scene/ui/players/playerspanel.tscn") as PackedScene).instantiate()
+	var stranger: Control = panel._row({"username": "rowdy", "name": "mage", "level": 3,
+		"area": "field", "role": "player", "guild_tag": "ABC", "guild": "Abc"})
+	var mine: Control = panel._row({"username": "Me_Myself", "name": "warrior", "level": 9,
+		"area": "field", "role": "player", "guild_tag": ""})
+	check("somebody else's row can be right-clicked, and says so",
+		stranger.tooltip_text == panel.ROW_HINT and not stranger.gui_input.get_connections().is_empty(),
+		stranger.tooltip_text)
+	check("  your own row has no menu",
+		mine.tooltip_text == "" and mine.gui_input.get_connections().is_empty())
+	var stops: Array = []
+	for node in stranger.find_children("*", "Control", true, false):
+		if (node as Control).mouse_filter == Control.MOUSE_FILTER_STOP:
+			stops.append(str(node.name))
+	check("  nothing on the row, the guild tag included, keeps the click from the row",
+		stops.is_empty(), stops)
+
+	var heard: Array = []
+	panel.whisper_asked.connect(func(who: String) -> void: heard.append("whisper " + who))
+	panel.friend_asked.connect(func(who: String) -> void: heard.append("friend " + who))
+	panel.trade_asked.connect(func(who: String) -> void: heard.append("trade " + who))
+
+	var left := InputEventMouseButton.new()
+	left.button_index = MOUSE_BUTTON_LEFT
+	left.pressed = true
+	stranger.gui_input.emit(left)
+	check("a left click opens nothing", panel.row_menu == null)
+	var right := InputEventMouseButton.new()
+	right.button_index = MOUSE_BUTTON_RIGHT
+	right.pressed = true
+	stranger.gui_input.emit(right)
+	var menu: PopupMenu = panel.row_menu
+	var items: Array = []
+	var title: String = ""
+	if menu != null:
+		for i in menu.item_count:
+			if menu.is_item_separator(i):
+				title = menu.get_item_text(i)
+			else:
+				items.append(menu.get_item_text(i))
+	check("a right click opens their menu: Whisper, Add friend, Trade",
+		menu != null and title == "rowdy" and items == ["Whisper", "Add friend", "Trade"], [title, items])
+	if menu != null:
+		for id in [panel.MENU_WHISPER, panel.MENU_FRIEND, panel.MENU_TRADE]:
+			menu.id_pressed.emit(id)
+	check("  and each asks for that, for them",
+		heard == ["whisper rowdy", "friend rowdy", "trade rowdy"], heard)
+	panel._menu_who = ""
+	panel.open_row_menu("ME_MYSELF")
+	check("  there is no menu for yourself, however it is typed", panel._menu_who == "")
+	# THE MENU WEARS THE GAME'S LOOK. A theme with no PopupMenu in it leaves
+	# Godot's grey box, which is what the first version of this menu showed.
+	var game_theme: Theme = load("res://assets/themes/rpg_ui_theme.tres") as Theme
+	var menu_box: StyleBoxFlat = game_theme.get_stylebox("panel", "PopupMenu") as StyleBoxFlat \
+		if game_theme != null and game_theme.has_stylebox("panel", "PopupMenu") else null
+	check("  and the menu is a dark box in a gold frame, like the windows",
+		menu_box != null and menu_box.bg_color.v < 0.15 and menu_box.border_color.r > menu_box.border_color.b
+		and menu_box.border_width_top >= 1 and game_theme.has_stylebox("hover", "PopupMenu"))
+	stranger.free()
+	mine.free()
+	panel.free()
+
+	# THE HUD SENDS EACH TO THE WINDOW THAT ALREADY DOES IT.
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var built: Control = hud._build_players_panel()
+	check("the HUD connects all three to its own windows",
+		built.whisper_asked.is_connected(hud.whisper_player)
+		and built.friend_asked.is_connected(hud.ask_to_be_friends)
+		and built.trade_asked.is_connected(hud.trade_with))
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	check("  Whisper opens chat on the Whisper tab, Add friend asks from the Friends window,"
+		+ " Trade offers from the Trade window",
+		_func_body(hud_src, "func whisper_player(").contains("chat_panel.start_whisper(who)")
+		and _func_body(hud_src, "func ask_to_be_friends(").contains("friends_panel.ask_from_elsewhere(who)")
+		and _func_body(hud_src, "func trade_with(").contains("trade_panel.offer_to(active_character, who)"))
+	check("  and opening the list is what builds and wires it",
+		_func_body(hud_src, "func toggle_players(").contains("_build_players_panel()"))
+	built.free()
+	hud.free()
+
+	# WHISPER: the same path as the chat log's name menu.
+	var chat: Control = (load("res://scene/ui/chat/chatpanel.tscn") as PackedScene).instantiate()
+	chat.whisper_to = chat.get_node_or_null("%chatto")
+	for channel in chat.CHANNELS:
+		chat._feeds[channel] = {"cursor": 0, "lines": [], "unread": false}
+	chat.visible = true
+	chat.start_whisper("  rowdy ")
+	check("start_whisper opens the Whisper tab aimed at them",
+		chat._channel == "private" and chat._whisper_with == "rowdy"
+		and chat.whisper_to != null and chat.whisper_to.text == "rowdy",
+		[chat._channel, chat._whisper_with])
+	chat._menu_line = {"kind": "chat", "by": "other", "id": 5}
+	chat._on_line_menu_id(chat.MENU_WHISPER)
+	check("  and the chat log's own Whisper goes the same way", chat._whisper_with == "other")
+	chat.free()
+
+	# ADD FRIEND: the same checks as the box at the top of the Friends window.
+	var friends: Control = (load("res://scene/ui/friends/friendspanel.tscn") as PackedScene).instantiate()
+	friends.notice = friends.get_node_or_null("%friendsnotice")
+	friends._name_check.compile(friends.NAME_PATTERN)
+	var sent_self: bool = await friends.ask("Me_Myself")
+	check("asking yourself is refused before anything is sent",
+		not sent_self and friends.notice != null and friends.notice.text == "You cannot add yourself.",
+		friends.notice.text if friends.notice != null else "no notice")
+	var sent_bad: bool = await friends.ask("no spaces allowed")
+	check("  and so is a name that cannot exist", not sent_bad)
+	check("  the box at the top asks through the same function",
+		_func_body(_code_src("res://src/ui/friends/friendspanel.gd"), "func _on_add_pressed(").contains("ask(add_entry.text)"))
+	friends.free()
+
+	# TRADE: the same request as a typed name - no slot, the server finds it.
+	check("Trade from the list sends the typed-name offer",
+		_func_body(_code_src("res://src/ui/trade/tradepanel.gd"), "func offer_to(").contains("_send_offer(who, -1)"))
+
+	Api.username = was[0]
+	Api.token = was[1]
 
 
 func _test_staff_panel() -> void:
@@ -9767,11 +9981,16 @@ func _test_the_gm_panel_is_a_window() -> void:
 	check("and it opens clear of the menu bar", bottom <= 720.0 - 76.0, bottom)
 
 	# ---- tidy: no button left on the engine's default look ----
+	# THE STYLE THE BUTTON ENDS UP WITH, not whether it carries an override.
+	# Since day 1 the staff theme dresses them, and an override per button is
+	# exactly what would stop a theme change reaching them.
+	var engine_button: StyleBox = ThemeDB.get_default_theme().get_stylebox("normal", "Button")
 	var plain: Array[String] = []
 	for node in panel.find_children("*", "Button", true, true):
 		if node is CheckButton or node is OptionButton:
 			continue
-		if not (node as Button).has_theme_stylebox_override("normal"):
+		var worn: StyleBox = (node as Button).get_theme_stylebox("normal")
+		if worn == null or worn == engine_button:
 			plain.append(String(node.name))
 	check("every button wears the panel's style", plain.is_empty(), plain)
 

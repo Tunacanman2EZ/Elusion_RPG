@@ -456,6 +456,24 @@ func room_news(room: String) -> void:
 	_paint_tabs()
 
 
+func start_whisper(who: String) -> void:
+	"""The Whisper tab, aimed at `who`, with the cursor in the box. The name
+	menu in this log and the Players window's right-click menu both come here.
+
+	OPENED FIRST, AIMED SECOND. Opening on a whisper that is waiting aims the
+	tab at whoever sent it; aiming first would have that win over the name the
+	player just picked."""
+	who = who.strip_edges()
+	if who == "":
+		return
+	if not visible:
+		open()
+	_aim_whisper(who)
+	_show_channel("private")
+	if entry != null and entry.is_inside_tree():
+		entry.grab_focus()
+
+
 func _aim_whisper(who: String) -> void:
 	_whisper_with = who
 	if whisper_to != null:
@@ -1682,10 +1700,7 @@ func _on_line_menu_id(id: int) -> void:
 	if who == "":
 		return
 	if id == MENU_WHISPER:
-		_aim_whisper(who)
-		_show_channel("private")
-		if entry != null and entry.is_inside_tree():
-			entry.grab_focus()
+		start_whisper(who)
 	elif id == MENU_IGNORE:
 		await ignore_player(who)
 	elif id >= MENU_REPORT and id < MENU_REPORT + REPORT_CHOICES.size():

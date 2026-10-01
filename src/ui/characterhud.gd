@@ -74,6 +74,7 @@ const ChatPanelScript     := preload("res://src/ui/chat/chatpanel.gd")
 # actually toggles it with the backquote key.
 const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
 const STAFF_PANEL_SCENE   := preload("res://scene/ui/staff/staffpanel.tscn")
+const STAFF_THEME         := preload("res://assets/themes/staff_ui_theme.tres")
 const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
 const FRIENDS_PANEL_SCENE := preload("res://scene/ui/friends/friendspanel.tscn")
 const PLAYERS_PANEL_SCENE := preload("res://scene/ui/players/playerspanel.tscn")
@@ -735,30 +736,26 @@ func _toggle_powers_panel() -> void:
 	frame.offset_right = 250.0
 	frame.offset_bottom = 230.0
 
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.058, 0.070, 0.094, 0.97)
-	style.border_width_left = 2
-	style.border_width_top = 2
-	style.border_width_right = 2
-	style.border_width_bottom = 2
-	style.border_color = Color(0.25, 0.33, 0.43)
-	style.corner_radius_top_left = 8
-	style.corner_radius_top_right = 8
-	style.corner_radius_bottom_right = 8
-	style.corner_radius_bottom_left = 8
-	style.content_margin_left = 14.0
-	style.content_margin_top = 12.0
-	style.content_margin_right = 14.0
-	style.content_margin_bottom = 12.0
-	frame.add_theme_stylebox_override("panel", style)
+	# THE STAFF WINDOWS' LOOK: navy, with the inventory's gold frame, header
+	# box and boxes. One theme for Owner, Staff and Powers (staff_ui_theme.tres).
+	frame.theme = STAFF_THEME
+	var margin := MarginContainer.new()
+	margin.name = "margin"
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 12)
+	frame.add_child(margin)
 
 	# A HEADER WITH THE PANEL'S ×, like every other window. The only way out
 	# used to be the button that opened it.
 	var body := VBoxContainer.new()
 	body.name = "body"
-	body.add_theme_constant_override("separation", 6)
+	body.add_theme_constant_override("separation", 8)
+	var header_box := PanelContainer.new()
+	header_box.name = "header"
+	header_box.theme_type_variation = &"PanelHeader"
 	var header := HBoxContainer.new()
-	header.name = "header"
+	header.name = "headerrow"
+	header_box.add_child(header)
 	var title := Label.new()
 	title.text = "RANKS AND POWERS"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -773,8 +770,17 @@ func _toggle_powers_panel() -> void:
 	powers_close.tooltip_text = "Close"
 	powers_close.pressed.connect(_close_powers_panel)
 	header.add_child(powers_close)
-	body.add_child(header)
+	body.add_child(header_box)
 
+	var list_box := PanelContainer.new()
+	list_box.name = "box"
+	list_box.theme_type_variation = &"PanelSub"
+	list_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var list_margin := MarginContainer.new()
+	list_margin.name = "margin"
+	for side in ["left", "top", "right", "bottom"]:
+		list_margin.add_theme_constant_override("margin_" + side, 8)
+	list_box.add_child(list_margin)
 	var scroll := ScrollContainer.new()
 	scroll.name = "scroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -783,8 +789,9 @@ func _toggle_powers_panel() -> void:
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows.add_theme_constant_override("separation", 4)
 	scroll.add_child(rows)
-	body.add_child(scroll)
-	frame.add_child(body)
+	list_margin.add_child(scroll)
+	body.add_child(list_box)
+	margin.add_child(body)
 	add_child(frame)
 
 	_load_powers()
@@ -796,7 +803,7 @@ func _close_powers_panel() -> void:
 		panel.visible = false
 
 
-const POWERS_ROWS := "powerspanel/body/scroll/rows"
+const POWERS_ROWS := "powerspanel/margin/body/box/margin/scroll/rows"
 
 
 func _powers_line(rows: VBoxContainer, text: String, color: Color, size: int) -> void:
@@ -841,7 +848,7 @@ func _load_powers() -> void:
 		var grantable: bool = bool(entry.get("grantable", false))
 		_powers_line(rows, "", Color(1, 1, 1), 4)
 		_powers_line(rows, "%s%s" % [rank, "" if grantable else "   (cannot be granted)"],
-			Color(0.50, 0.66, 0.85), 14)
+			Color(0.82, 0.70, 0.45), 14)
 
 		var routes: Array = entry.get("routes", [])
 		if routes.is_empty() and entry.get("notes", []).is_empty():
@@ -2735,11 +2742,47 @@ func toggle_players() -> void:
 	# BUILT ON FIRST USE, like every other panel here. It polls while open, so a
 	# player who never presses the button never starts that timer.
 	if players_panel == null:
-		players_panel = PLAYERS_PANEL_SCENE.instantiate()
+		players_panel = _build_players_panel()
 		add_child(players_panel)
 
 	if players_panel.has_method("toggle"):
 		players_panel.toggle()
+
+
+func _build_players_panel() -> Control:
+	var panel: Control = PLAYERS_PANEL_SCENE.instantiate()
+	# RIGHT-CLICK A NAME in the list: each goes to the window that already does
+	# it, so there is one way to whisper, ask a friend or offer a trade.
+	panel.whisper_asked.connect(whisper_player)
+	panel.friend_asked.connect(ask_to_be_friends)
+	panel.trade_asked.connect(trade_with)
+	return panel
+
+
+func whisper_player(who: String) -> void:
+	"""Chat, open on the Whisper tab aimed at `who`."""
+	if chat_panel == null or not chat_panel.visible:
+		toggle_chat()
+	chat_panel.start_whisper(who)
+
+
+func ask_to_be_friends(who: String) -> void:
+	"""The Friends window, open, with a request to `who` sent from it."""
+	if friends_panel == null:
+		friends_panel = FRIENDS_PANEL_SCENE.instantiate()
+		add_child(friends_panel)
+	await friends_panel.ask_from_elsewhere(who)
+
+
+func trade_with(who: String) -> void:
+	"""The Trade window, open on an offer to `who`."""
+	if trade_panel == null:
+		trade_panel = TRADE_PANEL_SCENE.instantiate()
+		add_child(trade_panel)
+	# Same as toggle_trade(): opening the window answers "somebody is waiting".
+	set_world_status("trade", "")
+	_mark_trade_button(false)
+	await trade_panel.offer_to(active_character, who)
 
 
 func toggle_guild() -> void:

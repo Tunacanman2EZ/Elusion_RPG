@@ -1,100 +1,7 @@
 [gd_scene format=3 uid="uid://cnfs8xdu2tq7e"]
 
 [ext_resource type="Script" uid="uid://bos6ilrriqa0v" path="res://src/ui/owner/ownerpanel.gd" id="1_lf0mq"]
-
-[sub_resource type="StyleBoxFlat" id="SB_panel"]
-bg_color = Color(0.058824, 0.070588, 0.094118, 0.97)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.25098, 0.32549, 0.43137, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-shadow_color = Color(0, 0, 0, 0.45098)
-shadow_size = 8
-
-[sub_resource type="StyleBoxFlat" id="SB_input"]
-content_margin_left = 8.0
-content_margin_top = 5.0
-content_margin_right = 8.0
-content_margin_bottom = 5.0
-bg_color = Color(0.086275, 0.10588, 0.14118, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.19608, 0.24706, 0.31765, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_input_focus"]
-content_margin_left = 8.0
-content_margin_top = 5.0
-content_margin_right = 8.0
-content_margin_bottom = 5.0
-bg_color = Color(0.10588, 0.13333, 0.18039, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.40784, 0.58824, 0.83137, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_btn"]
-content_margin_left = 10.0
-content_margin_top = 6.0
-content_margin_right = 10.0
-content_margin_bottom = 6.0
-bg_color = Color(0.14118, 0.18039, 0.24706, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.24706, 0.31373, 0.4, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_btn_hover"]
-content_margin_left = 10.0
-content_margin_top = 6.0
-content_margin_right = 10.0
-content_margin_bottom = 6.0
-bg_color = Color(0.20392, 0.26667, 0.36078, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.40784, 0.52549, 0.67059, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_btn_pressed"]
-content_margin_left = 10.0
-content_margin_top = 6.0
-content_margin_right = 10.0
-content_margin_bottom = 6.0
-bg_color = Color(0.098039, 0.12941, 0.18039, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.40784, 0.52549, 0.67059, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+[ext_resource type="Theme" path="res://assets/themes/staff_ui_theme.tres" id="2_stafftheme"]
 
 [sub_resource type="StyleBoxFlat" id="SB_danger"]
 content_margin_left = 10.0
@@ -160,10 +67,6 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[sub_resource type="StyleBoxLine" id="SB_sep"]
-color = Color(0.19608, 0.24706, 0.31765, 1)
-thickness = 1
-
 [sub_resource type="StyleBoxFlat" id="SB_status"]
 content_margin_left = 9.0
 content_margin_top = 6.0
@@ -171,72 +74,11 @@ content_margin_right = 9.0
 content_margin_bottom = 6.0
 bg_color = Color(0.070588, 0.094118, 0.12941, 1)
 border_width_left = 3
-border_color = Color(0.25098, 0.32549, 0.43137, 1)
+border_color = Color(0.65, 0.55, 0.35, 1)
 corner_radius_top_left = 3
 corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
-
-[sub_resource type="StyleBoxFlat" id="SB_header"]
-content_margin_left = 8.0
-content_margin_top = 4.0
-content_margin_right = 4.0
-content_margin_bottom = 4.0
-bg_color = Color(0.086275, 0.10588, 0.14118, 1)
-border_width_bottom = 1
-border_color = Color(0.25098, 0.32549, 0.43137, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_tabpanel"]
-content_margin_left = 0.0
-content_margin_top = 8.0
-content_margin_right = 0.0
-content_margin_bottom = 2.0
-bg_color = Color(0, 0, 0, 0)
-border_width_top = 1
-border_color = Color(0.25098, 0.32549, 0.43137, 1)
-
-[sub_resource type="StyleBoxFlat" id="SB_tab_on"]
-content_margin_left = 14.0
-content_margin_top = 5.0
-content_margin_right = 14.0
-content_margin_bottom = 5.0
-bg_color = Color(0.14118, 0.18039, 0.24706, 1)
-border_width_left = 1
-border_width_top = 2
-border_width_right = 1
-border_color = Color(0.92941, 0.72941, 0.30196, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_tab_off"]
-content_margin_left = 14.0
-content_margin_top = 5.0
-content_margin_right = 14.0
-content_margin_bottom = 5.0
-bg_color = Color(0.070588, 0.086275, 0.11373, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_color = Color(0.19608, 0.24706, 0.31765, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_tab_hover"]
-content_margin_left = 14.0
-content_margin_top = 5.0
-content_margin_right = 14.0
-content_margin_bottom = 5.0
-bg_color = Color(0.11373, 0.14118, 0.19216, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_color = Color(0.40784, 0.52549, 0.67059, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
 
 [sub_resource type="StyleBoxFlat" id="SB_results"]
 content_margin_left = 8.0
@@ -244,17 +86,18 @@ content_margin_top = 6.0
 content_margin_right = 8.0
 content_margin_bottom = 6.0
 bg_color = Color(0.043137, 0.05098, 0.070588, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.19608, 0.24706, 0.31765, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.5, 0.42, 0.28, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
 [node name="ownerpanel" type="Control" unique_id=1800928466]
+theme = ExtResource("2_stafftheme")
 layout_mode = 3
 offset_left = 14.0
 offset_top = 14.0
@@ -270,7 +113,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("SB_panel")
 
 [node name="margin" type="MarginContainer" parent="frame" unique_id=1900112260]
 layout_mode = 2
@@ -285,7 +127,7 @@ theme_override_constants/separation = 6
 
 [node name="headerpanel" type="PanelContainer" parent="frame/margin/rows"]
 layout_mode = 2
-theme_override_styles/panel = SubResource("SB_header")
+theme_type_variation = &"PanelHeader"
 
 [node name="headerbox" type="HBoxContainer" parent="frame/margin/rows/headerpanel"]
 layout_mode = 2
@@ -312,27 +154,15 @@ custom_minimum_size = Vector2(28, 26)
 layout_mode = 2
 tooltip_text = "Close  (backquote or Esc)"
 focus_mode = 0
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
-theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_styles/hover = SubResource("SB_danger_hover")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "×"
 
 [node name="ownertabs" type="TabContainer" parent="frame/margin/rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 418)
 layout_mode = 2
-theme_override_colors/font_selected_color = Color(0.92941, 0.72941, 0.30196, 1)
-theme_override_colors/font_hovered_color = Color(0.87843, 0.9098, 0.9451, 1)
-theme_override_colors/font_unselected_color = Color(0.5451, 0.60392, 0.67843, 1)
 theme_override_constants/side_margin = 0
 theme_override_font_sizes/font_size = 13
-theme_override_styles/panel = SubResource("SB_tabpanel")
-theme_override_styles/tab_selected = SubResource("SB_tab_on")
-theme_override_styles/tab_unselected = SubResource("SB_tab_off")
-theme_override_styles/tab_hovered = SubResource("SB_tab_hover")
 current_tab = 0
 use_hidden_tabs_for_min_size = true
 
@@ -353,7 +183,7 @@ metadata/_tab_index = 2
 
 [node name="accountlabel" type="Label" parent="frame/margin/rows/ownertabs/account" unique_id=1900112261]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "ACCOUNT"
 
@@ -363,28 +193,21 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
 theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_input")
-theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "username"
 
 [node name="viewbutton" type="Button" parent="frame/margin/rows/ownertabs/account" unique_id=1644512135]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Read this account: rank, ban state, characters, logins, sessions"
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "View account"
 
 [node name="sep2" type="HSeparator" parent="frame/margin/rows/ownertabs/account" unique_id=1900112243]
 layout_mode = 2
-theme_override_styles/separator = SubResource("SB_sep")
 
 [node name="sanctionlabel" type="Label" parent="frame/margin/rows/ownertabs/account" unique_id=1900112262]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "SANCTIONS"
 
@@ -399,8 +222,6 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
 theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_input")
-theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "reason (needed to ban)"
 
 [node name="daysinput" type="LineEdit" parent="frame/margin/rows/ownertabs/account/reasonrow" unique_id=1900112239]
@@ -411,8 +232,6 @@ custom_minimum_size = Vector2(64, 0)
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
 theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_input")
-theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "days"
 
 [node name="sanctionrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account" unique_id=1900112263]
@@ -424,11 +243,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Sign this account out everywhere. Not a ban — they can log straight back in."
-theme_override_colors/font_color = Color(0.92941, 0.80392, 0.54902, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "Kick"
 
 [node name="banbutton" type="Button" parent="frame/margin/rows/ownertabs/account/sanctionrow" unique_id=1900112241]
@@ -440,7 +255,6 @@ theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("SB_danger")
 theme_override_styles/hover = SubResource("SB_danger_hover")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "Ban"
 
 [node name="unbanbutton" type="Button" parent="frame/margin/rows/ownertabs/account/sanctionrow" unique_id=1900112242]
@@ -452,16 +266,14 @@ theme_override_colors/font_color = Color(0.61961, 0.87843, 0.70196, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("SB_safe")
 theme_override_styles/hover = SubResource("SB_safe_hover")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "Unban"
 
 [node name="sep3" type="HSeparator" parent="frame/margin/rows/ownertabs/account" unique_id=1900112246]
 layout_mode = 2
-theme_override_styles/separator = SubResource("SB_sep")
 
 [node name="ranklabel" type="Label" parent="frame/margin/rows/ownertabs/account" unique_id=1900112264]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "RANK"
 
@@ -474,21 +286,13 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Only ranks below your own. 'owner' comes from ELUSION_OWNER on the server and can never be granted."
-theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_input")
-theme_override_styles/hover = SubResource("SB_input_focus")
-theme_override_styles/pressed = SubResource("SB_input_focus")
 
 [node name="rolebutton" type="Button" parent="frame/margin/rows/ownertabs/account/rankrow" unique_id=1900112245]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Owner only makes a dev. 'owner' comes from the server's environment and cannot be granted."
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "Set rank"
 
 [node name="rankhint" type="Label" parent="frame/margin/rows/ownertabs/account" unique_id=1900112268]
@@ -501,11 +305,10 @@ text = "mod: kick, 30-day ban · dev: + permanent · owner: + server"
 
 [node name="sep5" type="HSeparator" parent="frame/margin/rows/ownertabs/account" unique_id=1900112280]
 layout_mode = 2
-theme_override_styles/separator = SubResource("SB_sep")
 
 [node name="movelabel" type="Label" parent="frame/margin/rows/ownertabs/account"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "MOVE PLAYERS - USES THE NAME ABOVE"
 
@@ -516,10 +319,6 @@ theme_override_constants/separation = 5
 [node name="tpbringbutton" type="Button" parent="frame/margin/rows/ownertabs/account/teleportrow"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 size_flags_horizontal = 3
 tooltip_text = "Move the account in the box to where you are standing - your area AND your coordinates. Refused by the server for anyone who outranks you."
 focus_mode = 0
@@ -529,10 +328,6 @@ text = "Bring here"
 [node name="tpgotobutton" type="Button" parent="frame/margin/rows/ownertabs/account/teleportrow"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 size_flags_horizontal = 3
 tooltip_text = "Travel to the AREA they are in. The server stores which room a character is in and nothing finer, so this cannot put you next to them. Moves only you, locally - no order is queued for anybody."
 focus_mode = 0
@@ -543,10 +338,6 @@ text = "Go to area"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 tooltip_text = "Move EVERY account on the server to where you are standing, spaced out so they do not stack, and announce it in chat. Owner only. Press twice to confirm."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
@@ -554,7 +345,7 @@ text = "Bring everyone"
 
 [node name="testinglabel" type="Label" parent="frame/margin/rows/ownertabs/testing" unique_id=1900112281]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "YOUR OWN CHARACTER ONLY"
 
@@ -569,8 +360,6 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
 theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_input")
-theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "gold (minus takes)"
 max_length = 8
 
@@ -578,10 +367,6 @@ max_length = 8
 unique_name_in_owner = true
 custom_minimum_size = Vector2(86, 0)
 layout_mode = 2
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 tooltip_text = "Put gold in your own pocket. It goes through the ledger like every other coin, so the Kingdom board still adds up."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
@@ -591,10 +376,6 @@ text = "Give gold"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 tooltip_text = "Put it in the bank instead of your pocket."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
@@ -612,8 +393,6 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
 theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_input")
-theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "item id"
 max_length = 64
 
@@ -625,8 +404,6 @@ tooltip_text = "How many."
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
 theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_input")
-theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "1"
 max_length = 4
 
@@ -634,10 +411,6 @@ max_length = 4
 unique_name_in_owner = true
 custom_minimum_size = Vector2(86, 0)
 layout_mode = 2
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 tooltip_text = "Put an item in your own bag. The same route the debug keys use - which only exist in a debug build, which is why this is here."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
@@ -673,7 +446,7 @@ text = "PvP"
 
 [node name="serverlabel" type="Label" parent="frame/margin/rows/ownertabs/server" unique_id=1900112267]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "WHO MAY LOG IN"
 
@@ -692,8 +465,6 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
 theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
 theme_override_font_sizes/font_size = 13
-theme_override_styles/normal = SubResource("SB_input")
-theme_override_styles/focus = SubResource("SB_input_focus")
 placeholder_text = "what players are told (optional)"
 
 [node name="maintenancebutton" type="Button" parent="frame/margin/rows/ownertabs/server" unique_id=1900112249]
@@ -704,7 +475,6 @@ theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("SB_danger")
 theme_override_styles/hover = SubResource("SB_danger_hover")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "Close server"
 
 [node name="resultsrow" type="HBoxContainer" parent="frame/margin/rows"]
@@ -714,7 +484,7 @@ theme_override_constants/separation = 6
 [node name="resultslabel" type="Label" parent="frame/margin/rows/resultsrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "RESULTS"
 vertical_alignment = 1
@@ -724,11 +494,7 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Empty the results box"
 focus_mode = 0
-theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = SubResource("SB_btn")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
 text = "Clear"
 
 [node name="ownerresults" type="RichTextLabel" parent="frame/margin/rows"]

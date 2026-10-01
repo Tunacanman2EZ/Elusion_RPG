@@ -2081,6 +2081,17 @@ hold all of it. The owner's Powers window is built in code rather than a scene,
 so that check could not see it, and it had no × until day 1
 (`_close_powers_panel()`, `_test_the_powers_panel_closes`).
 
+**The three staff windows wear one look** (day 1). Owner, Staff and Powers had
+three (navy, brown, navy). All three now wear `assets/themes/staff_ui_theme.tres`:
+navy, with the inventory's gold frame, a gold header box (`PanelHeader`), gold
+boxes (`PanelSub`) and gold-boxed tabs. It is set on the Owner root, on the Staff
+window's `mainpanel` (its root keeps `rpg_ui_theme.tres` as the fallback) and on
+the Powers frame. Nothing inside keeps a style of its own except the red and
+green action buttons (Ban, Unban, Close server): a per-node override beats the
+theme, so one left behind keeps an old colour whatever the theme says. Both
+themes also style `PopupMenu`, so dropdowns and right-click menus get the gold
+frame instead of Godot's grey. `_test_the_staff_windows_share_one_look` holds it.
+
 ### The browser build
 
 **Export:** Project > Export > **Web** (`export_presets.cfg`). The preset builds
@@ -3161,6 +3172,17 @@ player, their character, level and area, grouped into *"In Elusion with you"* an
 *"Elsewhere"* — and the heading is built from the server's own `precision` field
 rather than the word "area", so when real positions arrive the wording follows
 instead of going on promising a distance nobody measured.
+
+**Right-click a name for Whisper, Add friend or Trade** (day 1). There is no menu
+on your own row. The panel only asks: it emits `whisper_asked`, `friend_asked`
+or `trade_asked`, and the HUD (`_build_players_panel()`) sends each to the window
+that already does it. Those are `chat_panel.start_whisper()` (the chat log's name
+menu uses it too), `friends_panel.ask_from_elsewhere()` (the same `ask()` as the
+Ask box, so the two cannot check a name differently) and `trade_panel.offer_to()`
+(the typed-name offer, with no slot). Trade works with anyone online, not only
+people in your area, because the server allows that. `_test_players_right_click_menu`
+holds it. It was also checked live with real clicks against a second account:
+the friend was asked and accepted, the whisper arrived, and the trade opened.
 
 **Online means the heartbeat, and the token.** Both. `last_seen_at` within
 `ONLINE_WINDOW_SECONDS` says a client was there in the last 45 seconds;

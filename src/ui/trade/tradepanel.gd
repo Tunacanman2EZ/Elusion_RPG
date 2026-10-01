@@ -889,6 +889,21 @@ func _on_offer_pressed() -> void:
 	await _send_offer(who, -1)
 
 
+func offer_to(player: Node, who: String) -> void:
+	"""Open the window on an offer to `who` - from the Players window's menu.
+	The same request as typing their name and pressing Offer, so the server
+	works out which character they are playing (no slot)."""
+	who = who.strip_edges()
+	if who == "":
+		return
+	if not visible:
+		await open_panel(player)
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+	username_edit.text = who
+	await _send_offer(who, -1)
+
+
 func _offer_body(who: String, to_slot: int) -> Dictionary:
 	var body := {"slot": CharacterData.active_character_index, "username": who}
 	# A slot from the nearby list is the one the server reported them playing,
