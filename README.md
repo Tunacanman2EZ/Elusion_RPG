@@ -250,7 +250,7 @@ test_skill_train.py     10 checks    skills train only as fast as time allows
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,434 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 122 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,441 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 122 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
 **If you cloned this repo, it will report `2164 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
@@ -268,6 +268,8 @@ Some of the suite is there to catch things the engine will not tell you about:
 Without the service running, the login screen will tell you it can't reach the server — the game does not fall back to local accounts by design.
 
 **In a browser:** export the **Web** preset (Project → Export), which writes `builds/web/`, then run `python web/serve.py` and open `http://localhost:8060`. It serves the export and passes `/api/` through to the service, as the real site does.
+
+**On Windows:** export the **Windows** preset, which writes one file, `builds/windows/ElusionRPG.exe`, with the game inside it. It looks for the service at `127.0.0.1:5000` unless told otherwise: `--server=<address>` on its command line, or a one-line `server.cfg` beside its save data.
 
 ### A clone is missing the item art on purpose
 

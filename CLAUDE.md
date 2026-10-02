@@ -2255,6 +2255,28 @@ pressed style now, with its font colour.
 - The tab icon is Godot's, because the project sets no `config/icon`.
 - There is no audio to test, since every sound id is empty.
 
+### The Windows build
+
+**Export:** Project > Export > **Windows** (day 1: "we need that pc export"; the
+project only had the Web preset). It writes one file,
+`builds/windows/ElusionRPG.exe`, with the game packed inside it (`embed_pck`).
+It is 64-bit, named Elusion RPG by Elusion Studios, and leaves `src/tools/` and
+`scene/tests/` out like the Web preset. Its version, 0.1.0.0, follows
+`Api.DISPLAY_VERSION`; bump both together, or `_test_the_windows_build` fails.
+Godot's export templates must be installed once (Editor > Manage Export
+Templates > Download). Godot 4.6 writes the name and version into the .exe
+itself, without rcedit.
+
+**Which server it talks to.** A desktop build has no page address, so
+`Api._resolve_base_url()` tries `--server=`, then `ELUSION_SERVER`, then
+`user://server.cfg`, then falls back to `http://127.0.0.1:5000`. Until the
+server moves, the .exe only finds one on a PC running the API. When it moves,
+point `DEFAULT_BASE_URL` at the real address before exporting.
+
+Measured in the sandbox: a 113 MB .exe, 104.6 MB of it the engine. Booted from
+its own pack, it loaded every item (146 of 146) and every area, and nothing from
+`src/tools/` or `scene/tests/` was stored.
+
 ### Leaving waits for the save
 
 `flush_save()` only **starts** a push. On the desktop, the window's X ran it and

@@ -163,6 +163,7 @@ func _run_all() -> void:
 	await _test_the_sweep_wiring()
 	_test_the_sweep_words()
 	_test_the_browser_build()
+	_test_the_windows_build()
 	await _test_leaving_waits_for_the_save()
 	_test_skill_xp_rounds_like_the_server()
 	await _test_game_keys_are_not_menu_keys()
@@ -14136,6 +14137,46 @@ func _test_the_sweep_words() -> void:
 # desktop run can see - the preset, the loader, the address, the rows a browser
 # cannot use, the save a closing tab sends, and the one bug an export had that
 # the editor never shows.
+
+func _test_the_windows_build() -> void:
+	section("THE WINDOWS BUILD - one file to hand out, without the suite in it")
+
+	# Day 1: "we need that pc export - this game is not playable on a phone".
+	# The project had a Web preset and nothing else. Exported and booted from
+	# the sandbox: one 113 MB .exe, the pack inside it, every item and area
+	# loaded, and nothing from src/tools or scene/tests stored.
+	var presets := ConfigFile.new()
+	presets.load("res://export_presets.cfg")
+	var win := ""
+	for sec in presets.get_sections():
+		if str(presets.get_value(sec, "platform", "")) == "Windows Desktop":
+			win = sec
+	check("there is a Windows preset", win != "", presets.get_sections())
+	if win == "":
+		return
+	var opts := win + ".options"
+	var excluded: String = str(presets.get_value(win, "exclude_filter", ""))
+	check("  the suite and the tools do not ship", excluded.contains("src/tools/*")
+		and excluded.contains("scene/tests/*"), excluded)
+	var out_path: String = str(presets.get_value(win, "export_path", ""))
+	check("  it exports under builds/, which git ignores - an export holds the private art pack",
+		out_path.begins_with("builds/") and out_path.ends_with(".exe")
+		and FileAccess.get_file_as_string("res://.gitignore").contains("\nbuilds/"), out_path)
+	check("  one file to hand out: the pack is inside the .exe",
+		presets.get_value(opts, "binary_format/embed_pck", false) == true)
+	check("  64-bit", str(presets.get_value(opts, "binary_format/architecture", "")) == "x86_64")
+	check("  named Elusion RPG, by Elusion Studios",
+		str(presets.get_value(opts, "application/product_name", "")) == "Elusion RPG"
+		and str(presets.get_value(opts, "application/company_name", "")) == "Elusion Studios")
+	# THE VERSION WINDOWS SHOWS IS THE GAME'S OWN. Api.DISPLAY_VERSION is the
+	# one players read; a release that bumps it and not this would show an old
+	# number in the file's properties.
+	var version: String = str(presets.get_value(opts, "application/file_version", ""))
+	check("  and its version is the game's (Api.DISPLAY_VERSION)",
+		version.begins_with(Api.DISPLAY_VERSION + ".") or version == Api.DISPLAY_VERSION,
+		[version, Api.DISPLAY_VERSION])
+	print("  windows: one .exe, the suite left out, the game's own name and version")
+
 
 func _test_the_browser_build() -> void:
 	section("THE BROWSER BUILD — one address, a loader, and a tab that can close")
