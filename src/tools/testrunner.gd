@@ -204,6 +204,7 @@ func _run_all() -> void:
 	await _test_players_right_click_menu()
 	_test_the_stats_window_reads_cleanly()
 	await _test_bank_buttons_and_the_cooking_window()
+	_test_the_tank_loop_takes_every_step()
 
 
 # =============================================================================
@@ -7657,6 +7658,68 @@ func _test_bank_buttons_and_the_cooking_window() -> void:
 	cooking.queue_free()
 	await get_tree().process_frame
 	print("  bank and cooking: the hotbar's button, one row of fish, a sized and centred window")
+
+
+func _test_the_tank_loop_takes_every_step() -> void:
+	section("TANK - its own walk takes every step the other classes' walk takes")
+
+	# Day 1: "tank not getting stamina xp". Tank replaces player.gd's
+	# _physics_process() with an eased walk of its own, and that copy had
+	# drifted: it never noted a key press (so the tank was "away" three minutes
+	# after launch and earned no defence or agility XP), never paid agility for
+	# sprinting or ground covered, never uncovered the map, and walked and
+	# toggled its aura while chat was typed in. Each step is one player.gd
+	# function now, and both loops must call every one of them.
+	const STEPS := ["_stamp_input()", "_read_move_direction()", "_sprint_tick(",
+		"_stop_sprint()", "_accrue_agility_from_travel(", "moved.emit(", "_tick_regen(",
+		"_typing_in_ui()"]
+	var player_src: String = _code_src("res://src/characters/player.gd")
+	var tank_src: String = _code_src("res://src/characters/tank.gd")
+	var base_loop: String = _func_body(player_src, "func _physics_process(")
+	var tank_loop: String = ""
+	for fn in ["func _physics_process(", "func _handle_movement(", "func _handle_moving(", "func _handle_idle("]:
+		tank_loop += _func_body(tank_src, fn) + "\n"
+	var base_missing: Array = []
+	var tank_missing: Array = []
+	for step in STEPS:
+		if not base_loop.contains(step):
+			base_missing.append(step)
+		if not tank_loop.contains(step):
+			tank_missing.append(step)
+	check("the base loop is built from the shared steps", base_missing.is_empty(), base_missing)
+	check("  and the tank's loop calls every one of them", tank_missing.is_empty(), tank_missing)
+	check("  with no copy of its own of the keys or the sprint",
+		not tank_src.contains("is_action_pressed(\"move_") and not tank_src.contains("_sprint_drain_accumulator +=")
+		and not tank_src.contains("stamina - drain"))
+	var stamp_at: int = tank_loop.find("_stamp_input()")
+	check("  noting the key press before anything can return early",
+		stamp_at != -1 and stamp_at < tank_loop.find("if is_dying:"))
+
+	# AND WHAT THE STEPS DO, on a tank built outside the tree.
+	var tank: Node = (load("res://src/characters/tank.gd") as GDScript).new()
+	tank._last_input_ms = -1_000_000
+	Input.action_press("move_right")
+	tank._stamp_input()
+	var noted: bool = not tank.is_afk()
+	Input.action_release("move_right")
+	check("a key press marks the tank as here, so its skill XP is earned", noted)
+	tank.stamina = 100
+	tank.sprint_agility_xp_per_sec = 0.0
+	tank._sprint_tick(0.5)
+	tank._sprint_tick(0.5)
+	check("  a second of sprinting costs the tank stamina at the shared rate",
+		tank.stamina == 100 - int(tank.sprint_stamina_drain_per_sec), tank.stamina)
+	# Part-way to a point on both, so a _stop_sprint() that forgets either one
+	# carries it into the next sprint.
+	tank._is_sprinting = true
+	tank._sprint_drain_accumulator = 0.5
+	tank._sprint_agility_xp_accumulator = 0.5
+	tank._stop_sprint()
+	check("  and stopping clears what was banked toward the next point",
+		not tank._is_sprinting and tank._sprint_drain_accumulator == 0.0
+		and tank._sprint_agility_xp_accumulator == 0.0)
+	tank.free()
+	print("  tank: every step of the walk, shared - key presses, sprint, ground, map, typing")
 
 
 func _test_staff_panel() -> void:

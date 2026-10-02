@@ -24,9 +24,13 @@
 #
 # physics_process override:
 # tank fully overrides _physics_process for its lerp-based movement (smooth
-# heavy-class feel). this means regen logic AND sprint logic from player.gd
-# don't run automatically — both are duplicated here. _set_active() is called
-# in every "doing something" branch to keep the idle timer accurate.
+# heavy-class feel), so nothing written inline in player.gd's loop runs here.
+# The steps every class takes are player.gd functions this loop calls by name -
+# _stamp_input(), _read_move_direction(), _sprint_tick(), _stop_sprint(),
+# _accrue_agility_from_travel(), _tick_regen() and the `moved` signal. A copy
+# of any of them goes stale: on day 1 the copied walk had none of the first
+# five, and a tank was "away" three minutes after launch and never trained
+# agility or defence again. _test_the_tank_loop_takes_every_step holds it.
 #
 # aura mechanics:
 # - toggle on/off via attack button (spacebar)
@@ -139,7 +143,12 @@ func _physics_process(delta: float) -> void:
 	# lockout must not read as a fresh press the instant that block lifts.
 	# Tank replaces the base loop rather than extending it, so it calls the
 	# inherited poll explicitly; every other class gets this from super().
+	_stamp_input()
 	var attack_pressed: bool = _poll_attack_pressed()
+	# Space in a chat message is not the aura key. Discarded after the poll,
+	# never instead of it - see player.gd's loop.
+	if attack_pressed and _typing_in_ui():
+		attack_pressed = false
 
 	# block all input/movement during death sequence so the death animation
 	# can play through without being overwritten by walk/idle animations.
@@ -200,17 +209,13 @@ func _tick_aura(delta: float) -> void:
 
 
 # =============================================================================
-# MOVEMENT (LERP + SPRINT, DUPLICATED FROM PLAYER.GD)
+# MOVEMENT (LERP, ON PLAYER.GD'S SHARED STEPS)
 # =============================================================================
 
 func _handle_movement(delta: float) -> void:
-	# WASD direction sample — same as player.gd but with lerp-based velocity
-	# for the heavy-class smooth movement feel.
-	var direction: Vector2 = Vector2.ZERO
-	if Input.is_action_pressed("move_right"): direction.x += 1
-	if Input.is_action_pressed("move_left"):  direction.x -= 1
-	if Input.is_action_pressed("move_down"):  direction.y += 1
-	if Input.is_action_pressed("move_up"):    direction.y -= 1
+	# The same WASD as every class (nothing while typing); only the easing of
+	# the velocity below is the tank's own.
+	var direction: Vector2 = _read_move_direction()
 
 	if direction != Vector2.ZERO:
 		_handle_moving(direction, delta)
@@ -229,8 +234,10 @@ func _handle_movement(delta: float) -> void:
 	if not wading.is_empty():
 		velocity *= _wade_drag_factor(wading.size())
 
+	var position_before: Vector2 = global_position
 	move_and_slide()
 	_displace_wading_enemies(wading, delta)
+	_accrue_agility_from_travel(global_position.distance_to(position_before))
 
 
 func _handle_moving(direction: Vector2, delta: float) -> void:
@@ -247,13 +254,9 @@ func _handle_moving(direction: Vector2, delta: float) -> void:
 	var actual_speed: float = base_speed * sprint_speed_multiplier if _is_sprinting else base_speed
 	velocity = velocity.lerp(direction.normalized() * actual_speed, 0.3)
 
-	# drain stamina while sprinting (fractional accumulation, deduct whole points)
+	# stamina out and agility XP in, the same as every class
 	if _is_sprinting:
-		_sprint_drain_accumulator += sprint_stamina_drain_per_sec * delta
-		if _sprint_drain_accumulator >= 1.0:
-			var drain_amount: int = int(_sprint_drain_accumulator)
-			_sprint_drain_accumulator -= drain_amount
-			stamina = max(0, stamina - drain_amount)
+		_sprint_tick(delta)
 
 	# animation + speed scale for sprint visual polish
 	if _sprite != null:
@@ -262,13 +265,14 @@ func _handle_moving(direction: Vector2, delta: float) -> void:
 
 	last_direction = direction
 	take_step()
+	# The map uncovers on this signal (player.gd's _on_moved_for_map).
+	moved.emit(global_position, str(last_direction))
 
 
 func _handle_idle() -> void:
 	# lerp velocity to zero for smooth stop (no sudden halt)
 	velocity = velocity.lerp(Vector2.ZERO, 0.3)
-	_is_sprinting = false
-	_sprint_drain_accumulator = 0.0
+	_stop_sprint()
 	if _sprite != null:
 		_sprite.play(get_idle_animation())
 		_sprite.speed_scale = 1.0

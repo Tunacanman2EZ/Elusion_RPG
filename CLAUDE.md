@@ -1682,6 +1682,19 @@ a second one beside it. Check `bushmage.gd` and `bossstalker.gd` first when
 something elemental behaves oddly; both reach the world by a different door for
 real reasons, and both needed their element stamped by hand because of it.
 
+**The tank is the same lesson on the player side.** `tank.gd` replaces
+`player.gd`'s `_physics_process()` with an eased walk of its own, and that copy
+had fallen behind (day 1, "tank not getting stamina xp"). It never noted a key
+press, so the tank went "away" three minutes after launch and earned no defence
+or agility XP. It paid no agility for sprinting or for ground covered, never
+uncovered the map, and walked and toggled its aura while chat was being typed.
+Each step is now one `player.gd` function — `_stamp_input()`,
+`_read_move_direction()`, `_sprint_tick()`, `_stop_sprint()`,
+`_accrue_agility_from_travel()`, `_tick_regen()` — and both loops call every one.
+`_test_the_tank_loop_takes_every_step` fails if either loop drops one, or if the
+tank grows its own key poll or stamina drain again. A new step in the base loop
+goes into that list too.
+
 ### Scale the sprite, size the shape — never scale a collision node
 
 Two separate pieces of documented guidance, and between them they rule out both

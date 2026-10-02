@@ -618,8 +618,7 @@ func _physics_process(_delta):
 	# same reason the attack poll below is: a question about the player, not
 	# about the character, and dying or being locked out does not make someone
 	# leave the keyboard.
-	if Input.is_anything_pressed():
-		_last_input_ms = Time.get_ticks_msec()
+	_stamp_input()
 
 	# Sampled FIRST, before any early return below, because the right-click
 	# edge detector has to see every frame. If it only ran when the player was
@@ -657,18 +656,7 @@ func _physics_process(_delta):
 		attack_action()
 		return
 
-	var direction := Vector2.ZERO
-	# NOT WHILE TYPING. Movement is polled, and a poll does not know that a
-	# text box has the keyboard - so typing "wade" into a search field walked
-	# the character up, left, right and away. The bank's gold box always had
-	# this; the staff panel, with a search box and a ban reason, made it
-	# impossible to miss. Key EVENTS were already safe: a focused LineEdit
-	# consumes them before _unhandled_input sees them. Only the poll leaked.
-	if not _typing_in_ui():
-		if Input.is_action_pressed("move_right"): direction.x += 1
-		if Input.is_action_pressed("move_left"):  direction.x -= 1
-		if Input.is_action_pressed("move_down"):  direction.y += 1
-		if Input.is_action_pressed("move_up"):    direction.y -= 1
+	var direction: Vector2 = _read_move_direction()
 
 	if direction != Vector2.ZERO:
 		_set_active()
@@ -681,23 +669,7 @@ func _physics_process(_delta):
 		velocity = direction.normalized() * actual_speed
 
 		if _is_sprinting:
-			_sprint_drain_accumulator += sprint_stamina_drain_per_sec * _delta
-			if _sprint_drain_accumulator >= 1.0:
-				var drain_amount: int = int(_sprint_drain_accumulator)
-				_sprint_drain_accumulator -= drain_amount
-				stamina = max(0, stamina - drain_amount)
-
-			# NEW: agility XP for actual sprinting, not just holding the
-			# sprint key — wants_sprint above already requires stamina > 0
-			# and the player to be moving, so standing still holding sprint
-			# grants nothing. same fractional-accumulator pattern as the
-			# stamina drain right above, since gain_agility_xp() takes an
-			# int and per-frame amounts are fractional at this rate.
-			_sprint_agility_xp_accumulator += sprint_agility_xp_per_sec * _delta
-			if _sprint_agility_xp_accumulator >= 1.0:
-				var xp_amount: int = int(_sprint_agility_xp_accumulator)
-				_sprint_agility_xp_accumulator -= xp_amount
-				gain_agility_xp(xp_amount)
+			_sprint_tick(_delta)
 
 		# CHANGED: guard against stomping an in-progress attack animation,
 		# same as the idle guard below. previously this fired every physics
@@ -718,9 +690,7 @@ func _physics_process(_delta):
 		moved.emit(global_position, str(last_direction))
 	else:
 		velocity = Vector2.ZERO
-		_is_sprinting = false
-		_sprint_drain_accumulator = 0.0
-		_sprint_agility_xp_accumulator = 0.0
+		_stop_sprint()
 		if has_node("animatedsprite2d") and not is_attacking:
 			$animatedsprite2d.play(get_idle_animation())
 			$animatedsprite2d.speed_scale = 1.0
@@ -741,6 +711,69 @@ func _physics_process(_delta):
 	_accrue_agility_from_travel(global_position.distance_to(position_before))
 
 	_tick_regen(_delta)
+
+
+# =============================================================================
+# THE STEPS EVERY CLASS'S LOOP TAKES
+# =============================================================================
+#
+# Tank replaces _physics_process() with its own (a heavier, eased walk), so
+# anything written inline in the loop above is a rule the tank silently does
+# without. It did, on day 1: its copy never noted a key press, so three minutes
+# after launch the tank counted as away and earned no defence or agility XP at
+# all; it never paid agility for sprinting or for ground covered, never
+# uncovered the map, and walked and toggled its aura while chat was being
+# typed in. Each step lives here once, and both loops call it.
+
+func _stamp_input() -> void:
+	"""Somebody is at the keyboard this frame. is_afk() reads it, and every
+	gain_*_xp() asks is_afk() through _xp_is_earned()."""
+	if Input.is_anything_pressed():
+		_last_input_ms = Time.get_ticks_msec()
+
+
+func _read_move_direction() -> Vector2:
+	"""WASD as a direction, or none while a text box has the keyboard.
+
+	NOT WHILE TYPING. Movement is polled, and a poll does not know that a text
+	box has the keyboard - so typing "wade" into a search field walked the
+	character up, left, right and away. Key EVENTS were already safe: a focused
+	LineEdit consumes them before _unhandled_input sees them. Only the poll
+	leaked."""
+	var direction := Vector2.ZERO
+	if _typing_in_ui():
+		return direction
+	if Input.is_action_pressed("move_right"): direction.x += 1
+	if Input.is_action_pressed("move_left"):  direction.x -= 1
+	if Input.is_action_pressed("move_down"):  direction.y += 1
+	if Input.is_action_pressed("move_up"):    direction.y -= 1
+	return direction
+
+
+func _sprint_tick(delta: float) -> void:
+	"""One frame of sprinting: stamina out, agility XP in.
+
+	Both fractional and banked in whole points, because the drain and the XP
+	are a few points a second and gain_agility_xp() takes an int. Only called
+	while actually sprinting - moving, with stamina left - so standing still
+	holding the key grants nothing."""
+	_sprint_drain_accumulator += sprint_stamina_drain_per_sec * delta
+	if _sprint_drain_accumulator >= 1.0:
+		var drain_amount: int = int(_sprint_drain_accumulator)
+		_sprint_drain_accumulator -= drain_amount
+		stamina = max(0, stamina - drain_amount)
+
+	_sprint_agility_xp_accumulator += sprint_agility_xp_per_sec * delta
+	if _sprint_agility_xp_accumulator >= 1.0:
+		var xp_amount: int = int(_sprint_agility_xp_accumulator)
+		_sprint_agility_xp_accumulator -= xp_amount
+		gain_agility_xp(xp_amount)
+
+
+func _stop_sprint() -> void:
+	_is_sprinting = false
+	_sprint_drain_accumulator = 0.0
+	_sprint_agility_xp_accumulator = 0.0
 
 
 # =============================================================================
