@@ -588,9 +588,16 @@ func _ready() -> void:
 	warn_button.pressed.connect(_on_note_pressed.bind("warn"))
 	note_input.text_submitted.connect(func(_t): _on_note_pressed("note"))
 
+	# THE LOG OPENS ON MODERATION - what staff did about players - with the
+	# server switches and the testing tools (grants, teleports) one choice
+	# away under Everything. The server names the set (STAFF_ACTION_GROUPS).
+	log_kind.add_item("Moderation")
+	log_kind.set_item_metadata(0, LOG_GROUP)
 	log_kind.add_item("Everything")
-	log_kind.set_item_metadata(0, "")
+	log_kind.set_item_metadata(1, "")
+	log_kind.select(0)
 	log_kind.item_selected.connect(func(_i): _load_log("fresh"))
+	_build_record_toggle()
 	log_search.pressed.connect(func(): _load_log("fresh"))
 	log_player.text_submitted.connect(func(_t): _load_log("fresh"))
 	log_staff.text_submitted.connect(func(_t): _load_log("fresh"))
@@ -1011,6 +1018,10 @@ func _record_params(mode: String) -> Dictionary:
 	if _selected == "":
 		return {}
 	var params: Dictionary = {"player": _selected, "limit": RECORD_PAGE_SIZE}
+	# A RECORD IS WHAT STAFF DID ABOUT THEM: sanctions, notes, ranks, reports.
+	# Item grants and teleports are behind "Show everything".
+	if _groups_ok and not _record_everything:
+		params["action"] = LOG_GROUP
 	if mode == "more":
 		if not _record_more or _record_before <= 0:
 			return {}
@@ -1020,6 +1031,9 @@ func _record_params(mode: String) -> Dictionary:
 
 func _apply_record_page(res: Dictionary, mode: String) -> void:
 	record_more.disabled = false
+	if not res.get("ok", false) and _group_refused(res, LOG_GROUP if not _record_everything else ""):
+		_load_record("fresh")
+		return
 	if not res.get("ok", false):
 		record_empty.visible = true
 		record_empty.text = "Could not read the record: %s" % str(res.get("error", "no answer"))
@@ -1364,6 +1378,11 @@ func _apply_log_page(res: Dictionary, mode: String) -> void:
 	_log_loaded = true
 
 	if not res.get("ok", false):
+		if _group_refused(res, _log_kind_value()):
+			log_kind.set_item_disabled(0, true)
+			log_kind.select(1)
+			_load_log("fresh")
+			return
 		_say("The log: %s" % str(res.get("error", "no answer")), false)
 		return
 
@@ -1392,13 +1411,135 @@ func _fill_log_kinds(kinds: Variant) -> void:
 func _render_log() -> void:
 	for child in log_entries.get_children():
 		child.queue_free()
-	for entry in _log:
-		log_entries.add_child(_make_entry_row(entry, true))
+	for run in fold_runs(_log):
+		if run.size() == 1:
+			log_entries.add_child(_make_entry_row(run[0], true))
+		else:
+			log_entries.add_child(_make_fold_row(run))
 	log_empty.visible = _log.is_empty()
 	var filtered: bool = log_player.text.strip_edges() != "" \
 		or log_staff.text.strip_edges() != "" or _log_kind_value() != ""
 	log_empty.text = "Nothing matches those filters." if filtered else "Nothing has been logged yet."
 	log_more.visible = _log_more
+
+
+# =============================================================================
+# A QUIETER LOG
+# =============================================================================
+
+const LOG_GROUP := "moderation"
+# Entries in a row by the same person, doing the same thing to the same target,
+# no more than this far apart, fold into one line with a count. The owner
+# granting himself twelve items while testing a shop is one thing that happened.
+const FOLD_GAP_SECONDS := 600
+
+# False once the server has said it does not know the "moderation" set - one
+# from before it existed. The log and the record then ask for everything.
+var _groups_ok: bool = true
+var _record_everything: bool = false
+var record_all_button: Button = null
+# First ids of the folded runs somebody has opened, so loading older entries
+# does not shut them again.
+var _log_open_runs: Dictionary = {}
+
+
+func _group_refused(res: Dictionary, asked: String) -> bool:
+	"""A 400 to ?action=moderation is a server from before the set existed:
+	stop asking for it, rather than showing an error where the log should be."""
+	if asked != LOG_GROUP or int(res.get("status", 0)) != 400 or not _groups_ok:
+		return false
+	_groups_ok = false
+	return true
+
+
+static func fold_runs(entries: Array) -> Array:
+	"""The log, as runs: [[a], [b, b, b], [c]]. A run is consecutive entries
+	with the same by, action and target, each within FOLD_GAP_SECONDS of the
+	next. Only the reading folds - every entry is still there to open."""
+	var runs: Array = []
+	for entry in entries:
+		if not (entry is Dictionary):
+			continue
+		if not runs.is_empty():
+			var run: Array = runs[-1]
+			var last: Dictionary = run[-1]
+			if str(last.get("by", "")) == str(entry.get("by", "")) \
+					and str(last.get("action", "")) == str(entry.get("action", "")) \
+					and str(last.get("target", "")) == str(entry.get("target", "")) \
+					and absi(int(last.get("at", 0)) - int(entry.get("at", 0))) <= FOLD_GAP_SECONDS:
+				run.append(entry)
+				continue
+		runs.append([entry])
+	return runs
+
+
+static func describe_fold(run: Array) -> String:
+	# "06:25  boss granted themselves items ×12 · from 06:20" - the newest
+	# time first, like every other line, and where the run began if that
+	# was another minute.
+	var newest: Dictionary = run[0]
+	var oldest: Dictionary = run[-1]
+	var plain: Dictionary = newest.duplicate()
+	plain["detail"] = ""
+	var last: String = LocalTime.stamp(int(newest.get("at", 0)))
+	var first: String = LocalTime.stamp(int(oldest.get("at", 0)))
+	return "%s  %s ×%d%s" % [last, describe_entry(plain), run.size(),
+		"" if first == last else " · from %s" % first]
+
+
+func _make_fold_row(run: Array) -> Control:
+	var key: int = int(run[0].get("id", 0))
+	var open: bool = _log_open_runs.has(key)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	var head := Button.new()
+	head.name = "fold"
+	head.flat = true
+	head.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	head.focus_mode = Control.FOCUS_NONE
+	head.text = ("▾ " if open else "▸ ") + describe_fold(run)
+	head.tooltip_text = "Hide them" if open else "Show all %d" % run.size()
+	head.add_theme_font_size_override("font_size", 12)
+	head.add_theme_color_override("font_color", colour_for_kind(str(run[0].get("action", ""))))
+	head.pressed.connect(func() -> void:
+		if _log_open_runs.has(key):
+			_log_open_runs.erase(key)
+		else:
+			_log_open_runs[key] = true
+		_render_log())
+	box.add_child(head)
+	if open:
+		var inner := MarginContainer.new()
+		inner.add_theme_constant_override("margin_left", 16)
+		var rows := VBoxContainer.new()
+		rows.add_theme_constant_override("separation", 2)
+		for entry in run:
+			rows.add_child(_make_entry_row(entry, true))
+		inner.add_child(rows)
+		box.add_child(inner)
+	return box
+
+
+func _build_record_toggle() -> void:
+	""""Show everything" on a player's record: grants and teleports too."""
+	if record_list == null or record_all_button != null:
+		return
+	var tab: Node = record_list.get_parent().get_parent()
+	record_all_button = Button.new()
+	record_all_button.name = "staffrecordall"
+	record_all_button.toggle_mode = true
+	record_all_button.flat = true
+	record_all_button.focus_mode = Control.FOCUS_NONE
+	record_all_button.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	record_all_button.text = "Show everything"
+	record_all_button.tooltip_text = "Item grants and teleports too, not only what staff did about them."
+	record_all_button.add_theme_font_size_override("font_size", 11)
+	record_all_button.toggled.connect(func(on: bool) -> void:
+		_record_everything = on
+		record_all_button.text = "Only sanctions and notes" if on else "Show everything"
+		_load_record("fresh"))
+	tab.add_child(record_all_button)
+	tab.move_child(record_all_button, 0)
 
 
 # =============================================================================
@@ -1608,6 +1749,11 @@ var reports_empty: Label = null
 var _reports: Array = []
 var _reports_now: int = 0
 var _reports_open: int = 0
+# ONE CARD PER REPORTED PLAYER, when the server sends them ("players"). A
+# server from before the cards sends only the per-line list, and the tab draws
+# that the old way rather than going blank.
+var _report_players: Array = []
+var _reports_by_player: bool = false
 var _reports_generation: int = 0
 
 
@@ -1661,8 +1807,16 @@ func apply_reports(data: Variant) -> void:
 	for report in data.get("reports", []):
 		if report is Dictionary:
 			_reports.append(report)
+	_report_players = []
+	_reports_by_player = data.get("players") is Array
+	if _reports_by_player:
+		for card in data["players"]:
+			if card is Dictionary:
+				_report_players.append(card)
 	_reports_now = int(data.get("now", 0))
-	_reports_open = int(data.get("open", _reports.size()))
+	# THE TAB COUNTS PLAYERS when it shows cards - one card is one thing to do.
+	_reports_open = int(data.get("open_players", _report_players.size())) if _reports_by_player \
+		else int(data.get("open", _reports.size()))
 	_title_reports_tab()
 	_render_reports()
 
@@ -1673,9 +1827,199 @@ func _render_reports() -> void:
 	for child in reports_list.get_children():
 		reports_list.remove_child(child)
 		child.queue_free()
+	if _reports_by_player:
+		reports_empty.visible = _report_players.is_empty()
+		for card in _report_players:
+			reports_list.add_child(_make_player_card(card))
+		return
 	reports_empty.visible = _reports.is_empty()
 	for report in _reports:
 		reports_list.add_child(_make_report_row(report))
+
+
+# =============================================================================
+# A CARD PER REPORTED PLAYER
+# =============================================================================
+# Twenty lines from one spammer are one card, not twenty rows: who, how many
+# lines and people, why, their newest lines, and one set of buttons for all of
+# it. Mute and ban close the card on the server by themselves (they answer
+# what was reported); Dismiss all closes it as nothing wrong.
+
+const CARD_LINE_FONT := 12
+const CARD_SMALL_FONT := 11
+
+
+static func describe_player_report(card: Dictionary, server_now: int) -> String:
+	# "6 lines · 2 people · spam ×7 · last 3 min ago"
+	var lines: int = int(card.get("line_count", 0))
+	var people: int = int(card.get("people", 0))
+	var bits: PackedStringArray = [
+		"%d line%s" % [lines, "" if lines == 1 else "s"],
+		"%d %s" % [people, "person" if people == 1 else "people"]]
+	var reasons: Variant = card.get("reasons", {})
+	if reasons is Dictionary:
+		for reason in reasons:
+			var n: int = int(reasons[reason])
+			bits.append(str(reason) if n == 1 else "%s ×%d" % [str(reason), n])
+	if server_now > 0 and int(card.get("last_at", 0)) > 0:
+		bits.append("last " + LocalTime.ago(int(card.get("last_at", 0)), server_now))
+	return " · ".join(bits)
+
+
+static func describe_card_line(line: Dictionary, server_now: int) -> String:
+	# "×2 · world · 3 min ago" - the small print beside one reported line.
+	var bits: PackedStringArray = []
+	var times: int = int(line.get("reports", 1))
+	if times > 1:
+		bits.append("×%d" % times)
+	bits.append(str(line.get("channel", "?")))
+	if server_now > 0:
+		bits.append(LocalTime.ago(int(line.get("said_at", 0)), server_now))
+	if not bool(line.get("line_exists", true)):
+		bits.append("gone from chat")
+	return " · ".join(bits)
+
+
+func _make_player_card(card: Dictionary) -> Control:
+	var who: String = str(card.get("reported", "?"))
+	var actionable: bool = bool(card.get("actionable", false))
+	var box := PanelContainer.new()
+	box.theme_type_variation = &"PanelSub"
+	box.name = "card_" + who
+	var pad := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + side, 6)
+	box.add_child(pad)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 3)
+	pad.add_child(body)
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	var who_label := Label.new()
+	who_label.text = who
+	who_label.add_theme_font_size_override("font_size", 14)
+	who_label.add_theme_color_override("font_color", COLOUR_ENTRY)
+	head.add_child(who_label)
+	var summary := Label.new()
+	summary.name = "summary"
+	summary.text = describe_player_report(card, _reports_now)
+	summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	summary.custom_minimum_size = Vector2(1, 0)
+	summary.add_theme_font_size_override("font_size", CARD_SMALL_FONT)
+	summary.add_theme_color_override("font_color", COLOUR_PROBLEM)
+	var reporters: PackedStringArray = []
+	for reporter in card.get("reporters", []):
+		reporters.append(str(reporter))
+	summary.tooltip_text = "Reported by " + ", ".join(reporters)
+	summary.mouse_filter = Control.MOUSE_FILTER_PASS
+	head.add_child(summary)
+	body.add_child(head)
+
+	var lines: Array = card.get("lines", []) if card.get("lines") is Array else []
+	for line in lines:
+		if line is Dictionary:
+			body.add_child(_make_card_line(line, who, actionable))
+	var older: int = int(card.get("line_count", lines.size())) - lines.size()
+	if older > 0:
+		var more := Label.new()
+		more.text = "and %d older line%s" % [older, "" if older == 1 else "s"]
+		more.add_theme_font_size_override("font_size", CARD_SMALL_FONT)
+		more.add_theme_color_override("font_color", COLOUR_OFFLINE)
+		body.add_child(more)
+
+	var row := HBoxContainer.new()
+	row.name = "buttons"
+	row.add_theme_constant_override("separation", 6)
+	var open_button := Button.new()
+	open_button.text = "Open %s" % who
+	open_button.focus_mode = Control.FOCUS_NONE
+	open_button.pressed.connect(func() -> void: _open_player(who))
+	row.add_child(open_button)
+	if actionable:
+		var newest: String = str(lines[0].get("body", "")) if not lines.is_empty() and lines[0] is Dictionary else ""
+		var mute := Button.new()
+		mute.text = "Mute 1 hour"
+		mute.tooltip_text = "Mutes them, and closes every report on this card."
+		mute.focus_mode = Control.FOCUS_NONE
+		mute.pressed.connect(func() -> void: _act_on_player_reports("mute", who, newest))
+		row.add_child(mute)
+		var dismiss := Button.new()
+		dismiss.text = "Dismiss all"
+		dismiss.tooltip_text = "Nothing wrong. Closes every report on this card, with one line in the log."
+		dismiss.focus_mode = Control.FOCUS_NONE
+		dismiss.pressed.connect(func() -> void: _act_on_player_reports("dismissed", who, newest))
+		row.add_child(dismiss)
+	else:
+		var note := Label.new()
+		note.text = "Not yours to judge (%s)." % str(card.get("reported_role", "staff"))
+		note.add_theme_font_size_override("font_size", CARD_SMALL_FONT)
+		note.add_theme_color_override("font_color", COLOUR_OFFLINE)
+		row.add_child(note)
+	body.add_child(row)
+	return box
+
+
+func _make_card_line(line: Dictionary, who: String, actionable: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var said := Label.new()
+	var text: String = str(line.get("body", ""))
+	said.text = "\"%s\"" % text if text != "" else "(a picture)"
+	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	said.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	said.custom_minimum_size = Vector2(1, 0)
+	said.add_theme_font_size_override("font_size", CARD_LINE_FONT)
+	said.add_theme_color_override("font_color", COLOUR_ENTRY)
+	row.add_child(said)
+	var small := Label.new()
+	small.text = describe_card_line(line, _reports_now)
+	small.add_theme_font_size_override("font_size", CARD_SMALL_FONT)
+	small.add_theme_color_override("font_color", COLOUR_OFFLINE)
+	row.add_child(small)
+	if actionable and bool(line.get("line_exists", false)):
+		var message_id: int = int(line.get("message_id", 0))
+		var delete := Button.new()
+		delete.text = "Delete"
+		delete.tooltip_text = "Take this line out of chat. Closes its reports."
+		delete.focus_mode = Control.FOCUS_NONE
+		delete.add_theme_font_size_override("font_size", CARD_SMALL_FONT)
+		delete.pressed.connect(func() -> void: _act_on_report("delete", message_id, who, text))
+		row.add_child(delete)
+	return row
+
+
+func _act_on_player_reports(what: String, who: String, newest: String) -> void:
+	"""Mute who a card is about, or dismiss the whole card. A mute closes the
+	card on the server by itself - no second request to forget."""
+	if _acting:
+		return
+	_acting = true
+	var res: Dictionary
+	if what == "mute":
+		res = await Api.post("/api/staff/mute", {"username": who, "minutes": 60,
+			"reason": "Reported: \"%s\"" % newest.left(120)})
+	else:
+		res = await Api.post("/api/staff/reports/resolve", {"username": who, "outcome": what})
+	_acting = false
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_say("Refused: %s" % str(res.get("error", "unknown error")), false)
+	else:
+		var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+		_say(card_result_words(what, who, data), true)
+	await _load_reports()
+
+
+static func card_result_words(what: String, who: String, data: Dictionary) -> String:
+	if what == "mute":
+		var shut: int = int(data.get("reports_closed", 0))
+		return "Muted %s for an hour%s." % [who, "" if shut <= 0
+			else " and closed %d reported line%s" % [shut, "" if shut == 1 else "s"]]
+	var lines: int = int(data.get("lines", 0))
+	return "Dismissed %d reported line%s about %s." % [lines, "" if lines == 1 else "s", who]
 
 
 func _make_report_row(report: Dictionary) -> Control:

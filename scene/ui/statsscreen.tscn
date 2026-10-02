@@ -12,8 +12,36 @@
 [ext_resource type="Texture2D" uid="uid://cavsu5dx05ykt" path="res://art/pack/icons/fishingiconcharacterstats.png" id="10_23bjm"]
 [ext_resource type="Texture2D" uid="uid://b42kj0m3p6b5e" path="res://art/pack/icons/cookingiconcharacterselection.png" id="11_mtu1p"]
 
-[node name="Statsscreen" type="Control" unique_id=378052773]
-custom_minimum_size = Vector2(350, 500)
+[sub_resource type="StyleBoxFlat" id="SB_fill_hp"]
+bg_color = Color(0.72, 0.18, 0.16, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="SB_fill_stamina"]
+bg_color = Color(0.78, 0.58, 0.14, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="SB_fill_mana"]
+bg_color = Color(0.22, 0.42, 0.82, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="SB_fill_xp"]
+bg_color = Color(0.32, 0.6, 0.86, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[node name="Statsscreen" type="Control"]
+custom_minimum_size = Vector2(660, 330)
 layout_mode = 3
 anchors_preset = 8
 anchor_left = 0.5
@@ -28,7 +56,7 @@ mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_stats")
 
-[node name="mainpanel" type="PanelContainer" parent="." unique_id=1561961774]
+[node name="mainpanel" type="PanelContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -36,25 +64,25 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="margincontainer" type="MarginContainer" parent="mainpanel" unique_id=1015228849]
+[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 15
-theme_override_constants/margin_top = 15
-theme_override_constants/margin_right = 15
-theme_override_constants/margin_bottom = 15
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
 
-[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer" unique_id=1784219503]
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1320504855]
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 layout_mode = 2
 theme_type_variation = &"PanelHeader"
 
-[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel" unique_id=2110938975]
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
 layout_mode = 2
 
-[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=1324454974]
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
@@ -62,7 +90,7 @@ theme_override_font_sizes/font_size = 20
 text = "CHARACTER STATS"
 horizontal_alignment = 1
 
-[node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer" unique_id=371312596]
+[node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
 custom_minimum_size = Vector2(28, 28)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
@@ -71,243 +99,306 @@ theme_override_font_sizes/font_size = 18
 text = "×"
 flat = true
 
-[node name="statsccroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer" unique_id=881359720]
+[node name="statsccroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="statscontainer" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll" unique_id=688227954]
+[node name="statscontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 4
-
-[node name="charsatmargin" type="MarginContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer" unique_id=1857744988]
-layout_mode = 2
-theme_override_constants/margin_left = 5
-theme_override_constants/margin_top = 5
-theme_override_constants/margin_right = 5
-theme_override_constants/margin_bottom = 5
-
-[node name="charstathbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin" unique_id=1266683175]
-layout_mode = 2
-theme_override_constants/separation = 16
-alignment = 1
-
-[node name="lvlxpvbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox" unique_id=2103896783]
-layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/separation = 12
-alignment = 1
 
-[node name="levelstat" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox" unique_id=453523070]
-layout_mode = 2
-theme_type_variation = &"PanelStatBg"
-
-[node name="hbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox/levelstat" unique_id=404895705]
-layout_mode = 2
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox/levelstat/hbox" unique_id=726697154]
+[node name="leftcolumn" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "Level:"
+theme_type_variation = &"PanelSub"
 
-[node name="levelvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox/levelstat/hbox" unique_id=787073742]
+[node name="leftmargin" type="MarginContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="leftbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="levelrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="levelbadge" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="levelvbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/levelbadge"]
+layout_mode = 2
+theme_override_constants/separation = -4
+alignment = 1
+
+[node name="levelcaption" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/levelbadge/levelvbox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 10
+text = "LEVEL"
+horizontal_alignment = 1
+
+[node name="levelvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/levelbadge/levelvbox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 28
 text = "1"
-horizontal_alignment = 2
+horizontal_alignment = 1
 
-[node name="xpstat" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox" unique_id=1895527986]
+[node name="xpbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow"]
 layout_mode = 2
-theme_type_variation = &"PanelStatBg"
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+alignment = 1
 
-[node name="vbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox/xpstat" unique_id=620936978]
+[node name="xphead" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/xpbox"]
 layout_mode = 2
 
-[node name="hbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox/xpstat/vbox" unique_id=644962860]
-layout_mode = 2
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox/xpstat/vbox/hbox" unique_id=785124905]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/xpbox/xphead"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "XP:"
+theme_override_font_sizes/font_size = 13
+text = "Experience"
 
-[node name="xpvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox/xpstat/vbox/hbox" unique_id=783366056]
+[node name="xpvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/xpbox/xphead"]
 unique_name_in_owner = true
 layout_mode = 2
+mouse_filter = 1
 theme_override_colors/font_color = Color(0.6, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 13
 text = "0 / 100"
 horizontal_alignment = 2
 
-[node name="xpbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/lvlxpvbox/xpstat/vbox" unique_id=67469790]
+[node name="xpbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/xpbox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 10)
+custom_minimum_size = Vector2(0, 12)
 layout_mode = 2
+theme_override_styles/fill = SubResource("SB_fill_xp")
 show_percentage = false
 
-[node name="vseparator" type="VSeparator" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox" unique_id=1224974615]
+[node name="xpnext" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/xpbox"]
+unique_name_in_owner = true
 layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.6, 0.56, 1)
+theme_override_font_sizes/font_size = 11
+text = ""
 
-[node name="barsvbox2" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox" unique_id=51079421]
+[node name="hpstat" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
 layout_mode = 2
-size_flags_horizontal = 3
-size_flags_stretch_ratio = 1.75
-alignment = 1
+theme_override_constants/separation = 8
 
-[node name="hpstat" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2" unique_id=1564847970]
+[node name="hpicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/hpstat"]
+custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
-theme_type_variation = &"PanelStatBg"
+size_flags_vertical = 4
+texture = ExtResource("3_ecirk")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="vbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat" unique_id=419565986]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/hpstat"]
+custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
-
-[node name="hbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat/vbox" unique_id=1447830387]
-layout_mode = 2
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat/vbox/hbox" unique_id=1181114522]
-layout_mode = 2
-size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 13
 text = "Health:"
 
-[node name="hpicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat/vbox/hbox" unique_id=1355658789]
-layout_mode = 2
-texture = ExtResource("3_ecirk")
-
-[node name="hpvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat/vbox/hbox" unique_id=38393401]
+[node name="hpbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/hpstat"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
-text = "100 / 100"
-horizontal_alignment = 2
-
-[node name="hpbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/hpstat/vbox" unique_id=104953936]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 10)
-layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_styles/fill = SubResource("SB_fill_hp")
 value = 100.0
 show_percentage = false
 
-[node name="staminastat" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2" unique_id=1412600370]
-layout_mode = 2
-theme_type_variation = &"PanelStatBg"
+[node name="hpvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/hpstat/hpbar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
+text = "100 / 100"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="vbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/staminastat" unique_id=25577532]
+[node name="staminastat" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
 layout_mode = 2
+theme_override_constants/separation = 8
 
-[node name="hbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/staminastat/vbox" unique_id=1510277628]
+[node name="staminaicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/staminastat"]
+custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("4_rowrm")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/staminastat/vbox/hbox" unique_id=910573808]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/staminastat"]
+custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
-size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 13
 text = "Stamina:"
 
-[node name="staminaicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/staminastat/vbox/hbox" unique_id=909121212]
-layout_mode = 2
-texture = ExtResource("4_rowrm")
-
-[node name="staminavalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/staminastat/vbox/hbox" unique_id=907871091]
+[node name="staminabar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/staminastat"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
-text = "100 / 100"
-horizontal_alignment = 2
-
-[node name="staminabar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/staminastat/vbox" unique_id=1074181531]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 10)
-layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_styles/fill = SubResource("SB_fill_stamina")
 value = 100.0
 show_percentage = false
 
-[node name="manastat" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2" unique_id=683282063]
-layout_mode = 2
-theme_type_variation = &"PanelStatBg"
+[node name="staminavalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/staminastat/staminabar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
+text = "100 / 100"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="vbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/manastat" unique_id=2048939811]
+[node name="manastat" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
 layout_mode = 2
+theme_override_constants/separation = 8
 
-[node name="hbox" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/manastat/vbox" unique_id=1245537646]
+[node name="manaicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/manastat"]
+custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("5_wrf8c")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/manastat/vbox/hbox" unique_id=1043088831]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/manastat"]
+custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
-size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 13
 text = "Mana:"
 
-[node name="manaicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/manastat/vbox/hbox" unique_id=1800389430]
-layout_mode = 2
-texture = ExtResource("5_wrf8c")
-
-[node name="manavalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/manastat/vbox/hbox" unique_id=1894503892]
+[node name="manabar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/manastat"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.4, 0.6, 1, 1)
-text = "100 / 100"
-horizontal_alignment = 2
-
-[node name="manabar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/charsatmargin/charstathbox/barsvbox2/manastat/vbox" unique_id=1011305304]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 10)
-layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_styles/fill = SubResource("SB_fill_mana")
 value = 100.0
 show_percentage = false
 
-[node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer" unique_id=1129120697]
-layout_mode = 2
+[node name="manavalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/manastat/manabar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 12
+text = "100 / 100"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="combatsub" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer" unique_id=69634482]
+[node name="rightcolumn" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.15
+theme_override_constants/separation = 10
+
+[node name="combatsub" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn"]
 layout_mode = 2
 theme_type_variation = &"PanelSub"
 
-[node name="combatstatmargin" type="MarginContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub" unique_id=1767964677]
+[node name="combatstatmargin" type="MarginContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub"]
 layout_mode = 2
-theme_override_constants/margin_left = 5
-theme_override_constants/margin_right = 5
-theme_override_constants/margin_bottom = 5
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
 
-[node name="vbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin" unique_id=2047093579]
+[node name="vbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin"]
 layout_mode = 2
+theme_override_constants/separation = 6
 
-[node name="combatlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox" unique_id=848133187]
+[node name="combatlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
-theme_override_font_sizes/font_size = 14
-text = "Combat Stats"
-horizontal_alignment = 1
+theme_override_font_sizes/font_size = 12
+text = "COMBAT"
 
-[node name="attackrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox" unique_id=2116890988]
-unique_name_in_owner = true
+[node name="attackrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox"]
 layout_mode = 2
+theme_override_constants/separation = 8
+mouse_filter = 1
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=1834334543]
-custom_minimum_size = Vector2(90, 0)
+[node name="attackicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/attackrow"]
+custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
-size_flags_vertical = 1
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "Attack:"
-
-[node name="attackicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=1270178750]
-layout_mode = 2
-size_flags_horizontal = 4
 size_flags_vertical = 4
 texture = ExtResource("6_hauye")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="attackbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=101700174]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/attackrow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+size_flags_vertical = 1
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 13
+text = "Attack:"
+
+[node name="attackvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/attackrow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 18)
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 14
+text = "1"
+horizontal_alignment = 2
+
+[node name="attackbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/attackrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 16)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 show_percentage = false
 
-[node name="attackbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow/attackbar" unique_id=1846724919]
+[node name="attackbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/attackrow/attackbar"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -318,45 +409,51 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 12
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 11
 text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="attackvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/attackrow" unique_id=666215065]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(34, 0)
+[node name="defenserow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.6, 0.4, 1)
-text = "1"
-horizontal_alignment = 2
+theme_override_constants/separation = 8
+mouse_filter = 1
 
-[node name="defenserow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox" unique_id=1312994536]
+[node name="defensebaricon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/defenserow"]
+custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=2087719953]
-custom_minimum_size = Vector2(90, 0)
-layout_mode = 2
-size_flags_vertical = 1
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "Defence:"
-
-[node name="defensebaricon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=873388737]
-layout_mode = 2
-size_flags_horizontal = 4
 size_flags_vertical = 4
 texture = ExtResource("7_nmnmi")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="defensebar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=1151399401]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/defenserow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+size_flags_vertical = 1
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 13
+text = "Defence:"
+
+[node name="defensevalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/defenserow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 18)
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 14
+text = "1"
+horizontal_alignment = 2
+
+[node name="defensebar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/defenserow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 16)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 show_percentage = false
 
-[node name="defensebarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow/defensebar" unique_id=1794530690]
+[node name="defensebarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/defenserow/defensebar"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -367,94 +464,51 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 12
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 11
 text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="defensevalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/defenserow" unique_id=1348993767]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(34, 0)
+[node name="agilityrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.4, 0.7, 1, 1)
-text = "1"
-horizontal_alignment = 2
+theme_override_constants/separation = 8
+mouse_filter = 1
 
-[node name="agilityrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox" unique_id=1098350512]
+[node name="agilityicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/agilityrow"]
+custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=461802380]
-custom_minimum_size = Vector2(90, 0)
-layout_mode = 2
-size_flags_vertical = 1
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "Agility:"
-
-[node name="agilityicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=629385863]
-layout_mode = 2
-size_flags_horizontal = 4
 size_flags_vertical = 4
 texture = ExtResource("8_0u0r4")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="agilitybar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=1980357902]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 18)
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-show_percentage = false
-
-[node name="agilitybarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow/agilitybar" unique_id=762117563]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 12
-text = "0%"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="agilityvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/agilityrow" unique_id=842119567]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(34, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.4, 1, 0.6, 1)
-text = "1"
-horizontal_alignment = 2
-
-[node name="magicrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox" unique_id=1068739797]
-layout_mode = 2
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=892800830]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/agilityrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
 size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "Magic:"
+theme_override_font_sizes/font_size = 13
+text = "Agility:"
 
-[node name="magicicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=1212975546]
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
-texture = ExtResource("9_0oet0")
-
-[node name="magicbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=2066434972]
+[node name="agilityvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/agilityrow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 18)
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 14
+text = "1"
+horizontal_alignment = 2
+
+[node name="agilitybar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/agilityrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 16)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 show_percentage = false
 
-[node name="magicbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow/magicbar" unique_id=701086560]
+[node name="agilitybarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/agilityrow/agilitybar"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -465,117 +519,127 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 12
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 11
 text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="magicvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/combatsub/combatstatmargin/vbox/magicrow" unique_id=503675417]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(34, 0)
+[node name="magicrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.5, 1, 1)
+theme_override_constants/separation = 8
+mouse_filter = 1
+
+[node name="magicicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/magicrow"]
+custom_minimum_size = Vector2(18, 18)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("9_0oet0")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/magicrow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+size_flags_vertical = 1
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 13
+text = "Magic:"
+
+[node name="magicvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/magicrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 14
 text = "1"
 horizontal_alignment = 2
 
-[node name="hseparator3" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer" unique_id=1028968090]
+[node name="magicbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/magicrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 16)
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+show_percentage = false
 
-[node name="skillssub" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer" unique_id=314866790]
+[node name="magicbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/combatsub/combatstatmargin/vbox/magicrow/magicbar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 11
+text = "0%"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="skillssub" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn"]
 layout_mode = 2
 theme_type_variation = &"PanelSub"
 
-[node name="skillsmargin" type="MarginContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub" unique_id=1375857669]
+[node name="skillsmargin" type="MarginContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub"]
 layout_mode = 2
-theme_override_constants/margin_left = 5
-theme_override_constants/margin_right = 5
-theme_override_constants/margin_bottom = 5
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
 
-[node name="vbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin" unique_id=330728430]
+[node name="vbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin"]
 layout_mode = 2
+theme_override_constants/separation = 6
 
-[node name="skillslabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox" unique_id=898259891]
+[node name="skillslabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
-theme_override_font_sizes/font_size = 14
-text = "Skills"
-horizontal_alignment = 1
+theme_override_font_sizes/font_size = 12
+text = "GATHERING"
 
-[node name="fishingrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox" unique_id=1750261643]
+[node name="fishingrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox"]
 layout_mode = 2
+theme_override_constants/separation = 8
+mouse_filter = 1
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=984984238]
-custom_minimum_size = Vector2(90, 0)
+[node name="fishingicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/fishingrow"]
+custom_minimum_size = Vector2(18, 18)
 layout_mode = 2
-size_flags_vertical = 1
-theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "Fishing:"
-
-[node name="fishingicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=1965319229]
-layout_mode = 2
-size_flags_horizontal = 4
 size_flags_vertical = 4
 texture = ExtResource("10_23bjm")
+expand_mode = 1
+stretch_mode = 5
 
-[node name="fishingbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=455983359]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 18)
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-show_percentage = false
-
-[node name="fishingbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow/fishingbar" unique_id=1729450723]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 12
-text = "0%"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="fishingvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/fishingrow" unique_id=67483399]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(34, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.4, 0.8, 1, 1)
-text = "1"
-horizontal_alignment = 2
-
-[node name="cookingrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox" unique_id=1780810521]
-layout_mode = 2
-
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=2082493353]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/fishingrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
 size_flags_vertical = 1
 theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
-text = "Cooking:"
+theme_override_font_sizes/font_size = 13
+text = "Fishing:"
 
-[node name="cookingicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=1626471090]
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
-texture = ExtResource("11_mtu1p")
-
-[node name="cookingbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=224907749]
+[node name="fishingvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/fishingrow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 18)
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 14
+text = "1"
+horizontal_alignment = 2
+
+[node name="fishingbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/fishingrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 16)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 show_percentage = false
 
-[node name="cookingbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow/cookingbar" unique_id=1993200524]
+[node name="fishingbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/fishingrow/fishingbar"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -586,16 +650,63 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 12
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 11
 text = "0%"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="cookingvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/skillssub/skillsmargin/vbox/cookingrow" unique_id=1156372384]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(34, 0)
+[node name="cookingrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.7, 0.4, 1)
+theme_override_constants/separation = 8
+mouse_filter = 1
+
+[node name="cookingicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/cookingrow"]
+custom_minimum_size = Vector2(18, 18)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("11_mtu1p")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/cookingrow"]
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+size_flags_vertical = 1
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 13
+text = "Cooking:"
+
+[node name="cookingvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/cookingrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.6, 1)
+theme_override_font_sizes/font_size = 14
 text = "1"
 horizontal_alignment = 2
+
+[node name="cookingbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/cookingrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 16)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+show_percentage = false
+
+[node name="cookingbarlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/rightcolumn/skillssub/skillsmargin/vbox/cookingrow/cookingbar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.98, 0.93, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.9)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 11
+text = "0%"
+horizontal_alignment = 1
+vertical_alignment = 1

@@ -579,8 +579,10 @@ the HUD polls anyway, carries:
 ```
 
 The same answer carries **`open_reports`**: the number of reported chat lines
-waiting, for mod and up (`0` for everyone else). The HUD puts it on the Staff
-button.
+waiting, and **`open_report_players`**: how many players those lines are
+about, both for mod and up (`0` for everyone else). The HUD puts the players
+on the Staff button (one card each on the Reports tab), and falls back to the
+lines from a server without `open_report_players`.
 
 `whisper` is the newest private line sent TO the caller by somebody else
 (`null` if none; a picture alone reads `"(a picture)"`). `guild` and `friends`
@@ -618,9 +620,9 @@ for the caller.
 | `POST /api/ignores` | `{"username"}` | `200`; `400` yourself; `403` staff; `404`; `409` list full |
 | `POST /api/ignores/remove` | `{"username"}` | `200` with `was_ignored` |
 | `POST /api/chat/report` | `{"id", "reason"}` - spam, harassment, hate, cheating, other | `200` (`already` on a repeat); `400` your own line; `404` a line you were not shown; `429` |
-| `GET /api/staff/reports?state=open\|all` | mod | one entry per line: `reported`, `body`, `reports`, `reporters`, `reasons`, `actionable`, `line_exists` |
-| `POST /api/staff/reports/resolve` | mod; `{"message_id", "outcome": "dismissed"\|"actioned"}` | `200`; `404` nothing open, or out of your reach |
-| `POST /api/staff/mute` | mod; `{"username", "minutes", "reason"}` | `200`; `403` a mod over a day; `404` out of reach |
+| `GET /api/staff/reports?state=open\|all` | mod | `players`: one card per reported player, worst first - `reported`, `reported_role`, `actionable`, `line_count`, `reports`, `people`, `reporters`, `reasons`, `first_at`, `last_at`, and `lines` (their newest, each in the per-line shape); `reports`: one entry per line - `reported`, `body`, `reports`, `reporters`, `reasons`, `actionable`, `line_exists`; `open` (lines), `open_players` |
+| `POST /api/staff/reports/resolve` | mod; `{"message_id", "outcome": "dismissed"\|"actioned"}` or `{"username", "outcome"}` for every open report about a player | `200` (`closed`, or `lines` by player); `404` nothing open, or out of your reach |
+| `POST /api/staff/mute` | mod; `{"username", "minutes", "reason"}` | `200` with `reports_closed` (a mute, kick or ban closes the player's open reports as actioned); `403` a mod over a day; `404` out of reach |
 | `POST /api/staff/unmute` | mod; `{"username"}` | `200` |
 
 A whisper, friend request or trade to somebody who ignores you is `403` with a

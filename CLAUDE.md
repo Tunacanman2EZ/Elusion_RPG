@@ -1426,15 +1426,24 @@ What the desk is now, and the rules in it that are not obvious:
 - **The picked player survives a page that does not carry them.** A new search
   can leave them off the list; the buttons stay aimed at them rather than quietly
   unpicking.
-- **Record** is `GET /api/staff/actions?player=` — every sanction, note and
-  warning about them, with a tally over the whole record on the tab. A note or a
+- **Record** is `GET /api/staff/actions?player=&action=moderation` — every
+  sanction, note and warning about them, with a tally over the whole record
+  on the tab. Item grants and teleports are behind "Show everything" at the
+  top of the tab. A note or a
   warning is **staff-only in the strict sense**: the server reads them under
   `can_act_on()`, so a mod never sees what a dev wrote about another mod, and the
   panel never has them to hide. "Log a warning" records that one was given; the
   game sends the player nothing, and the confirmation line says so.
 - **Log** is the whole moderation log, filterable by player, staff and kind. The
   kinds come from the server's `kinds`, not a list typed here. A line about an
-  account opens that account.
+  account opens that account. **It opens on Moderation** (the server's
+  `groups`), with Everything next to it, so the owner's testing - grants,
+  teleports, the PvP and maintenance switches - is not what a mod scrolls
+  through. **The same thing done again and again is one line**: `fold_runs()`
+  folds entries in a row with the same person, action and target, each within
+  `FOLD_GAP_SECONDS` of the next, into "boss granted themselves items ×12",
+  opened with a click. A server that does not know `moderation` answers 400,
+  and the panel asks for everything instead (`_group_refused()`).
 
 The suite hands the real panel answers in the server's shape through the same
 function a real answer lands in — `_apply_list_page()`, `_apply_record_page()`,
@@ -2092,6 +2101,15 @@ theme, so one left behind keeps an old colour whatever the theme says. Both
 themes also style `PopupMenu`, so dropdowns and right-click menus get the gold
 frame instead of Godot's grey. `_test_the_staff_windows_share_one_look` holds it.
 
+**The Character Stats window is two columns** (day 1): the level badge,
+experience and the three pools on the left, the six skills on the right, with
+no separator lines between boxes. Health, stamina and mana are red, gold and
+blue bars with the numbers inside; under the XP bar, "1% · 998K to level 30".
+Big numbers are short (`GameConstants.short_number()`: "9,391", "12K", "1M",
+"1.2M", rounded down) with the exact figure in the tooltip. Its window key is
+`charstats`, so a rectangle saved for the old narrow window is not reused.
+`_test_the_stats_window_reads_cleanly` holds it.
+
 ### The browser build
 
 **Export:** Project > Export > **Web** (`export_presets.cfg`). The preset builds
@@ -2492,11 +2510,18 @@ the server's rules are in the API's CLAUDE.md, "Chat: ignore, report, mute".
   HUD's whisper pop-up. The list is ROT13 in the source.
 - **"New messages below"** under the log when a line arrives while the player
   is reading further up. It goes when they reach the bottom or click it.
-- **Staff**: a Reports tab (one row per reported line, with who, why and how
-  many; Delete line, Mute 1 hour, Dismiss, or only "Open player" for a report
-  about your own rank), mute buttons and the mute's state in a player's
+- **Staff**: a Reports tab, mute buttons and the mute's state in a player's
   Actions tab, mutes on the record, and the Staff button counts open reports
   from the poll (`_mark_open_reports`).
+- **The Reports tab is a card per reported player** (day 1: one spammer's
+  twenty lines were twenty rows). A card says how many lines, how many
+  people, why and when, shows their newest lines (each with a Delete while
+  it is still in chat) and has one Open, Mute 1 hour and Dismiss all
+  (`_make_player_card()`); a card about your own rank only opens the player.
+  Mute is one request: the server closes the player's reports itself when
+  they are muted, kicked or banned, from anywhere. The tab and the Staff
+  button count players, not lines. A server from before the cards (no
+  `players` in the answer) still gets the old per-line rows.
 - **Fixed while here**: a 429 in chat showed "one picture every few seconds"
   for every kind, so typing fast was reported as a picture problem.
 

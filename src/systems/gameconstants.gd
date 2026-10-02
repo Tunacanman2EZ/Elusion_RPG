@@ -343,6 +343,36 @@ func commas(amount: int) -> String:
 	return ("-" + out) if amount < 0 else out
 
 
+func short_number(amount: int) -> String:
+	# "9,391", "12K", "998K", "1M", "1.2M", "45M", "1.5B" - for a number in a
+	# small space, where "1,007,892" is seven digits nobody reads. Under ten
+	# thousand is written out whole, because "9.4K" hides what "9,391" says in
+	# the same room. Rounded DOWN, so 1,999,999 is "1.9M": a short number
+	# never claims more than is there. Where the exact figure matters, show
+	# commas() beside it or in a tooltip.
+	var size: int = absi(amount)
+	var minus: String = "-" if amount < 0 else ""
+	if size < 10_000:
+		return commas(amount)
+	var units: Array = [[1_000_000_000, "B"], [1_000_000, "M"], [1_000, "K"]]
+	for unit in units:
+		var step: int = unit[0]
+		if size < step:
+			continue
+		@warning_ignore("integer_division")
+		var whole: int = size / step
+		# A TENTH ONLY UNDER TEN: "1.2M" says something "1M" does not, and
+		# "45.6M" is three digits again.
+		if whole >= 10:
+			return "%s%d%s" % [minus, whole, unit[1]]
+		@warning_ignore("integer_division")
+		var tenths: int = (size % step) / (step / 10)
+		if tenths == 0:
+			return "%s%d%s" % [minus, whole, unit[1]]
+		return "%s%d.%d%s" % [minus, whole, tenths, unit[1]]
+	return commas(amount)
+
+
 func counted(amount: int, word: String, many: String = "") -> String:
 	# "1 day" / "3 days" / "1,204 lusions". A count and the word that goes with
 	# it, so "1 days ago", "1 seconds" and "between 1 of you" cannot be written

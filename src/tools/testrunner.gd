@@ -202,6 +202,7 @@ func _run_all() -> void:
 	_test_the_powers_panel_closes()
 	_test_the_staff_windows_share_one_look()
 	await _test_players_right_click_menu()
+	_test_the_stats_window_reads_cleanly()
 
 
 # =============================================================================
@@ -2782,7 +2783,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
 	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
 	["res://src/ui/staff/staffpanel.gd", "res://scene/ui/staff/staffpanel.tscn", "staff"],
-	["res://src/ui/statsscreen.gd", "res://scene/ui/statsscreen.tscn", "stats"],
+	["res://src/ui/statsscreen.gd", "res://scene/ui/statsscreen.tscn", "charstats"],
 	["res://src/ui/trade/tradepanel.gd", "res://scene/ui/trade/tradepanel.tscn", "trade"],
 ]
 
@@ -7529,6 +7530,59 @@ func _test_players_right_click_menu() -> void:
 	Api.token = was[1]
 
 
+func _test_the_stats_window_reads_cleanly() -> void:
+	section("STATS WINDOW - two columns, short numbers, no lines between boxes")
+
+	# Asked for on day 1: "1,007,892" in a small window, a separator line
+	# between every box, and the level and XP floating in a gap.
+	var short := func(n: int) -> String: return GameConstants.short_number(n)
+	check("a big number is short: 1,007,892 is 1M, and never rounded up",
+		short.call(1_007_892) == "1M" and short.call(1_999_999) == "1.9M"
+		and short.call(12_345) == "12K" and short.call(998_501) == "998K"
+		and short.call(45_600_000) == "45M" and short.call(1_500_000_000) == "1.5B",
+		[short.call(1_007_892), short.call(1_999_999), short.call(12_345), short.call(998_501)])
+	check("  a small one is written out, and a negative keeps its sign",
+		short.call(9_391) == "9,391" and short.call(0) == "0" and short.call(-25_000) == "-25K",
+		[short.call(9_391), short.call(-25_000)])
+
+	var scene_text: String = FileAccess.get_file_as_string("res://scene/ui/statsscreen.tscn")
+	var stats: Node = (load("res://scene/ui/statsscreen.tscn") as PackedScene).instantiate()
+	var columns: Node = stats.find_child("statscontainer", true, false)
+	check("two columns: level, experience and the pools beside the skills",
+		columns is HBoxContainer and columns.find_child("leftcolumn", false, false) != null
+		and columns.find_child("rightcolumn", false, false) != null
+		and columns.find_child("leftcolumn", false, false).find_child("hpbar", true, false) != null
+		and columns.find_child("rightcolumn", false, false).find_child("attackbar", true, false) != null)
+	check("  with no separator lines - the boxes already separate",
+		not scene_text.contains("HSeparator") and not scene_text.contains("VSeparator"))
+	var tints: Dictionary = {}
+	for key in ["hp", "stamina", "mana"]:
+		var bar: ProgressBar = stats.find_child(key + "bar", true, false) as ProgressBar
+		var fill: StyleBoxFlat = bar.get_theme_stylebox("fill") as StyleBoxFlat if bar != null and bar.has_theme_stylebox_override("fill") else null
+		var value: Label = stats.find_child(key + "value", true, false) as Label
+		tints[key] = null
+		if fill != null:
+			tints[key] = fill.bg_color
+		if value == null or value.get_parent() != bar:
+			tints[key] = "number not inside the bar"
+	check("  health red, stamina gold and mana blue, each number inside its bar",
+		tints["hp"] is Color and tints["hp"].r > 0.6 and tints["hp"].g < 0.3
+		and tints["stamina"] is Color and tints["stamina"].r > 0.6 and tints["stamina"].b < 0.3
+		and tints["mana"] is Color and tints["mana"].b > 0.6 and tints["mana"].r < 0.4, tints)
+	stats.free()
+
+	var Stats: Script = load("res://src/ui/statsscreen.gd") as Script
+	check("under the XP bar: how far, and how much is left to the next level",
+		Stats.xp_next_text(9_391, 1_007_892, 29) == "0% · 998K to level 30"
+		and Stats.xp_next_text(50, 100, 3) == "50% · 50 to level 4",
+		Stats.xp_next_text(9_391, 1_007_892, 29))
+	var code: String = _code_src("res://src/ui/statsscreen.gd")
+	check("  and the exact figures are in the tooltips",
+		_func_body(code, "func _update_progression(").contains("tooltip_text = exact")
+		and _func_body(code, "func _set_bar_and_label(").contains("bar.tooltip_text"))
+	print("  stats: short numbers, two columns, coloured pools, the next level in words")
+
+
 func _test_staff_panel() -> void:
 	section("STAFF PANEL")
 
@@ -10822,9 +10876,16 @@ func _test_the_staff_desk() -> void:
 	panel._record = []
 	panel._record_more = false
 	panel._record_before = 0
-	check("the record asks about the picked player",
-		panel._record_params("fresh") == {"player": "rowdy", "limit": panel.RECORD_PAGE_SIZE},
+	check("the record asks about the picked player, sanctions and notes first",
+		panel._record_params("fresh") == {"player": "rowdy", "limit": panel.RECORD_PAGE_SIZE,
+			"action": "moderation"},
 		panel._record_params("fresh"))
+	panel._record_everything = true
+	check("  and everything when asked to show everything",
+		not panel._record_params("fresh").has("action"), panel._record_params("fresh"))
+	panel._record_everything = false
+	check("  from a toggle on the record tab", panel.record_all_button != null
+		and panel.record_all_button.toggle_mode and panel.record_all_button.get_parent() == panel.record_list.get_parent().get_parent())
 	check("and asks for no older entries before it knows there are some",
 		panel._record_params("more").is_empty())
 	panel._apply_record_page({"ok": true, "data": {"actions": [
@@ -10856,7 +10917,10 @@ func _test_the_staff_desk() -> void:
 		and panel.record_empty.visible, [panel.record_summary.text, detail_tabs.get_tab_title(1)])
 
 	# ---- the log ----
-	check("the kind filter starts with only Everything", panel.log_kind.item_count == 1)
+	check("the kind filter opens on Moderation, with Everything next to it",
+		panel.log_kind.item_count == 2 and panel.log_kind.selected == 0
+		and panel._log_kind_value() == "moderation" and str(panel.log_kind.get_item_metadata(1)) == "",
+		[panel.log_kind.item_count, panel.log_kind.selected])
 	var log_page: Dictionary = {"ok": true, "data": {"actions": [
 		{"id": 41.0, "at": 1000.0, "by": "themod", "action": "kick", "target": "rowdy", "detail": ""},
 		{"id": 40.0, "at": 990.0, "by": "thedev", "action": "guild_rename", "target": "Shared", "detail": "-> Other"},
@@ -10867,7 +10931,7 @@ func _test_the_staff_desk() -> void:
 	for i in panel.log_kind.item_count:
 		kinds_shown.append(panel.log_kind.get_item_text(i))
 	check("and fills from the server's own list of kinds",
-		kinds_shown == ["Everything", "Bans", "Kicks", "Warnings", "smite"], kinds_shown)
+		kinds_shown == ["Moderation", "Everything", "Bans", "Kicks", "Warnings", "smite"], kinds_shown)
 	var entries: Array = _staff_rows(panel.log_entries)
 	check("the log is drawn", entries.size() == 2, entries.size())
 	check("a line about a player takes you to them",
@@ -10880,7 +10944,7 @@ func _test_the_staff_desk() -> void:
 	second["data"]["next_before"] = null
 	panel._apply_log_page(second, "more")
 	await get_tree().process_frame
-	check("the kinds are filled once, not reset under somebody's cursor", panel.log_kind.item_count == 5)
+	check("the kinds are filled once, not reset under somebody's cursor", panel.log_kind.item_count == 6)
 	check("older entries go below", _staff_rows(panel.log_entries).size() == 4 and not panel.log_more.visible)
 
 	for i in panel.log_kind.item_count:
@@ -15041,6 +15105,91 @@ func _test_staff_reports_and_mutes() -> void:
 		Staff.describe_report(report, 400).contains("reported 2x (spam) by ann, cat"), Staff.describe_report(report, 400))
 	panel.apply_reports({"reports": [], "open": 0, "now": 400})
 	check("  and an empty tab says so", panel.reports_empty.visible and panel.tabs.get_tab_title(Staff.REPORTS_TAB) == "Reports")
+
+	# ---- ONE CARD PER REPORTED PLAYER (day 1: the tab would flood) ----
+	var line_a := {"message_id": 11, "body": "spam line 5", "channel": "world", "said_at": 300,
+		"reports": 2, "line_exists": true}
+	var line_b := {"message_id": 10, "body": "spam line 4", "channel": "world", "said_at": 290,
+		"reports": 1, "line_exists": false}
+	var bob_card := {"reported": "bob", "reported_role": "player", "actionable": true, "line_count": 6,
+		"reports": 7, "people": 2, "reporters": ["ann", "cat"], "reasons": {"spam": 7},
+		"first_at": 100, "last_at": 340, "lines": [line_a, line_b]}
+	var mod_card := {"reported": "othermod", "reported_role": "mod", "actionable": false, "line_count": 1,
+		"reports": 1, "people": 1, "reporters": ["ann"], "reasons": {"harassment": 1},
+		"first_at": 100, "last_at": 100, "lines": [{"message_id": 6, "body": "rude", "channel": "world",
+			"said_at": 100, "reports": 1, "line_exists": true}]}
+	panel.apply_reports({"players": [bob_card, mod_card], "reports": [report, peer, report],
+		"open": 7, "open_players": 2, "now": 400})
+	var cards: Array = panel.reports_list.get_children()
+	check("the Reports tab is a card per player, and counts players",
+		cards.size() == 2 and panel.tabs.get_tab_title(Staff.REPORTS_TAB) == "Reports (2)",
+		[cards.size(), panel.tabs.get_tab_title(Staff.REPORTS_TAB)])
+	check("  bob's card: delete each line still in chat, then open, mute or dismiss them all",
+		cards.size() == 2 and buttons.call(cards[0]) == ["Delete", "Open bob", "Mute 1 hour", "Dismiss all"],
+		buttons.call(cards[0]) if cards.size() > 0 else [])
+	check("  a card about your own rank only opens the player",
+		cards.size() == 2 and buttons.call(cards[1]) == ["Open othermod"], buttons.call(cards[1]) if cards.size() > 1 else [])
+	var card_text: Array = []
+	if cards.size() > 0:
+		for l in (cards[0] as Node).find_children("*", "Label", true, false):
+			card_text.append((l as Label).text)
+	check("  it says how many lines, people and why, and how many older lines are not shown",
+		card_text.has("bob") and "\n".join(card_text).contains("6 lines · 2 people · spam ×7")
+		and card_text.has("and 4 older lines") and card_text.has("\"spam line 5\""), card_text)
+	check("  each line says how often, where and when, and if it is gone from chat",
+		Staff.describe_card_line(line_a, 400).begins_with("×2 · world")
+		and Staff.describe_card_line(line_b, 400).ends_with("gone from chat"),
+		[Staff.describe_card_line(line_a, 400), Staff.describe_card_line(line_b, 400)])
+	check("  and the result is said in a sentence",
+		Staff.card_result_words("mute", "bob", {"reports_closed": 6}) == "Muted bob for an hour and closed 6 reported lines."
+		and Staff.card_result_words("dismissed", "bob", {"lines": 1}) == "Dismissed 1 reported line about bob.",
+		Staff.card_result_words("mute", "bob", {"reports_closed": 6}))
+	var card_src: String = _func_body(_code_src("res://src/ui/staff/staffpanel.gd"), "func _act_on_player_reports(")
+	check("  Mute is one request - the server closes the card - and Dismiss closes it by name",
+		card_src.contains("Api.post(\"/api/staff/mute\"") and not card_src.contains("\"message_id\"")
+		and card_src.contains("{\"username\": who, \"outcome\": what}"))
+	panel.apply_reports({"reports": [report], "open": 1, "now": 400})
+	check("a server from before the cards still gets its per-line rows",
+		panel.reports_list.get_child_count() == 1 and buttons.call(panel.reports_list.get_child(0))[0] == "Open rowdy")
+
+	# ---- A QUIETER LOG ----
+	var runs: Array = Staff.fold_runs([
+		{"id": 9, "at": 1000, "by": "boss", "action": "grant", "target": "boss", "detail": "1 x a"},
+		{"id": 8, "at": 990, "by": "boss", "action": "grant", "target": "boss", "detail": "1 x b"},
+		{"id": 7, "at": 900, "by": "boss", "action": "grant", "target": "boss", "detail": "1 x c"},
+		{"id": 6, "at": 890, "by": "boss", "action": "ban", "target": "rowdy", "detail": "1 days: x"},
+		{"id": 5, "at": 880, "by": "boss", "action": "teleport", "target": "fighter", "detail": ""},
+		{"id": 4, "at": 100, "by": "boss", "action": "teleport", "target": "fighter", "detail": ""},
+		{"id": 3, "at": 90, "by": "warden", "action": "teleport", "target": "fighter", "detail": ""},
+	])
+	var sizes: Array = []
+	for run in runs:
+		sizes.append(run.size())
+	check("the same thing done again and again folds into one line",
+		sizes == [3, 1, 1, 1, 1], sizes)
+	check("  but not across a long gap, or a different person",
+		runs.size() == 5 and runs[3][0]["id"] == 4 and runs[4][0]["by"] == "warden")
+	panel._log = runs[0] + runs[1]
+	panel._render_log()
+	var folded: Button = panel.log_entries.get_child(0).find_child("fold", true, false) as Button
+	check("  drawn as one line with a count, the detail left out",
+		folded != null and folded.text.begins_with("▸ ") and folded.text.contains("  boss granted themselves items ×3 · from ")
+		and not folded.text.contains("1 x")
+		and panel.log_entries.get_child_count() == 2, folded.text if folded != null else "no fold")
+	if folded != null:
+		folded.pressed.emit()
+	await get_tree().process_frame
+	var opened: Node = panel.log_entries.get_child(panel.log_entries.get_child_count() - 2)
+	var inside: Array = []
+	for l in opened.find_children("*", "Label", true, false):
+		inside.append((l as Label).text)
+	check("  and opened with a click, every entry in it",
+		inside.size() == 3 and str(inside[2]).ends_with("1 x c"), inside)
+	panel._groups_ok = true
+	check("a server that does not know Moderation is asked for everything instead",
+		panel._group_refused({"ok": false, "status": 400}, "moderation") and not panel._groups_ok
+		and not panel._group_refused({"ok": false, "status": 400}, "moderation"))
+	panel._groups_ok = true
 	panel.queue_free()
 
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
@@ -15060,6 +15209,16 @@ func _test_staff_reports_and_mutes() -> void:
 		lit == "Staff (3)" and dark == "Staff" and as_player == "Staff", [lit, dark, as_player])
 	check("  from the poll", _func_body(_code_src("res://src/ui/characterhud.gd"), "func _apply_broadcast(")
 		.contains("_mark_open_reports(int(data.get(\"open_reports\", 0)))"))
+	Api.role = "mod"
+	hud._mark_open_reports(1, 20)
+	var by_player: String = staff_button.text
+	var by_player_tip: String = staff_button.tooltip_text
+	Api.role = was[0]
+	check("  players, not lines, from a server that counts them: one spammer is Staff (1)",
+		by_player == "Staff (1)" and by_player_tip.contains("1 player reported (20 lines)"), [by_player, by_player_tip])
+	check("  read from the poll's open_report_players",
+		_func_body(_code_src("res://src/ui/characterhud.gd"), "func _apply_broadcast(")
+		.contains("_mark_open_reports(int(data.get(\"open_report_players\", 0)), int(data.get(\"open_reports\", 0)))"))
 	hud.free()
 	print("  staff: mute rules and words, the Actions row, the Reports tab both ways, the Staff button count")
 

@@ -2,6 +2,11 @@
 # stamina, combat stats, and skill stats with bars and labels.
 # attached to res://scene/ui/statsscreen.tscn.
 #
+# TWO COLUMNS since day 1: the level, experience and the three pools on the
+# left, the six skills on the right, so nothing scrolls and no line separates
+# anything a box already does. Big numbers are short ("1M", see
+# GameConstants.short_number()) and the exact figure is in the tooltip.
+#
 # skill XP bars:
 # each of the 6 skills has a ProgressBar (0..100) + centered "XX/100" label
 # showing progress to the next skill level. fills as (skill_xp / skill_xp_next)
@@ -34,6 +39,7 @@ signal close_requested()
 @onready var level_label: Label       = %levelvalue
 @onready var xp_label:    Label       = %xpvalue
 @onready var xp_bar:      ProgressBar = %xpbar
+@onready var xp_next_label: Label     = get_node_or_null("%xpnext")
 
 @onready var hp_label:      Label       = %hpvalue
 @onready var hp_bar:        ProgressBar = %hpbar
@@ -92,7 +98,9 @@ var _window: PanelWindow
 
 
 func _ready() -> void:
-	_window = PanelWindow.attach(self, "stats")
+	# "charstats", NOT "stats": a rectangle saved for the old narrow window
+	# would open this one 500 tall with a band of nothing under its boxes.
+	_window = PanelWindow.attach(self, "charstats")
 	_wire_close_button()
 
 
@@ -147,11 +155,16 @@ func _update_progression() -> void:
 	var xp = current_player.get("xp")
 	var xp_next = current_player.get("xp_next")
 	if xp != null and xp_next != null:
+		var exact: String = "%s / %s XP" % [GameConstants.commas(int(xp)), GameConstants.commas(int(xp_next))]
 		if xp_label != null:
-			xp_label.text = "%s / %s" % [GameConstants.commas(int(xp)), GameConstants.commas(int(xp_next))]
+			xp_label.text = "%s / %s" % [GameConstants.short_number(int(xp)), GameConstants.short_number(int(xp_next))]
+			xp_label.tooltip_text = exact
 		if xp_bar != null:
 			xp_bar.max_value = xp_next
 			xp_bar.value = xp
+			xp_bar.tooltip_text = exact
+		if xp_next_label != null:
+			xp_next_label.text = xp_next_text(int(xp), int(xp_next), int(level) if level != null else 0)
 
 
 func _update_resource_bars() -> void:
@@ -213,6 +226,21 @@ func _update_skill_bar(skill: String, bar: ProgressBar, label: Label) -> void:
 	# A PERCENTAGE, SAID AS ONE. "%d/100" read as 37 XP out of 100 - the level
 	# curve's first threshold - on every skill, whatever it really needed.
 	label.text = "%d%%" % percent
+	# THE EXACT NUMBERS ON THE ROW, for whoever wants them.
+	var row: Control = bar.get_parent() as Control
+	if row != null:
+		var at: int = int(current_player.get(skill)) if current_player.get(skill) != null else 0
+		row.tooltip_text = "%s / %s XP to level %d" % [GameConstants.commas(int(xp)),
+			GameConstants.commas(int(xp_next)), at + 1]
+
+
+static func xp_next_text(xp: int, xp_next: int, level: int) -> String:
+	# "1% · 998K to level 30"
+	if xp_next <= 0:
+		return ""
+	var percent: int = int(clamp(float(xp) / float(xp_next) * 100.0, 0.0, 100.0))
+	return "%d%% · %s to level %d" % [percent,
+		GameConstants.short_number(maxi(0, xp_next - xp)), level + 1]
 
 
 # =============================================================================
@@ -221,10 +249,11 @@ func _update_skill_bar(skill: String, bar: ProgressBar, label: Label) -> void:
 
 func _set_bar_and_label(value: int, max_value: int, label: Label, bar: ProgressBar) -> void:
 	if label != null:
-		label.text = "%s / %s" % [GameConstants.commas(value), GameConstants.commas(max_value)]
+		label.text = "%s / %s" % [GameConstants.short_number(value), GameConstants.short_number(max_value)]
 	if bar != null:
 		bar.max_value = max_value
 		bar.value = value
+		bar.tooltip_text = "%s / %s" % [GameConstants.commas(value), GameConstants.commas(max_value)]
 
 
 func _update_stat(stat_name: String, label: Label) -> void:

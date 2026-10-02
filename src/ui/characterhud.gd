@@ -681,16 +681,26 @@ func _style_staff_row_button(button: Button) -> void:
 const STAFF_BUTTON_TEXT := "Staff"
 
 
-func _mark_open_reports(count: int) -> void:
-	"""Lines players reported, still waiting for staff, on the Staff button -
-	a report nobody sees is a report nobody reads. The server sends 0 to
-	anyone who is not staff."""
+func _mark_open_reports(count: int, lines: int = -1) -> void:
+	"""Players reported and still waiting for staff, on the Staff button - a
+	report nobody sees is a report nobody reads. The server sends 0 to anyone
+	who is not staff.
+
+	PLAYERS, NOT LINES, since the Reports tab became one card per player:
+	twenty lines from one spammer are "Staff (1)", not "Staff (20)". `lines`
+	is the count of lines behind them, for the tooltip; -1 when the server is
+	one from before the cards and `count` is itself lines."""
 	var staff_button: Button = get_node_or_null("%staffbutton") as Button
 	if staff_button == null or not is_staff():
 		return
 	staff_button.text = STAFF_BUTTON_TEXT if count <= 0 else "%s (%d)" % [STAFF_BUTTON_TEXT, count]
-	staff_button.tooltip_text = "Players, sanctions, notes and the moderation log" + (
-		"" if count <= 0 else "\n%d reported line%s waiting - see the Reports tab." % [count, "" if count == 1 else "s"])
+	var waiting: String = ""
+	if count > 0 and lines < 0:
+		waiting = "\n%d reported line%s waiting - see the Reports tab." % [count, "" if count == 1 else "s"]
+	elif count > 0:
+		waiting = "\n%d player%s reported (%d line%s) - see the Reports tab." % [
+			count, "" if count == 1 else "s", lines, "" if lines == 1 else "s"]
+	staff_button.tooltip_text = "Players, sanctions, notes and the moderation log" + waiting
 
 
 static func is_staff() -> bool:
@@ -1403,7 +1413,10 @@ func _apply_broadcast(data: Dictionary) -> void:
 	_read_trade_resync(data.get("trade_resync"))
 	_read_chat_news(data.get("chat_news"))
 	_read_asks(data.get("asks"))
-	_mark_open_reports(int(data.get("open_reports", 0)))
+	if data.has("open_report_players"):
+		_mark_open_reports(int(data.get("open_report_players", 0)), int(data.get("open_reports", 0)))
+	else:
+		_mark_open_reports(int(data.get("open_reports", 0)))
 	# THE FIRST ANSWER IS HISTORY, NOT NEWS. A poll from cursor 0 is answered
 	# with the recent TAIL - up to a week of notices at once - and every one of
 	# them used to pop the box on login: "Update in progress", "The server is
