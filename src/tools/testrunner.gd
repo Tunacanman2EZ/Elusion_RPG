@@ -1325,6 +1325,35 @@ func _test_security_policy() -> void:
 		doc.contains("Report a vulnerability") and not doc.contains("@gmail"),
 		"a documented security address is a documented spam target")
 
+	# "With Remember me off the token lives in memory and is not stored."
+	check("Remember me off still keeps the token out of storage",
+		doc.contains("Remember me\" off the token lives in memory")
+		and api_src.contains("Off, the token lives in memory only and session.cfg is removed"),
+		"the browser paragraph promises this; the code has to still do it")
+
+	# "--server=, ELUSION_SERVER and user://server.cfg all override the address,
+	# and plain http:// is accepted." Both halves are a warning to the reader,
+	# so both are asked of the code: an override removed, or http refused, makes
+	# the page wrong in the reassuring direction.
+	var resolve: String = _func_body(api_src, "static func _resolve_base_url(")
+	check("the three overrides the page names are the three the game reads",
+		doc.contains("--server=") and doc.contains("ELUSION_SERVER") and doc.contains("user://server.cfg")
+		and resolve.contains("\"--server=\"") and resolve.contains("\"ELUSION_SERVER\"")
+		and api_src.contains("SERVER_OVERRIDE_FILE := \"user://server.cfg\""))
+	check("  and plain http:// is still accepted, as the page warns",
+		_func_body(api_src, "static func _clean_base_url(").contains("url.begins_with(\"http://\")"),
+		"if http is refused now, say so on the page")
+
+	# "The pack ... holds the scripts compiled but not encrypted."
+	var presets := ConfigFile.new()
+	presets.load("res://export_presets.cfg")
+	var encrypted: Array = []
+	for sec in presets.get_sections():
+		if not sec.ends_with(".options") and presets.get_value(sec, "encrypt_pck", false) != false:
+			encrypted.append(presets.get_value(sec, "name", sec))
+	check("no export encrypts its pack, as the page says", doc.contains("encrypt_pck=false")
+		and encrypted.is_empty(), encrypted)
+
 	print("  the page is checked against the client, not trusted")
 
 

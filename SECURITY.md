@@ -5,7 +5,7 @@ are made:** [`elusion-api` → SECURITY.md](https://github.com/Tunacanman2EZ/elu
 — the premise, who is trusted with what, the invariants and the honest limits,
 each naming the test that holds it.
 
-This repository is the Godot client. Four things are worth knowing about it
+This repository is the Godot client. A few things are worth knowing about it
 before reporting something here.
 
 **The client is not a trust boundary, and it is not meant to be.** It runs on the
@@ -37,6 +37,30 @@ tokens, no database. The session token lives in `user://session.cfg` on the
 player's own machine and is a bearer credential — anyone with that file can act as
 that account until it expires, the same as a browser cookie. That is the accepted
 trade for not retyping a password, and no password is ever written to disk.
+
+**In a browser, a remembered login lives in the browser's storage for the
+game's address.** Godot keeps `user://` in the browser's IndexedDB, so with
+"Remember me" ticked the session token sits where any script running on that
+address could read it. That is why the game is served from an address that serves
+nothing but the export and `/api/` (the `play` site block in the API's
+`DEPLOY.md`), over https. Nothing else, the website included, should ever be
+hosted there. With "Remember me" off the token lives in memory and is not
+stored. (A staff account's device file, `user://devices.cfg`, is kept either way;
+it opens nothing without the password.)
+
+**A desktop build sends the password to whatever server it is pointed at.**
+`--server=`, the `ELUSION_SERVER` variable and a one-line `user://server.cfg` all
+override the address, which is how a build is moved to a new host without a
+rebuild. It also means a build, a shortcut or a `server.cfg` from someone else can
+point the game at their server and collect the password typed into it. Only run a
+build you exported yourself. A public server must be `https://`: plain `http://`
+is accepted, because the local development server is, and would carry the password
+across the network unencrypted.
+
+**An export can be read by anyone who has it.** The pack inside a Windows `.exe`
+or a browser export holds the scripts compiled but not encrypted
+(`encrypt_pck=false`). That changes nothing above: the client was never a secret
+and never a trust boundary.
 
 **Most of what looks like a client-side vulnerability is a server question.** "I
 can edit my save", "I can spawn items", "I can claim a kill" — all true, all

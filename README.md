@@ -12,6 +12,24 @@ Register or log in → pick one of four class slots → town → leave town for 
 
 It is short on purpose. It has a beginning, an escalation, an ending, and a loop back to the start.
 
+## Playing it
+
+Elusion is a PC game, played with a keyboard and mouse in a desktop browser. It is not made for phones.
+
+The first time a character stands in town, a welcome card gives the way out to the Field and lists every key. **H** brings the keys back at any time, and they are read from the game's own input settings, so the card cannot drift from the game.
+
+| | |
+|---|---|
+| Move | W A S D, or the arrow keys |
+| Sprint | hold Shift |
+| Attack, aiming with the mouse | Space, or right-click |
+| Use the shop, bank, fire or fishing spot | E |
+| Use the item on a hotbar key | 1 to 0 |
+| Bag, Gear, Stats, Map | I, G, C, M |
+| Close a window, or open Options | Esc |
+
+The bar along the bottom holds the windows a player opens all the time; Friends, Players, Guild, Trade and the Kingdom board are under **Social**, and Controls, Options and logging out under **Menu**.
+
 ## What's interesting in here
 
 The parts I'd point a reviewer at first.
@@ -250,7 +268,7 @@ test_skill_train.py     10 checks    skills train only as fast as time allows
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,441 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 122 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,445 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 122 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
 **If you cloned this repo, it will report `2164 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
