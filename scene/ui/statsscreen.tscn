@@ -134,7 +134,7 @@ theme_override_constants/separation = 10
 [node name="levelbadge" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow"]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
-theme_type_variation = &"PanelHeader"
+theme_type_variation = &"PanelSocket"
 
 [node name="levelvbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox/levelrow/levelbadge"]
 layout_mode = 2
