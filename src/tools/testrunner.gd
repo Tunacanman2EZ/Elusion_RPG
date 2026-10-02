@@ -7639,6 +7639,19 @@ func _test_bank_buttons_and_the_cooking_window() -> void:
 	await get_tree().process_frame
 	check("  a wider window keeps the fire in the middle of its box",
 		is_equal_approx(fire.position.x, fire_x + 50.0), [fire_x, fire.position.x])
+	# THE HEADER, day 1: it read "Cooking  Cooking 1  ×" with the title pushed
+	# off centre. Now the level is a badge as wide as the ×, so the title sits
+	# in the middle like BANK and INVENTORY.
+	var badge: Label = cooking.find_child("skilllabel", true, false) as Label
+	var title: Label = cooking.find_child("headerlabel", true, false) as Label
+	var shut: Button = cooking.find_child("closebutton", true, false) as Button
+	check("the cooking header is COOKING between a level badge and the ×, both as wide",
+		title != null and title.text == "COOKING" and badge != null and badge.text.begins_with("Lv ")
+		and shut != null and badge.get_index() == 0 and shut.get_index() == title.get_index() + 1
+		and badge.size.x == shut.size.x
+		and is_equal_approx(title.get_global_rect().get_center().x,
+			(title.get_parent() as Control).get_global_rect().get_center().x),
+		[badge.text if badge else "-", str(badge.size) if badge else "-", str(shut.size) if shut else "-"])
 	grid.resize_grid(6, 2)
 	check("a grid can be given another row", grid.get_child_count() == 12 and grid.columns == 6)
 	cooking.queue_free()

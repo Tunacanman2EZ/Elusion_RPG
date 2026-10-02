@@ -2761,8 +2761,10 @@ six, one cell per kind (`one_cell_per_kind()`; a cook asks for an item_id,
 never a cell). A second row appears only past six kinds
 (`InventoryContainer.resize_grid()`), and the window follows when a row comes
 or goes. The fire, glow, sparks, icon, bar and labels stay centred however wide
-the window is made (`_centre_fire_contents()`).
-`_test_bank_buttons_and_the_cooking_window` holds both.
+the window is made (`_centre_fire_contents()`). The header reads COOKING like
+BANK and INVENTORY; the level is a "Lv 1" badge on the left as wide as the ×
+on the right, so the title sits in the middle (it read "Cooking  Cooking 1  ×").
+`_test_bank_buttons_and_the_cooking_window` holds all of it.
 
 ### Pets, the map, the kingdom board, Options and the owner panel on day 1
 

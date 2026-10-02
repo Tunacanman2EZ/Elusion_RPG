@@ -525,7 +525,11 @@ func _update_controls() -> void:
 	# Kept under its old name because every existing caller uses it, and renaming
 	# a function to describe a redesign is how a diff stops being readable.
 	var level: int = _cooking_level()
-	skill_label.text = "Cooking %d" % level
+	# A BADGE ON THE LEFT OF THE TITLE, as wide as the × on the right, so
+	# "COOKING" sits in the middle like every other window's title (day 1: the
+	# header read "Cooking  Cooking 1  ×").
+	skill_label.text = "Lv %d" % level
+	skill_label.tooltip_text = "Your cooking level is %d" % level
 
 	if _selected == "" or not _running:
 		_clear_fire()
