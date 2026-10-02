@@ -203,6 +203,7 @@ func _run_all() -> void:
 	_test_the_staff_windows_share_one_look()
 	await _test_players_right_click_menu()
 	_test_the_stats_window_reads_cleanly()
+	await _test_bank_buttons_and_the_cooking_window()
 
 
 # =============================================================================
@@ -7581,6 +7582,68 @@ func _test_the_stats_window_reads_cleanly() -> void:
 		_func_body(code, "func _update_progression(").contains("tooltip_text = exact")
 		and _func_body(code, "func _set_bar_and_label(").contains("bar.tooltip_text"))
 	print("  stats: short numbers, two columns, coloured pools, the next level in words")
+
+
+func _test_bank_buttons_and_the_cooking_window() -> void:
+	section("BANK AND COOKING - hotbar buttons, one row of fish, a window in the middle")
+
+	# Asked for on day 1: Deposit and Withdraw in the hotbar's style; twelve
+	# empty boxes under the fire; the cooking window opening in the corner.
+	var theme: Theme = load("res://assets/themes/rpg_ui_theme.tres") as Theme
+	var socket: StyleBoxTexture = theme.get_stylebox("panel", &"PanelSocket") as StyleBoxTexture
+	var normal: StyleBoxTexture = theme.get_stylebox("normal", &"ButtonSocket") as StyleBoxTexture
+	var hover: StyleBoxTexture = theme.get_stylebox("hover", &"ButtonSocket") as StyleBoxTexture
+	var pressed: StyleBoxTexture = theme.get_stylebox("pressed", &"ButtonSocket") as StyleBoxTexture
+	check("the theme has a button drawn like a hotbar slot",
+		theme.get_type_variation_base(&"ButtonSocket") == &"Button" and socket != null and normal != null
+		and normal.texture == socket.texture and normal.texture.resource_path.ends_with("hotbarslot.png"))
+	check("  which lights up under the pointer and darkens when pressed",
+		hover != null and pressed != null and hover.texture == socket.texture
+		and hover.modulate_color.v > normal.modulate_color.v and pressed.modulate_color.v < normal.modulate_color.v)
+	var bank: Node = (load("res://scene/ui/bank/bankinventory.tscn") as PackedScene).instantiate()
+	var dressed: Array = []
+	for name_of in ["depositbuttons", "withdrawbutton"]:
+		var b: Button = bank.find_child(name_of, true, false) as Button
+		dressed.append(b != null and b.theme_type_variation == &"ButtonSocket" and not b.has_theme_stylebox_override("normal"))
+	check("the bank's Deposit and Withdraw wear it", dressed == [true, true], dressed)
+	bank.free()
+
+	var Cooking: Script = load("res://src/ui/cooking/cookingscreen.gd") as Script
+	check("one row of six, and a second only past six kinds of fish",
+		Cooking.GRID_COLUMNS == 6 and Cooking.rows_for(0) == 1 and Cooking.rows_for(6) == 1
+		and Cooking.rows_for(7) == 2 and Cooking.rows_for(12) == 2 and Cooking.rows_for(13) == 3)
+	var joined: Array = Cooking.one_cell_per_kind([
+		{"item_id": "rawmudfish", "quantity": 3}, {"item_id": "rawsilverfin", "quantity": 1},
+		{"item_id": "rawmudfish", "quantity": 4}, {"item_id": "", "quantity": 9}])
+	check("  one cell per kind: two stacks of mudfish are one cell of seven",
+		joined == [{"item_id": "rawmudfish", "quantity": 7}, {"item_id": "rawsilverfin", "quantity": 1}], joined)
+
+	var cooking: Control = (load("res://scene/ui/cooking/cookingscreen.tscn") as PackedScene).instantiate()
+	add_child(cooking)
+	var grid: Node = cooking.find_child("fishgrid", true, false)
+	check("  the scene starts with one row", grid != null and grid.grid_width == 6 and grid.grid_height == 1
+		and grid.get_child_count() == 6, [grid.grid_height if grid != null else -1])
+	cooking.position = Vector2(58, 40)
+	cooking.open_for_firepit(null, null)
+	await get_tree().process_frame
+	var wanted: Vector2 = PanelWindow.content_minimum(cooking)
+	var middle: Vector2 = ((cooking.get_viewport_rect().size - cooking.size) * 0.5).floor()
+	check("the cooking window is as big as what is in it, not 0x0",
+		cooking.size.x >= 300.0 and cooking.size == wanted, [cooking.size, wanted])
+	check("  and opens in the middle of the screen, wherever it was left",
+		cooking.position == middle, [cooking.position, middle])
+	var fire: Node2D = cooking.find_child("firepit", true, false) as Node2D
+	var box: Control = cooking.find_child("firebox", true, false) as Control
+	var fire_x: float = fire.position.x
+	box.size = Vector2(box.size.x + 100.0, box.size.y)
+	await get_tree().process_frame
+	check("  a wider window keeps the fire in the middle of its box",
+		is_equal_approx(fire.position.x, fire_x + 50.0), [fire_x, fire.position.x])
+	grid.resize_grid(6, 2)
+	check("a grid can be given another row", grid.get_child_count() == 12 and grid.columns == 6)
+	cooking.queue_free()
+	await get_tree().process_frame
+	print("  bank and cooking: the hotbar's button, one row of fish, a sized and centred window")
 
 
 func _test_staff_panel() -> void:

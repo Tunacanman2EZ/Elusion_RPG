@@ -296,5 +296,5 @@ size_flags_horizontal = 4
 columns = 6
 script = ExtResource("3_invcontainer")
 grid_width = 6
-grid_height = 2
+grid_height = 1
 metadata/_custom_type_script = "uid://dfssy5oqbqqkh"

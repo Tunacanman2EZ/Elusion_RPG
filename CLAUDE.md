@@ -2666,6 +2666,10 @@ real panels against the real server.
 - Not changed, noted: vendors sell and never buy. The server says so on
   purpose ("the whole reason vendors sell rather than buy" - the shop is the
   gold sink), so loot a player does not wear is only worth a trade.
+- **Deposit and Withdraw are drawn like hotbar slots** (day 1): the theme's
+  `ButtonSocket` variation is a Button on the same `hotbarslot.png` socket the
+  hotbar and every grid cell use, brighter under the pointer and darker when
+  pressed. Any button can wear it with `theme_type_variation = &"ButtonSocket"`.
 
 ### Friends, guilds and trades on day 1
 
@@ -2745,6 +2749,20 @@ the owner's call:
   bands and none past the third, and every catch spends one. They are 24 gold
   each in the store. Measured after: twenty worms and a jade rod bought by a
   fresh character, and a marsh carp (tier 2) on the third cast.
+
+**The cooking window, day 1.** It opened in the top left corner. Its root is a
+plain Control, and `reset_size()` on one does nothing, so it sat at 0x0 in the
+middle of the screen with the panel spilling out round it. Every drag, resize
+and fit then measured a rectangle of nothing, and the owner's `panels.cfg`
+held `cooking` at (58, 40). Now `_fit_and_centre()` sizes the window from its
+content (`PanelWindow.content_minimum()`) and centres it on every open, since
+the window belongs to the fire you are standing at. The fish are one row of
+six, one cell per kind (`one_cell_per_kind()`; a cook asks for an item_id,
+never a cell). A second row appears only past six kinds
+(`InventoryContainer.resize_grid()`), and the window follows when a row comes
+or goes. The fire, glow, sparks, icon, bar and labels stay centred however wide
+the window is made (`_centre_fire_contents()`).
+`_test_bank_buttons_and_the_cooking_window` holds both.
 
 ### Pets, the map, the kingdom board, Options and the owner panel on day 1
 

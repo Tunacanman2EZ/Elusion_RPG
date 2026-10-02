@@ -151,6 +151,20 @@ func _create_slots() -> void:
 		slots.append(slot_instance)
 
 
+func resize_grid(width: int, height: int) -> void:
+	"""A different number of cells: the cooking screen shows one row of fish
+	and grows a second only when there are more kinds than fit. The cells are
+	built again, empty - the caller loads them after."""
+	width = maxi(1, width)
+	height = maxi(1, height)
+	if width == grid_width and height == grid_height and slots.size() == capacity:
+		return
+	grid_width = width
+	grid_height = height
+	columns = grid_width
+	_create_slots()
+
+
 # =============================================================================
 # CORE INVENTORY OPERATIONS — REMOVE
 # =============================================================================

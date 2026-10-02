@@ -124,12 +124,16 @@ placeholder_text = "Gold amount"
 
 [node name="depositbuttons" type="Button" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/actionrow" unique_id=536358147]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
 layout_mode = 2
+theme_type_variation = &"ButtonSocket"
 text = "Deposit"
 
 [node name="withdrawbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/currencypanel/currencyvbox/actionrow" unique_id=1926912019]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
 layout_mode = 2
+theme_type_variation = &"ButtonSocket"
 text = "Withdraw"
 
 [node name="hseparator2" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer" unique_id=1707617651]

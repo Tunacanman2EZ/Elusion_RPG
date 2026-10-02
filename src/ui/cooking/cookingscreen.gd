@@ -109,9 +109,15 @@ const SEGMENT_LINE := Color(0.05, 0.04, 0.03, 0.85)
 # progress is a cooler gold.
 const COOK_FILL := Color(0.98, 0.82, 0.35, 1.0)
 
-# Grid holding the raw fish view. Must match grid_width x grid_height in the
-# .tscn — nothing asserts it, exactly as LOOT_SIZE does not in the loot panel.
-const GRID_SIZE := 12
+# ONE ROW OF SIX, one cell per kind of fish (day 1: twelve empty boxes under
+# the fire, for at most eight kinds of fish in the game). A second row appears
+# only when somebody carries more than six kinds, so nothing is ever hidden.
+const GRID_COLUMNS := 6
+
+# The width the fire's contents were laid out for in cookingscreen.tscn. A
+# wider window moves them across by half the difference, so the fire stays in
+# the middle of its box.
+const FIREBOX_AUTHORED_WIDTH := 324.0
 
 # The fire's resting animation speed, and what it climbs to while something is
 # actually cooking. A fire that visibly works harder when you put food on it is
@@ -232,6 +238,7 @@ func _ready() -> void:
 
 	_cache_fill_styles()
 	_build_segment_dividers()
+	_remember_fire_layout()
 
 	fire_sprite.play("lit")
 	fire_sprite.speed_scale = FIRE_SPEED_IDLE
@@ -276,16 +283,70 @@ func open_for_firepit(firepit: Node, player: Node) -> void:
 
 	visible = true
 
-	# visible BEFORE reset_size(): Godot cannot compute an accurate combined
-	# minimum size for a hidden control. Same ordering, same reason, as the loot
-	# panel. There is no ScrollContainer in this scene precisely so this works —
-	# a ScrollContainer does not propagate its child's real size upward, which
-	# is the dead-space bug the loot panel still has.
-	reset_size()
+	# visible BEFORE sizing: Godot cannot compute an accurate combined minimum
+	# size for a hidden control. There is no ScrollContainer in this scene
+	# precisely so this works — a ScrollContainer does not propagate its
+	# child's real size upward, which is the dead-space bug the loot panel
+	# still has.
+	_fit_and_centre()
 
 	if _firepit != null and _firepit.has_signal("player_left_range"):
 		if not _firepit.player_left_range.is_connected(_on_close_pressed):
 			_firepit.player_left_range.connect(_on_close_pressed)
+
+
+func _fit_and_centre() -> void:
+	"""The window as big as what is in it, in the middle of the screen.
+
+	THE ROOT IS A PLAIN Control, and reset_size() on one does nothing: it
+	stayed 0x0 at the screen's centre with the panel spilling out round it.
+	Everything that measures the window - a drag, a resize, a window that
+	no longer fits - then worked from a rectangle of nothing, and a saved
+	position put the panel's corner where its middle had been. So the size
+	is set from the content, here.
+
+	CENTRED ON EVERY OPEN (day 1: it opened in the top left corner, where a
+	position saved from the old zero-size window put it). A cooking window
+	belongs to the fire you are standing at, so it opens in front of you; it
+	can still be dragged anywhere while it is open."""
+	size = PanelWindow.content_minimum(self)
+	var screen: Vector2 = get_viewport_rect().size
+	position = ((screen - size) * 0.5).floor()
+
+
+func _fit_to_content() -> void:
+	if is_instance_valid(self) and visible:
+		size = PanelWindow.content_minimum(self)
+
+
+func _centre_fire_contents() -> void:
+	"""Keep the fire, its glow and sparks, the icon, the bar and the two lines
+	in the middle of the box however wide the window is made."""
+	if firebox == null:
+		return
+	var shift: float = floorf((firebox.size.x - FIREBOX_AUTHORED_WIDTH) * 0.5)
+	for node in _fire_contents:
+		var start: Variant = node.get_meta("authored_x")
+		if node is Node2D:
+			(node as Node2D).position.x = float(start) + shift
+		elif node is Control:
+			var c: Control = node
+			var width: float = c.offset_right - c.offset_left
+			c.offset_left = float(start) + shift
+			c.offset_right = c.offset_left + width
+
+
+var _fire_contents: Array = []
+
+
+func _remember_fire_layout() -> void:
+	for node in [fire_sprite, sparks, glow, cook_icon, risk_bar, flash_label, catch_label]:
+		if node == null:
+			continue
+		node.set_meta("authored_x", (node as Node2D).position.x if node is Node2D else (node as Control).offset_left)
+		_fire_contents.append(node)
+	if not firebox.resized.is_connected(_centre_fire_contents):
+		firebox.resized.connect(_centre_fire_contents)
 
 
 # =============================================================================
@@ -332,9 +393,17 @@ func _refresh() -> void:
 	# item and being handed another. Nothing here sends a position — the request
 	# carries an item_id — so packing the fish into the first cells is safe and
 	# reads far better than a grid with holes where the potions were.
+	var rows: int = rows_for(stacks.size())
+	if fish_grid.has_method("resize_grid") and fish_grid.grid_height != rows:
+		fish_grid.resize_grid(GRID_COLUMNS, rows)
+		# A ROW CAME OR WENT WHILE THE WINDOW IS OPEN - the last of a kind was
+		# cooked. The window follows, where it stands, once the grid has
+		# measured itself.
+		if visible:
+			_fit_to_content.call_deferred()
 	var cells: Array = []
-	cells.resize(GRID_SIZE)
-	for i in range(mini(stacks.size(), GRID_SIZE)):
+	cells.resize(GRID_COLUMNS * rows)
+	for i in range(mini(stacks.size(), cells.size())):
 		cells[i] = stacks[i]
 
 	if fish_grid.has_method("load_save_array"):
@@ -355,18 +424,41 @@ func _raw_fish_stacks() -> Array:
 	# prefix would break the first time a fish is called something else. An item
 	# is cookable when it says what it cooks into, which is the same test the
 	# server makes.
-	var out: Array = []
 	var backpack: Node = _player_backpack()
 	if backpack == null or not backpack.has_method("get_all_stacks"):
-		return out
+		return []
 
+	var held: Array = []
 	for stack in backpack.get_all_stacks():
 		if stack == null or stack.data == null:
 			continue
 		if str(stack.data.cooks_into) == "":
 			continue
-		out.append({"item_id": stack.data.item_id, "quantity": stack.quantity})
+		held.append({"item_id": stack.data.item_id, "quantity": stack.quantity})
+	return one_cell_per_kind(held)
+
+
+static func one_cell_per_kind(held: Array) -> Array:
+	"""Stacks of the same fish added together, in the order first seen. Two
+	cells of mudfish in the bag are one mudfish cell here: a cook asks for an
+	item_id, never a cell, so nothing is lost by joining them."""
+	var out: Array = []
+	var at: Dictionary = {}
+	for entry in held:
+		var id: String = str(entry.get("item_id", ""))
+		if id == "":
+			continue
+		if at.has(id):
+			out[at[id]]["quantity"] = int(out[at[id]]["quantity"]) + int(entry.get("quantity", 0))
+		else:
+			at[id] = out.size()
+			out.append({"item_id": id, "quantity": int(entry.get("quantity", 0))})
 	return out
+
+
+static func rows_for(kinds: int) -> int:
+	@warning_ignore("integer_division")
+	return maxi(1, (kinds + GRID_COLUMNS - 1) / GRID_COLUMNS)
 
 
 func _player_backpack() -> Node:
