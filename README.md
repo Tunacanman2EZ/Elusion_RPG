@@ -117,7 +117,7 @@ Fishing and cooking were the first two skills the client cannot lie about, and t
 
 ### An audit I ran against my own API — `SECURITY_NOTES.md` (API repo)
 
-I attacked my own server as a logged-in player with a modified client and wrote down what I got away with, then kept the file honest as the code moved. Fifteen findings now: fourteen closed, one open and still listed because naming it is the point. A sixteenth entry, E-15, is an audit that went looking for broken access control and **found nothing** — it is in the notes because a search that comes back empty is still a result. Each has a one-line risk and a one-line fix:
+I attacked my own server as a logged-in player with a modified client and wrote down what I got away with, then kept the file honest as the code moved. Nineteen findings now: eighteen closed, one open and still listed because naming it is the point. A twentieth entry, E-15, is an audit that went looking for broken access control and **found nothing** — it is in the notes because a search that comes back empty is still a result. Each has a one-line risk and a one-line fix:
 
 | # | Risk if exploited | Fix |
 |---|-------------------|-----|
@@ -136,6 +136,10 @@ I attacked my own server as a logged-in player with a modified client and wrote 
 | E-13 | Four closed fixes silently off in production, every test green. | Deployment check — a suite and a boot-time error for any protection running unarmed. |
 | E-14 | A kicked or banned player keeps playing as long as the game stays open. | Heartbeat — the game re-checks its session and a dead one returns it to login. |
 | E-16 | Accepting death healed you on your own machine, and the gold it took came back at the next login. | Server-side authority — `POST /api/character/respawn` refuses a living character, burns the carried gold through the ledger and refills from the class curve. *Found by dying, not by auditing.* |
+| E-17 | Two requests sent at once both spent the same thing: one loot cell paid out five times, one purse was banked twice. | Serialisation — every write holds the database's write lock from its first read. *Found by playing: one swing, two kills, one kill's XP gone.* |
+| E-18 | The other player swapped the offer a moment before your Accept, and it went through. | Compare-and-set — Accept names the version of the offer it saw, and what a trade gave you cannot be wiped by a save from before it. |
+| E-19 | Two games on one account overwrote each other's bag, and a stolen token kept working beside yours. | One session at a time — a new login ends the others. |
+| E-20 | One guessed staff password opened the moderation desk. | Second factor — a code by email, once per computer for 30 days. *It stands aside, and says so, where there is no address to send it to.* |
 
 The one I'd actually point at is **E-8**, because I found it by accident. Every other finding came from attacking the API deliberately; that one turned up while wiring an unrelated endpoint. `gold` was a writable field on the status endpoint and had never been marked server-owned, so one request set any balance a player liked and the supply invariant broke on the spot. What makes it worth writing down is *why the tests missed it*: all 268 of them moved gold through a server path and then asserted the books balanced. None tried the front door of the balance itself.
 
