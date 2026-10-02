@@ -2421,7 +2421,7 @@ From the day-1 sweep of creating and picking a character.
   real one - the bag was gone. Now any part failing returns `LOAD_FAILED`,
   `CharacterData.load_failed` is set, `save_data()` and `_write_save_now()`
   refuse, and the login screen stays put: "Your characters did not load...
-  Press Enter Elysium to try again", which retries the LOAD (not the login -
+  Press Enter Elusion to try again", which retries the LOAD (not the login -
   that would send a staff member another code).
 - **Character select has a Log out button** (`_test_character_select_has_a_way_out`).
   With Remember me on, reopening the game lands there, and the only way to the
@@ -2925,6 +2925,48 @@ Noted, not changed: during a fight the server logs "unexplained heal" for mana
 (+13 against 9 of regeneration over two seconds) and clamps it, on the old
 request code and the new alike. The game regenerates mana a little faster than
 the server's model of it; worth a look on its own.
+
+### The first five minutes, played as a new player
+
+A fresh account, a new warrior, the town and the Field, the way a tester from
+outside would meet them. What was rough, and what changed:
+
+- **The bar was fourteen small buttons.** It is eight now: Inventory, Gear,
+  Stats, Shop, Map, Chat, **Social** (Friends, Players, Guild, Trade, Kingdom)
+  and **Menu** (Controls, Options, Switch character, Log out). The dropdowns are
+  `%socialmenu` and `%systemmenu` in characterhud.tscn; they open above their
+  button with the right edges lined up (`nav_menu_position()`, so Menu's stays
+  off the health bars), and shut on a choice, on any bar button, on Escape
+  (before any window) and on a click anywhere else. **Every bar button is found
+  by its unique name** (`_nav_button("tradebutton")`), never through
+  `%navbuttons`: nine of them are not on that row any more. The dots still
+  light the button inside a dropdown, and `_paint_group_dots()` puts the same
+  dot on Social, with "Waiting for you: Trade" as its hint. Each window's key is
+  added to its button's hint from the input map.
+- **Nothing said what any key did.** H, or Menu > Controls, opens the Controls
+  card (`src/ui/controls/controlspanel.gd`), and **every key on it is read from
+  the input map**: `help_toggle` is a new action for H. The suite fails if a key
+  the game binds has no line on the card, or a line names an action that does
+  not exist.
+- **Nothing said where to go.** The first time a character stands in town on a
+  computer, the card opens as a welcome: the way out of town (south to the
+  portal into the square, then north up the road to the Field's portal, walked
+  and checked), the keys, and "Got it". It is marked seen in `user://seen.cfg`
+  the moment it shows, never in options.cfg (every key in Settings' DEFAULTS
+  must have a control). `offer_welcome()` shows it in town only, which also
+  keeps a suite run from marking it seen.
+- **The login button said "Enter Elysium".** It says Enter Elusion.
+- **Two windows were out of line.** The Gear window's title is EQUIPMENT,
+  centred, at INVENTORY's size; Character Stats spreads its left column from
+  top to bottom (three expanding gaps) instead of floating it in the middle.
+- The login screen's server address is shown in debug builds only already
+  (`Api.describe_online()`); a player's build says "Connected to the Elusion
+  server."
+
+`_test_the_first_five_minutes` holds all of it (35 checks). Sixteen deliberate
+breaks, each caught. Left for the owner: the Field puts its strongest enemies
+(the dark element, 1,155 to 2,800 health) within 250 px of the entrance and its
+weakest farthest away, so a new level 1 character dies in about two seconds.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

@@ -124,8 +124,7 @@ theme_override_constants/margin_bottom = 10
 
 [node name="leftbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin"]
 layout_mode = 2
-theme_override_constants/separation = 14
-alignment = 1
+theme_override_constants/separation = 7
 
 [node name="levelrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
 layout_mode = 2
@@ -195,6 +194,11 @@ theme_override_colors/font_color = Color(0.62, 0.6, 0.56, 1)
 theme_override_font_sizes/font_size = 11
 text = ""
 
+[node name="rowgap1" type="Control" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
 [node name="hpstat" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
 layout_mode = 2
 theme_override_constants/separation = 8
@@ -241,6 +245,11 @@ text = "100 / 100"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="rowgap2" type="Control" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
 [node name="staminastat" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
 layout_mode = 2
 theme_override_constants/separation = 8
@@ -286,6 +295,11 @@ theme_override_font_sizes/font_size = 12
 text = "100 / 100"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="rowgap3" type="Control" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
 
 [node name="manastat" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/statsccroll/statscontainer/leftcolumn/leftmargin/leftbox"]
 layout_mode = 2

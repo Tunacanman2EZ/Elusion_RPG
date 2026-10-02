@@ -171,109 +171,183 @@ text = "Staff"
 
 [node name="navbuttons" type="HBoxContainer" parent="navframe/navhbox" unique_id=1515114216]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 28)
+custom_minimum_size = Vector2(0, 30)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
 
 [node name="inventorybutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1421840767]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
+tooltip_text = "Your bag"
 focus_mode = 0
+theme_override_font_sizes/font_size = 14
 text = "Inventory"
 
 [node name="equipmentbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1969924149]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
+tooltip_text = "What you are wearing"
 focus_mode = 0
+theme_override_font_sizes/font_size = 14
 text = "Gear"
 
 [node name="statsbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=2038986305]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
+tooltip_text = "Your level, skills and health"
 focus_mode = 0
+theme_override_font_sizes/font_size = 14
 text = "Stats"
 
 [node name="shopbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1681920515]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
 focus_mode = 0
+theme_override_font_sizes/font_size = 14
 text = "Shop"
 
-[node name="kingdombutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1699508882]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
-focus_mode = 0
-text = "Kingdom"
-
-[node name="tradebutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=478330591]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
-focus_mode = 0
-text = "Trade"
-
-[node name="chatbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1288450017]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
-focus_mode = 0
-text = "Chat"
-
-[node name="friendsbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1288450018]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
-focus_mode = 0
-text = "Friends"
-
-[node name="playersbutton" type="Button" parent="navframe/navhbox/navbuttons"]
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Who is playing right now, and whether they are in this area with you"
-focus_mode = 0
-theme_override_font_sizes/font_size = 12
-text = "Players"
-
-[node name="guildbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1288450019]
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Your guild, its roster, and any invitation waiting for you"
-theme_override_font_sizes/font_size = 12
-focus_mode = 0
-text = "Guild"
-
 [node name="mapbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1039820360]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
+tooltip_text = "Where you are, and where you have been"
 focus_mode = 0
+theme_override_font_sizes/font_size = 14
 text = "Map"
 
-[node name="optionsbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1350421317]
+[node name="chatbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1288450017]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
 focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Chat"
+
+[node name="socialbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1733059301]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Friends, Players, Guild, Trade and Kingdom"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Social"
+
+[node name="menubutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1733059302]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Controls, Options, Switch character and Log out"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Menu"
+
+[node name="socialmenu" type="PanelContainer" parent="." unique_id=1733059303]
+unique_name_in_owner = true
+visible = false
+offset_right = 150.0
+offset_bottom = 40.0
+theme = ExtResource("18_hudtheme")
+theme_override_styles/panel = SubResource("StyleBoxFlat_navbar")
+
+[node name="socialitems" type="VBoxContainer" parent="socialmenu" unique_id=1733059304]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="friendsbutton" type="Button" parent="socialmenu/socialitems" unique_id=1288450018]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Friends"
+
+[node name="playersbutton" type="Button" parent="socialmenu/socialitems" unique_id=1733059308]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+tooltip_text = "Who is playing right now, and whether they are in this area with you"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Players"
+
+[node name="guildbutton" type="Button" parent="socialmenu/socialitems" unique_id=1288450019]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+tooltip_text = "Your guild, its roster, and any invitation waiting for you"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Guild"
+
+[node name="tradebutton" type="Button" parent="socialmenu/socialitems" unique_id=478330591]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Trade"
+
+[node name="kingdombutton" type="Button" parent="socialmenu/socialitems" unique_id=1699508882]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+tooltip_text = "What the realm has taken in tax, and your share of it"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Kingdom"
+
+[node name="systemmenu" type="PanelContainer" parent="." unique_id=1733059305]
+unique_name_in_owner = true
+visible = false
+offset_right = 150.0
+offset_bottom = 40.0
+theme = ExtResource("18_hudtheme")
+theme_override_styles/panel = SubResource("StyleBoxFlat_navbar")
+
+[node name="systemitems" type="VBoxContainer" parent="systemmenu" unique_id=1733059306]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="controlsbutton" type="Button" parent="systemmenu/systemitems" unique_id=1733059307]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+tooltip_text = "Every key in the game"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Controls"
+
+[node name="optionsbutton" type="Button" parent="systemmenu/systemitems" unique_id=1350421317]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+tooltip_text = "Sound, screen and account"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
 text = "Options"
 
-[node name="logoutbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1289277085]
+[node name="switchcharacterbutton" type="Button" parent="systemmenu/systemitems" unique_id=1320215097]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
+tooltip_text = "Back to your characters, still signed in"
 focus_mode = 0
-text = "Logout"
+theme_override_font_sizes/font_size = 14
+text = "Switch character"
 
-[node name="switchcharacterbutton" type="Button" parent="navframe/navhbox/navbuttons" unique_id=1320215097]
+[node name="logoutbutton" type="Button" parent="systemmenu/systemitems" unique_id=1289277085]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 12
-text = "Switch"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Log out"
+
 [node name="itemtooltip" parent="." unique_id=1631671194 instance=ExtResource("17_xinkp")]
 offset_left = 3.0
 offset_top = 154.0

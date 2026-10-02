@@ -205,6 +205,7 @@ func _run_all() -> void:
 	_test_the_stats_window_reads_cleanly()
 	await _test_bank_buttons_and_the_cooking_window()
 	_test_the_tank_loop_takes_every_step()
+	await _test_the_first_five_minutes()
 
 
 # =============================================================================
@@ -2772,6 +2773,7 @@ func _test_the_guild_tag_is_drawn_everywhere() -> void:
 const WINDOW_PANELS := [
 	["res://src/ui/bank/bankinventory.gd", "res://scene/ui/bank/bankinventory.tscn", "bank"],
 	["res://src/ui/chat/chatpanel.gd", "res://scene/ui/chat/chatpanel.tscn", "chat"],
+	["res://src/ui/controls/controlspanel.gd", "res://scene/ui/controls/controlspanel.tscn", "controls"],
 	["res://src/ui/cooking/cookingscreen.gd", "res://scene/ui/cooking/cookingscreen.tscn", "cooking"],
 	["res://src/ui/equipment/equipmentpanel.gd", "res://scene/ui/equipment/equipmentpanel.tscn", "equipment"],
 	["res://src/ui/friends/friendspanel.gd", "res://scene/ui/friends/friendspanel.tscn", "friends"],
@@ -3232,7 +3234,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("seventeen panels are windows", keys_seen.size() == 17, keys_seen.size())
+	check("eighteen panels are windows - the Controls card is the eighteenth", keys_seen.size() == 18, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -6598,9 +6600,8 @@ func _test_a_request_waiting_on_you_lights_its_button() -> void:
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	hud._build_message_box()
 	var rows: Control = hud.message_rows
-	var nav: Node = hud.get_node("%navbuttons")
-	var friends_button: Button = nav.get_node("friendsbutton") as Button
-	var guild_button: Button = nav.get_node("guildbutton") as Button
+	var friends_button: Button = hud.get_node("%friendsbutton") as Button
+	var guild_button: Button = hud.get_node("%guildbutton") as Button
 	var guild_tip: String = guild_button.tooltip_text
 	var asks := func(friends: int, who: String, at: int, guilds: int, guild: String, g_at: int) -> Dictionary:
 		return {"latest_id": 0, "messages": [], "asks": {
@@ -6640,15 +6641,15 @@ func _test_a_request_waiting_on_you_lights_its_button() -> void:
 	next_area._paint_ask_buttons()
 	next_area._apply_broadcast(asks.call(2, "medic", 1010, 1, "Day One", 1005))
 	check("the next area's HUD keeps both lit and says nothing again",
-		(next_area.get_node("%navbuttons/friendsbutton") as Button).text == "Friends •"
-		and (next_area.get_node("%navbuttons/guildbutton") as Button).text == "Guild •"
+		(next_area.get_node("%friendsbutton") as Button).text == "Friends •"
+		and (next_area.get_node("%guildbutton") as Button).text == "Guild •"
 		and next_area.message_rows.get_child_count() == 0, next_area.message_rows.get_child_count())
 	check("  and a new area's HUD lights them before its first poll",
 		_func_body(_code_src("res://src/ui/characterhud.gd"), "func _ready(").contains("_paint_ask_buttons()"))
 	next_area._apply_broadcast(asks.call(0, "", 0, 0, "", 0))
-	var after_guild: Button = next_area.get_node("%navbuttons/guildbutton") as Button
+	var after_guild: Button = next_area.get_node("%guildbutton") as Button
 	check("answered, both go out, and Guild gets its own hint back",
-		(next_area.get_node("%navbuttons/friendsbutton") as Button).text == "Friends"
+		(next_area.get_node("%friendsbutton") as Button).text == "Friends"
 		and after_guild.text == "Guild" and after_guild.tooltip_text == guild_tip, [after_guild.text, after_guild.tooltip_text])
 	next_area.free()
 
@@ -7731,6 +7732,191 @@ func _test_the_tank_loop_takes_every_step() -> void:
 	print("  tank: every step of the walk, shared - key presses, sprint, ground, map, typing")
 
 
+func _test_the_first_five_minutes() -> void:
+	section("FIRST FIVE MINUTES - eight buttons, a Controls card, a welcome, the right name")
+
+	# Day 1, played as a brand-new player: fourteen small buttons on the bar,
+	# nothing anywhere saying what a key does or where the Field is, a login
+	# button that named another game, and two windows out of line.
+
+	# ---- the bar: eight buttons, and two dropdowns for the rest ----
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var row: Array[String] = []
+	for child in hud.get_node("%navbuttons").get_children():
+		if child is Button:
+			row.append(str(child.name))
+	check("the bar is eight buttons, the everyday windows first",
+		row == ["inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton",
+			"chatbutton", "socialbutton", "menubutton"], row)
+	var held := func(menu_name: String) -> Array[String]:
+		var out: Array[String] = []
+		for b in hud.get_node("%" + menu_name).find_children("*", "Button", true, false):
+			out.append(str(b.name))
+		return out
+	check("  Social holds Friends, Players, Guild, Trade and Kingdom",
+		held.call("socialmenu") == ["friendsbutton", "playersbutton", "guildbutton", "tradebutton", "kingdombutton"],
+		held.call("socialmenu"))
+	check("  Menu holds Controls, Options, Switch character and Log out",
+		held.call("systemmenu") == ["controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton"],
+		held.call("systemmenu"))
+
+	hud._wire_nav_buttons()
+	var social: Control = hud.get_node("%socialmenu")
+	var system: Control = hud.get_node("%systemmenu")
+	check("  both shut until asked", not social.visible and not system.visible)
+	(hud.get_node("%socialbutton") as Button).pressed.emit()
+	check("pressing Social opens its dropdown", social.visible and not system.visible)
+	(hud.get_node("%menubutton") as Button).pressed.emit()
+	check("  Menu shuts it and opens its own", system.visible and not social.visible)
+	(hud.get_node("%menubutton") as Button).pressed.emit()
+	check("  a second press shuts it", not system.visible)
+	(hud.get_node("%socialbutton") as Button).pressed.emit()
+	(hud.get_node("%inventorybutton") as Button).pressed.emit()
+	check("  and any button on the bar shuts it", not social.visible)
+	(hud.get_node("%menubutton") as Button).pressed.emit()
+	(hud.get_node("%controlsbutton") as Button).pressed.emit()
+	check("a choice in a dropdown shuts it and opens what it names",
+		not system.visible and hud.controls_panel != null and hud.controls_panel.visible)
+	(hud.get_node("%socialbutton") as Button).pressed.emit()
+	check("Escape shuts an open dropdown, and says when there was none",
+		hud.close_nav_menus() and not social.visible and not hud.close_nav_menus())
+	var hud_code: String = _code_src("res://src/ui/characterhud.gd")
+	var esc_body: String = _func_body(hud_code, "func _unhandled_input(")
+	var shut_at: int = esc_body.find("close_nav_menus()")
+	check("  before it closes any window",
+		shut_at != -1 and shut_at < esc_body.find("is_panel_open()"))
+	check("  and a click anywhere else shuts it too",
+		_func_body(hud_code, "func _input(").contains("_click_outside_nav_menus(event)"))
+
+	var at: Vector2 = hud.nav_menu_position(Rect2(824, 676, 116, 30), Vector2(170, 178), Vector2(1280, 720))
+	check("a dropdown opens above its button, right edges lined up, clear of the health bars",
+		at == Vector2(770, 492), at)
+	at = hud.nav_menu_position(Rect2(10, 676, 60, 30), Vector2(170, 178), Vector2(1280, 720))
+	check("  and never off the left of the screen", at.x == 0.0, at)
+
+	var social_button: Button = hud.get_node("%socialbutton") as Button
+	var social_tip: String = social_button.tooltip_text
+	hud._mark_trade_button(true, "caster")
+	check("a trade waiting inside Social lights Social, and says what",
+		social_button.text == "Social •" and social_button.tooltip_text == "Waiting for you: Trade",
+		[social_button.text, social_button.tooltip_text])
+	hud._mark_trade_button(false)
+	check("  and goes out with it", social_button.text == "Social" and social_button.tooltip_text == social_tip,
+		[social_button.text, social_button.tooltip_text])
+	var hud_script: Script = hud.get_script()
+	hud_script._asks_last = {"friends": {"count": 1, "newest": "medic", "at": 1}}
+	hud._paint_ask_buttons()
+	check("  a friend request lights it too", social_button.text == "Social •"
+		and social_button.tooltip_text == "Waiting for you: Friends", social_button.tooltip_text)
+	hud_script._forget_asks()
+	hud._paint_ask_buttons()
+	check("the bar says each window's key", (hud.get_node("%inventorybutton") as Button).tooltip_text.ends_with(
+		"(%s)" % ControlsPanel.action_key("inventory_toggle"))
+		and (hud.get_node("%controlsbutton") as Button).tooltip_text.ends_with("(%s)" % ControlsPanel.action_key("help_toggle")),
+		(hud.get_node("%inventorybutton") as Button).tooltip_text)
+	hud.free()
+
+	# ---- the Controls card, read from the input map ----
+	var card: ControlsPanel = (load("res://scene/ui/controls/controlspanel.tscn") as PackedScene).instantiate() as ControlsPanel
+	add_child(card)
+	card.open_controls()
+	var keys: Dictionary = {}
+	for i in range(0, card.key_grid.get_child_count() - 1, 2):
+		keys[(card.key_grid.get_child(i) as Label).text] = (card.key_grid.get_child(i + 1) as Label).text
+	check("the Controls card has a line for every row", keys.size() == ControlsPanel.ROWS.size(), keys.size())
+	check("  Space or right-click attacks, Shift sprints, E uses, H is the card",
+		keys.get("Attack, aiming with the mouse") == "Space or right-click" and keys.get("Sprint") == "Hold Shift"
+		and keys.get("Use the shop, bank, fire or fishing spot") == "E" and keys.get("This card") == "H", keys)
+	check("  W A S D walk, and the hotbar is 1 to 0",
+		keys.get("Move") == "W A S D or arrows" and keys.get("Use the item on a hotbar key") == "1 to 0",
+		[keys.get("Move"), keys.get("Use the item on a hotbar key")])
+	var leaked: Array = []
+	for how in keys.values():
+		if String(how).contains("_") or String(how).contains("?"):
+			leaked.append(how)
+	check("  every key it names is bound - no action name shown as words", leaked.is_empty(), leaked)
+	# EVERY KEY THE GAME BINDS IS ON THE CARD. A new action added to
+	# project.godot with no line here would be a key nobody is told about.
+	var named: Dictionary = {}
+	for spec in ControlsPanel.ROWS:
+		named[String(spec[1])] = true
+	var untold: Array[String] = []
+	for prop in ProjectSettings.get_property_list():
+		var key_path: String = str(prop.name)
+		if not key_path.begins_with("input/") or key_path.begins_with("input/ui_"):
+			continue
+		var action: String = key_path.trim_prefix("input/")
+		if not (named.has(action) or (action.begins_with("move_") and named.has("move"))):
+			untold.append(action)
+	check("  and no key the game binds is missing from it", untold.is_empty(), untold)
+	await get_tree().process_frame
+	var middle: Vector2 = ((card.get_viewport_rect().size - card.size) * 0.5).floor()
+	check("  in the middle of the screen, as big as what is on it",
+		card.position == middle and card.size == PanelWindow.content_minimum(card)
+		and card.size.x >= 400.0, [card.position, middle, card.size])
+	check("  with no welcome on it", not card.welcome_box.visible and not card.got_it_button.visible
+		and card.header_label.text == "CONTROLS")
+
+	# ---- the welcome, once ----
+	var was_seen_path: String = ControlsPanel.seen_path
+	ControlsPanel.seen_path = "user://_suite_seen.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(ControlsPanel.seen_path))
+	check("a computer that has never played has not seen the welcome", not ControlsPanel.has_seen_welcome())
+	card.open_welcome()
+	check("the welcome says where to go, then the keys, then Got it",
+		card.header_label.text == "WELCOME TO ELUSION" and card.welcome_box.visible
+		and card.welcome_text.text.contains("Field") and card.got_it_button.visible
+		and card.footer_label.text == "Press H any time to see these keys again.", card.footer_label.text)
+	check("  and is marked seen the moment it shows", ControlsPanel.has_seen_welcome())
+	card.got_it_button.pressed.emit()
+	check("Got it closes it", not card.visible)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(ControlsPanel.seen_path))
+	ControlsPanel.seen_path = was_seen_path
+	card.queue_free()
+	check("the welcome comes up in town and nowhere else - never in this suite",
+		hud_script.welcome_belongs_in("res://scene/elusion.tscn")
+		and not hud_script.welcome_belongs_in("res://scene/field.tscn")
+		and not hud_script.welcome_belongs_in("res://scene/tests/tests.tscn"))
+	check("  offered when a character arrives, and only if not yet seen",
+		_func_body(hud_code, "func set_active_character(").contains("_offer_welcome_soon()")
+		and _func_body(hud_code, "func offer_welcome(").contains("ControlsPanel.has_seen_welcome()")
+		and _func_body(hud_code, "func offer_welcome(").contains("welcome_belongs_in("))
+
+	# ---- the login button names this game ----
+	var login_text: String = FileAccess.get_file_as_string("res://scene/ui/menus/loginmenu.tscn")
+	check("the login button says Enter Elusion",
+		str(_node_prop_in_scene("res://scene/ui/menus/loginmenu.tscn",
+			"centercontainer/mainpanel/margincontainer/vboxcontainer/loginform/loginbutton", "text")) == "Enter Elusion")
+	check("  and no screen anywhere says Elysium", not login_text.contains("Elysium")
+		and not hud_code.contains("Elysium"))
+
+	# ---- the Gear window's title, like the others ----
+	var inv_size: Variant = _node_prop_in_scene("res://scene/ui/inventory/inventory.tscn",
+		"mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/headerlabel", "theme_override_font_sizes/font_size")
+	var eq_path := "mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/headerlabel"
+	check("the Gear window's title is EQUIPMENT, centred, the size of INVENTORY's",
+		str(_node_prop_in_scene("res://scene/ui/equipment/equipmentpanel.tscn", eq_path, "text")) == "EQUIPMENT"
+		and int(_node_prop_in_scene("res://scene/ui/equipment/equipmentpanel.tscn", eq_path, "horizontal_alignment")) == HORIZONTAL_ALIGNMENT_CENTER
+		and _node_prop_in_scene("res://scene/ui/equipment/equipmentpanel.tscn", eq_path, "theme_override_font_sizes/font_size") == inv_size,
+		inv_size)
+
+	# ---- Character Stats: the left column from top to bottom ----
+	var stats: Control = (load("res://scene/ui/statsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(stats)
+	stats.visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var frame: Control = stats.find_child("leftcolumn", true, false) as Control
+	var level_row: Control = stats.find_child("levelrow", true, false) as Control
+	var mana_row: Control = stats.find_child("manastat", true, false) as Control
+	var top_gap: float = level_row.get_global_rect().position.y - frame.get_global_rect().position.y
+	var bottom_gap: float = frame.get_global_rect().end.y - mana_row.get_global_rect().end.y
+	check("Character Stats: LEVEL sits at the top of its box, Mana at the bottom",
+		top_gap <= 16.0 and bottom_gap <= 16.0 and absf(top_gap - bottom_gap) <= 4.0, [top_gap, bottom_gap])
+	stats.queue_free()
+	print("  first five minutes: eight buttons, every key on a card, a welcome once, Enter Elusion")
+
+
 func _test_staff_panel() -> void:
 	section("STAFF PANEL")
 
@@ -7895,14 +8081,13 @@ func _test_staff_panel() -> void:
 	check("the HUD registers %navbuttons", nav_row != null)
 	check("the HUD registers %staffrow", hud.get_node_or_null("%staffrow") != null)
 
-	# AND THE BUTTONS THEMSELVES. _wire_nav_buttons() connects by name and skips
-	# anything it cannot find, so a renamed button is a dead button with no error.
+	# AND THE BUTTONS THEMSELVES. _wire_nav_buttons() connects by UNIQUE NAME and
+	# skips anything it cannot find, so a renamed button - or one whose "unique
+	# name" box was unticked - is a dead button with no error. Nine of them sit
+	# in the Social and Menu dropdowns now, not on the row.
 	var absent: Array = []
-	for wanted in ["inventorybutton", "equipmentbutton", "statsbutton", "shopbutton",
-			"kingdombutton", "tradebutton", "chatbutton", "friendsbutton",
-			"guildbutton", "mapbutton", "optionsbutton", "logoutbutton",
-			"switchcharacterbutton"]:
-		if nav_row == null or nav_row.get_node_or_null(wanted) == null:
+	for wanted in hud.NAV_BUTTON_NAMES:
+		if not (hud.get_node_or_null("%" + wanted) is Button):
 			absent.append(wanted)
 	check("every button characterhud.gd wires up is in the scene", absent.is_empty(), absent)
 
@@ -11890,8 +12075,7 @@ func _test_trades_reach_the_right_people() -> void:
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	hud._build_message_box()
 	hud._build_status_strip()
-	var nav: Node = hud.get_node_or_null("%navbuttons")
-	var trade_button: Button = nav.get_node_or_null("tradebutton") as Button if nav != null else null
+	var trade_button: Button = hud.get_node_or_null("%tradebutton") as Button
 	check("the HUD has its Trade button", trade_button != null)
 	check("the poll tells the server which character this is",
 		hud._broadcast_path().ends_with("&slot=%d" % CharacterData.active_character_index), hud._broadcast_path())
@@ -14710,7 +14894,7 @@ func _test_whispers_reach_you() -> void:
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	hud._build_message_box()
 	var rows: Control = hud.message_rows
-	var chat_button: Button = hud.get_node("%navbuttons").get_node("chatbutton") as Button
+	var chat_button: Button = hud.get_node("%chatbutton") as Button
 	var news := func(whisper_id: int, who: String, body: String, at: int, guild: int) -> Dictionary:
 		return {"latest_id": 0, "messages": [], "chat_news": {
 			"whisper": {"id": whisper_id, "from": who, "body": body, "at": at} if whisper_id > 0 else null,

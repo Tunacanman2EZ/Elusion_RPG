@@ -113,7 +113,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(220, 45)
 layout_mode = 2
 size_flags_horizontal = 4
-text = "Enter Elysium"
+text = "Enter Elusion"
 
 [node name="recoverlinkbutton" type="Button" parent="centercontainer/mainpanel/margincontainer/vboxcontainer/loginform" unique_id=1900113001]
 unique_name_in_owner = true

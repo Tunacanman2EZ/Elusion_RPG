@@ -79,6 +79,7 @@ const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
 const FRIENDS_PANEL_SCENE := preload("res://scene/ui/friends/friendspanel.tscn")
 const PLAYERS_PANEL_SCENE := preload("res://scene/ui/players/playerspanel.tscn")
 const GUILD_PANEL_SCENE := preload("res://scene/ui/guild/guildpanel.tscn")
+const CONTROLS_SCENE := preload("res://scene/ui/controls/controlspanel.tscn")
 
 
 # =============================================================================
@@ -158,6 +159,8 @@ var _teleport_done: int = 0
 var _trade_announced: String = ""
 var options_screen:   Control         = null
 var map_screen:       Control         = null
+# Every key, and the welcome a new player sees once. See controlspanel.gd.
+var controls_panel:   ControlsPanel   = null
 
 # hotbar reference — resolved on _ready
 var hotbar: Hotbar = null
@@ -285,6 +288,7 @@ func _input(event: InputEvent) -> void:
 	# walks whether or not this runs. A text box keeps the keyboard, since those
 	# keys are letters in it.
 	release_for_world_key(event, get_viewport())
+	_click_outside_nav_menus(event)
 
 
 static func release_for_world_key(event: InputEvent, viewport: Viewport) -> bool:
@@ -335,6 +339,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	# check below reads the keycode for the same reason.
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_ESCAPE:
+		# AN OPEN DROPDOWN GOES FIRST: it is the thing on top, and it is the
+		# thing the player just opened.
+		if close_nav_menus():
+			get_viewport().set_input_as_handled()
+			return
 		# CLOSE FIRST, OPEN SECOND. Escape means "get this off my screen" if
 		# there is anything on it, and only means "show me the options" when
 		# there is not — which is the behaviour the comment above predicted
@@ -389,6 +398,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	# so M did nothing and the map opened only from the nav bar.
 	if event.is_action_pressed("minimap_toggle"):
 		toggle_map()
+		get_viewport().set_input_as_handled()
+		return
+
+	# H, EVERY KEY IN THE GAME (day 1: nothing told a new player any of them).
+	# An action like the four above, so it can be rebound with them.
+	if event.is_action_pressed("help_toggle"):
+		toggle_controls()
 		get_viewport().set_input_as_handled()
 		return
 
@@ -544,19 +560,16 @@ func _resolve_hotbar() -> void:
 
 
 func _wire_nav_buttons() -> void:
-	# %navbuttons, NOT "navhbox/navbuttons". The menu has been rearranged twice in
-	# two days - the staff buttons into the row the scene had reserved, and then
-	# the whole thing into navframe, the PanelContainer that draws the bar - and
-	# the second one moved every node in here one level deeper. A path spelled out
-	# like that survives no rearrangement at all. A unique name is resolved against
-	# the SCENE, so the row can be wrapped or reparented again and this still finds
-	# it; the same goes for %staffrow below and %staffbutton in testrunner.gd.
+	# EVERY BUTTON BY ITS UNIQUE NAME, wherever it sits. Five of them live in the
+	# Social dropdown and four in Menu now, and the next rearrangement will move
+	# them again; a lookup that goes through %navbuttons would find none of them.
 	var nav: Node = get_node_or_null("%navbuttons")
 	if nav == null:
 		return
 
-	for button in nav.get_children():
-		if button is Button:
+	for name_key in NAV_BUTTON_NAMES:
+		var button: Button = _nav_button(name_key)
+		if button != null:
 			button.focus_mode = Control.FOCUS_NONE
 
 	# WHERE THE BAR SITS, AND WHY. A .tscn cannot hold a comment the editor will
@@ -574,9 +587,11 @@ func _wire_nav_buttons() -> void:
 	# them by 10px. It is an anchor rather than a fixed width so the gap holds
 	# wherever the right edge ends up.
 	#
-	# The buttons carry size_flags_horizontal = FILL|EXPAND, so they share that
-	# width instead of queueing up on the left, and an eleventh costs the others
-	# a few pixels each rather than running off the end.
+	# EIGHT BUTTONS, NOT FOURTEEN (day 1: "the bottom bar is crowded"). The
+	# windows a player opens every few minutes stay on the bar; Friends,
+	# Players, Guild, Trade and Kingdom open from Social, and Controls, Options,
+	# Switch character and Log out from Menu. The buttons share the bar's width
+	# (FILL|EXPAND), so eight of them get bigger text than fourteen could.
 	var bindings := {
 		"inventorybutton":         "_on_inventory_pressed",
 		"equipmentbutton":         "_on_equipment_pressed",
@@ -594,10 +609,159 @@ func _wire_nav_buttons() -> void:
 		# NEW: distinct from logout — returns to character select without
 		# clearing the logged-in session, so no re-entering a password.
 		"switchcharacterbutton":   "_on_switch_character_pressed",
+		"controlsbutton":          "_on_controls_pressed",
 	}
 	for btn_name in bindings:
-		if nav.has_node(btn_name):
-			nav.get_node(btn_name).pressed.connect(Callable(self, bindings[btn_name]))
+		var button: Button = _nav_button(btn_name)
+		if button == null:
+			continue
+		# A CHOICE CLOSES ITS DROPDOWN, and a button on the bar closes whichever
+		# is open, before the window it names comes up.
+		button.pressed.connect(close_nav_menus)
+		button.pressed.connect(Callable(self, bindings[btn_name]))
+
+	for toggle_name in NAV_GROUPS:
+		var toggle: Button = _nav_button(toggle_name)
+		if toggle != null:
+			toggle.pressed.connect(toggle_nav_menu.bind(toggle_name))
+
+	# THE KEY IN THE HINT, read from the input map like the Controls card reads
+	# it, so a rebound key is never advertised wrong.
+	for btn_name in NAV_KEY_HINTS:
+		var button: Button = _nav_button(btn_name)
+		if button != null and InputMap.has_action(NAV_KEY_HINTS[btn_name]):
+			button.tooltip_text = "%s (%s)" % [button.tooltip_text,
+				ControlsPanel.action_key(NAV_KEY_HINTS[btn_name])]
+	_paint_group_dots()
+
+
+# =============================================================================
+# THE BAR'S TWO DROPDOWNS - SOCIAL AND MENU
+# =============================================================================
+
+# Every button the bar owns, on the bar or in a dropdown.
+const NAV_BUTTON_NAMES := [
+	"inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton",
+	"chatbutton", "socialbutton", "menubutton",
+	"friendsbutton", "playersbutton", "guildbutton", "tradebutton", "kingdombutton",
+	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
+]
+
+# toggle button -> [the dropdown it opens, the words it says]
+const NAV_GROUPS := {
+	"socialbutton": ["socialmenu", "Social"],
+	"menubutton":   ["systemmenu", "Menu"],
+}
+
+const NAV_KEY_HINTS := {
+	"inventorybutton": "inventory_toggle",
+	"equipmentbutton": "equipment_toggle",
+	"statsbutton":     "character_toggle",
+	"mapbutton":       "minimap_toggle",
+	"controlsbutton":  "help_toggle",
+}
+
+# Room left between a dropdown and the button it opened from.
+const NAV_MENU_GAP := 6.0
+
+
+func _nav_button(button_name: String) -> Button:
+	return get_node_or_null("%" + button_name) as Button
+
+
+func _nav_menu(toggle_name: String) -> Control:
+	var group: Array = NAV_GROUPS.get(toggle_name, [])
+	return get_node_or_null("%" + String(group[0])) as Control if not group.is_empty() else null
+
+
+func toggle_nav_menu(toggle_name: String) -> void:
+	var menu: Control = _nav_menu(toggle_name)
+	if menu == null:
+		return
+	var was_open: bool = menu.visible
+	close_nav_menus()
+	if was_open:
+		return
+	var toggle: Button = _nav_button(toggle_name)
+	menu.visible = true
+	# ON TOP OF EVERY WINDOW. The windows are added to this layer after the
+	# scene's own nodes, so without this a window opened earlier draws over it.
+	menu.move_to_front()
+	menu.reset_size()
+	if toggle != null and menu.is_inside_tree():
+		menu.position = nav_menu_position(toggle.get_global_rect(), menu.size,
+			menu.get_viewport_rect().size)
+
+
+func close_nav_menus() -> bool:
+	"""Shuts both dropdowns. True when one was open."""
+	var was_open: bool = false
+	for toggle_name in NAV_GROUPS:
+		var menu: Control = _nav_menu(toggle_name)
+		if menu != null and menu.visible:
+			menu.visible = false
+			was_open = true
+	return was_open
+
+
+static func nav_menu_position(button: Rect2, menu_size: Vector2, screen: Vector2) -> Vector2:
+	"""Where a dropdown goes: ABOVE its button, since the bar sits on the floor,
+	with the RIGHT edges lined up, and pulled back onto the screen at either side.
+
+	Right, not left: Menu is the last button on the bar, and a dropdown hanging
+	off its left edge ran 50px past the bar's end into the health bars - the
+	exact strip the bar's own right edge is placed to dodge."""
+	var x: float = clampf(button.end.x - menu_size.x, 0.0, maxf(0.0, screen.x - menu_size.x))
+	var y: float = maxf(0.0, button.position.y - menu_size.y - NAV_MENU_GAP)
+	return Vector2(x, y).floor()
+
+
+func _click_outside_nav_menus(event: InputEvent) -> void:
+	"""A click anywhere but an open dropdown or its own button shuts it, the way
+	a menu does everywhere else. The click is not eaten: it still does whatever
+	it was going to do."""
+	var click := event as InputEventMouseButton
+	if click == null or not click.pressed:
+		return
+	for toggle_name in NAV_GROUPS:
+		var menu: Control = _nav_menu(toggle_name)
+		if menu == null or not menu.visible:
+			continue
+		var toggle: Button = _nav_button(toggle_name)
+		var inside: bool = menu.get_global_rect().has_point(click.position) \
+			or (toggle != null and toggle.get_global_rect().has_point(click.position))
+		if not inside:
+			menu.visible = false
+
+
+func _paint_group_dots() -> void:
+	"""A dropdown's button wears the dot of anything inside it, so a friend
+	request or a trade is still seen with Social shut. The button inside keeps
+	its own dot and says who."""
+	for toggle_name in NAV_GROUPS:
+		var toggle: Button = _nav_button(toggle_name)
+		var menu: Control = _nav_menu(toggle_name)
+		if toggle == null or menu == null:
+			continue
+		if not toggle.has_meta("dot_base"):
+			toggle.set_meta("dot_base", toggle.tooltip_text)
+		var lit: Array[String] = []
+		var colour: Variant = null
+		for child in menu.find_children("*", "Button", true, false):
+			var item: Button = child as Button
+			if item.text.ends_with(" •"):
+				lit.append(item.text.trim_suffix(" •"))
+				if colour == null and item.has_theme_color_override("font_color"):
+					colour = item.get_theme_color("font_color")
+		var words: String = String(NAV_GROUPS[toggle_name][1])
+		if lit.is_empty():
+			toggle.text = words
+			toggle.tooltip_text = String(toggle.get_meta("dot_base"))
+			toggle.remove_theme_color_override("font_color")
+		else:
+			toggle.text = "%s •" % words
+			toggle.tooltip_text = "Waiting for you: %s" % ", ".join(lit)
+			toggle.add_theme_color_override("font_color", colour if colour is Color else ASK_COLOUR)
 
 
 func _add_owner_button() -> void:
@@ -1490,8 +1654,7 @@ func _read_trade(summary: Variant) -> void:
 
 
 func _mark_trade_button(lit: bool, who: String = "") -> void:
-	var nav: Node = get_node_or_null("%navbuttons")
-	var button: Button = nav.get_node_or_null("tradebutton") as Button if nav != null else null
+	var button: Button = _nav_button("tradebutton")
 	if button == null:
 		return
 	# A DOT, NOT A NUMBER. There is only ever one trade, so a count would always
@@ -1502,6 +1665,7 @@ func _mark_trade_button(lit: bool, who: String = "") -> void:
 		button.add_theme_color_override("font_color", Color(0.62, 0.86, 1.0))
 	else:
 		button.remove_theme_color_override("font_color")
+	_paint_group_dots()
 
 
 # =============================================================================
@@ -1586,8 +1750,7 @@ func _room_news(room: String) -> void:
 
 func _mark_chat_button(lit: bool) -> void:
 	_chat_dot = lit
-	var nav: Node = get_node_or_null("%navbuttons")
-	var button: Button = nav.get_node_or_null("chatbutton") as Button if nav != null else null
+	var button: Button = _nav_button("chatbutton")
 	if button == null:
 		return
 	# A DOT, like Trade: something was said to you and the window is shut.
@@ -1659,11 +1822,8 @@ func _read_asks(asks: Variant) -> void:
 
 
 func _paint_ask_buttons() -> void:
-	var nav: Node = get_node_or_null("%navbuttons")
-	if nav == null:
-		return
 	for kind in ["friends", "guild"]:
-		var button: Button = nav.get_node_or_null("%sbutton" % kind) as Button
+		var button: Button = _nav_button("%sbutton" % kind)
 		if button == null:
 			continue
 		var one: Variant = _asks_last.get(kind)
@@ -1682,6 +1842,7 @@ func _paint_ask_buttons() -> void:
 			button.text = base[0]
 			button.tooltip_text = base[1]
 			button.remove_theme_color_override("font_color")
+	_paint_group_dots()
 
 
 func _read_trade_resync(resync: Variant) -> void:
@@ -2033,6 +2194,8 @@ func set_active_character(character: Node) -> void:
 	if stats_screen != null:
 		stats_screen.setup_for_player(active_character)
 
+	_offer_welcome_soon()
+
 	# NO hotbar.set_player() ANY MORE. The keys hold items, and those arrive
 	# with the backpack: _load_player_inventory_into_container() fills cells
 	# 20-29 along with the bag.
@@ -2283,6 +2446,66 @@ func _on_options_pressed() -> void:
 	# The button has been on the nav row the whole time, styled and wired, and
 	# pressing it printed a line to a console the player does not have.
 	toggle_options()
+
+
+# =============================================================================
+# CONTROLS AND THE WELCOME
+# =============================================================================
+
+const TOWN_SCENE_PATH := "res://scene/elusion.tscn"
+
+# How long a new character stands in town before the welcome comes up: long
+# enough for the fade-in to finish, short enough that they have not wandered.
+const WELCOME_DELAY := 0.8
+
+
+func _ensure_controls_panel() -> void:
+	if controls_panel != null:
+		return
+	controls_panel = CONTROLS_SCENE.instantiate() as ControlsPanel
+	add_child(controls_panel)
+	controls_panel.visible = false
+
+
+func toggle_controls() -> void:
+	_ensure_controls_panel()
+	if controls_panel == null:
+		return
+	if controls_panel.visible:
+		controls_panel.close()
+	else:
+		controls_panel.open_controls()
+
+
+func _on_controls_pressed() -> void:
+	toggle_controls()
+
+
+func _offer_welcome_soon() -> void:
+	"""The welcome, once per computer, the first time a character stands in
+	town. Asked after a short wait because this runs from the area's _ready(),
+	and the tree only names the new area its current scene after that returns."""
+	if ControlsPanel.has_seen_welcome() or not is_inside_tree():
+		return
+	get_tree().create_timer(WELCOME_DELAY).timeout.connect(offer_welcome)
+
+
+static func welcome_belongs_in(scene_path: String) -> bool:
+	return scene_path == TOWN_SCENE_PATH
+
+
+func offer_welcome() -> void:
+	# TOWN ONLY, because the welcome gives directions from where a new
+	# character appears. And never inside the test runner, which is not a world
+	# scene: a suite run must not mark the welcome seen on the machine it runs on.
+	if not is_inside_tree() or ControlsPanel.has_seen_welcome():
+		return
+	var scene: Node = get_tree().current_scene
+	if scene == null or not welcome_belongs_in(scene.scene_file_path):
+		return
+	_ensure_controls_panel()
+	if controls_panel != null and not controls_panel.visible:
+		controls_panel.open_welcome()
 
 
 var _logging_out: bool = false
@@ -2884,6 +3107,9 @@ func hide_panel() -> void:
 	# through to whatever is behind it.
 	if staff_panel != null and staff_panel.visible:
 		staff_panel.close_panel()
+	# And the Controls card, counted below for the same reason.
+	if controls_panel != null and controls_panel.visible:
+		controls_panel.close()
 
 
 func is_panel_open() -> bool:
@@ -2901,8 +3127,9 @@ func is_panel_open() -> bool:
 	# is the exact mistake this pair of lists exists to prevent.
 	var guild_open: bool = guild_panel     != null and guild_panel.visible
 	var staff_open: bool = staff_panel     != null and staff_panel.visible
+	var keys_open:  bool = controls_panel  != null and controls_panel.visible
 	return (inv_open or stats_open or bank_open or cook_open or opts_open
-		or map_open or chat_open or mates_open or guild_open or staff_open)
+		or map_open or chat_open or mates_open or guild_open or staff_open or keys_open)
 
 
 func _any_panel_visible() -> bool:
@@ -2924,7 +3151,8 @@ func _any_panel_visible() -> bool:
 	# how the pairing quietly stops being true.
 	for panel in [inventory_screen, equipment_panel, stats_screen, bank_screen,
 			lootbag_panel, cooking_panel, shop_panel, kingdom_panel,
-			trade_panel, owner_panel, staff_panel, options_screen, map_screen]:
+			trade_panel, owner_panel, staff_panel, options_screen, map_screen,
+			controls_panel]:
 		if panel != null and panel.visible:
 			return true
 	return false
