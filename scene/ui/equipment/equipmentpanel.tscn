@@ -82,25 +82,21 @@ theme_override_constants/separation = 6
 
 [node name="helm" parent="mainpanel/margincontainer/vboxcontainer/dollrow/leftcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_type_variation = &"PanelSlot"
 equip_slot_name = "helm"
 empty_hint = "Helm"
 
 [node name="chest" parent="mainpanel/margincontainer/vboxcontainer/dollrow/leftcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_type_variation = &"PanelSlot"
 equip_slot_name = "chest"
 empty_hint = "Chest"
 
 [node name="legs" parent="mainpanel/margincontainer/vboxcontainer/dollrow/leftcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_type_variation = &"PanelSlot"
 equip_slot_name = "legs"
 empty_hint = "Legs"
 
 [node name="boots" parent="mainpanel/margincontainer/vboxcontainer/dollrow/leftcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_type_variation = &"PanelSlot"
 equip_slot_name = "boots"
 empty_hint = "Boots"
 
@@ -142,25 +138,21 @@ theme_override_constants/separation = 6
 
 [node name="weapon" parent="mainpanel/margincontainer/vboxcontainer/dollrow/rightcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_type_variation = &"PanelSlot"
 equip_slot_name = "weapon"
 empty_hint = "Weapon"
 
 [node name="shield" parent="mainpanel/margincontainer/vboxcontainer/dollrow/rightcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_type_variation = &"PanelSlot"
 equip_slot_name = "shield"
 empty_hint = "Off hand"
 
 [node name="amulet" parent="mainpanel/margincontainer/vboxcontainer/dollrow/rightcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_type_variation = &"PanelSlot"
 equip_slot_name = "amulet"
 empty_hint = "Amulet"
 
 [node name="ring" parent="mainpanel/margincontainer/vboxcontainer/dollrow/rightcolumn" instance=ExtResource("2_eqslot")]
 layout_mode = 2
-theme_type_variation = &"PanelSlot"
 equip_slot_name = "ring"
 empty_hint = "Ring"
 

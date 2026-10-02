@@ -2121,7 +2121,9 @@ blue bars with the numbers inside; under the XP bar, "1% · 998K to level 30".
 Big numbers are short (`GameConstants.short_number()`: "9,391", "12K", "1M",
 "1.2M", rounded down) with the exact figure in the tooltip. Its window key is
 `charstats`, so a rectangle saved for the old narrow window is not reused.
-`_test_the_stats_window_reads_cleanly` holds it.
+The level sits in a hotbar slot (`levelbadge` wears the theme's `PanelSocket`,
+the same socket as the hotbar and every grid cell). `_test_the_stats_window_reads_cleanly`
+holds it.
 
 ### The browser build
 
@@ -2683,6 +2685,10 @@ real panels against the real server.
   `ButtonSocket` variation is a Button on the same `hotbarslot.png` socket the
   hotbar and every grid cell use, brighter under the pointer and darker when
   pressed. Any button can wear it with `theme_type_variation = &"ButtonSocket"`.
+- **The gear squares are hotbar slots too** (day 1): `equipmentslot.tscn` wears
+  `PanelSocket` itself, and the eight squares on the doll no longer override it
+  with the flat `PanelSlot` (which friends, guild, chat and character select
+  still use). `_test_slots_wear_the_hotbar_socket` names any square left flat.
 
 ### Friends, guilds and trades on day 1
 

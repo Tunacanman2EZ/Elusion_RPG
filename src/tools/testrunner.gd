@@ -7571,6 +7571,15 @@ func _test_the_stats_window_reads_cleanly() -> void:
 		tints["hp"] is Color and tints["hp"].r > 0.6 and tints["hp"].g < 0.3
 		and tints["stamina"] is Color and tints["stamina"].r > 0.6 and tints["stamina"].b < 0.3
 		and tints["mana"] is Color and tints["mana"].b > 0.6 and tints["mana"].r < 0.4, tints)
+	# The level sits in a hotbar slot (day 1, "make that a hotbar slot"): the
+	# theme's PanelSocket, the same socket as the hotbar and every grid cell.
+	var badge: PanelContainer = stats.find_child("levelbadge", true, false) as PanelContainer
+	var level_value: Label = stats.find_child("levelvalue", true, false) as Label
+	check("  the level sits in a hotbar slot, square, with the number inside it",
+		badge != null and badge.theme_type_variation == &"PanelSocket"
+		and badge.custom_minimum_size.x == badge.custom_minimum_size.y
+		and level_value != null and badge.is_ancestor_of(level_value),
+		str(badge.theme_type_variation) if badge else "no levelbadge")
 	stats.free()
 
 	var Stats: Script = load("res://src/ui/statsscreen.gd") as Script
@@ -9759,6 +9768,23 @@ func _test_slots_wear_the_hotbar_socket() -> void:
 			own_slots.append(path.get_file())
 	check("the inventory, bank, loot bag and cooking grids all use the one slot",
 		own_slots.is_empty(), "overridden in: " + ", ".join(own_slots))
+
+	# THE GEAR SQUARES (day 1, "now the gear slots"). equipmentslot.tscn wears
+	# the socket itself; the eight squares on the doll each used to override it
+	# with the flat PanelSlot. Read as each square resolves, so an override left
+	# on one square is caught by name.
+	var gear: Node = (load("res://scene/ui/equipment/equipmentpanel.tscn") as PackedScene).instantiate()
+	var flat_squares: Array[String] = []
+	for square_name in ["helm", "chest", "legs", "boots", "weapon", "shield", "amulet", "ring"]:
+		var square: Control = gear.find_child(square_name, true, false) as Control
+		var face: StyleBoxTexture = null
+		if square is EquipmentSlot:
+			face = theme.get_stylebox("panel", square.theme_type_variation) as StyleBoxTexture
+		if face == null or face.texture != socket.texture:
+			flat_squares.append(square_name)
+	gear.free()
+	check("the eight gear squares wear the hotbar's socket too",
+		flat_squares.is_empty(), "not a socket: " + ", ".join(flat_squares))
 
 	# THE TRASH, IN BOTH PLACES.
 	for path in ["res://scene/ui/inventory/inventory.tscn", "res://scene/ui/bank/bankinventory.tscn"]:
