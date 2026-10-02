@@ -6096,6 +6096,11 @@ func _test_a_character_can_be_deleted() -> void:
 		var line: String = Select.class_line(class_id)
 		check("the %s has a line saying how it plays" % class_id,
 			line.length() >= 20 and line.length() <= 64 and not line.contains("\n"), line)
+	# Day 1: "mage has pillars that rise from the ground". The line said it
+	# dropped stone spikes, which is not what the player watches the spell do.
+	check("the mage's line says its pillars rise, as the spell does",
+		Select.class_line("mage").begins_with("Pillars") and not Select.class_line("mage").contains("spikes"),
+		Select.class_line("mage"))
 
 	var screen: Control = (load("res://scene/ui/menus/characterselect.tscn") as PackedScene).instantiate()
 	screen._build_slot_extras()
