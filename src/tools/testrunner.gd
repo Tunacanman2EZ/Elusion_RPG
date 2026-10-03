@@ -208,6 +208,7 @@ func _run_all() -> void:
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	await _test_the_mythic_weapons()
+	await _test_the_item_menu()
 
 
 # =============================================================================
@@ -2815,6 +2816,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/menus/mapscreen.gd", "res://scene/ui/menus/mapscreen.tscn", "map"],
 	["res://src/ui/menus/optionsscreen.gd", "res://scene/ui/menus/optionsscreen.tscn", "options"],
 	["res://src/ui/owner/ownerpanel.gd", "res://scene/ui/owner/ownerpanel.tscn", "owner"],
+	["res://src/ui/owner/itemspawner.gd", "res://scene/ui/owner/itemspawner.tscn", "itemspawner"],
 	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
 	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
 	["res://src/ui/staff/staffpanel.gd", "res://scene/ui/staff/staffpanel.tscn", "staff"],
@@ -3265,7 +3267,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("eighteen panels are windows - the Controls card is the eighteenth", keys_seen.size() == 18, keys_seen.size())
+	check("nineteen panels are windows - the owner's item menu is the nineteenth", keys_seen.size() == 19, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -16134,3 +16136,234 @@ func _test_the_mythic_weapons() -> void:
 	warrior.free()
 	tank.free()
 	print("  mythic weapons: three items, the meteor, the axe out and home, the dynamite, double casts")
+
+
+# =============================================================================
+# THE OWNER'S ITEM MENU - every item, one click, and the level to wear it
+# =============================================================================
+# Day 2: "i need these items as hot keys so i can test - can you create a menu
+# in hud that allows me to select and spawn items registered in the game that
+# only owner can use". And, because the weapons it was for need level 22, the
+# owner's own level, set on the server. Driven here through the panel's own
+# doors: post_request, adopt_bag, equip_request and apply_level are Callables
+# the suite swaps for stubs that write down what they were asked.
+
+func _menu_item(id: String, type: int, slot: int = 0, stack: int = 1) -> ItemData:
+	var item := ItemData.new()
+	item.item_id = id
+	item.display_name = id
+	item.type = type as ItemData.Type
+	item.equip_slot = slot as ItemData.EquipSlot
+	item.stackable = stack > 1
+	item.max_stack = stack
+	return item
+
+
+func _test_the_item_menu() -> void:
+	section("THE ITEM MENU - the owner's whole catalogue, and a level to test it at")
+
+	var packed: PackedScene = load("res://scene/ui/owner/itemspawner.tscn") as PackedScene
+	check("itemspawner.tscn loads", packed != null and packed.can_instantiate())
+	if packed == null or not packed.can_instantiate():
+		return
+	var was_owner: bool = Api.is_owner
+	var was_role: String = Api.role
+	Api.is_owner = true
+	Api.role = "owner"
+	var menu: Control = packed.instantiate() as Control
+	add_child(menu)
+	await get_tree().process_frame
+	check("it is a window of its own", menu.get("_window") != null)
+
+	# --- WHERE EVERYTHING IS LISTED ---
+	var T := ItemData.Type
+	var S := ItemData.EquipSlot
+	var kinds: Array = [
+		[_menu_item("w", T.WEAPON, S.WEAPON), "Weapons"],
+		[_menu_item("h", T.ARMOR, S.HELM), "Armour"],
+		[_menu_item("s", T.ARMOR, S.SHIELD), "Armour"],
+		[_menu_item("a", T.ARMOR, S.AMULET), "Jewellery"],
+		[_menu_item("r", T.ARMOR, S.RING), "Jewellery"],
+		[_menu_item("p", T.CONSUMABLE, S.NONE, 99), "Potions and food"],
+		[_menu_item("pet", T.PET), "Pets"],
+		[_menu_item("fish", T.FISH), "Fishing"],
+		[_menu_item("ironfishingrod", T.MATERIAL), "Fishing"],
+		[_menu_item("fishingworm", T.MATERIAL, S.NONE, 99), "Fishing"],
+		[_menu_item("coin", T.CURRENCY), "Currency"],
+		[_menu_item("trophy", T.ARMOR, S.NONE), "Other"],
+	]
+	var wrong: Array = []
+	for pair in kinds:
+		if ItemSpawner.category_of(pair[0]) != pair[1]:
+			wrong.append("%s -> %s" % [pair[0].item_id, ItemSpawner.category_of(pair[0])])
+	check("every item is listed under what it is", wrong.is_empty(), wrong)
+	check("  and every kind it can be is one of the menu's",
+		kinds.all(func(pair): return ItemSpawner.CATEGORIES.has(pair[1])))
+
+	menu.search.text = ""
+	menu.category.select(0)
+	menu.refresh()
+	var everything: int = ItemRegistry.get_all_items().size()
+	check("All lists every item the registry loaded", menu.listed().size() == everything
+		and menu.grid.get_child_count() == everything, [menu.listed().size(), everything])
+	menu.search.text = "METEOR"
+	menu.refresh()
+	var found: Array = menu.listed().map(func(i): return i.item_id)
+	check("the search reads names and ids, any case", found.has("meteorite"), found)
+	menu.search.text = "double axe"
+	menu.refresh()
+	found = menu.listed().map(func(i): return i.item_id)
+	check("  and every word of it", found == ["doubleaxe"], found)
+	menu.search.text = "doubleaxe"
+	menu.refresh()
+	found = menu.listed().map(func(i): return i.item_id)
+	check("  and the id the server and the logs call it by", found == ["doubleaxe"], found)
+	menu.search.text = ""
+	menu.category.select(ItemSpawner.CATEGORIES.find("Weapons"))
+	menu.refresh()
+	check("a kind lists that kind and nothing else",
+		not menu.listed().is_empty() and menu.listed().all(func(i): return i.type == ItemData.Type.WEAPON))
+	var tiers: Array = menu.listed().map(func(i): return i.tier)
+	var sorted_tiers: Array = tiers.duplicate()
+	sorted_tiers.sort()
+	check("  cheapest first, the mythic weapons last", tiers == sorted_tiers, tiers)
+	var axe_cell: Button = menu.grid.get_node_or_null("doubleaxe") as Button
+	check("a cell shows the item's picture and says what it is",
+		axe_cell != null and axe_cell.icon != null and axe_cell.tooltip_text.contains("Double Axe")
+		and axe_cell.tooltip_text.contains("level 22") and axe_cell.tooltip_text.contains("id: doubleaxe"),
+		axe_cell.tooltip_text if axe_cell != null else "")
+	check("one click spawns it", axe_cell != null and axe_cell.pressed.get_connections().size() > 0)
+
+	check("a sword comes one at a time, however many are asked for",
+		ItemSpawner.quantity_for(_menu_item("w", T.WEAPON, S.WEAPON), 40) == 1)
+	check("  and potions up to their stack, never past it",
+		ItemSpawner.quantity_for(_menu_item("p", T.CONSUMABLE, S.NONE, 99), 40) == 40
+		and ItemSpawner.quantity_for(_menu_item("p", T.CONSUMABLE, S.NONE, 99), 500) == 99)
+
+	# --- SPAWNING, through the stubs ---
+	var asked: Array = []
+	var adopted: Array = []
+	var equipped: Array = []
+	var levels: Array = []
+	var answer: Array = [{"ok": true, "data": {"inventory": [null, {"item_id": "doubleaxe", "quantity": 1}],
+		"carry_positions": [1]}}]
+	menu.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		asked.append([path, body])
+		await get_tree().process_frame
+		return answer[0]
+	menu.adopt_bag = func(slot_index: int, bag_cells: Array) -> void:
+		adopted.append([slot_index, bag_cells])
+	menu.equip_request = func(id: String, cell: int) -> bool:
+		equipped.append([id, cell])
+		return true
+	menu.apply_level = func(data: Dictionary) -> void:
+		levels.append(data)
+
+	menu.quantity.value = 5
+	menu.wear_toggle.button_pressed = true
+	await menu.spawn("doubleaxe")
+	check("a click asks the server for it: the grant route, this character, one axe",
+		asked.size() == 1 and asked[0][0] == "/api/staff/grant" and asked[0][1].get("item_id") == "doubleaxe"
+		and asked[0][1].get("quantity") == 1 and asked[0][1].get("slot") == CharacterData.active_character_index,
+		asked)
+	check("  the bag the server sends back is adopted", adopted.size() == 1 and adopted[0][1].size() == 2)
+	check("  and the axe is put on from the cell it landed in", equipped == [["doubleaxe", 1]], equipped)
+	check("  and the menu says so", menu.status.text == "Added Double Axe and put it on.", menu.status.text)
+
+	menu.wear_toggle.button_pressed = false
+	await menu.spawn("doubleaxe")
+	check("with \"put gear on\" off, it only goes in the bag",
+		equipped.size() == 1 and menu.status.text == "Added 1 × Double Axe to your bag.", menu.status.text)
+	# A potion of the suite's own, registered for the moment: the real ones'
+	# pictures are in the private art pack, and a clone without it does not
+	# load them.
+	var potion: ItemData = _menu_item("menutest_potion", T.CONSUMABLE, S.NONE, 99)
+	ItemRegistry._items[potion.item_id] = potion
+	menu.wear_toggle.button_pressed = true
+	await menu.spawn("menutest_potion")
+	ItemRegistry._items.erase(potion.item_id)
+	check("something that is not gear is never put on, and comes as many as asked",
+		equipped.size() == 1 and asked[-1][1].get("item_id") == "menutest_potion"
+		and asked[-1][1].get("quantity") == 5, [equipped, asked[-1]])
+
+	answer[0] = {"ok": false, "status": 409, "error": "Your backpack is full."}
+	var adopted_before: int = adopted.size()
+	await menu.spawn("meteorite")
+	check("a refusal is said in the server's words, and nothing is adopted",
+		menu.status.text == "Your backpack is full." and adopted.size() == adopted_before, menu.status.text)
+
+	Api.is_owner = false
+	var asked_before: int = asked.size()
+	await menu.spawn("meteorite")
+	check("anyone but the owner is told it is the owner's, and nothing is asked",
+		asked.size() == asked_before and menu.status.text.contains("owner"), menu.status.text)
+	await menu.set_level(22)
+	check("  the level too", asked.size() == asked_before and levels.is_empty())
+	Api.is_owner = true
+
+	answer[0] = {"ok": true, "data": {"level": 22, "was": 3, "xp": 0, "xp_to_next": 99,
+		"hp": 432, "mana": 390, "stamina": 185}}
+	await menu.set_level(22)
+	check("Set level asks the owner's level route for this character",
+		asked[-1][0] == "/api/staff/level" and asked[-1][1].get("level") == 22
+		and asked[-1][1].get("slot") == CharacterData.active_character_index, asked[-1])
+	check("  and the character takes the server's answer", levels.size() == 1 and levels[0].get("level") == 22)
+	check("  and the box shows the level it is now", int(menu.level_box.value) == 22)
+
+	# --- THE CHARACTER'S HALF ---
+	var warrior: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior._set_stat_curve()
+	warrior.equipped = {}
+	warrior.level = 3
+	warrior.hp = 5
+	warrior.apply_server_level({"level": 22, "xp": 0, "xp_to_next": 777, "hp": 9999, "mana": 3, "stamina": 40})
+	check("a character copies a level the server set: level, XP and the next step",
+		warrior.level == 22 and warrior.xp == 0 and warrior.xp_next == 777)
+	check("  the maxima follow the level, and the pools are the server's, never over the maxima",
+		warrior.max_hp == PlayerStats.max_for(warrior.hp_base, warrior.hp_per_lvl, 22)
+		and warrior.hp == warrior.max_hp and warrior.mana == 3 and warrior.stamina == 40, [warrior.hp, warrior.max_hp])
+	warrior.free()
+
+	var said: Array = []
+	var listener := func(r): said.append(r)
+	CharacterData.carry_adopted.connect(listener)
+	var saved_slots = CharacterData.character_slots.duplicate(true)
+	var saved_index: int = CharacterData.active_character_index
+	CharacterData.character_slots = [{"character": "warrior", "inventory": []}, null, null, null]
+	CharacterData.active_character_index = 0
+	var cells: Array = [{"item_id": "doubleaxe", "quantity": 1}, null]
+	var landed: bool = CharacterData.adopt_granted_bag(0, cells, null)
+	var bag = CharacterData.character_slots[0].get("inventory", [])
+	CharacterData.carry_adopted.disconnect(listener)
+	CharacterData.character_slots = saved_slots
+	CharacterData.active_character_index = saved_index
+	check("the granted bag lands on the character", landed and bag is Array and bag.size() == 2
+		and bag[0] is Dictionary and bag[0].get("item_id") == "doubleaxe")
+	check("  without \"your backpack was updated by the server\" - you asked", said.is_empty(), said)
+
+	# --- THE DOOR, on the real HUD built out of the tree ---
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var row: Control = hud.get_node_or_null("%staffrow") as Control
+	Api.role = "mod"
+	Api.is_owner = false
+	hud._add_owner_button()
+	check("a mod has no Items button", row != null and not row.has_node("itemsbutton"))
+	Api.role = "owner"
+	Api.is_owner = true
+	hud._add_owner_button()
+	var items_button: Button = row.get_node_or_null("itemsbutton") as Button if row != null else null
+	check("the owner has one on the staff row, and it opens the menu",
+		items_button != null and items_button.pressed.is_connected(Callable(hud, "toggle_item_spawner")))
+	hud.item_spawner = menu
+	menu.visible = true
+	check("Escape counts the menu as open", hud.is_panel_open())
+	hud.hide_panel()
+	check("  and closes it", not menu.visible)
+	hud.item_spawner = null
+	hud.free()
+
+	menu.queue_free()
+	Api.is_owner = was_owner
+	Api.role = was_role
+	await get_tree().process_frame
+	print("  item menu: every item, searchable, spawned and worn; the owner's level; owner only")

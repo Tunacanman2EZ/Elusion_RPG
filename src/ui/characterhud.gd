@@ -73,6 +73,7 @@ const ChatPanelScript     := preload("res://src/ui/chat/chatpanel.gd")
 # doesn't expose anything, it's just an inert resource until the owner
 # actually toggles it with the backquote key.
 const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
+const ITEM_SPAWNER_SCENE  := preload("res://scene/ui/owner/itemspawner.tscn")
 const STAFF_PANEL_SCENE   := preload("res://scene/ui/staff/staffpanel.tscn")
 const STAFF_THEME         := preload("res://assets/themes/staff_ui_theme.tres")
 const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
@@ -131,6 +132,7 @@ var shop_panel:       Control         = null
 var kingdom_panel:    Control         = null
 var trade_panel:      Control         = null
 var owner_panel:      Control         = null
+var item_spawner:     Control         = null
 var staff_panel:      Control         = null
 var chat_panel:       Control         = null
 var friends_panel:    Control         = null
@@ -443,6 +445,21 @@ func _toggle_owner_panel() -> void:
 		add_child(owner_panel)
 
 	owner_panel.visible = not owner_panel.visible
+
+
+func toggle_item_spawner() -> void:
+	# The owner's item menu (itemspawner.gd). Owner-gated here as a courtesy,
+	# like the GM panel; the server refuses everyone else regardless.
+	if not Api.is_owner:
+		return
+	if item_spawner == null:
+		item_spawner = ITEM_SPAWNER_SCENE.instantiate()
+		item_spawner.visible = false
+		add_child(item_spawner)
+	if item_spawner.visible:
+		item_spawner.close()
+	else:
+		item_spawner.open()
 
 
 func _process(_delta: float) -> void:
@@ -819,6 +836,11 @@ func _add_owner_button() -> void:
 		["powersbutton", "Powers",
 			"What mod, dev and owner can each do - read from the live server",
 			_toggle_powers_panel],
+		# THE ITEM MENU (day 2): every item in the game, one click each, and
+		# this character's level - for testing. Owner only, like the two above.
+		["itemsbutton", "Items",
+			"Spawn any item in the game, and set your level - owner only",
+			toggle_item_spawner],
 	]:
 		var button := Button.new()
 		button.name = String(spec[0])
@@ -2550,6 +2572,7 @@ func _on_logout_pressed() -> void:
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
+	if item_spawner:     item_spawner.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -2561,6 +2584,7 @@ func _on_logout_pressed() -> void:
 	kingdom_panel    = null
 	trade_panel      = null
 	owner_panel      = null
+	item_spawner     = null
 	staff_panel      = null
 
 	# NEW (E-2): send any training XP (defense/agility/magic) that has not hit
@@ -2650,6 +2674,7 @@ func _on_switch_character_pressed() -> void:
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
+	if item_spawner:     item_spawner.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -2661,6 +2686,7 @@ func _on_switch_character_pressed() -> void:
 	kingdom_panel    = null
 	trade_panel      = null
 	owner_panel      = null
+	item_spawner     = null
 	staff_panel      = null
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
@@ -3102,6 +3128,8 @@ func hide_panel() -> void:
 	# the one panel that sits on top of the others was the odd one out.
 	if owner_panel != null and owner_panel.visible and owner_panel.has_method("close"):
 		owner_panel.close()
+	if item_spawner != null and item_spawner.visible:
+		item_spawner.close()
 	# And the staff desk, which is counted in is_panel_open() below for the
 	# reason the chat panel gives: closed here, counted there, or Escape falls
 	# through to whatever is behind it.
@@ -3128,8 +3156,10 @@ func is_panel_open() -> bool:
 	var guild_open: bool = guild_panel     != null and guild_panel.visible
 	var staff_open: bool = staff_panel     != null and staff_panel.visible
 	var keys_open:  bool = controls_panel  != null and controls_panel.visible
+	var items_open: bool = item_spawner    != null and item_spawner.visible
 	return (inv_open or stats_open or bank_open or cook_open or opts_open
-		or map_open or chat_open or mates_open or guild_open or staff_open or keys_open)
+		or map_open or chat_open or mates_open or guild_open or staff_open or keys_open
+		or items_open)
 
 
 func _any_panel_visible() -> bool:
@@ -3152,7 +3182,7 @@ func _any_panel_visible() -> bool:
 	for panel in [inventory_screen, equipment_panel, stats_screen, bank_screen,
 			lootbag_panel, cooking_panel, shop_panel, kingdom_panel,
 			trade_panel, owner_panel, staff_panel, options_screen, map_screen,
-			controls_panel]:
+			controls_panel, item_spawner]:
 		if panel != null and panel.visible:
 			return true
 	return false

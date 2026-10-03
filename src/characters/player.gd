@@ -1658,6 +1658,21 @@ func gain_xp(amount: int) -> void:
 	CharacterData.save_character_state(self)
 
 
+func apply_server_level(answer: Dictionary) -> void:
+	# THE OWNER'S LEVEL TOOL: /api/staff/level set the level, and this copies
+	# the server's answer - level, XP and the pools it stored. The pools are the
+	# server's numbers (full, recorded as a level-up grant), copied rather than
+	# refilled here, so _fill_all_resources() keeps its one caller, level_up().
+	# The level setter moves the maxima first, so the pools fit under them.
+	level = maxi(1, int(answer.get("level", level)))
+	xp = maxi(0, int(answer.get("xp", 0)))
+	xp_next = maxi(1, int(answer.get("xp_to_next", GameConstants.xp_needed_for_level(level))))
+	hp = clampi(int(answer.get("hp", hp)), 0, max_hp)
+	mana = clampi(int(answer.get("mana", mana)), 0, max_mana)
+	stamina = clampi(int(answer.get("stamina", stamina)), 0, max_stamina)
+	CharacterData.save_character_state(self)
+
+
 func xp_needed_for_skill(skill_level: int, base := 100, factor := 1.18) -> int:
 	# Defaults repeated here rather than referencing PlayerStats.SKILL_XP_BASE,
 	# because a default argument is part of this method's public signature and

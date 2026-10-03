@@ -1,0 +1,176 @@
+[gd_scene format=3 uid="uid://btkicemryi3y8"]
+
+[ext_resource type="Script" path="res://src/ui/owner/itemspawner.gd" id="1_spawner"]
+[ext_resource type="Theme" path="res://assets/themes/staff_ui_theme.tres" id="2_stafftheme"]
+
+[node name="itemspawner" type="Control"]
+theme = ExtResource("2_stafftheme")
+layout_mode = 3
+offset_left = 400.0
+offset_top = 40.0
+offset_right = 880.0
+offset_bottom = 600.0
+mouse_filter = 2
+script = ExtResource("1_spawner")
+
+[node name="frame" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margin" type="MarginContainer" parent="frame"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="rows" type="VBoxContainer" parent="frame/margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="headerpanel" type="PanelContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="headerbox" type="HBoxContainer" parent="frame/margin/rows/headerpanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="title" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_font_sizes/font_size = 18
+text = "ITEMS"
+vertical_alignment = 1
+
+[node name="hint" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_font_sizes/font_size = 11
+text = "owner only - click to spawn"
+vertical_alignment = 1
+
+[node name="itemspawnerclose" type="Button" parent="frame/margin/rows/headerpanel/headerbox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 26)
+layout_mode = 2
+tooltip_text = "Close  (Esc)"
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "×"
+
+[node name="filterrow" type="HBoxContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="itemsearch" type="LineEdit" parent="frame/margin/rows/filterrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+placeholder_text = "Search by name or id"
+clear_button_enabled = true
+
+[node name="itemcategory" type="OptionButton" parent="frame/margin/rows/filterrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+
+[node name="gridbox" type="PanelContainer" parent="frame/margin/rows"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"PanelSub"
+
+[node name="gridmargin" type="MarginContainer" parent="frame/margin/rows/gridbox"]
+layout_mode = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="scroll" type="ScrollContainer" parent="frame/margin/rows/gridbox/gridmargin"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="itemgrid" type="GridContainer" parent="frame/margin/rows/gridbox/gridmargin/scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
+columns = 9
+
+[node name="countlabel" type="Label" parent="frame/margin/rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_font_sizes/font_size = 11
+text = "0 items"
+
+[node name="spawnrow" type="HBoxContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="quantitylabel" type="Label" parent="frame/margin/rows/spawnrow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "How many"
+vertical_alignment = 1
+
+[node name="itemquantity" type="SpinBox" parent="frame/margin/rows/spawnrow"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 1.0
+max_value = 999.0
+value = 1.0
+
+[node name="wearit" type="CheckBox" parent="frame/margin/rows/spawnrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+button_pressed = true
+text = "Put gear on after spawning it"
+
+[node name="levelrow" type="HBoxContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="levellabel" type="Label" parent="frame/margin/rows/levelrow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "My level"
+vertical_alignment = 1
+
+[node name="levelbox" type="SpinBox" parent="frame/margin/rows/levelrow"]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 1.0
+max_value = 99.0
+value = 1.0
+
+[node name="levelbutton" type="Button" parent="frame/margin/rows/levelrow"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+tooltip_text = "Set this character's level on the server: XP from zero, full pools"
+text = "Set level"
+
+[node name="spawnstatus" type="Label" parent="frame/margin/rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 3
+text = "Pick an item. It goes straight into your bag."

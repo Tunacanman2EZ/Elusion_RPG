@@ -97,6 +97,8 @@ Mods, devs and the owner get a Staff button on the HUD: every account with who i
 
 The interesting part was what a kick looked like from the other side: nothing. The server deleted the session, but the game never asked again after the login screen, so a kicked player played on until they restarted. The game now sends a heartbeat every fifteen seconds and re-checks at once on any refused request — a kick lands in about a second — and only a 401 counts, so restarting the server never signs everyone out.
 
+The owner also gets an **Items** menu (`src/ui/owner/itemspawner.gd`): every item the game loaded, with its picture and rarity, searchable by name or id, spawned into the bag with one click - and put straight on, for gear - plus a box that sets the owner's own character's level on the server, so level 22 gear can be tested without eight hours of play. Every click is a server request the server logs; the menu only exists for the owner, and the level route refuses anyone else.
+
 Staff names are public - the crown and the MOD and DEV badges say exactly whose password is worth guessing - so a staff password alone opens nothing. For a staff account with a confirmed recovery address, a correct password gets a six-digit code by email instead of a session, and only the code logs in. A wrong code counts toward the same lockout as a wrong password.
 
 ### Runs on modest hardware, measured rather than guessed — `src/systems/settings.gd`
@@ -278,7 +280,7 @@ test_skill_train.py     10 checks    skills train only as fast as time allows
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,522 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 126 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,560 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 127 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
 **If you cloned this repo, it will report `2164 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 

@@ -1673,6 +1673,15 @@ func apply_server_carry(resync: Variant, player: Node = null) -> bool:
 	return landed
 
 
+func adopt_granted_bag(slot_index: int, cells: Array, player: Node = null) -> bool:
+	"""A bag the server changed because THIS client asked - the owner's item
+	menu - adopted the way a trade's is, onto the cached slot and the live
+	grid. Not announced: carry_adopted would say "Your backpack was updated by
+	the server" to the person who just pressed the button and is already being
+	told what they got."""
+	return _apply_server_carry({"slot": slot_index, "inventory": cells}, player)
+
+
 func _apply_server_carry(resync: Dictionary, player: Node) -> bool:
 	var cells: Array = resync.get("inventory", []) if resync.get("inventory", []) is Array else []
 	var slot_index: int = int(resync.get("slot", -1))

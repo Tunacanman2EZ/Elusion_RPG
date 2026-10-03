@@ -3059,6 +3059,38 @@ arena; the three scenes join PLAYER_PROJECTILE_SCENES. Twenty deliberate
 breaks, each caught. Played in the field with all three equipped through
 `/api/character/equip`: the server paid the kills.
 
+### The owner's item menu, and the owner's level
+
+Day 2: "i need these items as hot keys so i can test - can you create a menu in
+hud that allows me to select and spawn items registered in the game that only
+owner can use". The **Items** button on the staff row (built in code, owner
+only, beside Owner and Powers) opens `src/ui/owner/itemspawner.gd`:
+
+- **Every item `ItemRegistry` loaded**, so a new .tres is in the menu at the
+  next launch. Kinds come from `ItemSpawner.category_of()` - type and equip
+  slot, never a list of ids - then tier, then name. The search reads the name
+  and the id, any case, every word. Frames are the rarity colour.
+- **A click is `/api/staff/grant`**, the same route as the debug keys and the GM
+  panel, with the quantity clamped to the item's stack. The bag that comes back
+  goes through `CharacterData.adopt_granted_bag()`: the same adoption as a
+  trade's, without `carry_adopted`, which would announce "Your backpack was
+  updated by the server" to the person who pressed the button.
+- **"Put gear on"** equips a weapon or armour piece from the cell the grant
+  wrote (`carry_positions`), through the ordinary `/api/character/equip`, so
+  the class and level gates still refuse and say why.
+- **"My level"** is `POST /api/staff/level`: owner only, the caller's own
+  character, XP from zero, the maxima the curve gives, full pools recorded as
+  a level-up grant, and a `level` line in the staff log. The player copies the
+  answer with `apply_server_level()` - the server's pools, not a refill, so
+  `_fill_all_resources()` keeps its one caller.
+
+It closes on Escape, counts in `is_panel_open()`, and is the nineteenth window.
+`_test_the_item_menu` holds it (34 checks) through the panel's own doors -
+`post_request`, `adopt_bag`, `equip_request` and `apply_level` are Callables
+the suite swaps for stubs; seventeen deliberate breaks, each caught. The
+API's `test_ownership.py` O-7 holds the level route. Played as the owner: level
+1 to 22, then a Double Axe spawned and worn in two clicks.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —
