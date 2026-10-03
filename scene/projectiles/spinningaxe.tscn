@@ -1,0 +1,60 @@
+[gd_scene format=3 uid="uid://cmsdyq7mqb4s7"]
+
+[ext_resource type="Script" uid="uid://c23lx3d62ibjh" path="res://src/projectiles/spinningaxe.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://cbmrly64r1ogq" path="res://art/maincharacter/axe.png" id="2_axe"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_spin0"]
+atlas = ExtResource("2_axe")
+region = Rect2(0, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_spin1"]
+atlas = ExtResource("2_axe")
+region = Rect2(24, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_spin2"]
+atlas = ExtResource("2_axe")
+region = Rect2(48, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_spin3"]
+atlas = ExtResource("2_axe")
+region = Rect2(72, 0, 24, 24)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_spin"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spin0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spin1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spin2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spin3")
+}],
+"loop": true,
+"name": &"spin",
+"speed": 16.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_hit"]
+radius = 20.0
+
+[node name="spinningaxe" type="Area2D"]
+collision_layer = 32
+collision_mask = 8
+monitorable = false
+script = ExtResource("1_script")
+
+[node name="hitshape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_hit")
+
+[node name="shadow" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="spin" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+sprite_frames = SubResource("SpriteFrames_spin")
+animation = &"spin"

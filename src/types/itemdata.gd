@@ -302,6 +302,37 @@ static func slot_names() -> Array:
 # whose whole character is reliability, if one is ever authored.
 @export var damage_spread: float = 0.25
 
+# A WEAPON THAT BRINGS ITS OWN ATTACK. Every weapon up to ember adds its damage
+# to the class's own attack and changes nothing else. The mythic tier changes
+# what pressing attack does - the owner's call on day 2, after Ahvassa drew the
+# three: "this should be considered a upgraded version of weapons because they
+# have their own attack animation".
+#
+#   NONE          the class's own attack (every weapon below mythic)
+#   METEOR        mage: a meteor comes down where you aim, in place of the
+#                 stalagmite; one cast in ten brings a second beside it
+#   SPINNING_AXE  warrior: attack throws the axe to the spot you aim at, it
+#                 spins there hitting everything near it, and attack again
+#                 calls it back - see spinningaxe.gd for when it comes home
+#                 on its own
+#   DYNAMITE      tank: attack throws a lit stick where you aim, in place of
+#                 the aura; one throw in ten is two sticks
+#
+# The class script asks Player.equipped_weapon_attack() and branches. Only the
+# class that can equip the weapon (required_classes) ever reads its member, so
+# a METEOR on a warrior is not a state the game can reach.
+#
+# APPEND ONLY. The .tres files store the integer, so a member inserted above
+# another would quietly re-point every weapon below it.
+enum WeaponAttack {
+	NONE,
+	METEOR,
+	SPINNING_AXE,
+	DYNAMITE,
+}
+
+@export var weapon_attack: WeaponAttack = WeaponAttack.NONE
+
 # The defensive mirror of damage, for Type.ARMOR. Summed across every worn
 # piece by Player.equipped_armor_value() and turned into a share of each hit by
 # PlayerStats.armour_reduction().

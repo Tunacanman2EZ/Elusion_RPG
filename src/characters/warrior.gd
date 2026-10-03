@@ -93,6 +93,16 @@ const CLASS_DATA := preload("res://data/classes/warrior.tres")
 # preloaded slash wave projectile scene
 const SLASHWAVE_SCENE := preload("res://scene/projectiles/slashwave.tscn")
 
+# THE DOUBLE AXE'S ATTACK. With it equipped, attack throws the axe and attack
+# again calls it back - see spinningaxe.gd. The swing animation still plays as
+# the throw, but it carries no hitbox and no slash wave: the axe is the hit.
+const SPINNING_AXE_SCENE := preload("res://scene/projectiles/spinningaxe.tscn")
+
+# The axe while it is out of the warrior's hand, or null. Read with
+# is_instance_valid(): the axe frees itself when it is caught, and a scene
+# change frees it with everything else.
+var _axe: SpinningAxe = null
+
 # cardinal directions array — used by _detect_hitboxes() to avoid 4x duplication
 const CARDINAL_DIRECTIONS := ["left", "right", "up", "down"]
 
@@ -400,6 +410,13 @@ func attack_period() -> float:
 # =============================================================================
 
 func attack_action() -> void:
+	# With the Double Axe out, attack is the call back - and it is answered
+	# before the swing lock, so the axe comes home even mid-throw-animation.
+	var axe_mode: bool = equipped_weapon_attack() == ItemData.WeaponAttack.SPINNING_AXE
+	if axe_mode and axe_is_out():
+		_axe.recall()
+		return
+
 	if is_attacking:
 		return
 
@@ -444,6 +461,13 @@ func attack_action() -> void:
 	# and the sprite disagree about which way this swing went.
 	var swing_cardinal: String = _resolve_swing_cardinal(_swing_aim_direction)
 	_swing_hitbox = _resolve_swing_hitbox(swing_cardinal)
+	if axe_mode:
+		# THE SWING IS THE THROW. No hitbox, and the wave counts as already
+		# spawned, so _on_frame_changed() below plays the animation and does
+		# nothing else.
+		_swing_hitbox = null
+		_wave_spawned_this_swing = true
+		throw_axe(get_global_mouse_position())
 
 	var anim: String = _resolve_swing_animation(swing_cardinal)
 	_swing_wave_frame = _resolve_wave_frame(anim)
@@ -653,6 +677,40 @@ func _try_damage(target: Node) -> int:
 	_hit_this_swing[target_id] = true
 	target.take_damage(_calculate_melee_damage())
 	return 1
+
+
+# =============================================================================
+# THE DOUBLE AXE
+# =============================================================================
+
+func axe_is_out() -> bool:
+	return _axe != null and is_instance_valid(_axe) and not _axe.is_queued_for_deletion()
+
+
+func throw_axe(aimed_at: Vector2) -> SpinningAxe:
+	# Public so a test can throw one without a mouse. Returns the axe.
+	if axe_is_out():
+		return _axe
+	_axe = SPINNING_AXE_SCENE.instantiate()
+	_axe.caster = self
+	spawn_parent().add_child(_axe)
+	_axe.throw_to(global_position, aimed_at)
+	Audio.play("axe_throw")
+	return _axe
+
+
+func _on_axe_caught() -> void:
+	# spinningaxe.gd calls this as it frees itself in the warrior's hand.
+	_axe = null
+	Audio.play("axe_catch")
+
+
+func _on_gear_changed() -> void:
+	# The axe taken off while it is out: it is back in the bag, so the one in
+	# the world goes. There is nothing to wait for it to fly back to.
+	if axe_is_out() and equipped_weapon_attack() != ItemData.WeaponAttack.SPINNING_AXE:
+		_axe.queue_free()
+		_axe = null
 
 
 # =============================================================================

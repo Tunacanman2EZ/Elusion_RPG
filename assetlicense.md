@@ -26,6 +26,11 @@ below. This includes characters, enemies, tilesets, buildings, interiors, doors,
 teleporters, menu art, and the original audio (`/audio/ambience`, plus the REAPER
 session it was produced from).
 
+It also includes the three mythic weapons - the meteor, the double axe and the
+dynamite, with their icons (`art/maincharacter/meteor*`, `axe*`, `dynamite*`).
+They are weapon icons outside `/art/pack/` on purpose: Ahvassa drew them, so
+they are Elusion Studios', not Clockwork Raven's.
+
 Commissioned from Ahvassa (https://ahvassa.itch.io/) with rights assigned to
 Elusion Studios, plus original work by Robert Ashley Clear.
 

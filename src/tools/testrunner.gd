@@ -207,6 +207,7 @@ func _run_all() -> void:
 	await _test_bank_buttons_and_the_cooking_window()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
+	await _test_the_mythic_weapons()
 
 
 # =============================================================================
@@ -8698,6 +8699,9 @@ const PLAYER_PROJECTILE_SCENES := [
 	"res://scene/projectiles/slashwave.tscn",
 	"res://scene/projectiles/turretprojectile.tscn",
 	"res://scene/projectiles/spelltargetcircle.tscn",
+	"res://scene/projectiles/meteor.tscn",
+	"res://scene/projectiles/spinningaxe.tscn",
+	"res://scene/projectiles/dynamite.tscn",
 	"res://scene/pets/petprojectiles/petarrow.tscn",
 	"res://scene/pets/petprojectiles/petfireprojectile.tscn",
 	"res://scene/pets/petprojectiles/petmagicprojectile.tscn",
@@ -15748,3 +15752,385 @@ func _test_character_select_has_a_way_out() -> void:
 		saved != -1 and saved < cleared and cleared < out and out < gone, [saved, cleared, out, gone])
 	check("  and not while the world is loading", src.contains("if _leaving or _entering:"))
 	print("  character select: the level, Log out in place and once, and its order")
+
+
+# =============================================================================
+# THE MYTHIC WEAPONS - a weapon that brings its own attack
+# =============================================================================
+# Day 2: Ahvassa delivered a meteor, a double axe and a stick of dynamite, and
+# the owner decided they are weapons - "an upgraded version of weapons because
+# they have their own attack animation". Tier 6, level 22, one per class:
+#
+#   Meteorite (mage)    a meteor falls where you aim; one cast in ten, two
+#   Double Axe (warrior) thrown to a spot, spins there, attack calls it back
+#   Dynamite (tank)     a lit stick thrown where you aim, in place of the aura;
+#                       one throw in ten, two sticks spread apart
+#
+# What can go wrong without a sound, and so is held here: an item that is not
+# in the catalogue the server reads (it could never be worn), an attack that
+# lands nowhere near where it was drawn, a hit that misses what is inside its
+# ring or catches what is outside, an axe that never comes home or can be left
+# working with nobody playing, a double cast that lands both on one spot, and a
+# blast whose ground mark is placed before the blast has been moved - which
+# happened: the first crater appeared under the player's spawn point.
+
+const MYTHIC_WEAPONS := {
+	"meteorite": {"class": "mage", "attack": 1, "ember": "emberstaff", "icon": 32},
+	"doubleaxe": {"class": "warrior", "attack": 2, "ember": "embersword", "icon": 16},
+	"dynamite": {"class": "tank", "attack": 3, "ember": "embermaul", "icon": 16},
+}
+
+
+func _weapon_dummy(parent: Node, at: Vector2) -> CharacterBody2D:
+	# A stand-in enemy: a body on the enemies layer, in the enemies group, that
+	# writes down every hit it takes.
+	var script := GDScript.new()
+	script.source_code = "extends CharacterBody2D\nvar taken: Array = []\n" \
+		+ "func take_damage(amount: int, _element: int = 0) -> void:\n\ttaken.append(amount)\n"
+	script.reload()
+	var body := CharacterBody2D.new()
+	body.set_script(script)
+	body.collision_layer = 8
+	body.collision_mask = 0
+	var shape := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 5.0
+	shape.shape = circle
+	body.add_child(shape)
+	body.add_to_group("enemies")
+	parent.add_child(body)
+	body.global_position = at
+	return body
+
+
+func _weapon_hand(parent: Node, at: Vector2) -> Node2D:
+	# A stand-in warrior for the axe: one swing hits for 40 and takes a second.
+	var script := GDScript.new()
+	script.source_code = "extends Node2D\nvar is_dying: bool = false\nvar afk: bool = false\n" \
+		+ "var caught: int = 0\nvar magic_xp: int = 0\n" \
+		+ "func _calculate_melee_damage() -> int:\n\treturn 40\n" \
+		+ "func attack_period() -> float:\n\treturn 1.0\n" \
+		+ "func is_afk() -> bool:\n\treturn afk\n" \
+		+ "func _on_axe_caught() -> void:\n\tcaught += 1\n" \
+		+ "func gain_magic_xp(n: int) -> void:\n\tmagic_xp += n\n"
+	script.reload()
+	var hand := Node2D.new()
+	hand.set_script(script)
+	parent.add_child(hand)
+	hand.global_position = at
+	return hand
+
+
+func _marks_at(parent: Node, at: Vector2) -> int:
+	var found := 0
+	for child in parent.get_children():
+		if child.is_in_group("blastmarks") and (child as Node2D).global_position.distance_to(at) < 1.0:
+			found += 1
+	return found
+
+
+func _test_the_mythic_weapons() -> void:
+	section("MYTHIC WEAPONS - the meteor, the double axe and the dynamite")
+
+	# --- THE ITEMS -----------------------------------------------------------
+	check("the attacks are appended, never renumbered: NONE 0, METEOR 1, SPINNING_AXE 2, DYNAMITE 3",
+		ItemData.WeaponAttack.NONE == 0 and ItemData.WeaponAttack.METEOR == 1
+		and ItemData.WeaponAttack.SPINNING_AXE == 2 and ItemData.WeaponAttack.DYNAMITE == 3)
+	var gamedata: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
+	var exported: Dictionary = {}
+	for row in gamedata.get("items", []):
+		exported[str(row.get("item_id", ""))] = row
+	for id in MYTHIC_WEAPONS:
+		var want: Dictionary = MYTHIC_WEAPONS[id]
+		var item: ItemData = ItemRegistry.get_item(id)
+		check("%s is in the catalogue" % id, item != null)
+		if item == null:
+			continue
+		# Ember read from the export, not the registry: ember's icons are in
+		# the private pack, and a clone without it does not load those items.
+		var ember: Dictionary = exported.get(want["ember"], {})
+		check("  a tier 6 %s weapon at level 22, attack %d" % [want["class"], want["attack"]],
+			item.tier == 6 and item.required_level == 22 and item.type == ItemData.Type.WEAPON
+			and item.equip_slot == ItemData.EquipSlot.WEAPON and item.required_classes == [want["class"]]
+			and int(item.weapon_attack) == int(want["attack"]),
+			[item.tier, item.required_level, item.required_classes, item.weapon_attack])
+		check("  a little above ember: more damage and a bigger bonus than %s" % want["ember"],
+			not ember.is_empty() and item.damage > int(ember.get("damage", 0))
+			and item.bonus_damage_percent > int(ember.get("bonus_damage_percent", 0)),
+			[item.damage, ember.get("damage", -1)])
+		check("  its icon is drawn %dx%d, whole pixels in the slot" % [want["icon"], want["icon"]],
+			item.icon != null and item.icon.get_width() == want["icon"] and item.icon.get_height() == want["icon"])
+		check("  its description says what attack does", item.description.contains("Your attack"), item.description)
+		var row: Dictionary = exported.get(id, {})
+		check("  and the server's catalogue agrees, so it can be worn",
+			int(row.get("tier", 0)) == 6 and int(row.get("required_level", 0)) == 22
+			and Array(row.get("required_classes", [])) == [want["class"]]
+			and str(row.get("equip_slot_name", "")) == "WEAPON", row)
+
+	# Not sold, and nothing drops them - the owner sets the odds later.
+	var sold: Array = []
+	var shops := DirAccess.open("res://data/shops")
+	for file in shops.get_files():
+		if file.ends_with(".tres"):
+			var shop: Resource = load("res://data/shops/" + file)
+			for id in MYTHIC_WEAPONS:
+				if Array(shop.get("stock")).has(id):
+					sold.append("%s sells %s" % [file, id])
+	check("no shop sells them", sold.is_empty(), sold)
+	var droppers: Array = []
+	var enemies_dir := DirAccess.open("res://data/enemies")
+	for file in enemies_dir.get_files():
+		if not file.ends_with(".tres"):
+			continue
+		var enemy: EnemyData = load("res://data/enemies/" + file) as EnemyData
+		if enemy == null:
+			continue
+		var odds: PackedFloat32Array = enemy.tier_odds
+		var top_share: float = odds[0] if odds.size() > 0 else 0.15
+		if (enemy.max_loot_tier >= 6 and top_share > 0.0) or (enemy.max_loot_tier >= 5 and enemy.tier_up_chance > 0.0):
+			droppers.append(enemy.enemy_id)
+	check("and no enemy can roll tier 6 yet - the drop odds are the owner's call", droppers.is_empty(), droppers)
+	for id in ["meteor_impact", "axe_throw", "axe_catch", "dynamite_throw", "explosion"]:
+		check("the %s sound has a slot waiting for its file" % id, Audio.SOUNDS.has(id))
+
+	# Which attack each weapon gives, asked of a character built outside the tree.
+	var mage: Node = (load("res://src/characters/mage.gd") as GDScript).new()
+	var asked: Array = []
+	for pair in [["", 0], ["emberstaff", 0], ["meteorite", 1], ["doubleaxe", 2], ["dynamite", 3]]:
+		mage.equipped = {} if pair[0] == "" else {"weapon": pair[0]}
+		asked.append(mage.equipped_weapon_attack() == pair[1])
+	check("bare hands and ember keep the class attack; each mythic weapon brings its own",
+		not asked.has(false), asked)
+
+	var arena := Node2D.new()
+	add_child(arena)
+	var o := Vector2(9000, 9000)
+
+	# --- THE METEOR ----------------------------------------------------------
+	var inside: CharacterBody2D = _weapon_dummy(arena, o + Vector2(12, 0))
+	var outside: CharacterBody2D = _weapon_dummy(arena, o + Vector2(45, 0))
+	var caster: Node2D = _weapon_hand(arena, o + Vector2(-100, 0))
+	var meteor: Meteor = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
+	meteor.explosion_damage = 50
+	meteor.caster = caster
+	arena.add_child(meteor)
+	meteor.global_position = o
+	meteor.set_physics_process(false)
+	# FOUR FRAMES, NOT TWO. An Area2D added in the same frame as the body it
+	# should see reports nothing for its first couple of physics steps -
+	# measured here, where the first area of a fresh arena saw nobody after
+	# two. In the game the meteor falls for forty-four frames first.
+	for i in 4:
+		await get_tree().physics_frame
+	meteor.advance(Meteor.FALL_SECONDS * 0.5)
+	check("halfway down the meteor is in the sky, up and to one side of where it lands",
+		not meteor.landed and meteor.rock.visible and meteor.rock.position.y < -20.0 and meteor.rock.position.x < 0.0,
+		meteor.rock.position)
+	check("  its shadow is already on the ground, and nobody has been hit",
+		meteor.shadow.visible and inside.taken.is_empty())
+	meteor.advance(Meteor.FALL_SECONDS * 0.6)
+	check("it lands, and the enemy inside its ring takes the hit once", meteor.landed and inside.taken == [50], inside.taken)
+	check("  the one outside the ring is not touched", outside.taken.is_empty(), outside.taken)
+	check("  the caster is paid the stalagmite's magic XP for it", caster.magic_xp == Meteor.MAGIC_XP_ON_HIT, caster.magic_xp)
+	check("  and the crater is where it landed, not where the world begins",
+		_marks_at(arena, o) == 1 and get_tree().get_nodes_in_group("blastmarks").size() == 1)
+	check("the stone stays in its crater, on the floor", meteor.rock.visible and meteor.rock.z_index == -1)
+	meteor.advance(Meteor.COOL_SECONDS + Meteor.FADE_SECONDS + 0.05)
+	check("  then cools and is gone", meteor.is_queued_for_deletion())
+
+	mage.spawn_parent_override = arena
+	mage.equipped = {"weapon": "meteorite"}
+	mage.double_cast_chance = 0.0
+	var aim: Vector2 = o + Vector2(0, 200)
+	var one: Array = mage.call_meteor(aim)
+	check("a cast with the double-cast roll missed calls one meteor, where it was aimed",
+		one.size() == 1 and one[0].global_position == aim and one[0].delay == 0.0 and one[0].caster == mage)
+	check("  hitting for the staff formula with the Meteorite's damage in it",
+		one.size() == 1 and one[0].explosion_damage > roundi(mage.damage_per_magic * mage.get_damage_multiplier()),
+		one[0].explosion_damage if one.size() == 1 else -1)
+	mage.double_cast_chance = 1.0
+	var two: Array = mage.call_meteor(aim)
+	var apart: float = two[1].global_position.distance_to(aim) if two.size() == 2 else -1.0
+	check("a double cast calls two, the second beside the first rather than on it",
+		two.size() == 2 and two[0].global_position == aim
+		and apart >= mage.METEOR_SPREAD_MIN - 0.01 and apart <= mage.METEOR_SPREAD_MAX + 0.01, apart)
+	check("  and a moment later, so they land one after the other",
+		two.size() == 2 and is_equal_approx(two[1].delay, mage.METEOR_SECOND_DELAY))
+	two[1].set_physics_process(false)
+	two[1].advance(mage.METEOR_SECOND_DELAY * 0.5)
+	check("  the second is not even in the sky until then", not two[1].rock.visible)
+	check("the mage's cast calls the meteor in place of the stalagmite when one is worn",
+		_func_body(_code_src("res://src/characters/mage.gd"), "func _cast_stalagmite_drop(").contains(
+			"if equipped_weapon_attack() == ItemData.WeaponAttack.METEOR:\n\t\tcall_meteor("))
+
+	# --- THE DOUBLE AXE ------------------------------------------------------
+	var row_y := o + Vector2(0, 500)
+	var hand: Node2D = _weapon_hand(arena, row_y)
+	var passed_by: CharacterBody2D = _weapon_dummy(arena, row_y + Vector2(60, 0))
+	var at_spot: CharacterBody2D = _weapon_dummy(arena, row_y + Vector2(160, 0))
+	var axe: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+	axe.caster = hand
+	arena.add_child(axe)
+	axe.set_physics_process(false)
+	axe.throw_to(hand.global_position, hand.global_position + Vector2(150, 0))
+	var steps := 0
+	while axe.state == SpinningAxe.State.OUT and steps < 200:
+		await get_tree().physics_frame
+		axe.advance(1.0 / 80.0)
+		steps += 1
+	check("thrown, the axe flies to the spot and starts spinning there",
+		axe.state == SpinningAxe.State.SPINNING and axe.global_position.distance_to(row_y + Vector2(150, 0)) < 1.0,
+		[axe.state, axe.global_position - row_y])
+	check("  cutting what it passed on the way out, once, for a swing", passed_by.taken == [40], passed_by.taken)
+	for i in 4:
+		await get_tree().physics_frame
+		axe.advance(SpinningAxe.TICK_SECONDS)
+	check("spinning, it cuts what is near it every tick, for a tick's share of a swing",
+		at_spot.taken == [40, 10, 10, 10, 10], at_spot.taken)
+	check("  and nothing further away", passed_by.taken == [40], passed_by.taken)
+	axe.recall()
+	steps = 0
+	while is_instance_valid(axe) and not axe.is_queued_for_deletion() and steps < 200:
+		await get_tree().physics_frame
+		axe.advance(1.0 / 80.0)
+		steps += 1
+	check("called back, it cuts what it passes on the way home too", passed_by.taken == [40, 40], passed_by.taken)
+	check("  and the warrior catches it", hand.caught == 1 and (not is_instance_valid(axe) or axe.is_queued_for_deletion()))
+
+	var far_throw: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+	far_throw.caster = hand
+	arena.add_child(far_throw)
+	far_throw.set_physics_process(false)
+	far_throw.throw_to(hand.global_position, hand.global_position + Vector2(0, 1000))
+	check("a spot too far is taken as a direction: it goes as far as a throw goes",
+		is_equal_approx(far_throw.target.distance_to(hand.global_position), SpinningAxe.MAX_THROW))
+	far_throw.state = SpinningAxe.State.SPINNING
+	hand.global_position = far_throw.global_position + Vector2(SpinningAxe.LEASH + 5.0, 0)
+	far_throw.advance(0.01)
+	check("walk off past the leash and it comes home on its own", far_throw.state == SpinningAxe.State.RETURNING)
+	far_throw.state = SpinningAxe.State.SPINNING
+	hand.global_position = far_throw.global_position + Vector2(20, 0)
+	hand.afk = true
+	far_throw.advance(0.01)
+	check("go away from the keyboard and it comes home - no axe left grinding a spawn",
+		far_throw.state == SpinningAxe.State.RETURNING)
+	hand.afk = false
+	hand.is_dying = true
+	far_throw.advance(0.01)
+	check("die and it is simply gone", far_throw.is_queued_for_deletion())
+	hand.is_dying = false
+
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 2
+	var wall_shape := CollisionShape2D.new()
+	var wall_rect := RectangleShape2D.new()
+	wall_rect.size = Vector2(8, 200)
+	wall_shape.shape = wall_rect
+	wall.add_child(wall_shape)
+	arena.add_child(wall)
+	wall.global_position = hand.global_position + Vector2(80, 0)
+	var stopped: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+	stopped.caster = hand
+	arena.add_child(stopped)
+	stopped.set_physics_process(false)
+	stopped.throw_to(hand.global_position, hand.global_position + Vector2(150, 0))
+	steps = 0
+	while stopped.state == SpinningAxe.State.OUT and steps < 200:
+		await get_tree().physics_frame
+		stopped.advance(1.0 / 80.0)
+		steps += 1
+	check("thrown at a wall, it stops at the wall and spins there rather than passing through",
+		stopped.state == SpinningAxe.State.SPINNING and stopped.global_position.x < wall.global_position.x,
+		stopped.global_position - hand.global_position)
+	stopped.queue_free()
+
+	var warrior: Node = (load("res://src/characters/warrior.gd") as GDScript).new()
+	warrior._set_stat_curve()
+	warrior.spawn_parent_override = arena
+	warrior.equipped = {"weapon": "doubleaxe"}
+	warrior.position = o + Vector2(0, 800)
+	var thrown: SpinningAxe = warrior.throw_axe(warrior.position + Vector2(100, 0))
+	check("the warrior throws one axe, at the spot", thrown != null and warrior.axe_is_out()
+		and thrown.caster == warrior and thrown.target == warrior.position + Vector2(100, 0))
+	check("  and only one: asking again while it is out hands back the same axe",
+		warrior.throw_axe(warrior.position + Vector2(0, 100)) == thrown)
+	warrior.attack_action()
+	check("attack while it is out calls it back", thrown.state == SpinningAxe.State.RETURNING)
+	var attack_src: String = _func_body(_code_src("res://src/characters/warrior.gd"), "func attack_action(")
+	check("  and the swing that throws it carries no hitbox and no slash wave",
+		attack_src.contains("_swing_hitbox = null") and attack_src.contains("_wave_spawned_this_swing = true")
+		and attack_src.contains("throw_axe("))
+	warrior.equipped = {}
+	warrior.refresh_gear_stats()
+	check("taking the axe off while it is out takes it out of the world",
+		not warrior.axe_is_out() and thrown.is_queued_for_deletion())
+
+	# --- THE DYNAMITE --------------------------------------------------------
+	var land := o + Vector2(0, 1100)
+	var near_blast: CharacterBody2D = _weapon_dummy(arena, land + Vector2(15, 0))
+	var past_blast: CharacterBody2D = _weapon_dummy(arena, land + Vector2(50, 0))
+	var stick: Dynamite = (load("res://scene/projectiles/dynamite.tscn") as PackedScene).instantiate()
+	stick.explosion_damage = 30
+	arena.add_child(stick)
+	stick.set_physics_process(false)
+	stick.throw_from(land + Vector2(-120, 0), land)
+	stick.advance(Dynamite.FLIGHT_SECONDS * 0.5)
+	check("halfway there the stick is in the air above its shadow, partway along",
+		stick.state == Dynamite.State.FLYING and stick.stick.position.y < -15.0
+		and stick.global_position.x > land.x - 120.0 and stick.global_position.x < land.x,
+		[stick.stick.position, stick.global_position - land])
+	stick.advance(Dynamite.FLIGHT_SECONDS * 0.5 + 0.01)
+	check("it lands where it was thrown and lies there, fuse lit",
+		stick.state == Dynamite.State.FUSE and stick.global_position == land and stick.stick.position.y > -5.0)
+	for i in 4:
+		await get_tree().physics_frame
+	stick.advance(0.5)
+	check("  the fuse burns - half a second on, nothing has been hit yet", not stick.exploded and near_blast.taken.is_empty())
+	stick.advance(Dynamite.FUSE_SECONDS)
+	check("then it goes off: the enemy inside the blast is hit once", stick.exploded and near_blast.taken == [30], near_blast.taken)
+	check("  the one outside it is not", past_blast.taken.is_empty(), past_blast.taken)
+	check("  and the scorch is where it went off", _marks_at(arena, land) == 1)
+
+	var tank: Node = (load("res://src/characters/tank.gd") as GDScript).new()
+	tank._set_stat_curve()
+	tank.level = 22
+	tank.spawn_parent_override = arena
+	tank.equipped = {"weapon": "dynamite"}
+	tank.mana = 100
+	tank.position = o + Vector2(0, 1400)
+	tank.double_cast_chance = 0.0
+	var sticks: Array = tank.throw_dynamite(tank.position + Vector2(1000, 0))
+	check("the tank throws one stick, as far as a throw goes, for its mana",
+		sticks.size() == 1 and sticks[0].landing_spot() == tank.position + Vector2(tank.DYNAMITE_MAX_THROW, 0)
+		and tank.mana == 100 - tank.dynamite_mana_cost,
+		[sticks.size(), tank.mana])
+	check("  worth the four aura ticks it replaces, with the Dynamite's damage in them",
+		sticks.size() == 1 and sticks[0].explosion_damage >= roundi(tank.aura_damage * tank.get_damage_multiplier() * 4.0),
+		sticks[0].explosion_damage if sticks.size() == 1 else -1)
+	check("  and not again until the cooldown is over",
+		tank.throw_dynamite(tank.position + Vector2(50, 0)).is_empty() and tank.mana == 100 - tank.dynamite_mana_cost)
+	tank._dynamite_cooldown_left = 0.0
+	tank.double_cast_chance = 1.0
+	var pair: Array = tank.throw_dynamite(tank.position + Vector2(100, 0))
+	var spots: Array = pair.map(func(d): return d.landing_spot() - tank.position)
+	check("a double throw is two sticks, either side of the aim, across the throw",
+		pair.size() == 2 and spots.has(Vector2(100, tank.DYNAMITE_SPREAD)) and spots.has(Vector2(100, -tank.DYNAMITE_SPREAD)),
+		spots)
+	check("  for one throw's mana, the second a moment behind the first",
+		tank.mana == 100 - 2 * tank.dynamite_mana_cost and pair.size() == 2
+		and pair[0].delay == 0.0 and is_equal_approx(pair[1].delay, tank.DYNAMITE_SECOND_DELAY))
+	tank.aura_active = true
+	tank.refresh_gear_stats()
+	check("dynamite on while the aura burns puts the aura out", not tank.aura_active)
+	check("attack throws dynamite instead of toggling the aura when it is worn",
+		_func_body(_code_src("res://src/characters/tank.gd"), "func attack_action(").contains(
+			"if equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:\n\t\tthrow_dynamite("))
+	check("  and the cooldown runs down in the tank's own loop",
+		_func_body(_code_src("res://src/characters/tank.gd"), "func _physics_process(").contains("_dynamite_cooldown_left"))
+
+	arena.queue_free()
+	await get_tree().process_frame
+	mage.free()
+	warrior.free()
+	tank.free()
+	print("  mythic weapons: three items, the meteor, the axe out and home, the dynamite, double casts")

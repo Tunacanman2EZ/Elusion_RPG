@@ -1,0 +1,62 @@
+[gd_scene format=3 uid="uid://bgll3w4isqmki"]
+
+[ext_resource type="Script" uid="uid://g60g0lihygao" path="res://src/projectiles/meteor.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://c47s5atu0temx" path="res://art/maincharacter/meteor.png" id="2_rock"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_hit"]
+radius = 22.0
+
+[sub_resource type="Gradient" id="Gradient_fire"]
+offsets = PackedFloat32Array(0, 0.3, 0.7, 1)
+colors = PackedColorArray(1, 0.95, 0.65, 1, 1, 0.65, 0.18, 1, 0.85, 0.28, 0.08, 0.8, 0.3, 0.15, 0.1, 0)
+
+[sub_resource type="Gradient" id="Gradient_smoke"]
+offsets = PackedFloat32Array(0, 0.2, 1)
+colors = PackedColorArray(0.4, 0.38, 0.36, 0, 0.38, 0.36, 0.34, 0.6, 0.55, 0.53, 0.5, 0)
+
+[node name="meteor" type="Area2D"]
+collision_layer = 32
+collision_mask = 8
+monitorable = false
+script = ExtResource("1_script")
+
+[node name="hitshape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_hit")
+
+[node name="shadow" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="glow" type="Sprite2D" parent="."]
+texture_filter = 1
+
+[node name="rock" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_rock")
+
+[node name="trail" type="CPUParticles2D" parent="."]
+amount = 48
+lifetime = 0.45
+emission_shape = 1
+emission_sphere_radius = 8.0
+direction = Vector2(-0.37, -0.93)
+spread = 18.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 20.0
+initial_velocity_max = 45.0
+scale_amount_min = 2.0
+scale_amount_max = 4.0
+color_ramp = SubResource("Gradient_fire")
+
+[node name="smoketrail" type="CPUParticles2D" parent="."]
+amount = 16
+lifetime = 0.8
+emission_shape = 1
+emission_sphere_radius = 6.0
+direction = Vector2(-0.37, -0.93)
+spread = 25.0
+gravity = Vector2(0, -6)
+initial_velocity_min = 8.0
+initial_velocity_max = 18.0
+scale_amount_min = 3.0
+scale_amount_max = 5.0
+color_ramp = SubResource("Gradient_smoke")

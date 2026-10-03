@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://c4hnfprxviuem"]
+
+[ext_resource type="Texture2D" uid="uid://bx5u0wja73hpd" path="res://art/maincharacter/axeicon.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "doubleaxe"
+display_name = "Double Axe"
+description = "Your attack throws it where you aim, and it spins there, cutting everything near it, until you attack again to call it back."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 20000
+tier = 6
+required_level = 22
+type = 1
+equip_slot = 1
+required_classes = Array[String](["warrior"])
+damage = 110
+weapon_attack = 2
+bonus_damage_percent = 9
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

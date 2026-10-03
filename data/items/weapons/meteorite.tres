@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dy8dlnyxg6k1r"]
+
+[ext_resource type="Texture2D" uid="uid://bo7n5ssh42o4w" path="res://art/maincharacter/meteoricon.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "meteorite"
+display_name = "Meteorite"
+description = "Your attack calls a meteor down where you aim. One cast in ten calls a second beside it."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 19000
+tier = 6
+required_level = 22
+type = 1
+equip_slot = 1
+required_classes = Array[String](["mage"])
+damage = 41
+weapon_attack = 1
+bonus_damage_percent = 9
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

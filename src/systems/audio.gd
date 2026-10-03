@@ -69,6 +69,13 @@ const SOUNDS: Dictionary = {
 	"spell_cast":     "",  # mage stalagmite, healer cast
 	"projectile":     "",  # arrow / orb / poison ball leaving a muzzle
 	"aura_on":        "",  # tank aura activating
+
+	# --- mythic weapons, each its own attack ---
+	"meteor_impact":  "",  # a meteor hitting the ground
+	"axe_throw":      "",  # the double axe leaving the warrior's hand
+	"axe_catch":      "",  # the double axe coming back to it
+	"dynamite_throw": "",  # a stick of dynamite thrown
+	"explosion":      "",  # the dynamite going off
 	"refused":        "",  # a dull blip for "you can't do that"
 
 	# --- items and loot ---

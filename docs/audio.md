@@ -4,7 +4,7 @@ The game is **silent**. Every id in `Audio.SOUNDS` is an empty string, and the
 boot log has been saying so at every launch since the system was written:
 
 ```
-[BOOT] Audio: 0 of 31 sounds assigned
+[BOOT] Audio: 0 of 36 sounds assigned
 ```
 
 That is a deliberate state, not a bug. The hooks went into the game first so the
@@ -65,7 +65,7 @@ thirtieth.
 
 ---
 
-## The 31 ids, and where each one fires
+## The 36 ids, and where each one fires
 
 Line numbers drift; the file names do not. Comments are excluded, so every site
 below is real code.
@@ -109,6 +109,24 @@ the twentieth repeat**, because it will be heard twenty times in a row.
 arrow, orb or poison ball leaves a muzzle — see `muzzle_marker_prefix` and the
 release-frame notes in the art pipeline. Adding it is a one-line call in the
 projectile spawn, not a new system.
+
+### Mythic weapons
+
+| id | played from |
+|---|---|
+| `meteor_impact` | `projectiles/meteor.gd:150` |
+| `axe_throw` | `characters/warrior.gd:698` |
+| `axe_catch` | `characters/warrior.gd:705` |
+| `dynamite_throw` | `characters/tank.gd:400` |
+| `explosion` | `projectiles/dynamite.gd:114` |
+
+The three tier 6 weapons, added on day 2, each have their own attack. These
+are the loud ones. A mage can bring a meteor down twice a second, so
+`meteor_impact` will overlap itself, and it wants a short, heavy thud rather
+than a long rumble. `explosion` is the dynamite's, about once a second, and it
+can be bigger. `axe_throw` plays as the warrior's swing starts, on top of
+`attack_swing`, so a whoosh with some metal in it reads best. `axe_catch` is
+the axe landing back in the hand.
 
 ### Items and loot
 

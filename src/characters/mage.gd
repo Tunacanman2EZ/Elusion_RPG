@@ -51,6 +51,21 @@ const CLASS_DATA := preload("res://data/classes/mage.tres")
 # the stalagmite spell scene — assigned in the inspector on mage.tscn
 @export var target_circle_scene: PackedScene
 
+# THE METEORITE'S ATTACK, in place of the stalagmite while one is equipped. Same
+# mana, same cooldown and the same damage formula - the weapon's own damage and
+# the bigger hit are the upgrade. See meteor.gd.
+const METEOR_SCENE := preload("res://scene/projectiles/meteor.tscn")
+
+# A double cast's second meteor lands this far from the first, in a random
+# direction: far enough apart to read as two strikes and to reach enemies the
+# first missed, close enough that both are where the player aimed. The two hit
+# areas (22 each) still overlap a little at the near end.
+const METEOR_SPREAD_MIN := 30.0
+const METEOR_SPREAD_MAX := 40.0
+
+# ...and starts falling this much later, so the two land one after the other.
+const METEOR_SECOND_DELAY := 0.18
+
 # mana drained per stalagmite cast
 @export var spell_mana_cost: int = 15
 
@@ -204,7 +219,10 @@ func _cast_stalagmite_drop() -> void:
 		print("[MAGE] casting stalagmite (mana now %d)" % mana)
 
 	_play_cast_animation()
-	_spawn_stalagmite()
+	if equipped_weapon_attack() == ItemData.WeaponAttack.METEOR:
+		call_meteor(get_global_mouse_position())
+	else:
+		_spawn_stalagmite()
 
 	# Cooldown unlocks casting after spell_cooldown seconds. This is the ONLY
 	# way is_casting clears — there is no animation_finished hook, because the
@@ -299,6 +317,35 @@ func _spawn_stalagmite() -> void:
 	# script, not this one.
 	if "caster" in spell:
 		spell.caster = self
+
+
+# =============================================================================
+# METEOR CAST
+# =============================================================================
+
+func call_meteor(target: Vector2) -> Array[Meteor]:
+	# One meteor at the target, and one cast in ten a second beside it (see
+	# Player.rolls_double()). Returns what was dropped, for the tests. The mana
+	# and the cooldown were paid by the caller, once, whichever it is.
+	var dropped: Array[Meteor] = [_drop_meteor(target, 0.0)]
+	if rolls_double():
+		var away := Vector2.from_angle(randf() * TAU) * randf_range(METEOR_SPREAD_MIN, METEOR_SPREAD_MAX)
+		dropped.append(_drop_meteor(target + away, METEOR_SECOND_DELAY))
+	return dropped
+
+
+func _drop_meteor(at: Vector2, delay: float) -> Meteor:
+	var meteor: Meteor = METEOR_SCENE.instantiate()
+	# The stalagmite's formula, rolled per meteor - two meteors are two hits.
+	meteor.explosion_damage = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
+	meteor.caster = self
+	meteor.delay = delay
+	# The scene root, like the stalagmite: it stays where it was aimed if the
+	# mage walks off, and draws its own layers - see meteor.gd.
+	spawn_parent(false).add_child(meteor)
+	meteor.global_position = at
+	meteor.reset_physics_interpolation()
+	return meteor
 
 
 # =============================================================================

@@ -2990,6 +2990,75 @@ breaks, each caught. Left for the owner: the Field puts its strongest enemies
 (the dark element, 1,155 to 2,800 health) within 250 px of the entrance and its
 weakest farthest away, so a new level 1 character dies in about two seconds.
 
+### Mythic weapons: a weapon that brings its own attack
+
+Day 2. Ahvassa drew a meteor, a double axe and a lit stick of dynamite, and the
+owner made them weapons - "an upgraded version of weapons because they have
+their own attack animation". Tier 6 (Mythic), level 22, one per class; the
+healer's (a heal) is a later commission.
+
+| Item | Class | Attack while worn |
+|---|---|---|
+| Meteorite (`meteorite`) | mage | a meteor where you aim, in place of the stalagmite |
+| Double Axe (`doubleaxe`) | warrior | thrown to a spot, spins there; attack again calls it back |
+| Dynamite (`dynamite`) | tank | a lit stick where you aim, in place of the aura |
+
+- **`ItemData.weapon_attack`** (`WeaponAttack`: NONE, METEOR, SPINNING_AXE,
+  DYNAMITE - append only, the .tres files store the integer).
+  `Player.equipped_weapon_attack()` answers it, and each class's attack branches
+  on it: `mage._cast_stalagmite_drop()`, `warrior.attack_action()`,
+  `tank.attack_action()`. Every weapon below mythic is NONE.
+- **Double cast.** One meteor cast or dynamite throw in ten comes twice
+  (`Player.rolls_double()`, `double_cast_chance`, 0.10), for one price, spread
+  apart as the owner asked: the second meteor 30-40 px away in a random
+  direction and 0.18 s later; the two sticks 20 px either side of the aim,
+  across the line of the throw.
+- **The axe** (`spinningaxe.gd`) cuts what it passes going out and coming back,
+  once each, for a sword swing; spinning, it cuts everything within 20 px every
+  0.25 s for a quarter of a swing, so it deals a swinging warrior's damage per
+  second to everything near it. It comes home on its own past a 260 px leash or
+  when the warrior is away (`is_afk()`, the three minutes that stop skill XP),
+  and is gone if the warrior dies, leaves or takes it off (`_on_gear_changed()`,
+  called from `refresh_gear_stats()`). Max throw 170 px.
+- **Dynamite** (`dynamite.gd`) is priced against the aura it replaces: a throw a
+  second for 4 mana, worth four aura ticks at once. Max throw 150 px, 0.9 s fuse
+  with a ring that brightens. Putting it on puts the aura out.
+- **The look** is built in code around Ahvassa's frames: the meteor comes in
+  from up and to the left, speeding up, with a fire and smoke trail and a shadow
+  that grows a pixel at a time; `blast.gd` is the impact for both (flash, ring of
+  air, fireball and smoke puffs, thrown stones or sparks, a short camera shake,
+  and a crater or scorch that fades). Particles are untextured squares or an
+  8-px round puff, the textures small images drawn pixel by pixel, so it is the
+  same size of dot as the art.
+- **Balance.** Damage follows the ladder: the Double Axe (110) is the tier's
+  sword, and the Meteorite (41) and Dynamite (18) add the same share of their
+  class's dps as it does - `test_equipment.py` holds it. A meteor's hit is 22 px
+  across (the stalagmite's is 18); a stick's is 28.
+- **Nothing drops them yet.** The bosses that reach tier 6 have a zero there in
+  `tier_odds`, so the staff grant (owner panel, Testing) is the only way in. The
+  odds are the owner's call; the suite and the API suite fail if an enemy can
+  roll tier 6 before then.
+- **Sounds**: `meteor_impact`, `axe_throw`, `axe_catch`, `dynamite_throw`,
+  `explosion` - registered, empty, live the moment a file is assigned.
+
+Three traps, all found on the way:
+
+- **A blast's ground mark landed at the world's origin.** `_ready()` runs inside
+  `add_child()`, before the spawner moves the node, and the mark is placed by
+  global position. Blast builds itself in `spawn()`, after the move.
+- **An Area2D moved by hand never reported a wall.** The axe flew through a
+  StaticBody2D in the suite. Walls are found with a ray along each frame's step
+  (layers 1 and 2 - the field keeps its walls on 1), and the area only looks
+  for enemies.
+- **A fresh Area2D sees nothing for its first physics steps.** The first area in
+  a new arena reported no bodies after two frames. Harmless in play (a meteor
+  falls for 44 frames first), but the suite waits four.
+
+`_test_the_mythic_weapons` holds it (71 checks), on stand-in enemies in an
+arena; the three scenes join PLAYER_PROJECTILE_SCENES. Twenty deliberate
+breaks, each caught. Played in the field with all three equipped through
+`/api/character/equip`: the server paid the kills.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —
@@ -3051,7 +3120,7 @@ the backpack are bound by the same rule.
 
 Do not "fix" these.
 
-- **`SOUNDS` in `audio.gd` is 31 empty strings.** An unassigned id is a silent
+- **`SOUNDS` in `audio.gd` is 36 empty strings.** An unassigned id is a silent
   no-op by design. That is what lets the call sites exist now and the audio
   arrive later, one file at a time.
 - **Seven signals are emitted with nothing connected, and that is the
@@ -3273,7 +3342,7 @@ scene/tests/        tests.tscn, the headless entry point for the test runner
 data/items/         ItemData      data/enemies/  EnemyData
 data/classes/       ClassData     data/gamedata.json  the exported contract
 docs/apicontract.md   what the client and server promise each other
-docs/audio.md         the 31 sound ids, where each fires, and what the suite
+docs/audio.md         the 36 sound ids, where each fires, and what the suite
                       does about a registry that is half filled in. The game
                       is silent: every entry in Audio.SOUNDS is empty, on
                       purpose, and the boot log says so at every launch.
@@ -3429,7 +3498,7 @@ question god mode answered by returning before the XP.
   listener will fit better than one designed around none.
 - ~~The boss scene has no script.~~ Closed — `bossarena.tscn` runs `boss.gd`,
   and the arena's portal runs `fieldportal.gd`.
-- 31 sound ids, 26 wired to call sites, 1 audio file (`audio/ambience/firepit.ogg`).
+- 36 sound ids, 31 wired to call sites, 1 audio file (`audio/ambience/firepit.ogg`).
   The audio is authored in-house, so the slots exist and fill one at a time.
 - `ItemRegistry.FALLBACK_ITEM_ID` is `"error_item"` and no `error_item.tres`
   exists, so an unknown id returns `null` rather than a visible placeholder.

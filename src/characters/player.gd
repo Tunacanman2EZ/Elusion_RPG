@@ -1017,6 +1017,15 @@ func refresh_gear_stats() -> void:
 	_recompute_max_stats()
 	hp = clampi(hp, 0, max_hp)
 	mana = clampi(mana, 0, max_mana)
+	_on_gear_changed()
+
+
+func _on_gear_changed() -> void:
+	# FOR THE CLASSES WHOSE WEAPON CAN BE OUT IN THE WORLD. Nothing here; the
+	# warrior calls a thrown axe home when it is taken off, and the tank drops
+	# its aura when dynamite goes on. Called from refresh_gear_stats(), which
+	# is the one place both equip() and unequip() pass through.
+	pass
 
 
 func equipped_bonus(field: String) -> int:
@@ -2698,6 +2707,82 @@ func equipped_weapon_range() -> Vector2i:
 	if data == null:
 		return Vector2i.ZERO
 	return PlayerStats.weapon_damage_range(data.damage, data.damage_spread)
+
+
+func equipped_weapon_attack() -> int:
+	# WHAT PRESSING ATTACK DOES, as an ItemData.WeaponAttack member: NONE for
+	# bare hands and for every weapon below mythic, which leaves the class's
+	# own attack alone. See the enum's note in itemdata.gd.
+	#
+	# The empty slot is answered before the registry is asked, for the reason
+	# weapon_damage_roll() gives below - get_item("") warns, and this is read
+	# on every press of attack.
+	var worn: String = equipped_id("weapon")
+	if worn == "":
+		return ItemData.WeaponAttack.NONE
+	var data: ItemData = ItemRegistry.get_item(worn)
+	if data == null:
+		return ItemData.WeaponAttack.NONE
+	return int(data.weapon_attack)
+
+
+# ONE CAST IN TEN COMES TWICE. The owner's number for the meteor and the
+# dynamite: "10% chance meteor double casts ... we need to spread out the double
+# cast". The mana is paid once; the second meteor or stick is the luck.
+#
+# A var rather than the const alone so a test can make the roll certain either
+# way instead of casting until the dice agree.
+const WEAPON_DOUBLE_CHANCE: float = 0.10
+var double_cast_chance: float = WEAPON_DOUBLE_CHANCE
+
+
+func rolls_double() -> bool:
+	return randf() < double_cast_chance
+
+
+# WHERE A WEAPON'S ATTACK GOES. Thrown things (the axe, a stick of dynamite) go
+# in the area's y-sorted "projectiles" container with everything else in the
+# air; a meteor goes on the scene root, like the stalagmite, because it draws
+# its own layers. spawn_parent_override is for the tests: a character built
+# outside the tree - the way the suite builds them, so that player.gd's
+# _ready() does not load a save - can still throw into an arena.
+var spawn_parent_override: Node = null
+
+
+func spawn_parent(in_the_air: bool = true) -> Node:
+	if spawn_parent_override != null:
+		return spawn_parent_override
+	if in_the_air:
+		var container: Node = get_tree().get_first_node_in_group("projectiles")
+		if container != null:
+			return container
+	return get_tree().current_scene
+
+
+# A SHORT SHAKE, for the two weapons that hit the ground hard. Small on purpose:
+# a mage can bring a meteor down twice a second, and a camera that moved more
+# than a couple of pixels for each would be a reason to stop playing. A new
+# shake replaces one in progress rather than stacking on it, for the same
+# reason. The offset is the camera's own, so the world shakes and the HUD,
+# which is on a CanvasLayer, does not.
+var _shake_tween: Tween = null
+
+
+func shake_camera(strength: float, seconds: float) -> void:
+	if strength <= 0.0 or seconds <= 0.0 or not is_inside_tree():
+		return
+	var camera: Camera2D = get_node_or_null("camera2d") as Camera2D
+	if camera == null:
+		return
+	if _shake_tween != null and _shake_tween.is_valid():
+		_shake_tween.kill()
+	_shake_tween = camera.create_tween()
+	var steps: int = maxi(2, int(seconds / 0.03))
+	for i in steps:
+		var fade: float = 1.0 - float(i) / float(steps)
+		var nudge := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * strength * fade
+		_shake_tween.tween_property(camera, "offset", nudge.round(), seconds / float(steps))
+	_shake_tween.tween_property(camera, "offset", Vector2.ZERO, 0.03)
 
 
 func weapon_damage_roll() -> int:

@@ -64,6 +64,38 @@ const CLASS_DATA := preload("res://data/classes/tank.tres")
 @export var mana_drain_cost: int = 2
 
 # =============================================================================
+# DYNAMITE SETTINGS
+# =============================================================================
+# THE DYNAMITE'S ATTACK, in place of the aura while it is equipped - see
+# dynamite.gd. Priced against the aura so the weapon changes how the tank
+# fights rather than how hard:
+#
+#   a throw a second at 4 mana   = the aura's 2 mana every half second
+#   a stick worth four aura ticks = the aura's four ticks a second, landed at
+#                                   once, on everything inside the blast
+#
+# The aura reaches everything around the tank all the time; a stick reaches
+# further away, once, after a fuse. Same damage per second per enemy hit.
+const DYNAMITE_SCENE := preload("res://scene/projectiles/dynamite.tscn")
+
+# The furthest a stick goes. A spot further than this is taken as the
+# direction, and the stick lands here.
+const DYNAMITE_MAX_THROW := 150.0
+
+# A double throw's two sticks land this far either side of the aim, across
+# the line of the throw: "we need to spread out the double cast". The two
+# blasts (28 each) overlap in the middle, so the aim point is hit by both.
+const DYNAMITE_SPREAD := 20.0
+
+# ...and the second leaves this much after the first.
+const DYNAMITE_SECOND_DELAY := 0.06
+
+@export var dynamite_mana_cost: int = 4
+@export var dynamite_cooldown: float = 1.0
+
+var _dynamite_cooldown_left: float = 0.0
+
+# =============================================================================
 # NODE REFERENCES
 # =============================================================================
 # Resolved once at _ready() instead of looked up by name every time they are
@@ -158,6 +190,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_tick_aura(delta)
+	_dynamite_cooldown_left = maxf(0.0, _dynamite_cooldown_left - delta)
 
 	# attack lockout — frozen in place while attack animation plays
 	if is_attacking:
@@ -300,7 +333,11 @@ func _handle_idle() -> void:
 
 func attack_action() -> void:
 	# OVERRIDE: tank's spacebar attack TOGGLES the aura on or off.
-	# the tank has no direct strike — the aura IS the attack.
+	# the tank has no direct strike — the aura IS the attack. Unless Dynamite is
+	# equipped, when attack throws a stick instead and the aura stays off.
+	if equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:
+		throw_dynamite(get_global_mouse_position())
+		return
 	if aura_active:
 		_deactivate_aura()
 	else:
@@ -337,6 +374,64 @@ func _deactivate_aura() -> void:
 	aura_active = false
 	if _firering != null:
 		_firering.visible = false
+
+
+# =============================================================================
+# DYNAMITE
+# =============================================================================
+
+func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
+	# One stick, or one throw in ten two (Player.rolls_double()), for one
+	# price. Returns what was thrown - empty when refused - for the tests.
+	var thrown: Array[Dynamite] = []
+	if _dynamite_cooldown_left > 0.0:
+		return thrown
+	if mana < dynamite_mana_cost:
+		Audio.play("refused")
+		show_notice("Not enough mana")
+		return thrown
+
+	_set_active()
+	mana -= dynamite_mana_cost
+	# hasten() applies agility, the same as the aura's tick and the mage's cast.
+	_dynamite_cooldown_left = hasten(dynamite_cooldown)
+	if aura_active:
+		_deactivate_aura()
+	Audio.play("dynamite_throw")
+
+	var reach: Vector2 = aimed_at - global_position
+	if reach.length() > DYNAMITE_MAX_THROW:
+		reach = reach.normalized() * DYNAMITE_MAX_THROW
+	var landing: Vector2 = global_position + reach
+	if rolls_double():
+		# Either side of the aim, across the line of the throw. A throw at the
+		# tank's own feet has no line, so it spreads left and right.
+		var across: Vector2 = reach.orthogonal().normalized() if reach.length() > 0.5 else Vector2.RIGHT
+		thrown.append(_throw_stick(landing + across * DYNAMITE_SPREAD, 0.0))
+		thrown.append(_throw_stick(landing - across * DYNAMITE_SPREAD, DYNAMITE_SECOND_DELAY))
+	else:
+		thrown.append(_throw_stick(landing, 0.0))
+	return thrown
+
+
+func _throw_stick(landing: Vector2, delay: float) -> Dynamite:
+	var stick: Dynamite = DYNAMITE_SCENE.instantiate()
+	# A stick is worth the aura ticks it replaces - see DYNAMITE SETTINGS.
+	# Rolled per stick: two sticks are two hits.
+	var ticks: float = dynamite_cooldown / aura_tick
+	stick.explosion_damage = roundi((aura_damage + weapon_damage_roll()) * get_damage_multiplier() * ticks)
+	stick.caster = self
+	stick.delay = delay
+	spawn_parent().add_child(stick)
+	stick.throw_from(global_position, landing)
+	return stick
+
+
+func _on_gear_changed() -> void:
+	# Dynamite put on while the aura is burning: the aura goes out, because
+	# attack no longer reaches it to turn it off.
+	if aura_active and equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:
+		_deactivate_aura()
 
 
 func _deal_aura_damage() -> void:
