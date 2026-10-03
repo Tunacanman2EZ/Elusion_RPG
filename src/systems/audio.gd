@@ -83,6 +83,7 @@ const SOUNDS: Dictionary = {
 	"coin":           "",  # gold specifically
 	"potion":         "",  # drinking any consumable
 	"bag_drop":       "",  # a loot bag hitting the ground
+	"mythic_drop":    "",  # a mythic in the bag: the rarest sound in the game
 	"bag_open":       "",  # opening the loot panel
 	"inventory_move": "",  # dropping an item into a slot
 

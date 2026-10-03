@@ -209,6 +209,7 @@ func _run_all() -> void:
 	await _test_the_first_five_minutes()
 	await _test_the_mythic_weapons()
 	await _test_the_item_menu()
+	await _test_mythic_drops()
 
 
 # =============================================================================
@@ -15869,7 +15870,8 @@ func _test_the_mythic_weapons() -> void:
 			and Array(row.get("required_classes", [])) == [want["class"]]
 			and str(row.get("equip_slot_name", "")) == "WEAPON", row)
 
-	# Not sold, and nothing drops them - the owner sets the odds later.
+	# Not sold, and no enemy's tier ladder reaches them. A mythic is a roll of
+	# its own at every kill - see _test_mythic_drops().
 	var sold: Array = []
 	var shops := DirAccess.open("res://data/shops")
 	for file in shops.get_files():
@@ -15891,7 +15893,7 @@ func _test_the_mythic_weapons() -> void:
 		var top_share: float = odds[0] if odds.size() > 0 else 0.15
 		if (enemy.max_loot_tier >= 6 and top_share > 0.0) or (enemy.max_loot_tier >= 5 and enemy.tier_up_chance > 0.0):
 			droppers.append(enemy.enemy_id)
-	check("and no enemy can roll tier 6 yet - the drop odds are the owner's call", droppers.is_empty(), droppers)
+	check("and no enemy's tier ladder can roll tier 6 - a mythic is its own roll", droppers.is_empty(), droppers)
 	for id in ["meteor_impact", "axe_throw", "axe_catch", "dynamite_throw", "explosion"]:
 		check("the %s sound has a slot waiting for its file" % id, Audio.SOUNDS.has(id))
 
@@ -16157,6 +16159,187 @@ func _menu_item(id: String, type: int, slot: int = 0, stack: int = 1) -> ItemDat
 	item.stackable = stack > 1
 	item.max_stack = stack
 	return item
+
+
+func _test_mythic_drops() -> void:
+	section("MYTHIC DROPS - any enemy, the tougher the better, and a moment when one lands")
+
+	# --- THE ODDS --------------------------------------------------------------
+	# Day 2, the owner: regular mobs and bosses both drop the mythic weapons,
+	# "mixed rarity but it should be super rewarding getting 1". The server
+	# rolls (gamedata.roll_mythic); the game authors the odds and exports them.
+	check("the mythic tier is 6", GameConstants.MYTHIC_TIER == 6
+		and GameConstants.rarity_name(GameConstants.MYTHIC_TIER) == "Mythic")
+	var boss_table: Dictionary = GameConstants.MYTHIC_ODDS_BOSS_BY_TIER
+	var table: Dictionary = GameConstants.MYTHIC_ODDS_BY_TIER
+	check("every boss rate beats every regular rate",
+		boss_table.values().max() < table.values().min(), [boss_table, table])
+	var tiers: Array = table.keys()
+	tiers.sort()
+	var ordered: bool = tiers == [1, 2, 3, 4, 5]
+	for i in range(1, tiers.size()):
+		ordered = ordered and int(table[tiers[i]]) < int(table[tiers[i - 1]])
+	check("every band has a rate, and a higher band always has the better odds", ordered, table)
+	check("a mythic bag stays longer than any other, and inside the server's 600 seconds",
+		GameConstants.MYTHIC_BAG_DESPAWN_SECONDS > GameConstants.LOOT_BAG_DESPAWN_SECONDS
+		and GameConstants.MYTHIC_BAG_DESPAWN_SECONDS < 600.0, GameConstants.MYTHIC_BAG_DESPAWN_SECONDS)
+
+	var rule := EnemyData.new()
+	rule.max_loot_tier = 3
+	var normal_odds: int = rule.mythic_odds()
+	rule.slots_are_gear = true
+	rule.max_loot_tier = 5
+	var boss_odds: int = rule.mythic_odds()
+	rule.mythic_odds_override = 150
+	var override_odds: int = rule.mythic_odds()
+	rule.grants_rewards = false
+	var unpaid_odds: int = rule.mythic_odds()
+	var beyond := EnemyData.new()
+	beyond.max_loot_tier = 9
+	check("EnemyData.mythic_odds(): the regular table by tier", normal_odds == int(table[3]), normal_odds)
+	check("  the boss table for a boss", boss_odds == int(boss_table[5]), boss_odds)
+	check("  the override over either", override_odds == 150, override_odds)
+	check("  never for an enemy that pays nothing", unpaid_odds == 0, unpaid_odds)
+	check("  and never for a tier the tables do not name", beyond.mythic_odds() == 0, beyond.mythic_odds())
+
+	# The authored enemies, against the export the server reads.
+	var gamedata: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
+	var rows: Dictionary = {}
+	for row in gamedata.get("enemies", []):
+		rows[str(row.get("enemy_id", ""))] = row
+	var stale: Array = []
+	var unpaid: Array = []
+	var best_id: String = ""
+	var best: int = 0
+	var enemies_dir := DirAccess.open("res://data/enemies")
+	for file in enemies_dir.get_files():
+		if not file.ends_with(".tres"):
+			continue
+		var enemy: EnemyData = load("res://data/enemies/" + file) as EnemyData
+		if enemy == null:
+			continue
+		var odds: int = enemy.mythic_odds()
+		if int(rows.get(enemy.enemy_id, {}).get("mythic_odds", -1)) != odds:
+			stale.append("%s: %d here, %s exported" % [enemy.enemy_id, odds, rows.get(enemy.enemy_id, {}).get("mythic_odds", "none")])
+		if enemy.grants_rewards and odds <= 0:
+			unpaid.append(enemy.enemy_id)
+		if odds > 0 and (best == 0 or odds < best):
+			best = odds
+			best_id = enemy.enemy_id
+	check("the export the server reads has every enemy's mythic odds, and they are current", stale.is_empty(), stale)
+	check("every enemy that pays rewards can drop one", unpaid.is_empty(), unpaid)
+	check("the Crowned is the best hunt in the game", best_id == "boss", [best_id, best])
+	check("and the export names the tier they pay from",
+		int(gamedata.get("constants", {}).get("mythic_tier", 0)) == GameConstants.MYTHIC_TIER)
+
+	# --- THE BAG -------------------------------------------------------------
+	var bag_scene: PackedScene = load("res://scene/interactables/lootbag.tscn") as PackedScene
+	var plain: Node = bag_scene.instantiate()
+	add_child(plain)
+	var bag: Node = bag_scene.instantiate()
+	add_child(bag)
+	await get_tree().process_frame
+	check("an ordinary bag stays %d seconds" % int(GameConstants.LOOT_BAG_DESPAWN_SECONDS),
+		is_equal_approx(plain.despawn_timer.wait_time, GameConstants.LOOT_BAG_DESPAWN_SECONDS)
+		and not plain.is_mythic(), plain.despawn_timer.wait_time)
+	plain.free()
+	bag.set_contents([{"item_id": "meteorite", "quantity": 1}])
+	bag.despawn_timer.paused = true
+	bag.set_mythic(true)
+	check("a mythic bag stays five minutes", is_equal_approx(bag.despawn_timer.wait_time,
+		GameConstants.MYTHIC_BAG_DESPAWN_SECONDS) and not bag.despawn_timer.is_stopped(), bag.despawn_timer.wait_time)
+	check("  and a pause the open panel put on it holds", bag.despawn_timer.paused)
+	check("  it glows mythic red", bag.glow_tier() == GameConstants.MYTHIC_TIER, bag.glow_tier())
+	var pillar: Sprite2D = bag.get_node_or_null("rareglow/pillar") as Sprite2D
+	check("  with the pillar raised high above the sack", pillar != null and pillar.scale == bag.MYTHIC_GLOW_SCALE
+		and pillar.position.y < -bag.GLOW_PILLAR_HEIGHT, ("%s at %s" % [pillar.scale, pillar.position]) if pillar != null else "no pillar")
+	check("  and a burst of sparks as it lands", bag.get_node_or_null("mythicsparks") is CPUParticles2D)
+	bag.set_contents([null])
+	check("taking the mythic out ends the show", not bag.is_mythic() and bag.glow_tier() == 0)
+	bag.free()
+
+	# --- THE FINDER'S MOMENT -------------------------------------------------
+	# Combat._spawn_loot_bag() with the answer a mythic kill gets. A HUD and a
+	# player stand in as stubs that remember what they were asked.
+	for old in get_tree().get_nodes_in_group(&"lootbags"):
+		old.free()
+	var stub_script := GDScript.new()
+	stub_script.source_code = "extends Node2D\nvar banners: Array = []\nvar shakes: Array = []\n" \
+		+ "func show_mythic_banner(title: String, line: String, flash: bool = false) -> void:\n" \
+		+ "\tbanners.append([title, line, flash])\n" \
+		+ "func shake_camera(strength: float, seconds: float) -> void:\n" \
+		+ "\tshakes.append([strength, seconds])\n"
+	stub_script.reload()
+	var hud_stub := Node2D.new()
+	hud_stub.set_script(stub_script)
+	add_child(hud_stub)
+	hud_stub.add_to_group("hud")
+	var finder := Node2D.new()
+	finder.set_script(stub_script)
+	add_child(finder)
+	var hud_first: bool = get_tree().get_first_node_in_group("hud") == hud_stub
+	check("(the stub is the HUD Combat finds)", hud_first)
+	Combat._spawn_loot_bag({"bag_id": "mythictest", "mythic": "meteorite",
+		"contents": [{"position": 0, "item_id": "meteorite", "quantity": 1}]}, finder, Vector2(40, 40))
+	var spawned: Node = null
+	for node in get_tree().get_nodes_in_group(&"lootbags"):
+		if node.has_method("get_bag_id") and node.get_bag_id() == "mythictest":
+			spawned = node
+	check("a mythic kill's bag is a mythic bag", spawned != null and spawned.is_mythic())
+	check("the finder gets the MYTHIC DROP banner, naming the piece, with the flash",
+		hud_first and hud_stub.banners == [["MYTHIC DROP!", "Meteorite", true]], hud_stub.banners)
+	check("  and a camera shake harder than any weapon's",
+		finder.shakes == [[Combat.MYTHIC_SHAKE_STRENGTH, Combat.MYTHIC_SHAKE_SECONDS]]
+		and Combat.MYTHIC_SHAKE_STRENGTH > 3.0, finder.shakes)
+	var combat_src: String = FileAccess.get_file_as_string("res://src/systems/combat.gd")
+	check("  and the mythic_drop sound", _first_code_index(combat_src, "Audio.play(\"mythic_drop\")", 0) != -1
+		and Audio.SOUNDS.has("mythic_drop"))
+	if spawned != null:
+		spawned.free()
+	Combat._spawn_loot_bag({"bag_id": "plaintest",
+		"contents": [{"position": 0, "item_id": "meteorite", "quantity": 1}]}, finder, Vector2(40, 40))
+	var ordinary: Node = null
+	for node in get_tree().get_nodes_in_group(&"lootbags"):
+		if node.has_method("get_bag_id") and node.get_bag_id() == "plaintest":
+			ordinary = node
+	check("a kill the server did not name a mythic gets no show",
+		ordinary != null and not ordinary.is_mythic() and hud_stub.banners.size() == 1, hud_stub.banners)
+	if ordinary != null:
+		ordinary.free()
+	hud_stub.free()
+	finder.free()
+
+	# --- EVERYONE ELSE -------------------------------------------------------
+	var was_name: String = Api.username
+	Api.username = "watcher"
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	hud._build_message_box()
+	var red: Color = GameConstants.rarity_colour(GameConstants.MYTHIC_TIER)
+	var said: String = "Tunacan found the Meteorite on The Crowned!"
+	hud._read_broadcast_messages([{"kind": "mythic", "body": said, "by": "Tunacan", "at": 1700000000}], true)
+	var banner: Control = hud.mythic_banner
+	check("a find by somebody else puts the red banner up for everyone online",
+		banner != null and (banner.get_node("rows/title") as Label).text == "MYTHIC FOUND"
+		and (banner.get_node("rows/line") as Label).text == said, banner)
+	check("  with no flash - that is the finder's", banner != null and banner.get_node_or_null("flash") == null)
+	var last: Variant = hud._unlogged_lines.back() if not hud._unlogged_lines.is_empty() else null
+	check("  and writes it into chat in the mythic red",
+		last is Dictionary and last["text"] == said and last["color"] == red and int(last["at"]) == 1700000000, last)
+	check("  without a second box popping under the banner", hud.message_rows.get_child_count() == 0,
+		hud.message_rows.get_child_count())
+	banner.free()
+	hud.mythic_banner = null
+	hud._read_broadcast_messages([{"kind": "mythic", "body": "watcher found the Dynamite on a Light Slime!",
+		"by": "watcher", "at": 1700000001}], true)
+	check("your own find is only written into chat - your game already celebrated",
+		hud.mythic_banner == null and hud._unlogged_lines.back()["color"] == red)
+	hud._read_broadcast_messages([{"kind": "mythic", "body": said, "by": "Tunacan", "at": 1600000000}], false)
+	check("an old find a first poll catches up on is not announced", hud.mythic_banner == null)
+	hud._read_broadcast_messages([{"kind": "system", "body": "Server restarting soon.", "by": "boss", "at": 1700000002}], true)
+	check("an ordinary notice is still gold, with no banner",
+		hud.mythic_banner == null and hud._unlogged_lines.back()["color"] == Color(1.0, 0.82, 0.42))
+	hud.free()
+	Api.username = was_name
 
 
 func _test_the_item_menu() -> void:

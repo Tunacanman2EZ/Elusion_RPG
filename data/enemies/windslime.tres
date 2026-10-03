@@ -15,6 +15,7 @@ xp_reward = 29
 attack_xp_reward = 7
 bag_drop_chance = 0.3
 max_loot_tier = 1
+mythic_odds_override = 2000000
 pet_drop_id = "petpoisonslimesmall"
 max_item_slots = 1
 slot_fill_chance = 0.3

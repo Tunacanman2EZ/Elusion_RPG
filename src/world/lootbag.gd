@@ -31,6 +31,8 @@
 # - spawned by Combat on a kill via set_bag_id / set_contents / set_owner_player
 #   / set_has_pet
 # - beam shows immediately if the bag holds a pet (rare drop signal)
+# - a mythic (set_mythic, from the kill answer) glows far bigger and stays on
+#   the ground for MYTHIC_BAG_DESPAWN_SECONDS instead of 45
 # - interact (killer only) → hud.open_lootbag(self, player) shows the panel
 # - the panel mirrors what is left back via set_contents as items are taken, so
 #   re-opening shows the right thing without asking the server again
@@ -113,6 +115,16 @@ const GLOW_PILLAR_WIDTH := 12
 const GLOW_CORE_WIDTH := 4
 const GLOW_POOL_SIZE := Vector2i(34, 12)
 
+# A MYTHIC IN THE BAG, set by Combat when the kill answer names one. The glow is
+# already red for the tier. This makes it the loudest thing on screen: the
+# pillar half as wide again and more than twice as tall, three times the motes,
+# a burst of sparks as it lands, and MYTHIC_BAG_DESPAWN_SECONDS on the ground
+# instead of 45. It lasts only while the mythic is still in the bag.
+var _mythic: bool = false
+const MYTHIC_GLOW_SCALE := Vector2(1.5, 2.4)
+const MYTHIC_MOTES := 30
+const MYTHIC_PILLAR_BRIGHTNESS := Color(1.25, 1.25, 1.25, 1.9)
+
 
 # =============================================================================
 # LIFECYCLE
@@ -139,7 +151,7 @@ func _ready() -> void:
 
 	if despawn_timer != null:
 		despawn_timer.one_shot = true
-		despawn_timer.wait_time = GameConstants.LOOT_BAG_DESPAWN_SECONDS
+		despawn_timer.wait_time = despawn_seconds()
 		if not despawn_timer.timeout.is_connected(_on_despawn_timeout):
 			despawn_timer.timeout.connect(_on_despawn_timeout)
 		despawn_timer.start()
@@ -251,6 +263,29 @@ func set_has_pet(has_pet: bool) -> void:
 	_apply_glow()
 
 
+func set_mythic(on: bool) -> void:
+	"""The kill answer named a mythic, and it is in this bag. Called once, by
+	Combat, after set_contents()."""
+	_mythic = on
+	# THE TIMER WAS ALREADY STARTED, at 45 seconds, by _ready(): Combat adds
+	# the bag to the world before it hands over what is in it. Restarted here
+	# for the longer time. start() leaves a pause the open panel put on it.
+	if despawn_timer != null and is_inside_tree():
+		despawn_timer.start(despawn_seconds())
+	_apply_glow()
+	if on and is_inside_tree():
+		_burst_sparks()
+
+
+func is_mythic() -> bool:
+	"""True while a mythic is still in this bag. Taking it out ends the show."""
+	return _mythic and rare_tier_of(_contents, false) >= GameConstants.MYTHIC_TIER
+
+
+func despawn_seconds() -> float:
+	return GameConstants.MYTHIC_BAG_DESPAWN_SECONDS if _mythic else GameConstants.LOOT_BAG_DESPAWN_SECONDS
+
+
 static func rare_tier_of(contents: Array, has_pet: bool) -> int:
 	"""The rarest thing in the bag, as a tier. A pet counts as legendary.
 
@@ -299,6 +334,28 @@ func _apply_glow() -> void:
 			ramp.set_color(0, Color(colour, 0.9))
 			ramp.set_color(1, Color(colour, 0.0))
 	_glow.visible = true
+	# The pillar grows from the sack upward, and the pool spreads on the ground,
+	# so each part is scaled on its own rather than the whole glow from its
+	# middle, which would push the pool into the grass.
+	var mythic_now: bool = is_mythic()
+	var tall: Vector2 = MYTHIC_GLOW_SCALE if mythic_now else Vector2.ONE
+	for part_name in ["pillar", "core"]:
+		var part: Sprite2D = _glow.get_node_or_null(part_name) as Sprite2D
+		if part != null:
+			part.scale = tall
+			part.position.y = -GLOW_PILLAR_HEIGHT * tall.y / 2.0 + 2
+			# Brighter as well as bigger: the ordinary pillar is drawn soft
+			# on purpose, and at mythic size it read as faint on dark ground.
+			part.self_modulate = MYTHIC_PILLAR_BRIGHTNESS if mythic_now else Color.WHITE
+	var pool: Sprite2D = _glow.get_node_or_null("pool") as Sprite2D
+	if pool != null:
+		pool.scale = Vector2(tall.x, tall.x)
+	var motes: CPUParticles2D = _glow.get_node_or_null("motes") as CPUParticles2D
+	if motes != null:
+		var wanted: int = MYTHIC_MOTES if mythic_now else 10
+		if motes.amount != wanted:
+			motes.amount = wanted
+		motes.initial_velocity_max = 44.0 if mythic_now else 24.0
 	if _glow_tween == null and is_inside_tree():
 		_glow_tween = create_tween().set_loops()
 		_glow_tween.tween_property(_glow, "modulate:a", 0.65, 0.9).set_trans(Tween.TRANS_SINE)
@@ -368,6 +425,33 @@ func _build_glow() -> void:
 	ramp.set_color(1, Color(1, 1, 1, 0.0))
 	motes.color_ramp = ramp
 	_glow.add_child(motes)
+
+
+func _burst_sparks() -> void:
+	# ONE BURST AS THE BAG LANDS, red to white, thrown up and out and falling
+	# back. One shot, freed when it is done. Not part of the glow, so taking
+	# the mythic out of the bag does not cut it short.
+	var sparks := CPUParticles2D.new()
+	sparks.name = "mythicsparks"
+	sparks.one_shot = true
+	sparks.explosiveness = 0.9
+	sparks.amount = 48
+	sparks.lifetime = 1.1
+	sparks.position = Vector2(0, -6)
+	sparks.direction = Vector2.UP
+	sparks.spread = 70.0
+	sparks.gravity = Vector2(0, 160)
+	sparks.initial_velocity_min = 60.0
+	sparks.initial_velocity_max = 130.0
+	sparks.scale_amount_min = 1.0
+	sparks.scale_amount_max = 2.5
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1.0, 0.95, 0.85, 1.0))
+	ramp.set_color(1, Color(GameConstants.rarity_colour(GameConstants.MYTHIC_TIER), 0.0))
+	sparks.color_ramp = ramp
+	sparks.finished.connect(sparks.queue_free)
+	add_child(sparks)
+	sparks.emitting = true
 
 
 # =============================================================================

@@ -4,7 +4,7 @@ The game is **silent**. Every id in `Audio.SOUNDS` is an empty string, and the
 boot log has been saying so at every launch since the system was written:
 
 ```
-[BOOT] Audio: 0 of 36 sounds assigned
+[BOOT] Audio: 0 of 37 sounds assigned
 ```
 
 That is a deliberate state, not a bug. The hooks went into the game first so the
@@ -65,7 +65,7 @@ thirtieth.
 
 ---
 
-## The 36 ids, and where each one fires
+## The 37 ids, and where each one fires
 
 Line numbers drift; the file names do not. Comments are excluded, so every site
 below is real code.
@@ -135,14 +135,20 @@ the axe landing back in the hand.
 | `item_pickup` | `ui/lootbag/lootbaginventory.gd:370`, `world/fishingspot.gd:734` |
 | `coin` | `ui/lootbag/lootbaginventory.gd:352`, `:361`, `ui/inventory/inventoryscreen.gd:549`, `ui/trade/tradepanel.gd:576`, `ui/shop/shopinventory.gd:337` |
 | `potion` | `ui/inventory/inventoryscreen.gd:678` |
-| `bag_drop` | `systems/combat.gd:256` |
-| `bag_open` | `world/lootbag.gd:287`, `world/firepit.gd:290` |
+| `bag_drop` | `systems/combat.gd:269` |
+| `mythic_drop` | `systems/combat.gd:305` |
+| `bag_open` | `world/lootbag.gd:495`, `world/firepit.gd:290` |
 | `inventory_move` | **nothing plays it yet** |
 
 `coin` fires on five paths — loot, selling, buying, trading — and gold now has
 real denominations, from a copper coin to a platinum one worth a hundred
 thousand. One sample for all of them is fine; if it ever scales with value, that
 is a `volume_db` argument at the call site, not five ids.
+
+`mythic_drop` is the rarest sound in the game: it plays when a kill drops a
+mythic weapon, on top of `bag_drop`, with a red flash and the MYTHIC DROP
+banner. A player might hear it once in a whole season of play, so it can be
+big and long, a second or two, and it should sound like nothing else.
 
 `inventory_move` is registered and unplayed: the hook is dropping an item into a
 slot, in `inventoryscreen.gd`. It will be the most frequently heard sound in the

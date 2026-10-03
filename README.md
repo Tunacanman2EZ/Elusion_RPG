@@ -113,7 +113,9 @@ A pet is a shrunk, ally-flipped enemy, so inheriting `BaseEnemy` looks obvious. 
 
 Every weapon up to ember adds its damage to the class's own attack. The mythic tier changes what the attack *is*. A **Meteorite** turns the mage's spell into a meteor that comes in at an angle, its shadow growing where it will land, and leaves a crater with the stone cooling in it. A **Double Axe** is thrown to a spot and spins there, cutting everything near it, until the warrior attacks again to call it back. **Dynamite** replaces the tank's aura with a lit stick on a fuse. One meteor or throw in ten comes twice, spread apart.
 
-The three are Ahvassa's art; the flight, the impact and the explosion are built in code from whole-pixel particles, so they read as the same pixel art. Their damage climbs the same ladder as every other weapon, the axe can't be left grinding a spawn point with nobody playing, and none of them drops yet: the drop odds are still to be set, so tier 6 is reachable only through the staff grant.
+The three are Ahvassa's art; the flight, the impact and the explosion are built in code from whole-pixel particles, so they read as the same pixel art. Their damage climbs the same ladder as every other weapon, and the axe can't be left grinding a spawn point with nobody playing.
+
+Any enemy can drop one, and the tougher it is, the better the odds. The Crowned is about 1 in 150 kills. The dark band is 1 in 20,000, and a light slime is a lottery ticket at 1 in 2,000,000. The server makes the roll and gives the killer their own class's weapon. The bag lands with a red pillar of light and a burst of sparks, and the finder gets a red flash and a MYTHIC DROP banner. Everyone else online sees a banner naming who found it and on what.
 
 ### Frame-accurate combat — `src/enemies/bushsniper.gd`, `src/enemies/poisonslime.gd`
 
@@ -280,7 +282,7 @@ test_skill_train.py     10 checks    skills train only as fast as time allows
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,560 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 127 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,593 checks, 0 failures and one skip** — the skip is the sound registry, which is deliberately empty; see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 127 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
 **If you cloned this repo, it will report `2164 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 

@@ -154,6 +154,36 @@ class_name EnemyData
 
 
 # =============================================================================
+# MYTHIC
+# =============================================================================
+
+# "One in N" odds that a kill drops a mythic weapon, on a roll of its own beside
+# the bag's. tier_odds never reaches tier 6. Leave this at 0 to use the tables
+# in GameConstants, keyed on max_loot_tier: MYTHIC_ODDS_BOSS_BY_TIER for a boss
+# (slots_are_gear), MYTHIC_ODDS_BY_TIER for everything else. Almost every
+# enemy should do that.
+#
+# Set it only when one enemy has to be reasoned about apart from its tier, as
+# with pet_odds_override. The Crowned is the best mythic hunt in the game. A
+# small slime is a quarter of a ticket, because one large releases eight.
+@export var mythic_odds_override: int = 0
+
+const _RULES := preload("res://src/systems/gameconstants.gd")
+
+
+func mythic_odds() -> int:
+	"""The odds the server rolls, after the table and the override. 0 means
+	never. The exporter writes this into gamedata.json as mythic_odds, so it is
+	the one place the rule is worked out."""
+	if not grants_rewards:
+		return 0
+	if mythic_odds_override > 0:
+		return mythic_odds_override
+	var table: Dictionary = _RULES.MYTHIC_ODDS_BOSS_BY_TIER if slots_are_gear else _RULES.MYTHIC_ODDS_BY_TIER
+	return int(table.get(max_loot_tier, 0))
+
+
+# =============================================================================
 # STATS
 # =============================================================================
 

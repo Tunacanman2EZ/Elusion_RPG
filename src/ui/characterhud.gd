@@ -1962,9 +1962,102 @@ func _read_broadcast_messages(messages: Variant, announce: bool = true) -> void:
 		if not (entry is Dictionary):
 			continue
 		var kind: String = str(entry.get("kind", "system"))
-		_push_message(str(entry.get("body", "")),
-			Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94),
-			int(entry.get("at", 0)), announce)
+		var body: String = str(entry.get("body", ""))
+		var colour: Color = Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94)
+		var bannered: bool = false
+		if kind == MYTHIC_BROADCAST_KIND:
+			colour = GameConstants.rarity_colour(GameConstants.MYTHIC_TIER)
+			# EVERYONE ELSE GETS THE BANNER. The finder's own game already
+			# celebrated when the kill answer landed (Combat.celebrate_mythic),
+			# so a find signed with their own name is only written into chat.
+			# The backlog a first poll catches up on is not announced either:
+			# an hour-old find is news for the log, not the screen.
+			bannered = announce and str(entry.get("by", "")) != Api.username
+			if bannered:
+				show_mythic_banner("MYTHIC FOUND", body, false)
+		_push_message(body, colour, int(entry.get("at", 0)), announce and not bannered)
+
+
+# =============================================================================
+# THE MYTHIC BANNER
+# =============================================================================
+# The rarest thing that can happen in the game, across the top of the screen in
+# the mythic red. It is shown two ways:
+# - To the finder, from Combat.celebrate_mythic(), as "MYTHIC DROP!" and the
+#   piece's name, with a red flash over the whole screen.
+# - To everyone else online, from a broadcast of kind "mythic", as the
+#   server's sentence: "Tunacan found the Meteorite on The Crowned!".
+# One at a time. A second find replaces the first rather than stacking.
+const MYTHIC_BROADCAST_KIND := "mythic"
+const MYTHIC_BANNER_SECONDS := 5.0
+var mythic_banner: Control = null
+
+
+func show_mythic_banner(title: String, subtitle: String, flash: bool = false) -> void:
+	if mythic_banner != null and is_instance_valid(mythic_banner):
+		mythic_banner.queue_free()
+	var red: Color = GameConstants.rarity_colour(GameConstants.MYTHIC_TIER)
+
+	var root := Control.new()
+	root.name = "mythicbanner"
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(root)
+	mythic_banner = root
+
+	if flash:
+		var veil := ColorRect.new()
+		veil.name = "flash"
+		veil.color = Color(red, 0.38)
+		veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+		veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.add_child(veil)
+		if veil.is_inside_tree():
+			veil.create_tween().tween_property(veil, "color:a", 0.0, 0.8) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+	# Full width, a sixth of the way down, growing downward to fit: above the
+	# action, below the bars.
+	var rows := VBoxContainer.new()
+	rows.name = "rows"
+	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rows.anchor_left = 0.0
+	rows.anchor_right = 1.0
+	rows.anchor_top = 0.16
+	rows.anchor_bottom = 0.16
+	rows.add_theme_constant_override("separation", 2)
+	root.add_child(rows)
+	rows.add_child(_mythic_banner_label("title", title, 30, red))
+	rows.add_child(_mythic_banner_label("line", subtitle, 15, Color(1.0, 0.93, 0.88)))
+
+	# In with a short drop, held, then out. A HUD built outside the tree (the
+	# suite builds them that way) cannot make tweens, and gets the banner
+	# standing still.
+	if not rows.is_inside_tree():
+		return
+	rows.modulate.a = 0.0
+	rows.position.y -= 16.0
+	var motion := rows.create_tween()
+	motion.tween_property(rows, "modulate:a", 1.0, 0.25)
+	motion.parallel().tween_property(rows, "position:y", rows.position.y + 16.0, 0.35) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	motion.tween_interval(MYTHIC_BANNER_SECONDS)
+	motion.tween_property(rows, "modulate:a", 0.0, 1.0)
+	motion.tween_callback(root.queue_free)
+
+
+func _mythic_banner_label(label_name: String, text: String, size: int, colour: Color) -> Label:
+	var label := Label.new()
+	label.name = label_name
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_color_override("font_color", colour)
+	label.add_theme_color_override("font_outline_color", Color(0.12, 0.0, 0.02))
+	label.add_theme_constant_override("outline_size", 6 if size >= 24 else 4)
+	return label
 
 
 func _read_teleport(order) -> void:

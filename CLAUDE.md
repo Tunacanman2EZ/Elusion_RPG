@@ -3034,10 +3034,8 @@ healer's (a heal) is a later commission.
   sword, and the Meteorite (41) and Dynamite (18) add the same share of their
   class's dps as it does - `test_equipment.py` holds it. A meteor's hit is 22 px
   across (the stalagmite's is 18); a stick's is 28.
-- **Nothing drops them yet.** The bosses that reach tier 6 have a zero there in
-  `tier_odds`, so the staff grant (owner panel, Testing) is the only way in. The
-  odds are the owner's call; the suite and the API suite fail if an enemy can
-  roll tier 6 before then.
+- **They drop from anything, on a roll of their own.** No `tier_odds` reaches
+  tier 6. See "Mythic drops" below.
 - **Sounds**: `meteor_impact`, `axe_throw`, `axe_catch`, `dynamite_throw`,
   `explosion` - registered, empty, live the moment a file is assigned.
 
@@ -3058,6 +3056,57 @@ Three traps, all found on the way:
 arena; the three scenes join PLAYER_PROJECTILE_SCENES. Twenty deliberate
 breaks, each caught. Played in the field with all three equipped through
 `/api/character/equip`: the server paid the kills.
+
+### Mythic drops: anything can drop one, the tougher the better
+
+Day 2, the owner: regular mobs and bosses both drop the mythic weapons, "mixed
+rarity but it should be super rewarding getting 1".
+
+- **A roll of its own, on the server.** Every enemy that pays rewards carries
+  "one in N" odds, `EnemyData.mythic_odds()`. That reads
+  `GameConstants.MYTHIC_ODDS_BY_TIER` by `max_loot_tier`, or
+  `MYTHIC_ODDS_BOSS_BY_TIER` for a boss (`slots_are_gear`), unless
+  `mythic_odds_override` is set. The exporter writes it into gamedata.json as
+  `mythic_odds`. `gamedata.roll_mythic()` rolls it at every kill, beside the
+  bag.
+- **What a win gives.** The killer's own class's piece. A healer, with none of
+  their own yet, gets any of the three. A win makes a bag even when the bag
+  roll said no, and comes first in it, after a pet.
+
+| Who | One in | About |
+|---|---|---|
+| The Crowned (override) | 150 | 8 hours farming it, a kill every three minutes |
+| Fire and Earth Crowned | 300 | |
+| Ice, Water, Wind and Light Crowned | 600 | |
+| Dark band | 20,000 | 65 hours at five kills a minute |
+| Fire band | 50,000 | |
+| Earth band | 100,000 | |
+| Water and Ice band | 250,000 | |
+| Light and Wind band | 500,000 | a lottery ticket |
+| A small slime (override) | four times its band | one large releases eight |
+
+- **The finder's moment.** The kill answer names the piece (`mythic`).
+  `Combat.celebrate_mythic()` plays `mythic_drop`, shakes the camera harder
+  than any weapon does, and the HUD's `show_mythic_banner()` says MYTHIC DROP!
+  and the piece's name over a red flash. The bag (`lootbag.set_mythic()`)
+  raises its pillar 2.4 times as high and brighter, throws a burst of sparks,
+  and stays on the ground `MYTHIC_BAG_DESPAWN_SECONDS` (300) instead of 45. A
+  boss fight can outlast 45 seconds, and the rarest drop in the game should
+  not be lost to a timer. The show ends when the piece is taken out.
+- **Everyone else online.** The server posts a broadcast of kind `mythic`,
+  "Tunacan found the Meteorite on The Crowned!". The broadcast poll draws it
+  as the same banner, without the flash, and writes it into chat in the mythic
+  red. The finder's own game skips the banner, since it already celebrated, by
+  matching `by` to `Api.username`. A first poll's backlog writes old finds into
+  chat without a banner. The owner's announcement route takes only `system`
+  and `shout`, so nobody can type a fake one.
+
+`_test_mythic_drops` holds the game half (33 checks), and the API's
+`test_loot.py` and `test_equipment.py` hold the roll, the rates, the kill and
+the notice. Played end to end against a server with every rate at one in one:
+a Light Slime killed in the field gave a mage the Meteorite. The bag, the
+banner and the chat line all appeared, and the same broadcast, read as another
+player, put up the red banner.
 
 ### The owner's item menu, and the owner's level
 
@@ -3152,7 +3201,7 @@ the backpack are bound by the same rule.
 
 Do not "fix" these.
 
-- **`SOUNDS` in `audio.gd` is 36 empty strings.** An unassigned id is a silent
+- **`SOUNDS` in `audio.gd` is 37 empty strings.** An unassigned id is a silent
   no-op by design. That is what lets the call sites exist now and the audio
   arrive later, one file at a time.
 - **Seven signals are emitted with nothing connected, and that is the
@@ -3374,7 +3423,7 @@ scene/tests/        tests.tscn, the headless entry point for the test runner
 data/items/         ItemData      data/enemies/  EnemyData
 data/classes/       ClassData     data/gamedata.json  the exported contract
 docs/apicontract.md   what the client and server promise each other
-docs/audio.md         the 36 sound ids, where each fires, and what the suite
+docs/audio.md         the 37 sound ids, where each fires, and what the suite
                       does about a registry that is half filled in. The game
                       is silent: every entry in Audio.SOUNDS is empty, on
                       purpose, and the boot log says so at every launch.
@@ -3530,7 +3579,7 @@ question god mode answered by returning before the XP.
   listener will fit better than one designed around none.
 - ~~The boss scene has no script.~~ Closed — `bossarena.tscn` runs `boss.gd`,
   and the arena's portal runs `fieldportal.gd`.
-- 36 sound ids, 31 wired to call sites, 1 audio file (`audio/ambience/firepit.ogg`).
+- 37 sound ids, 32 wired to call sites, 1 audio file (`audio/ambience/firepit.ogg`).
   The audio is authored in-house, so the slots exist and fill one at a time.
 - `ItemRegistry.FALLBACK_ITEM_ID` is `"error_item"` and no `error_item.tres`
   exists, so an unknown id returns `null` rather than a visible placeholder.

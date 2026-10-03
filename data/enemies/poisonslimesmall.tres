@@ -10,6 +10,7 @@ element = 9
 xp_reward = 25
 attack_xp_reward = 6
 max_loot_tier = 2
+mythic_odds_override = 1000000
 pet_drop_id = "petpoisonslimesmall"
 rare_pet_drop_id = "petpoisonslimelarge"
 rare_pet_chance = 0.2

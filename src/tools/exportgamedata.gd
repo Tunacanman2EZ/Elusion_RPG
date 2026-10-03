@@ -282,10 +282,14 @@ func _run() -> void:
 				enemy["rare_pet_drop_id"], enemy["rare_pet_chance"] * 100.0,
 			]
 
-		print("    %-18s hp %-5d xp %-5d bag %.0f%%  tier %d  pet 1/%-5d %s" % [
+		# The mythic roll, as "1 in N", or never.
+		var mythic: int = int(enemy.get("mythic_odds", 0))
+		var mythic_label: String = ("1/%d" % mythic) if mythic > 0 else "never"
+
+		print("    %-18s hp %-5d xp %-5d bag %.0f%%  tier %d  mythic %-9s pet 1/%-5d %s" % [
 			enemy["enemy_id"], enemy["max_hp"], enemy["xp_reward"],
 			enemy["bag_drop_chance"] * 100.0, enemy["max_loot_tier"],
-			enemy["pet_odds"], pet_label,
+			mythic_label, enemy["pet_odds"], pet_label,
 		])
 
 	# Last, and after the write, because it is a headcount rather than a verdict
@@ -410,6 +414,27 @@ func _validate(constants: Dictionary, items: Array, enemies: Array, classes: Arr
 		_warn("%d enemies carry pet odds with no pet_drop_id, so roll_pet() returns before it reads the rate and the odds are decorative: %s. Harmless while the pets are unauthored; each goes quiet when its .tres exists." % [
 			odds_without_pet.size(), ", ".join(odds_without_pet),
 		])
+
+	# THE MYTHIC ROLL. A negative override is a typo, not a tuning choice:
+	# mythic_odds() would ignore it and use the table, so the number on the .tres
+	# would say one thing while the game did another. And odds with nothing to
+	# pay out are decorative, like the pet odds above, so that is said once.
+	var mythic_tier: int = int(constants.get("mythic_tier", 6))
+	var mythic_gear: int = 0
+	for item in items:
+		if int(item.get("tier", 0)) == mythic_tier and bool(item.get("droppable", true)) \
+				and String(item.get("equip_slot_name", "NONE")) != "NONE":
+			mythic_gear += 1
+	var mythic_rollers: int = 0
+	for enemy in enemies:
+		if int(enemy.get("mythic_odds_override", 0)) < 0:
+			_fail("enemy '%s' has mythic_odds_override %d. Use 0 for the table, or a positive \"one in N\"." % [
+				enemy["enemy_id"], int(enemy.get("mythic_odds_override", 0))])
+		if int(enemy.get("mythic_odds", 0)) > 0:
+			mythic_rollers += 1
+	if mythic_rollers > 0 and mythic_gear == 0:
+		_warn("%d enemies roll for a mythic, but no droppable weapon or armour is tier %d, so the roll can never pay out." % [
+			mythic_rollers, mythic_tier])
 
 	# Gold is appended to every bag by id, through the same has_item() gate. A
 	# missing one does not break the drop — it silently removes gold from every
@@ -1281,6 +1306,11 @@ func _export_enemies(constants: Dictionary) -> Array:
 			"rare_pet_chance":   enemy.rare_pet_chance,
 			"pet_odds_override": enemy.pet_odds_override,
 			"pet_odds":          _resolve_pet_odds(enemy.pet_odds_override, enemy.max_loot_tier, constants),
+			# THE MYTHIC ROLL, "one in N", 0 for never. Worked out by
+			# EnemyData.mythic_odds() from GameConstants' tables and the
+			# override, so the server reads one number and restates no rule.
+			"mythic_odds_override": enemy.mythic_odds_override,
+			"mythic_odds":       enemy.mythic_odds(),
 			# What a large slime bursts into. The server reads nothing here yet -
 			# the smalls' kill ceiling arrives through their placed_count, below -
 			# but the pairing is checked in _validate() and the suites read it.
@@ -1496,6 +1526,9 @@ func _export_constants() -> Dictionary:
 		# are added into one number - the score - and stated once so the day
 		# it is tuned it moves everywhere at once.
 		"lusion_gold_value":    int(game_consts.get("LUSION_GOLD_VALUE", 1000)),
+		# THE MYTHIC TIER. Each enemy's odds travel on its own row as
+		# mythic_odds. This says which tier those odds pay out from.
+		"mythic_tier":          int(game_consts.get("MYTHIC_TIER", 6)),
 
 		# The gold alternative to that lusion price. A share rather than a
 		# figure, so the server computes it against a balance it owns rather

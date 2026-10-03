@@ -74,6 +74,11 @@ const LOOTBAG_SCENE := preload("res://scene/interactables/lootbag.tscn")
 # open for the duration.
 const KILL_TIMEOUT := 4.0
 
+# THE FINDER'S MOMENT, when the kill answer names a mythic. A harder shake than
+# any weapon's, and long enough to feel through the banner.
+const MYTHIC_SHAKE_STRENGTH := 5.0
+const MYTHIC_SHAKE_SECONDS := 0.6
+
 
 # =============================================================================
 # PUBLIC API
@@ -279,6 +284,32 @@ func _spawn_loot_bag(data: Dictionary, killer: Node, at_position: Vector2) -> vo
 		bag.set_owner_player(killer)
 	if bag.has_method("set_has_pet"):
 		bag.set_has_pet(bool(data.get("pet_won", false)))
+
+	# A MYTHIC. The server names it on the answer, and it is in this bag, in
+	# the first cell after any pet. The bag lights up for it and stays on the
+	# ground for five minutes, and the finder gets the moment. Everyone else
+	# hears about it from the broadcast poll; see characterhud.gd.
+	var mythic: String = str(data.get("mythic", ""))
+	if mythic != "":
+		if bag.has_method("set_mythic"):
+			bag.set_mythic(true)
+		celebrate_mythic(mythic, killer)
+
+
+func celebrate_mythic(item_id: String, killer: Node) -> void:
+	"""The finder's moment: a sound, a hard camera shake, a red flash and the
+	MYTHIC DROP banner naming the piece. killer must be valid-or-null, as
+	everywhere in this file."""
+	var data: ItemData = ItemRegistry.get_item(item_id)
+	var item_name: String = data.display_name if data != null else item_id
+	Audio.play("mythic_drop")
+	if is_instance_valid(killer) and killer.has_method("shake_camera"):
+		killer.shake_camera(MYTHIC_SHAKE_STRENGTH, MYTHIC_SHAKE_SECONDS)
+	var hud: Node = get_tree().get_first_node_in_group("hud")
+	if hud != null and hud.has_method("show_mythic_banner"):
+		hud.show_mythic_banner("MYTHIC DROP!", item_name, true)
+	if OS.is_debug_build():
+		print("[KILL] MYTHIC — %s" % item_id)
 
 
 func _resolve_loot_container() -> Node:

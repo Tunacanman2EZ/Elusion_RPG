@@ -12,6 +12,7 @@ xp_reward = 1858
 attack_xp_reward = 239
 bag_drop_chance = 1.0
 max_loot_tier = 6
+mythic_odds_override = 150
 pet_drop_id = "petboss"
 max_item_slots = 1
 slot_fill_chance = 1.0

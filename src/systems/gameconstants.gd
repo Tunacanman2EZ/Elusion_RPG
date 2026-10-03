@@ -190,6 +190,34 @@ const RARITY_FRAME_MIN_TIER: int = 2
 # legendary: they were the one rare drop that already had a beam.
 const RARE_GLOW_MIN_TIER: int = 4
 
+# THE MYTHIC TIER, AND HOW RARE IT IS. Tier 6 holds the weapons that bring
+# their own attack: the Meteorite, the Double Axe and Dynamite. No enemy's
+# tier_odds reaches them. Instead every enemy that pays rewards has a "one in
+# N" roll of its own, made by the server at the kill (gamedata.roll_mythic),
+# and a win is the killer's own class's weapon.
+#
+# Decided by the owner on day 2: regular mobs and bosses both drop them, "mixed
+# rarity but it should be super rewarding getting 1". So the tougher the enemy,
+# the better the odds, keyed on max_loot_tier. A boss is
+# EnemyData.slots_are_gear.
+#
+# What that comes to, at the five kills a minute the level curve is built on:
+# - The dark band is about one in 65 hours.
+# - Light and wind are a lottery ticket.
+# - The Crowned is about one in 8 hours, at a kill every three minutes or so
+#   with its two-minute respawn. It is set apart with
+#   EnemyData.mythic_odds_override, as are the small slimes.
+const MYTHIC_TIER: int = 6
+const MYTHIC_ODDS_BOSS_BY_TIER := {6: 300, 5: 600}
+const MYTHIC_ODDS_BY_TIER := {5: 20000, 4: 50000, 3: 100000, 2: 250000, 1: 500000}
+
+# A bag with a mythic in it stays on the ground this long, instead of
+# LOOT_BAG_DESPAWN_SECONDS. A boss fight runs past 45 seconds, and losing the
+# rarest drop in the game to a timer would be the opposite of rewarding. It
+# stays under the server's LOOT_BAG_TTL_SECONDS (600) for the reason given
+# above LOOT_BAG_DESPAWN_SECONDS.
+const MYTHIC_BAG_DESPAWN_SECONDS: float = 300.0
+
 
 # THE LANDS EACH GEAR TIER COMES FROM, indexed by tier like the two above. The
 # element bands decide what drops where - light and wind creatures drop up to
