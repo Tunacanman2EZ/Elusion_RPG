@@ -16345,6 +16345,13 @@ func _test_mythic_drops() -> void:
 func _test_the_item_menu() -> void:
 	section("THE ITEM MENU - the owner's whole catalogue, and a level to test it at")
 
+	# BY PATH, NOT BY class_name. A class_name is known to a headless run only
+	# after the editor has rescanned (see "A brand-new class_name is invisible
+	# until the editor rescans" in CLAUDE.md), and this file naming ItemSpawner
+	# made the whole suite fail to compile on a checkout the editor had not
+	# opened since the menu arrived. A preload resolves by path either way.
+	const Spawner := preload("res://src/ui/owner/itemspawner.gd")
+
 	var packed: PackedScene = load("res://scene/ui/owner/itemspawner.tscn") as PackedScene
 	check("itemspawner.tscn loads", packed != null and packed.can_instantiate())
 	if packed == null or not packed.can_instantiate():
@@ -16377,11 +16384,11 @@ func _test_the_item_menu() -> void:
 	]
 	var wrong: Array = []
 	for pair in kinds:
-		if ItemSpawner.category_of(pair[0]) != pair[1]:
-			wrong.append("%s -> %s" % [pair[0].item_id, ItemSpawner.category_of(pair[0])])
+		if Spawner.category_of(pair[0]) != pair[1]:
+			wrong.append("%s -> %s" % [pair[0].item_id, Spawner.category_of(pair[0])])
 	check("every item is listed under what it is", wrong.is_empty(), wrong)
 	check("  and every kind it can be is one of the menu's",
-		kinds.all(func(pair): return ItemSpawner.CATEGORIES.has(pair[1])))
+		kinds.all(func(pair): return Spawner.CATEGORIES.has(pair[1])))
 
 	menu.search.text = ""
 	menu.category.select(0)
@@ -16402,7 +16409,7 @@ func _test_the_item_menu() -> void:
 	found = menu.listed().map(func(i): return i.item_id)
 	check("  and the id the server and the logs call it by", found == ["doubleaxe"], found)
 	menu.search.text = ""
-	menu.category.select(ItemSpawner.CATEGORIES.find("Weapons"))
+	menu.category.select(Spawner.CATEGORIES.find("Weapons"))
 	menu.refresh()
 	check("a kind lists that kind and nothing else",
 		not menu.listed().is_empty() and menu.listed().all(func(i): return i.type == ItemData.Type.WEAPON))
@@ -16418,10 +16425,10 @@ func _test_the_item_menu() -> void:
 	check("one click spawns it", axe_cell != null and axe_cell.pressed.get_connections().size() > 0)
 
 	check("a sword comes one at a time, however many are asked for",
-		ItemSpawner.quantity_for(_menu_item("w", T.WEAPON, S.WEAPON), 40) == 1)
+		Spawner.quantity_for(_menu_item("w", T.WEAPON, S.WEAPON), 40) == 1)
 	check("  and potions up to their stack, never past it",
-		ItemSpawner.quantity_for(_menu_item("p", T.CONSUMABLE, S.NONE, 99), 40) == 40
-		and ItemSpawner.quantity_for(_menu_item("p", T.CONSUMABLE, S.NONE, 99), 500) == 99)
+		Spawner.quantity_for(_menu_item("p", T.CONSUMABLE, S.NONE, 99), 40) == 40
+		and Spawner.quantity_for(_menu_item("p", T.CONSUMABLE, S.NONE, 99), 500) == 99)
 
 	# --- SPAWNING, through the stubs ---
 	var asked: Array = []

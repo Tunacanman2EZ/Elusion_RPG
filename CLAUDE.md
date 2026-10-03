@@ -596,6 +596,15 @@ shell, give it the path `run_tests.ps1` would find, or set `$env:GODOT` first.
 
 Confirmed on 4.6.1: `SafeSpot NOT in the class cache` → rescan → 740 passed.
 
+**The suite reaches a new class by path, so it does not wait on the rescan.**
+On day 2 the owner's checkout had last been scanned before `itemspawner.gd`
+arrived, and `testrunner.gd` naming `ItemSpawner` made the whole suite fail to
+compile: a hang with no output, the trap described further down. The game ran
+fine, because nothing else names the class. `_test_the_item_menu` now does
+`const Spawner := preload("res://src/ui/owner/itemspawner.gd")`, which resolves
+by path whatever the cache says. Do the same in the suite for any class newer
+than the last editor scan.
+
 The compile check catches it immediately and names the file, which is the whole
 reason that check runs first — the failure otherwise arrives as "every teleport
 test failed" and sends you looking at teleports.
