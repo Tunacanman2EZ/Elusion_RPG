@@ -2062,6 +2062,46 @@ func _test_death_reaches_the_server() -> void:
 	check("  and no flag pretends it goes back to where you died",
 		not ("reviving" in GameState) and over.find("GameState.reviving =") == -1)
 
+	# A FULL DEATH TAKES WHAT IS WORN TOO (day 2, the owner's call), and the
+	# local copy follows the server: no gear, and a bag base that says the
+	# server's bag is empty. Without the base, the first save after every full
+	# death was refused as stale and logged "inventory:0 rejected".
+	var slots_were: Array = CharacterData.character_slots
+	var failed_was: bool = CharacterData.load_failed
+	CharacterData.load_failed = true      # save_data() refuses: nothing leaves the suite
+	CharacterData.character_slots = [{"character": "suitecorpse", "gold": 75,
+		"inventory": [{"item_id": "tinyhealthpotion", "quantity": 3}],
+		"equipment": {"weapon": "doubleaxe", "amulet": "exaltedvitalityamulet"},
+		"bag_base": CharacterData.bag_fingerprint([{"item_id": "tinyhealthpotion", "quantity": 3}])},
+		null, null, null]     # always four: _ensure_slot_array() resets any other shape
+	var mourner: Node = (load("res://src/ui/menus/gameover.gd") as Script).new()
+	mourner._clear_carry_on_death("suitecorpse")
+	var corpse: Dictionary = CharacterData.get_character_by_name("suitecorpse")
+	check("accepting death takes the bag, the purse and everything worn",
+		corpse.get("inventory") == [] and int(corpse.get("gold", -1)) == 0 and corpse.get("equipment") == {},
+		[corpse.get("inventory"), corpse.get("gold"), corpse.get("equipment")])
+	check("  and the next bag save builds on the empty bag the server now holds",
+		str(corpse.get("bag_base", "")) == CharacterData.bag_fingerprint([]), corpse.get("bag_base"))
+	mourner.free()
+	CharacterData.character_slots = slots_were
+	CharacterData.load_failed = failed_was
+
+	var over_scene: Node = (load("res://scene/ui/menus/gameover.tscn") as PackedScene).instantiate()
+	var give_up: Button = over_scene.get_node_or_null("%returnbutton") as Button
+	check("the button says what it costs before it is pressed",
+		give_up != null and give_up.tooltip_text.contains("everything you are wearing")
+		and give_up.tooltip_text.contains("bank is safe"), give_up.tooltip_text if give_up else "no button")
+	over_scene.free()
+
+	# A refused bag save that handed back the server's bag is the based_on rule
+	# working, not a fault: a debug line, not an editor warning.
+	var put_body: String = _func_body(_code_src("res://src/systems/serverstorage.gd"), "func _put_if_changed(")
+	var adopted_at: int = put_body.find("if _adopt_refusal(res):")
+	var else_at: int = put_body.find("else:", adopted_at)
+	var warn_at: int = put_body.find("push_warning(\"ServerStorage: %s rejected")
+	check("a stale bag the server replaced is not an editor warning",
+		adopted_at != -1 and else_at > adopted_at and warn_at > else_at, [adopted_at, else_at, warn_at])
+
 	print("  the server counted transitions correctly all along")
 
 

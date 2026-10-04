@@ -1270,6 +1270,33 @@ thing to search for is not the function that moved — it is every other branch
 that reached the same state. Two buttons on one screen both ended with a
 character alive at full health.
 
+**A full death takes what is worn too** (day 2, the owner: "gear is not
+dropping on full death"). It never had: the respawn took the bag and the purse
+and left every worn piece on. His call: worn gear goes with the bag, and
+nothing is exempt, mythic weapons included. A paid revive keeps everything; the
+bank is the one thing a full death cannot reach.
+
+- The server empties `saves.equipment` in the same transaction, refills to the
+  **bare** maxima (a Vitality amulet's ceiling goes with the amulet), and
+  answers `gear_lost`. `/api/save` already ignored client equipment, so a save
+  built before the death cannot dress the character again.
+- `_clear_carry_on_death()` mirrors it: no equipment, and `bag_base` set to the
+  empty bag's fingerprint. Without that, the first bag save after every full
+  death was built on the bag the character died with, refused as stale and
+  reloaded: the "inventory:0 rejected" warning the owner found.
+  `note_server_bag()` skips an empty array, which is why it is set by hand.
+- A refused bag save whose answer was adopted is a `[SAVE]` debug line now, not
+  a `push_warning`: it is the `based_on` rule working, and in the editor's
+  debugger it looked like a fault. A refusal the client could not adopt still
+  warns.
+- The return button's tooltip says what it costs.
+
+`_test_death_reaches_the_server` holds the client half; the API's
+`test_gearbonus.py` ("ACCEPTING DEATH TAKES EVERYTHING WORN") the server's.
+Played: a level 22 warrior in five ember and mythic pieces died in the field,
+accepted it, and came back in town wearing nothing, on 432 of 432 health, with
+no warning in the log.
+
 ### A timestamp made on receipt measures when the reader turned up
 
 The sibling of the rule above, and the same mistake one step further on. Events

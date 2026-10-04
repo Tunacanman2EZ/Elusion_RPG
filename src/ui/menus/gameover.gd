@@ -455,7 +455,7 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# zero out the dying character's carry gold and clear their inventory.
 	# writes directly to the save slot since the player node is no longer alive.
 	#
-	# what's LOST:   carry gold, carry inventory items
+	# what's LOST:   carry gold, carry inventory items, everything worn
 	# what SURVIVES: bank gold, bank inventory, lusions, XP, levels, skills
 	#
 	# the surviving stuff all lives in account_data and is NOT touched here.
@@ -473,6 +473,19 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# The server's respawn deletes every carried row, keys included.
 	slot_data["inventory"] = []
 
+	# WORN GEAR GOES WITH THE BAG. Day 2, the owner: "gear is not dropping on
+	# full death" - it never had. The respawn now takes everything worn, mythic
+	# weapons included; only a paid revive keeps it.
+	slot_data["equipment"] = {}
+
+	# THE SERVER'S BAG IS EMPTY NOW, AND THE NEXT SAVE MUST SAY SO. A bag save
+	# names the bag it was built on (based_on), and this slot's base was still
+	# the bag the character died with - so the first save after a full death was
+	# refused as stale and reloaded, which is the "inventory:0 rejected" warning
+	# the owner found on day 2. Harmless, but every full death produced one.
+	# CharacterData.note_server_bag() skips an empty array, so it is set here.
+	slot_data["bag_base"] = CharacterData.bag_fingerprint([])
+
 	# HP IS NOT SET HERE ANY MORE, and that line is the bug this whole path was
 	# rewritten for. It wrote full health into the slot on the client's own
 	# authority; the server saw the next sync as an unexplained heal from zero
@@ -482,11 +495,12 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# POST /api/character/respawn decides it now, and _apply_restored_status()
 	# copies the answer in. Everything left in this function is a MIRROR of a
 	# decision the server has already made and committed - the gold above is
-	# gone from `saves` through the ledger, the bag is gone from `carry_items` -
-	# so these writes only stop the UI showing stale numbers for a frame.
+	# gone from `saves` through the ledger, the bag is gone from `carry_items`,
+	# the gear from `saves.equipment` - so these writes only stop the UI showing
+	# stale numbers for a frame.
 	#
 	# write back to disk — atomic save protects against force-quit exploits
 	CharacterData.save_character_slot(char_name, slot_data)
 
 	if OS.is_debug_build():
-		print("[DEATH] '%s' declined revive — carry items and gold cleared" % char_name)
+		print("[DEATH] '%s' declined revive — carry items, gold and worn gear cleared" % char_name)

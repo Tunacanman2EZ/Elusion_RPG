@@ -641,11 +641,22 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 		# this write is a whole-bag replace, and letting it through deleted
 		# whatever the trade had just given. Adopting that answer is the only
 		# correct response; retrying the same body would be refused again.
-		_adopt_refusal(res)
+		#
 		# NOT recorded as pushed. A rejected section stays dirty, so the next
 		# save retries it rather than deciding it is already up to date — which
 		# is exactly how a failed write becomes silent data loss.
-		push_warning("ServerStorage: %s rejected — %s" % [key, res.get("error", "")])
+		#
+		# A REFUSAL THAT HANDED BACK THE BAG IS NOT A WARNING. It is the based_on
+		# rule doing its job - the server's bag was newer, it is adopted, and the
+		# next save builds on it - and the HUD already stays quiet about it. As a
+		# push_warning it sat in the editor's debugger looking like a fault (day
+		# 2, after a full death). Anything the client could not adopt still warns.
+		if _adopt_refusal(res):
+			if OS.is_debug_build():
+				print("[SAVE] %s: the server's bag was newer and has been adopted (%s)"
+					% [key, res.get("error", "")])
+		else:
+			push_warning("ServerStorage: %s rejected — %s" % [key, res.get("error", "")])
 		return
 
 

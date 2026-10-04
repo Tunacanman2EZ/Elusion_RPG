@@ -381,9 +381,11 @@ level that quietly stops saving.
 ## Account-shared state
 
 The bank and lusions belong to the **account**, not to a character. That is the
-whole point of the feature: carry gold and carry items are lost when you die,
-so the bank is where you put what you do not want to lose, and it is shared so
-a second character can use what the first one banked.
+whole point of the feature: carry gold, carry items and everything worn are lost
+when you accept death (`POST /api/character/respawn`, which answers `gold_lost`
+and `gear_lost`; a paid revive keeps it all), so the bank is where you put what
+you do not want to lose, and it is shared so a second character can use what the
+first one banked.
 
 ### `GET /api/account`
 

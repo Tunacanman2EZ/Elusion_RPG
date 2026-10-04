@@ -87,4 +87,5 @@ text = "Revive for (gold)"
 [node name="returnbutton" type="Button" parent="PanelContainer/VBoxContainer" unique_id=1498233587]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Accept death: lose your backpack, the gold you carry and everything you are wearing. Your bank is safe."
 text = "Return to character select"
