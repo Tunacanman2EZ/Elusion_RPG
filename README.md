@@ -127,7 +127,7 @@ Fishing and cooking were the first two skills the client cannot lie about, and t
 
 ### An audit I ran against my own API — `SECURITY_NOTES.md` (API repo)
 
-I attacked my own server as a logged-in player with a modified client and wrote down what I got away with, then kept the file honest as the code moved. Nineteen findings now: eighteen closed, one open and still listed because naming it is the point. A twentieth entry, E-15, is an audit that went looking for broken access control and **found nothing** — it is in the notes because a search that comes back empty is still a result. Each has a one-line risk and a one-line fix:
+I attacked my own server as a logged-in player with a modified client and wrote down what I got away with, then kept the file honest as the code moved. Twenty findings now: nineteen closed, one open and still listed because naming it is the point. A twenty-first entry, E-15, is an audit that went looking for broken access control and **found nothing** — it is in the notes because a search that comes back empty is still a result. Each has a one-line risk and a one-line fix:
 
 | # | Risk if exploited | Fix |
 |---|-------------------|-----|
@@ -150,6 +150,7 @@ I attacked my own server as a logged-in player with a modified client and wrote 
 | E-18 | The other player swapped the offer a moment before your Accept, and it went through. | Compare-and-set — Accept names the version of the offer it saw, and what a trade gave you cannot be wiped by a save from before it. |
 | E-19 | Two games on one account overwrote each other's bag, and a stolen token kept working beside yours. | One session at a time — a new login ends the others. |
 | E-20 | One guessed staff password opened the moderation desk. | Second factor — a code by email, once per computer for 30 days. *It stands aside, and says so, where there is no address to send it to.* |
+| E-21 | A copy of the database — a backup or a leaked file — logged its holder in as every player who was signed in, for up to 30 days. | Hashing at rest — the server keeps only each session token's SHA-256, as it already did for passwords (scrypt) and trusted devices; old sessions were hashed in place, so nobody was signed out. *Found by a course assignment: audit how your app stores credentials.* |
 
 The one I'd actually point at is **E-8**, because I found it by accident. Every other finding came from attacking the API deliberately; that one turned up while wiring an unrelated endpoint. `gold` was a writable field on the status endpoint and had never been marked server-owned, so one request set any balance a player liked and the supply invariant broke on the spot. What makes it worth writing down is *why the tests missed it*: all 268 of them moved gold through a server path and then asserted the books balanced. None tried the front door of the balance itself.
 
@@ -223,9 +224,9 @@ cd <your-path>/game/api
 
 Calling the virtualenv's interpreter directly is deliberate: it skips having to activate the environment and guarantees you're on the venv's Python rather than whatever `python` happens to resolve to on `PATH`.
 
-That serves ninety-nine endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-Ninety-four of the ninety-nine require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+Ninety-five of the hundred require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
 The backend has forty-two test suites, run together with one command:
 
@@ -235,7 +236,7 @@ cd <your-path>\game\api
 ```
 
 ```
-test_api.py            515 checks    the endpoint surface, moderation, presence
+test_api.py            519 checks    the endpoint surface, moderation, presence
 test_economy.py        363 checks    the gold ledger and the supply invariant
 test_security.py       270 checks    the audit's findings, held closed
 test_loot.py           259 checks    every finished item is actually obtainable
@@ -248,7 +249,7 @@ test_moderation.py     133 checks    the moderation record, and a log that opens
 test_refusals.py       105 checks    401, 403, and the 404 that is really a 403
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
 test_ownership.py       99 checks    no route hands over a row that is not yours
-test_security_doc.py    96 checks    SECURITY.md is checked, not trusted
+test_security_doc.py    98 checks    SECURITY.md is checked, not trusted
 test_pacing.py          95 checks    the pace of the game: what the server pays and the store charges
 test_friends.py         76 checks    asking, answering and ending a friendship
 test_chardelete.py      72 checks    deleting a character, and only the character
@@ -259,10 +260,10 @@ test_broadcast.py       59 checks    the server's voice, end to end
 test_gathering.py       57 checks    fishing and cooking authority, and a save that cannot undo a cook
 test_recovery.py        54 checks    account recovery, adversarially
 test_maintenance.py     53 checks    the owner's kill switch
+test_accounts.py        50 checks    signing in: one game per account, locks, no mail
 test_settings.py        49 checks    the options screen's rules
 test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
-test_accounts.py        43 checks    signing in: one game per account, locks, no mail
 test_clientbuild.py     37 checks    the client build gate
 test_guildlife.py       37 checks    what members are playing, what happened
 test_revocation.py      34 checks    what it costs to change your mind
@@ -277,7 +278,7 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					3,938 checks, 0 failures
+					3,951 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
