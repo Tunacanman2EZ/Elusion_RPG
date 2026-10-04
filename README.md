@@ -131,7 +131,7 @@ I attacked my own server as a logged-in player with a modified client and wrote 
 
 | # | Risk if exploited | Fix |
 |---|-------------------|-----|
-| E-1 | Any item, any quantity, written straight into the bag or bank. | Server-side authority — saves reconciled against what the server granted. |
+| E-1 | Any item, any quantity, written straight into the bag or bank. | Server-side authority — first saves reconciled against what the server granted; now the bag and bank are the server's outright, every drag, bin and coin pile its own request. |
 | E-2 | Any skill level claimed, skipping all progression. | Server-side authority — all six skills are granted only by the server and dropped from client saves; the hard cap at 99 is the guardrail behind it. |
 | E-3 | Kills reported without fighting, farming XP and loot. | Rate limit and a cap from the world's own respawners. *Open — needs server-side combat.* |
 | E-4 | A crash on a reachable server hands out a shell next to every password hash. | Safe default + refusal — the debugger is off unless deliberately switched on, and the server refuses to start if anything else asks for it. |
@@ -141,7 +141,7 @@ I attacked my own server as a logged-in player with a modified client and wrote 
 | E-8 | Infinite gold, destroying the economy and progression. | Server-side authority — gold is server-owned on every write path. |
 | E-9 | Heal to full at will; never die. | Extra check — rises past what regen and potions explain are trimmed. *A bound on the rate, not a proof — and it earned its keep: it is what caught E-16.* |
 | E-10 | Free revives, so death costs nothing. | Server-side authority — the server charges the revive from its own balance. |
-| E-11 | A ban lasts as long as it takes to register a new account. | Extra check — no sign-ups from an address holding a live ban; linked accounts shown to staff. *Closed as far as addresses honestly allow; a VPN still defeats it.* |
+| E-11 | A ban lasts as long as it takes to register a new account. | Extra check — no sign-ups from an address or a computer (the game's install id) holding a live ban; linked accounts shown to staff. *A VPN no longer gets past it; deleting the game's install file still does.* |
 | E-12 | Removing anyone required a ban, the harshest response available. | New tool — a kick that ends sessions without banning. |
 | E-13 | Four closed fixes silently off in production, every test green. | Deployment check — a suite and a boot-time error for any protection running unarmed. |
 | E-14 | A kicked or banned player keeps playing as long as the game stays open. | Heartbeat — the game re-checks its session and a dead one returns it to login. |
@@ -224,11 +224,11 @@ cd <your-path>/game/api
 
 Calling the virtualenv's interpreter directly is deliberate: it skips having to activate the environment and guarantees you're on the venv's Python rather than whatever `python` happens to resolve to on `PATH`.
 
-That serves a hundred endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred and five endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-Ninety-five of the hundred require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+A hundred of the hundred and five require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has forty-two test suites, run together with one command:
+The backend has forty-four test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -236,9 +236,9 @@ cd <your-path>\game\api
 ```
 
 ```
-test_api.py            519 checks    the endpoint surface, moderation, presence
+test_api.py            523 checks    the endpoint surface, moderation, presence
 test_economy.py        363 checks    the gold ledger and the supply invariant
-test_security.py       270 checks    the audit's findings, held closed
+test_security.py       294 checks    the audit's findings, held closed
 test_loot.py           259 checks    every finished item is actually obtainable
 test_equipment.py      212 checks    the equipment system, client and server
 test_gearbonus.py      173 checks    what gear adds, counted by the server
@@ -246,16 +246,18 @@ test_guilds.py         167 checks    founding, joining, ranks, taking a guild do
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
 test_moderation.py     133 checks    the moderation record, and a log that opens on moderation
+test_ownership.py      128 checks    no route hands over a row that is not yours
 test_refusals.py       105 checks    401, 403, and the 404 that is really a 403
+test_security_doc.py   106 checks    SECURITY.md is checked, not trusted
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
-test_ownership.py       99 checks    no route hands over a row that is not yours
-test_security_doc.py    98 checks    SECURITY.md is checked, not trusted
 test_pacing.py          95 checks    the pace of the game: what the server pays and the store charges
 test_friends.py         76 checks    asking, answering and ending a friendship
 test_chardelete.py      72 checks    deleting a character, and only the character
 test_chat.py            67 checks    world chat, end to end, one line as typed
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
+test_deploy.py          61 checks    what the first live deploy found: .env read first, one-file backups
 test_staffcode.py       60 checks    a staff password alone opens nothing, once per computer
+test_bagmoves.py        59 checks    the bag and the bank are the server's: moves, the bin, piles
 test_broadcast.py       59 checks    the server's voice, end to end
 test_gathering.py       57 checks    fishing and cooking authority, and a save that cannot undo a cook
 test_recovery.py        54 checks    account recovery, adversarially
@@ -278,12 +280,12 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					3,951 checks, 0 failures
+					4,136 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-fourth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,641 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 128 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,625 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 128 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
 **If you cloned this repo, it will report `2164 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
@@ -296,7 +298,7 @@ Some of the suite is there to catch things the engine will not tell you about:
 
 `src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool answering the two questions a filename search gets wrong. **Painted cell counts per texture** — because tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet. And **reachability**, walking `ResourceLoader.get_dependencies()` from every scene and resource, which is the list you can actually delete from. It found two byte-identical art files a filename sweep had cleared as used, because their twins in other folders are.
 
-`python app.py` is Flask's development server, which is right for local play and wrong for anything public. The interactive debugger stays off unless `ELUSION_DEBUG=1` is set on purpose, and `wsgi.py` / `DEPLOY.md` in the API repo cover running it behind a real WSGI server.
+`python app.py` is Flask's development server, which is right for local play and wrong for anything public. The interactive debugger stays off unless `ELUSION_DEBUG=1` is set on purpose, and `wsgi.py` / `DEPLOY.md` in the API repo cover running it behind a real WSGI server. `DEPLOY.md` also records how the live server behind elusionrpg.com is set up, how to update it, and how its backups work.
 
 Without the service running, the login screen will tell you it can't reach the server — the game does not fall back to local accounts by design.
 
