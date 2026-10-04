@@ -683,7 +683,6 @@ collision_layer = 8
 collision_mask = 11
 motion_mode = 1
 script = ExtResource("1_chk58")
-leash_range = 500.0
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=919068649]
 texture_filter = 1

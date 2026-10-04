@@ -29,6 +29,11 @@ extends Node
 const AREAS := {
 	"elusion":   "res://scene/elusion.tscn",
 	"field":     "res://scene/field.tscn",
+	# Day 2: the Field at twice the size, built from the blueprint, for the
+	# owner to decorate. No door leads here yet; the owner reaches it with
+	# /goto bigfield. The day it replaces the Field, the town's portal points
+	# here and this note goes.
+	"bigfield":  "res://scene/bigfield.tscn",
 	"boss":      "res://scene/boss.tscn",
 	"bossarena": "res://scene/bossarena.tscn",
 	"easteregg": "res://scene/easteregg.tscn",
@@ -41,6 +46,7 @@ const AREAS := {
 const AREA_NAMES := {
 	"elusion":   "Elusion",
 	"field":     "Field",
+	"bigfield":  "Big Field",
 	"boss":      "Boss Room",
 	"bossarena": "Boss Arena",
 	"easteregg": "Easter Egg",
@@ -89,6 +95,7 @@ var _spawn_wait_left: float = 0.0
 
 
 const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
+const EnemySleeper := preload("res://src/world/enemysleeper.gd")
 
 
 func _ready() -> void:
@@ -125,6 +132,10 @@ func _on_scene_changed() -> void:
 		return
 	if scene.get_node_or_null("mapbackdrop") == null:
 		MapBackdrop.add_to(scene)
+	# Far-away enemies stop thinking until the player comes near; see
+	# enemysleeper.gd.
+	if scene.get_node_or_null(EnemySleeper.NODE_NAME) == null:
+		EnemySleeper.add_to(scene)
 
 
 # =============================================================================

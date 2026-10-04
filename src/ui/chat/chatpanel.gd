@@ -1626,6 +1626,11 @@ const NEW_BELOW_TEXT := "New messages below - click to see them"
 const COMMANDS_HELP := "/w name text  whisper   /r text  answer the last whisper\n" \
 	+ "/ignore name   /unignore name   /ignored  who you are ignoring"
 const STAFF_COMMANDS_HELP := "\n/mute name minutes reason   /unmute name"
+const OWNER_COMMANDS_HELP := "\n/goto area   travel to any area (owner)"
+
+# THE DOOR /goto GOES THROUGH. A Callable so the suite can see where it would
+# have gone without changing scene underneath itself.
+var go_to_area: Callable = AreaRegistry.go_to
 
 var line_menu: PopupMenu = null
 var _menu_line: Dictionary = {}
@@ -1816,7 +1821,8 @@ func _run_command(text: String) -> void:
 	var arg: String = bits[1] if bits.size() > 1 else ""
 	match command:
 		"/help", "/commands", "/?":
-			_set_notice(COMMANDS_HELP + (STAFF_COMMANDS_HELP if Api.role_at_least("mod") else ""))
+			_set_notice(COMMANDS_HELP + (STAFF_COMMANDS_HELP if Api.role_at_least("mod") else "")
+				+ (OWNER_COMMANDS_HELP if Api.is_owner else ""))
 		"/ignore", "/block":
 			if arg == "":
 				_set_notice("Try: /ignore name")
@@ -1840,6 +1846,18 @@ func _run_command(text: String) -> void:
 				_set_notice("Try: /unmute name")
 			else:
 				await unmute_player(arg)
+		"/goto":
+			# OWNER ONLY, and to anybody else it is a command that does not
+			# exist rather than one they may not use. Day 2: how the owner
+			# reaches the Big Field, which no door leads to yet. Travel is
+			# client-side (AreaRegistry.go_to), so nothing to ask the server.
+			if not Api.is_owner:
+				_set_notice("There is no %s command. /help lists them." % command)
+			elif not AreaRegistry.has_area(arg.to_lower()):
+				_set_notice("Try: /goto " + " | ".join(AreaRegistry.area_ids()))
+			else:
+				_set_notice("Going to %s." % AreaRegistry.display_name(arg.to_lower()))
+				go_to_area.call(arg.to_lower())
 		_:
 			_set_notice("There is no %s command. /help lists them." % command)
 

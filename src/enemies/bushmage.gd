@@ -91,6 +91,22 @@ var _vine_spawned_this_attack: bool = false
 # LIFECYCLE
 # =============================================================================
 
+func _init() -> void:
+	# COMMIT TO THE CHASE. The default leash is 400, so the mage gave up and
+	# walked home the moment the player got that far - which is exactly why the
+	# mages in the field sat at the edge casting into empty space. A rush-in
+	# caster pursues across the room instead of guarding a spot.
+	#
+	# IN _init, NOT _ready, so a level can still choose. Instancing a scene
+	# runs _init and then writes the values the scene file stores, so this is
+	# the class's default and a placement that sets leash_range keeps its own.
+	# It used to be set in _ready(), after the scene's values, which overwrote
+	# every placement - the Big Field's mages, set to 250 so one field does not
+	# pull the next, chased from 1,500 like any other. bushmage.tscn carries no
+	# leash_range for the same reason: a stored value would replace this one.
+	leash_range = 1500.0
+
+
 func _ready() -> void:
 	# class-specific stat overrides BEFORE super._ready() so BaseEnemy
 	# wires the healthbar and attack timer with the right values
@@ -106,12 +122,6 @@ func _ready() -> void:
 	# casts from CAST_RANGE, but inherited code still reads attack_range, and two
 	# numbers that mean "close enough to fight" will eventually disagree.
 	attack_range    = CAST_RANGE
-
-	# COMMIT TO THE CHASE. The default leash is 400, so the mage gave up and
-	# walked home the moment the player got that far - which is exactly why the
-	# mages in the field sat at the edge casting into empty space. A rush-in
-	# caster pursues across the room instead of guarding a spot.
-	leash_range = 1500.0
 
 	super._ready()
 

@@ -81,6 +81,13 @@ extends Node2D
 # How often a held-back respawn re-checks the distance above.
 @export var retry_seconds: float = 2.0
 
+# SETTINGS A SCENE GIVES ONE ENEMY, carried onto every replacement. A respawn
+# is a fresh copy of the enemy's own scene, so anything the world scene set on
+# the placed instance was lost the first time it died. bigfield.tscn gives its
+# monsters a 250 px chase range (leash_range) so a fight in one field does not
+# pull the next; without this, every respawn there chased from 400 again.
+const KEPT_PROPERTIES := ["leash_range"]
+
 # Off means the census still happens but nothing ever comes back. Useful for a
 # boss arena or a story room that should stay cleared.
 @export var enabled: bool = true
@@ -102,7 +109,7 @@ const SCATTER_SNAP_MAX := 24.0
 
 # One entry per enemy the scene was authored with.
 # { "scene_path": String, "packed": PackedScene, "position": Vector2,
-#   "parent": NodePath }
+#   "parent": NodePath, "kept": {property: value} }
 #
 # THE PackedScene IS HELD, NOT LOADED PER RESPAWN. load() used to run the first
 # time each enemy type came back, which is a disk hit during play — Godot caches
@@ -160,6 +167,7 @@ func _ready() -> void:
 			"packed": packed,
 			"position": enemy.global_position,
 			"parent": get_path_to(enemy.get_parent()),
+			"kept": kept_settings(enemy),
 		}
 		_census.append(entry)
 		_watch(enemy, entry)
@@ -232,6 +240,11 @@ func _respawn_after(entry: Dictionary, delay: float) -> void:
 		push_warning("EnemyRespawner: %s is not a Node2D" % entry.get("scene_path", ""))
 		return
 
+	# Before add_child(), which runs _ready() (CLAUDE.md, "add_child() runs
+	# _ready(), so configure the node before you add it").
+	var kept: Dictionary = entry.get("kept", {})
+	for property in kept:
+		enemy.set(property, kept[property])
 	parent.add_child(enemy)
 	enemy.global_position = spawn_position
 
@@ -253,6 +266,14 @@ func _respawn_after(entry: Dictionary, delay: float) -> void:
 	enemy.reset_physics_interpolation()
 
 	_watch(enemy, entry)
+
+
+static func kept_settings(enemy: Node) -> Dictionary:
+	var kept: Dictionary = {}
+	for property in KEPT_PROPERTIES:
+		if property in enemy:
+			kept[property] = enemy.get(property)
+	return kept
 
 
 func _scattered_position(base: Vector2) -> Vector2:

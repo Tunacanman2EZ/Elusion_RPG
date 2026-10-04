@@ -183,6 +183,8 @@ func _run_all() -> void:
 	await _test_a_failed_load_is_not_an_empty_account()
 	_test_character_select_has_a_way_out()
 	await _test_every_area_can_be_walked()
+	await _test_the_big_field()
+	await _test_far_enemies_sleep()
 	_test_the_welcome_plays_once_a_login()
 	_test_a_character_can_be_deleted()
 	_test_one_code_per_computer()
@@ -5950,6 +5952,215 @@ const DOOR_SCRIPTS := ["res://src/world/ladder.gd", "res://src/world/leavetown.g
 	"res://src/world/victoryteleporter.gd", "res://src/world/teleporter.gd"]
 
 
+# =============================================================================
+# THE BIG FIELD
+# =============================================================================
+# Day 2: the owner wanted the Field twice the size, packed with enemies, "super
+# fast and easy for players to jump into". bigfield.tscn is generated from the
+# blueprint the owner signed off: the Field's own crypt tiles, a main road from
+# the arrival to the ladder, ten fields off it, one element each, harder the
+# further you go. These hold what the blueprint promised; the walk test above
+# holds the walls and the doors, because bigfield is in AreaRegistry.AREAS.
+const BIG_FIELD := "res://scene/bigfield.tscn"
+const BIG_FIELD_BANDS := {"light": 1, "wind": 1, "water": 2, "ice": 2, "earth": 3,
+	"electric": 3, "poison": 3, "bushmage": 3, "bushsniper": 3, "fire": 4, "dark": 5}
+
+func _test_the_big_field() -> void:
+	section("THE BIG FIELD - packed fields off one road, harder the further you go")
+
+	check("it is an area: /goto and the walk test can reach it",
+		AreaRegistry.has_area("bigfield") and str(AreaRegistry.AREAS.get("bigfield", "")) == BIG_FIELD
+		and AreaRegistry.display_name("bigfield") == "Big Field")
+	var packed: PackedScene = load(BIG_FIELD) as PackedScene
+	check("it loads", packed != null)
+	if packed == null:
+		return
+	var area: Node = packed.instantiate()
+	var ground: TileMapLayer = area.get_node_or_null("ground") as TileMapLayer
+	var arrival: Node2D = area.get_node_or_null("ysortworld/interactables/fieldteleport/arrivalmarker") as Node2D
+	var enemies: Array = area.get_node("ysortworld/enemies").get_children() if area.has_node("ysortworld/enemies") else []
+	check("the floor is painted from the Field's own crypt atlas",
+		ground != null and ground.get_used_cells().size() > 10000
+		and (ground.tile_set.get_source(1) as TileSetAtlasSource).texture.resource_path == "res://art/tiles/underground.png",
+		ground.get_used_cells().size() if ground else 0)
+	check("players arrive where the town's portal sends them (field_entrance)",
+		arrival != null and str(arrival.get("portal_id")) == "field_entrance")
+	var ladder: Node = area.get_node_or_null("ysortworld/interactables/ladderdown")
+	check("the ladder at the far end goes down to the boss arena",
+		ladder != null and str(ladder.get("destination_scene_path")) == "res://scene/bossarena.tscn")
+	check("a respawner brings the fields back", area.get_node_or_null("enemyrespawner") != null)
+	check("128 enemies are placed", enemies.size() == 128, enemies.size())
+
+	# Positions are read relative to the area root, as the scene file holds them.
+	var arrive_at: Vector2 = Vector2.ZERO
+	if arrival != null:
+		arrive_at = (arrival.get_parent() as Node2D).position + (arrival.get_parent() as Node2D).transform.basis_xform(arrival.position)
+	var too_close: Array = []
+	var in_walls: Array = []
+	var chase: Array = []
+	var by_band: Dictionary = {}
+	for enemy in enemies:
+		var at: Vector2 = (enemy as Node2D).position
+		if at.distance_to(arrive_at) < 400.0:
+			too_close.append(enemy.name)
+		var cell: Vector2i = ground.local_to_map(at)
+		var atlas: Vector2i = ground.get_cell_atlas_coords(cell)
+		if not (atlas.x >= 1 and atlas.x <= 4 and atlas.y >= 1 and atlas.y <= 3):
+			in_walls.append("%s on %s" % [enemy.name, atlas])
+		if not is_equal_approx(float(enemy.get("leash_range")), 250.0):
+			chase.append(enemy.name)
+		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
+		var band: int = 0
+		for prefix in BIG_FIELD_BANDS:
+			if kind.begins_with(prefix):
+				band = int(BIG_FIELD_BANDS[prefix])
+				break
+		if not by_band.has(band):
+			by_band[band] = []
+		by_band[band].append(at.x)
+	check("a safe landing: nothing within 400 px of where players arrive", too_close.is_empty(), too_close)
+	check("every enemy stands on open floor, none in a wall tile", in_walls.is_empty(), in_walls.slice(0, 4))
+	check("every enemy chases from 250 px, so one field does not pull the next", chase.is_empty(), chase.slice(0, 4))
+	var means: Array = []
+	for band in [1, 2, 3, 4, 5]:
+		var xs: Array = by_band.get(band, [])
+		var total: float = 0.0
+		for x in xs:
+			total += float(x)
+		means.append(total / maxf(xs.size(), 1.0))
+	check("every enemy is in a band, and every band has its fields", not by_band.has(0)
+		and [1, 2, 3, 4, 5].all(func(b): return by_band.has(b)), by_band.keys())
+	check("harder the further you go: each band sits further along the road than the one before",
+		means[0] < means[1] and means[1] < means[2] and means[2] < means[3] and means[3] < means[4], means)
+	var kinds: Array = []
+	for enemy in enemies:
+		if not kinds.has(enemy.scene_file_path):
+			kinds.append(enemy.scene_file_path)
+	area.free()
+
+	# The 250 above is what the scene file says. What counts is the number an
+	# enemy chases from once it is in the world: bushmage.gd used to set its
+	# own 1,500 in _ready(), after the scene's value, and the file check above
+	# passed while every mage in the Big Field crossed the map.
+	var holder := Node2D.new()
+	holder.position = Vector2(-20000, -20000)
+	add_child(holder)
+	var placed: Array = []
+	for i in kinds.size():
+		var one: Node2D = (load(kinds[i]) as PackedScene).instantiate() as Node2D
+		one.set("leash_range", 250.0)
+		one.position = Vector2(i * 300, 0)
+		holder.add_child(one)
+		placed.append(one)
+	var mage: Node2D = (load("res://scene/enemy/bushmage.tscn") as PackedScene).instantiate() as Node2D
+	mage.position = Vector2(0, 600)
+	holder.add_child(mage)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var moved: Array = []
+	for one in placed:
+		if not is_equal_approx(float(one.get("leash_range")), 250.0):
+			moved.append("%s %s" % [str(one.scene_file_path).get_file(), one.get("leash_range")])
+	check("  and still 250 once each kind is in the world (%d kinds)" % kinds.size(), moved.is_empty(), moved)
+	check("  while a mage nobody set still commits to the chase, as in the Field",
+		is_equal_approx(float(mage.get("leash_range")), 1500.0), mage.get("leash_range"))
+	holder.free()
+	print("  128 enemies, bands along the road at x %s" % [means.map(func(m): return int(m))])
+
+
+# =============================================================================
+# FAR ENEMIES SLEEP
+# =============================================================================
+# Every enemy used to think on every physics tick wherever the player was. The
+# Big Field holds 128, so enemysleeper.gd (added to every area by AreaRegistry)
+# disables the ones more than SLEEP_DISTANCE away and wakes them inside
+# WAKE_DISTANCE. Measured in the Big Field: 87 of 128 asleep where you arrive,
+# physics 2.1 ms a frame against 3.3 with the sleeper off.
+func _test_far_enemies_sleep() -> void:
+	section("FAR ENEMIES SLEEP - beyond 1100 px an enemy stops thinking, inside 900 it wakes")
+
+	var Sleeper := preload("res://src/world/enemysleeper.gd")
+	var holder := Node2D.new()
+	add_child(holder)
+	var player := Node2D.new()
+	player.add_to_group("player")
+	holder.add_child(player)
+	var near := Node2D.new(); near.position = Vector2(500, 0)
+	var far := Node2D.new(); far.position = Vector2(1500, 0)
+	var boss := Node2D.new(); boss.position = Vector2(1500, 300)
+	for e in [near, far, boss]:
+		e.add_to_group("enemies")
+		holder.add_child(e)
+	boss.add_to_group("unpushable")
+	var sleeper: Node = Sleeper.add_to(holder)
+
+	var asleep: int = sleeper.check_now()
+	check("an enemy 1,500 px away sleeps", far.process_mode == Node.PROCESS_MODE_DISABLED and asleep == 1, asleep)
+	check("  one 500 px away stays awake", near.process_mode == Node.PROCESS_MODE_INHERIT)
+	check("  and a boss never sleeps", boss.process_mode == Node.PROCESS_MODE_INHERIT)
+
+	# The welcome story freezes enemies with set_physics_process(false); the
+	# sleeper must not undo that, nor be undone by it.
+	far.set_physics_process(false)
+	player.position = Vector2(450, 0)         # far 1,050 away: between the two
+	sleeper.check_now()
+	check("between 900 and 1,100 a sleeper stays asleep",
+		far.process_mode == Node.PROCESS_MODE_DISABLED)
+	player.position = Vector2(-500, 0)        # near 1,000 away, far 2,000
+	sleeper.check_now()
+	check("  and an awake one stays awake (no flicker at the edge)",
+		near.process_mode == Node.PROCESS_MODE_INHERIT and far.process_mode == Node.PROCESS_MODE_DISABLED)
+	player.position = Vector2(1300, 0)        # 200 from far
+	sleeper.check_now()
+	check("walking up wakes it", far.process_mode == Node.PROCESS_MODE_INHERIT and not far.has_meta(&"asleep"))
+	check("  and waking leaves the story's own freeze alone", not far.is_physics_processing())
+	far.set_physics_process(true)
+	check("  the near one, now 800 px away, is still awake", near.process_mode == Node.PROCESS_MODE_INHERIT)
+
+	player.position = Vector2(-2000, 0)
+	sleeper.check_now()
+	sleeper.enabled = false
+	check("turning the sleeper off wakes everyone at once",
+		near.process_mode == Node.PROCESS_MODE_INHERIT and far.process_mode == Node.PROCESS_MODE_INHERIT)
+	check("  and while off it sleeps nobody", sleeper.check_now() == 0
+		and far.process_mode == Node.PROCESS_MODE_INHERIT)
+
+	var registry: String = _func_body(_code_src("res://src/systems/arearegistry.gd"), "func _on_scene_changed(")
+	check("every area gets one when it opens (AreaRegistry._on_scene_changed)",
+		registry.contains("EnemySleeper.add_to(scene)"))
+	holder.free()
+
+	# A respawn is a fresh copy of the enemy's scene; the chase range the Big
+	# Field gives its monsters has to survive it.
+	var Respawner := preload("res://src/world/enemyrespawner.gd")
+	var arena := Node2D.new()
+	add_child(arena)
+	var light: Node2D = (load("res://scene/enemy/lightsprite.tscn") as PackedScene).instantiate()
+	light.set("leash_range", 250.0)
+	light.position = Vector2(-9000, -9000)
+	arena.add_child(light)
+	var respawner: Node = Respawner.new()
+	respawner.spawn_scatter = 0.0
+	arena.add_child(respawner)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var entry: Dictionary = {}
+	for e in respawner._census:
+		if (e["position"] as Vector2).distance_to(Vector2(-9000, -9000)) < 1.0:
+			entry = e
+	check("the respawner's census keeps the chase range a scene set",
+		float(entry.get("kept", {}).get("leash_range", 0.0)) == 250.0, entry.get("kept"))
+	var before: int = arena.get_child_count()
+	await respawner._respawn_after(entry, 0.0)
+	var back: Node = arena.get_child(arena.get_child_count() - 1) if arena.get_child_count() > before else null
+	check("  and the replacement chases from 250 too, not its scene's own 500",
+		back != null and back != light and float(back.get("leash_range")) == 250.0,
+		back.get("leash_range") if back else "nothing came back")
+	arena.free()
+	print("  sleep beyond %d px, wake inside %d px, every %.2f s"
+		% [int(Sleeper.SLEEP_DISTANCE), int(Sleeper.WAKE_DISTANCE), Sleeper.CHECK_SECONDS])
+
+
 func _test_every_area_can_be_walked() -> void:
 	section("AREAS - you arrive clear of the doors, the walls hold, every door can be walked to")
 
@@ -5996,8 +6207,9 @@ func _test_every_area_can_be_walked() -> void:
 			report.unreached.is_empty(), "never reached: %s" % [report.unreached])
 
 	probe.free()
-	check("the town, the field, the arena and the boss room were all walked",
-		walked.has("elusion") and walked.has("field") and walked.has("bossarena") and walked.has("boss"), walked)
+	check("the town, the field, the Big Field, the arena and the boss room were all walked",
+		walked.has("elusion") and walked.has("field") and walked.has("bigfield") and walked.has("bossarena")
+		and walked.has("boss"), walked)
 	print("  walked %s; no map to walk in %s" % [walked, skipped])
 
 
@@ -15584,6 +15796,28 @@ func _test_chat_safety_menu() -> void:
 	check("a 429 is said in the server's words - typing fast is not about pictures",
 		chat._refusal({"status": 429, "error": "Messages are arriving faster than one every 1 seconds."})
 			.begins_with("Messages are arriving"))
+
+	# /goto: the owner's way into the Big Field, which no door reaches yet.
+	var went: Array = []
+	chat.go_to_area = func(area_id: String) -> bool:
+		went.append(area_id)
+		return true
+	chat._run_command("/goto bigfield")
+	check("/goto is not a command to a player", went.is_empty()
+		and chat.notice.text.contains("There is no /goto command"), chat.notice.text)
+	chat._run_command("/help")
+	check("  and /help does not mention it", not chat.notice.text.contains("/goto"))
+	Api.is_owner = true
+	chat._run_command("/help")
+	check("the owner's /help lists /goto", chat.notice.text.contains("/goto area"), chat.notice.text)
+	chat._run_command("/goto BigField")
+	check("  /goto bigfield takes the owner there, any case",
+		went == ["bigfield"] and chat.notice.text == "Going to Big Field.", [went, chat.notice.text])
+	chat._run_command("/goto nowhere")
+	check("  a place that does not exist lists the ones that do",
+		went.size() == 1 and chat.notice.text.begins_with("Try: /goto ") and chat.notice.text.contains("bigfield"),
+		chat.notice.text)
+	Api.is_owner = false
 
 	Api.username = was[0]
 	Api.role = was[1]
