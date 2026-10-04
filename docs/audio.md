@@ -1,10 +1,11 @@
 # Sound: what the game asks for, and what it has
 
-The game is **silent**. Every id in `Audio.SOUNDS` is an empty string, and the
-boot log has been saying so at every launch since the system was written:
+The game is **nearly silent**. One id in `Audio.SOUNDS` has a file behind it
+(`teleport`, day 2) and the other 36 are empty strings, and the boot log says
+so at every launch:
 
 ```
-[BOOT] Audio: 0 of 37 sounds assigned
+[BOOT] Audio: 1 of 37 sounds assigned
 ```
 
 That is a deliberate state, not a bug. The hooks went into the game first so the
@@ -57,11 +58,35 @@ about art: `art/pack/` is a private submodule, the licence boundary is in the
 README, and `_test_art_folders_are_licensed()` fails the suite when a new art
 folder appears with nothing saying where it came from.
 
-**Nothing equivalent exists for audio yet, because there is no audio yet.**
-Whatever arrives here should be recorded the same way — where it came from, what
-the licence allows, whether credit is required — and the licensing check should
-learn about `audio/` at the same time. Do that on the first file, not the
-thirtieth.
+**`audio/` is held to the same rule.** The same check scans it, so a new folder
+under `audio/` fails the suite until `LICENSED_ART_FOLDERS` names its owner, and
+`assetlicense.md` says whose it is. `audio/ambience` and `audio/sfx` are both
+the owner's own recordings. Every file is listed below with where it came from,
+so the question never has to be asked of a sound nobody remembers making.
+
+### What is recorded so far
+
+| File | Id | Where it came from |
+|---|---|---|
+| `audio/ambience/firepit.ogg` | none (`firepit.gd` plays it itself) | The owner, in REAPER (`audio/AUDIO 1.rpp`). |
+| `audio/sfx/teleport.ogg` | `teleport` | The owner, 3 October 2026: his Stylophone played into a Stylophone CPM DS-2's AUX IN (drones off), recorded in REAPER, take `02-261003_1727`. |
+
+**How `teleport.ogg` was made from the take**, so the next sound can be made the
+same way:
+
+- The recording peaked at **-32 dBFS**, so it was boosted about 23 dB. Record
+  the next one hotter (peaks around -12 dBFS) and there is less hiss to bring up
+  with it.
+- **It carried a tone at about 21.6 kHz**, too high to hear, and that tone held
+  60% of the recording's energy. It probably comes from the interface or the
+  power supply. A 15 kHz low-pass took it out, along with a 40 Hz high-pass for
+  rumble. Without the low-pass, normalising to the peak normalises to that tone.
+- **The first 1.5 s**, sped up smoothly from 1x to 2x over that time, so it
+  rises an octave as you go through: the owner's pick of three versions. 20 ms
+  fade in, 0.6 s fade out, peak -9 dBFS (about -18 LUFS).
+- 44.1 kHz mono, Ogg Vorbis at quality 6, imported with Loop **off**. The suite
+  fails if any sound effect is imported looping, because a looping one-shot
+  never stops.
 
 ---
 
@@ -194,7 +219,7 @@ Make the character level the bigger event; skills go up constantly.
 |---|---|
 | `ui_click` | `ui/menus/optionsscreen.gd:560` |
 | `bank_open` | `world/bankchest.gd:113` |
-| `teleport` | `world/teleporter.gd:34`, `world/victoryteleporter.gd:175`, `:208` |
+| `teleport` | `world/teleporter.gd:34`, `world/leavetown.gd:97` (going through), `:124` (the field's arrival portal closing behind you), `world/victoryteleporter.gd:181`, `:215` |
 | `door` | `world/ladder.gd:64` |
 | `lever` | `world/lever.gd:140` |
 | `spikes` | `world/spikedoor.gd:121` |
@@ -237,13 +262,25 @@ calling it on every scene load is safe and is the simplest wiring.
 - **Every filled slot must point at a file that exists.** A path typed wrong is
   silent until the sound is triggered in a running game, and then it is a
   `push_warning` nobody reads.
-- **Zero assigned is a skip. All assigned is a pass. Anything in between
-  fails**, and names what is still empty.
+- **Every portal makes a sound** (`_test_every_portal_makes_a_sound`). Every
+  function under `src/world` that changes the area must call `Audio.play`
+  before it does, and the field's arrival portal is driven for real: quiet when
+  you land in it, the teleport sound once when it closes behind you. The town's
+  way out and that portal were both silent on day 2 until the owner walked
+  through them.
+- **No sound effect may be imported looping** (music is exempt, since
+  `play_music()` sets the loop itself). A one-shot with Loop ticked in the
+  Import dock plays until twelve more sounds push it out of the pool.
+- **All assigned is a pass. Anything less is a skip that counts what is filled
+  and prints every id still empty**, on every run.
 
-That middle case is the one worth having. Nobody ships a game and fails to
-notice it makes no noise at all; what ships unnoticed is twenty-six sounds
-assigned and five forgotten, because the boot line still prints a number and
-nothing reads it.
+This used to fail the middle case: nobody ships a game and fails to notice it
+makes no noise at all, while what ships unnoticed is twenty-six sounds assigned
+and five forgotten. That stopped making sense on day 2, when the first sound
+arrived and it became clear the sounds would be recorded one at a time, over
+weeks. A suite that is red for weeks is a suite nobody reads, so the middle is a
+skip now. The list of what is still empty is printed above the skip, which is
+the part of the old rule worth keeping.
 
 - **Registered and never played is printed, not failed.** Six ids are in that
   state today. They are hooks not yet written rather than mistakes, and a check

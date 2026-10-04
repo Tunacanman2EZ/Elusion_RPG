@@ -2262,7 +2262,7 @@ pressed style now, with its font colour.
 **Still open:**
 
 - The tab icon is Godot's, because the project sets no `config/icon`.
-- There is no audio to test, since every sound id is empty.
+- Audio in the browser is untested. The teleport is the only sound so far.
 
 ### The Windows build
 
@@ -3117,6 +3117,35 @@ a Light Slime killed in the field gave a mage the Meteorite. The bag, the
 banner and the chat line all appeared, and the same broadcast, read as another
 player, put up the red banner.
 
+### The first sound: the teleport, and a tone nobody can hear
+
+Day 2: the owner recorded the teleport himself, his Stylophone through the CPM
+DS-2's AUX IN, and `teleport` is the first id in `Audio.SOUNDS` with a file
+behind it (`audio/sfx/teleport.ogg`, 1.5 s, rising an octave). It plays at
+both town portals (`teleporter.gd`, and `leavetown.gd` on the way to the
+field), when the field's arrival portal closes behind you (`leavetown.gd`'s
+`_vanish()`), and at both moments of the victory door. It carries across the
+scene change because `Audio` is an autoload. docs/audio.md has how it was made.
+
+- **His recordings carry a tone at about 21.6 kHz**, too high to hear and
+  60% of the energy. Normalising to the peak normalises to that tone, so
+  low-pass the next recording at 15 kHz before anything else.
+- **`audio/sfx` is classified** in `LICENSED_ART_FOLDERS` as the owner's own,
+  like `audio/ambience`. A new folder under `audio/` fails the suite until it
+  is named there.
+- **The registry check no longer fails a half-filled table.** It skips, counts,
+  and prints every id still empty, because sounds now arrive one at a time and
+  a suite red for weeks gets ignored. All filled is still a pass.
+- **No sound effect may be imported looping** (`_test_audio_paths`). A one-shot
+  with Loop ticked never stops; music is exempt.
+- **Every portal makes a sound** (`_test_every_portal_makes_a_sound`). The
+  owner found the town's way out and the field's arrival portal silent by
+  walking through them. Every function under `src/world` that calls
+  `SceneTransition.change_scene()` must call `Audio.play` first, and the
+  arrival portal is driven for real: quiet when you land, one teleport sound
+  when it closes. The sound goes after `leavetown.gd`'s arrival-only return,
+  or every arrival in the field would play it a second time.
+
 ### The owner's item menu, and the owner's level
 
 Day 2: "i need these items as hot keys so i can test - can you create a menu in
@@ -3210,9 +3239,10 @@ the backpack are bound by the same rule.
 
 Do not "fix" these.
 
-- **`SOUNDS` in `audio.gd` is 37 empty strings.** An unassigned id is a silent
-  no-op by design. That is what lets the call sites exist now and the audio
-  arrive later, one file at a time.
+- **`SOUNDS` in `audio.gd` is 36 empty strings and one path** (`teleport`).
+  An unassigned id is a silent no-op by design. That is what lets the call
+  sites exist now and the audio arrive later, one file at a time. The suite
+  skips the registry until it is full and prints what is still empty.
 - **Seven signals are emitted with nothing connected, and that is the
   convention, not an oversight.** `took_damage` and `xp_gained_signal`
   (player.gd), `damaged` (baseenemy.gd), `wave_started` (bossgauntlet.gd),
@@ -3432,10 +3462,11 @@ scene/tests/        tests.tscn, the headless entry point for the test runner
 data/items/         ItemData      data/enemies/  EnemyData
 data/classes/       ClassData     data/gamedata.json  the exported contract
 docs/apicontract.md   what the client and server promise each other
-docs/audio.md         the 37 sound ids, where each fires, and what the suite
-                      does about a registry that is half filled in. The game
-                      is silent: every entry in Audio.SOUNDS is empty, on
-                      purpose, and the boot log says so at every launch.
+docs/audio.md         the 37 sound ids, where each fires, what the suite
+                      does about a registry that is half filled in, and
+                      where every recorded file came from. One entry in
+                      Audio.SOUNDS is filled (teleport); the rest are empty
+                      on purpose, and the boot log counts them at every launch.
 web/shell.html        the browser build's loader page (export_presets.cfg)
 web/serve.py          serves an export at localhost:8060, /api/ passed through
 ```
@@ -3588,8 +3619,9 @@ question god mode answered by returning before the XP.
   listener will fit better than one designed around none.
 - ~~The boss scene has no script.~~ Closed — `bossarena.tscn` runs `boss.gd`,
   and the arena's portal runs `fieldportal.gd`.
-- 37 sound ids, 32 wired to call sites, 1 audio file (`audio/ambience/firepit.ogg`).
-  The audio is authored in-house, so the slots exist and fill one at a time.
+- 37 sound ids, 32 wired to call sites, 2 audio files (`audio/ambience/firepit.ogg`,
+  and `audio/sfx/teleport.ogg`, the first id filled). The audio is authored
+  in-house, so the slots exist and fill one at a time.
 - `ItemRegistry.FALLBACK_ITEM_ID` is `"error_item"` and no `error_item.tres`
   exists, so an unknown id returns `null` rather than a visible placeholder.
   Not a bug — but adding that resource changes what `ItemStack.from_dict()`

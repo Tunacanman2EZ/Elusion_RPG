@@ -91,6 +91,10 @@ func _on_body_entered(body):
 			return
 		if target_spawn_id != "":
 			GameState.next_spawn_id = target_spawn_id
+		# After the null check, so the field's arrival-only copy - which the
+		# player lands inside - stays quiet on arrival. Audio is an autoload,
+		# so the sound carries on through the fade into the next area.
+		Audio.play("teleport")
 		SceneTransition.change_scene(destination_scene)
 
 func _on_body_exited(body):
@@ -114,6 +118,10 @@ func _vanish() -> void:
 	# free/delete the node — keeps it (now invisible, inert) in the tree
 	# rather than removing it outright, in case anything ever needs to
 	# reference it.
+	# The portal closing behind you is a teleport moment of its own. Day 2:
+	# the owner asked for the sound on the second and third portals, the town's
+	# way out and this one, the field's arrival portal.
+	Audio.play("teleport")
 	var target: CanvasItem = _visual_target()
 	var tween := create_tween()
 	tween.tween_property(target, "modulate:a", 0.0, 1.0)

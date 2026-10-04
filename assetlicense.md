@@ -23,8 +23,10 @@ this to work out what you may do with these files.
 
 Everything under `/art`, `/assets` and `/audio` **except** the three sections
 below. This includes characters, enemies, tilesets, buildings, interiors, doors,
-teleporters, menu art, and the original audio (`/audio/ambience`, plus the REAPER
-session it was produced from).
+teleporters, menu art, and the original audio (`/audio/ambience` and
+`/audio/sfx`, plus the REAPER session in `/audio`). The sounds are recorded by
+Robert Ashley Clear on his own instruments; `docs/audio.md` lists every file
+and where it came from.
 
 It also includes the three mythic weapons - the meteor, the double axe and the
 dynamite, with their icons (`art/maincharacter/meteor*`, `axe*`, `dynamite*`).

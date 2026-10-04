@@ -107,6 +107,7 @@ func _run_all() -> void:
 	_test_art_folders_are_licensed()
 	_test_third_party_licences()
 	_test_audio_paths()
+	_test_every_portal_makes_a_sound()
 	_test_chat_picture_sweep()
 	_test_chat_deletions_reach_the_client()
 	_test_security_policy()
@@ -567,6 +568,8 @@ const LICENSED_ART_FOLDERS := {
 	"art/tiles": "elusion",
 	"assets/themes": "elusion",
 	"audio/ambience": "elusion",
+	# Recorded by the owner (day 2: teleport, a Stylophone through a CPM DS-2).
+	"audio/sfx": "elusion",
 
 	# Google, SIL Open Font License 1.1 - NOT Elusion Studios', and not
 	# Clockwork Raven's either. It held the folder's only file while the folder
@@ -1024,6 +1027,24 @@ func _test_audio_paths() -> void:
 	check("every filled sound slot points at a file that exists",
 		missing.is_empty(), "\n         ".join(missing))
 
+	# A ONE-SHOT THAT LOOPS NEVER STOPS. Godot's import dock has a Loop box,
+	# and play() hands the stream to a pool player that is never told to stop,
+	# so a sound effect imported looping plays until twelve more sounds push
+	# it out of the pool. Music is exempt: play_music() sets the loop itself.
+	var looping: Array[String] = []
+	for id in sounds:
+		var sfx_path: String = String(sounds[id])
+		if sfx_path == "" or String(id).begins_with("music_") or not ResourceLoader.exists(sfx_path):
+			continue
+		var stream: AudioStream = load(sfx_path)
+		if (stream is AudioStreamOggVorbis and (stream as AudioStreamOggVorbis).loop) \
+				or (stream is AudioStreamWAV and (stream as AudioStreamWAV).loop_mode != AudioStreamWAV.LOOP_DISABLED) \
+				or (stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop):
+			looping.append("%s -> %s" % [id, sfx_path])
+	looping.sort()
+	check("no sound effect is imported looping", looping.is_empty(),
+		"untick Loop in the Import dock: " + ", ".join(looping))
+
 	for bus_name in AUDIO_BUSES:
 		check("the '%s' audio bus exists" % bus_name,
 			AudioServer.get_bus_index(bus_name) >= 0,
@@ -1087,21 +1108,29 @@ func _test_audio_paths() -> void:
 		unregistered)
 
 	# =========================================================================
-	# ASSIGNED, OR HONESTLY EMPTY, BUT NEVER HALF
+	# ASSIGNED, OR STILL ARRIVING - AND THE REST NAMED EVERY RUN
 	# =========================================================================
 	# Nobody ships a game and fails to notice it makes no noise at all. What
 	# ships unnoticed is twenty-six sounds assigned and five forgotten, because
 	# the boot line still prints a number and nothing reads it.
 	#
-	# So zero is a SKIP - the game is deliberately silent today and saying so
-	# twice does not make it truer - all is a PASS, and the middle FAILS and
-	# names what is missing. docs/audio.md is the list to work from.
-	if filled == 0:
+	# This used to FAIL the middle. Then the first sound arrived (teleport, day
+	# 2), recorded by the owner on his own Stylophone, and the middle turned out
+	# to be where the game will sit for weeks while the rest are recorded one
+	# at a time. A suite that is red for weeks is a suite nobody reads, which is
+	# the failure this check exists to prevent. So anything short of all is a
+	# SKIP that counts what is filled and prints every empty id; all is a PASS.
+	# docs/audio.md is the list to work from.
+	if not empty.is_empty():
 		skipped += 1
-		skips.append("the sound registry is filled in   (0 of %d assigned; the "
-			% sounds.size() + "game is deliberately silent - see docs/audio.md)")
-		_say("  skip  the sound registry is filled in   (0 of %d assigned, the game is silent)"
-			% sounds.size())
+		var state: String = ("the game is deliberately silent" if filled == 0
+			else "%d still to record, listed above" % empty.size())
+		if filled > 0:
+			print("  still empty: %s" % ", ".join(empty))
+		skips.append("the sound registry is filled in   (%d of %d assigned; %s - see docs/audio.md)"
+			% [filled, sounds.size(), state])
+		_say("  skip  the sound registry is filled in   (%d of %d assigned, %s)"
+			% [filled, sounds.size(), state])
 	else:
 		check("the sound registry is filled in", empty.is_empty(),
 			"%d of %d assigned, still empty: %s"
@@ -1123,6 +1152,96 @@ func _test_audio_paths() -> void:
 
 	print("  %d of %d slots filled; %d ids played; %d bus(es) checked"
 		% [filled, sounds.size(), played.size(), AUDIO_BUSES.size()])
+
+
+# =============================================================================
+# EVERY PORTAL MAKES A SOUND
+# =============================================================================
+# Day 2: the teleport sound went in and played at two portals out of four. The
+# town's way out to the field and the field's arrival portal were silent,
+# because each door asks for its own sound and nothing noticed one that did
+# not. The owner found both by walking through them.
+#
+# Two halves. Every function under src/world that changes the area must ask
+# Audio for a sound before it does: a text check, because a real
+# SceneTransition in the middle of the suite would end the suite. And the
+# field's arrival portal is driven for real through leavetown.gd, counting
+# pool players: quiet when you land in it, the teleport sound when it closes
+# behind you.
+func _test_every_portal_makes_a_sound() -> void:
+	section("PORTALS — every way between areas makes a sound")
+
+	var silent: Array[String] = []
+	var doors: int = 0
+	for script_path in _scripts_under("res://src/world"):
+		var code: String = _code_only(FileAccess.get_file_as_string(script_path))
+		var at: int = code.find("SceneTransition.change_scene(")
+		while at != -1:
+			doors += 1
+			var func_at: int = maxi(code.rfind("\nfunc ", at), 0)
+			var sound_at: int = code.find("Audio.play", func_at)
+			if sound_at == -1 or sound_at > at:
+				silent.append("%s:%d" % [script_path.get_file(), code.substr(0, at).count("\n") + 1])
+			at = code.find("SceneTransition.change_scene(", at + 1)
+	check("the scan finds the doors between areas", doors >= 3, doors)
+	check("every one plays a sound before the area changes", silent.is_empty(),
+		", ".join(silent))
+
+	# The town's way out: after the arrival-only return, before the change.
+	var exit_src: String = FileAccess.get_file_as_string("res://src/world/leavetown.gd")
+	var entered: int = _first_code_index(exit_src, "func _on_body_entered", 0)
+	var entered_end: int = _first_code_index(exit_src, "\nfunc ", entered + 1)
+	var bail: int = _within(_first_code_index(exit_src, "return", entered), entered_end)
+	var exit_sound: int = _within(_first_code_index(exit_src, "Audio.play(\"teleport\")", entered), entered_end)
+	var change: int = _within(_first_code_index(exit_src, "SceneTransition.change_scene(", entered), entered_end)
+	check("the town's way out plays the teleport sound as you go through",
+		exit_sound != -1 and change != -1 and exit_sound < change)
+	check("  and not before the arrival-only return, so landing is quiet",
+		bail != -1 and exit_sound > bail)
+
+	# The field's arrival portal, for real.
+	var tele_stream: AudioStream = Audio._stream_for("teleport")
+	if tele_stream == null:
+		check("the teleport sound loads", false, "Audio._stream_for(\"teleport\") is null")
+		return
+	var playing_teleport := func() -> int:
+		var n: int = 0
+		for p in Audio._sfx_pool:
+			if p.playing and p.stream == tele_stream:
+				n += 1
+		return n
+	for p in Audio._sfx_pool:
+		if p.stream == tele_stream:
+			p.stop()
+
+	# Untyped: arrival_only and the rest are leavetown.gd's, not Area2D's.
+	var portal = (load("res://src/world/leavetown.gd") as GDScript).new()
+	portal.arrival_only = true
+	portal.vanish_after_first_use = true
+	add_child(portal)
+	# Not added to the tree: a second "Player" under this node would be
+	# renamed, and the portal knows the player by that name.
+	var lander := Node2D.new()
+	lander.name = "Player"
+
+	portal._on_body_entered(lander)
+	check("landing in the field's arrival portal makes no sound",
+		playing_teleport.call() == 0, playing_teleport.call())
+	portal._on_body_exited(lander)
+	check("walking off it closes it with the teleport sound",
+		playing_teleport.call() == 1, playing_teleport.call())
+	portal._on_body_entered(lander)
+	portal._on_body_exited(lander)
+	check("  once: it closes one time", playing_teleport.call() == 1,
+		playing_teleport.call())
+
+	for p in Audio._sfx_pool:
+		if p.stream == tele_stream:
+			p.stop()
+	portal.queue_free()
+	lander.free()
+	print("  %d doors between areas, %d silent; the arrival portal driven both ways"
+		% [doors, silent.size()])
 
 
 # =============================================================================

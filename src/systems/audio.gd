@@ -6,8 +6,9 @@
 #     Audio.play_music("music_menu")
 #     Audio.set_bus_volume("SFX", 0.7)      # 0.0 - 1.0, for the Options sliders
 #
-# WORKS WITH NO SOUND FILES. Every id in SOUNDS below is currently an empty
-# string, and an empty entry is a deliberate no-op — the call returns quietly
+# WORKS WITH NO SOUND FILES. Most ids in SOUNDS below are still an empty
+# string (teleport, day 2, was the first one filled), and an empty entry is a
+# deliberate no-op — the call returns quietly
 # instead of erroring. That is what lets the hooks go into the game NOW and the
 # actual audio arrive later, one line at a time, without a flag day. Fill an
 # entry in and that sound starts working everywhere it is already called from.
@@ -51,8 +52,8 @@ const SFX_2D_MAX_DISTANCE: float = 1200.0
 # id -> res:// path. Callers use the id, never a path, so re-pointing a sound
 # is one edit here rather than a search across fifty scripts.
 #
-# EVERY ENTRY IS EMPTY ON PURPOSE — see the header. Drop a file in and paste
-# its path; that sound is then live at every call site already written.
+# AN EMPTY ENTRY IS SILENT ON PURPOSE — see the header. Drop a file in and
+# paste its path; that sound is then live at every call site already written.
 #
 # Suggested home: res://audio/sfx/<id>.ogg and res://audio/music/<id>.ogg
 # (.ogg for anything longer than a second, .wav for short one-shots.)
@@ -104,7 +105,7 @@ const SOUNDS: Dictionary = {
 	# --- world and ui ---
 	"ui_click":       "",  # any button
 	"bank_open":      "",  # the chest opening
-	"teleport":       "",  # stepping through a portal
+	"teleport":       "res://audio/sfx/teleport.ogg",  # stepping through a portal
 	"door":           "",  # ladders, doors
 	"lever":          "",  # a wall lever being thrown
 	"spikes":         "",  # spike door rising or lowering
