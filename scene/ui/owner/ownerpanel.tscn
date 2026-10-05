@@ -416,6 +416,38 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Give item"
 
+[node name="cataloguebutton" type="Button" parent="frame/margin/rows/ownertabs/testing"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Every item in the game with its picture, searchable: one click puts it in your bag, and gear can go straight on. Opens in its own window."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Item catalogue..."
+
+[node name="levelrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="levelinput" type="LineEdit" parent="frame/margin/rows/ownertabs/testing/levelrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "The level to set the character you are playing to, 1 to 99."
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+placeholder_text = "level (1-99)"
+max_length = 2
+
+[node name="levelbutton" type="Button" parent="frame/margin/rows/ownertabs/testing/levelrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(86, 0)
+layout_mode = 2
+tooltip_text = "Set the character you are playing to this level on the server: XP from zero, health and mana full. Your own character only."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Set level"
+
 [node name="godmoderow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing"]
 layout_mode = 2
 theme_override_constants/separation = 5

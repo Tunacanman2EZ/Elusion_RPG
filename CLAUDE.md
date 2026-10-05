@@ -3219,37 +3219,67 @@ scene change because `Audio` is an autoload. docs/audio.md has how it was made.
   when it closes. The sound goes after `leavetown.gd`'s arrival-only return,
   or every arrival in the field would play it a second time.
 
-### The owner's item menu, and the owner's level
+### The owner's item catalogue, and the owner's level
 
 Day 2: "i need these items as hot keys so i can test - can you create a menu in
 hud that allows me to select and spawn items registered in the game that only
-owner can use". The **Items** button on the staff row (built in code, owner
-only, beside Owner and Powers) opens `src/ui/owner/itemspawner.gd`:
+owner can use". It was an **Items** button on the HUD's staff row until 5 Oct,
+when the owner asked for the testing tools in one place ("set level should be
+in gm panel under testing", "the whole items tab should be in gm panel maybe").
+The GM panel's **Testing** tab has an **Item catalogue...** button now, and the
+catalogue stays a window of its own (`src/ui/owner/itemspawner.gd`), because a
+grid of pictures needs more room than the panel has. The button calls the
+HUD's `toggle_item_spawner()` through the `hud` group, so the HUD still owns
+the window: it closes on Escape, counts in `is_panel_open()`, and is the
+nineteenth window.
 
 - **Every item `ItemRegistry` loaded**, so a new .tres is in the menu at the
   next launch. Kinds come from `ItemSpawner.category_of()` - type and equip
   slot, never a list of ids - then tier, then name. The search reads the name
   and the id, any case, every word. Frames are the rarity colour.
 - **A click is `/api/staff/grant`**, the same route as the debug keys and the GM
-  panel, with the quantity clamped to the item's stack. The bag that comes back
-  goes through `CharacterData.adopt_granted_bag()`: the same adoption as a
+  panel, with the quantity clamped to the item's stack. How many is read
+  through `typed_quantity()` (see the SpinBox trap below). The bag that comes
+  back goes through `CharacterData.adopt_granted_bag()`: the same adoption as a
   trade's, without `carry_adopted`, which would announce "Your backpack was
   updated by the server" to the person who pressed the button.
 - **"Put gear on"** equips a weapon or armour piece from the cell the grant
   wrote (`carry_positions`), through the ordinary `/api/character/equip`, so
   the class and level gates still refuse and say why.
-- **"My level"** is `POST /api/staff/level`: owner only, the caller's own
-  character, XP from zero, the maxima the curve gives, full pools recorded as
-  a level-up grant, and a `level` line in the staff log. The player copies the
-  answer with `apply_server_level()` - the server's pools, not a refill, so
-  `_fill_all_resources()` keeps its one caller.
+- **Set level** is in the Testing tab, a `LineEdit` beside the gold and item
+  rows: `POST /api/staff/level`, owner only, the caller's own character, XP
+  from zero, the maxima the curve gives, full pools recorded as a level-up
+  grant, and a `level` line in the staff log. The box takes two digits and the
+  panel refuses anything but a whole number 1-99 before asking. The player
+  copies the answer with `apply_server_level()` - the server's pools, not a
+  refill, so `_fill_all_resources()` keeps its one caller.
 
-It closes on Escape, counts in `is_panel_open()`, and is the nineteenth window.
-`_test_the_item_menu` holds it (34 checks) through the panel's own doors -
-`post_request`, `adopt_bag`, `equip_request` and `apply_level` are Callables
-the suite swaps for stubs; seventeen deliberate breaks, each caught. The
-API's `test_ownership.py` O-7 holds the level route. Played as the owner: level
-1 to 22, then a Double Axe spawned and worn in two clicks.
+`_test_the_item_menu` holds the catalogue and `_test_the_gm_panel_sets_a_level`
+the level and the button, through the panels' own doors - `post_request`,
+`adopt_bag`, `equip_request` and `apply_level` are Callables the suite swaps
+for stubs. The API's `test_ownership.py` O-7 holds the level route. Played as
+the owner: level 1 to 22, then a Double Axe spawned and worn in two clicks.
+
+### A SpinBox's typed number is not its value until Enter
+
+5 Oct, on play.elusionrpg.com: the owner typed 99 into the Items window's level
+box, pressed Set level, and was told "Level 29, from 29". A `SpinBox` keeps
+what is typed in its `LineEdit` and parses it into `value` only on Enter or
+when the box loses focus, and the button had `focus_mode = 0` so a click would
+not take focus from the game. Focus never moved, and `value` was still the 29
+the box had been filled with. How many, beside it, had the same bug: type 7,
+click a potion, get the 5 the box held before.
+
+- **The level is a `LineEdit` now**, read as text when the button is pressed.
+- **How many stays a SpinBox and is read through `typed_quantity()`**, which
+  calls `SpinBox.apply()` first - the Enter the player did not press.
+- **`apply()` reads the text, and the text catches up with a `value` set from
+  code one frame late.** Set `value` and read in the same frame, and `apply()`
+  puts the old number back. The suite awaits a frame after setting one; a
+  player cannot click that fast.
+- **A button that takes no focus and reads a SpinBox must apply it first.** The
+  trade panel's SpinBoxes are fine: they are read through `value_changed` and
+  its buttons take focus, so the click itself ends the typing.
 
 ### The Big Field, and enemies that sleep when nobody is near
 

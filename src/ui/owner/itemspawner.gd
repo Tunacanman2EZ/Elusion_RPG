@@ -17,19 +17,17 @@
 #   and a spawned sword in the bag is one more step from a sword in the hand.
 #   The equip is the ordinary /api/character/equip, so its class and level
 #   gates still apply and say why when they refuse.
-# - "MY LEVEL" sets this character's level on the server
-#   (/api/staff/level, owner only, own characters only), because those weapons
-#   need level 22 and a new character is eight hours from it.
+# - SETTING YOUR LEVEL WAS HERE AND MOVED to the GM panel's Testing tab (Day
+#   3, the owner's call), beside the other things done to your own character.
 #
 # OWNER ONLY, three times over: the HUD builds the button only for the owner,
 # every request here asks Api.is_owner first, and the server is the gate that
-# counts - /api/staff/level is require_owner, /api/staff/grant needs staff.
+# counts - /api/staff/grant needs staff.
 class_name ItemSpawner
 extends Control
 
 
 const GRANT_PATH := "/api/staff/grant"
-const LEVEL_PATH := "/api/staff/level"
 
 # The kinds, in the order they are listed. "All" first, and what each one holds
 # is category_of()'s answer.
@@ -46,12 +44,11 @@ var _busy: bool = false
 
 # WHERE A REQUEST GOES AND WHERE ITS ANSWER LANDS, as Callables so the suite
 # can watch them without a server or a character. In the game they are the
-# real ones: Api.post, CharacterData's quiet adoption of a bag, the ordinary
-# equip, and the player copying a level the server set.
+# real ones: Api.post, CharacterData's quiet adoption of a bag and the
+# ordinary equip.
 var post_request: Callable
 var adopt_bag: Callable
 var equip_request: Callable
-var apply_level: Callable
 
 @onready var search: LineEdit = %itemsearch
 @onready var category: OptionButton = %itemcategory
@@ -59,8 +56,6 @@ var apply_level: Callable
 @onready var count_label: Label = %countlabel
 @onready var quantity: SpinBox = %itemquantity
 @onready var wear_toggle: CheckBox = %wearit
-@onready var level_box: SpinBox = %levelbox
-@onready var level_button: Button = %levelbutton
 @onready var status: Label = %spawnstatus
 @onready var close_button: Button = %itemspawnerclose
 
@@ -73,7 +68,6 @@ func _init() -> void:
 	post_request = Callable(Api, "post")
 	adopt_bag = _adopt_bag
 	equip_request = _equip
-	apply_level = _apply_level
 
 
 func _ready() -> void:
@@ -83,8 +77,6 @@ func _ready() -> void:
 	category.item_selected.connect(func(_i: int) -> void: refresh())
 	search.text_changed.connect(func(_t: String) -> void: refresh())
 	close_button.pressed.connect(close)
-	level_button.pressed.connect(func() -> void: set_level(int(level_box.value)))
-	visibility_changed.connect(_on_visibility_changed)
 	refresh()
 
 
@@ -95,16 +87,6 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
-
-
-func _on_visibility_changed() -> void:
-	if not visible:
-		return
-	# The level box starts at the level the character is, so "Set level" with
-	# nothing typed changes nothing.
-	var player: Node = _player()
-	if player != null and "level" in player:
-		level_box.value = int(player.level)
 
 
 # =============================================================================
@@ -247,6 +229,18 @@ static func quantity_for(item: ItemData, wanted: int) -> int:
 	return clampi(wanted, 1, most)
 
 
+func typed_quantity() -> int:
+	# WHAT IS IN THE BOX, ENTERED OR NOT. A SpinBox keeps typed text in its
+	# LineEdit until Enter or until it loses focus, and the item cells take no
+	# focus, so a "7" typed and a potion clicked used to ask for whatever the
+	# box held before. apply() is the Enter the player did not press. It reads
+	# the text, and the text catches up with a value set from code a frame
+	# late, so code that sets the value waits a frame before it clicks (the
+	# suite does). A player cannot click that fast.
+	quantity.apply()
+	return int(quantity.value)
+
+
 func spawn(item_id: String) -> void:
 	if not Api.is_owner:
 		_say("The item menu is the owner's.", true)
@@ -256,7 +250,7 @@ func spawn(item_id: String) -> void:
 	var item: ItemData = ItemRegistry.get_item(item_id)
 	if item == null:
 		return
-	var how_many: int = quantity_for(item, int(quantity.value))
+	var how_many: int = quantity_for(item, typed_quantity())
 	_busy = true
 	_say("Asking the server for %s..." % item.display_name)
 	var res: Dictionary = await post_request.call(GRANT_PATH, {
@@ -288,30 +282,6 @@ func spawn(item_id: String) -> void:
 	_say(line)
 
 
-func set_level(wanted: int) -> void:
-	if not Api.is_owner:
-		_say("Setting a level is the owner's.", true)
-		return
-	if _busy:
-		return
-	_busy = true
-	_say("Asking the server for level %d..." % wanted)
-	var res: Dictionary = await post_request.call(LEVEL_PATH, {
-		"slot": CharacterData.active_character_index,
-		"level": wanted,
-	})
-	_busy = false
-	if not is_instance_valid(self) or not is_inside_tree():
-		return
-	if not res.get("ok", false):
-		_say(_refused(res), true)
-		return
-	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
-	apply_level.call(data)
-	level_box.value = int(data.get("level", wanted))
-	_say("Level %d, from %d. XP starts again from zero." % [int(data.get("level", wanted)), int(data.get("was", 0))])
-
-
 # =============================================================================
 # THE REAL CALLABLES
 # =============================================================================
@@ -329,12 +299,6 @@ func _equip(item_id: String, cell: int) -> bool:
 	if player == null:
 		return false
 	return await CharacterData.equip_item(player, item_id, cell)
-
-
-func _apply_level(data: Dictionary) -> void:
-	var player: Node = _player()
-	if player != null and player.has_method("apply_server_level"):
-		player.apply_server_level(data)
 
 
 func _refused(res: Dictionary) -> String:

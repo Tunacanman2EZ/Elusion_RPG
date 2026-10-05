@@ -111,6 +111,9 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var item_input: LineEdit = get_node_or_null("%iteminput")
 @onready var item_count_input: LineEdit = get_node_or_null("%itemcountinput")
 @onready var item_button: Button = get_node_or_null("%itembutton")
+@onready var catalogue_button: Button = get_node_or_null("%cataloguebutton")
+@onready var level_input: LineEdit = get_node_or_null("%levelinput")
+@onready var level_button: Button = get_node_or_null("%levelbutton")
 # THE TELEPORT ROW. Reuses %usernameinput, the same box the view and sanction
 # rows read, so there is one place a name is typed.
 @onready var tp_bring_button: Button = get_node_or_null("%tpbringbutton")
@@ -206,6 +209,12 @@ func _ready() -> void:
 		item_button.pressed.connect(_on_item_pressed)
 	if item_input != null:
 		item_input.text_submitted.connect(func(_t): _on_item_pressed())
+	if catalogue_button != null and not catalogue_button.pressed.is_connected(_on_catalogue_pressed):
+		catalogue_button.pressed.connect(_on_catalogue_pressed)
+	if level_button != null and not level_button.pressed.is_connected(_on_level_pressed):
+		level_button.pressed.connect(_on_level_pressed)
+	if level_input != null:
+		level_input.text_submitted.connect(func(_t): _on_level_pressed())
 
 	if tp_bring_button != null and not tp_bring_button.pressed.is_connected(_on_teleport_pressed):
 		tp_bring_button.pressed.connect(_on_teleport_pressed.bind("bring"))
@@ -1032,6 +1041,81 @@ func _on_item_pressed() -> void:
 	# bag on the next load.
 	_set_testing_status(
 		"Added %d x %s - open the inventory to see it." % [how_many, wanted])
+
+
+# THE ITEM CATALOGUE (itemspawner.gd) opens from here. It had a button of its
+# own on the HUD's staff row; the owner wanted the testing tools in one place
+# (5 Oct), and the catalogue stays a window of its own because a grid of
+# pictures needs more room than this panel has. The HUD still owns it, so Esc
+# and "is a panel open" keep working unchanged.
+func _on_catalogue_pressed() -> void:
+	var hud: Node = get_tree().get_first_node_in_group("hud") if is_inside_tree() else null
+	if hud == null or not hud.has_method("toggle_item_spawner"):
+		_set_testing_status("The item catalogue opens from inside the game.")
+		return
+	hud.toggle_item_spawner()
+
+
+# YOUR LEVEL, ON THE SERVER. It was a SpinBox in the Items window, and a
+# SpinBox keeps typed text in its LineEdit until Enter or until it loses focus:
+# the owner typed 99, pressed a button that takes no focus, and the request
+# carried the 29 already in the box. Here it is a LineEdit like the gold and
+# item rows beside it, read as typed when the button is pressed.
+#
+# /api/staff/level is @require_owner and changes only the caller's own
+# character: XP from zero, the maxima for the new level, the pools full and
+# recorded as a level-up grant, so the healing check does not call it a cheat.
+const LEVEL_MAX := 99  # STAFF_LEVEL_MAX in app.py
+
+# Where the request goes and where its answer lands, as Callables so the suite
+# can watch them without a server or a character (the Items window's pattern).
+var post_request: Callable = Callable(Api, "post")
+var apply_level: Callable = _apply_level
+
+
+func _on_level_pressed() -> void:
+	if level_input == null:
+		return
+	if not Api.is_owner:
+		_set_testing_status("Setting a level is the owner's.")
+		return
+
+	var typed: String = level_input.text.strip_edges()
+	if typed == "":
+		_set_testing_status("Type a level first.")
+		return
+	if not typed.is_valid_int() or int(typed) < 1 or int(typed) > LEVEL_MAX:
+		_set_testing_status("A level is a whole number from 1 to %d." % LEVEL_MAX)
+		return
+
+	var wanted: int = int(typed)
+	_set_testing_status("Asking the server for level %d..." % wanted)
+	var res: Dictionary = await post_request.call("/api/staff/level", {
+		"slot": CharacterData.active_character_index,
+		"level": wanted,
+	})
+
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_set_testing_status(_refused(res))
+		return
+	var data = res.get("data", {})
+	if not (data is Dictionary):
+		_set_testing_status("The server did not say what happened.")
+		return
+
+	apply_level.call(data)
+	_set_testing_status("Level %d, from %d. XP starts again from zero." % [
+		int(data.get("level", wanted)), int(data.get("was", 0))])
+
+
+func _apply_level(data: Dictionary) -> void:
+	# THE SERVER'S ANSWER, COPIED: player.apply_server_level() takes the level,
+	# the XP and the pools the server stored, so the bars match it at once.
+	var body: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if body != null and body.has_method("apply_server_level"):
+		body.apply_server_level(data)
 
 
 func _open_inventory_container() -> Node:

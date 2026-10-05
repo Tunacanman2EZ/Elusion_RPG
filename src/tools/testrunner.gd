@@ -261,6 +261,7 @@ func _run_all() -> void:
 	await _test_the_first_five_minutes()
 	await _test_the_mythic_weapons()
 	await _test_the_item_menu()
+	await _test_the_gm_panel_sets_a_level()
 	await _test_mythic_drops()
 
 
@@ -17009,7 +17010,7 @@ func _test_mythic_drops() -> void:
 
 
 func _test_the_item_menu() -> void:
-	section("THE ITEM MENU - the owner's whole catalogue, and a level to test it at")
+	section("THE ITEM MENU - the owner's whole catalogue, spawned and worn")
 
 	# BY PATH, NOT BY class_name. A class_name is known to a headless run only
 	# after the editor has rescanned (see "A brand-new class_name is invisible
@@ -17100,7 +17101,6 @@ func _test_the_item_menu() -> void:
 	var asked: Array = []
 	var adopted: Array = []
 	var equipped: Array = []
-	var levels: Array = []
 	var answer: Array = [{"ok": true, "data": {"inventory": [null, {"item_id": "doubleaxe", "quantity": 1}],
 		"carry_positions": [1]}}]
 	menu.post_request = func(path: String, body: Dictionary) -> Dictionary:
@@ -17112,10 +17112,11 @@ func _test_the_item_menu() -> void:
 	menu.equip_request = func(id: String, cell: int) -> bool:
 		equipped.append([id, cell])
 		return true
-	menu.apply_level = func(data: Dictionary) -> void:
-		levels.append(data)
 
 	menu.quantity.value = 5
+	# A frame, as a player's next click is: the box's text follows its value a
+	# frame late, and typed_quantity() reads the text.
+	await get_tree().process_frame
 	menu.wear_toggle.button_pressed = true
 	await menu.spawn("doubleaxe")
 	check("a click asks the server for it: the grant route, this character, one axe",
@@ -17142,6 +17143,18 @@ func _test_the_item_menu() -> void:
 		equipped.size() == 1 and asked[-1][1].get("item_id") == "menutest_potion"
 		and asked[-1][1].get("quantity") == 5, [equipped, asked[-1]])
 
+	# A NUMBER TYPED AND NOT ENTERED STILL COUNTS. A SpinBox keeps typed text
+	# in its LineEdit until Enter or the box loses focus, and the cells take no
+	# focus - so "7" typed and a potion clicked asked for whatever the box held
+	# before. The same thing sent the owner's typed level 99 as the 29 already
+	# in the box (5 Oct, on play.elusionrpg.com).
+	ItemRegistry._items[potion.item_id] = potion
+	menu.quantity.get_line_edit().text = "7"
+	await menu.spawn("menutest_potion")
+	ItemRegistry._items.erase(potion.item_id)
+	check("a number typed into How many and not entered is the number asked for",
+		asked[-1][1].get("quantity") == 7, asked[-1])
+
 	answer[0] = {"ok": false, "status": 409, "error": "Your backpack is full."}
 	var adopted_before: int = adopted.size()
 	await menu.spawn("meteorite")
@@ -17153,18 +17166,12 @@ func _test_the_item_menu() -> void:
 	await menu.spawn("meteorite")
 	check("anyone but the owner is told it is the owner's, and nothing is asked",
 		asked.size() == asked_before and menu.status.text.contains("owner"), menu.status.text)
-	await menu.set_level(22)
-	check("  the level too", asked.size() == asked_before and levels.is_empty())
 	Api.is_owner = true
 
-	answer[0] = {"ok": true, "data": {"level": 22, "was": 3, "xp": 0, "xp_to_next": 99,
-		"hp": 432, "mana": 390, "stamina": 185}}
-	await menu.set_level(22)
-	check("Set level asks the owner's level route for this character",
-		asked[-1][0] == "/api/staff/level" and asked[-1][1].get("level") == 22
-		and asked[-1][1].get("slot") == CharacterData.active_character_index, asked[-1])
-	check("  and the character takes the server's answer", levels.size() == 1 and levels[0].get("level") == 22)
-	check("  and the box shows the level it is now", int(menu.level_box.value) == 22)
+	# THE LEVEL LIVES IN THE GM PANEL'S TESTING TAB NOW, with the other things
+	# the owner does to their own character (_test_the_gm_panel_sets_a_level).
+	check("the level is not set from here any more - it is the GM panel's",
+		menu.get_node_or_null("%levelbox") == null and not menu.has_method("set_level"))
 
 	# --- THE CHARACTER'S HALF ---
 	var warrior: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
@@ -17207,9 +17214,11 @@ func _test_the_item_menu() -> void:
 	Api.role = "owner"
 	Api.is_owner = true
 	hud._add_owner_button()
-	var items_button: Button = row.get_node_or_null("itemsbutton") as Button if row != null else null
-	check("the owner has one on the staff row, and it opens the menu",
-		items_button != null and items_button.pressed.is_connected(Callable(hud, "toggle_item_spawner")))
+	check("and nor does the owner any more - it opens from the GM panel's Testing tab",
+		row != null and row.has_node("ownerbutton") and not row.has_node("itemsbutton"))
+	check("  where a button opens it, through the HUD that owns it",
+		FileAccess.get_file_as_string("res://scene/ui/owner/ownerpanel.tscn").contains("[node name=\"cataloguebutton\"")
+		and _code_only(FileAccess.get_file_as_string("res://src/ui/owner/ownerpanel.gd")).contains("hud.toggle_item_spawner()"))
 	hud.item_spawner = menu
 	menu.visible = true
 	check("Escape counts the menu as open", hud.is_panel_open())
@@ -17222,4 +17231,104 @@ func _test_the_item_menu() -> void:
 	Api.is_owner = was_owner
 	Api.role = was_role
 	await get_tree().process_frame
-	print("  item menu: every item, searchable, spawned and worn; the owner's level; owner only")
+	print("  item menu: every item, searchable, spawned and worn, as many as typed; owner only")
+
+
+# =============================================================================
+# THE GM PANEL SETS YOUR LEVEL
+# =============================================================================
+# 5 Oct, on play.elusionrpg.com: the owner typed 99 into the Items window's
+# level box, pressed Set level, and was told "Level 29, from 29". A SpinBox
+# keeps typed text in its LineEdit until Enter or until it loses focus, and the
+# button took no focus, so the request carried the 29 already in the box. The
+# owner's call, the same day: the level belongs in the GM panel, under Testing,
+# beside the gold and the item rows - which are plain LineEdits, read as typed
+# at the moment the button is pressed.
+
+func _test_the_gm_panel_sets_a_level() -> void:
+	section("GM PANEL - Testing sets your level, as typed")
+
+	var packed: PackedScene = load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene
+	var panel: Control = packed.instantiate() as Control
+	add_child(panel)
+	await get_tree().process_frame
+
+	var box: LineEdit = panel.get_node_or_null("%levelinput") as LineEdit
+	var button: Button = panel.get_node_or_null("%levelbutton") as Button
+	var testing: Node = panel.get_node_or_null("frame/margin/rows/ownertabs/testing")
+	check("the Testing tab has a level box and a Set level button",
+		box != null and button != null and testing != null
+		and testing.is_ancestor_of(box) and testing.is_ancestor_of(button))
+	if box == null or button == null:
+		panel.queue_free()
+		return
+	check("  the button sends it, and so does Enter in the box",
+		button.pressed.get_connections().size() > 0 and box.text_submitted.get_connections().size() > 0)
+
+	var asked: Array = []
+	var applied: Array = []
+	var answer: Array = [{"ok": true, "data": {"level": 99, "was": 29, "xp": 0, "xp_to_next": 12,
+		"hp": 900, "mana": 800, "stamina": 300}}]
+	panel.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		asked.append([path, body])
+		await get_tree().process_frame
+		return answer[0]
+	panel.apply_level = func(data: Dictionary) -> void:
+		applied.append(data)
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+
+	# THE CATALOGUE BUTTON opens the HUD's item window. A stand-in HUD in the
+	# group, so the press can be counted without building the real one.
+	var catalogue: Button = panel.get_node_or_null("%cataloguebutton") as Button
+	check("the Testing tab opens the item catalogue",
+		catalogue != null and testing.is_ancestor_of(catalogue)
+		and catalogue.pressed.get_connections().size() > 0)
+	var hud_shape := GDScript.new()
+	hud_shape.source_code = "extends Node\nvar opened: int = 0\nfunc toggle_item_spawner() -> void:\n\topened += 1\n"
+	hud_shape.reload()
+	var stand_in := Node.new()
+	stand_in.set_script(hud_shape)
+	add_child(stand_in)
+	stand_in.add_to_group("hud")
+	if catalogue != null:
+		catalogue.pressed.emit()
+	check("  pressing it asks the HUD to open it", stand_in.get("opened") == 1, stand_in.get("opened"))
+	stand_in.queue_free()
+
+	# TYPED, NOT ENTERED, THEN PRESSED - exactly what failed.
+	box.text = "99"
+	await panel._on_level_pressed()
+	check("a level typed and not entered is the level asked for: the owner's route, this character",
+		asked.size() == 1 and asked[0][0] == "/api/staff/level" and asked[0][1].get("level") == 99
+		and asked[0][1].get("slot") == CharacterData.active_character_index, asked)
+	check("  the character takes the server's answer", applied.size() == 1 and applied[0].get("level") == 99)
+	check("  and the panel says what changed",
+		panel.results != null and panel.results.get_parsed_text().contains("Level 99, from 29"),
+		panel.results.get_parsed_text() if panel.results != null else "")
+
+	for bad in ["", "abc", "0", "-5", "2.5"]:
+		box.text = bad
+		await panel._on_level_pressed()
+	check("an empty box, words, 0, a minus and a fraction are refused here, and nothing is asked",
+		asked.size() == 1, asked.size())
+	check("  and the box holds two digits, so 100 cannot be typed (the server's top is %d)" % panel.LEVEL_MAX,
+		box.max_length == 2 and panel.LEVEL_MAX == 99)
+
+	answer[0] = {"ok": false, "status": 400, "error": "level must be 1-99"}
+	box.text = "50"
+	await panel._on_level_pressed()
+	check("a refusal is said in the server's words, and nothing is applied",
+		applied.size() == 1 and panel.results.get_parsed_text().contains("level must be 1-99"))
+
+	Api.is_owner = false
+	box.text = "50"
+	var asked_before: int = asked.size()
+	await panel._on_level_pressed()
+	check("anyone but the owner is told it is the owner's, and nothing is asked",
+		asked.size() == asked_before and panel.results.get_parsed_text().contains("owner's"))
+	Api.is_owner = was_owner
+
+	panel.queue_free()
+	await get_tree().process_frame
+	print("  the GM panel's Testing tab sets your level, read as typed, owner only")

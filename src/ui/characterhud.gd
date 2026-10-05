@@ -836,11 +836,9 @@ func _add_owner_button() -> void:
 		["powersbutton", "Powers",
 			"What mod, dev and owner can each do - read from the live server",
 			_toggle_powers_panel],
-		# THE ITEM MENU (day 2): every item in the game, one click each, and
-		# this character's level - for testing. Owner only, like the two above.
-		["itemsbutton", "Items",
-			"Spawn any item in the game, and set your level - owner only",
-			toggle_item_spawner],
+		# THE ITEM MENU had a button here (day 2). It opens from the GM panel's
+		# Testing tab now, with Set level beside it (5 Oct, the owner's call);
+		# toggle_item_spawner() below is still what opens it.
 	]:
 		var button := Button.new()
 		button.name = String(spec[0])
