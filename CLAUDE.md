@@ -824,10 +824,22 @@ that was never reached**, so a section that dies halfway is indistinguishable
 from a section that is shorter than you thought.
 
 `require_script()` covers the version of this where a whole section's dependency
-is missing. It does not cover a typo in the middle of one, and nothing can:
-GDScript has no exception to catch.
+is missing. It does not cover a typo in the middle of one: GDScript has no
+exception to catch, so the section cannot carry on past the bad line.
 
-So the defence is a convention, and it is worth keeping deliberately:
+**But the run can count it, and now it does.** Godot 4.5's `Logger`
+hears every error the engine reports. `_watch_script_errors()` adds a
+`ScriptErrorCounter` before the first section, and `_report()` turns any SCRIPT
+ERROR in the run into the failed check "the run raised no SCRIPT ERROR", with
+the first few `file:line` locations. A `push_error()` that a check provokes on
+purpose is not a script error and does not count. It took a second miss to
+build: on 4 Oct a trade test still called `_adopt_refusal()` after that
+function was deleted, the summary read green, and the state it left behind put
+five more SCRIPT ERRORs into later sections. That batch's "0 failed" was not
+true, and nothing said so.
+
+The convention below still stands, because the counter says THAT a section
+died and the convention says WHICH checks went with it:
 
 - **Every section ends with a `print()` line summarising it.** That line is not
   decoration. It is the marker that says the function reached its end, and a
@@ -837,6 +849,19 @@ So the defence is a convention, and it is worth keeping deliberately:
   *up* on the run that lost two checks, because the section before it had
   gained some.
 - **`SCRIPT ERROR` in a green run is a failure**, whatever the last line says.
+
+### A font with no glyphs of its own draws on Windows and not in a browser
+
+The town sign said "Goal: slay the Crowned" in the desktop game and showed a
+row of boxes with hex numbers in them on play.elusionrpg.com - 47 6F 61 6C, the
+letters' own codes. Its label pointed at a `FontFile` embedded in `sign.tscn`
+with no font data at all (the inspector's "New FontFile", never loaded). On a
+desktop Godot borrows a system font for every glyph a font lacks, so nobody
+saw it; a browser has no system fonts to borrow. The label now inherits the
+theme's font. `_test_every_font_draws_without_the_os()` fails on any empty
+`FontFile` in a scene or resource, and checks every letter on the sign is in
+the font it resolves to. A `SystemFont` (the chat's) is fine: Godot documents
+that it falls back to the default theme font where there are no system fonts.
 
 ### Work that vanishes past an await is checked now too
 
@@ -1280,15 +1305,10 @@ bank is the one thing a full death cannot reach.
   **bare** maxima (a Vitality amulet's ceiling goes with the amulet), and
   answers `gear_lost`. `/api/save` already ignored client equipment, so a save
   built before the death cannot dress the character again.
-- `_clear_carry_on_death()` mirrors it: no equipment, and `bag_base` set to the
-  empty bag's fingerprint. Without that, the first bag save after every full
-  death was built on the bag the character died with, refused as stale and
-  reloaded: the "inventory:0 rejected" warning the owner found.
-  `note_server_bag()` skips an empty array, which is why it is set by hand.
-- A refused bag save whose answer was adopted is a `[SAVE]` debug line now, not
-  a `push_warning`: it is the `based_on` rule working, and in the editor's
-  debugger it looked like a fault. A refusal the client could not adopt still
-  warns.
+- `_clear_carry_on_death()` mirrors it: no equipment. (It also used to set the
+  bag's `based_on` base, for the "inventory:0 rejected" warning the owner
+  found; saves carry no bag now, so there is no base to set - see "The bag is
+  the server's".)
 - The return button's tooltip says what it costs.
 
 `_test_death_reaches_the_server` holds the client half; the API's
@@ -1533,7 +1553,9 @@ of them. Four defects, each invisible from the side that was doing the testing:
   `PUT /api/character/inventory` - **deleted the item they had just received.**
   Now the server flags both characters and refuses that stale save with the bag
   it holds (409); the trade poll and the HUD's broadcast poll deliver the same
-  result. All three routes hand it to `CharacterData.apply_server_carry()`,
+  result. (Saves carry no bag now - "The bag is the server's" - so the two
+  polls, and a move refused as stale, are what deliver it.) All of them hand it
+  to `CharacterData.apply_server_carry()`,
   which adopts it (the live character AND the cached slot, so switching back
   cannot resurrect the old copy) and emits `carry_adopted`; the HUD announces
   it once, in the same sentence the history uses (`TradePanel.result_line`).
@@ -2674,6 +2696,17 @@ TRUSTED DEVICES in app.py. Measured live: the first login asked and the
 second went straight to character select; after a promotion it asked once
 more. `_test_one_code_per_computer` holds the client side.
 
+**One install id per computer, sent on every way in.** `Api.install_id()` makes
+a random 64-hex id the first time the game runs, keeps it in
+`user://install.cfg` and sends it as `install` with `login()`, `register()` and
+the resume in `probe_and_resume()`. The server refuses a new account from a
+computer a live-banned account has used, whatever the address (INSTALL IDS in
+app.py) - the half of ban evasion a VPN does not change. Its own file for the
+same reason as devices.cfg: Log out must not reset it. It is not a secret and
+not a credential; the server keeps only its hash. The staff view's linked
+accounts say "same computer" through `linked_how()` in ownerpanel.gd.
+`_test_install_id_is_kept_and_sent` holds the client side.
+
 ### The editor's debugger lists GDScript warnings, and the game has none
 
 The editor shows script warnings in the Debugger's Errors tab when the game
@@ -2778,36 +2811,47 @@ the other, against the real server.
   removing, the two-press disband; a trade of two potions for 100 gold, taxed,
   with both bags right on the server and on screen.
 
-### A bag save names the bag it was built on
+### The bag is the server's
 
 Found cooking on day 1: a stack of twelve raw fish made five cooked ones where
-the cooking XP said six, and three cooks in a row lost the one fish they
-cooked. The bag is
-saved whole (`PUT /api/character/inventory`) on a two-second debounce, and the
-cook, the catch, the loot take, the purchase and the equip all change it on
-the server too. A save built after one cook and landing after the next deleted
-the fish the next cook made (a loss, so the server took it), and the save after
-that had its copy trimmed as a gain.
+the cooking XP said six. The bag was saved whole (`PUT /api/character/inventory`)
+on a two-second debounce while the cook, the catch, the loot take, the purchase
+and the equip changed it on the server too, so a save built after one cook and
+landing after the next deleted the fish the next cook made. `based_on` (the
+save naming the bag it was built on) fixed that on day 1.
 
-- **Every bag save carries `based_on`**: `CharacterData.bag_fingerprint()` of
-  the last bag the server gave this client, kept per character as `bag_base`.
-  The server refuses a save built on a bag it no longer holds, with 409 and its
-  own bag, which `apply_server_carry()` adopts without a message (the HUD skips
-  `reason: "stale_save"`).
-- **Where the base comes from:** the load (`_slot_from_server`), every answer
-  that carries the bag (they all reach the carry grid's `load_server_array()`,
-  which reports when the grid `is_carry`; the bank's grid does not), a refusal's
-  resync, and a save's own answer. A save leaving makes its bag the base
-  (`bag_sent()`), so a save built while it is in flight builds on it; its answer
-  is used only when nothing newer has come from the server since
-  (`bag_saved()`).
-- **The fingerprint is shared with the server**: sha1 of
-  `position:item_id:quantity` for each filled cell, joined with `|`. Both suites
-  pin the same bag to the same string.
+Then the save stopped carrying the bag at all, on the owner's call: the
+backpack ledger being "still client-declared" was an honest limit worth
+closing. Every change is a request now, and the grid is drawn from the answer.
 
-Measured after: twelve cooked from twelve, with two stale saves refused on the
-way. `_test_a_save_cannot_undo_a_server_change` holds the client half; the API's
-`test_gathering.py` reproduces the loss.
+- **A drag inside one grid** (bag, keys, or the bank) is drawn at once by
+  `InventorySlot._drop_data()` - B1 move, B2 merge, B3 swap, the same three
+  rules `_grid_move()` applies on the server - and sent by the grid as one
+  `request_move()` (THE SERVER DOES IT in inventorycontainer.gd). A drop in a
+  gap is a move onto the first empty cell.
+- **One at a time, in order, and only the last answer is drawn.** Two quick
+  drags are two requests and the second is built on the first; drawing the
+  first answer would flick the second drag back.
+- **A 409 carries the grid** when the cell held something else (a trade landed):
+  the carry's goes through `apply_server_carry()`, silently for
+  `reason: "stale_save"`; the bank's reloads the bank grid. No answer at all
+  keeps what is drawn, and the next answer puts it right.
+- **The bin** is `request_discard(cell, item_id)`; a cell holding something
+  else by the time Destroy is pressed is left alone.
+- **A pile of coins or lusions** is `POST /api/character/inventory/cash`. It
+  used to add gold here, which the server has ignored since E-8, so the pile
+  was destroyed and the gold was gone at the next login.
+- **A potion's answer carries the bag**, and `_adopt_carry()` draws it unless a
+  drag is still on its way.
+- **A save carries neither the bag nor the bank** (`_slot_sections()`,
+  `_account_sections()`), and `bag_base`, `bag_sent()`, `bag_saved()` and
+  `_adopt_refusal()` went with them. `is_carry` / `is_bank` on the grid say
+  which routes it uses.
+
+Played against the real server (the `bagserver` harness mode): four quick
+drags, a key, the bin, a coin pile and the bank, each matching the server with
+no save, and the same after a relog. `_test_the_bag_is_the_servers` holds the
+client half, `test_bagmoves.py` the server's.
 
 ### Fishing and cooking on day 1
 
@@ -3700,8 +3744,9 @@ question god mode answered by returning before the XP.
 
 ## Known gaps
 
-- The backpack ledger is still whatever the client pushes on save.
-  `POST /api/loot/take` closed where items come from, not what you claim to hold.
+- ~~The backpack ledger is still whatever the client pushes on save.~~ Closed:
+  the bag and the bank are the server's, every drag, bin and pile a request of
+  its own, and a save carries neither. See "The bag is the server's".
 - ~~`has_active_revive` in `player.gd` is never set true.~~ Closed — the flag
   and its unreachable branch are gone. The real revive is `gameover.gd`'s,
   after the server has been paid. The ordering the dead branch needed is

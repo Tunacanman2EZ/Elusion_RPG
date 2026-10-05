@@ -1420,7 +1420,11 @@ func _capture_inventory(player: Node) -> Array:
 	# again. That is how this save ended up with a lone
 	# {"item_id": "tinyhealthpotion", "quantity": 16.0} among otherwise
 	# integer values.
-	var hud: Node = player.get_tree().get_first_node_in_group("hud")
+	# A PLAYER OUTSIDE THE TREE HAS NO HUD TO ASK, and get_tree() on it is
+	# null - asking it anyway was a SCRIPT ERROR that ended the save half-way.
+	# It is the cached bag then, same as a game with no HUD up.
+	var tree: SceneTree = player.get_tree() if player.is_inside_tree() else null
+	var hud: Node = tree.get_first_node_in_group("hud") if tree != null else null
 	if hud == null:
 		if "inventory_data" in player:
 			return _normalise_item_array(player.inventory_data)
@@ -1532,93 +1536,14 @@ func _apply_equip_result(player: Node, data: Dictionary) -> void:
 
 
 # =============================================================================
-# THE BAG A SAVE IS BUILT ON
+# THE BAG IS THE SERVER'S
 # =============================================================================
-# PUT /api/character/inventory replaces the whole bag, so a save built before a
-# server route changed the bag, and landing after it, undoes that change. Day 1,
-# cooking a stack of twelve: a save built after one cook and sent during the
-# next deleted the fish the next cook made, and the save after had its copy
-# trimmed as a gain. One cooked fish in every few was gone.
-#
-# Every save now names the bag it was built on: `based_on`, the fingerprint of
-# the last bag the server gave this client, kept per character as "bag_base".
-# The server refuses a save whose base it no longer holds and hands back its bag
-# (409, resync), which apply_server_carry() adopts like a trade's.
-#
-# WHERE THE BASE COMES FROM: the load at login, every answer that carries the
-# bag (they all reach the carry grid through load_server_array(), which reports
-# here), a refusal's resync, and a save's own answer.
-
-func bag_fingerprint(cells: Array) -> String:
-	"""app.py's bag_fingerprint(): sha1 of "position:item_id:quantity" for every
-	filled cell, joined with "|". Both test suites pin the same bag to the same
-	string, so the two cannot drift apart."""
-	var parts := PackedStringArray()
-	for i in cells.size():
-		var cell = cells[i]
-		if cell is Dictionary and str(cell.get("item_id", "")) != "":
-			parts.append("%d:%s:%d" % [i, str(cell["item_id"]), int(cell.get("quantity", 1))])
-	return "|".join(parts).sha1_text()
-
-
-# How many times a server bag has been noted. A save's answer is only used when
-# nothing newer has come from the server since the save was sent.
-var _bag_notes: int = 0
-
-
-func note_server_bag(cells: Array, slot_index: int = -1) -> void:
-	"""The server holds this bag for this character: the next save builds on it."""
-	if cells.is_empty():
-		return
-	var index: int = active_character_index if slot_index < 0 else slot_index
-	_ensure_slot_array()
-	if index < 0 or index >= character_slots.size() or not (character_slots[index] is Dictionary):
-		return
-	character_slots[index]["bag_base"] = bag_fingerprint(cells)
-	_bag_notes += 1
-
-
-func bag_sent(slot_index: int, cells: Array) -> int:
-	"""A save of these cells is on its way. If it lands, the server holds them,
-	so a save built after this one builds on them. Returns a mark for
-	bag_saved(); called by ServerStorage as the request leaves."""
-	note_server_bag(cells, slot_index)
-	return _bag_notes
-
-
-func bag_base_of(slot_index: int) -> String:
-	_ensure_slot_array()
-	if slot_index < 0 or slot_index >= character_slots.size() or not (character_slots[slot_index] is Dictionary):
-		return ""
-	return str(character_slots[slot_index].get("bag_base", ""))
-
-
-func bag_unsent(slot_index: int, base_before: String, sent_mark: int) -> void:
-	"""A save that did not land: the server still holds the bag it held before,
-	so the next save builds on that again.
-
-	FOUND ON DAY 1, taking the server down mid-play: a bag change made while it
-	was gone was lost when it came back. bag_sent() had made the unsent bag the
-	base, so the retry claimed to be built on a bag the server never had, was
-	refused as stale, and the server's older bag was adopted over the change.
-
-	Left alone when a server bag has been noted since the save was sent (a
-	refusal's resync, say): that one is newer than both."""
-	if _bag_notes != sent_mark:
-		return
-	_ensure_slot_array()
-	if slot_index < 0 or slot_index >= character_slots.size() or not (character_slots[slot_index] is Dictionary):
-		return
-	character_slots[slot_index]["bag_base"] = base_before
-
-
-func bag_saved(slot_index: int, cells: Array, sent_mark: int) -> void:
-	"""A save's answer: the bag as the server stored it. Ignored when another
-	server bag has been noted since that save was sent, because this one is
-	older than it."""
-	if _bag_notes == sent_mark:
-		note_server_bag(cells, slot_index)
-
+# A save used to carry the whole bag, and name the bag it was built on
+# (`based_on`, kept per character as "bag_base") so the server could refuse
+# one built before a cook or a trade landed. None of that is needed now: a save
+# carries no bag at all (ONE CELL AT A TIME in app.py), every change is its own
+# request, and the grid is drawn from the answers. What is left here is
+# adopting a bag the server sends - after a trade, an equip, a refused move.
 
 func _adopt_server_bag(player: Node, cells: Array) -> void:
 	"""The server's whole carry, onto the live grid - or onto the cached array
@@ -1632,10 +1557,8 @@ func _adopt_server_bag(player: Node, cells: Array) -> void:
 		container.load_server_array(cells)
 	elif "inventory_data" in player:
 		# The panel is shut, so there is no grid to repaint - but the cached
-		# array is what the next save reads, and leaving it stale is how an
-		# item comes back.
+		# array is what the grid is built from when it opens.
 		player.inventory_data = _normalise_item_array(cells)
-		note_server_bag(cells)
 
 
 func apply_server_carry(resync: Variant, player: Node = null) -> bool:
@@ -1643,9 +1566,10 @@ func apply_server_carry(resync: Variant, player: Node = null) -> bool:
 	the other player finished - adopted as the truth. True if anything landed.
 
 	`resync` is what app.py's _take_resync() builds: {"slot", "gold",
-	"inventory", "trade"}. It arrives by whichever of three routes gets here
-	first - the trade window's poll, the HUD's broadcast poll, or a refused
-	inventory save - and all three hand it here.
+	"inventory", "trade"}. It arrives by whichever route gets here first - the
+	trade window's poll, the HUD's broadcast poll, or a move or bin the server
+	refused because the grid was out of date (_carry_resync()) - and all of
+	them hand it here.
 
 	WHY THIS EXISTS. Whoever accepts a trade FIRST is not the one whose request
 	runs it, so their client was told nothing and went on showing the bag it
@@ -1697,8 +1621,6 @@ func _apply_server_carry(resync: Dictionary, player: Node) -> bool:
 	var slot = character_slots[slot_index]
 	if slot is Dictionary:
 		slot["inventory"] = _normalise_item_array(cells)
-		slot["bag_base"] = bag_fingerprint(cells)
-		_bag_notes += 1
 		if gold >= 0:
 			slot["gold"] = gold
 

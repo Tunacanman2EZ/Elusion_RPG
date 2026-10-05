@@ -52,6 +52,52 @@ var skipped: int = 0
 var skips: PackedStringArray = []
 var _log: PackedStringArray = []
 
+# A SCRIPT ERROR ENDS THE SECTION IT HAPPENS IN, AND SAID NOTHING ABOUT IT.
+# The function stops at the bad line, its remaining checks never run, and a run
+# with eight of them still printed "0 failed". It happened: a trade test still
+# called _adopt_refusal() after that function was deleted, and every check after
+# it in that section went quietly unrun through a whole batch whose summary read
+# green. Godot 4.5's Logger hears every error the engine reports, and only a
+# SCRIPT ERROR - not a push_error() a check provokes on purpose - counts here.
+class ScriptErrorCounter extends Logger:
+	var count: int = 0
+	var where: PackedStringArray = []
+	var _lock := Mutex.new()
+
+	func _log_error(_function: String, file: String, line: int, code: String, rationale: String,
+			_editor_notify: bool, error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if error_type != Logger.ERROR_TYPE_SCRIPT:
+			return
+		_lock.lock()
+		count += 1
+		if where.size() < 8:
+			where.append("%s:%d  %s" % [file.get_file(), line, (rationale if rationale != "" else code).left(90)])
+		_lock.unlock()
+
+	func _log_message(_message: String, _error: bool) -> void:
+		pass
+
+var _script_errors: ScriptErrorCounter = null
+
+
+# Started before the first section and read by _report(), so a SCRIPT ERROR
+# anywhere in the run is a failed check rather than a missing one.
+func _watch_script_errors() -> void:
+	if _script_errors == null:
+		_script_errors = ScriptErrorCounter.new()
+		OS.add_logger(_script_errors)
+
+
+func _check_no_script_errors() -> void:
+	if _script_errors == null:
+		return
+	OS.remove_logger(_script_errors)
+	section("SCRIPT ERRORS - none, anywhere in the run")
+	check("the run raised no SCRIPT ERROR (one ends its section early, and the rest of that section never runs)",
+		_script_errors.count == 0,
+		"%d of them, first: %s" % [_script_errors.count, "; ".join(_script_errors.where)])
+	_script_errors = null
+
 
 func _ready() -> void:
 	# Wait one frame before doing anything. Calling get_tree().quit() from inside
@@ -73,6 +119,7 @@ func _ready() -> void:
 	# file first ran.
 	await get_tree().process_frame
 	_say("")
+	_watch_script_errors()
 	await _run_all()
 	_report()
 
@@ -125,6 +172,8 @@ func _run_all() -> void:
 	_test_the_client_says_which_build_it_is()
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
+	_test_every_font_draws_without_the_os()
+	_test_a_save_from_outside_the_tree()
 	_test_no_unused_parameters()
 	_test_floor_coverage()
 	_test_frame_budget()
@@ -188,6 +237,7 @@ func _run_all() -> void:
 	_test_the_welcome_plays_once_a_login()
 	_test_a_character_can_be_deleted()
 	_test_one_code_per_computer()
+	_test_install_id_is_kept_and_sent()
 	_test_a_window_never_outgrows_the_screen()
 	await _test_banked_gold_goes_through_the_server()
 	_test_the_store_sells_the_next_set()
@@ -196,9 +246,8 @@ func _run_all() -> void:
 	_test_the_login_screen_asks_without_a_login()
 	_test_a_gateway_saying_no_answer_is_no_answer()
 	_test_a_lost_server_is_asked_for_more_often()
-	_test_a_save_cannot_undo_a_server_change()
+	await _test_the_bag_is_the_servers()
 	await _test_the_map_comes_back()
-	_test_a_bag_changed_offline_still_lands()
 	_test_enemies_keep_their_place_in_the_ring()
 	_test_a_door_is_quick()
 	_test_the_emoji_font_is_chat_sized()
@@ -753,6 +802,95 @@ func _scan_import_cache_refs(dir_path: String, offenders: Array[String], scanned
 						% [full.trim_prefix("res://"), i + 1, lines[i].strip_edges().left(72)])
 		entry = dir.get_next()
 	dir.list_dir_end()
+
+
+# =============================================================================
+# EVERY FONT DRAWS WITHOUT THE OPERATING SYSTEM'S FONTS
+# =============================================================================
+# The town sign read "Goal: slay the Crowned" on Windows and a row of boxes with
+# hex numbers in them in the browser - each box a missing letter's code, 47 6F
+# 61 6C for "Goal". Its label pointed at a FontFile embedded in sign.tscn with
+# no font data in it at all: the inspector's "New FontFile", never loaded. On a
+# desktop Godot quietly borrows a system font for every glyph a font lacks, so
+# the sign looked fine for months; a browser has no system fonts to borrow from.
+#
+# So: no FontFile anywhere may be empty unless it has fallbacks to draw with,
+# and the sign's own text must be drawable by the font it actually resolves to.
+# A SystemFont is fine - Godot documents that on platforms without system fonts
+# it falls back to the default theme font, which is real.
+
+func _test_every_font_draws_without_the_os() -> void:
+	section("FONTS - every font has glyphs of its own (the browser has no system fonts)")
+
+	var empty: Array[String] = []
+	var fonts_seen: Array[int] = [0]
+	var files: int = 0
+	for folder in ["res://scene", "res://assets", "res://data", "res://src"]:
+		for path in _all_files_under(folder, ".tscn") + _all_files_under(folder, ".tres"):
+			files += 1
+			_find_empty_fonts(path, empty, fonts_seen)
+	empty.sort()
+	check("the sweep read the scenes and resources", files > 50, "%d files" % files)
+	print("  %d files read, %d embedded or standalone FontFiles among them" % [files, fonts_seen[0]])
+	check("no FontFile is empty (no data and nothing to fall back on)", empty.is_empty(),
+		"\n         ".join(empty))
+
+	var packed: PackedScene = load("res://scene/interactables/sign.tscn")
+	var sign_node: Node = packed.instantiate() if packed != null else null
+	var label: Label = sign_node.get_node_or_null("signpanel/label") as Label if sign_node != null else null
+	check("the town sign has its label", label != null)
+	if label != null:
+		var font: Font = label.label_settings.font if label.label_settings != null \
+				and label.label_settings.font != null else label.get_theme_font("font")
+		var missing: Array[String] = []
+		for i in range(label.text.length()):
+			var ch: String = label.text.substr(i, 1)
+			if ch != " " and (font == null or not font.has_char(label.text.unicode_at(i))):
+				missing.append(ch)
+		check("every letter on the sign is in the font it draws with, no system font needed",
+			font != null and missing.is_empty(), "missing: %s" % "".join(missing))
+	if sign_node != null:
+		sign_node.free()
+
+
+# A SAVE FROM A PLAYER OUTSIDE THE SCENE TREE reads the cached bag. It used to
+# ask player.get_tree() for the HUD, which is null off the tree, and the SCRIPT
+# ERROR ended save_character_state() half-way. Five of them sat in a run that
+# read green until the run learned to count them (_watch_script_errors()).
+func _test_a_save_from_outside_the_tree() -> void:
+	section("SAVING - a player outside the scene tree still has a bag to save")
+	var shape := GDScript.new()
+	shape.source_code = "extends Node\nvar inventory_data: Array = [{\"item_id\": \"zz_loose\", \"quantity\": 2.0}]\n"
+	shape.reload()
+	var loose := Node.new()
+	loose.set_script(shape)
+	var bag: Array = CharacterData._capture_inventory(loose)
+	check("the cached bag comes back, the quantity a whole number again",
+		bag.size() == 1 and typeof((bag[0] as Dictionary).get("quantity")) == TYPE_INT
+		and int((bag[0] as Dictionary).get("quantity")) == 2, bag)
+	loose.free()
+
+
+# Reads the file's text rather than loading it, so an empty FontFile embedded in
+# a scene is found without instancing the scene, and a standalone .tres FontFile
+# is judged the same way.
+func _find_empty_fonts(path: String, empty: Array[String], fonts_seen: Array[int]) -> void:
+	var text: String = FileAccess.get_file_as_string(path)
+	if not text.contains("FontFile"):
+		return
+	var blocks: PackedStringArray = text.split("\n[")
+	for i in range(blocks.size()):
+		var block: String = blocks[i] if i == 0 else "[" + blocks[i]
+		var header: String = block.get_slice("\n", 0)
+		var is_font: bool = header.begins_with("[sub_resource type=\"FontFile\"") \
+				or (header.begins_with("[gd_resource type=\"FontFile\"") and i == 0)
+		if not is_font:
+			continue
+		fonts_seen[0] += 1
+		var body: String = block if not header.begins_with("[gd_resource") else text
+		var has_glyphs: bool = body.contains("\ndata = ") or body.contains("\nfallbacks = ")
+		if not has_glyphs:
+			empty.append("%s  %s" % [path.trim_prefix("res://"), header.left(70)])
 
 
 # =============================================================================
@@ -1440,10 +1578,17 @@ func _test_security_policy() -> void:
 	check("the token still lives where the page says it does",
 		api_src.contains("user://session.cfg"), api_src.contains("session.cfg"))
 
-	# The honest limit the page inherits from the server's list.
-	check("the page still names the backpack ledger as client-declared",
-		doc.contains("backpack ledger is still client-declared"),
-		"an open gap dropped from the page reads as a gap that was closed")
+	# The honest limit this page used to inherit from the server's list - "the
+	# backpack ledger is still client-declared" - closed when the bag became the
+	# server's. The page has to say so in its place, and say it truly: the bag
+	# routes exist and a save no longer carries the bag.
+	check("the page no longer calls the backpack client-declared, and says whose it is",
+		not doc.contains("backpack ledger is still client-declared")
+		and doc.contains("the backpack and the bank are the server's"),
+		"a closed gap left on the page reads as still open; one dropped silently reads as forgotten")
+	check("  which the code bears out: the bin is a request, and a save carries no bag",
+		_code_src("res://src/ui/inventory/inventorycontainer.gd").contains("CARRY_DISCARD_PATH")
+		and not _code_src("res://src/systems/serverstorage.gd").contains("\"/api/character/inventory\""))
 
 	check("and it tells people where to report without publishing an inbox",
 		doc.contains("Report a vulnerability") and not doc.contains("@gmail"),
@@ -1508,9 +1653,10 @@ func _test_skills_are_not_pushed() -> void:
 		not src.contains("func _skills_body("),
 		"an uncalled builder is the thing that gets wired back up by accident")
 
-	# THE OTHER THREE SECTIONS MUST STILL GO. Removing one line from a list of
-	# four awaits is a very easy way to remove two.
-	for path in ["/api/save", "/api/player/status", "/api/character/inventory"]:
+	# THE OTHER SECTIONS MUST STILL GO. Removing one line from a list of
+	# awaits is a very easy way to remove two. (The bag went on purpose: it is
+	# the server's now, and _test_the_bag_is_the_servers() holds that.)
+	for path in ["/api/save", "/api/player/status"]:
 		check("%s is still pushed" % path, src.contains("\"%s\"" % path),
 			"this is a skills change, not a save change")
 
@@ -1518,7 +1664,7 @@ func _test_skills_are_not_pushed() -> void:
 	# save of a session does not push everything; a seed for a section nobody
 	# pushes is harmless, but a seed MISSING for one that is pushed makes that
 	# section push once per session forever.
-	for key in ["save:%d", "status:%d", "inventory:%d"]:
+	for key in ["save:%d", "status:%d"]:
 		check("the seed still covers %s" % key.replace("%d", "N"),
 			src.contains("_last_pushed[\"%s\"" % key),
 			"a section pushed but not seeded sends once every session for nothing")
@@ -2071,8 +2217,7 @@ func _test_death_reaches_the_server() -> void:
 	CharacterData.load_failed = true      # save_data() refuses: nothing leaves the suite
 	CharacterData.character_slots = [{"character": "suitecorpse", "gold": 75,
 		"inventory": [{"item_id": "tinyhealthpotion", "quantity": 3}],
-		"equipment": {"weapon": "doubleaxe", "amulet": "exaltedvitalityamulet"},
-		"bag_base": CharacterData.bag_fingerprint([{"item_id": "tinyhealthpotion", "quantity": 3}])},
+		"equipment": {"weapon": "doubleaxe", "amulet": "exaltedvitalityamulet"}},
 		null, null, null]     # always four: _ensure_slot_array() resets any other shape
 	var mourner: Node = (load("res://src/ui/menus/gameover.gd") as Script).new()
 	mourner._clear_carry_on_death("suitecorpse")
@@ -2080,8 +2225,6 @@ func _test_death_reaches_the_server() -> void:
 	check("accepting death takes the bag, the purse and everything worn",
 		corpse.get("inventory") == [] and int(corpse.get("gold", -1)) == 0 and corpse.get("equipment") == {},
 		[corpse.get("inventory"), corpse.get("gold"), corpse.get("equipment")])
-	check("  and the next bag save builds on the empty bag the server now holds",
-		str(corpse.get("bag_base", "")) == CharacterData.bag_fingerprint([]), corpse.get("bag_base"))
 	mourner.free()
 	CharacterData.character_slots = slots_were
 	CharacterData.load_failed = failed_was
@@ -2092,15 +2235,6 @@ func _test_death_reaches_the_server() -> void:
 		give_up != null and give_up.tooltip_text.contains("everything you are wearing")
 		and give_up.tooltip_text.contains("bank is safe"), give_up.tooltip_text if give_up else "no button")
 	over_scene.free()
-
-	# A refused bag save that handed back the server's bag is the based_on rule
-	# working, not a fault: a debug line, not an editor warning.
-	var put_body: String = _func_body(_code_src("res://src/systems/serverstorage.gd"), "func _put_if_changed(")
-	var adopted_at: int = put_body.find("if _adopt_refusal(res):")
-	var else_at: int = put_body.find("else:", adopted_at)
-	var warn_at: int = put_body.find("push_warning(\"ServerStorage: %s rejected")
-	check("a stale bag the server replaced is not an editor warning",
-		adopted_at != -1 and else_at > adopted_at and warn_at > else_at, [adopted_at, else_at, warn_at])
 
 	print("  the server counted transitions correctly all along")
 
@@ -4361,6 +4495,7 @@ func _environment() -> void:
 
 
 func _report() -> void:
+	_check_no_script_errors()
 	_say("")
 	_say("=".repeat(60))
 	if skipped > 0:
@@ -6602,13 +6737,13 @@ func _test_a_character_can_be_deleted() -> void:
 
 	# ---- a new character in the slot is pushed, not skipped ----
 	var store := ServerStorage.new()
-	for key in ["save:1", "status:1", "inventory:1", "save:2", "lusions"]:
+	for key in ["save:1", "status:1", "save:2", "lusions"]:
 		store._last_pushed[key] = "pushed"
-	store._failed_keys["inventory:1"] = true
+	store._failed_keys["status:1"] = true
 	store.forget_slot(1)
 	check("the storage forgets what it pushed for a deleted slot, so the next character there is sent",
 		not store._last_pushed.has("save:1") and not store._last_pushed.has("status:1")
-		and not store._last_pushed.has("inventory:1") and not store._failed_keys.has("inventory:1"),
+		and not store._failed_keys.has("status:1"),
 		store._last_pushed)
 	check("  and nothing about the other slots or the account",
 		store._last_pushed.has("save:2") and store._last_pushed.has("lusions"))
@@ -6680,6 +6815,79 @@ func _test_one_code_per_computer() -> void:
 		file.store_string(kept)
 		file.close()
 	print("  staff logins: a device token per account, apart from the session, sent and kept")
+
+
+# =============================================================================
+# THIS COPY OF THE GAME - the install id a ban follows through a VPN
+# =============================================================================
+# The server refuses a new account from a computer a banned account has used
+# (INSTALL IDS in app.py, test_security.py E-5f). That only works if the game
+# makes the id once, keeps it where logging out cannot reach it, and sends it
+# on every way in.
+
+func _test_install_id_is_kept_and_sent() -> void:
+	section("INSTALL ID - one per computer, kept, sent on every way in")
+
+	# The suite's own writes go in a copy it puts back afterwards.
+	var kept: String = FileAccess.get_file_as_string(Api.INSTALL_PATH) \
+		if FileAccess.file_exists(Api.INSTALL_PATH) else ""
+	var was_cached: String = Api._install_id
+
+	DirAccess.remove_absolute(Api.INSTALL_PATH)
+	Api._install_id = ""
+	var first: String = Api.install_id()
+	check("a computer with no id is given one: 64 hex characters",
+		first.length() == 64 and first.is_valid_hex_number(), first)
+	check("  asking again gives the same one", Api.install_id() == first)
+	Api._install_id = ""
+	check("  and it comes back from the file after a restart", Api.install_id() == first)
+	# On the script, not the autoload: it is static (STATIC_CALLED_ON_INSTANCE).
+	var api_script: GDScript = load("res://src/systems/api.gd") as GDScript
+	check("  each new computer gets its own", str(api_script.call("_fresh_install_id")) != first)
+
+	var junk := ConfigFile.new()
+	junk.set_value("install", "id", "not an id")
+	junk.save(Api.INSTALL_PATH)
+	Api._install_id = ""
+	var mended: String = Api.install_id()
+	check("a damaged file is replaced, not sent", mended != "not an id"
+		and mended.length() == 64 and mended.is_valid_hex_number(), mended)
+
+	var api_src: String = _code_src("res://src/systems/api.gd")
+	check("it lives apart from the session, which Log out and Remember me throw away",
+		Api.INSTALL_PATH != Api.SESSION_PATH and Api.INSTALL_PATH != Api.DEVICES_PATH
+		and not _func_body(api_src, "func _clear_session(").contains("INSTALL_PATH"))
+	check("the login sends it",
+		_func_body(api_src, "func login(").contains("\"install\": install_id()"))
+	check("  so does registering - the request the ban actually refuses",
+		_func_body(api_src, "func register(").contains("\"install\": install_id()"))
+	check("  and resuming a remembered login",
+		_func_body(api_src, "func probe_and_resume(").contains(
+			"post(\"/api/auth/resume\", {\"install\": install_id()}"))
+
+	# The staff view says how two accounts are linked; "same computer" is the
+	# half a VPN does not change, so it has to read as such.
+	const OwnerPanelScript := preload("res://src/ui/owner/ownerpanel.gd")
+	check("the staff view names a shared computer",
+		OwnerPanelScript.linked_how({"shared_computers": 1}) == "same computer")
+	check("  beside the addresses when there are both",
+		OwnerPanelScript.linked_how({"shared_addresses": 2, "quietest_address_accounts": 3,
+			"shared_computers": 1}) == "shares 2 addresses, quietest holds 3, same computer")
+	check("  and how crowded the computer is, when it is",
+		OwnerPanelScript.linked_how({"shared_computers": 1, "quietest_computer_accounts": 9})
+			== "same computer, 9 accounts on it")
+	check("  and an address-only link reads as it always did",
+		OwnerPanelScript.linked_how({"shared_addresses": 1, "quietest_address_accounts": 2})
+			== "shares 1 address, quietest holds 2")
+
+	if kept == "":
+		DirAccess.remove_absolute(Api.INSTALL_PATH)
+	else:
+		var file := FileAccess.open(Api.INSTALL_PATH, FileAccess.WRITE)
+		file.store_string(kept)
+		file.close()
+	Api._install_id = was_cached
+	print("  install id: made once, kept apart from the session, sent with login, register and resume")
 
 
 # =============================================================================
@@ -7158,99 +7366,197 @@ func _test_a_lost_server_is_asked_for_more_often() -> void:
 	hud.free()
 
 
-func _test_a_save_cannot_undo_a_server_change() -> void:
-	section("SAVING - a bag save names the bag it was built on")
+func _test_the_bag_is_the_servers() -> void:
+	section("THE BAG IS THE SERVER'S - a drag or the bin is a request, the grid drawn from the answer")
 
-	# Day 1, cooking a stack of twelve: a whole-bag save built after one cook
-	# and landing after the next deleted the fish the next cook made. Every bag
-	# save now carries `based_on`, the fingerprint of the last bag the server
-	# gave this client, and the server refuses one it has moved on from.
-	var fp := func(cells: Array) -> String:
-		return CharacterData.bag_fingerprint(cells)
-	check("the fingerprint is the server's, pinned to the same string as test_gathering.py",
-		fp.call([{"item_id": "rawmudfish", "quantity": 2}, null, {"item_id": "cookedmudfish", "quantity": 1.0}])
-			== "805ee8515ba7334b57fc01675e92d96b98ae28f3"
-		and fp.call([null, null]) == "da39a3ee5e6b4b0d3255bfef95601890afd80709")
+	# A save carried the whole bag, and the server trimmed it to what it had
+	# granted (E-1): a gain was caught, and the arrangement and every loss were
+	# this client's word. Now each change is one request (ONE CELL AT A TIME in
+	# app.py, test_bagmoves.py), and a save carries no bag and no bank.
+	var ss_code: String = _code_src("res://src/systems/serverstorage.gd")
+	check("a save no longer sends the bag or the bank",
+		not ss_code.contains("\"/api/character/inventory\"") and not ss_code.contains("\"/api/account/bank\""))
+	check("  and the based_on bookkeeping went with it",
+		not _code_src("res://src/systems/characterdata.gd").contains("func note_server_bag(")
+		and not ss_code.contains("bag_base"))
 
 	var kept_slots: Array = CharacterData.character_slots.duplicate(true)
 	var kept_index: int = CharacterData.active_character_index
-	CharacterData.character_slots = [{"character": "warrior", "inventory": []}, {"character": "mage", "inventory": []},
-		null, null]
+	CharacterData.character_slots = [{"character": "warrior", "inventory": [], "gold": 10},
+		{"character": "mage", "inventory": [], "gold": 10}, null, null]
 	CharacterData.active_character_index = 0
-	var storage = load("res://src/systems/serverstorage.gd").new()
 
-	# THE LOAD sets the base.
-	var from_server: Array = [{"item_id": "rawmudfish", "quantity": 3}, null]
-	var loaded: Dictionary = storage._slot_from_server({"class_id": "warrior", "inventory": from_server})
-	check("a character loaded from the server knows the bag it was given",
-		loaded.get("bag_base", "") == fp.call(from_server), loaded.get("bag_base"))
-	check("  and a save of it names that bag",
-		storage._inventory_body(0, loaded).get("based_on", "") == fp.call(from_server))
-	check("a character the server has never sent a bag for names none, and is taken as before",
-		not storage._inventory_body(0, {"inventory": []}).has("based_on"))
+	# OUR OWN TWO ITEMS, so this runs without the art pack (the hotbar test's
+	# way): a potion that stacks to 20 and a sword that does not stack.
+	var potion := ItemData.new()
+	potion.item_id = "zz_bag_test_potion"
+	potion.display_name = "Bag Test Potion"
+	potion.stackable = true
+	potion.max_stack = 20
+	var sword := ItemData.new()
+	sword.item_id = "zz_bag_test_sword"
+	sword.display_name = "Bag Test Sword"
+	ItemRegistry._items[potion.item_id] = potion
+	ItemRegistry._items[sword.item_id] = sword
 
-	# AN ANSWER THAT CARRIES THE BAG, through the carry grid every route uses.
+	# A FAKE SERVER: every request is written down and answered, a frame
+	# later, with whatever is next in `answers`.
+	var sent: Array = []
+	var answers: Array = []
+	var fake := func(path: String, body: Dictionary) -> Dictionary:
+		sent.append([path, body])
+		await get_tree().process_frame
+		return answers.pop_front() if not answers.is_empty() else {"ok": false, "status": 0, "error": "no answer"}
+	var settle := func(grid: InventoryContainer) -> void:
+		var frames := 0
+		while grid.is_busy() and frames < 30:
+			await get_tree().process_frame
+			frames += 1
+		await get_tree().process_frame
+
 	var carry := InventoryContainer.new()
 	carry.is_carry = true
 	add_child(carry)
-	var bank := InventoryContainer.new()
-	add_child(bank)
-	# NO AWAIT before this point: add_child() has already built the grids, and
-	# a frame lets other parts of the suite touch CharacterData.character_slots.
-	var cooked: Array = [{"item_id": "rawmudfish", "quantity": 2}, null, {"item_id": "cookedmudfish", "quantity": 1}]
-	carry.load_server_array(cooked)
-	check("a cook's answer, loaded into the carry, becomes the base",
-		CharacterData.character_slots[0].get("bag_base", "") == fp.call(cooked))
-	bank.load_server_array([{"item_id": "ironsword", "quantity": 1}])
-	check("  the bank's grid loading its own array does not",
-		CharacterData.character_slots[0].get("bag_base", "") == fp.call(cooked))
+	carry.send_override = fake
+	carry.load_save_array([{"item_id": "zz_bag_test_potion", "quantity": 5}, {"item_id": "zz_bag_test_sword", "quantity": 1}])
 
-	# A SAVE ON ITS WAY, and its answer arriving late.
-	var sent_cells: Array = [{"item_id": "rawmudfish", "quantity": 2}, {"item_id": "cookedmudfish", "quantity": 1}]
-	var mark: int = CharacterData.bag_sent(0, sent_cells)
-	check("a save leaving makes its bag the base for the next one",
-		CharacterData.character_slots[0].get("bag_base", "") == fp.call(sent_cells))
-	var after_next_cook: Array = [{"item_id": "rawmudfish", "quantity": 1}, {"item_id": "cookedmudfish", "quantity": 2}]
-	carry.load_server_array(after_next_cook)
-	CharacterData.bag_saved(0, sent_cells, mark)
-	check("  and its answer, older than a cook's that came in meanwhile, is not used",
-		CharacterData.character_slots[0].get("bag_base", "") == fp.call(after_next_cook))
-	mark = CharacterData.bag_sent(0, after_next_cook)
-	CharacterData.bag_saved(0, after_next_cook, mark)
-	check("  an answer with nothing newer in between is",
-		CharacterData.character_slots[0].get("bag_base", "") == fp.call(after_next_cook))
+	# ---- a drag is drawn at once and sent as one move -------------------------
+	var held_after: Array = [null, {"item_id": "zz_bag_test_sword", "quantity": 1}, null, null, null, null, null,
+		{"item_id": "zz_bag_test_potion", "quantity": 5}]
+	answers.append({"ok": true, "status": 200, "data": {"slot": 0, "inventory": held_after}})
+	carry.get_slot_at(7)._drop_data(Vector2.ZERO, _hb_drag(carry.get_slot_at(0)))
+	check("a drag onto an empty cell is drawn at once",
+		_hb_holds(carry.get_slot_at(7), "zz_bag_test_potion", 5) and carry.get_slot_at(0).is_empty())
+	check("  and sent as one move, naming what was dragged",
+		sent.size() == 1 and sent[0][0] == InventoryContainer.CARRY_MOVE_PATH
+		and sent[0][1] == {"slot": 0, "from": 0, "to": 7, "item_id": "zz_bag_test_potion"}, sent)
+	await settle.call(carry)
+	check("  the answer agrees, and the grid is the server's",
+		_hb_holds(carry.get_slot_at(7), "zz_bag_test_potion", 5) and _hb_holds(carry.get_slot_at(1), "zz_bag_test_sword", 1))
 
-	# THE REFUSAL is adopted, for a character not being played as well.
-	var refused: Dictionary = {"ok": false, "status": 409, "data": {"resync": {"slot": 1, "gold": 5,
-		"inventory": [{"item_id": "rawmudfish", "quantity": 4}], "trade": null, "reason": "stale_save"}}}
-	storage._adopt_refusal(refused)
-	check("a refused save's bag is adopted, and is the base, for the other character too",
-		CharacterData.character_slots[1].get("bag_base", "") == fp.call([{"item_id": "rawmudfish", "quantity": 4}])
-		and CharacterData.character_slots[1].get("gold", 0) == 5, CharacterData.character_slots[1])
+	# ---- two quick drags: in order, one at a time, only the last answer drawn -
+	sent.clear()
+	var first_answer: Array = [{"item_id": "zz_bag_test_sword", "quantity": 1}]
+	var last_answer: Array = [{"item_id": "zz_bag_test_sword", "quantity": 1}, null, null,
+		{"item_id": "zz_bag_test_potion", "quantity": 5}]
+	answers.append({"ok": true, "status": 200, "data": {"slot": 0, "inventory": first_answer}})
+	answers.append({"ok": true, "status": 200, "data": {"slot": 0, "inventory": last_answer}})
+	carry.get_slot_at(0)._drop_data(Vector2.ZERO, _hb_drag(carry.get_slot_at(1)))
+	carry.get_slot_at(3)._drop_data(Vector2.ZERO, _hb_drag(carry.get_slot_at(7)))
+	check("two quick drags: the second waits for the first's answer", sent.size() == 1, sent.size())
+	await settle.call(carry)
+	check("  then goes, in the order made", sent.size() == 2
+		and int(sent[0][1]["from"]) == 1 and int(sent[1][1]["from"]) == 7, sent)
+	check("  and only the last answer is drawn - the first would flick the second drag back",
+		_hb_holds(carry.get_slot_at(0), "zz_bag_test_sword", 1) and _hb_holds(carry.get_slot_at(3), "zz_bag_test_potion", 5),
+		carry.to_save_array().slice(0, 4))
 
-	# THE WIRING the two halves above need, read from the code: the game's carry
-	# grid is the one marked, and a bag save going out and coming back is noted.
-	check("the inventory screen marks its grid as the carry",
-		_func_body(_code_src("res://src/ui/inventory/inventoryscreen.gd"), "func _wire_inventory_container(")
-			.contains("_container.is_carry = true"))
-	var put_body := _func_body(_code_src("res://src/systems/serverstorage.gd"), "func _put_if_changed(")
-	check("a bag save notes its bag as it leaves and its answer as it returns",
-		put_body.contains("CharacterData.bag_sent(") and put_body.contains("CharacterData.bag_saved(")
-		and put_body.find("CharacterData.bag_sent(") < put_body.find("await Api.put("))
-
-	# AND SAID NOTHING ABOUT. The cook that moved the bag on was shown when it happened.
+	# ---- a grid that was out of date is put right by the 409 ------------------
+	# The resync names character 1, not the one being played, so no player the
+	# suite may have left in the tree has its purse or its grid touched; the
+	# real server names the requesting slot, and the HUD's grid is this one.
+	sent.clear()
+	var truth: Array = [{"item_id": "zz_bag_test_sword", "quantity": 1}, null, {"item_id": "zz_bag_test_potion", "quantity": 2}]
+	answers.append({"ok": false, "status": 409, "error": "Your backpack changed on the server.",
+		"data": {"resync": {"slot": 1, "gold": 10, "inventory": truth, "trade": null, "reason": "stale_save"}}})
+	carry.get_slot_at(9)._drop_data(Vector2.ZERO, _hb_drag(carry.get_slot_at(3)))
+	await settle.call(carry)
+	check("a move the server refused as stale redraws the grid it holds",
+		_hb_holds(carry.get_slot_at(2), "zz_bag_test_potion", 2) and carry.get_slot_at(9).is_empty()
+		and carry.get_slot_at(3).is_empty(), carry.to_save_array().slice(0, 10))
+	check("  and the character's copy follows it, through apply_server_carry()",
+		(CharacterData.character_slots[1].get("inventory", []) as Array).size() >= 3
+		and CharacterData.character_slots[1]["inventory"][2] is Dictionary)
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	hud._build_message_box()
 	hud._on_carry_adopted({"reason": "stale_save", "inventory": [], "trade": null})
-	check("a stale save's resync puts up no message", hud._unlogged_lines.is_empty(), hud._unlogged_lines)
+	check("  and puts up no message - the grid simply shows the truth", hud._unlogged_lines.is_empty(),
+		hud._unlogged_lines)
 	hud._on_carry_adopted({"inventory": [], "trade": null})
-	check("  a resync for anything else still does", hud._unlogged_lines.size() == 1, hud._unlogged_lines)
+	check("  a resync for anything else, a trade, still does", hud._unlogged_lines.size() == 1,
+		hud._unlogged_lines)
 	hud.free()
+
+	# ---- the bin ----------------------------------------------------------------
+	sent.clear()
+	answers.append({"ok": true, "status": 200, "data": {"slot": 0, "inventory": [{"item_id": "zz_bag_test_sword", "quantity": 1}]}})
+	carry.request_discard(2, "zz_bag_test_sword")
+	check("a bin that names the wrong item destroys nothing and sends nothing",
+		_hb_holds(carry.get_slot_at(2), "zz_bag_test_potion", 2) and sent.is_empty())
+	carry.request_discard(2, "zz_bag_test_potion")
+	check("the bin takes the stack off at once",
+		carry.get_slot_at(2).is_empty())
+	check("  and asks the server to destroy it",
+		sent.size() == 1 and sent[0][0] == InventoryContainer.CARRY_DISCARD_PATH
+		and sent[0][1] == {"slot": 0, "position": 2, "item_id": "zz_bag_test_potion"}, sent)
+	await settle.call(carry)
+
+	# ---- no answer at all leaves the drawing alone, and says so --------------
+	sent.clear()
+	carry.get_slot_at(5)._drop_data(Vector2.ZERO, _hb_drag(carry.get_slot_at(0)))
+	await settle.call(carry)
+	check("a move with no answer keeps what is drawn - the next answer puts it right",
+		sent.size() == 1 and _hb_holds(carry.get_slot_at(5), "zz_bag_test_sword", 1))
+
+	# ---- the bank's grid uses the bank's routes; a grid that is neither, none --
+	var bank := InventoryContainer.new()
+	bank.grid_width = 10
+	bank.grid_height = 5
+	bank.is_bank = true
+	add_child(bank)
+	bank.set_slot_type(InventorySlot.BANK_SLOT_TYPE)
+	bank.send_override = fake
+	bank.load_save_array([{"item_id": "zz_bag_test_sword", "quantity": 1}])
+	sent.clear()
+	var bank_truth: Array = [null, null, null, {"item_id": "zz_bag_test_sword", "quantity": 1}]
+	answers.append({"ok": false, "status": 409, "error": "The bank changed on the server.",
+		"data": {"account": {"bank_inventory": bank_truth}}})
+	bank.get_slot_at(20)._drop_data(Vector2.ZERO, _hb_drag(bank.get_slot_at(0)))
+	check("a drag inside the bank is a bank move, with no character slot",
+		sent.size() == 1 and sent[0][0] == InventoryContainer.BANK_MOVE_PATH
+		and sent[0][1] == {"from": 0, "to": 20, "item_id": "zz_bag_test_sword"}, sent)
+	await settle.call(bank)
+	check("  and a stale one redraws the bank the server holds",
+		_hb_holds(bank.get_slot_at(3), "zz_bag_test_sword", 1) and bank.get_slot_at(20).is_empty())
+	sent.clear()
+	bank.request_discard(3, "zz_bag_test_sword")
+	check("the bank's bin is the bank's discard",
+		sent.size() == 1 and sent[0][0] == InventoryContainer.BANK_DISCARD_PATH
+		and sent[0][1] == {"position": 3, "item_id": "zz_bag_test_sword"}, sent)
+	await settle.call(bank)
+
+	var loose := InventoryContainer.new()
+	add_child(loose)
+	loose.send_override = fake
+	loose.load_save_array([{"item_id": "zz_bag_test_sword", "quantity": 1}])
+	sent.clear()
+	loose.get_slot_at(4)._drop_data(Vector2.ZERO, _hb_drag(loose.get_slot_at(0)))
+	check("a grid that is neither the bag nor the bank sends nothing", sent.is_empty())
+
+	# ---- the wiring, read from the code -------------------------------------
+	check("the inventory screen marks its grid as the carry",
+		_func_body(_code_src("res://src/ui/inventory/inventoryscreen.gd"), "func _wire_inventory_container(")
+			.contains("_container.is_carry = true"))
+	check("the bank marks its grid as the bank",
+		_code_src("res://src/ui/bank/bankinventory.gd").contains("bank_container.is_bank = true"))
+	check("the bin asks the grid to discard, naming the item the dialog showed",
+		_func_body(_code_src("res://src/ui/inventory/trashslot.gd"), "func _on_delete_confirmed(")
+			.contains("request_discard(_pending_source_slot.slot_index, named)"))
+	var screen_src: String = _code_src("res://src/ui/inventory/inventoryscreen.gd")
+	check("a pile of coins is cashed by the server, not added to the purse here",
+		_func_body(screen_src, "func _cash_pile(").contains("/api/character/inventory/cash")
+		and not screen_src.contains("player.add_gold(") and not screen_src.contains("player.add_lusions("))
+	check("a potion's answer is drawn as the bag",
+		_func_body(screen_src, "func _use_consumable(").contains("_adopt_carry("))
 
 	carry.queue_free()
 	bank.queue_free()
+	loose.queue_free()
+	ItemRegistry._items.erase(potion.item_id)
+	ItemRegistry._items.erase(sword.item_id)
 	CharacterData.character_slots = kept_slots
 	CharacterData.active_character_index = kept_index
+	print("  the bag: drags and the bin are requests, in order, drawn from the last answer")
 
 
 func _test_the_map_comes_back() -> void:
@@ -7299,42 +7605,6 @@ func _test_the_map_comes_back() -> void:
 	CharacterData.active_character_index = kept_index
 	WorldMap._revision = kept_rev
 	WorldMap._revision_pending = kept_pending
-
-
-func _test_a_bag_changed_offline_still_lands() -> void:
-	section("SAVING - a bag changed while the server is gone reaches it when it is back")
-
-	# Day 1, taking the server down mid-play: two cells swapped while it was
-	# gone, and when it came back the swap was undone. The save that left made
-	# its bag the base; it never landed, so the retry was built on a bag the
-	# server never had, was refused as stale, and the old bag was adopted.
-	var kept_slots: Array = CharacterData.character_slots.duplicate(true)
-	var kept_index: int = CharacterData.active_character_index
-	CharacterData.character_slots = [{"character": "warrior"}, null, null, null]
-	CharacterData.active_character_index = 0
-	var held := [{"item_id": "ironsword", "quantity": 1}, null]
-	var moved := [null, {"item_id": "ironsword", "quantity": 1}]
-	CharacterData.note_server_bag(held, 0)
-	var server_base: String = CharacterData.bag_base_of(0)
-	var mark: int = CharacterData.bag_sent(0, moved)
-	check("a save on its way is the base while it is in flight",
-		CharacterData.bag_base_of(0) == CharacterData.bag_fingerprint(moved))
-	CharacterData.bag_unsent(0, server_base, mark)
-	check("  one that did not land puts back the bag the server still holds",
-		CharacterData.bag_base_of(0) == server_base, CharacterData.bag_base_of(0))
-	var third := [{"item_id": "jadesword", "quantity": 1}, null]
-	mark = CharacterData.bag_sent(0, moved)
-	CharacterData.note_server_bag(third, 0)
-	CharacterData.bag_unsent(0, server_base, mark)
-	check("  unless a newer bag came from the server meanwhile, which stays",
-		CharacterData.bag_base_of(0) == CharacterData.bag_fingerprint(third), CharacterData.bag_base_of(0))
-	var put_body := _func_body(_code_src("res://src/systems/serverstorage.gd"), "func _put_if_changed(")
-	var failed_at := put_body.find("if not res.get(\"ok\", false):")
-	check("  and a bag save that fails says so",
-		failed_at != -1 and put_body.find("CharacterData.bag_unsent(", failed_at) != -1
-		and put_body.find("CharacterData.bag_base_of(") < put_body.find("CharacterData.bag_sent("))
-	CharacterData.character_slots = kept_slots
-	CharacterData.active_character_index = kept_index
 
 
 func _test_enemies_keep_their_place_in_the_ring() -> void:
@@ -11314,9 +11584,9 @@ func _test_the_hotbar_holds_items() -> void:
 	check("and deleting it empties the key",
 		key[2].is_empty() and not (bag.to_save_array()[grid + 2] is Dictionary))
 	# THROUGH THE BACKPACK. A key's parent is the bar's row, which has no
-	# remove_stack_at(), and the trash's fallback clears the slot without
-	# telling anyone - the key would look empty and the item would come back.
-	check("THROUGH THE BACKPACK THAT SAVES IT, not by clearing the slot quietly",
+	# request_discard(), and clearing the slot there would tell nobody - the key
+	# would look empty and the item would come back on the next load.
+	check("THROUGH THE BACKPACK THAT ASKS THE SERVER, not by clearing the slot quietly",
 		trashed[0] > 0, trashed[0])
 	bag.inventory_changed.disconnect(on_trashed)
 	trash.queue_free()
@@ -12394,27 +12664,20 @@ func _test_trades_reach_the_right_people() -> void:
 	check("nor anything that is not a result", not CharacterData.apply_server_carry("nope", body))
 	check("and none of those announced anything", announced.size() == before, announced.size())
 
-	# The save path: a refused whole-bag write that carries the server's bag.
+	# THE SAVE PATH HAS NOTHING TO ADOPT ANY MORE. A save used to carry the
+	# whole bag, and a 409 from a trade that had run meanwhile came back with
+	# the server's bag for _adopt_refusal() to take. The bag is the server's
+	# now (ONE CELL AT A TIME): a save carries no bag, and a trade's result
+	# reaches this client only through apply_server_carry() above, from the
+	# trade poll or the broadcast poll. These checks named the old function
+	# after it was gone, and the SCRIPT ERROR that made silently ended this
+	# section there - every check below it went unrun and still read 0 failed.
 	var storage := ServerStorage.new()
-	CharacterData.character_slots[2] = {"gold": 1, "inventory": []}
-	check("a 409 carrying the server's bag is adopted by the save path",
-		storage._adopt_refusal({"ok": false, "status": 409,
-			"data": {"resync": {"slot": 2, "gold": 55, "inventory": cells}}})
-		and int((CharacterData.character_slots[2] as Dictionary).get("gold", -1)) == 55)
-	check("any other refusal is left to the retry",
-		not storage._adopt_refusal({"ok": false, "status": 400, "data": {"resync": {"slot": 2}}})
-		and not storage._adopt_refusal({"ok": false, "status": 409, "data": {}}))
-	# AND EVERY REFUSED SAVE IS OFFERED TO IT. _put_if_changed() needs a live
-	# server to drive, so this one is read: inside the function, in code, on the
-	# failure path before the early return.
+	check("the save path has no whole-bag refusal to adopt - a trade's bag comes on the poll",
+		not storage.has_method("_adopt_refusal"))
 	var ss_src: String = _code_only(FileAccess.get_file_as_string("res://src/systems/serverstorage.gd"))
-	var put_at: int = ss_src.find("func _put_if_changed")
-	var put_end: int = ss_src.find("\nfunc ", put_at + 10)
-	var fail_at: int = _within(ss_src.find("if not res.get(\"ok\", false):", put_at), put_end)
-	var adopt_at: int = _within(ss_src.find("_adopt_refusal(res)", fail_at), put_end)
-	check("a refused save is offered to _adopt_refusal() before it gives up",
-		fail_at != -1 and adopt_at != -1
-		and adopt_at < _within(ss_src.find("return", fail_at), put_end), [fail_at, adopt_at])
+	check("and a save never names the bag routes",
+		not ss_src.contains("/api/character/inventory\"") and not ss_src.contains("/api/account/bank\""))
 	body.free()
 
 	# ---- history ----
@@ -12776,9 +13039,13 @@ func _test_the_staff_desk_reads_trades() -> void:
 	# ---- the tab loads itself, and a new pick forgets the old ----
 	panel._trades_for = ""
 	panel.detail_tabs.current_tab = panel.TRADES_TAB
-	await get_tree().process_frame
+	# READ AT ONCE, not a frame later. _load_trades() writes this line before
+	# its first await; a frame is long enough for a refused connection to come
+	# back and write "Could not read trades" over it, which is how this check
+	# failed on a machine with nothing listening on the port.
 	check("opening the Trades tab asks for that account's trades",
 		panel.trade_empty.text == "Reading alice's trades...", panel.trade_empty.text)
+	await get_tree().process_frame
 	panel._apply_trades_page({"ok": true, "status": 200, "data": {"more": false, "summary": {"done": 2},
 		"now": now, "trades": [_staff_trade("done", now)]}}, "fresh", "alice")
 	panel._pick("rowdy")
@@ -14715,9 +14982,11 @@ func _test_the_browser_build() -> void:
 	var first: Array = ss.requests_before_leaving(payload)
 	var paths: Array = first.map(func(r: Dictionary) -> String: return str(r["path"]))
 	check("a closing page sends every section the server has not confirmed",
-		paths.size() == 5 and paths.has("/api/character/inventory") and paths.has("/api/player/status")
-		and paths.has("/api/account/lusions") and paths.has("/api/account/bank") and paths.has("/api/save"),
+		paths.size() == 3 and paths.has("/api/player/status")
+		and paths.has("/api/account/lusions") and paths.has("/api/save"),
 		paths)
+	check("  and neither the bag nor the bank - they are the server's",
+		not paths.has("/api/character/inventory") and not paths.has("/api/account/bank"), paths)
 	check("  the save last and without the explored map (64 KB of keepalive, and the map can fill it)",
 		not paths.is_empty() and paths[-1] == "/api/save" and not (first[-1]["body"] as Dictionary).has("explored")
 		and (first[-1]["body"] as Dictionary).get("area", "") == "field",
@@ -14725,18 +14994,22 @@ func _test_the_browser_build() -> void:
 	check("  as PUTs", first.all(func(r: Dictionary) -> bool: return r["method"] == "PUT"))
 	check("  and not twice when the page hides and then unloads",
 		ss.requests_before_leaving(payload).is_empty())
-	var fp := JSON.stringify(ss._inventory_body(0, slot))
-	ss._record_push("inventory:0", true, fp)
-	slot["inventory"] = [null, {"item_id": "healthpotion", "quantity": 2}]
+	var fp := JSON.stringify(ss._status_body(0, slot))
+	ss._record_push("status:0", true, fp)
+	slot["hp"] = 30
 	var again: Array = ss.requests_before_leaving(payload)
-	check("  a bag changed since goes again, and only the bag",
-		again.size() == 1 and again[0]["path"] == "/api/character/inventory", again)
-	var moved := JSON.stringify(ss._inventory_body(0, slot))
-	ss._record_push("inventory:0", true, moved)
-	ss._record_push("inventory:0", true, "the server moved on to another bag")
+	check("  vitals changed since go again, and only the vitals",
+		again.size() == 1 and again[0]["path"] == "/api/player/status", again)
+	var hurt := JSON.stringify(ss._status_body(0, slot))
+	ss._record_push("status:0", true, hurt)
+	ss._record_push("status:0", true, "the server moved on to other vitals")
+	slot["hp"] = 40
 	var back: Array = ss.requests_before_leaving(payload)
-	check("  a confirmed push clears the mark, so a bag put back as it was is not taken for sent",
-		back.size() == 1 and back[0]["path"] == "/api/character/inventory", back)
+	check("  a confirmed push clears the mark, so vitals put back as they were are not taken for sent",
+		back.size() == 1 and back[0]["path"] == "/api/player/status", back)
+	slot["inventory"] = [null, {"item_id": "healthpotion", "quantity": 2}]
+	check("  and a bag changed since sends nothing at all",
+		ss.requests_before_leaving(payload).is_empty())
 	var ss_code := _code_src("res://src/systems/serverstorage.gd")
 	check("  it reads the same section lists a push walks, so the two cannot disagree",
 		_func_body(ss_code, "func _push_slot(").contains("_slot_sections(index, slot)")

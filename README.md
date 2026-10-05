@@ -285,9 +285,9 @@ test_skill_train.py     10 checks    skills train only as fast as time allows
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-fourth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,625 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 128 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,665 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 128 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `2164 passed, 0 failed, 16 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other fifteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2627 passed, 0 failed, 19 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other eighteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
@@ -312,7 +312,7 @@ Without the service running, the login screen will tell you it can't reach the s
 
 What that means if you clone: 134 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
 
-The test suite understands the difference. The fifteen checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
+The test suite understands the difference. The eighteen checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
 
 This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on two of those textures, and `preload` resolves at compile time — so in a clone that script did not compile and `KingdomBoard` did not exist. One missing decoration removed an entire screen, silently. It now holds paths and loads lazily, and the header keeps its column widths when the texture is null.
 
