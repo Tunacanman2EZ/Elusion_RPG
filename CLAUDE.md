@@ -2172,6 +2172,18 @@ theme, so one left behind keeps an old colour whatever the theme says. Both
 themes also style `PopupMenu`, so dropdowns and right-click menus get the gold
 frame instead of Godot's grey. `_test_the_staff_windows_share_one_look` holds it.
 
+**The Powers window reads in words** (5 Oct, the owner: "update powers tab").
+Every route arrives from `/api/staff/powers` with `what`, the first line of its
+docstring, and the window printed only the method and path - a column of
+`POST /api/staff/ban` that only someone who had read app.py could use.
+`_render_powers()` shows the sentence and puts the route on the line's tooltip,
+with `mouse_filter` set to PASS, because a Label ignores the mouse by default
+and a control that ignores the mouse never shows a tooltip. `power_words()`
+falls back to the route when there is no sentence, and drops "(owner only)" and
+"(staff only)" under a heading that already says it. The notes under each rank
+are the server's, so correcting one is a server update, not a game export.
+`_test_the_powers_read_in_words`.
+
 **The Character Stats window is two columns** (day 1): the level badge,
 experience and the three pools on the left, the six skills on the right, with
 no separator lines between boxes. Health, stamina and mana are red, gold and

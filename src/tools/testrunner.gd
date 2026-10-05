@@ -253,6 +253,7 @@ func _run_all() -> void:
 	_test_the_emoji_font_is_chat_sized()
 	await _test_connections_are_kept_open()
 	_test_the_powers_panel_closes()
+	_test_the_powers_read_in_words()
 	_test_the_staff_windows_share_one_look()
 	await _test_players_right_click_menu()
 	_test_the_stats_window_reads_cleanly()
@@ -8000,6 +8001,65 @@ func _test_the_powers_panel_closes() -> void:
 		hud.get_node_or_null(hud.POWERS_ROWS) is VBoxContainer)
 	Api.is_owner = kept_owner
 	hud.free()
+
+
+func _test_the_powers_read_in_words() -> void:
+	section("POWERS - each one is a sentence, with its route on the tooltip")
+
+	# 5 Oct, the owner: "update powers tab". Every line was "POST /api/staff/ban"
+	# while the server sent "Ban an account" beside it, unread. Rendered from a
+	# server answer written here, so no server is needed.
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var rows := VBoxContainer.new()
+	hud.add_child(rows)
+	hud._render_powers(rows, {
+		"ladder": [
+			{"rank": "player", "grantable": true, "routes": [], "notes": []},
+			{"rank": "mod", "grantable": true, "routes": [
+				{"method": "POST", "path": "/api/staff/ban", "what": "Ban an account"},
+				{"method": "POST", "path": "/api/staff/grant", "what": "Give yourself an item (staff only)"},
+			], "notes": ["Mute for at most a day - longer is refused."]},
+			{"rank": "dev", "grantable": true, "routes": [
+				{"method": "GET", "path": "/api/economy/supply", "what": "---"},
+			], "notes": []},
+			{"rank": "owner", "grantable": false, "routes": [
+				{"method": "POST", "path": "/api/staff/level",
+					"what": "Set your own character's level, for testing (owner only)"},
+			], "notes": []},
+		],
+		"you_are": "owner",
+		"you_may_grant": ["player", "mod", "dev"],
+	})
+	var by_text: Dictionary = {}
+	for child in rows.get_children():
+		if child is Label:
+			by_text[(child as Label).text.strip_edges()] = child
+	var texts: Array = by_text.keys()
+
+	var ban: Label = by_text.get("Ban an account")
+	check("a power reads as what it does", ban != null, texts)
+	check("  and no line is a bare route any more, where the server said what it was",
+		not texts.any(func(t: String) -> bool: return t.contains("/api/staff/")), texts)
+	check("  the route is on its tooltip, for finding it in app.py",
+		ban != null and ban.tooltip_text == "POST /api/staff/ban", ban.tooltip_text if ban != null else "")
+	check("  and the line takes the mouse, or the tooltip never shows",
+		ban != null and ban.mouse_filter == Control.MOUSE_FILTER_PASS)
+	check("\"(staff only)\" and \"(owner only)\" go - the heading above already says it",
+		by_text.has("Give yourself an item")
+		and by_text.has("Set your own character's level, for testing"), texts)
+	check("a power the server has no sentence for shows its route instead of \"---\"",
+		by_text.has("GET  /api/economy/supply") and not by_text.has("---"), texts)
+	check("the notes are still under their rank", by_text.has("- Mute for at most a day - longer is refused."), texts)
+	check("a rank with nothing extra says so", by_text.has("nothing beyond playing the game"), texts)
+	check("the owner's rank says it cannot be granted", by_text.has("OWNER   (cannot be granted)"), texts)
+	check("and the last line says who you are and what you may grant",
+		by_text.has("You are owner. You may grant: player, mod, dev"), texts)
+
+	const HUD := preload("res://src/ui/characterhud.gd")
+	check("power_words() with no sentence at all is the route",
+		HUD.power_words({"method": "PUT", "path": "/api/staff/role"}) == "PUT  /api/staff/role")
+	hud.free()
+	print("  powers: each one a sentence, its route on the tooltip")
 
 
 func _test_the_staff_windows_share_one_look() -> void:

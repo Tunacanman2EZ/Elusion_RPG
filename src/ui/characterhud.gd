@@ -1000,13 +1000,14 @@ func _close_powers_panel() -> void:
 const POWERS_ROWS := "powerspanel/margin/body/box/margin/scroll/rows"
 
 
-func _powers_line(rows: VBoxContainer, text: String, color: Color, size: int) -> void:
+func _powers_line(rows: VBoxContainer, text: String, color: Color, size: int) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.add_theme_color_override("font_color", color)
 	label.add_theme_font_size_override("font_size", size)
 	rows.add_child(label)
+	return label
 
 
 func _load_powers() -> void:
@@ -1016,8 +1017,8 @@ func _load_powers() -> void:
 	for child in rows.get_children():
 		child.queue_free()
 
-	_powers_line(rows, "Read from the server's own route decorators, not a hand-kept list.",
-		Color(0.45, 0.50, 0.58), 11)
+	_powers_line(rows, "Read from the server's own route decorators, not a hand-kept list."
+		+ " Point at a line to see the route behind it.", Color(0.45, 0.50, 0.58), 11)
 
 	var res: Dictionary = await Api.get_json("/api/staff/powers", Api.PROBE_TIMEOUT)
 	if not is_instance_valid(self) or not is_inside_tree():
@@ -1034,7 +1035,15 @@ func _load_powers() -> void:
 	var data = res.get("data", {})
 	if not (data is Dictionary):
 		return
+	_render_powers(rows, data)
 
+
+# THE POWERS IN WORDS. Every route arrives with "what", the first line of its
+# docstring, and this window used to print only the method and the path - a
+# column of "POST /api/staff/ban" that only someone who had read app.py could
+# use. The sentence is the line now and the route is its tooltip. A server
+# from before the change sends the same fields, so this needs no new server.
+func _render_powers(rows: VBoxContainer, data: Dictionary) -> void:
 	for entry in data.get("ladder", []):
 		if not (entry is Dictionary):
 			continue
@@ -1049,8 +1058,12 @@ func _load_powers() -> void:
 			_powers_line(rows, "    nothing beyond playing the game", Color(0.55, 0.60, 0.68), 12)
 		for route in routes:
 			if route is Dictionary:
-				_powers_line(rows, "    %s  %s" % [str(route.get("method", "")), str(route.get("path", ""))],
+				var line: Label = _powers_line(rows, "    " + power_words(route),
 					Color(0.78, 0.83, 0.89), 12)
+				# A Label ignores the mouse by default, and a control that
+				# ignores the mouse never shows its tooltip.
+				line.tooltip_text = "%s %s" % [str(route.get("method", "")), str(route.get("path", ""))]
+				line.mouse_filter = Control.MOUSE_FILTER_PASS
 		for note in entry.get("notes", []):
 			_powers_line(rows, "    - %s" % str(note), Color(0.93, 0.80, 0.55), 12)
 
@@ -1061,6 +1074,19 @@ func _load_powers() -> void:
 		grant_text = ", ".join(PackedStringArray(may_grant))
 	_powers_line(rows, "You are %s. You may grant: %s" % [str(data.get("you_are", "?")), grant_text],
 		Color(0.43, 0.84, 0.49), 12)
+
+
+# One power as a sentence. The route itself when the server has no sentence
+# for it (a docstring that starts with its "---", which is how the gold supply
+# read "---" here), and without "(owner only)" or "(staff only)", which under
+# the OWNER or MOD heading says the same thing twice.
+static func power_words(route: Dictionary) -> String:
+	var what: String = str(route.get("what", "")).strip_edges()
+	if what == "" or what.begins_with("---"):
+		return "%s  %s" % [str(route.get("method", "")), str(route.get("path", ""))]
+	for said_twice in [" (owner only)", " (staff only)"]:
+		what = what.trim_suffix(said_twice)
+	return what
 
 
 func _build_message_box() -> void:
