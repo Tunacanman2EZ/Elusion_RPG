@@ -41,7 +41,7 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/darkbushsniper.tscn" id="40_jmfuw"]
 [ext_resource type="PackedScene" path="res://scene/crypt/potpair.tscn" id="41_ishty"]
 [ext_resource type="PackedScene" path="res://scene/enemy/darkfiresprite.tscn" id="41_oemvn"]
-[ext_resource type="PackedScene" path="res://scene/enemy/darkslimelarge.tscn" id="42_id4of"]
+[ext_resource type="PackedScene" uid="uid://cph38fjj17n0a" path="res://scene/enemy/darkslimelarge.tscn" id="42_id4of"]
 [ext_resource type="PackedScene" path="res://scene/crypt/potsmall.tscn" id="42_o3iy8"]
 [ext_resource type="PackedScene" path="res://scene/enemy/darksprite.tscn" id="43_6y5s3"]
 [ext_resource type="PackedScene" path="res://scene/crypt/planks.tscn" id="43_e6dqs"]
@@ -49,7 +49,7 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/earthbushsniper.tscn" id="44_vkklu"]
 [ext_resource type="PackedScene" path="res://scene/enemy/earthfiresprite.tscn" id="45_4b58v"]
 [ext_resource type="PackedScene" path="res://scene/crypt/bonefragment.tscn" id="45_qs6y3"]
-[ext_resource type="PackedScene" path="res://scene/enemy/earthslimelarge.tscn" id="46_buwjt"]
+[ext_resource type="PackedScene" uid="uid://66yyrgc6w58r" path="res://scene/enemy/earthslimelarge.tscn" id="46_buwjt"]
 [ext_resource type="PackedScene" path="res://scene/crypt/cageoccupied.tscn" id="46_i6sf0"]
 [ext_resource type="PackedScene" path="res://scene/crypt/cage.tscn" id="47_ehccd"]
 [ext_resource type="PackedScene" path="res://scene/enemy/earthsprite.tscn" id="47_id35t"]
@@ -59,26 +59,28 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/icebushmage.tscn" id="57_04125"]
 [ext_resource type="PackedScene" path="res://scene/enemy/icebushsniper.tscn" id="58_k7lob"]
 [ext_resource type="PackedScene" path="res://scene/enemy/icefiresprite.tscn" id="59_6poro"]
-[ext_resource type="PackedScene" path="res://scene/enemy/iceslimelarge.tscn" id="60_fte3f"]
+[ext_resource type="PackedScene" uid="uid://cqw1uvgaygaw3" path="res://scene/enemy/iceslimelarge.tscn" id="60_fte3f"]
 [ext_resource type="PackedScene" path="res://scene/enemy/icesprite.tscn" id="61_fjdtm"]
 [ext_resource type="PackedScene" path="res://scene/enemy/lightbushmage.tscn" id="62_yqxub"]
 [ext_resource type="PackedScene" path="res://scene/enemy/lightbushsniper.tscn" id="63_dke5y"]
 [ext_resource type="PackedScene" path="res://scene/enemy/lightfiresprite.tscn" id="64_au1f5"]
-[ext_resource type="PackedScene" path="res://scene/enemy/lightslimelarge.tscn" id="65_1op4k"]
+[ext_resource type="PackedScene" uid="uid://b60c5tm7gt3hb" path="res://scene/enemy/lightslimelarge.tscn" id="65_1op4k"]
 [ext_resource type="PackedScene" path="res://scene/enemy/lightsprite.tscn" id="66_mdcmk"]
 [ext_resource type="PackedScene" uid="uid://dtffi4janv50h" path="res://scene/enemy/poisonslime.tscn" id="67_w7i6u"]
 [ext_resource type="PackedScene" path="res://scene/enemy/waterbushmage.tscn" id="68_riaav"]
 [ext_resource type="PackedScene" path="res://scene/enemy/waterbushsniper.tscn" id="69_w54d7"]
 [ext_resource type="PackedScene" path="res://scene/enemy/waterfiresprite.tscn" id="70_a6yv1"]
-[ext_resource type="PackedScene" path="res://scene/enemy/waterslimelarge.tscn" id="71_holon"]
+[ext_resource type="PackedScene" uid="uid://cusp4d2ywt6vu" path="res://scene/enemy/waterslimelarge.tscn" id="71_holon"]
 [ext_resource type="PackedScene" path="res://scene/enemy/watersprite.tscn" id="72_fo0xk"]
 [ext_resource type="PackedScene" path="res://scene/enemy/windbushmage.tscn" id="73_hs1c0"]
 [ext_resource type="PackedScene" path="res://scene/enemy/windbushsniper.tscn" id="74_5t8ds"]
 [ext_resource type="PackedScene" path="res://scene/enemy/windfiresprite.tscn" id="75_wy1fy"]
-[ext_resource type="PackedScene" path="res://scene/enemy/windslimelarge.tscn" id="76_ttjmy"]
+[ext_resource type="PackedScene" uid="uid://ibwtty78dv7e" path="res://scene/enemy/windslimelarge.tscn" id="76_ttjmy"]
 [ext_resource type="PackedScene" path="res://scene/enemy/windsprite.tscn" id="77_x0ngg"]
 [ext_resource type="PackedScene" uid="uid://de3b4cl5fjmyh" path="res://scene/enemy/bushmage.tscn" id="78_jmfuw"]
 [ext_resource type="PackedScene" uid="uid://bwgdfgnjn3fv" path="res://scene/enemy/bushsniper.tscn" id="79_oemvn"]
+[ext_resource type="PackedScene" uid="uid://dk4wsfhq1jtug" path="res://scene/interactables/spikedoor.tscn" id="81_6y5s3"]
+[ext_resource type="PackedScene" uid="uid://cq8vbnx2lrpme" path="res://scene/interactables/lever.tscn" id="82_lever"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_3va64"]
 texture = ExtResource("2_7i1jy")
@@ -526,6 +528,14 @@ position = Vector2(1471, 1170)
 script = ExtResource("4_0d0g4")
 portal_id = "boss_ladder"
 
+[node name="levergatesout" parent="ysortworld/interactables" unique_id=694481664 instance=ExtResource("82_lever")]
+position = Vector2(1511, 1026)
+targets = Array[NodePath]([NodePath("../../../spikedoor"), NodePath("../../../spikedoor2"), NodePath("../../../spikedoor3")])
+
+[node name="levergatesin" parent="ysortworld/interactables" unique_id=1271842593 instance=ExtResource("82_lever")]
+position = Vector2(1430, 1112)
+targets = Array[NodePath]([NodePath("../../../spikedoor"), NodePath("../../../spikedoor2"), NodePath("../../../spikedoor3")])
+
 [node name="enemies" type="Node2D" parent="ysortworld" unique_id=1953780950]
 y_sort_enabled = true
 
@@ -659,6 +669,15 @@ position = Vector2(1403, 891)
 
 [node name="bushsniper" parent="." unique_id=1073679386 instance=ExtResource("79_oemvn")]
 position = Vector2(1295, 943)
+
+[node name="spikedoor" parent="." unique_id=1044724508 instance=ExtResource("81_6y5s3")]
+position = Vector2(1440, 1069)
+
+[node name="spikedoor2" parent="." unique_id=629781693 instance=ExtResource("81_6y5s3")]
+position = Vector2(1472, 1069)
+
+[node name="spikedoor3" parent="." unique_id=1167392581 instance=ExtResource("81_6y5s3")]
+position = Vector2(1503, 1069)
 
 [connection signal="body_entered" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_exited"]

@@ -23,6 +23,19 @@
 # wall and a bag is on the floor where something died. If it does bite, the fix
 # is one arbiter that picks the nearest interactable of ANY type, and these
 # per-class checks collapse into it.
+#
+#
+# TWO LEVERS ON THE SAME DOORS MOVE TOGETHER.
+#
+# The Field's three spike gates by the boss ladder have a lever on each side
+# (5 Oct): one outside to get to the boss, one by the ladder so a player
+# climbing back up is never shut in. Each used to keep its own on/off, so after
+# opening the gates from outside, the inside lever still read "off" and its
+# first pull did nothing visible. Now a throw tells every other lever that
+# drives any of the same doors where the doors went (follow_doors()), and that
+# lever's handle moves to match. Linked by the doors themselves, not by a name
+# typed into both: a lever pointed at a gate is in step with every other lever
+# pointed at it, and nothing has to be kept in sync by hand.
 extends Area2D
 
 
@@ -135,6 +148,7 @@ func throw() -> void:
 	# would read as the door reacting to the lever rather than being driven by
 	# it.
 	_apply_to_targets()
+	_bring_partners_into_step()
 	toggled.emit(_is_on)
 
 	Audio.play_at("lever", global_position)
@@ -155,12 +169,79 @@ func is_on() -> bool:
 	return _is_on
 
 
+func doors_raised() -> bool:
+	# ON MEANS OPEN: a pulled lever has lowered its spikes, and one left alone
+	# has them up - unless `inverted`, which swaps the two. That is what the
+	# settings above have always said ("starts thrown holds its door OPEN").
+	# The sum here said the opposite, `_is_on != inverted`, and nothing caught
+	# it because no scene had wired a lever to anything until the Field's boss
+	# gates (5 Oct): wired, the gates opened by themselves as the Field loaded
+	# and the first pull closed them.
+	return _is_on == inverted
+
+
+# =============================================================================
+# LEVERS THAT SHARE A DOOR
+# =============================================================================
+
+func _bring_partners_into_step() -> void:
+	# Every other lever on any of these doors learns where the doors went.
+	# Told the door state, not this lever's on/off: a partner may be inverted
+	# (the same door from the other side of a wall), so "on" can mean the
+	# opposite there.
+	var mine: Array = target_nodes()
+	if mine.is_empty() or not is_inside_tree():
+		return
+	var raised: bool = doors_raised()
+	for other in get_tree().get_nodes_in_group(&"levers"):
+		if other == self or not other.has_method("follow_doors"):
+			continue
+		if other.drives_any(mine):
+			other.follow_doors(raised)
+
+
+func follow_doors(raised: bool) -> void:
+	# Another lever moved doors this one drives: move the handle to match,
+	# without throwing anything again. Plays the throw so a lever in view does
+	# not jump, and makes no sound - the lever that was pulled already did.
+	var want: bool = raised == inverted
+	if want == _is_on:
+		return
+	_is_on = want
+	if anim != null:
+		anim.play(&"throwon" if _is_on else &"throwoff")
+		await get_tree().create_timer(throw_seconds).timeout
+		if not is_instance_valid(self) or _is_on != want:
+			return
+	_show_state(_is_on)
+
+
+func target_nodes() -> Array:
+	# The doors this lever drives, as nodes. Paths that resolve to nothing are
+	# left out (_apply_to_targets() says so).
+	var out: Array = []
+	for path in targets:
+		if path.is_empty():
+			continue
+		var target: Node = get_node_or_null(path)
+		if target != null:
+			out.append(target)
+	return out
+
+
+func drives_any(doors: Array) -> bool:
+	for target in target_nodes():
+		if doors.has(target):
+			return true
+	return false
+
+
 # =============================================================================
 # TARGETS
 # =============================================================================
 
 func _apply_to_targets() -> void:
-	var raised: bool = _is_on != inverted
+	var raised: bool = doors_raised()
 
 	for path in targets:
 		if path.is_empty():

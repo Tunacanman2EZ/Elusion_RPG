@@ -244,6 +244,7 @@ func _run_all() -> void:
 	_test_the_store_sells_the_next_set()
 	await _test_the_shop_buys()
 	await _test_quality_rolls()
+	await _test_the_boss_gates_lever()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -7397,6 +7398,119 @@ func _test_the_shop_buys() -> void:
 	for item in [potion, sword, chest, coin]:
 		ItemRegistry._items.erase(item.item_id)
 	print("  the shop buys what drops, a cell at a time, at the server's price")
+
+
+# =============================================================================
+# THE BOSS GATES: a lever on each side, and on means open
+# =============================================================================
+# The owner, 5 Oct: "set up that lever to release the 3 gates by boss exit".
+# The Field's three spike gates stand between the field and the ladder down to
+# the bosses, and coming back up lands you inside them - so a lever outside
+# opens the way down and one by the ladder means nobody is shut in. Both drive
+# the same three gates and always read the same.
+func _test_the_boss_gates_lever() -> void:
+	section("THE BOSS GATES - a lever on each side, and on means open")
+
+	# ---- the levers themselves, on doors the suite builds ---------------------
+	var room := Node2D.new()
+	room.name = "leverroom"
+	var doors: Array = []
+	for i in 4:
+		var door: Node = (load("res://scene/interactables/spikedoor.tscn") as PackedScene).instantiate()
+		door.name = "door%d" % i
+		door.position = Vector2(32 * i, 0)
+		room.add_child(door)
+		doors.append(door)
+	var make := func(lever_name: String, paths: Array[NodePath], flip: bool) -> Node:
+		var lever: Node = (load("res://scene/interactables/lever.tscn") as PackedScene).instantiate()
+		lever.name = lever_name
+		lever.targets = paths
+		lever.inverted = flip
+		lever.starts_on = flip
+		lever.throw_seconds = 0.01
+		room.add_child(lever)
+		return lever
+	var three: Array[NodePath] = [NodePath("../door0"), NodePath("../door1"), NodePath("../door2")]
+	var first: Array[NodePath] = [NodePath("../door0")]
+	var last: Array[NodePath] = [NodePath("../door3")]
+	var outside: Node = make.call("outside", three, false)
+	var inside: Node = make.call("inside", three, false)
+	# The same door from the other side of a wall: inverted, and started on so
+	# it agrees with the gates being up.
+	var flipped: Node = make.call("flipped", first, true)
+	var elsewhere: Node = make.call("elsewhere", last, false)
+	add_child(room)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var up := func() -> Array:
+		return doors.map(func(d): return d.is_raised())
+	check("a lever left alone keeps its gates up - on means open",
+		up.call() == [true, true, true, true] and not outside.is_on() and not inside.is_on(), up.call())
+	outside.throw()
+	await get_tree().create_timer(0.1).timeout
+	check("pulling the outside lever drops all three", up.call().slice(0, 3) == [false, false, false], up.call())
+	check("  and the lever by the ladder now reads open too",
+		outside.is_on() and inside.is_on(), [outside.is_on(), inside.is_on()])
+	check("  an inverted lever on one of them follows the other way round",
+		flipped.is_on() == false, flipped.is_on())
+	check("  and a lever on a different door is left alone",
+		elsewhere.is_on() == false and doors[3].is_raised(), [elsewhere.is_on(), doors[3].is_raised()])
+	inside.throw()
+	await get_tree().create_timer(0.1).timeout
+	check("pulling the inside one raises them again, and every lever on them agrees",
+		up.call().slice(0, 3) == [true, true, true] and not outside.is_on() and not inside.is_on()
+		and flipped.is_on(), [up.call(), outside.is_on(), inside.is_on(), flipped.is_on()])
+	room.queue_free()
+
+	# ---- the Field: where they are and what they drive ------------------------
+	# READ AS TEXT, as the amulet checks read their .tres: the Field is a big
+	# scene, and every number under test is in the file.
+	var text: String = FileAccess.get_file_as_string("res://scene/field.tscn")
+	var nodes: Dictionary = {}
+	var current: String = ""
+	for line in text.split("\n"):
+		if line.begins_with("[node "):
+			var at: int = line.find("name=\"") + 6
+			current = line.substr(at, line.find("\"", at) - at)
+			nodes[current] = {"header": line}
+		elif current != "" and line.contains(" = "):
+			var key: String = line.substr(0, line.find(" = "))
+			nodes[current][key] = line.substr(line.find(" = ") + 3)
+	var where := func(node_name: String) -> Vector2:
+		var raw: String = str(nodes.get(node_name, {}).get("position", ""))
+		var nums: PackedStringArray = raw.trim_prefix("Vector2(").trim_suffix(")").split(",")
+		return Vector2(float(nums[0]), float(nums[1])) if nums.size() == 2 else Vector2.INF
+	var gates: Array = ["spikedoor", "spikedoor2", "spikedoor3"]
+	var wanted: String = "Array[NodePath]([NodePath(\"../../../spikedoor\"), NodePath(\"../../../spikedoor2\"), NodePath(\"../../../spikedoor3\")])"
+	check("the Field has its three gates and two levers",
+		gates.all(func(g): return nodes.has(g)) and nodes.has("levergatesout") and nodes.has("levergatesin"),
+		nodes.keys().filter(func(k): return k.begins_with("lever") or k.begins_with("spikedoor")))
+	check("  both levers drive exactly the three gates",
+		str(nodes.get("levergatesout", {}).get("targets", "")) == wanted
+		and str(nodes.get("levergatesin", {}).get("targets", "")) == wanted,
+		[nodes.get("levergatesout", {}).get("targets", ""), nodes.get("levergatesin", {}).get("targets", "")])
+	check("  under the interactables, so the paths up to the gates are right",
+		str(nodes.get("levergatesout", {}).get("header", "")).contains("parent=\"ysortworld/interactables\"")
+		and str(nodes.get("levergatesin", {}).get("header", "")).contains("parent=\"ysortworld/interactables\"")
+		and gates.all(func(g): return str(nodes[g]["header"]).contains("parent=\".\"")))
+	var top: float = INF
+	var bottom: float = -INF
+	for g in gates:
+		top = minf(top, where.call(g).y)
+		bottom = maxf(bottom, where.call(g).y)
+	check("  one outside the gates, on the field's side, and one inside by the ladder",
+		where.call("levergatesout").y < top - 16 and where.call("levergatesin").y > bottom + 16
+		and where.call("ladderdown").y > bottom,
+		[where.call("levergatesout"), where.call("levergatesin"), top, bottom])
+	# THE LADDER IS A WALK-IN, so a lever whose reach touched it could drop a
+	# player into the boss arena on the way to pulling it. Lever reach 24, the
+	# ladder's 16, a body's 8.
+	check("  and the inside lever is out of the ladder's reach",
+		where.call("levergatesin").distance_to(where.call("ladderdown")) > 24 + 16 + 8,
+		where.call("levergatesin").distance_to(where.call("ladderdown")))
+	check("  and the gates start up: nothing in the scene starts a lever on or a gate down",
+		not text.contains("starts_on = true") and not text.contains("starts_raised = false"))
+	print("  the boss gates open from either side, and both levers say so")
 
 
 # =============================================================================

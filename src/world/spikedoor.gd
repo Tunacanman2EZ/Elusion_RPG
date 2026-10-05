@@ -40,8 +40,9 @@ signal raised_changed(is_raised: bool)
 
 # Whether the spikes are up when the scene loads. A lever pointed at this will
 # overwrite it on the first frame, so this only decides what an UNWIRED door
-# does — set it to match the lever's starts_on so the room looks right in the
-# editor viewport too.
+# does. A lever's "on" means open (lever.gd, doors_raised()), so to have the
+# room look right in the editor viewport too, set this to the OPPOSITE of the
+# lever's starts_on - up for a lever left alone.
 @export var starts_raised: bool = true
 
 # Seconds the rise or fall takes. The collision follows the animation rather

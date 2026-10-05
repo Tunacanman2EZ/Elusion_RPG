@@ -2123,6 +2123,34 @@ at the bag and the mythic).
 
 `_test_quality_rolls`; the API's `test_quality.py` holds the server half.
 
+### The boss gates in the Field: a lever on each side
+
+The Field's three spike gates (`spikedoor`, `spikedoor2`, `spikedoor3`, at
+the scene's root) stand between the field and the ladder down to the bosses,
+and climbing back up lands you inside them. The owner, 5 Oct: "set up that
+lever to release the 3 gates by boss exit". So there are two levers under
+`ysortworld/interactables`: `levergatesout` on the field side, and
+`levergatesin` beside the ladder, where you come back up. Both drive all
+three gates and toggle them; the Field loads with the gates up.
+
+- **On means open.** `lever.gd`'s settings always said so ("a lever that
+  starts thrown holds its door OPEN"), but the sum said the opposite - and no
+  scene had wired a lever to anything until these, so nothing caught it. Wired,
+  the gates fell as the Field loaded and the first pull closed them.
+  `doors_raised()` is the one place it is decided now.
+- **Levers on the same doors move together.** A throw tells every other lever
+  that drives any of the same doors where they went (`follow_doors()`), so the
+  lever by the ladder never reads "off" over gates the outside one opened.
+  Linked by the doors themselves - nothing to name or keep in step.
+- **The inner lever stays out of the ladder's reach.** The ladder is a
+  walk-in (`ladder.gd` fires on `body_entered`), so a lever whose zone touched
+  it could drop a player into the boss arena on the way to pulling it.
+- **Each player's own.** A lever and its gates are the client's, like the
+  rest of the Field: another player does not see your gates open, and leaving
+  the Field closes them again.
+
+`_test_the_boss_gates_lever`.
+
 ### Bosses hit for their band
 
 All seven bosses run `bossenemy.gd`, and all seven used to hit for its
