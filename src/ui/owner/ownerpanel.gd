@@ -1111,6 +1111,29 @@ func _when(unix_seconds: int) -> String:
 # DISPLAY - the results box, and the console in a debug build
 # =============================================================================
 
+static func linked_how(entry: Dictionary) -> String:
+	"""What a linked account shares with the one being looked at: addresses,
+	the same computer (the game's install id - see INSTALL IDS in app.py), or
+	both. The computer is the half a VPN does not change."""
+	var parts: Array[String] = []
+	var addresses: int = int(entry.get("shared_addresses", 0))
+	if addresses > 0:
+		# Spelled out rather than GameConstants.counted(): this is static, so
+		# the testrunner can read it without building the panel.
+		parts.append("shares %d %s, quietest holds %s" % [
+			addresses, "address" if addresses == 1 else "addresses",
+			str(entry.get("quietest_address_accounts")),
+		])
+	var computers: int = int(entry.get("shared_computers", 0))
+	if computers > 0:
+		parts.append("same computer%s" % (
+			"" if computers == 1 else " (%d of them)" % computers))
+		var crowd: int = int(entry.get("quietest_computer_accounts", 0))
+		if crowd > 2:
+			parts[-1] += ", %d accounts on it" % crowd
+	return ", ".join(parts) if not parts.is_empty() else "linked"
+
+
 func _print_save_summary(username: String, data: Dictionary) -> void:
 	# RENDERS THE SERVER'S SHAPE, not a save file's. The previous version read
 	# `version`, `saved_at`, `account_data` and `character_slots` from
@@ -1234,14 +1257,11 @@ func _print_save_summary(username: String, data: Dictionary) -> void:
 					_view_line("  %-18s %-6s %s%s" % [
 						str(entry.get("username")),
 						str(entry.get("strength")),
-						"shares %s, quietest holds %s" % [
-							GameConstants.counted(int(entry.get("shared_addresses", 0)), "address", "addresses"),
-							str(entry.get("quietest_address_accounts")),
-						],
+						linked_how(entry),
 						"  [BANNED]" if banned is Dictionary else "",
 					])
-			_view_line("  'weak' means the shared address is crowded - a carrier or a")
-			_view_line("  campus links strangers. Read it, do not act on it alone.")
+			_view_line("  'weak' means what they share is crowded - a carrier, a campus or")
+			_view_line("  a library computer links strangers. Read it, do not act on it alone.")
 
 	var kills: Array = data.get("kills", [])
 	_view_line("--- kills reported (%d kinds) ---" % kills.size(), SAY_HEAD)

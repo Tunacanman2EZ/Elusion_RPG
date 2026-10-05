@@ -436,8 +436,8 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	# POST /api/bank/items and repaints BOTH grids from the response.
 	#
 	# XOR, not "either is a bank slot": bank-to-bank is a rearrange and falls
-	# through to the normal cases below, because layout inside one container
-	# moves no items and is nobody's business but the client's.
+	# through to the cases below, like a drag inside the backpack. Those are
+	# requests too now - see _ask_the_server().
 	#
 	# The cell the player aimed at is deliberately ignored. The endpoint takes
 	# an item and a quantity, not a position - the server merges onto an
@@ -450,11 +450,17 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 		transfer_requested.emit(source_slot, self)
 		return
 
+	# B1-B3 ARE DRAWN HERE AND DONE BY THE SERVER. The same three rules
+	# _grid_move() in app.py applies to its own cells, in the same order, so
+	# the answer normally changes nothing on screen.
+	var item_id: String = incoming.data.item_id
+
 	# B1: empty target — move incoming here, clear source
 	if is_empty():
 		set_stack(incoming)
 		source_slot.clear_stack()
 		_emit_both_changed(source_slot)
+		_ask_the_server(source_slot, item_id)
 		return
 
 	# B2: target has matching stackable item — merge with overflow handling
@@ -467,6 +473,7 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 			source_slot.clear_stack()
 		refresh_display()
 		_emit_both_changed(source_slot)
+		_ask_the_server(source_slot, item_id)
 		return
 
 	# B3: different items — swap the two slots' stacks
@@ -474,8 +481,18 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	set_stack(incoming)
 	source_slot.set_stack(our_old_stack)
 	_emit_both_changed(source_slot)
+	_ask_the_server(source_slot, item_id)
 
 
 func _emit_both_changed(source_slot: InventorySlot) -> void:
 	slot_changed.emit(self)
 	source_slot.slot_changed.emit(source_slot)
+
+
+func _ask_the_server(source_slot: InventorySlot, item_id: String) -> void:
+	# THE GRID IS THE SERVER'S, so the drag just drawn is sent as one move -
+	# see THE SERVER DOES IT in inventorycontainer.gd. Only within one grid:
+	# a key's home is the backpack, so bag-to-key is one too, and a drag
+	# across to the bank never gets here (CASE T).
+	if home_container != null and source_slot.home_container == home_container:
+		home_container.request_move(source_slot.slot_index, slot_index, item_id)

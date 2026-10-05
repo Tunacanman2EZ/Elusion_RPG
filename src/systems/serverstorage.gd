@@ -188,12 +188,12 @@ func _seed_fingerprints(slots: Array, account: Dictionary) -> void:
 		# session would always look changed and always push.
 		_last_pushed["save:%d" % index] = JSON.stringify(_save_fingerprint(index, slot))
 		_last_pushed["status:%d" % index] = JSON.stringify(_status_body(index, slot))
-		_last_pushed["inventory:%d" % index] = JSON.stringify(_inventory_body(index, slot))
+		# No "inventory:%d" seed and no "bank": a save carries neither now.
+		# See _slot_sections().
 		# No "skills:%d" seed, because nothing pushes skills any more. See
 		# _push_slot().
 
 	_last_pushed["lusions"] = JSON.stringify(_lusions_body(account))
-	_last_pushed["bank"] = JSON.stringify(_bank_body(account))
 
 
 func _slot_from_server(data: Dictionary) -> Dictionary:
@@ -236,9 +236,6 @@ func _slot_from_server(data: Dictionary) -> Dictionary:
 		"max_stamina": _int(status.get("max_stamina", 0)),
 
 		"inventory":   _items_from_server(_array(data.get("inventory", []))),
-
-		# THE BAG THE NEXT SAVE IS BUILT ON - see CharacterData.note_server_bag().
-		"bag_base":    CharacterData.bag_fingerprint(_array(data.get("inventory", []))),
 	}
 
 	# Skills arrive as {"attack": {"level": 12, "xp": 340}} and live on the slot
@@ -437,27 +434,8 @@ func _status_body(index: int, slot: Dictionary) -> Dictionary:
 	}
 
 
-func _inventory_body(index: int, slot: Dictionary) -> Dictionary:
-	var body := {
-		"slot": index,
-		"inventory": _items_to_server(_array(slot.get("inventory", []))),
-	}
-	# WHICH BAG THIS WAS BUILT ON, so the server can refuse it if it has moved
-	# on since. Left out when it is not known - a character made this session
-	# has never had a bag from the server - and the server then takes it as
-	# before. See CharacterData.note_server_bag().
-	var base: String = str(slot.get("bag_base", ""))
-	if base != "":
-		body["based_on"] = base
-	return body
-
-
 func _lusions_body(account: Dictionary) -> Dictionary:
 	return {"lusions": _int(account.get("lusions", 0))}
-
-
-func _bank_body(account: Dictionary) -> Dictionary:
-	return {"bank_inventory": _items_to_server(_array(account.get("bank_inventory", [])))}
 
 
 func _push_slot(index: int, slot: Dictionary) -> void:
@@ -511,25 +489,31 @@ func _push_account(account: Dictionary) -> void:
 # save is. `compare` is what the fingerprint is taken of when it is not the body
 # itself - see _put_if_changed().
 
+#
+# THE BAG AND THE BANK ARE NOT SECTIONS. They were - a whole-array PUT each,
+# built from what this client held - and the server trimmed them to what it had
+# granted. Both are the server's now (ONE CELL AT A TIME in app.py): every drag,
+# bin, pile and potion is its own request, sent by the grid or the screen that
+# did it, and the grids are drawn from the answers. A save that sent them would
+# be ignored, so it does not.
+
 func _slot_sections(index: int, slot: Dictionary) -> Array:
 	var keys: Array = _slot_keys(index)
 	return [
 		[keys[0], "/api/save", _save_body(index, slot), _save_fingerprint(index, slot)],
 		[keys[1], "/api/player/status", _status_body(index, slot), {}],
-		[keys[2], "/api/character/inventory", _inventory_body(index, slot), {}],
 	]
 
 
 # What a slot's sections are called, in _slot_sections()'s order. One list, so
 # forget_slot() cannot miss a section added there.
 static func _slot_keys(index: int) -> Array:
-	return ["save:%d" % index, "status:%d" % index, "inventory:%d" % index]
+	return ["save:%d" % index, "status:%d" % index]
 
 
 func _account_sections(account: Dictionary) -> Array:
 	return [
 		["lusions", "/api/account/lusions", _lusions_body(account), {}],
-		["bank", "/api/account/bank", _bank_body(account), {}],
 	]
 
 
@@ -548,8 +532,8 @@ func requests_before_leaving(payload: Dictionary) -> Array:
 	THE BROWSER HOLDS AT MOST 64 KB OF THESE IN FLIGHT, and a save carries the
 	explored map, which the server allows up to 64 KB per area. So the save goes
 	LAST and WITHOUT the map - omitted means "leave it alone" to /api/save, and
-	the next ordinary push brings the map - and the bag, the vitals and the
-	purse go first, whatever the save weighs."""
+	the next ordinary push brings the map - and the vitals go first, whatever
+	the save weighs."""
 	var out: Array = []
 	var sections: Array = []
 	var slots: Array = _array(payload.get("character_slots", []))
@@ -574,21 +558,6 @@ func requests_before_leaving(payload: Dictionary) -> Array:
 		else:
 			out.append({"method": "PUT", "path": section[1], "body": body})
 	out.append_array(saves)
-	return out
-
-
-func _items_to_server(cells: Array) -> Array:
-	# Positional, nulls preserved. The server keys these on their index, so
-	# packing out the gaps here would silently move every item left.
-	var out: Array = []
-	for cell in cells:
-		if cell is Dictionary and str(cell.get("item_id", "")) != "":
-			out.append({
-				"item_id":  str(cell.get("item_id", "")),
-				"quantity": maxi(_int(cell.get("quantity", 1), 1), 1),
-			})
-		else:
-			out.append(null)
 	return out
 
 
@@ -617,46 +586,13 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 		_failed_keys.erase(key)
 		return
 
-	# A BAG ON ITS WAY. If it lands, the server holds it, so a save built while
-	# it is in flight builds on it; the answer then says what was stored.
-	var bag_slot: int = -1
-	var sent_mark: int = 0
-	var base_before: String = ""
-	if path == "/api/character/inventory":
-		bag_slot = _int(body.get("slot", -1), -1)
-		base_before = CharacterData.bag_base_of(bag_slot)
-		sent_mark = CharacterData.bag_sent(bag_slot, _array(body.get("inventory", [])))
-
 	var res: Dictionary = await Api.put(path, body)
 	_record_push(key, res.get("ok", false), fingerprint)
-	if bag_slot >= 0 and res.get("ok", false) and res.get("data") is Dictionary:
-		CharacterData.bag_saved(bag_slot, _array(res.data.get("inventory", [])), sent_mark)
 	if not res.get("ok", false):
-		# NOT LANDED, so not the base: see CharacterData.bag_unsent().
-		if bag_slot >= 0:
-			CharacterData.bag_unsent(bag_slot, base_before, sent_mark)
-		# A BAG THE SERVER HAS MOVED ON FROM. PUT /api/character/inventory
-		# refuses with 409 when a trade changed this character's bag after the
-		# client last saw it, and hands back what the server holds - because
-		# this write is a whole-bag replace, and letting it through deleted
-		# whatever the trade had just given. Adopting that answer is the only
-		# correct response; retrying the same body would be refused again.
-		#
 		# NOT recorded as pushed. A rejected section stays dirty, so the next
 		# save retries it rather than deciding it is already up to date — which
 		# is exactly how a failed write becomes silent data loss.
-		#
-		# A REFUSAL THAT HANDED BACK THE BAG IS NOT A WARNING. It is the based_on
-		# rule doing its job - the server's bag was newer, it is adopted, and the
-		# next save builds on it - and the HUD already stays quiet about it. As a
-		# push_warning it sat in the editor's debugger looking like a fault (day
-		# 2, after a full death). Anything the client could not adopt still warns.
-		if _adopt_refusal(res):
-			if OS.is_debug_build():
-				print("[SAVE] %s: the server's bag was newer and has been adopted (%s)"
-					% [key, res.get("error", "")])
-		else:
-			push_warning("ServerStorage: %s rejected — %s" % [key, res.get("error", "")])
+		push_warning("ServerStorage: %s rejected — %s" % [key, res.get("error", "")])
 		return
 
 
@@ -701,20 +637,6 @@ func _record_push(key: String, ok: bool, fingerprint: String) -> void:
 		_sent_leaving.erase(key)
 	else:
 		_failed_keys[key] = true
-
-
-func _adopt_refusal(res: Dictionary) -> bool:
-	"""A refused save that carries the server's bag: adopt it. True if it did.
-
-	NAMED, so it can be called with a made-up refusal and checked - the rest of
-	_put_if_changed() needs a live server to reach. The next save after this is
-	built from the adopted bag, so it goes through."""
-	if int(res.get("status", 0)) != 409:
-		return false
-	var data: Dictionary = _dict(res.get("data", {}))
-	if not (data.get("resync") is Dictionary):
-		return false
-	return CharacterData.apply_server_carry(data["resync"])
 
 
 func _int(value: Variant, fallback: int = 0) -> int:

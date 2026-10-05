@@ -41,6 +41,9 @@ var _container: Node = null
 # hotbar key makes this necessary rather than tidy.
 var _consuming: bool = false
 
+# One pile at a time, for the same reason as _consuming: a held key repeats.
+var _cashing: bool = false
+
 
 func _notify(message: String) -> void:
 	# one funnel for every player-facing refusal in this screen. has_method()
@@ -448,7 +451,9 @@ func _use_consumable(slot: InventorySlot) -> void:
 
 	# The slot can have changed under us across the await - a drag, a sync, a
 	# different item in that cell. Re-read rather than trusting the capture.
+	# The server's bag is drawn either way: the potion is gone from it.
 	if slot == null or slot.is_empty() or slot.stack.data != data:
+		_adopt_carry(res.get("data", {}) if res.get("data") is Dictionary else {})
 		return
 
 	# route a consumable's restore_amount to the stat named by restore_target.
@@ -465,6 +470,10 @@ func _use_consumable(slot: InventorySlot) -> void:
 			# that was filled in incompletely, and it fails silently at the
 			# moment the player tries to drink it.
 			push_warning("InventoryScreen: consumable '%s' has no restore_target set" % data.item_id)
+
+	# THE BAG IS THE SERVER'S. The handlers above took one off this grid at
+	# once; the answer carries the bag as it now stands, and that is drawn.
+	_adopt_carry(res.get("data", {}) if res.get("data") is Dictionary else {})
 
 
 func _consumable_blocked_reason(data: ItemData) -> String:
@@ -502,14 +511,9 @@ func _consumable_blocked_reason(data: ItemData) -> String:
 
 
 func _use_currency_pile(slot: InventorySlot) -> void:
-	# route currency to the correct pool. item_id containing "lusion" feeds the
-	# lusion pool; everything else feeds gold. (a dedicated currency_type field
-	# on ItemData would be cleaner if you add more currencies later.)
-	var data: ItemData = slot.stack.data
-	if "lusion" in data.item_id.to_lower():
-		_use_lusions_pile(slot)
-	else:
-		_use_gold_pile(slot)
+	# Gold coins to the purse, lusions to the account - the server decides
+	# which by the item, and says what it credited. See _cash_pile().
+	_cash_pile(slot)
 
 
 # =============================================================================
@@ -555,43 +559,57 @@ func _use_pet(slot: InventorySlot) -> void:
 # ITEM USE — CURRENCY PILES
 # =============================================================================
 
-func _use_gold_pile(slot: InventorySlot) -> void:
-	# convert a gold pile stack into player gold currency.
-	# value field is the gold-per-pile rate, so a stack of 5 at value=10 = 50.
-	if slot == null or slot.is_empty() or player == null:
+func _cash_pile(slot: InventorySlot) -> void:
+	# A PILE IS TURNED INTO GOLD OR LUSIONS BY THE SERVER, and this applies
+	# the balances it answers with.
+	#
+	# This used to add the pile's worth to the purse here and empty the cell.
+	# The server has ignored a client's gold since E-8, so the empty cell was
+	# saved and the gold was not: using a pile destroyed it, and the purse was
+	# right only until the next login. POST /api/character/inventory/cash
+	# empties the cell and credits the balance in one transaction.
+	if slot == null or slot.is_empty() or player == null or _cashing:
+		return
+	_cashing = true
+	var res: Dictionary = await Api.post("/api/character/inventory/cash", {
+		"slot": CharacterData.active_character_index,
+		"position": slot.slot_index,
+		"item_id": slot.stack.data.item_id,
+	}, CONSUME_TIMEOUT)
+	_cashing = false
+	if not is_instance_valid(self) or not is_inside_tree():
 		return
 
-	var stack: ItemStack = slot.stack
-	var total: int = stack.quantity * int(stack.data.value)
-
-	if player.has_method("add_gold"):
-		player.add_gold(total)
+	var body: Variant = res.get("data", {})
+	if not (body is Dictionary):
+		body = {}
+	if not res.get("ok", false):
+		if body.get("resync") is Dictionary:
+			CharacterData.apply_server_carry(body["resync"])
+		_notify(str(res.get("error", "That cannot be used.")))
+		return
 
 	Audio.play("coin")
-	slot.clear_stack()
-	_emit_container_changed()
-
-
-func _use_lusions_pile(slot: InventorySlot) -> void:
-	# convert a lusions pile stack into player lusions currency.
-	# mirrors _use_gold_pile — value field is the lusions-per-pile rate.
-	if slot == null or slot.is_empty() or player == null:
-		return
-
-	var stack: ItemStack = slot.stack
-	var total: int = stack.quantity * int(stack.data.value)
-
-	if player.has_method("add_lusions"):
-		player.add_lusions(total)
-	elif "lusions" in player:
-		player.lusions += total
-		_update_currency_labels()
-
-	slot.clear_stack()
-	_emit_container_changed()
-
+	_adopt_carry(body)
+	if body.has("gold") and player.has_method("set_gold"):
+		player.set_gold(int(body["gold"]))
+	if body.has("lusions") and player.has_method("set_lusions"):
+		player.set_lusions(int(body["lusions"]))
+	_update_currency_labels()
 	if OS.is_debug_build():
-		print("[ITEM] lusions pile: +%d (now %d)" % [total, player.lusions])
+		print("[ITEM] cashed %s" % str(body.get("cashed", {})))
+
+
+func _adopt_carry(body: Dictionary) -> void:
+	"""The bag a server answer carries, drawn - unless a drag or a bin is still
+	on its way, whose answer will be newer than this one (see THE SERVER DOES
+	IT in inventorycontainer.gd)."""
+	var cells: Variant = body.get("inventory")
+	if not (cells is Array) or (cells as Array).is_empty() or _container == null:
+		return
+	if _container.has_method("is_busy") and _container.is_busy():
+		return
+	_container.load_server_array(cells)
 
 
 # =============================================================================

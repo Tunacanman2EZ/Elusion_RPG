@@ -17,10 +17,11 @@ gains exactly nothing.
 
 **The debug keys are a rule, not a defence.** `_staff_debug_allowed()` gates them
 on `OS.is_debug_build()` **and** a rank of mod or above — which stops an honest
-player holding a Debug-template export, and stops nobody else. Anyone able to edit
-the client can grant themselves items with or without that gate; the backpack
-ledger is still client-declared, and that is named as an open limit on the
-server's page rather than pretended away.
+player holding a Debug-template export, and stops nobody else. That is all right
+because the keys grant nothing by themselves: they ask `POST /api/staff/grant`,
+which refuses anyone below mod. And an edited client cannot write its own bag
+either - the backpack and the bank are the server's, every drag and bin is a
+request it carries out, and a player's whole-bag write is ignored.
 
 The same is true of **god mode** (`Ctrl+G`, or the owner panel's switch; dev and
 owner), which turns damage off so the people who test the game can do it without
@@ -46,7 +47,10 @@ nothing but the export and `/api/` (the `play` site block in the API's
 `DEPLOY.md`), over https. Nothing else, the website included, should ever be
 hosted there. With "Remember me" off the token lives in memory and is not
 stored. (A staff account's device file, `user://devices.cfg`, is kept either way;
-it opens nothing without the password.)
+it opens nothing without the password. So is `user://install.cfg`, a random id
+for this copy of the game, sent with every login so that a ban follows the
+computer and not only the connection. It is not a credential and opens nothing;
+the server keeps only its hash.)
 
 **A desktop build sends the password to whatever server it is pointed at.**
 `--server=`, the `ELUSION_SERVER` variable and a one-line `user://server.cfg` all

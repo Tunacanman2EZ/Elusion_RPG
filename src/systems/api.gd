@@ -77,7 +77,11 @@ const WebPage := preload("res://src/systems/webpage.gd")
 # RAISE THIS WHENEVER THE WIRE CHANGES, not on every build. It is what the
 # server compares against, so a number that moves for cosmetic reasons makes
 # the minimum meaningless.
-const BUILD := 1
+#
+# 2: the backpack and the bank became the server's - drags, the bin and piles
+# are requests, and a save carries no bag - and logins send an install id.
+# Matches CURRENT_CLIENT_BUILD in app.py.
+const BUILD := 2
 const DISPLAY_VERSION := "0.1.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
@@ -946,7 +950,7 @@ func refresh_build_info() -> Dictionary:
 
 func login(user: String, password: String, code: String = "") -> Dictionary:
 	# `code` is the staff login code from the email; see needs_login_code().
-	var body := {"username": user, "password": password}
+	var body := {"username": user, "password": password, "install": install_id()}
 	if code != "":
 		body["code"] = code
 	# THIS COMPUTER'S PROOF, if a code has been typed on it before. A staff
@@ -995,6 +999,58 @@ func _remember_device(user: String, device: String) -> void:
 	file.save(DEVICES_PATH)
 
 
+# =============================================================================
+# THIS COPY OF THE GAME
+# =============================================================================
+# A random id made the first time the game runs, kept in its own file and sent
+# with every login, registration and resume (INSTALL IDS in app.py). A banned
+# player who changes their address with a VPN is still at the same computer,
+# and the server will not make them a new account from it.
+#
+# NOT A SECRET AND NOT A PASSWORD. It proves nothing about who is playing - a
+# family shares a computer - and the server keeps only its hash and never sends
+# it anywhere. ITS OWN FILE, like devices.cfg: it belongs to the computer, so
+# logging out or unticking Remember me must not throw it away, or logging out
+# would be all it took to get a fresh one.
+const INSTALL_PATH := "user://install.cfg"
+
+var _install_id: String = ""
+
+
+func install_id() -> String:
+	if _install_id != "":
+		return _install_id
+	var file := ConfigFile.new()
+	if file.load(INSTALL_PATH) == OK:
+		var kept: String = str(file.get_value("install", "id", ""))
+		if kept.length() == 64 and kept.is_valid_hex_number():
+			_install_id = kept
+			return _install_id
+	_install_id = _fresh_install_id()
+	file.set_value("install", "id", _install_id)
+	file.save(INSTALL_PATH)
+	return _install_id
+
+
+static func _fresh_install_id() -> String:
+	# CRYPTO WHEN THE BUILD HAS IT, asked for by name so a build without the
+	# module still compiles. Unpredictable matters a little: an id somebody
+	# could guess is an id they could send to get a stranger's computer
+	# refused. The fallback is only for a build that cannot do better.
+	var bytes := PackedByteArray()
+	if ClassDB.class_exists("Crypto"):
+		var crypto: Object = ClassDB.instantiate("Crypto")
+		if crypto != null:
+			bytes = crypto.call("generate_random_bytes", 32)
+	if bytes.size() != 32:
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		bytes = PackedByteArray()
+		for i in 32:
+			bytes.append(rng.randi_range(0, 255))
+	return bytes.hex_encode()
+
+
 static func needs_login_code(res: Dictionary) -> bool:
 	"""True when the login is a staff account's and wants the emailed code:
 	the first step (202), or a code that was wrong or has run out (400). The
@@ -1005,7 +1061,8 @@ static func needs_login_code(res: Dictionary) -> bool:
 
 
 func register(user: String, password: String) -> Dictionary:
-	var res := await post("/api/auth/register", {"username": user, "password": password})
+	var res := await post("/api/auth/register",
+		{"username": user, "password": password, "install": install_id()})
 	if res.ok:
 		_adopt_session(res.data)
 	return res
@@ -1054,7 +1111,7 @@ func probe_and_resume() -> Dictionary:
 	# nobody signed in, and in a browser every 401 is a red line in the console.
 	var res: Dictionary
 	if token != "":
-		res = await post("/api/auth/resume", {}, PROBE_TIMEOUT)
+		res = await post("/api/auth/resume", {"install": install_id()}, PROBE_TIMEOUT)
 		# A server from before the route: check the token the old way.
 		if int(res.get("status", 0)) == 404:
 			res = await get_json("/api/auth/session", PROBE_TIMEOUT)

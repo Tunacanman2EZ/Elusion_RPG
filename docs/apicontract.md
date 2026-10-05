@@ -71,9 +71,16 @@ with `{"error": "Unauthorized", "message": "..."}`.
 
 ### `POST /api/auth/register`
 
-`{ "username": "...", "password": "..." }` → **`201`** with a token.
-**`400`** on a short password or illegal username characters.
-**`409`** if the username is taken.
+`{ "username": "...", "password": "...", "install": "<64 hex>" }` → **`201`**
+with a token. **`400`** on a short password or illegal username characters.
+**`409`** if the username is taken. **`403`** "New accounts cannot be created
+from this connection." or "...from this computer." when the address, or the
+computer, has been used by an account under a live ban.
+
+`install` is this copy of the game's id (`Api.install_id()`, kept in
+`user://install.cfg`), sent with register, login and resume. Optional: a
+missing or malformed one is ignored, never refused. The server keeps only its
+hash, and uses it for that 403 and for the staff view's "same computer" links.
 
 Only the login screen's **Create an account** form calls this. Signing in never
 does: it used to fall back to registering the name on a 401, so a typo in your
@@ -81,7 +88,7 @@ own name made a new, empty account.
 
 ### `POST /api/auth/login`
 
-Same body → **`200`** with a token. **`401`** on failure.
+Same body, `install` included → **`200`** with a token. **`401`** on failure.
 
 A wrong password and an unknown username return an **identical** 401. That is
 deliberate: a distinguishable answer turns this route into a username
@@ -101,7 +108,8 @@ The game left behind is refused on its next request with:
 
 and goes back to the login screen saying so (`Api.signout_notice_for()`). Two
 games on one account used to lose items: each held its own picture of the bag,
-and the bag write replaces the whole bag.
+and the bag write replaced the whole bag. (It no longer does - the bag is
+changed one cell at a time - but one login at a time stays.)
 
 **Staff accounts take a second step.** For a mod, dev or the owner with a
 confirmed recovery address, on a server that can send mail, a correct password
@@ -135,7 +143,8 @@ somewhere else reaches the game.
 
 ### `POST /api/auth/resume`
 
-What the game calls on boot when it has a remembered login. **`200`** with the
+What the game calls on boot when it has a remembered login, with
+`{ "install": "..." }` as its body. **`200`** with the
 same fields as `/api/auth/session` plus a **new `token`**, which ends when the
 old one would have (resuming never renews a login). Every other session on the
 account ends - including the one it came in on - so a second copy of the game
@@ -310,52 +319,49 @@ then skills, then bank — four round trips on a screen the player is staring at
 They are all keyed on the same `(user_id, slot)` and none of them is useful
 without the others.
 
-### `PUT /api/character/inventory`
+### The backpack is the server's: one cell at a time
 
-```json
-{ "slot": 0, "inventory": [ { "item_id": "ironsword", "quantity": 1 }, null ],
-  "based_on": "805ee8515ba7334b57fc01675e92d96b98ae28f3" }
-```
+The carry is a **positional** array, `CARRY_CAPACITY` (30) cells long with
+`null` in every empty one, and the index *is* the cell: the bag's
+`INVENTORY_CAPACITY` (20), then the hotbar's ten keys, 1-9 then 0. Every route
+that changes it answers with the whole array, and the game draws that.
 
-**Positional.** The array is `CARRY_CAPACITY` (30) cells long with `null` in
-every empty one, and the index *is* the cell: the bag's `INVENTORY_CAPACITY`
-(20), then the hotbar's ten keys, 1-9 then 0. Returning a packed list would make
-the client responsible for rebuilding the gaps; it would get that right the
-first time and wrong the first time someone changed the capacity.
+**Nothing is placed on a key.** Loot, the shop, withdrawals, trades, catches
+and grants only top up or open cells below 20. "Your backpack is full" means
+the twenty. A key holds what the player put there.
 
-**The hotbar's keys hold items**, as cells 20-29. Dragging a stack onto a key is
-a reorder of this one array, so the ledger, the stack ceiling and respawning's
-wipe all cover the keys with no rule of their own. Two rules exist because of
-them:
+**Every change the player makes is its own request**, carried out on the
+server's cells. Each names the item the game saw in the cell; when the cell
+holds anything else - a trade or a loot take landed - nothing changes and the
+answer is **`409`** with `resync`: `{"slot", "gold", "inventory", "trade":
+null, "reason": "stale_save"}`, which the game adopts without a message.
 
-- **The bag is always replaced; a key only if the array reaches it.** A
-  twenty-cell array - or `[]` - still means "the bag holds this and nothing
-  else", and leaves the keys exactly as they are, out of the ledger the write
-  is checked against.
-- **Nothing is placed on a key.** Loot, the shop, withdrawals, trades, catches
-  and grants only top up or open cells below 20. "Your backpack is full" means
-  the twenty.
-
-**`based_on`: the bag the save was built on.** An optional string, the
-fingerprint of the last bag the server gave this client: sha1 of
-`position:item_id:quantity` for every filled cell, joined with `|`
-(`bag_fingerprint()` on both sides; both suites pin the same bag to the same
-string). When the server no longer holds that bag (a loot take, a cook, a
-catch, a purchase, an equip or a trade changed it since), the write is refused
-with `409` and `resync`: `{"slot", "gold", "inventory", "trade": null,
-"reason": "stale_save"}`, the same shape the trade rule sends. The game adopts
-it without a message. Without the field the write is taken as before, so an
-older client still saves.
+| Route | Body | Does |
+|---|---|---|
+| `POST /api/character/inventory/move` | `{slot, from, to, item_id}` | A drag: onto an empty cell it moves, onto the same stackable item it merges up to the stack limit (the rest stays), onto anything else it swaps. Keys are cells 20-29 like any other. |
+| `POST /api/character/inventory/discard` | `{slot, position, item_id}` | The bin: the whole stack in that cell is destroyed. Answers `discarded`. |
+| `POST /api/character/inventory/cash` | `{slot, position, item_id}` | A pile of gold coins, or of lusions: the cell is emptied and the balance credited through the ledger. Answers `gold`, `lusions` and `cashed`. `409` "That is not money." for anything else. |
 
 `POST /api/character/consume`, `POST /api/character/equip` and
 `POST /api/bank/items` take an optional `position`: the cell the player used,
 spent first when it holds the item. Without it a take starts at the highest
 cell holding the item, which with the keys in the same rows is usually a key.
+`consume` answers with `inventory` too.
 
 `item_id` matches an `ItemData` id from `data/items/`. The server stores the id
 and the quantity and nothing else — item definition stays client-side, and the
 server never needs to know what an iron sword *is*.
 
+### `PUT /api/character/inventory` - kept for older games and staff
+
+`{ "slot": 0, "inventory": [...], "based_on": "..." }`. **A player's array is
+ignored**: **`200`** with the bag the server holds and `"ignored":
+["inventory"]`. Build 1 of the game sends it on every save, so it is answered
+rather than refused; build 2 does not send it. The `409`s a build-1 game relied
+on still come first - `based_on` (sha1 of `position:item_id:quantity` per
+filled cell, joined with `|`) naming a bag the server no longer holds, or a
+trade it has not been told about. **Staff** (mod and up) still write the bag
+whole, for tooling: a twenty-cell array replaces the bag and leaves the keys.
 **`400`** on an oversized array or a malformed entry. **`404`** if the slot is
 empty.
 
@@ -401,10 +407,27 @@ first one banked.
 `bank_inventory` is positional and `capacity` cells long, same rule as the
 backpack — the player expects things to stay in the cell they dragged them to.
 
+### The bank, one cell at a time
+
+Items go in and out through `POST /api/bank/items` (`op` deposit or withdraw).
+Inside the bank, the same two as the backpack, with no `slot` - the bank is the
+account's:
+
+| Route | Body | Does |
+|---|---|---|
+| `POST /api/bank/move` | `{from, to, item_id}` | Move, merge up to the stack limit, or swap. |
+| `POST /api/bank/discard` | `{position, item_id}` | Destroy the whole stack in that cell. |
+
+Both answer with the account, `bank_inventory` included; a cell that does not
+hold `item_id` is **`409`** with the account under `account`, and nothing
+changes.
+
 ### `PUT /api/account/bank`
 
-`{ "bank_inventory": [ ... ] }` → **`200`** with the account as stored.
-**`400`** on an oversized array or a malformed entry.
+`{ "bank_inventory": [ ... ] }` → **`200`** with the account. **A player's
+array is ignored** (`"ignored": ["bank_inventory"]`), for the backpack's
+reasons; staff still write it whole. **`400`** on an oversized array or a
+malformed entry.
 
 ### `PUT /api/account/lusions`
 
@@ -673,6 +696,8 @@ otherwise never fire.
 
 On top of that, `ServerStorage._put_if_changed()` fingerprints each body and
 skips the request entirely when nothing in that section changed. One save
-therefore costs between zero and six requests rather than always six — which is
-why a normal play session shows `PUT /api/player/status` constantly and
-`PUT /api/character/inventory` only when the bag actually moved.
+therefore costs between zero and three requests rather than always three —
+which is why a normal play session shows `PUT /api/player/status` constantly
+and `PUT /api/save` only when something in it moved. The bag and the bank are
+not in a save at all: each change is its own request (see "The backpack is the
+server's").

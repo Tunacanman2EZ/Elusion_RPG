@@ -11,9 +11,10 @@
 # TrashSlot exists — no changes needed to inventoryslot.gd itself.
 #
 # persistence: deletion goes through the owning InventoryContainer's
-# remove_stack_at(index) — the same method any other removal path uses, and
-# the one actually tied to inventory_changed (the signal that triggers
-# saves). the container is the slot's home_container, NOT its parent: a bag
+# request_discard(index, item_id), which takes the stack off the grid and asks
+# the server to destroy it (POST /api/character/inventory/discard, or
+# /api/bank/discard) - the grids are the server's, so a local clear lasted only
+# until the next load. the container is the slot's home_container, NOT its parent: a bag
 # cell's parent is its grid, but a hotbar key's parent is the hotbar's row,
 # while the cell it is belongs to the player's backpack. get_parent() is kept
 # as a fallback for a slot nothing ever stamped. this works for ANY
@@ -163,17 +164,19 @@ func _on_delete_confirmed() -> void:
 	if _pending_source_slot == null:
 		return
 
-	# route through the owning container's remove_stack_at() rather than
-	# clearing the slot directly — this is what actually emits
-	# inventory_changed and triggers a save. see class comment for why
-	# slot_changed alone (the original approach here) doesn't persist.
+	# THROUGH THE OWNING CONTAINER'S request_discard(), which takes the stack
+	# off the grid and has the server destroy it - the bag and the bank are the
+	# server's, so clearing the slot here would destroy nothing that lasts.
+	# The item the dialog named is passed along: a cell that holds something
+	# else by the time Destroy is pressed (a loot take landed while the dialog
+	# was open) is left alone rather than binned in its place.
 	var container: Node = _pending_source_slot.home_container \
 		if _pending_source_slot.home_container != null else _pending_source_slot.get_parent()
-	if container != null and container.has_method("remove_stack_at"):
-		container.remove_stack_at(_pending_source_slot.slot_index)
+	var named: String = _pending_stack.data.item_id if _pending_stack != null and _pending_stack.data != null else ""
+	if container != null and container.has_method("request_discard"):
+		container.request_discard(_pending_source_slot.slot_index, named)
 	else:
-		push_warning("TrashSlot: source_slot's container has no remove_stack_at() — clearing slot directly as a fallback, but this will NOT persist to save")
-		_pending_source_slot.clear_stack()
+		push_warning("TrashSlot: source_slot's container has no request_discard() - nothing was destroyed")
 
 	_pending_source_slot = null
 	_pending_stack = null

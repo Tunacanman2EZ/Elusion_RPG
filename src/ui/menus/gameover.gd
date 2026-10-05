@@ -478,14 +478,6 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# weapons included; only a paid revive keeps it.
 	slot_data["equipment"] = {}
 
-	# THE SERVER'S BAG IS EMPTY NOW, AND THE NEXT SAVE MUST SAY SO. A bag save
-	# names the bag it was built on (based_on), and this slot's base was still
-	# the bag the character died with - so the first save after a full death was
-	# refused as stale and reloaded, which is the "inventory:0 rejected" warning
-	# the owner found on day 2. Harmless, but every full death produced one.
-	# CharacterData.note_server_bag() skips an empty array, so it is set here.
-	slot_data["bag_base"] = CharacterData.bag_fingerprint([])
-
 	# HP IS NOT SET HERE ANY MORE, and that line is the bug this whole path was
 	# rewritten for. It wrote full health into the slot on the client's own
 	# authority; the server saw the next sync as an unexplained heal from zero

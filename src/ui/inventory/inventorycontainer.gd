@@ -67,9 +67,12 @@ signal transfer_requested(source_slot: InventorySlot, target_slot: InventorySlot
 var slots: Array[InventorySlot] = []
 
 # THE PLAYER'S OWN CARRY, as opposed to the bank's grid, which is the same kind
-# of container. Set by InventoryScreen. A server array loaded into the carry is
-# also the bag the next save is built on - see CharacterData.note_server_bag().
+# of container. Set by InventoryScreen.
 var is_carry: bool = false
+
+# THE ACCOUNT'S BANK. Set by BankInventory. Between them these two say which
+# server route a drag or the bin in this grid becomes - see THE SERVER DOES IT.
+var is_bank: bool = false
 
 var capacity: int:
 	get: return grid_width * grid_height
@@ -403,8 +406,6 @@ func load_server_array(cells: Array) -> void:
 		}
 
 	load_save_array(cleaned)
-	if is_carry:
-		CharacterData.note_server_bag(cells)
 
 
 func load_save_array(save_array: Array) -> void:
@@ -506,10 +507,168 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	target.set_stack(incoming)
 	source_slot.clear_stack()
 
-	# announce both halves. these reach _on_slot_changed() on each slot's own
-	# container, so a cross-panel move saves both sides.
+	# announce both halves, so anything drawn from this grid redraws.
 	target.slot_changed.emit(target)
 	source_slot.slot_changed.emit(source_slot)
+
+	# AND ASK THE SERVER, which owns the grid - see THE SERVER DOES IT. A gap
+	# drop is a move onto the first empty cell, the same request as a drop
+	# aimed at that cell.
+	if source_slot.home_container == self:
+		request_move(source_slot.slot_index, target.slot_index, incoming.data.item_id)
+
+
+# =============================================================================
+# THE SERVER DOES IT
+# =============================================================================
+# THE BAG AND THE BANK ARE THE SERVER'S (ONE CELL AT A TIME in app.py). A drag
+# inside one grid, and the bin, used to happen only here and reach the server
+# as the whole array on the next save, which it trimmed to what it had granted.
+# Now each is a request the server carries out on its own cells, and the grid
+# is redrawn from its answer.
+#
+# THE CHANGE IS STILL DRAWN AT ONCE. InventorySlot moves the stacks the moment
+# the drop lands, because a round trip under the cursor would make every drag
+# feel sticky. The answer then agrees, and nothing on screen changes, or it
+# puts back what the server holds - the 409 a move gets when this grid was out
+# of date carries exactly that.
+#
+# ONE AT A TIME, IN THE ORDER MADE, AND ONLY THE LAST ANSWER IS DRAWN. Two
+# quick drags are two requests and the second is built on the first. Drawing
+# the first answer while the second is on its way would flick the second drag
+# back for a moment.
+
+const CARRY_MOVE_PATH := "/api/character/inventory/move"
+const CARRY_DISCARD_PATH := "/api/character/inventory/discard"
+const BANK_MOVE_PATH := "/api/bank/move"
+const BANK_DISCARD_PATH := "/api/bank/discard"
+
+# Waiting requests, [path, body] each, and whether one is on its way.
+var _queue: Array = []
+var _sending: bool = false
+
+# THE SUITE'S WAY IN. When valid, called as (path, body) instead of Api.post,
+# and must return what Api.post would. Never set by the game.
+var send_override: Callable = Callable()
+
+
+func is_server_grid() -> bool:
+	return is_carry or is_bank
+
+
+func is_busy() -> bool:
+	"""True while a move or a bin is on its way to the server."""
+	return _sending or not _queue.is_empty()
+
+
+func request_move(from_index: int, to_index: int, item_id: String) -> void:
+	"""Ask the server to do the drag the grid has just drawn."""
+	if not is_server_grid() or from_index == to_index or item_id == "":
+		return
+	if is_carry:
+		_enqueue(CARRY_MOVE_PATH, {"slot": CharacterData.active_character_index,
+			"from": from_index, "to": to_index, "item_id": item_id})
+	else:
+		_enqueue(BANK_MOVE_PATH, {"from": from_index, "to": to_index, "item_id": item_id})
+
+
+func request_discard(index: int, expected_item_id: String = "") -> void:
+	"""The bin: take the stack off the grid now, and have the server destroy it.
+	With `expected_item_id`, a cell that holds anything else is left alone."""
+	if index < 0 or index >= slots.size() or slots[index].is_empty():
+		return
+	var item_id: String = slots[index].stack.data.item_id
+	if expected_item_id != "" and item_id != expected_item_id:
+		push_warning("InventoryContainer: cell %d holds %s now, not %s - not destroyed"
+			% [index, item_id, expected_item_id])
+		return
+	remove_stack_at(index)
+	if not is_server_grid():
+		return
+	if is_carry:
+		_enqueue(CARRY_DISCARD_PATH, {"slot": CharacterData.active_character_index,
+			"position": index, "item_id": item_id})
+	else:
+		_enqueue(BANK_DISCARD_PATH, {"position": index, "item_id": item_id})
+
+
+func _enqueue(path: String, body: Dictionary) -> void:
+	_queue.append([path, body])
+	if not _sending:
+		_drain()
+
+
+func _drain() -> void:
+	_sending = true
+	var last: Dictionary = {}
+	while not _queue.is_empty():
+		var next: Array = _queue.pop_front()
+		last = await _post(next[0], next[1])
+		if not is_instance_valid(self):
+			return
+		if not last.get("ok", false) and int(last.get("status", 0)) != 409:
+			push_warning("InventoryContainer: %s refused - HTTP %d %s" % [
+				next[0], int(last.get("status", 0)), str(last.get("error", ""))])
+	_sending = false
+	await _adopt_answer(last)
+
+
+func _post(path: String, body: Dictionary) -> Dictionary:
+	if send_override.is_valid():
+		return await send_override.call(path, body)
+	return await Api.post(path, body)
+
+
+func _adopt_answer(res: Dictionary) -> void:
+	"""Draw the grid the server's last answer holds. A carry that was out of
+	date goes through CharacterData.apply_server_carry(), the way a stale save
+	and a trade's result always have; an answer with no grid in it - no
+	connection, a 500 - asks for the grid instead, because what is drawn now is
+	only a guess."""
+	var data: Variant = res.get("data", {})
+	if not (data is Dictionary):
+		data = {}
+	if res.get("ok", false):
+		var cells: Variant = data.get("inventory" if is_carry else "bank_inventory")
+		if cells is Array and not (cells as Array).is_empty():
+			load_server_array(cells)
+			return
+	elif int(res.get("status", 0)) == 409:
+		# THE CARRY'S RESYNC GOES THROUGH CharacterData TOO, which keeps the
+		# character's copy and purse in step and says nothing for a stale_save.
+		# It redraws the HUD's grid - this one, in the game - and the load here
+		# makes sure of it for any other grid.
+		var resync: Variant = data.get("resync")
+		if is_carry and resync is Dictionary and resync.get("inventory") is Array \
+				and not (resync["inventory"] as Array).is_empty():
+			CharacterData.apply_server_carry(resync)
+			load_server_array(resync["inventory"])
+			return
+		var account: Variant = data.get("account")
+		if is_bank and account is Dictionary and account.get("bank_inventory") is Array:
+			load_server_array(account["bank_inventory"])
+			return
+	await _refetch()
+
+
+func _refetch() -> void:
+	if send_override.is_valid():
+		return
+	var res: Dictionary
+	if is_carry:
+		res = await Api.get_json("/api/character?slot=%d" % CharacterData.active_character_index)
+	else:
+		res = await Api.get_json("/api/account")
+	if not is_instance_valid(self):
+		return
+	var data: Variant = res.get("data", {})
+	var cells: Variant = data.get("inventory" if is_carry else "bank_inventory") \
+		if res.get("ok", false) and data is Dictionary else null
+	if cells is Array and not (cells as Array).is_empty():
+		load_server_array(cells)
+	else:
+		push_warning("InventoryContainer: the server could not be asked for the %s - "
+			% ("backpack" if is_carry else "bank") + "it will be redrawn from the next answer")
 
 
 func _first_empty_slot() -> InventorySlot:

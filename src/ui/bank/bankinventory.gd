@@ -10,7 +10,10 @@
 # data flow:
 # - on open: pull fresh bank state from CharacterData (in case another
 #   character modified it during a previous session)
-# - on drag/drop: atomically save to disk via CharacterData.set_bank_inventory
+# - on drag/drop inside the bank, or the bin: one request the server carries
+#   out (POST /api/bank/move, /api/bank/discard - see THE SERVER DOES IT in
+#   inventorycontainer.gd), the grid redrawn from its answer, and the local
+#   copy kept in step via CharacterData.set_bank_inventory
 # - on close: final save + hide panel + emit closed signal
 #
 # gold transfers:
@@ -130,9 +133,12 @@ func _wire_bank_container() -> void:
 	# Marks every slot in this grid as a bank slot, which is what
 	# InventorySlot._drop_data() branches on to tell a rearrange from a
 	# transfer. Set here rather than in the scene because the container
-	# instantiates its own slots.s
+	# instantiates its own slots.
 	if bank_container.has_method("set_slot_type"):
 		bank_container.set_slot_type(InventorySlot.BANK_SLOT_TYPE)
+	# And the grid itself as the bank, so a rearrange or the bin in it is sent
+	# to the bank's routes rather than the backpack's.
+	bank_container.is_bank = true
 
 	if not bank_container.transfer_requested.is_connected(_on_transfer_requested):
 		bank_container.transfer_requested.connect(_on_transfer_requested)
@@ -292,12 +298,11 @@ func _on_bank_changed() -> void:
 	#   - then the next flush, from anywhere, writes that stale array over the
 	#   server's bank_items and the deposit is gone from both sides.
 	#
-	# The echo is harmless because the array being written is the server's own.
-	# lootbaginventory.gd:376 saves after a grant for exactly this reason. What
-	# actually removes these writes is making PUT /api/account/bank refuse
-	# anything that is not a permutation of what it already holds, so a client
-	# cannot assert contents at all - see docs/inventoryauthority.md. Until
-	# then, keeping memory and server in step beats a tidier log.
+	# NOTHING OF IT REACHES THE SERVER ANY MORE. The bank is the server's, a
+	# save no longer carries it, and PUT /api/account/bank ignores a player's
+	# array. What is left is the half that always mattered: CharacterData's
+	# in-memory bank following the grid, so anything that reads it - the next
+	# opening of this panel - sees the server's last answer.
 	_save_bank_contents()
 
 
@@ -314,10 +319,9 @@ func _on_bank_changed() -> void:
 # another claiming 5 more, with no way to tell that pair from a pair that did
 # not add up. Whole-array writes cannot conserve anything.
 #
-# Rearranging INSIDE one grid still saves the whole array, and that is fine for
-# now because no items cross a boundary - but it is the last place the client
-# still asserts a container's contents. Closing it means validating the PUT as
-# a permutation of what is stored. See docs/inventoryauthority.md.
+# Rearranging INSIDE one grid, and the bin, are ops now as well (POST
+# /api/bank/move and /api/bank/discard, sent by the grid itself). That was the
+# last place the client asserted a container's contents.
 
 const TRANSFER_TIMEOUT := 4.0
 
