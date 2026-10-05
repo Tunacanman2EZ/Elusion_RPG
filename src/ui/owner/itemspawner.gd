@@ -20,9 +20,10 @@
 # - SETTING YOUR LEVEL WAS HERE AND MOVED to the GM panel's Testing tab (Day
 #   3, the owner's call), beside the other things done to your own character.
 # - "GEAR STATS" says which roll a piece of gear comes with (5 Oct, quality
-#   rolls): as the store sells it, rolled the way a drop is, or Perfect - so
-#   the one-in-a-hundred can be seen without granting a hundred. The server
-#   rolls it; this only names which (QUALITIES).
+#   rolls): plain at 100%, rolled the way a drop or a purchase is, or Perfect -
+#   so the one-in-a-hundred can be seen without granting a hundred. The server
+#   rolls it; this only names which (QUALITIES). Plain is the only way to have
+#   a 100% piece, now that the shop rolls what it sells.
 #
 # OWNER ONLY, three times over: the HUD builds the button only for the owner,
 # every request here asks Api.is_owner first, and the server is the gate that
@@ -43,7 +44,7 @@ const CATEGORIES: Array[String] = [
 # What /api/staff/grant's "quality" may be, in the order the list shows them:
 # [what the server calls it, what the owner reads].
 const QUALITIES: Array = [
-	["store", "As the store sells it (100%)"],
+	["plain", "Plain (100%)"],
 	["roll", "Rolled, like a drop"],
 	["perfect", "Perfect (every stat at %d%%)" % GameConstants.QUALITY_PERFECT],
 ]

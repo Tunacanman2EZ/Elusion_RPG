@@ -366,19 +366,21 @@ func _build_row(entry: Dictionary) -> Control:
 	# that is, only that the same one asks twice.
 	if data != null:
 		row.mouse_filter = Control.MOUSE_FILTER_PASS
-		row.mouse_entered.connect(_on_row_hovered.bind(row, data))
+		# ON THE SHELF: gear shows "?" for its stats, because what the shop
+		# hands over is rolled at the till.
+		row.mouse_entered.connect(_on_row_hovered.bind(row, data, true))
 		row.mouse_exited.connect(_on_row_unhovered.bind(row))
 
 	return row
 
 
-func _on_row_hovered(row: Control, data: ItemData) -> void:
+func _on_row_hovered(row: Control, data: ItemData, on_the_shelf: bool = false) -> void:
 	var tooltip: Node = get_tree().get_first_node_in_group("itemtooltip")
 	if tooltip == null or not tooltip.has_method("show_for_stack"):
 		return
 	# QUANTITY 1: the shop sells one at a time, and the tooltip only prints a
 	# count above one, so this reads as an item rather than as a stack.
-	tooltip.show_for_stack(ItemStack.new(data, 1), row)
+	tooltip.show_for_stack(ItemStack.new(data, 1), row, on_the_shelf)
 
 
 func _on_row_unhovered(row: Control) -> void:
@@ -513,11 +515,24 @@ func _apply_purchase(data: Dictionary, acting_player: Node) -> void:
 
 	var bought: String = str(data.get("item_id", ""))
 	var paid: int = int(data.get("total_paid", 0))
-	var label: String = bought
+	_notify(acting_player, purchase_line(ItemRegistry.get_item(bought), bought, paid))
+	# THE REVEAL. Gear is rolled at the till, so what you got is news, and the
+	# shop window is where you are looking: it says it there too.
 	var item: ItemData = ItemRegistry.get_item(bought)
-	if item != null:
-		label = item.display_name
-	_notify(acting_player, "Bought %s for %s." % [label, GameConstants.gold_text(paid)])
+	if item != null and item.is_rolled():
+		_set_notice(purchase_line(item, bought, paid), false)
+
+
+static func purchase_line(item: ItemData, bought: String, paid: int) -> String:
+	# "Bought Iron Sword for 400 gold - quality 104%." for gear, which the shop
+	# rolls as it hands it over; a Perfect says so. Anything else, as before.
+	var label: String = item.display_name if item != null else bought
+	var line: String = "Bought %s for %s" % [label, GameConstants.gold_text(paid)]
+	if item == null or not item.is_rolled():
+		return line + "."
+	if item.is_perfect():
+		return line + " - a Perfect roll, every stat at %d%%!" % GameConstants.QUALITY_PERFECT
+	return line + " - quality %d%%." % item.quality_percent()
 
 
 func _player_inventory_container() -> Node:

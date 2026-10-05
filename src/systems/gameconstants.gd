@@ -223,8 +223,11 @@ const MYTHIC_BAG_DESPAWN_SECONDS: float = 300.0
 # armour, max health, max mana, the damage bonus - each on its own, from
 # QUALITY_LOW to QUALITY_HIGH percent of the number in its .tres, most often
 # near 100. One drop in QUALITY_PERFECT_ODDS is Perfect instead: every stat at
-# QUALITY_PERFECT, and "Perfect" in front of its name. What the store sells is
-# always the .tres itself, 100% on everything.
+# QUALITY_PERFECT, and "Perfect" in front of its name. A piece bought from the
+# shop rolls the same way, at the till: the shelf shows "?" for its stats and
+# the roll is revealed when it is bought (the owner, 5 Oct: "item stats say ?
+# and are revealed upon buying in shop only"), at the shelf's price whatever
+# it rolls.
 #
 # The owner, 5 Oct: "random stats on all items because it gives loot a better
 # value if a rare max roll", with the range, the Perfect and "each stat

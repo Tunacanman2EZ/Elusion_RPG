@@ -156,7 +156,7 @@ func _process(_delta: float) -> void:
 # PUBLIC API
 # =============================================================================
 
-func show_for_stack(stack: ItemStack, source_slot: Node) -> void:
+func show_for_stack(stack: ItemStack, source_slot: Node, on_the_shelf: bool = false) -> void:
 	# THE SLOT IS READ NOW, for one question: is this the piece being worn? A
 	# square on the equipment doll compares with nothing - it IS what everything
 	# else is compared with. (It was underscored and unused for a while after a
@@ -168,8 +168,16 @@ func show_for_stack(stack: ItemStack, source_slot: Node) -> void:
 	if stack == null or not stack.is_valid():
 		return
 
-	_populate_labels(stack)
-	populate_comparison(stack.data, source_slot, get_tree().get_first_node_in_group("player"))
+	# ON THE SHELF, A PIECE OF GEAR'S STATS ARE "?": the shop rolls what it
+	# hands over (the owner, 5 Oct: "item stats say ? and are revealed upon
+	# buying in shop only"), so the .tres's numbers are not what you would get.
+	# Nothing to compare either, for the same reason.
+	var unrevealed: bool = on_the_shelf and rolls_when_bought(stack.data)
+	_populate_labels(stack, unrevealed)
+	if unrevealed:
+		_show_comparison(false)
+	else:
+		populate_comparison(stack.data, source_slot, get_tree().get_first_node_in_group("player"))
 
 	# FITTED TO WHAT IT NOW HOLDS. A PanelContainer grows to its content and
 	# never shrinks back, so without this a short tooltip after a long one
@@ -191,7 +199,13 @@ func hide_tooltip() -> void:
 # LABEL POPULATION
 # =============================================================================
 
-func _populate_labels(stack: ItemStack) -> void:
+static func rolls_when_bought(data: ItemData) -> bool:
+	# A catalogue piece with stats to roll: gear the shop rolls at the till.
+	# A potion, a rod or a piece that has already rolled is what it says.
+	return data != null and not data.is_rolled() and not ItemRegistry.rolled_fields(data).is_empty()
+
+
+func _populate_labels(stack: ItemStack, unrevealed: bool = false) -> void:
 	# fill in the three labels from the stack's ItemData.
 
 	if icon_rect != null:
@@ -242,7 +256,7 @@ func _populate_labels(stack: ItemStack) -> void:
 		# and those have no row. The shop's own line comes from the server for
 		# the reason the price does; these two agree because both ultimately
 		# read the same .tres.
-		var facts: String = _requirement_lines(stack.data)
+		var facts: String = _requirement_lines(stack.data, unrevealed)
 		if facts != "":
 			if desc != "":
 				desc += "\n"
@@ -398,7 +412,15 @@ static func stats_and_needs(data: ItemData) -> String:
 	return _requirement_lines(data)
 
 
-static func _requirement_lines(data: ItemData) -> String:
+static func _stat(data: ItemData, field: String, unrevealed: bool) -> String:
+	# A stat's number, or "?" while the piece is on the shelf (see
+	# show_for_stack), and its roll after it once there is one.
+	if unrevealed:
+		return "?"
+	return "%d" % int(data.get(field))
+
+
+static func _requirement_lines(data: ItemData, unrevealed: bool = false) -> String:
 	# One line of stats, one of requirements, either omitted when empty.
 	#
 	# NOTHING FOR A PLAIN MATERIAL, which is most of the catalogue. A tooltip
@@ -410,20 +432,20 @@ static func _requirement_lines(data: ItemData) -> String:
 	# A ROLLED PIECE'S NUMBERS ARE ALREADY ITS OWN - ItemRegistry scaled them -
 	# and each one says its roll after it: "22 damage (110%)".
 	if "damage" in data and int(data.damage) > 0:
-		stats.append("%d damage%s" % [int(data.damage), roll_note(data, "damage")])
+		stats.append("%s damage%s" % [_stat(data, "damage", unrevealed), roll_note(data, "damage")])
 	if "armor_value" in data and int(data.armor_value) > 0:
-		stats.append("%d armour%s" % [int(data.armor_value), roll_note(data, "armor_value")])
+		stats.append("%s armour%s" % [_stat(data, "armor_value", unrevealed), roll_note(data, "armor_value")])
 	# WHAT THE AMULETS ADD. Signed, because these are added to the character
 	# rather than being the item's own number the way damage and armour are.
 	if "bonus_max_hp" in data and int(data.bonus_max_hp) > 0:
-		stats.append("+%d max health%s" % [int(data.bonus_max_hp), roll_note(data, "bonus_max_hp")])
+		stats.append("+%s max health%s" % [_stat(data, "bonus_max_hp", unrevealed), roll_note(data, "bonus_max_hp")])
 	if "bonus_max_mana" in data and int(data.bonus_max_mana) > 0:
-		stats.append("+%d max mana%s" % [int(data.bonus_max_mana), roll_note(data, "bonus_max_mana")])
+		stats.append("+%s max mana%s" % [_stat(data, "bonus_max_mana", unrevealed), roll_note(data, "bonus_max_mana")])
 	if "bonus_damage_percent" in data and int(data.bonus_damage_percent) > 0:
 		# "damage bonus", not "damage": a sword's line read "32 Damage, +2%
 		# Damage", one word for two different numbers. The comparison rows and
 		# the Gear window call it the same thing.
-		stats.append("+%d%% damage bonus%s" % [int(data.bonus_damage_percent),
+		stats.append("+%s%% damage bonus%s" % [_stat(data, "bonus_damage_percent", unrevealed),
 			roll_note(data, "bonus_damage_percent")])
 	if "restore_amount" in data and int(data.restore_amount) > 0:
 		var pool: String = ItemData.RestoreTarget.keys()[int(data.restore_target)] \
@@ -438,6 +460,9 @@ static func _requirement_lines(data: ItemData) -> String:
 			stats.append("restores %d %s" % [int(data.restore_amount), noun])
 	if not stats.is_empty():
 		lines.append(", ".join(stats).capitalize())
+	if unrevealed:
+		lines.append("Stats are rolled when you buy it: %d-%d%% each, 1 in %d Perfect" % [
+			GameConstants.QUALITY_LOW, GameConstants.QUALITY_HIGH, GameConstants.QUALITY_PERFECT_ODDS])
 
 	var needs := PackedStringArray()
 	if "required_level" in data and int(data.required_level) > 1:

@@ -7726,6 +7726,50 @@ func _test_quality_rolls() -> void:
 	var pays: Label = row.find_child("pays", true, false) if row != null else null
 	check("the Sell list prices a roll as its .tres - the shop lists the catalogue id",
 		pays != null and pays.text == "20 g", pays.text if pays != null else "no row")
+
+	# ON THE SHELF, "?" - the shop rolls gear at the till (the owner, 5 Oct:
+	# "item stats say ? and are revealed upon buying in shop only").
+	check("gear on the shelf rolls when bought; a potion, or a piece already rolled, does not",
+		ItemTooltip.rolls_when_bought(amulet) and ItemTooltip.rolls_when_bought(sword)
+		and not ItemTooltip.rolls_when_bought(potion) and not ItemTooltip.rolls_when_bought(sword_roll))
+	var shelf_lines: String = ItemTooltip._requirement_lines(amulet, true)
+	check("its stats read \"?\" and say they roll when bought",
+		shelf_lines.contains("? Armour") and shelf_lines.contains("+? Max Health")
+		and shelf_lines.contains("+?% Damage Bonus") and shelf_lines.contains("rolled when you buy it")
+		and not shelf_lines.contains("12"), shelf_lines)
+	var shelf_tip: Control = (load("res://scene/ui/inventory/itemtooltip.tscn") as PackedScene).instantiate()
+	add_child(shelf_tip)
+	await get_tree().process_frame
+	panel.show_catalogue({"display_name": "Kingdom Supplies", "sell_multiplier": 0.05,
+		"stock": [{"item_id": "qtest_amulet", "display_name": "Test Amulet", "price": 1456, "tier": 2,
+		"type_name": "ARMOR", "required_level": 5}], "sell_prices": {"qtest_sword": 20}})
+	panel.set_mode("buy")
+	var shelf_row: Control = null
+	for child in panel.stock_list.get_children():
+		for label in child.find_children("*", "Label", true, false):
+			if (label as Label).text == "Test Amulet":
+				shelf_row = child
+	if shelf_row != null:
+		shelf_row.mouse_entered.emit()
+	check("hovering the shelf's row shows \"?\" in the tooltip, and nothing to compare",
+		shelf_row != null and shelf_tip.visible and shelf_tip.description_label.text.contains("? Armour")
+		and not (shelf_tip.stats_box != null and shelf_tip.stats_box.visible),
+		shelf_tip.description_label.text if shelf_row != null else "no shelf row")
+	panel.set_mode("sell")
+	var owned: Node = panel.stock_list.get_node_or_null("sell_0")
+	if owned != null:
+		owned.mouse_entered.emit()
+	check("  while a piece in your bag shows its own numbers in the Sell list",
+		owned != null and shelf_tip.description_label.text.contains("21 Damage (107%)"),
+		shelf_tip.description_label.text)
+	shelf_tip.queue_free()
+	check("buying one says what it rolled", Shop.purchase_line(sword_roll, "qtest_sword~d107", 400)
+		== "Bought Test Sword for %s - quality 107%%." % GameConstants.gold_text(400),
+		Shop.purchase_line(sword_roll, "qtest_sword~d107", 400))
+	check("  and a Perfect says so", Shop.purchase_line(ItemRegistry.get_item("qtest_sword~d120"),
+		"qtest_sword~d120", 400).ends_with("a Perfect roll, every stat at 120%!"))
+	check("  and a potion is bought as before", Shop.purchase_line(potion, "qtest_potion", 200)
+		== "Bought qtest_potion for %s." % GameConstants.gold_text(200))
 	panel.queue_free()
 	bag_grid.queue_free()
 	check("the trade window says a roll's quality on its row",
@@ -7753,9 +7797,9 @@ func _test_quality_rolls() -> void:
 	menu.equip_request = func(id: String, _cell: int) -> bool:
 		equipped_ids.append(id)
 		return true
-	check("the menu offers the store's piece, a drop's roll, and a Perfect",
-		menu.quality_pick.item_count == 3 and menu.chosen_quality() == "store"
-		and Spawner.QUALITIES.map(func(q): return q[0]) == ["store", "roll", "perfect"])
+	check("the menu offers a plain 100% piece, a drop's roll, and a Perfect",
+		menu.quality_pick.item_count == 3 and menu.chosen_quality() == "plain"
+		and Spawner.QUALITIES.map(func(q): return q[0]) == ["plain", "roll", "perfect"])
 	menu.quality_pick.select(1)
 	menu.wear_toggle.button_pressed = false
 	await menu.spawn("qtest_sword")

@@ -2075,9 +2075,9 @@ drops, 85 to 115% of the number in its .tres, most often near 100 (a
 triangle peaked at 100: six stats in ten land within 5 of it, and 113% or
 more is about one in seventy). One drop in a
 hundred is **Perfect**: every stat at 120%, "Perfect" in front of its name.
-What the store sells is the .tres itself, 100% on everything. The numbers are
+Gear bought from the shop rolls the same way, at the till. The numbers are
 `GameConstants.QUALITY_*`, exported; the server rolls (`gamedata.roll_quality`
-at the bag and the mythic).
+at the bag, the mythic and `/api/shop/buy`).
 
 - **The roll is part of the item id**: `jadechest~a104h96` is a Jade Cuirass
   with armour at 104% and health at 96%. `QUALITY_MARK`, then a letter from
@@ -2112,8 +2112,19 @@ at the bag and the mythic).
   tooltip. A Perfect piece is gold: its name, a frame a pixel wider on its slot
   at any tier, and the glow of the bag it drops in (unless that bag holds a
   mythic, whose red is the bigger news). Selling one asks twice.
-- **The owner's item menu** has "Gear stats": as the store sells it, rolled
-  like a drop, or Perfect (`quality` on `/api/staff/grant`).
+- **On the shelf, "?"** (the owner, 5 Oct: "item stats say ? and are revealed
+  upon buying in shop only"). The shop lists the catalogue piece at its
+  price; `/api/shop/buy` hands over a roll of it, at that price whatever it
+  rolls, so an average purchase is still the catalogue piece. Hovering a
+  shelf row shows "? Damage" and the like and no comparison
+  (`show_for_stack(..., on_the_shelf)`, `ItemTooltip.rolls_when_bought()`);
+  the purchase line says what it rolled ("quality 104%", or a Perfect), in the
+  shop and over the player. A Sell row is something you own, and shows its
+  own numbers.
+- **The owner's item menu** has "Gear stats": plain at 100% (the only way to
+  have one now), rolled like a drop or a purchase, or Perfect (`quality` on
+  `/api/staff/grant`: plain, roll or perfect; the server still reads the
+  first build-3 game's "store" as plain).
 - **Small numbers barely move.** 85% of a 1% damage bonus is still 1%, and an
   iron boot's 3 armour is 3 from 85 to 115; only a Perfect makes it 4. The
   roll matters from the middle tiers up, where the numbers are big enough.

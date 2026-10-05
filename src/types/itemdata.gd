@@ -450,18 +450,19 @@ enum WeaponAttack {
 
 
 # =============================================================================
-# QUALITY ROLL (only on a piece that dropped)
+# QUALITY ROLL (only on a piece that dropped or was bought)
 # =============================================================================
-# A dropped piece of gear rolls each of its stats (GameConstants.QUALITY_*),
-# and the roll is part of its item id: "jadechest~a104h96". ItemRegistry hands
+# A dropped or bought piece of gear rolls each of its stats
+# (GameConstants.QUALITY_*), and the roll is part of its item id:
+# "jadechest~a104h96". ItemRegistry hands
 # back a COPY of the .tres for such an id, with item_id the whole rolled id,
 # every rolled stat already scaled, and these two filled in - so the stat
 # fields above are the numbers this piece really has, and nothing that reads
 # them needs to know a roll exists.
 #
-# NOT EXPORTED: a .tres is always the catalogue piece, 100% on everything, and
-# so is what the store sells. On the catalogue piece base_id is "" and rolls is
-# empty.
+# NOT EXPORTED: a .tres is always the catalogue piece, 100% on everything -
+# what the shop's shelf lists, before the till rolls it. On the catalogue
+# piece base_id is "" and rolls is empty.
 
 # the catalogue id under the roll - "jadechest" for "jadechest~a104h96"
 var base_id: String = ""

@@ -482,8 +482,10 @@ The letters, the range and the odds are `GameConstants.QUALITY_*`, exported as
 `quality_*` in gamedata.json. Anything else after a `~` is not an item.
 
 - **The server rolls; nothing else names a roll.** Drops roll (bags and the
-  mythic); the store sells the plain id, which is 100% on everything; a staff
-  grant takes `"quality": "store" | "roll" | "perfect"`.
+  mythic), and so does a purchase: the shelf lists the plain id, and
+  `/api/shop/buy` answers `item_id` with the roll that arrived and `stock_id`
+  with the shelf's id, at the shelf's price. A staff grant takes
+  `"quality": "plain" | "roll" | "perfect"` (`"store"` is read as plain).
 - **Every route that takes an item takes the id as seen**, roll and all: a
   move, the bin, the bank, equip, a trade offer, a sale. A rolled piece is
   never stacked (its stack is one), and naming the plain id for a rolled cell
