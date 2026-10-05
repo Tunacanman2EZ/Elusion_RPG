@@ -47,6 +47,18 @@ var _items: Dictionary = {}
 # skipped item.
 var _item_files_seen: int = 0
 
+# EVERY ROLLED PIECE ASKED FOR SO FAR: rolled id -> its ItemData copy. Kept so
+# one id is always one object - the inventory compares stacks by item_id, but
+# a tooltip or a slot holding a reference should not see a new copy every
+# time it asks. Bounded by what one player is shown, which is a few hundred
+# at the very most.
+var _rolled: Dictionary = {}
+
+# The shape of a roll after QUALITY_MARK: one lowercase letter and a two- or
+# three-digit percent, repeated. Compiled once.
+var _roll_suffix: RegEx = RegEx.create_from_string("^(?:[a-z][0-9]{2,3})+$")
+var _roll_part: RegEx = RegEx.create_from_string("([a-z])([0-9]{2,3})")
+
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
@@ -155,6 +167,14 @@ func get_item(item_id: String) -> ItemData:
 	if item_id == "":
 		return null
 
+	# A ROLLED PIECE: "ironsword~d107". A copy of the sword with its damage at
+	# 107%; see rolled_item(). A malformed roll falls through to the warning
+	# below, like any other id nobody has heard of.
+	if item_id.contains(GameConstants.QUALITY_MARK):
+		var rolled: ItemData = rolled_item(item_id)
+		if rolled != null:
+			return rolled
+
 	if not _items.has(item_id):
 		push_warning("ItemRegistry: requested unknown item_id '%s'. Reverting to fallback." % item_id)
 
@@ -171,7 +191,101 @@ func has_item(item_id: String) -> bool:
 	# silent check — returns true if an item with this id exists in the
 	# registry. unlike get_item, doesn't warn on miss. use this when
 	# checking optional items (e.g., "does this loot table item exist?").
+	if item_id.contains(GameConstants.QUALITY_MARK):
+		return rolled_item(item_id) != null
 	return _items.has(item_id)
+
+
+# =============================================================================
+# PUBLIC API — QUALITY ROLLS
+# =============================================================================
+# A dropped piece's roll is part of its id (GameConstants.QUALITY_MARK). These
+# read it with the server's rules - gamedata.split_variant() and scale_stat()
+# are the other half, and the two must agree to the point, because the server
+# derives max health from the same rolled numbers this hands to Player.
+
+func split_roll(item_id: String) -> Dictionary:
+	# {"base": "jadechest", "rolls": {"armor_value": 104, "bonus_max_hp": 96}}
+	# for a rolled id; {"base": item_id, "rolls": {}} for a plain one; and {}
+	# for anything that only looks like a roll.
+	#
+	# STRICT, BECAUSE THE ID IS THE IDENTITY - the same rules as the server:
+	# every stat the base piece has, each once, in QUALITY_FIELDS order, and
+	# either all at QUALITY_PERFECT or each inside QUALITY_LOW..QUALITY_HIGH.
+	var mark: int = item_id.find(GameConstants.QUALITY_MARK)
+	if mark < 0:
+		return {"base": item_id, "rolls": {}}
+	var base: String = item_id.substr(0, mark)
+	var suffix: String = item_id.substr(mark + 1)
+	if not _items.has(base) or _roll_suffix.search(suffix) == null:
+		return {}
+
+	var expected: Array = rolled_fields(_items[base])
+	var matches: Array = _roll_part.search_all(suffix)
+	if matches.size() != expected.size():
+		return {}
+	var rolls: Dictionary = {}
+	var perfect_count: int = 0
+	for i in matches.size():
+		var letter: String = matches[i].get_string(1)
+		var digits: String = matches[i].get_string(2)
+		if letter != String(expected[i][0]) or digits.begins_with("0"):
+			return {}
+		var percent: int = int(digits)
+		if percent == GameConstants.QUALITY_PERFECT:
+			perfect_count += 1
+		elif percent < GameConstants.QUALITY_LOW or percent > GameConstants.QUALITY_HIGH:
+			return {}
+		rolls[String(expected[i][1])] = percent
+	if perfect_count != 0 and perfect_count != rolls.size():
+		return {}
+	return {"base": base, "rolls": rolls}
+
+
+func rolled_fields(data: ItemData) -> Array:
+	# [[letter, field], ...] for every stat this piece has above zero, in
+	# QUALITY_FIELDS order. A potion, a rod or a coin has none and never rolls.
+	var out: Array = []
+	if data == null:
+		return out
+	for pair in GameConstants.QUALITY_FIELDS:
+		var field: String = String(pair[1])
+		if field in data and int(data.get(field)) > 0:
+			out.append(pair)
+	return out
+
+
+func scale_stat(number: int, percent: int) -> int:
+	# A catalogue number at this percent, to the nearest point, halves up.
+	# INTEGER ARITHMETIC, the same sum as gamedata.scale_stat(): a float that
+	# rounded differently here would put the client's max health a point away
+	# from the server's for as long as the piece is worn.
+	if number <= 0:
+		return number
+	@warning_ignore("integer_division")
+	return (number * percent + 50) / 100
+
+
+func rolled_item(item_id: String) -> ItemData:
+	# The ItemData for a rolled id: a copy of its .tres with each rolled stat
+	# scaled, item_id the whole rolled id, base_id and rolls filled in, and
+	# "Perfect " in front of a Perfect piece's name. null for a malformed roll.
+	if _rolled.has(item_id):
+		return _rolled[item_id]
+	var parts: Dictionary = split_roll(item_id)
+	if parts.is_empty() or (parts["rolls"] as Dictionary).is_empty():
+		return null
+	var base: ItemData = _items[parts["base"]]
+	var copy: ItemData = base.duplicate() as ItemData
+	copy.item_id = item_id
+	copy.base_id = String(parts["base"])
+	copy.rolls = parts["rolls"]
+	for field in copy.rolls.keys():
+		copy.set(field, scale_stat(int(base.get(field)), int(copy.rolls[field])))
+	if copy.is_perfect():
+		copy.display_name = "Perfect " + base.display_name
+	_rolled[item_id] = copy
+	return copy
 
 # =============================================================================
 # PUBLIC API — BULK QUERIES

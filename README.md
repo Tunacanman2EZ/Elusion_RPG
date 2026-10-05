@@ -176,6 +176,8 @@ Building it turned up three things the desktop never showed:
 
 Items carry two independent requirements, and the split is the interesting part. `required_level` is character level, which is right for gear you **buy** — the ladder a shop sells against. `required_skill` / `required_skill_level` is a named skill, which is right for things you **made**: a cooked shark is gated on cooking, not on how many slimes you killed, because fishing and cooking grow on their own curves and a character level bound would clamp a dedicated cook. An unknown skill name is loud and permissive — it logs an error and lets the use through, because failing closed on a typo would silently delete an item's usefulness.
 
+Dropped gear rolls each of its stats, 85–115% of the `.tres`, and one drop in a hundred is Perfect at 120% on everything. The roll lives in the item id — `jadechest~a104h96` — rather than in a column beside it, so every cell, bag, trade and equipment slot that already holds an id carries the roll without a change, and the server's "the item you saw in that cell" check covers it too. `ItemRegistry` hands back a scaled copy for a rolled id, so nothing that reads `damage` or `bonus_max_hp` needs to know rolls exist; the server does the same integer sum, because it derives max health from what is worn.
+
 ## Layout
 
 ```
@@ -228,7 +230,7 @@ That serves a hundred and five endpoints — accounts and sessions, character sa
 
 A hundred of the hundred and five require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has forty-four test suites, run together with one command:
+The backend has forty-five test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -237,7 +239,7 @@ cd <your-path>\game\api
 
 ```
 test_api.py            523 checks    the endpoint surface, moderation, presence
-test_economy.py        363 checks    the gold ledger and the supply invariant
+test_economy.py        395 checks    the gold ledger and the supply invariant, and selling to the shop
 test_security.py       294 checks    the audit's findings, held closed
 test_loot.py           259 checks    every finished item is actually obtainable
 test_equipment.py      212 checks    the equipment system, client and server
@@ -247,10 +249,11 @@ test_moderation.py     149 checks    the moderation record, a log that opens on 
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
 test_ownership.py      128 checks    no route hands over a row that is not yours
+test_pacing.py         112 checks    the pace of the game: what the server pays, the store charges and the shop pays back
 test_refusals.py       105 checks    401, 403, and the 404 that is really a 403
 test_security_doc.py   106 checks    SECURITY.md is checked, not trusted
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
-test_pacing.py          95 checks    the pace of the game: what the server pays and the store charges
+test_quality.py         77 checks    dropped gear's rolled stats, carried whole by every path
 test_friends.py         76 checks    asking, answering and ending a friendship
 test_chardelete.py      72 checks    deleting a character, and only the character
 test_chat.py            67 checks    world chat, end to end, one line as typed
@@ -280,14 +283,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,152 checks, 0 failures
+					4,278 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-fourth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-fifth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,686 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 128 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,747 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 128 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `2648 passed, 0 failed, 19 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other eighteen are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2707 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
@@ -312,7 +315,7 @@ Without the service running, the login screen will tell you it can't reach the s
 
 What that means if you clone: 134 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
 
-The test suite understands the difference. The eighteen checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
+The test suite understands the difference. The twenty checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
 
 This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on two of those textures, and `preload` resolves at compile time — so in a clone that script did not compile and `KingdomBoard` did not exist. One missing decoration removed an entire screen, silently. It now holds paths and loads lazily, and the header keeps its column widths when the texture is null.
 

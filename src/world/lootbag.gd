@@ -303,6 +303,18 @@ static func rare_tier_of(contents: Array, has_pet: bool) -> int:
 	return best
 
 
+static func holds_perfect(contents: Array) -> bool:
+	"""True when a Perfect piece is in the bag - one drop in a hundred, every
+	stat at GameConstants.QUALITY_PERFECT. Such a bag glows gold whatever its
+	tier: a Perfect iron sword is a find, and an unlit sack would hide it."""
+	for entry in contents:
+		if entry is Dictionary:
+			var data: ItemData = ItemRegistry.get_item(str(entry.get("item_id", "")))
+			if data != null and data.is_perfect():
+				return true
+	return false
+
+
 func glow_tier() -> int:
 	"""The tier the bag is glowing for, or 0 when it is not glowing."""
 	return _glow_tier if _glow != null and _glow.visible else 0
@@ -310,7 +322,8 @@ func glow_tier() -> int:
 
 func _apply_glow() -> void:
 	var tier: int = rare_tier_of(_contents, _has_pet)
-	var lit: bool = tier >= GameConstants.RARE_GLOW_MIN_TIER
+	var perfect: bool = holds_perfect(_contents)
+	var lit: bool = perfect or tier >= GameConstants.RARE_GLOW_MIN_TIER
 	if not lit:
 		_glow_tier = 0
 		if _glow != null:
@@ -323,6 +336,10 @@ func _apply_glow() -> void:
 		_build_glow()
 	_glow_tier = tier
 	var colour: Color = GameConstants.rarity_colour(tier)
+	# GOLD FOR A PERFECT PIECE, unless the bag holds a mythic: that red pillar
+	# is the rarer news, and a Perfect mythic is still told by its name.
+	if perfect and not is_mythic():
+		colour = GameConstants.QUALITY_PERFECT_COLOUR
 	for part in _glow.get_children():
 		if part is Sprite2D:
 			var tex: GradientTexture2D = (part as Sprite2D).texture

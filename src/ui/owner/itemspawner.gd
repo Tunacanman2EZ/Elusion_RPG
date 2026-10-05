@@ -19,6 +19,10 @@
 #   gates still apply and say why when they refuse.
 # - SETTING YOUR LEVEL WAS HERE AND MOVED to the GM panel's Testing tab (Day
 #   3, the owner's call), beside the other things done to your own character.
+# - "GEAR STATS" says which roll a piece of gear comes with (5 Oct, quality
+#   rolls): as the store sells it, rolled the way a drop is, or Perfect - so
+#   the one-in-a-hundred can be seen without granting a hundred. The server
+#   rolls it; this only names which (QUALITIES).
 #
 # OWNER ONLY, three times over: the HUD builds the button only for the owner,
 # every request here asks Api.is_owner first, and the server is the gate that
@@ -34,6 +38,14 @@ const GRANT_PATH := "/api/staff/grant"
 const CATEGORIES: Array[String] = [
 	"All", "Weapons", "Armour", "Jewellery", "Potions and food", "Pets",
 	"Fishing", "Currency", "Other",
+]
+
+# What /api/staff/grant's "quality" may be, in the order the list shows them:
+# [what the server calls it, what the owner reads].
+const QUALITIES: Array = [
+	["store", "As the store sells it (100%)"],
+	["roll", "Rolled, like a drop"],
+	["perfect", "Perfect (every stat at %d%%)" % GameConstants.QUALITY_PERFECT],
 ]
 
 # A cell: the icon drawn at twice its 16 pixels, inside a two-pixel frame.
@@ -56,6 +68,7 @@ var equip_request: Callable
 @onready var count_label: Label = %countlabel
 @onready var quantity: SpinBox = %itemquantity
 @onready var wear_toggle: CheckBox = %wearit
+@onready var quality_pick: OptionButton = %itemquality
 @onready var status: Label = %spawnstatus
 @onready var close_button: Button = %itemspawnerclose
 
@@ -74,6 +87,9 @@ func _ready() -> void:
 	_window = PanelWindow.attach(self, "itemspawner")
 	for name_ in CATEGORIES:
 		category.add_item(name_)
+	for pair in QUALITIES:
+		quality_pick.add_item(String(pair[1]))
+	quality_pick.select(0)
 	category.item_selected.connect(func(_i: int) -> void: refresh())
 	search.text_changed.connect(func(_t: String) -> void: refresh())
 	close_button.pressed.connect(close)
@@ -241,6 +257,11 @@ func typed_quantity() -> int:
 	return int(quantity.value)
 
 
+func chosen_quality() -> String:
+	# The roll the owner picked, as the server names it.
+	return String(QUALITIES[clampi(quality_pick.selected, 0, QUALITIES.size() - 1)][0])
+
+
 func spawn(item_id: String) -> void:
 	if not Api.is_owner:
 		_say("The item menu is the owner's.", true)
@@ -257,6 +278,7 @@ func spawn(item_id: String) -> void:
 		"slot": CharacterData.active_character_index,
 		"item_id": item_id,
 		"quantity": how_many,
+		"quality": chosen_quality(),
 	})
 	_busy = false
 	if not is_instance_valid(self) or not is_inside_tree():
@@ -268,13 +290,23 @@ func spawn(item_id: String) -> void:
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 	var cells: Array = data.get("inventory", []) if data.get("inventory", []) is Array else []
 	adopt_bag.call(CharacterData.active_character_index, cells)
+	# WHAT ARRIVED, which for rolled gear is a piece with its own id: the roll
+	# is the server's, so the line, the name and the equip all use its answer.
+	var granted_id: String = str(data.get("granted_item_id", item_id))
+	var granted: ItemData = ItemRegistry.get_item(granted_id) if granted_id != item_id else item
+	if granted == null:
+		granted = item
+		granted_id = item_id
+	item = granted
 	var line: String = "Added %d × %s to your bag." % [how_many, item.display_name]
+	if item.is_rolled():
+		line = "Added %s to your bag, quality %d%%." % [item.display_name, item.quality_percent()]
 
 	var wearable: bool = item.equip_slot != ItemData.EquipSlot.NONE
 	if wearable and wear_toggle.button_pressed:
 		var written: Array = data.get("carry_positions", []) if data.get("carry_positions", []) is Array else []
 		var cell: int = int(written[0]) if not written.is_empty() else -1
-		var worn: bool = await equip_request.call(item_id, cell)
+		var worn: bool = await equip_request.call(granted_id, cell)
 		if not is_instance_valid(self) or not is_inside_tree():
 			return
 		line = ("Added %s and put it on." % item.display_name) if worn \

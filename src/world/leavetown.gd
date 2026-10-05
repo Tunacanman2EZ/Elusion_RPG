@@ -121,10 +121,26 @@ func _vanish() -> void:
 	# The portal closing behind you is a teleport moment of its own. Day 2:
 	# the owner asked for the sound on the second and third portals, the town's
 	# way out and this one, the field's arrival portal.
-	Audio.play("teleport")
+	#
+	# BUT NOT TWICE. The trip's own sound is 1.5 s and the fade between areas
+	# about 0.3, so a player still holding the key that walked them into the
+	# town's portal steps straight off this one while that sound is ringing,
+	# and the closing sound landed on top of it: the owner heard the teleport
+	# twice going through the second portal (5 Oct). Somebody who walked
+	# straight through has already heard it; somebody who stood here first
+	# hears the portal close.
+	if not Audio.is_playing("teleport"):
+		Audio.play("teleport")
 	var target: CanvasItem = _visual_target()
+	# THE PORTAL'S OWN PICTURE, NOT WHAT IS PARENTED TO IT. modulate is
+	# inherited, and field.tscn's portal sprite has 39 props under it - the
+	# ribcage, rubble, crates, pillars, lanterns, cages and the skeleton - so
+	# fading its modulate faded all of them away with the portal. self_modulate
+	# is the node's own drawing only. The trigger itself (no visual set) keeps
+	# modulate, because there the art IS its child.
+	var property: String = "modulate:a" if target == self else "self_modulate:a"
 	var tween := create_tween()
-	tween.tween_property(target, "modulate:a", 0.0, 1.0)
+	tween.tween_property(target, property, 0.0, 1.0)
 	tween.tween_callback(_disable_after_vanish)
 
 

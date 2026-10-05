@@ -2021,12 +2021,36 @@ drop-only.
 
 - **Anyone may buy any piece; it is worn at its level.** The row says "Lv 5"
   before you pay, and the server's equip check refuses it until then.
-- **The next set is about three to four hours away.** At five kills a minute
-  in the band you are in, a jade plate set (4,584) is 3.7 hours of iron-band
-  gold, cobalt (11,920) 3.2 hours of jade-band gold, amethyst (30,920) 3.1
-  hours of cobalt-band gold; each cloth set is within a quarter of an hour of
-  its plate set. The API's `test_pacing.py` measures it through the real kill
-  roll.
+- **The next set is about six to eight hours away** (it was three to four
+  until the 5 Oct price pass below). At five kills a minute in the band you
+  are in, a jade plate set (9,168) is 7.5 hours of iron-band gold, cobalt
+  (23,840) 6.5 hours of jade-band gold, amethyst (61,840) 6.1 hours of
+  cobalt-band gold; each cloth set is within half an hour of its plate set.
+  The API's `test_pacing.py` measures it through the real kill roll.
+- **The 5 Oct price pass.** The owner: a few lucky kills or a good fishing
+  trip made the old prices trivial, and a cooked fish cost about four times a
+  potion for every point either healed. Every weapon, armour piece, amulet and
+  rod doubled (`value` in its .tres); every potion quadrupled, which puts a
+  potion within a fifth of the cooked fish of its tier per point healed, at
+  every tier. Worms, fish, gold, lusions and pets did not change. Gold drops
+  do not read item values (`GOLD_TIER_RATIO`), so prices are a pure sink, and
+  the trade tax (5% of `value`) moved with them.
+- **The shop buys** (5 Oct, the owner: "we should be able to sell items to
+  the shop"). Every piece of a tier is the same piece, so a second jade sword
+  was worth nothing to its finder. The panel has Buy and Sell under the purse;
+  Sell lists the backpack cells the shop will take, at `sell_prices` from the
+  catalogue answer, with Sell 1 and Sell all on a stack. A sale is
+  `POST /api/shop/sell` with the cell and the item seen in it; the answer's
+  purse and bag are drawn, and a `409` adopts the `resync` and redraws. Ember
+  and mythic gear ask twice ("Sure?"). `ShopData.sell_multiplier` is 0.05:
+  selling mints gold, gear drops are worth seven or eight times an hour's coin,
+  and at 0.1 a player selling everything reached the next set in about four
+  hours, undoing the price pass the same day. `_test_the_shop_buys`; the API's
+  `test_economy.py` and `test_pacing.py` hold the server half.
+- **A price edit is an export.** The store and the trade tax read
+  gamedata.json, not the .tres, so an edited `value` that is not exported
+  shows one price and charges another. `_test_the_export_carries_every_price`
+  fails until the exporter runs, and holds the potion-to-fish rule.
 - **One shelf per band.** `show_catalogue()` starts a heading whenever
   `shelf_of()` changes, so the stock is listed potions first, then fishing
   ("Fishing · rods and worms": a rod is any id ending `fishingrod` and the bait
@@ -2041,6 +2065,63 @@ drop-only.
   Until then the suite fails "data/gamedata.json carries the same stock".
 
 `_test_the_store_sells_the_next_set` holds the game side.
+
+### Dropped gear rolls its stats, and the roll is in the id
+
+The owner, 5 Oct: "random stats on all items because it gives loot a better
+value if a rare max roll". Every stat a dropped piece of gear has - damage,
+armour, max health, max mana, the damage bonus - rolls on its own when it
+drops, 85 to 115% of the number in its .tres, most often near 100 (a
+triangle peaked at 100: six stats in ten land within 5 of it, and 113% or
+more is about one in seventy). One drop in a
+hundred is **Perfect**: every stat at 120%, "Perfect" in front of its name.
+What the store sells is the .tres itself, 100% on everything. The numbers are
+`GameConstants.QUALITY_*`, exported; the server rolls (`gamedata.roll_quality`
+at the bag and the mythic).
+
+- **The roll is part of the item id**: `jadechest~a104h96` is a Jade Cuirass
+  with armour at 104% and health at 96%. `QUALITY_MARK`, then a letter from
+  `QUALITY_FIELDS` and a percent for every stat the piece has, in that order.
+  Every cell, bag entry, trade row, hotbar key and the equipment map already
+  hold an id, so a rolled piece is moved, worn, banked, traded and sold by the
+  paths that exist, and the server's "the item the game saw in that cell"
+  check covers the roll too. **Never change a letter** once a piece has
+  dropped: every stored roll is spelled with them.
+- **`ItemRegistry.get_item()` reads it.** For a rolled id it hands back a COPY
+  of the .tres (`rolled_item()`, cached, so one id is one object) with
+  `item_id` the whole rolled id, every rolled stat already scaled, `base_id`
+  and `rolls` filled in. So `player.gd`, the Gear window, the tooltip's
+  comparison and everything else that reads `damage` or `bonus_max_hp` gets
+  the rolled number without knowing a roll exists. `split_roll()` is as strict
+  as the server's `split_variant()` - every stat once, in order, 85-115 or
+  all 120 - and a malformed roll is an unknown id.
+- **The rounding is integer and halves up, on both sides**
+  (`ItemRegistry.scale_stat`, `gamedata.scale_stat`), because the server
+  derives max health from the same rolled numbers; a float rounding one way
+  here and another there is a point of health apart and a clamp on every save.
+  Both suites hold one table of pairs; change one side and both go red.
+- **Ask `catalogue_id()` for anything keyed by the catalogue.** A rolled
+  piece's `item_id` is not a key of the shop's `sell_prices` or of anything
+  else built from the .tres files; the Sell list reads the price by
+  `catalogue_id()`. A roll changes what a piece does, not what it is worth:
+  `value` is the .tres's, so the shop pays the same for any roll and the trade
+  tax is the same.
+- **Where a roll shows**: the tooltip puts each rolled stat's percent after it
+  ("21 Damage (107%)") and the rarity line says "Quality 104%" (the rolls
+  averaged); the trade window says the quality on the row and the stats in its
+  tooltip. A Perfect piece is gold: its name, a frame a pixel wider on its slot
+  at any tier, and the glow of the bag it drops in (unless that bag holds a
+  mythic, whose red is the bigger news). Selling one asks twice.
+- **The owner's item menu** has "Gear stats": as the store sells it, rolled
+  like a drop, or Perfect (`quality` on `/api/staff/grant`).
+- **Small numbers barely move.** 85% of a 1% damage bonus is still 1%, and an
+  iron boot's 3 armour is 3 from 85 to 115; only a Perfect makes it 4. The
+  roll matters from the middle tiers up, where the numbers are big enough.
+- **Build 3.** A build-2 game reads a rolled id as the error item, so the
+  wire build went up (`Api.BUILD`, the API's `CURRENT_CLIENT_BUILD`). Raise the
+  server's minimum to 3 once the new game is out.
+
+`_test_quality_rolls`; the API's `test_quality.py` holds the server half.
 
 ### Bosses hit for their band
 
@@ -3230,6 +3311,19 @@ scene change because `Audio` is an autoload. docs/audio.md has how it was made.
   arrival portal is driven for real: quiet when you land, one teleport sound
   when it closes. The sound goes after `leavetown.gd`'s arrival-only return,
   or every arrival in the field would play it a second time.
+- **But not on top of the trip's own sound** (5 Oct, the owner: "a double
+  sound going through second teleport"). The teleport sound is 1.5 s and the
+  fade between areas about 0.3, so a player still holding the key stepped off
+  the arrival portal while the departure sound rang, and the closing sound
+  landed on it. `_vanish()` plays only when `Audio.is_playing("teleport")` is
+  false: walk straight through and you hear one sound; stand on the portal
+  first and you hear it close.
+- **A closing portal fades its own picture, not what is parented to it.**
+  `_vanish()` tweens the `visual` target's `self_modulate`, because `modulate`
+  is inherited and field.tscn's portal sprite has 39 props under it (the
+  ribcage, rubble, crates, pillars, lanterns, cages and the skeleton). They
+  all faded away with the portal. With no `visual` set the trigger fades its
+  own `modulate`, because there the art is its child.
 
 ### The owner's item catalogue, and the owner's level
 

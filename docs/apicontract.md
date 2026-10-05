@@ -341,6 +341,7 @@ null, "reason": "stale_save"}`, which the game adopts without a message.
 | `POST /api/character/inventory/move` | `{slot, from, to, item_id}` | A drag: onto an empty cell it moves, onto the same stackable item it merges up to the stack limit (the rest stays), onto anything else it swaps. Keys are cells 20-29 like any other. |
 | `POST /api/character/inventory/discard` | `{slot, position, item_id}` | The bin: the whole stack in that cell is destroyed. Answers `discarded`. |
 | `POST /api/character/inventory/cash` | `{slot, position, item_id}` | A pile of gold coins, or of lusions: the cell is emptied and the balance credited through the ledger. Answers `gold`, `lusions` and `cashed`. `409` "That is not money." for anything else. |
+| `POST /api/shop/sell` | `{slot, shop_id, position, item_id, quantity?}` | Sell to a vendor: `quantity` from that cell (the whole stack when left out) at the shop's price, which `GET /api/shop/<shop_id>` lists as `sell_prices` (item_id -> gold each; a rolled piece sells at its catalogue id's price). The gold is minted through the ledger (reason `shop_sell`). Answers `gold`, `inventory`, `unit_price` and `total_received`. `400` "The shop does not buy that." for money, pets and quest items; more than the cell holds is the same `409` with `resync`. |
 
 `POST /api/character/consume`, `POST /api/character/equip` and
 `POST /api/bank/items` take an optional `position`: the cell the player used,
@@ -465,6 +466,39 @@ went back to the purse at the next login.
 
 ---
 
+## Item ids, and the roll a dropped piece carries
+
+An item id is a catalogue id (`ironsword`) - or, for a piece of gear that
+**dropped**, that id with its quality roll after a `~`:
+
+    jadechest~a104h96          armour 104%, max health 96%
+    ironsword~d107             damage 107%
+    jadeamulet~a120h120m120p120   Perfect: every stat at 120%
+
+One letter per stat the piece has above zero, in this order and only those:
+`d` damage, `a` armor_value, `h` bonus_max_hp, `m` bonus_max_mana,
+`p` bonus_damage_percent; each percent 85-115, or every one at 120 (Perfect).
+The letters, the range and the odds are `GameConstants.QUALITY_*`, exported as
+`quality_*` in gamedata.json. Anything else after a `~` is not an item.
+
+- **The server rolls; nothing else names a roll.** Drops roll (bags and the
+  mythic); the store sells the plain id, which is 100% on everything; a staff
+  grant takes `"quality": "store" | "roll" | "perfect"`.
+- **Every route that takes an item takes the id as seen**, roll and all: a
+  move, the bin, the bank, equip, a trade offer, a sale. A rolled piece is
+  never stacked (its stack is one), and naming the plain id for a rolled cell
+  is the same `409` as any stale cell.
+- **A stat is the catalogue number at its percent, halves up, in whole
+  numbers**: `(number * percent + 50) // 100`. Both sides do exactly this sum,
+  because the server derives `max_hp` / `max_mana` from what is worn.
+- **A roll changes what a piece does, not its price.** `value` is the
+  catalogue's; `sell_prices` and the trade tax use it, keyed by the catalogue
+  id.
+- **Client build 3** reads rolled ids; a build-2 game shows one as the error
+  item.
+
+---
+
 ## Combat
 
 ### `POST /api/combat/kill`
@@ -495,7 +529,9 @@ it. `attack_xp_gained` is what was banked; the three `attack_*` fields are where
 the skill now stands, and the client sets its attack bar to them rather than
 adding up its own.
 
-An empty `bag_id` means nothing dropped and the client spawns no bag. **Every
+A piece of gear in `contents`, and the `mythic` named beside them, carries its
+quality roll in its id (see "Item ids" above). An empty `bag_id` means nothing
+dropped and the client spawns no bag. **Every
 entry carries its `position`** — that number is the only thing
 `/api/loot/take` accepts, and inferring it from array order on each side
 separately is how a client ends up asking for a different item than the one the

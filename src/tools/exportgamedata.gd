@@ -446,6 +446,7 @@ func _validate(constants: Dictionary, items: Array, enemies: Array, classes: Arr
 
 	_validate_recipes(items, known)
 	_validate_skill_curves(constants)
+	_validate_quality(constants)
 	_validate_equipment(items, classes)
 
 	# Every check above reports through _fail(), including the restore checks
@@ -637,6 +638,45 @@ func _validate_skill_curves(constants: Dictionary) -> void:
 
 	if int(constants.get("kingdom_tax_minimum", 0)) < 1:
 		_fail("constants.kingdom_tax_minimum must be at least 1, or small trades are untaxed and splitting a big one avoids the sink entirely.")
+
+
+func _validate_quality(constants: Dictionary) -> void:
+	# THE ROLL RANGE MUST HOLD 100, or a roll could never land on the piece's
+	# own number and the triangle the server draws from has no peak. The
+	# Perfect sits above the range, so a Perfect is never an ordinary roll.
+	var low: int = int(constants.get("quality_low", 0))
+	var high: int = int(constants.get("quality_high", 0))
+	var perfect: int = int(constants.get("quality_perfect", 0))
+	if low < 10 or low > 100 or high < 100 or high > 999:
+		_fail("constants.quality_low/high are %d/%d - the range must run from 10-100 to 100-999." % [low, high])
+	if perfect <= high or perfect > 999:
+		_fail("constants.quality_perfect is %d - it must be above quality_high (%d) and at most 999." % [perfect, high])
+	if int(constants.get("quality_perfect_odds", 0)) < 1:
+		_fail("constants.quality_perfect_odds must be at least 1 (one Perfect in N drops).")
+
+	# EVERY LETTER IS ONE STAT, ONCE, AND A REAL ONE. A rolled id is spelled
+	# with these, so a letter used twice would read one stat's roll as
+	# another's, and NEVER CHANGE ONE once a piece has dropped: every roll
+	# already stored is spelled with the old letter, and would stop being an
+	# item at all.
+	var fields: Array = constants.get("quality_fields", [])
+	var letters: Dictionary = {}
+	var probe := ItemData.new()
+	if fields.is_empty():
+		_fail("constants.quality_fields is empty - no stat could roll.")
+	for pair in fields:
+		if not (pair is Array) or pair.size() != 2:
+			_fail("constants.quality_fields holds %s - each entry is [letter, field]." % str(pair))
+			continue
+		var letter: String = String(pair[0])
+		var field: String = String(pair[1])
+		if letter.length() != 1 or letter < "a" or letter > "z":
+			_fail("quality_fields letter '%s' must be one lowercase letter." % letter)
+		if letters.has(letter):
+			_fail("quality_fields uses '%s' for both %s and %s." % [letter, letters[letter], field])
+		letters[letter] = field
+		if not (field in probe) or typeof(probe.get(field)) != TYPE_INT:
+			_fail("quality_fields names '%s', which is not a whole-number ItemData stat." % field)
 
 
 func _report_iconless() -> void:
@@ -1406,6 +1446,7 @@ func _export_shops(items: Array) -> Array:
 			"display_name":     shop.display_name,
 			"stock":            stock,
 			"price_multiplier": float(shop.price_multiplier),
+			"sell_multiplier":  float(shop.sell_multiplier),
 			"restock_seconds":  float(shop.restock_seconds),
 		})
 
@@ -1529,6 +1570,14 @@ func _export_constants() -> Dictionary:
 		# THE MYTHIC TIER. Each enemy's odds travel on its own row as
 		# mythic_odds. This says which tier those odds pay out from.
 		"mythic_tier":          int(game_consts.get("MYTHIC_TIER", 6)),
+		# QUALITY ROLLS. The server rolls a dropped piece's stats and reads a
+		# rolled id back; the range, the Perfect and the letter for each stat
+		# are the game's, like every other balance number here.
+		"quality_low":          int(game_consts.get("QUALITY_LOW", 85)),
+		"quality_high":         int(game_consts.get("QUALITY_HIGH", 115)),
+		"quality_perfect":      int(game_consts.get("QUALITY_PERFECT", 120)),
+		"quality_perfect_odds": int(game_consts.get("QUALITY_PERFECT_ODDS", 100)),
+		"quality_fields":       game_consts.get("QUALITY_FIELDS", []),
 
 		# The gold alternative to that lusion price. A share rather than a
 		# figure, so the server computes it against a balance it owns rather

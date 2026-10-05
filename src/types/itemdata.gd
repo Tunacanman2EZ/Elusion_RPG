@@ -447,3 +447,62 @@ enum WeaponAttack {
 # which enemy this pet came from — display flair for the future pet-collection
 # UI and for organizing pets by source. e.g. "Archer", "Fire Sprite", "Boss".
 @export var pet_source_name: String = ""
+
+
+# =============================================================================
+# QUALITY ROLL (only on a piece that dropped)
+# =============================================================================
+# A dropped piece of gear rolls each of its stats (GameConstants.QUALITY_*),
+# and the roll is part of its item id: "jadechest~a104h96". ItemRegistry hands
+# back a COPY of the .tres for such an id, with item_id the whole rolled id,
+# every rolled stat already scaled, and these two filled in - so the stat
+# fields above are the numbers this piece really has, and nothing that reads
+# them needs to know a roll exists.
+#
+# NOT EXPORTED: a .tres is always the catalogue piece, 100% on everything, and
+# so is what the store sells. On the catalogue piece base_id is "" and rolls is
+# empty.
+
+# the catalogue id under the roll - "jadechest" for "jadechest~a104h96"
+var base_id: String = ""
+
+# {stat field: percent}, e.g. {"armor_value": 104, "bonus_max_hp": 96}
+var rolls: Dictionary = {}
+
+
+func catalogue_id() -> String:
+	# The .tres this piece is a roll of, or its own id when it is not rolled.
+	# Ask this, not item_id, for anything priced or listed by the catalogue -
+	# the shop's sell list is keyed by it.
+	return base_id if base_id != "" else item_id
+
+
+func is_rolled() -> bool:
+	return not rolls.is_empty()
+
+
+func is_perfect() -> bool:
+	# Every stat at QUALITY_PERFECT. split_roll() refuses any other mix with it.
+	if rolls.is_empty():
+		return false
+	for percent in rolls.values():
+		if int(percent) != GameConstants.QUALITY_PERFECT:
+			return false
+	return true
+
+
+func roll_percent(field: String) -> int:
+	# This stat's roll, 100 for one that did not roll.
+	return int(rolls.get(field, 100))
+
+
+func quality_percent() -> int:
+	# The rolls averaged, to the nearest whole percent: one number for "how
+	# good is this one". 100 for a piece that did not roll.
+	if rolls.is_empty():
+		return 100
+	var total: int = 0
+	for percent in rolls.values():
+		total += int(percent)
+	return int(round(float(total) / float(rolls.size())))
+

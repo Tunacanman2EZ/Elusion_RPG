@@ -199,6 +199,19 @@ func play(id: String, volume_db: float = 0.0, pitch_variation: float = DEFAULT_P
 	player.play()
 
 
+func is_playing(id: String) -> bool:
+	# True while a non-positional sound with this id is still sounding. For a
+	# moment that would otherwise lay the same sound over itself: the field's
+	# arrival portal closing while the trip's own teleport sound still rings.
+	var stream: AudioStream = _stream_for(id)
+	if stream == null:
+		return false
+	for p in _sfx_pool:
+		if p.playing and p.stream == stream:
+			return true
+	return false
+
+
 func play_at(id: String, world_position: Vector2, volume_db: float = 0.0, pitch_variation: float = DEFAULT_PITCH_VARIATION) -> void:
 	# Positional: attenuates and pans with distance from the listener. Correct
 	# for things happening out in the world — an enemy dying across the map

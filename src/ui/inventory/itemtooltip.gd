@@ -210,10 +210,14 @@ func _populate_labels(stack: ItemStack) -> void:
 		var colour: Color = _name_default_colour
 		if tier >= GameConstants.RARITY_FRAME_MIN_TIER:
 			colour = GameConstants.rarity_colour(tier)
+		# A PERFECT PIECE'S NAME IS GOLD at any tier, the colour its slot is
+		# framed in, so the one in a hundred is seen before it is read.
+		if stack.data.is_perfect():
+			colour = GameConstants.QUALITY_PERFECT_COLOUR
 		name_label.add_theme_color_override("font_color", colour)
 
 	if rarity_label != null:
-		rarity_label.text = GameConstants.rarity_name(int(stack.data.tier))
+		rarity_label.text = rarity_text(stack.data)
 		rarity_label.add_theme_color_override("font_color", GameConstants.rarity_colour(int(stack.data.tier)))
 
 	if description_label != null:
@@ -277,6 +281,26 @@ func _populate_labels(stack: ItemStack) -> void:
 # =============================================================================
 # COMPARED WITH WHAT YOU ARE WEARING
 # =============================================================================
+
+static func rarity_text(data: ItemData) -> String:
+	# "Rare", and for a piece that dropped with a roll, how good the roll is:
+	# "Rare  ·  Quality 104%" - its stats' rolls averaged. A store piece is
+	# 100% by definition and says nothing more.
+	var text: String = GameConstants.rarity_name(int(data.tier))
+	if data.is_rolled():
+		text += "  ·  Quality %d%%" % data.quality_percent()
+	return text
+
+
+static func roll_note(data: ItemData, field: String) -> String:
+	# " (107%)" after a stat that rolled, "" after one that did not. On every
+	# rolled stat, including a +1% that rounds to the same point at 85 and 115:
+	# the roll is the piece's, and hiding it where the rounding swallows it
+	# would make two pieces of one roll read differently.
+	if data == null or not data.rolls.has(field):
+		return ""
+	return " (%d%%)" % int(data.rolls[field])
+
 
 static func compare_rows(candidate: ItemData, worn: ItemData) -> Array:
 	# One {label, delta, suffix} per stat that would change, in COMPARED_STATS
@@ -368,7 +392,13 @@ func _add_compare_row(label: String, value: String, colour: Color) -> void:
 # POSITIONING
 # =============================================================================
 
-func _requirement_lines(data: ItemData) -> String:
+static func stats_and_needs(data: ItemData) -> String:
+	# The stats line and the needs line, for a window with no tooltip of its
+	# own to put them in - the trade panel's rows. Static for that reason.
+	return _requirement_lines(data)
+
+
+static func _requirement_lines(data: ItemData) -> String:
 	# One line of stats, one of requirements, either omitted when empty.
 	#
 	# NOTHING FOR A PLAIN MATERIAL, which is most of the catalogue. A tooltip
@@ -377,21 +407,24 @@ func _requirement_lines(data: ItemData) -> String:
 	var lines := PackedStringArray()
 
 	var stats := PackedStringArray()
+	# A ROLLED PIECE'S NUMBERS ARE ALREADY ITS OWN - ItemRegistry scaled them -
+	# and each one says its roll after it: "22 damage (110%)".
 	if "damage" in data and int(data.damage) > 0:
-		stats.append("%d damage" % int(data.damage))
+		stats.append("%d damage%s" % [int(data.damage), roll_note(data, "damage")])
 	if "armor_value" in data and int(data.armor_value) > 0:
-		stats.append("%d armour" % int(data.armor_value))
+		stats.append("%d armour%s" % [int(data.armor_value), roll_note(data, "armor_value")])
 	# WHAT THE AMULETS ADD. Signed, because these are added to the character
 	# rather than being the item's own number the way damage and armour are.
 	if "bonus_max_hp" in data and int(data.bonus_max_hp) > 0:
-		stats.append("+%d max health" % int(data.bonus_max_hp))
+		stats.append("+%d max health%s" % [int(data.bonus_max_hp), roll_note(data, "bonus_max_hp")])
 	if "bonus_max_mana" in data and int(data.bonus_max_mana) > 0:
-		stats.append("+%d max mana" % int(data.bonus_max_mana))
+		stats.append("+%d max mana%s" % [int(data.bonus_max_mana), roll_note(data, "bonus_max_mana")])
 	if "bonus_damage_percent" in data and int(data.bonus_damage_percent) > 0:
 		# "damage bonus", not "damage": a sword's line read "32 Damage, +2%
 		# Damage", one word for two different numbers. The comparison rows and
 		# the Gear window call it the same thing.
-		stats.append("+%d%% damage bonus" % int(data.bonus_damage_percent))
+		stats.append("+%d%% damage bonus%s" % [int(data.bonus_damage_percent),
+			roll_note(data, "bonus_damage_percent")])
 	if "restore_amount" in data and int(data.restore_amount) > 0:
 		var pool: String = ItemData.RestoreTarget.keys()[int(data.restore_target)] \
 			if int(data.restore_target) < ItemData.RestoreTarget.size() else ""

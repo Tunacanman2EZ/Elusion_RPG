@@ -164,9 +164,15 @@ func _paint_rarity() -> void:
 	if _rarity_frame == null:
 		return
 	var tier: int = 0 if is_empty() else int(stack.data.tier)
-	var framed: bool = tier >= GameConstants.RARITY_FRAME_MIN_TIER
+	# A PERFECT PIECE IS FRAMED IN GOLD, a pixel wider, whatever its tier -
+	# an iron one included, which would otherwise have no frame at all.
+	var perfect: bool = not is_empty() and stack.data.is_perfect()
+	var framed: bool = perfect or tier >= GameConstants.RARITY_FRAME_MIN_TIER
 	_rarity_frame.visible = framed
-	if framed:
+	_rarity_box.set_border_width_all(3 if perfect else 2)
+	if perfect:
+		_rarity_box.border_color = GameConstants.QUALITY_PERFECT_COLOUR
+	elif framed:
 		_rarity_box.border_color = GameConstants.rarity_colour(tier)
 
 

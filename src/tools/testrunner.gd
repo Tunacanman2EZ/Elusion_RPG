@@ -154,7 +154,8 @@ func _run_all() -> void:
 	_test_art_folders_are_licensed()
 	_test_third_party_licences()
 	_test_audio_paths()
-	_test_every_portal_makes_a_sound()
+	await _test_every_portal_makes_a_sound()
+	_test_the_export_carries_every_price()
 	_test_chat_picture_sweep()
 	_test_chat_deletions_reach_the_client()
 	_test_security_policy()
@@ -241,6 +242,8 @@ func _run_all() -> void:
 	_test_a_window_never_outgrows_the_screen()
 	await _test_banked_gold_goes_through_the_server()
 	_test_the_store_sells_the_next_set()
+	await _test_the_shop_buys()
+	await _test_quality_rolls()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -1377,13 +1380,104 @@ func _test_every_portal_makes_a_sound() -> void:
 	check("  once: it closes one time", playing_teleport.call() == 1,
 		playing_teleport.call())
 
+	# 5 Oct, the owner: "a double sound going through second teleport". The
+	# trip's own sound is 1.5 s and the fade 0.3, so walking straight off the
+	# arrival portal closed it while that sound still rang.
+	for p in Audio._sfx_pool:
+		if p.stream == tele_stream:
+			p.stop()
+	Audio.play("teleport")
+	var straight = (load("res://src/world/leavetown.gd") as GDScript).new()
+	straight.arrival_only = true
+	straight.vanish_after_first_use = true
+	add_child(straight)
+	straight._on_body_entered(lander)
+	straight._on_body_exited(lander)
+	check("walking straight off it while the trip's sound still rings plays no second one",
+		playing_teleport.call() == 1, playing_teleport.call())
+	check("  Audio.is_playing() says what is sounding",
+		Audio.is_playing("teleport") and not Audio.is_playing("door"))
+
+	# THE PORTAL FADES, NOT WHAT IS PARENTED TO IT. field.tscn's portal sprite
+	# has the ribcage, rubble, crates, pillars and lanterns under it, and they
+	# went with it when it closed.
+	var art := Sprite2D.new()
+	art.name = "portalart"
+	var crate := Sprite2D.new()
+	art.add_child(crate)
+	add_child(art)
+	var faded = (load("res://src/world/leavetown.gd") as GDScript).new()
+	faded.vanish_after_first_use = true
+	add_child(faded)
+	faded.visual = faded.get_path_to(art)
+	faded._vanish()
+	await get_tree().create_timer(1.15).timeout
+	check("closing fades the portal's own picture",
+		is_zero_approx(art.self_modulate.a), art.self_modulate)
+	check("  and nothing parented to it", art.modulate.a == 1.0 and crate.modulate.a == 1.0
+		and crate.self_modulate.a == 1.0, [art.modulate, crate.modulate])
+	check("  and the portal can no longer be used", not faded.can_teleport)
+
 	for p in Audio._sfx_pool:
 		if p.stream == tele_stream:
 			p.stop()
 	portal.queue_free()
+	straight.queue_free()
+	faded.queue_free()
+	art.queue_free()
 	lander.free()
 	print("  %d doors between areas, %d silent; the arrival portal driven both ways"
 		% [doors, silent.size()])
+
+
+# =============================================================================
+# THE SERVER CHARGES WHAT THE .tres SAYS, OR THE EXPORT IS STALE
+# =============================================================================
+# 5 Oct, the owner's price pass: every weapon, armour piece, amulet and rod
+# doubled and every potion quadrupled, by editing `value` in the .tres files.
+# The store and the trade tax read gamedata.json, not the .tres, so an edit that
+# is not exported shows one price in the tooltip and charges another. Prices
+# will be tuned again; this is the check that says "re-run the exporter".
+func _test_the_export_carries_every_price() -> void:
+	section("PRICES - the export the server charges from matches every .tres")
+
+	var data = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
+	if not (data is Dictionary):
+		check("data/gamedata.json loads", false)
+		return
+	var exported: Dictionary = {}
+	for row in data.get("items", []):
+		exported[str(row.get("item_id", ""))] = int(row.get("value", -1))
+
+	var stale: Array = []
+	for item_id in ItemRegistry._items:
+		var item: ItemData = ItemRegistry._items[item_id]
+		if not exported.has(item_id):
+			stale.append("%s is not exported" % item_id)
+		elif exported[item_id] != item.value:
+			stale.append("%s: .tres %d, gamedata.json %d" % [item_id, item.value, exported[item_id]])
+	# THE REGISTRY NEEDS THE PACK: an item whose icon will not load is not
+	# registered, so in a clone without art/pack there is nothing to compare.
+	check_needs_pack("every item's price in gamedata.json is its .tres value (re-run the exporter if not)",
+		stale.is_empty() and ItemRegistry._items.size() == exported.size(), stale)
+
+	# The shape of the 5 Oct pass, so a half-done edit shows: a potion costs
+	# about what the cooked fish of its tier does per point healed.
+	var pairs := [["tinyhealthpotion", "cookedmudfish"], ["mediumhealthpotion", "cookedcopperscale"],
+		["greaterhealthpotion", "cookedduskfin"]]
+	var off: Array = []
+	for pair in pairs:
+		var potion: ItemData = ItemRegistry.get_item(pair[0])
+		var fish: ItemData = ItemRegistry.get_item(pair[1])
+		if potion == null or fish == null:
+			off.append("%s or %s is missing" % pair)
+			continue
+		var ratio: float = (float(potion.value) / potion.restore_amount) / (float(fish.value) / fish.restore_amount)
+		if ratio < 0.8 or ratio > 1.25:
+			off.append("%s %.2f of %s" % [pair[0], ratio, pair[1]])
+	check_needs_pack("a potion costs about what the cooked fish of its tier does, per point healed",
+		off.is_empty(), off)
+	print("  %d prices exported and current" % exported.size())
 
 
 # =============================================================================
@@ -7155,6 +7249,420 @@ func _test_the_store_sells_the_next_set() -> void:
 		panel.stock_list.get_child_count() == rows.size() + 6, panel.stock_list.get_child_count())
 	panel.free()
 	print("  the store sells the next set, and the shelf says where its band is")
+
+
+# =============================================================================
+# THE SHOP BUYS
+# =============================================================================
+# 5 Oct, the owner: "we should be able to sell items to the shop". Every piece
+# of a tier is the same piece, so a second jade sword was worth nothing to its
+# finder. The shop panel has Buy and Sell under the purse; Sell lists the
+# backpack at the prices the server sent, a cell at a time, and draws the
+# purse and bag the server answers with.
+func _test_the_shop_buys() -> void:
+	section("SHOP - the shop buys: the backpack, priced by the server, a cell at a time")
+
+	const T := ItemData.Type
+	var potion: ItemData = _menu_item("zz_sell_potion", T.CONSUMABLE, 0, 20)
+	potion.tier = 1
+	var sword: ItemData = _menu_item("zz_sell_sword", T.WEAPON, ItemData.EquipSlot.WEAPON)
+	sword.tier = 2
+	var chest: ItemData = _menu_item("zz_sell_chest", T.ARMOR, ItemData.EquipSlot.CHEST)
+	chest.tier = 5
+	var coin: ItemData = _menu_item("zz_sell_coin", T.CURRENCY, 0, 99)
+	for item in [potion, sword, chest, coin]:
+		ItemRegistry._items[item.item_id] = item
+
+	var bag := InventoryContainer.new()
+	bag.is_carry = true
+	add_child(bag)
+	bag.load_save_array([{"item_id": "zz_sell_potion", "quantity": 6}, null,
+		{"item_id": "zz_sell_sword", "quantity": 1}, {"item_id": "zz_sell_coin", "quantity": 40},
+		{"item_id": "zz_sell_chest", "quantity": 1}])
+
+	var panel: Node = (load("res://scene/ui/shop/shopinventory.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	panel.inventory_override = bag
+	panel.shop_id = "generalstore"
+	var sent: Array = []
+	var answer: Array = [{}]
+	panel.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		sent.append([path, body])
+		return answer[0]
+
+	var mode_row: Node = panel.find_child("moderow", true, false)
+	var buy_mode: Button = mode_row.get_node_or_null("buymode") if mode_row != null else null
+	var sell_mode: Button = mode_row.get_node_or_null("sellmode") if mode_row != null else null
+	check("the panel has Buy and Sell under the purse, on Buy",
+		buy_mode != null and sell_mode != null and buy_mode.button_pressed and not sell_mode.button_pressed)
+
+	panel.show_catalogue({"display_name": "Kingdom Supplies", "sell_multiplier": 0.05, "stock": [],
+		"sell_prices": {"zz_sell_potion": 10, "zz_sell_sword": 52, "zz_sell_chest": 1464}})
+	sell_mode.pressed.emit()
+	var rows: Dictionary = {}
+	for child in panel.stock_list.get_children():
+		rows[str(child.name)] = child
+	check("Sell lists what the shop buys, by the cell it is in",
+		rows.has("sell_0") and rows.has("sell_2") and rows.has("sell_4") and panel.mode == "sell", rows.keys())
+	check("  and not what it does not - the pile of coins is cashed, not sold",
+		not rows.has("sell_3"), rows.keys())
+	var pays: Label = rows["sell_0"].find_child("pays", true, false) if rows.has("sell_0") else null
+	check("  a stack shows what all of it fetches, at the server's price",
+		pays != null and pays.text == "60 g", pays.text if pays != null else "")
+	check("  and offers Sell 1 and Sell all; one piece just Sell",
+		rows.has("sell_0") and rows["sell_0"].find_child("sellone", true, false) != null
+		and rows.has("sell_2") and rows["sell_2"].find_child("sellone", true, false) == null
+		and (rows["sell_2"].find_child("sellall", true, false) as Button).text == "Sell")
+	check("  and says what share the shop pays", panel.notice_label.text.contains("5%"), panel.notice_label.text)
+
+	answer[0] = {"ok": true, "status": 200, "data": {"item_id": "zz_sell_sword", "quantity": 1,
+		"total_received": 52, "gold": 552, "inventory": [{"item_id": "zz_sell_potion", "quantity": 6}, null, null,
+		{"item_id": "zz_sell_coin", "quantity": 40}, {"item_id": "zz_sell_chest", "quantity": 1}]}}
+	(rows["sell_2"].find_child("sellall", true, false) as Button).pressed.emit()
+	await get_tree().process_frame
+	check("Sell names the cell and the item seen in it, and how many",
+		sent.size() == 1 and sent[0][0] == "/api/shop/sell" and sent[0][1].get("position") == 2
+		and sent[0][1].get("item_id") == "zz_sell_sword" and sent[0][1].get("quantity") == 1
+		and sent[0][1].get("shop_id") == "generalstore", sent)
+	check("  and the bag the server answers with is drawn", bag.get_stack_at(2) == null
+		and bag.get_stack_at(0) != null and bag.get_stack_at(0).quantity == 6)
+	var names: Array = []
+	for child in panel.stock_list.get_children():
+		names.append(str(child.name))
+	check("  and the list follows it", not names.has("sell_2") and names.has("sell_0"), names)
+
+	# A legendary piece asks twice.
+	var chest_row: Node = null
+	for child in panel.stock_list.get_children():
+		if str(child.name) == "sell_4":
+			chest_row = child
+	var chest_button: Button = chest_row.find_child("sellall", true, false) if chest_row != null else null
+	chest_button.pressed.emit()
+	check("a legendary piece asks again before it goes, and nothing is sent",
+		sent.size() == 1 and chest_button.text == "Sure?" and panel.notice_label.text.begins_with("Click again"),
+		[sent.size(), chest_button.text])
+	answer[0] = {"ok": true, "status": 200, "data": {"item_id": "zz_sell_chest", "quantity": 1,
+		"total_received": 1464, "gold": 2016, "inventory": [{"item_id": "zz_sell_potion", "quantity": 6}, null,
+		null, {"item_id": "zz_sell_coin", "quantity": 40}, null]}}
+	chest_button.pressed.emit()
+	await get_tree().process_frame
+	check("  and the second click sells it", sent.size() == 2 and sent[1][1].get("item_id") == "zz_sell_chest")
+
+	# The bag moved under the panel: the server says so and sends its own.
+	answer[0] = {"ok": false, "status": 409, "error": "Your backpack changed on the server. It has been reloaded.",
+		"data": {"resync": {"slot": 0, "gold": 2016, "inventory": [{"item_id": "zz_sell_potion", "quantity": 2},
+		null, null, null, null]}}}
+	var one: Button = null
+	for child in panel.stock_list.get_children():
+		if str(child.name) == "sell_0":
+			one = child.find_child("sellone", true, false)
+	one.pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("a stale cell is the server's bag, adopted and redrawn",
+		bag.get_stack_at(0) != null and bag.get_stack_at(0).quantity == 2
+		and panel.notice_label.text.contains("changed"), panel.notice_label.text)
+
+	answer[0] = {"ok": false, "status": 400, "error": "The shop does not buy that.", "data": {}}
+	for child in panel.stock_list.get_children():
+		if str(child.name) == "sell_0":
+			one = child.find_child("sellall", true, false)
+	one.pressed.emit()
+	await get_tree().process_frame
+	check("a refusal is said in the server's words", panel.notice_label.text == "The shop does not buy that.",
+		panel.notice_label.text)
+
+	buy_mode.pressed.emit()
+	check("Buy goes back to the stock", panel.mode == "buy" and buy_mode.button_pressed and not sell_mode.button_pressed)
+	check("ShopInventory.asks_twice: ember and mythic gear, not a potion",
+		panel.asks_twice(chest) and not panel.asks_twice(sword) and not panel.asks_twice(potion))
+
+	# WHAT THE STORE PAYS IS ITS OWN, AUTHORED HERE AND EXPORTED. Below what it
+	# charges, or buying to sell is a printing press.
+	var store: ShopData = load("res://data/shops/generalstore.tres") as ShopData
+	var data = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
+	var exported_rate: float = -1.0
+	if data is Dictionary:
+		for row in data.get("shops", []):
+			if str(row.get("shop_id", "")) == "generalstore":
+				exported_rate = float(row.get("sell_multiplier", -1.0))
+	check("the store pays a twentieth of value, well under what it charges",
+		store != null and is_equal_approx(store.sell_multiplier, 0.05)
+		and store.sell_multiplier < store.price_multiplier, str(store.sell_multiplier) if store != null else "no store")
+	check("  and gamedata.json says the same (re-run the exporter if not)",
+		store != null and is_equal_approx(exported_rate, store.sell_multiplier), exported_rate)
+
+	panel.queue_free()
+	bag.queue_free()
+	for item in [potion, sword, chest, coin]:
+		ItemRegistry._items.erase(item.item_id)
+	print("  the shop buys what drops, a cell at a time, at the server's price")
+
+
+# =============================================================================
+# QUALITY ROLLS: a dropped piece's stats, read from its id the server's way
+# =============================================================================
+# The owner, 5 Oct: random stats on every item, "because it gives loot a
+# better value if a rare max roll". Each stat a dropped piece has rolls on its
+# own, 85-115%, and one drop in a hundred is Perfect at 120%. The roll is part
+# of the item id ("jadechest~a104h96"); the server rolls it and ItemRegistry
+# reads it. test_quality.py in the API is the other half, and both hold the
+# same rounding table, because the server derives max health from the very
+# numbers ItemRegistry hands to the player.
+func _test_quality_rolls() -> void:
+	section("QUALITY ROLLS - a dropped piece's stats, read from its id the server's way")
+
+	# The suite's own pieces, registered for the test: the real ones' pictures
+	# are in the private art pack, and a clone without it does not load them.
+	var T := ItemData.Type
+	var S := ItemData.EquipSlot
+	var amulet: ItemData = _menu_item("qtest_amulet", T.ARMOR, S.AMULET)
+	amulet.display_name = "Test Amulet"
+	amulet.tier = 2
+	amulet.value = 1456
+	amulet.required_level = 5
+	amulet.armor_value = 2
+	amulet.bonus_max_hp = 10
+	amulet.bonus_max_mana = 12
+	amulet.bonus_damage_percent = 1
+	var sword: ItemData = _menu_item("qtest_sword", T.WEAPON, S.WEAPON)
+	sword.display_name = "Test Sword"
+	sword.tier = 1
+	sword.value = 400
+	sword.damage = 20
+	var potion: ItemData = _menu_item("qtest_potion", T.CONSUMABLE, S.NONE, 99)
+	potion.restore_amount = 50
+	for item in [amulet, sword, potion]:
+		ItemRegistry._items[item.item_id] = item
+
+	# ---- the range is one number, on both sides -----------------------------
+	check("85 to 115, Perfect at 120, one in 100 - the owner's numbers",
+		[GameConstants.QUALITY_LOW, GameConstants.QUALITY_HIGH, GameConstants.QUALITY_PERFECT,
+		GameConstants.QUALITY_PERFECT_ODDS] == [85, 115, 120, 100])
+	var letters: Array = GameConstants.QUALITY_FIELDS.map(func(pair): return pair[0])
+	var fields: Array = GameConstants.QUALITY_FIELDS.map(func(pair): return pair[1])
+	check("the five stats roll, one letter each",
+		fields == ["damage", "armor_value", "bonus_max_hp", "bonus_max_mana", "bonus_damage_percent"]
+		and letters == ["d", "a", "h", "m", "p"], GameConstants.QUALITY_FIELDS)
+	var consts: Dictionary = _load_gamedata().get("constants", {})
+	check("  and gamedata.json says the same to the server (re-run the exporter if not)",
+		int(consts.get("quality_low", -1)) == GameConstants.QUALITY_LOW
+		and int(consts.get("quality_high", -1)) == GameConstants.QUALITY_HIGH
+		and int(consts.get("quality_perfect", -1)) == GameConstants.QUALITY_PERFECT
+		and int(consts.get("quality_perfect_odds", -1)) == GameConstants.QUALITY_PERFECT_ODDS
+		and str(consts.get("quality_fields", [])) == str(GameConstants.QUALITY_FIELDS),
+		consts.get("quality_fields", "missing"))
+	var exporter: String = FileAccess.get_file_as_string("res://src/tools/exportgamedata.gd")
+	var unwritten: Array = ["quality_low", "quality_high", "quality_perfect", "quality_perfect_odds",
+		"quality_fields"].filter(func(key): return not exporter.contains("\"%s\":" % key))
+	check("  because the exporter writes all five", unwritten.is_empty(), unwritten)
+
+	# THE SAME TABLE test_quality.py holds. Change the rounding on one side and
+	# both suites go red, which is the point: a point of max health apart is a
+	# clamp on every save.
+	var shared: Array = [[20, 107, 21], [20, 115, 23], [20, 85, 17], [10, 85, 9], [10, 115, 12],
+		[1, 85, 1], [1, 120, 1], [3, 120, 4], [3, 115, 3], [6, 96, 6], [100, 87, 87], [0, 120, 0]]
+	var off: Array = []
+	for row in shared:
+		if ItemRegistry.scale_stat(int(row[0]), int(row[1])) != int(row[2]):
+			off.append([row[0], row[1], ItemRegistry.scale_stat(int(row[0]), int(row[1]))])
+	check("scale_stat matches the server's table, halves up", off.is_empty(), off)
+
+	# ---- reading a roll ----------------------------------------------------------
+	var rolled_id: String = "qtest_amulet~a104h96m110p88"
+	var rolled: ItemData = ItemRegistry.get_item(rolled_id)
+	check("a rolled id is an item", rolled != null and ItemRegistry.has_item(rolled_id))
+	if rolled == null:
+		for item in [amulet, sword, potion]:
+			ItemRegistry._items.erase(item.item_id)
+		return
+	check("  with each stat at its percent of the .tres",
+		[rolled.armor_value, rolled.bonus_max_hp, rolled.bonus_max_mana, rolled.bonus_damage_percent]
+		== [ItemRegistry.scale_stat(2, 104), ItemRegistry.scale_stat(10, 96),
+			ItemRegistry.scale_stat(12, 110), ItemRegistry.scale_stat(1, 88)],
+		[rolled.armor_value, rolled.bonus_max_hp, rolled.bonus_max_mana, rolled.bonus_damage_percent])
+	check("  its own id, and what it is a roll of",
+		rolled.item_id == rolled_id and rolled.base_id == "qtest_amulet" and rolled.catalogue_id() == "qtest_amulet"
+		and rolled.is_rolled() and not rolled.is_perfect()
+		and rolled.rolls == {"armor_value": 104, "bonus_max_hp": 96, "bonus_max_mana": 110, "bonus_damage_percent": 88},
+		rolled.rolls)
+	check("  the .tres's price, tier, slot, level, name and picture",
+		rolled.value == amulet.value and rolled.tier == amulet.tier and rolled.equip_slot == amulet.equip_slot
+		and rolled.required_level == amulet.required_level and rolled.display_name == amulet.display_name
+		and rolled.icon == amulet.icon and not rolled.stackable)
+	check("  and its quality is the rolls averaged", rolled.quality_percent() == 100
+		and ItemRegistry.get_item("qtest_amulet~a110h110m110p110").quality_percent() == 110)
+	check("the same id is the same object every time it is asked for",
+		ItemRegistry.get_item(rolled_id) == rolled)
+	check("and the .tres itself is untouched",
+		amulet.bonus_max_hp == 10 and amulet.item_id == "qtest_amulet" and not amulet.is_rolled()
+		and ItemRegistry.get_item("qtest_amulet") == amulet and amulet.catalogue_id() == "qtest_amulet")
+
+	var perfect: ItemData = ItemRegistry.get_item("qtest_amulet~a120h120m120p120")
+	check("a Perfect roll is every stat at 120, and says so in its name",
+		perfect != null and perfect.is_perfect() and perfect.display_name == "Perfect Test Amulet"
+		and perfect.bonus_max_hp == 12 and perfect.bonus_max_mana == 14 and perfect.quality_percent() == 120,
+		perfect.display_name if perfect != null else "null")
+
+	var malformed: Array = [
+		"qtest_sword~", "qtest_sword~d", "qtest_sword~d999", "qtest_sword~d84", "qtest_sword~d116",
+		"qtest_sword~d119", "qtest_sword~d084", "qtest_sword~d0100", "qtest_sword~D100", "qtest_sword~d100x",
+		"qtest_sword~a100", "qtest_sword~d100d100", "qtest_amulet~a100h100m100",
+		"qtest_amulet~h100a100m100p100", "qtest_amulet~a120h120m120p115",
+		"qtest_nothing~d100", "~d100", "qtest_sword~d100~d100", "qtest_potion~d100",
+	]
+	var accepted: Array = malformed.filter(func(id): return ItemRegistry.has_item(id) or not ItemRegistry.split_roll(id).is_empty())
+	check("everything that only looks like a roll is not an item (%d spellings, the server's list)" % malformed.size(),
+		accepted.is_empty(), accepted)
+	check("a plain id is the catalogue piece, unrolled",
+		ItemRegistry.split_roll("qtest_sword") == {"base": "qtest_sword", "rolls": {}}
+		and not sword.is_rolled() and sword.quality_percent() == 100)
+	check("nothing on a potion rolls", ItemRegistry.rolled_fields(potion).is_empty()
+		and ItemRegistry.rolled_fields(amulet).size() == 4 and ItemRegistry.rolled_fields(sword).size() == 1)
+
+	# ---- wearing one: the rolled number is the one the character gets --------
+	var body: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	body._set_stat_curve()
+	body.equipped = {}
+	body.level = 10
+	var bare_hp: int = body.max_hp
+	body.hp = bare_hp
+	check("a Perfect amulet can be put on", body.equip(perfect.item_id))
+	check("  and raises max health by its rolled 12, not the .tres's 10",
+		body.max_hp == bare_hp + 12 and body.equipped_bonus("bonus_max_hp") == 12, [body.max_hp, bare_hp])
+	body.equip("qtest_amulet~a85h85m85p85")
+	check("an 85% one raises it by 9 (8.5, halves up)", body.max_hp == bare_hp + 9, body.max_hp - bare_hp)
+	body.free()
+
+	# ---- the tooltip ---------------------------------------------------------
+	var sword_roll: ItemData = ItemRegistry.get_item("qtest_sword~d107")
+	var lines: String = ItemTooltip._requirement_lines(sword_roll)
+	check("the tooltip gives a rolled stat its roll: \"21 Damage (107%)\"",
+		lines.contains("21 Damage (107%)"), lines)
+	check("  and a store piece no roll at all", not ItemTooltip._requirement_lines(sword).contains("("),
+		ItemTooltip._requirement_lines(sword))
+	check("the rarity line says how good the roll is",
+		ItemTooltip.rarity_text(sword_roll) == "Common  ·  Quality 107%"
+		and ItemTooltip.rarity_text(sword) == "Common", ItemTooltip.rarity_text(sword_roll))
+	var tip: Control = (load("res://scene/ui/inventory/itemtooltip.tscn") as PackedScene).instantiate()
+	add_child(tip)
+	await get_tree().process_frame
+	tip.show_for_stack(ItemStack.new(perfect, 1), null)
+	check("a Perfect piece's name is gold in the tooltip",
+		tip.name_label.text == "Perfect Test Amulet"
+		and tip.name_label.get_theme_color("font_color") == GameConstants.QUALITY_PERFECT_COLOUR,
+		tip.name_label.text)
+	tip.queue_free()
+
+	# ---- its slot, and its bag on the ground ----------------------------------
+	var slot: InventorySlot = (load("res://scene/ui/inventory/inventoryslot.tscn") as PackedScene).instantiate()
+	add_child(slot)
+	await get_tree().process_frame
+	var frame: Panel = slot.get_node_or_null("rarityframe")
+	slot.set_stack(ItemStack.new(ItemRegistry.get_item("qtest_sword~d120"), 1))
+	var box: StyleBoxFlat = frame.get_theme_stylebox("panel") as StyleBoxFlat if frame != null else null
+	check("a Perfect iron-tier piece frames its slot in gold, a pixel wider",
+		frame != null and frame.visible and box.border_color == GameConstants.QUALITY_PERFECT_COLOUR
+		and box.border_width_left == 3)
+	slot.set_stack(ItemStack.new(sword_roll, 1))
+	check("  an ordinary roll of the same piece has no frame, like the store's",
+		frame != null and not frame.visible)
+	slot.set_stack(ItemStack.new(rolled, 1))
+	box = frame.get_theme_stylebox("panel") as StyleBoxFlat
+	check("  and a rolled uncommon keeps its uncommon frame",
+		frame.visible and box.border_color == GameConstants.rarity_colour(2) and box.border_width_left == 2)
+	slot.queue_free()
+
+	var World: Script = load("res://src/world/lootbag.gd")
+	check("a bag holding a Perfect piece knows it",
+		World.holds_perfect([{"item_id": "qtest_sword~d120", "quantity": 1}])
+		and not World.holds_perfect([{"item_id": "qtest_sword~d115", "quantity": 1}, null]))
+	var bag: Node2D = (load("res://scene/interactables/lootbag.tscn") as PackedScene).instantiate()
+	add_child(bag)
+	await get_tree().process_frame
+	bag.set_contents([{"item_id": "qtest_sword~d115", "quantity": 1}])
+	check("a bag with an ordinary iron roll does not glow", bag.glow_tier() == 0)
+	bag.set_contents([{"item_id": "qtest_sword~d120", "quantity": 1}])
+	var pool: Sprite2D = bag.get_node_or_null("rareglow/pool")
+	check("a bag with a Perfect iron sword glows, and glows gold",
+		pool != null and (bag.get_node("rareglow") as Node2D).visible
+		and Color((pool.texture as GradientTexture2D).gradient.get_color(0), 1.0)
+		== Color(GameConstants.QUALITY_PERFECT_COLOUR, 1.0))
+	bag.queue_free()
+
+	# ---- the shop and the trade window ----------------------------------------
+	# BY PATH: neither script has a class_name.
+	var Shop: Script = load("res://src/ui/shop/shopinventory.gd") as Script
+	var Trade: Script = load("res://src/ui/trade/tradepanel.gd") as Script
+	check("selling a Perfect piece asks twice, at any tier; an ordinary roll does not",
+		Shop.asks_twice(ItemRegistry.get_item("qtest_sword~d120"))
+		and not Shop.asks_twice(sword_roll))
+	var bag_grid := InventoryContainer.new()
+	bag_grid.is_carry = true
+	add_child(bag_grid)
+	bag_grid.load_save_array([{"item_id": "qtest_sword~d107", "quantity": 1}])
+	var panel: Node = (load("res://scene/ui/shop/shopinventory.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	panel.inventory_override = bag_grid
+	panel.shop_id = "generalstore"
+	panel.show_catalogue({"display_name": "Kingdom Supplies", "sell_multiplier": 0.05, "stock": [],
+		"sell_prices": {"qtest_sword": 20}})
+	panel.set_mode("sell")
+	var row: Node = panel.stock_list.get_node_or_null("sell_0")
+	var pays: Label = row.find_child("pays", true, false) if row != null else null
+	check("the Sell list prices a roll as its .tres - the shop lists the catalogue id",
+		pays != null and pays.text == "20 g", pays.text if pays != null else "no row")
+	panel.queue_free()
+	bag_grid.queue_free()
+	check("the trade window says a roll's quality on its row",
+		Trade.quality_hint(sword_roll) == "Quality 107%  ·  " and Trade.quality_hint(sword) == "")
+	check("  and its tooltip says what the roll does",
+		Trade.item_tooltip("qtest_sword~d107").contains("21 Damage (107%)"),
+		Trade.item_tooltip("qtest_sword~d107"))
+
+	# ---- the owner's item menu asks for a roll --------------------------------
+	const Spawner := preload("res://src/ui/owner/itemspawner.gd")
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var menu: Control = (load("res://scene/ui/owner/itemspawner.tscn") as PackedScene).instantiate() as Control
+	add_child(menu)
+	await get_tree().process_frame
+	var asked: Array = []
+	var equipped_ids: Array = []
+	menu.post_request = func(path: String, body_: Dictionary) -> Dictionary:
+		asked.append([path, body_])
+		await get_tree().process_frame
+		return {"ok": true, "data": {"granted_item_id": "qtest_sword~d107",
+			"inventory": [{"item_id": "qtest_sword~d107", "quantity": 1}], "carry_positions": [0]}}
+	menu.adopt_bag = func(_slot: int, _cells: Array) -> void:
+		pass
+	menu.equip_request = func(id: String, _cell: int) -> bool:
+		equipped_ids.append(id)
+		return true
+	check("the menu offers the store's piece, a drop's roll, and a Perfect",
+		menu.quality_pick.item_count == 3 and menu.chosen_quality() == "store"
+		and Spawner.QUALITIES.map(func(q): return q[0]) == ["store", "roll", "perfect"])
+	menu.quality_pick.select(1)
+	menu.wear_toggle.button_pressed = false
+	await menu.spawn("qtest_sword")
+	check("  and asks the server for the one picked",
+		asked.size() == 1 and asked[0][1].get("quality") == "roll" and asked[0][1].get("item_id") == "qtest_sword",
+		asked)
+	check("  and names what arrived, with its quality",
+		menu.status.text == "Added Test Sword to your bag, quality 107%.", menu.status.text)
+	menu.wear_toggle.button_pressed = true
+	await menu.spawn("qtest_sword")
+	check("  and puts on the piece that arrived, by its rolled id", equipped_ids == ["qtest_sword~d107"],
+		equipped_ids)
+	menu.queue_free()
+	Api.is_owner = was_owner
+
+	for item in [amulet, sword, potion]:
+		ItemRegistry._items.erase(item.item_id)
+	for id in ItemRegistry._rolled.keys():
+		if str(id).begins_with("qtest_"):
+			ItemRegistry._rolled.erase(id)
+	print("  a roll is read from the id, scaled like the server, and shown wherever the piece is")
 
 
 func _test_founding_a_guild_shows_what_it_cost() -> void:
@@ -13838,11 +14346,11 @@ func _test_amulets_carry_their_bonus() -> void:
 	# ---- the tooltip says what it does --------------------------------------
 	var tip := ItemTooltip.new()
 	check("a Vitality tooltip says +50 max health",
-		tip._requirement_lines(vit).to_lower().contains("+50 max health"), tip._requirement_lines(vit))
+		ItemTooltip._requirement_lines(vit).to_lower().contains("+50 max health"), ItemTooltip._requirement_lines(vit))
 	check("an Arcana tooltip says +40 max mana",
-		tip._requirement_lines(arc).to_lower().contains("+40 max mana"), tip._requirement_lines(arc))
+		ItemTooltip._requirement_lines(arc).to_lower().contains("+40 max mana"), ItemTooltip._requirement_lines(arc))
 	check("a Fury tooltip says +10% damage",
-		tip._requirement_lines(fury).to_lower().contains("+10% damage"), tip._requirement_lines(fury))
+		ItemTooltip._requirement_lines(fury).to_lower().contains("+10% damage"), ItemTooltip._requirement_lines(fury))
 	tip.free()
 
 	for d in [vit, arc, fury]:
@@ -14550,10 +15058,10 @@ func _test_tooltips_say_it_once() -> void:
 	potion.restore_amount = 260
 	potion.restore_target = ItemData.RestoreTarget.HP
 	check("a health potion's line reads Restores 260 Health, not Hp",
-		tip._requirement_lines(potion) == "Restores 260 Health", tip._requirement_lines(potion))
+		ItemTooltip._requirement_lines(potion) == "Restores 260 Health", ItemTooltip._requirement_lines(potion))
 	potion.restore_target = ItemData.RestoreTarget.MANA
 	check("and a mana potion's, Restores 260 Mana",
-		tip._requirement_lines(potion) == "Restores 260 Mana", tip._requirement_lines(potion))
+		ItemTooltip._requirement_lines(potion) == "Restores 260 Mana", ItemTooltip._requirement_lines(potion))
 	tip.queue_free()
 	print("  tooltips: the restore number is said once, from the data")
 
@@ -14850,7 +15358,7 @@ func _test_the_sweep_words() -> void:
 	sword.damage = 32
 	sword.bonus_damage_percent = 2
 	check("a sword reads '32 Damage, +2% Damage Bonus', not '32 Damage, +2% Damage'",
-		tip._requirement_lines(sword) == "32 Damage, +2% Damage Bonus", tip._requirement_lines(sword))
+		ItemTooltip._requirement_lines(sword) == "32 Damage, +2% Damage Bonus", ItemTooltip._requirement_lines(sword))
 	tip.free()
 
 	var inv_code := _code_src("res://src/ui/inventory/inventoryscreen.gd")

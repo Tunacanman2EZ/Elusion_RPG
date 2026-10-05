@@ -80,8 +80,10 @@ const WebPage := preload("res://src/systems/webpage.gd")
 #
 # 2: the backpack and the bank became the server's - drags, the bin and piles
 # are requests, and a save carries no bag - and logins send an install id.
+# 3: dropped gear carries its quality roll in its item id ("ironsword~d107"),
+# which ItemRegistry reads; a build-2 game shows such a piece as the error item.
 # Matches CURRENT_CLIENT_BUILD in app.py.
-const BUILD := 2
+const BUILD := 3
 const DISPLAY_VERSION := "0.1.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and

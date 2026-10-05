@@ -219,6 +219,44 @@ const MYTHIC_ODDS_BY_TIER := {5: 20000, 4: 50000, 3: 100000, 2: 250000, 1: 50000
 const MYTHIC_BAG_DESPAWN_SECONDS: float = 300.0
 
 
+# QUALITY ROLLS. A dropped piece of gear rolls every stat it has - damage,
+# armour, max health, max mana, the damage bonus - each on its own, from
+# QUALITY_LOW to QUALITY_HIGH percent of the number in its .tres, most often
+# near 100. One drop in QUALITY_PERFECT_ODDS is Perfect instead: every stat at
+# QUALITY_PERFECT, and "Perfect" in front of its name. What the store sells is
+# always the .tres itself, 100% on everything.
+#
+# The owner, 5 Oct: "random stats on all items because it gives loot a better
+# value if a rare max roll", with the range, the Perfect and "each stat
+# separately" chosen the same day.
+#
+# THE ROLL IS PART OF THE ITEM ID. "jadechest~a104h96" is a Jade Cuirass with
+# its armour at 104% and its health at 96%: QUALITY_MARK, then one letter from
+# QUALITY_FIELDS and a percent for every stat the piece has, in that order. The
+# server rolls it (gamedata.roll_quality) and ItemRegistry.get_item() reads it,
+# handing back a copy of the piece with those numbers - so everything that
+# reads damage or bonus_max_hp off an ItemData gets the rolled number without
+# knowing a roll exists. The server reads all of these through gamedata.json.
+#
+# A ROLL CHANGES WHAT A PIECE DOES, NOT ITS PRICE. value stays the .tres's, so
+# the shop pays the same for any roll; a Perfect is worth what a player will
+# give for it.
+const QUALITY_LOW: int = 85
+const QUALITY_HIGH: int = 115
+const QUALITY_PERFECT: int = 120
+const QUALITY_PERFECT_ODDS: int = 100
+const QUALITY_MARK: String = "~"
+const QUALITY_FIELDS: Array = [
+	["d", "damage"],
+	["a", "armor_value"],
+	["h", "bonus_max_hp"],
+	["m", "bonus_max_mana"],
+	["p", "bonus_damage_percent"],
+]
+# A Perfect piece's name, in the tooltip and on its slot's frame.
+const QUALITY_PERFECT_COLOUR: Color = Color(1.0, 0.86, 0.35)
+
+
 # THE LANDS EACH GEAR TIER COMES FROM, indexed by tier like the two above. The
 # element bands decide what drops where - light and wind creatures drop up to
 # iron, water and ice up to jade, earth cobalt, fire amethyst, dark ember - and

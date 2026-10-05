@@ -141,6 +141,23 @@ theme_override_font_sizes/font_size = 13
 button_pressed = true
 text = "Put gear on after spawning it"
 
+[node name="qualityrow" type="HBoxContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="qualitylabel" type="Label" parent="frame/margin/rows/qualityrow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Gear stats"
+vertical_alignment = 1
+
+[node name="itemquality" type="OptionButton" parent="frame/margin/rows/qualityrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+
 [node name="spawnstatus" type="Label" parent="frame/margin/rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 34)

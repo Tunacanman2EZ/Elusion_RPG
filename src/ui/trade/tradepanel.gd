@@ -798,7 +798,7 @@ func _item_row(item_id: String) -> HBoxContainer:
 
 	var hint := Label.new()
 	hint.name = "value"
-	hint.text = value_hint(data)
+	hint.text = quality_hint(data) + value_hint(data)
 	hint.add_theme_font_size_override("font_size", HINT_FONT_SIZE)
 	hint.add_theme_color_override("font_color", COLOUR_HINT)
 	words.add_child(hint)
@@ -815,6 +815,16 @@ static func value_hint(data: ItemData) -> String:
 	return "worth %s" % GameConstants.gold_text(data.value)
 
 
+static func quality_hint(data: ItemData) -> String:
+	# "Quality 104%  ·  " in front of a rolled piece's worth, "" for anything
+	# else. Two rolls of one piece are two rows with one name, and the roll is
+	# the whole difference between them - so it is on the row, not only in the
+	# tooltip. A Perfect one says so in its name already.
+	if data == null or not data.is_rolled():
+		return ""
+	return "Quality %d%%  ·  " % data.quality_percent()
+
+
 static func item_tooltip(item_id: String) -> String:
 	var data: ItemData = ItemRegistry.get_item(item_id)
 	if data == null:
@@ -822,6 +832,11 @@ static func item_tooltip(item_id: String) -> String:
 	var lines: PackedStringArray = [data.display_name]
 	if data.description != "":
 		lines.append(data.description)
+	# WHAT IT DOES, rolled numbers and all, because a trade is where a roll
+	# changes hands and the other player cannot hover your bag.
+	var facts: String = ItemTooltip.stats_and_needs(data)
+	if facts != "":
+		lines.append(facts)
 	var hint: String = value_hint(data)
 	if hint != "":
 		lines.append(hint[0].to_upper() + hint.substr(1))
