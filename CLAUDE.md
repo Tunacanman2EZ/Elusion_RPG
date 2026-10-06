@@ -342,7 +342,8 @@ straggler and now delegates. What is left:
 `POST /api/staff/teleport` existed and `characterhud.gd` had always known how to
 *receive* one. **Nothing ever issued one** — the feature was built from both ends
 and never joined in the middle. The owner panel has the three buttons now:
-**Bring here**, **Go to them**, **Bring everyone**.
+**Bring here**, **Go to**, **Bring everyone** - and since 0.7.4 a list of who is
+online under them (see "Move Players" below).
 
 Two separate rules, and mixing them up is how somebody ends up in the scenery.
 
@@ -381,10 +382,17 @@ which goes anyway to the spot it was given — refusing would strand somebody be
 moved *out* of a bad place, and that is the single case where the server knows
 something the client does not.
 
-**"Go to them" sends no request.** Position is client-written, so moving yourself
-is a local act; `AreaRegistry.go_to()` does it. Asking permission would be
-theatre — and `/api/staff/teleport` runs through `can_act_on()`, which is
-strictly-greater and so refuses acting on yourself anyway.
+**"Go to" sends no request, and lands beside them.** Position is
+client-written, so moving yourself is a local act; asking permission would be
+theatre - and `/api/staff/teleport` runs through `can_act_on()`, which is
+strictly-greater and so refuses acting on yourself anyway. The server knows
+only the AREA a character is in (`/api/players/online`), so the panel travels
+there with `AreaRegistry.go_to()` - but it asks `Presence.meet(name)` FIRST,
+because the change of area frees the panel. The presence link draws everyone in
+your area where they stand; once their picture appears, `meet()` puts you beside
+it with `SafeSpot.find(me, them, 1)`, and gives up after `MEET_SECONDS` (10)
+with a notice over your head rather than moving you later. No presence server,
+or they are not drawn: you arrive at the area's entrance, as before 0.7.4.
 
 **"Bring everyone" is armed-then-confirmed**, like a ban. It moves every account
 on the server and posts a broadcast; it is the widest button on the panel.
@@ -392,11 +400,36 @@ on the server and posts a broadcast; it is the widest button on the panel.
 without it the button reads `Confirm?` for ever after a timeout, which is the
 trap `ARM_SECONDS` exists to prevent.
 
-`/api/staff/user/<username>` now returns `x` and `y` beside the `area` it already
-returned, which is what "go to them" needs to land beside rather than at an
-area's default spawn. Position is where a character is standing in a game, not
-personal data about a person — unlike the addresses on that route, which is why
-those are gated by `can_act_on()` and this is not.
+### Move Players: a name box, the list of who is online, and Go to beside them
+
+The owner, 6 Oct (0.7.4): "pick who from a list", "go to lands next to them",
+"its own name box", and Bring everyone stays the whole game. The row read the
+name box at the top of the Account tab ("MOVE PLAYERS - USES THE NAME ABOVE")
+and "Go to area" left you at the room's entrance.
+
+- **Its own name box** (`%movenameinput`), Enter brings them, beside **Bring
+  here** and **Go to**. The head row says how many are online and holds
+  **Refresh** and **Bring everyone**.
+- **The list** (`%onlinelist`): `GET /api/players/online` - account,
+  character, level and area, you left out - each row with its own Bring and Go
+  to; clicking a name puts it in both name boxes. Asked on every open and on
+  Refresh, never polled, so it does not reorder under the mouse. It is the only
+  thing in the panel that scrolls (the window test allows exactly that one), and
+  the tabs now grow with the window, so a taller panel shows more of it.
+- **Go to lands beside them** through `Presence.meet()` - section above.
+- **And the server hears your area when you arrive** (`CharacterData.note_area()`,
+  from `AreaRegistry._on_scene_changed()`). It used to ride along with the next
+  save, so somebody who arrived and stood still stayed, on the server, in the
+  area they had left: the Players list showed the wrong room and Go to went
+  there and found nobody. Found playing two games. The arrival save sends
+  `WorldMap.to_save()`, not the slot's own copy of the map: that came back from
+  the server as JSON, every number a float, and the save route refuses sizes
+  that are not whole numbers - the first version of this saved 400 on every
+  retry.
+
+`_test_move_players_from_the_list()` drives the list, the name box, Enter,
+Bring everyone's confirm, Go to's refusals, `meet()` (beside, not on top; waits;
+gives up) and `note_area()`.
 
 ### God mode is the owner's switch, and the ordering is the whole feature
 
@@ -1667,8 +1700,8 @@ Two details that make it a real check rather than a decorative one:
   used because the body says `slot_index`, and the check quietly stops checking.
   Sabotage-tested with exactly that case.
 - **Known limit:** it reads single-line `func` declarations, so a signature
-  wrapped across lines is skipped rather than guessed at. 2,379 signatures parse
-  this way (0.7.3). A missed one still shows in the editor, as it always did.
+  wrapped across lines is skipped rather than guessed at. 2,394 signatures parse
+  this way (0.7.4). A missed one still shows in the editor, as it always did.
 
 ### The .ps1 entry points are held to pure ASCII
 
@@ -2179,7 +2212,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   the hold on fresh finds, 0.6.1 the owner-only item grant and the wider
   loot bag reach, 0.7.0 shared monsters, 0.7.1 no debug keys (the owner panel
   does their work, the performance readout included), 0.7.2 enemies see and
-  shoot a player pressed against a wall, 0.7.3 Escape closes every window.
+  shoot a player pressed against a wall, 0.7.3 Escape closes every window, 0.7.4
+  Move Players: a list of who is online, its own name box, Go to beside them.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -2888,7 +2922,7 @@ and back up the ladder.
   between its steps; one two tiles high cannot.
 - Not changed, noted: the field has no way back to town but dying or Switch.
   `leavetown.gd` says that is on purpose ("life is a gamble"). `easteregg` is
-  in `AreaRegistry.AREAS` and is an empty scene with no script, so "Go to area"
+  in `AreaRegistry.AREAS` and is an empty scene with no script, so "Go to"
   to it arrives nowhere.
 
 ### Characters: a line about each class, and deleting one
@@ -4139,11 +4173,10 @@ button on it.
 
    So this step is a new column pair *and* a heartbeat carrying them — the first
    thing in this project that costs real requests per player per second, which is
-   why it waits for the droplet's numbers. It is also why the owner panel's
-   button says **"Go to area"** and not "Go to them": it travels to the room they
-   are in and tells you the server does not know where in it. `SafeSpot` is
-   already written and already used by the other two buttons, so the day
-   coordinates exist, landing beside somebody is one line.
+   why it waits for the droplet's numbers. The owner panel's **Go to** lands
+   beside somebody since 0.7.4 without it: the presence link draws everyone in
+   your area where they stand, so the position is your own game's, not the
+   server's (`Presence.meet()`).
 2. **Remote players rendered.** A body, a nameplate, interpolation between
    updates, and a decision about how many are drawn before it stops being
    affordable. `/api/players/nearby` is the seam and its own comment says so:

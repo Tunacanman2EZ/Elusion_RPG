@@ -61,6 +61,8 @@ const RETRY_SECONDS: Array = [2.0, 5.0, 10.0, 30.0]
 const ANIM_PATTERN := "^(idle|walk|attack|death|hitflash)(up|down|left|right)$"
 # The tank's auras, drawn on the body.
 const EFFECTS: Array = ["ring", "firering"]
+# How long a "go to them" (meet()) waits for them to be drawn before giving up.
+const MEET_SECONDS := 10.0
 
 # Off switch, for a test or a future setting.
 var enabled: bool = true
@@ -87,6 +89,9 @@ var _server_shares: bool = false
 var _lead_area: String = ""
 var _leader_id: int = -1
 var _lead_sharers: int = 0
+# The account meet() is waiting to stand beside, and until when.
+var _meet_name: String = ""
+var _meet_until_msec: int = 0
 
 
 func _init() -> void:
@@ -117,6 +122,8 @@ func _process(delta: float) -> void:
 				_phase = "off"
 		"connecting", "open":
 			_pump(delta, player)
+	if _meet_name != "":
+		_try_meet(player)
 
 
 func phase() -> String:
@@ -357,6 +364,69 @@ func handle_message(message: Dictionary) -> void:
 			var batch: Variant = message.get("p")
 			if batch is Array:
 				hits_received.emit(int(message.get("from", -1)), batch)
+
+
+# =============================================================================
+# GOING TO SOMEBODY
+# =============================================================================
+# The GM panel's "Go to" (0.7.4; the owner, 6 Oct: "Go to lands next to them").
+# The server stores which AREA a character is in and nothing finer, so the
+# button used to take you to the room's entrance and leave you to find them.
+# But this link draws everyone in your area where they stand, so once their
+# picture is here, standing beside them is a local move - the same as every
+# other move of yourself, with nothing to ask the server.
+#
+# meet() asks for it once: now, if they are already drawn, or as soon as they
+# are - after the change of area the panel starts, which frees the panel, so
+# the waiting lives here in the autoload. It gives up after MEET_SECONDS, so a
+# meeting that never happens cannot pull you across a room a minute later, and
+# says which way it went over your head.
+
+func meet(username: String) -> bool:
+	"""Stand beside `username` as soon as their picture is drawn here. True if
+	that happened at once."""
+	_meet_name = username.strip_edges()
+	_meet_until_msec = Time.get_ticks_msec() + int(MEET_SECONDS * 1000.0)
+	return _try_meet(_local_player())
+
+
+func meeting() -> String:
+	"""Who meet() is still waiting for, or ""."""
+	return _meet_name
+
+
+func remote_named(username: String) -> Node2D:
+	"""The picture of `username` in this area, or null. Account names are unique
+	ignoring case, the way the server compares them."""
+	var wanted: String = username.strip_edges().to_lower()
+	for found in _remotes.values():
+		if is_instance_valid(found) and str((found as Node).get("display_name")).to_lower() == wanted:
+			return found
+	return null
+
+
+func _try_meet(player: Node) -> bool:
+	if _meet_name == "":
+		return false
+	var me: CharacterBody2D = player as CharacterBody2D
+	if Time.get_ticks_msec() > _meet_until_msec:
+		if me != null and me.has_method("show_notice"):
+			me.show_notice("%s is not here any more - they may have moved on." % _meet_name)
+		_meet_name = ""
+		return false
+	var them: Node2D = remote_named(_meet_name)
+	if me == null or them == null or not them.is_inside_tree():
+		return false
+	# BESIDE, NOT ON: start_ring 1 skips their own spot, as "Bring here" does.
+	var spot: Vector2 = SafeSpot.find(me, them.global_position, 1)
+	if spot == Vector2.INF:
+		spot = them.global_position
+	var name_met: String = _meet_name
+	_meet_name = ""
+	AreaRegistry.place_player(spot)
+	if me.has_method("show_notice"):
+		me.show_notice("Beside %s." % name_met)
+	return true
 
 
 func _join(entry: Dictionary) -> void:

@@ -140,6 +140,9 @@ func _on_scene_changed() -> void:
 	# Everyone in the area fights the same monsters; see monstersync.gd.
 	if scene.get_node_or_null(MonsterSync.NODE_NAME) == null:
 		MonsterSync.add_to(scene)
+	# AND THE SERVER HEARS WHERE YOU ARE NOW, not at your next step - see
+	# CharacterData.note_area().
+	CharacterData.note_area(scene.scene_file_path.get_file().get_basename())
 
 
 # =============================================================================

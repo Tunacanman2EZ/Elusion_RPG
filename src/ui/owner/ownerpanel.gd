@@ -117,11 +117,16 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var skill_pick: OptionButton = get_node_or_null("%skillpick")
 @onready var skill_input: LineEdit = get_node_or_null("%skillinput")
 @onready var skill_button: Button = get_node_or_null("%skillbutton")
-# THE TELEPORT ROW. Reuses %usernameinput, the same box the view and sanction
-# rows read, so there is one place a name is typed.
+# MOVE PLAYERS. Its own name box since 0.7.4 - it used to read %usernameinput
+# at the top of the tab, a screen away, and said so in its own heading. Under it
+# the list of who is online, each with their own Bring and Go to.
+@onready var move_name_input: LineEdit = get_node_or_null("%movenameinput")
 @onready var tp_bring_button: Button = get_node_or_null("%tpbringbutton")
 @onready var tp_goto_button: Button = get_node_or_null("%tpgotobutton")
 @onready var tp_everyone_button: Button = get_node_or_null("%tpeveryonebutton")
+@onready var online_label: Label = get_node_or_null("%onlinelabel")
+@onready var online_refresh: Button = get_node_or_null("%onlinerefresh")
+@onready var online_list: VBoxContainer = get_node_or_null("%onlinelist")
 
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
 @onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
@@ -234,6 +239,10 @@ func _ready() -> void:
 	if tp_everyone_button != null \
 			and not tp_everyone_button.pressed.is_connected(_on_teleport_pressed):
 		tp_everyone_button.pressed.connect(_on_teleport_pressed.bind("everyone"))
+	if move_name_input != null and not move_name_input.text_submitted.is_connected(_on_move_name_submitted):
+		move_name_input.text_submitted.connect(_on_move_name_submitted)
+	if online_refresh != null and not online_refresh.pressed.is_connected(refresh_online):
+		online_refresh.pressed.connect(refresh_online)
 	_set_teleport_status("")
 
 	# GOD MODE. A CheckButton rather than a Button, because it has two states
@@ -542,6 +551,7 @@ func _on_visibility_changed() -> void:
 		# another machine.
 		await _refresh_pvp()
 		await _refresh_trade()
+		await refresh_online()
 	else:
 		_disarm()
 
@@ -633,6 +643,22 @@ func _on_perf_toggled(pressed: bool) -> void:
 # the owner.
 
 func _on_teleport_pressed(action: String) -> void:
+	await teleport(action, _move_name())
+
+
+func _on_move_name_submitted(_text: String) -> void:
+	# Enter in the name box brings them: the action a typed name is usually for.
+	await teleport("bring", _move_name())
+
+
+func _move_name() -> String:
+	return "" if move_name_input == null else move_name_input.text.strip_edges()
+
+
+func teleport(action: String, username: String) -> void:
+	"""bring / goto / everyone, for `username` (ignored by everyone). The row
+	buttons in the online list and the buttons under the name box both come
+	here."""
 	# The client gate is a courtesy; require_role("dev") and the owner check on
 	# `everyone` are the real ones, on the side the player does not control.
 	if not Api.role_at_least("dev") and not Api.is_owner:
@@ -644,10 +670,7 @@ func _on_teleport_pressed(action: String) -> void:
 		return
 
 	if action == "goto":
-		# No `body` passed: with no position on the server there is nothing to
-		# stand beside, so this needs no character to measure from. It gets one
-		# back the day saves carry coordinates.
-		await _teleport_go_to_them()
+		await _teleport_go_to_them(username)
 		return
 
 	if action == "everyone":
@@ -660,14 +683,13 @@ func _on_teleport_pressed(action: String) -> void:
 			if tp_everyone_button != null:
 				_armed_label = tp_everyone_button.text
 				tp_everyone_button.text = "Confirm?"
-			_set_teleport_status("[GM] move EVERYONE here? press again within %d seconds."
+			_set_teleport_status("[GM] move EVERYONE in the game here? press again within %d seconds."
 				% int(ARM_SECONDS))
 			return
 		_disarm()
 
-	var username: String = "" if username_input == null else username_input.text.strip_edges()
 	if action == "bring" and username == "":
-		_set_teleport_status("[GM] type a username first.")
+		_set_teleport_status("[GM] type a name, or pick somebody from the list below.")
 		return
 
 	# WHERE THEY LAND: beside the person who pressed the button, never on them.
@@ -683,7 +705,7 @@ func _on_teleport_pressed(action: String) -> void:
 	else:
 		payload["username"] = username
 
-	var res: Dictionary = await Api.post("/api/staff/teleport", payload)
+	var res: Dictionary = await post_request.call("/api/staff/teleport", payload)
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 
@@ -711,69 +733,164 @@ func _on_teleport_pressed(action: String) -> void:
 			% [username, str(data.get("area", ""))])
 
 
-func _teleport_go_to_them() -> void:
-	var username: String = "" if username_input == null else username_input.text.strip_edges()
+func _teleport_go_to_them(username: String) -> void:
 	if username == "":
-		_set_teleport_status("[GM] type a username first.")
+		_set_teleport_status("[GM] type a name, or pick somebody from the list below.")
 		return
 
-	var res: Dictionary = await Api.get_json("/api/staff/user/%s" % username.uri_encode())
+	# WHERE THEY ARE PLAYING, from the who-is-online list: the character they
+	# are in right now, not the one saved last. It used to read
+	# /api/staff/user/<name> and go to the area of their most recent save, which
+	# for somebody offline is a room they are not in.
+	var res: Dictionary = await online_request.call("/api/players/online")
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	if not res.get("ok", false):
-		_set_teleport_status("[GM] no account called '%s' - or this account is not staff."
-			% username)
+		_set_teleport_status("[GM] could not reach the server.")
 		return
-
-	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
-	var characters: Array = data.get("characters", []) if data.get("characters") is Array else []
-	if characters.is_empty():
-		_set_teleport_status("[GM] '%s' has no characters to stand next to." % username)
+	var entry: Dictionary = _online_entry(res, username)
+	if entry.is_empty():
+		_set_teleport_status("[GM] '%s' is not online." % username)
 		return
-
-	# THE ONE THEY PLAYED LAST. A staff account with four slots is four places,
-	# and the one they are actually in is the most recently saved.
-	var best: Dictionary = {}
-	for entry in characters:
-		if not (entry is Dictionary):
-			continue
-		if best.is_empty() or int(entry.get("updated_at", 0)) > int(best.get("updated_at", 0)):
-			best = entry
-	if best.is_empty():
-		_set_teleport_status("[GM] '%s' has no readable character." % username)
-		return
-
-	var area: String = str(best.get("area", ""))
+	var area: String = str(entry.get("area", ""))
 	if not AreaRegistry.has_area(area):
 		_set_teleport_status("[GM] '%s' is in '%s', which this build does not know."
 			% [username, area])
 		return
 
-	# THEIR AREA, AND THAT IS ALL THERE IS. The server stores saves.area and
-	# nothing finer - /api/players/nearby says so in its own comment, "there is
-	# no position on the server and no heartbeat carrying one". So this button
-	# goes to the ROOM they are in, at its ordinary arrival point, and cannot put
-	# you next to them.
-	#
-	# An earlier version of this read x and y off the staff route and stood you
-	# beside them. Those columns do not exist; asking for them broke
-	# /api/staff/user outright, and test_security.py caught it on the next run.
-	# The x/y that DO exist are on pending_teleports - where a teleport is going,
-	# not where a player is.
-	#
-	# WHEN POSITIONS ARRIVE this becomes one line: pass their coordinates to
-	# SafeSpot.find(body, them, 1) and land beside them. The helper is already
-	# written and already used by the other two buttons. See CLAUDE.md,
-	# "Decided, not built: PvP and the world boss" - step 1 is this exact gap.
-	#
-	# NO REQUEST EITHER WAY. Position is client-written, so moving yourself is a
-	# local act; posting for permission would be theatre, and /api/staff/teleport
-	# runs through can_act_on(), which is strictly-greater and refuses acting on
-	# yourself.
-	_set_teleport_status("[GM] going to %s, where '%s' is. The server does not"
-		% [AreaRegistry.display_name(area), username]
-		+ " know where in it.")
+	# BESIDE THEM, through the presence link. The server knows the AREA and
+	# nothing finer, but Presence draws everyone in your area where they stand,
+	# so once their picture is here, standing beside them is a local move.
+	# Presence.meet() waits for that, through the change of area below - which
+	# frees this panel, so the waiting cannot live here. Position is
+	# client-written, so no request is sent for any of it: going somewhere is
+	# a local act, and /api/staff/teleport refuses acting on yourself anyway.
+	var who: String = str(entry.get("username", username))
+	if area == AreaRegistry.current_area_id():
+		if Presence.meet(who):
+			_set_teleport_status("[GM] beside '%s'." % who)
+		elif Presence.phase() != "open":
+			_set_teleport_status("[GM] '%s' is here in %s, but this game is not drawing other players right now."
+				% [who, AreaRegistry.display_name(area)])
+		else:
+			_set_teleport_status("[GM] '%s' is here in %s - you will be put beside them when they are drawn."
+				% [who, AreaRegistry.display_name(area)])
+		return
+	Presence.meet(who)
+	_set_teleport_status("[GM] going to %s - you will land beside '%s'."
+		% [AreaRegistry.display_name(area), who])
 	AreaRegistry.go_to(area)
+
+
+# =============================================================================
+# WHO IS ONLINE
+# =============================================================================
+# The owner, 6 Oct: "pick who from a list". GET /api/players/online - the same
+# list every player's Players window reads: account, character, level and the
+# area they are playing in - each row with its own Bring and Go to. Clicking a
+# name puts it in the name boxes too, so a view or a sanction is one click away.
+# Asked on every open of the panel and on Refresh; not polled, because a list
+# that reorders itself under the mouse is a list you misclick on.
+
+# Swapped by the suite for a stand-in, like status_request and post_request.
+var online_request: Callable = Callable(Api, "get_json")
+
+
+func refresh_online() -> void:
+	if online_list == null:
+		return
+	var res: Dictionary = await online_request.call("/api/players/online")
+	if not is_instance_valid(self) or not is_inside_tree() or online_list == null:
+		return
+	for child in online_list.get_children():
+		child.queue_free()
+	if not res.get("ok", false):
+		_online_note("Could not reach the server.")
+		_set_online_count(-1)
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	var players: Array = data.get("players", []) if data.get("players") is Array else []
+	var shown: int = 0
+	for entry in players:
+		if not (entry is Dictionary):
+			continue
+		# NOT YOU: nobody brings or visits themselves, and the server refuses
+		# the first anyway.
+		if str(entry.get("username", "")).to_lower() == Api.username.to_lower():
+			continue
+		online_list.add_child(_online_row(entry))
+		shown += 1
+	if shown == 0:
+		_online_note("Nobody else is online.")
+	_set_online_count(shown)
+
+
+func _set_online_count(n: int) -> void:
+	if online_label != null:
+		online_label.text = "MOVE PLAYERS" if n < 0 else "MOVE PLAYERS - %d ONLINE" % n
+
+
+func _online_note(text: String) -> void:
+	var note := Label.new()
+	note.text = text
+	note.add_theme_font_size_override("font_size", 12)
+	note.add_theme_color_override("font_color", SAY_NOTE)
+	online_list.add_child(note)
+
+
+func _online_row(entry: Dictionary) -> HBoxContainer:
+	var who: String = str(entry.get("username", ""))
+	var row := HBoxContainer.new()
+	row.name = "row_" + who.validate_node_name()
+	row.add_theme_constant_override("separation", 4)
+	var pick := Button.new()
+	pick.name = "pick"
+	pick.flat = true
+	pick.focus_mode = Control.FOCUS_NONE
+	pick.clip_text = true
+	pick.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pick.add_theme_font_size_override("font_size", 12)
+	var character: String = str(entry.get("name", ""))
+	var area_text: String = AreaRegistry.display_name(str(entry.get("area", "")))
+	if bool(entry.get("with_you", false)):
+		area_text += " (here)"
+	pick.text = "%s · %s Lv %d · %s" % [who, character, int(entry.get("level", 1)), area_text]
+	# THE WHOLE LINE IN THE TOOLTIP: a long character name clips the area off
+	# the end of the row.
+	pick.tooltip_text = "%s\nClick to put %s in the name boxes." % [pick.text, who]
+	pick.pressed.connect(_pick_name.bind(who))
+	row.add_child(pick)
+	for spec in [["bring", "Bring", "Bring %s to where you are standing"],
+			["goto", "Go to", "Go to %s and stand beside them"]]:
+		var button := Button.new()
+		button.name = str(spec[0])
+		button.text = str(spec[1])
+		button.focus_mode = Control.FOCUS_NONE
+		button.custom_minimum_size = Vector2(52, 0)
+		button.add_theme_font_size_override("font_size", 12)
+		button.tooltip_text = str(spec[2]) % who
+		button.pressed.connect(teleport.bind(str(spec[0]), who))
+		row.add_child(button)
+	return row
+
+
+func _pick_name(who: String) -> void:
+	if move_name_input != null:
+		move_name_input.text = who
+	if username_input != null:
+		username_input.text = who
+
+
+func _online_entry(res: Dictionary, username: String) -> Dictionary:
+	"""`username`'s row in a /api/players/online answer, ignoring case, or {}."""
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	var players: Array = data.get("players", []) if data.get("players") is Array else []
+	var wanted: String = username.strip_edges().to_lower()
+	for entry in players:
+		if entry is Dictionary and str(entry.get("username", "")).to_lower() == wanted:
+			return entry
+	return {}
 
 
 func _set_teleport_status(line: String) -> void:

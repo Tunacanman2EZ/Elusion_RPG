@@ -797,6 +797,35 @@ var _save_retrying: bool = false
 var _unpushed_clock: float = UNPUSHED_RETRY_SECONDS
 
 
+func note_area(here: String) -> void:
+	"""(AreaRegistry, on arriving in an area.) Record where the playing
+	character now is, and save, so the server knows straight away.
+
+	The area used to ride along with the next save_character_state() - a step,
+	a pickup, any XP - so somebody who arrived and stood still stayed, on the
+	server, in the area they had left: the Players list showed the wrong room,
+	and the GM panel's Go to (0.7.4) went to it and found nobody. It writes the
+	slot's own last state, not the live bag grid, so an arrival can never save a
+	bag that has not loaded yet; save_data() refuses a view that never loaded."""
+	if here == "" or storage == null:
+		return
+	_ensure_slot_array()
+	var slot: int = active_character_index
+	if slot < 0 or slot >= character_slots.size() or not (character_slots[slot] is Dictionary):
+		return
+	if str(character_slots[slot].get("area", "")) == here:
+		return
+	character_slots[slot]["area"] = here
+	# THE MAP AS WORLDMAP HOLDS IT, the way save_character_state() sends it. The
+	# slot's own copy came back from the server as JSON, where every number is a
+	# float, and the save route refuses an explored map whose sizes are not
+	# whole numbers - found playing two games: every arrival save came back 400,
+	# on every retry, until the character's first step sent the map again.
+	character_slots[slot]["explored"] = WorldMap.to_save()
+	character_slots[slot]["explored_rev"] = WorldMap.save_revision()
+	save_data()
+
+
 func save_data() -> bool:
 	# Queues a save rather than performing one. Returns true when the save
 	# was accepted — NOT when it has hit the disk. No caller has ever used

@@ -161,6 +161,7 @@ text = "×"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 418)
 layout_mode = 2
+size_flags_vertical = 3
 theme_override_constants/side_margin = 0
 theme_override_font_sizes/font_size = 13
 current_tab = 0
@@ -306,42 +307,82 @@ text = "mod: kick, 30-day ban · dev: + permanent · owner: + server"
 [node name="sep5" type="HSeparator" parent="frame/margin/rows/ownertabs/account" unique_id=1900112280]
 layout_mode = 2
 
-[node name="movelabel" type="Label" parent="frame/margin/rows/ownertabs/account"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
-theme_override_font_sizes/font_size = 11
-text = "MOVE PLAYERS - USES THE NAME ABOVE"
-
-[node name="teleportrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account"]
+[node name="movehead" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account"]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="tpbringbutton" type="Button" parent="frame/margin/rows/ownertabs/account/teleportrow"]
+[node name="onlinelabel" type="Label" parent="frame/margin/rows/ownertabs/account/movehead"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "Move the account in the box to where you are standing - your area AND your coordinates. Refused by the server for anyone who outranks you."
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "MOVE PLAYERS"
+vertical_alignment = 1
+clip_text = true
+
+[node name="onlinerefresh" type="Button" parent="frame/margin/rows/ownertabs/account/movehead"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Ask the server again who is online and where."
+focus_mode = 0
+theme_override_font_sizes/font_size = 11
+text = "Refresh"
+
+[node name="tpeveryonebutton" type="Button" parent="frame/margin/rows/ownertabs/account/movehead"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+tooltip_text = "Move EVERY account in the game to where you are standing, spaced out so they do not stack, and announce it in chat. Owner only. Press twice to confirm."
+focus_mode = 0
+theme_override_font_sizes/font_size = 11
+text = "Bring everyone"
+
+[node name="moverow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="movenameinput" type="LineEdit" parent="frame/margin/rows/ownertabs/account/moverow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Who to move. Type a name, or click one in the list below. Enter brings them."
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+placeholder_text = "player's name"
+max_length = 32
+
+[node name="tpbringbutton" type="Button" parent="frame/margin/rows/ownertabs/account/moverow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(86, 0)
+layout_mode = 2
+tooltip_text = "Move them to where you are standing - your area AND your spot, beside you. Refused by the server for anyone who outranks you."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Bring here"
 
-[node name="tpgotobutton" type="Button" parent="frame/margin/rows/ownertabs/account/teleportrow"]
+[node name="tpgotobutton" type="Button" parent="frame/margin/rows/ownertabs/account/moverow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+tooltip_text = "Go to them and stand beside them, in whatever area they are playing. Moves only you - no order is queued for anybody."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Go to"
+
+[node name="onlinescroll" type="ScrollContainer" parent="frame/margin/rows/ownertabs/account"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="onlinelist" type="VBoxContainer" parent="frame/margin/rows/ownertabs/account/onlinescroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "Travel to the AREA they are in. The server stores which room a character is in and nothing finer, so this cannot put you next to them. Moves only you, locally - no order is queued for anybody."
-focus_mode = 0
-theme_override_font_sizes/font_size = 13
-text = "Go to area"
-
-[node name="tpeveryonebutton" type="Button" parent="frame/margin/rows/ownertabs/account/teleportrow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 0)
-layout_mode = 2
-tooltip_text = "Move EVERY account on the server to where you are standing, spaced out so they do not stack, and announce it in chat. Owner only. Press twice to confirm."
-focus_mode = 0
-theme_override_font_sizes/font_size = 13
-text = "Bring everyone"
+theme_override_constants/separation = 2
 
 [node name="testinglabel" type="Label" parent="frame/margin/rows/ownertabs/testing" unique_id=1900112281]
 layout_mode = 2
@@ -586,7 +627,7 @@ text = "Clear"
 
 [node name="ownerresults" type="RichTextLabel" parent="frame/margin/rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 96)
+custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_colors/default_color = Color(0.78431, 0.82353, 0.87059, 1)

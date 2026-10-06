@@ -205,6 +205,7 @@ func _run_all() -> void:
 	await _test_the_trade_switch_reaches_the_game()
 	await _test_no_debug_keys_the_panel_does_it()
 	await _test_escape_closes_every_window()
+	await _test_move_players_from_the_list()
 	_test_presence_carries_the_monsters()
 	await _test_shared_monsters_lead()
 	await _test_shared_monsters_follow()
@@ -2043,16 +2044,21 @@ func _test_teleport_is_wired() -> void:
 	check("a teleport here asks for a spot beside the issuer",
 		panel.contains("SafeSpot.find(body, body.global_position, 1)"),
 		"start_ring 0 would put somebody inside whoever pressed the button")
-	# NOT "beside them" - the server has no position to land beside. saves holds
-	# the AREA and nothing finer, which is why this button says "Go to area".
-	# An earlier version read x/y off /api/staff/user, and those columns do not
-	# exist: the request broke that route outright and test_security.py caught
-	# it. This check pins the honest version so the claim cannot come back
-	# without the positions that would make it true.
-	check("going to a player travels to their area, and says so",
-		panel.contains("The server does not")
-			and panel.contains("AreaRegistry.go_to(area)"),
-		"there is no position on the server to stand beside")
+	# BESIDE THEM, BUT NOT FROM THE SERVER. saves holds the AREA and nothing
+	# finer; an earlier version read x/y off /api/staff/user, those columns do
+	# not exist, and the request broke that route outright. Since 0.7.4 the
+	# position comes from the presence link, which draws everyone in your area
+	# where they stand: Presence.meet() is asked BEFORE the change of area,
+	# because the change frees this panel. _test_move_players_from_the_list()
+	# drives meet() itself.
+	# THE meet() ON THE WAY OUT: the last one before go_to(), with no return
+	# between them - the same-area branch has a meet() of its own that returns.
+	var goto_code: String = _func_body(_code_only(panel), "func _teleport_go_to_them(")
+	var go_at: int = goto_code.find("AreaRegistry.go_to(area)")
+	var meet_at: int = goto_code.rfind("Presence.meet(", go_at) if go_at != -1 else -1
+	check("going to a player travels to their area and lands beside them",
+		go_at != -1 and meet_at != -1 and not goto_code.substr(meet_at, go_at - meet_at).contains("return"),
+		"meet() after go_to() would be asked by a panel the change of area just freed")
 
 	# GOING SOMEWHERE IS LOCAL. Position is client-written, so asking the server
 	# for permission to move yourself would be theatre - and can_act_on() is
@@ -12140,9 +12146,15 @@ func _test_the_gm_panel_is_a_window() -> void:
 		tabs.use_hidden_tabs_for_min_size)
 	# OWNED ONLY: an OptionButton's popup carries a ScrollContainer of its own,
 	# which is the engine's and not this scene's.
+	#
+	# ONE EXCEPTION, AND ONLY ONE: the list of who is online (0.7.4). It is as
+	# long as the server is busy - up to ONLINE_LIST_LIMIT, sixty - so it is the
+	# one thing here that cannot be laid out to fit. Every other control still
+	# must, and the window still holds its tallest tab without growing.
 	var scrollers: Array = panel.find_children("*", "ScrollContainer", true, true)
-	check("and nothing in it scrolls", scrollers.is_empty(),
-		"%d ScrollContainer(s)" % scrollers.size())
+	var others: Array = scrollers.filter(func(n: Node) -> bool: return n.name != "onlinescroll")
+	check("and nothing in it scrolls but the list of who is online", others.is_empty()
+		and scrollers.size() == 1, "%d ScrollContainer(s)" % scrollers.size())
 
 	var mins: Array[float] = []
 	var cut: Array[String] = []
@@ -13623,6 +13635,180 @@ func _trade_payload(revision: int, their_items: Array, their_gold: int = 0,
 			"online": they_online},
 	}
 
+
+# 6 Oct, the owner, on the GM panel's Move Players: "pick who from a list", "go
+# to lands next to them", "its own name box", and Bring everyone stays the
+# whole game. The row read the name box at the top of the tab and "Go to area"
+# left you at the room's entrance.
+func _test_move_players_from_the_list() -> void:
+	section("GM PANEL - move players: a list, a name box, and Go to beside them")
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var was_name: String = Api.username
+	var was_role: String = Api.role
+	var was_owner: bool = Api.is_owner
+	Api.username = "boss"
+	Api.role = "owner"
+	Api.is_owner = true
+	var online: Array = [{"ok": true, "data": {"players": [
+		{"username": "boss", "name": "Me", "level": 99, "area": "field", "with_you": true},
+		{"username": "caster", "name": "Aldra", "level": 9, "area": "field", "with_you": true},
+		{"username": "fighter", "name": "Bram", "level": 7, "area": "town", "with_you": false},
+	]}}]
+	gm.online_request = func(_path: String) -> Dictionary:
+		await get_tree().process_frame
+		return online[0]
+	var posted: Array = []
+	gm.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		posted.append([path, body])
+		await get_tree().process_frame
+		return {"ok": true, "data": {"area": "field"}}
+
+	var list: VBoxContainer = gm.get_node_or_null("%onlinelist") as VBoxContainer
+	var name_box: LineEdit = gm.get_node_or_null("%movenameinput") as LineEdit
+	check("Move Players has its own name box and a list of who is online",
+		list != null and name_box != null and gm.get_node_or_null("%onlinerefresh") != null)
+	check("  and Bring everyone stays, beside the list", gm.get_node_or_null("%tpeveryonebutton") != null)
+	if list == null or name_box == null:
+		gm.queue_free()
+		Api.username = was_name
+		Api.role = was_role
+		Api.is_owner = was_owner
+		return
+	await gm.refresh_online()
+	await get_tree().process_frame
+	var rows: Array = list.get_children().filter(func(n: Node) -> bool: return n is HBoxContainer)
+	check("everyone online but you is listed", rows.size() == 2, rows.size())
+	check("  with a count", (gm.get_node("%onlinelabel") as Label).text == "MOVE PLAYERS - 2 ONLINE",
+		(gm.get_node("%onlinelabel") as Label).text)
+	var caster: Node = list.get_node_or_null("row_caster")
+	var pick: Button = caster.get_node_or_null("pick") as Button if caster != null else null
+	check("a row says who, which character, what level and where",
+		pick != null and pick.text.contains("caster") and pick.text.contains("Aldra")
+		and pick.text.contains("Lv 9") and pick.text.contains("(here)"), pick.text if pick != null else "no row")
+
+	# A body to measure "beside me" from, as the panel's own buttons need.
+	var me := CharacterBody2D.new()
+	me.add_to_group("player")
+	var me_shape := CollisionShape2D.new()
+	var me_circle := CircleShape2D.new()
+	me_circle.radius = 7.0
+	me_shape.shape = me_circle
+	me.add_child(me_shape)
+	add_child(me)
+	me.global_position = Vector2(-90000, -90000)
+	await get_tree().physics_frame
+
+	pick.pressed.emit()
+	check("clicking a name puts it in the name boxes",
+		name_box.text == "caster" and (gm.get_node("%usernameinput") as LineEdit).text == "caster")
+	(caster.get_node("bring") as Button).pressed.emit()
+	await get_tree().create_timer(0.1).timeout
+	check("a row's Bring asks the server to move that player",
+		posted.size() == 1 and posted[0][0] == "/api/staff/teleport"
+		and str(posted[0][1].get("username", "")) == "caster", posted)
+	name_box.text = ""
+	(gm.get_node("%tpbringbutton") as Button).pressed.emit()
+	await get_tree().create_timer(0.1).timeout
+	check("Bring here with an empty box asks for a name and moves nobody", posted.size() == 1, posted)
+	name_box.text = "fighter"
+	name_box.text_submitted.emit("fighter")
+	await get_tree().create_timer(0.1).timeout
+	check("Enter in the name box brings them", posted.size() == 2
+		and str(posted[1][1].get("username", "")) == "fighter", posted)
+	(gm.get_node("%tpeveryonebutton") as Button).pressed.emit()
+	await get_tree().create_timer(0.1).timeout
+	check("Bring everyone still asks twice first", posted.size() == 2
+		and (gm.get_node("%tpeveryonebutton") as Button).text == "Confirm?")
+	gm._disarm()
+	await gm.teleport("goto", "nobody")
+	check("Go to somebody who is not online says so",
+		gm.results.get_parsed_text().contains("'nobody' is not online"), gm.results.get_parsed_text())
+	online[0] = {"ok": true, "data": {"players": [
+		{"username": "ghost", "name": "G", "level": 1, "area": "nowhere", "with_you": false}]}}
+	await gm.teleport("goto", "ghost")
+	check("  and an area this build does not know is refused, not travelled to",
+		gm.results.get_parsed_text().contains("which this build does not know"))
+
+	# PRESENCE.MEET(): where Go to lands. A stand-in for their picture, with the
+	# display_name a RemotePlayer carries.
+	var picture_script := GDScript.new()
+	picture_script.source_code = "extends Node2D\nvar display_name: String = \"\"\n"
+	picture_script.reload()
+	var them := Node2D.new()
+	them.set_script(picture_script)
+	them.set("display_name", "caster")
+	add_child(them)
+	them.global_position = me.global_position + Vector2(300, 0)
+	Presence._remotes[990001] = them
+	check("their picture is found by name, ignoring case", Presence.remote_named("CASTER") == them)
+	check("meet() stands you beside them at once when they are drawn here",
+		Presence.meet("caster") and Presence.meeting() == "", Presence.meeting())
+	var gap: float = me.global_position.distance_to(them.global_position)
+	check("  beside, not on top of them", gap > 1.0 and gap < 120.0, gap)
+	Presence._remotes.erase(990001)
+	me.global_position = Vector2(-90000, -90000)
+	check("somebody not drawn yet is waited for", not Presence.meet("caster") and Presence.meeting() == "caster")
+	Presence._remotes[990001] = them
+	check("  and met as soon as they are", Presence._try_meet(me) and Presence.meeting() == ""
+		and me.global_position.distance_to(them.global_position) < 120.0)
+	Presence._remotes.erase(990001)
+	Presence.meet("caster")
+	Presence._meet_until_msec = Time.get_ticks_msec() - 1
+	check("a meeting that never happens is given up, not kept for later",
+		not Presence._try_meet(me) and Presence.meeting() == "")
+
+	them.queue_free()
+	me.queue_free()
+	gm.queue_free()
+	Api.username = was_name
+	Api.role = was_role
+	Api.is_owner = was_owner
+
+	# THE AREA GOES TO THE SERVER ON ARRIVAL. Played with two games: the target
+	# walked into town and stood still, the server's who-is-online list still
+	# said the Field (the area rode along with the next step's save), and Go to
+	# went to the Field and found nobody.
+	var store_script := GDScript.new()
+	store_script.source_code = "extends SaveStorage\nfunc save(_payload: Dictionary) -> bool:\n\treturn true\n"
+	store_script.reload()
+	var was_storage = CharacterData.storage
+	var was_pending: bool = CharacterData._save_pending
+	var was_failed: bool = CharacterData.load_failed
+	var was_index: int = CharacterData.active_character_index
+	var was_slots: Array = CharacterData.character_slots.duplicate()
+	CharacterData.storage = store_script.new()
+	CharacterData.load_failed = false
+	CharacterData.active_character_index = 0
+	# THE EXPLORED MAP AS THE SERVER SENT IT: JSON, so every number a float. The
+	# save route refuses w/h/ox/oy that are not whole numbers.
+	CharacterData.character_slots = [{"name": "Stand-in", "area": "field",
+		"explored": JSON.parse_string("{\"field\": {\"w\": 126, \"h\": 108, \"ox\": -16, \"oy\": -14, \"bits\": \"\"}}")},
+		null, null, null]
+	CharacterData._save_pending = false
+	CharacterData.note_area("elusion")
+	var noted: bool = str(CharacterData.character_slots[0].get("area", "")) == "elusion" and CharacterData._save_pending
+	var sent: String = JSON.stringify(CharacterData.character_slots[0].get("explored", {}))
+	var whole: bool = not RegEx.create_from_string("\\d\\.0[,}]").search(sent)
+	CharacterData._save_pending = false
+	CharacterData.note_area("elusion")
+	var again: bool = CharacterData._save_pending
+	CharacterData.note_area("")
+	var blank: String = str(CharacterData.character_slots[0].get("area", ""))
+	CharacterData.storage = was_storage
+	CharacterData._save_pending = was_pending
+	CharacterData.load_failed = was_failed
+	CharacterData.active_character_index = was_index
+	CharacterData.character_slots = was_slots
+	check("arriving in an area records it and saves, without waiting for a step", noted)
+	check("  with the map as WorldMap holds it - whole numbers, not the floats JSON gave back",
+		whole, sent.left(200))
+	check("  the same area again saves nothing", not again)
+	check("  and nowhere (a menu) never overwrites a real area", blank == "elusion", blank)
+	check("AreaRegistry tells CharacterData on every arrival",
+		_func_body(_code_src("res://src/systems/arearegistry.gd"), "func _on_scene_changed(").contains("CharacterData.note_area("))
+	await get_tree().process_frame
 
 # 6 Oct, the owner: "every window needs to close with escape also". Escape used
 # to close fourteen of the nineteen, from hand-kept lists that had drifted: the
