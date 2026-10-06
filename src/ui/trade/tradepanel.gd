@@ -171,8 +171,30 @@ func open_panel(player: Node) -> void:
 	_seconds_to_nearby = NEARBY_REFRESH_SECONDS
 	await _poll(true)
 	if start_box.visible:
+		await _check_trading_open()
 		_load_recent()
 		await _load_nearby()
+
+
+# THE OWNER'S TRADE SWITCH (POST /api/server/trade). Off, nobody can open a
+# new trade and a trade already open may still finish, so the window asks
+# /api/status when it opens on the start page and says so before anybody types
+# a name, rather than after the server refuses. A seam for the suite.
+const TRADING_OFF_TEXT := "Trading is switched off for now. A trade already open can still finish."
+var status_request: Callable = Callable(Api, "get_json")
+
+
+func _check_trading_open() -> void:
+	var res: Dictionary = await status_request.call("/api/status")
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	# An older server, or no answer, says nothing about trading: leave it on and
+	# let the server's own answer to an offer speak.
+	var trading: bool = not res.get("ok", false) or bool(data.get("trade", true))
+	offer_button.disabled = not trading
+	if not trading:
+		_set_notice(TRADING_OFF_TEXT, true)
 
 
 func close_panel() -> void:

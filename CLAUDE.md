@@ -2189,7 +2189,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   PATCH for fixes and balance. Counted from what had shipped: 0.1 the
   single-player run, 0.2 accounts and the server owning saves, 0.3 trading,
   guilds and chat, 0.4 the browser (4 Oct), 0.5 seeing each other (6 Oct).
-  0.5.1 is the dots drawn instead of letters.
+  0.5.1 is the dots drawn instead of letters, 0.6.0 the trade switch and
+  the hold on fresh finds.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -2198,6 +2199,32 @@ product versions are it with `.0` after (Windows wants four numbers).
 - **Not `Api.BUILD`.** That counter tells the server which games are too old
   to talk to it, and moves only when the game and the API must change
   together. The version is for people and moves every release.
+
+### Trading can be switched off, and a fresh find waits
+
+6 Oct (E3_SCOPE.md, option B, with the owner's "allow trade to finish"). The
+kill is still the game's word, so a cheated drop is real loot and a trade is
+the only road between accounts; the gates are on the server (api/CLAUDE.md,
+"Trade gates") and the game only says so.
+
+- **The GM panel's Testing tab** has "Trading", a CheckButton beside the
+  other world switch, PvP (on the Server tab it made that tab the tallest, and
+  its wrapping status line then changed the window's height between tabs),
+  showing `/api/status`'s `trade` and posting `/api/server/trade`
+  (`_refresh_trade()`, `_on_trade_toggled()`, with `status_request` and
+  `post_request` as the suite's seams). Off says how many open trades may
+  still finish. Owner only, here and on the server.
+- **The trade window asks when it opens on the start page**
+  (`_check_trading_open()`): off, it says so and disables Open trade before
+  anybody types a name. No answer leaves the button alone - the server's own
+  503 says it anyway, in the same words (`TRADING_OFF_TEXT`).
+- **A held piece** (a mythic or a Perfect found in the last 48 hours) is
+  refused by the server when it is offered; the window shows the server's
+  sentence, which says when it can go. Nothing here knows about holds.
+- The staff log words it "changed trade switch", and names the owner's level
+  and skill tools.
+
+`_test_the_trade_switch_reaches_the_game`; the rules are `test_tradegates.py`.
 
 ### Other players are drawn from the presence socket
 

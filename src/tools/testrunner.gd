@@ -202,6 +202,7 @@ func _run_all() -> void:
 	await _test_the_staff_desk()
 	await _test_the_guild_panel_reads_well()
 	await _test_trades_reach_the_right_people()
+	await _test_the_trade_switch_reaches_the_game()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -13625,6 +13626,103 @@ func _trade_payload(revision: int, their_items: Array, their_gold: int = 0,
 			"confirmed": they_accepted, "offering_value": 100 + their_gold, "tax": 0,
 			"online": they_online},
 	}
+
+
+func _test_the_trade_switch_reaches_the_game() -> void:
+	section("TRADE SWITCH - the owner can stop new trades, and the game says so")
+
+	# 6 Oct: E-3 is open (the kill is the game's word), so a cheated drop is
+	# real loot and trading is the only road between accounts. The owner's
+	# switch is POST /api/server/trade; off stops NEW trades and lets an open
+	# one finish. The server's rules are test_tradegates.py; this is the game.
+
+	# ---- the GM panel's switch ----
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var button: CheckButton = gm.get_node_or_null("%tradebutton") as CheckButton
+	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/ownertabs/testing")
+	var pvp: Node = gm.get_node_or_null("%pvpbutton")
+	check("the GM panel has the trading switch, beside the other world switch, PvP",
+		button != null and testing_tab != null and testing_tab.is_ancestor_of(button)
+		and pvp != null and pvp.get_parent() == button.get_parent())
+	if button == null:
+		gm.queue_free()
+		return
+	var status: Array = [{"ok": true, "data": {"trade": false}}]
+	gm.status_request = func(_path: String) -> Dictionary:
+		await get_tree().process_frame
+		return status[0]
+	var posted: Array = []
+	var answer: Array = [{"ok": true, "data": {"trade": false, "open_trades": 1}}]
+	gm.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		posted.append([path, body])
+		await get_tree().process_frame
+		return answer[0]
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	button.set_pressed_no_signal(true)
+	await gm._refresh_trade()
+	check("  it shows what the server holds, without posting it back",
+		not button.button_pressed and posted.is_empty() and not button.disabled)
+	status[0] = {"ok": true, "data": {}}
+	await gm._refresh_trade()
+	check("  a server that says nothing about trade reads as on", button.button_pressed)
+	await gm._on_trade_toggled(false)
+	check("switching it off asks the owner's route", posted.size() == 1
+		and posted[0][0] == "/api/server/trade" and posted[0][1] == {"on": false}, posted)
+	check("  and says what that means, and how many trades may still finish",
+		gm.results.get_parsed_text().contains("nobody can open a new trade")
+		and gm.results.get_parsed_text().contains("1 open trade may still finish"),
+		gm.results.get_parsed_text())
+	answer[0] = {"ok": false, "status": 404, "error": "Not found."}
+	status[0] = {"ok": true, "data": {"trade": true}}
+	button.set_pressed_no_signal(false)
+	await gm._on_trade_toggled(false)
+	check("a refusal puts the switch back to the server's state and says so",
+		button.button_pressed and gm.results.get_parsed_text().contains("refused"))
+	Api.is_owner = false
+	var asked_before: int = posted.size()
+	await gm._on_trade_toggled(false)
+	check("anyone but the owner asks nothing", posted.size() == asked_before)
+	Api.is_owner = was_owner
+	gm.queue_free()
+
+	# ---- the trade window ----
+	var trade: Control = (load("res://scene/ui/trade/tradepanel.tscn") as PackedScene).instantiate() as Control
+	add_child(trade)
+	await get_tree().process_frame
+	var says: Array = [{"ok": true, "data": {"trade": false}}]
+	trade.status_request = func(_path: String) -> Dictionary:
+		await get_tree().process_frame
+		return says[0]
+	await trade._check_trading_open()
+	check("the trade window says trading is off before anybody types a name",
+		trade.notice_label.text == trade.TRADING_OFF_TEXT and trade.offer_button.disabled,
+		trade.notice_label.text)
+	check("  in the server's own words", trade.TRADING_OFF_TEXT
+		== "Trading is switched off for now. A trade already open can still finish.")
+	says[0] = {"ok": true, "data": {"trade": true}}
+	trade._set_notice("", false)
+	await trade._check_trading_open()
+	check("  and on again, offers again", not trade.offer_button.disabled and trade.notice_label.text == "")
+	says[0] = {"ok": false, "status": 0, "error": "No connection"}
+	trade.offer_button.disabled = true
+	await trade._check_trading_open()
+	check("  no answer leaves it to the server - nothing is refused here on a guess",
+		not trade.offer_button.disabled)
+	check("it asks when the window opens on the start page",
+		_func_body(_code_src("res://src/ui/trade/tradepanel.gd"), "func open_panel(").contains("_check_trading_open()"))
+	trade.queue_free()
+
+	# ---- the staff log ----
+	var StaffPanel: Script = load("res://src/ui/staff/staffpanel.gd") as Script
+	check("the staff log words the switch, and the owner's level and skill tools",
+		StaffPanel.describe_entry({"by": "boss", "action": "trade", "target": "server", "detail": "off"})
+			== "boss changed trade switch - off"
+		and StaffPanel.KIND_LABELS.get("level") == "Level sets" and StaffPanel.KIND_LABELS.get("skill") == "Skill sets",
+		StaffPanel.describe_entry({"by": "boss", "action": "trade", "target": "server", "detail": "off"}))
+	await get_tree().process_frame
 
 
 func _test_trades_reach_the_right_people() -> void:

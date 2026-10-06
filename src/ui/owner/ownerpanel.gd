@@ -125,6 +125,7 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
 @onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
+@onready var trade_button: CheckButton = get_node_or_null("%tradebutton")
 
 # What the switch looked like the last time we asked. The button has to know
 # whether pressing it closes or reopens, and asking the server at press time
@@ -242,6 +243,8 @@ func _ready() -> void:
 
 	if pvp_button != null and not pvp_button.toggled.is_connected(_on_pvp_toggled):
 		pvp_button.toggled.connect(_on_pvp_toggled)
+	if trade_button != null and not trade_button.toggled.is_connected(_on_trade_toggled):
+		trade_button.toggled.connect(_on_trade_toggled)
 
 	_set_testing_status("")
 
@@ -532,6 +535,7 @@ func _on_visibility_changed() -> void:
 		# the maintenance switch follows. The owner may have thrown it from
 		# another machine.
 		await _refresh_pvp()
+		await _refresh_trade()
 	else:
 		_disarm()
 
@@ -814,6 +818,53 @@ func _on_pvp_toggled(pressed: bool) -> void:
 			% Api.username)
 	else:
 		_set_testing_status("[GM] %s has cooled off. Announced in chat." % Api.username)
+
+
+# =============================================================================
+# TRADING - the owner's switch on the one road between accounts
+# =============================================================================
+# The kill is still the game's word (SECURITY_NOTES E-3), so a cheated drop is
+# real loot, and a trade is the only way it reaches anybody else. Off stops new
+# trades; one already open may finish (the owner, 6 Oct: "allow trade to
+# finish"). POST /api/server/trade, owner only; /api/status says where it is.
+var status_request: Callable = Callable(Api, "get_json")
+
+
+func _refresh_trade() -> void:
+	if trade_button == null:
+		return
+	var res: Dictionary = await status_request.call("/api/status")
+	if not is_instance_valid(self) or not is_inside_tree() or not res.get("ok", false):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	# NO SIGNAL: showing the server's state must not post it back. An older
+	# server says nothing about trade, and trading there is simply on.
+	trade_button.set_pressed_no_signal(bool(data.get("trade", true)))
+	trade_button.disabled = not Api.is_owner
+
+
+func _on_trade_toggled(pressed: bool) -> void:
+	if not Api.is_owner:
+		await _refresh_trade()
+		_say("Trading is the owner's switch.", SAY_BAD)
+		return
+	var res: Dictionary = await post_request.call("/api/server/trade", {"on": pressed})
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		# PUT BACK, like PvP: the switch shows what the server holds.
+		await _refresh_trade()
+		_say("The server refused that: %s" % str(res.get("error", "")), SAY_BAD)
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if pressed:
+		_say("Trading is open. Announced in chat.", SAY_GOOD)
+	else:
+		var still_open: int = int(data.get("open_trades", 0))
+		_say("Trading is off: nobody can open a new trade. %s Announced in chat." % (
+			"No trade was open." if still_open == 0
+			else "%d open trade%s may still finish." % [still_open, "" if still_open == 1 else "s"]),
+			SAY_WARN)
 
 
 func _refresh_maintenance() -> void:

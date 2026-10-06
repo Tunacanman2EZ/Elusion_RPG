@@ -508,6 +508,18 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "PvP"
 
+[node name="tradebutton" type="CheckButton" parent="frame/margin/rows/ownertabs/testing/godmoderow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Owner only. Players may open trades with each other. Off stops anybody opening a new trade; a trade already open can still finish. Announced in chat, and the trade window says so. Mythic and Perfect finds wait 48 hours before they can be traded either way."
+focus_mode = 0
+theme_override_colors/font_pressed_color = Color(0.43137, 0.83922, 0.49412, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
+theme_override_font_sizes/font_size = 13
+text = "Trading"
+
 [node name="serverlabel" type="Label" parent="frame/margin/rows/ownertabs/server" unique_id=1900112267]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)

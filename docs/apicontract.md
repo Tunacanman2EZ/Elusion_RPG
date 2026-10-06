@@ -737,6 +737,23 @@ the first.
 
 ---
 
+## Trade gates
+
+**`POST /api/server/trade`** (owner; 404 to everyone else): `{"on": bool}` ->
+`{"trade", "open_trades"}`. Off refuses a NEW trade only:
+`POST /api/trade/offer` answers **503** with "Trading is switched off for now.
+A trade already open can still finish." and `"trade": false`. An open trade can
+still be updated, accepted and cancelled. `GET /api/status` carries `"trade"`
+(true when absent, for an older server).
+
+**A fresh mythic or Perfect waits 48 hours.** Taken from a loot bag or bought
+from the shop, it cannot be offered: `/api/trade/update` answers 400 with a
+sentence naming the piece and when it can be traded, and execution refuses the
+same way if a hold arrived after the offer. The game shows the sentence; it
+keeps no copy of the rule.
+
+---
+
 ## Server health
 
 ### `GET /api/status`

@@ -126,6 +126,7 @@ const KIND_LABELS: Dictionary = {
 	"mute": "Chat mutes", "unmute": "Unmutes", "report": "Reports closed",
 	"guild_rename": "Guild renames", "guild_disband": "Guild disbands",
 	"maintenance": "Maintenance", "minbuild": "Minimum build", "pvp": "PvP switch",
+	"trade": "Trade switch", "level": "Level sets", "skill": "Skill sets",
 }
 
 # Which kinds name an ACCOUNT as their target, so a log line can take you to
@@ -448,7 +449,7 @@ static func describe_entry(entry: Dictionary) -> String:
 			line = "%s renamed the guild %s" % [by, target]
 		"guild_disband":
 			line = "%s disbanded the guild %s" % [by, target]
-		"maintenance", "minbuild", "pvp":
+		"maintenance", "minbuild", "pvp", "trade":
 			line = "%s changed %s" % [by, str(KIND_LABELS.get(kind, kind)).to_lower()]
 		_:
 			# A kind this build does not know yet still says who did what to
