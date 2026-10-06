@@ -1,6 +1,6 @@
 # Elusion RPG
 
-A top-down 2.5D action RPG built in Godot 4.6 with GDScript, backed by a Flask account service. Four playable classes, six enemy families in forty-three elemental variants, collectable combat pets, fishing and cooking, player-to-player trading over a taxed economy, and a complete run from town to final boss.
+A top-down 2.5D action RPG built in Godot 4.6 with GDScript, backed by a Flask account service. Four playable classes, six enemy families in forty-three elemental variants, collectable combat pets, fishing and cooking, player-to-player trading over a taxed economy, other players drawn live wherever you are, and a complete run from town to final boss.
 
 ![The final boss: two independent attack tracks telegraphing and erupting](docs/boss.gif)
 
@@ -14,7 +14,7 @@ It is short on purpose. It has a beginning, an escalation, an ending, and a loop
 
 ## Playing it
 
-Elusion is a PC game, played with a keyboard and mouse in a desktop browser. It is not made for phones.
+Elusion is a PC game, played with a keyboard and mouse in a desktop browser at [play.elusionrpg.com](https://play.elusionrpg.com). It is not made for phones.
 
 The first time a character stands in town, a welcome card gives the way out to the Field and lists every key. **H** brings the keys back at any time, and they are read from the game's own input settings, so the card cannot drift from the game.
 
@@ -328,7 +328,7 @@ This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on
 
 ## Status
 
-The single-player build is complete and playable start to finish.
+The game is complete and playable start to finish, online: accounts, chat, friends, guilds, trading, and every other player in your area drawn live. The fight is still each player's own — the server does not run combat yet, so a friend swinging at nothing is swinging at a monster in their own game. Moving the fight onto the server is the next step, and the API repo's `E3_SCOPE.md` says why it is the one that matters.
 
 Authority has moved off the client. The server rolls every loot drop with entropy the client never sees, owns level and XP and the stat maxima they imply, holds loot bags as rows the game renders a copy of — taking an item out of one is a request, not an announcement — and now reconciles the backpack against what it actually granted, so a modified client's fabricated items are trimmed to nothing.
 
