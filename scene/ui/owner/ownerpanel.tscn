@@ -448,6 +448,38 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Set level"
 
+[node name="skillrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="skillpick" type="OptionButton" parent="frame/margin/rows/ownertabs/testing/skillrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 0)
+layout_mode = 2
+tooltip_text = "Which skill to set, or all six at once."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+
+[node name="skillinput" type="LineEdit" parent="frame/margin/rows/ownertabs/testing/skillrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "The skill level to set, 1 to 99."
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+placeholder_text = "skill (1-99)"
+max_length = 2
+
+[node name="skillbutton" type="Button" parent="frame/margin/rows/ownertabs/testing/skillrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(86, 0)
+layout_mode = 2
+tooltip_text = "Set that skill on the server, with no XP into the level. Your own character only."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Set skill"
+
 [node name="godmoderow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing"]
 layout_mode = 2
 theme_override_constants/separation = 5

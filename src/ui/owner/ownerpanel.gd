@@ -114,6 +114,9 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var catalogue_button: Button = get_node_or_null("%cataloguebutton")
 @onready var level_input: LineEdit = get_node_or_null("%levelinput")
 @onready var level_button: Button = get_node_or_null("%levelbutton")
+@onready var skill_pick: OptionButton = get_node_or_null("%skillpick")
+@onready var skill_input: LineEdit = get_node_or_null("%skillinput")
+@onready var skill_button: Button = get_node_or_null("%skillbutton")
 # THE TELEPORT ROW. Reuses %usernameinput, the same box the view and sanction
 # rows read, so there is one place a name is typed.
 @onready var tp_bring_button: Button = get_node_or_null("%tpbringbutton")
@@ -215,6 +218,11 @@ func _ready() -> void:
 		level_button.pressed.connect(_on_level_pressed)
 	if level_input != null:
 		level_input.text_submitted.connect(func(_t): _on_level_pressed())
+	_populate_skills()
+	if skill_button != null and not skill_button.pressed.is_connected(_on_skill_pressed):
+		skill_button.pressed.connect(_on_skill_pressed)
+	if skill_input != null:
+		skill_input.text_submitted.connect(func(_t): _on_skill_pressed())
 
 	if tp_bring_button != null and not tp_bring_button.pressed.is_connected(_on_teleport_pressed):
 		tp_bring_button.pressed.connect(_on_teleport_pressed.bind("bring"))
@@ -1071,6 +1079,7 @@ const LEVEL_MAX := 99  # STAFF_LEVEL_MAX in app.py
 # can watch them without a server or a character (the Items window's pattern).
 var post_request: Callable = Callable(Api, "post")
 var apply_level: Callable = _apply_level
+var apply_skills: Callable = _apply_skills
 
 
 func _on_level_pressed() -> void:
@@ -1116,6 +1125,90 @@ func _apply_level(data: Dictionary) -> void:
 	var body: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
 	if body != null and body.has_method("apply_server_level"):
 		body.apply_server_level(data)
+
+
+# =============================================================================
+# SKILL LEVELS - the owner's own, set on the server
+# =============================================================================
+# The owner, 6 Oct: "i want full control of my stats in admin panel so i can do
+# more testing". The level row's twin: pick a skill (or all six), type a
+# level, and /api/staff/skill sets it on the character being played. The
+# skill names are the server's (STAFF_SKILL_ORDER in app.py); the words are
+# what the Stats window calls them.
+const SKILL_CHOICES := [
+	["all", "All skills"], ["attack", "Attack"], ["defense", "Defense"],
+	["agility", "Agility"], ["magic", "Magic"], ["fishing", "Fishing"],
+	["cooking", "Cooking"],
+]
+const SKILL_MAX := 99  # MAX_SKILL_LEVEL in app.py
+
+
+func _populate_skills() -> void:
+	if skill_pick == null or skill_pick.item_count > 0:
+		return
+	for choice in SKILL_CHOICES:
+		skill_pick.add_item(str(choice[1]))
+		skill_pick.set_item_metadata(skill_pick.item_count - 1, str(choice[0]))
+	skill_pick.select(0)
+
+
+func chosen_skill() -> String:
+	if skill_pick == null or skill_pick.selected < 0:
+		return "all"
+	return str(skill_pick.get_item_metadata(skill_pick.selected))
+
+
+func _on_skill_pressed() -> void:
+	if skill_input == null:
+		return
+	if not Api.is_owner:
+		_set_testing_status("Setting a skill is the owner's.")
+		return
+
+	var typed: String = skill_input.text.strip_edges()
+	if typed == "":
+		_set_testing_status("Type a skill level first.")
+		return
+	if not typed.is_valid_int() or int(typed) < 1 or int(typed) > SKILL_MAX:
+		_set_testing_status("A skill level is a whole number from 1 to %d." % SKILL_MAX)
+		return
+
+	var skill: String = chosen_skill()
+	var words: String = "every skill" if skill == "all" else skill.capitalize()
+	var wanted: int = int(typed)
+	_set_testing_status("Asking the server for %s at %d..." % [words, wanted])
+	var res: Dictionary = await post_request.call("/api/staff/skill", {
+		"slot": CharacterData.active_character_index,
+		"skill": skill,
+		"level": wanted,
+	})
+
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_set_testing_status(_refused(res))
+		return
+	var data = res.get("data", {})
+	if not (data is Dictionary) or not (data.get("skills", null) is Dictionary):
+		_set_testing_status("The server did not say what happened.")
+		return
+
+	apply_skills.call(data)
+	var skills: Dictionary = data["skills"]
+	if skill == "all":
+		_set_testing_status("Every skill is level %d now." % int(data.get("level", wanted)))
+	else:
+		var entry: Dictionary = skills.get(skill, {}) if skills.get(skill, {}) is Dictionary else {}
+		_set_testing_status("%s %d, from %d." % [words, int(entry.get("level", wanted)),
+			int(entry.get("was", 0))])
+
+
+func _apply_skills(data: Dictionary) -> void:
+	# THE SERVER'S ANSWER, COPIED, like _apply_level(): the player takes the
+	# levels the server stored, so damage, defense and speed use them at once.
+	var body: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if body != null and body.has_method("apply_server_skills"):
+		body.apply_server_skills(data)
 
 
 func _open_inventory_container() -> Node:

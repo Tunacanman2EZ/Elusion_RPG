@@ -3439,11 +3439,20 @@ nineteenth window.
   panel refuses anything but a whole number 1-99 before asking. The player
   copies the answer with `apply_server_level()` - the server's pools, not a
   refill, so `_fill_all_resources()` keeps its one caller.
+- **Set skill** is the row under it (6 Oct, the owner: "full control of my
+  stats"): a picker with All skills and the six skills, a two-digit box and the
+  button. `POST /api/staff/skill`, owner only, the caller's own character, the
+  level with no XP into it, a `skill` line in the staff log. The player copies
+  the answer with `apply_server_skills()`, which sets only the six names in
+  `GameConstants.SKILL_XP_GROWTH` and pops nothing - a set is not a level-up.
+  Damage, the defense tier and attack speed read the skill vars live, so they
+  change at once.
 
-`_test_the_item_menu` holds the catalogue and `_test_the_gm_panel_sets_a_level`
-the level and the button, through the panels' own doors - `post_request`,
-`adopt_bag`, `equip_request` and `apply_level` are Callables the suite swaps
-for stubs. The API's `test_ownership.py` O-7 holds the level route. Played as
+`_test_the_item_menu` holds the catalogue, `_test_the_gm_panel_sets_a_level`
+the level and the button, and `_test_the_gm_panel_sets_skills` the skill row,
+through the panels' own doors - `post_request`, `adopt_bag`, `equip_request`,
+`apply_level` and `apply_skills` are Callables the suite swaps for stubs. The
+API's `test_ownership.py` O-7 and O-8 hold the two routes. Played as
 the owner: level 1 to 22, then a Double Axe spawned and worn in two clicks.
 
 ### A SpinBox's typed number is not its value until Enter

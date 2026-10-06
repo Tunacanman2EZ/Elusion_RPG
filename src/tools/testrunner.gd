@@ -268,6 +268,7 @@ func _run_all() -> void:
 	await _test_the_mythic_weapons()
 	await _test_the_item_menu()
 	await _test_the_gm_panel_sets_a_level()
+	await _test_the_gm_panel_sets_skills()
 	await _test_mythic_drops()
 
 
@@ -18309,3 +18310,122 @@ func _test_the_gm_panel_sets_a_level() -> void:
 	panel.queue_free()
 	await get_tree().process_frame
 	print("  the GM panel's Testing tab sets your level, read as typed, owner only")
+
+
+func _test_the_gm_panel_sets_skills() -> void:
+	section("GM PANEL - Testing sets your skill levels, one or all six")
+
+	# The owner, 6 Oct: "i want full control of my stats in admin panel so i can
+	# do more testing". The level row's twin, for the six skills.
+	var packed: PackedScene = load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene
+	var panel: Control = packed.instantiate() as Control
+	add_child(panel)
+	await get_tree().process_frame
+
+	var pick: OptionButton = panel.get_node_or_null("%skillpick") as OptionButton
+	var box: LineEdit = panel.get_node_or_null("%skillinput") as LineEdit
+	var button: Button = panel.get_node_or_null("%skillbutton") as Button
+	var testing: Node = panel.get_node_or_null("frame/margin/rows/ownertabs/testing")
+	check("the Testing tab has a skill picker, a level box and a Set skill button",
+		pick != null and box != null and button != null and testing != null
+		and testing.is_ancestor_of(pick) and testing.is_ancestor_of(box) and testing.is_ancestor_of(button))
+	if pick == null or box == null or button == null:
+		panel.queue_free()
+		return
+	check("  the button sends it, and so does Enter in the box",
+		button.pressed.get_connections().size() > 0 and box.text_submitted.get_connections().size() > 0)
+
+	var ids: Array = []
+	for i in pick.item_count:
+		ids.append(str(pick.get_item_metadata(i)))
+	var six: Array = GameConstants.SKILL_XP_GROWTH.keys()
+	var named: Array = ids.slice(1)
+	named.sort()
+	six.sort()
+	check("  it offers all six skills by the names the game and the server use, and \"all\" first",
+		ids.size() == 7 and ids[0] == "all" and named == six, ids)
+	check("  and opens on all of them", panel.chosen_skill() == "all", panel.chosen_skill())
+
+	var asked: Array = []
+	var applied: Array = []
+	var answer: Array = [{"ok": true, "data": {"slot": 0, "level": 40,
+		"skills": {"agility": {"level": 40, "xp": 0, "xp_next": 900, "was": 7}}}}]
+	panel.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		asked.append([path, body])
+		await get_tree().process_frame
+		return answer[0]
+	panel.apply_skills = func(data: Dictionary) -> void:
+		applied.append(data)
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+
+	pick.select(ids.find("agility"))
+	box.text = "40"
+	await panel._on_skill_pressed()
+	check("the skill picked and the level typed are what is asked: the owner's route, this character",
+		asked.size() == 1 and asked[0][0] == "/api/staff/skill" and asked[0][1].get("skill") == "agility"
+		and asked[0][1].get("level") == 40 and asked[0][1].get("slot") == CharacterData.active_character_index,
+		asked)
+	check("  the character takes the server's answer", applied.size() == 1
+		and applied[0].get("skills", {}).has("agility"))
+	check("  and the panel says what changed",
+		panel.results != null and panel.results.get_parsed_text().contains("Agility 40, from 7"),
+		panel.results.get_parsed_text() if panel.results != null else "")
+
+	answer[0] = {"ok": true, "data": {"slot": 0, "level": 99, "skills": {}}}
+	pick.select(0)
+	box.text = "99"
+	await panel._on_skill_pressed()
+	check("\"all\" asks for every skill at once, and says so",
+		asked.size() == 2 and asked[1][1].get("skill") == "all"
+		and panel.results.get_parsed_text().contains("Every skill is level 99"), asked)
+
+	for bad in ["", "abc", "0", "-5", "2.5"]:
+		box.text = bad
+		await panel._on_skill_pressed()
+	check("an empty box, words, 0, a minus and a fraction are refused here, and nothing is asked",
+		asked.size() == 2, asked.size())
+	check("  and the box holds two digits, so 100 cannot be typed (the server's top is %d)" % panel.SKILL_MAX,
+		box.max_length == 2 and panel.SKILL_MAX == 99)
+
+	answer[0] = {"ok": false, "status": 400, "error": "level must be 1-99"}
+	box.text = "50"
+	await panel._on_skill_pressed()
+	check("a refusal is said in the server's words, and nothing is applied",
+		applied.size() == 2 and panel.results.get_parsed_text().contains("level must be 1-99"))
+
+	Api.is_owner = false
+	box.text = "50"
+	var asked_before: int = asked.size()
+	await panel._on_skill_pressed()
+	check("anyone but the owner is told it is the owner's, and nothing is asked",
+		asked.size() == asked_before and panel.results.get_parsed_text().contains("owner's"))
+	Api.is_owner = was_owner
+	panel.queue_free()
+
+	# --- THE CHARACTER'S HALF ---
+	var warrior: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior.attack = 2
+	warrior.attack_xp = 55
+	warrior.cooking = 4
+	warrior.apply_server_skills({"skills": {
+		"attack": {"level": 60, "xp": 0, "xp_next": 1234, "was": 2},
+		"agility": {"level": 99, "xp": 0, "xp_next": 0, "was": 1},
+		"defense": {"level": 99, "xp": 0, "xp_next": 77, "was": 1},
+		"strength": {"level": 50, "xp": 0, "xp_next": 10, "was": 1},
+	}})
+	check("a character copies the skills the server set: level, no XP into it, the next step",
+		warrior.attack == 60 and warrior.attack_xp == 0 and warrior.attack_xp_next == 1234,
+		[warrior.attack, warrior.attack_xp, warrior.attack_xp_next])
+	check("  a missing next step is worked out from the skill's own curve",
+		warrior.agility == 99 and warrior.agility_xp_next == warrior.xp_needed_for_skill_id("agility", 99),
+		[warrior.agility, warrior.agility_xp_next])
+	check("  a skill it did not name is left where it was", warrior.cooking == 4, warrior.cooking)
+	check("  and a name that is not a skill sets nothing", warrior.get("strength") == null)
+	check("  the new levels are what the fight reads: attack speed and the defense tier",
+		is_equal_approx(warrior.get_attack_speed_multiplier(), PlayerStats.attack_speed_multiplier(99))
+		and warrior._get_defense_tier()["name"] == PlayerStats.defense_tier(99)["name"],
+		[warrior.get_attack_speed_multiplier(), warrior._get_defense_tier()])
+	warrior.free()
+	await get_tree().process_frame
+	print("  the GM panel's Testing tab sets your skills, one or all, owner only")

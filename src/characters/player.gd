@@ -1673,6 +1673,29 @@ func apply_server_level(answer: Dictionary) -> void:
 	CharacterData.save_character_state(self)
 
 
+func apply_server_skills(answer: Dictionary) -> void:
+	# THE OWNER'S SKILL TOOL: /api/staff/skill set one skill or all six, and
+	# this copies the server's answer - the level, no XP into it and the next
+	# threshold - so the bars, the damage, the defense tier and the attack
+	# speed all read the new level at once. No popup and no sound: a set is
+	# not a level-up. Only the six names the game knows are copied; anything
+	# else in the answer is left alone rather than set as a stray property.
+	var skills: Variant = answer.get("skills", {})
+	if not (skills is Dictionary):
+		return
+	for skill_id in skills:
+		var entry: Variant = skills[skill_id]
+		if not (entry is Dictionary) or not GameConstants.SKILL_XP_GROWTH.has(str(skill_id)):
+			continue
+		var id: String = str(skill_id)
+		var new_level: int = clampi(int(entry.get("level", 1)), 1, 99)
+		set(id, new_level)
+		set(id + "_xp", maxi(0, int(entry.get("xp", 0))))
+		var next: int = int(entry.get("xp_next", 0))
+		set(id + "_xp_next", next if next > 0 else xp_needed_for_skill_id(id, new_level))
+	CharacterData.save_character_state(self)
+
+
 func xp_needed_for_skill(skill_level: int, base := 100, factor := 1.18) -> int:
 	# Defaults repeated here rather than referencing PlayerStats.SKILL_XP_BASE,
 	# because a default argument is part of this method's public signature and

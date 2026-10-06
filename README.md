@@ -97,7 +97,7 @@ Mods, devs and the owner get a Staff button on the HUD: every account with who i
 
 The interesting part was what a kick looked like from the other side: nothing. The server deleted the session, but the game never asked again after the login screen, so a kicked player played on until they restarted. The game now sends a heartbeat every fifteen seconds and re-checks at once on any refused request — a kick lands in about a second — and only a 401 counts, so restarting the server never signs everyone out.
 
-The owner's GM panel has a **Testing** tab: gold and items by id, an **Item catalogue** (`src/ui/owner/itemspawner.gd`) - every item the game loaded, with its picture and rarity, searchable by name or id, spawned into the bag with one click and put straight on, for gear - and a box that sets the owner's own character's level on the server, so level 22 gear can be tested without eight hours of play. Every click is a server request the server logs; the tools only exist for the owner, and the routes refuse anyone else.
+The owner's GM panel has a **Testing** tab: gold and items by id, an **Item catalogue** (`src/ui/owner/itemspawner.gd`) - every item the game loaded, with its picture and rarity, searchable by name or id, spawned into the bag with one click and put straight on, for gear - and boxes that set the owner's own character's level and skill levels on the server - one skill or all six - so level 22 gear and high-level recipes can be tested without the hours of play. Every click is a server request the server logs; the tools only exist for the owner, and the routes refuse anyone else.
 
 Staff names are public - the crown and the MOD and DEV badges say exactly whose password is worth guessing - so a staff password alone opens nothing. For a staff account with a confirmed recovery address, a correct password gets a six-digit code by email instead of a session, and only the code logs in. A wrong code counts toward the same lockout as a wrong password.
 
@@ -232,9 +232,9 @@ Calling the virtualenv's interpreter directly is deliberate: it skips having to 
 
 To see other players, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before and simply draws nobody else.
 
-That serves a hundred and six endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred and seven endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-A hundred and one of the hundred and six require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+A hundred and two of the hundred and seven require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
 The backend has forty-six test suites, run together with one command:
 
@@ -251,12 +251,12 @@ test_loot.py           259 checks    every finished item is actually obtainable
 test_equipment.py      212 checks    the equipment system, client and server
 test_gearbonus.py      173 checks    what gear adds, counted by the server
 test_guilds.py         167 checks    founding, joining, ranks, taking a guild down
+test_ownership.py      150 checks    no route hands over a row that is not yours
 test_moderation.py     149 checks    the moderation record, a log that opens on moderation, the powers in words
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
-test_ownership.py      128 checks    no route hands over a row that is not yours
 test_pacing.py         112 checks    the pace of the game: what the server pays, the store charges and the shop pays back
-test_refusals.py       105 checks    401, 403, and the 404 that is really a 403
+test_refusals.py       108 checks    401, 403, and the 404 that is really a 403
 test_security_doc.py   106 checks    SECURITY.md is checked, not trusted
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
 test_quality.py         83 checks    rolled gear from drops and the shop, carried whole by every path
@@ -290,14 +290,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,326 checks, 0 failures
+					4,351 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-sixth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,808 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 130 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,825 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 130 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `2768 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2785 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
