@@ -158,6 +158,10 @@ It happened twice. **E-10** is the same mistake one endpoint over: lusions were 
 
 Player trading arrived after the audit and gets its own section there, because it is the first feature where two clients can cooperate against the server rather than one lying alone. The login endpoint that came out of it throttles per account *and* per source address — the second one because eight consecutive misses on one account does nothing about one host trying the same password against a thousand usernames.
 
+### Other players, on your screen — `src/systems/presence.gd`, `src/characters/remoteplayer.gd`, `presence.py` (API repo)
+
+Everyone in the same area sees everyone else: walking and idling the right way round, swinging, the tank's aura lit, the pet trailing behind, and the name over the head in the colour they chose, with the guild tag and the crown or staff badge. It runs over a WebSocket to a small asyncio server beside the API, ten updates a second per area, and none of it touches the database. The socket never sees a login: the game trades its session for a two-minute ticket, so a ban or a sign-out elsewhere ends the connection within seconds without the socket server knowing how logins work. And the game only ever says *where* it is — who somebody is (name, rank, colour, which pets they may show) comes from the server's own rows. Each game still fights its own enemies; this is presence, not combat.
+
 ### Plays in a browser, from the API's own address — `export_presets.cfg`, `web/shell.html`, `src/systems/webpage.gd`
 
 The Web preset builds without threads. That makes it run on any current browser, and its host needs no special headers. The page is a loader in the game's own art. It stays in front of the canvas until the login screen has drawn, so the player goes from one straight to the other.
@@ -226,11 +230,13 @@ cd <your-path>/game/api
 
 Calling the virtualenv's interpreter directly is deliberate: it skips having to activate the environment and guarantees you're on the venv's Python rather than whatever `python` happens to resolve to on `PATH`.
 
-That serves a hundred and five endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+To see other players, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before and simply draws nobody else.
 
-A hundred of the hundred and five require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+That serves a hundred and six endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-The backend has forty-five test suites, run together with one command:
+A hundred and one of the hundred and six require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+
+The backend has forty-six test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -269,6 +275,7 @@ test_accounts.py        50 checks    signing in: one game per account, locks, no
 test_settings.py        49 checks    the options screen's rules
 test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
+test_presence.py        42 checks    players seeing each other: tickets, areas, what a game may say
 test_clientbuild.py     37 checks    the client build gate
 test_guildlife.py       37 checks    what members are playing, what happened
 test_revocation.py      34 checks    what it costs to change your mind
@@ -283,14 +290,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,284 checks, 0 failures
+					4,326 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-fifth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-sixth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,766 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 128 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,808 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 130 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `2726 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2768 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 

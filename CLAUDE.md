@@ -2162,6 +2162,47 @@ three gates and toggle them; the Field loads with the gates up.
 
 `_test_the_boss_gates_lever`.
 
+### Other players are drawn from the presence socket
+
+The owner, 5 Oct: "i want to make other players see each other" - their body
+walking and idling the right way round, the name over the head, their attacks
+and their pet following. The `Presence` autoload (`src/systems/presence.gd`)
+keeps a WebSocket to the API's `presence.py` while a character is in the world
+and the game is logged in, and draws everybody in the same area as a
+`remoteplayer.gd` node in the local player's own parent (the y-sort world).
+
+- **A ticket, never the login.** It asks `POST /api/presence/ticket` and hands
+  the socket the ticket; the API's answer says where the socket is
+  (`socket_url`), so the browser build reaches it on its own address. Renewed
+  every minute, which is how a level-up or a new guild reaches other screens.
+- **The game says where, never who.** `state_for()` sends the area, the
+  position (global, to a tenth of a pixel, so standing still sends nothing),
+  the body's animation, the lit aura and the pet out - at most ten times a
+  second and only on a change. Name, rank, colour, guild, class and the pets
+  allowed come from the server. Positions arrive as world positions and are
+  turned into the world node's space (`_local()`).
+- **A remote player is a picture, not a player**: no body to collide with, no
+  hurtbox, and never in the "player" group - everything that asks for "the
+  player" still means you. Its sprite, auras and nameplate are copied from the
+  class scene and from player.gd's own constants (`class_parts()`,
+  `plate_constant()`), so it cannot look different from the real thing. A
+  class without an animation it was sent (a healer has no attack) stands
+  facing the same way. An attack replays until the next state arrives,
+  because the game sends "attacking" once.
+- **The pet is a sibling** in the world, so it sorts by where it stands, and
+  goes when its owner does.
+- **A new scene is a new world.** A change of scene, even a revive in the same
+  area, clears every remote and asks the server who is here (`sync`), sent
+  after the new state so the answer is about the new area.
+- **Nothing here is essential.** No server, a refused ticket or a dropped
+  socket: the game plays as before, nobody is drawn, and it tries again after
+  2, 5, 10, then 30 seconds. It never tells the player.
+- **Presence, not combat.** Each game still fights its own enemies, so a
+  player swinging at nothing is swinging at a monster in their own world.
+
+`_test_other_players_are_drawn`; the server's rules are `test_presence.py` in
+the API repo.
+
 ### Bosses hit for their band
 
 All seven bosses run `bossenemy.gd`, and all seven used to hit for its
@@ -3755,12 +3796,14 @@ produce its own loot only has to make the request fail.
 ## Layout
 
 ```
-src/characters/     player.gd, playerstats.gd, and warrior/mage/tank/healer
+src/characters/     player.gd, playerstats.gd, and warrior/mage/tank/healer;
+                    remoteplayer.gd draws another player
 src/enemies/        BaseEnemy and its six subclasses
 src/pets/           the companion system
 src/projectiles/    arrows, acid, vines, slash waves, ground hazards
 src/systems/        the autoloads — api, audio, characterdata, combat,
-                    gameconstants, gamestate, itemregistry, scenetransition —
+                    gameconstants, gamestate, itemregistry, presence,
+                    scenetransition —
                     plus the save/load storage layer
 src/types/          ClassData, EnemyData, ItemData, ItemStack. The Resource TYPE
                     definitions only; data/ at the project root holds the .tres

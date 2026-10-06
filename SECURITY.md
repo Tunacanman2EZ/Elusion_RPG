@@ -66,6 +66,14 @@ or a browser export holds the scripts compiled but not encrypted
 (`encrypt_pck=false`). That changes nothing above: the client was never a secret
 and never a trust boundary.
 
+**Other players on your screen are pictures, and where they stand is what their
+game said.** `Presence` draws everybody the presence server names in your area,
+from its own messages only: their name, rank, colour, guild and the pets they may
+show come from the server's rows, and the socket is opened with a two-minute
+ticket rather than the login token. A modified game can stand anywhere on other
+people's screens; it cannot be someone else, and nothing on that socket deals
+damage or moves an item. A drawn player has no hitbox and is never "the player".
+
 **Most of what looks like a client-side vulnerability is a server question.** "I
 can edit my save", "I can spawn items", "I can claim a kill" — all true, all
 expected, and all bounded server-side. The interesting version of those reports is

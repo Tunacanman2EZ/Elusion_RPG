@@ -34,6 +34,7 @@ PerfOverlay="*res://src/systems/perfoverlay.gd"
 Settings="*res://src/systems/settings.gd"
 WorldMap="*res://src/systems/worldmap.gd"
 AreaRegistry="*res://src/systems/arearegistry.gd"
+Presence="*res://src/systems/presence.gd"
 
 [display]
 

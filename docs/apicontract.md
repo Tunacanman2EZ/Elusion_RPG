@@ -694,6 +694,49 @@ long is left and why.
 
 ---
 
+## Seeing each other
+
+Other players are drawn from a WebSocket, not from these routes: `presence.py`
+in the API repo, a second process beside the API. `src/systems/presence.gd`
+is the client; api/CLAUDE.md ("Seeing each other") and `presence.py`'s header
+are the server's side.
+
+### `POST /api/presence/ticket`
+
+`{"slot": 0}` → `{"ticket", "expires_in": 120, "socket_url"}`. `404` with no
+character in that slot. The ticket is good for two minutes, once, for this
+login; the game asks for a fresh one every minute and sends it as `renew`.
+`socket_url` is where to connect: `wss://<the host the API was reached on>/ws/presence`
+behind the proxy, so the browser build stays on its own address.
+
+### The socket
+
+JSON text frames. The game sends:
+
+| Message | When |
+|---|---|
+| `{"t": "hello", "ticket"}` | first, within 5 seconds |
+| `{"t": "s", "a", "x", "y", "m", "fx", "pet"}` | where it stands, on a change, at most 10 a second: area id, world position, the body's animation (`idle\|walk\|attack\|death\|hitflash` + a facing), the lit auras (`ring`, `firering`) and the pet out |
+| `{"t": "renew", "ticket"}` | every minute |
+| `{"t": "sync"}` | after a new scene: tell me who is here again |
+
+The server sends:
+
+| Message | Meaning |
+|---|---|
+| `{"t": "welcome", "id"}` | in; `id` is your account id |
+| `{"t": "join", "p": [{"id", "name", "cls", "lvl", "role", "hue", "guild", "x", "y", "m", "fx", "pet"}]}` | people now in your area (and anyone whose identity changed) |
+| `{"t": "moves", "p": [[id, x, y, m, fx, pet]]}` | who moved this tick, ten a second; your own id is in it, skip it |
+| `{"t": "leave", "ids": [...]}` | gone from your area |
+| `{"t": "bye", "why"}` | then the socket closes: `ticket`, `replaced` (signed in elsewhere), `signed out`, `too fast` |
+
+**Who somebody is comes only from `join`**, written by the API from its own
+rows. A state naming a pet the character does not hold shows no pet; a
+malformed state is ignored. A second connection on the same account replaces
+the first.
+
+---
+
 ## Server health
 
 ### `GET /api/status`

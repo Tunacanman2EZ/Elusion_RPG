@@ -245,6 +245,7 @@ func _run_all() -> void:
 	await _test_the_shop_buys()
 	await _test_quality_rolls()
 	await _test_the_boss_gates_lever()
+	await _test_other_players_are_drawn()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -7821,6 +7822,256 @@ func _test_quality_rolls() -> void:
 		if str(id).begins_with("qtest_"):
 			ItemRegistry._rolled.erase(id)
 	print("  a roll is read from the id, scaled like the server, and shown wherever the piece is")
+
+
+func _test_other_players_are_drawn() -> void:
+	section("OTHER PLAYERS - drawn from what the presence server says, and only that")
+
+	# ---- the pieces are there --------------------------------------------------
+	check("Presence is an autoload, so it lives across every area change",
+		get_node_or_null("/root/Presence") != null)
+	if require_script("res://src/characters/remoteplayer.gd", "a remote player") == null:
+		return
+	# DRIVEN BY HAND. Its own loop would find nobody logged in and switch it off
+	# between two steps of this test.
+	Presence.set_process(false)
+	Presence.stop()
+	var world := Node2D.new()
+	world.name = "presenceworld"
+	# NOT AT THE ORIGIN: the wire carries world positions, and a body is placed
+	# inside the world node.
+	world.position = Vector2(100, 50)
+	add_child(world)
+	Presence.world_override = world
+	Presence._world = world
+	var cleanup := func() -> void:
+		Presence.stop()
+		Presence.world_override = null
+		Presence._world = null
+		Presence.request_ticket = Callable(Presence, "_post_ticket")
+		Presence._failures = 0
+		Presence.set_process(true)
+
+	# ---- who joins ---------------------------------------------------------------
+	Presence.handle_message({"t": "welcome", "id": 7})
+	Presence.handle_message({"t": "join", "p": [
+		{"id": 7, "name": "me", "cls": "warrior", "x": 0.0, "y": 0.0, "m": "idledown", "fx": [], "pet": ""},
+		{"id": 11, "name": "Tunacan", "cls": "tank", "role": "owner", "hue": 200, "guild": "ELUSION",
+			"lvl": 20, "x": 300.0, "y": 250.0, "m": "walkleft", "fx": ["firering"], "pet": "petfiresprite"},
+		{"id": 12, "name": "Mira", "cls": "healer", "role": "mod", "hue": null, "guild": "", "lvl": 3,
+			"x": 140.0, "y": 90.0, "m": "attackdown", "fx": [], "pet": ""},
+		{"id": 13, "name": "Bram", "cls": "warrior", "role": "player", "hue": 40, "guild": "", "lvl": 9,
+			"x": 400.0, "y": 90.0, "m": "attackdown", "fx": [], "pet": ""},
+	]})
+	await get_tree().process_frame
+	var drawn: Array = Presence.remotes().keys()
+	drawn.sort()
+	check("everybody the server names is drawn - and never yourself", drawn == [11, 12, 13], drawn)
+	var tank: Node2D = Presence.remotes().get(11)
+	var healer: Node2D = Presence.remotes().get(12)
+	var warrior: Node2D = Presence.remotes().get(13)
+	if tank == null or healer == null or warrior == null:
+		world.queue_free()
+		cleanup.call()
+		return
+	check("  standing in the world the player stands in", tank.get_parent() == world and healer.get_parent() == world)
+	check("  and not in the player group - everything asking for 'the player' still finds you",
+		not tank.is_in_group("player") and not healer.is_in_group("player"))
+	check("  named for who they are", str(tank.name) == "remote_11", tank.name)
+	check("  where the server said, in the world's own space, at once - no gliding in from the corner",
+		tank.position == Vector2(200, 200), tank.position)
+
+	# ---- the body: the class's own art ------------------------------------------
+	var real: Node = (load("res://scene/characters/tank.tscn") as PackedScene).instantiate()
+	var real_body: AnimatedSprite2D = real.get_node("animatedsprite2d") as AnimatedSprite2D
+	var body: AnimatedSprite2D = tank.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	check("the body is the class scene's own sprite - frames, offset and scale",
+		body != null and body.sprite_frames == real_body.sprite_frames and body.offset == real_body.offset
+		and body.scale == real_body.scale and body.position == real_body.position,
+		[body, real_body.offset, real_body.scale])
+	real.free()
+	check("  playing what they are doing, facing the way they face",
+		body != null and str(body.animation) == "walkleft" and body.is_playing(),
+		str(body.animation) if body != null else "no body")
+	var fire: CanvasItem = tank.get_node_or_null("firering") as CanvasItem
+	var ring: CanvasItem = tank.get_node_or_null("ring") as CanvasItem
+	check("  a tank's lit aura is drawn, and the unlit one is not",
+		fire != null and fire.visible and ring != null and not ring.visible,
+		[fire != null and fire.visible, ring != null and ring.visible])
+	var healer_body: AnimatedSprite2D = healer.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	Presence.handle_message({"t": "moves", "p": [[12, 140.0, 90.0, "attackleft", [], ""]]})
+	check("  a class with no swing of its own stands facing the same way rather than vanish",
+		healer_body != null and str(healer_body.animation) == "idleleft" and healer_body.is_playing(),
+		str(healer_body.animation) if healer_body != null else "no body")
+	var swing: AnimatedSprite2D = warrior.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	if swing != null:
+		swing.stop()
+		swing.animation_finished.emit()
+	check("  an attack keeps swinging until they stop - the game says 'attacking' once",
+		swing != null and str(swing.animation) == "attackdown" and swing.is_playing(),
+		[str(swing.animation) if swing != null else "no body", swing != null and swing.is_playing()])
+
+	# ---- the nameplate -------------------------------------------------------------
+	var plate: Label = tank.plate()
+	check("the plate reads the guild over the name, as yours does",
+		plate != null and plate.text == "%s\nTunacan" % Api.guild_tag_text("ELUSION") and plate.visible,
+		plate.text if plate != null else "no plate")
+	check("  in the colour they chose", plate != null
+		and plate.get_theme_color("font_color") == NameTag.colour(200))
+	var crown: CanvasItem = tank.get_node_or_null("nameplatecrown") as CanvasItem
+	check("  and the owner wears the crown", crown != null and crown.visible)
+	var healer_plate: Label = healer.plate()
+	var badge: Label = healer.get_node_or_null("nameplatebadge") as Label
+	check("a moderator's plate carries the badge, and no guild line when there is no guild",
+		healer_plate != null and healer_plate.text == "Mira" and badge != null and badge.visible
+		and badge.text == NameTag.badge("mod") and badge.text != "",
+		[healer_plate.text if healer_plate != null else "no plate", badge.text if badge != null else "no badge"])
+	check("  a name never coloured is drawn in the default colour",
+		healer_plate != null and healer_plate.get_theme_color("font_color") == NameTag.colour(null))
+	var healer_crown: CanvasItem = healer.get_node_or_null("nameplatecrown") as CanvasItem
+	check("  and only the owner has a crown", healer_crown == null or not healer_crown.visible)
+
+	# ---- the pet --------------------------------------------------------------------
+	var pet: AnimatedSprite2D = tank.pet_sprite()
+	var pet_scene: PackedScene = PetController.pet_scene_for("petfiresprite")
+	var real_pet: Node = pet_scene.instantiate() if pet_scene != null else null
+	var real_pet_frames: SpriteFrames = null
+	if real_pet != null:
+		var real_pet_body: AnimatedSprite2D = real_pet.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+		real_pet_frames = real_pet_body.sprite_frames if real_pet_body != null else null
+		real_pet.free()
+	check("their pet is out, drawn from the pet's own scene",
+		pet != null and real_pet_frames != null and pet.sprite_frames == real_pet_frames,
+		[pet, real_pet_frames])
+	check("  beside them in the world, so it sorts by where it stands",
+		pet != null and pet.get_parent() == world, pet.get_parent() if pet != null else null)
+	check("  and nobody without one has one", healer.pet_sprite() == null)
+
+	# ---- moving ---------------------------------------------------------------------
+	Presence.handle_message({"t": "moves", "p": [[11, 310.0, 250.0, "walkright", [], "petfiresprite"]]})
+	tank._process(1.0 / 60.0)
+	check("a step eases toward where they went rather than jumping",
+		tank.target() == Vector2(210, 200) and tank.position.x > 200.0 and tank.position.x < 210.0,
+		[tank.target(), tank.position])
+	check("  turning plays the new way round", body != null and str(body.animation) == "walkright",
+		str(body.animation) if body != null else "no body")
+	check("  and the aura goes out when they put it out", fire != null and not fire.visible)
+	Presence.handle_message({"t": "moves", "p": [[11, 1100.0, 1050.0, "idledown", [], "petfiresprite"]]})
+	tank._process(1.0 / 60.0)
+	check("a jump too far to be a walk - a door, a teleport - snaps", tank.position == Vector2(1000, 1000),
+		tank.position)
+	Presence.handle_message({"t": "moves", "p": [[7, 5.0, 5.0, "walkup", [], ""], [99, 5.0, 5.0, "walkup", [], ""]]})
+	check("a move for yourself or for somebody never introduced draws nothing",
+		Presence.remotes().size() == 3 and not Presence.remotes().has(99) and not Presence.remotes().has(7),
+		Presence.remotes().keys())
+
+	# ---- leaving --------------------------------------------------------------------
+	Presence.handle_message({"t": "leave", "ids": [11, 12]})
+	await get_tree().process_frame
+	check("somebody leaving takes their body off the screen",
+		not is_instance_valid(tank) and not is_instance_valid(healer) and Presence.remotes().keys() == [13],
+		Presence.remotes().keys())
+	check("  and their pet with them", pet == null or not is_instance_valid(pet))
+	var world2 := Node2D.new()
+	world2.name = "presenceworld2"
+	add_child(world2)
+	Presence._phase = "open"
+	Presence._sync_pending = false
+	Presence.world_override = world2
+	Presence._follow_world(world2)
+	await get_tree().process_frame
+	check("a new world is a new screen: everybody from the old one is forgotten",
+		Presence.remotes().is_empty() and not is_instance_valid(warrior), Presence.remotes().keys())
+	check("  and the server is asked who is here", Presence._sync_pending)
+	Presence._phase = "off"
+	Presence._sync_pending = false
+	Presence.world_override = world
+	Presence._world = world
+
+	# ---- what this game says about its own player -------------------------------------
+	var stand_in_script := GDScript.new()
+	stand_in_script.source_code = "extends Node2D\nvar active_pet_id: String = \"petmage\"\nfunc get_idle_animation() -> String:\n\treturn \"idleleft\"\n"
+	stand_in_script.reload()
+	var stand_in: Node2D = stand_in_script.new()
+	stand_in.position = Vector2(23.456, 28.91)
+	var own_body := AnimatedSprite2D.new()
+	own_body.name = "animatedsprite2d"
+	var warrior_scene: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	own_body.sprite_frames = (warrior_scene.get_node("animatedsprite2d") as AnimatedSprite2D).sprite_frames
+	warrior_scene.free()
+	stand_in.add_child(own_body)
+	var own_fire := Sprite2D.new()
+	own_fire.name = "firering"
+	stand_in.add_child(own_fire)
+	var own_ring := Sprite2D.new()
+	own_ring.name = "ring"
+	own_ring.visible = false
+	stand_in.add_child(own_ring)
+	world.add_child(stand_in)
+	own_body.play("walkup")
+	var said: Dictionary = Presence.state_for(stand_in)
+	check("the game says where it stands, in world space, to a tenth of a pixel",
+		said.get("t") == "s" and is_equal_approx(float(said.get("x")), 123.5)
+		and is_equal_approx(float(said.get("y")), 78.9), said)
+	check("  which area it is in", said.get("a") == AreaRegistry.current_area_id(), said.get("a"))
+	check("  what its body is playing", said.get("m") == "walkup", said.get("m"))
+	check("  which aura is lit", said.get("fx") == ["firering"], said.get("fx"))
+	check("  and which pet is out", said.get("pet") == "petmage", said.get("pet"))
+	check("  and nothing about who it is - the server says that",
+		not said.has("name") and not said.has("role") and not said.has("hue") and not said.has("cls"), said.keys())
+	check("standing still says the same thing twice, so nothing is sent", Presence.state_for(stand_in) == said)
+	var odd := SpriteFrames.new()
+	odd.add_animation(&"projectile")
+	own_body.sprite_frames = odd
+	own_body.animation = &"projectile"
+	check("an animation the server would refuse is sent as the idle one instead",
+		Presence.state_for(stand_in).get("m") == "idleleft", Presence.state_for(stand_in).get("m"))
+
+	# ---- when it cannot connect ----------------------------------------------------------
+	var asked: Array = []
+	Presence._failures = 0
+	Presence.request_ticket = func(path: String, request: Dictionary) -> Dictionary:
+		asked.append([path, request])
+		return {"ok": false, "error": "no"}
+	await Presence._begin()
+	check("a refused ticket waits and tries again later, and says nothing",
+		Presence.phase() == "waiting" and is_equal_approx(Presence._retry_clock, 2.0),
+		[Presence.phase(), Presence._retry_clock])
+	check("  the ticket was asked for this character, at the presence route",
+		asked.size() == 1 and asked[0][0] == "/api/presence/ticket"
+		and asked[0][1].get("slot") == CharacterData.active_character_index, asked)
+	await Presence._begin()
+	check("  and waits longer each time it fails", is_equal_approx(Presence._retry_clock, 5.0), Presence._retry_clock)
+	Presence._failures = 0
+	Presence.request_ticket = func(_path: String, _request: Dictionary) -> Dictionary:
+		return {"ok": true, "data": {"ticket": "t", "socket_url": "ws://127.0.0.1:9/ws/presence"}}
+	await Presence._begin()
+	var connecting: String = Presence.phase()
+	for _i in 300:
+		if Presence.phase() != "connecting":
+			break
+		Presence._pump(1.0 / 60.0, stand_in)
+		await get_tree().process_frame
+	check("a socket that never answers is given up on, and tried again later",
+		connecting == "connecting" and Presence.phase() == "waiting" and Presence.remotes().is_empty(),
+		[connecting, Presence.phase()])
+
+	# ---- with nobody to draw for --------------------------------------------------------
+	Presence.handle_message({"t": "welcome", "id": 7})
+	Presence.handle_message({"t": "join", "p": [{"id": 21, "name": "Late", "cls": "mage", "x": 0.0, "y": 0.0,
+		"m": "idledown", "fx": [], "pet": ""}]})
+	Presence.set_process(true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var logged_in: bool = Api.is_logged_in()
+	var in_world: bool = get_tree().get_first_node_in_group("player") != null
+	check("with nobody logged in and playing, it switches off and draws nobody",
+		logged_in and in_world or (Presence.phase() == "off" and Presence.remotes().is_empty()),
+		[Presence.phase(), Presence.remotes().keys(), logged_in, in_world])
+
+	world.queue_free()
+	world2.queue_free()
+	cleanup.call()
 
 
 func _test_founding_a_guild_shows_what_it_cost() -> void:
