@@ -559,6 +559,19 @@ func _set_listening(listening: bool) -> void:
 	set_process(listening)
 
 
+# HOW CLOSE YOU HAVE TO BE, which lives on the scene, not here: the circle in
+# lootbag.tscn, radius 40 since 0.6.1. It had no radius line at all, so it was
+# Godot's default of 10 px - with the player's own body circle, about one bag's
+# width, and the owner's words were "wider pick up radius". 40 is a little
+# inside the bank chest's 42, so a bag reads as "near" from about where a
+# chest does. Overlapping bags are still settled by _is_nearest_candidate().
+#
+# AND ON THE INTERACTORS LAYER (16), like the chest, the lever, the sign and
+# the fishing spot - not the player layer (4) it used to sit on. Enemy shots
+# look for the player layer and burst on whatever they meet there, so a bag on
+# it was a shield: an arrow aimed at you stopped at your own loot. Four times
+# the radius would have made it a much bigger one. Its mask is the player
+# layer alone, which is all it ever needed to see.
 func _on_body_entered(body: Node) -> void:
 	if body.is_in_group("player"):
 		_player_nearby = body

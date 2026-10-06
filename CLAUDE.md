@@ -420,12 +420,12 @@ the `hp = clamp(...)` index and before the `gain_defense_xp(` index — because
 position is the only thing that actually matters here. Sabotage-tested with the
 heal version, which fails both.
 
-**Dev and owner — one rung above the debug keys beside it.** The threshold is
-`Api.GOD_MODE_MIN_ROLE`, next to `DEBUG_KEYS_MIN_ROLE` and for the same reason:
-one statement of the policy, which the suite asserts instead of a second copy.
-Handing out an item a player should earn is a fairness question; turning off
-whether the game can be lost is a different kind of decision, so it stops at the
-two ranks trusted with the server rather than with the community.
+**Dev and owner.** The threshold is `Api.GOD_MODE_MIN_ROLE`, next to
+`DEBUG_KEYS_MIN_ROLE` and for the same reason: one statement of the policy,
+which the suite asserts instead of a second copy. Turning off whether the game
+can be lost is a decision about testing, so it stops at the two ranks trusted
+with the server rather than with the community. (It used to sit one rung above
+the debug keys; since 0.6.1 the keys are the owner's alone, a rung above it.)
 
 **Ctrl+G is handled *before* `_staff_debug_allowed()`, so it works in a release
 build.** Everything past that gate also needs `OS.is_debug_build()`, because those
@@ -508,22 +508,26 @@ The general form: **a check that has never been watched go red on the exact
 mistake it is meant to catch is not a check.** Every one of those five was found
 by sabotaging it, and four of them were wrong in a direction that *passed*.
 
-### The debug keys are staff-only, and that is a rule, not a defence
+### The debug keys are the owner's, and that is a rule, not a defence
 
 F1-F7, F9-F12, M and the P O I U Y T pet row hand out gear, currency, pets and
 skill XP. They are gated on `_staff_debug_allowed()` in `player.gd`:
-`OS.is_debug_build()` **and** `Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)`.
+`OS.is_debug_build()` **and** `Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)`,
+which is `"owner"` since 0.6.1 - it was `"mod"`, until the server made
+`POST /api/staff/grant` owner-only (a mod could give themselves a Perfect
+mythic and trade it on). The key and the route now need the same rank, so a mod
+never fires a request that 404s.
 
 `is_debug_build()` alone was not enough, because a **Debug-template export
 reports it as true** and choosing the wrong template in the Export dialog is one
 mis-click. The rank check is what stops an ordinary player holding such a build
 from pressing P and owning a pet. Pets are loot.
 
-**It stops an honest player and nothing else.** `Api.role` is client memory set
-from a login response, so a patched build sets it to `owner`. It would not even
-need to: these keys add items to the LOCAL inventory and the client pushes that
-to the server on save, and the backpack ledger is still client-asserted. Anyone
-able to edit the client can grant themselves items with or without this gate.
+**It stops an honest player and nothing else - the server is the gate.**
+`Api.role` is client memory set from a login response, so a patched build can
+set it to `owner` and press the keys. Each is a request to
+`POST /api/staff/grant`, which the server answers for the owner alone, and the
+backpack is server-owned, so there is no local copy to write into instead.
 
 The threshold lives in `api.gd` as `DEBUG_KEYS_MIN_ROLE` so the test suite
 asserts the policy itself rather than a second copy of it.
@@ -2190,7 +2194,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   single-player run, 0.2 accounts and the server owning saves, 0.3 trading,
   guilds and chat, 0.4 the browser (4 Oct), 0.5 seeing each other (6 Oct).
   0.5.1 is the dots drawn instead of letters, 0.6.0 the trade switch and
-  the hold on fresh finds.
+  the hold on fresh finds, 0.6.1 the owner-only item grant and the wider
+  loot bag reach.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off

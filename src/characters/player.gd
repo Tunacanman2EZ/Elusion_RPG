@@ -2010,29 +2010,30 @@ func update_lusions_label() -> void:
 # the wrong template in the Export dialog is a single mis-click. So the rank is
 # checked too, and an ordinary player holding a debug build gets nothing.
 #
-# WHAT THIS DOES NOT DO: stop a modified client. Api.role is client memory set
-# from a login response, so a patched build sets it to "owner" and these keys
-# work again. It would not even need to - the keys add items to the LOCAL
-# inventory and the client pushes that to the server on save, and the backpack
-# ledger is still client-asserted (see Known gaps in CLAUDE.md). Anyone able to
-# edit the client can grant themselves items with or without this function.
+# WHAT THIS DOES NOT DO: stop a modified client asking. Api.role is client
+# memory set from a login response, so a patched build can set it to "owner" and
+# press the keys - and get a 404, because each key is a request to POST
+# /api/staff/grant, which the SERVER answers for the owner only (since 0.6.1; it
+# was any staff rank). The backpack is server-owned, so there is no local copy
+# to write into instead.
 #
-# WHAT IT DOES BUY: an honest player in a debug build cannot press P and own a
-# pet. Pets are loot. Every key below hands out something a player is supposed
-# to earn - gear, currency, skill XP - so the gate is on the whole block rather
-# than the pet row alone.
+# WHAT IT DOES BUY: an honest player, or a mod, in a debug build does not fire
+# requests that will be refused. Every key below hands out something a player
+# is supposed to earn - gear, currency, pets - so the gate is on the whole block
+# rather than the pet row alone.
 func _staff_debug_allowed() -> bool:
 	return OS.is_debug_build() and Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)
 
 
 func _toggle_god_mode() -> void:
-	# DEV AND OWNER — one rung above the debug keys around it, and the threshold
-	# lives in Api.GOD_MODE_MIN_ROLE so there is one statement of it.
+	# DEV AND OWNER, and the threshold lives in Api.GOD_MODE_MIN_ROLE so there is
+	# one statement of it.
 	#
-	# The block this sits in already needs mod, so the only rank this actually
-	# turns away is a mod. That is the intended line: the keys beside it hand out
-	# things a player is supposed to earn, which is a fairness question, and this
-	# one decides whether the game can be lost at all.
+	# It is checked BEFORE the debug-key gate, which is owner-only since 0.6.1,
+	# so a dev reaches it while the item keys beside it stay quiet for them. That
+	# is the intended line: the keys hand out things a player is supposed to
+	# earn, which only the owner may create, and this one decides whether the
+	# game can be lost at all, which is a question about testing.
 	#
 	# The refusal says nothing, deliberately. Anyone who reaches this already
 	# holds a staff rank and a debug build, so there is no ladder to hide — but
@@ -2475,7 +2476,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		# mana, and nothing anywhere said the two were the same key.
 		#
 		# A player never reaches any of this - _staff_debug_allowed() gates the
-		# whole function on a debug build AND a staff role - but the letters were
+		# whole function on a debug build AND the owner's rank - but the letters were
 		# unavailable to the KEYMAP, which is a different thing from unavailable
 		# to a player. inventory_toggle could not be I while this owned it.
 		#
@@ -2986,7 +2987,8 @@ func _debug_give_item(item_id: String, quantity: int) -> void:
 	# "owner" and had the keys back; it did not even need to, since it could write
 	# the item straight into the array it was about to send.
 	#
-	# POST /api/staff/grant is @require_role("mod") on the server, writes
+	# POST /api/staff/grant is @require_owner on the server (it was mod and up
+	# until 0.6.1), writes
 	# carry_items itself, and records the grant in staff_actions. The decision is
 	# now on the side of the wire the player does not control, and every staff
 	# item has a line in the audit log next to the bans.
@@ -3009,7 +3011,7 @@ func _debug_give_item(item_id: String, quantity: int) -> void:
 	if not res.get("ok", false):
 		var status: int = int(res.get("status", 0))
 		if status == 404:
-			print("DEBUG: refused - not staff on the server, or no character in this slot")
+			print("DEBUG: refused - not the owner on the server, or no character in this slot")
 		elif status == 409:
 			print("DEBUG: refused - backpack full")
 		elif status == 0:

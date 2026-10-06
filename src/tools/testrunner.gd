@@ -208,6 +208,7 @@ func _run_all() -> void:
 	await _test_the_friends_header_reads_well()
 	await _test_the_world_loads_in_the_background()
 	await _test_rare_loot_reads_as_rare()
+	_test_a_loot_bag_is_reached_from_further()
 	await _test_amulets_carry_their_bonus()
 	await _test_the_game_has_a_pace()
 	await _test_better_loot_carries_more()
@@ -1930,7 +1931,7 @@ func _test_god_mode_earns_nothing() -> void:
 	check("the rank lives in api.gd as a constant",
 		api_src.contains("const GOD_MODE_MIN_ROLE :="),
 		"a threshold written at each call site is a threshold that drifts")
-	check("and it is at least dev - not the mod the debug keys take",
+	check("and it is at least dev - god mode is for testers, not players",
 		api_src.contains("const GOD_MODE_MIN_ROLE := \"dev\"")
 			or api_src.contains("const GOD_MODE_MIN_ROLE := \"owner\""),
 		"the keys beside it hand out items; this decides whether the game can be lost")
@@ -5895,22 +5896,26 @@ func _test_ranks() -> void:
 		check("the owner satisfies a %s requirement" % rank,
 			Api.role_at_least(rank), rank)
 
-	# THE DEBUG KEYS ARE STAFF-ONLY. They hand out gear, pets, lusions and skill
-	# XP - all things a player is meant to earn, and a pet in particular is loot.
+	# THE DEBUG KEYS ARE THE OWNER'S (since 0.6.1; they were staff-only). They
+	# hand out gear, pets, lusions and skill XP - all things a player is meant to
+	# earn - and every one is a request to POST /api/staff/grant, which the
+	# server now answers for the owner alone.
 	#
-	# Asserted against Api.DEBUG_KEYS_MIN_ROLE rather than the literal "mod", so
-	# this tests the policy player.gd actually applies instead of a second copy
-	# of it that can drift.
+	# Asserted against Api.DEBUG_KEYS_MIN_ROLE rather than a literal, so this
+	# tests the policy player.gd actually applies instead of a second copy of
+	# it that can drift.
 	#
-	# This is a rule, not a defence. The gate is client-side and the backpack
-	# ledger is client-asserted, so it stops an honest player in a debug build
-	# and nothing more. See _staff_debug_allowed() in player.gd.
-	Api.role = "player"
-	check("a player cannot use the debug keys",
-		not Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE), Api.DEBUG_KEYS_MIN_ROLE)
-	for rank in ["mod", "dev", "owner"]:
+	# This is a rule, not the defence: the server's 404 is. It stops an honest
+	# player, or a mod, firing requests that will be refused. See
+	# _staff_debug_allowed() in player.gd.
+	check("the keys need the owner, the same rank the server's grant needs",
+		Api.DEBUG_KEYS_MIN_ROLE == "owner", Api.DEBUG_KEYS_MIN_ROLE)
+	for rank in ["player", "mod", "dev"]:
 		Api.role = rank
-		check("a %s can" % rank, Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE), rank)
+		check("a %s cannot use the debug keys" % rank,
+			not Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE), rank)
+	Api.role = "owner"
+	check("the owner can", Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE))
 
 	Api.role = saved_role
 
@@ -9028,7 +9033,7 @@ func _test_the_powers_read_in_words() -> void:
 			{"rank": "player", "grantable": true, "routes": [], "notes": []},
 			{"rank": "mod", "grantable": true, "routes": [
 				{"method": "POST", "path": "/api/staff/ban", "what": "Ban an account"},
-				{"method": "POST", "path": "/api/staff/grant", "what": "Give yourself an item (staff only)"},
+				{"method": "GET", "path": "/api/staff/users", "what": "List accounts (staff only)"},
 			], "notes": ["Mute for at most a day - longer is refused."]},
 			{"rank": "dev", "grantable": true, "routes": [
 				{"method": "GET", "path": "/api/economy/supply", "what": "---"},
@@ -9036,6 +9041,8 @@ func _test_the_powers_read_in_words() -> void:
 			{"rank": "owner", "grantable": false, "routes": [
 				{"method": "POST", "path": "/api/staff/level",
 					"what": "Set your own character's level, for testing (owner only)"},
+				# On the owner's list since 0.6.1, as the server sends it now.
+				{"method": "POST", "path": "/api/staff/grant", "what": "Give yourself an item (owner only)"},
 			], "notes": []},
 		],
 		"you_are": "owner",
@@ -9056,7 +9063,7 @@ func _test_the_powers_read_in_words() -> void:
 	check("  and the line takes the mouse, or the tooltip never shows",
 		ban != null and ban.mouse_filter == Control.MOUSE_FILTER_PASS)
 	check("\"(staff only)\" and \"(owner only)\" go - the heading above already says it",
-		by_text.has("Give yourself an item")
+		by_text.has("List accounts") and by_text.has("Give yourself an item")
 		and by_text.has("Set your own character's level, for testing"), texts)
 	check("a power the server has no sentence for shows its route instead of \"---\"",
 		by_text.has("GET  /api/economy/supply") and not by_text.has("---"), texts)
@@ -14648,6 +14655,44 @@ func _rarity_test_item(item_id: String, tier: int, type: int = ItemData.Type.ARM
 	d.max_stack = 99
 	d.stackable = true
 	return d
+
+
+# 6 Oct, the owner: "wider pick up radius". The bag's circle had no radius line
+# in lootbag.tscn, so it was Godot's default 10 px; it is 40 now. And it sat on
+# the player layer, where enemy shots look for the player and burst on whatever
+# they meet - a bag four times wider would have been a four-times-wider shield.
+func _test_a_loot_bag_is_reached_from_further() -> void:
+	section("LOOT BAG - reached from further away, and no shield")
+	var bag := (load("res://scene/interactables/lootbag.tscn") as PackedScene).instantiate() as Area2D
+	var shape_node := bag.get_node_or_null("collisionshape2d") as CollisionShape2D
+	var circle := (shape_node.shape if shape_node != null else null) as CircleShape2D
+	check("the bag's reach is a circle with a radius written down",
+		circle != null, shape_node)
+	check("  of 40 px, four times the default it used to fall back to",
+		circle != null and is_equal_approx(circle.radius, 40.0), circle.radius if circle != null else -1.0)
+	check("it is on the interactors layer, like the chest and the lever",
+		bag.collision_layer == 16, bag.collision_layer)
+	check("  and not the player layer any more", (bag.collision_layer & 4) == 0, bag.collision_layer)
+	var hero := (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate() as CollisionObject2D
+	check("it still sees the player's body walk in",
+		hero != null and (bag.collision_mask & hero.collision_layer) != 0,
+		[bag.collision_mask, hero.collision_layer if hero != null else -1])
+	if hero != null:
+		hero.free()
+	# EVERY enemy shot and hazard that is an Area2D: none of them may see the bag.
+	var shields: Array = []
+	var dir := DirAccess.open("res://scene/projectiles")
+	for file in dir.get_files():
+		if not file.ends_with(".tscn"):
+			continue
+		var shot := (load("res://scene/projectiles/" + file) as PackedScene).instantiate()
+		if shot is CollisionObject2D and ((shot as CollisionObject2D).collision_layer & 64) != 0 \
+				and ((shot as CollisionObject2D).collision_mask & bag.collision_layer) != 0:
+			shields.append(file)
+		shot.free()
+	check("no enemy projectile or puddle can meet a bag, so a bag is not a shield",
+		shields.is_empty(), shields)
+	bag.free()
 
 
 func _test_rare_loot_reads_as_rare() -> void:

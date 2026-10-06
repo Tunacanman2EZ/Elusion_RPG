@@ -361,8 +361,10 @@ ignored**: **`200`** with the bag the server holds and `"ignored":
 rather than refused; build 2 does not send it. The `409`s a build-1 game relied
 on still come first - `based_on` (sha1 of `position:item_id:quantity` per
 filled cell, joined with `|`) naming a bag the server no longer holds, or a
-trade it has not been told about. **Staff** (mod and up) still write the bag
-whole, for tooling: a twenty-cell array replaces the bag and leaves the keys.
+trade it has not been told about. **The owner** still writes the bag whole, for
+tooling: a twenty-cell array replaces the bag and leaves the keys. (Any staff
+rank did until 6 Oct 2026; a mod's array is ignored like a player's now, since
+a whole bag can hold any item and only the owner may create one.)
 **`400`** on an oversized array or a malformed entry. **`404`** if the slot is
 empty.
 
@@ -427,8 +429,9 @@ changes.
 
 `{ "bank_inventory": [ ... ] }` → **`200`** with the account. **A player's
 array is ignored** (`"ignored": ["bank_inventory"]`), for the backpack's
-reasons; staff still write it whole. **`400`** on an oversized array or a
-malformed entry.
+reasons; the owner still writes it whole (any staff rank did until 6 Oct
+2026, and a mod's is ignored now, like a player's). **`400`** on an oversized
+array or a malformed entry.
 
 ### `PUT /api/account/lusions`
 

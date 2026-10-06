@@ -27,7 +27,7 @@
 #
 # OWNER ONLY, three times over: the HUD builds the button only for the owner,
 # every request here asks Api.is_owner first, and the server is the gate that
-# counts - /api/staff/grant needs staff.
+# counts - /api/staff/grant needs the owner (it took any staff rank until 0.6.1).
 class_name ItemSpawner
 extends Control
 

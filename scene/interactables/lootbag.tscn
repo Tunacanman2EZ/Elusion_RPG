@@ -19,10 +19,11 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ickyf"]
+radius = 40.0
 
 [node name="lootbag" type="Area2D" unique_id=1233554956]
-collision_layer = 4
-collision_mask = 6
+collision_layer = 16
+collision_mask = 4
 script = ExtResource("2_lootbagscript")
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1764216656]

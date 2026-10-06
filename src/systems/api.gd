@@ -88,7 +88,7 @@ const BUILD := 3
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.6.0"
+const DISPLAY_VERSION := "0.6.1"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -394,9 +394,14 @@ const SIGNED_IN_ELSEWHERE_NOTICE := "This account signed in somewhere else, so t
 # player.gd so there is ONE statement of the policy - the test suite asserts
 # against this constant, and a rule with two copies is a rule that drifts.
 #
-# Pets, gear, lusions and skill XP are things a player earns. Staff get the
-# shortcut because staff have to test what players do the slow way.
-const DEBUG_KEYS_MIN_ROLE := "mod"
+# Pets, gear, lusions and skill XP are things a player earns.
+#
+# THE OWNER ONLY, SINCE 0.6.1. It was "mod": staff had to test what players do
+# the slow way. But the keys are requests to POST /api/staff/grant, and that
+# route is owner-only on the server now (a mod could give themselves a Perfect
+# mythic and trade it on), so a mod pressing F2 would only fire a request that
+# answers 404. Same line on both sides of the wire.
+const DEBUG_KEYS_MIN_ROLE := "owner"
 
 # The rank god mode requires. Here for the same reason as the line above: ONE
 # statement of the policy, asserted by the suite, rather than a copy in player.gd

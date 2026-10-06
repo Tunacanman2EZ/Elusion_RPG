@@ -104,3 +104,10 @@ override.cfg
 
 # Commit message drafts used with git commit -F. Scratch, not record.
 commit_*.txt
+
+# A Windows export saved into the project folder by mistake. The preset's
+# path is builds/windows/ (ignored above), but the export dialog lets you pick
+# anywhere, and on 6 Oct 2026 a 118 MB ElusionRPG.exe landed in the root - one
+# `git add .` from a commit GitHub would refuse (its limit is 100 MB per file).
+*.exe
+*.pck
