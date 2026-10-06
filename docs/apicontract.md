@@ -718,25 +718,40 @@ JSON text frames. The game sends:
 
 | Message | When |
 |---|---|
-| `{"t": "hello", "ticket"}` | first, within 5 seconds |
+| `{"t": "hello", "ticket", "v": 2}` | first, within 5 seconds; `v` 2 means this game shares monsters (0.7.0) |
 | `{"t": "s", "a", "x", "y", "m", "fx", "pet"}` | where it stands, on a change, at most 10 a second: area id, world position, the body's animation (`idle\|walk\|attack\|death\|hitflash` + a facing), the lit auras (`ring`, `firering`) and the pet out |
 | `{"t": "renew", "ticket"}` | every minute |
-| `{"t": "sync"}` | after a new scene: tell me who is here again |
+| `{"t": "sync"}` | after a new scene: tell me who is here again (and, sharing monsters, who leads and send me the monsters) |
+| `{"t": "w", "d": {...}, "to"?}` | the area's LEADER only: its monsters, to everyone else in the area or to one game; anyone else's is dropped |
+| `{"t": "h", "p": [[monster, damage, element]]}` | a follower's hits, for the leader: whole numbers, damage 1-100000, at most 64 |
 
 The server sends:
 
 | Message | Meaning |
 |---|---|
-| `{"t": "welcome", "id"}` | in; `id` is your account id |
-| `{"t": "join", "p": [{"id", "name", "cls", "lvl", "role", "hue", "guild", "x", "y", "m", "fx", "pet"}]}` | people now in your area (and anyone whose identity changed) |
+| `{"t": "welcome", "id", "v": 2}` | in; `id` is your account id; `v` 2 means this server shares monsters |
+| `{"t": "join", "p": [{"id", "name", "cls", "lvl", "role", "hue", "guild", "x", "y", "m", "fx", "pet", "v"}]}` | people now in your area (and anyone whose identity changed); `v` says whether their game shares monsters |
 | `{"t": "moves", "p": [[id, x, y, m, fx, pet]]}` | who moved this tick, ten a second; your own id is in it, skip it |
 | `{"t": "leave", "ids": [...]}` | gone from your area |
-| `{"t": "bye", "why"}` | then the socket closes: `ticket`, `replaced` (signed in elsewhere), `signed out`, `too fast` |
+| `{"t": "bye", "why"}` | then the socket closes: `ticket`, `replaced` (signed in elsewhere), `signed out`, `too fast`, `too big` |
+| `{"t": "lead", "a", "id", "n"}` | who runs this area's monsters (`-1`: nobody) and how many other games share them |
+| `{"t": "need", "id"}` | (to the leader) send that game every monster |
+| `{"t": "w", "d"}` | the leader's monsters, as it sent them |
+| `{"t": "h", "from", "p"}` | (to the leader) another game's hits |
 
 **Who somebody is comes only from `join`**, written by the API from its own
 rows. A state naming a pet the character does not hold shows no pet; a
 malformed state is ignored. A second connection on the same account replaces
 the first.
+
+**Shared monsters (0.7.0).** Each area's leader is the sharing game that has
+been in it longest; when it leaves, the next in line is named. A message is
+2 KB at most, except the leader's `w` (64 KB). What a `w` says - the snapshot,
+the events, the full world - is between the games: see the header of
+`src/world/monstersync.gd`, and CLAUDE.md, "Shared monsters". A follower
+takes a `w` as where the monsters are and what they do, never as how hard they
+hit: damage comes from its own copy of each monster, and the few numbers a `w`
+carries that could reach a player are capped by the follower.
 
 ---
 

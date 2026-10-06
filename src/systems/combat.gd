@@ -392,7 +392,10 @@ func _refusal_text(res: Dictionary) -> String:
 # This does NOT decide how much; the server already did. It only decides which
 # node on this machine is shown the result.
 func _reward_target(killer: Node) -> Node:
-	if is_instance_valid(killer):
+	# THIS GAME'S PLAYER, OR NOBODY. Since shared monsters a monster can be
+	# chasing another player's picture (a RemotePlayer), and handing that the
+	# XP bar to fill would be a call into a node that has no such thing.
+	if is_instance_valid(killer) and killer.is_in_group("player"):
 		return killer
 
 	for candidate in get_tree().get_nodes_in_group("player"):

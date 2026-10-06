@@ -58,7 +58,7 @@ func fire_projectile() -> void:
 	# spawn a fire orb at the directional spawn marker, aimed at the player's
 	# position at release. parents into the y-sorted projectiles container.
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
-	if spawn_node == null or player == null:
+	if spawn_node == null or not is_instance_valid(player):
 		return
 	# The element picks the orb — see bushsniper.gd for the full note. The fire
 	# sprite itself is FIRE and has no variant, so it fires the artist's own art.
@@ -77,6 +77,10 @@ func fire_projectile() -> void:
 # =============================================================================
 
 func _on_frame_changed() -> void:
+	# A mirror's attack is a picture: the shot is the leader's (shared
+	# monsters), and arrives from monstersync.gd.
+	if net_mirror:
+		return
 	if not sprite.animation.begins_with("attack"):
 		return
 	if sprite.frame != ORB_RELEASE_FRAME:

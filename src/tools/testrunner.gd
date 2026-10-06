@@ -203,6 +203,13 @@ func _run_all() -> void:
 	await _test_the_guild_panel_reads_well()
 	await _test_trades_reach_the_right_people()
 	await _test_the_trade_switch_reaches_the_game()
+	_test_presence_carries_the_monsters()
+	await _test_shared_monsters_lead()
+	await _test_shared_monsters_follow()
+	await _test_shared_monsters_handover()
+	await _test_shared_monsters_targets()
+	await _test_shared_monsters_pieces()
+	await _test_shared_monsters_hold_the_leaders_numbers()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -6522,12 +6529,19 @@ func _test_far_enemies_sleep() -> void:
 			entry = e
 	check("the respawner's census keeps the chase range a scene set",
 		float(entry.get("kept", {}).get("leash_range", 0.0)) == 250.0, entry.get("kept"))
+	# DEAD FIRST: since shared monsters a respawn never lands on a spot whose
+	# monster is still standing (a game taking an area over can find it alive).
+	var light_id: int = light.get_instance_id()
+	light.free()
 	var before: int = arena.get_child_count()
 	await respawner._respawn_after(entry, 0.0)
 	var back: Node = arena.get_child(arena.get_child_count() - 1) if arena.get_child_count() > before else null
 	check("  and the replacement chases from 250 too, not its scene's own 500",
-		back != null and back != light and float(back.get("leash_range")) == 250.0,
+		back != null and back.get_instance_id() != light_id and float(back.get("leash_range")) == 250.0,
 		back.get("leash_range") if back else "nothing came back")
+	check("  and its home is where it came back, not the world origin",
+		back != null and (back.get("spawn_position") as Vector2).distance_to((back as Node2D).global_position) < 1.0,
+		back.get("spawn_position") if back else "nothing came back")
 	arena.free()
 	print("  sleep beyond %d px, wake inside %d px, every %.2f s"
 		% [int(Sleeper.SLEEP_DISTANCE), int(Sleeper.WAKE_DISTANCE), Sleeper.CHECK_SECONDS])
@@ -14656,6 +14670,583 @@ func _rarity_test_item(item_id: String, tier: int, type: int = ItemData.Type.ARM
 	d.stackable = true
 	return d
 
+
+# =============================================================================
+# SHARED MONSTERS (0.7.0) - one game runs them, everyone fights them
+# =============================================================================
+# 6 Oct, the owner: "shared monsters separate loot bags". The game that leads an
+# area runs its monsters; every other game draws them as mirrors, sends its
+# hits to the leader, and reports its own kill when one it hit dies. These run
+# the real monstersync.gd against a stand-in for the presence link, a leader
+# first and then a follower, each in a world of its own - two in one tree would
+# share the "enemies" group and each would count the other's monsters.
+
+class FakeLink extends Node:
+	signal lead_changed(area: String, leader_id: int, sharers: int)
+	signal world_received(data: Dictionary)
+	signal hits_received(from_id: int, hits: Array)
+	signal world_needed(for_id: int)
+	var me: int = 1
+	var open: bool = true
+	var n: int = 1
+	var leader: int = -2
+	var area: String = ""
+	var sent_world: Array = []
+	var sent_hits: Array = []
+	var asked: int = 0
+
+	func shares() -> bool:
+		return open
+
+	func my_id() -> int:
+		return me
+
+	func sharers() -> int:
+		return n
+
+	func leader_for(a: String) -> int:
+		return leader if a == area else -2
+
+	func send_world(data: Dictionary, to: int = -1) -> void:
+		# THROUGH JSON, as the wire does: numbers come back floats, and a test
+		# that kept the original ints would never see a missing int().
+		sent_world.append([JSON.parse_string(JSON.stringify(data)), to])
+
+	func send_hits(hits: Array) -> void:
+		sent_hits.append(JSON.parse_string(JSON.stringify(hits)))
+
+	func request_world() -> void:
+		asked += 1
+
+	# The server's two messages to a leader, as this stand-in delivers them.
+	func deliver_hits(from_id: int, hits: Array) -> void:
+		hits_received.emit(from_id, hits)
+
+	func deliver_need(for_id: int) -> void:
+		world_needed.emit(for_id)
+
+
+const SM_AREA := "smtestarea"
+
+
+func _sm_world() -> Node2D:
+	"""A tiny area: a y-sort world with a container of placed monsters, a
+	projectiles container and a ground container, named the same every time
+	so its monsters' origin keys match from one world to the next."""
+	var world := Node2D.new()
+	world.name = "smworld"
+	add_child(world)
+	var enemies := Node2D.new()
+	enemies.name = "enemies"
+	world.add_child(enemies)
+	for spec in [["fs1", "res://scene/enemy/firesprite.tscn", Vector2(-20000, -20000)],
+			["sn1", "res://scene/enemy/bushsniper.tscn", Vector2(-20100, -20000)]]:
+		var e: Node2D = (load(spec[1]) as PackedScene).instantiate()
+		e.name = spec[0]
+		e.position = spec[2]
+		enemies.add_child(e)
+	var shots := Node2D.new()
+	shots.name = "shots"
+	shots.add_to_group("projectiles")
+	world.add_child(shots)
+	var ground := Node2D.new()
+	ground.name = "ground"
+	ground.add_to_group("groundeffects")
+	world.add_child(ground)
+	return world
+
+
+func _sm_sync(link: Node) -> Node:
+	var sync: Node = (load("res://src/world/monstersync.gd") as GDScript).new()
+	sync.link = link
+	sync.area_id = SM_AREA
+	return sync
+
+
+func _sm_last_world(link: Node) -> Dictionary:
+	return (link.sent_world.back()[0] as Dictionary) if not link.sent_world.is_empty() else {}
+
+
+func _test_presence_carries_the_monsters() -> void:
+	section("SHARED MONSTERS - the presence link carries who leads, the world and the hits")
+	Presence.set_process(false)
+	Presence.stop()
+	var got: Dictionary = {"lead": [], "world": [], "hits": [], "need": []}
+	var on_lead := func(a: String, id: int, n: int) -> void: got["lead"].append([a, id, n])
+	var on_world := func(d: Dictionary) -> void: got["world"].append(d)
+	var on_hits := func(from_id: int, hits: Array) -> void: got["hits"].append([from_id, hits])
+	var on_need := func(id: int) -> void: got["need"].append(id)
+	Presence.lead_changed.connect(on_lead)
+	Presence.world_received.connect(on_world)
+	Presence.hits_received.connect(on_hits)
+	Presence.world_needed.connect(on_need)
+	Presence._phase = "open"
+
+	check("the game says it speaks shared monsters when it says hello",
+		_code_src("res://src/systems/presence.gd").contains('"t": "hello", "ticket": _ticket, "v": SHARED_VERSION'))
+	Presence.handle_message({"t": "welcome", "id": 7})
+	check("a server from before shared monsters does not share them - every game fights its own",
+		not Presence.shares())
+	Presence.handle_message({"t": "welcome", "id": 7, "v": 2})
+	check("  one that says so does", Presence.shares() and Presence.my_id() == 7)
+	Presence.handle_message({"t": "lead", "a": "field", "id": 9, "n": 1})
+	check("who leads an area is passed on", got["lead"] == [["field", 9, 1]], got["lead"])
+	check("  and remembered for that area only",
+		Presence.leader_for("field") == 9 and Presence.leader_for("bigfield") == -2 and Presence.sharers() == 1)
+	Presence.handle_message({"t": "need", "id": 12})
+	check("the server asking for everything for a game is passed on", got["need"] == [12], got["need"])
+	Presence.handle_message({"t": "w", "d": {"snap": [[1, 2.0, 3.0, "idledown", 10]]}})
+	Presence.handle_message({"t": "w", "d": "not a world"})
+	check("the leader's world is passed on, and nothing that is not one",
+		got["world"].size() == 1 and (got["world"][0] as Dictionary).has("snap"), got["world"])
+	Presence.handle_message({"t": "h", "from": 3, "p": [[1, 20, 0]]})
+	check("another game's hits are passed on with who sent them",
+		got["hits"].size() == 1 and got["hits"][0][0] == 3, got["hits"])
+	Presence.stop()
+	check("when the link goes, nobody leads any more - a follower takes its monsters back",
+		got["lead"].size() == 2 and got["lead"][1][1] == -1 and not Presence.shares(), got["lead"])
+
+	Presence.lead_changed.disconnect(on_lead)
+	Presence.world_received.disconnect(on_world)
+	Presence.hits_received.disconnect(on_hits)
+	Presence.world_needed.disconnect(on_need)
+	Presence._server_shares = false
+	Presence._failures = 0
+	Presence.set_process(true)
+
+
+func _test_shared_monsters_lead() -> void:
+	section("SHARED MONSTERS - the leader runs them and says what they do")
+	var world: Node2D = _sm_world()
+	var fs: BaseEnemy = world.get_node("enemies/fs1")
+	var sn: BaseEnemy = world.get_node("enemies/sn1")
+	var link := FakeLink.new()
+	link.area = SM_AREA
+	link.leader = 1
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	world.add_child(sync)
+	await get_tree().process_frame
+
+	check("the game the server names leads, and runs the monsters", sync.has_authority())
+	check("  every monster gets a number, and the conductor",
+		fs.net_id > 0 and sn.net_id > 0 and fs.net_id != sn.net_id and fs._net_sync == sync,
+		[fs.net_id, sn.net_id])
+	check("  and none of them is a mirror", not fs.net_mirror and not sn.net_mirror)
+	var full: Dictionary = _sm_last_world(link)
+	check("it tells the others everything at once, as a reset - these numbers are new",
+		bool(full.get("full", false)) and bool(full.get("reset", false))
+		and (full.get("spawn", []) as Array).size() == 2, full)
+	var rec: Dictionary = {}
+	for r in full.get("spawn", []):
+		if int(r.get("id", -1)) == fs.net_id:
+			rec = r
+	check("  a record names the scene, the spot it was authored at, and its profile",
+		rec.get("s", "") == "res://scene/enemy/firesprite.tscn"
+		and str(rec.get("o", "")).ends_with("smworld/enemies/fs1")
+		and str(rec.get("p", {}).get("ed", "")).begins_with("res://data/enemies/"), rec)
+
+	link.sent_world.clear()
+	fs.global_position += Vector2(12, 0)
+	sync.tick_lead()
+	var delta: Dictionary = _sm_last_world(link)
+	var moved: Array = []
+	for st in delta.get("snap", []):
+		moved.append(int(st[0]))
+	check("a tick sends only the monster that moved", moved == [fs.net_id], delta)
+	link.sent_world.clear()
+	sync.tick_lead()
+	check("  and nothing at all when nothing did", link.sent_world.is_empty(), link.sent_world)
+
+	var arrow: Node = (load("res://scene/projectiles/arrow.tscn") as PackedScene).instantiate()
+	arrow.shoot_vector(Vector2(3, 4))
+	sn.spawn_projectile_node(arrow, Vector2(-20100, -19990))
+	sync.tick_lead()
+	var shot: Dictionary = {}
+	for ev in _sm_last_world(link).get("ev", []):
+		if ev.get("k", "") == "p":
+			shot = ev
+	check("a monster's shot goes to every screen, from where it left, aimed the same way",
+		int(shot.get("id", -1)) == sn.net_id and shot.get("s", "") == "res://scene/projectiles/arrow.tscn"
+		and is_equal_approx(float(shot.get("ax", 0)), 0.6) and is_equal_approx(float(shot.get("ay", 0)), 0.8)
+		and is_equal_approx(float(shot.get("y", 0)), -19990.0), shot)
+	await get_tree().process_frame
+
+	var hp_before: int = fs.hp
+	link.deliver_hits(2, [[fs.net_id, 30, 0], [99999, 50, 0], ["x", 1, 0]])
+	check("another player's hit lands on the leader's monster", fs.hp == hp_before - 30, [hp_before, fs.hp])
+	check("  as theirs: this game's player has not helped", fs._net_remote_hit and not fs._net_local_hit)
+	check("  so a kill from here would not be this game's to report", not fs._should_report_kill())
+	sn.take_damage(5)
+	check("this game's own hit counts as helping", sn._net_local_hit and sn._should_report_kill())
+	var alone: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	check("  and a monster nobody else touched is reported as always", alone._should_report_kill())
+	alone.free()
+
+	link.sent_world.clear()
+	sync._on_hits(2, [[fs.net_id, 100000, 0]])
+	sync.tick_lead()
+	var died: Dictionary = {}
+	for ev in _sm_last_world(link).get("ev", []):
+		if ev.get("k", "") == "die":
+			died = ev
+	check("a monster killed by another player's hit dies on every screen", int(died.get("id", -1)) > 0, died)
+	check("  and the leader stops talking about it", not sync.monsters().has(int(died.get("id", -1))))
+
+	link.sent_world.clear()
+	link.deliver_need(7)
+	var to_seven: Array = link.sent_world.filter(func(m: Array) -> bool: return m[1] == 7)
+	check("a game walking in is sent everything, to it alone",
+		to_seven.size() == 1 and bool((to_seven[0][0] as Dictionary).get("full", false))
+		and not bool((to_seven[0][0] as Dictionary).get("reset", true)), link.sent_world)
+
+	link.n = 0
+	link.sent_world.clear()
+	sn.global_position += Vector2(0, 30)
+	sync.tick_lead()
+	check("with nobody else in the area, nothing is sent at all", link.sent_world.is_empty())
+
+	world.free()
+	link.free()
+
+
+func _test_shared_monsters_follow() -> void:
+	section("SHARED MONSTERS - a follower draws the leader's, and sends its hits")
+	var world: Node2D = _sm_world()
+	var fs: BaseEnemy = world.get_node("enemies/fs1")
+	var sn: BaseEnemy = world.get_node("enemies/sn1")
+	var link := FakeLink.new()
+	link.me = 2
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	var kills: Array = []
+	sync.report_kill = func(enemy_id: String, at: Vector2, _who: Node) -> void: kills.append([enemy_id, at])
+	world.add_child(sync)
+	await get_tree().process_frame
+
+	check("a game that has not heard who leads holds every monster still",
+		not sync.has_authority() and fs.net_mirror and sn.net_mirror)
+	link.lead_changed.emit(SM_AREA, 1, 1)
+	check("told somebody else leads, it follows", sync.is_following())
+	check("  and asks for nothing yet - the leader was asked when it walked in", link.asked == 0)
+
+	var origin_fs: String = str(fs.get_meta(&"net_origin", ""))
+	var full: Dictionary = {"full": true, "reset": false, "part": 0, "parts": 1, "wave": -1, "spawn": [
+		{"id": 4, "o": origin_fs, "s": "res://scene/enemy/firesprite.tscn", "pp": "smworld/enemies",
+			"x": -19950.0, "y": -20000.0, "a": "walkleft", "hp": 300, "mh": fs.max_hp,
+			"p": fs.net_props()},
+		{"id": 9, "o": "", "s": "res://scene/enemy/poisonslime.tscn", "pp": "smworld/enemies",
+			"x": -19900.0, "y": -19950.0, "a": "smallidledown", "hp": 60, "mh": 80,
+			"p": {"ed": "res://data/enemies/poisonslimesmall.tres", "eo": -1, "lr": 400.0, "g": false,
+				"hx": -19900.0, "hy": -19950.0, "sm": true, "du": true, "sp": true}},
+		{"id": 11, "o": "", "s": "res://scene/ui/characterhud.tscn", "x": 0, "y": 0, "hp": 1},
+	]}
+	link.world_received.emit(JSON.parse_string(JSON.stringify(full)))
+	var sniper_gone: bool = sn._death_resolved and sn.is_queued_for_deletion()
+	await get_tree().process_frame
+	var mirrors: Dictionary = sync.monsters()
+	check("the leader's monster is matched to the one authored at the same spot",
+		mirrors.get(4) == fs and fs.net_id == 4, mirrors.keys())
+	check("  moved to where the leader has it, with the leader's health",
+		fs.global_position.distance_to(Vector2(-19950, -20000)) < 0.5 and fs.hp == 300,
+		[fs.global_position, fs.hp])
+	var slime: BaseEnemy = mirrors.get(9)
+	check("a monster this game never had is built, as a mirror, in the leader's form",
+		slime != null and slime.net_mirror and bool(slime.get("is_small"))
+		and slime.global_position.distance_to(Vector2(-19900, -19950)) < 0.5, slime)
+	check("one the leader does not have goes", sniper_gone)
+	check("and nothing outside the enemy scenes is ever built from a world message",
+		not mirrors.has(11))
+
+	var start: Vector2 = fs.global_position
+	sync.apply_world({"snap": [[4, -19930.0, -20000.0, "attackleft", 250]]})
+	check("a tick from the leader sets what it is playing and its health",
+		fs.current_anim == "attackleft" and fs.hp == 250, [fs.current_anim, fs.hp])
+	for i in range(10):
+		await get_tree().physics_frame
+	check("  and it walks there rather than jumping",
+		fs.global_position.x > start.x and fs.global_position.x <= -19930.0 + 0.5, fs.global_position)
+
+	var hp_now: int = fs.hp
+	fs.take_damage(12)
+	check("your hit on a mirror changes nothing here", fs.hp == hp_now and not fs._death_resolved)
+	sync._flush_hits()
+	var sent: Array = []
+	for batch in link.sent_hits:
+		for hit in batch:
+			sent.append([int(hit[0]), int(hit[1]), int(hit[2])])
+	check("  it goes to the leader", sent == [[4, 12, 0]], link.sent_hits)
+
+	sync.apply_world({"ev": [{"k": "p", "id": 4, "s": "res://scene/projectiles/fireprojectile.tscn",
+		"x": -19930.0, "y": -20010.0, "ax": 1.0, "ay": 0.0}]})
+	await get_tree().process_frame
+	var shots: Node = get_tree().get_first_node_in_group("projectiles")
+	var landed: Array = shots.get_children().filter(func(n: Node) -> bool:
+		return n is Node2D and (n as Node2D).global_position.distance_to(Vector2(-19930, -20010)) < 1.0)
+	check("the leader's shot is fired here too, from the same spot", landed.size() == 1, landed.size())
+	var count: int = shots.get_child_count()
+	sync.apply_world({"ev": [{"k": "p", "id": 4, "s": "user://evil.tscn", "x": 0, "y": 0, "ax": 1, "ay": 0}]})
+	await get_tree().process_frame
+	check("  and nothing from outside the projectile scenes", shots.get_child_count() == count)
+
+	var fs_id: String = fs.get_enemy_id()
+	sync.apply_world({"ev": [{"k": "die", "id": 4, "x": -19930.0, "y": -20000.0},
+		{"k": "die", "id": 9, "x": -19900.0, "y": -19950.0}]})
+	check("a monster you hit that dies is your kill, reported by this game",
+		kills.size() == 1 and kills[0][0] == fs_id, kills)
+	check("  one you never touched is not", kills.size() == 1)
+	check("  and both die here", fs._death_resolved and slime._death_resolved)
+
+	link.lead_changed.emit(SM_AREA, 2, 1)
+	check("when the server names this game, it takes over", sync.has_authority())
+	var takeover: Dictionary = _sm_last_world(link)
+	check("  and tells the others everything, keeping the numbers they know",
+		bool(takeover.get("full", false)) and not bool(takeover.get("reset", true)), takeover)
+
+	link.lead_changed.emit(SM_AREA, 1, 1)
+	link.lead_changed.emit("", -1, 0)
+	check("a follower whose link drops runs its own monsters again", sync.has_authority())
+
+	world.free()
+	link.free()
+	await get_tree().process_frame
+
+
+func _test_shared_monsters_handover() -> void:
+	section("SHARED MONSTERS - handing over keeps the fight where it stands")
+	var world: Node2D = _sm_world()
+	var fs: BaseEnemy = world.get_node("enemies/fs1")
+	var link := FakeLink.new()
+	link.me = 3
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	world.add_child(sync)
+	await get_tree().process_frame
+	link.lead_changed.emit(SM_AREA, 1, 1)
+	var full: Dictionary = {"full": true, "reset": false, "part": 0, "parts": 1, "wave": -1, "spawn": [
+		{"id": 21, "o": str(fs.get_meta(&"net_origin", "")), "s": "res://scene/enemy/firesprite.tscn",
+			"pp": "smworld/enemies", "x": -19800.0, "y": -20000.0, "a": "idledown", "hp": 123,
+			"mh": fs.max_hp, "p": fs.net_props()}]}
+	link.world_received.emit(full)
+	fs.take_damage(7)
+	link.lead_changed.emit(SM_AREA, 3, 1)
+	check("the mirror becomes the monster, where it stood and as hurt as it was",
+		not fs.net_mirror and fs.hp == 123
+		and fs.global_position.distance_to(Vector2(-19800, -20000)) < 0.5, [fs.net_mirror, fs.hp])
+	check("  keeping its number", fs.net_id == 21 and sync.monsters().get(21) == fs)
+	check("  and a monster you hit as a follower is one you helped kill", fs._net_local_hit)
+	check("  new monsters are numbered past every number already known", sync._next_id > 21, sync._next_id)
+	world.free()
+	link.free()
+	await get_tree().process_frame
+
+
+func _test_shared_monsters_targets() -> void:
+	section("SHARED MONSTERS - who a monster may chase")
+	var Targets := preload("res://src/shared/targets.gd")
+	var RemoteScript := preload("res://src/characters/remoteplayer.gd")
+	var holder := Node2D.new()
+	add_child(holder)
+	var sharing: Node2D = RemoteScript.new()
+	sharing.user_id = 501
+	holder.add_child(sharing)
+	sharing.set_identity({"id": 501, "name": "Ally", "cls": "warrior", "lvl": 3, "v": 2})
+	sharing.place(Vector2(-30000, -30000))
+	var old_game: Node2D = RemoteScript.new()
+	old_game.user_id = 502
+	holder.add_child(old_game)
+	old_game.set_identity({"id": 502, "name": "Old", "cls": "mage", "lvl": 3, "v": 0})
+	old_game.place(Vector2(-30010, -30000))
+	var all: Array = Targets.all(get_tree())
+	check("a player whose game shares monsters can be chased", all.has(sharing))
+	check("  one whose game does not, cannot - its monsters are its own", not all.has(old_game))
+	check("  and another player's picture is still not \"the player\"",
+		not sharing.is_in_group("player") and sharing.is_in_group("remoteplayers"))
+	var marker: Node2D = sharing.get_node_or_null("bodyshape")
+	check("it marks the floor its class's body stands on, for a boss to aim at",
+		marker != null and marker.position.distance_to(Vector2(0, 13)) < 1.0,
+		str(marker.position) if marker else "no marker")
+	sharing.set_target(Vector2(-29990, -30000))
+	await get_tree().create_timer(0.1).timeout
+	sharing.set_target(Vector2(-29970, -30000))
+	check("  and works out how fast it is moving, for a boss to lead",
+		sharing.velocity.x > 0.0 and absf(sharing.velocity.y) < 0.01, sharing.velocity)
+	var e: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	e.position = Vector2(-30050, -30000)
+	holder.add_child(e)
+	e._resolve_player()
+	var local_far: bool = true
+	for p in get_tree().get_nodes_in_group("player"):
+		if (p as Node2D).global_position.distance_to(e.global_position) < 50000.0:
+			local_far = false
+	check("a monster with another player beside it goes after them",
+		e.player == sharing or not local_far, e.player)
+	sharing.set_motion("deathdown", [], "")
+	check("  but not once they are playing their death", not Targets.all(get_tree()).has(sharing))
+	holder.free()
+
+
+func _test_shared_monsters_pieces() -> void:
+	section("SHARED MONSTERS - the respawner, the gauntlet and the acid agree")
+	# THE RESPAWNER brings back only what this game runs.
+	var Respawner := preload("res://src/world/enemyrespawner.gd")
+	var area := Node2D.new()
+	add_child(area)
+	var light: Node2D = (load("res://scene/enemy/lightsprite.tscn") as PackedScene).instantiate()
+	light.position = Vector2(-40000, -40000)
+	area.add_child(light)
+	var respawner: Node = Respawner.new()
+	respawner.spawn_scatter = 0.0
+	respawner.respawn_seconds = 0.05
+	respawner.respawn_jitter = 0.0
+	area.add_child(respawner)
+	var link := FakeLink.new()
+	link.me = 2
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	area.add_child(sync)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	link.lead_changed.emit(SM_AREA, 1, 1)
+	var entry: Dictionary = respawner._census[0] if not respawner._census.is_empty() else {}
+	check("every placed monster is keyed by where it was authored",
+		str(entry.get("key", "")) != "" and str(light.get_meta(&"net_origin", "")) == str(entry.get("key", "")),
+		entry.get("key"))
+	var before: int = area.get_child_count()
+	(light as BaseEnemy).net_vanish()
+	check("a follower's respawner does not even start a clock when its monster dies",
+		not bool(entry.get("pending", false)))
+	await get_tree().create_timer(0.3).timeout
+	check("  and brings nothing back - the leader does",
+		area.get_child_count() <= before and not bool(entry.get("pending", false)), area.get_child_count())
+	link.lead_changed.emit(SM_AREA, 2, 1)
+	check("  taking the area over starts a clock for the dead one", bool(entry.get("pending", false)))
+	await get_tree().create_timer(0.3).timeout
+	var back: Node = null
+	for child in area.get_children():
+		if child is BaseEnemy and not (child as BaseEnemy)._death_resolved:
+			back = child
+	check("  and brings it back, keyed to the same spot",
+		back != null and str(back.get_meta(&"net_origin", "")) == str(entry.get("key", "")), back)
+	area.free()
+	link.free()
+
+	# THE GAUNTLET catches up to the wave the leader is on.
+	var Gauntlet := preload("res://src/world/bossgauntlet.gd")
+	var arena := Node2D.new()
+	add_child(arena)
+	var bosses: Array = []
+	# Gates first, into a sequencer not yet in the tree, so each gate finds its
+	# boss and the sequencer finds its gates when they all enter together.
+	var gauntlet: Node2D = Gauntlet.new()
+	for wave in [1, 2, 2]:
+		var boss: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+		boss.name = "smboss%d" % bosses.size()
+		boss.position = Vector2(-50000 - bosses.size() * 100, -50000)
+		arena.add_child(boss)
+		bosses.append(boss)
+		var gate: Node2D = (load("res://src/world/bossgate.gd") as GDScript).new()
+		gate.wave = wave
+		gate.boss_path = NodePath("../../" + boss.name)
+		gauntlet.add_child(gate)
+	arena.add_child(gauntlet)
+	check("a game walking into the arena starts at wave 1, like everybody", gauntlet.net_wave() == 1)
+	bosses[0].net_remove()
+	gauntlet.net_jump_to(2)
+	check("told the leader is on wave 2, it opens every gate to it",
+		gauntlet.net_wave() == 2 and not bosses[1].gated and not bosses[2].gated)
+	check("  and waits on the bosses of that wave alone", gauntlet._live.size() == 2, gauntlet._live.size())
+	gauntlet.net_jump_to(1)
+	check("  and never goes backwards", gauntlet.net_wave() == 2)
+	arena.free()
+
+	# THE ACID: the same spike leaves the same pools on every screen.
+	var a: Node = (load("res://scene/projectiles/waterbossprojectile.tscn") as PackedScene).instantiate()
+	var b: Node = (load("res://scene/projectiles/waterbossprojectile.tscn") as PackedScene).instantiate()
+	for spike in [a, b]:
+		spike.leaves_puddle = true
+		spike.puddle_chance = 1.0
+		spike.puddle_seed = 424242
+		spike._puddle_extra = 2
+	check("two copies of a spike with one seed leave the same acid in the same places",
+		a.puddle_plan() == b.puddle_plan() and a.puddle_plan().size() == 3, a.puddle_plan())
+	b.puddle_seed = 777
+	check("  and a different seed somewhere else", a.puddle_plan() != b.puddle_plan())
+	a.free()
+	b.free()
+
+
+# THE LEADER RUNS THE MONSTERS; IT DOES NOT DECIDE HOW HARD THEY HIT YOU. Three
+# numbers in a world message reach your health without passing through this
+# game's own copy of a monster - a spike's telegraph and size, and a stalker
+# pillar's damage, telegraph and size - so a follower holds them to what its own
+# boss could do. And a world message cannot fill the screen with monsters.
+func _test_shared_monsters_hold_the_leaders_numbers() -> void:
+	section("SHARED MONSTERS - a leader cannot make the floor hit you harder")
+	const Sync := preload("res://src/world/monstersync.gd")
+	const Stalker := preload("res://src/enemies/bossstalker.gd")
+	check("an honest boss spike passes untouched",
+		Sync.safe_spike(0.52, 14.0).is_equal_approx(Vector2(0.52, 14.0)), Sync.safe_spike(0.52, 14.0))
+	var greedy: Vector2 = Sync.safe_spike(0.0, 500.0)
+	check("  one that lands at once and fills the room is held to what a boss can cast",
+		is_equal_approx(greedy.x, Sync.MIN_SPIKE_TELEGRAPH) and is_equal_approx(greedy.y, Sync.MAX_SPIKE_RADIUS),
+		greedy)
+	check("a stalker pillar keeps the damage an honest leader sends",
+		Sync.safe_pillar_damage(15, null) == 15)
+	check("  and is never more than the stalker's own once the boss has gone",
+		Sync.safe_pillar_damage(99999, null) == Stalker.PILLAR_DAMAGE
+		and Sync.safe_pillar_damage(0, null) == Stalker.PILLAR_DAMAGE)
+	var boss: Node = (load("res://scene/enemy/fireboss.tscn") as PackedScene).instantiate()
+	var own: int = int(boss.call("trail_damage"))
+	if own <= 0:
+		own = Stalker.PILLAR_DAMAGE
+	check("  or than this game's own copy of the boss gives its trail",
+		Sync.safe_pillar_damage(99999, boss) == own and Sync.safe_pillar_damage(own, boss) == own, own)
+	boss.free()
+
+	var world: Node2D = _sm_world()
+	var link := FakeLink.new()
+	link.me = 2
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	world.add_child(sync)
+	await get_tree().process_frame
+	link.lead_changed.emit(SM_AREA, 1, 1)
+	var at := Vector2(-19000, -19000)
+	sync.apply_world({"ev": [{"k": "sp", "s": "res://scene/projectiles/bossprojectile.tscn",
+		"x": at.x, "y": at.y, "d": 99999, "t": 0.0, "el": -1, "r": 500.0}]})
+	var pillar: Node2D = null
+	var places: Array = get_tree().get_nodes_in_group("groundeffects")
+	places.append(get_tree().current_scene)
+	for place in places:
+		for child in (place as Node).get_children():
+			if child is Node2D and (child as Node2D).global_position.distance_to(at) < 1.0:
+				pillar = child
+	check("a pillar from a leader that would one-shot you is built at the stalker's own damage",
+		pillar != null and int(pillar.get("damage")) <= Stalker.PILLAR_DAMAGE,
+		pillar.get("damage") if pillar != null else null)
+	check("  with the stalker's own warning and no wider than its own",
+		pillar != null and float(pillar.get("telegraph_seconds")) >= Stalker.PILLAR_TELEGRAPH - 0.001
+		and pillar.scale.x <= Stalker.PILLAR_RADIUS / 20.0 + 0.001,
+		str([pillar.get("telegraph_seconds"), pillar.scale]) if pillar != null else "no pillar")
+	if pillar != null:
+		pillar.free()
+
+	for i in range(Sync.MAX_MONSTERS):
+		sync._enemies[100000 + i] = null
+	var record: Dictionary = {"id": 99, "o": "", "s": "res://scene/enemy/firesprite.tscn",
+		"pp": "smworld/enemies", "x": -19800.0, "y": -19800.0, "a": "idledown", "hp": 10, "mh": 10, "p": {}}
+	check("a follower draws no more than MAX_MONSTERS, whatever a world message asks",
+		sync.build_mirror(record) == null)
+	sync._enemies.clear()
+	var one: Node = sync.build_mirror(record)
+	check("  and draws them again once there is room", one != null)
+	if one != null:
+		one.free()
+
+	world.free()
+	link.free()
+	await get_tree().process_frame
 
 # 6 Oct, the owner: "wider pick up radius". The bag's circle had no radius line
 # in lootbag.tscn, so it was Godot's default 10 px; it is 40 now. And it sat on

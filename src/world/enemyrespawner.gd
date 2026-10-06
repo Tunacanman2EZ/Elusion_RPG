@@ -30,6 +30,21 @@
 # the server owning spawns, not a stricter timer here.
 extends Node2D
 
+const Targets := preload("res://src/shared/targets.gd")
+
+# SHARED MONSTERS (0.7.0). Only the game that RUNS an area's monsters brings
+# them back - the area's leader, or a player alone. A game drawing another
+# game's monsters (a follower) keeps its census and its watch, but schedules
+# nothing: the leader's respawn arrives as a new monster from monstersync.gd.
+# When a follower takes the area over, resume_authority() starts a fresh clock
+# for every spawn point whose monster is dead, because the old leader's clocks
+# left with it.
+#
+# Every census entry is keyed by where its monster was authored in the scene
+# ("key", the path from the scene root), and every monster this brings back
+# carries that key as its "net_origin" meta - which is how a follower matches
+# the leader's respawned monster to the spot it belongs to.
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -168,7 +183,11 @@ func _ready() -> void:
 			"position": enemy.global_position,
 			"parent": get_path_to(enemy.get_parent()),
 			"kept": kept_settings(enemy),
+			"key": _origin_key(enemy),
+			"live": enemy.get_instance_id(),
+			"pending": false,
 		}
+		enemy.set_meta(&"net_origin", entry["key"])
 		_census.append(entry)
 		_watch(enemy, entry)
 
@@ -189,24 +208,35 @@ func _watch(enemy: Node, entry: Dictionary) -> void:
 	# queue_free() is one line away and nothing about that node can be read -
 	# which is why position and scene path were captured up front rather than
 	# looked up in the handler.
+	entry["live"] = enemy.get_instance_id()
 	if enemy.has_signal("died"):
 		enemy.died.connect(_on_enemy_died.bind(entry), CONNECT_ONE_SHOT)
 
 
 func _on_enemy_died(entry: Dictionary) -> void:
+	entry["live"] = 0
 	if not enabled:
+		return
+	# A FOLLOWER WATCHES AND WAITS. Its monster died because the leader's did,
+	# and the leader brings it back.
+	if not _has_authority():
 		return
 	_respawn_after(entry, respawn_seconds + randf() * maxf(respawn_jitter, 0.0))
 
 
 func _respawn_after(entry: Dictionary, delay: float) -> void:
+	entry["pending"] = true
 	await get_tree().create_timer(delay).timeout
 
 	# The scene may have changed under this timer. A respawner that outlived its
 	# own world would be building enemies into a tree nobody is looking at.
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
+	entry["pending"] = false
 	if not enabled:
+		return
+	# Handed the area to someone else while this clock ran: theirs to bring back.
+	if not _has_authority():
 		return
 
 	# THE AUTHORED POINT IS WHAT THE DISTANCE CHECK USES, not the scattered one.
@@ -221,6 +251,10 @@ func _respawn_after(entry: Dictionary, delay: float) -> void:
 		# HELD, NOT CANCELLED. Retrying keeps the enemy owed; cancelling would
 		# mean a player who camps a spawn point clears the room permanently.
 		_respawn_after(entry, maxf(retry_seconds, 0.5))
+		return
+	# Something already stands here - a follower that took over found it
+	# alive after all.
+	if _entry_alive(entry):
 		return
 
 	var spawn_position: Vector2 = _scattered_position(home)
@@ -264,6 +298,16 @@ func _respawn_after(entry: Dictionary, delay: float) -> void:
 	# most visible one in the game because it fires every time anything
 	# respawns.
 	enemy.reset_physics_interpolation()
+
+	# HOME IS WHERE IT WAS PUT, AND IT HAS TO BE SAID AGAIN. add_child() ran
+	# BaseEnemy._ready(), which records spawn_position = global_position -
+	# and that was still the scene's (0, 0), because the position is set on
+	# the line above it. So every respawned monster believed its home was the
+	# world origin and, leashed, walked off toward the top-left of the map.
+	# poisonslime._spawn_slime() has always set it again for the same reason.
+	if "spawn_position" in enemy:
+		enemy.set("spawn_position", spawn_position)
+	enemy.set_meta(&"net_origin", entry.get("key", ""))
 
 	_watch(enemy, entry)
 
@@ -320,12 +364,66 @@ func _scattered_position(base: Vector2) -> Vector2:
 	return nav
 
 
+# =============================================================================
+# SHARED MONSTERS
+# =============================================================================
+
+func _has_authority() -> bool:
+	"""True unless this area's MonsterSync says another game runs these
+	monsters. No MonsterSync (a test, an older scene) is a player alone. The
+	area's is the one whose parent holds this respawner - there is one per
+	scene in the game, and the suite builds several side by side."""
+	if not is_inside_tree():
+		return true
+	for sync in get_tree().get_nodes_in_group(&"monstersync"):
+		var holder: Node = sync.get_parent()
+		if holder != null and holder.is_ancestor_of(self) and sync.has_method("has_authority"):
+			return sync.call("has_authority")
+	return true
+
+
+func resume_authority() -> void:
+	"""This game has just taken the area's monsters over. Every spawn point
+	whose monster is dead, with no clock running, gets a fresh one - the full
+	respawn time, because nobody here knows how long the old one had left."""
+	for entry in _census:
+		if entry.get("pending", false) or _entry_alive(entry):
+			continue
+		_respawn_after(entry, respawn_seconds)
+
+
+func adopt(enemy: Node) -> void:
+	"""(A follower's new monster.) If it belongs to a spawn point - its
+	net_origin is a census key - this is now that point's monster, watched
+	like the original, so the point is not refilled while it lives."""
+	var key: String = str(enemy.get_meta(&"net_origin", ""))
+	if key == "":
+		return
+	for entry in _census:
+		if entry.get("key", "") == key:
+			_watch(enemy, entry)
+			return
+
+
+func _entry_alive(entry: Dictionary) -> bool:
+	var id: int = int(entry.get("live", 0))
+	if id == 0:
+		return false
+	var node: Object = instance_from_id(id)
+	return is_instance_valid(node) and not bool(node.get("_death_resolved"))
+
+
+func _origin_key(enemy: Node) -> String:
+	var root: Node = get_tree().current_scene if is_inside_tree() else null
+	if root == null or not root.is_ancestor_of(enemy):
+		return str(enemy.name)
+	return str(root.get_path_to(enemy))
+
+
 func _player_too_close(spawn_position: Vector2) -> bool:
 	if min_player_distance <= 0.0:
 		return false
 
-	var player: Node2D = get_tree().get_first_node_in_group("player") as Node2D
-	if player == null or not is_instance_valid(player):
-		return false
-
-	return player.global_position.distance_to(spawn_position) < min_player_distance
+	# ANYBODY, not only this game's player: on the game running a shared area,
+	# nothing should appear on top of another player either.
+	return Targets.nearest_distance(get_tree(), spawn_position) < min_player_distance

@@ -46,6 +46,9 @@
 extends CharacterBody2D
 class_name BaseEnemy
 
+# Who a monster may chase: you, and anybody sharing the area's monsters.
+const Targets := preload("res://src/shared/targets.gd")
+
 
 # =============================================================================
 # CONSTANTS
@@ -367,7 +370,11 @@ signal died
 # =============================================================================
 
 var hp: int
-var player: CharacterBody2D = null
+# WHO THIS MONSTER IS AFTER. A Node2D, not a CharacterBody2D, since 0.7.0: on
+# the game that runs an area's shared monsters it may be another player's
+# RemotePlayer picture (see targets.gd), which is drawn, not simulated. Anything
+# that needs more than a position asks for it - see BossEnemy._player_velocity().
+var player: Node2D = null
 var attack_direction: String = "down"
 var attack_ready: bool = true
 var is_attacking: bool = false
@@ -435,6 +442,12 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	# A MIRROR DOES NOT THINK. Another game runs this monster; this one only
+	# eases it toward where that game last said it was. See SHARED MONSTERS.
+	if net_mirror:
+		_net_follow(_delta)
+		return
+
 	# HELD BEHIND A GATE: no chase, no attack, no drift. Before the player
 	# lookup, because a gated boss has no business resolving a target - it
 	# should not even be facing them until its gate opens.
@@ -464,6 +477,14 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	var dist_to_player: float = global_position.distance_to(player.global_position)
+
+	# A TARGET OUT OF REACH IS NO LONGER THE TARGET, when somebody else is
+	# nearer. With one player this never changes hands; with several sharing
+	# the area, a monster whose quarry ran off turns on whoever is still
+	# standing next to it instead of walking home past them. Checked on a
+	# clock, not every tick - see _retarget_left.
+	if dist_to_player > leash_range and _retarget_nearer(_delta):
+		dist_to_player = global_position.distance_to(player.global_position)
 
 	if dist_to_player > leash_range:
 		# Cleared here rather than left latched: an enemy that leashed out mid
@@ -1420,7 +1441,11 @@ func _resolve_player() -> void:
 	# steps closer. Real aggro — threat, taunts, switching — is a decision
 	# the server has to own, and inventing it here before that server exists
 	# would just be something to throw away later.
-	var players: Array = get_tree().get_nodes_in_group("player")
+	#
+	# EVERYBODY A MONSTER MAY CHASE, NOT JUST THE "player" GROUP, since 0.7.0:
+	# on the game running an area's shared monsters, the other players in it
+	# count too. With nobody else around this is the same one node as before.
+	var players: Array = Targets.all(get_tree())
 	if players.is_empty():
 		player = null
 		return
@@ -1442,6 +1467,29 @@ func _resolve_player() -> void:
 			nearest = candidate
 
 	player = nearest
+
+
+# How often a monster whose target is out of reach looks for a nearer one.
+const RETARGET_SECONDS := 0.5
+var _retarget_left: float = 0.0
+
+
+func _retarget_nearer(delta: float) -> bool:
+	"""True when the target changed to somebody nearer. Only ever looks while
+	the current target is out of leash range, and at most every
+	RETARGET_SECONDS - a scan of two groups is cheap, but not per tick for a
+	room full of monsters walking home."""
+	_retarget_left -= delta
+	if _retarget_left > 0.0:
+		return false
+	_retarget_left = RETARGET_SECONDS
+	var nearest: Node2D = Targets.nearest(get_tree(), global_position)
+	if nearest == null or nearest == player:
+		return false
+	player = nearest
+	# A SLOT IS A PLACE AROUND ONE PLAYER, so it does not come along.
+	_release_slot()
+	return true
 
 
 func _wire_attack_timer() -> void:
@@ -1716,6 +1764,9 @@ func _wire_animated_sprite() -> void:
 
 
 func _on_animation_finished() -> void:
+	# A mirror plays what the leader says, and holds it until told otherwise.
+	if net_mirror:
+		return
 	if not has_node("animatedsprite2d"):
 		return
 	var sprite: AnimatedSprite2D = $animatedsprite2d
@@ -2162,6 +2213,13 @@ func spawn_projectile_node(projectile: Node, spawn_pos: Vector2) -> void:
 	# in the one place every enemy projectile passes through.
 	projectile.call_deferred("reset_physics_interpolation")
 
+	# SHARED MONSTERS: everyone else in the area sees the same shot. Told from
+	# here, the one function every enemy shot passes through, with the aim the
+	# caller already gave it - the other games fire a copy from the same spot
+	# the same way, and each copy can hurt only its own game's player.
+	if _net_sync != null and not net_mirror:
+		_net_sync.leader_shot(self, projectile, spawn_pos)
+
 
 # =============================================================================
 # ANIMATION HELPERS
@@ -2290,6 +2348,7 @@ var _hit_flash_tween: Tween = null
 func play_hit_flash() -> void:
 	if _dying or not has_node("animatedsprite2d"):
 		return
+	_net_last_flash_msec = Time.get_ticks_msec()
 	var sprite: AnimatedSprite2D = $animatedsprite2d
 
 	if _hit_flash_tween != null and _hit_flash_tween.is_valid():
@@ -2448,17 +2507,36 @@ func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 	if _death_resolved or _dying:
 		return
 
+	# A MONSTER THIS GAME DOES NOT RUN (SHARED MONSTERS). The hit is shown here
+	# at once - the number, the flash, the sound, all of it is your feedback -
+	# and DECIDED on the game that runs it: monstersync.gd sends it there, and
+	# the health this game draws comes back from there a tenth of a second
+	# later. Nothing here changes hp, so nothing here can kill it.
+	if net_mirror:
+		if _net_sync != null:
+			_net_sync.mirror_hit(self, amount, _element)
+		_spawn_floating_label(amount, 0)
+		Audio.play("attack_hit")
+		play_hit_flash()
+		Audio.play_at("enemy_hurt", global_position)
+		return
+
+	# WHOSE HIT THIS WAS. Somebody else's arrives through net_take_remote_hit(),
+	# which sets _net_applying_remote around this call; everything else that
+	# reaches take_damage() is this game's player or their pet.
+	if _net_applying_remote:
+		_net_remote_hit = true
+	else:
+		_net_local_hit = true
+
 	hp = max(hp - amount, 0)
 	damaged.emit(amount)
 
-	_spawn_floating_label(amount, 0)
+	# Your numbers, not theirs: another player's hit shows on their screen.
+	if not _net_applying_remote:
+		_spawn_floating_label(amount, 0)
 
-	if has_node("healthbar"):
-		var bar: Range = $healthbar
-		if bar.max_value != max_hp:
-			bar.max_value = max_hp
-		bar.value = _bar_displayable(bar, hp)
-		_write_health_readout()
+	_refresh_health_display()
 
 	# TWO SOUNDS FOR ONE EVENT, AND THAT IS DELIBERATE.
 	#
@@ -2473,7 +2551,12 @@ func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 	#
 	# Either id can be left empty in audio.gd's registry and the other still
 	# works. That is the point of calling by id rather than by stream.
-	Audio.play("attack_hit")
+	#
+	# SINCE SHARED MONSTERS, "an enemy took damage" can be somebody else's
+	# hit, applied here because this game runs the monster - so "you
+	# connected" is held back for those, and the thing out there still reacts.
+	if not _net_applying_remote:
+		Audio.play("attack_hit")
 
 	if hp <= 0:
 		_die()
@@ -2509,7 +2592,17 @@ func _die() -> void:
 	# is an autoload, so it outlives this corpse and can wait for the network.
 	# Position is passed by value for the same reason — global_position will not
 	# exist by the time the bag is spawned.
-	Combat.report_kill(get_enemy_id(), global_position, player)
+	#
+	# YOUR KILL, IF YOU HELPED (SHARED MONSTERS). On the game running a shared
+	# monster, a kill made entirely by other players' hits is theirs: each of
+	# their games reports it, and each gets its own bag. This game reports only
+	# if its own player or pet landed a hit - or if nobody else did, which is
+	# every kill a player alone has ever made.
+	#
+	# AND THE REWARD GOES TO YOUR PLAYER, not to `player`: that is who the
+	# monster was chasing, which can be somebody else's picture now.
+	if _should_report_kill():
+		Combat.report_kill(get_enemy_id(), global_position, _local_player())
 
 	# BEFORE queue_free(), and through the autoload rather than a player node
 	# on this enemy. audio.gd's header is about exactly this case: a player
@@ -2596,6 +2689,200 @@ func _die() -> void:
 #
 # An autoload is always in the tree, so Combat can hold the position, wait as
 # long as it takes, and still resolve a container afterwards.
+
+
+# =============================================================================
+# SHARED MONSTERS  (0.7.0)
+# =============================================================================
+# Everyone in an area fights the same monsters. ONE game runs them - the area's
+# leader, named by the presence server - exactly as a lone player's game always
+# has; every other game in the area draws them as MIRRORS. monstersync.gd is
+# the conductor; this is what a monster itself has to know.
+#
+# A MIRROR does not think: no AI, no timers, no attacks of its own. It eases
+# toward where the leader last said it stood, plays what the leader says it is
+# playing, shows the health the leader says it has, and passes your hits to the
+# leader (take_damage above). Its shots, vines and spikes are the leader's,
+# copied by monstersync.gd, and each copy can only hurt its own game's player.
+#
+# THE SAME NODE CAN BE EITHER. A game that follows turns its monsters into
+# mirrors where they stand, and one that takes over turns them back - so a
+# leader leaving hands the fight over mid-swing instead of resetting the room.
+
+# Set by monstersync.gd: the number every game uses for this monster, and the
+# conductor itself. -1 and null for a monster nothing is sharing (a test, a
+# scene without one) - which behaves exactly as before 0.7.0.
+var net_id: int = -1
+var net_mirror: bool = false
+var _net_sync: Node = null
+
+# Who has hurt it. A kill is reported by every game whose player helped (see
+# _die()); a mirror's helpers are counted by monstersync.gd instead.
+var _net_local_hit: bool = false
+var _net_remote_hit: bool = false
+var _net_applying_remote: bool = false
+
+# Where the leader last said a mirror stands, and how a mirror closes on it.
+# Like RemotePlayer: ease, and snap only across a gap no monster walks.
+var _net_goal: Vector2 = Vector2.ZERO
+const NET_FOLLOW_RATE := 12.0
+const NET_SNAP_DISTANCE := 200.0
+
+
+func net_set_mirror(on: bool) -> void:
+	"""Make this monster a mirror of the leader's, or take it back. Where it
+	stands, how hurt it is and what it is playing are kept either way."""
+	if net_mirror == on:
+		return
+	net_mirror = on
+	_net_goal = global_position
+	velocity = Vector2.ZERO
+	is_attacking = false
+	is_returning_home = false
+	_is_fleeing = false
+	if on:
+		# NO SLOT, NO TARGET: a mirror stands where it is told.
+		_release_slot()
+	else:
+		# FROM SCRATCH: find somebody, attack when ready. Whatever the leader
+		# had it doing - mid-swing, mid-flee - was the leader's to finish.
+		player = null
+		attack_ready = true
+		if current_anim.begins_with("attack") or current_anim.begins_with("cast") \
+				or current_anim.begins_with("melee"):
+			play_idle_animation(_facing_for_animation())
+	# EVERY TIMER STOPS THINKING TOO: the attack cooldown, and the boss's
+	# spike and stalker clocks, which run beside the AI rather than in it.
+	for child in get_children():
+		if child is Timer:
+			(child as Timer).paused = on
+
+
+func _net_follow(delta: float) -> void:
+	var gap: Vector2 = _net_goal - global_position
+	if gap.length() > NET_SNAP_DISTANCE:
+		global_position = _net_goal
+		reset_physics_interpolation()
+	elif gap.length_squared() > 0.0001:
+		global_position = global_position.lerp(_net_goal, 1.0 - exp(-delta * NET_FOLLOW_RATE))
+
+
+func net_state() -> Array:
+	"""What the leader says about this monster every tick it changes:
+	[id, x, y, animation, hp]."""
+	return [net_id, snappedf(global_position.x, 0.1), snappedf(global_position.y, 0.1),
+		current_anim, hp]
+
+
+func net_apply_state(at: Vector2, anim: String, new_hp: int, snap: bool = false) -> void:
+	"""(Mirror.) What the leader says it is doing now."""
+	_net_goal = at
+	if snap:
+		global_position = at
+		reset_physics_interpolation()
+	if anim != "" and anim != current_anim and _has_animation(anim):
+		_set_animation(anim)
+	if new_hp != hp:
+		# SOMEBODY HIT IT - maybe not you. Your own hits already flashed when
+		# you landed them; a drop you did not cause flashes now.
+		if new_hp < hp and not _net_flashed_recently():
+			play_hit_flash()
+		hp = clampi(new_hp, 0, maxi(max_hp, 1))
+		_refresh_health_display()
+
+
+var _net_last_flash_msec: int = -100000
+
+
+func _net_flashed_recently() -> bool:
+	return Time.get_ticks_msec() - _net_last_flash_msec < 250
+
+
+func net_props() -> Dictionary:
+	"""What a game needs, before this monster's _ready(), to build the same
+	one: its profile, its element, its leash, whether it is behind a gate, and
+	where home is."""
+	return {
+		"ed": enemy_data.resource_path if enemy_data != null else "",
+		"eo": element_override,
+		"lr": leash_range,
+		"g": gated,
+		"hx": snappedf(spawn_position.x, 0.1),
+		"hy": snappedf(spawn_position.y, 0.1),
+	}
+
+
+func net_apply_props(props: Dictionary) -> void:
+	"""(Before add_child.) The settings net_props() described."""
+	var data_path: String = str(props.get("ed", ""))
+	if data_path.begins_with("res://data/enemies/") and ResourceLoader.exists(data_path):
+		var data: Resource = load(data_path)
+		if data is EnemyData:
+			enemy_data = data
+	element_override = int(props.get("eo", element_override))
+	leash_range = float(props.get("lr", leash_range))
+	gated = bool(props.get("g", gated))
+
+
+func net_take_remote_hit(amount: int, element: int = Element.Type.NONE) -> void:
+	"""(Leader.) Another player's hit, applied here because this game runs the
+	monster. It hurts, flashes and can kill like any hit - but it shows no
+	number and plays no "you connected" sound here, and a kill made only by
+	hits like this is not this game's to report (see _die())."""
+	if net_mirror:
+		return
+	_net_applying_remote = true
+	take_damage(amount, element)
+	_net_applying_remote = false
+
+
+func net_vanish() -> void:
+	"""(Mirror.) The leader says it died: the death plays here as it did
+	there - sound, signal, animation - with no kill report. Whether this
+	game's player earned one is monstersync.gd's question, asked before this."""
+	if _death_resolved:
+		return
+	_death_resolved = true
+	_release_slot()
+	Audio.play_at("enemy_death", global_position)
+	died.emit()
+	var death_anim: String = "death" + _facing_for_animation()
+	if _has_animation(death_anim):
+		_dying = true
+		_stop_acting()
+		_set_animation(death_anim)
+		await get_tree().create_timer(_animation_seconds(death_anim)).timeout
+		if not is_instance_valid(self):
+			return
+	queue_free()
+
+
+func net_remove() -> void:
+	"""Gone without a death: a mirror the leader no longer has, or a monster
+	this game had that the leader's world never did. No sound, no signal - the
+	respawner and the boss gauntlet must not count it."""
+	_death_resolved = true
+	queue_free()
+
+
+func _should_report_kill() -> bool:
+	"""Whether this game reports this monster's death as its kill: its own
+	player or pet hit it, or nobody else did (a player alone - every kill
+	before 0.7.0)."""
+	return _net_local_hit or not _net_remote_hit
+
+
+func _local_player() -> Node:
+	return get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+
+
+func _refresh_health_display() -> void:
+	if has_node("healthbar"):
+		var bar: Range = $healthbar
+		if bar.max_value != max_hp:
+			bar.max_value = max_hp
+		bar.value = _bar_displayable(bar, hp)
+		_write_health_readout()
 
 
 # =============================================================================

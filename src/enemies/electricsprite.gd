@@ -86,7 +86,7 @@ func fire_projectile() -> void:
 	# BaseEnemy.spawn_projectile_node() — see the note at the bottom of this
 	# function for what happened while they did not.
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
-	if spawn_node == null or player == null:
+	if spawn_node == null or not is_instance_valid(player):
 		return
 
 	# THE ELEMENT PICKS THE ORB — see bushsniper.gd. The plain electric sprite
@@ -136,6 +136,10 @@ func fire_projectile() -> void:
 # =============================================================================
 
 func _on_frame_changed() -> void:
+	# A mirror's attack is a picture: the shot is the leader's (shared
+	# monsters), and arrives from monstersync.gd.
+	if net_mirror:
+		return
 	# fire the orb exactly once per attack cycle, on ORB_RELEASE_FRAME.
 	# since the attack animation is non-looping (Loop OFF in SpriteFrames)
 	# and BaseEnemy._trigger_attack only restarts when the animation NAME

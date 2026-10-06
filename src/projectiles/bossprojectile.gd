@@ -282,6 +282,13 @@ const ELEMENT_SPARKS := {
 # rolls it against the element's multiplier.
 @export_range(0.0, 1.0, 0.01) var puddle_chance: float = 0.35
 
+# THE SEED THE PUDDLE IS ROLLED FROM, when there is one (0: a fresh roll). Since
+# shared monsters every game in an area draws the same spike, and a spike that
+# left acid on one screen and bare floor on another would be a hazard only
+# some players could see. bossenemy.gd draws a seed for every spike it places
+# and sends it with the spike, so every copy rolls the same pools.
+var puddle_seed: int = 0
+
 # 0 means "whatever the element's puddle scene says". Same convention as
 # EnemyData.projectile_damage: a zero is deference, not a value.
 @export var puddle_tick_damage: int = 0
@@ -687,7 +694,8 @@ func _leave_puddle() -> void:
 	# The element's multiplier on the caller's chance. Wind and light are 0.0
 	# here — they leave nothing at all, which is as much a part of how they
 	# fight as the fast telegraph is.
-	if randf() >= clampf(puddle_chance * _puddle_chance_scale, 0.0, 1.0):
+	var plan: Array[Vector2] = puddle_plan()
+	if plan.is_empty():
 		return
 
 	# Captured NOW. queue_free() runs immediately after this returns, so reading
@@ -704,15 +712,33 @@ func _leave_puddle() -> void:
 	if container == null:
 		return
 
-	_drop_one_puddle(container, landing)
+	for offset in plan:
+		_drop_one_puddle(container, landing + offset)
+
+
+func puddle_plan() -> Array[Vector2]:
+	"""Where this spike's acid goes, as offsets from where it stands: none, one
+	at the centre, or - water - the centre and a splash around it. Rolled from
+	puddle_seed when there is one, so every game drawing the same spike in a
+	shared area leaves the same pools."""
+	var plan: Array[Vector2] = []
+	var rng := RandomNumberGenerator.new()
+	if puddle_seed != 0:
+		rng.seed = puddle_seed
+	else:
+		rng.randomize()
+	if rng.randf() >= clampf(puddle_chance * _puddle_chance_scale, 0.0, 1.0):
+		return plan
+	plan.append(Vector2.ZERO)
 
 	# WATER SPREADS. One spike, several pools, thrown a little way out so the
 	# shape on the floor is a splash rather than a stack. Every other element
 	# has extra = 0 and never enters this loop.
 	for i in range(_puddle_extra):
-		var angle: float = randf() * TAU
-		var dist: float = SPREAD_RADIUS * sqrt(randf())
-		_drop_one_puddle(container, landing + Vector2(cos(angle), sin(angle)) * dist)
+		var angle: float = rng.randf() * TAU
+		var dist: float = SPREAD_RADIUS * sqrt(rng.randf())
+		plan.append(Vector2(cos(angle), sin(angle)) * dist)
+	return plan
 
 
 func _drop_one_puddle(container: Node, at: Vector2) -> void:

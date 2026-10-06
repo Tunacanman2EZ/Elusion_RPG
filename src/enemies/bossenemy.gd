@@ -939,6 +939,8 @@ func _on_animation_finished() -> void:
 	# true forever after the first cast, freezing the boss mid-fight with no
 	# error to explain it.
 	super._on_animation_finished()
+	if net_mirror:
+		return
 
 	if not has_node("animatedsprite2d"):
 		return
@@ -967,6 +969,10 @@ func _trigger_attack() -> void:
 
 
 func _on_frame_changed() -> void:
+	# A MIRROR'S CAST IS A PICTURE. The spikes and the swing it would deliver
+	# on these frames are the leader's, and arrive from monstersync.gd.
+	if net_mirror:
+		return
 	var playing: String = sprite.animation
 
 	if playing.begins_with(CAST_PREFIX):
@@ -1045,6 +1051,12 @@ func _land_swing() -> void:
 
 		target.take_damage(melee_damage(), current_element())
 
+	# SHARED MONSTERS: the swing lands on every screen. This game's query only
+	# ever finds this game's player; each other game runs the same query
+	# around its copy of the boss, against its own player.
+	if _net_sync != null and not net_mirror:
+		_net_sync.leader_event(self, {"k": "m"})
+
 
 func _is_damageable_player(node: Node) -> bool:
 	return node != null \
@@ -1109,6 +1121,10 @@ func _setup_spike_timer() -> void:
 
 
 func _on_spike_timer() -> void:
+	# A mirror's clocks are paused (net_set_mirror), and this says so again:
+	# its spikes are the leader's.
+	if net_mirror:
+		return
 	# ALIVE AND ENGAGED ONLY. Dying, dead, or walking home on the leash all mean
 	# the boss is not fighting this player, and spikes erupting in an empty room
 	# read as a bug rather than an attack.
@@ -1538,6 +1554,8 @@ func _on_stalker_timer() -> void:
 	# the phase changes. There is no "phase changed" event to hook - the phase
 	# is derived from current health - so anything that had to be told would
 	# need one inventing. Asking here costs nothing and cannot fall out of sync.
+	if net_mirror:
+		return
 	var phase: int = _current_phase()
 	_stalker_timer.wait_time = STALKER_INTERVAL_PHASE_THREE if phase >= 2 \
 		else STALKER_INTERVAL_PHASE_TWO
@@ -1575,6 +1593,8 @@ func _spawn_stalker() -> void:
 	# element from the scene rather than staying NONE, which is what they were.
 	stalker.setup(player, Projectiles.variant_of(eruption_scene, current_element()), trail_damage(),
 		current_element())
+	# Whose trail it is, so each pillar it drops can be shown on every screen.
+	stalker.net_owner = self
 
 	if debug_patterns:
 		print("[BOSS] stalker released (phase %d)" % [_current_phase() + 1])
@@ -1620,9 +1640,13 @@ func _aim_point() -> Vector2:
 
 
 func _player_velocity() -> Vector2:
-	if not is_instance_valid(player) or not (player is CharacterBody2D):
+	# ANY TARGET THAT KNOWS ITS SPEED. The local player is a CharacterBody2D;
+	# another player's picture (shared monsters) works its velocity out from
+	# the positions it is sent. Either way the boss leads a runner.
+	if not is_instance_valid(player):
 		return Vector2.ZERO
-	return (player as CharacterBody2D).velocity
+	var v: Variant = player.get("velocity")
+	return v if v is Vector2 else Vector2.ZERO
 
 
 # Slides every spike along the player's heading by however long that spike has
@@ -2090,7 +2114,7 @@ func _apply_pattern_cooldown(pattern: Array[Dictionary]) -> void:
 
 
 func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
-		spike_radius: float, scene: PackedScene) -> void:
+		spike_radius: float, scene: PackedScene, puddle_seed: int = 0) -> void:
 	# THE SCENE IS THE TRACK. Pillars and spikes are two separate attacks
 	# running at once, and which art a hazard wears is how the player tells
 	# which attack it belongs to - so it is decided by the CALLER, per cast,
@@ -2156,6 +2180,14 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	if "element" in eruption:
 		eruption.element = current_element()
 
+	# THE PUDDLE IS ROLLED FROM A SEED, so every game drawing this spike leaves
+	# the same acid in the same places (shared monsters). The seed is drawn
+	# here, from the global RNG, so a lone player's odds are what they were.
+	if puddle_seed == 0:
+		puddle_seed = (randi() | 1)
+	if "puddle_seed" in eruption:
+		eruption.puddle_seed = puddle_seed
+
 	# SCALED, NOT RESIZED. The pillar's hitbox, its sprite and the warning ring
 	# it draws are all authored at SPIKE_BASE_RADIUS, so scaling the node moves
 	# all three together and they cannot drift apart.
@@ -2186,6 +2218,14 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	# slides in from the top-left corner of the map on its first frame. See
 	# BaseEnemy.spawn_projectile_node() for the full explanation.
 	eruption.reset_physics_interpolation()
+
+	# SHARED MONSTERS: the same spike, in the same place, on every screen. The
+	# BASE scene goes, not the variant: the copy runs this same function on
+	# its mirror of this boss, which picks the variant from the same element.
+	if _net_sync != null and not net_mirror:
+		_net_sync.leader_event(self, {"k": "e", "s": scene.resource_path,
+			"x": snappedf(pos.x, 0.1), "y": snappedf(pos.y, 0.1),
+			"t": snappedf(telegraph, 0.001), "r": snappedf(spike_radius, 0.01), "sd": puddle_seed})
 
 
 # =============================================================================

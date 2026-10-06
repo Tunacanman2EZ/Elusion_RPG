@@ -22,9 +22,30 @@
 # refused ticket: the game plays exactly as before, nobody else is drawn, and
 # this tries again later (RETRY_SECONDS). It never tells the player.
 #
-# Each game still fights its own enemies: a player swinging at nothing is
-# swinging at a monster in their own world. This is presence, not combat.
+# AND, SINCE 0.7.0, THE AREA'S MONSTERS. The server names one game in each
+# area the LEADER (the one that has been there longest); that game runs the
+# monsters and the others draw them. This file only carries the notes - who
+# leads ("lead"), the leader's world ("w"), a follower's hits ("h") and the
+# server asking the leader to send someone everything ("need") - and hands
+# them to the area's MonsterSync (src/world/monstersync.gd) through the signals
+# below. A server from before 0.7.0 never names a leader, and every game then
+# fights its own monsters exactly as it used to.
 extends Node
+
+# The shared-monster wire this game speaks; the server's welcome says whether
+# it does too.
+const SHARED_VERSION := 2
+
+# Who runs this area's monsters: the leader's account id, -1 for nobody (or no
+# link at all), and how many other games share them.
+signal lead_changed(area: String, leader_id: int, sharers: int)
+# The leader's world, as it sent it. Only ever from the area's current leader:
+# the server drops anyone else's.
+signal world_received(data: Dictionary)
+# (Leader only.) Another game's hits, as [[monster id, damage, element], ...].
+signal hits_received(from_id: int, hits: Array)
+# (Leader only.) The server asks for everything to be sent to this game.
+signal world_needed(for_id: int)
 
 const RemotePlayer := preload("res://src/characters/remoteplayer.gd")
 
@@ -62,6 +83,10 @@ var _world: Node = null
 var _remotes: Dictionary = {}     # user id -> RemotePlayer
 var _sync_pending: bool = false
 var _anim_rule: RegEx = RegEx.create_from_string(ANIM_PATTERN)
+var _server_shares: bool = false
+var _lead_area: String = ""
+var _leader_id: int = -1
+var _lead_sharers: int = 0
 
 
 func _init() -> void:
@@ -110,6 +135,66 @@ func stop() -> void:
 	_phase = "off"
 	_my_id = -1
 	_clear_remotes()
+	_lose_lead()
+
+
+# =============================================================================
+# SHARED MONSTERS
+# =============================================================================
+
+func shares() -> bool:
+	"""True while the link is open to a server that shares monsters."""
+	return _phase == "open" and _server_shares and _my_id >= 0
+
+
+func my_id() -> int:
+	return _my_id
+
+
+func leader_for(area: String) -> int:
+	"""Who leads `area`, as last heard: an account id, -1 for nobody, or -2
+	when nothing has been heard about that area since arriving in it."""
+	return _leader_id if area != "" and area == _lead_area else -2
+
+
+func sharers() -> int:
+	return _lead_sharers
+
+
+func send_world(data: Dictionary, to: int = -1) -> void:
+	"""(Leader.) The area's monsters, to everyone else in it or to one game."""
+	if not shares():
+		return
+	var message: Dictionary = {"t": "w", "d": data}
+	if to >= 0:
+		message["to"] = to
+	_send(message)
+
+
+func send_hits(hits: Array) -> void:
+	"""(Follower.) Hits for the leader to apply, [[monster, damage, element]]."""
+	if not shares() or hits.is_empty():
+		return
+	_send({"t": "h", "p": hits})
+
+
+func request_world() -> void:
+	"""(Follower.) Ask again for everything: the server tells this game who
+	leads and has the leader send it the whole area ("sync")."""
+	if _phase == "open":
+		_send({"t": "sync"})
+
+
+func _lose_lead() -> void:
+	# THE LINK IS GONE, so nobody leads anything we can hear. Whoever was
+	# following takes their monsters back and fights alone, as before 0.7.0.
+	var area: String = _lead_area
+	var had: bool = _leader_id != -1 or _lead_area != ""
+	_lead_area = ""
+	_leader_id = -1
+	_lead_sharers = 0
+	if had:
+		lead_changed.emit(area, -1, 0)
 
 
 func _local_player() -> Node:
@@ -128,6 +213,11 @@ func _begin() -> void:
 		_wait()
 		return
 	_socket = WebSocketPeer.new()
+	# ROOM FOR A WHOLE AREA. A leader sends a game that walks in every monster
+	# it runs at once (Big Field: 128 of them, in parts of 60), and Godot's
+	# default buffers are 64 KB each way. A megabyte is a few frames of video.
+	_socket.inbound_buffer_size = 1 << 20
+	_socket.outbound_buffer_size = 1 << 20
 	if _socket.connect_to_url(_url) != OK:
 		_socket = null
 		_wait()
@@ -150,6 +240,7 @@ func _pump(delta: float, player: Node) -> void:
 			print("[PRESENCE] closed (%d %s)" % [_socket.get_close_code(), _socket.get_close_reason()])
 		_clear_remotes()
 		_wait()
+		_lose_lead()
 		return
 	if socket_state != WebSocketPeer.STATE_OPEN:
 		return
@@ -159,7 +250,8 @@ func _pump(delta: float, player: Node) -> void:
 		_last_state = {}
 		_sync_pending = false
 		_renew_clock = 0.0
-		_send({"t": "hello", "ticket": _ticket})
+		_server_shares = false
+		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION})
 	while _socket != null and _socket.get_available_packet_count() > 0:
 		var parsed: Variant = JSON.parse_string(_socket.get_packet().get_string_from_utf8())
 		if parsed is Dictionary:
@@ -236,6 +328,7 @@ func handle_message(message: Dictionary) -> void:
 	match str(message.get("t", "")):
 		"welcome":
 			_my_id = int(message.get("id", -1))
+			_server_shares = int(message.get("v", 0)) >= SHARED_VERSION
 		"join":
 			for entry in message.get("p", []):
 				if entry is Dictionary:
@@ -250,15 +343,32 @@ func handle_message(message: Dictionary) -> void:
 		"bye":
 			if OS.is_debug_build():
 				print("[PRESENCE] the server said goodbye: %s" % str(message.get("why", "")))
+		"lead":
+			_lead_area = str(message.get("a", ""))
+			_leader_id = int(message.get("id", -1))
+			_lead_sharers = maxi(int(message.get("n", 0)), 0)
+			lead_changed.emit(_lead_area, _leader_id, _lead_sharers)
+		"need":
+			world_needed.emit(int(message.get("id", -1)))
+		"w":
+			if message.get("d") is Dictionary:
+				world_received.emit(message["d"])
+		"h":
+			var batch: Variant = message.get("p")
+			if batch is Array:
+				hits_received.emit(int(message.get("from", -1)), batch)
 
 
 func _join(entry: Dictionary) -> void:
 	var id: int = int(entry.get("id", -1))
 	if id < 0 or id == _my_id or _world == null or not is_instance_valid(_world):
 		return
-	var body: Node2D = _remotes.get(id)
+	# Untyped until checked: see _remove() for what a freed entry does to a
+	# typed variable.
+	var found: Variant = _remotes.get(id)
+	var body: Node2D = found if is_instance_valid(found) else null
 	var at: Vector2 = _local(Vector2(float(entry.get("x", 0.0)), float(entry.get("y", 0.0))))
-	if body == null or not is_instance_valid(body):
+	if body == null:
 		body = RemotePlayer.new()
 		body.user_id = id
 		_world.add_child(body)
@@ -276,9 +386,10 @@ func _move(move: Array) -> void:
 	var id: int = int(move[0])
 	if id == _my_id:
 		return
-	var body: Node2D = _remotes.get(id)
-	if body == null or not is_instance_valid(body):
+	var found: Variant = _remotes.get(id)
+	if not is_instance_valid(found):
 		return
+	var body: Node2D = found
 	body.set_target(_local(Vector2(float(move[1]), float(move[2]))))
 	body.set_motion(str(move[3]), move[4] if move[4] is Array else [], str(move[5]))
 
@@ -293,10 +404,14 @@ func _local(at: Vector2) -> Vector2:
 
 
 func _remove(id: int) -> void:
-	var body: Node = _remotes.get(id)
+	# UNTYPED ON PURPOSE. When the world goes first - a death sends the game to
+	# the game-over screen, freeing every body in it, and the link stops after -
+	# the entry is a freed object, and assigning one to a typed variable is a
+	# SCRIPT ERROR before is_instance_valid() ever gets to look at it.
+	var body: Variant = _remotes.get(id)
 	_remotes.erase(id)
-	if body != null and is_instance_valid(body):
-		body.queue_free()
+	if is_instance_valid(body):
+		(body as Node).queue_free()
 
 
 func _clear_remotes() -> void:

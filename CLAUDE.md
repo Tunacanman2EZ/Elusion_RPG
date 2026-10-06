@@ -1685,8 +1685,8 @@ Two details that make it a real check rather than a decorative one:
   used because the body says `slot_index`, and the check quietly stops checking.
   Sabotage-tested with exactly that case.
 - **Known limit:** it reads single-line `func` declarations, so a signature
-  wrapped across lines is skipped rather than guessed at. 1,631 signatures parse
-  this way. A missed one still shows in the editor, as it always did.
+  wrapped across lines is skipped rather than guessed at. 2,379 signatures parse
+  this way (0.7.0). A missed one still shows in the editor, as it always did.
 
 ### The .ps1 entry points are held to pure ASCII
 
@@ -2195,7 +2195,7 @@ product versions are it with `.0` after (Windows wants four numbers).
   guilds and chat, 0.4 the browser (4 Oct), 0.5 seeing each other (6 Oct).
   0.5.1 is the dots drawn instead of letters, 0.6.0 the trade switch and
   the hold on fresh finds, 0.6.1 the owner-only item grant and the wider
-  loot bag reach.
+  loot bag reach, 0.7.0 shared monsters.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -2266,11 +2266,109 @@ and the game is logged in, and draws everybody in the same area as a
 - **Nothing here is essential.** No server, a refused ticket or a dropped
   socket: the game plays as before, nobody is drawn, and it tries again after
   2, 5, 10, then 30 seconds. It never tells the player.
-- **Presence, not combat.** Each game still fights its own enemies, so a
-  player swinging at nothing is swinging at a monster in their own world.
+- **And, since 0.7.0, the monsters** - see "Shared monsters" below.
 
 `_test_other_players_are_drawn`; the server's rules are `test_presence.py` in
 the API repo.
+
+### Shared monsters: one game runs them, everyone fights them
+
+The owner, 6 Oct: "shared monsters separate loot bags". Until 0.7.0 two
+friends in the Field saw each other but swung at different copies of every
+monster. Now everyone in an area fights the same ones.
+
+- **One game runs them: the area's LEADER.** The presence server names it -
+  the game that has been in the area longest - and sends `lead`. Its monsters
+  are THE monsters: they think, chase, cast and respawn exactly as a lone
+  player's always have. `src/world/monstersync.gd` (added to every area by
+  AreaRegistry, like the sleeper) says ten times a second what changed:
+  `[id, x, y, animation, hp]` for each monster that moved, and an ordered list
+  of what happened - a spawn, a death, a shot, a vine, a boss spike or swing,
+  a stalker pillar - plus the gauntlet's wave. A game walking in is sent
+  everything at once (`need` -> a full world, in parts of 60 records).
+- **Everyone else FOLLOWS: their monsters are mirrors.** `BaseEnemy` has a
+  SHARED MONSTERS section: `net_set_mirror()` turns a monster into one where it
+  stands (no AI, every Timer child paused - the boss's spike and stalker
+  clocks run beside the AI, not in it), `_net_follow()` eases it toward where
+  the leader says, `net_apply_state()` plays what the leader says and shows the
+  health it says. Every frame-triggered attack (the shooters' release frames,
+  the vine, the boss's cast and swing frames) returns for a mirror, and so does
+  `PoisonSlime._check_duplicate()` - a mirror never makes anything.
+- **Your hits are decided on the leader.** `take_damage()` on a mirror shows
+  your number, flash and sound at once and hands the hit to monstersync, which
+  sends it (batched, `[[id, damage, element]]`) for the leader's game to apply
+  with `net_take_remote_hit()`. Nothing on a follower changes a mirror's hp.
+- **Separate loot bags.** A monster that dies is reported by every game whose
+  player or pet hit it - each gets its own XP and its own bag from the server's
+  own roll, and nobody sees anyone else's. The leader reports only if its own
+  player helped (`_should_report_kill()`: hit locally, or hit by nobody else,
+  which is every kill a lone player has ever made). A follower reports from
+  the death event, if it ever sent a hit for that monster.
+- **You are hurt only by what you see.** A monster's shot, vine, spike or swing
+  happens on the leader and is replayed on each follower - shots through the
+  mirror's own `spawn_projectile_node()` with the leader's aim, spikes through
+  `_spawn_one_eruption()` with the same telegraph and a shared `puddle_seed`
+  (so the acid lands in the same places), swings through `_land_swing()`
+  around the mirror. Each copy can only touch its own game's player. Your
+  health is still your game's, as it always was.
+- **Monsters chase anybody sharing them.** `src/shared/targets.gd`: the local
+  player and every RemotePlayer whose game shares monsters (presence "v" 2) and
+  is not playing its death. `BaseEnemy._resolve_player()`, the sleeper, the
+  respawner's distance check and the twin all ask it. A RemotePlayer carries a
+  `bodyshape` marker at its class's body circle and a `velocity` worked out from
+  its positions, so a boss aims at and leads it like the local player. A
+  monster whose target is out of leash range looks for a nearer one every
+  half second instead of walking home past someone. `player` on an enemy is a
+  Node2D now, for that reason.
+- **Handing over keeps the fight.** When the leader leaves, the server names
+  the next in line and its mirrors turn back into monsters where they stand,
+  at their health, keeping their numbers; a monster it hit as a follower is
+  one it helped kill. Its respawner starts a fresh clock for every dead spawn
+  point (`resume_authority()`). A dropped link does the same: the follower
+  fights its own, as before 0.7.0.
+- **Matched by where they were authored.** Every placed monster carries
+  `net_origin` - its path from the scene root, the same string on every
+  machine - and the respawner keys its census by it. A follower binds the
+  leader's monsters to its own by number, then by origin (so the boss
+  gauntlet's gates keep the bosses they hold), and only then builds one from
+  the leader's record; anything left over goes silently (`net_remove()`, no
+  `died`). The leader's world may only name scenes under `scene/enemy/` and
+  `scene/projectiles/`, profiles under `data/enemies/`, and containers this
+  scene already keeps monsters in.
+- **A leader cannot make the floor hit harder.** Shots, swings and spikes are
+  built from the follower's own copy of the monster, so their damage is the
+  follower's own. The three numbers that are not - a spike's telegraph and
+  size, a stalker pillar's damage, telegraph and size - are held to what the
+  follower's own boss could do (`safe_spike()`, `safe_pillar_damage()`,
+  bossstalker.gd `PILLAR_*`), and a follower draws at most `MAX_MONSTERS`
+  (400; Big Field has 128). A cheating leader can still set the game's own
+  monsters on you; it cannot invent a harder one.
+- **Waiting, briefly.** A game that knows a presence server is there holds its
+  monsters still until it hears who leads (at most 2 s, then it runs them
+  itself). No server, an old one, or no other player: everything is exactly
+  as it was.
+- **The boss gauntlet agrees by itself**: every game advances it from its own
+  bosses dying, and a mirror's death is the leader's. `net_jump_to()` catches
+  a game that walked in mid-fight up to the leader's wave.
+- **Small fixes on the way.** A respawned monster used to believe its home was
+  the world origin (BaseEnemy._ready() records `spawn_position` before the
+  respawner set the position) and walked off to the top-left when leashed; the
+  respawner sets it again now. And presence's `_remove()` no longer raises a
+  SCRIPT ERROR when the world was freed first (a death).
+
+Tests: `_test_presence_carries_the_monsters`, `_test_shared_monsters_lead`,
+`_follow`, `_handover`, `_targets`, `_pieces` (respawner, gauntlet, acid) and
+`_hold_the_leaders_numbers`, against a stand-in link; `test_presence.py` P-7 for the server. Played with
+two real games against the real API and presence server: both hitting one
+monster each got the kill and a bag of their own, a follower was hurt by the
+leader's shots, a boss arena advanced to wave 2 on both screens, and the
+follower took the arena over when the leader left.
+
+**Not shared, and said so:** levers and spike gates (each game pulls its own),
+and loot (by design). The leader is trusted with the monsters exactly as every
+game is trusted with its own kills (E-3): a cheating leader can do no more to
+the monsters than a cheating game always could, and the caps above keep an
+invented number from reaching anybody's health.
 
 ### Bosses hit for their band
 

@@ -895,6 +895,11 @@ func _displace_wading_enemies(bodies: Array[CharacterBody2D], delta: float) -> v
 		# still passes is_instance_valid() until the frame ends.
 		if not is_instance_valid(body):
 			continue
+		# NOT A MIRROR (shared monsters): another game runs it and says where
+		# it stands ten times a second, so a shove here would only be undone
+		# there. It still slows you - you are wading through it either way.
+		if bool(body.get("net_mirror")):
+			continue
 
 		var away: Vector2 = body.global_position - global_position
 

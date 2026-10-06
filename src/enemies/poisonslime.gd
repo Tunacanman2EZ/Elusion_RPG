@@ -301,6 +301,11 @@ func _fit_healthbar_to_form() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# A mirror only follows the leader's slime (shared monsters) - and must
+	# not reach _check_duplicate() below and spawn a twin of its own.
+	if net_mirror:
+		_net_follow(delta)
+		return
 	# a slime mid-split or mid-death does not act.
 	if _is_resolving:
 		return
@@ -382,7 +387,7 @@ func _current_anim_duration() -> float:
 
 func _on_frame_changed() -> void:
 	# release the projectile on the frame the art actually throws it.
-	if _is_resolving or not has_node("animatedsprite2d"):
+	if net_mirror or _is_resolving or not has_node("animatedsprite2d"):
 		return
 
 	var sprite: AnimatedSprite2D = $animatedsprite2d
@@ -453,7 +458,10 @@ func _check_duplicate() -> void:
 		return
 	if not is_instance_valid(player):
 		return
-	if global_position.distance_to(player.global_position) > duplicate_range:
+	# ANYBODY CLOSE ENOUGH, not only the one it is chasing: with several
+	# players sharing the area, the twin appears when someone walks up to it.
+	var near: Node2D = Targets.nearest(get_tree(), global_position)
+	if near == null or global_position.distance_to(near.global_position) > duplicate_range:
 		return
 
 	# spend the flag BEFORE spawning. _spawn_slime() runs deferred, so
@@ -474,6 +482,10 @@ func _check_duplicate() -> void:
 
 func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	super.take_damage(amount, element)
+
+	# A mirror's split is the leader's: its smalls arrive from monstersync.gd.
+	if net_mirror:
+		return
 
 	# a large that survived the hit but crossed the threshold converts now.
 	# One that was taken straight to zero is handled by _die() instead.
@@ -512,6 +524,47 @@ func _die() -> void:
 		return
 
 	super._die()
+
+
+# (Mirror.) The leader's slime split or died: this copy plays the same
+# moment - the large's flash, a small's death - and goes. No smalls here: the
+# leader's arrive as their own monsters.
+func net_vanish() -> void:
+	if _death_resolved or _is_resolving:
+		return
+	_is_resolving = true
+	_death_resolved = true
+	_has_split = true
+	died.emit()
+	_stop_acting()
+	var hold: float = hitflash_duration
+	if is_small:
+		_set_animation("smalldeath" + attack_direction)
+		Audio.play_at("enemy_death", global_position)
+		hold = small_death_duration
+	else:
+		_set_animation("hitflash" + attack_direction)
+	await get_tree().create_timer(hold).timeout
+	if not is_instance_valid(self):
+		return
+	queue_free()
+
+
+func net_props() -> Dictionary:
+	"""BaseEnemy's, and which form this is - a small and a twin are built from
+	one scene, and _ready() picks the stats from these flags."""
+	var props: Dictionary = super.net_props()
+	props["sm"] = is_small
+	props["du"] = _has_duplicated
+	props["sp"] = _has_split
+	return props
+
+
+func net_apply_props(props: Dictionary) -> void:
+	is_small = bool(props.get("sm", is_small))
+	_has_duplicated = bool(props.get("du", _has_duplicated))
+	_has_split = bool(props.get("sp", _has_split))
+	super.net_apply_props(props)
 
 
 func _begin_split() -> void:

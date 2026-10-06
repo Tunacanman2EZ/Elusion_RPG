@@ -23,6 +23,8 @@
 # awake on every check as the player shuffles about.
 extends Node
 
+const Targets := preload("res://src/shared/targets.gd")
+
 const SLEEP_DISTANCE := 1100.0
 const WAKE_DISTANCE := 900.0
 const CHECK_SECONDS := 0.25
@@ -61,13 +63,24 @@ func check_now() -> int:
 	var player := get_tree().get_first_node_in_group("player") as Node2D
 	if not enabled or player == null:
 		return 0
-	var at: Vector2 = player.global_position
+	# EVERYBODY THE MONSTERS MAY CHASE, not just this game's player (shared
+	# monsters, 0.7.0): on the game running an area, a monster next to another
+	# player must stay awake even when this player is a mile off. Read once
+	# per pass - a pass is every enemy against every one of these.
+	var targets: Array = Targets.all(get_tree())
+	var spots: Array[Vector2] = []
+	for body in targets:
+		spots.append((body as Node2D).global_position)
+	if spots.is_empty():
+		spots.append(player.global_position)
 	var asleep: int = 0
 	for node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := node as Node2D
 		if enemy == null or _never_sleeps(enemy):
 			continue
-		var far: float = at.distance_to(enemy.global_position)
+		var far: float = INF
+		for spot in spots:
+			far = minf(far, spot.distance_to(enemy.global_position))
 		var sleeping: bool = enemy.has_meta(&"asleep")
 		if sleeping and far <= WAKE_DISTANCE:
 			_wake(enemy)

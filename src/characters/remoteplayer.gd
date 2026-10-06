@@ -16,6 +16,14 @@
 # SMOOTH, NOT EXACT. Updates arrive ten times a second at best, so the body
 # eases toward the newest position rather than jumping to it, and snaps only
 # when the gap is too wide to be a walk (a teleport, a door).
+#
+# AND, SINCE 0.7.0, SOMETHING THE AREA'S MONSTERS CAN CHASE - on the game that
+# runs them (monstersync.gd). It joins "remoteplayers", carries a "bodyshape"
+# marker where the class's real body circle sits (a boss aims at the floor
+# under you, not at your node's origin) and a `velocity` worked out from how
+# it moves (a boss leads a running target). It is still not in "player", and
+# still cannot be hurt here: a monster's shot at this body is hurting the real
+# player on THEIR screen, where their game draws the same shot.
 extends Node2D
 
 # Preloaded rather than a class_name, as player.gd does; nametag.gd says why.
@@ -38,6 +46,7 @@ const EFFECTS := ["ring", "firering"]
 # What the class scenes say about their sprites, read once per class: building
 # a body must not instantiate a whole player scene every time somebody walks in.
 static var _class_parts: Dictionary = {}
+static var _body_offsets: Dictionary = {}
 static var _pet_parts: Dictionary = {}
 static var _plate_consts: Dictionary = {}
 
@@ -51,6 +60,13 @@ var level: int = 1
 var anim: String = "idledown"
 var effects: Array = []
 var pet_id: String = ""
+# Whether their game shares monsters (presence "v" 2). One that does not is
+# fighting its own, so the monsters here are not theirs to chase.
+var shares: bool = false
+# How fast they are moving, worked out from the positions that arrive - the
+# same thing a CharacterBody2D's velocity says about the local player.
+var velocity: Vector2 = Vector2.ZERO
+var _target_at_msec: int = -1
 
 var _target: Vector2 = Vector2.ZERO
 var _placed: bool = false
@@ -66,6 +82,7 @@ var _pet_face: String = "down"
 func _ready() -> void:
 	if user_id >= 0:
 		name = "remote_%d" % user_id
+	add_to_group(&"remoteplayers")
 
 
 func _exit_tree() -> void:
@@ -90,9 +107,11 @@ func set_identity(entry: Dictionary) -> void:
 	hue = entry.get("hue")
 	guild_tag = str(entry.get("guild", ""))
 	level = int(entry.get("lvl", 1))
+	shares = int(entry.get("v", 0)) >= 2
 	if new_class != class_id or _body == null:
 		class_id = new_class
 		_build_body()
+		_place_body_marker()
 	_build_plate()
 	_paint_plate()
 
@@ -110,7 +129,52 @@ func set_target(at: Vector2) -> void:
 	if not _placed:
 		place(at)
 		return
+	# THE SPEED IS THE GAP OVER THE TIME BETWEEN REPORTS, eased so one late
+	# packet does not read as a sprint. A gap a walk could not make is a jump
+	# (a door, a teleport) and says nothing about speed.
+	var now: int = Time.get_ticks_msec()
+	if _target_at_msec >= 0:
+		var seconds: float = maxf(float(now - _target_at_msec) / 1000.0, 0.05)
+		var step: Vector2 = (at - _target) / seconds
+		velocity = Vector2.ZERO if (at - _target).length() > SNAP_DISTANCE else velocity.lerp(step, 0.6)
+	_target_at_msec = now
 	_target = at
+
+
+func is_dying() -> bool:
+	"""Playing their death: nothing to chase any more."""
+	return anim.begins_with("death")
+
+
+static func body_offset(cls: String) -> Vector2:
+	"""Where the class's body circle sits from its origin - (0, 13) for a
+	warrior, (-0.9, -16.2) for a tank - read once from the class scene."""
+	if _body_offsets.has(cls):
+		return _body_offsets[cls]
+	var offset := Vector2.ZERO
+	var path: String = "res://scene/characters/%s.tscn" % cls
+	if cls != "" and ResourceLoader.exists(path):
+		var packed: PackedScene = load(path) as PackedScene
+		var instance: Node = packed.instantiate() if packed != null else null
+		if instance != null:
+			var shape: Node2D = instance.get_node_or_null("bodyshape") as Node2D
+			if shape != null:
+				offset = shape.position
+			instance.free()
+	_body_offsets[cls] = offset
+	return offset
+
+
+func _place_body_marker() -> void:
+	# A MARKER, NOT A SHAPE. Named like the real one so boss aiming code that
+	# asks get_node_or_null("bodyshape") finds the floor under them; it has no
+	# collision, so nothing can bump into or hit it.
+	var marker: Node2D = get_node_or_null("bodyshape") as Node2D
+	if marker == null:
+		marker = Node2D.new()
+		marker.name = "bodyshape"
+		add_child(marker)
+	marker.position = body_offset(class_id)
 
 
 func set_motion(new_anim: String, new_effects: Array, new_pet: String) -> void:

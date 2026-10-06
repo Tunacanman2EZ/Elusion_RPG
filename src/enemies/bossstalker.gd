@@ -47,6 +47,15 @@ class_name BossStalker
 # scattered dots.
 @export var stalk_interval: float = 0.5
 
+# A stalker's own pillar, as authored. Named, not written into the exports
+# below, so monstersync.gd can hold a pillar another game dropped to them: a
+# follower never builds one that comes faster or reaches further than these,
+# or hits harder than its own copy of the boss would make it
+# (BossEnemy.trail_damage(), or PILLAR_DAMAGE when that is 0).
+const PILLAR_TELEGRAPH := 0.5
+const PILLAR_DAMAGE := 22
+const PILLAR_RADIUS := 16.0
+
 # How long it hunts before giving up. Long enough to matter across two or three
 # casts, short enough that the floor is not permanently full of them.
 @export var stalk_lifetime: float = 7.0
@@ -54,10 +63,10 @@ class_name BossStalker
 # A short warning, because the player can SEE this coming — the stalker has
 # been walking toward them for seconds. The pattern telegraphs are longer
 # because those appear from nothing.
-@export var pillar_telegraph: float = 0.5
+@export var pillar_telegraph: float = PILLAR_TELEGRAPH
 
-@export var pillar_damage: int = 22
-@export var pillar_radius: float = 16.0
+@export var pillar_damage: int = PILLAR_DAMAGE
+@export var pillar_radius: float = PILLAR_RADIUS
 
 # Stops it grinding into the player's feet once it catches someone who has
 # stopped. It still drops pillars; it just does not climb inside them.
@@ -68,6 +77,10 @@ var pillar_scene: PackedScene = null
 # The boss's element, stamped on every pillar; -1 leaves the scene's own. See
 # _drop_pillar() for why the scene's own was not enough.
 var pillar_element: int = -1
+
+# The boss that released it, so each pillar can be shown on every screen in a
+# shared area (monstersync.gd). Set by BossEnemy._spawn_stalker().
+var net_owner: Node = null
 
 var _player: Node2D = null
 var _age: float = 0.0
@@ -135,7 +148,33 @@ func _drop_pillar() -> void:
 	if container == null:
 		return
 
-	var pillar: Node2D = pillar_scene.instantiate()
+	var pillar: Node2D = make_pillar(pillar_scene, pillar_damage, pillar_telegraph,
+		pillar_element, pillar_radius)
+	if pillar == null:
+		return
+	container.add_child(pillar)
+	pillar.global_position = global_position
+	pillar.reset_physics_interpolation()
+
+	# SHARED MONSTERS: the same pillar on every screen. The stalker itself is
+	# never drawn, so only what it drops has to travel.
+	if is_instance_valid(net_owner) and net_owner.get("_net_sync") != null \
+			and not bool(net_owner.get("net_mirror")):
+		net_owner.get("_net_sync").leader_event(net_owner, {"k": "sp",
+			"s": pillar_scene.resource_path, "x": snappedf(global_position.x, 0.1),
+			"y": snappedf(global_position.y, 0.1), "d": pillar_damage,
+			"t": snappedf(pillar_telegraph, 0.001), "el": pillar_element,
+			"r": snappedf(pillar_radius, 0.01)})
+
+
+static func make_pillar(scene: PackedScene, damage: int, telegraph: float, element: int,
+		radius: float) -> Node2D:
+	"""One trail pillar, configured and not yet in the tree. Shared by the
+	stalker and by monstersync.gd's copy of a pillar another game dropped, so
+	the two cannot be built differently."""
+	if scene == null:
+		return null
+	var pillar: Node2D = scene.instantiate()
 
 	# CONFIGURED BEFORE IT ENTERS THE TREE, the same order
 	# bossenemy._spawn_one_eruption() and poisonslime._spawn_slime() both use.
@@ -160,10 +199,10 @@ func _drop_pillar() -> void:
 	# a full-strength ring - while its own spikes, which _spawn_one_eruption()
 	# stamps, were dark at x1.1 with the faint dark ring. Stamping the boss's
 	# element makes the trail match the spikes for all seven.
-	pillar.damage = pillar_damage
-	pillar.telegraph_seconds = pillar_telegraph
-	if pillar_element >= 0 and "element" in pillar:
-		pillar.element = pillar_element
+	pillar.damage = damage
+	pillar.telegraph_seconds = telegraph
+	if element >= 0 and "element" in pillar:
+		pillar.element = element
 
 	# NO ACID FROM THE TRAIL. The stalker drops a pillar every half second for
 	# seven seconds; if each one left a pool, a single stalker would lay a
@@ -180,10 +219,8 @@ func _drop_pillar() -> void:
 	# Set here rather than after add_child so the two COMPOSE — a 0.8 stalker
 	# pillar of ice ends up 0.8 x 1.25 — instead of this assignment wiping
 	# whatever the profile just produced.
-	if not is_equal_approx(pillar_radius, 20.0):
-		var s: float = pillar_radius / 20.0
+	if not is_equal_approx(radius, 20.0):
+		var s: float = radius / 20.0
 		pillar.scale = Vector2(s, s)
 
-	container.add_child(pillar)
-	pillar.global_position = global_position
-	pillar.reset_physics_interpolation()
+	return pillar

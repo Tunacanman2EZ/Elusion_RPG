@@ -100,6 +100,48 @@ func _start_wave(n: int) -> void:
 		_advance()
 
 
+# =============================================================================
+# SHARED MONSTERS (0.7.0)
+# =============================================================================
+# Every game in a shared arena runs this sequencer, and each one advances it
+# from its OWN bosses dying - a mirror's death is the leader's death, played
+# here - so they agree without being told. The one thing a game cannot work
+# out for itself is how far the fight had got before it walked in. That is
+# what the leader's world says ("wave"), and net_jump_to() catches up to it.
+
+func net_wave() -> int:
+	return _current
+
+
+func net_jump_to(n: int) -> void:
+	"""Open every gate up to wave `n` at once and stand in it: the fight as it
+	is on the game running it. Bosses already dead there are expected to be
+	gone or going (BaseEnemy._death_resolved) by the time this is called, so
+	the wave's live list is only the ones still standing."""
+	if n <= _current or not _waves.has(n):
+		return
+	for w in _waves.keys():
+		if int(w) > n:
+			continue
+		for gate in _waves[w]:
+			if is_instance_valid(gate) and gate.has_method("open"):
+				gate.open()
+	_current = n
+	_live.clear()
+	for gate in _waves.get(n, []):
+		if not is_instance_valid(gate) or gate.boss_path.is_empty():
+			continue
+		var boss: Node = gate.get_node_or_null(gate.boss_path)
+		if boss == null or bool(boss.get("_death_resolved")):
+			continue
+		_live.append(boss)
+		if not boss.died.is_connected(_on_boss_died):
+			boss.died.connect(_on_boss_died.bind(boss), CONNECT_ONE_SHOT)
+	wave_started.emit(n, _live.size())
+	if _live.is_empty():
+		_advance()
+
+
 func _on_boss_died(boss: Node) -> void:
 	_live.erase(boss)
 	if _live.is_empty():

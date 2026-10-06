@@ -78,7 +78,7 @@ func fire_projectile() -> void:
 	# position at the moment of release. parents into the y-sorted projectiles
 	# container via the inherited helper so the arrow depth-sorts correctly.
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
-	if spawn_node == null or player == null:
+	if spawn_node == null or not is_instance_valid(player):
 		return
 	# THE ELEMENT PICKS THE ARROW. An ice sniper fires icearrow.tscn, which is
 	# this same scene with an authored material on it — so the shot is blue
@@ -99,6 +99,10 @@ func fire_projectile() -> void:
 # =============================================================================
 
 func _on_frame_changed() -> void:
+	# A mirror's attack is a picture: the shot is the leader's (shared
+	# monsters), and arrives from monstersync.gd.
+	if net_mirror:
+		return
 	if not sprite.animation.begins_with("attack"):
 		return
 	if sprite.frame != ARROW_RELEASE_FRAME:

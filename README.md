@@ -1,6 +1,6 @@
 # Elusion RPG
 
-A top-down 2.5D action RPG built in Godot 4.6 with GDScript, backed by a Flask account service. Four playable classes, six enemy families in forty-three elemental variants, collectable combat pets, fishing and cooking, player-to-player trading over a taxed economy, other players drawn live wherever you are, and a complete run from town to final boss.
+A top-down 2.5D action RPG built in Godot 4.6 with GDScript, backed by a Flask account service. Four playable classes, six enemy families in forty-three elemental variants, collectable combat pets, fishing and cooking, player-to-player trading over a taxed economy, other players drawn live wherever you are and fighting the same monsters, and a complete run from town to final boss.
 
 ![The final boss: two independent attack tracks telegraphing and erupting](docs/boss.gif)
 
@@ -162,7 +162,11 @@ Player trading arrived after the audit and gets its own section there, because i
 
 ### Other players, on your screen — `src/systems/presence.gd`, `src/characters/remoteplayer.gd`, `presence.py` (API repo)
 
-Everyone in the same area sees everyone else: walking and idling the right way round, swinging, the tank's aura lit, the pet trailing behind, and the name over the head in the colour they chose, with the guild tag and the crown or staff badge. It runs over a WebSocket to a small asyncio server beside the API, ten updates a second per area, and none of it touches the database. The socket never sees a login: the game trades its session for a two-minute ticket, so a ban or a sign-out elsewhere ends the connection within seconds without the socket server knowing how logins work. And the game only ever says *where* it is — who somebody is (name, rank, colour, which pets they may show) comes from the server's own rows. Each game still fights its own enemies; this is presence, not combat.
+Everyone in the same area sees everyone else: walking and idling the right way round, swinging, the tank's aura lit, the pet trailing behind, and the name over the head in the colour they chose, with the guild tag and the crown or staff badge. It runs over a WebSocket to a small asyncio server beside the API, ten updates a second per area, and none of it touches the database. The socket never sees a login: the game trades its session for a two-minute ticket, so a ban or a sign-out elsewhere ends the connection within seconds without the socket server knowing how logins work. And the game only ever says *where* it is — who somebody is (name, rank, colour, which pets they may show) comes from the server's own rows. Since 0.7.0 the same socket carries the monsters too — next section.
+
+### The same monsters, and a bag each — `src/world/monstersync.gd`, `src/shared/targets.gd`
+
+Everyone in an area fights the same monsters. The server has no map and no AI, so it does not run them: one game does — the area's leader, the one that walked in first — and tells the others ten times a second what moved and what happened, a shot, a spike, a death. Everyone else's monsters are mirrors that ease toward where the leader has them, and a hit on one shows its number at once and goes to the leader to be applied. Each copy of an attack can only touch the player on its own screen, so you are hurt by what you see. When a monster dies, every game whose player helped reports the kill itself and gets its own XP and its own bag from the server's own roll; nobody sees anybody else's. When the leader leaves, the next game takes over with every monster where it stands. The leader is trusted with where the monsters are, not with how hard they hit: each game builds every attack from its own copy of the monster and caps the few numbers the leader sends. A game from before 0.7.0, or no presence server at all, fights its own, exactly as before.
 
 ### Plays in a browser, from the API's own address — `export_presets.cfg`, `web/shell.html`, `src/systems/webpage.gd`
 
@@ -259,10 +263,11 @@ test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
 test_pacing.py         112 checks    the pace of the game: what the server pays, the store charges and the shop pays back
 test_refusals.py       112 checks    401, 403, and the 404 that is really a 403
-test_security_doc.py   106 checks    SECURITY.md is checked, not trusted
+test_security_doc.py   107 checks    SECURITY.md is checked, not trusted
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
 test_quality.py         83 checks    rolled gear from drops and the shop, carried whole by every path
 test_friends.py         76 checks    asking, answering and ending a friendship
+test_presence.py        75 checks    players seeing each other, and whose game runs each area's monsters
 test_chardelete.py      72 checks    deleting a character, and only the character
 test_chat.py            67 checks    world chat, end to end, one line as typed
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
@@ -277,7 +282,6 @@ test_accounts.py        50 checks    signing in: one game per account, locks, no
 test_settings.py        49 checks    the options screen's rules
 test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
-test_presence.py        42 checks    players seeing each other: tickets, areas, what a game may say
 test_tradegates.py      41 checks    the owner's trade switch, and fresh mythic and Perfect finds held 48 hours
 test_clientbuild.py     37 checks    the client build gate
 test_guildlife.py       37 checks    what members are playing, what happened
@@ -293,20 +297,20 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,409 checks, 0 failures
+					4,443 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-seventh, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,860 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 131 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,938 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 133 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `2820 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2898 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
 - **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
 - **Configuring a node after `add_child()`.** `_ready()` has already run, so an element profile multiplies the scene's defaults and your assignment flattens the result — the thing wears its element's art and none of its behaviour. A text check, because the failure has no runtime symptom.
-- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 1,631 signatures.
+- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,379 signatures.
 - **Art nobody has classified.** Every top-level folder under `art/` and `assets/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
 
 `src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool answering the two questions a filename search gets wrong. **Painted cell counts per texture** — because tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet. And **reachability**, walking `ResourceLoader.get_dependencies()` from every scene and resource, which is the list you can actually delete from. It found two byte-identical art files a filename sweep had cleared as used, because their twins in other folders are.

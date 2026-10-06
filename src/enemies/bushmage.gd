@@ -132,7 +132,15 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	# override BaseEnemy's _physics_process entirely — bushmage uses
 	# chase-and-hold instead of the default flee/attack/idle pattern.
-	if player == null:
+	#
+	# Which means the base class's mirror check never runs here either: a
+	# mirror (shared monsters) only follows the leader's mage.
+	if net_mirror:
+		_net_follow(_delta)
+		return
+	# is_instance_valid, not == null: the target may be another player's
+	# picture (shared monsters), freed the moment they leave the area.
+	if not is_instance_valid(player):
 		_resolve_player()
 		return
 
@@ -275,6 +283,9 @@ func fire_projectile() -> void:
 # =============================================================================
 
 func _on_frame_changed() -> void:
+	# A mirror's cast is a picture; the vine is the leader's (shared monsters).
+	if net_mirror:
+		return
 	# spawn the vine ONCE per attack cycle, on contact_frame.
 	# the spawn guard prevents multiple vines if the attack animation loops
 	# or frame_changed fires repeatedly during the same cast.
@@ -314,6 +325,20 @@ func _spawn_vine() -> void:
 	# EARTH and has no variant, so it gets vine_scene back and the artist's own
 	# green. vine_scene is @export, so anything pointed at a custom scene is not
 	# in the table and comes back untouched.
+	_place_vine(global_position, attack_direction)
+
+	# SHARED MONSTERS: the same vine, from the same spot, on every screen.
+	if _net_sync != null and not net_mirror:
+		_net_sync.leader_event(self, {"k": "v", "x": snappedf(global_position.x, 0.1),
+			"y": snappedf(global_position.y, 0.1), "d": attack_direction})
+
+
+# The vine itself, at `at`, facing `dir`. Split from _spawn_vine() so a mirror
+# of this mage (shared monsters) can place the leader's vine with the very
+# same steps.
+func _place_vine(at: Vector2, dir: String) -> void:
+	if vine_scene == null:
+		return
 	var vine: Node2D = Projectiles.variant_of(vine_scene, current_element()).instantiate()
 
 	# STAMPED HERE BECAUSE THE VINE DOES NOT GO THROUGH spawn_projectile_node().
@@ -350,8 +375,8 @@ func _spawn_vine() -> void:
 	if container == null:
 		container = get_tree().current_scene
 	container.add_child(vine)
-	vine.global_position = global_position
-	vine.fire(attack_direction)
+	vine.global_position = at
+	vine.fire(dir)
 	# AFTER fire(), not before: fire() sets the vine's facing, and rotation is
 	# part of the transform being interpolated. Resetting first would collapse
 	# the position blend and leave the rotation one to spin the vine into place.
