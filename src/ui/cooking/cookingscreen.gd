@@ -462,8 +462,8 @@ static func rows_for(kinds: int) -> int:
 
 
 func _player_backpack() -> Node:
-	# The group-lookup idiom, copied from lootbaginventory.gd and
-	# player.gd::_debug_inventory_container() rather than reinvented.
+	# The group-lookup idiom, copied from lootbaginventory.gd and the owner
+	# panel's _open_inventory_container() rather than reinvented.
 	var hud: Node = get_tree().get_first_node_in_group("hud")
 	if hud == null:
 		return null

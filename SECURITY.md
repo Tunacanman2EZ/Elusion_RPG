@@ -15,20 +15,17 @@ buttons are drawn and they refuse nothing. `require_role()` and `require_owner()
 on the server are what actually say no. A patched build setting itself to `owner`
 gains exactly nothing.
 
-**The debug keys are a rule, not a defence.** `_staff_debug_allowed()` gates them
-on `OS.is_debug_build()` **and** a rank of mod or above — which stops an honest
-player holding a Debug-template export, and stops nobody else. That is all right
-because the keys grant nothing by themselves: they ask `POST /api/staff/grant`,
-which refuses anyone below mod. And an edited client cannot write its own bag
-either - the backpack and the bank are the server's, every drag and bin is a
-request it carries out, and a player's whole-bag write is ignored.
+**There are no debug keys.** Until 0.7.1 keyboard shortcuts granted items,
+pets and lusions in a debug build, and Ctrl+G switched god mode. They are gone:
+the owner panel does that work, and the panel only asks.
+`POST /api/staff/grant` refuses everyone but the owner, so a patched build that
+opens the panel gains nothing. An edited client cannot write its own bag either - the
+backpack and the bank are the server's, every drag and bin is a request it
+carries out, and a player's whole-bag write is ignored.
 
-The same is true of **god mode** (`Ctrl+G`, or the owner panel's switch; dev and
-owner), which turns damage off so the people who test the game can do it without
-dying repeatedly. The key works in a release build, unlike the debug item keys
-beside it, because testing means the real build against the real server — and
-unlike those keys, this one hands out nothing. It grants nothing: the
-guard returns before the hit is applied *and* before the defense XP that
+**God mode** (a switch on the owner panel, the owner only) turns damage off so
+the game can be tested without dying repeatedly. It grants nothing: the guard
+returns before the hit is applied *and* before the defense XP that
 `/api/skill/train` would otherwise bank, so an invincible character earns exactly
 as much as a stationary one. `hp` is client-written in any case, so a modified
 client could always refuse to die — the gate keeps an honest build honest.

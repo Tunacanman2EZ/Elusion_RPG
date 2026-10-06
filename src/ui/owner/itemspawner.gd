@@ -2,15 +2,15 @@
 #
 # Day 2: "i need these items as hot keys so i can test - can you create a menu
 # in hud that allows me to select and spawn items registered in the game that
-# only owner can use". The debug keys hand out a dozen fixed items, only in a
-# debug build; the GM panel's Testing tab takes an id typed from memory. This
-# is the whole catalogue, with its pictures, searchable, in the released game
-# as well as the editor.
+# only owner can use". The debug keys handed out a dozen fixed items, only in a
+# debug build (they are gone since 0.7.1); the GM panel's Testing tab takes an
+# id typed from memory. This is the whole catalogue, with its pictures,
+# searchable, in the released game as well as the editor.
 #
 # - EVERY ITEM ItemRegistry LOADED, so a .tres dropped into data/items/ is in
 #   the menu the moment the game starts. Sorted by kind, then tier, then name.
-# - A CLICK IS A REQUEST: /api/staff/grant, the route the debug keys and the GM
-#   panel already use. The server writes the bag, logs the grant, and sends
+# - A CLICK IS A REQUEST: /api/staff/grant, the route the GM panel's Give item
+#   uses. The server writes the bag, logs the grant, and sends
 #   the bag back; this adopts it, quietly, through CharacterData.
 # - "PUT GEAR ON" equips a weapon or armour piece straight from the cell it
 #   landed in - the reason this was asked for was testing the mythic weapons,

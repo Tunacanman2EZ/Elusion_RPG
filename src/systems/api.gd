@@ -88,7 +88,7 @@ const BUILD := 3
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.7.0"
+const DISPLAY_VERSION := "0.7.1"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -390,35 +390,20 @@ const SIGNED_OUT_NOTICE := "You were signed out by the server."
 const SIGNED_IN_ELSEWHERE_NOTICE := "This account signed in somewhere else, so this game was signed out."
 
 
-# The rank the in-game debug shortcuts require. Defined here rather than in
-# player.gd so there is ONE statement of the policy - the test suite asserts
-# against this constant, and a rule with two copies is a rule that drifts.
+# The rank god mode requires. ONE statement of the policy, asserted by the
+# suite, rather than a copy in player.gd and another in ownerpanel.gd that drift
+# apart the first time it is tuned.
 #
-# Pets, gear, lusions and skill XP are things a player earns.
-#
-# THE OWNER ONLY, SINCE 0.6.1. It was "mod": staff had to test what players do
-# the slow way. But the keys are requests to POST /api/staff/grant, and that
-# route is owner-only on the server now (a mod could give themselves a Perfect
-# mythic and trade it on), so a mod pressing F2 would only fire a request that
-# answers 404. Same line on both sides of the wire.
-const DEBUG_KEYS_MIN_ROLE := "owner"
-
-# The rank god mode requires. Here for the same reason as the line above: ONE
-# statement of the policy, asserted by the suite, rather than a copy in player.gd
-# and another in ownerpanel.gd that drift apart the first time it is tuned.
-#
-# HIGHER THAN THE DEBUG KEYS, and the difference is what each one does. Those
-# hand out things a player is supposed to earn, which is a fairness question.
-# This one decides whether the game can be lost at all, which is a different
-# kind of decision - so it stops at the two ranks that are trusted with the
-# server rather than with the community.
+# THE OWNER, SINCE 0.7.1. It was "dev", because Ctrl+G was the way a dev had in;
+# the keys are gone (see player.gd, "DEBUG KEYS (REMOVED)") and the switch on
+# the owner panel is the only way in, so the rank says what is true.
 #
 # It grants nothing either way: take_damage() returns before the hp change AND
 # before the defense XP, so an invincible character earns exactly what a
 # stationary one does. hp is client-written and only clamped server-side (E-9),
 # so a modified client could always refuse to die - this keeps an HONEST build
 # honest, which is the whole of what a client-side gate can buy.
-const GOD_MODE_MIN_ROLE := "dev"
+const GOD_MODE_MIN_ROLE := "owner"
 
 
 # WHAT EACH RANK LOOKS LIKE - ON ITS BADGE. These used to paint the NAME: the

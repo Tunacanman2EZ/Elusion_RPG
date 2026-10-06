@@ -126,6 +126,8 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
 @onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
 @onready var trade_button: CheckButton = get_node_or_null("%tradebutton")
+# The performance readout (PerfOverlay). It was the backslash key until 0.7.1.
+@onready var perf_button: CheckButton = get_node_or_null("%perfbutton")
 
 # What the switch looked like the last time we asked. The button has to know
 # whether pressing it closes or reopens, and asking the server at press time
@@ -245,6 +247,9 @@ func _ready() -> void:
 		pvp_button.toggled.connect(_on_pvp_toggled)
 	if trade_button != null and not trade_button.toggled.is_connected(_on_trade_toggled):
 		trade_button.toggled.connect(_on_trade_toggled)
+	if perf_button != null and not perf_button.toggled.is_connected(_on_perf_toggled):
+		perf_button.toggled.connect(_on_perf_toggled)
+	_sync_perf_button()
 
 	_set_testing_status("")
 
@@ -528,9 +533,10 @@ func _on_visibility_changed() -> void:
 	if visible:
 		_refresh_maintenance()
 		_populate_ranks()
-		# Ctrl+G flips the same flag from the keyboard, so the switch can be
-		# wrong by the time the panel is reopened. Re-read rather than remember.
+		# The flags these two mirror live elsewhere (GameState, PerfOverlay),
+		# so they are re-read on every open rather than remembered.
 		_sync_god_mode_button()
+		_sync_perf_button()
 		# SERVER STATE, so it is asked rather than remembered - the same rule
 		# the maintenance switch follows. The owner may have thrown it from
 		# another machine.
@@ -543,15 +549,9 @@ func _on_visibility_changed() -> void:
 # =============================================================================
 # GOD MODE
 # =============================================================================
-# The same flag Ctrl+G toggles - GameState.god_mode - so the two can never
-# disagree about what is on. This panel is a second way to reach it, not a
-# second copy of it.
-#
-# WHY THE SWITCH IS HERE AND THE KEY STILL EXISTS. The panel opens for the OWNER
-# only, deliberately: it also holds the maintenance switch and arbitrary gold,
-# and a dev is granted and revocable. God mode itself needs dev or owner, so the
-# key is the path a dev has and the switch is the owner's convenience. Widening
-# the panel to reach devs would hand them things god mode has nothing to do with.
+# The switch writes GameState.god_mode, which take_damage() reads with the rank
+# re-checked per hit. It is the only way in since 0.7.1: Ctrl+G went with the
+# rest of the debug keys, and Api.GOD_MODE_MIN_ROLE became "owner" with it.
 
 func _sync_god_mode_button() -> void:
 	if god_mode_button == null:
@@ -584,6 +584,29 @@ func _on_god_mode_toggled(pressed: bool) -> void:
 		_set_testing_status("[GM] god mode OFF.")
 
 	print("[GM] god mode %s (%s)" % ["ON" if pressed else "OFF", Api.username])
+
+
+# =============================================================================
+# THE PERFORMANCE READOUT
+# =============================================================================
+# PerfOverlay's numbers in the top-left: frame rate and its worst moment, frame
+# time against the 60 fps budget, nodes, physics, draw calls, memory and
+# requests a second. It was the backslash key, in debug builds only; the owner
+# asked for it here (6 Oct, "add to menu instead and remove backslash"), and
+# here it works on the exported game too, because the panel is the gate.
+
+func _sync_perf_button() -> void:
+	if perf_button == null:
+		return
+	perf_button.set_pressed_no_signal(PerfOverlay.is_shown())
+
+
+func _on_perf_toggled(pressed: bool) -> void:
+	PerfOverlay.set_shown(pressed)
+	if pressed:
+		_set_testing_status("Performance readout ON - top left. Worst counts from now.")
+	else:
+		_set_testing_status("Performance readout OFF.")
 
 
 # =============================================================================
@@ -1086,8 +1109,8 @@ func _on_item_pressed() -> void:
 		return
 
 	# THE SERVER HANDS BACK THE WHOLE BAG, and the open inventory is told to
-	# redraw from it - the same two lines the debug key uses, through the same
-	# group lookup, so the two cannot drift.
+	# redraw from it, found through the HUD's group the way the cooking screen
+	# finds it.
 	var data = res.get("data", {})
 	var container: Node = _open_inventory_container()
 	if container != null and data is Dictionary:
@@ -1263,7 +1286,7 @@ func _apply_skills(data: Dictionary) -> void:
 
 
 func _open_inventory_container() -> Node:
-	# THROUGH THE "hud" GROUP, exactly as player.gd's debug grant does. This
+	# THROUGH THE "hud" GROUP, exactly as the cooking screen does. This
 	# panel is a child of the HUD today and reaching upward by name is what
 	# breaks the day somebody moves it.
 	var hud: Node = get_tree().get_first_node_in_group("hud")

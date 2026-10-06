@@ -1,31 +1,15 @@
 # perfoverlay.gd — an on-screen readout of what the game is actually costing,
 # so "can we handle more bosses" has a number instead of an opinion.
 #
-# BACKSLASH toggles it, and the key space is more crowded than it looks. The
-# audit, so nobody repeats it:
+# THE OWNER PANEL SHOWS IT: the "Performance" switch on the Testing tab, through
+# set_shown(). It was the backslash key, in debug builds only, until 0.7.1 (the
+# owner, 6 Oct: "add to menu instead and remove backslash"), when every debug
+# key went in favour of the panel. This reads no keys now.
 #
-#   F1-F7, F9-F12, M, I O P T U Y        player.gd's staff debug rows
-#   1-9, 0                               hotbar.gd's ten slot keys
-#   `  (backtick)                        characterhud.gd's owner panel
-#   M                                    also the minimap_toggle action
-#   W A S D, space, arrows, shift        movement, attack, interact, sprint
-#   F8                                   THE GODOT EDITOR'S "STOP" SHORTCUT
-#
-# F8 was the obvious pick and it is the one key that looks free from inside the
-# project and is not: the editor grabs it to kill the running game, so binding
-# it here means the overlay quits instead of toggling.
-#
-# A MODIFIER COMBO DOES NOT RESCUE A TAKEN KEY EITHER. Neither existing handler
-# checks modifiers - both test `event.keycode == KEY_X` alone - so Ctrl+P still
-# grants a pet and Ctrl+` still opens the owner panel. The key has to be one
-# nothing looks at, and backslash is one.
-#
-# DEBUG BUILDS ONLY, BUT NOT RANK-GATED, and the difference is deliberate. The
-# pet and gear keys are gated on OS.is_debug_build() AND a role check because
-# they hand out loot — see the note in CLAUDE.md about why even that is only an
-# honesty gate. This grants nothing. It reads five numbers and draws them. The
-# build check is here so it cannot ship in a release export, and that is all it
-# needs to be.
+# IN ANY BUILD, BECAUSE THE PANEL IS THE GATE. The key needed a debug build so
+# it could not ship to players; the panel opens for the owner only, so the
+# readout can be shown on the real exported game - which is the one whose
+# numbers matter. It grants nothing. It reads a few numbers and draws them.
 #
 # BUILT IN CODE, NO .tscn. A scene for this would be one more file the editor
 # rewrites from its in-memory copy whenever it happens to be open, for a Label
@@ -85,14 +69,17 @@ func _ready() -> void:
 	visible = false
 
 
-func _input(event: InputEvent) -> void:
-	if not OS.is_debug_build():
-		return
-	if event is InputEventKey and event.pressed and not event.echo \
-			and event.keycode == KEY_BACKSLASH:
-		visible = not visible
+func set_shown(on: bool) -> void:
+	"""Show or hide the readout. Showing starts a fresh "worst", so it measures
+	from the moment you asked rather than from whenever it was last open."""
+	if on and not visible:
 		_worst_fps = 0.0
 		_accum = SAMPLE_INTERVAL   # redraw on the very next frame, not in 0.2s
+	visible = on
+
+
+func is_shown() -> bool:
+	return visible
 
 
 func _process(delta: float) -> void:

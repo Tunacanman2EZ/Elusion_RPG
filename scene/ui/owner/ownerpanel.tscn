@@ -411,7 +411,7 @@ max_length = 4
 unique_name_in_owner = true
 custom_minimum_size = Vector2(86, 0)
 layout_mode = 2
-tooltip_text = "Put an item in your own bag. The same route the debug keys use - which only exist in a debug build, which is why this is here."
+tooltip_text = "Put an item in your own bag, by its id. The Item catalogue below does the same with pictures."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Give item"
@@ -491,7 +491,7 @@ theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
 theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 size_flags_horizontal = 3
-tooltip_text = "Owner only. Damage is ignored entirely - the hit never lands, so nothing is healed and NO DEFENSE XP is earned while this is on. Survives walking between areas; always off again after a restart. Ctrl+G does the same thing."
+tooltip_text = "Owner only. Damage is ignored entirely - the hit never lands, so nothing is healed and NO DEFENSE XP is earned while this is on. Survives walking between areas; always off again after a restart."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "God mode"
@@ -519,6 +519,17 @@ theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
 theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
 theme_override_font_sizes/font_size = 13
 text = "Trading"
+
+[node name="perfbutton" type="CheckButton" parent="frame/margin/rows/ownertabs/testing"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Owner only. Draws what the game is costing in the top-left corner: frame rate and its worst moment since you switched it on, frame time against the 60 fps budget, nodes, physics, draw calls, memory and requests a second. Grants nothing. Works in the exported game too."
+focus_mode = 0
+theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+theme_override_font_sizes/font_size = 13
+text = "Performance readout"
 
 [node name="serverlabel" type="Label" parent="frame/margin/rows/ownertabs/server" unique_id=1900112267]
 layout_mode = 2

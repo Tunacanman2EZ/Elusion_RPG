@@ -415,9 +415,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# gets no response at all by design, not even an error — see
 	# _toggle_owner_panel().
 	#
-	# The whole function row was already spoken for. F1-F7 and F9-F12 are
-	# player.gd's debug keys, and F8 is Godot's own "stop the running
-	# project" shortcut, so binding to it closed the game. Backquote is the
+	# The whole function row was spoken for when this was chosen: F1-F7 were
+	# player.gd's debug keys (gone since 0.7.1, the panel does their work),
+	# and F8 is Godot's own "stop the running project" shortcut, so binding to
+	# it closed the game. Backquote is the
 	# conventional dev-console key and collides with nothing here.
 	#
 	# It was Shift+A before that, which collided with normal play: `interact`

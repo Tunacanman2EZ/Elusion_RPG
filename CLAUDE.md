@@ -398,10 +398,10 @@ area's default spawn. Position is where a character is standing in a game, not
 personal data about a person — unlike the addresses on that route, which is why
 those are gated by `can_act_on()` and this is not.
 
-### God mode is dev-and-owner, and the ordering is the whole feature
+### God mode is the owner's switch, and the ordering is the whole feature
 
-`Ctrl+G`, or the switch on the owner panel, turns damage off so the people who
-have to test the game can do it without dying a hundred times.
+The God mode switch on the owner panel's Testing tab turns damage off so the
+game can be tested without dying a hundred times.
 `GameState.god_mode` holds it — transient, survives a scene change, cannot
 survive a restart, which is exactly the contract that file states.
 
@@ -420,40 +420,23 @@ the `hp = clamp(...)` index and before the `gain_defense_xp(` index — because
 position is the only thing that actually matters here. Sabotage-tested with the
 heal version, which fails both.
 
-**Dev and owner.** The threshold is `Api.GOD_MODE_MIN_ROLE`, next to
-`DEBUG_KEYS_MIN_ROLE` and for the same reason: one statement of the policy,
-which the suite asserts instead of a second copy. Turning off whether the game
-can be lost is a decision about testing, so it stops at the two ranks trusted
-with the server rather than with the community. (It used to sit one rung above
-the debug keys; since 0.6.1 the keys are the owner's alone, a rung above it.)
+**The owner's, since 0.7.1.** The threshold is `Api.GOD_MODE_MIN_ROLE`: one
+statement of the policy, which the suite asserts instead of a second copy. It
+was `"dev"` while Ctrl+G was a dev's way in; the debug keys went in 0.7.1 (see
+"There are no debug keys" below), and the switch is the only way in now, so the rank says what
+is true. **The owner panel opens for `Api.is_owner` only** and must stay that
+way - it also holds the maintenance switch and the gold grant. The switch
+re-reads `GameState.god_mode` on every open with `set_pressed_no_signal()`, and
+re-checks the rank in its handler too: a disabled button is a look, not a
+permission. `take_damage()` re-reads the rank on every hit as well, so the flag
+alone is never the authority.
 
-**Ctrl+G is handled *before* `_staff_debug_allowed()`, so it works in a release
-build.** Everything past that gate also needs `OS.is_debug_build()`, because those
-keys hand out gear, currency and pets — things a player is supposed to earn, which
-have no business existing in a shipped build. God mode hands out nothing, and it
-is for the people who have to **test the real build against the real server**;
-requiring a debug export would leave a dev with no way in on the thing they were
-asked to check. Safe to lift on the same reasoning the whole feature rests on: it
-earns nothing, and `hp` is client-written anyway. It calls `_typing_in_ui()`
-because it now runs where chat is open.
-
-**Two ways in, one flag.** `Ctrl+G` is the path a dev has; the panel switch is the
-owner's convenience, because **the owner panel opens for `Api.is_owner` only** and
-must stay that way — it also holds the maintenance switch and the gold grant.
-Widening it to reach devs would hand them things god mode has nothing to do with.
-Both paths move `GameState.god_mode`, and the switch re-reads it on every open
-with `set_pressed_no_signal()`, so the keyboard and the panel cannot disagree.
-The panel re-checks the rank in its handler too: a disabled button is a look, not
-a permission.
-
-`/api/staff/powers` lists it under `dev`, marked client-side. That route exists so
-a rank never surprises the person granting it, and "comes with the ability to stop
-dying" is exactly the kind of thing an owner should read before typing a name into
-the rank box.
+`/api/staff/powers` lists it under the owner, marked client-side (it was under
+`dev` until 0.7.1).
 
 **It gives an attacker nothing.** `hp` is client-written and only clamped
 server-side (E-9), so a modified client could always refuse to die. The gate
-keeps an *honest* build honest, which is the same thing the debug keys below buy.
+keeps an *honest* build honest, which is all a client-side gate can buy.
 
 ### A text check here is searching a haystack made of needles
 
@@ -508,29 +491,28 @@ The general form: **a check that has never been watched go red on the exact
 mistake it is meant to catch is not a check.** Every one of those five was found
 by sabotaging it, and four of them were wrong in a direction that *passed*.
 
-### The debug keys are the owner's, and that is a rule, not a defence
+### There are no debug keys; the owner panel does their work
 
-F1-F7, F9-F12, M and the P O I U Y T pet row hand out gear, currency, pets and
-skill XP. They are gated on `_staff_debug_allowed()` in `player.gd`:
-`OS.is_debug_build()` **and** `Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE)`,
-which is `"owner"` since 0.6.1 - it was `"mod"`, until the server made
-`POST /api/staff/grant` owner-only (a mod could give themselves a Perfect
-mythic and trade it on). The key and the route now need the same rank, so a mod
-never fires a request that 404s.
+The owner, 6 Oct (0.7.1): "remove debug keys i have a full menu to debug".
+F1-F7 and Ctrl+P O I U Y T B R K M granted items, pets, lusions, a fishing kit
+and cooked fish, and drained mana, in a debug build; Ctrl+G switched god mode;
+backslash showed the performance readout ("add to menu instead and remove
+backslash"). All of it is on the owner panel (backquote) now:
 
-`is_debug_build()` alone was not enough, because a **Debug-template export
-reports it as true** and choosing the wrong template in the Export dialog is one
-mis-click. The rank check is what stops an ordinary player holding such a build
-from pressing P and owning a pet. Pets are loot.
+- **Items, pets, the fishing kit, cooked fish:** Give item, or the Item
+  catalogue. The same `POST /api/staff/grant` the keys called, which the
+  server answers for the owner alone.
+- **Level and skills:** Set level, Set skill.
+- **God mode:** the switch on the Testing tab (section above).
+- **The performance readout:** the Performance readout switch, through
+  `PerfOverlay.set_shown()`. It works in an exported build too now - the panel
+  is the gate, so it no longer needs a debug build to keep it from players.
 
-**It stops an honest player and nothing else - the server is the gate.**
-`Api.role` is client memory set from a login response, so a patched build can
-set it to `owner` and press the keys. Each is a request to
-`POST /api/staff/grant`, which the server answers for the owner alone, and the
-backpack is server-owned, so there is no local copy to write into instead.
-
-The threshold lives in `api.gd` as `DEBUG_KEYS_MIN_ROLE` so the test suite
-asserts the policy itself rather than a second copy of it.
+`player.gd` reads no keys of its own any more (it has no `_unhandled_input()`),
+and `perfoverlay.gd` none either. **A new testing power goes on the panel, not
+on a key** - `_test_no_debug_keys_the_panel_does_it()` fails on a function key,
+backslash or a debug-key helper in any script, and on a key handler back in
+`player.gd`.
 
 ### Some resources point at their script by path, with no uid
 
@@ -1685,8 +1667,8 @@ Two details that make it a real check rather than a decorative one:
   used because the body says `slot_index`, and the check quietly stops checking.
   Sabotage-tested with exactly that case.
 - **Known limit:** it reads single-line `func` declarations, so a signature
-  wrapped across lines is skipped rather than guessed at. 2,379 signatures parse
-  this way (0.7.0). A missed one still shows in the editor, as it always did.
+  wrapped across lines is skipped rather than guessed at. 2,375 signatures parse
+  this way (0.7.1). A missed one still shows in the editor, as it always did.
 
 ### The .ps1 entry points are held to pure ASCII
 
@@ -2195,7 +2177,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   guilds and chat, 0.4 the browser (4 Oct), 0.5 seeing each other (6 Oct).
   0.5.1 is the dots drawn instead of letters, 0.6.0 the trade switch and
   the hold on fresh finds, 0.6.1 the owner-only item grant and the wider
-  loot bag reach, 0.7.0 shared monsters.
+  loot bag reach, 0.7.0 shared monsters, 0.7.1 no debug keys (the owner panel
+  does their work, the performance readout included).
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3590,8 +3573,8 @@ nineteenth window.
   next launch. Kinds come from `ItemSpawner.category_of()` - type and equip
   slot, never a list of ids - then tier, then name. The search reads the name
   and the id, any case, every word. Frames are the rarity colour.
-- **A click is `/api/staff/grant`**, the same route as the debug keys and the GM
-  panel, with the quantity clamped to the item's stack. How many is read
+- **A click is `/api/staff/grant`**, the same route as the GM panel's Give item,
+  with the quantity clamped to the item's stack. How many is read
   through `typed_quantity()` (see the SpinBox trap below). The bag that comes
   back goes through `CharacterData.adopt_granted_bag()`: the same adoption as a
   trade's, without `carry_adopted`, which would announce "Your backpack was
@@ -3833,9 +3816,9 @@ Do not "fix" these.
   cooking and fishing rows from anything the client sends. A client-side grant
   could only ever be overwritten on the next sync, so there was nothing to wire
   them to. If a display needs either number, read it back from the server.
-- **The owner panel is bound to backquote, not a function key.** F1-F7 and
-  F9-F12 are `player.gd`'s debug keys and F8 is Godot's own stop-the-project
-  shortcut, which closed the game. It was Shift+A before that, which collided
+- **The owner panel is bound to backquote, not a function key.** F1-F7 were
+  `player.gd`'s debug keys when it was chosen (gone since 0.7.1) and F8 is
+  Godot's own stop-the-project shortcut, which closed the game. It was Shift+A before that, which collided
   with normal play - `interact` is Shift and `move_left` is A, so interacting
   while walking left toggled it.
 - **`Api.is_admin` is a compatibility alias, not a rank.** There is no admin

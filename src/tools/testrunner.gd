@@ -203,6 +203,7 @@ func _run_all() -> void:
 	await _test_the_guild_panel_reads_well()
 	await _test_trades_reach_the_right_people()
 	await _test_the_trade_switch_reaches_the_game()
+	await _test_no_debug_keys_the_panel_does_it()
 	_test_presence_carries_the_monsters()
 	await _test_shared_monsters_lead()
 	await _test_shared_monsters_follow()
@@ -1765,14 +1766,14 @@ func _test_security_policy() -> void:
 		api_src.contains("Held only in memory and never written to session.cfg"),
 		"a permission that lives in a file is a permission that can be edited")
 
-	# "gated on OS.is_debug_build() AND a rank of mod or above"
-	var player_src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
-	check("the debug keys are still gated on a debug build AND a rank",
-		player_src.contains("OS.is_debug_build() and Api.role_at_least("),
-		"SECURITY.md describes this gate; if it changes, the page is lying")
-	check("and the page says plainly that it is a rule, not a defence",
-		doc.contains("rule, not a defence"),
-		"claiming it stops a modified client would be the comforting lie")
+	# "There are no debug keys." (0.7.1)
+	var player_src: String = _code_src("res://src/characters/player.gd")
+	check("the page says there are no debug keys",
+		doc.contains("There are no debug keys"),
+		"SECURITY.md used to describe the keys' gate; a page describing a gate that is gone is lying")
+	check("  and player.gd reads no keys of its own, so that is true",
+		not player_src.contains("func _unhandled_input(") and not player_src.contains("func _input("),
+		"a key handler back in player.gd is a debug key back, whatever it is called")
 
 	# "The session token lives in user://session.cfg and is a bearer credential."
 	check("the token still lives where the page says it does",
@@ -1930,45 +1931,38 @@ func _test_god_mode_earns_nothing() -> void:
 	check("AND BEFORE THE DEFENSE XP", guard < xp_call and xp_call != -1,
 		"this is the one that matters: past it, god mode mints server-granted XP")
 
-	# ONE STATEMENT OF THE POLICY. Api.GOD_MODE_MIN_ROLE holds the rank, the same
-	# way DEBUG_KEYS_MIN_ROLE does for the keys beside it - so this suite asserts
-	# the rule itself rather than a second copy of it, and a literal rank string
-	# at any of these sites is the drift this is here to catch.
+	# ONE STATEMENT OF THE POLICY. Api.GOD_MODE_MIN_ROLE holds the rank, so this
+	# suite asserts the rule itself rather than a second copy of it, and a
+	# literal rank string at any of these sites is the drift this is here to
+	# catch.
 	var api_src: String = FileAccess.get_file_as_string("res://src/systems/api.gd")
 	check("the rank lives in api.gd as a constant",
 		api_src.contains("const GOD_MODE_MIN_ROLE :="),
 		"a threshold written at each call site is a threshold that drifts")
-	check("and it is at least dev - god mode is for testers, not players",
-		api_src.contains("const GOD_MODE_MIN_ROLE := \"dev\"")
-			or api_src.contains("const GOD_MODE_MIN_ROLE := \"owner\""),
-		"the keys beside it hand out items; this decides whether the game can be lost")
+	# THE OWNER'S, SINCE 0.7.1. It was "dev" because Ctrl+G was a dev's way in;
+	# the key went with the other debug keys, and the switch on the owner panel
+	# is the only way in now, so the rank says so.
+	check("and it is the owner's - the panel switch is the only way in",
+		api_src.contains("const GOD_MODE_MIN_ROLE := \"owner\""),
+		"a lower rank here describes a way in that no longer exists")
+	for rank in ["player", "mod", "dev"]:
+		var was_role: String = Api.role
+		Api.role = rank
+		check("  a %s's game ignores the flag" % rank, not Api.role_at_least(Api.GOD_MODE_MIN_ROLE), rank)
+		Api.role = was_role
 
-	# THE KEY WORKS IN A RELEASE BUILD, and that is deliberate. Everything past
-	# _staff_debug_allowed() also needs OS.is_debug_build(), because those keys
-	# hand out gear and currency. God mode hands out nothing and is for testing
-	# the REAL build against the REAL server, so requiring a debug export would
-	# leave a dev with no way in on the thing they were asked to check.
-	var gate: int = _first_code_index(src, "if not _staff_debug_allowed():", 0)
-	var key: int = _first_code_index(src, "event.keycode == KEY_G", 0)
-	check("Ctrl+G is handled before the debug-build gate",
-		key != -1 and gate != -1 and key < gate,
-		"inside it, a dev testing a release build has no way to turn it on")
-	check("and it ignores a keypress while somebody is typing",
-		src.contains("not _typing_in_ui()"),
-		"this runs in release builds now, where chat is open")
-
-	var toggle: int = src.find("func _toggle_god_mode(")
-	check("there is a toggle", toggle != -1)
-	var refusal: int = src.find("if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):", toggle)
-	check("the toggle refuses below the threshold",
-		refusal != -1 and refusal < src.find("GameState.god_mode = not", toggle),
-		"the refusal has to come before the flip, not after it")
-	check("and neither site hardcodes a rank",
+	# NO KEY, NO SECOND WAY IN. Ctrl+G is gone (0.7.1): nothing in player.gd
+	# writes the flag any more, so the panel's switch is the only thing that can.
+	var code: String = _code_src("res://src/characters/player.gd")
+	check("player.gd never switches god mode itself",
+		not code.contains("GameState.god_mode =") and not code.contains("KEY_G"),
+		"a key that flips the flag is Ctrl+G back")
+	check("and the take_damage() guard hardcodes no rank",
 		not src.contains("Api.role_at_least(\"dev\")")
 			and not src.contains("GameState.god_mode and Api.is_owner"),
 		"a rank typed at the call site is the second copy of the rule")
 
-	# THE PANEL IS THE SECOND WAY IN, and a disabled button is a UI state rather
+	# THE PANEL IS THE WAY IN, and a disabled button is a UI state rather
 	# than an authorisation - so it checks the rank itself.
 	var panel: String = FileAccess.get_file_as_string("res://src/ui/owner/ownerpanel.gd")
 	check("the panel has a god-mode switch", panel.contains("%godmodebutton"),
@@ -1979,9 +1973,9 @@ func _test_god_mode_earns_nothing() -> void:
 	check("the switch mirrors the flag without re-emitting",
 		panel.contains("set_pressed_no_signal(GameState.god_mode)"),
 		"writing button_pressed fires toggled, which would flip what it mirrors")
-	check("and it re-reads on open, because Ctrl+G moves the same flag",
+	check("and it re-reads the flag on open rather than remembering it",
 		panel.contains("_sync_god_mode_button()"),
-		"a switch that remembers its own state disagrees with the keyboard")
+		"a switch that remembers its own state can disagree with the flag")
 
 	var scene: String = FileAccess.get_file_as_string("res://scene/ui/owner/ownerpanel.tscn")
 	check("the scene actually carries the switch",
@@ -1998,8 +1992,8 @@ func _test_god_mode_earns_nothing() -> void:
 
 	# The player has to be TOLD what it costs, because a flat defense bar an
 	# hour later is a worse way to find out.
-	check("the notice names the defence XP cost (the game's spelling, as on the stats screen)",
-		src.contains("no damage taken, and no defence XP"),
+	check("the switch names the defence XP cost (the game's spelling, as on the stats screen)",
+		panel.contains("no damage taken, and no defence XP"),
 		"the surprising half is not that you stopped dying")
 
 	print("  no damage, no death, no floating number, and no XP")
@@ -5902,27 +5896,6 @@ func _test_ranks() -> void:
 	for rank in expected:
 		check("the owner satisfies a %s requirement" % rank,
 			Api.role_at_least(rank), rank)
-
-	# THE DEBUG KEYS ARE THE OWNER'S (since 0.6.1; they were staff-only). They
-	# hand out gear, pets, lusions and skill XP - all things a player is meant to
-	# earn - and every one is a request to POST /api/staff/grant, which the
-	# server now answers for the owner alone.
-	#
-	# Asserted against Api.DEBUG_KEYS_MIN_ROLE rather than a literal, so this
-	# tests the policy player.gd actually applies instead of a second copy of
-	# it that can drift.
-	#
-	# This is a rule, not the defence: the server's 404 is. It stops an honest
-	# player, or a mod, firing requests that will be refused. See
-	# _staff_debug_allowed() in player.gd.
-	check("the keys need the owner, the same rank the server's grant needs",
-		Api.DEBUG_KEYS_MIN_ROLE == "owner", Api.DEBUG_KEYS_MIN_ROLE)
-	for rank in ["player", "mod", "dev"]:
-		Api.role = rank
-		check("a %s cannot use the debug keys" % rank,
-			not Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE), rank)
-	Api.role = "owner"
-	check("the owner can", Api.role_at_least(Api.DEBUG_KEYS_MIN_ROLE))
 
 	Api.role = saved_role
 
@@ -13648,6 +13621,66 @@ func _trade_payload(revision: int, their_items: Array, their_gold: int = 0,
 			"online": they_online},
 	}
 
+
+# 0.7.1. The owner, 6 Oct: "remove debug keys i have a full menu to debug", and
+# for the performance readout, "add to menu instead and remove backslash". F1-F7
+# and Ctrl+letter granted items, pets, lusions and a fishing kit, Ctrl+G
+# switched god mode and backslash showed the readout. The owner panel does all
+# of it now, and the keyboard hands out nothing.
+func _test_no_debug_keys_the_panel_does_it() -> void:
+	section("NO DEBUG KEYS - the owner panel does their work")
+	const GONE := ["KEY_F1", "KEY_F2", "KEY_F3", "KEY_F4", "KEY_F5", "KEY_F6", "KEY_F7",
+		"KEY_F9", "KEY_BACKSLASH", "_staff_debug_allowed", "_debug_give_", "DEBUG_KEYS_MIN_ROLE",
+		"_toggle_god_mode"]
+	var found: Array = []
+	for path in _all_gd_under("res://src"):
+		if path.ends_with("testrunner.gd"):
+			continue
+		var code: String = _code_src(path)
+		for word in GONE:
+			if code.contains(word):
+				found.append("%s: %s" % [path.get_file(), word])
+	check("no script reads a function key or backslash, or keeps a debug-key helper",
+		found.is_empty(), found)
+
+	var shown_before: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	var key := InputEventKey.new()
+	key.keycode = KEY_BACKSLASH
+	key.pressed = true
+	get_viewport().push_input(key)
+	check("backslash no longer shows the performance readout",
+		not PerfOverlay.is_shown() and not PerfOverlay.has_method("_input"))
+
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var perf: CheckButton = gm.get_node_or_null("%perfbutton") as CheckButton
+	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/ownertabs/testing")
+	check("the panel's Testing tab has a Performance readout switch",
+		perf != null and testing_tab != null and testing_tab.is_ancestor_of(perf))
+	if perf == null:
+		gm.queue_free()
+		PerfOverlay.set_shown(shown_before)
+		return
+	PerfOverlay._worst_fps = 5.0
+	perf.button_pressed = true
+	check("switching it on shows the readout", PerfOverlay.is_shown())
+	check("  measuring its worst frame from now, not from last time",
+		is_equal_approx(PerfOverlay._worst_fps, 0.0), PerfOverlay._worst_fps)
+	check("  and the panel says so", gm.results.get_parsed_text().contains("Performance readout ON"),
+		gm.results.get_parsed_text())
+	perf.button_pressed = false
+	check("switching it off hides it", not PerfOverlay.is_shown())
+	PerfOverlay.set_shown(true)
+	gm._sync_perf_button()
+	check("the switch shows what the readout is doing, without flipping it",
+		perf.button_pressed and PerfOverlay.is_shown())
+	var god: Node = gm.get_node_or_null("%godmodebutton")
+	check("god mode is a switch on the same tab", god != null and testing_tab.is_ancestor_of(god))
+	PerfOverlay.set_shown(shown_before)
+	gm.queue_free()
+	await get_tree().process_frame
 
 func _test_the_trade_switch_reaches_the_game() -> void:
 	section("TRADE SWITCH - the owner can stop new trades, and the game says so")
