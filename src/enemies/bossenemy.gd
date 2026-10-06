@@ -1633,10 +1633,10 @@ func _aim_point() -> Vector2:
 	# depending on who is playing, which against a 14px spike is most of the
 	# margin - and it is the difference between a pattern that reads as tight
 	# and one that reads as broken.
-	var body: Node2D = player.get_node_or_null("bodyshape") as Node2D
-	if body != null:
-		return body.global_position
-	return player.global_position
+	# BaseEnemy.target_point() is that same body, and every other enemy's sight
+	# line and aim now go through it too (6 Oct: they used the origin, and held
+	# fire at a player pressed against a wall).
+	return target_point()
 
 
 func _player_velocity() -> Vector2:

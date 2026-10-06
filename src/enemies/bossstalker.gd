@@ -82,6 +82,8 @@ var pillar_element: int = -1
 # shared area (monstersync.gd). Set by BossEnemy._spawn_stalker().
 var net_owner: Node = null
 
+const Targets := preload("res://src/shared/targets.gd")
+
 var _player: Node2D = null
 var _age: float = 0.0
 var _drop_accumulator: float = 0.0
@@ -132,10 +134,7 @@ func _physics_process(delta: float) -> void:
 func _player_ground() -> Vector2:
 	if not is_instance_valid(_player):
 		return global_position
-	var body: Node2D = _player.get_node_or_null("bodyshape") as Node2D
-	if body != null:
-		return body.global_position
-	return _player.global_position
+	return Targets.body_point(_player)
 
 
 func _drop_pillar() -> void:

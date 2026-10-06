@@ -189,6 +189,13 @@ func open_for_bag(world_bag: Node, player: Node) -> void:
 			_world_bag.player_left_range.connect(_on_close_pressed)
 
 
+func close_panel() -> void:
+	"""The public name for "shut this", which the HUD's Escape calls. The x and
+	walking out of range come through _on_close_pressed(); calling a private
+	handler from another script is how a rename turns into a silent no-op."""
+	_on_close_pressed()
+
+
 func _on_close_pressed() -> void:
 	_mirror_to_bag()
 

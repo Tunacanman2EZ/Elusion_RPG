@@ -204,6 +204,7 @@ func _run_all() -> void:
 	await _test_trades_reach_the_right_people()
 	await _test_the_trade_switch_reaches_the_game()
 	await _test_no_debug_keys_the_panel_does_it()
+	await _test_escape_closes_every_window()
 	_test_presence_carries_the_monsters()
 	await _test_shared_monsters_lead()
 	await _test_shared_monsters_follow()
@@ -211,6 +212,7 @@ func _run_all() -> void:
 	await _test_shared_monsters_targets()
 	await _test_shared_monsters_pieces()
 	await _test_shared_monsters_hold_the_leaders_numbers()
+	await _test_enemies_see_a_player_against_a_wall()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -12097,11 +12099,11 @@ func _test_the_gm_panel_is_a_window() -> void:
 	if close != null:
 		close.pressed.emit()
 	check("pressing it closes the panel", not panel.visible)
+	# ESCAPE: in the HUD's one list of windows, closed by its own close() -
+	# _test_escape_closes_every_window() presses Escape on it for real.
 	var hud_src: String = _code_only(FileAccess.get_file_as_string("res://src/ui/characterhud.gd"))
-	var hide_at: int = _first_code_index(hud_src, "func hide_panel(", 0)
-	var hide_end: int = _first_code_index(hud_src, "\nfunc ", hide_at + 1)
 	check("and Esc closes it too, with the rest",
-		_within(_first_code_index(hud_src, "owner_panel.close()", hide_at), hide_end) != -1)
+		_func_body(hud_src, "func _escape_windows(").contains("[owner_panel, \"close\"]"))
 	panel.visible = true
 	await get_tree().process_frame
 
@@ -13621,6 +13623,78 @@ func _trade_payload(revision: int, their_items: Array, their_gold: int = 0,
 			"online": they_online},
 	}
 
+
+# 6 Oct, the owner: "every window needs to close with escape also". Escape used
+# to close fourteen of the nineteen, from hand-kept lists that had drifted: the
+# doll and the GM panel each open alone were closed but not counted, so Escape
+# did nothing; the players list was in no list at all; and the shop, the loot
+# bag, the kingdom board and the trade window were left out on purpose. Now the
+# HUD keeps one list (_escape_windows()) and this opens every window there is,
+# one at a time, and presses Escape on it.
+func _test_escape_closes_every_window() -> void:
+	section("ESCAPE - every window closes, the way its own x closes it")
+	const WINDOWS := {
+		"inventory_screen": "res://scene/ui/inventory/inventory.tscn",
+		"equipment_panel": "res://scene/ui/equipment/equipmentpanel.tscn",
+		"stats_screen": "res://scene/ui/statsscreen.tscn",
+		"bank_screen": "res://scene/ui/bank/bankinventory.tscn",
+		"lootbag_panel": "res://scene/ui/lootbag/lootbaginventory.tscn",
+		"cooking_panel": "res://scene/ui/cooking/cookingscreen.tscn",
+		"shop_panel": "res://scene/ui/shop/shopinventory.tscn",
+		"kingdom_panel": "res://scene/ui/kingdom/kingdomboard.tscn",
+		"trade_panel": "res://scene/ui/trade/tradepanel.tscn",
+		"chat_panel": "res://scene/ui/chat/chatpanel.tscn",
+		"friends_panel": "res://scene/ui/friends/friendspanel.tscn",
+		"players_panel": "res://scene/ui/players/playerspanel.tscn",
+		"guild_panel": "res://scene/ui/guild/guildpanel.tscn",
+		"staff_panel": "res://scene/ui/staff/staffpanel.tscn",
+		"owner_panel": "res://scene/ui/owner/ownerpanel.tscn",
+		"item_spawner": "res://scene/ui/owner/itemspawner.tscn",
+		"options_screen": "res://scene/ui/menus/optionsscreen.tscn",
+		"map_screen": "res://scene/ui/menus/mapscreen.tscn",
+		"controls_panel": "res://scene/ui/controls/controlspanel.tscn",
+	}
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	check("with nothing open, Escape has nothing to close (and opens the options instead)",
+		not hud.is_panel_open())
+	var uncounted: Array = []
+	var stuck: Array = []
+	var scripts: Array = []
+	for field in WINDOWS:
+		var window: Control = (load(WINDOWS[field]) as PackedScene).instantiate() as Control
+		add_child(window)
+		await get_tree().process_frame
+		if window.get_script() != null:
+			scripts.append((window.get_script() as Script).resource_path)
+		hud.set(field, window)
+		window.visible = true
+		if not hud.is_panel_open():
+			uncounted.append(field)
+		hud.hide_panel()
+		if window.visible:
+			stuck.append(field)
+		hud.set(field, null)
+		window.queue_free()
+	await get_tree().process_frame
+	check("every window counts as open", uncounted.is_empty(), uncounted)
+	check("  and Escape closes every one", stuck.is_empty(), stuck)
+	check("the HUD's list has all %d of them" % WINDOWS.size(),
+		hud._escape_windows().size() == WINDOWS.size(), hud._escape_windows().size())
+
+	# EVERY WINDOW THERE IS: a script under src/ui/ built on PanelWindow is a
+	# window, and it has to be one of the above. A new one fails here until it
+	# is added to the HUD's list and to this one.
+	var missing: Array = []
+	for path in _all_gd_under("res://src/ui"):
+		if _code_src(path).contains("PanelWindow") and not scripts.has(path):
+			missing.append(path.get_file())
+	check("every window under src/ui/ is one of them", missing.is_empty(), missing)
+	hud.free()
+
+	# Escape does what the x does, and the trade window's x hides the window. It
+	# has never withdrawn an offer - the trade lives on the server.
+	check("closing the trade window does not cancel the trade",
+		not _func_body(_code_src("res://src/ui/trade/tradepanel.gd"), "func close_panel(").contains("Api."))
 
 # 0.7.1. The owner, 6 Oct: "remove debug keys i have a full menu to debug", and
 # for the performance readout, "add to menu instead and remove backslash". F1-F7
@@ -15279,6 +15353,114 @@ func _test_shared_monsters_hold_the_leaders_numbers() -> void:
 
 	world.free()
 	link.free()
+	await get_tree().process_frame
+
+# 6 Oct, the owner: "i found a issue when walking up to the wall enemies dont
+# attack". Every enemy asked "can I see you" with a ray to the player's NODE
+# ORIGIN, and the origin is not where the body is: the warrior's body sits 13 px
+# below it, the tank's 16 px above. Walk a warrior up into a north wall (or a
+# tank down into a south one) and the origin is inside the masonry, every ray
+# hits the wall first, and the whole pack stands around you holding fire. The
+# shots aimed at the origin too. Both use BaseEnemy.target_point() now - the
+# body, through Targets.body_point(), as the boss's _aim_point() always did.
+func _test_enemies_see_a_player_against_a_wall() -> void:
+	section("ENEMIES - a player pressed against a wall is seen and shot at")
+	const Targets := preload("res://src/shared/targets.gd")
+	var arena := Node2D.new()
+	add_child(arena)
+	var base := Vector2(-70000, -70000)
+	# Two walls on layer 1, the TileMaps' layer and the one the sight ray masks:
+	# one with its bottom edge at north_y, one with its top edge at south_y.
+	var north_y: float = base.y
+	var south_y: float = base.y + 600.0
+	for spec in [[north_y - 40.0], [south_y + 40.0]]:
+		var wall := StaticBody2D.new()
+		wall.collision_layer = 1
+		wall.collision_mask = 0
+		var shape := CollisionShape2D.new()
+		var rect := RectangleShape2D.new()
+		rect.size = Vector2(2400, 80)
+		shape.shape = rect
+		wall.add_child(shape)
+		arena.add_child(wall)
+		wall.global_position = Vector2(base.x, float(spec[0]))
+	var enemy: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	arena.add_child(enemy)
+	enemy.set_physics_process(false)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var origin_in_a_wall: Array = []
+	var blind: Array = []
+	var held_fire: Array = []
+	var x: float = base.x - 900.0
+	for cls in ["warrior", "mage", "tank", "healer"]:
+		var hero: Node = (load("res://scene/characters/%s.tscn" % cls) as PackedScene).instantiate()
+		var body_node: CollisionShape2D = hero.get_node_or_null("bodyshape") as CollisionShape2D
+		var offset: Vector2 = body_node.position if body_node != null else Vector2.ZERO
+		var reach: float = 0.0
+		if body_node != null and body_node.shape is CircleShape2D:
+			reach = (body_node.shape as CircleShape2D).radius
+		elif body_node != null and body_node.shape is CapsuleShape2D:
+			reach = (body_node.shape as CapsuleShape2D).height * 0.5
+		hero.free()
+		for side in ["north", "south"]:
+			# A stand-in carrying the class's own body offset, like a RemotePlayer,
+			# its body touching the wall exactly as a walk into it leaves it.
+			var target := Node2D.new()
+			var marker := Node2D.new()
+			marker.name = "bodyshape"
+			marker.position = offset
+			target.add_child(marker)
+			arena.add_child(target)
+			var body_y: float = north_y + reach + 0.5 if side == "north" else south_y - reach - 0.5
+			target.global_position = Vector2(x, body_y - offset.y)
+			if (side == "north" and target.global_position.y < north_y) \
+					or (side == "south" and target.global_position.y > south_y):
+				origin_in_a_wall.append("%s %s" % [cls, side])
+			# The enemy stands off to one side and back from the wall, in range.
+			var away: float = 70.0 if side == "north" else -70.0
+			enemy.global_position = Vector2(x + 90.0, body_y + away)
+			enemy.player = target
+			if not enemy._has_line_of_sight(enemy.target_point()):
+				blind.append("%s %s" % [cls, side])
+			enemy.attack_ready = true
+			enemy.is_attacking = false
+			enemy._trigger_attack()
+			if not enemy.is_attacking:
+				held_fire.append("%s %s" % [cls, side])
+			enemy.is_attacking = false
+			target.free()
+			x += 400.0
+	check("the case is real: some class's origin is inside the wall it walked into",
+		not origin_in_a_wall.is_empty(), origin_in_a_wall)
+	check("an enemy sees every class, pressed against a wall either way",
+		blind.is_empty(), blind)
+	check("  and opens fire on every one of them", held_fire.is_empty(), held_fire)
+
+	# The body, not the origin, for anything with a body; the origin otherwise.
+	var probe := Node2D.new()
+	var feet := Node2D.new()
+	feet.name = "bodyshape"
+	feet.position = Vector2(0, 13)
+	probe.add_child(feet)
+	arena.add_child(probe)
+	probe.global_position = base + Vector2(0, 300)
+	check("Targets.body_point() is the body", Targets.body_point(probe) == probe.global_position + Vector2(0, 13))
+	feet.free()
+	check("  or the node itself when there is no body", Targets.body_point(probe) == probe.global_position)
+
+	# EVERY AIM AND EVERY SIGHT LINE goes through the one helper. A new enemy that
+	# writes player.global_position into a ray or a shot brings this bug back.
+	var leftovers: Array = []
+	for path in _all_gd_under("res://src/enemies"):
+		var code: String = _code_src(path)
+		for bad in ["_has_line_of_sight(player.global_position)", "player.global_position - spawn_node",
+				"shoot_vector(player.global_position"]:
+			if code.contains(bad):
+				leftovers.append("%s: %s" % [path.get_file(), bad])
+	check("no enemy aims a sight line or a shot at the player's origin", leftovers.is_empty(), leftovers)
+	arena.queue_free()
 	await get_tree().process_frame
 
 # 6 Oct, the owner: "wider pick up radius". The bag's circle had no radius line

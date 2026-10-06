@@ -198,7 +198,7 @@ func _physics_process(_delta: float) -> void:
 	# a mage that closes and casts on the way in rather than casting only once
 	# parked, which is the aggression the formation was supposed to add to, not
 	# replace.
-	if attack_ready and dist <= CAST_RANGE and _has_line_of_sight(player.global_position):
+	if attack_ready and dist <= CAST_RANGE and _has_line_of_sight(target_point()):
 		velocity = _standoff_velocity()
 		move_and_slide()
 		_trigger_attack()

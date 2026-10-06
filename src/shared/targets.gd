@@ -48,6 +48,24 @@ static func nearest(tree: SceneTree, from: Vector2) -> Node2D:
 	return best
 
 
+static func body_point(body: Node2D) -> Vector2:
+	"""Where a player's BODY is - the "bodyshape" collision - rather than the
+	node origin, which is somewhere else for every class: the warrior's body is
+	13 px below its origin, the tank's 16 px above. Anything that aims at a
+	player or asks whether it can see one asks here. A RemotePlayer carries a
+	"bodyshape" marker for the same reason; anything without one is its origin.
+
+	THE ORIGIN CAN BE INSIDE A WALL. A warrior walked up into a north wall has
+	its body touching the wall and its origin 6 px into it, so a ray to the
+	origin hits masonry and every enemy held fire (6 Oct, "walking up to the
+	wall enemies dont attack"). The body is never inside a wall - it is the
+	thing that collides with it."""
+	if body == null:
+		return Vector2.ZERO
+	var shape: Node2D = body.get_node_or_null("bodyshape") as Node2D
+	return shape.global_position if shape != null else body.global_position
+
+
 static func nearest_distance(tree: SceneTree, from: Vector2) -> float:
 	"""How far the closest of all() is, or INF when there is nobody."""
 	var body: Node2D = nearest(tree, from)

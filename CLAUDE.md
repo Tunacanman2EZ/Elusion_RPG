@@ -1667,8 +1667,8 @@ Two details that make it a real check rather than a decorative one:
   used because the body says `slot_index`, and the check quietly stops checking.
   Sabotage-tested with exactly that case.
 - **Known limit:** it reads single-line `func` declarations, so a signature
-  wrapped across lines is skipped rather than guessed at. 2,375 signatures parse
-  this way (0.7.1). A missed one still shows in the editor, as it always did.
+  wrapped across lines is skipped rather than guessed at. 2,379 signatures parse
+  this way (0.7.3). A missed one still shows in the editor, as it always did.
 
 ### The .ps1 entry points are held to pure ASCII
 
@@ -2178,7 +2178,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   0.5.1 is the dots drawn instead of letters, 0.6.0 the trade switch and
   the hold on fresh finds, 0.6.1 the owner-only item grant and the wider
   loot bag reach, 0.7.0 shared monsters, 0.7.1 no debug keys (the owner panel
-  does their work, the performance readout included).
+  does their work, the performance readout included), 0.7.2 enemies see and
+  shoot a player pressed against a wall, 0.7.3 Escape closes every window.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -2352,6 +2353,28 @@ and loot (by design). The leader is trusted with the monsters exactly as every
 game is trusted with its own kills (E-3): a cheating leader can do no more to
 the monsters than a cheating game always could, and the caps above keep an
 invented number from reaching anybody's health.
+
+### Enemies aim at the body, not the origin
+
+The owner, 6 Oct (0.7.2): "walking up to the wall enemies dont attack". Every
+enemy asked "can I see you" with a ray to the player's **node origin**, and
+aimed its shots there too. The origin is not where the body is: the warrior's
+`bodyshape` is 13 px below it, the tank's 16 px above, the mage's and healer's
+a few px above. A warrior walked up into a north wall has its body touching the
+wall and its origin 6 px *inside* it (a tank against a south wall, 8 px), so
+the ray to it hit masonry, `_has_line_of_sight()` said no, and the whole pack
+stood around holding fire.
+
+**`BaseEnemy.target_point()`** is the body - `Targets.body_point()`, the
+`bodyshape` node, or the origin for anything without one (a RemotePlayer
+carries a `bodyshape` marker). Every sight check against the player and every
+shot aimed at one uses it; the boss's `_aim_point()` and the stalker always
+did. Distances, formation slots and facing still measure from the origin, as
+they were tuned. `_test_enemies_see_a_player_against_a_wall()` builds a wall on
+layer 1, presses each class's real body offset against it from both sides, and
+fails if any enemy cannot see or will not shoot; it also fails on
+`player.global_position` written into a sight line or a shot anywhere under
+`src/enemies/`.
 
 ### Bosses hit for their band
 
@@ -3050,6 +3073,34 @@ headless suite"), so the count was taken from Godot's own language server,
 which reports exactly what the editor shows. `testrunner.gd` still carries
 some of its own; they appear only when the suite is run from the editor.
 
+### Escape closes every window, from one list
+
+The owner, 6 Oct (0.7.3): "every window needs to close with escape also".
+Escape closed fourteen of the HUD's nineteen windows, from three lists kept by
+hand in characterhud.gd - `hide_panel()` (close it), `is_panel_open()` (is
+there anything to close) and `_any_panel_visible()` (is the screen busy, the
+guard on Escape opening Options) - and they had drifted. The doll opened alone
+with G, and the GM panel alone, were closed by one and not counted by the
+next, so Escape did nothing; the players list was in none of them, so Escape
+opened Options on top of it; the shop, the loot bag, the kingdom board and the
+trade window were left out on purpose.
+
+- **One list, `_escape_windows()`**: every window and the way its **own x**
+  closes it (a method name on the window, or a HUD Callable for the bag, the
+  doll and the stats). `hide_panel()` and `is_panel_open()` both read it, and
+  `_any_panel_visible()` is gone: nothing open means Escape opens Options.
+- **Escape does what the x does, nothing more.** That is what makes the trade
+  window safe - its x has never cancelled a trade, only hidden the window, and
+  the trade waits on the server. The loot bag gained a public `close_panel()`,
+  like the cooking screen's, so the HUD does not call a private handler.
+- **A new window goes in the list.** `_test_escape_closes_every_window()`
+  opens each of the nineteen alone, presses Escape and checks it closed, and
+  fails on any script under `src/ui/` built on `PanelWindow` that is not one
+  of them.
+
+Dialogs and menus inside a window (the bin's confirmation, a row's right-click
+menu) are Godot's own, and close on Escape by themselves.
+
 ### A window is never made bigger than the screen
 
 Options offered 2560x1440 and 3840x2160 whatever the monitor, and on day 1
@@ -3566,8 +3617,8 @@ The GM panel's **Testing** tab has an **Item catalogue...** button now, and the
 catalogue stays a window of its own (`src/ui/owner/itemspawner.gd`), because a
 grid of pictures needs more room than the panel has. The button calls the
 HUD's `toggle_item_spawner()` through the `hud` group, so the HUD still owns
-the window: it closes on Escape, counts in `is_panel_open()`, and is the
-nineteenth window.
+the window: it is in the HUD's `_escape_windows()` list, so Escape closes
+it, and it is the nineteenth window.
 
 - **Every item `ItemRegistry` loaded**, so a new .tres is in the menu at the
   next launch. Kinds come from `ItemSpawner.category_of()` - type and equip

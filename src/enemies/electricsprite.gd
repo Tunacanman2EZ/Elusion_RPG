@@ -100,7 +100,7 @@ func fire_projectile() -> void:
 	# BEFORE SPAWNING, like every other family: shoot_vector only sets velocity
 	# and rotation, neither of which needs the node to be in the tree.
 	if orb.has_method("shoot_vector"):
-		var to_player: Vector2 = player.global_position - spawn_node.global_position
+		var to_player: Vector2 = target_point() - spawn_node.global_position
 		orb.shoot_vector(to_player)
 	else:
 		# fallback for orb implementations that only support cardinals

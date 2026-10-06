@@ -421,7 +421,7 @@ func fire_projectile() -> void:
 	# aim BEFORE spawning — shoot_vector only sets velocity and rotation,
 	# neither of which needs the node to be in the tree yet.
 	if is_instance_valid(player) and projectile.has_method("shoot_vector"):
-		projectile.shoot_vector(player.global_position - origin)
+		projectile.shoot_vector(target_point() - origin)
 	elif projectile.has_method("shoot"):
 		projectile.shoot(attack_direction)
 

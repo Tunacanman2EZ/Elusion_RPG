@@ -353,18 +353,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		# when it said the pause menu this project will eventually want would
 		# need to see the press.
 		#
-		# The open branch is guarded by _any_panel_visible(), not
-		# is_panel_open(): the shop and the trade window are deliberately not
-		# closed by Escape, and stacking options on top of one would be worse
-		# than doing nothing.
+		# EVERY WINDOW, since 0.7.3 (the owner: "every window needs to close
+		# with escape also"). The shop, the loot bag, the kingdom board, the
+		# trade window and the players list used to be left out on purpose, so
+		# Escape at a vendor did nothing at all. See _escape_windows().
 		if is_panel_open():
 			hide_panel()
 			get_viewport().set_input_as_handled()
 			return
-		if not _any_panel_visible():
-			toggle_options()
-			get_viewport().set_input_as_handled()
-			return
+		toggle_options()
+		get_viewport().set_input_as_handled()
+		return
 
 	# THE PANEL KEYS. inventory_toggle is I, character_toggle is C, and
 	# minimap_toggle is M — actions rather than raw keycodes, because these are
@@ -374,7 +373,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	# WHY THEY COULD NOT EXIST BEFORE. player.gd's debug block owned the bare
 	# letters: I granted an electric sprite pet, M drained thirty mana, and M
 	# was ALSO minimap_toggle, so opening the map cost you mana and nothing
-	# anywhere said the two were the same key. Those grants are behind Ctrl now.
+	# anywhere said the two were the same key. The debug keys went behind Ctrl,
+	# and since 0.7.1 they are gone altogether.
 	#
 	# is_action_pressed, NOT the keycode, and not ui_* either — see the Escape
 	# note above for why this project cannot trust an engine default it has
@@ -3222,103 +3222,81 @@ func open_cooking(firepit: Node, player: Node) -> void:
 
 
 # =============================================================================
-# PANEL STATE QUERIES
+# ESCAPE: EVERY WINDOW, ONE LIST
 # =============================================================================
+# The owner, 6 Oct: "every window needs to close with escape also".
+#
+# Escape used to close fourteen of the HUD's nineteen windows, from three lists
+# kept by hand: hide_panel() ("close it"), is_panel_open() ("is there anything
+# to close") and _any_panel_visible() ("is the screen busy", the guard on
+# Escape opening the options). They had drifted. The doll opened alone with G,
+# and the GM panel alone, were closed by one list and not counted by the next,
+# so Escape did nothing; the players list was in none of them, so Escape opened
+# the options on top of it. The shop, the loot bag, the kingdom board and the
+# trade window were left out on purpose.
+#
+# ONE LIST NOW, and both questions read it, so a window cannot count as open
+# without closing or close without counting. Each entry is the window and the
+# way its OWN x closes it - Escape does exactly what the x does and nothing
+# more. That is what makes the trade window safe: its x has never cancelled a
+# trade (tradepanel.gd close_panel()), it only hides the window, and the trade
+# stays open on the server until somebody cancels it.
+#
+# A window the HUD gains goes in this list, or
+# _test_escape_closes_every_window() fails: it finds every PanelWindow under
+# src/ui/ and checks each one closes on Escape.
+func _escape_windows() -> Array:
+	"""[window, closer] for every window the HUD owns. A closer is the name of
+	the method the window's x calls, or a Callable for the few the HUD closes
+	itself. A window not built yet is null and skipped."""
+	return [
+		[inventory_screen, hide_inventory],
+		[equipment_panel, _hide_equipment_panel],
+		[stats_screen, _on_stats_close_requested],
+		[bank_screen, "close_bank"],
+		[lootbag_panel, "close_panel"],
+		[cooking_panel, "close_panel"],
+		[shop_panel, "close_shop"],
+		[kingdom_panel, "close_board"],
+		[trade_panel, "close_panel"],
+		[chat_panel, "close"],
+		[friends_panel, "close"],
+		[players_panel, "close"],
+		[guild_panel, "close"],
+		[staff_panel, "close_panel"],
+		[owner_panel, "close"],
+		[item_spawner, "close"],
+		[options_screen, "close"],
+		[map_screen, "close"],
+		[controls_panel, "close"],
+	]
+
 
 func hide_panel() -> void:
-	# ESCAPE CLOSES EVERYTHING, so both panels, by name.
-	#
-	# This used to lean on hide_inventory() taking the doll down with the bag,
-	# and a comment here explained why that mattered: the line once called the
-	# inner inventory_screen.hide_inventory() instead, and Escape left the doll
-	# hanging on its own. Now that the two really are separate panels,
-	# hide_inventory() closes the bag and nothing else - so leaning on it would
-	# reintroduce exactly that bug. The doll is closed here explicitly instead.
-	hide_inventory()
-	_hide_equipment_panel()
-	if stats_screen != null:
-		stats_screen.visible = false
-	if bank_screen != null and bank_screen.visible:
-		if bank_screen.has_method("close_bank"):
-			bank_screen.close_bank()
-	# The cooking panel counts in is_panel_open() below, so it has to close
-	# here too — otherwise Escape would report "something is open", swallow the
-	# press, and shut nothing.
-	if cooking_panel != null and cooking_panel.visible:
-		if cooking_panel.has_method("close_panel"):
-			cooking_panel.close_panel()
-	if options_screen != null and options_screen.visible:
-		options_screen.close()
-	if map_screen != null and map_screen.visible:
-		map_screen.close()
-	# CHAT CLOSES ON ESCAPE TOO, and it has to be listed in is_panel_open()
-	# below for that to work - a panel that closes here but does not count
-	# there lets Escape fall through to whatever else is open behind it.
-	if chat_panel != null and chat_panel.visible:
-		chat_panel.close()
-	if friends_panel != null and friends_panel.visible:
-		friends_panel.close()
-	if guild_panel != null and guild_panel.visible:
-		guild_panel.close()
-	# The GM panel too, since it has an x now - Esc closing everything except
-	# the one panel that sits on top of the others was the odd one out.
-	if owner_panel != null and owner_panel.visible and owner_panel.has_method("close"):
-		owner_panel.close()
-	if item_spawner != null and item_spawner.visible:
-		item_spawner.close()
-	# And the staff desk, which is counted in is_panel_open() below for the
-	# reason the chat panel gives: closed here, counted there, or Escape falls
-	# through to whatever is behind it.
-	if staff_panel != null and staff_panel.visible:
-		staff_panel.close_panel()
-	# And the Controls card, counted below for the same reason.
-	if controls_panel != null and controls_panel.visible:
-		controls_panel.close()
+	"""ESCAPE CLOSES EVERYTHING that is open, each window through its own x."""
+	for entry in _escape_windows():
+		# VARIANT, NOT Control, until it is known to be alive: a freed window
+		# assigned to a typed variable is a SCRIPT ERROR before the check runs.
+		var held: Variant = entry[0]
+		if not is_instance_valid(held) or not (held as Control).visible:
+			continue
+		var window: Control = held
+		var closer: Variant = entry[1]
+		if closer is Callable:
+			(closer as Callable).call()
+		elif window.has_method(str(closer)):
+			window.call(str(closer))
+		else:
+			# A renamed close method. Hide it anyway, and say so: an Escape that
+			# swallows the press and leaves the window up is the bug this is for.
+			push_warning("Escape: %s has no %s(); hiding it directly" % [window.name, closer])
+			window.visible = false
 
 
 func is_panel_open() -> bool:
-	var inv_open:   bool = inventory_screen != null and inventory_screen.visible
-	var stats_open: bool = stats_screen     != null and stats_screen.visible
-	var bank_open:  bool = bank_screen      != null and bank_screen.visible
-	var cook_open:  bool = cooking_panel    != null and cooking_panel.visible
-	var opts_open:  bool = options_screen   != null and options_screen.visible
-	var map_open:   bool = map_screen       != null and map_screen.visible
-	var chat_open:  bool = chat_panel      != null and chat_panel.visible
-	var mates_open: bool = friends_panel   != null and friends_panel.visible
-	# LISTED HERE BECAUSE IT CLOSES ON ESCAPE ABOVE. A panel that closes there
-	# but does not count here lets Escape fall through to whatever is open
-	# behind it - the comment over the chat panel says the same thing, and it
-	# is the exact mistake this pair of lists exists to prevent.
-	var guild_open: bool = guild_panel     != null and guild_panel.visible
-	var staff_open: bool = staff_panel     != null and staff_panel.visible
-	var keys_open:  bool = controls_panel  != null and controls_panel.visible
-	var items_open: bool = item_spawner    != null and item_spawner.visible
-	return (inv_open or stats_open or bank_open or cook_open or opts_open
-		or map_open or chat_open or mates_open or guild_open or staff_open or keys_open
-		or items_open)
-
-
-func _any_panel_visible() -> bool:
-	# EVERY PANEL, not the five is_panel_open() knows about.
-	#
-	# The two questions are different and it matters. is_panel_open() means
-	# "is there something Escape should close", and it deliberately leaves out
-	# the shop, the kingdom board, the loot bag, the trade window and the owner
-	# panel — the trade window in particular has a server-side counterpart and
-	# is not something a stray keypress should shut.
-	#
-	# THIS one means "is the screen already busy", and it is the guard on
-	# Escape OPENING the options panel. Without it, pressing Escape at a
-	# vendor would stack options on top of the shop, because is_panel_open()
-	# would answer false about a panel that is plainly on screen.
-	# equipment_panel is in the list even though it never appears without the
-	# inventory. That pairing is a rule this file enforces, not a fact about
-	# the node — and a list that says EVERY panel and then leaves one out is
-	# how the pairing quietly stops being true.
-	for panel in [inventory_screen, equipment_panel, stats_screen, bank_screen,
-			lootbag_panel, cooking_panel, shop_panel, kingdom_panel,
-			trade_panel, owner_panel, staff_panel, options_screen, map_screen,
-			controls_panel, item_spawner]:
-		if panel != null and panel.visible:
+	"""Is there anything for Escape to close? The same list hide_panel() closes."""
+	for entry in _escape_windows():
+		var held: Variant = entry[0]
+		if is_instance_valid(held) and (held as Control).visible:
 			return true
 	return false

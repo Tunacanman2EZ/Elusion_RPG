@@ -88,7 +88,7 @@ func fire_projectile() -> void:
 	var arrow: Node = Projectiles.variant_of(ARROW_SCENE, current_element()).instantiate()
 	# aim BEFORE spawning — shoot_vector just sets velocity + rotation, which
 	# don't require the node to be in the tree yet.
-	var to_player: Vector2 = player.global_position - spawn_node.global_position
+	var to_player: Vector2 = target_point() - spawn_node.global_position
 	arrow.shoot_vector(to_player)
 	# parent into the y-sorted projectiles container at the marker position.
 	spawn_projectile_node(arrow, spawn_node.global_position)

@@ -44,6 +44,8 @@ The parts I'd point a reviewer at first.
 
 Pathfinding runs on `NavigationRegion2D`, but the interesting part is slot claiming: each enemy reserves a specific tile in the ring around the player and paths to that, so a group arranges itself around you rather than piling into one spot. Movement stays strictly 4-directional despite using real pathfinding underneath.
 
+They look and shoot at your body, not your node's origin, and the difference was a real bug. The two are 13 px apart on the warrior and 16 px on the tank, in opposite directions, so a warrior pressed against a wall above them had an origin inside the masonry: every enemy's line of sight hit the wall first, and the whole pack stood around holding fire. One helper, `BaseEnemy.target_point()`, now answers "where is the player" for every sight line and every shot, and a test presses each class against a wall from both sides.
+
 ### One entity, two forms — `src/enemies/poisonslime.gd`
 
 The poison slime duplicates once when you get close, then each copy converts into four smaller slimes at half health. Large and small are the same scene and the same script — a single `is_small` flag selects the animation set, the projectile, the stat block, and whether the duplicate and split paths are available at all. Its acid leaves ground hazards that stack, so the fight is about position rather than damage.
@@ -99,13 +101,15 @@ Mods, devs and the owner get a Staff button on the HUD: every account with who i
 
 The interesting part was what a kick looked like from the other side: nothing. The server deleted the session, but the game never asked again after the login screen, so a kicked player played on until they restarted. The game now sends a heartbeat every fifteen seconds and re-checks at once on any refused request — a kick lands in about a second — and only a 401 counts, so restarting the server never signs everyone out.
 
-The owner's GM panel has a **Testing** tab: gold and items by id, an **Item catalogue** (`src/ui/owner/itemspawner.gd`) - every item the game loaded, with its picture and rarity, searchable by name or id, spawned into the bag with one click and put straight on, for gear - and boxes that set the owner's own character's level and skill levels on the server - one skill or all six - so level 22 gear and high-level recipes can be tested without the hours of play. Every click is a server request the server logs; the tools only exist for the owner, and the routes refuse anyone else.
+The owner's GM panel has a **Testing** tab: gold and items by id, an **Item catalogue** (`src/ui/owner/itemspawner.gd`) - every item the game loaded, with its picture and rarity, searchable by name or id, spawned into the bag with one click and put straight on, for gear - and boxes that set the owner's own character's level and skill levels on the server - one skill or all six - so level 22 gear and high-level recipes can be tested without the hours of play. Beside them are a **God mode** switch and a **Performance readout**. Every grant is a server request the server logs; the tools only exist for the owner, and the routes refuse anyone else.
+
+There are no debug keys. The game used to have a row of them for items, pets and god mode, and they were a second way in to things the panel already did, gated on a check the client makes about itself. They are gone, and a test fails if a function key comes back.
 
 Staff names are public - the crown and the MOD and DEV badges say exactly whose password is worth guessing - so a staff password alone opens nothing. For a staff account with a confirmed recovery address, a correct password gets a six-digit code by email instead of a session, and only the code logs in. A wrong code counts toward the same lockout as a wrong password.
 
 ### Runs on modest hardware, measured rather than guessed — `src/systems/settings.gd`
 
-Before adding a single graphics option, the real scenes were benchmarked on the slowest machine available: a graphics card simulated in software on two CPU cores. Two things carried almost all the cost — the candle and lantern lights, which double the frame time of any area they are in, and drawing at a 1440p or 4K window's full resolution, which is 4x or 9x the pixels for pixel art that gains nothing from them. Those became the options: **Simple lighting** (2x faster in lit areas), **1280 × 720 rendering** (3–5x faster on big screens), a **Compatibility (OpenGL) renderer** for hardware whose Vulkan is weak, a **30 fps cap** for machines that cannot hold 60 smoothly, and a **background limit** that drops to 15 fps when the game is not the focused window. Everything that trades looks for speed is off by default, and the table of measurements lives in the code beside the options it justified.
+Before adding a single graphics option, the real scenes were benchmarked on the slowest machine available: a graphics card simulated in software on two CPU cores. Two things carried almost all the cost — the candle and lantern lights, which double the frame time of any area they are in, and drawing at a 1440p or 4K window's full resolution, which is 4x or 9x the pixels for pixel art that gains nothing from them. Those became the options: **Simple lighting** (2x faster in lit areas), **1280 × 720 rendering** (3–5x faster on big screens), a **Compatibility (OpenGL) renderer** for hardware whose Vulkan is weak, a **30 fps cap** for machines that cannot hold 60 smoothly, and a **background limit** that drops to 15 fps when the game is not the focused window. Everything that trades looks for speed is off by default, and the table of measurements lives in the code beside the options it justified. The same numbers can be read on the real thing: the owner panel's performance readout draws frame time against the 60 fps budget, the worst frame since it was switched on, physics pairs and requests per second, in the exported game rather than only in the editor.
 
 ### Composition where inheritance would have been wrong — `src/pets/pet.gd`
 
@@ -197,16 +201,18 @@ src/
   pets/          the companion system
   projectiles/   arrows, acid, vines, slash waves, ground hazards
   shared/        facing and formation helpers, the element table and its two
-				 shaders, and the base-scene -> elemental-variant registries
-  systems/       save/load, item registry, API client, game state, audio,
-				 settings and the world map
+				 shaders, the base-scene -> elemental-variant registries, and
+				 who a monster may chase
+  systems/       save/load, item registry, API client, the presence link,
+				 game state, audio, settings and the world map
   tools/         editor-only: the game-data exporter and the in-engine test runner
   types/         the Resource definitions — ItemData, EnemyData, ClassData, ItemStack
   ui/            HUD, inventory, bank, shop, cooking, trade, kingdom board,
 				 loot bag, character select, login, options, staff panel
-  world/         ladders, portals, shops, fishing spots, firepits, loot bags
+  world/         ladders, portals, shops, fishing spots, firepits, loot bags,
+				 and the sync that shares an area's monsters
 scene/           the .tscn side of all of the above
-data/items/      ItemData resources — the item database (123 of them, in eight
+data/items/      ItemData resources — the item database (149 of them, in eight
 				 categories: amulets, armour, consumables, fishing, gold,
 				 lusions, pets, weapons)
 data/enemies/    EnemyData resources — stats and drop tables, one per variant
@@ -236,7 +242,7 @@ cd <your-path>/game/api
 
 Calling the virtualenv's interpreter directly is deliberate: it skips having to activate the environment and guarantees you're on the venv's Python rather than whatever `python` happens to resolve to on `PATH`.
 
-To see other players, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before and simply draws nobody else.
+To see other players and share monsters with them, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before: it draws nobody else and fights its own monsters.
 
 That serves a hundred and eight endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
@@ -302,15 +308,15 @@ test_skill_train.py     10 checks    skills train only as fast as time allows
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-seventh, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,942 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 133 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,954 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 133 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `2902 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2914 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
 - **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
 - **Configuring a node after `add_child()`.** `_ready()` has already run, so an element profile multiplies the scene's defaults and your assignment flattens the result — the thing wears its element's art and none of its behaviour. A text check, because the failure has no runtime symptom.
-- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,375 signatures.
+- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,379 signatures.
 - **Art nobody has classified.** Every top-level folder under `art/` and `assets/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
 
 `src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool answering the two questions a filename search gets wrong. **Painted cell counts per texture** — because tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet. And **reachability**, walking `ResourceLoader.get_dependencies()` from every scene and resource, which is the list you can actually delete from. It found two byte-identical art files a filename sweep had cleared as used, because their twins in other folders are.
@@ -327,7 +333,7 @@ Without the service running, the login screen will tell you it can't reach the s
 
 `art/pack/` is a private submodule. It holds item, weapon, armour and icon art purchased from [Clockwork Raven Studios](https://www.clockworkravenstudios.com/) under a licence that permits using it in this game and **not** redistributing it. Publishing this repository with those files in it would be redistribution, so they are not here.
 
-What that means if you clone: 134 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
+What that means if you clone: 148 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
 
 The test suite understands the difference. The twenty checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
 
@@ -335,7 +341,7 @@ This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on
 
 ## Status
 
-The game is complete and playable start to finish, online: accounts, chat, friends, guilds, trading, and every other player in your area drawn live. The fight is still each player's own — the server does not run combat yet, so a friend swinging at nothing is swinging at a monster in their own game. Moving the fight onto the server is the next step, and the API repo's `E3_SCOPE.md` says why it is the one that matters.
+The game is complete and playable start to finish, online: accounts, chat, friends, guilds, trading, every other player in your area drawn live, and since 0.7.0 the same monsters for everyone in an area, with a loot bag each. Those monsters are run by one player's game, not by the server - the server still does not watch the fight. Moving it onto the server is the next big step, and the API repo's `E3_SCOPE.md` says why it is the one that matters and what shared monsters already built toward it.
 
 Authority has moved off the client. The server rolls every loot drop with entropy the client never sees, owns level and XP and the stat maxima they imply, holds loot bags as rows the game renders a copy of — taking an item out of one is a request, not an announcement — and now reconciles the backpack against what it actually granted, so a modified client's fabricated items are trimmed to nothing.
 

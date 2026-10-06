@@ -65,7 +65,7 @@ func fire_projectile() -> void:
 	var orb: Node = Projectiles.variant_of(FIRE_ORB_SCENE, current_element()).instantiate()
 	# aim before spawning
 	if orb.has_method("shoot_vector"):
-		var to_player: Vector2 = player.global_position - spawn_node.global_position
+		var to_player: Vector2 = target_point() - spawn_node.global_position
 		orb.shoot_vector(to_player)
 	elif orb.has_method("shoot"):
 		orb.shoot(attack_direction)

@@ -1374,6 +1374,17 @@ func _get_direction_to_point_via_navigation(target_pos: Vector2) -> String:
 # friends. Change one and you must change the other, or enemies will hold
 # fire at things their shots would have passed, or shoot at things their
 # shots cannot cross.
+# WHERE THE PLAYER IS, FOR A RAY OR A SHOT: their body, not their node origin.
+# Targets.body_point() says why - the origin of a warrior against a north wall
+# (or a tank against a south one) is inside the wall, and a sight line to it was
+# always blocked. Every sight check against the player and every shot aimed at
+# them uses this; distances still measure from the origin, as they were tuned.
+func target_point() -> Vector2:
+	if not is_instance_valid(player):
+		return global_position
+	return Targets.body_point(player)
+
+
 func _has_line_of_sight(target_pos: Vector2) -> bool:
 	var space_state := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(global_position, target_pos)
@@ -1851,7 +1862,7 @@ func _handle_combat(dist_to_player: float) -> void:
 	# _get_direction_to_point_via_navigation(), deliberately: "I can path
 	# straight to you" and "I can shoot you" are one question, and asking it
 	# twice is how the two answers start disagreeing.
-	if dist_to_player < attack_range and _has_line_of_sight(player.global_position):
+	if dist_to_player < attack_range and _has_line_of_sight(target_point()):
 		velocity = _standoff_velocity()
 		move_and_slide()
 		if attack_ready:
@@ -1982,7 +1993,7 @@ func _trigger_attack() -> void:
 	# Returns WITHOUT consuming attack_ready or starting the cooldown timer, so
 	# the shot lands the instant the line opens instead of after another full
 	# cooldown. Stepping out of cover should be punished immediately.
-	if is_instance_valid(player) and not _has_line_of_sight(player.global_position):
+	if is_instance_valid(player) and not _has_line_of_sight(target_point()):
 		return
 
 	attack_ready = false
