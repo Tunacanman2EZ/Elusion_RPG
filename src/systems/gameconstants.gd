@@ -384,6 +384,28 @@ const KINGDOM_TAX_MINIMUM: int = 1
 # NUMBER FORMATTING
 # =============================================================================
 
+# =============================================================================
+# THE GAME'S VERSION
+# =============================================================================
+# MAJOR.MINOR.PATCH, kept in Api.DISPLAY_VERSION and nowhere else. Before 1.0
+# the first number stays 0; a new chunk of the game raises the middle one
+# (0.5.0 was seeing each other) and a round of fixes the last (0.5.1). 1.0.0
+# is launch. Shown in the login screen's corner and under the Menu, so a
+# tester can say which build they are on.
+#
+# NOT Api.BUILD. That counter is how the server tells a game too old for it
+# to refresh, and moves only when the game and the server must change
+# together; this one is for people, and moves with every release.
+func game_version() -> String:
+	return Api.DISPLAY_VERSION.strip_edges()
+
+
+func version_text() -> String:
+	"""The version as shown: v0.5.1, or nothing when none is set."""
+	var version: String = game_version()
+	return "v" + version if version != "" else ""
+
+
 func commas(amount: int) -> String:
 	# Thousands separators, because the economy grew past the point where a bare
 	# run of digits is readable.

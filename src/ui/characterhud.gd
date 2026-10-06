@@ -256,6 +256,7 @@ func _ready() -> void:
 	_resolve_bar_references()
 	_resolve_hotbar()
 	_wire_nav_buttons()
+	_add_version_to_menu()
 	_add_owner_button()
 	_build_message_box()
 	_warn_unprotected_staff()
@@ -689,6 +690,23 @@ func _nav_button(button_name: String) -> Button:
 func _nav_menu(toggle_name: String) -> Control:
 	var group: Array = NAV_GROUPS.get(toggle_name, [])
 	return get_node_or_null("%" + String(group[0])) as Control if not group.is_empty() else null
+
+
+func _add_version_to_menu() -> void:
+	# WHICH BUILD THIS IS, at the foot of the Menu dropdown under Log out, so a
+	# player can tell you without going back to the login screen. Quiet and
+	# not a button: nothing happens if it is clicked.
+	var items: Node = get_node_or_null("%systemmenu/systemitems")
+	if items == null or items.get_node_or_null("versionlabel") != null:
+		return
+	var tag := Label.new()
+	tag.name = "versionlabel"
+	tag.text = "Elusion %s" % GameConstants.version_text()
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tag.add_theme_font_size_override("font_size", 11)
+	tag.add_theme_color_override("font_color", Color(0.62, 0.58, 0.52))
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	items.add_child(tag)
 
 
 func toggle_nav_menu(toggle_name: String) -> void:

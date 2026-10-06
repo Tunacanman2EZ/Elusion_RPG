@@ -176,6 +176,25 @@ var _pending_username: String = ""
 # LIFECYCLE
 # =============================================================================
 
+func _add_version_label() -> void:
+	# WHICH BUILD THIS IS, quietly in the bottom-right corner, so a tester can
+	# say it. GameConstants.game_version() says where the number lives.
+	if get_node_or_null("versionlabel") != null:
+		return
+	var tag := Label.new()
+	tag.name = "versionlabel"
+	tag.text = GameConstants.version_text()
+	tag.add_theme_font_size_override("font_size", 12)
+	tag.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
+	tag.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	tag.add_theme_constant_override("outline_size", 3)
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 8)
+	tag.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	tag.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	add_child(tag)
+
+
 func _ready() -> void:
 	# THE TOWN STARTS LOADING NOW, ON A WORKER THREAD, WHILE THE PLAYER TYPES.
 	# It used to load before this screen could appear at all - see the notes in
@@ -231,6 +250,7 @@ func _ready() -> void:
 		%passwordlineedit.text_submitted.connect(_on_login_field_submitted)
 	_build_code_box()
 	_build_create_account()
+	_add_version_label()
 
 	# NEW: the banner follows reachability for as long as this screen is open,
 	# not just at startup. If the player leaves the game sitting here and

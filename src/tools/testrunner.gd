@@ -267,6 +267,7 @@ func _run_all() -> void:
 	await _test_bank_buttons_and_the_cooking_window()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
+	_test_the_game_says_its_version()
 	await _test_the_mythic_weapons()
 	await _test_the_item_menu()
 	await _test_the_gm_panel_sets_a_level()
@@ -9480,6 +9481,58 @@ func _test_the_tank_loop_takes_every_step() -> void:
 		and tank._sprint_agility_xp_accumulator == 0.0)
 	tank.free()
 	print("  tank: every step of the walk, shared - key presses, sprint, ground, map, typing")
+
+
+func _test_the_game_says_its_version() -> void:
+	section("VERSION - the game says which build it is, MAJOR.MINOR.PATCH")
+
+	# The owner, 6 Oct, on numbering releases: MAJOR.MINOR.PATCH, 0.x until
+	# launch. The number lives in Api.DISPLAY_VERSION and nowhere else;
+	# everything that shows it reads it from there.
+	var version: String = GameConstants.game_version()
+	var shape := RegEx.create_from_string("^\\d+\\.\\d+\\.\\d+$")
+	check("the game has a version, three whole numbers, from Api.DISPLAY_VERSION",
+		shape.search(version) != null and version == Api.DISPLAY_VERSION, version)
+	check("  and it is shown with a v in front", GameConstants.version_text() == "v" + version,
+		GameConstants.version_text())
+
+	# THE WINDOWS FILE SAYS THE SAME. Windows wants four numbers, so it is the
+	# version with .0 after it, and an export carries whatever is typed here -
+	# 0.1.0.0 sat in it unchanged while the game moved on.
+	var presets: String = FileAccess.get_file_as_string("res://export_presets.cfg")
+	var file_version := RegEx.create_from_string("application/file_version=\"([^\"]*)\"").search(presets)
+	var product_version := RegEx.create_from_string("application/product_version=\"([^\"]*)\"").search(presets)
+	check("the Windows export's file and product versions are the game's",
+		file_version != null and product_version != null
+		and file_version.get_string(1) == version + ".0" and product_version.get_string(1) == version + ".0",
+		[file_version.get_string(1) if file_version else "none", product_version.get_string(1) if product_version else "none"])
+
+	# THE LOGIN SCREEN, in the bottom-right corner.
+	var login: Control = (load("res://src/ui/menus/loginmenu.gd") as GDScript).new() as Control
+	login._add_version_label()
+	login._add_version_label()
+	var corner: Label = login.get_node_or_null("versionlabel") as Label
+	check("the login screen shows it in the bottom-right corner, once",
+		corner != null and corner.text == "v" + version and corner.anchor_left == 1.0 and corner.anchor_top == 1.0
+		and login.find_children("versionlabel", "", true, false).size() == 1,
+		corner.text if corner != null else "no label")
+	check("  and it never catches a click meant for the screen",
+		corner != null and corner.mouse_filter == Control.MOUSE_FILTER_IGNORE)
+	login.free()
+	check("  built when the screen opens, and the Menu's when the HUD does",
+		_func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _ready(").contains("_add_version_label()")
+		and _func_body(_code_src("res://src/ui/characterhud.gd"), "func _ready(").contains("_add_version_to_menu()"))
+
+	# AND UNDER THE MENU, while playing.
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	hud._add_version_to_menu()
+	var foot: Label = hud.get_node_or_null("%systemmenu/systemitems/versionlabel") as Label
+	var items: Node = hud.get_node_or_null("%systemmenu/systemitems")
+	check("the Menu dropdown ends with it, under Log out",
+		foot != null and foot.text == "Elusion v" + version and items != null
+		and items.get_child(items.get_child_count() - 1) == foot,
+		foot.text if foot != null else "no label")
+	hud.free()
 
 
 func _test_the_first_five_minutes() -> void:

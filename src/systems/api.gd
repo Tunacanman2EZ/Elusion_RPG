@@ -84,7 +84,11 @@ const WebPage := preload("res://src/systems/webpage.gd")
 # which ItemRegistry reads; a build-2 game shows such a piece as the error item.
 # Matches CURRENT_CLIENT_BUILD in app.py.
 const BUILD := 3
-const DISPLAY_VERSION := "0.1.0"
+# MAJOR.MINOR.PATCH: 0.x until launch, the middle number for a new chunk of
+# the game, the last for fixes. Shown on the login screen and under Menu
+# (GameConstants.version_text()), and the Windows export's file version is it
+# with .0 after. CLAUDE.md, "The version", says when each number moves.
+const DISPLAY_VERSION := "0.5.1"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,

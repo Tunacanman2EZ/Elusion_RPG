@@ -2175,6 +2175,30 @@ three gates and toggle them; the Field loads with the gates up.
 
 `_test_the_boss_gates_lever`.
 
+### The version: MAJOR.MINOR.PATCH, and who moves it
+
+6 Oct, the owner on numbering releases. The game's version is
+`Api.DISPLAY_VERSION` in `src/systems/api.gd` and nowhere else - it was there
+from the first build as "0.1.0" and never shown. `GameConstants.game_version()`
+and `version_text()` read it, the login screen shows it in its bottom-right
+corner and the Menu dropdown at its foot, and the Windows export's file and
+product versions are it with `.0` after (Windows wants four numbers).
+`_test_the_game_says_its_version` fails when they disagree.
+
+- **0.x until launch; 1.0.0 is launch.** MINOR for a new chunk of the game,
+  PATCH for fixes and balance. Counted from what had shipped: 0.1 the
+  single-player run, 0.2 accounts and the server owning saves, 0.3 trading,
+  guilds and chat, 0.4 the browser (4 Oct), 0.5 seeing each other (6 Oct).
+  0.5.1 is the dots drawn instead of letters.
+- **Raise it with every delivered change to the game**, in the same batch:
+  the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
+  `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
+  the PC first: the editor rewrites it when it exports, so a copy from here is
+  stale. The website's update entries name the version.
+- **Not `Api.BUILD`.** That counter tells the server which games are too old
+  to talk to it, and moves only when the game and the API must change
+  together. The version is for people and moves every release.
+
 ### Other players are drawn from the presence socket
 
 The owner, 5 Oct: "i want to make other players see each other" - their body
