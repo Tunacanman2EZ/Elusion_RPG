@@ -288,11 +288,12 @@ animations = [{
 "name": &"wavedown",
 "speed": 7.0
 }]
+
 [sub_resource type="CircleShape2D" id="CircleShape2D_vendorrange"]
 radius = 62.008064
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_trigger"]
-size = Vector2(286, 279)
+size = Vector2(286, 214.5)
 
 [node name="shophouse" type="Node2D" unique_id=1896304923]
 y_sort_enabled = true
@@ -336,7 +337,7 @@ collision_mask = 4
 script = ExtResource("4_k6awu")
 
 [node name="collisionshape2d" type="CollisionShape2D" parent="trigger" unique_id=918273645]
-position = Vector2(0, 1)
+position = Vector2(0, 33.25)
 shape = SubResource("RectangleShape2D_trigger")
 
 [connection signal="body_entered" from="trigger" to="trigger" method="_on_body_entered"]

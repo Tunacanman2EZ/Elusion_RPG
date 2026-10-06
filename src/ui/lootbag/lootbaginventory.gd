@@ -378,7 +378,7 @@ func _take_slot(slot: InventorySlot) -> Dictionary:
 		_close_emptied_bag(bag_id)
 
 	if OS.is_debug_build():
-		print("[LOOT] took cell %d — %d x %s → %s" % [
+		print("[LOOT] took cell %d — %d x %s -> %s" % [
 			cell,
 			int(data.get("granted_quantity", 0)),
 			str(data.get("granted_item_id", "")),

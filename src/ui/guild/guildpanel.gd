@@ -77,11 +77,14 @@ const RANK_COLOURS := {
 	"officer": Color(0.62, 0.8, 1.0),
 	"member": Color(0.78, 0.74, 0.66),
 }
-const RANK_MARKS := {"leader": "♛", "officer": "◆"}
+# The marks themselves are drawn by marks.gd ("leader", "officer"): they were
+# the letters ♛ and ◆, which the game's font does not have.
+const RANK_MARKS := {"leader": "leader", "officer": "officer"}
 
 # How a name is drawn: its player's colour, with the owner's crown or MOD / DEV
 # in front. Shared with chat, friends and the players menu.
 const NameTag := preload("res://src/shared/nametag.gd")
+const Marks := preload("res://src/shared/marks.gd")
 
 # The roster's groups, in the order drawn, and what each is called over its
 # rows. PLURAL BY COUNT - "Officers" over one officer reads as a typo.
@@ -100,9 +103,10 @@ const QUIET_COLOUR := Color(0.62, 0.58, 0.52)
 
 # Online and not, as SHAPES as well as colours - a filled dot and a hollow one
 # - so the difference does not depend on telling green from grey. They were
-# "+" and "-", which read as buttons that add and remove somebody.
-const DOT_ONLINE := "●"
-const DOT_OFFLINE := "○"
+# "+" and "-", which read as buttons that add and remove somebody, then ● and
+# ○, which the game's font does not have: marks.gd draws them now.
+const DOT_ONLINE := "online"
+const DOT_OFFLINE := "offline"
 
 # The dot's column, so a name and the character line under it start at the
 # same x whatever the dot's glyph measures.
@@ -635,14 +639,9 @@ func _add_member(person: Dictionary, now: int) -> void:
 	box.add_theme_constant_override("separation", 1)
 	var line := _line_in(box)
 
-	var dot := Label.new()
+	var dot: TextureRect = Marks.make(DOT_ONLINE if online else DOT_OFFLINE,
+		ONLINE_COLOUR if online else OFFLINE_COLOUR, "Online" if online else "Offline", DOT_WIDTH)
 	dot.name = "dot"
-	dot.text = DOT_ONLINE if online else DOT_OFFLINE
-	dot.add_theme_color_override("font_color", ONLINE_COLOUR if online else OFFLINE_COLOUR)
-	dot.add_theme_font_size_override("font_size", 11)
-	dot.custom_minimum_size = Vector2(DOT_WIDTH, 0)
-	dot.tooltip_text = "Online" if online else "Offline"
-	dot.mouse_filter = Control.MOUSE_FILTER_PASS
 	line.add_child(dot)
 
 	# THEIR NAME, IN THE COLOUR THEY CHOSE, with the owner's crown or MOD / DEV
@@ -656,13 +655,9 @@ func _add_member(person: Dictionary, now: int) -> void:
 	# THE GUILD RANK, WORN BESIDE THE NAME, since the name's colour is theirs.
 	var mark: String = str(RANK_MARKS.get(their_rank, ""))
 	if mark != "":
-		var worn := Label.new()
+		var worn: TextureRect = Marks.make(mark, RANK_COLOURS.get(their_rank, HEADING_COLOUR),
+			"Guild leader" if their_rank == "leader" else "Officer")
 		worn.name = "rankmark"
-		worn.text = mark
-		worn.add_theme_color_override("font_color", RANK_COLOURS.get(their_rank, HEADING_COLOUR))
-		worn.add_theme_font_size_override("font_size", 12)
-		worn.tooltip_text = "Guild leader" if their_rank == "leader" else "Officer"
-		worn.mouse_filter = Control.MOUSE_FILTER_PASS
 		line.add_child(worn)
 
 	if mine:
@@ -715,11 +710,8 @@ func _add_member(person: Dictionary, now: int) -> void:
 	# says so with an arrow, lights up under the pointer, and opens under
 	# itself when clicked.
 	var open_here: bool = _open_member == who
-	var arrow := Label.new()
+	var arrow: TextureRect = Marks.make("open" if open_here else "closed", HEADING_COLOUR, "", 10)
 	arrow.name = "arrow"
-	arrow.text = "▾" if open_here else "▸"
-	arrow.add_theme_color_override("font_color", HEADING_COLOUR)
-	arrow.add_theme_font_size_override("font_size", 13)
 	line.add_child(arrow)
 
 	frame.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND

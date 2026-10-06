@@ -50,6 +50,53 @@ corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket_button_disabled"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+texture = ExtResource("1_socket")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+modulate_color = Color(0.6, 0.6, 0.6, 0.6)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket_button_hover"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+texture = ExtResource("1_socket")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+modulate_color = Color(1.35, 1.25, 1.05, 1)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket_button_pressed"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+texture = ExtResource("1_socket")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+modulate_color = Color(0.75, 0.7, 0.62, 1)
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket_button"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+texture = ExtResource("1_socket")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_scroll_grabber"]
 bg_color = Color(0.55, 0.45, 0.3, 1)
 corner_radius_top_left = 2
@@ -178,24 +225,20 @@ corner_radius_bottom_left = 3
 shadow_color = Color(0, 0, 0, 0.5)
 shadow_size = 4
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_bg"]
-bg_color = Color(0.1, 0.08, 0.06, 0.8)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu_hover"]
+bg_color = Color(0.25, 0.2, 0.15, 1)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.4, 0.35, 0.25, 1)
+border_color = Color(0.85, 0.75, 0.45, 1)
 corner_radius_top_left = 2
 corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_fill"]
-bg_color = Color(0.6, 0.45, 0.2, 1)
-corner_radius_top_left = 2
-corner_radius_top_right = 2
-corner_radius_bottom_right = 2
-corner_radius_bottom_left = 2
+[sub_resource type="StyleBoxLine" id="StyleBoxLine_menu"]
+color = Color(0.7, 0.6, 0.4, 0.8)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu"]
 content_margin_left = 6.0
@@ -215,68 +258,24 @@ corner_radius_bottom_left = 3
 shadow_color = Color(0, 0, 0, 0.5)
 shadow_size = 4
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu_hover"]
-bg_color = Color(0.25, 0.2, 0.15, 1)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_bg"]
+bg_color = Color(0.1, 0.08, 0.06, 0.8)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.85, 0.75, 0.45, 1)
+border_color = Color(0.4, 0.35, 0.25, 1)
 corner_radius_top_left = 2
 corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
-[sub_resource type="StyleBoxLine" id="StyleBoxLine_menu"]
-color = Color(0.7, 0.6, 0.4, 0.8)
-thickness = 1
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket_button"]
-content_margin_left = 12.0
-content_margin_top = 6.0
-content_margin_right = 12.0
-content_margin_bottom = 6.0
-texture = ExtResource("1_socket")
-texture_margin_left = 7.0
-texture_margin_top = 7.0
-texture_margin_right = 7.0
-texture_margin_bottom = 7.0
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket_button_hover"]
-content_margin_left = 12.0
-content_margin_top = 6.0
-content_margin_right = 12.0
-content_margin_bottom = 6.0
-texture = ExtResource("1_socket")
-texture_margin_left = 7.0
-texture_margin_top = 7.0
-texture_margin_right = 7.0
-texture_margin_bottom = 7.0
-modulate_color = Color(1.35, 1.25, 1.05, 1)
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket_button_pressed"]
-content_margin_left = 12.0
-content_margin_top = 6.0
-content_margin_right = 12.0
-content_margin_bottom = 6.0
-texture = ExtResource("1_socket")
-texture_margin_left = 7.0
-texture_margin_top = 7.0
-texture_margin_right = 7.0
-texture_margin_bottom = 7.0
-modulate_color = Color(0.75, 0.7, 0.62, 1)
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_socket_button_disabled"]
-content_margin_left = 12.0
-content_margin_top = 6.0
-content_margin_right = 12.0
-content_margin_bottom = 6.0
-texture = ExtResource("1_socket")
-texture_margin_left = 7.0
-texture_margin_top = 7.0
-texture_margin_right = 7.0
-texture_margin_bottom = 7.0
-modulate_color = Color(0.6, 0.6, 0.6, 0.6)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_fill"]
+bg_color = Color(0.6, 0.45, 0.2, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
 
 [resource]
 Button/colors/font_color = Color(0.95, 0.85, 0.6, 1)

@@ -28,6 +28,7 @@ extends Node
 # How a name is drawn in every list - checked directly, and through the panels
 # that use it. Preloaded, like everywhere else; nametag.gd says why.
 const NameTag := preload("res://src/shared/nametag.gd")
+const Marks := preload("res://src/shared/marks.gd")
 const ApiForTests := preload("res://src/systems/api.gd")
 const PoolForTests := preload("res://src/systems/connectionpool.gd")
 
@@ -174,6 +175,7 @@ func _run_all() -> void:
 	_test_login_states_are_distinct()
 	_test_no_import_cache_references()
 	_test_every_font_draws_without_the_os()
+	_test_every_ui_character_is_in_the_font()
 	_test_a_save_from_outside_the_tree()
 	_test_no_unused_parameters()
 	_test_floor_coverage()
@@ -826,6 +828,95 @@ func _scan_import_cache_refs(dir_path: String, offenders: Array[String], scanned
 # and the sign's own text must be drawable by the font it actually resolves to.
 # A SystemFont is fine - Godot documents that on platforms without system fonts
 # it falls back to the default theme font, which is real.
+
+func _test_every_ui_character_is_in_the_font() -> void:
+	section("FONT - every character the windows show is in the game's own font")
+
+	# 6 Oct, on play.elusionrpg.com: a box with a code in it in front of every
+	# name in the Staff window. The online dot was the letter ●, and the game's
+	# font (Godot's built-in Open Sans) has no ●. A desktop borrows a missing
+	# letter from a system font, so it looked right in the editor and the
+	# Windows build; a browser has no system fonts to borrow. ○, ▸, ▾, ♛, ◆ and
+	# ✓ were the same, in the Friends, Guild and Trade windows. They are drawn
+	# by marks.gd now, and this reads every string a script or scene could put
+	# on screen for a character the font cannot draw.
+	#
+	# STRINGS, NOT COMMENTS, AND NOT DOCSTRINGS: comments explain the old
+	# letters, and a docstring is never drawn. src/tools/ does not ship.
+	var font: Font = ThemeDB.fallback_font
+	check("the font checked against is the game's own", font != null)
+	if font == null:
+		return
+	var missing: Array[String] = []
+	var scanned: int = 0
+	var paths: Array[String] = _all_files_under("res://src", ".gd")
+	paths.append_array(_all_files_under("res://scene", ".tscn"))
+	for path in paths:
+		if path.begins_with("res://src/tools/"):
+			continue
+		scanned += 1
+		var text: String = FileAccess.get_file_as_string(path)
+		var in_docstring: bool = false
+		var number: int = 0
+		for line in text.split("\n"):
+			number += 1
+			if path.ends_with(".gd") and line.count('"""') % 2 == 1:
+				in_docstring = not in_docstring
+				continue
+			if in_docstring or (path.ends_with(".gd") and line.contains('"""')):
+				continue
+			for ch in _string_characters(line, path.ends_with(".gd")):
+				if ch.unicode_at(0) > 127 and not font.has_char(ch.unicode_at(0)):
+					missing.append("%s:%d  %s (U+%04X)" % [path.trim_prefix("res://"), number, ch, ch.unicode_at(0)])
+	check("the scan read the windows' scripts and scenes", scanned > 100, scanned)
+	check("no string shows a character the font lacks - a browser draws it as a box", missing.is_empty(),
+		"\n         ".join(missing))
+
+	# THE MARKS THAT REPLACED THEM
+	var shapes_ok: bool = true
+	for shape in Marks.SHAPES:
+		var drawn: Texture2D = Marks.texture(shape, Color.WHITE)
+		var rows: Array = Marks.SHAPES[shape]
+		if drawn == null or drawn.get_height() != rows.size() or drawn.get_width() != str(rows[0]).length():
+			shapes_ok = false
+	check("marks.gd draws each of its marks, a pixel per #", shapes_ok)
+	var green := Color(0.45, 0.9, 0.5)
+	check("  the same mark in the same colour is built once",
+		Marks.texture("online", green) == Marks.texture("online", green))
+	var filled: Image = Marks.texture("online", green).get_image()
+	var hollow: Image = Marks.texture("offline", green).get_image()
+	check("  online is filled and offline hollow - shapes, not only colours",
+		filled.get_pixel(3, 3).a > 0.5 and hollow.get_pixel(3, 3).a < 0.5
+		and hollow.get_pixel(0, 3).a > 0.5 and Vector3(filled.get_pixel(3, 3).r - green.r, filled.get_pixel(3, 3).g - green.g,
+			filled.get_pixel(3, 3).b - green.b).length() < 0.01,
+		[filled.get_pixel(3, 3), hollow.get_pixel(3, 3), hollow.get_pixel(0, 3)])
+	check("  and a mark it does not have is nothing, not a crash", Marks.texture("nope", green) == null)
+
+
+func _string_characters(line: String, script: bool) -> String:
+	# Every character inside a double-quoted string on this line, comments left
+	# out (a # outside a string ends a script's line). Escapes are skipped
+	# whole, so \" does not end the string.
+	var out: String = ""
+	var inside: bool = false
+	var i: int = 0
+	while i < line.length():
+		var ch: String = line[i]
+		if inside:
+			if ch == "\\":
+				i += 2
+				continue
+			if ch == '"':
+				inside = false
+			else:
+				out += ch
+		elif ch == '"':
+			inside = true
+		elif ch == "#" and script:
+			break
+		i += 1
+	return out
+
 
 func _test_every_font_draws_without_the_os() -> void:
 	section("FONTS - every font has glyphs of its own (the browser has no system fonts)")
@@ -12844,7 +12935,21 @@ func _test_the_staff_desk() -> void:
 		bob_row.text if bob_row != null else "no row")
 	check("but not the notes - a note is not a sanction", bob_row != null and not bob_row.text.contains("note"))
 	check("clipped to the column, with the whole line on hover",
-		bob_row != null and bob_row.clip_text and bob_row.tooltip_text == bob_row.text)
+		bob_row != null and bob_row.clip_text and bob_row.tooltip_text.ends_with(bob_row.text))
+	var amy_row: Button = null
+	for row in _staff_rows(panel.account_list):
+		if str(row.get_meta("username", "")) == "amy":
+			amy_row = row
+	check("the presence dot is drawn, not a letter the font lacks: filled online, hollow offline",
+		bob_row != null and amy_row != null and bob_row.icon != null and amy_row.icon != null
+		and not bob_row.text.contains("●") and not bob_row.text.contains("○")
+		and [str(amy_row.get_meta("mark", "")), str(bob_row.get_meta("mark", ""))]
+			== ["online" if bool(amy.get("online", false)) else "offline",
+				"online" if bool(bob.get("online", false)) else "offline"]
+		and amy_row.tooltip_text.begins_with("online - " if bool(amy.get("online", false)) else "offline - ")
+		and amy_row.icon == Marks.texture("online", panel.COLOUR_ONLINE)
+		and bob_row.icon == Marks.texture("offline", panel.COLOUR_OFFLINE),
+		[amy_row.get_meta("mark", "") if amy_row else null, bob_row.get_meta("mark", "") if bob_row else null])
 
 	# ---- the picked player survives a page that does not carry them ----
 	panel._selected = "amy"
@@ -13074,6 +13179,18 @@ func _guild_rows_of(panel: Node) -> Array:
 	return out
 
 
+func _marks_of(node: Node) -> Array:
+	# Every drawn mark under `node` (marks.gd's "mark" meta), in tree order:
+	# the dots, arrows and rank marks that used to be letters.
+	var out: Array = []
+	if node == null:
+		return out
+	for child in node.find_children("*", "", true, false):
+		if child is Control and child.is_visible_in_tree() and child.has_meta("mark"):
+			out.append(str(child.get_meta("mark")))
+	return out
+
+
 func _guild_texts(node: Node) -> Array:
 	# Every Label and Button text under `node`, in tree order.
 	var out: Array = []
@@ -13190,8 +13307,8 @@ func _test_the_guild_panel_reads_well() -> void:
 		return
 	var me_texts: Array = _guild_texts(me_frame)
 	check("online is a filled dot and offline a hollow one - shapes, not + and -",
-		me_texts.has("●") and _guild_texts(quiet).has("○")
-		and not me_texts.has("+") and not _guild_texts(quiet).has("-"), [me_texts, _guild_texts(quiet)])
+		_marks_of(me_frame).has("online") and _marks_of(quiet).has("offline")
+		and not me_texts.has("+") and not _guild_texts(quiet).has("-"), [_marks_of(me_frame), _marks_of(quiet)])
 	check("your own row says it is you", me_texts.has("you"), me_texts)
 	check("an online row does not say 'online' beside the dot that already does",
 		not me_texts.has("online"), me_texts)
@@ -13201,8 +13318,8 @@ func _test_the_guild_panel_reads_well() -> void:
 	check("rows carry no buttons until they are opened",
 		rowdy.find_children("*", "Button", true, false).is_empty())
 	check("your own row offers nothing and does not pretend to",
-		me_frame.mouse_default_cursor_shape != Control.CURSOR_POINTING_HAND and not me_texts.has("▸"))
-	check("a row with something to offer says so", _guild_texts(quiet).has("▸"), _guild_texts(quiet))
+		me_frame.mouse_default_cursor_shape != Control.CURSOR_POINTING_HAND and not _marks_of(me_frame).has("closed"))
+	check("a row with something to offer says so", _marks_of(quiet).has("closed"), _marks_of(quiet))
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
 	click.pressed = true
@@ -13269,7 +13386,7 @@ func _test_the_guild_panel_reads_well() -> void:
 		headings == ["Leader", "Officers · 2", "Members · 2"], headings)
 	var arrows: int = 0
 	for row in _guild_rows_of(panel):
-		if row is PanelContainer and _guild_texts(row).has("▸"):
+		if row is PanelContainer and _marks_of(row).has("closed"):
 			arrows += 1
 	check("and is offered nothing on anybody's row", arrows == 0, arrows)
 	check("and only Leave in the footer", panel.leave_button.visible and not panel.disband_button.visible)
@@ -13317,21 +13434,21 @@ func _test_the_guild_panel_reads_well() -> void:
 		p001_name != null and p001_name.get_theme_color("font_color") == NameTag.colour(null))
 	var owner_row: PanelContainer = _guild_member_frame(panel, "Tunacan")
 	check("the server's owner wears the crown in the guild too",
-		owner_row != null and owner_row.find_children("*", "TextureRect", true, false).size() == 1)
+		owner_row != null and owner_row.find_child("crown", true, false) is TextureRect)
 	check("a mod wears MOD, a dev DEV",
 		_guild_texts(_guild_member_frame(panel, "quietone")).has("MOD")
 		and _guild_texts(_guild_member_frame(panel, "newbie")).has("DEV"))
-	var mark_of := func(who: String) -> Label:
+	var mark_of := func(who: String) -> TextureRect:
 		var f: PanelContainer = _guild_member_frame(panel, who)
-		return f.find_child("rankmark", true, false) as Label if f != null else null
-	var lead_mark: Label = mark_of.call("Tunacan")
-	var off_mark: Label = mark_of.call("rowdy")
+		return f.find_child("rankmark", true, false) as TextureRect if f != null else null
+	var lead_mark: TextureRect = mark_of.call("Tunacan")
+	var off_mark: TextureRect = mark_of.call("rowdy")
 	check("the guild leader wears a gold crown mark",
-		lead_mark != null and lead_mark.text == "♛"
-		and lead_mark.get_theme_color("font_color") == panel.RANK_COLOURS["leader"])
+		lead_mark != null and lead_mark.get_meta("mark", "") == "leader"
+		and lead_mark.texture == Marks.texture("leader", panel.RANK_COLOURS["leader"]))
 	check("an officer a blue diamond",
-		off_mark != null and off_mark.text == "◆"
-		and off_mark.get_theme_color("font_color") == panel.RANK_COLOURS["officer"])
+		off_mark != null and off_mark.get_meta("mark", "") == "officer"
+		and off_mark.texture == Marks.texture("officer", panel.RANK_COLOURS["officer"]))
 	check("and a member nothing", mark_of.call("p001") == null)
 	var gold_heading: bool = false
 	for r in _guild_rows_of(panel):
@@ -13503,8 +13620,8 @@ func _test_trades_reach_the_right_people() -> void:
 	var detail: Label = panel.with_row.get_node_or_null("detail") as Label
 	check("and their account and level", detail != null and detail.text == "(bob) · lv 7",
 		detail.text if detail else null)
-	var dot: Label = panel.with_row.get_node_or_null("presence") as Label
-	check("with a presence dot", dot != null and dot.text == "●")
+	var dot: TextureRect = panel.with_row.get_node_or_null("presence") as TextureRect
+	check("with a presence dot", dot != null and dot.get_meta("mark", "") == "online")
 	var their_row: Node = panel.them_list.get_node_or_null("item_ironsword")
 	check("their item is drawn as a row with an icon's space kept",
 		their_row != null and their_row.get_node_or_null("icon") != null
@@ -13557,7 +13674,8 @@ func _test_trades_reach_the_right_people() -> void:
 	check("an offline partner disables Accept in the window, and says so",
 		panel.confirm_button.disabled and panel.notice_label.text.contains("gone offline"),
 		[panel.confirm_button.disabled, panel.notice_label.text])
-	check("the dot goes hollow", (panel.with_row.get_node_or_null("presence") as Label).text == "○")
+	check("the dot goes hollow",
+		str(panel.with_row.get_node("presence").get_meta("mark", "")) == "offline")
 	check("the asked side can Decline", TradePanel.cancel_text("b", {"confirmed": false}) == "Decline")
 	check("but not once they have agreed to something",
 		TradePanel.cancel_text("b", {"confirmed": true}) == "Cancel trade")
@@ -17249,7 +17367,9 @@ func _test_staff_reports_and_mutes() -> void:
 	panel._render_log()
 	var folded: Button = panel.log_entries.get_child(0).find_child("fold", true, false) as Button
 	check("  drawn as one line with a count, the detail left out",
-		folded != null and folded.text.begins_with("▸ ") and folded.text.contains("  boss granted themselves items ×3 · from ")
+		folded != null and folded.get_meta("mark", "") == "closed"
+		and folded.icon == Marks.texture("closed", folded.get_theme_color("font_color"))
+		and folded.text.contains("  boss granted themselves items ×3 · from ")
 		and not folded.text.contains("1 x")
 		and panel.log_entries.get_child_count() == 2, folded.text if folded != null else "no fold")
 	if folded != null:

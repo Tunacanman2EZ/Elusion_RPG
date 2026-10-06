@@ -34,6 +34,7 @@ const NAME_PATTERN := "^[A-Za-z0-9_]{3,20}$"
 # copy beside chat's and the nameplate's; it lives in nametag.gd now, which
 # every list that draws a name shares.
 const NameTag := preload("res://src/shared/nametag.gd")
+const Marks := preload("res://src/shared/marks.gd")
 
 
 var _in_flight: bool = false
@@ -257,13 +258,13 @@ func _add_row(person: Dictionary, now: int, kind: String) -> void:
 	margin.add_child(line)
 
 	if kind == "friend":
-		var dot := Label.new()
-		# SHAPES, not + and -, which read as buttons that add and remove.
-		dot.text = "●" if bool(person.get("online", false)) else "○"
-		dot.add_theme_color_override("font_color",
-			Color(0.45, 0.9, 0.5) if bool(person.get("online", false))
-			else Color(0.45, 0.42, 0.38))
-		dot.add_theme_font_size_override("font_size", 13)
+		# SHAPES, not + and -, which read as buttons that add and remove. Drawn
+		# by marks.gd: ● and ○ are not in the game's font, and a browser showed
+		# a box with a code in it.
+		var on: bool = bool(person.get("online", false))
+		var dot: TextureRect = Marks.make("online" if on else "offline",
+			Color(0.45, 0.9, 0.5) if on else Color(0.45, 0.42, 0.38), "Online" if on else "Offline")
+		dot.name = "dot"
 		line.add_child(dot)
 
 	# CROWN OR BADGE, THEN THE NAME IN THE COLOUR ITS PLAYER CHOSE. The same

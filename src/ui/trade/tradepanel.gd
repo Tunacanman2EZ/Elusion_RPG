@@ -27,6 +27,7 @@ extends Control
 
 
 const NameTag := preload("res://src/shared/nametag.gd")
+const Marks := preload("res://src/shared/marks.gd")
 # ago_text(), the guild panel's "2 h ago", aged against the server's clock.
 const GuildPanelScript := preload("res://src/ui/guild/guildpanel.gd")
 
@@ -525,12 +526,9 @@ func _render_with_row(them: Dictionary) -> void:
 	with their rank, their account and level."""
 	_clear(with_row)
 	var online: bool = bool(them.get("online", true))
-	var dot := Label.new()
+	var dot: TextureRect = Marks.make("online" if online else "offline",
+		COLOUR_ONLINE if online else COLOUR_OFFLINE, "online" if online else "offline")
 	dot.name = "presence"
-	dot.text = "●" if online else "○"
-	dot.tooltip_text = "online" if online else "offline"
-	dot.add_theme_color_override("font_color", COLOUR_ONLINE if online else COLOUR_OFFLINE)
-	dot.add_theme_font_size_override("font_size", 12)
 	with_row.add_child(dot)
 
 	var caption := Label.new()
@@ -582,7 +580,7 @@ func _render_our_side(us: Dictionary) -> void:
 
 func _update_our_summary(us: Dictionary) -> void:
 	var agreed: bool = bool(us.get("confirmed", false))
-	you_header.text = "You give%s" % ("  ✓ accepted" if agreed else "")
+	you_header.text = "You give%s" % ("  · accepted" if agreed else "")
 	you_header.add_theme_color_override("font_color", COLOUR_AGREED if agreed else Color(0.6, 0.9, 0.7))
 	you_worth.text = worth_text(us.get("offering_value"))
 
@@ -594,7 +592,7 @@ func _render_their_side(them: Dictionary) -> void:
 
 	_clear(them_list)
 	var agreed: bool = bool(them.get("confirmed", false))
-	them_header.text = "They give%s" % ("  ✓ accepted" if agreed else "")
+	them_header.text = "They give%s" % ("  · accepted" if agreed else "")
 	them_header.add_theme_color_override("font_color", COLOUR_AGREED if agreed else Color(0.95, 0.85, 0.6))
 
 	var items: Array = them.get("items", []) if them.get("items", []) is Array else []

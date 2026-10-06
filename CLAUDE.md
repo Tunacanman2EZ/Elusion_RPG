@@ -863,6 +863,19 @@ theme's font. `_test_every_font_draws_without_the_os()` fails on any empty
 the font it resolves to. A `SystemFont` (the chat's) is fine: Godot documents
 that it falls back to the default theme font where there are no system fonts.
 
+**A letter the font does not have is the same bug, one character at a time.**
+6 Oct: a box with a code in it before every name in the Staff window on the
+web. The online dot was the letter ●, and the game's font - Godot's built-in
+Open Sans, with no theme or project font set - has no ●, nor ○, ▸, ▾, ♛, ◆, ✓
+or →. They were in the Staff, Friends, Guild and Trade windows. They are
+drawn now, by `src/shared/marks.gd` (a few rows of pixels each, cached per
+colour, `make()` for a TextureRect, `texture()` for a Button's icon), and
+`_test_every_ui_character_is_in_the_font()` reads every double-quoted string
+in `src/` and `scene/` - comments and docstrings left out, `src/tools/` too -
+and fails on any character `ThemeDB.fallback_font` cannot draw. Before using a
+symbol in a string, ask the font: `ThemeDB.fallback_font.has_char(ord)`. The
+ones it has include • · — – … × » « › ‹ °.
+
 ### Work that vanishes past an await is checked now too
 
 `_test_await_does_not_lose_work()` reads every `await` in `enemies`,
@@ -3824,7 +3837,8 @@ src/world/          levels (elusion, field), interactables, lootbag, roofswap,
                     mapbackdrop (grey under the tiles, black past the map),
                     enemysleeper (far enemies stop thinking)
 src/shared/         pure helpers used across characters, enemies and pets —
-                    facing, formation, homing, safespot, and localtime, which
+                    facing, formation, homing, safespot, marks (the dots and
+                    arrows drawn as pixels), and localtime, which
                     is the ONLY place unix seconds become a wall clock
 src/tools/          the gamedata exporter, the test runner and the atlas
                     audit — none of them ship

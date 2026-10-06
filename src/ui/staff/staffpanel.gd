@@ -64,6 +64,7 @@ signal closed
 # exchange_text(): the player's own words for what a trade moved, so a
 # moderator reads one trade the way the player who made it does.
 const TradePanelScript := preload("res://src/ui/trade/tradepanel.gd")
+const Marks := preload("res://src/shared/marks.gd")
 
 const RANKS: PackedStringArray = ["player", "mod", "dev", "owner"]
 
@@ -847,12 +848,11 @@ func _make_row(entry: Dictionary) -> Button:
 	# ban and a record is wider than the column, and an unclipped Button
 	# widens its container instead - the list would scroll sideways.
 	row.clip_text = true
-	row.text = "%s %s%s" % [
-		"●" if bool(entry.get("online", false)) else "○",
+	row.text = "%s%s" % [
 		name_text,
 		("   " + " · ".join(tags)) if not tags.is_empty() else "",
 	]
-	row.tooltip_text = row.text
+	row.tooltip_text = ("online - " if bool(entry.get("online", false)) else "offline - ") + row.text
 	var colour: Color = COLOUR_OFFLINE
 	if bool(entry.get("banned", false)):
 		colour = COLOUR_BANNED
@@ -860,6 +860,15 @@ func _make_row(entry: Dictionary) -> Button:
 		colour = COLOUR_ONLINE
 	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
 		row.add_theme_color_override(state, colour)
+	# THE DOT IS A PICTURE, not the letter it was: ● and ○ are not in the
+	# game's font, and the browser game drew a box with a code in it in front
+	# of every name. The icon carries its own colour, so the theme's icon tint
+	# is set to white for every state.
+	row.icon = Marks.texture("online" if bool(entry.get("online", false)) else "offline", colour)
+	row.set_meta("mark", "online" if bool(entry.get("online", false)) else "offline")
+	for state in ["icon_normal_color", "icon_hover_color", "icon_pressed_color",
+			"icon_hover_pressed_color", "icon_focus_color"]:
+		row.add_theme_color_override(state, Color.WHITE)
 	# The name rides on the row itself rather than being read back out of its
 	# label, which carries a dot and tags around it.
 	row.set_meta("username", name_text)
@@ -1497,10 +1506,16 @@ func _make_fold_row(run: Array) -> Control:
 	head.flat = true
 	head.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	head.focus_mode = Control.FOCUS_NONE
-	head.text = ("▾ " if open else "▸ ") + describe_fold(run)
+	head.text = describe_fold(run)
 	head.tooltip_text = "Hide them" if open else "Show all %d" % run.size()
 	head.add_theme_font_size_override("font_size", 12)
 	head.add_theme_color_override("font_color", colour_for_kind(str(run[0].get("action", ""))))
+	# The arrow is drawn (marks.gd): ▸ and ▾ are not in the game's font.
+	head.icon = Marks.texture("open" if open else "closed", colour_for_kind(str(run[0].get("action", ""))))
+	head.set_meta("mark", "open" if open else "closed")
+	for state in ["icon_normal_color", "icon_hover_color", "icon_pressed_color",
+			"icon_hover_pressed_color", "icon_focus_color"]:
+		head.add_theme_color_override(state, Color.WHITE)
 	head.pressed.connect(func() -> void:
 		if _log_open_runs.has(key):
 			_log_open_runs.erase(key)
