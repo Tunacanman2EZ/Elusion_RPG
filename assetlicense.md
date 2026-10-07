@@ -21,8 +21,8 @@ this to work out what you may do with these files.
 
 ## Original art — © 2026 Elusion Studios
 
-Everything under `/art`, `/assets` and `/audio` **except** the three sections
-below. This includes characters, enemies, tilesets, buildings, interiors, doors,
+Everything under `/art`, `/assets` and `/audio` **except** the sections below
+that name another owner (the pack, the emoji font and the style fonts). This includes characters, enemies, tilesets, buildings, interiors, doors,
 teleporters, menu art, and the original audio (`/audio/ambience` and
 `/audio/sfx`, plus the REAPER session in `/audio`). The sounds are recorded by
 Robert Ashley Clear on his own instruments; `docs/audio.md` lists every file
@@ -204,6 +204,39 @@ this copy.
 Nothing about that licence restricts using the font in this game, including
 commercially. The obligations are the notice, the licence text, and not selling
 the font on its own.
+
+## The style fonts — five families, SIL Open Font License 1.1
+
+Options > Font offers five typefaces beside the standard one (0.8.0). None of
+them is Elusion Studios'. Each is the family's own release from
+[google/fonts](https://github.com/google/fonts), **unmodified** - not
+subsetted, not converted - in a folder of its own under `assets/stylefonts/`
+with the `OFL.txt` that came with it, because each has its own copyright line.
+Read from the fonts' own metadata and those files:
+
+```
+Folder          File                  Family          Version  Copyright
+pixelifysans    PixelifySans.ttf      Pixelify Sans   1.000    2021 The Pixelify Sans Project Authors
+tiny5           Tiny5-Regular.ttf     Tiny5           1.002    2022-2024 The Tiny5 Project Authors
+medievalsharp   MedievalSharp.ttf     MedievalSharp   1.0      2011 wmk69 (Wojciech Kalinowski)
+imfellenglish   IMFeENrm28P.ttf       IM FELL English 3.00     2007/2010 Igino Marini
+grenzegotisch   GrenzeGotisch.ttf     Grenze Gotisch  1.002    2020 The Grenze Gotisch Project Authors
+```
+
+**Two of them reserve their names**: MedievalSharp (in its OFL.txt) and IM
+FELL English Roman (in the font's own copyright string). A Reserved Font Name
+binds a *modified* copy, which may not carry it - and that is why these are
+the release files as published and not the smaller web subsets first tried,
+which are a modified version under the OFL's own definitions. **If any of
+these is ever subsetted or converted to save space, those two must be renamed
+inside the font**, or left whole.
+
+The OFL's obligations are the same as for the emoji font: the copyright notice
+and the licence text travel with the font (they do, and
+`_test_third_party_licences()` fails if one goes missing; Settings'
+`FONT_STYLES` must name only files it checks), and the fonts are not sold on
+their own. Using them in the game, commercially included, is what the licence
+is for.
 
 ## Source code — MIT
 

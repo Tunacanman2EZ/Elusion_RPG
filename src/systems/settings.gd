@@ -185,6 +185,15 @@ const DEFAULTS := {
 	# exactly the parchment colour ordinary names already had, so nobody who
 	# never opens this sees a change.
 	"name_hue": 45.0,
+
+	# --- interface (0.8.0) ---
+	# HOW BIG THE WRITING IS, as a multiple of what every scene and script
+	# authored: 1.0 is the game exactly as built. See TEXT SIZE AND FONT.
+	"text_size": 1.0,
+
+	# THE TYPEFACE, one of FONT_STYLES. "standard" is Godot's own font, which
+	# is what the game has always used.
+	"font": "standard",
 }
 
 
@@ -300,6 +309,9 @@ var _focused: bool = true
 # eight `changed` signals at anything that happens to be listening.
 var _loading: bool = false
 
+# The keys the player chose. Its own file and its own object - see keybinds.gd.
+var keys: Keybinds = Keybinds.new()
+
 
 # =============================================================================
 # LIFECYCLE
@@ -317,6 +329,8 @@ func _ready() -> void:
 	# candle in a scene loaded an hour from now obeys the lighting setting
 	# without that scene, or the candle, knowing it exists.
 	get_tree().node_added.connect(_on_node_added)
+	# THE KEYS (0.8.0), before any scene asks the InputMap for one.
+	keys.setup()
 	load_settings()
 	# AFTER the file: the screen and the mode are applied, so the remembered
 	# spot is on the right screen. Then the watch, which notices drags.
@@ -899,10 +913,260 @@ func _apply_fps_cap() -> void:
 		Engine.max_fps = want
 
 
+# =============================================================================
+# TEXT SIZE AND FONT (0.8.0)
+# =============================================================================
+# The owner, 7 Oct: "UI and text size and font" - for a big screen or one
+# across the room, like his Samsung - and for the font, "what we need is style
+# fonts": typefaces that suit a pixel-art fantasy game, not accessibility ones.
+#
+# TEXT SIZE SCALES EVERY FONT SIZE IN THE GAME, NOT THE BOXES. Nearly every
+# label, button and box in the game names its own size (12, 13, 18...) in its
+# .tscn or its script, so a theme-wide size would change nothing. Instead each
+# text control is scaled as it enters the tree (_on_node_added()): the size it
+# was authored with is remembered on the node (_META_FONT_SIZES) and the size
+# drawn is that times text_factor(). Containers grow with their text, and a
+# window grows to fit what it holds (PanelWindow's _on_content_resized()). At
+# 1.0 with the standard font NOTHING is touched - not one override, not one
+# meta - so the game is exactly as built until somebody asks.
+#
+# CODE THAT SETS A SIZE LATER is caught too: a scaled node is watched through
+# its `theme_changed` signal, and a size that is not the one this file set is
+# the new authored size, scaled at once (_on_text_theme_changed()).
+#
+# WHAT IT DOES NOT DO: the bars, the hotbar and the bottom bar are pinned to
+# places on a 1280x720 layout, and their boxes keep their size - only their
+# writing grows. Writing in the WORLD - names over heads, damage numbers, an
+# enemy's health readout, a sign - is the world's and the text size leaves it
+# alone (is_world_text()): it is drawn under the camera's zoom, which Camera
+# view already sets. It takes the font's own size scale, so it looks the same
+# size in any font.
+#
+# THE FONT is the default theme's default font, swapped in place
+# (_apply_font_style()). Every control that does not name a font of its own
+# reads it from there, so one assignment changes them all - measured on 4.6.1:
+# existing labels relayout, new ones are born with it. Each style keeps the
+# standard font as a fallback, so a character it lacks is drawn rather than a
+# box. Chat keeps its own system font, for its emoji.
+#
+# EACH STYLE CARRIES A SIZE SCALE, which multiplies the text size, so 12 in
+# any font looks about as big as 12 in the standard one (Open Sans SemiBold,
+# Godot's own). Matched on the height of a small "x" - 0.541 of the size in
+# Open Sans, 0.46 in Pixelify, Fell and Grenze - and pulled back where that
+# made a font much wider (Pixelify) or its tall capitals loud (Fell); then
+# checked by eye on the Options window. Measured with fontTools on the files.
+
+const TEXT_SIZES := [1.0, 1.15, 1.3, 1.5]
+
+# id: [what Options calls it, the file, its size scale]. Every file is the
+# family's own release from google/fonts, UNMODIFIED - two of them reserve
+# their names (MedievalSharp, IM FELL English Roman), which binds a changed
+# copy, not this one - each in a folder of its own with its own OFL.txt,
+# under the SIL Open Font License 1.1. See assetlicense.md.
+const FONT_STYLES := {
+	"standard": ["Standard", "", 1.0],
+	"pixelify": ["Pixelify Sans", "res://assets/stylefonts/pixelifysans/PixelifySans.ttf", 1.1],
+	"tiny5": ["Tiny5", "res://assets/stylefonts/tiny5/Tiny5-Regular.ttf", 1.1],
+	"medieval": ["MedievalSharp", "res://assets/stylefonts/medievalsharp/MedievalSharp.ttf", 1.0],
+	"fell": ["IM Fell English", "res://assets/stylefonts/imfellenglish/IMFeENrm28P.ttf", 1.1],
+	"gothic": ["Grenze Gotisch", "res://assets/stylefonts/grenzegotisch/GrenzeGotisch.ttf", 1.15],
+}
+const FONT_STYLE_ORDER := ["standard", "pixelify", "tiny5", "medieval", "fell", "gothic"]
+
+# A RichTextLabel has five sizes; everything else that draws text has one.
+const RICH_TEXT_SIZES := ["normal_font_size", "bold_font_size", "italics_font_size",
+	"bold_italics_font_size", "mono_font_size"]
+
+const _META_FONT_SIZES := &"_settings_authored_font_sizes"
+const _META_FONT_SET := &"_settings_font_sizes_set"
+
+# The standard font and the default theme's rich-text variations' own bases,
+# kept the first time a style is applied so "Standard" is exactly what it was.
+var _standard_font: Font = null
+var _standard_variation_bases: Dictionary = {}
+# True while this file is writing sizes, so its own writes are not mistaken for
+# a script's.
+var _scaling_text: bool = false
+
+
+static func normalise_text_size(value: Variant) -> float:
+	# THE NEAREST SIZE ON THE LIST: a hand-edited 1.2 is Large, 9 is Largest.
+	var want: float = float(value)
+	var best: float = TEXT_SIZES[0]
+	for size in TEXT_SIZES:
+		if absf(float(size) - want) < absf(best - want):
+			best = float(size)
+	return best
+
+
+static func scaled_font_size(authored: int, factor: float) -> int:
+	return maxi(1, roundi(float(authored) * factor))
+
+
+static func font_style_scale(style: String) -> float:
+	return float(FONT_STYLES.get(style, FONT_STYLES["standard"])[2])
+
+
+func text_factor() -> float:
+	return float(get_value("text_size")) * font_style_scale(str(get_value("font")))
+
+
+static func text_size_items(node: Node) -> Array:
+	"""Which font sizes `node` draws with: the five of a RichTextLabel, the one
+	of anything else that has text, or none."""
+	if node is RichTextLabel:
+		return RICH_TEXT_SIZES
+	if (node is Control and (node as Control).has_theme_font_size("font_size")) \
+			or (node is Window and (node as Window).has_theme_font_size("font_size")):
+		return ["font_size"]
+	return []
+
+
+static func is_world_text(node: Node) -> bool:
+	"""True for writing that belongs to the WORLD rather than the interface: a
+	name over a head, a damage number, a health readout inside an enemy's bar.
+	Those are drawn under the camera's zoom, inside boxes sized for them, so
+	the text size leaves them alone (the font's own scale still applies).
+	Decided by what the control hangs from: a Node2D
+	before any CanvasLayer or Window is the world."""
+	var at: Node = node.get_parent()
+	while at != null:
+		if at is CanvasLayer or at is Window:
+			return false
+		if at is Node2D:
+			return true
+		at = at.get_parent()
+	return false
+
+
+func _scale_text_of(node: Node, factor: float) -> void:
+	var items: Array = text_size_items(node)
+	if items.is_empty():
+		return
+	var authored: Dictionary = node.get_meta(_META_FONT_SIZES, {})
+	# NEVER TOUCHED AND NOTHING TO DO: the game as built.
+	if authored.is_empty() and is_equal_approx(factor, 1.0):
+		return
+	# THE WORLD'S WRITING takes the font's own scale and not the text size, so
+	# a name over a head is as big in Tiny5 as in the standard font, and no
+	# bigger at Largest.
+	if is_world_text(node):
+		factor = font_style_scale(str(get_value("font")))
+		if authored.is_empty() and is_equal_approx(factor, 1.0):
+			return
+	var ours: Dictionary = node.get_meta(_META_FONT_SET, {})
+	var writes: Array = []
+	for item in items:
+		if not authored.has(item):
+			authored[item] = [node.get_theme_font_size(item), node.has_theme_font_size_override(item)]
+		var base: int = int(authored[item][0])
+		if is_equal_approx(factor, 1.0):
+			ours.erase(item)
+			writes.append([item, base if bool(authored[item][1]) else -1])
+		else:
+			var want: int = scaled_font_size(base, factor)
+			ours[item] = want
+			writes.append([item, want])
+	# THE BOOKKEEPING FIRST, then the writes: a write fires theme_changed at
+	# once, and the watcher must already know the size is this file's.
+	node.set_meta(_META_FONT_SIZES, authored)
+	node.set_meta(_META_FONT_SET, ours)
+	_scaling_text = true
+	for write in writes:
+		if int(write[1]) < 0:
+			node.remove_theme_font_size_override(write[0])
+		elif node.get_theme_font_size(write[0]) != int(write[1]) \
+				or not node.has_theme_font_size_override(write[0]):
+			node.add_theme_font_size_override(write[0], int(write[1]))
+	_scaling_text = false
+	if not node.theme_changed.is_connected(_on_text_theme_changed):
+		node.theme_changed.connect(_on_text_theme_changed.bind(node))
+
+
+func _on_text_theme_changed(node: Node) -> void:
+	# A SIZE THIS FILE DID NOT WRITE is a script setting a new one: that is the
+	# authored size now, and it is scaled like the rest.
+	if _scaling_text or not is_instance_valid(node) or not node.has_meta(_META_FONT_SIZES):
+		return
+	var authored: Dictionary = node.get_meta(_META_FONT_SIZES)
+	var ours: Dictionary = node.get_meta(_META_FONT_SET, {})
+	var moved: bool = false
+	for item in authored:
+		if not node.has_theme_font_size_override(item):
+			continue
+		# What this file left there: its scaled size, or - back at 1.0 - the
+		# authored override, or nothing at all.
+		var expected: int = int(ours.get(item,
+			int(authored[item][0]) if bool(authored[item][1]) else -1))
+		var now: int = node.get_theme_font_size(item)
+		if now != expected:
+			authored[item] = [now, true]
+			moved = true
+	if moved:
+		node.set_meta(_META_FONT_SIZES, authored)
+		_scale_text_of(node, text_factor())
+
+
+func _apply_text_everywhere() -> void:
+	if not is_inside_tree():
+		return
+	var factor: float = text_factor()
+	var stack: Array = [get_tree().root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		_scale_text_of(node, factor)
+		# INTERNAL CHILDREN TOO: an OptionButton's list is one.
+		stack.append_array(node.get_children(true))
+
+
+func style_font(style: String) -> Font:
+	"""The Font a style draws with, its fallback the standard font; the
+	standard font itself for "standard" or a file that will not load."""
+	if _standard_font == null:
+		_standard_font = ThemeDB.get_default_theme().default_font
+	var entry: Array = FONT_STYLES.get(style, FONT_STYLES["standard"])
+	if str(entry[1]) == "":
+		return _standard_font
+	var loaded: FontFile = load(str(entry[1])) as FontFile
+	if loaded == null:
+		push_warning("Settings: could not load the font %s - using the standard one." % entry[1])
+		return _standard_font
+	if not loaded.fallbacks.has(_standard_font):
+		loaded.fallbacks = [_standard_font]
+	return loaded
+
+
+func _apply_font_style(style: String) -> void:
+	var theme: Theme = ThemeDB.get_default_theme()
+	if _standard_font == null:
+		_standard_font = theme.default_font
+	var font: Font = style_font(style)
+	# THE BOLD AND ITALIC RICH TEXT are variations of the standard font in the
+	# default theme; their base follows the style, and goes back after.
+	for item in ["bold_font", "italics_font", "bold_italics_font"]:
+		var variation: FontVariation = theme.get_font(item, "RichTextLabel") as FontVariation
+		if variation == null:
+			continue
+		if not _standard_variation_bases.has(item):
+			_standard_variation_bases[item] = variation.base_font
+		variation.base_font = _standard_variation_bases[item] if font == _standard_font else font
+	if theme.default_font != font:
+		theme.default_font = font
+	# A FontVariation WITH NO BASE (the HUD bars' bold readout) draws with the
+	# fallback font.
+	ThemeDB.fallback_font = font
+	# The style's own size scale.
+	_apply_text_everywhere()
+
+
 func _on_node_added(node: Node) -> void:
-	# Cheap for everything else: two type checks. This fires for every node
-	# that enters the tree, and nearly all of them are neither.
-	if node is Light2D or node is CanvasModulate:
+	# Cheap for everything else: a few type checks. This fires for every node
+	# that enters the tree, and nearly all of them are none of these.
+	if node is Control or node is PopupMenu:
+		# TEXT THAT ARRIVES AFTER THE SETTING DID: every window, every line of
+		# chat, every tooltip built after the player chose a size.
+		_scale_text_of(node, text_factor())
+	elif node is Light2D or node is CanvasModulate:
 		_apply_lighting_to(node, str(get_value("lighting")))
 	elif node is Camera2D:
 		# A CAMERA THAT ARRIVES AFTER THE SETTING DID. Every scene change
@@ -1204,6 +1468,10 @@ func _normalise(key: String, typed: Variant) -> Variant:
 			# WRAPPED, because the thing it names is a circle. 400 is 40 and
 			# -20 is 340; neither is a mistake worth refusing.
 			return wrapf(float(typed), 0.0, 360.0)
+		"text_size":
+			return normalise_text_size(typed)
+		"font":
+			return normalise_choice(typed, FONT_STYLE_ORDER, "standard")
 		"window_mode":
 			return normalise_window_mode(typed)
 		"screen", "window_x", "window_y":
@@ -1329,6 +1597,10 @@ func _apply(key: String, value: Variant) -> void:
 			# repaints its own plate - the colour belongs to the character,
 			# not to a list this autoload would have to keep.
 			pass
+		"text_size":
+			_apply_text_everywhere()
+		"font":
+			_apply_font_style(str(value))
 		"damage_numbers":
 			# Read where the labels are spawned rather than pushed anywhere —
 			# see player.gd and baseenemy.gd. Nothing to apply.

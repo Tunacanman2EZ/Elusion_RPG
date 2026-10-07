@@ -16,7 +16,9 @@ It is short on purpose. It has a beginning, an escalation, an ending, and a loop
 
 Elusion is a PC game, played with a keyboard and mouse in a desktop browser at [play.elusionrpg.com](https://play.elusionrpg.com). It is not made for phones.
 
-The first time a character stands in town, a welcome card gives the way out to the Field and lists every key. **H** brings the keys back at any time, and they are read from the game's own input settings, so the card cannot drift from the game.
+The first time a character stands in town, a welcome card gives the way out to the Field and lists every key. **H** brings the keys back at any time, and they are read from the game's own input settings, so the card cannot drift from the game. **Change keys** on that card (or on Options) turns the list into buttons: click one, press the new key. Every key but Escape can be moved, each action takes two, and a key taken from another action says so.
+
+Options also sets the **text size** (up to 150%, for a big screen or one across the room) and the **font**: the standard one, or one of five that suit the game — Pixelify Sans, Tiny5, MedievalSharp, IM Fell English and Grenze Gotisch, each under the SIL Open Font License (see [assetlicense.md](assetlicense.md)).
 
 | | |
 |---|---|
@@ -27,6 +29,8 @@ The first time a character stands in town, a welcome card gives the way out to t
 | Use the item on a hotbar key | 1 to 0 |
 | Bag, Gear, Stats, Map | I, G, C, M |
 | Close a window, or open Options | Esc |
+
+Those are the keys as the game comes; Change keys moves any of them but Esc.
 
 The version is in the login screen's corner and at the foot of **Menu** — MAJOR.MINOR.PATCH, 0.x until launch.
 

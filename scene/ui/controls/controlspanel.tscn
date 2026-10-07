@@ -71,12 +71,31 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.92, 0.84, 1)
 theme_override_font_sizes/font_size = 14
 
-[node name="keygrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+[node name="keyscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/scrollbar_v_separation = 6
+horizontal_scroll_mode = 0
+
+[node name="keygrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/keyscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/h_separation = 28
 theme_override_constants/v_separation = 5
 columns = 2
+
+[node name="keynote" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.82, 0.74, 1)
+theme_override_font_sizes/font_size = 13
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
 
 [node name="footerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
 unique_name_in_owner = true
@@ -96,3 +115,29 @@ focus_mode = 0
 theme_type_variation = &"ButtonSocket"
 theme_override_font_sizes/font_size = 15
 text = "Got it"
+
+[node name="keysrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="changekeysbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/keysrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 32)
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"ButtonSocket"
+theme_override_font_sizes/font_size = 14
+text = "Change keys"
+
+[node name="resetkeysbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/keysrow"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(140, 32)
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"ButtonSocket"
+theme_override_font_sizes/font_size = 14
+tooltip_text = "Every key back to how the game came."
+text = "Reset keys"

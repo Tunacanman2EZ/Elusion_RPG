@@ -670,13 +670,26 @@ func _wire_nav_buttons() -> void:
 			toggle.pressed.connect(toggle_nav_menu.bind(toggle_name))
 
 	# THE KEY IN THE HINT, read from the input map like the Controls card reads
-	# it, so a rebound key is never advertised wrong.
+	# it, so a rebound key is never advertised wrong - and read again whenever
+	# a key is changed (0.8.0).
+	_paint_nav_key_hints()
+	var keys: Keybinds = Settings.keys
+	if keys != null and not keys.changed.is_connected(_paint_nav_key_hints):
+		keys.changed.connect(_paint_nav_key_hints)
+	_paint_group_dots()
+
+
+func _paint_nav_key_hints() -> void:
 	for btn_name in NAV_KEY_HINTS:
 		var button: Button = _nav_button(btn_name)
-		if button != null and InputMap.has_action(NAV_KEY_HINTS[btn_name]):
-			button.tooltip_text = "%s (%s)" % [button.tooltip_text,
-				ControlsPanel.action_key(NAV_KEY_HINTS[btn_name])]
-	_paint_group_dots()
+		if button == null or not InputMap.has_action(NAV_KEY_HINTS[btn_name]):
+			continue
+		# The words the scene gave it, kept the first time, so the key is
+		# replaced rather than added again.
+		if not button.has_meta(&"_tip_without_key"):
+			button.set_meta(&"_tip_without_key", button.tooltip_text)
+		button.tooltip_text = "%s (%s)" % [button.get_meta(&"_tip_without_key"),
+			ControlsPanel.action_key(NAV_KEY_HINTS[btn_name])]
 
 
 # =============================================================================
@@ -2617,6 +2630,9 @@ func _ensure_options_screen() -> void:
 	options_screen = OPTIONS_SCENE.instantiate()
 	add_child(options_screen)
 	options_screen.visible = false
+	# "Change keys" on Options opens the Controls card ready to change them.
+	if options_screen.has_signal("keys_requested"):
+		options_screen.keys_requested.connect(open_key_settings)
 
 	# NOTHING IS CONNECTED TO `closed`, ON PURPOSE. There is nothing to tear
 	# down: the panel writes through Settings, which has already applied and
@@ -2681,6 +2697,13 @@ func toggle_controls() -> void:
 
 func _on_controls_pressed() -> void:
 	toggle_controls()
+
+
+func open_key_settings() -> void:
+	"""The Controls card with every key as a button (Options' Change keys)."""
+	_ensure_controls_panel()
+	if controls_panel != null:
+		controls_panel.open_keys()
 
 
 func _offer_welcome_soon() -> void:

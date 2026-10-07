@@ -220,12 +220,124 @@ func _wire() -> void:
 	if view != null and not view.size_changed.is_connected(_on_viewport_resized):
 		view.size_changed.connect(_on_viewport_resized)
 
+	# AND WHEN WHAT IT HOLDS GROWS (0.8.0): a bigger text size or a wider font
+	# makes the content need more room than the window has, and a full-rect
+	# panel cannot be smaller than its contents - it would draw past the grips.
+	# Grown to fit, once a frame at most; never shrunk by this.
+	for child in window.get_children():
+		var part: Control = child as Control
+		if part != null and not part.minimum_size_changed.is_connected(_on_content_resized):
+			part.minimum_size_changed.connect(_on_content_resized)
+
+
+var _fit_queued: bool = false
+
+
+func _on_content_resized() -> void:
+	if _fit_queued:
+		return
+	_fit_queued = true
+	_fit_soon.call_deferred()
+
+
+func _fit_soon() -> void:
+	_fit_queued = false
+	# A HIDDEN WINDOW IS NOT LAID OUT, so what it says it needs is nonsense -
+	# a wrapping label never given a width asks for two thousand pixels - and
+	# growing on it would open Options at the full height of the screen. It
+	# is measured once it is showing (_on_shown()).
+	if not is_instance_valid(window) or not window.is_visible_in_tree():
+		return
+	refit_scrolls()
+	var need: Vector2 = _minimum()
+	if window.size.x < need.x or window.size.y < need.y:
+		_fit()
+
 
 func _on_viewport_resized() -> void:
 	# THE WINDOW SHRINKING IS THE SAME EVENT AS A PANEL BEING PUSHED INTO A
 	# WALL, so it gets the same answer: compress to fit, do not hang off.
 	if is_instance_valid(window):
+		refit_scrolls()
 		_fit()
+
+
+# =============================================================================
+# A WINDOW TALLER THAN THE SCREEN SCROLLS (0.8.0)
+# =============================================================================
+# Every window was laid out for 1280x720 at one text size. At the largest text
+# size two of them - Options and the GM panel - need more than 720, and "the
+# screen beats the minimum" (fit_to()) would cut their bottoms off with
+# nothing to reach them by. So each wraps its body in a ScrollContainer and
+# hands it here: the scroll is exactly as tall as what it holds while the
+# window fits on the screen - the window grows, nothing scrolls - and no
+# taller than the room left once that is no longer true, when it scrolls.
+# Measured on 4.6.1 with every font: nothing else passes 720.
+
+const SCROLL_LEAST := 120.0
+
+var _scrolls: Array[ScrollContainer] = []
+
+
+func keep_scroll_fitted(scroll: ScrollContainer) -> void:
+	if scroll == null or _scrolls.has(scroll):
+		return
+	_scrolls.append(scroll)
+	if not window.visibility_changed.is_connected(_on_shown):
+		window.visibility_changed.connect(_on_shown)
+	var content: Control = scroll_content(scroll)
+	# What the scroll holds is below the window's own children, and a
+	# ScrollContainer's minimum does not move with it - so it is watched itself.
+	if content != null and not content.minimum_size_changed.is_connected(_on_content_resized):
+		content.minimum_size_changed.connect(_on_content_resized)
+	# DEFERRED, not now: this runs from a panel's _ready(), which goes on to
+	# hide it, and nothing in it has been laid out yet.
+	_on_content_resized()
+
+
+static func scroll_content(scroll: ScrollContainer) -> Control:
+	# The first child that is not one of its own scrollbars.
+	for child in scroll.get_children():
+		if child is Control:
+			return child
+	return null
+
+
+static func scroll_height(want: float, rest: float, screen_height: float) -> float:
+	"""How tall a scroll may be: all it wants, unless the rest of the window
+	plus that is taller than the screen - then what is left, and never less
+	than SCROLL_LEAST. Static and pure, so the suite can ask it directly."""
+	if not is_finite(screen_height):
+		return want
+	return minf(want, maxf(screen_height - rest, SCROLL_LEAST))
+
+
+func _on_shown() -> void:
+	# A FRAME AFTER IT APPEARS, when its containers have laid it out.
+	if not is_instance_valid(window) or not window.is_visible_in_tree():
+		return
+	await window.get_tree().process_frame
+	_fit_soon()
+
+
+func refit_scrolls() -> void:
+	if _scrolls.is_empty() or not is_instance_valid(window) or not window.is_visible_in_tree():
+		return
+	var screen: Vector2 = _screen()
+	for scroll in _scrolls:
+		if not is_instance_valid(scroll):
+			continue
+		var content: Control = scroll_content(scroll)
+		if content == null:
+			continue
+		# THE REST OF THE WINDOW is what it needs less what the scroll adds,
+		# which is plain subtraction because each of these windows stacks its
+		# parts in one column. Measured, never by setting the scroll to zero
+		# first: that would fire this again, every frame.
+		var rest: float = content_minimum(window).y - scroll.get_combined_minimum_size().y
+		var height: float = scroll_height(content.get_combined_minimum_size().y, rest, screen.y)
+		if absf(scroll.custom_minimum_size.y - height) > 0.5:
+			scroll.custom_minimum_size.y = height
 
 
 # =============================================================================

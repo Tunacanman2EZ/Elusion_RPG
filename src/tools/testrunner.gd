@@ -208,6 +208,8 @@ func _run_all() -> void:
 	await _test_move_players_from_the_list()
 	await _test_give_and_save_history()
 	await _test_monitors_and_window_modes()
+	await _test_text_size_and_font()
+	await _test_rebindable_keys()
 	_test_presence_carries_the_monsters()
 	await _test_shared_monsters_lead()
 	await _test_shared_monsters_follow()
@@ -653,6 +655,12 @@ const LICENSED_ART_FOLDERS := {
 	# was classified "elusion", which is the fourth time a claim in
 	# assetlicense.md outlived the files it described.
 	"assets/fonts": "google-ofl",
+
+	# Five typefaces Options offers (0.8.0, Settings.FONT_STYLES), each by its
+	# own authors under the SIL Open Font License 1.1, each in a folder of its
+	# own beside its own OFL.txt - five copyright lines, so five licence files.
+	# Not Google's, though google/fonts is where every file came from.
+	"assets/stylefonts": "ofl-style-fonts",
 
 	# Caio Carlos / Clockwork Raven Studios, purchased under their asset licence.
 	# Credit is REQUIRED, not courtesy. The private submodule lives here.
@@ -1199,6 +1207,13 @@ func _is_word_char(c: String) -> bool:
 # satisfying the licence, which is how a check gets switched off.
 const THIRD_PARTY_LICENCES := {
 	"res://assets/fonts/NotoColorEmoji.ttf": "res://assets/fonts",
+	# The style fonts (0.8.0): every file Settings.FONT_STYLES names must be
+	# here, which _test_text_size_and_font checks.
+	"res://assets/stylefonts/pixelifysans/PixelifySans.ttf": "res://assets/stylefonts/pixelifysans",
+	"res://assets/stylefonts/tiny5/Tiny5-Regular.ttf": "res://assets/stylefonts/tiny5",
+	"res://assets/stylefonts/medievalsharp/MedievalSharp.ttf": "res://assets/stylefonts/medievalsharp",
+	"res://assets/stylefonts/imfellenglish/IMFeENrm28P.ttf": "res://assets/stylefonts/imfellenglish",
+	"res://assets/stylefonts/grenzegotisch/GrenzeGotisch.ttf": "res://assets/stylefonts/grenzegotisch",
 }
 
 const LICENCE_FILENAMES := ["OFL.txt", "OFL", "LICENSE", "LICENSE.txt", "LICENCE", "LICENCE.txt"]
@@ -1227,6 +1242,31 @@ func _test_third_party_licences() -> void:
 				% [", ".join(LICENCE_FILENAMES), folder])
 		if found != "":
 			print("         found %s" % folder.path_join(found))
+
+	# AND IT SHIPS IN THE GAME, not only in the repository (0.8.0). A .txt is
+	# not a resource, so an export leaves it out unless the preset's
+	# include_filter names it - every font in every build went out without its
+	# licence until then.
+	var presets := ConfigFile.new()
+	presets.load("res://export_presets.cfg")
+	var unshipped: Array = []
+	for section_name in presets.get_sections():
+		if not presets.has_section_key(section_name, "include_filter"):
+			continue
+		var patterns: PackedStringArray = str(presets.get_value(section_name, "include_filter")).split(",", false)
+		for asset in THIRD_PARTY_LICENCES:
+			for filename in LICENCE_FILENAMES:
+				var licence: String = str(THIRD_PARTY_LICENCES[asset]).path_join(filename)
+				if not FileAccess.file_exists(licence):
+					continue
+				var bare: String = licence.trim_prefix("res://")
+				var named: bool = false
+				for pattern in patterns:
+					if bare.match(pattern.strip_edges()):
+						named = true
+				if not named:
+					unshipped.append("%s in %s" % [bare, presets.get_value(section_name, "name", section_name)])
+	check("every licence text goes out in every export (include_filter)", unshipped.is_empty(), unshipped)
 
 	print("  %d licensed third-party asset(s) checked" % THIRD_PARTY_LICENCES.size())
 
@@ -5972,6 +6012,8 @@ func _test_settings() -> void:
 		# still the right one, because a setting with no control is a real bug
 		# and this is the only place that relationship is written down.
 		"camera_zoom": "camerazoom",       "name_hue": "namehue",
+		# 0.8.0: the writing.
+		"text_size": "textsize",           "font": "fontstyle",
 	}
 	var unmapped: Array = []
 	for key in Settings.DEFAULTS:
@@ -7330,6 +7372,474 @@ func _test_monitors_and_window_modes() -> void:
 	check("the frame cap's Match screen says this screen's number",
 		screen.frame_cap.get_item_text(1) == "Match screen (60)", screen.frame_cap.get_item_text(1))
 	screen.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
+# TEXT SIZE AND FONT (0.8.0)
+# =============================================================================
+# The owner, 7 Oct: "UI and text size and font", and then "what we need is
+# style fonts". Every font size in the interface times the text size and the
+# font's own scale; the world's writing takes only the font's scale; a window
+# that would pass the screen scrolls instead.
+func _test_text_size_and_font() -> void:
+	section("TEXT SIZE AND FONT - every size scaled, five style fonts, nothing off the screen")
+	const SettingsScript := preload("res://src/systems/settings.gd")
+	var kept_size: Variant = Settings.get_value("text_size")
+	var kept_font: Variant = Settings.get_value("font")
+	Settings.set_value("text_size", 1.0)
+	Settings.set_value("font", "standard")
+
+	# --- the settings ----------------------------------------------------------
+	check("text size and font are settings, the game as built by default",
+		Settings.DEFAULTS["text_size"] == 1.0 and Settings.DEFAULTS["font"] == "standard")
+	check("  four sizes, Normal first", Settings.TEXT_SIZES == [1.0, 1.15, 1.3, 1.5], Settings.TEXT_SIZES)
+	check("  a size not on the list is the nearest one",
+		SettingsScript.normalise_text_size(1.2) == 1.15 and SettingsScript.normalise_text_size(9) == 1.5
+		and SettingsScript.normalise_text_size(0) == 1.0 and SettingsScript.normalise_text_size("x") == 1.0)
+	Settings.set_value("font", "comic")
+	check("  a font that is not one of them is the standard one", Settings.get_value("font") == "standard")
+	check("six fonts, Standard first, every one named",
+		Settings.FONT_STYLE_ORDER.size() == 6 and Settings.FONT_STYLE_ORDER[0] == "standard"
+		and Settings.FONT_STYLE_ORDER.size() == Settings.FONT_STYLES.size(), Settings.FONT_STYLE_ORDER)
+	check("  a size times the font's scale, rounded, never below 1",
+		SettingsScript.scaled_font_size(12, 1.5) == 18 and SettingsScript.scaled_font_size(10, 1.15) == 12
+		and SettingsScript.scaled_font_size(1, 0.1) == 1)
+
+	# --- the files and their licences ---------------------------------------------
+	var unlicensed: Array = []
+	var unloadable: Array = []
+	for style in Settings.FONT_STYLE_ORDER:
+		var file: String = str(Settings.FONT_STYLES[style][1])
+		if style == "standard":
+			continue
+		if not (load(file) is FontFile):
+			unloadable.append(file)
+		if THIRD_PARTY_LICENCES.get(file, "") != file.get_base_dir():
+			unlicensed.append(file)
+		elif not FileAccess.get_file_as_string(file.get_base_dir().path_join("OFL.txt")).begins_with("Copyright"):
+			unlicensed.append(file + " (no copyright line)")
+	check("every style font loads", unloadable.is_empty(), unloadable)
+	check("  each is checked for its licence, in a folder of its own with the OFL.txt it came with",
+		unlicensed.is_empty(), unlicensed)
+	var stray: Array = []
+	var named: Array = []
+	for style in Settings.FONT_STYLES:
+		named.append(str(Settings.FONT_STYLES[style][1]))
+	for folder in DirAccess.get_directories_at("res://assets/stylefonts"):
+		for file in DirAccess.get_files_at("res://assets/stylefonts".path_join(folder)):
+			if file.get_extension() in ["ttf", "otf", "woff", "woff2"]:
+				var full: String = "res://assets/stylefonts".path_join(folder).path_join(file)
+				if not named.has(full):
+					stray.append(full)
+	check("  and no font sits in that folder that Options does not offer", stray.is_empty(), stray)
+
+	# --- scaling the interface -----------------------------------------------------
+	var host := Control.new()
+	add_child(host)
+	var plain := Label.new()
+	var sized := Label.new()
+	sized.add_theme_font_size_override("font_size", 12)
+	var rich := RichTextLabel.new()
+	rich.add_theme_font_size_override("normal_font_size", 10)
+	host.add_child(plain)
+	host.add_child(sized)
+	host.add_child(rich)
+	var theme_size: int = plain.get_theme_font_size("font_size")
+	check("at Normal in the standard font nothing is touched - no size, no note",
+		not plain.has_theme_font_size_override("font_size") and not plain.has_meta(SettingsScript._META_FONT_SIZES)
+		and sized.get_theme_font_size("font_size") == 12)
+	Settings.set_value("text_size", 1.5)
+	check("Largest: a size the scene gave is half again", sized.get_theme_font_size("font_size") == 18,
+		sized.get_theme_font_size("font_size"))
+	check("  so is one the theme gave", plain.get_theme_font_size("font_size") == roundi(theme_size * 1.5),
+		[plain.get_theme_font_size("font_size"), theme_size])
+	check("  and a rich text box's", rich.get_theme_font_size("normal_font_size") == 15,
+		rich.get_theme_font_size("normal_font_size"))
+	var late := Label.new()
+	late.add_theme_font_size_override("font_size", 14)
+	host.add_child(late)
+	check("  writing made after the setting is born scaled", late.get_theme_font_size("font_size") == 21,
+		late.get_theme_font_size("font_size"))
+	sized.add_theme_font_size_override("font_size", 20)
+	check("  a script that sets a new size later has it scaled too",
+		sized.get_theme_font_size("font_size") == 30, sized.get_theme_font_size("font_size"))
+	Settings.set_value("text_size", 1.0)
+	check("back to Normal: every size is the one it was given, and the theme's is the theme's again",
+		sized.get_theme_font_size("font_size") == 20 and late.get_theme_font_size("font_size") == 14
+		and rich.get_theme_font_size("normal_font_size") == 10
+		and not plain.has_theme_font_size_override("font_size"),
+		[sized.get_theme_font_size("font_size"), late.get_theme_font_size("font_size"),
+		rich.get_theme_font_size("normal_font_size")])
+
+	# THE WORLD'S WRITING: a name over a head is under a Node2D.
+	var body := Node2D.new()
+	var name_tag := Label.new()
+	name_tag.add_theme_font_size_override("font_size", 10)
+	body.add_child(name_tag)
+	add_child(body)
+	Settings.set_value("text_size", 1.5)
+	check("a name over a head keeps its size at Largest - it is the world's",
+		SettingsScript.is_world_text(name_tag) and name_tag.get_theme_font_size("font_size") == 10
+		and not SettingsScript.is_world_text(sized), name_tag.get_theme_font_size("font_size"))
+	Settings.set_value("text_size", 1.0)
+	Settings.set_value("font", "tiny5")
+	check("  but takes a font's own scale, so it looks the same size in it",
+		name_tag.get_theme_font_size("font_size") == SettingsScript.scaled_font_size(10, SettingsScript.font_style_scale("tiny5")),
+		name_tag.get_theme_font_size("font_size"))
+	check("the interface takes the text size times the font's scale",
+		is_equal_approx(Settings.text_factor(), SettingsScript.font_style_scale("tiny5"))
+		and sized.get_theme_font_size("font_size") == SettingsScript.scaled_font_size(20, SettingsScript.font_style_scale("tiny5")))
+
+	# --- the typeface ---------------------------------------------------------------
+	Settings.set_value("font", "standard")
+	var theme: Theme = ThemeDB.get_default_theme()
+	var standard: Font = theme.default_font
+	var bold: FontVariation = theme.get_font("bold_font", "RichTextLabel") as FontVariation
+	var bold_base: Font = bold.base_font if bold != null else null
+	Settings.set_value("font", "pixelify")
+	check("a style font becomes the default theme's font, which every control reads",
+		theme.default_font != null and theme.default_font.resource_path == str(Settings.FONT_STYLES["pixelify"][1]),
+		theme.default_font.resource_path if theme.default_font != null else "none")
+	check("  with the standard font behind it for a letter it lacks",
+		theme.default_font.fallbacks.has(standard))
+	check("  and bold rich text in it too", bold == null or bold.base_font == theme.default_font)
+	check("  a label drawn now draws in it", plain.get_theme_font("font") == theme.default_font)
+	Settings.set_value("font", "standard")
+	check("Standard is exactly what it was", theme.default_font == standard
+		and (bold == null or bold.base_font == bold_base))
+
+	# --- Options ------------------------------------------------------------------------
+	var screen: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(screen)
+	await get_tree().process_frame
+	check("Options has Text size and Font",
+		screen.text_size != null and screen.font_style != null
+		and screen.text_size.item_count == 4 and screen.font_style.item_count == 6)
+	check("  the sizes say how much", screen.text_size.get_item_text(0) == "Normal (100%)"
+		and screen.text_size.get_item_text(3) == "Largest (150%)", screen.text_size.get_item_text(3))
+	check("  the fonts by name", screen.font_style.get_item_text(0) == "Standard"
+		and screen.font_style.get_item_text(1) == "Pixelify Sans", screen.font_style.get_item_text(1))
+	# SOMETHING IN THE SCROLL GROWING ON ITS OWN - the account form opening -
+	# grows the window too; nothing outside the scroll changed to say so.
+	var columns_scroll: ScrollContainer = screen.get_node("%columnsscroll") as ScrollContainer
+	# The game window changing size while Options is shut measures it too.
+	screen._window._on_viewport_resized()
+	screen.open()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("Options opens at the size it was drawn at - a hidden window is not measured",
+		screen.size.y == 600.0 and columns_scroll.custom_minimum_size.y + 0.5
+		>= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y, screen.size)
+	var before: float = columns_scroll.custom_minimum_size.y
+	screen._show_account_form(screen.account_password_form)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("the password form opening makes room for itself rather than scrolling",
+		columns_scroll.custom_minimum_size.y > before
+		and columns_scroll.custom_minimum_size.y + 0.5 >= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y,
+		[before, columns_scroll.custom_minimum_size.y])
+	screen._show_account_form(null)
+	await get_tree().process_frame
+	var hint: Label = columns_scroll.find_child("camerahint", true, false) as Label
+	var hint_text: String = hint.text
+	before = columns_scroll.custom_minimum_size.y
+	hint.text = hint_text + "\n\n\n\n"
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  and so does a line in it growing taller and no wider",
+		columns_scroll.custom_minimum_size.y > before, [before, columns_scroll.custom_minimum_size.y])
+	hint.text = hint_text
+	screen._on_text_size_selected(2)
+	screen._on_font_style_selected(4)
+	check("picking them sets them", Settings.get_value("text_size") == 1.3 and Settings.get_value("font") == "fell",
+		[Settings.get_value("text_size"), Settings.get_value("font")])
+	screen.refresh()
+	check("  and the panel shows what is set", screen.text_size.selected == 2 and screen.font_style.selected == 4)
+	screen.queue_free()
+	Settings.set_value("text_size", 1.0)
+	Settings.set_value("font", "standard")
+
+	# A WINDOW SHUT WHILE THE SIZE CHANGED is measured again when it opens:
+	# Stats, which says nothing new when it comes back.
+	var stats: Control = (load("res://scene/ui/statsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(stats)
+	stats.visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	stats.visible = false
+	Settings.set_value("text_size", 1.3)
+	await get_tree().process_frame
+	stats.visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var stats_scroll: ScrollContainer = stats.find_child("statsccroll", true, false) as ScrollContainer
+	check("a window shut while the size changed grows to it when it opens",
+		stats_scroll.custom_minimum_size.y + 0.5 >= PanelWindow.scroll_content(stats_scroll).get_combined_minimum_size().y,
+		[stats_scroll.custom_minimum_size.y, PanelWindow.scroll_content(stats_scroll).get_combined_minimum_size().y])
+	stats.queue_free()
+	Settings.set_value("text_size", 1.0)
+
+	# --- nothing off the screen ------------------------------------------------------------
+	check("a scroll is as tall as what it holds while the window fits",
+		PanelWindow.scroll_height(300.0, 300.0, 720.0) == 300.0)
+	check("  no taller than the room left once it does not",
+		PanelWindow.scroll_height(500.0, 300.0, 720.0) == 420.0, PanelWindow.scroll_height(500.0, 300.0, 720.0))
+	check("  never squeezed to nothing", PanelWindow.scroll_height(500.0, 700.0, 720.0) == PanelWindow.SCROLL_LEAST)
+	check("  and with no screen to measure, all of it", PanelWindow.scroll_height(500.0, 300.0, INF) == 500.0)
+
+	# EVERY WINDOW, found by what it calls rather than listed, at the largest
+	# size in the two tallest fonts.
+	var scenes: Array[String] = []
+	var walk: Array[String] = ["res://scene/ui"]
+	while not walk.is_empty():
+		var dir_path: String = walk.pop_back()
+		for sub in DirAccess.get_directories_at(dir_path):
+			walk.append(dir_path.path_join(sub))
+		for file in DirAccess.get_files_at(dir_path):
+			if not file.ends_with(".tscn"):
+				continue
+			var text: String = FileAccess.get_file_as_string(dir_path.path_join(file))
+			var at: int = text.find("path=\"res://src/")
+			if at < 0:
+				continue
+			var script_path: String = text.substr(at + 6, text.find("\"", at + 6) - at - 6)
+			if script_path.ends_with(".gd") and FileAccess.get_file_as_string(script_path).contains("PanelWindow.attach("):
+				scenes.append(dir_path.path_join(file))
+	check("every window was found", scenes.size() >= 20, scenes.size())
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var windows: Array = []
+	for path in scenes:
+		var window: Control = (load(path) as PackedScene).instantiate() as Control
+		layer.add_child(window)
+		window.visible = true
+		windows.append(window)
+	var cards: Array = windows.filter(func(w): return w is ControlsPanel)
+	for card in cards:
+		card.open_keys()
+	await get_tree().process_frame
+	# THE WINDOWS THAT PASS THE SCREEN AT LARGEST keep their body in a scroll
+	# that PanelWindow sizes; at Normal it shows all it holds - nothing in
+	# them scrolls that did not before.
+	var fitted: Dictionary = {}
+	var cut_at_normal: Array = []
+	for window in windows:
+		var panel: PanelWindow = window.get("_window") as PanelWindow
+		if panel == null:
+			continue
+		for scroll in panel._scrolls:
+			fitted[window.scene_file_path.get_file()] = true
+			var content: Control = PanelWindow.scroll_content(scroll)
+			# Unless it would pass the screen even so: twenty-two keys do.
+			if scroll.custom_minimum_size.y + 0.5 < content.get_combined_minimum_size().y \
+					and PanelWindow.content_minimum(window).y < 719.0:
+				cut_at_normal.append(window.scene_file_path.get_file())
+	check("Options, the GM panel, Stats and the Controls card fit their scroll to what it holds",
+		fitted.has("optionsscreen.tscn") and fitted.has("ownerpanel.tscn") and fitted.has("statsscreen.tscn")
+		and fitted.has("controlspanel.tscn"), fitted.keys())
+	check("  and at Normal it all shows - nothing scrolls that fits", cut_at_normal.is_empty(), cut_at_normal)
+	var too_tall: Array = []
+	for style in ["fell", "tiny5"]:
+		Settings.set_value("font", style)
+		Settings.set_value("text_size", 1.5)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		for window in windows:
+			var need: Vector2 = PanelWindow.content_minimum(window)
+			if need.y > 720.0 or need.x > 1280.0:
+				too_tall.append("%s in %s: %s" % [window.scene_file_path.get_file(), style, need])
+			var panel: PanelWindow = window.get("_window") as PanelWindow
+			var kept_scrolls: Array = panel._scrolls if panel != null else []
+			for scroll in kept_scrolls:
+				if scroll.custom_minimum_size.y + 0.5 < PanelWindow.scroll_content(scroll).get_combined_minimum_size().y \
+						and need.y < 719.0:
+					cut_at_normal.append("%s in %s at Largest" % [window.scene_file_path.get_file(), style])
+	check("at Largest in the tallest fonts, every window fits a 1280 x 720 screen - the rest scrolls",
+		too_tall.is_empty(), too_tall)
+	check("  and a window with room to grow grew, rather than scrolling", cut_at_normal.is_empty(), cut_at_normal)
+	Settings.set_value("text_size", 1.0)
+	Settings.set_value("font", "standard")
+	layer.queue_free()
+	host.queue_free()
+	body.queue_free()
+	Settings.set_value("text_size", kept_size)
+	Settings.set_value("font", kept_font)
+	await get_tree().process_frame
+
+
+# =============================================================================
+# REBINDABLE KEYS (0.8.0)
+# =============================================================================
+func _test_rebindable_keys() -> void:
+	section("KEYS - every key can be changed, on the Controls card")
+	var kept_path: String = Keybinds.path
+	Keybinds.path = "user://_suite_keys.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Keybinds.path))
+	var keys: Keybinds = Settings.keys
+	keys.load_keys()
+
+	# --- what can be changed -------------------------------------------------------
+	var missing: Array[String] = []
+	for prop in ProjectSettings.get_property_list():
+		var key_path: String = str(prop.name)
+		if key_path.begins_with("input/") and not key_path.begins_with("input/ui_"):
+			if not Keybinds.all_actions().has(key_path.trim_prefix("input/")):
+				missing.append(key_path.trim_prefix("input/"))
+	check("every key the game binds can be changed", missing.is_empty(), missing)
+	var hotbar_ok: bool = true
+	for i in Hotbar.SLOT_COUNT:
+		if not InputMap.has_action(Keybinds.hotbar_action(i)) or keys.first_key(Keybinds.hotbar_action(i)) != int(Hotbar.SLOT_KEYS[i]):
+			hotbar_ok = false
+	check("  the ten hotbar keys are actions now, on 1 to 0", hotbar_ok)
+	check("the defaults are the project's own: W and Up walk up, E uses, M is the map",
+		keys.keys_of("move_up") == [KEY_W, KEY_UP] and keys.keys_of("interact") == [KEY_E, 0]
+		and keys.keys_of("minimap_toggle") == [KEY_M, 0], [keys.keys_of("move_up"), keys.keys_of("interact")])
+	check("  and nothing is changed until somebody changes it", keys.is_default())
+
+	# --- changing one ----------------------------------------------------------------
+	var result: Dictionary = keys.bind("inventory_toggle", 0, KEY_E)
+	var e := InputEventKey.new()
+	e.physical_keycode = KEY_E
+	e.pressed = true
+	check("putting the Bag on E works, and says it took E from Use",
+		result.get("ok") == true and result.get("took_from") == "interact", result)
+	check("  E opens the bag now and uses nothing", e.is_action_pressed("inventory_toggle")
+		and not e.is_action_pressed("interact") and keys.action_for_key(KEY_E) == "inventory_toggle")
+	check("  Use has no key, and says so", keys.first_key("interact") == 0
+		and keys.unbound_actions().size() == 1 and keys.unbound_actions()[0] == "interact", keys.unbound_actions())
+	var file := ConfigFile.new()
+	file.load(Keybinds.path)
+	check("the file holds what changed, and only that",
+		file.get_value("keys", "inventory_toggle", []) == [KEY_E, 0] and file.get_value("keys", "interact", []) == [0, 0]
+		and not file.has_section_key("keys", "move_up"), file.get_section_keys("keys") if file.has_section("keys") else PackedStringArray())
+	var again := Keybinds.new()
+	again._defaults = keys._defaults.duplicate(true)
+	again._project_events = keys._project_events.duplicate(true)
+	again.load_keys()
+	check("  and the next launch reads it back", again.keys_of("inventory_toggle") == [KEY_E, 0]
+		and again.keys_of("interact") == [0, 0])
+
+	var refused: Dictionary = keys.bind("attack", 0, KEY_ESCAPE)
+	check("Escape cannot be bound - it is how you get out of things",
+		refused.get("ok") == false and String(refused.get("why")).contains("closing windows")
+		and keys.keys_of("attack") == [KEY_SPACE, 0], refused)
+	check("  nor the GM panel's key", String(keys.bind("attack", 0, KEY_QUOTELEFT).get("why")).contains("GM panel"))
+	check("  nor Enter, which sends chat", keys.bind("sprint", 1, KEY_ENTER).get("ok") == false)
+	keys.bind("move_up", 1, KEY_W)
+	check("a key put in the other slot of its own action swaps, never doubles",
+		keys.keys_of("move_up") == [KEY_UP, KEY_W], keys.keys_of("move_up"))
+	keys.clear("move_up", 0)
+	check("  clearing the first key moves the second up", keys.keys_of("move_up") == [KEY_W, 0], keys.keys_of("move_up"))
+
+	# --- the hotbar -----------------------------------------------------------------------
+	var bar: Hotbar = (load("res://scene/ui/hotbar.tscn") as PackedScene).instantiate() as Hotbar
+	add_child(bar)
+	keys.bind(Keybinds.hotbar_action(0), 0, KEY_F)
+	var f := InputEventKey.new()
+	f.physical_keycode = KEY_F
+	f.pressed = true
+	check("the first hotbar key on F: F fires it, 1 fires nothing",
+		Hotbar.slot_for_event(f) == 0 and Hotbar.slot_for_key(KEY_1) == -1, Hotbar.slot_for_key(KEY_1))
+	var key_label: Label = bar.find_child("slot1", true, false).get_node("keylabel") as Label
+	check("  and the key says F on the bar", key_label.text == "F", key_label.text)
+	check("  and on the Controls card", ControlsPanel.hotbar_text() == "F 2 3 4 5 6 7 8 9 0", ControlsPanel.hotbar_text())
+	bar.queue_free()
+
+	# --- a file edited by hand ----------------------------------------------------------------
+	var hand := ConfigFile.new()
+	hand.set_value("keys", "attack", "banana")
+	hand.set_value("keys", "sprint", [KEY_ESCAPE, KEY_Q])
+	hand.set_value("keys", "move_down", [KEY_G, 0])
+	hand.save(Keybinds.path)
+	keys.load_keys()
+	check("a hand-edited file: nonsense is ignored, Escape dropped, a key on two actions kept once",
+		keys.keys_of("attack") == [KEY_SPACE, 0] and keys.keys_of("sprint") == [KEY_Q, 0]
+		and keys.keys_of("move_down") == [KEY_G, 0] and keys.keys_of("equipment_toggle") == [0, 0],
+		[keys.keys_of("attack"), keys.keys_of("sprint"), keys.keys_of("equipment_toggle")])
+
+	keys.reset_all()
+	var m := InputEventKey.new()
+	m.keycode = KEY_M
+	m.pressed = true
+	check("Reset puts every key back as the game came, the Map's printed M included",
+		keys.is_default() and m.is_action_pressed("minimap_toggle") and Hotbar.slot_for_key(KEY_1) == 0)
+
+	# --- the Controls card -------------------------------------------------------------------------
+	var card: ControlsPanel = (load("res://scene/ui/controls/controlspanel.tscn") as PackedScene).instantiate() as ControlsPanel
+	add_child(card)
+	card.open_controls()
+	check("the Controls card has Change keys, and the welcome does not",
+		card.keys_row.visible and card.change_keys_button.text == "Change keys" and not card.reset_keys_button.visible)
+	card.open_keys()
+	check("Change keys: every key as a button, first and second",
+		card.header_label.text == "CHANGE KEYS" and card.key_button("move_up", 0).text == "W"
+		and card.key_button("move_up", 1).text == "Up" and card.key_button("interact", 1).text == "-"
+		and card.key_button(Keybinds.hotbar_action(9), 0).text == "0")
+	check("  with Done, Reset keys and how to do it", card.change_keys_button.text == "Done"
+		and card.reset_keys_button.visible and card.key_note.visible and card.key_note.text == ControlsPanel.KEYS_HINT)
+	card.start_capture("inventory_toggle", 0)
+	check("a key button pressed waits for the key", card.is_capturing()
+		and card.key_button("inventory_toggle", 0).text == ControlsPanel.WAITING_TEXT)
+	card.start_capture("inventory_toggle", 0)
+	check("  pressed again, it stops waiting", not card.is_capturing()
+		and card.key_button("inventory_toggle", 0).text == "I")
+	card.start_capture("inventory_toggle", 0)
+	var press := InputEventKey.new()
+	press.physical_keycode = KEY_E
+	press.pressed = true
+	card._input(press)
+	check("  the next key pressed goes there, and the card says whose it was",
+		not card.is_capturing() and keys.keys_of("inventory_toggle")[0] == KEY_E
+		and card.key_note.text == "Bag is on E now. It was Use the shop, bank, fire or fishing spot's, which has no key now.",
+		card.key_note.text)
+	check("  the action left with no key turns red",
+		(card.key_grid.get_node("label_interact") as Label).get_theme_color("font_color") == ControlsPanel.UNBOUND_COLOR
+		and card.key_button("inventory_toggle", 0).text == "E")
+	card.start_capture("attack", 0)
+	card.press_key(KEY_ESCAPE)
+	check("Esc while waiting changes nothing", card.key_note.text == "Nothing changed."
+		and keys.keys_of("attack") == [KEY_SPACE, 0])
+	card.start_capture("attack", 0)
+	card.press_key(KEY_QUOTELEFT)
+	check("  a kept key says what it is kept for", card.key_note.text.contains("GM panel")
+		and keys.keys_of("attack") == [KEY_SPACE, 0], card.key_note.text)
+	var right := InputEventMouseButton.new()
+	right.button_index = MOUSE_BUTTON_RIGHT
+	right.pressed = true
+	card._on_key_button_input(right, "move_up", 1)
+	check("a right-click clears a key", keys.keys_of("move_up") == [KEY_W, 0]
+		and card.key_button("move_up", 1).text == "-")
+	card.reset_keys_button.pressed.emit()
+	check("Reset keys puts them all back", keys.is_default() and card.key_button("interact", 0).text == "E"
+		and card.key_note.text.contains("back"))
+	card.change_keys_button.pressed.emit()
+	check("Done goes back to the list", not card.is_editing() and card.header_label.text == "CONTROLS")
+	card.open_welcome()
+	check("  the welcome has no keys to change", not card.keys_row.visible)
+	card.queue_free()
+
+	var options: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(options)
+	await get_tree().process_frame
+	var asked: Array = []
+	options.keys_requested.connect(func(): asked.append(true))
+	(options.get_node("%optionskeysbutton") as Button).pressed.emit()
+	check("Options has Change keys, and it asks for the card", asked.size() == 1)
+	options.queue_free()
+	var hud_code: String = _code_src("res://src/ui/characterhud.gd")
+	check("  which the HUD opens ready to change them",
+		hud_code.contains("options_screen.keys_requested.connect(open_key_settings)")
+		and _func_body(hud_code, "func open_key_settings(").contains("controls_panel.open_keys()"))
+	check("the bar's key hints are read again when a key changes",
+		_func_body(hud_code, "func _wire_nav_buttons(").contains("keys.changed.connect(_paint_nav_key_hints)"))
+	var card_code: String = _code_src("res://src/ui/controls/controlspanel.gd")
+	check("the key being set reaches the card first and nothing else",
+		_func_body(card_code, "func _input(").contains("set_input_as_handled()"))
+
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Keybinds.path))
+	Keybinds.path = kept_path
+	keys.load_keys()
 	await get_tree().process_frame
 
 
@@ -12391,10 +12901,17 @@ func _test_the_gm_panel_is_a_window() -> void:
 	# long as the server is busy - up to ONLINE_LIST_LIMIT, sixty - so it is the
 	# one thing here that cannot be laid out to fit. Every other control still
 	# must, and the window still holds its tallest tab without growing.
+	#
+	# AND THE TABS' OWN SCROLL (0.8.0), which scrolls only when the window
+	# would pass the screen - at the largest text size - and is otherwise as
+	# tall as the tabs (PanelWindow.keep_scroll_fitted()).
 	var scrollers: Array = panel.find_children("*", "ScrollContainer", true, true)
-	var others: Array = scrollers.filter(func(n: Node) -> bool: return n.name != "onlinescroll")
+	var others: Array = scrollers.filter(func(n: Node) -> bool:
+		return n.name != "onlinescroll" and n.name != "tabsscroll")
 	check("and nothing in it scrolls but the list of who is online", others.is_empty()
-		and scrollers.size() == 1, "%d ScrollContainer(s)" % scrollers.size())
+		and scrollers.size() == 2, "%d ScrollContainer(s)" % scrollers.size())
+	check("  and the tabs, only when the window would pass the screen",
+		panel._window._scrolls.has(panel.get_node("%tabsscroll")))
 
 	var mins: Array[float] = []
 	var cut: Array[String] = []
@@ -14409,7 +14926,7 @@ func _test_no_debug_keys_the_panel_does_it() -> void:
 	add_child(gm)
 	await get_tree().process_frame
 	var perf: CheckButton = gm.get_node_or_null("%perfbutton") as CheckButton
-	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/ownertabs/testing")
+	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
 	check("the panel's Testing tab has a Performance readout switch",
 		perf != null and testing_tab != null and testing_tab.is_ancestor_of(perf))
 	if perf == null:
@@ -14448,7 +14965,7 @@ func _test_the_trade_switch_reaches_the_game() -> void:
 	add_child(gm)
 	await get_tree().process_frame
 	var button: CheckButton = gm.get_node_or_null("%tradebutton") as CheckButton
-	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/ownertabs/testing")
+	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
 	var pvp: Node = gm.get_node_or_null("%pvpbutton")
 	check("the GM panel has the trading switch, beside the other world switch, PvP",
 		button != null and testing_tab != null and testing_tab.is_ancestor_of(button)
@@ -20037,7 +20554,7 @@ func _test_the_gm_panel_sets_a_level() -> void:
 
 	var box: LineEdit = panel.get_node_or_null("%levelinput") as LineEdit
 	var button: Button = panel.get_node_or_null("%levelbutton") as Button
-	var testing: Node = panel.get_node_or_null("frame/margin/rows/ownertabs/testing")
+	var testing: Node = panel.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
 	check("the Testing tab has a level box and a Set level button",
 		box != null and button != null and testing != null
 		and testing.is_ancestor_of(box) and testing.is_ancestor_of(button))
@@ -20129,7 +20646,7 @@ func _test_the_gm_panel_sets_skills() -> void:
 	var pick: OptionButton = panel.get_node_or_null("%skillpick") as OptionButton
 	var box: LineEdit = panel.get_node_or_null("%skillinput") as LineEdit
 	var button: Button = panel.get_node_or_null("%skillbutton") as Button
-	var testing: Node = panel.get_node_or_null("frame/margin/rows/ownertabs/testing")
+	var testing: Node = panel.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
 	check("the Testing tab has a skill picker, a level box and a Set skill button",
 		pick != null and box != null and button != null and testing != null
 		and testing.is_ancestor_of(pick) and testing.is_ancestor_of(box) and testing.is_ancestor_of(button))

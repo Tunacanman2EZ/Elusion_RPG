@@ -12,7 +12,8 @@
 # - finds its SLOT_COUNT HotbarSlot children by name
 # - hands them to the backpack container, which makes them its cells past the
 #   grid (set_inventory_container -> attach_remote_slots)
-# - number keys 1-9 and 0, and a right-click on a key, use what is on it
+# - its keys (1-9 and 0 unless the player chose others), and a right-click on
+#   a key, use what is on it
 #
 # usage:
 # - the HUD calls set_inventory_container(container) once the inventory screen
@@ -41,9 +42,10 @@ signal slot_used(slot: HotbarSlot)
 # and the server sends and stores exactly that many.
 const SLOT_COUNT := 10
 
-# THE KEYS, IN SLOT ORDER, as they sit on the keyboard: 1 through 9, then 0.
-# The keylabel on each slot is drawn from this list too - the suite checks
-# every slot's printed number is OS.get_keycode_string() of its key - so the
+# THE DEFAULT KEYS, IN SLOT ORDER, as they sit on the keyboard: 1 through 9,
+# then 0. Since 0.8.0 the keys are the actions hotbar_1..hotbar_10, made from
+# this list by Keybinds and rebindable on the Controls card; each slot's
+# keylabel shows the key its action is on now (refresh_key_labels()), so the
 # number you read on the bar is the key that fires it.
 const SLOT_KEYS: Array[Key] = [
 	KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0,
@@ -68,11 +70,16 @@ func _ready() -> void:
 	for slot in slots:
 		if slot != null and not slot.slot_right_clicked.is_connected(_on_slot_right_clicked):
 			slot.slot_right_clicked.connect(_on_slot_right_clicked)
+	refresh_key_labels()
+	var settings: Node = get_node_or_null("/root/Settings")
+	if settings != null and settings.get("keys") is Keybinds:
+		var keys: Keybinds = settings.get("keys")
+		if not keys.changed.is_connected(refresh_key_labels):
+			keys.changed.connect(refresh_key_labels)
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# number keys 1-9 and 0 trigger the corresponding hotbar slot; see
-	# slot_for_key() for the mapping.
+	# The key on each slot's action fires that slot; see slot_for_event().
 	#
 	# is_echo() rejects the OS key-repeat stream. Holding a number key made
 	# the operating system resend the same press every ~30ms once the repeat
@@ -82,19 +89,56 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.is_echo():
 		return
 
-	var key_to_slot_index: int = slot_for_key(event.keycode)
+	var key_to_slot_index: int = slot_for_event(event)
 	if key_to_slot_index >= 0:
 		_use_slot(key_to_slot_index)
+
+
+static func slot_for_event(event: InputEvent) -> int:
+	"""The slot a press fires, or -1: whichever hotbar action holds its key -
+	the key in that place on the keyboard, or the printed one for a press
+	that says only that."""
+	return slot_for_key(Keybinds.event_key(event) as Key)
 
 
 static func slot_for_key(keycode: Key) -> int:
 	# The slot a key fires, or -1 for a key that is not on the bar.
 	#
-	# A LOOKUP IN SLOT_KEYS, not arithmetic on keycodes. KEY_1..KEY_9 happen to
-	# be consecutive, which made `keycode - KEY_1` tempting - and KEY_0 sits
+	# A LOOKUP, not arithmetic on keycodes. KEY_1..KEY_9 happen to be
+	# consecutive, which made `keycode - KEY_1` tempting - and KEY_0 sits
 	# BEFORE KEY_1 in that sequence, so the arithmetic would send 0 to slot -1
-	# and drop it. Written out as a list, the tenth key is just the tenth entry.
-	return SLOT_KEYS.find(keycode)
+	# and drop it. Each slot's action is asked by name instead; with no
+	# actions made yet (a scene loaded on its own), the default list.
+	for i in SLOT_COUNT:
+		var action: String = Keybinds.hotbar_action(i)
+		if not InputMap.has_action(action):
+			return SLOT_KEYS.find(keycode)
+		for bound in InputMap.action_get_events(action):
+			if Keybinds.event_key(bound) == int(keycode):
+				return i
+	return -1
+
+
+static func key_for_slot(index: int) -> int:
+	"""The key slot `index` is on now (its action's first key), or 0."""
+	var action: String = Keybinds.hotbar_action(index)
+	if not InputMap.has_action(action):
+		return int(SLOT_KEYS[index]) if index < SLOT_KEYS.size() else 0
+	for bound in InputMap.action_get_events(action):
+		var code: int = Keybinds.event_key(bound)
+		if code != 0:
+			return code
+	return 0
+
+
+func refresh_key_labels() -> void:
+	for i in slots.size():
+		var slot: Node = slots[i]
+		if slot == null:
+			continue
+		var label: Label = slot.get_node_or_null("keylabel") as Label
+		if label != null:
+			label.text = Keybinds.key_name(key_for_slot(i))
 
 
 # =============================================================================

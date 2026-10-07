@@ -192,6 +192,8 @@ var _armed_until: float = 0.0
 func _ready() -> void:
 	visible = false
 	_window = PanelWindow.attach(self, "owner")
+	# At the largest text sizes the tabs are taller than the screen (0.8.0).
+	_window.keep_scroll_fitted(get_node_or_null("%tabsscroll") as ScrollContainer)
 
 	if close_button != null and not close_button.pressed.is_connected(close):
 		close_button.pressed.connect(close)

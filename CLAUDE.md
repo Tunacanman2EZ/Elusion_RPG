@@ -2270,7 +2270,7 @@ product versions are it with `.0` after (Windows wants four numbers).
   Move Players: a list of who is online, its own name box, Go to beside them,
   0.7.5 Give item to a player and the Save history (rollback), 0.7.6 window
   mode (exclusive fullscreen), the monitor picker, where the window was, and
-  Match screen.
+  Match screen, 0.8.0 text size, five style fonts and keys you can change.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3272,6 +3272,107 @@ desktop, so the parts that move windows are read rather than run; they were
 run on a virtual display (modes, the remembered spot, the rescue, an
 override.cfg start). Xvfb cannot make a second monitor, so moving between
 screens was first seen on the owner's desk.
+
+### Text size and the style fonts
+
+The owner, 7 Oct (0.8.0), picking from a list of improvements: "UI and text
+size and font" - and then, of the fonts: "what we need is style fonts", "we
+dont need the brail etc". So typefaces that suit the game, not accessibility
+faces. TEXT SIZE AND FONT in settings.gd is the whole story; in short:
+
+- **Text size scales every font size, not the boxes.** Nearly every label in
+  the game names its own size in its .tscn or script, so a theme-wide size
+  would have changed nothing. `_on_node_added()` scales each text control as
+  it enters the tree; the size it was authored with is kept in a meta, the
+  size drawn is that times `text_factor()`, and a size a script sets later is
+  caught through `theme_changed` and scaled too. Normal (100%), Large, Larger,
+  Largest (150%). **At Normal in the standard font nothing is touched** - not
+  one override, not one meta.
+- **The world's writing keeps its size** (`is_world_text()`: a Node2D before
+  any CanvasLayer): names over heads, damage numbers, an enemy's readout are
+  under the camera's zoom and inside boxes sized for them. It takes the
+  font's own scale, so it looks the same size in any font.
+- **The font is the default theme's `default_font`, swapped in place.**
+  `ThemeDB.fallback_font` alone changes NOTHING on screen (measured on
+  4.6.1); the default theme's `default_font` relayouts every existing control
+  and is what new ones are born with. Bold and italic rich text are
+  FontVariations in the default theme and follow. Each style falls back to
+  the standard font for a character it lacks (none of them has an arrow).
+  Chat keeps its own system font for its emoji.
+- **Each font has a size scale** so 12 in it looks like 12 in Open Sans
+  (Godot's own font), matched on the height of a small "x" - Pixelify, Fell
+  and Grenze have about 0.46 of the size against Open Sans' 0.54 - and pulled
+  back where that made one much wider or loud; checked by eye on Options.
+- **The five are the families' own releases from google/fonts, UNMODIFIED**,
+  in `assets/stylefonts/<family>/` each with its own `OFL.txt`. Two reserve
+  their names (MedievalSharp, IM FELL English Roman), which binds a modified
+  copy - the fontsource web subsets first tried ARE modified copies, so they
+  were not used. Subset or convert one of these and those two must be renamed
+  inside the font. assetlicense.md has the table.
+- **Every licence text ships in the build now.** A .txt is not a resource,
+  so an export left out every OFL.txt - the emoji font's too, since it
+  arrived - until export_presets.cfg's `include_filter` named them.
+  `_test_third_party_licences()` checks each preset names each licence.
+
+**A window taller than the screen scrolls, and only then.** At Largest,
+Options and the GM panel need more than 720 - and `fit_to()`'s "the screen
+beats the minimum" would have cut their bottoms off. Each wraps its body in a
+ScrollContainer handed to `PanelWindow.keep_scroll_fitted()`: the scroll is
+as tall as what it holds while the window fits, and the room left when it
+does not. Stats (whose header promises nothing scrolls) and the Controls card
+use it too; every other window was measured at Largest in every font and
+fits. Two traps found doing it:
+
+- **A hidden window is not laid out**, so a wrapping label in it - never given
+  a width - asks for two thousand pixels. Measured then, Options opened at the
+  full height of the screen. So a hidden window is never measured; it is a
+  frame after it appears (`_on_shown()`), and `keep_scroll_fitted()` defers
+  its first look, because a panel's `_ready()` goes on to hide it.
+- **A ScrollContainer's minimum does not move with what it holds**, so what
+  the scroll holds is watched itself; otherwise the password form opening in
+  Options would scroll instead of making room.
+
+`_test_text_size_and_font()` holds it: every size scaled and put back, the
+world's writing, the font swap and back, the licences, the Options rows, and
+every window found by what it calls, at Largest in the two tallest fonts.
+
+### Keys you can change
+
+The owner, 7 Oct (0.8.0): "Rebindable keys. The Controls page shows the keys,
+but Options has no way to change them." `src/systems/keybinds.gd` is the
+whole story:
+
+- **One object, `Settings.keys`**, set up in Settings' `_ready()` before any
+  scene asks the InputMap for a key, kept in `user://keys.cfg` - not in
+  DEFAULTS, because a binding is two keys per action and every DEFAULTS key
+  is one control in Options. The file holds only what differs.
+- **What can be changed**: the four walks, sprint, attack, use, the five window
+  keys and the ten hotbar keys, two keys each (a first and a second, the way
+  W and Up both walk). The suite fails if project.godot gains an action that
+  is not on the list. **What cannot**: Escape (closes windows, cancels a key
+  being set - bound away, nothing could be got out of), the backquote (the GM
+  panel) and Enter (chat); trying says what they are kept for.
+- **The defaults are project.godot's own**, read at launch, and put back
+  exactly at Reset - the Map's binding is the printed letter M, not a
+  physical key, and stays so. New bindings are physical keys, like the rest.
+- **The hotbar's keys are actions now**, `hotbar_1`..`hotbar_10`, made at
+  launch from `Hotbar.SLOT_KEYS`; `slot_for_key()` asks them, and each slot's
+  number is the key on it (`refresh_key_labels()`).
+- **A key on two actions is moved, not doubled**, and the card says whose it
+  was: "Bag is on E now. It was Use the shop...'s, which has no key now." An
+  action left with no key is red on the card.
+- **Changed on the Controls card**: Change keys (on the card, or on Options'
+  footer) turns the list into buttons; click one, press the key. The press is
+  taken in `_input()` and marked handled, so pressing I to put the Bag on I
+  does not also open the bag. A button is repainted in place, never rebuilt:
+  rebuilding the grid from inside a button's own signal frees the button
+  mid-signal. The welcome has no Change keys - it is a new player's first
+  minute.
+- **Everything that names a key reads it live**: the Controls card, the bar's
+  tooltips (repainted on `keys.changed`), the hotbar's numbers.
+
+`_test_rebindable_keys()` holds it, with a scratch keys file
+(`Keybinds.path`), never the machine's own.
 
 ### Inventory, bank and shop on day 1
 

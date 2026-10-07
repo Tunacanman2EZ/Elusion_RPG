@@ -101,6 +101,9 @@ func _ready() -> void:
 	# "charstats", NOT "stats": a rectangle saved for the old narrow window
 	# would open this one 500 tall with a band of nothing under its boxes.
 	_window = PanelWindow.attach(self, "charstats")
+	# NOTHING SCROLLS here (the header above says why), so at a bigger text
+	# size the window grows to hold it all, and scrolls only past the screen.
+	_window.keep_scroll_fitted(get_node_or_null("mainpanel/margincontainer/vboxcontainer/statsccroll") as ScrollContainer)
 	_wire_close_button()
 
 

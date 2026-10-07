@@ -42,6 +42,10 @@ const SettingsScript := preload("res://src/systems/settings.gd")
 
 signal closed
 
+# "Change keys" (0.8.0). The keys are changed on the Controls card, which the
+# HUD owns; this only asks for it.
+signal keys_requested
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -49,6 +53,7 @@ signal closed
 
 @onready var close_button:  Button       = get_node_or_null("%optionsclosebutton")
 @onready var reset_button:  Button       = get_node_or_null("%optionsresetbutton")
+@onready var keys_button:   Button       = get_node_or_null("%optionskeysbutton")
 
 @onready var master_slider: HSlider      = get_node_or_null("%mastervolume")
 @onready var music_slider:  HSlider      = get_node_or_null("%musicvolume")
@@ -72,6 +77,8 @@ signal closed
 @onready var pacing_readout:    Label        = get_node_or_null("%pacingreadout")
 @onready var pacing_hint:       Label        = get_node_or_null("%pacinghint")
 @onready var window_size:       OptionButton = get_node_or_null("%windowsize")
+@onready var text_size:         OptionButton = get_node_or_null("%textsize")
+@onready var font_style:        OptionButton = get_node_or_null("%fontstyle")
 @onready var damage_toggle:     CheckButton = get_node_or_null("%damagenumbers")
 @onready var chat_filter_toggle: CheckButton = get_node_or_null("%chatfilter")
 @onready var camera_zoom:       HSlider      = get_node_or_null("%camerazoom")
@@ -123,6 +130,16 @@ const WINDOW_MODE_LABELS := {
 	"exclusive": "Exclusive fullscreen",
 }
 const API_LABELS := {"vulkan": "Vulkan", "d3d12": "Direct3D 12"}
+# One word and the number, so "Larger" is not a guess at how much larger.
+const TEXT_SIZE_LABELS := ["Normal", "Large", "Larger", "Largest"]
+
+
+static func text_size_label(index: int) -> String:
+	var share: float = float(Settings.TEXT_SIZES[index])
+	var word: String = TEXT_SIZE_LABELS[index] if index < TEXT_SIZE_LABELS.size() else ""
+	return "%s (%d%%)" % [word, roundi(share * 100.0)]
+
+
 const RESOLUTION_LABELS := {"screen": "Full (sharpest)", "low": "1280 x 720 (fastest)"}
 const LIGHTING_LABELS := {"full": "Full", "simple": "Simple (fastest)"}
 # forward_plus is never offered, but a project could be switched to it by
@@ -160,6 +177,8 @@ var _window: PanelWindow
 
 func _ready() -> void:
 	_window = PanelWindow.attach(self, "options")
+	# At the largest text size the two columns are taller than the screen.
+	_window.keep_scroll_fitted(get_node_or_null("%columnsscroll") as ScrollContainer)
 	_populate_window_sizes()
 	_connect_controls()
 	_connect_account()
@@ -277,6 +296,16 @@ func _connect_controls() -> void:
 	_hide_rows_for(OS.get_name())
 	if window_size != null:
 		window_size.item_selected.connect(_on_window_size_selected)
+	if text_size != null:
+		text_size.clear()
+		for i in Settings.TEXT_SIZES.size():
+			text_size.add_item(text_size_label(i))
+		text_size.item_selected.connect(_on_text_size_selected)
+	if font_style != null:
+		font_style.clear()
+		for style in Settings.FONT_STYLE_ORDER:
+			font_style.add_item(str(Settings.FONT_STYLES[style][0]))
+		font_style.item_selected.connect(_on_font_style_selected)
 	if damage_toggle != null:
 		damage_toggle.toggled.connect(_on_damage_numbers_toggled)
 	if chat_filter_toggle != null:
@@ -304,6 +333,8 @@ func _connect_controls() -> void:
 		close_button.pressed.connect(close)
 	if reset_button != null:
 		reset_button.pressed.connect(_on_reset_pressed)
+	if keys_button != null:
+		keys_button.pressed.connect(keys_requested.emit)
 
 
 # =============================================================================
@@ -359,6 +390,10 @@ func refresh() -> void:
 		graphics_api.selected = Settings.GRAPHICS_APIS.find(Settings.graphics_api_requested())
 	_update_api_note()
 	_update_pacing_readout()
+	if text_size != null:
+		text_size.selected = Settings.TEXT_SIZES.find(float(Settings.get_value("text_size")))
+	if font_style != null:
+		font_style.selected = Settings.FONT_STYLE_ORDER.find(str(Settings.get_value("font")))
 	if damage_toggle != null:
 		damage_toggle.button_pressed = bool(Settings.get_value("damage_numbers"))
 	if chat_filter_toggle != null:
@@ -957,6 +992,18 @@ func _on_damage_numbers_toggled(pressed: bool) -> void:
 	if _refreshing:
 		return
 	Settings.set_value("damage_numbers", pressed)
+
+
+func _on_text_size_selected(index: int) -> void:
+	if _refreshing or index < 0 or index >= Settings.TEXT_SIZES.size():
+		return
+	Settings.set_value("text_size", Settings.TEXT_SIZES[index])
+
+
+func _on_font_style_selected(index: int) -> void:
+	if _refreshing or index < 0 or index >= Settings.FONT_STYLE_ORDER.size():
+		return
+	Settings.set_value("font", Settings.FONT_STYLE_ORDER[index])
 
 
 func _on_chat_filter_toggled(pressed: bool) -> void:

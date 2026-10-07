@@ -157,38 +157,46 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "×"
 
-[node name="ownertabs" type="TabContainer" parent="frame/margin/rows"]
+[node name="tabsscroll" type="ScrollContainer" parent="frame/margin/rows"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/scrollbar_v_separation = 6
+horizontal_scroll_mode = 0
+
+[node name="ownertabs" type="TabContainer" parent="frame/margin/rows/tabsscroll"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 418)
 layout_mode = 2
+size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_constants/side_margin = 0
 theme_override_font_sizes/font_size = 13
 current_tab = 0
 use_hidden_tabs_for_min_size = true
 
-[node name="account" type="VBoxContainer" parent="frame/margin/rows/ownertabs"]
+[node name="account" type="VBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs"]
 layout_mode = 2
 theme_override_constants/separation = 6
 metadata/_tab_index = 0
 
-[node name="testing" type="VBoxContainer" parent="frame/margin/rows/ownertabs"]
+[node name="testing" type="VBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs"]
 layout_mode = 2
 theme_override_constants/separation = 6
 metadata/_tab_index = 1
 
-[node name="server" type="VBoxContainer" parent="frame/margin/rows/ownertabs"]
+[node name="server" type="VBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs"]
 layout_mode = 2
 theme_override_constants/separation = 6
 metadata/_tab_index = 2
 
-[node name="accountlabel" type="Label" parent="frame/margin/rows/ownertabs/account" unique_id=1900112261]
+[node name="accountlabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112261]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "ACCOUNT"
 
-[node name="usernameinput" type="LineEdit" parent="frame/margin/rows/ownertabs/account" unique_id=1354814840]
+[node name="usernameinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1354814840]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
@@ -196,11 +204,11 @@ theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 
 theme_override_font_sizes/font_size = 13
 placeholder_text = "username"
 
-[node name="lookrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account"]
+[node name="lookrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="viewbutton" type="Button" parent="frame/margin/rows/ownertabs/account/lookrow" unique_id=1644512135]
+[node name="viewbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/lookrow" unique_id=1644512135]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -208,34 +216,34 @@ tooltip_text = "Read this account: rank, ban state, characters, logins, sessions
 theme_override_font_sizes/font_size = 13
 text = "View account"
 
-[node name="givebutton" type="Button" parent="frame/margin/rows/ownertabs/account/lookrow"]
+[node name="givebutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/lookrow"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Open the item catalogue to give this player an item. It goes in the bag of the character they are playing."
 theme_override_font_sizes/font_size = 13
 text = "Give item"
 
-[node name="historybutton" type="Button" parent="frame/margin/rows/ownertabs/account/lookrow"]
+[node name="historybutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/lookrow"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Their character's last snapshots, and Restore to put it back to one."
 theme_override_font_sizes/font_size = 13
 text = "Save history"
 
-[node name="sep2" type="HSeparator" parent="frame/margin/rows/ownertabs/account" unique_id=1900112243]
+[node name="sep2" type="HSeparator" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112243]
 layout_mode = 2
 
-[node name="sanctionlabel" type="Label" parent="frame/margin/rows/ownertabs/account" unique_id=1900112262]
+[node name="sanctionlabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112262]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "SANCTIONS"
 
-[node name="reasonrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account"]
+[node name="reasonrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="reasoninput" type="LineEdit" parent="frame/margin/rows/ownertabs/account/reasonrow" unique_id=1900112238]
+[node name="reasoninput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/account/reasonrow" unique_id=1900112238]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -244,7 +252,7 @@ theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 
 theme_override_font_sizes/font_size = 13
 placeholder_text = "reason (needed to ban)"
 
-[node name="daysinput" type="LineEdit" parent="frame/margin/rows/ownertabs/account/reasonrow" unique_id=1900112239]
+[node name="daysinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/account/reasonrow" unique_id=1900112239]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "How many days the ban lasts. Leave it blank for a permanent ban."
@@ -254,11 +262,11 @@ theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 
 theme_override_font_sizes/font_size = 13
 placeholder_text = "days"
 
-[node name="sanctionrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account" unique_id=1900112263]
+[node name="sanctionrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112263]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="kickbutton" type="Button" parent="frame/margin/rows/ownertabs/account/sanctionrow" unique_id=1900112240]
+[node name="kickbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/sanctionrow" unique_id=1900112240]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -266,7 +274,7 @@ tooltip_text = "Sign this account out everywhere. Not a ban — they can log str
 theme_override_font_sizes/font_size = 13
 text = "Kick"
 
-[node name="banbutton" type="Button" parent="frame/margin/rows/ownertabs/account/sanctionrow" unique_id=1900112241]
+[node name="banbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/sanctionrow" unique_id=1900112241]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -277,7 +285,7 @@ theme_override_styles/normal = SubResource("SB_danger")
 theme_override_styles/hover = SubResource("SB_danger_hover")
 text = "Ban"
 
-[node name="unbanbutton" type="Button" parent="frame/margin/rows/ownertabs/account/sanctionrow" unique_id=1900112242]
+[node name="unbanbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/sanctionrow" unique_id=1900112242]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -288,34 +296,34 @@ theme_override_styles/normal = SubResource("SB_safe")
 theme_override_styles/hover = SubResource("SB_safe_hover")
 text = "Unban"
 
-[node name="sep3" type="HSeparator" parent="frame/margin/rows/ownertabs/account" unique_id=1900112246]
+[node name="sep3" type="HSeparator" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112246]
 layout_mode = 2
 
-[node name="ranklabel" type="Label" parent="frame/margin/rows/ownertabs/account" unique_id=1900112264]
+[node name="ranklabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112264]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "RANK"
 
-[node name="rankrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account" unique_id=1900112265]
+[node name="rankrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112265]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="roleoption" type="OptionButton" parent="frame/margin/rows/ownertabs/account/rankrow" unique_id=1900112244]
+[node name="roleoption" type="OptionButton" parent="frame/margin/rows/tabsscroll/ownertabs/account/rankrow" unique_id=1900112244]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Only ranks below your own. 'owner' comes from ELUSION_OWNER on the server and can never be granted."
 theme_override_font_sizes/font_size = 13
 
-[node name="rolebutton" type="Button" parent="frame/margin/rows/ownertabs/account/rankrow" unique_id=1900112245]
+[node name="rolebutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/rankrow" unique_id=1900112245]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Owner only makes a dev. 'owner' comes from the server's environment and cannot be granted."
 theme_override_font_sizes/font_size = 13
 text = "Set rank"
 
-[node name="rankhint" type="Label" parent="frame/margin/rows/ownertabs/account" unique_id=1900112268]
+[node name="rankhint" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112268]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
 theme_override_font_sizes/font_size = 10
@@ -323,14 +331,14 @@ tooltip_text = "mod: kick, and ban for up to 30 days\ndev: everything a mod can,
 mouse_filter = 0
 text = "mod: kick, 30-day ban · dev: + permanent · owner: + server"
 
-[node name="sep5" type="HSeparator" parent="frame/margin/rows/ownertabs/account" unique_id=1900112280]
+[node name="sep5" type="HSeparator" parent="frame/margin/rows/tabsscroll/ownertabs/account" unique_id=1900112280]
 layout_mode = 2
 
-[node name="movehead" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account"]
+[node name="movehead" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="onlinelabel" type="Label" parent="frame/margin/rows/ownertabs/account/movehead"]
+[node name="onlinelabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/account/movehead"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -340,7 +348,7 @@ text = "MOVE PLAYERS"
 vertical_alignment = 1
 clip_text = true
 
-[node name="onlinerefresh" type="Button" parent="frame/margin/rows/ownertabs/account/movehead"]
+[node name="onlinerefresh" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/movehead"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Ask the server again who is online and where."
@@ -348,7 +356,7 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 11
 text = "Refresh"
 
-[node name="tpeveryonebutton" type="Button" parent="frame/margin/rows/ownertabs/account/movehead"]
+[node name="tpeveryonebutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/movehead"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(112, 0)
 layout_mode = 2
@@ -357,11 +365,11 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 11
 text = "Bring everyone"
 
-[node name="moverow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account"]
+[node name="moverow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="movenameinput" type="LineEdit" parent="frame/margin/rows/ownertabs/account/moverow"]
+[node name="movenameinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/account/moverow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -372,7 +380,7 @@ theme_override_font_sizes/font_size = 13
 placeholder_text = "player's name"
 max_length = 32
 
-[node name="tpbringbutton" type="Button" parent="frame/margin/rows/ownertabs/account/moverow"]
+[node name="tpbringbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/moverow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(86, 0)
 layout_mode = 2
@@ -381,7 +389,7 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Bring here"
 
-[node name="tpgotobutton" type="Button" parent="frame/margin/rows/ownertabs/account/moverow"]
+[node name="tpgotobutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/account/moverow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(64, 0)
 layout_mode = 2
@@ -390,30 +398,30 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Go to"
 
-[node name="onlinescroll" type="ScrollContainer" parent="frame/margin/rows/ownertabs/account"]
+[node name="onlinescroll" type="ScrollContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 72)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="onlinelist" type="VBoxContainer" parent="frame/margin/rows/ownertabs/account/onlinescroll"]
+[node name="onlinelist" type="VBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/account/onlinescroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 2
 
-[node name="testinglabel" type="Label" parent="frame/margin/rows/ownertabs/testing" unique_id=1900112281]
+[node name="testinglabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/testing" unique_id=1900112281]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "YOUR OWN CHARACTER ONLY"
 
-[node name="goldrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing" unique_id=1900112282]
+[node name="goldrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/testing" unique_id=1900112282]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="goldinput" type="LineEdit" parent="frame/margin/rows/ownertabs/testing/goldrow" unique_id=1900112283]
+[node name="goldinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/testing/goldrow" unique_id=1900112283]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -423,7 +431,7 @@ theme_override_font_sizes/font_size = 13
 placeholder_text = "gold (minus takes)"
 max_length = 8
 
-[node name="goldbutton" type="Button" parent="frame/margin/rows/ownertabs/testing/goldrow" unique_id=1900112284]
+[node name="goldbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing/goldrow" unique_id=1900112284]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(86, 0)
 layout_mode = 2
@@ -432,7 +440,7 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Give gold"
 
-[node name="goldbankbutton" type="Button" parent="frame/margin/rows/ownertabs/testing/goldrow" unique_id=1900112285]
+[node name="goldbankbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing/goldrow" unique_id=1900112285]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
@@ -441,11 +449,11 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "To bank"
 
-[node name="itemrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing" unique_id=1900112286]
+[node name="itemrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/testing" unique_id=1900112286]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="iteminput" type="LineEdit" parent="frame/margin/rows/ownertabs/testing/itemrow" unique_id=1900112287]
+[node name="iteminput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/testing/itemrow" unique_id=1900112287]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "The item's id, for example tinyhealthpotion."
@@ -456,7 +464,7 @@ theme_override_font_sizes/font_size = 13
 placeholder_text = "item id"
 max_length = 64
 
-[node name="itemcountinput" type="LineEdit" parent="frame/margin/rows/ownertabs/testing/itemrow" unique_id=1900112288]
+[node name="itemcountinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/testing/itemrow" unique_id=1900112288]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(46, 0)
 layout_mode = 2
@@ -467,7 +475,7 @@ theme_override_font_sizes/font_size = 13
 placeholder_text = "1"
 max_length = 4
 
-[node name="itembutton" type="Button" parent="frame/margin/rows/ownertabs/testing/itemrow" unique_id=1900112289]
+[node name="itembutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing/itemrow" unique_id=1900112289]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(86, 0)
 layout_mode = 2
@@ -476,7 +484,7 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Give item"
 
-[node name="cataloguebutton" type="Button" parent="frame/margin/rows/ownertabs/testing"]
+[node name="cataloguebutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Every item in the game with its picture, searchable: one click puts it in your bag, and gear can go straight on. Opens in its own window."
@@ -484,11 +492,11 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Item catalogue..."
 
-[node name="levelrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing"]
+[node name="levelrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="levelinput" type="LineEdit" parent="frame/margin/rows/ownertabs/testing/levelrow"]
+[node name="levelinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/testing/levelrow"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "The level to set the character you are playing to, 1 to 99."
@@ -499,7 +507,7 @@ theme_override_font_sizes/font_size = 13
 placeholder_text = "level (1-99)"
 max_length = 2
 
-[node name="levelbutton" type="Button" parent="frame/margin/rows/ownertabs/testing/levelrow"]
+[node name="levelbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing/levelrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(86, 0)
 layout_mode = 2
@@ -508,11 +516,11 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Set level"
 
-[node name="skillrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing"]
+[node name="skillrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="skillpick" type="OptionButton" parent="frame/margin/rows/ownertabs/testing/skillrow"]
+[node name="skillpick" type="OptionButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing/skillrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(112, 0)
 layout_mode = 2
@@ -520,7 +528,7 @@ tooltip_text = "Which skill to set, or all six at once."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
 
-[node name="skillinput" type="LineEdit" parent="frame/margin/rows/ownertabs/testing/skillrow"]
+[node name="skillinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/testing/skillrow"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "The skill level to set, 1 to 99."
@@ -531,7 +539,7 @@ theme_override_font_sizes/font_size = 13
 placeholder_text = "skill (1-99)"
 max_length = 2
 
-[node name="skillbutton" type="Button" parent="frame/margin/rows/ownertabs/testing/skillrow"]
+[node name="skillbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing/skillrow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(86, 0)
 layout_mode = 2
@@ -540,11 +548,11 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Set skill"
 
-[node name="godmoderow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/testing"]
+[node name="godmoderow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="godmodebutton" type="CheckButton" parent="frame/margin/rows/ownertabs/testing/godmoderow"]
+[node name="godmodebutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing/godmoderow"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
@@ -556,7 +564,7 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "God mode"
 
-[node name="pvpbutton" type="CheckButton" parent="frame/margin/rows/ownertabs/testing/godmoderow"]
+[node name="pvpbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing/godmoderow"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
@@ -568,7 +576,7 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "PvP"
 
-[node name="tradebutton" type="CheckButton" parent="frame/margin/rows/ownertabs/testing/godmoderow"]
+[node name="tradebutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing/godmoderow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -580,7 +588,7 @@ theme_override_colors/font_color = Color(0.94902, 0.65882, 0.61961, 1)
 theme_override_font_sizes/font_size = 13
 text = "Trading"
 
-[node name="perfbutton" type="CheckButton" parent="frame/margin/rows/ownertabs/testing"]
+[node name="perfbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Owner only. Draws what the game is costing in the top-left corner: frame rate and its worst moment since you switched it on, frame time against the 60 fps budget, nodes, physics, draw calls, memory and requests a second. Grants nothing. Works in the exported game too."
@@ -591,13 +599,13 @@ theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 theme_override_font_sizes/font_size = 13
 text = "Performance readout"
 
-[node name="serverlabel" type="Label" parent="frame/margin/rows/ownertabs/server" unique_id=1900112267]
+[node name="serverlabel" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/server" unique_id=1900112267]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
 theme_override_font_sizes/font_size = 11
 text = "WHO MAY LOG IN"
 
-[node name="maintenancestatus" type="Label" parent="frame/margin/rows/ownertabs/server" unique_id=1900112247]
+[node name="maintenancestatus" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/server" unique_id=1900112247]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.43137, 0.83922, 0.49412, 1)
@@ -606,7 +614,7 @@ theme_override_styles/normal = SubResource("SB_status")
 text = "Server is OPEN"
 autowrap_mode = 3
 
-[node name="maintenancemessageinput" type="LineEdit" parent="frame/margin/rows/ownertabs/server" unique_id=1900112248]
+[node name="maintenancemessageinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/server" unique_id=1900112248]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.87843, 0.90980, 0.94510, 1)
@@ -614,7 +622,7 @@ theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 
 theme_override_font_sizes/font_size = 13
 placeholder_text = "what players are told (optional)"
 
-[node name="maintenancebutton" type="Button" parent="frame/margin/rows/ownertabs/server" unique_id=1900112249]
+[node name="maintenancebutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/server" unique_id=1900112249]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Closes the door now; players get a save window, then are signed out. You are never locked out."
