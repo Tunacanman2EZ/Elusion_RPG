@@ -2268,7 +2268,9 @@ product versions are it with `.0` after (Windows wants four numbers).
   does their work, the performance readout included), 0.7.2 enemies see and
   shoot a player pressed against a wall, 0.7.3 Escape closes every window, 0.7.4
   Move Players: a list of who is online, its own name box, Go to beside them,
-  0.7.5 Give item to a player and the Save history (rollback).
+  0.7.5 Give item to a player and the Save history (rollback), 0.7.6 window
+  mode (exclusive fullscreen), the monitor picker, where the window was, and
+  Match screen.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -2704,8 +2706,8 @@ red "Failed to load resource" line in the console, twelve a minute. Both ask
 `/api/status` now (the opening reuses the answer `refresh_build_info()` already
 has). `_test_the_login_screen_asks_without_a_login`.
 
-**In a browser, Options hides window size, V-Sync, the renderer and the graphics
-API.** The browser owns the window and paces the frames, and Compatibility is
+**In a browser, Options hides window size, V-Sync, the renderer, the graphics
+API and the monitor picker, and greys out exclusive fullscreen.** The browser owns the window and paces the frames, and Compatibility is
 the only renderer there. The readout says "paced by the browser". The login
 screen has no Exit, since a page cannot close its own tab.
 
@@ -3211,6 +3213,65 @@ top, Options with it, and the way back was editing `options.cfg` by hand
   the browser have no screen to measure, and nothing is shrunk there.
 
 `_test_a_window_never_outgrows_the_screen()` holds it, sabotage-checked.
+
+### Three screens at three refresh rates: window mode, monitor, Match screen
+
+The owner, 7 Oct (0.7.6): "the game runs really rough on my screen but only
+this screen not my other 2". His desk is a 180 Hz LG UltraGear (FreeSync), a
+100 Hz LG UltraWide and a 59.94 Hz Samsung, and the game was rough only on the
+Samsung. MONITORS AND WINDOW MODES in settings.gd is the whole story; in short:
+
+- **A window, or borderless fullscreen, is composited**, and with screens at
+  different rates V-Sync can keep time with a screen other than the one the
+  window is on - 100 frames a second shown on a 59.94 Hz screen is one frame on
+  some refreshes and two on others. Godot's own stutter guide recommends
+  exclusive fullscreen on Windows; a Godot forum report (4.5, 144 Hz and 60 Hz)
+  found borderless running at the other screen's rate.
+- **Window mode** replaced the Fullscreen switch: Windowed, Borderless
+  fullscreen (what the switch was) and **Exclusive fullscreen**, which takes
+  that one screen over. An old `fullscreen=true` is read as borderless
+  (`Settings.stored_value()`), once, and the key is gone from the file. A
+  browser has one fullscreen: exclusive is greyed out there.
+- **Monitor** lists every screen by size and rate - "1920 x 1080, 60 Hz",
+  "(main)" on the primary - never by number, because Godot's order is not
+  Windows' Display 1/2/3. Picking one moves the window (out of fullscreen to
+  move, back in there; a window too big for the new screen is brought down).
+  One screen, or a browser, hides the row. `screen` is -1 by default: nothing
+  moves a window nobody placed.
+- **Where it was is remembered.** A once-a-second window watch (a Timer on the
+  Settings autoload, `_watch_window()`) records the screen and the window's
+  spot on it - counted from that screen's corner, never negative, because a
+  screen left of the main one has negative desktop coordinates - once the
+  window has held still for a look (`note_window_place()`).
+- **The next launch STARTS there instead of jumping.** The exported game writes
+  `display/window/size/mode`, `initial_screen` and `initial_position_type` /
+  `initial_position` into override.cfg beside the exe - the file Godot reads
+  before it makes the window - through `write_display_override_to()`, which
+  touches only those keys and leaves the renderer's alone. Never in the
+  editor, whose override.cfg is the project's own. Checked on a virtual
+  display: an override.cfg position is where the window opens, with nothing
+  moving it afterwards. A screen that has gone, or a spot no screen contains,
+  opens centred on the main screen (`_place_window_at_launch()`,
+  `_rescue_offscreen_window()`).
+- **Frame cap: Match screen** (-1, `FRAME_CAP_MATCH`, second on the list): the
+  window's screen's rate, rounded - 60 on the Samsung - and it follows the
+  window to another screen through the watch. Not the default: with V-Sync
+  working, no cap is still right (FRAME PACING).
+- **The readout says which screen is timing the game.** `timed_by_screen()`:
+  V-Sync on or adaptive, clearly more frames than this screen shows, nothing
+  capping below that, and within a few frames of another screen's rate. Then
+  the hint names both ("This screen is 60 Hz, but the game is drawing about
+  100 frames a second - the pace of your 100 Hz screen") and both cures, and
+  does not blame the driver; 2400 fps is still the driver-override hint.
+- **A virtual X display reports NaN for a refresh rate**, which compares false
+  with everything and slips past a `> 0` test. `_known_rate()` makes it -1.
+
+`_test_monitors_and_window_modes()` holds all of it, including a real
+override.cfg written to a file of the suite's own. A headless run has no
+desktop, so the parts that move windows are read rather than run; they were
+run on a virtual display (modes, the remembered spot, the rescue, an
+override.cfg start). Xvfb cannot make a second monitor, so moving between
+screens was first seen on the owner's desk.
 
 ### Inventory, bank and shop on day 1
 

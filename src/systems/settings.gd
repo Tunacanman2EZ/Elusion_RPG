@@ -83,7 +83,28 @@ const DEFAULTS := {
 	"volume_sfx": 1.0,
 
 	# --- display ---
-	"fullscreen": false,
+	# WHICH SCREEN THE GAME PLAYS ON, as Godot numbers them (not Windows'
+	# "Display 1/2/3" - the two orders need not agree, which is why Options
+	# names a screen by its size and refresh rate). -1 IS "WHEREVER IT OPENS",
+	# and the default: nothing moves a window the player never placed. Set by
+	# the Monitor picker, and by dragging the window to another screen - see
+	# MONITORS AND WINDOW MODES below. BEFORE window_mode: load applies keys in
+	# this order, and the window has to be on its screen before it fills it.
+	"screen": -1,
+
+	# WINDOWED, BORDERLESS OR EXCLUSIVE - see MONITORS AND WINDOW MODES. It was
+	# a `fullscreen` bool, which meant borderless; an options.cfg from before
+	# carries that and load_settings() reads it as this.
+	"window_mode": "windowed",
+
+	# WHERE THE WINDOW WAS ON THAT SCREEN: its top-left, counted from the
+	# screen's own top-left, so it is never negative - a screen to the left of
+	# the main one has negative desktop coordinates, which an absolute -1 could
+	# not tell apart from "nowhere". -1 is "nowhere yet". Written by the window
+	# watch, not a control, and used for the next launch: the exported game
+	# starts there (override.cfg), so nothing moves.
+	"window_x": -1,
+	"window_y": -1,
 
 	# V-SYNC IS A MODE NOW, NOT A SWITCH, and it is the whole frame-pacing
 	# story - read the FRAME PACING section below before touching either of
@@ -297,6 +318,10 @@ func _ready() -> void:
 	# without that scene, or the candle, knowing it exists.
 	get_tree().node_added.connect(_on_node_added)
 	load_settings()
+	# AFTER the file: the screen and the mode are applied, so the remembered
+	# spot is on the right screen. Then the watch, which notices drags.
+	_place_window_at_launch()
+	_start_window_watch()
 
 
 func _notification(what: int) -> void:
@@ -373,7 +398,14 @@ const VSYNC_MODES := ["off", "on", "adaptive", "fast"]
 # held at a steady 30 than wandering, and runs cooler doing it. On a 60 Hz
 # screen it is exactly every other refresh, so it does not hitch the way a
 # cap just under the refresh rate does.
-const FRAME_CAPS := [0, 30, 60, 120, 144, 165, 240, 360]
+#
+# -1 IS "MATCH SCREEN": the refresh rate of the screen the window is on,
+# rounded - 60 on a 59.94 Hz television, 100 on a 100 Hz ultrawide - and it
+# follows the window to another screen. It is for the case MONITORS AND WINDOW
+# MODES describes: a window on one screen being paced by another. Second in
+# the list, after Unlimited, because it is the one worth trying first.
+const FRAME_CAP_MATCH := -1
+const FRAME_CAPS := [0, FRAME_CAP_MATCH, 30, 60, 120, 144, 165, 240, 360]
 
 
 # `mode_name`, not `name`: Node.name exists, and a parameter by that name
@@ -409,8 +441,10 @@ static func normalise_vsync(value: Variant) -> String:
 
 
 static func normalise_frame_cap(value: Variant) -> int:
-	# Negative means nothing; 0 is the honest spelling of "no cap".
-	return maxi(0, int(value))
+	# FRAME_CAP_MATCH is the one negative with a meaning; any other means
+	# nothing, and 0 is the honest spelling of "no cap".
+	var cap: int = int(value)
+	return cap if cap == FRAME_CAP_MATCH else maxi(0, cap)
 
 
 func pacing_report() -> Dictionary:
@@ -419,17 +453,366 @@ func pacing_report() -> Dictionary:
 	# requested, nothing is capping, and the game is drawing far more frames
 	# than the screen can show. A driver is ignoring the request. Nothing in
 	# this file can change that; the options screen can at least say it.
+	#
+	# `timed_by` IS THE OTHER ANSWER TO "MORE FRAMES THAN THE SCREEN SHOWS"
+	# (0.7.6): the frames match ANOTHER screen's rate, so the driver is not
+	# ignoring V-Sync - Windows is pacing this window by a different monitor.
+	# See timed_by_screen(). When it says so, `overridden` does not, because
+	# the cure is different.
 	var screen: int = DisplayServer.window_get_current_screen()
-	var refresh: float = DisplayServer.screen_get_refresh_rate(screen)
+	var refresh: float = _known_rate(DisplayServer.screen_get_refresh_rate(screen))
 	var fps: float = Engine.get_frames_per_second()
 	var mode: String = vsync_name_for(DisplayServer.window_get_vsync_mode())
 	var cap: int = Engine.max_fps
-	var overridden: bool = (mode != "off" and mode != "fast" and cap == 0
+	var others: Array = []
+	for entry in screens():
+		if int(entry["index"]) != screen:
+			others.append(float(entry["hz"]))
+	var timed_by: float = timed_by_screen(refresh, fps, mode, cap, others)
+	var overridden: bool = (timed_by <= 0.0 and mode != "off" and mode != "fast" and cap == 0
 		and refresh > 0.0 and fps > refresh * 1.5)
 	return {
 		"refresh": refresh, "fps": fps, "vsync": mode, "cap": cap,
-		"overridden": overridden,
+		"overridden": overridden, "timed_by": timed_by,
 	}
+
+
+# =============================================================================
+# MONITORS AND WINDOW MODES - ONE WINDOW, THREE SCREENS, THREE CLOCKS
+# =============================================================================
+# The owner, 7 Oct: "the game runs really rough on my screen but only this
+# screen not my other 2". His desk: a 180 Hz LG UltraGear (FreeSync), a 100 Hz
+# LG UltraWide and a 59.94 Hz Samsung - three refresh rates, and the game was
+# rough only on the slowest.
+#
+# A WINDOW IS COMPOSITED. In a window, or borderless fullscreen (which on
+# Windows is still a window), the game hands its frames to the desktop
+# compositor, and V-Sync waits on a vertical blank - which, with screens at
+# different rates, need not be the blank of the screen the window is on. A
+# game paced at 100 frames a second shown on a 59.94 Hz screen gets one frame
+# on some refreshes and two on others: movement that walks, stops, walks.
+# Godot's own guide to stutter says to use exclusive fullscreen on Windows for
+# exactly this, and a Godot forum report (4.5, two screens at 144 and 60 Hz)
+# found borderless fullscreen running at another screen's rate.
+#
+# SO THERE ARE THREE THINGS TO CHOOSE, AND OPTIONS HAS ALL THREE:
+#   - Window mode: windowed, borderless (the old "Fullscreen" switch), or
+#     EXCLUSIVE - the game takes that one screen over, presents to it
+#     directly, and V-Sync is that screen's. Alt-tab is slower and the
+#     screen may blink on the way in; that is its whole cost.
+#   - Monitor: which screen, by size and refresh rate.
+#   - Frame cap: Match screen - the game draws as many frames as this screen
+#     shows, whoever is pacing it.
+# And the pacing readout says which screen is timing the game when it is not
+# this one (timed_by_screen()).
+#
+# WHERE IT WAS IS REMEMBERED, and the next launch STARTS there rather than
+# opening on the main screen and jumping: the exported game writes the screen,
+# the mode and the window's spot into override.cfg, the file Godot reads
+# before it makes the window (display_override()). Nothing is written when the
+# player never placed the window anywhere, and nothing at all in the editor -
+# whose override.cfg is the project's own, and whose game may be embedded.
+#
+# A SCREEN THAT IS GONE IS NOT FOLLOWED. A remembered screen past the number
+# there are now, or a spot no screen contains, is ignored, and a window that
+# opens off every screen is brought back to the middle of the main one
+# (_rescue_offscreen_window()).
+
+const WINDOW_MODES := ["windowed", "borderless", "exclusive"]
+
+# How often the window watch looks at where the window is. Nothing tells a
+# program it was dragged to another screen; once a second is quicker than a
+# player can look for the change.
+const WINDOW_WATCH_SECONDS := 1.0
+
+# THE override.cfg KEYS THIS FILE OWNS, and only these: display_override()
+# writes them and erases the ones it does not want, and leaves every other key
+# - the renderer, the graphics API - alone.
+const DISPLAY_OVERRIDE_KEYS := [
+	"window/size/mode", "window/size/initial_screen",
+	"window/size/initial_position_type", "window/size/initial_position",
+]
+
+
+static func window_mode_for(mode_name: String) -> int:
+	match mode_name:
+		"borderless": return DisplayServer.WINDOW_MODE_FULLSCREEN
+		"exclusive":  return DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+		_:            return DisplayServer.WINDOW_MODE_WINDOWED
+
+
+static func normalise_window_mode(value: Variant) -> String:
+	# THE OLD FILE STORED `fullscreen` AS A BOOL, which was borderless. A bool
+	# that reaches here means that; anything unknown is windowed.
+	if typeof(value) == TYPE_BOOL:
+		return "borderless" if value else "windowed"
+	return normalise_choice(value, WINDOW_MODES, "windowed")
+
+
+static func timed_by_screen(refresh: float, fps: float, vsync: String, cap: int,
+		others: Array) -> float:
+	"""The refresh rate of ANOTHER screen this game's frames are keeping time
+	with, or 0.0. True when V-Sync is meant to be pacing (on or adaptive), the
+	game draws clearly more frames than this screen shows, nothing caps it
+	below that, and the number of frames is within a few of another screen's
+	rate. 100 fps on a 59.94 Hz screen beside a 100 Hz one is that; 2400 fps
+	is a driver ignoring V-Sync, which pacing_report() calls `overridden`."""
+	if vsync == "off" or vsync == "fast" or refresh <= 0.0:
+		return 0.0
+	if fps <= refresh * 1.2 or (cap > 0 and float(cap) <= refresh * 1.2):
+		return 0.0
+	for hz in others:
+		var other: float = float(hz)
+		if other > refresh * 1.2 and absf(fps - other) <= maxf(3.0, other * 0.08):
+			return other
+	return 0.0
+
+
+func screens() -> Array:
+	"""Every screen there is: {index, size, position, hz, primary}. Empty when
+	the platform has no screens to choose between - headless, a browser."""
+	var out: Array = []
+	if DisplayServer.get_name() == "headless" or OS.has_feature("web"):
+		return out
+	var primary: int = DisplayServer.get_primary_screen()
+	for i in DisplayServer.get_screen_count():
+		out.append({
+			"index": i,
+			"size": DisplayServer.screen_get_size(i),
+			"position": DisplayServer.screen_get_position(i),
+			"hz": _known_rate(DisplayServer.screen_get_refresh_rate(i)),
+			"primary": i == primary,
+		})
+	return out
+
+
+static func screen_label(entry: Dictionary) -> String:
+	"""How Options names a screen: "1920 x 1080, 60 Hz (main)". By size and
+	rate, never by number - Godot's order is not Windows' Display 1/2/3."""
+	var dims: Vector2i = entry.get("size", Vector2i.ZERO)
+	var hz: float = float(entry.get("hz", -1.0))
+	var text: String = "%d x %d" % [dims.x, dims.y]
+	if hz > 0.0:
+		text += ", %d Hz" % roundi(hz)
+	if bool(entry.get("primary", false)):
+		text += " (main)"
+	return text
+
+
+func current_screen_hz() -> float:
+	if DisplayServer.get_name() == "headless":
+		return -1.0
+	return _known_rate(DisplayServer.screen_get_refresh_rate(DisplayServer.window_get_current_screen()))
+
+
+static func _known_rate(hz: float) -> float:
+	# A SCREEN THAT CANNOT SAY ITS RATE answers -1 - or, on a virtual X
+	# display, NaN, which compares false with everything and slips past a
+	# "> 0" test in the wrong direction. Both mean "unknown" here.
+	return -1.0 if is_nan(hz) or hz <= 0.0 else hz
+
+
+static func display_override(mode_name: String, screen: int, spot: Vector2i,
+		origin: Vector2i, screen_count: int) -> Dictionary:
+	"""The override.cfg [display] keys for the next launch: {key: value}, with
+	null for a key to erase. Nothing (every key erased) when the player never
+	chose a screen or the remembered one is gone. Windowed with a remembered
+	spot (relative to the screen, whose desktop origin is `origin`) starts AT
+	that spot; anything else is centred on the screen."""
+	var out: Dictionary = {}
+	for key in DISPLAY_OVERRIDE_KEYS:
+		out[key] = null
+	if screen < 0 or screen >= screen_count:
+		return out
+	out["window/size/mode"] = window_mode_for(mode_name)
+	out["window/size/initial_screen"] = screen
+	if mode_name == "windowed" and spot.x >= 0 and spot.y >= 0:
+		out["window/size/initial_position_type"] = 0   # Absolute
+		out["window/size/initial_position"] = origin + spot
+	else:
+		out["window/size/initial_position_type"] = 3   # Center of Other Screen
+	return out
+
+
+func _writes_display_override() -> bool:
+	# An exported desktop game only. See MONITORS AND WINDOW MODES.
+	return not OS.has_feature("editor") and not OS.has_feature("web") \
+		and DisplayServer.get_name() != "headless"
+
+
+func _write_display_override() -> void:
+	if not _writes_display_override():
+		return
+	var screen: int = int(get_value("screen"))
+	var count: int = DisplayServer.get_screen_count()
+	var origin: Vector2i = DisplayServer.screen_get_position(screen) \
+		if screen >= 0 and screen < count else Vector2i.ZERO
+	write_display_override_to(_override_path(), display_override(str(get_value("window_mode")),
+		screen, Vector2i(int(get_value("window_x")), int(get_value("window_y"))), origin, count))
+
+
+static func write_display_override_to(path: String, want: Dictionary) -> void:
+	"""Write display_override()'s keys into the override.cfg at `path`: set
+	the ones with a value, erase the ones that are null, and leave every other
+	key in the file - the renderer, the graphics API - as it is. Nothing is
+	written when nothing would change. Static, with the path handed in, so the
+	suite can run it against a file of its own."""
+	var cfg := ConfigFile.new()
+	cfg.load(path)   # a missing file is fine; it starts empty
+	var changed_any: bool = false
+	for key in want:
+		var value: Variant = want[key]
+		if value == null:
+			if cfg.has_section_key("display", key):
+				cfg.erase_section_key("display", key)
+				changed_any = true
+		elif cfg.get_value("display", key, null) != value:
+			cfg.set_value("display", key, value)
+			changed_any = true
+	if not changed_any:
+		return
+	var err: int = cfg.save(path)
+	if err != OK:
+		push_warning("Settings: could not write %s (error %d)." % [path, err])
+
+
+func _apply_screen() -> void:
+	# MOVES THE WINDOW ONLY WHEN IT IS NOT ALREADY THERE, and never for -1 or
+	# a screen that is not plugged in any more.
+	if DisplayServer.get_name() == "headless" or OS.has_feature("web"):
+		return
+	var want: int = int(get_value("screen"))
+	if want < 0 or want >= DisplayServer.get_screen_count():
+		return
+	if DisplayServer.window_get_current_screen() == want:
+		return
+	# OUT OF FULLSCREEN TO MOVE, AND BACK IN THERE. An exclusive window owns
+	# its screen; moving it as it is asks the driver for two transitions at
+	# once.
+	var mode: int = DisplayServer.window_get_mode()
+	if mode != DisplayServer.WINDOW_MODE_WINDOWED:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	DisplayServer.window_set_current_screen(want)
+	_window_watch_screen = want
+	if mode == DisplayServer.WINDOW_MODE_WINDOWED:
+		# A size chosen on a bigger screen may not fit this one, and Godot
+		# moves a window by its corner: shrink to fit, then centre.
+		set_value("window_width", int(get_value("window_width")))
+		set_value("window_height", int(get_value("window_height")))
+		_center_window()
+	else:
+		DisplayServer.window_set_mode(mode)
+	_apply_fps_cap()
+
+
+func _center_window() -> void:
+	var screen: int = DisplayServer.window_get_current_screen()
+	var usable: Rect2i = DisplayServer.screen_get_usable_rect(screen)
+	var size: Vector2i = Vector2i(int(get_value("window_width")), int(get_value("window_height")))
+	if DisplayServer.window_get_size() != size:
+		DisplayServer.window_set_size(size)
+	# Whole pixels, and an odd leftover puts the window one pixel left of
+	# centre - see _apply_window_size().
+	@warning_ignore("integer_division")
+	DisplayServer.window_set_position(usable.position + (usable.size - size) / 2)
+
+
+func _place_window_at_launch() -> void:
+	# THE EDITOR'S HALF OF "WHERE IT WAS". An export starts there from
+	# override.cfg and finds itself already in place; a game run from the
+	# editor is moved once, here, after load_settings() put it on its screen.
+	if DisplayServer.get_name() == "headless" or OS.has_feature("web"):
+		return
+	_rescue_offscreen_window()
+	if str(get_value("window_mode")) != "windowed":
+		return
+	var spot := Vector2i(int(get_value("window_x")), int(get_value("window_y")))
+	var screen: int = int(get_value("screen"))
+	# A SCREEN THAT HAS GONE: the override.cfg written while it was plugged in
+	# still names it, and Godot then opens the window in the main screen's top
+	# corner. Centred instead; the watch records the screen it is on now.
+	if screen >= DisplayServer.get_screen_count():
+		_center_window()
+		return
+	if spot.x < 0 or spot.y < 0 or screen < 0 or screen >= DisplayServer.get_screen_count():
+		return
+	var at: Vector2i = DisplayServer.screen_get_position(screen) + spot
+	if DisplayServer.window_get_position() == at:
+		return
+	var usable: Rect2i = DisplayServer.screen_get_usable_rect(screen)
+	if usable.has_point(at):
+		DisplayServer.window_set_position(at)
+
+
+func _rescue_offscreen_window() -> void:
+	# A WINDOW NO SCREEN CONTAINS is brought to the middle of the main one: a
+	# remembered spot on a screen that has since been unplugged, or moved.
+	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+		return
+	# Half a window, in whole pixels: a centre one pixel off is still inside.
+	@warning_ignore("integer_division")
+	var centre: Vector2i = DisplayServer.window_get_position() + DisplayServer.window_get_size() / 2
+	for i in DisplayServer.get_screen_count():
+		if Rect2i(DisplayServer.screen_get_position(i), DisplayServer.screen_get_size(i)).has_point(centre):
+			return
+	DisplayServer.window_set_current_screen(DisplayServer.get_primary_screen())
+	_center_window()
+
+
+# The window watch's last look: which screen, and where. A move is recorded
+# once it has held still for one look, so a drag across the desk is one write.
+var _window_watch_screen: int = -1
+var _window_watch_at: Vector2i = Vector2i(-1, -1)
+
+
+func _start_window_watch() -> void:
+	if DisplayServer.get_name() == "headless" or OS.has_feature("web"):
+		return
+	_window_watch_screen = DisplayServer.window_get_current_screen()
+	var timer := Timer.new()
+	timer.name = "windowwatch"
+	timer.wait_time = WINDOW_WATCH_SECONDS
+	timer.autostart = true
+	timer.process_mode = Node.PROCESS_MODE_ALWAYS
+	timer.timeout.connect(_watch_window)
+	add_child(timer)
+
+
+func _watch_window() -> void:
+	"""Once a second: which screen the window is on, and where.
+
+	ANOTHER SCREEN re-works Match screen's cap - the 100 Hz screen's 100 is the
+	wrong number on the 60 Hz one - and becomes the screen to start on.
+	A WINDOW THAT HAS STOPPED MOVING somewhere new is remembered, for the next
+	launch. A minimised or maximised window is not a place."""
+	var here: int = DisplayServer.window_get_current_screen()
+	if here != _window_watch_screen:
+		_window_watch_screen = here
+		_apply_fps_cap()
+	var mode: int = DisplayServer.window_get_mode()
+	if mode == DisplayServer.WINDOW_MODE_MINIMIZED or mode == DisplayServer.WINDOW_MODE_MAXIMIZED:
+		return
+	note_window_place(here, DisplayServer.window_get_position() - DisplayServer.screen_get_position(here),
+		mode == DisplayServer.WINDOW_MODE_WINDOWED)
+
+
+func note_window_place(screen: int, spot: Vector2i, windowed: bool) -> void:
+	"""Remember where the window is - its screen, and its top-left counted from
+	that screen's - once it has held still for one look. Public so the suite
+	can walk it through a drag without a desktop. A spot hanging off the
+	screen's left or top edge is not remembered; the next launch centres it."""
+	var settled: bool = spot == _window_watch_at
+	_window_watch_at = spot
+	if not settled:
+		return
+	if screen != int(get_value("screen")):
+		set_value("screen", screen)
+	if not windowed:
+		return
+	var keep: Vector2i = spot if spot.x >= 0 and spot.y >= 0 else Vector2i(-1, -1)
+	if keep.x != int(get_value("window_x")) or keep.y != int(get_value("window_y")):
+		set_value("window_x", keep.x)
+		set_value("window_y", keep.y)
 
 
 # =============================================================================
@@ -487,11 +870,16 @@ static func content_scale_mode_for(render_resolution: String) -> Window.ContentS
 		else Window.CONTENT_SCALE_MODE_CANVAS_ITEMS)
 
 
-static func fps_cap_for(frame_cap: int, focused: bool, background_limit: bool) -> int:
+static func fps_cap_for(frame_cap: int, focused: bool, background_limit: bool,
+		screen_hz: float = 0.0) -> int:
 	# THE ONE PLACE THE CAP IS WORKED OUT. The player's cap in the foreground;
 	# in the background, BACKGROUND_FPS or the player's cap, whichever is lower
 	# - a player who capped at 10 does not get raised to 15 by alt-tabbing.
+	# Match screen is the window's screen's rate, rounded; a screen that cannot
+	# say its rate (headless, a browser) gets no cap rather than a guess.
 	var cap: int = maxi(0, frame_cap)
+	if frame_cap == FRAME_CAP_MATCH:
+		cap = roundi(screen_hz) if screen_hz > 0.0 else 0
 	if focused or not background_limit:
 		return cap
 	return BACKGROUND_FPS if cap == 0 else mini(cap, BACKGROUND_FPS)
@@ -506,7 +894,7 @@ static func simple_ambient(authored: Color) -> Color:
 func _apply_fps_cap() -> void:
 	# THE ONLY PLACE max_fps IS WRITTEN - see "frame_cap" in _apply().
 	var want: int = fps_cap_for(int(get_value("frame_cap")), _focused,
-		bool(get_value("background_fps_limit")))
+		bool(get_value("background_fps_limit")), current_screen_hz())
 	if Engine.max_fps != want:
 		Engine.max_fps = want
 
@@ -816,6 +1204,11 @@ func _normalise(key: String, typed: Variant) -> Variant:
 			# WRAPPED, because the thing it names is a circle. 400 is 40 and
 			# -20 is 340; neither is a mistake worth refusing.
 			return wrapf(float(typed), 0.0, 360.0)
+		"window_mode":
+			return normalise_window_mode(typed)
+		"screen", "window_x", "window_y":
+			# -1 is "none", and nothing below it means anything else.
+			return maxi(-1, int(typed))
 		"window_width":
 			# SHRUNK TO FIT THE SCREEN. See fit_window_side().
 			return fit_window_side(int(typed), window_room().x, 0)
@@ -843,13 +1236,26 @@ func load_settings() -> void:
 		push_warning("Settings: could not read %s (error %d) — using defaults." % [CONFIG_PATH, err])
 
 	for key in DEFAULTS:
-		set_value(key, config.get_value(SECTION, key, DEFAULTS[key]))
+		set_value(key, stored_value(config, key))
 
 	_loading = false
 
 	# Written back once at the end rather than on every key above, so a first
 	# launch leaves a complete file and an upgraded one gains the new keys.
 	save_settings()
+
+
+static func stored_value(config: ConfigFile, key: String) -> Variant:
+	"""What the file says for `key`, or its default.
+
+	THE OLD `fullscreen` SWITCH is read once as the window mode it meant -
+	borderless - and is then gone: save_settings() writes only DEFAULTS' keys.
+	Normalised here, because set_value() would first coerce the bool to the
+	string "true", which is no mode at all."""
+	if key == "window_mode" and not config.has_section_key(SECTION, key) \
+			and config.has_section_key(SECTION, "fullscreen"):
+		return normalise_window_mode(bool(config.get_value(SECTION, "fullscreen")))
+	return config.get_value(SECTION, key, DEFAULTS[key])
 
 
 func save_settings() -> void:
@@ -878,8 +1284,19 @@ func _apply(key: String, value: Variant) -> void:
 			Audio.set_bus_volume("Music", float(value))
 		"volume_sfx":
 			Audio.set_bus_volume("SFX", float(value))
-		"fullscreen":
+		"screen":
+			_apply_screen()
+			if not _loading:
+				_write_display_override()
+		"window_mode":
 			_apply_window_mode()
+			if not _loading:
+				_write_display_override()
+		"window_x", "window_y":
+			# Nothing to do to the window - it is already there; this is where
+			# the next launch starts. See note_window_place().
+			if not _loading:
+				_write_display_override()
 		"window_width", "window_height":
 			_apply_window_size()
 		"vsync":
@@ -922,29 +1339,43 @@ func _apply(key: String, value: Variant) -> void:
 
 
 func _apply_window_mode() -> void:
-	# BORDERLESS FULLSCREEN, which is what WINDOW_MODE_FULLSCREEN means in Godot:
-	# a window with no decorations, sized to the screen, still composited by the
-	# desktop like any other window. WINDOW_MODE_EXCLUSIVE_FULLSCREEN is the one
-	# that takes the display over outright.
+	# THREE MODES NOW (0.7.6) - see MONITORS AND WINDOW MODES.
 	#
-	# Borderless is the right default for this game — it alt-tabs instantly and
-	# behaves on a multi-monitor desk, which exclusive does not. Exclusive was
-	# tried here on the theory that taking the compositor out of the presentation
-	# path would settle a tearing problem; it did not, so it is not worth the
-	# cost it carries.
-	var want_fullscreen: bool = bool(get_value("fullscreen"))
-	var want_mode: int = (DisplayServer.WINDOW_MODE_FULLSCREEN
-		if want_fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
+	#   windowed     a window, at the stored size
+	#   borderless   WINDOW_MODE_FULLSCREEN: no decorations, the size of the
+	#                screen, still composited by the desktop like any window.
+	#                What the old "Fullscreen" switch did; it alt-tabs at once.
+	#   exclusive    WINDOW_MODE_EXCLUSIVE_FULLSCREEN: the game takes that one
+	#                screen over and presents to it directly, so V-Sync is that
+	#                screen's own. Godot's stutter guide recommends it on
+	#                Windows.
+	#
+	# Exclusive was tried here once, alone, on the theory that it would settle
+	# the tearing band in FRAME PACING; it did not, and was dropped. That was a
+	# driver ignoring V-Sync. A window on a 60 Hz screen paced by a 180 Hz one
+	# is a different problem, and this is what it wants.
+	#
+	# A BROWSER HAS ONE FULLSCREEN, so exclusive is borderless there.
+	var mode_name: String = str(get_value("window_mode"))
+	var want_mode: int = window_mode_for(mode_name)
+	if OS.has_feature("web") and want_mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:
+		want_mode = DisplayServer.WINDOW_MODE_FULLSCREEN
 
 	# NOTHING HAPPENS IF THE WINDOW IS ALREADY LIKE THIS — see the note in
 	# _apply_window_size() for why that matters more than it looks.
-	if DisplayServer.window_get_mode() != want_mode:
+	var now: int = DisplayServer.window_get_mode()
+	if now != want_mode:
+		# FROM ONE FULLSCREEN TO THE OTHER BY WAY OF A WINDOW: each is a
+		# different kind of window to the driver, and a straight swap is two
+		# transitions asked for at once.
+		if now != DisplayServer.WINDOW_MODE_WINDOWED and want_mode != DisplayServer.WINDOW_MODE_WINDOWED:
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		DisplayServer.window_set_mode(want_mode)
 
 	# The stored size is reapplied on the way OUT of fullscreen, because
 	# leaving fullscreen restores whatever size the window had before it — not
 	# necessarily the one the player chose.
-	if not want_fullscreen:
+	if mode_name == "windowed":
 		_apply_window_size()
 
 
@@ -952,7 +1383,7 @@ func _apply_window_size() -> void:
 	# IGNORED WHILE FULLSCREEN, and not stored any differently. A player who
 	# picks 1600x900 while fullscreen has expressed a preference about their
 	# window; it takes effect when there is a window again.
-	if bool(get_value("fullscreen")):
+	if str(get_value("window_mode")) != "windowed":
 		return
 
 	var size := Vector2i(int(get_value("window_width")), int(get_value("window_height")))

@@ -551,21 +551,42 @@ theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
 theme_override_font_sizes/font_size = 12
 text = "DISPLAY"
 
-[node name="fullscreenrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
+[node name="screenrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/fullscreenrow"]
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/screenrow"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
 theme_override_font_sizes/font_size = 12
-text = "Fullscreen"
+text = "Monitor"
 vertical_alignment = 1
 
-[node name="fullscreentoggle" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/fullscreenrow"]
+[node name="screenpick" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/screenrow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 26)
 layout_mode = 2
+tooltip_text = "Which screen the game plays on. It opens there next time too."
+
+[node name="windowmoderow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/windowmoderow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Window mode"
+vertical_alignment = 1
+
+[node name="windowmode" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol/windowmoderow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 26)
+layout_mode = 2
+tooltip_text = "Exclusive fullscreen takes the screen over and is usually the smoothest, above all with screens of different speeds. Borderless switches away instantly."
 
 [node name="windowrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columns/rightcol"]
 layout_mode = 2

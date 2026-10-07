@@ -58,7 +58,12 @@ signal closed
 @onready var music_value:   Label        = get_node_or_null("%musicvalue")
 @onready var sfx_value:     Label        = get_node_or_null("%sfxvalue")
 
-@onready var fullscreen_toggle: CheckButton = get_node_or_null("%fullscreentoggle")
+# THE WINDOW MODE AND THE MONITOR (0.7.6) - see MONITORS AND WINDOW MODES in
+# settings.gd. The mode picker replaced a Fullscreen switch, which was
+# borderless; the monitor picker names each screen by size and refresh rate.
+@onready var window_mode:       OptionButton = get_node_or_null("%windowmode")
+@onready var screen_pick:       OptionButton = get_node_or_null("%screenpick")
+@onready var screen_row:        Control      = get_node_or_null("%screenrow")
 @onready var vsync_mode:        OptionButton = get_node_or_null("%vsyncmode")
 @onready var frame_cap:         OptionButton = get_node_or_null("%framecap")
 @onready var graphics_api:      OptionButton = get_node_or_null("%graphicsapi")
@@ -112,6 +117,10 @@ var _readout_accum: float = 0.0
 # Labels for the pickers, in the same order as the constants they mirror.
 const VSYNC_LABELS := {
 	"off": "Off", "on": "On", "adaptive": "Adaptive", "fast": "Fast (no cap)",
+}
+const WINDOW_MODE_LABELS := {
+	"windowed": "Windowed", "borderless": "Borderless fullscreen",
+	"exclusive": "Exclusive fullscreen",
 }
 const API_LABELS := {"vulkan": "Vulkan", "d3d12": "Direct3D 12"}
 const RESOLUTION_LABELS := {"screen": "Full (sharpest)", "low": "1280 x 720 (fastest)"}
@@ -237,8 +246,19 @@ func _connect_controls() -> void:
 		name_hue.step = Settings.NAME_HUE_STEP
 		name_hue.value_changed.connect(_on_name_hue_changed)
 
-	if fullscreen_toggle != null:
-		fullscreen_toggle.toggled.connect(_on_fullscreen_toggled)
+	if window_mode != null:
+		window_mode.clear()
+		for mode_name in Settings.WINDOW_MODES:
+			window_mode.add_item(WINDOW_MODE_LABELS.get(mode_name, mode_name))
+		# A BROWSER HAS ONE FULLSCREEN: exclusive is greyed out there and says
+		# why, rather than offered and quietly the same as borderless.
+		if OS.has_feature("web"):
+			var at: int = Settings.WINDOW_MODES.find("exclusive")
+			window_mode.set_item_disabled(at, true)
+			window_mode.set_item_text(at, "Exclusive fullscreen (desktop game only)")
+		window_mode.item_selected.connect(_on_window_mode_selected)
+	if screen_pick != null:
+		screen_pick.item_selected.connect(_on_screen_selected)
 	if vsync_mode != null:
 		vsync_mode.clear()
 		for mode_name in Settings.VSYNC_MODES:
@@ -247,7 +267,7 @@ func _connect_controls() -> void:
 	if frame_cap != null:
 		frame_cap.clear()
 		for cap in Settings.FRAME_CAPS:
-			frame_cap.add_item("Unlimited" if int(cap) == 0 else "%d fps" % int(cap))
+			frame_cap.add_item(frame_cap_label(int(cap), -1.0))
 		frame_cap.item_selected.connect(_on_frame_cap_selected)
 	if graphics_api != null:
 		graphics_api.clear()
@@ -325,13 +345,15 @@ func refresh() -> void:
 
 	_update_volume_labels()
 
-	if fullscreen_toggle != null:
-		fullscreen_toggle.button_pressed = bool(Settings.get_value("fullscreen"))
+	if window_mode != null:
+		window_mode.selected = Settings.WINDOW_MODES.find(str(Settings.get_value("window_mode")))
+	_refresh_screens(Settings.screens(), DisplayServer.window_get_current_screen())
 	if vsync_mode != null:
 		vsync_mode.selected = Settings.VSYNC_MODES.find(str(Settings.get_value("vsync")))
 	if frame_cap != null:
 		# A cap the list does not offer (a hand-edited 100) selects nothing,
 		# for the same reason the window-size picker does below.
+		_label_match_cap(Settings.current_screen_hz())
 		frame_cap.selected = Settings.FRAME_CAPS.find(int(Settings.get_value("frame_cap")))
 	if graphics_api != null:
 		graphics_api.selected = Settings.GRAPHICS_APIS.find(Settings.graphics_api_requested())
@@ -563,7 +585,7 @@ func _update_window_size_enabled() -> void:
 	# stored preference is untouched — it takes effect on the way back out.
 	if window_size == null:
 		return
-	window_size.disabled = bool(Settings.get_value("fullscreen"))
+	window_size.disabled = str(Settings.get_value("window_mode")) != "windowed"
 
 
 # =============================================================================
@@ -651,11 +673,64 @@ func _update_name_swatch() -> void:
 	name_swatch.add_theme_stylebox_override("panel", behind)
 
 
-func _on_fullscreen_toggled(pressed: bool) -> void:
+func _on_window_mode_selected(index: int) -> void:
 	if _refreshing:
 		return
-	Settings.set_value("fullscreen", pressed)
+	if index < 0 or index >= Settings.WINDOW_MODES.size():
+		return
+	Settings.set_value("window_mode", Settings.WINDOW_MODES[index])
 	_update_window_size_enabled()
+	_readout_accum = READOUT_SECONDS
+
+
+# The screens the Monitor picker lists, in its order: Settings.screens()
+# entries. Kept so a pick can be turned back into a screen index.
+var _screens_listed: Array = []
+
+
+func _refresh_screens(listed: Array, here: int) -> void:
+	"""Fill the Monitor picker from Settings.screens(), with the screen the
+	window is on selected. ONE SCREEN, OR NONE (a browser), IS NO CHOICE, and
+	the row is hidden rather than offering a list of one."""
+	_screens_listed = listed
+	if screen_pick == null:
+		return
+	screen_pick.clear()
+	for entry in listed:
+		screen_pick.add_item(SettingsScript.screen_label(entry))
+		if int(entry["index"]) == here:
+			screen_pick.select(screen_pick.item_count - 1)
+	if screen_row != null:
+		screen_row.visible = listed.size() > 1
+
+
+func _on_screen_selected(index: int) -> void:
+	if _refreshing:
+		return
+	if index < 0 or index >= _screens_listed.size():
+		return
+	Settings.set_value("screen", int(_screens_listed[index]["index"]))
+	# The cap's Match screen label and the sizes that fit are this screen's
+	# now; refresh() asks again.
+	refresh()
+
+
+static func frame_cap_label(cap: int, screen_hz: float) -> String:
+	"""What the Frame cap picker calls a cap. Match screen names the number it
+	is today, on this screen, when the screen can say."""
+	if cap == 0:
+		return "Unlimited"
+	if cap == SettingsScript.FRAME_CAP_MATCH:
+		return "Match screen" if screen_hz <= 0.0 else "Match screen (%d)" % roundi(screen_hz)
+	return "%d fps" % cap
+
+
+func _label_match_cap(screen_hz: float) -> void:
+	if frame_cap == null:
+		return
+	var at: int = Settings.FRAME_CAPS.find(Settings.FRAME_CAP_MATCH)
+	if at >= 0 and at < frame_cap.item_count:
+		frame_cap.set_item_text(at, frame_cap_label(Settings.FRAME_CAP_MATCH, screen_hz))
 
 
 func _on_vsync_selected(index: int) -> void:
@@ -722,7 +797,7 @@ static func rows_hidden_on(os_name: String) -> Array:
 	if os_name != "Windows":
 		rows.append("api")
 	if os_name == "Web":
-		rows.append_array(["window", "vsync", "renderer"])
+		rows.append_array(["window", "vsync", "renderer", "screen"])
 	return rows
 
 
@@ -732,6 +807,7 @@ func _hide_rows_for(os_name: String) -> void:
 		"window": [window_size.get_parent() if window_size != null else null],
 		"vsync": [vsync_mode.get_parent() if vsync_mode != null else null],
 		"renderer": [renderer.get_parent() if renderer != null else null, renderer_note],
+		"screen": [screen_row],
 	}
 	for row_name in rows_hidden_on(os_name):
 		for row in rows[row_name]:
@@ -766,12 +842,32 @@ func _update_pacing_readout() -> void:
 	var r: Dictionary = Settings.pacing_report()
 	pacing_readout.text = pacing_line(r, OS.get_name())
 	if pacing_hint != null:
-		pacing_hint.visible = bool(r["overridden"])
-		if bool(r["overridden"]):
-			pacing_hint.text = ("Your graphics driver is overriding V-Sync. "
-				+ "AMD: Wait for Vertical Refresh -> \"Off, unless application specifies\", Enhanced Sync off. "
-				+ "NVIDIA: Vertical sync -> \"Use the 3D application setting\". "
-				+ "Or try Direct3D 12 below.")
+		var hint: String = pacing_hint_for(r)
+		pacing_hint.visible = hint != ""
+		if hint != "":
+			pacing_hint.text = hint
+	# The window may have been dragged to another screen while Options is open.
+	_label_match_cap(float(r["refresh"]))
+
+
+static func pacing_hint_for(r: Dictionary) -> String:
+	"""The line under the readout, or "" when there is nothing to fix.
+
+	ANOTHER SCREEN IS TIMING THE GAME (timed_by) comes first, because its cure
+	is here on this screen: the owner's 59.94 Hz Samsung beside a 180 Hz and a
+	100 Hz screen. A DRIVER IGNORING V-SYNC is a setting outside the game."""
+	var timed_by: float = float(r.get("timed_by", 0.0))
+	if timed_by > 0.0:
+		return ("This screen is %d Hz, but the game is drawing about %d frames a second - "
+			+ "the pace of your %d Hz screen. Pick Exclusive fullscreen above, "
+			+ "or Frame cap: Match screen.") % [roundi(float(r["refresh"])),
+				roundi(float(r["fps"])), roundi(timed_by)]
+	if bool(r.get("overridden", false)):
+		return ("Your graphics driver is overriding V-Sync. "
+			+ "AMD: Wait for Vertical Refresh -> \"Off, unless application specifies\", Enhanced Sync off. "
+			+ "NVIDIA: Vertical sync -> \"Use the 3D application setting\". "
+			+ "Or try Direct3D 12 below.")
+	return ""
 
 
 func _on_window_size_selected(index: int) -> void:

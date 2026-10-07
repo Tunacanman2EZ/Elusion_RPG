@@ -207,6 +207,7 @@ func _run_all() -> void:
 	await _test_escape_closes_every_window()
 	await _test_move_players_from_the_list()
 	await _test_give_and_save_history()
+	await _test_monitors_and_window_modes()
 	_test_presence_carries_the_monsters()
 	await _test_shared_monsters_lead()
 	await _test_shared_monsters_follow()
@@ -5950,7 +5951,10 @@ func _test_settings() -> void:
 	# DEFAULTS with no row here fails, which is the point.
 	var controls := {
 		"volume_master": "mastervolume",   "volume_music": "musicvolume",
-		"volume_sfx": "sfxvolume",         "fullscreen": "fullscreentoggle",
+		"volume_sfx": "sfxvolume",         "window_mode": "windowmode",
+		# THE MONITOR PICKER IS WHERE THE WINDOW IS (0.7.6): the screen, and
+		# the spot on it that the window watch remembers for the next launch.
+		"screen": "screenpick", "window_x": "screenpick", "window_y": "screenpick",
 		"vsync": "vsyncmode",              "frame_cap": "framecap",
 		"window_width": "windowsize",      "window_height": "windowsize",
 		"damage_numbers": "damagenumbers",   "chat_filter": "chatfilter",
@@ -7094,6 +7098,240 @@ func _test_install_id_is_kept_and_sent() -> void:
 # static functions on staffpanel.gd precisely so they can be pinned here
 # without a server. The live run - real panel, real app.py, every button
 # pressed - is in the commit that added this.
+
+# 0.7.6. The owner, 7 Oct: "the game runs really rough on my screen but only
+# this screen not my other 2 ... we might have to add more to the settings menu
+# to really be user friendly". Three screens - 180, 100 and 59.94 Hz - and the
+# game rough only on the 59.94 Hz one. MONITORS AND WINDOW MODES in
+# settings.gd. A headless run has no desktop, so what moves windows is checked
+# through the pieces that decide where, and the parts that touch a window by
+# reading them.
+func _test_monitors_and_window_modes() -> void:
+	section("DISPLAY - window mode, monitor, where it was, and Match screen")
+	const SettingsScript := preload("res://src/systems/settings.gd")
+	const Options := preload("res://src/ui/menus/optionsscreen.gd")
+
+	# --- the window mode --------------------------------------------------------
+	check("three modes: windowed, borderless, exclusive",
+		Settings.WINDOW_MODES == ["windowed", "borderless", "exclusive"], Settings.WINDOW_MODES)
+	check("  each the engine's own mode",
+		SettingsScript.window_mode_for("windowed") == DisplayServer.WINDOW_MODE_WINDOWED
+		and SettingsScript.window_mode_for("borderless") == DisplayServer.WINDOW_MODE_FULLSCREEN
+		and SettingsScript.window_mode_for("exclusive") == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN)
+	check("windowed is the default, as before",
+		Settings.DEFAULTS["window_mode"] == "windowed" and not Settings.DEFAULTS.has("fullscreen"))
+	check("an old fullscreen=true means borderless, which is what it was",
+		SettingsScript.normalise_window_mode(true) == "borderless"
+		and SettingsScript.normalise_window_mode(false) == "windowed")
+	check("  case does not matter, and nonsense is windowed",
+		SettingsScript.normalise_window_mode("Exclusive") == "exclusive"
+		and SettingsScript.normalise_window_mode("banana") == "windowed")
+	var old_file := ConfigFile.new()
+	old_file.set_value(SettingsScript.SECTION, "fullscreen", true)
+	var new_file := ConfigFile.new()
+	new_file.set_value(SettingsScript.SECTION, "fullscreen", true)
+	new_file.set_value(SettingsScript.SECTION, "window_mode", "exclusive")
+	check("an options.cfg from before 0.7.6 comes up borderless",
+		SettingsScript.stored_value(old_file, "window_mode") == "borderless"
+		and SettingsScript.stored_value(ConfigFile.new(), "window_mode") == "windowed")
+	check("  and a file that has a mode is read as it says",
+		SettingsScript.stored_value(new_file, "window_mode") == "exclusive")
+	check("the screen comes before the mode, so a window is on its screen before it fills it",
+		Settings.DEFAULTS.keys().find("screen") < Settings.DEFAULTS.keys().find("window_mode"))
+	var settings_src: String = _code_only(FileAccess.get_file_as_string("res://src/systems/settings.gd"))
+	var to_mode: String = _func_body(settings_src, "func _apply_window_mode(")
+	check("a browser has one fullscreen: exclusive is borderless there",
+		to_mode.contains("OS.has_feature(\"web\")") and to_mode.contains("WINDOW_MODE_FULLSCREEN"))
+	check("  and one fullscreen to the other goes by way of a window",
+		to_mode.contains("window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)"))
+
+	# --- which screen -------------------------------------------------------------
+	check("no screen is chosen by default - nothing moves a window nobody placed",
+		Settings.DEFAULTS["screen"] == -1 and Settings.DEFAULTS["window_x"] == -1
+		and Settings.DEFAULTS["window_y"] == -1)
+	var samsung := {"index": 1, "size": Vector2i(1920, 1080), "hz": 59.94, "primary": false}
+	var ultragear := {"index": 0, "size": Vector2i(1920, 1080), "hz": 180.0, "primary": true}
+	var ultrawide := {"index": 2, "size": Vector2i(3440, 1440), "hz": 100.0, "primary": false}
+	check("a screen is named by its size and rate, rounded",
+		SettingsScript.screen_label(samsung) == "1920 x 1080, 60 Hz", SettingsScript.screen_label(samsung))
+	check("  and the main one says so",
+		SettingsScript.screen_label(ultragear) == "1920 x 1080, 180 Hz (main)", SettingsScript.screen_label(ultragear))
+	check("  and one that cannot say its rate gives only its size",
+		SettingsScript.screen_label({"size": Vector2i(1280, 720), "hz": -1.0}) == "1280 x 720")
+	var move: String = _func_body(settings_src, "func _apply_screen(")
+	check("a window is moved only when it is somewhere else, and never to a screen that is gone",
+		move.contains("window_get_current_screen() == want") and move.contains("want >= DisplayServer.get_screen_count()"))
+	var leave_at: int = move.find("window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)")
+	check("  out of fullscreen to move, and back in on the other screen",
+		leave_at >= 0 and leave_at < move.find("window_set_current_screen(want)")
+		and move.contains("DisplayServer.window_set_mode(mode)"))
+	check("  and a window too big for the new screen is brought down to fit",
+		move.contains("set_value(\"window_width\"") and move.contains("_center_window()"))
+
+	# --- where it was ---------------------------------------------------------
+	var kept: Dictionary = {}
+	for key in ["screen", "window_x", "window_y"]:
+		kept[key] = Settings.get_value(key)
+	Settings._window_watch_at = Vector2i(-1, -1)
+	Settings.note_window_place(2, Vector2i(300, 120), true)
+	check("a window still being dragged is not remembered yet",
+		Settings.get_value("screen") == kept["screen"] and Settings.get_value("window_x") == kept["window_x"])
+	Settings.note_window_place(2, Vector2i(300, 120), true)
+	check("one that has held still is: its screen, and its spot on that screen",
+		Settings.get_value("screen") == 2 and Settings.get_value("window_x") == 300
+		and Settings.get_value("window_y") == 120,
+		[Settings.get_value("screen"), Settings.get_value("window_x"), Settings.get_value("window_y")])
+	Settings.note_window_place(1, Vector2i(-40, 10), true)
+	Settings.note_window_place(1, Vector2i(-40, 10), true)
+	check("  hanging off a screen's edge, the screen is kept and the spot is not - it opens centred",
+		Settings.get_value("screen") == 1 and Settings.get_value("window_x") == -1
+		and Settings.get_value("window_y") == -1)
+	Settings.note_window_place(0, Vector2i(0, 0), false)
+	Settings.note_window_place(0, Vector2i(0, 0), false)
+	check("  fullscreen on another screen is that screen, and no spot",
+		Settings.get_value("screen") == 0 and Settings.get_value("window_x") == -1)
+	for key in kept:
+		Settings.set_value(key, kept[key])
+	check("the game never writes override.cfg from the editor or the suite",
+		not Settings._writes_display_override())
+
+	var none: Dictionary = SettingsScript.display_override("windowed", -1, Vector2i(-1, -1), Vector2i.ZERO, 3)
+	check("nobody placed it: override.cfg says nothing about the window",
+		none.size() == SettingsScript.DISPLAY_OVERRIDE_KEYS.size() and none.values().all(func(v): return v == null))
+	var gone: Dictionary = SettingsScript.display_override("exclusive", 5, Vector2i(10, 10), Vector2i.ZERO, 3)
+	check("  nor when the remembered screen is not plugged in any more",
+		gone.values().all(func(v): return v == null))
+	var full: Dictionary = SettingsScript.display_override("exclusive", 1, Vector2i(-1, -1), Vector2i(1920, 0), 3)
+	check("exclusive on the Samsung: the next launch starts there, in that mode, centred",
+		full["window/size/mode"] == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+		and full["window/size/initial_screen"] == 1
+		and full["window/size/initial_position_type"] == 3 and full["window/size/initial_position"] == null, full)
+	var full_spot: Dictionary = SettingsScript.display_override("borderless", 1, Vector2i(40, 30), Vector2i(1920, 0), 3)
+	check("  a fullscreen window fills its screen, whatever spot its window had",
+		full_spot["window/size/initial_position_type"] == 3 and full_spot["window/size/initial_position"] == null,
+		full_spot)
+	var left: Dictionary = SettingsScript.display_override("windowed", 2, Vector2i(100, 50), Vector2i(-3440, 0), 3)
+	check("  a window on a screen left of the main one starts at its spot, in desktop pixels",
+		left["window/size/mode"] == DisplayServer.WINDOW_MODE_WINDOWED
+		and left["window/size/initial_position_type"] == 0
+		and left["window/size/initial_position"] == Vector2i(-3340, 50), left)
+	# THE FILE ITSELF, written for real - to a file of the suite's own, never
+	# to the project's override.cfg.
+	var probe_path := "user://suite_override_probe.cfg"
+	var before := ConfigFile.new()
+	before.set_value("rendering", "renderer/rendering_method", "gl_compatibility")
+	before.set_value("display", "window/size/initial_position", Vector2i(5, 5))
+	before.save(probe_path)
+	SettingsScript.write_display_override_to(probe_path, full)
+	var after := ConfigFile.new()
+	after.load(probe_path)
+	check("written to override.cfg: the mode, the screen and how to place it",
+		after.get_value("display", "window/size/mode", -9) == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+		and after.get_value("display", "window/size/initial_screen", -9) == 1
+		and after.get_value("display", "window/size/initial_position_type", -9) == 3)
+	check("  an old spot it no longer wants is erased",
+		not after.has_section_key("display", "window/size/initial_position"))
+	check("  and the renderer the player chose is left exactly as it was",
+		after.get_value("rendering", "renderer/rendering_method", "") == "gl_compatibility")
+	SettingsScript.write_display_override_to(probe_path, none)
+	after = ConfigFile.new()
+	after.load(probe_path)
+	check("  reset, every key it owns goes, and still only those",
+		not after.has_section("display")
+		and after.get_value("rendering", "renderer/rendering_method", "") == "gl_compatibility")
+	DirAccess.remove_absolute(probe_path)
+	SettingsScript.write_display_override_to(probe_path, none)
+	check("  and nothing to say writes no file at all", not FileAccess.file_exists(probe_path))
+	var rescue: String = _func_body(settings_src, "func _rescue_offscreen_window(")
+	check("a window that opens on no screen is brought to the middle of the main one",
+		rescue.contains("get_primary_screen()") and rescue.contains("_center_window()"))
+
+	# --- Match screen ------------------------------------------------------------------
+	check("Match screen is offered second, after Unlimited",
+		Settings.FRAME_CAPS[1] == Settings.FRAME_CAP_MATCH and Settings.FRAME_CAP_MATCH == -1)
+	check("  and survives being read back, where any other negative is no cap",
+		SettingsScript.normalise_frame_cap(-1) == -1 and SettingsScript.normalise_frame_cap(-5) == 0)
+	check("it is the screen's own rate, rounded: 60 on the Samsung, 100 on the ultrawide",
+		SettingsScript.fps_cap_for(-1, true, true, 59.94) == 60
+		and SettingsScript.fps_cap_for(-1, true, true, 100.0) == 100)
+	check("  no cap when the screen cannot say its rate",
+		SettingsScript.fps_cap_for(-1, true, true, -1.0) == 0)
+	check("  and the background limit still wins in the background",
+		SettingsScript.fps_cap_for(-1, false, true, 180.0) == Settings.BACKGROUND_FPS)
+	var watch: String = _func_body(settings_src, "func _watch_window(")
+	check("moving to another screen works the cap out again",
+		watch.contains("_apply_fps_cap()") and watch.contains("here != _window_watch_screen"))
+	check("the picker names the number it is on this screen",
+		Options.frame_cap_label(-1, 59.94) == "Match screen (60)"
+		and Options.frame_cap_label(-1, -1.0) == "Match screen"
+		and Options.frame_cap_label(0, 60.0) == "Unlimited" and Options.frame_cap_label(144, 60.0) == "144 fps")
+
+	# --- the readout says which screen is timing the game ------------------------
+	var others := [180.0, 100.0]
+	check("100 fps on the 59.94 Hz screen beside a 100 Hz one: timed by the 100",
+		SettingsScript.timed_by_screen(59.94, 100.0, "on", 0, others) == 100.0)
+	check("  180 fps there: timed by the 180",
+		SettingsScript.timed_by_screen(59.94, 179.0, "on", 0, others) == 180.0)
+	check("  60 fps there is in step - nothing to say",
+		SettingsScript.timed_by_screen(59.94, 60.0, "on", 0, others) == 0.0)
+	check("  2400 fps is a driver ignoring V-Sync, not another screen",
+		SettingsScript.timed_by_screen(59.94, 2400.0, "on", 0, others) == 0.0)
+	check("  V-Sync off or Fast draw freely on purpose",
+		SettingsScript.timed_by_screen(59.94, 100.0, "off", 0, [100.0]) == 0.0
+		and SettingsScript.timed_by_screen(59.94, 100.0, "fast", 0, [100.0]) == 0.0)
+	check("  and a cap at this screen's rate is already the cure",
+		SettingsScript.timed_by_screen(59.94, 100.0, "on", 60, [100.0]) == 0.0)
+	check("  a faster screen paced by a faster one still: 180 fps on the 100 Hz",
+		SettingsScript.timed_by_screen(100.0, 180.0, "on", 0, [180.0, 59.94]) == 180.0)
+	var timed_hint: String = Options.pacing_hint_for({"refresh": 59.94, "fps": 100.0, "vsync": "on",
+		"cap": 0, "overridden": false, "timed_by": 100.0})
+	check("the hint names both screens and the two cures",
+		timed_hint.contains("This screen is 60 Hz") and timed_hint.contains("your 100 Hz screen")
+		and timed_hint.contains("Exclusive fullscreen") and timed_hint.contains("Match screen"), timed_hint)
+	check("  a driver override still gets its own words",
+		Options.pacing_hint_for({"refresh": 60.0, "fps": 2400.0, "overridden": true, "timed_by": 0.0}).contains("overriding V-Sync"))
+	check("  and a screen in step gets no hint at all",
+		Options.pacing_hint_for({"refresh": 60.0, "fps": 60.0, "overridden": false, "timed_by": 0.0}) == "")
+
+	# --- the Options rows ------------------------------------------------------------
+	var screen: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(screen)
+	await get_tree().process_frame
+	check("Options has a Monitor row and a Window mode picker, and no Fullscreen switch",
+		screen.get_node_or_null("%screenpick") != null and screen.get_node_or_null("%windowmode") != null
+		and screen.get_node_or_null("%fullscreentoggle") == null)
+	check("  the window mode picker lists the three modes in their order",
+		screen.window_mode.item_count == 3 and screen.window_mode.get_item_text(0) == "Windowed"
+		and screen.window_mode.get_item_text(2) == "Exclusive fullscreen")
+	screen._refresh_screens([ultragear, samsung, ultrawide], 1)
+	check("  the monitor picker lists every screen, the one the window is on selected",
+		screen.screen_pick.item_count == 3 and screen.screen_pick.selected == 1
+		and screen.screen_pick.get_item_text(1) == "1920 x 1080, 60 Hz"
+		and screen.screen_pick.get_item_text(2) == "3440 x 1440, 100 Hz")
+	check("  and is shown when there is a choice", screen.screen_row.visible)
+	screen._refresh_screens([ultragear], 0)
+	check("  and hidden when there is not - one screen is no choice", not screen.screen_row.visible)
+	screen._refresh_screens([samsung, ultrawide, ultragear], 0)
+	var kept_screen: Variant = Settings.get_value("screen")
+	screen._on_screen_selected(1)
+	check("picking the ultrawide sets the screen to its index, not its place in the list",
+		Settings.get_value("screen") == 2, Settings.get_value("screen"))
+	Settings.set_value("screen", kept_screen)
+	var kept_mode: Variant = Settings.get_value("window_mode")
+	screen._on_window_mode_selected(2)
+	check("picking Exclusive fullscreen sets it", Settings.get_value("window_mode") == "exclusive")
+	check("  and greys out the window size, which only a window has", screen.window_size.disabled)
+	screen._on_window_mode_selected(1)
+	check("  and so does Borderless", screen.window_size.disabled)
+	screen._on_window_mode_selected(0)
+	check("  and Windowed brings the size back", not screen.window_size.disabled)
+	Settings.set_value("window_mode", kept_mode)
+	screen._label_match_cap(59.94)
+	check("the frame cap's Match screen says this screen's number",
+		screen.frame_cap.get_item_text(1) == "Match screen (60)", screen.frame_cap.get_item_text(1))
+	screen.queue_free()
+	await get_tree().process_frame
+
 
 func _test_a_window_never_outgrows_the_screen() -> void:
 	section("OPTIONS - a window size bigger than the screen")
@@ -17479,6 +17717,7 @@ func _test_the_browser_build() -> void:
 		[Options.rows_hidden_on("Windows"), Options.rows_hidden_on("Linux")])
 	var screen: Node = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate()
 	screen.api_row = screen.get_node("%apirow")
+	screen.screen_row = screen.get_node("%screenrow")
 	screen.window_size = screen.get_node("%windowsize")
 	screen.vsync_mode = screen.get_node("%vsyncmode")
 	screen.renderer = screen.get_node("%renderer")
@@ -17490,9 +17729,11 @@ func _test_the_browser_build() -> void:
 		if (row as CanvasItem).visible:
 			still_shown.append(str(row.name))
 	check("  and the screen really hides those rows", still_shown.is_empty(), still_shown)
-	check("  but keeps fullscreen and the frame cap, which a browser honours",
-		(screen.get_node("%fullscreentoggle").get_parent() as CanvasItem).visible
+	check("  but keeps the window mode and the frame cap, which a browser honours",
+		(screen.get_node("%windowmode").get_parent() as CanvasItem).visible
 		and (screen.get_node("%framecap").get_parent() as CanvasItem).visible)
+	check("  and drops the monitor picker - a page is on whatever screen its browser is",
+		on_web.has("screen") and not (screen.get_node("%screenrow") as CanvasItem).visible)
 	screen.free()
 	var report := {"refresh": -1.0, "fps": 59.6, "vsync": "on", "cap": 0, "overridden": false}
 	check("  its readout says the browser paces the frames, not 'Screen ? Hz - V-Sync on'",
