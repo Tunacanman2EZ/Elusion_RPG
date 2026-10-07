@@ -1456,10 +1456,38 @@ It is `src/shared/localtime.gd` now, and the suite fails if any of those four
 files grows its own `Time.get_time_zone_from_system()` again.
 
 The honest limit, stated rather than hidden: that call reports the offset in
-force **today**, DST included, so a stamp from the other side of a DST change is
-an hour out. For chat, which is minutes old, never. For a week-old broadcast,
-twice a year. Fixing it properly needs a timezone database, which is not worth
-shipping to make an old server notice an hour righter.
+force **now**, DST included. **Since 0.11.2 a browser does better**: the web
+build asks JavaScript for the offset in force *at each timestamp*
+(`LocalTime.bias_minutes_at()`, kept by the quarter hour), so a notice from
+before the clocks changed reads the hour it was. **A desktop still cannot** -
+there is no timezone database to ask - so there a stamp from the other side of
+a change is an hour out, a week-old broadcast twice a year. The system offset
+is re-read once a minute (`BIAS_REREAD_MSEC`): it used to be read once and
+kept, so a game left running across the change showed the old hour until it
+was closed.
+
+**Leap years and the calendar** (the owner, 7 Oct: "lets make sure my game
+accounts for leap year etc"). Nothing in the game or the server counts days in
+a month or in a year:
+
+- **Every time is unix seconds**, stored and sent, and **every duration is
+  seconds** - a ban of N days is N x 86400 seconds, a trade hold 48 hours, a
+  trusted computer 30 days, "3 days ago" - which no leap year changes. SQLite
+  is never asked a date question. The server writes a date into text in one
+  place a player could see - a rollback's line in the staff log, labelled UTC -
+  and its scripts (killwatch, deathwatch, the backup names) print the server's
+  own clock, which on the droplet is UTC.
+- **The calendar appears only where a time is shown, and that is LocalTime**,
+  which takes every day, month and weekday from Godot's `Time`.
+  `_test_the_calendar()` holds Godot's calendar against Howard Hinnant's
+  days-to-civil for every day of 1970-2199, both directions and the weekday,
+  then LocalTime on Feb 29 2028 (a Tuesday), the day after Feb 28 2100 (Mar 1:
+  not a leap year), New Year's Eve, a stamp seven days after Feb 29, and both
+  of Denver's changes of clocks with a stand-in for the browser.
+- **The kill record's "counted since" is the player's date** now; it read the
+  UTC date, so a record begun on the evening of the 6th in Denver said the 7th.
+- The website's visitor counter keys its days by UTC (`toISOString()`), so it
+  has neither problem.
 
 ### The fatal hit is the one that never saved
 
@@ -2220,6 +2248,65 @@ at the bag, the mythic and `/api/shop/buy`).
 
 `_test_quality_rolls`; the API's `test_quality.py` holds the server half.
 
+### Armour resists an element, and the roll is in the id too (0.11.0)
+
+The owner, 7 Oct: "add resistance to armor with a ? random roll also in the
+shop", "i want elements to do something". Every monster already deals its own
+element; now every piece of **armour** - anything worn that is not a weapon,
+helm to amulet - rolls one of the seven lands' elements and a percent, wherever
+its stats roll (a drop, the till, the owner's "rolled" and "Perfect" grants).
+The numbers are `GameConstants.RESIST_*`, exported; the server rolls.
+
+- **Never a weapon, and nothing about a player's own damage.** The owner, the
+  same day, on giving weapons an element: "the main goal should be to keep
+  players damage consistent with attack level and gear". Elements defend; there
+  is no matchup chart. Environmental hazards may come later, and would be one
+  more source of elemental hits for this to cut.
+- **The last part of the rolled id**: `jadechest~a104h96r605` resists fire
+  (`Element.Type` 6) by 5%. `RESIST_LETTER`, one digit of element, two of
+  percent, after every stat. **Never renumber `Element.Type`** or change the
+  letter: every stored roll spells the element with that digit. A piece from
+  before 0.11.0 has no `r` part and resists nothing; it is still read.
+- **The ranges** are by tier (`RESIST_RANGES`): iron 2-5, jade 3-7, cobalt
+  4-9, amethyst 5-11, ember 6-13, past the table its last row. Evenly across
+  the range, the element evenly from `RESIST_ELEMENTS` (the seven lands; not
+  lightning or poison). A Perfect piece resists at the top of its range.
+- **Matching pieces add up, to `RESIST_CAP` (50%)**, and take that share off
+  a hit of that element only. `Player.damage_taken()` is the arithmetic, and
+  `take_damage()` lands what it says: the defense tier, the armour, then the
+  resistance, each multiplied with what the one before left, `maxi(1, ...)`
+  under all three. A physical hit is armour's alone. Seven ember pieces of one
+  element at 13% are 91%, held to 50%, so a hit is at most halved by it.
+- **`ItemRegistry.split_roll()` reads it** (`read_resist()`), as strictly as
+  the server's `gamedata._parse_variant()`: armour only, an element from the
+  list, inside the tier's range, two digits of percent, last, once, and the top
+  of the range on a Perfect. Anything else is a malformed roll, the unknown id.
+  `rolled_item()` sets `resist_element` and `resist_percent` on the copy;
+  `resistance_text()` says "Resists fire 5%".
+- **Where it shows**: its own line in the tooltip; on the shelf "Resists ? -
+  one element, 3-7%", since the till rolls it with the stats; the purchase line
+  ("quality 104%, resists fire 5%"); and the Gear window's **Resists** row,
+  strongest first (`Player.resistances()`): the top two and a count, "Fire
+  18%, Ice 5% +1", with the whole list as the row's hover text
+  (`RESISTS_SHOWN`). Three ember elements at 13% made the window 6 pixels
+  wider than the column it sits in.
+- **The server only carries it.** Damage a player takes never reaches the
+  server, so nothing there reads a resistance but the parser and the roll; a
+  resistance changes no price, no maximum and no combat bound.
+- **Build 4.** A build-3 game reads a resisting id as a malformed roll, the
+  error item, exactly as build 2 read a quality roll - so `Api.BUILD` and the
+  API's `CURRENT_CLIENT_BUILD` are 4. Raise the server's minimum to 4 once
+  0.11.0 is out.
+- **Found while here, 7 Oct**: `_roll_suffix` ended in `$`, which in PCRE also
+  matches before a final newline, so `"ironsword~d107\n"` read as the 107 roll
+  - a second spelling of one piece. It is `\z` now. The server had the same
+  hole and Unicode digits through `\d`; both sides' malformed lists hold them.
+  And `spikedoor.gd` passed `&"physical"` to `take_damage()`'s int element, a
+  type error the first time a door is given contact damage (none is yet).
+
+`_test_armour_resistance`; the API's `test_quality.py` Q-8 holds the server
+half, and both name the same malformed spellings.
+
 ### The boss gates in the Field: a lever on each side
 
 The Field's three spike gates (`spikedoor`, `spikedoor2`, `spikedoor3`, at
@@ -2270,12 +2357,26 @@ product versions are it with `.0` after (Windows wants four numbers).
   Move Players: a list of who is online, its own name box, Go to beside them,
   0.7.5 Give item to a player and the Save history (rollback), 0.7.6 window
   mode (exclusive fullscreen), the monitor picker, where the window was, and
-  Match screen, 0.8.0 text size, five style fonts and keys you can change.
+  Match screen, 0.8.0 text size, five style fonts and keys you can change,
+  0.9.0 the kill record (Social > Kills, or K), 0.10.0 the server's books on
+  every fight (it watches; nothing in play changes), 0.11.0 armour resists an
+  element, 0.11.1 the Credits window (Options > Credits), 0.11.2 each time shown
+  at the offset in force when it happened (a browser), and the calendar tested,
+  0.11.3 the Credits' Support tab sends a name through the PayPal note,
+  0.11.4 and asks for nothing but the hot cocoa, 0.11.5 the Electric Sprite
+  pet's orb reaches what it is aimed at.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
   the PC first: the editor rewrites it when it exports, so a copy from here is
   stale. The website's update entries name the version.
+- **And close Godot before export_presets.cfg is replaced.** The editor holds
+  the presets in memory from when it opened and writes them back on every
+  export. On 7 Oct the 0.10.0 web export wrote a copy from before 0.7.2:
+  file version 0.7.1.0 and no `include_filter`, so that build went out
+  without the fonts' OFL.txt. `_test_the_game_says_its_version` and "every
+  licence text goes out in every export" both catch it - on the PC, where
+  the file is.
 - **Not `Api.BUILD`.** That counter tells the server which games are too old
   to talk to it, and moves only when the game and the API must change
   together. The version is for people and moves every release.
@@ -2444,6 +2545,57 @@ and loot (by design). The leader is trusted with the monsters exactly as every
 game is trusted with its own kills (E-3): a cheating leader can do no more to
 the monsters than a cheating game always could, and the caps above keep an
 invented number from reaching anybody's health.
+
+### The server's books: it watches every fight (0.10.0)
+
+The owner, 7 Oct: "Moving combat onto the server ... The first step only
+watches: the server checks every hit against what that character could really
+do, but changes nothing in play." E3_SCOPE.md (api repo), option C, step 1.
+The presence server now keeps its own count of every monster's health
+(api `combatbook.py`, api CLAUDE.md "The books on every monster"). The game's
+part is small, and **nothing a player sees changes**:
+
+- **A leader tells the server even alone.** A server whose welcome says
+  `"books": true` (`Presence.books()`) hears the leader's world whether or not
+  anybody else shares the area: monstersync's `_sending()` is `_sharing()` or
+  `_books()`. Spawns, deaths and what moved go out; shots, vines and swings
+  still only go to games that draw them.
+- **With its own hits inside it.** `BaseEnemy.take_damage()` hands every hit
+  this game's player or pet lands on a monster it runs to `own_hit()`, BEFORE
+  the hp moves, and the next world carries them as `"hits"` - read by the
+  server ahead of the deaths they caused. A remote hit was counted on its way
+  through the server and is not sent again. At most `MAX_HITS_PER_MESSAGE` a
+  world; the rest go in the next.
+- **A scene loads before its socket does.** Every change of area opens a new
+  presence link, so the monsters start running with nobody told. When the
+  link opens and names this game leader of monsters it already runs,
+  `_on_lead()` sends everything, as a new scene's (`_told_books`); again after
+  the link drops and comes back. The server answers a world about monsters it
+  never saw with `need` for game 0, which `_on_need()` answers like any other.
+- **Dead is dead while it still stands.** A large slime says it died as its
+  split begins and flashes a moment before its smalls appear; it used to be
+  numbered again in that moment (`_register_all()`), a second monster at its
+  spot on every follower's screen. `_on_died()` marks it `net_dead` now.
+- **A fresh ticket after an equip** (`Presence.renew_soon()`, from
+  `CharacterData._apply_equip_result()`): the server holds every hit to what
+  the ticket says is in hand, and tickets are otherwise renewed once a minute.
+- **The numbers the server bounds hits by are the game's**, exported:
+  each class's base damage, cooldown, swing length and walking speed
+  (`CLASS_SPEED`, a constant now so the exporter can read it), the pets', the
+  skill and agility steps, which weapons bring their own attack - and every
+  area's spawn points and respawn time (`areas`). Re-run the exporter and copy
+  gamedata.json across when any of them changes; the suite says so if not.
+- Hello says wire `3` (`SHARED_VERSION`); a server on 2 still shares
+  (`SHARED_MINIMUM`). An area led by a game from before 0.10.0 is not judged by
+  the server at all.
+
+Tests: `_test_presence_carries_the_books`, `_test_shared_monsters_keep_the_books`,
+`_test_combat_bounds_match_the_game`; the server's half is `test_combatbook.py`
+and `test_presence.py` P-8. Played with two real games against the real API
+and presence server: a warrior leading and a mage following killed monsters
+together, each AGREED with their own damage and character, a warrior alone
+split a large slime and its twin and smalls were all accounted for, and the
+only flags were the test harness's own teleports.
 
 ### Enemies aim at the body, not the origin
 
@@ -2968,8 +3120,8 @@ and back up the ladder.
   not bring its walls along.
 - **The field's welcome played on every arrival**: from the town gate, the
   boss room's ladder, a revive and a staff teleport. It plays once a login now
-  (`GameState.opening_story_told`, reset by `clear_current_user()`). It carries
-  the credits, so it must still play once.
+  (`GameState.opening_story_told`, reset by `clear_current_user()`). Its last
+  page carried the credits until 0.11.1; they are in Options > Credits now.
 - `_test_every_area_can_be_walked` copies each area's tiles and static bodies
   into the tree and floods it with the warrior's own feet: every arrival must
   land clear of every door, nothing reachable may be off the map, and every
@@ -3346,8 +3498,8 @@ whole story:
   scene asks the InputMap for a key, kept in `user://keys.cfg` - not in
   DEFAULTS, because a binding is two keys per action and every DEFAULTS key
   is one control in Options. The file holds only what differs.
-- **What can be changed**: the four walks, sprint, attack, use, the five window
-  keys and the ten hotbar keys, two keys each (a first and a second, the way
+- **What can be changed**: the four walks, sprint, attack, use, the six window
+  keys (Kills joined them in 0.9.0) and the ten hotbar keys, two keys each (a first and a second, the way
   W and Up both walk). The suite fails if project.godot gains an action that
   is not on the list. **What cannot**: Escape (closes windows, cancels a key
   being set - bound away, nothing could be got out of), the backquote (the GM
@@ -3357,7 +3509,10 @@ whole story:
   physical key, and stays so. New bindings are physical keys, like the rest.
 - **The hotbar's keys are actions now**, `hotbar_1`..`hotbar_10`, made at
   launch from `Hotbar.SLOT_KEYS`; `slot_for_key()` asks them, and each slot's
-  number is the key on it (`refresh_key_labels()`).
+  number is the key on it (`refresh_key_labels()`). **A new key is made the
+  same way** (`Keybinds.MADE_HERE`, where `kills_toggle` on K lives), never by
+  editing project.godot from outside the editor: the editor keeps its own copy
+  of that file and writes it back over an action added behind its back.
 - **A key on two actions is moved, not doubled**, and the card says whose it
   was: "Bag is on E now. It was Use the shop...'s, which has no key now." An
   action left with no key is red on the card.
@@ -3373,6 +3528,104 @@ whole story:
 
 `_test_rebindable_keys()` holds it, with a scratch keys file
 (`Keybinds.path`), never the machine's own.
+
+### The kill record: every monster, with its picture
+
+The owner, 7 Oct (0.9.0): "lets make a button in game that records all players
+kills with icons of the enemies". Social > Kills, or K - in the Social
+dropdown beside Kingdom, not on the bar, because the bar was cut to eight
+buttons on day 1 for being crowded.
+
+- **Two tabs.** You: this character's kills of each monster, most first, and
+  when the last fell; then every monster it has not killed yet, greyed - the
+  record is also the list of what is left to find. Everyone: each monster's
+  total across every account, how many players, who has killed the most (an
+  account, its characters added together) and your own share.
+- **The server counts** (api CLAUDE.md, "The kill record"): `kill_tally`,
+  paid kills only, kept for good. **It has a birthday** - the first boot
+  counted what `kill_reports` still held (two weeks) - and the summary line
+  says "counted since" that day rather than letting a young record pass for a
+  lifetime one.
+- **The pictures are the monsters' own art** (`EnemyPortraits`): the first
+  frame of the idle pose from each one's scene, instantiated and freed without
+  entering the tree, dressed as in the world - the element recolour its
+  EnemyData asks for (`BaseEnemy.element_material()`, shared with the live
+  monster now) and its body tint - and **cut to the creature**
+  (`Image.get_used_rect()`): a cell of the sheet is mostly empty, and drawn
+  whole a fire sprite was a speck. Three scenes are not named for their
+  enemy_id (`boss` is bossenemy.tscn; both poison slimes are poisonslime.tscn,
+  the small drawn from its "small" animations), and the suite checks every
+  monster that pays finds a picture.
+- **The roster is data/enemies/**, read with `ResourceLoader.list_directory()`
+  as ItemRegistry reads items - DirAccess finds nothing in an export.
+- **A game newer than its server** gets a 404 and says "This server does not
+  keep a kill record yet."
+
+`_test_the_kill_record()` holds the window and the pictures; the server's half
+is test_killrecord.py.
+
+### The Credits: Options > Credits (0.11.1)
+
+The owner, 7 Oct: "as for credits i think we should make it a button in
+settings that says credits we can separate artists audio and support there".
+`creditsscreen.gd`, a window like the rest (`credits`), opened by the Credits
+button in the Options footer (`credits_requested` -> the HUD's
+`open_credits()`, in front of Options). Four tabs, each built once and then
+only shown or hidden:
+
+- **Art**: Ahvassa and Caio Carlos / Clockwork Raven Studios, linked, each
+  with what they made; then every font the game ships with its copyright line
+  (`FONTS`) under the OFL. The suite holds `FONTS` to `Settings.FONT_STYLES`
+  and the emoji font, and every owner in `LICENSED_ART_FOLDERS` to a name in
+  the credits (`CREDITED_OWNERS`) - **art from a new source is a new credit**,
+  and the suite says whose name is missing.
+- **Audio**: who recorded the sounds, and on what (docs/audio.md).
+- **Support**: `SUPPORTERS`, **the one list the owner edits** - everyone who
+  bought a hot cocoa on the website and put their name in the PayPal note.
+  The only list of them: the site's supporters wall went on 7 Oct ("remove
+  wall keep ledger i will put their names directly into the game"). Empty, it
+  says how to get on it; the link is the site's Support page.
+- **Engine**: Godot's licence, and FreeType's, ENet's and Mbed TLS's, each in
+  full and read from the engine (`Engine.get_license_text()`,
+  `get_copyright_info()`, `get_license_info()`), then every other part of
+  Godot with its licence. **Not decoration**: MIT asks for its notice in every
+  copy, and Godot's guide to complying names a credits screen and those three.
+  FreeType's sentence is in the words its licence asks for. The texts come
+  broken at 80 columns; `reflow()` makes them paragraphs.
+
+They were the last page of the field's welcome (`field.gd`) until now, read
+once a login on the way through the portal. The owner is rewriting that
+welcome as story; the credits no longer depend on it. `_test_the_credits()`.
+
+### The Electric Sprite pet's orb flew 80 px (0.11.5)
+
+Found measuring every pet against a boss for the website's Boss Sim: from
+90 px the Electric Sprite pet put nothing into the Crowned, every other pet
+put its full rate. `petmagicprojectile.tscn` set `speed = 20` where every
+other pet's shot flies at 300 (the script's default), and the orb lives 4 s,
+so it went about 80 px. The pet picks a target up to `aggro_range` (280) away
+and keeps it to 322 (`TARGET_KEEP_SLACK`), so from anywhere but beside its
+target the orb faded out on the way, for as long as the pet existed. Nothing
+logged; the pet just seemed to keep missing - the fire pet's mask
+(`_test_collision_contract`) again, one number over.
+
+- **The scene no longer sets it**: 300, the same as the rest. Measured after:
+  the pet lands its shot every 2 s from 90 px, as the fire pet does.
+- **`_test_pet_shots_reach()`** asks every pet scene whose shot flies (it has
+  a speed and a lifetime - five of the seven; the vine and the Crowned's
+  rupture are put down on the target) whether `speed x lifetime` covers
+  `aggro_range x TARGET_KEEP_SLACK`. With the 20 back it fails naming the
+  scene and the numbers.
+
+Also in 0.11.5: **writing override.cfg logged an engine error per key.**
+`Settings.write_display_override_to()` asked `cfg.get_value("display", key,
+null)`, and a default of null is the same call as no default - so every key
+the file did not have yet (all of them, the first time a player picks a
+screen) printed "Couldn't find the given section ... and no default was
+given" before the write went ahead. It asks `has_section_key()` first now.
+The suite's display section attaches an `EngineErrorCounter` (a `Logger`
+that hears every engine error, not only script errors) around the write and
+fails if it hears one.
 
 ### Inventory, bank and shop on day 1
 

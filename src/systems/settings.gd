@@ -680,7 +680,11 @@ static func write_display_override_to(path: String, want: Dictionary) -> void:
 			if cfg.has_section_key("display", key):
 				cfg.erase_section_key("display", key)
 				changed_any = true
-		elif cfg.get_value("display", key, null) != value:
+		# HAS IT, THEN READ IT. get_value() with a default of null is the
+		# same call as no default at all, so a key the file does not have
+		# yet - every key, the first time a player picks a screen - was an
+		# engine ERROR in the log, one per key, before the write went ahead.
+		elif not cfg.has_section_key("display", key) or cfg.get_value("display", key) != value:
 			cfg.set_value("display", key, value)
 			changed_any = true
 	if not changed_any:

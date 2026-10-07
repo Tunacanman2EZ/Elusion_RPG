@@ -47,7 +47,6 @@ texture_filter = 1
 collision_layer = 32
 collision_mask = 8
 script = ExtResource("1_c0fdo")
-speed = 20.0
 damage = 10
 
 [node name="animatedsprite2d" type="AnimatedSprite2D" parent="." unique_id=1352338978]

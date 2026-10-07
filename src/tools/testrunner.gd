@@ -81,6 +81,26 @@ class ScriptErrorCounter extends Logger:
 var _script_errors: ScriptErrorCounter = null
 
 
+# EVERY ERROR THE ENGINE REPORTS, of any kind, while it is attached - for a check
+# that some piece of code logs nothing at all. A ConfigFile read with no default
+# is one: it returns null and goes on, and the only trace is a line in the log.
+class EngineErrorCounter extends Logger:
+	var count: int = 0
+	var where: PackedStringArray = []
+	var _lock := Mutex.new()
+
+	func _log_error(_function: String, file: String, line: int, code: String, rationale: String,
+			_editor_notify: bool, _error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		_lock.lock()
+		count += 1
+		if where.size() < 4:
+			where.append("%s:%d  %s" % [file.get_file(), line, (rationale if rationale != "" else code).left(90)])
+		_lock.unlock()
+
+	func _log_message(_message: String, _error: bool) -> void:
+		pass
+
+
 # Started before the first section and read by _report(), so a SCRIPT ERROR
 # anywhere in the run is a failed check rather than a missing one.
 func _watch_script_errors() -> void:
@@ -147,6 +167,7 @@ func _run_all() -> void:
 	_test_boss_arena_exits()
 	_test_staff_panel()
 	_test_collision_contract()
+	_test_pet_shots_reach()
 	_test_script_references()
 	_test_element_enum_order()
 	_test_spawn_ordering()
@@ -167,6 +188,7 @@ func _run_all() -> void:
 	_test_death_reaches_the_server()
 	_test_world_status_is_shown()
 	_test_timestamps_are_the_servers()
+	_test_the_calendar()
 	_test_board_says_what_it_is_made_of()
 	_test_the_guild_tag_is_drawn_everywhere()
 	_test_panels_are_windows()
@@ -210,6 +232,7 @@ func _run_all() -> void:
 	await _test_monitors_and_window_modes()
 	await _test_text_size_and_font()
 	await _test_rebindable_keys()
+	await _test_the_kill_record()
 	_test_presence_carries_the_monsters()
 	await _test_shared_monsters_lead()
 	await _test_shared_monsters_follow()
@@ -217,6 +240,9 @@ func _run_all() -> void:
 	await _test_shared_monsters_targets()
 	await _test_shared_monsters_pieces()
 	await _test_shared_monsters_hold_the_leaders_numbers()
+	_test_presence_carries_the_books()
+	await _test_shared_monsters_keep_the_books()
+	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
@@ -255,6 +281,7 @@ func _run_all() -> void:
 	await _test_the_big_field()
 	await _test_far_enemies_sleep()
 	_test_the_welcome_plays_once_a_login()
+	await _test_the_credits()
 	_test_a_character_can_be_deleted()
 	_test_one_code_per_computer()
 	_test_install_id_is_kept_and_sent()
@@ -263,6 +290,7 @@ func _run_all() -> void:
 	_test_the_store_sells_the_next_set()
 	await _test_the_shop_buys()
 	await _test_quality_rolls()
+	await _test_armour_resistance()
 	await _test_the_boss_gates_lever()
 	await _test_other_players_are_drawn()
 	await _test_founding_a_guild_shows_what_it_cost()
@@ -2691,6 +2719,155 @@ func _test_world_status_is_shown() -> void:
 	print("  events scroll away, states do not")
 
 
+# =============================================================================
+# THE CALENDAR - leap years, month ends, the new year, and the clocks changing
+# =============================================================================
+# The owner, 7 Oct: "lets make sure my game accounts for leap year etc". Every
+# time in the game and on the server is unix seconds, and a duration (a ban, a
+# trade hold, "3 days ago") is seconds too, which no leap year changes. The
+# calendar only appears where a time is SHOWN, and that is LocalTime, which asks
+# Godot's Time for every day, month and weekday. So this holds Godot's calendar
+# against an independent one, and LocalTime's stamps on the dates that break
+# hand-rolled calendars: Feb 29, the day after Feb 28 in 2100, New Year's Eve,
+# and the two nights a year the clocks change.
+
+func _civil_from_days(days: int) -> Array:
+	"""[year, month, day] for days since 1970-01-01: Howard Hinnant's
+	days-to-civil, which counts the Gregorian rules out itself (every 4th year,
+	not every 100th, every 400th) and shares nothing with Godot's."""
+	var z: int = days + 719468
+	var era: int = floori((z if z >= 0 else z - 146096) / 146097.0)
+	var doe: int = z - era * 146097
+	var yoe: int = floori((doe - floori(doe / 1460.0) + floori(doe / 36524.0) - floori(doe / 146096.0)) / 365.0)
+	var doy: int = doe - (365 * yoe + floori(yoe / 4.0) - floori(yoe / 100.0))
+	var mp: int = floori((5 * doy + 2) / 153.0)
+	var day: int = doy - floori((153 * mp + 2) / 5.0) + 1
+	var month: int = mp + 3 if mp < 10 else mp - 9
+	return [yoe + era * 400 + (1 if month <= 2 else 0), month, day]
+
+
+func _utc(year: int, month: int, day: int, hour: int = 12, minute: int = 0) -> int:
+	return int(Time.get_unix_time_from_datetime_dict({"year": year, "month": month, "day": day,
+		"hour": hour, "minute": minute, "second": 0}))
+
+
+func _test_the_calendar() -> void:
+	section("THE CALENDAR - leap years, month ends, the new year and the clocks changing")
+
+	# ---- Godot's calendar, against an independent one, every day for 230 years ----
+	var first_wrong: Array = []
+	var days_checked: int = 0
+	for days in range(0, 84006):     # 1970-01-01 .. 2199-12-31
+		var want: Array = _civil_from_days(days)
+		var got: Dictionary = Time.get_datetime_dict_from_unix_time(days * 86400 + 43200)
+		days_checked += 1
+		if [int(got["year"]), int(got["month"]), int(got["day"])] != want \
+				or int(got["weekday"]) != (days + 4) % 7 \
+				or _utc(want[0], want[1], want[2], 0) != days * 86400:
+			first_wrong = [days, want, got]
+			break
+	check("every day from 1970 to 2199 is the right date and weekday, both ways (%d days)" % days_checked,
+		first_wrong.is_empty(), first_wrong)
+	check("  which covers 2199 - the reference says so too",
+		_civil_from_days(84005) == [2199, 12, 31] and _civil_from_days(0) == [1970, 1, 1])
+
+	# ---- the leap rules, said plainly ----------------------------------------------
+	var leap_days: Array = []
+	for year in [2000, 2024, 2028, 2032, 2096, 2100, 2104, 2200]:
+		var after_feb_28: Dictionary = Time.get_datetime_dict_from_unix_time(_utc(year, 2, 28) + 86400)
+		leap_days.append(int(after_feb_28["day"]) == 29)
+	check("Feb 29 in 2000, 2024, 2028, 2032 and 2096; not in 2100 or 2200; again in 2104",
+		leap_days == [true, true, true, true, true, false, true, false], leap_days)
+	check("2028 is 366 days long and 2027 is 365",
+		_utc(2029, 1, 1) - _utc(2028, 1, 1) == 366 * 86400
+		and _utc(2028, 1, 1) - _utc(2027, 1, 1) == 365 * 86400)
+
+	# ---- LocalTime on those dates, at a known offset ---------------------------------
+	var kept_reader: Callable = LocalTime.offset_reader
+	var kept_checked: bool = LocalTime._reader_checked
+	LocalTime._reader_checked = true
+	LocalTime.offset_reader = func(_at: int) -> Variant: return 0
+	var feb29: int = _utc(2028, 2, 29, 9, 15)
+	check("Feb 29 shows as itself", LocalTime.full(feb29) == "2028-02-29 09:15"
+		and LocalTime.date(feb29) == "Feb 29, 2028", LocalTime.full(feb29))
+	check("  and the next day is Mar 1, not Feb 30",
+		LocalTime.date(feb29 + 86400) == "Mar 1, 2028", LocalTime.date(feb29 + 86400))
+	check("in 2100 the day after Feb 28 is Mar 1",
+		LocalTime.date(_utc(2100, 2, 28) + 86400) == "Mar 1, 2100")
+	check("a minute before the new year is Dec 31, a minute after is Jan 1",
+		LocalTime.full(_utc(2027, 12, 31, 23, 59)) == "2027-12-31 23:59"
+		and LocalTime.full(_utc(2027, 12, 31, 23, 59) + 120) == "2028-01-01 00:01")
+	check("a month that ends on the 30th rolls to the 1st",
+		LocalTime.date(_utc(2026, 9, 30) + 86400) == "Oct 1, 2026"
+		and LocalTime.date(_utc(2026, 4, 30) + 86400) == "May 1, 2026")
+	check("a stamp from Feb 29 says Tuesday, which it is in 2028",
+		LocalTime.stamp(feb29, _utc(2028, 3, 2, 10)) == "Tue 09:15", LocalTime.stamp(feb29, _utc(2028, 3, 2, 10)))
+	check("  and six days later it is still a weekday, seven days later a date - Feb has 29 days",
+		LocalTime.stamp(feb29, _utc(2028, 3, 6, 12)) == "Tue 09:15"
+		and LocalTime.stamp(feb29, _utc(2028, 3, 7, 12)) == "Feb 29 09:15",
+		[LocalTime.stamp(feb29, _utc(2028, 3, 6, 12)), LocalTime.stamp(feb29, _utc(2028, 3, 7, 12))])
+	check("New Year's Eve, seen ten minutes into the new year, is yesterday's weekday",
+		LocalTime.stamp(_utc(2027, 12, 31, 23, 30), _utc(2028, 1, 1, 0, 10)) == "Fri 23:30",
+		LocalTime.stamp(_utc(2027, 12, 31, 23, 30), _utc(2028, 1, 1, 0, 10)))
+	check("five past midnight on Feb 29 is still \"today\" at 23:55 that night",
+		LocalTime.stamp(_utc(2028, 2, 29, 0, 5), _utc(2028, 2, 29, 23, 55)) == "00:05")
+
+	# ---- the clocks changing: each moment at its own offset --------------------------
+	# Denver, 2026: spring forward 8 Mar at 2:00 MST (09:00 UTC), fall back
+	# 1 Nov at 2:00 MDT (08:00 UTC). What a browser knows; a desktop does not.
+	var spring: int = _utc(2026, 3, 8, 9, 0)
+	var autumn: int = _utc(2026, 11, 1, 8, 0)
+	var asked: Array = []
+	LocalTime.offset_reader = func(at: int) -> Variant:
+		asked.append(at)
+		return -360 if at >= spring and at < autumn else -420
+	check("half an hour before the clocks go forward is 1:30, half an hour after is 3:30",
+		LocalTime.clock(spring - 1800) == "01:30" and LocalTime.clock(spring + 1800) == "03:30",
+		[LocalTime.clock(spring - 1800), LocalTime.clock(spring + 1800)])
+	check("  and the offset asked for is the moment's, not now's", asked.has(spring - 1800) and asked.has(spring + 1800))
+	check("when they go back, 1:30 happens twice - an hour apart, both shown as 1:30",
+		LocalTime.clock(autumn - 1800) == "01:30" and LocalTime.clock(autumn + 1800) == "01:30")
+	check("a stamp from before the change, read after it, keeps its own hour",
+		LocalTime.stamp(spring - 3600, spring + 6 * 3600) == "01:00",
+		LocalTime.stamp(spring - 3600, spring + 6 * 3600))
+	check("  and both sides of the change are the same local day",
+		LocalTime.date(spring - 1800) == LocalTime.date(spring + 1800))
+	LocalTime.offset_reader = func(_at: int) -> Variant: return -360
+	var since: int = _utc(2026, 10, 7, 0, 0)
+	check("the kill record's first day is the player's date: midnight UTC on 7 Oct is 6 Oct in Denver",
+		KillRecord.since_text(since).contains("6 Oct 2026"), KillRecord.since_text(since))
+	LocalTime.offset_reader = kept_reader
+	LocalTime._reader_checked = kept_checked
+
+	# ---- a desktop: the system's offset, re-read so a session can cross a change ----
+	var kept_bias: int = LocalTime._bias_minutes
+	var kept_known: bool = LocalTime._bias_known
+	var kept_at: int = LocalTime._bias_read_at
+	var system_bias: int = int(Time.get_time_zone_from_system().get("bias", 0))
+	LocalTime._bias_known = true
+	LocalTime._bias_minutes = system_bias + 60
+	LocalTime._bias_read_at = Time.get_ticks_msec()
+	check("within a minute of reading it, the offset is the one read",
+		LocalTime.bias_minutes() == system_bias + 60)
+	LocalTime._bias_read_at = Time.get_ticks_msec() - LocalTime.BIAS_REREAD_MSEC
+	check("  and a minute later it is read again - a game left running sees the clocks change",
+		LocalTime.bias_minutes() == system_bias)
+	LocalTime._bias_minutes = kept_bias
+	LocalTime._bias_known = kept_known
+	LocalTime._bias_read_at = kept_at
+
+	# ---- the browser's answer ----------------------------------------------------------
+	check("off the web there is no reader, and the system's offset is used",
+		OS.has_feature("web") or not LocalTime._reader().is_valid())
+	LocalTime._browser_offsets[int(spring / 900.0)] = -360
+	check("the browser's answers are kept by the quarter hour, and the browser is not asked twice",
+		LocalTime._browser_offset(spring + 899) == -360)
+	LocalTime._browser_offsets.clear()
+	var code: String = _code_src("res://src/shared/localtime.gd")
+	check("  and JavaScript's offset is turned round: getTimezoneOffset() counts west",
+		_func_body(code, "static func _browser_offset(").contains("-new Date("))
+
+
 func _test_timestamps_are_the_servers() -> void:
 	section("TIMESTAMPS — when a thing happened, not when you read about it")
 
@@ -3352,7 +3529,9 @@ const WINDOW_PANELS := [
 	["res://src/ui/guild/guildpanel.gd", "res://scene/ui/guild/guildpanel.tscn", "guild"],
 	["res://src/ui/inventory/inventoryscreen.gd", "res://scene/ui/inventory/inventory.tscn", "inventory"],
 	["res://src/ui/kingdom/kingdomboard.gd", "res://scene/ui/kingdom/kingdomboard.tscn", "kingdom"],
+	["res://src/ui/kills/killrecord.gd", "res://scene/ui/kills/killrecord.tscn", "kills"],
 	["res://src/ui/lootbag/lootbaginventory.gd", "res://scene/ui/lootbag/lootbaginventory.tscn", "lootbag"],
+	["res://src/ui/menus/creditsscreen.gd", "res://scene/ui/menus/creditsscreen.tscn", "credits"],
 	["res://src/ui/menus/mapscreen.gd", "res://scene/ui/menus/mapscreen.tscn", "map"],
 	["res://src/ui/menus/optionsscreen.gd", "res://scene/ui/menus/optionsscreen.tscn", "options"],
 	["res://src/ui/owner/ownerpanel.gd", "res://scene/ui/owner/ownerpanel.tscn", "owner"],
@@ -3808,7 +3987,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("twenty panels are windows - the owner's save history is the twentieth", keys_seen.size() == 20, keys_seen.size())
+	check("twenty-two panels are windows - the Credits window is the twenty-second", keys_seen.size() == 22, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -6819,7 +6998,190 @@ func _tile_under(layers: Array, point: Vector2) -> bool:
 # Crowned put the welcome on screen again, and every death in the field replayed
 # it after the revive. GameState.opening_story_told keeps it to once a login,
 # and CharacterData.clear_current_user(), which every login and logout runs,
-# puts it back. It still has to play once: the credits are on it.
+# puts it back. (Its last page carried the credits until 0.11.1; they are in
+# Options > Credits now - _test_the_credits.)
+
+# =============================================================================
+# THE CREDITS - Options > Credits (0.11.1)
+# =============================================================================
+# The owner, 7 Oct: "as for credits i think we should make it a button in
+# settings that says credits we can separate artists audio and support there".
+# They were the last page of the field's welcome, read once a login. Four tabs
+# now: Art, Audio, Support and Engine - the last because Godot's licence, and
+# FreeType's, ENet's and Mbed TLS's, ask to be shown in the game.
+
+# WHO EACH OWNER IN LICENSED_ART_FOLDERS IS IN THE CREDITS. A folder of art
+# from a new source is classified there first; this makes it a credit too, or
+# the suite says whose name is missing.
+const CREDITED_OWNERS := {
+	"elusion": ["Ahvassa", "Robert - Elusion Studios"],
+	"clockwork-raven": ["Caio Carlos - Clockwork Raven Studios"],
+	"google-ofl": ["Noto Color Emoji"],
+	"ofl-style-fonts": ["Pixelify Sans", "Tiny5", "MedievalSharp", "IM FELL English", "Grenze Gotisch"],
+}
+
+
+func _credit_texts(screen: Node) -> Array:
+	"""Every line of text the Credits window is showing, labels and links."""
+	var out: Array = []
+	for node in screen.page().find_children("*", "", true, false):
+		if node is Label or node is LinkButton:
+			out.append(str(node.text))
+	return out
+
+
+func _test_the_credits() -> void:
+	section("THE CREDITS - Options > Credits: the art, the sound, the supporters, the engine")
+	const Credits := preload("res://src/ui/menus/creditsscreen.gd")
+
+	# ---- the way in -------------------------------------------------------------
+	var options: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(options)
+	await get_tree().process_frame
+	var asked: Array = []
+	options.credits_requested.connect(func(): asked.append(true))
+	var button: Button = options.get_node_or_null("%optionscreditsbutton") as Button
+	check("Options has a Credits button", button != null and button.text == "Credits")
+	if button != null:
+		button.pressed.emit()
+	check("  and it asks for the Credits window", asked.size() == 1)
+	options.queue_free()
+	var hud_code: String = _code_src("res://src/ui/characterhud.gd")
+	check("  which the HUD opens, in front of Options",
+		hud_code.contains("options_screen.credits_requested.connect(open_credits)")
+		and _func_body(hud_code, "func open_credits(").contains("credits_panel.open()")
+		and _func_body(hud_code, "func open_credits(").contains("move_to_front()"))
+
+	var screen: Node = (load("res://scene/ui/menus/creditsscreen.tscn") as PackedScene).instantiate()
+	add_child(screen)
+	await get_tree().process_frame
+	screen.open()
+	await get_tree().process_frame
+	check("it opens on Art", screen.visible and screen.tab == Credits.Tab.ART
+		and screen.art_button.button_pressed and not screen.engine_button.button_pressed)
+
+	# ---- Art ------------------------------------------------------------------------
+	var art: Array = _credit_texts(screen)
+	var links: Dictionary = {}
+	for node in screen.page().find_children("*", "LinkButton", true, false):
+		links[(node as LinkButton).text] = (node as LinkButton).uri
+	check("Ahvassa, linked to his page", links.get("Ahvassa", "") == "https://ahvassa.itch.io/", links)
+	check("  Caio Carlos and Clockwork Raven Studios, linked to theirs",
+		links.get("Caio Carlos - Clockwork Raven Studios", "") == "https://www.clockworkravenstudios.com/", links)
+	check("  each saying what they made", art.any(func(t): return str(t).contains("mythic weapons"))
+		and art.any(func(t): return str(t).contains("items and icons")))
+	var unfonted: Array = []
+	for style in Settings.FONT_STYLES:
+		var file: String = str(Settings.FONT_STYLES[style][1])
+		if file != "" and not Credits.FONTS.any(func(f): return str(f["file"]) == file):
+			unfonted.append(style)
+	check("every font Options offers is credited", unfonted.is_empty(), unfonted)
+	check("  and the emoji font chat uses",
+		Credits.FONTS.any(func(f): return str(f["file"]) == "res://assets/fonts/NotoColorEmoji.ttf"))
+	var gone: Array = Credits.FONTS.filter(func(f): return not FileAccess.file_exists(str(f["file"])))
+	check("  and every font credited is one the game ships", gone.is_empty(), gone)
+	check("  with its copyright line, and the licence they share",
+		art.has("Copyright 2011 wmk69 (Wojciech Kalinowski)") and art.has(Credits.FONT_LICENCE))
+
+	var screen_names: Array = []
+	for tab in [Credits.Tab.ART, Credits.Tab.AUDIO]:
+		screen.show_tab(tab)
+		screen_names.append_array(_credit_texts(screen))
+	var owners: Array = []
+	for folder in LICENSED_ART_FOLDERS:
+		var holder: String = str(LICENSED_ART_FOLDERS[folder])
+		if not owners.has(holder):
+			owners.append(holder)
+	var uncredited: Array = []
+	for holder in owners:
+		if not CREDITED_OWNERS.has(holder):
+			uncredited.append("%s: no credit says who" % holder)
+			continue
+		for who in CREDITED_OWNERS[holder]:
+			if not screen_names.has(who):
+				uncredited.append("%s: %s" % [holder, who])
+	check("every owner of art, sound and type in the game is in the credits", uncredited.is_empty(), uncredited)
+
+	# ---- Audio ------------------------------------------------------------------------
+	screen.audio_button.pressed.emit()
+	var audio: Array = _credit_texts(screen)
+	check("Audio: who recorded the sounds, and on what",
+		screen.tab == Credits.Tab.AUDIO and audio.has("Robert - Elusion Studios")
+		and audio.any(func(t): return str(t).contains("Stylophone")), audio)
+
+	# ---- Support ------------------------------------------------------------------------
+	screen.support_button.pressed.emit()
+	var support: Array = _credit_texts(screen)
+	var shown: Array = screen.page().get_children().filter(func(n): return n.has_meta("supporter"))
+	check("Support: a name for everyone on the list, in its order",
+		shown.map(func(n): return str(n.text)) == Array(Credits.SUPPORTERS), shown.size())
+	check("  and the way to be on it", screen.page().find_children("*", "LinkButton", true, false)
+		.any(func(b): return (b as LinkButton).uri == "https://elusionrpg.com/contribute.html"))
+	check("  thanks when there are names, an invitation when there are none",
+		Credits.support_intro([]).contains("your name goes here")
+		and Credits.support_intro(["Ada"]).contains("Thank you")
+		and support.has(Credits.support_intro(Credits.SUPPORTERS)))
+	var bad_names: Array = []
+	for supporter in Credits.SUPPORTERS:
+		if supporter.strip_edges() != supporter or supporter == "" or Credits.SUPPORTERS.count(supporter) > 1:
+			bad_names.append(supporter)
+	check("  every name on it written once, as it should show", bad_names.is_empty(), bad_names)
+
+	# ---- Engine ------------------------------------------------------------------------
+	screen.engine_button.pressed.emit()
+	var engine: Array = _credit_texts(screen)
+	check("Engine: Godot's licence, read from the engine itself",
+		engine.has(Credits.reflow(Engine.get_license_text())) and engine.has("Made with Godot Engine"))
+	check("  as paragraphs, not the 80-column lines it comes in",
+		Credits.reflow("one\ntwo\n\nthree\r\nfour\n") == "one two\n\nthree four"
+		and not Credits.reflow(Engine.get_license_text()).contains("\nEXPRESS OR"))
+	var notices: Array = Credits.engine_notices()
+	var named: Array = notices.map(func(n): return str(n["name"]))
+	check("  and FreeType's, ENet's and Mbed TLS's - all three still in this build of Godot",
+		named.has("The FreeType Project") and named.has("ENet") and named.has("Mbed TLS"), named)
+	var freetype_line: bool = false
+	for line in engine:
+		if str(line).begins_with("Portions of this software are copyright © ") \
+				and str(line).ends_with("The FreeType Project (www.freetype.org). All rights reserved."):
+			freetype_line = true
+	check("  FreeType's credit in the words its licence asks for", freetype_line)
+	var licence_texts: Dictionary = Engine.get_license_info()
+	var unshown: Array = []
+	for notice in notices:
+		var full: String = Credits.reflow(str(licence_texts.get(str(notice["licence"]), "missing")))
+		if not engine.has(full):
+			unshown.append(notice["name"])
+	check("  each with its licence in full", unshown.is_empty(), unshown)
+	var engine_page: Node = screen.page()
+	screen.art_button.pressed.emit()
+	screen.engine_button.pressed.emit()
+	check("a tab is built once: back on Engine is the same page, and the only one showing",
+		screen.page() == engine_page and screen.list.get_children().filter(func(n): return n.visible).size() == 1)
+	check("  and every other part of Godot named, with its licence",
+		engine.has(Credits.engine_components_text())
+		and Credits.engine_components_text().split("\n").size() >= Engine.get_copyright_info().size())
+
+	screen.close()
+	check("its x closes it", not screen.visible)
+	screen.queue_free()
+
+	# WITH NAMES IN IT: the real list starts empty, so a window that never drew
+	# a name would pass above.
+	var named_screen: Node = (load("res://scene/ui/menus/creditsscreen.tscn") as PackedScene).instantiate()
+	add_child(named_screen)
+	await get_tree().process_frame
+	named_screen.supporters = ["Ada L.", "Jordan"] as Array[String]
+	named_screen.open()
+	named_screen.support_button.pressed.emit()
+	var drawn: Array = named_screen.page().get_children().filter(func(n): return n.has_meta("supporter"))
+	check("two supporters are two names, in order, under the thanks",
+		drawn.map(func(n): return str(n.text)) == ["Ada L.", "Jordan"]
+		and _credit_texts(named_screen).has(Credits.support_intro(["Ada L."])), drawn.size())
+	named_screen.queue_free()
+
+	var field: String = _code_src("res://src/world/field.gd")
+	print("  the field's welcome %s the old credits page" % ("still carries" if field.contains("ahvassa.itch.io") else "no longer carries"))
+
 
 func _test_the_welcome_plays_once_a_login() -> void:
 	section("THE FIELD'S WELCOME - once a login, not on every arrival")
@@ -7264,7 +7626,12 @@ func _test_monitors_and_window_modes() -> void:
 	before.set_value("rendering", "renderer/rendering_method", "gl_compatibility")
 	before.set_value("display", "window/size/initial_position", Vector2i(5, 5))
 	before.save(probe_path)
+	var errors_seen := EngineErrorCounter.new()
+	OS.add_logger(errors_seen)
 	SettingsScript.write_display_override_to(probe_path, full)
+	OS.remove_logger(errors_seen)
+	check("  writing keys the file did not have yet logs no engine error",
+		errors_seen.count == 0, "%d: %s" % [errors_seen.count, "; ".join(errors_seen.where)])
 	var after := ConfigFile.new()
 	after.load(probe_path)
 	check("written to override.cfg: the mode, the screen and how to place it",
@@ -7843,6 +8210,152 @@ func _test_rebindable_keys() -> void:
 	await get_tree().process_frame
 
 
+# =============================================================================
+# THE KILL RECORD (0.9.0)
+# =============================================================================
+# The owner, 7 Oct: "lets make a button in game that records all players kills
+# with icons of the enemies". The server's half - what is counted, the two
+# routes, the opening count - is test_killrecord.py.
+func _test_the_kill_record() -> void:
+	section("KILLS - every monster with its picture, yours and everybody's")
+
+	# --- every monster that pays has a picture ---------------------------------
+	EnemyPortraits.forget()
+	var roster: Array = EnemyPortraits.roster()
+	var paying: Array = []
+	for entry in ResourceLoader.list_directory("res://data/enemies/"):
+		var data: EnemyData = load("res://data/enemies/" + String(entry)) as EnemyData
+		if data != null and data.grants_rewards:
+			paying.append(data.enemy_id)
+	var listed: Array = roster.map(func(m): return str(m["enemy_id"]))
+	paying.sort()
+	listed.sort()
+	check("the roster is every monster that pays when killed, and no other",
+		listed == paying and listed.size() >= 40, [listed.size(), paying.size()])
+	check("  by name", str(roster[0]["name"]) <= str(roster[-1]["name"]))
+	var pictureless: Array = []
+	for monster in roster:
+		var picture: Dictionary = EnemyPortraits.picture(str(monster["enemy_id"]))
+		if picture.is_empty() or not (picture.get("texture") is Texture2D):
+			pictureless.append(monster["enemy_id"])
+	check("every one has a picture from its own art", pictureless.is_empty(), pictureless)
+	var sprite_picture: Texture2D = EnemyPortraits.picture("firesprite").get("texture") as Texture2D
+	var sprite_image: Image = sprite_picture.get_image() if sprite_picture != null else null
+	check("  cut to the creature - a small sprite is not a speck in an empty cell",
+		sprite_image != null and sprite_image.get_used_rect().size == sprite_image.get_size(),
+		str([sprite_image.get_size(), sprite_image.get_used_rect()]) if sprite_image != null else "no image")
+	check("the three whose scenes are named otherwise find them",
+		EnemyPortraits.scene_path("boss").ends_with("bossenemy.tscn")
+		and EnemyPortraits.scene_path("poisonslimesmall").ends_with("poisonslime.tscn")
+		and ResourceLoader.exists(EnemyPortraits.scene_path("poisonslimelarge")))
+	var fire: EnemyData = EnemyPortraits.data_for("fireboss")
+	var recoloured: Dictionary = EnemyPortraits.picture("fireboss")
+	check("a recoloured monster is pictured in its element's colour, as in the world",
+		fire != null and fire.recolour_to_element and recoloured.get("material") is ShaderMaterial
+		and is_equal_approx(float((recoloured["material"] as ShaderMaterial).get_shader_parameter("element_hue")),
+			Element.hue_for(Element.Type.FIRE)))
+	var original: EnemyData = EnemyPortraits.data_for("electricsprite")
+	check("  and an original sheet as drawn", original != null and not original.recolour_to_element
+		and EnemyPortraits.picture("electricsprite").get("material") == null)
+	check("a monster this build does not know still has a name", EnemyPortraits.display_name("newmonster") == "Newmonster")
+
+	# --- the words ------------------------------------------------------------------
+	check("counts have their thousands marked", KillRecord.count_text(1234567) == "1,234,567"
+		and KillRecord.count_text(999) == "999")
+	check("how long ago, in words", KillRecord.ago_text(1000, 1030) == "just now"
+		and KillRecord.ago_text(1000, 1000 + 600) == "10 min ago"
+		and KillRecord.ago_text(1000, 1000 + 7200) == "2 h ago" and KillRecord.ago_text(0, 86400) == "1 day ago")
+	check("the day counting began", KillRecord.since_text(1791374400).contains("7 Oct 2026")
+		and KillRecord.since_text(0) == "")
+
+	# --- the window -------------------------------------------------------------------
+	var asked: Array = []
+	var answers: Dictionary = {
+		"/api/kills?slot=%d" % CharacterData.active_character_index: {"ok": true, "data": {
+			"slot": CharacterData.active_character_index, "since": 1791374400, "total": 5, "kinds": 2,
+			"kills": [{"enemy_id": "darkslime", "kills": 4, "first_at": 1, "last_at": int(Time.get_unix_time_from_system()) - 7200},
+				{"enemy_id": "firesprite", "kills": 1, "first_at": 1, "last_at": 1}]}},
+		"/api/kills/everyone": {"ok": true, "data": {"since": 1791374400, "total": 12, "players": 3,
+			"kills": [{"enemy_id": "darkslime", "kills": 11, "players": 3, "top": "rival", "top_kills": 5, "yours": 4},
+				{"enemy_id": "firesprite", "kills": 1, "players": 1, "top": "kt_me", "top_kills": 1, "yours": 1}]}},
+	}
+	var card: KillRecord = (load("res://scene/ui/kills/killrecord.tscn") as PackedScene).instantiate() as KillRecord
+	add_child(card)
+	await get_tree().process_frame
+	card.fetch = func(path: String) -> Dictionary:
+		asked.append(path)
+		return answers.get(path, {"ok": false, "status": 404})
+	var was_name: String = Api.username
+	Api.username = "kt_me"
+	await card.open()
+	var rows: Array = card.list.get_children()
+	check("the window opens on your kills", card.visible and card.tab == KillRecord.Tab.YOU
+		and asked == ["/api/kills?slot=%d" % CharacterData.active_character_index], asked)
+	check("  most killed first, then every monster not killed yet",
+		rows.size() == roster.size() and str(rows[0].name) == "row_darkslime" and str(rows[1].name) == "row_firesprite",
+		[rows.size(), roster.size()])
+	var first: Control = rows[0]
+	check("  each with its picture, its name and its count",
+		(first.get_node("portrait") as TextureRect).texture != null
+		and (first.get_node("count") as Label).text == "4"
+		and not (first.find_child("name", true, false) as Label).text.is_empty())
+	check("  and when the last one fell", (first.find_child("detail", true, false) as Label).text == "Last one 2 h ago",
+		(first.find_child("detail", true, false) as Label).text)
+	var last: Control = rows[-1]
+	check("  a monster not killed yet is greyed and says so", last.modulate.a < 1.0
+		and (last.find_child("detail", true, false) as Label).text == "Not killed yet"
+		and (last.get_node("count") as Label).text == "-")
+	check("  the summary says how many, of how many kinds, and since when",
+		card.summary_label.text == "5 kills - 2 of %d kinds of monster, counted since 7 Oct 2026." % roster.size(),
+		card.summary_label.text)
+
+	card.everyone_button.pressed.emit()
+	await get_tree().process_frame
+	rows = card.list.get_children()
+	check("Everyone: every player's kills of each monster", card.tab == KillRecord.Tab.EVERYONE
+		and (rows[0].get_node("count") as Label).text == "11" and asked.size() == 2)
+	check("  how many players, who has killed the most, and your own",
+		(rows[0].find_child("detail", true, false) as Label).text == "3 players - most: rival (5) - you: 4",
+		(rows[0].find_child("detail", true, false) as Label).text)
+	var mine_top: Label = rows[1].find_child("detail", true, false) as Label
+	check("  and when the most is you, it says so, in your colour",
+		mine_top.text == "1 player - most: you (1)" and mine_top.get_theme_color("font_color") == KillRecord.YOU_COLOUR,
+		mine_top.text)
+	check("  with the realm's total", card.summary_label.text == "12 kills by 3 players, counted since 7 Oct 2026.",
+		card.summary_label.text)
+	card.yours_button.pressed.emit()
+	await get_tree().process_frame
+	check("going back reads nothing again for a while", asked.size() == 2 and card.tab == KillRecord.Tab.YOU)
+	card.close()
+	await card.open()
+	check("  but opening it again does - kills happen while it is shut", asked.size() == 3)
+	answers.erase("/api/kills/everyone")
+	await card.show_tab(KillRecord.Tab.EVERYONE)
+	check("a server with no kill record says so", card.notice_label.visible
+		and card.notice_label.text == "This server does not keep a kill record yet.", card.notice_label.text)
+	check("no connection says so too", KillRecord.refusal_text({"ok": false, "status": 0}) == "No connection to the server.")
+	Api.username = was_name
+	card.queue_free()
+
+	# --- reaching it ------------------------------------------------------------------------
+	var hud_scene: String = FileAccess.get_file_as_string("res://scene/ui/characterhud.tscn")
+	var hud_code: String = _code_src("res://src/ui/characterhud.gd")
+	check("Kills is on the Social dropdown, beside Kingdom",
+		hud_scene.contains("[node name=\"killsbutton\" type=\"Button\" parent=\"socialmenu/socialitems\"")
+		and hud_code.contains("\"killsbutton\":             \"_on_kills_pressed\""))
+	var k := InputEventKey.new()
+	k.physical_keycode = KEY_K
+	k.pressed = true
+	check("K opens it, and K can be changed like every other key",
+		k.is_action_pressed("kills_toggle") and Keybinds.all_actions().has("kills_toggle")
+		and _func_body(hud_code, "func _unhandled_input(").contains("toggle_kills()"))
+	var listed_on_card: bool = false
+	for spec in ControlsPanel.ROWS:
+		if String(spec[1]) == "kills_toggle":
+			listed_on_card = true
+	check("  and the Controls card says so", listed_on_card and ControlsPanel.key_text("kills_toggle") == "K")
+
+
 func _test_a_window_never_outgrows_the_screen() -> void:
 	section("OPTIONS - a window size bigger than the screen")
 	# Called on the script, not the autoload: they are static.
@@ -8368,6 +8881,268 @@ func _test_the_boss_gates_lever() -> void:
 # reads it. test_quality.py in the API is the other half, and both hold the
 # same rounding table, because the server derives max health from the very
 # numbers ItemRegistry hands to the player.
+# =============================================================================
+# ARMOUR RESISTS AN ELEMENT (0.11.0)
+# =============================================================================
+# The owner, 7 Oct: "add resistance to armor with a ? random roll also in the
+# shop", "i want elements to do something" - and of weapons, "the main goal
+# should be to keep players damage consistent with attack level and gear". So
+# every piece of armour rolls one of the seven lands' elements and a percent,
+# the last part of its rolled id ("r605": fire, 5%); matching pieces add up to
+# RESIST_CAP and take that share off a hit of their element. No weapon ever
+# resists, and nothing about a player's own damage changes.
+func _test_armour_resistance() -> void:
+	section("ARMOUR RESISTS AN ELEMENT - rolled in the id, added up, taken off a hit")
+
+	var T := ItemData.Type
+	var S := ItemData.EquipSlot
+	# The suite's own pieces, like _test_quality_rolls: a jade chest's shape
+	# (tier 2, armour and health) and an iron sword's, so the list below is the
+	# server's own list with the ids renamed.
+	var chest: ItemData = _menu_item("rtest_chest", T.ARMOR, S.CHEST)
+	chest.display_name = "Test Chest"
+	chest.tier = 2
+	chest.armor_value = 6
+	chest.bonus_max_hp = 20
+	var helm: ItemData = _menu_item("rtest_helm", T.ARMOR, S.HELM)
+	helm.tier = 2
+	helm.armor_value = 3
+	var ring: ItemData = _menu_item("rtest_ring", T.ARMOR, S.RING)
+	ring.tier = 1
+	ring.bonus_max_mana = 5
+	var sword: ItemData = _menu_item("rtest_sword", T.WEAPON, S.WEAPON)
+	sword.tier = 1
+	sword.damage = 20
+	var stone: ItemData = _menu_item("rtest_stone", T.ARMOR, S.NONE)
+	stone.tier = 2
+	stone.armor_value = 1
+	var bare: ItemData = _menu_item("rtest_bare", T.ARMOR, S.BOOTS)
+	bare.tier = 0
+	bare.armor_value = 1
+	# Armour that could resist but has no stat to roll - no such piece is in
+	# the catalogue, so a resistance on its own must still not be a roll.
+	var blank: ItemData = _menu_item("rtest_blank", T.ARMOR, S.RING)
+	blank.tier = 1
+	var boots: ItemData = _menu_item("rtest_boots", T.ARMOR, S.BOOTS)
+	boots.tier = 1
+	boots.armor_value = 2
+	var made: Array = [chest, helm, ring, sword, stone, bare, blank, boots]
+	# A whole ember set, every slot but the weapon's, for the cap.
+	var ember_slots: Array = [S.HELM, S.CHEST, S.LEGS, S.BOOTS, S.SHIELD, S.RING, S.AMULET]
+	var ember: Array = []
+	for i in ember_slots.size():
+		var piece: ItemData = _menu_item("rtest_ember%d" % i, T.ARMOR, ember_slots[i])
+		piece.tier = 5
+		piece.armor_value = 1
+		ember.append(piece)
+	made.append_array(ember)
+	for item in made:
+		ItemRegistry._items[item.item_id] = item
+
+	# ---- the numbers, on both sides ------------------------------------------
+	check("the seven lands' elements, iron 2-5 up to ember 6-13, at most 50%",
+		GameConstants.RESIST_ELEMENTS.map(func(e): return Element.name_for(int(e)))
+			== ["dark", "light", "ice", "wind", "earth", "fire", "water"]
+		and GameConstants.RESIST_RANGES == [[0, 0], [2, 5], [3, 7], [4, 9], [5, 11], [6, 13]]
+		and GameConstants.RESIST_CAP == 50 and GameConstants.RESIST_LETTER == "r")
+	check("  its letter is no stat's",
+		not GameConstants.QUALITY_FIELDS.map(func(pair): return pair[0]).has(GameConstants.RESIST_LETTER))
+	check("  every element is one digit, which is how an id spells it",
+		GameConstants.RESIST_ELEMENTS.all(func(e): return int(e) >= 1 and int(e) <= 9))
+	var consts: Dictionary = _load_gamedata().get("constants", {})
+	check("  and gamedata.json says the same to the server (re-run the exporter if not)",
+		str(consts.get("resist_letter", "")) == GameConstants.RESIST_LETTER
+		and Array(consts.get("resist_elements", [])).map(func(e): return int(e)) == GameConstants.RESIST_ELEMENTS
+		and Array(consts.get("resist_ranges", [])).map(func(row): return [int(row[0]), int(row[1])])
+			== GameConstants.RESIST_RANGES
+		and int(consts.get("resist_cap", -1)) == GameConstants.RESIST_CAP,
+		[consts.get("resist_letter"), consts.get("resist_ranges"), consts.get("resist_cap")])
+	var exporter: String = FileAccess.get_file_as_string("res://src/tools/exportgamedata.gd")
+	var unwritten: Array = ["resist_letter", "resist_elements", "resist_ranges", "resist_cap"].filter(
+		func(key): return not exporter.contains("\"%s\":" % key))
+	check("  because the exporter writes all four", unwritten.is_empty(), unwritten)
+	check("a tier's range, past the table its last row, and none below tier 1",
+		GameConstants.resist_range(2) == Vector2i(3, 7) and GameConstants.resist_range(5) == Vector2i(6, 13)
+		and GameConstants.resist_range(6) == Vector2i(6, 13) and GameConstants.resist_range(0) == Vector2i.ZERO
+		and GameConstants.resist_range(-1) == Vector2i.ZERO)
+	check("armour resists when rolled; a weapon, an unworn piece or a tier-0 one never",
+		chest.resists_when_rolled() and ring.resists_when_rolled()
+		and not sword.resists_when_rolled() and not stone.resists_when_rolled() and not bare.resists_when_rolled())
+
+	# ---- reading one ------------------------------------------------------------
+	var rolled: ItemData = ItemRegistry.get_item("rtest_chest~a104h96r605")
+	var unresisting: ItemData = ItemRegistry.get_item("rtest_chest~a104h96")
+	check("a resisting roll is an item, resisting fire by 5%",
+		rolled != null and ItemRegistry.has_item("rtest_chest~a104h96r605")
+		and rolled.resist_element == Element.Type.FIRE and rolled.resist_percent == 5,
+		str([rolled.resist_element, rolled.resist_percent]) if rolled != null else "null")
+	if rolled == null or unresisting == null:
+		for item in made:
+			ItemRegistry._items.erase(item.item_id)
+		return
+	check("  its stats are the same roll's without it - a resistance is not a stat",
+		rolled.armor_value == unresisting.armor_value and rolled.bonus_max_hp == unresisting.bonus_max_hp
+		and rolled.rolls == unresisting.rolls and rolled.base_id == "rtest_chest" and not rolled.is_perfect())
+	check("  and says so in words: \"Resists fire 5%\"", rolled.resistance_text() == "Resists fire 5%",
+		rolled.resistance_text())
+	check("a roll from before resistances is read, and resists nothing",
+		unresisting.resist_element == Element.Type.NONE and unresisting.resist_percent == 0
+		and unresisting.resistance_text() == "")
+	check("the catalogue piece itself resists nothing", chest.resist_percent == 0 and chest.resistance_text() == "")
+	var perfect: ItemData = ItemRegistry.get_item("rtest_chest~a120h120r607")
+	check("a Perfect resists at the top of its range",
+		perfect != null and perfect.is_perfect() and perfect.resist_percent == 7)
+	check("split_roll names the resistance beside the rolls",
+		ItemRegistry.split_roll("rtest_chest~a104h96r605")
+		== {"base": "rtest_chest", "rolls": {"armor_value": 104, "bonus_max_hp": 96},
+			"resist": {"element": Element.Type.FIRE, "percent": 5}})
+
+	# THE SAME LIST test_quality.py's Q-8 holds, rtest_chest for jadechest and
+	# rtest_sword for ironsword. One roll has one spelling on both sides.
+	var malformed: Array = [
+		"rtest_sword~d107r605", "rtest_chest~a104h96r608", "rtest_chest~a104h96r602",
+		"rtest_chest~a104h96r005", "rtest_chest~a104h96r805", "rtest_chest~a104h96r905",
+		"rtest_chest~a104h96r65", "rtest_chest~a104h96r6005", "rtest_chest~r605a104h96",
+		"rtest_chest~a104h96r605r605", "rtest_chest~r605", "rtest_chest~a120h120r606",
+		"rtest_chest~a104h96R605", "rtest_chest~a104r605h96",
+		# and two read as the 107 roll until 7 Oct: the newline by both sides
+		# (a regex's $ matches before one), the Arabic-Indic digits by the server
+		"rtest_sword~d107\n", "rtest_sword~d\u0661\u0660\u0667",
+		# a tier-0 piece, and armour with no stats at all - the server's Q-8
+		# makes one for the purpose
+		"rtest_bare~r605", "rtest_blank~r303",
+	]
+	var accepted: Array = malformed.filter(func(id): return ItemRegistry.has_item(id) or not ItemRegistry.split_roll(id).is_empty())
+	check("everything that only looks like a resistance is not an item (%d spellings)" % malformed.size(),
+		accepted.is_empty(), accepted)
+	var every: Array = []
+	for element in GameConstants.RESIST_ELEMENTS:
+		for percent in range(3, 8):
+			if ItemRegistry.get_item("rtest_chest~a100h100r%d%02d" % [int(element), percent]) == null:
+				every.append([element, percent])
+	check("every element and every percent in a jade piece's range reads", every.is_empty(), every)
+
+	# ---- wearing it ------------------------------------------------------------
+	var body: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	body._set_stat_curve()
+	body.level = 10
+	body.equipped = {}
+	check("wearing nothing resists nothing", body.equipped_resistance(Element.Type.FIRE) == 0
+		and body.resistances().is_empty())
+	body.equipped = {"chest": "rtest_chest~a104h96r605", "helm": "rtest_helm~a100r607",
+		"ring": "rtest_ring~m100r303"}
+	check("a fire chest and a fire helm add up: 12% against fire",
+		body.equipped_resistance(Element.Type.FIRE) == 12, body.equipped_resistance(Element.Type.FIRE))
+	check("  an ice ring is 3% against ice and nothing against fire's 12",
+		body.equipped_resistance(Element.Type.ICE) == 3)
+	check("  a physical hit is armour's alone", body.equipped_resistance(Element.Type.NONE) == 0)
+	check("  and the list is strongest first", body.resistances()
+		== [[Element.Type.FIRE, 12], [Element.Type.ICE, 3]], body.resistances())
+	var plain: int = body.damage_taken(1000, Element.Type.NONE)
+	var water_hit: int = body.damage_taken(1000, Element.Type.WATER)
+	var fire_hit: int = body.damage_taken(1000, Element.Type.FIRE)
+	check("a water hit takes what a physical one does: nothing worn resists water",
+		water_hit == plain, [water_hit, plain])
+	var reduction: float = body._get_defense_tier()["reduction"]
+	var armour: float = PlayerStats.armour_reduction(body.equipped_armor_value())
+	check("a fire hit takes 12%% less, after the defense tier and the armour (%d against %d)" % [fire_hit, plain],
+		fire_hit == maxi(1, int(1000 * (1.0 - reduction) * (1.0 - armour) * 0.88)) and fire_hit < plain,
+		[fire_hit, plain])
+	check("  and the smallest hit still lands", body.damage_taken(1, Element.Type.FIRE) == 1)
+	var src: String = FileAccess.get_file_as_string("res://src/characters/player.gd")
+	var body_at: int = src.find("func take_damage(")
+	check("take_damage() lands what damage_taken() says",
+		_first_code_index(src, "var reduced_amount: int = damage_taken(amount, element)", body_at) != -1
+		and _first_code_index(src, "var reduced_amount: int = damage_taken(amount, element)", body_at)
+			< _first_code_index(src, "hp = clamp(hp - reduced_amount", body_at))
+
+	var set_ids: Dictionary = {}
+	for i in ember.size():
+		set_ids[["helm", "chest", "legs", "boots", "shield", "ring", "amulet"][i]] = "rtest_ember%d~a100r613" % i
+	body.equipped = set_ids
+	check("a whole fire set at 13% a piece is 91%, held to the 50% cap",
+		body.equipped_resistance(Element.Type.FIRE) == GameConstants.RESIST_CAP)
+	reduction = body._get_defense_tier()["reduction"]
+	armour = PlayerStats.armour_reduction(body.equipped_armor_value())
+	check("  so a fire hit is at most halved by it, never gone",
+		body.damage_taken(1000, Element.Type.FIRE) == maxi(1, int(1000 * (1.0 - reduction) * (1.0 - armour) * 0.5)))
+	check("a sword that somehow said it resisted would add nothing: a weapon never reads one",
+		not ItemRegistry.has_item("rtest_sword~d107r605"))
+
+	# ---- the Gear window ----------------------------------------------------------
+	var panel: Node = (load("res://scene/ui/equipment/equipmentpanel.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	await get_tree().process_frame
+	panel.player = body
+	body.equipped = {}
+	panel._refresh_summary()
+	check("the Gear window's Resists row is a dash wearing nothing",
+		panel.resist_label != null and panel.resist_label.text == "-",
+		panel.resist_label.text if panel.resist_label != null else "no row")
+	body.equipped = {"chest": "rtest_chest~a104h96r605", "helm": "rtest_helm~a100r607",
+		"ring": "rtest_ring~m100r303"}
+	panel._refresh_summary()
+	check("  and \"Fire 12%, Ice 3%\" in the good colour in a fire chest, a fire helm and an ice ring",
+		panel.resist_label.text == "Fire 12%, Ice 3%"
+		and panel.resist_label.get_theme_color("font_color") == panel.COLOUR_GOOD, panel.resist_label.text)
+	check("  with no hover text, since that is all of them", panel.resist_label.tooltip_text == "")
+	body.equipped["boots"] = "rtest_boots~a100r104"
+	panel._refresh_summary()
+	check("a third element is counted, not spelled: \"Fire 12%, Dark 4% +1\" - the window keeps its width",
+		panel.resist_label.text == "Fire 12%, Dark 4% +1", panel.resist_label.text)
+	check("  and the whole list is the row's hover text",
+		panel.resist_label.tooltip_text == "Fire 12%, Dark 4%, Ice 3%"
+		and panel.resist_label.mouse_filter == Control.MOUSE_FILTER_STOP, panel.resist_label.tooltip_text)
+	panel.queue_free()
+	body.free()
+
+	# ---- the tooltip and the till ---------------------------------------------------
+	var shelf: String = ItemTooltip._requirement_lines(chest, true)
+	check("on the shelf a piece of armour says it resists \"?\", and its tier's range",
+		shelf.contains("Resists ? - one element, 3-7%"), shelf)
+	check("  a sword on the shelf says nothing of resisting",
+		not ItemTooltip._requirement_lines(sword, true).contains("Resists"))
+	check("a piece you own says what it resists", ItemTooltip._requirement_lines(rolled).contains("Resists fire 5%"),
+		ItemTooltip._requirement_lines(rolled))
+	check("  and one from before says nothing", not ItemTooltip._requirement_lines(unresisting).contains("Resists"))
+	var Shop: Script = load("res://src/ui/shop/shopinventory.gd") as Script
+	check("buying one says what it resists, beside its quality",
+		Shop.purchase_line(rolled, "rtest_chest~a104h96r605", 2000)
+		== "Bought Test Chest for %s - quality 100%%, resists fire 5%%." % GameConstants.gold_text(2000),
+		Shop.purchase_line(rolled, "rtest_chest~a104h96r605", 2000))
+	check("  and a Perfect too", Shop.purchase_line(perfect, "rtest_chest~a120h120r607", 2000)
+		.ends_with("every stat at 120%, resists fire 7%!"), Shop.purchase_line(perfect, "rtest_chest~a120h120r607", 2000))
+	check("  and a roll from before as it was", Shop.purchase_line(unresisting, "rtest_chest~a104h96", 2000)
+		.ends_with("- quality 100%."))
+
+	for item in made:
+		ItemRegistry._items.erase(item.item_id)
+	for id in ItemRegistry._rolled.keys():
+		if String(id).begins_with("rtest_"):
+			ItemRegistry._rolled.erase(id)
+
+	# ---- a hazard's hit is an element too ---------------------------------------
+	# The spike door handed take_damage() the StringName &"physical" for its
+	# int element - a type error the first time a door has contact damage (none
+	# does yet), and hazards are where the owner means to take elements next.
+	var door: Node = (load("res://scene/interactables/spikedoor.tscn") as PackedScene).instantiate()
+	add_child(door)
+	await get_tree().process_frame
+	door.contact_damage = 7
+	door._is_raised = true
+	var stand_in := GDScript.new()
+	stand_in.source_code = "extends Node\nvar hits: Array = []\nfunc take_damage(amount: int, element: int = 0) -> void:\n\thits.append([amount, element])\n"
+	stand_in.reload()
+	var walker := Node.new()
+	walker.set_script(stand_in)
+	walker.add_to_group("player")
+	door._on_hurtzone_body_entered(walker)
+	check("a spike door's contact damage lands as a physical hit, not a type error",
+		walker.hits == [[7, Element.Type.NONE]], walker.hits)
+	walker.free()
+	door.queue_free()
+
+
 func _test_quality_rolls() -> void:
 	section("QUALITY ROLLS - a dropped piece's stats, read from its id the server's way")
 
@@ -8474,7 +9249,7 @@ func _test_quality_rolls() -> void:
 	check("everything that only looks like a roll is not an item (%d spellings, the server's list)" % malformed.size(),
 		accepted.is_empty(), accepted)
 	check("a plain id is the catalogue piece, unrolled",
-		ItemRegistry.split_roll("qtest_sword") == {"base": "qtest_sword", "rolls": {}}
+		ItemRegistry.split_roll("qtest_sword") == {"base": "qtest_sword", "rolls": {}, "resist": {}}
 		and not sword.is_rolled() and sword.quality_percent() == 100)
 	check("nothing on a potion rolls", ItemRegistry.rolled_fields(potion).is_empty()
 		and ItemRegistry.rolled_fields(amulet).size() == 4 and ItemRegistry.rolled_fields(sword).size() == 1)
@@ -10309,8 +11084,8 @@ func _test_the_first_five_minutes() -> void:
 		for b in hud.get_node("%" + menu_name).find_children("*", "Button", true, false):
 			out.append(str(b.name))
 		return out
-	check("  Social holds Friends, Players, Guild, Trade and Kingdom",
-		held.call("socialmenu") == ["friendsbutton", "playersbutton", "guildbutton", "tradebutton", "kingdombutton"],
+	check("  Social holds Friends, Players, Guild, Trade, Kingdom and Kills",
+		held.call("socialmenu") == ["friendsbutton", "playersbutton", "guildbutton", "tradebutton", "kingdombutton", "killsbutton"],
 		held.call("socialmenu"))
 	check("  Menu holds Controls, Options, Switch character and Log out",
 		held.call("systemmenu") == ["controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton"],
@@ -10690,7 +11465,8 @@ func _test_staff_panel() -> void:
 		["res://scene/ui/equipment/equipmentpanel.tscn",
 			["equipclosebutton", "equipdamagevalue", "equipspeedvalue", "equiparmourvalue",
 			"equipsoakvalue", "equippreview", "equippreviewbox", "equippreviewhint",
-			"equiphealthbonusvalue", "equipmanabonusvalue", "equipdamagebonusvalue"]],
+			"equiphealthbonusvalue", "equipmanabonusvalue", "equipdamagebonusvalue",
+			"equipresistvalue"]],
 		["res://scene/ui/guild/guildpanel.tscn",
 			["guildrows", "guildtitle", "guildtag", "guildcount", "guildentry",
 			"guildactionbutton", "actionpanel", "guildclosebutton",
@@ -11348,6 +12124,43 @@ func _test_collision_contract() -> void:
 	for path in ENEMY_PROJECTILE_SCENES:
 		_check_projectile(path, LAYER_ENEMYPROJECTILE, "enemyprojectile",
 			LAYER_PLAYER, "player")
+
+
+# =============================================================================
+# REACH — does every pet's shot get as far as the pet looks?
+# =============================================================================
+# THE FIRE PET'S MASK, ONE NUMBER OVER. The Electric Sprite pet's orb
+# (petmagicprojectile.tscn) carried speed = 20 where every other pet's shot flies
+# at 300, and it lives 4 s: about 80 px. The pet picks a target up to 280 px away
+# and holds it to 322, so from anywhere but beside its target the orb faded out
+# on the way - for as long as the game had the pet. Nothing logged and nothing
+# errored; the pet just seemed to keep missing. Found in 0.11.5 by measuring
+# every pet against a boss for the website's Boss Sim.
+#
+# A shot that flies (it has a speed and a lifetime) has to cover the distance its
+# pet keeps a target at. One that is put down on the target - the mage's vine,
+# the Crowned's rupture - has no distance to cover, and is not asked.
+func _test_pet_shots_reach() -> void:
+	section("REACH — does every pet's shot get as far as the pet looks?")
+	var folder := "res://scene/pets/"
+	var flying := 0
+	for file in DirAccess.get_files_at(folder):
+		if not file.ends_with(".tscn"):
+			continue
+		var pet: Node = (load(folder + file) as PackedScene).instantiate()
+		var scene: PackedScene = pet.get("projectile_scene") as PackedScene
+		var holds: float = float(pet.get("aggro_range")) * Pet.TARGET_KEEP_SLACK
+		if scene != null:
+			var shot: Node = scene.instantiate()
+			if "speed" in shot and "lifetime" in shot:
+				flying += 1
+				var reach: float = float(shot.get("speed")) * float(shot.get("lifetime"))
+				check("%s: its shot flies %d px, past the %d px it keeps a target at" % [
+					file.get_basename(), int(reach), int(holds)], reach >= holds,
+					"%s: speed %s x lifetime %s" % [scene.resource_path.get_file(), shot.get("speed"), shot.get("lifetime")])
+			shot.free()
+		pet.free()
+	check("  five pets fire a shot that flies, and all five were measured", flying == 5, flying)
 
 
 func _check_layer_name(index: int, expected: String) -> void:
@@ -14597,6 +15410,8 @@ func _test_escape_closes_every_window() -> void:
 		"options_screen": "res://scene/ui/menus/optionsscreen.tscn",
 		"map_screen": "res://scene/ui/menus/mapscreen.tscn",
 		"controls_panel": "res://scene/ui/controls/controlspanel.tscn",
+		"kills_panel": "res://scene/ui/kills/killrecord.tscn",
+		"credits_panel": "res://scene/ui/menus/creditsscreen.tscn",
 	}
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	check("with nothing open, Escape has nothing to close (and opens the options instead)",
@@ -16284,8 +17099,14 @@ func _test_shared_monsters_follow() -> void:
 		"x": -19930.0, "y": -20010.0, "ax": 1.0, "ay": 0.0}]})
 	await get_tree().process_frame
 	var shots: Node = get_tree().get_first_node_in_group("projectiles")
+	# ON ITS LINE FROM THAT SPOT, not exactly on it: the shot is added at the
+	# end of a frame, and a physics step can move it along its aim (+x) before
+	# process_frame - the full run caught it 0 of 1 once, 7 Oct.
 	var landed: Array = shots.get_children().filter(func(n: Node) -> bool:
-		return n is Node2D and (n as Node2D).global_position.distance_to(Vector2(-19930, -20010)) < 1.0)
+		if not n is Node2D:
+			return false
+		var off: Vector2 = (n as Node2D).global_position - Vector2(-19930, -20010)
+		return absf(off.y) < 1.0 and off.x > -1.0 and off.x < 40.0)
 	check("the leader's shot is fired here too, from the same spot", landed.size() == 1, landed.size())
 	var count: int = shots.get_child_count()
 	sync.apply_world({"ev": [{"k": "p", "id": 4, "s": "user://evil.tscn", "x": 0, "y": 0, "ax": 1, "ay": 0}]})
@@ -16484,6 +17305,290 @@ func _test_shared_monsters_pieces() -> void:
 # game's own copy of a monster - a spike's telegraph and size, and a stalker
 # pillar's damage, telegraph and size - so a follower holds them to what its own
 # boss could do. And a world message cannot fill the screen with monsters.
+# =============================================================================
+# THE SERVER'S BOOKS (0.10.0) - E3_SCOPE.md option C, step 1
+# =============================================================================
+# presence.py keeps its own count of every monster's health from the leader's
+# world and every hit any game sends (combatbook.py), holds each hit to what
+# the character could do, and writes down what it sees - nothing in play
+# changes. The game's part: a leader sends its world even alone when the
+# server keeps books, with its own player's hits inside it; a fresh ticket
+# after an equip; and the numbers the server bounds hits by, exported, are the
+# game's own (test_combatbook.py does the server's half).
+
+class BooksLink extends FakeLink:
+	var keeps_books: bool = true
+
+	func books() -> bool:
+		return open and keeps_books
+
+
+func _sm_hits(world: Dictionary) -> Array:
+	var out: Array = []
+	for hit in world.get("hits", []):
+		out.append([int(hit[0]), int(hit[1]), int(hit[2])])
+	return out
+
+
+func _test_presence_carries_the_books() -> void:
+	section("THE SERVER'S BOOKS - the link knows when the server keeps them")
+	Presence.set_process(false)
+	Presence.stop()
+	Presence._phase = "open"
+	check("the game says it sends its own hits (wire 3), and still shares with a server on 2",
+		Presence.SHARED_VERSION == 3 and Presence.SHARED_MINIMUM == 2)
+	Presence.handle_message({"t": "welcome", "id": 7, "v": 2})
+	check("a server that shares monsters but keeps no books: no books", Presence.shares() and not Presence.books())
+	Presence.handle_message({"t": "welcome", "id": 7, "v": 2, "books": true})
+	check("  one whose welcome says so keeps them", Presence.books())
+	Presence.handle_message({"t": "welcome", "id": 7, "v": 2, "books": "yes"})
+	check("  and only a true says so", not Presence.books())
+
+	var stub_script := GDScript.new()
+	stub_script.source_code = "extends Node\nvar equipped: Dictionary = {}\n"
+	stub_script.reload()
+	var stub := Node.new()
+	stub.set_script(stub_script)
+	Presence._renew_clock = 0.0
+	CharacterData._apply_equip_result(stub, {"equipment": {"weapon": "ironsword"}})
+	check("an equip asks for a fresh ticket at once, not within the minute - the books hold hits to what is in hand",
+		Presence._renew_clock >= Presence.RENEW_SECONDS, Presence._renew_clock)
+	stub.free()
+	Presence.stop()
+	check("when the link goes, so do the books", not Presence.books())
+	Presence._server_shares = false
+	Presence._server_books = false
+	Presence._renew_clock = 0.0
+	Presence._failures = 0
+	Presence.set_process(true)
+
+
+func _test_shared_monsters_keep_the_books() -> void:
+	section("THE SERVER'S BOOKS - a leader alone still tells the server, with its own hits")
+	var world: Node2D = _sm_world()
+	var fs: BaseEnemy = world.get_node("enemies/fs1")
+	var sn: BaseEnemy = world.get_node("enemies/sn1")
+	var link := BooksLink.new()
+	link.area = SM_AREA
+	link.leader = 1
+	link.n = 0
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	world.add_child(sync)
+	await get_tree().process_frame
+
+	var full: Dictionary = _sm_last_world(link)
+	check("a leader with nobody else in the area still sends everything when it takes it, for the books",
+		sync.has_authority() and bool(full.get("full", false)) and bool(full.get("reset", false))
+		and (full.get("spawn", []) as Array).size() == 2, full)
+	link.sent_world.clear()
+	var sn_id: int = sn.net_id
+	sn.take_damage(5)
+	fs.global_position += Vector2(12, 0)
+	sync.tick_lead()
+	var delta: Dictionary = _sm_last_world(link)
+	check("  and its own player's hits, in the next world", _sm_hits(delta) == [[sn_id, 5, 0]], delta)
+	check("  beside what changed - the one it moved and the one it hurt",
+		(delta.get("snap", []) as Array).size() == 2, delta)
+
+	link.sent_world.clear()
+	link.deliver_hits(2, [[fs.net_id, 7, 0]])
+	sync.tick_lead()
+	check("another player's hit is not sent as this game's - the server counted it on its way here",
+		_sm_hits(_sm_last_world(link)).is_empty(), _sm_last_world(link))
+
+	link.sent_world.clear()
+	for i in range(70):
+		fs.take_damage(1)
+	sync.tick_lead()
+	var first_batch: int = _sm_hits(_sm_last_world(link)).size()
+	link.sent_world.clear()
+	sync.tick_lead()
+	check("seventy hits go as no more than presence.py takes in one world, the rest in the next",
+		first_batch == 64 and _sm_hits(_sm_last_world(link)).size() == 6, [first_batch, _sm_last_world(link)])
+
+	link.sent_world.clear()
+	sn.take_damage(100000)
+	sync.tick_lead()
+	var last: Dictionary = _sm_last_world(link)
+	var died: bool = false
+	for ev in last.get("ev", []):
+		if ev.get("k", "") == "die" and int(ev.get("id", -1)) == sn_id:
+			died = true
+	check("a killing hit travels in the same world as the death it caused, ahead of it",
+		died and _sm_hits(last).has([sn_id, 100000, 0]), last)
+
+	link.sent_world.clear()
+	link.deliver_need(0)
+	var to_books: Array = link.sent_world.filter(func(m: Array) -> bool: return m[1] == 0)
+	check("the server's books asking for everything (for game 0) are sent it",
+		to_books.size() == 1 and bool((to_books[0][0] as Dictionary).get("full", false))
+		and not bool((to_books[0][0] as Dictionary).get("reset", true)), link.sent_world)
+
+	link.keeps_books = false
+	link.sent_world.clear()
+	fs.take_damage(3)
+	var held_back: bool = sync._own_hits.is_empty()
+	fs.global_position += Vector2(5, 0)
+	sync.tick_lead()
+	check("with no books and nobody else here, nothing is sent - as before 0.10.0", link.sent_world.is_empty())
+	check("  and no hit is kept for a server that is not counting", held_back, sync._own_hits)
+
+	link.keeps_books = true
+	link.sent_world.clear()
+	var fs_id: int = fs.net_id
+	fs.died.emit()
+	sync.tick_lead()
+	var again: bool = false
+	for ev in _sm_last_world(link).get("ev", []):
+		if ev.get("k", "") == "spawn":
+			again = true
+	check("a monster that has said it died is not numbered again while it still stands (a slime splitting)",
+		not again and not sync.monsters().values().has(fs) and fs.net_id == fs_id, _sm_last_world(link))
+
+	link.lead_changed.emit(SM_AREA, 9, 1)
+	var sn2: BaseEnemy = null
+	for e in sync._all_enemies():
+		if e != fs:
+			sn2 = e
+	if sn2 != null:
+		sn2.take_damage(4)
+	check("a follower's hits go to the leader as before, never as its own",
+		sync.is_following() and sync._own_hits.is_empty() and (sn2 == null or not sync._hits.is_empty()))
+
+	world.free()
+	link.free()
+
+	# A SCENE LOADS BEFORE ITS SOCKET DOES: every change of area opens a new
+	# link, so the game starts running its monsters with nobody told.
+	world = _sm_world()
+	link = BooksLink.new()
+	link.area = SM_AREA
+	link.open = false
+	add_child(link)
+	sync = _sm_sync(link)
+	world.add_child(sync)
+	await get_tree().process_frame
+	check("a scene that loads with no link runs its own monsters, telling nobody",
+		sync.has_authority() and link.sent_world.is_empty())
+	link.open = true
+	link.n = 0
+	link.lead_changed.emit(SM_AREA, 1, 0)
+	var told: Dictionary = _sm_last_world(link)
+	check("  and when the link opens and names it leader, the books are sent everything, as a new scene's",
+		link.sent_world.size() == 1 and bool(told.get("full", false)) and bool(told.get("reset", false))
+		and (told.get("spawn", []) as Array).size() == 2, link.sent_world)
+	link.lead_changed.emit(SM_AREA, 1, 0)
+	check("  once", link.sent_world.size() == 1, link.sent_world.size())
+	link.lead_changed.emit(SM_AREA, -1, 0)
+	link.lead_changed.emit(SM_AREA, 1, 0)
+	check("  and again after the link drops and comes back", link.sent_world.size() == 2, link.sent_world.size())
+	world.free()
+	link.free()
+
+
+func _test_combat_bounds_match_the_game() -> void:
+	section("THE SERVER'S BOOKS - the numbers it holds every hit to are the game's")
+	var data := _load_gamedata()
+	var combat: Dictionary = data.get("combat", {}) if data.get("combat", {}) is Dictionary else {}
+	var areas: Dictionary = data.get("areas", {}) if data.get("areas", {}) is Dictionary else {}
+	check("gamedata.json carries the combat numbers and every area's map (re-run the exporter if not)",
+		not combat.is_empty() and not areas.is_empty())
+	if combat.is_empty() or areas.is_empty():
+		return
+	var classes: Dictionary = combat.get("classes", {})
+	var scripts := {"warrior": "res://src/characters/warrior.gd", "mage": "res://src/characters/mage.gd",
+		"healer": "res://src/characters/healer.gd", "tank": "res://src/characters/tank.gd"}
+	var speeds_ok: bool = true
+	for cls in scripts:
+		var consts: Dictionary = (load(scripts[cls]) as GDScript).get_script_constant_map()
+		if int((classes.get(cls, {}) as Dictionary).get("speed", -1)) != int(consts.get("CLASS_SPEED", -2)):
+			speeds_ok = false
+	check("every class walks at its own CLASS_SPEED, as exported", speeds_ok, classes)
+	check("  and _ready() walks it at that speed, not a number of its own",
+		scripts.values().all(func(path: String) -> bool: return _code_src(path).contains("speed = CLASS_SPEED")))
+	check("agility adds the same to a walk as exported, in both places a walk is worked out",
+		_code_src("res://src/characters/player.gd").contains("speed + (agility - 1) * %d" % int(combat.get("agility_speed", -1)))
+		and _code_src("res://src/characters/tank.gd").contains("speed + (agility - 1) * %d" % int(combat.get("agility_speed", -1))))
+	check("the skill, agility, pet and double-cast numbers are the game's",
+		is_equal_approx(float(combat.get("skill_step", -1)), PlayerStats.ATTACK_DAMAGE_PERCENT_PER_LEVEL)
+		and is_equal_approx(float(combat.get("skill_step", -1)), PlayerStats.MAGIC_DAMAGE_PERCENT_PER_LEVEL)
+		and is_equal_approx(float(combat.get("agility_step", -1)), PlayerStats.AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL)
+		and is_equal_approx(float(combat.get("agility_cap", -1)), PlayerStats.MAX_ATTACK_SPEED_MULTIPLIER)
+		and is_equal_approx(float(combat.get("pet_share", -1)), (load("res://src/pets/pet.gd") as GDScript).get_script_constant_map().get("PET_STAT_SHARE", -2.0))
+		and is_equal_approx(float(combat.get("double_chance", -1)), (load("res://src/characters/player.gd") as GDScript).get_script_constant_map().get("WEAPON_DOUBLE_CHANCE", -2.0)),
+		combat)
+	check("  and so is the physics rate a healer's shots are counted against",
+		int(combat.get("physics_ticks", -1)) == int(ProjectSettings.get_setting("physics/common/physics_ticks_per_second")))
+	var attacks: Dictionary = {}
+	for item in ItemRegistry.get_all_items():
+		if int(item.weapon_attack) != ItemData.WeaponAttack.NONE:
+			attacks[item.item_id] = String(ItemData.WeaponAttack.keys()[int(item.weapon_attack)])
+	check("every weapon that brings its own attack is named, by its attack",
+		not attacks.is_empty() and attacks == combat.get("weapon_attacks", {}), [attacks, combat.get("weapon_attacks")])
+
+	var known_areas: Dictionary = AreaRegistry.AREAS
+	check("every area has a map, and no map is an area the game does not have",
+		known_areas.keys().all(func(k) -> bool: return areas.has(k))
+		and areas.keys().all(func(k) -> bool: return known_areas.has(k)), [known_areas.keys(), areas.keys()])
+	if not _pack_present():
+		check_needs_pack("each area's monsters stand where the map says, and are what it says", false)
+		return
+	var stale: Array = []
+	for area_id in known_areas:
+		var root: Node = (load(String(known_areas[area_id])) as PackedScene).instantiate()
+		var here: Array = []
+		var walk: Array = [root]
+		while not walk.is_empty():
+			var node: Node = walk.pop_back()
+			for child in node.get_children():
+				if child.scene_file_path.begins_with("res://scene/enemy/"):
+					var data_res: Variant = child.get("enemy_data")
+					var enemy_id: String = ""
+					if data_res is EnemyData:
+						enemy_id = (data_res as EnemyData).enemy_id
+					else:
+						# Its _ready() fills it from the script's own profile
+						# (ENEMY_DATA; a large poison slime's LARGE_DATA).
+						var consts: Dictionary = (child.get_script() as GDScript).get_script_constant_map()
+						var own: Variant = consts.get("ENEMY_DATA", consts.get("LARGE_DATA"))
+						enemy_id = (own as EnemyData).enemy_id if own is EnemyData else ""
+					here.append("%s|%s" % [str(root.get_path_to(child)), enemy_id])
+				else:
+					walk.append(child)
+		root.free()
+		var mapped: Array = []
+		for spot in (areas.get(area_id, {}) as Dictionary).get("spawns", []):
+			mapped.append("%s|%s" % [str(spot.get("o", "")), str(spot.get("e", ""))])
+		here.sort()
+		mapped.sort()
+		if here != mapped:
+			stale.append([area_id, here.filter(func(s) -> bool: return not mapped.has(s)).slice(0, 3),
+				mapped.filter(func(s) -> bool: return not here.has(s)).slice(0, 3)])
+	check("each area's monsters stand at the spots the map names, and are what it says (re-run the exporter if not)",
+		stale.is_empty(), stale)
+	var puddle: Node = (load("res://scene/projectiles/petpoisonpuddle.tscn") as PackedScene).instantiate()
+	check("a pet's puddle ticks for what the books allow it",
+		int(puddle.get("tick_damage")) == int(combat.get("puddle_damage", -1)), puddle.get("tick_damage"))
+	puddle.free()
+	var reads := {
+		"warrior": {"base": "base_melee_damage", "cooldown": "attack_lock_duration", "wave_ratio": "wave_damage_ratio"},
+		"mage": {"base": "damage_per_magic", "cooldown": "spell_cooldown"},
+		"healer": {"base": "damage_per_magic", "cooldown": "shot_cooldown"},
+		"tank": {"base": "aura_damage", "cooldown": "aura_tick", "dynamite_cooldown": "dynamite_cooldown"},
+	}
+	var off: Array = []
+	for cls in reads:
+		var body: Node = (load("res://scene/characters/%s.tscn" % cls) as PackedScene).instantiate()
+		for key in reads[cls]:
+			if not is_equal_approx(float((classes.get(cls, {}) as Dictionary).get(key, -1)), float(body.get(reads[cls][key]))):
+				off.append("%s.%s" % [cls, key])
+		if not is_equal_approx(float(combat.get("sprint", -1)), float(body.get("sprint_speed_multiplier"))):
+			off.append("%s.sprint" % cls)
+		body.free()
+	check("every class hits as hard and as often as exported (re-run the exporter if not)", off.is_empty(), off)
+
+
 func _test_shared_monsters_hold_the_leaders_numbers() -> void:
 	section("SHARED MONSTERS - a leader cannot make the floor hit you harder")
 	const Sync := preload("res://src/world/monstersync.gd")

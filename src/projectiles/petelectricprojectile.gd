@@ -14,6 +14,13 @@ extends Area2D
 # EXPORTED SETTINGS
 # =============================================================================
 
+# 300, THE SAME AS EVERY OTHER PET'S SHOT, and the scene does not override it.
+# Until 0.11.5 petmagicprojectile.tscn set it to 20. With the 4 s lifetime below
+# that is about 80 px, and the pet picks targets up to 280 px away and keeps
+# them to 322 - so from anywhere but beside its target the orb faded out on the
+# way, and the Electric Sprite pet looked as if it kept missing. Found measuring
+# the pets for the website's Boss Sim. _test_pet_shots_reach() holds every pet's
+# shot to the distance its pet holds a target at.
 @export var speed: float = 300.0
 @export var damage: int = 5
 # The element this projectile deals. Element.Type is an int, not the

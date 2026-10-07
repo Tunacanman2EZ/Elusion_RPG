@@ -82,13 +82,15 @@ const WebPage := preload("res://src/systems/webpage.gd")
 # are requests, and a save carries no bag - and logins send an install id.
 # 3: dropped gear carries its quality roll in its item id ("ironsword~d107"),
 # which ItemRegistry reads; a build-2 game shows such a piece as the error item.
+# 4: armour's roll ends in the element it resists ("jadechest~a104h96r605",
+# GameConstants.RESIST_*); a build-3 game reads such an id as a malformed roll.
 # Matches CURRENT_CLIENT_BUILD in app.py.
-const BUILD := 3
+const BUILD := 4
 # MAJOR.MINOR.PATCH: 0.x until launch, the middle number for a new chunk of
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.8.0"
+const DISPLAY_VERSION := "0.11.5"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
