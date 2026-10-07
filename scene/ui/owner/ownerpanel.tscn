@@ -196,12 +196,31 @@ theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 
 theme_override_font_sizes/font_size = 13
 placeholder_text = "username"
 
-[node name="viewbutton" type="Button" parent="frame/margin/rows/ownertabs/account" unique_id=1644512135]
+[node name="lookrow" type="HBoxContainer" parent="frame/margin/rows/ownertabs/account"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="viewbutton" type="Button" parent="frame/margin/rows/ownertabs/account/lookrow" unique_id=1644512135]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
 tooltip_text = "Read this account: rank, ban state, characters, logins, sessions"
 theme_override_font_sizes/font_size = 13
 text = "View account"
+
+[node name="givebutton" type="Button" parent="frame/margin/rows/ownertabs/account/lookrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Open the item catalogue to give this player an item. It goes in the bag of the character they are playing."
+theme_override_font_sizes/font_size = 13
+text = "Give item"
+
+[node name="historybutton" type="Button" parent="frame/margin/rows/ownertabs/account/lookrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Their character's last snapshots, and Restore to put it back to one."
+theme_override_font_sizes/font_size = 13
+text = "Save history"
 
 [node name="sep2" type="HSeparator" parent="frame/margin/rows/ownertabs/account" unique_id=1900112243]
 layout_mode = 2

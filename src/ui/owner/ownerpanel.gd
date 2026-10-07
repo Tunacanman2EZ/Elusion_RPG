@@ -36,6 +36,15 @@ extends Control
 
 @onready var username_input: LineEdit = %usernameinput
 @onready var view_button: Button = %viewbutton
+# BESIDE VIEW ACCOUNT, and about the same name (0.7.5; the owner, 6 Oct: "roll
+# back and give player item might be useful"). Give item opens the item
+# catalogue with this name in its Give to box; Save history opens the window
+# that lists their character's snapshots and restores one. Both are windows of
+# their own, owned by the HUD like the catalogue always was, because a grid of
+# pictures and a list of twenty snapshots need more room than this tab has -
+# and the row costs the tab no height.
+@onready var give_button: Button = get_node_or_null("%givebutton")
+@onready var history_button: Button = get_node_or_null("%historybutton")
 
 # THE WINDOW'S OWN PARTS. get_node_or_null like the rest, for the same reason.
 @onready var close_button: Button = get_node_or_null("%ownerclosebutton")
@@ -194,6 +203,10 @@ func _ready() -> void:
 			tabs.set_tab_title(i, TAB_TITLES[i])
 	if view_button != null and not view_button.pressed.is_connected(_on_view_pressed):
 		view_button.pressed.connect(_on_view_pressed)
+	if give_button != null and not give_button.pressed.is_connected(_on_give_pressed):
+		give_button.pressed.connect(_on_give_pressed)
+	if history_button != null and not history_button.pressed.is_connected(_on_history_pressed):
+		history_button.pressed.connect(_on_history_pressed)
 
 	# bind(), so one handler serves all three and the action name travels with
 	# the press rather than being inferred from which button is disabled.
@@ -284,6 +297,47 @@ func _process(_delta: float) -> void:
 	# "Confirm ban?" is a trap for whoever looks at this panel next.
 	if _armed_action != "" and Time.get_ticks_msec() / 1000.0 > _armed_until:
 		_disarm()
+
+
+# =============================================================================
+# GIVE ITEM AND SAVE HISTORY - windows the HUD owns, opened on this name
+# =============================================================================
+
+# WHERE THEY OPEN, as a Callable so the suite can see the call without a HUD:
+# (method on the HUD, username) -> whether a HUD took it.
+var open_window: Callable = Callable(self, "_open_hud_window")
+
+
+func _on_give_pressed() -> void:
+	if not Api.is_owner:
+		return
+	var who: String = username_input.text.strip_edges() if username_input != null else ""
+	if who == "":
+		_say("[GM] type a username above, then Give item.", SAY_WARN)
+		return
+	if not open_window.call("open_item_spawner_for", who):
+		_say("[GM] the item catalogue opens from inside the game.", SAY_WARN)
+		return
+	_say("[GM] the item catalogue is open with %s in Give to - click an item to give it." % who, SAY_NOTE)
+
+
+func _on_history_pressed() -> void:
+	if not Api.is_owner:
+		return
+	var who: String = username_input.text.strip_edges() if username_input != null else ""
+	if who == "":
+		_say("[GM] type a username above, then Save history.", SAY_WARN)
+		return
+	if not open_window.call("open_save_history", who):
+		_say("[GM] the save history opens from inside the game.", SAY_WARN)
+
+
+func _open_hud_window(method: String, who: String) -> bool:
+	var hud: Node = get_tree().get_first_node_in_group("hud") if is_inside_tree() else null
+	if hud == null or not hud.has_method(method):
+		return false
+	hud.call(method, who)
+	return true
 
 
 # =============================================================================

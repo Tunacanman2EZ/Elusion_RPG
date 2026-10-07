@@ -1,0 +1,142 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/ui/owner/savehistory.gd" id="1_history"]
+[ext_resource type="Theme" path="res://assets/themes/staff_ui_theme.tres" id="2_stafftheme"]
+
+[node name="savehistory" type="Control"]
+theme = ExtResource("2_stafftheme")
+layout_mode = 3
+offset_left = 400.0
+offset_top = 60.0
+offset_right = 940.0
+offset_bottom = 520.0
+mouse_filter = 2
+script = ExtResource("1_history")
+
+[node name="frame" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margin" type="MarginContainer" parent="frame"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="rows" type="VBoxContainer" parent="frame/margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="headerpanel" type="PanelContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="headerbox" type="HBoxContainer" parent="frame/margin/rows/headerpanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="title" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_font_sizes/font_size = 18
+text = "SAVE HISTORY"
+vertical_alignment = 1
+
+[node name="hint" type="Label" parent="frame/margin/rows/headerpanel/headerbox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_font_sizes/font_size = 11
+text = "owner only - restore asks twice"
+vertical_alignment = 1
+
+[node name="historyclose" type="Button" parent="frame/margin/rows/headerpanel/headerbox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 26)
+layout_mode = 2
+tooltip_text = "Close  (Esc)"
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "×"
+
+[node name="findrow" type="HBoxContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="historyname" type="LineEdit" parent="frame/margin/rows/findrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.87843, 0.9098, 0.9451, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+placeholder_text = "username"
+
+[node name="historyslot" type="OptionButton" parent="frame/margin/rows/findrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(130, 0)
+layout_mode = 2
+tooltip_text = "Which of their characters. It starts on the one they are playing."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+
+[node name="historyload" type="Button" parent="frame/margin/rows/findrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Read this character's snapshots from the server"
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Load"
+
+[node name="historynow" type="Label" parent="frame/margin/rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.7, 0.45, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 3
+
+[node name="listbox" type="PanelContainer" parent="frame/margin/rows"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"PanelSub"
+
+[node name="listmargin" type="MarginContainer" parent="frame/margin/rows/listbox"]
+layout_mode = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="scroll" type="ScrollContainer" parent="frame/margin/rows/listbox/listmargin"]
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="historylist" type="VBoxContainer" parent="frame/margin/rows/listbox/listmargin/scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="historystatus" type="Label" parent="frame/margin/rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 3
+text = "Type a player's name, then Load."
+
+[node name="historynote" type="Label" parent="frame/margin/rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
+theme_override_font_sizes/font_size = 10
+autowrap_mode = 3
+text = "Restoring puts back their level, gold, gear, pet, bag and skills, and signs them out so their game reloads it. The bank and lusions are the account's and do not change. An item they have traded away since comes back as a second copy."

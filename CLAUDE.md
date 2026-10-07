@@ -431,6 +431,60 @@ and "Go to area" left you at the room's entrance.
 Bring everyone's confirm, Go to's refusals, `meet()` (beside, not on top; waits;
 gives up) and `note_area()`.
 
+### Give item and Save history: a player's bag, and their character as it was
+
+The owner, 6 Oct (0.7.5), after asking for a "secure game control panel":
+"we can skip read me but roll back and give player item might be useful". So
+no exploit-demo scene; these two, both owner only, both on the server
+(`require_owner`, a bare 404 to everyone else - the API's CLAUDE.md, "Save
+history, rollback, and giving a player an item", and `test_rollback.py`).
+
+- **Two buttons beside View account** on the Account tab (`%givebutton`,
+  `%historybutton`, in View account's row, so the tab is no taller), both about
+  the name in `%usernameinput`. They open windows the HUD owns, through
+  `open_window` (a Callable the suite swaps): `open_item_spawner_for(name)` and
+  `open_save_history(name)` on the HUD, owner-gated there as a courtesy.
+- **Give item is the item catalogue with a Give to box** (`%givetoinput`).
+  Empty, or your own name in any case, is your own bag exactly as before. A
+  name sends `username` and no slot - the server puts it in the character they
+  are PLAYING, which only it knows - and nothing is adopted or put on here:
+  "put gear on" is about your own character. The line says who got what and
+  whether their game is told now or at their next sign-in (`gift_line()`).
+- **Their game is told by the server**, on the broadcast poll it already runs:
+  the bag arrives as a trade's does (`trade_resync`), with `gifts` - who gave
+  what - and the HUD says one line per gift, "boss gave you 2 × Large Health
+  Potion." (`characterhud.gd::gift_line()`, in `_on_carry_adopted()`). A game
+  from before 0.7.5 says its old "Your backpack was updated by the server".
+- **Save history** (`src/ui/owner/savehistory.gd`, the twentieth window - in the
+  HUD's `_escape_windows()` and `WINDOW_PANELS`): the name, which of their
+  characters (starting on the one they are playing), the character as it is
+  now, and its snapshots newest first - when, level, gold, cells carried, and
+  "before a gift" or "before a rollback" when it was not an ordinary save. The
+  server keeps the last 20, taken when the game saves (at most every ten
+  minutes, and only if something changed), before a gift and before a
+  rollback.
+- **Restore asks twice**: the first press makes that row's button "Sure?" for
+  `ARM_SECONDS` (4), the second sends `POST /api/staff/rollback`. Another row,
+  a reload, the x or Escape disarms. A timer, not `_process`.
+- **What a rollback does to them**: level, XP, gold (through the ledger), gear,
+  the pet if still held, the whole bag and every skill go back; the bank,
+  lusions, area and map do not; hp and mana only come down. Every session of
+  theirs ends, so their game goes to the login screen ("You were signed out by
+  the server.") and loads the restored character at sign-in - nothing less
+  replaces the game's own copy of level, gold and gear. Rolling back your own
+  character signs you out too, and the line says so. The window's answer says
+  what changed, and the list's new top line ("before a rollback") undoes it.
+- **The honest limit** is written under the buttons: an item they have traded
+  away since comes back as a second copy.
+
+`_test_give_and_save_history()` holds the catalogue's Give to, the GM panel's
+buttons, the window (rows, characters, arming, the request, the reload, the
+refusals) and the HUD's gift lines. Played with two games against the local
+server: the owner gave caster's mage two Large Health Potions, caster's game
+said "boss gave you 2 × Large Health Potion." within a poll, the owner restored
+the "before a gift" snapshot, caster's game went to the login screen, and
+signing back in showed the bag without them.
+
 ### God mode is the owner's switch, and the ordering is the whole feature
 
 The God mode switch on the owner panel's Testing tab turns damage off so the
@@ -2213,7 +2267,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   loot bag reach, 0.7.0 shared monsters, 0.7.1 no debug keys (the owner panel
   does their work, the performance readout included), 0.7.2 enemies see and
   shoot a player pressed against a wall, 0.7.3 Escape closes every window, 0.7.4
-  Move Players: a list of who is online, its own name box, Go to beside them.
+  Move Players: a list of who is online, its own name box, Go to beside them,
+  0.7.5 Give item to a player and the Save history (rollback).
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3652,7 +3707,8 @@ catalogue stays a window of its own (`src/ui/owner/itemspawner.gd`), because a
 grid of pictures needs more room than the panel has. The button calls the
 HUD's `toggle_item_spawner()` through the `hud` group, so the HUD still owns
 the window: it is in the HUD's `_escape_windows()` list, so Escape closes
-it, and it is the nineteenth window.
+it, and it is the nineteenth window. Since 0.7.5 it also gives to a player
+(Give to; see "Give item and Save history").
 
 - **Every item `ItemRegistry` loaded**, so a new .tres is in the menu at the
   next launch. Kinds come from `ItemSpawner.category_of()` - type and equip

@@ -772,6 +772,46 @@ keeps no copy of the rule.
 
 ---
 
+## Giving a player an item, and the save history
+
+Owner only (`require_owner`; a bare 404 to everyone else). Since game 0.7.5.
+
+**`POST /api/staff/grant`** takes `username` as well as the owner's own `slot`.
+Your own name, in any case, is your own grant as before (and needs `slot`). Any
+other name: the item goes into the character that account is PLAYING - never a
+slot from the request - and the answer is `{"username", "slot", "character",
+"granted_item_id", "granted_quantity", "carry_positions", "online"}`, no
+inventory. `404` "No such account." or "... has no character to give it to.";
+`409` "<name>'s backpack is full (20 slots)." Their game is handed the bag on
+its next poll: `trade_resync` on `GET /api/server/broadcasts` (or `resync` on
+the trade poll) is `{"slot", "gold", "inventory", "trade": null, "gifts":
+[{"by", "item_id", "quantity"}, ...]}` - the newest five gifts, once, and a
+waiting trade result is never replaced by one.
+
+**`GET /api/staff/snapshots?username=<name>[&slot=N]`** -> `{"username",
+"slot", "playing", "characters": [{"slot", "name", "class_id", "level"}],
+"now": {"name", "class_id", "level", "gold", "items"}, "snapshots": [{"id",
+"taken_at", "reason", "level", "gold", "items"}, ...], "kept", "every_seconds"}`,
+newest first. No slot is the character they are playing. `reason` is `save`,
+`before-give` or `before-rollback`; `items` counts the cells carried (bag and
+hotbar). `400` no name or a bad slot; `404` no such account, no characters, or
+nothing in that slot.
+
+**`POST /api/staff/rollback`** `{"username", "snapshot_id"}` puts that
+character back: level, XP, gold (by the difference, through the ledger as
+`staff_rollback`), what is worn, the pet if still held, every carried cell and
+every skill. Not the bank, lusions, area or map; hp, mana and stamina only come
+down to the restored maxima. -> `{"username", "slot", "character", "restored",
+"taken_at", "undo_snapshot", "was": {"level", "gold", "items"}, "now": {...},
+"pet_cleared", "sessions_ended"}`. **Every session of the account is ended**,
+so the game sees a 401 on its next poll and reloads the character at sign-in.
+`undo_snapshot` is the snapshot taken first, which undoes it. `400` a
+snapshot_id that is not a whole number; `404` no such account, or no snapshot
+with that id OF that account, or the character is gone; `409` the character is
+in an open trade, or the slot now holds another class.
+
+---
+
 ## Server health
 
 ### `GET /api/status`

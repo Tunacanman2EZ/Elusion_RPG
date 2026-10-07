@@ -23,6 +23,13 @@ opens the panel gains nothing. An edited client cannot write its own bag either 
 backpack and the bank are the server's, every drag and bin is a request it
 carries out, and a player's whole-bag write is ignored.
 
+**Give item to a player, and the Save history** (0.7.5, the owner only, on the
+GM panel's Account tab) are requests like everything else on it. The server
+decides which character a gift goes into and hands that player's game the new
+bag; a rollback is carried out entirely on the server, which signs the player
+out so their game loads the restored character. A patched build that draws the
+buttons gets the same 404 as a route that does not exist.
+
 **God mode** (a switch on the owner panel, the owner only) turns damage off so
 the game can be tested without dying repeatedly. It grants nothing: the guard
 returns before the hit is applied *and* before the defense XP that

@@ -115,6 +115,27 @@ theme_override_colors/font_color = Color(0.45098, 0.50196, 0.57647, 1)
 theme_override_font_sizes/font_size = 11
 text = "0 items"
 
+[node name="giverow" type="HBoxContainer" parent="frame/margin/rows"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="givelabel" type="Label" parent="frame/margin/rows/giverow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Give to"
+vertical_alignment = 1
+
+[node name="givetoinput" type="LineEdit" parent="frame/margin/rows/giverow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Empty, or your own name: your own bag. A player's name: the bag of the character they are playing."
+theme_override_colors/font_color = Color(0.87843, 0.9098, 0.9451, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+placeholder_text = "you - or a player's name"
+clear_button_enabled = true
+
 [node name="spawnrow" type="HBoxContainer" parent="frame/margin/rows"]
 layout_mode = 2
 theme_override_constants/separation = 6
@@ -165,4 +186,4 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.73, 0.78, 0.84, 1)
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
-text = "Pick an item. It goes straight into your bag."
+text = "Pick an item. It goes into your bag - or, with a name in Give to, into theirs."

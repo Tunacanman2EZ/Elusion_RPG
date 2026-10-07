@@ -74,6 +74,7 @@ const ChatPanelScript     := preload("res://src/ui/chat/chatpanel.gd")
 # actually toggles it with the backquote key.
 const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
 const ITEM_SPAWNER_SCENE  := preload("res://scene/ui/owner/itemspawner.tscn")
+const SAVE_HISTORY_SCENE  := preload("res://scene/ui/owner/savehistory.tscn")
 const STAFF_PANEL_SCENE   := preload("res://scene/ui/staff/staffpanel.tscn")
 const STAFF_THEME         := preload("res://assets/themes/staff_ui_theme.tres")
 const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
@@ -133,6 +134,7 @@ var kingdom_panel:    Control         = null
 var trade_panel:      Control         = null
 var owner_panel:      Control         = null
 var item_spawner:     Control         = null
+var save_history:     Control         = null
 var staff_panel:      Control         = null
 var chat_panel:       Control         = null
 var friends_panel:    Control         = null
@@ -462,6 +464,29 @@ func toggle_item_spawner() -> void:
 		item_spawner.close()
 	else:
 		item_spawner.open()
+
+
+func open_item_spawner_for(username: String) -> void:
+	# The GM panel's Give item: the catalogue, open, with this name in Give to.
+	if not Api.is_owner:
+		return
+	if item_spawner == null:
+		item_spawner = ITEM_SPAWNER_SCENE.instantiate()
+		item_spawner.visible = false
+		add_child(item_spawner)
+	item_spawner.open_for(username)
+
+
+func open_save_history(username: String) -> void:
+	# The GM panel's Save history (savehistory.gd): one player's snapshots,
+	# and Restore. Owner-gated here as a courtesy, like the catalogue.
+	if not Api.is_owner:
+		return
+	if save_history == null:
+		save_history = SAVE_HISTORY_SCENE.instantiate()
+		save_history.visible = false
+		add_child(save_history)
+	save_history.open_for(username)
 
 
 func _process(_delta: float) -> void:
@@ -1929,10 +1954,29 @@ func _on_carry_adopted(resync: Dictionary) -> void:
 	if str(resync.get("reason", "")) == "stale_save":
 		return
 	var record = resync.get("trade")
+	var gifts = resync.get("gifts")
 	if record is Dictionary:
 		_push_message(TradePanelScript.result_line(record), Color(0.55, 0.85, 0.5))
+	elif gifts is Array and not (gifts as Array).is_empty():
+		# WHAT THE OWNER GAVE (0.7.5), one line each: the server keeps the
+		# newest few on the bag's flag and hands them over with the bag.
+		for gift in gifts:
+			if gift is Dictionary:
+				_push_message(gift_line(gift), Color(0.55, 0.85, 0.5))
 	else:
 		_push_message("Your backpack was updated by the server.", Color(0.55, 0.85, 0.5))
+
+
+func gift_line(gift: Dictionary) -> String:
+	""""boss gave you 3 × Large Health Potion." - the item's own name when this
+	game knows the id, the id when it does not."""
+	var item_id: String = str(gift.get("item_id", ""))
+	var item: ItemData = ItemRegistry.get_item(item_id) if ItemRegistry.has_item(item_id) else null
+	var what: String = item.display_name if item != null else item_id
+	var count: int = maxi(1, int(gift.get("quantity", 1)))
+	var by: String = str(gift.get("by", "")).strip_edges()
+	return "%s gave you %s." % [by if by != "" else "The server",
+		what if count == 1 else "%d × %s" % [count, what]]
 
 
 func _read_pvp(data: Dictionary) -> void:
@@ -2709,6 +2753,7 @@ func _on_logout_pressed() -> void:
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
 	if item_spawner:     item_spawner.queue_free()
+	if save_history:     save_history.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -2721,6 +2766,7 @@ func _on_logout_pressed() -> void:
 	trade_panel      = null
 	owner_panel      = null
 	item_spawner     = null
+	save_history     = null
 	staff_panel      = null
 
 	# NEW (E-2): send any training XP (defense/agility/magic) that has not hit
@@ -2811,6 +2857,7 @@ func _on_switch_character_pressed() -> void:
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
 	if item_spawner:     item_spawner.queue_free()
+	if save_history:     save_history.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -2823,6 +2870,7 @@ func _on_switch_character_pressed() -> void:
 	trade_panel      = null
 	owner_panel      = null
 	item_spawner     = null
+	save_history     = null
 	staff_panel      = null
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
@@ -3266,6 +3314,7 @@ func _escape_windows() -> Array:
 		[staff_panel, "close_panel"],
 		[owner_panel, "close"],
 		[item_spawner, "close"],
+		[save_history, "close"],
 		[options_screen, "close"],
 		[map_screen, "close"],
 		[controls_panel, "close"],

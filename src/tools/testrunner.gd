@@ -206,6 +206,7 @@ func _run_all() -> void:
 	await _test_no_debug_keys_the_panel_does_it()
 	await _test_escape_closes_every_window()
 	await _test_move_players_from_the_list()
+	await _test_give_and_save_history()
 	_test_presence_carries_the_monsters()
 	await _test_shared_monsters_lead()
 	await _test_shared_monsters_follow()
@@ -3315,6 +3316,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/menus/optionsscreen.gd", "res://scene/ui/menus/optionsscreen.tscn", "options"],
 	["res://src/ui/owner/ownerpanel.gd", "res://scene/ui/owner/ownerpanel.tscn", "owner"],
 	["res://src/ui/owner/itemspawner.gd", "res://scene/ui/owner/itemspawner.tscn", "itemspawner"],
+	["res://src/ui/owner/savehistory.gd", "res://scene/ui/owner/savehistory.tscn", "savehistory"],
 	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
 	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
 	["res://src/ui/staff/staffpanel.gd", "res://scene/ui/staff/staffpanel.tscn", "staff"],
@@ -3765,7 +3767,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("nineteen panels are windows - the owner's item menu is the nineteenth", keys_seen.size() == 19, keys_seen.size())
+	check("twenty panels are windows - the owner's save history is the twentieth", keys_seen.size() == 20, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -13836,6 +13838,7 @@ func _test_escape_closes_every_window() -> void:
 		"staff_panel": "res://scene/ui/staff/staffpanel.tscn",
 		"owner_panel": "res://scene/ui/owner/ownerpanel.tscn",
 		"item_spawner": "res://scene/ui/owner/itemspawner.tscn",
+		"save_history": "res://scene/ui/owner/savehistory.tscn",
 		"options_screen": "res://scene/ui/menus/optionsscreen.tscn",
 		"map_screen": "res://scene/ui/menus/mapscreen.tscn",
 		"controls_panel": "res://scene/ui/controls/controlspanel.tscn",
@@ -13881,6 +13884,258 @@ func _test_escape_closes_every_window() -> void:
 	# has never withdrawn an offer - the trade lives on the server.
 	check("closing the trade window does not cancel the trade",
 		not _func_body(_code_src("res://src/ui/trade/tradepanel.gd"), "func close_panel(").contains("Api."))
+
+# 0.7.5. The owner, 6 Oct: "roll back and give player item might be useful".
+# The item catalogue gives to a named player; the GM panel's Account tab opens
+# it, and the new Save history window, on the name in its box; and the HUD says
+# what a player was given. The server's half - who may, what a snapshot holds,
+# the ledger, the sessions - is test_rollback.py.
+func _test_give_and_save_history() -> void:
+	section("GIVE AND ROLL BACK - a player's bag, and their character as it was")
+	const History := preload("res://src/ui/owner/savehistory.gd")
+	var was_name: String = Api.username
+	var was_role: String = Api.role
+	var was_owner: bool = Api.is_owner
+	Api.username = "boss"
+	Api.role = "owner"
+	Api.is_owner = true
+	var potion: ItemData = _menu_item("givetest_potion", ItemData.Type.CONSUMABLE, ItemData.EquipSlot.NONE, 99)
+	ItemRegistry._items[potion.item_id] = potion
+
+	# --- THE CATALOGUE GIVES TO A NAME ----------------------------------------
+	var menu: Control = (load("res://scene/ui/owner/itemspawner.tscn") as PackedScene).instantiate() as Control
+	add_child(menu)
+	await get_tree().process_frame
+	var asked: Array = []
+	var adopted: Array = []
+	var equipped: Array = []
+	var answer: Array = [{"ok": true, "data": {"username": "hank", "slot": 2, "character": "tank",
+		"granted_item_id": "givetest_potion", "granted_quantity": 3, "carry_positions": [0], "online": true}}]
+	menu.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		asked.append([path, body])
+		await get_tree().process_frame
+		return answer[0]
+	menu.adopt_bag = func(slot_index: int, cells: Array) -> void:
+		adopted.append([slot_index, cells])
+	menu.equip_request = func(id: String, cell: int) -> bool:
+		equipped.append([id, cell])
+		return true
+
+	check("Give to starts empty, and empty is your own bag", menu.give_to.text == "" and menu.recipient() == "")
+	menu.set_recipient("  hank ")
+	menu.quantity.value = 3
+	await get_tree().process_frame
+	menu.wear_toggle.button_pressed = true
+	await menu.spawn("givetest_potion")
+	check("a name in Give to is sent: the grant route, the name and no slot",
+		asked.size() == 1 and asked[0][0] == "/api/staff/grant" and asked[0][1].get("username") == "hank"
+		and not asked[0][1].has("slot") and asked[0][1].get("quantity") == 3, asked)
+	check("  nothing lands in your own bag", adopted.is_empty(), adopted)
+	check("  and it says who got what, and that their game is told",
+		menu.status.text == "Gave 3 × givetest_potion to hank's tank. Their game is told on its next poll.",
+		menu.status.text)
+	answer[0] = {"ok": true, "data": {"username": "hank", "slot": 2, "character": "tank",
+		"granted_item_id": "doubleaxe", "granted_quantity": 1, "carry_positions": [1], "online": false}}
+	await menu.spawn("doubleaxe")
+	check("gear given to somebody else is never put on - \"put gear on\" is about you",
+		equipped.is_empty() and adopted.is_empty(), [equipped, adopted])
+	check("  and an offline player is said to find it when they sign in",
+		menu.status.text.contains("offline") and menu.status.text.contains("Double Axe"), menu.status.text)
+
+	menu.set_recipient("BOSS")
+	answer[0] = {"ok": true, "data": {"inventory": [{"item_id": "givetest_potion", "quantity": 1}],
+		"carry_positions": [0], "granted_item_id": "givetest_potion"}}
+	await menu.spawn("givetest_potion")
+	check("your own name, in any case, is your own bag: a slot, no name, and the bag adopted",
+		asked[-1][1].has("slot") and not asked[-1][1].has("username") and adopted.size() == 1, asked[-1])
+	menu.set_recipient("hank")
+	answer[0] = {"ok": false, "status": 409, "error": "hank's backpack is full (20 slots)."}
+	await menu.spawn("givetest_potion")
+	check("a refusal is said in the server's words", menu.status.text == "hank's backpack is full (20 slots).",
+		menu.status.text)
+	menu.visible = false
+	menu.open_for("caster")
+	check("open_for() opens it with the name in Give to", menu.visible and menu.give_to.text == "caster")
+	menu.queue_free()
+
+	# --- THE GM PANEL OPENS BOTH ON ITS NAME -----------------------------------
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var opened: Array = []
+	gm.open_window = func(method: String, who: String) -> bool:
+		opened.append([method, who])
+		return true
+	var view_b: Button = gm.get_node_or_null("%viewbutton") as Button
+	var give_b: Button = gm.get_node_or_null("%givebutton") as Button
+	var hist_b: Button = gm.get_node_or_null("%historybutton") as Button
+	check("Give item and Save history sit in View account's row - the tab is no taller",
+		view_b != null and give_b != null and hist_b != null and give_b.get_parent() == view_b.get_parent()
+		and hist_b.get_parent() == view_b.get_parent() and view_b.get_parent() is HBoxContainer)
+	if give_b != null and hist_b != null:
+		gm.username_input.text = ""
+		give_b.pressed.emit()
+		hist_b.pressed.emit()
+		check("with no name above, neither opens anything", opened.is_empty(), opened)
+		gm.username_input.text = " hank "
+		give_b.pressed.emit()
+		hist_b.pressed.emit()
+		check("Give item opens the item catalogue on the name", opened.size() == 2
+			and opened[0] == ["open_item_spawner_for", "hank"], opened)
+		check("Save history opens the save history on it", opened.size() == 2
+			and opened[1] == ["open_save_history", "hank"], opened)
+		Api.is_owner = false
+		give_b.pressed.emit()
+		hist_b.pressed.emit()
+		check("anyone but the owner opens neither", opened.size() == 2, opened)
+		Api.is_owner = true
+	var hud_src: String = _code_only(FileAccess.get_file_as_string("res://src/ui/characterhud.gd"))
+	check("the HUD opens both, the owner only",
+		_func_body(hud_src, "func open_save_history(").contains("Api.is_owner")
+		and _func_body(hud_src, "func open_item_spawner_for(").contains("Api.is_owner"))
+	gm.queue_free()
+
+	# --- SAVE HISTORY ----------------------------------------------------------
+	var hist: Control = (load("res://scene/ui/owner/savehistory.tscn") as PackedScene).instantiate() as Control
+	add_child(hist)
+	await get_tree().process_frame
+	check("the save history is a window of its own", hist.get("_window") != null)
+	var now: int = int(Time.get_unix_time_from_system())
+	var listing: Dictionary = {"ok": true, "data": {"username": "hank", "slot": 2, "playing": 2,
+		"characters": [{"slot": 0, "name": "warrior", "class_id": "warrior", "level": 4},
+			{"slot": 2, "name": "tank", "class_id": "tank", "level": 18}],
+		"now": {"name": "tank", "class_id": "tank", "level": 18, "gold": 1240, "items": 11},
+		"snapshots": [
+			{"id": 9, "taken_at": now - 60, "reason": "before-give", "level": 18, "gold": 1240, "items": 10},
+			{"id": 7, "taken_at": now - 3600, "reason": "save", "level": 13, "gold": 980, "items": 9}],
+		"kept": 20, "every_seconds": 600}}
+	var got: Array = []
+	var posted: Array = []
+	var reply: Array = [listing]
+	var post_reply: Array = [{}]
+	hist.get_request = func(path: String) -> Dictionary:
+		got.append(path)
+		await get_tree().process_frame
+		return reply[0]
+	hist.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		posted.append([path, body])
+		await get_tree().process_frame
+		return post_reply[0]
+
+	hist.visible = false
+	await hist.open_for("hank")
+	check("open_for() shows it and reads the name's history, the character they are playing",
+		hist.visible and got == ["/api/staff/snapshots?username=hank"], got)
+	var row9: Node = hist.list.get_node_or_null("snap_9")
+	var row7: Node = hist.list.get_node_or_null("snap_7")
+	check("  a line per snapshot, newest first",
+		hist.list.get_child_count() == 2 and hist.list.get_child(0) == row9, hist.list.get_child_count())
+	var what9: String = (row9.get_node("what") as Label).text if row9 != null else ""
+	var what7: String = (row7.get_node("what") as Label).text if row7 != null else ""
+	check("  each says the level, gold and what was carried",
+		what7 == "level 13 · 980 gold · 9 carried", what7)
+	check("  and why, when it was not an ordinary save", what9.ends_with("· before a gift"), what9)
+	check("  and when, the way the rest of the game says a time",
+		row7 != null and (row7.get_node("when") as Label).text == LocalTime.stamp(now - 3600))
+	check("the character as it is now, to compare against",
+		hist.now_label.text == "hank's tank now: level 18, 1240 gold, 11 carried.", hist.now_label.text)
+	check("every character on the account, on the one they are playing",
+		hist.slot_pick.item_count == 2 and hist.slot_pick.selected == 1
+		and hist.slot_pick.get_item_text(1).contains("(playing)"),
+		[hist.slot_pick.item_count, hist.slot_pick.selected])
+	hist.slot_pick.select(0)
+	hist.slot_pick.item_selected.emit(0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("picking another character reads that one", got.size() == 2
+		and got[-1] == "/api/staff/snapshots?username=hank&slot=0", got)
+	reply[0] = listing
+	await hist.load_history("hank", 2)
+
+	# RESTORE ASKS TWICE.
+	var restore7: Button = hist.list.get_node_or_null("snap_7/restore") as Button
+	var restore9: Button = hist.list.get_node_or_null("snap_9/restore") as Button
+	await hist.press_restore(7)
+	check("the first press only arms it", posted.is_empty() and restore7 != null
+		and restore7.text == "Sure?" and hist.is_armed(7), restore7.text if restore7 != null else "")
+	await hist.press_restore(9)
+	check("  pressing another row moves the arm, and still asks nothing",
+		posted.is_empty() and restore7.text == "Restore" and restore9.text == "Sure?"
+		and hist.is_armed(9) and not hist.is_armed(7))
+	hist._armed_until = 0.0
+	await hist.press_restore(9)
+	check("  an arm whose time has run out is a first press again", posted.is_empty() and hist.is_armed(9))
+	post_reply[0] = {"ok": true, "data": {"username": "hank", "slot": 2, "character": "tank", "restored": 9,
+		"taken_at": now - 60, "undo_snapshot": 12, "was": {"level": 18, "gold": 1240, "items": 11},
+		"now": {"level": 18, "gold": 1240, "items": 10}, "pet_cleared": false, "sessions_ended": 1}}
+	var reads: int = got.size()
+	await hist.press_restore(9)
+	check("the second press sends it: the rollback route, the name and that snapshot",
+		posted.size() == 1 and posted[0][0] == "/api/staff/rollback"
+		and posted[0][1] == {"username": "hank", "snapshot_id": 9}, posted)
+	check("  the list is read again, for the line that undoes it", got.size() == reads + 1
+		and got[-1] == "/api/staff/snapshots?username=hank&slot=2", got)
+	check("  and it says what changed, and that their game was signed out to reload it",
+		hist.status.text.contains("was level 18, 1240 gold, 11 carried; now level 18, 1240 gold, 10 carried")
+		and hist.status.text.contains("signed out")
+		and hist.status.text.contains("undoes"), hist.status.text)
+	post_reply[0] = {"ok": false, "status": 409, "error": "hank is in a trade. Try again when it has finished or timed out."}
+	await hist.press_restore(7)
+	await hist.press_restore(7)
+	check("a refusal is said in the server's words",
+		hist.status.text.begins_with("hank is in a trade"), hist.status.text)
+	check("rolling back your own character says you are being signed out",
+		History.restored_line({"username": "Boss", "sessions_ended": 1}, "boss").contains("You are being signed out"))
+	check("  and a player who was not signed in gets it next time",
+		History.restored_line({"username": "ivy", "sessions_ended": 0}, "boss").contains("not signed in"))
+	check("  and a pet nobody holds any more is said",
+		History.restored_line({"username": "ivy", "pet_cleared": true}, "boss").contains("none is out"))
+
+	# The list was read again after the rollback, so its buttons are new ones.
+	restore7 = hist.list.get_node_or_null("snap_7/restore") as Button
+	await hist.press_restore(7)
+	hist.close_button.pressed.emit()
+	check("its x closes it, and disarms a Restore left at Sure?", not hist.visible and not hist.is_armed(7)
+		and restore7 != null and restore7.text == "Restore")
+	reply[0] = {"ok": false, "status": 404, "error": "No such account."}
+	await hist.load_history("nobody")
+	check("an unknown name is said, and the list empties",
+		hist.list.get_child_count() == 0 and hist.status.text == "No such account.", hist.status.text)
+	Api.is_owner = false
+	var before: int = got.size()
+	await hist.load_history("hank")
+	await hist.press_restore(7)
+	check("anyone but the owner asks the server nothing", got.size() == before and posted.size() == 2
+		and hist.status.text.contains("owner"), hist.status.text)
+	Api.is_owner = true
+	hist.queue_free()
+
+	# --- THE PLAYER IS TOLD WHAT THEY WERE GIVEN -------------------------------
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	check("a gift reads as who gave what, by the item's name",
+		hud.gift_line({"by": "boss", "item_id": "givetest_potion", "quantity": 3}) == "boss gave you 3 × givetest_potion.",
+		hud.gift_line({"by": "boss", "item_id": "givetest_potion", "quantity": 3}))
+	check("  one is not counted", hud.gift_line({"by": "boss", "item_id": "givetest_potion", "quantity": 1})
+		== "boss gave you givetest_potion.")
+	check("  and an id this game does not know is said as the id",
+		hud.gift_line({"by": "boss", "item_id": "nosuchthing_x", "quantity": 2}) == "boss gave you 2 × nosuchthing_x.")
+	hud._unlogged_lines.clear()
+	hud._on_carry_adopted({"slot": 0, "inventory": [], "trade": null, "gifts": [
+		{"by": "boss", "item_id": "givetest_potion", "quantity": 2},
+		{"by": "boss", "item_id": "nosuchthing_x", "quantity": 1}]})
+	var said: Array = hud._unlogged_lines.map(func(line: Dictionary) -> String: return str(line["text"]))
+	check("the bag arriving with gifts says one line each",
+		said == ["boss gave you 2 × givetest_potion.", "boss gave you nosuchthing_x."], said)
+	hud._unlogged_lines.clear()
+	hud._on_carry_adopted({"slot": 0, "inventory": [], "trade": null})
+	said = hud._unlogged_lines.map(func(line: Dictionary) -> String: return str(line["text"]))
+	check("  and without them it says what it always did", said == ["Your backpack was updated by the server."], said)
+	hud.free()
+
+	ItemRegistry._items.erase(potion.item_id)
+	Api.username = was_name
+	Api.role = was_role
+	Api.is_owner = was_owner
 
 # 0.7.1. The owner, 6 Oct: "remove debug keys i have a full menu to debug", and
 # for the performance readout, "add to menu instead and remove backslash". F1-F7

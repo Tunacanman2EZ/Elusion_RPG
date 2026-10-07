@@ -25,6 +25,15 @@
 #   rolls it; this only names which (QUALITIES). Plain is the only way to have
 #   a 100% piece, now that the shop rolls what it sells.
 #
+# - "GIVE TO" puts it in another player's bag instead (0.7.5; the owner, 6 Oct:
+#   "give player item might be useful"). Empty, or your own name, is your own
+#   bag as before. A name sends `username` and no slot: the server picks the
+#   character they are playing, takes a snapshot first (the Save history can
+#   take a gift back), flags their bag so their game is handed it on its next
+#   poll with a line saying who gave what, and logs a "give" about them. Gear
+#   is never put on for them - "put gear on" is about your own character. The
+#   GM panel's Give item opens this with the name already in the box.
+#
 # OWNER ONLY, three times over: the HUD builds the button only for the owner,
 # every request here asks Api.is_owner first, and the server is the gate that
 # counts - /api/staff/grant needs the owner (it took any staff rank until 0.6.1).
@@ -71,6 +80,7 @@ var equip_request: Callable
 @onready var wear_toggle: CheckBox = %wearit
 @onready var quality_pick: OptionButton = %itemquality
 @onready var status: Label = %spawnstatus
+@onready var give_to: LineEdit = %givetoinput
 @onready var close_button: Button = %itemspawnerclose
 
 # One frame per tier, built once: the frame is the rarity colour, so an ember
@@ -100,6 +110,26 @@ func _ready() -> void:
 func open() -> void:
 	visible = true
 	refresh()
+
+
+func open_for(username: String) -> void:
+	"""Open with `username` in Give to - the GM panel's Give item. An empty
+	name is your own bag."""
+	set_recipient(username)
+	open()
+
+
+func set_recipient(username: String) -> void:
+	give_to.text = username.strip_edges()
+
+
+func recipient() -> String:
+	"""Who a click gives to: a player's name, or "" for your own bag. Your own
+	name, in any case, is your own bag - the server reads it the same way."""
+	var typed: String = give_to.text.strip_edges() if give_to != null else ""
+	if typed == "" or typed.to_lower() == Api.username.to_lower():
+		return ""
+	return typed
 
 
 func close() -> void:
@@ -273,14 +303,21 @@ func spawn(item_id: String) -> void:
 	if item == null:
 		return
 	var how_many: int = quantity_for(item, typed_quantity())
-	_busy = true
-	_say("Asking the server for %s..." % item.display_name)
-	var res: Dictionary = await post_request.call(GRANT_PATH, {
-		"slot": CharacterData.active_character_index,
+	var to: String = recipient()
+	var body: Dictionary = {
 		"item_id": item_id,
 		"quantity": how_many,
 		"quality": chosen_quality(),
-	})
+	}
+	# A NAME, OR A SLOT - never both. Somebody else's character is the one they
+	# are playing, which only the server knows.
+	if to == "":
+		body["slot"] = CharacterData.active_character_index
+	else:
+		body["username"] = to
+	_busy = true
+	_say("Asking the server for %s..." % item.display_name)
+	var res: Dictionary = await post_request.call(GRANT_PATH, body)
 	_busy = false
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
@@ -289,8 +326,6 @@ func spawn(item_id: String) -> void:
 		return
 
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
-	var cells: Array = data.get("inventory", []) if data.get("inventory", []) is Array else []
-	adopt_bag.call(CharacterData.active_character_index, cells)
 	# WHAT ARRIVED, which for rolled gear is a piece with its own id: the roll
 	# is the server's, so the line, the name and the equip all use its answer.
 	var granted_id: String = str(data.get("granted_item_id", item_id))
@@ -299,6 +334,15 @@ func spawn(item_id: String) -> void:
 		granted = item
 		granted_id = item_id
 	item = granted
+
+	# THEIR BAG, NOT OURS: nothing to adopt and nothing to put on. Their game
+	# is handed the bag by the server.
+	if to != "":
+		_say(gift_line(data, item, how_many))
+		return
+
+	var cells: Array = data.get("inventory", []) if data.get("inventory", []) is Array else []
+	adopt_bag.call(CharacterData.active_character_index, cells)
 	var line: String = "Added %d × %s to your bag." % [how_many, item.display_name]
 	if item.is_rolled():
 		line = "Added %s to your bag, quality %d%%." % [item.display_name, item.quality_percent()]
@@ -313,6 +357,20 @@ func spawn(item_id: String) -> void:
 		line = ("Added %s and put it on." % item.display_name) if worn \
 			else line + " It could not be put on - see why above the bar."
 	_say(line)
+
+
+static func gift_line(data: Dictionary, item: ItemData, how_many: int) -> String:
+	"""What a gift to somebody else did, from the server's answer."""
+	var who: String = "%s's %s" % [str(data.get("username", "?")), str(data.get("character", "character"))]
+	var what: String = "%d × %s" % [int(data.get("granted_quantity", how_many)), item.display_name]
+	if item.is_rolled():
+		what = "%s, quality %d%%," % [item.display_name, item.quality_percent()]
+	var line: String = "Gave %s to %s." % [what, who]
+	if bool(data.get("online", false)):
+		line += " Their game is told on its next poll."
+	else:
+		line += " They are offline; it is in their bag when they sign in."
+	return line
 
 
 # =============================================================================

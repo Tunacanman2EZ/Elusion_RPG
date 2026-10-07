@@ -105,6 +105,8 @@ The owner's GM panel has a **Testing** tab: gold and items by id, an **Item cata
 
 Its **Account** tab lists who is online, each with **Bring** and **Go to**. Go to lands you beside them, which the server alone could not do: it only knows which area a character is in. But the presence link draws everyone in your area where they stand, so once you arrive the game finds their picture and puts you next to it.
 
+Beside **View account** are **Give item** and **Save history**. Give item opens the catalogue with the player's name in it: a click puts the item in the bag of the character they are playing, and their game is handed the new bag on its next poll with a line saying who gave them what. Save history lists that character's last twenty snapshots - the server keeps one when the game saves, at most every ten minutes and only if something changed, and one before every gift and every rollback - and **Restore**, pressed twice, puts the character back: level, XP, gold, gear, pet, bag and skills, but not the account's bank. The gold moves through the ledger, the player is signed out so their game reloads, and the snapshot taken first undoes it. It is the owner's alone because it can bring back an item the player has since traded away, and the window says so.
+
 There are no debug keys. The game used to have a row of them for items, pets and god mode, and they were a second way in to things the panel already did, gated on a check the client makes about itself. They are gone, and a test fails if a function key comes back.
 
 Staff names are public - the crown and the MOD and DEV badges say exactly whose password is worth guessing - so a staff password alone opens nothing. For a staff account with a confirmed recovery address, a correct password gets a six-digit code by email instead of a session, and only the code logs in. A wrong code counts toward the same lockout as a wrong password.
@@ -246,11 +248,11 @@ Calling the virtualenv's interpreter directly is deliberate: it skips having to 
 
 To see other players and share monsters with them, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before: it draws nobody else and fights its own monsters.
 
-That serves a hundred and eight endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred and ten endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-A hundred and three of the hundred and eight require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+A hundred and five of the hundred and ten require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has forty-seven test suites, run together with one command:
+The backend has forty-eight test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -265,13 +267,14 @@ test_loot.py           259 checks    every finished item is actually obtainable
 test_equipment.py      212 checks    the equipment system, client and server
 test_gearbonus.py      173 checks    what gear adds, counted by the server
 test_guilds.py         167 checks    founding, joining, ranks, taking a guild down
-test_ownership.py      150 checks    no route hands over a row that is not yours
 test_moderation.py     155 checks    the moderation record, a log that opens on moderation, the powers in words
+test_ownership.py      150 checks    no route hands over a row that is not yours
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
+test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
+test_refusals.py       118 checks    401, 403, and the 404 that is really a 403
+test_security_doc.py   115 checks    SECURITY.md is checked, not trusted
 test_pacing.py         112 checks    the pace of the game: what the server pays, the store charges and the shop pays back
-test_refusals.py       112 checks    401, 403, and the 404 that is really a 403
-test_security_doc.py   107 checks    SECURITY.md is checked, not trusted
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
 test_quality.py         83 checks    rolled gear from drops and the shop, carried whole by every path
 test_friends.py         76 checks    asking, answering and ending a friendship
@@ -305,20 +308,20 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,445 checks, 0 failures
+					4,585 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-seventh, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-eighth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **2,977 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 133 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **3,023 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 134 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `2937 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `2983 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
 - **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
 - **Configuring a node after `add_child()`.** `_ready()` has already run, so an element profile multiplies the scene's defaults and your assignment flattens the result — the thing wears its element's art and none of its behaviour. A text check, because the failure has no runtime symptom.
-- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,394 signatures.
+- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,422 signatures.
 - **Art nobody has classified.** Every top-level folder under `art/` and `assets/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
 
 `src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool answering the two questions a filename search gets wrong. **Painted cell counts per texture** — because tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet. And **reachability**, walking `ResourceLoader.get_dependencies()` from every scene and resource, which is the list you can actually delete from. It found two byte-identical art files a filename sweep had cleared as used, because their twins in other folders are.
