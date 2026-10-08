@@ -2368,7 +2368,9 @@ product versions are it with `.0` after (Windows wants four numbers).
   Beholders by name, 0.11.7 beating the Crowned opens a teleporter home to
   town, and a pet's tooltip says a right-click summons it, 0.11.8 the GM
   panel's Server tab can make old versions update, 0.11.9 the mythic weapons
-  hit 1.4 times ember and the Double Axe spins up when left.
+  hit 1.4 times ember and the Double Axe spins up when left, 0.12.0 the
+  Meteorite lands twice as wide and leaves a burning crater, and Dynamite
+  chains.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3758,6 +3760,53 @@ super rare drop", and "double axe needs to speed up when left deployed".
   the first second, eight a second at the top, each still a tick's share, the
   picture's speed, a recall and a new throw back at 1x) and the books' check
   that the exported rate is the game's.
+
+### The Meteorite burns and Dynamite chains (0.12.0)
+
+The owner, 8 Oct: "dynamite douse not feel that special or meteor". Offered a
+list: "i want the meteor to be bigger yes leave burning crator with fire damage
+knock back is a bad idea chain reaction sounds cool", and "fire effects on the
+ground where meteor hits". Nothing in this is knockback.
+
+- **The meteor is twice as wide**: `Meteor.HIT_RADIUS` 44 (was 22, against
+  the stalagmite's 18), and `meteor.tscn`'s shape with it. The crater mark,
+  flash and ring are drawn from the radius, so they grew too.
+- **The crater burns** (`src/projectiles/burningcrater.gd`, `BurningCrater`,
+  built in code like Blast and spawned by `Meteor._impact()`): for
+  `BURN_SECONDS` (2.5) flames rise out of it (Blast's puff, shrinking as it
+  rises, and squares for sparks) over an additive orange glow on the floor;
+  every `BURN_EVERY` (0.5) every enemy in it takes `BURN_SHARE` (a fifth) of
+  the meteor's hit as `Element.Type.FIRE`. Five bites, so a meteor's hit
+  again for whatever stays in the fire. The bites go by their own times
+  (`_bites`), so a long step still bites as often as it should and never
+  after the end.
+- **One fire at a time per enemy.** Casts overlap at one spot; an enemy burns
+  from the crater that burned it last (meta `&"burning_by"`, an instance id)
+  until that one goes out. So the most fire any enemy takes is a fifth of a hit
+  every half second, which is what the books allow.
+- **Dynamite chains** (`dynamite.gd`, CHAIN REACTION). A blast sets off every
+  LIT stick within `CHAIN_RADIUS` (42: the blast's reach and half again, so a
+  double throw's two sticks, 40 apart, chain) `CHAIN_DELAY` (0.1) later - a
+  ripple - and a stick set off that way hits `CHAIN_BONUS` (25%) harder with a
+  bigger fireball; its blast sets off the next. Sticks in the air do not
+  chain. **The fuse went from 0.9 to 1.2**, longer than the tank's
+  `dynamite_cooldown` (1.0): at 0.9 a stick was gone before the next landed,
+  and nothing could ever chain. Now every second stick thrown at one spot is
+  set off by the first, and a quicker tank chains three.
+- **The books allow for both**: the exporter writes `meteor_burn_share` and
+  `meteor_burn_every` on the mage's combat row and `dynamite_chain_bonus` on
+  the tank's; the API's `combat_bounds()` adds the burn to a Meteorite mage's
+  rate and multiplies a Dynamite tank's biggest hit and rate by the bonus.
+  **The API's gamedata.json goes out first.**
+- Item descriptions say so; the Boss Sim on the site models the burn on the
+  boss being hit and the chain as groups of `1 + floor(fuse / throw period)`.
+- Tests: the meteor section (twice as wide and its shape matching, two
+  enemies paid XP, the crater as wide as the hit, flames and glow, a fifth a
+  bite as fire, nobody pushed, two craters biting once, five bites then out,
+  the next crater taking over), the dynamite section (a blast sets off the lit
+  stick beside it a beat later and 25% harder, not the far one, not one in
+  the air, not one already gone; the fuse outlasts a throw; a double throw's
+  sticks are in chain range) and the books' check of the exported numbers.
 
 ### Inventory, bank and shop on day 1
 

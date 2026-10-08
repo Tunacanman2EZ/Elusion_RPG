@@ -4,7 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://c47s5atu0temx" path="res://art/maincharacter/meteor.png" id="2_rock"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_hit"]
-radius = 22.0
+radius = 44.0
 
 [sub_resource type="Gradient" id="Gradient_fire"]
 offsets = PackedFloat32Array(0, 0.3, 0.7, 1)

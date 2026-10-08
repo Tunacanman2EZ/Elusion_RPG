@@ -1456,11 +1456,14 @@
 			"mage": {
 				"base": 9,
 				"cooldown": 0.45,
+				"meteor_burn_every": 0.5,
+				"meteor_burn_share": 0.2,
 				"speed": 165
 			},
 			"tank": {
 				"base": 4,
 				"cooldown": 0.25,
+				"dynamite_chain_bonus": 0.25,
 				"dynamite_cooldown": 1.0,
 				"speed": 160
 			},
@@ -3314,7 +3317,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791433737,
+	"generated_at": 1791435494,
 	"items": [
 		{
 			"armor_value": 6,

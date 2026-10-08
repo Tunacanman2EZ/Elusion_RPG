@@ -1611,6 +1611,12 @@ func _export_combat(_items: Array) -> Dictionary:
 			"mage":
 				row["base"] = int(node.get("damage_per_magic"))
 				row["cooldown"] = float(node.get("spell_cooldown"))
+				# The Meteorite's crater burns a share of the hit every so often,
+				# one fire per enemy at a time (burningcrater.gd, 0.12.0).
+				var crater_script: Script = load("res://src/projectiles/burningcrater.gd") as Script
+				var crater_consts: Dictionary = crater_script.get_script_constant_map() if crater_script != null else {}
+				row["meteor_burn_share"] = float(crater_consts.get("BURN_SHARE", 0.0))
+				row["meteor_burn_every"] = float(crater_consts.get("BURN_EVERY", 1.0))
 			"healer":
 				row["base"] = int(node.get("damage_per_magic"))
 				row["cooldown"] = float(node.get("shot_cooldown"))
@@ -1618,6 +1624,11 @@ func _export_combat(_items: Array) -> Dictionary:
 				row["base"] = int(node.get("aura_damage"))
 				row["cooldown"] = float(node.get("aura_tick"))
 				row["dynamite_cooldown"] = float(node.get("dynamite_cooldown"))
+				# A stick set off by another's blast hits this much harder
+				# (dynamite.gd, CHAIN REACTION, 0.12.0).
+				var stick_script: Script = load("res://src/projectiles/dynamite.gd") as Script
+				row["dynamite_chain_bonus"] = float(stick_script.get_script_constant_map().get("CHAIN_BONUS", 0.0)) \
+					if stick_script != null else 0.0
 		classes[class_id] = row
 		node.free()
 

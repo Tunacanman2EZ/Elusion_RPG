@@ -17755,6 +17755,11 @@ func _test_combat_bounds_match_the_game() -> void:
 	for item in ItemRegistry.get_all_items():
 		if int(item.weapon_attack) != ItemData.WeaponAttack.NONE:
 			attacks[item.item_id] = String(ItemData.WeaponAttack.keys()[int(item.weapon_attack)])
+	check("the Meteorite's burn and Dynamite's chain bonus are the game's, so the books allow for them",
+		is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("meteor_burn_share", -1.0)), BurningCrater.BURN_SHARE)
+		and is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("meteor_burn_every", -1.0)), BurningCrater.BURN_EVERY)
+		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_chain_bonus", -1.0)), Dynamite.CHAIN_BONUS),
+		[classes.get("mage", {}), classes.get("tank", {})])
 	check("the Double Axe's top spin rate is the game's, so the books allow for it",
 		is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_spin_max_rate", -1.0)),
 			SpinningAxe.SPIN_MAX_RATE), classes.get("warrior", {}))
@@ -21226,7 +21231,24 @@ func _test_the_mythic_weapons() -> void:
 
 	# --- THE METEOR ----------------------------------------------------------
 	var inside: CharacterBody2D = _weapon_dummy(arena, o + Vector2(12, 0))
-	var outside: CharacterBody2D = _weapon_dummy(arena, o + Vector2(45, 0))
+	var outside: CharacterBody2D = _weapon_dummy(arena, o + Vector2(Meteor.HIT_RADIUS + 12.0, 0))
+	# Records the element too, for the fire the crater leaves.
+	var fire_log := GDScript.new()
+	fire_log.source_code = "extends CharacterBody2D\nvar taken: Array = []\n" \
+		+ "func take_damage(amount: int, element: int = 0) -> void:\n\ttaken.append([amount, element])\n"
+	fire_log.reload()
+	var in_fire := CharacterBody2D.new()
+	in_fire.set_script(fire_log)
+	in_fire.collision_layer = 8
+	in_fire.collision_mask = 0
+	var in_fire_shape := CollisionShape2D.new()
+	var in_fire_circle := CircleShape2D.new()
+	in_fire_circle.radius = 5.0
+	in_fire_shape.shape = in_fire_circle
+	in_fire.add_child(in_fire_shape)
+	in_fire.add_to_group("enemies")
+	arena.add_child(in_fire)
+	in_fire.global_position = o + Vector2(0, 20)
 	var caster: Node2D = _weapon_hand(arena, o + Vector2(-100, 0))
 	var meteor: Meteor = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
 	meteor.explosion_damage = 50
@@ -21249,10 +21271,55 @@ func _test_the_mythic_weapons() -> void:
 	meteor.advance(Meteor.FALL_SECONDS * 0.6)
 	check("it lands, and the enemy inside its ring takes the hit once", meteor.landed and inside.taken == [50], inside.taken)
 	check("  the one outside the ring is not touched", outside.taken.is_empty(), outside.taken)
-	check("  the caster is paid the stalagmite's magic XP for it", caster.magic_xp == Meteor.MAGIC_XP_ON_HIT, caster.magic_xp)
+	check("  the caster is paid the stalagmite's magic XP for each enemy it hit (two are inside)",
+		meteor.hit_count() == 2 and caster.magic_xp == Meteor.MAGIC_XP_ON_HIT * 2, [meteor.hit_count(), caster.magic_xp])
 	check("  and the crater is where it landed, not where the world begins",
 		_marks_at(arena, o) == 1 and get_tree().get_nodes_in_group("blastmarks").size() == 1)
 	check("the stone stays in its crater, on the floor", meteor.rock.visible and meteor.rock.z_index == -1)
+	check("the meteor is twice as wide as it was (0.12.0), and its shape matches its ring",
+		is_equal_approx(Meteor.HIT_RADIUS, 44.0)
+		and is_equal_approx((meteor.get_node("hitshape").shape as CircleShape2D).radius, Meteor.HIT_RADIUS))
+
+	# THE BURNING CRATER (0.12.0). The owner: "leave burning crator with fire
+	# damage", "fire effects on the ground where meteor hits", and no knockback.
+	var craters: Array = arena.get_children().filter(func(n: Node) -> bool: return n is BurningCrater)
+	check("where it lands, the crater burns, as wide as the hit", craters.size() == 1
+		and (craters[0] as BurningCrater).global_position.distance_to(o) < 0.5
+		and is_equal_approx((craters[0] as BurningCrater).radius, Meteor.HIT_RADIUS)
+		and (craters[0] as BurningCrater).burning(), craters.size())
+	if craters.size() == 1:
+		var fire: BurningCrater = craters[0]
+		fire.set_physics_process(false)
+		for i in 4:
+			await get_tree().physics_frame
+		check("  with flames rising out of it and the ground glowing",
+			fire.get_node_or_null("flames") is CPUParticles2D and (fire.get_node("flames") as CPUParticles2D).emitting
+			and fire.get_node_or_null("glow") is Sprite2D and (fire.get_node("glow") as Sprite2D).visible)
+		var stood_at: Vector2 = inside.global_position
+		fire.advance(BurningCrater.BURN_EVERY)
+		check("every half second it burns what stands in it for a fifth of the meteor's hit",
+			inside.taken == [50, 10] and fire.burn_damage() == 10, inside.taken)
+		check("  as fire", in_fire.taken.size() == 2 and in_fire.taken[1] == [10, Element.Type.FIRE], in_fire.taken)
+		check("  not what stands outside it", outside.taken.is_empty(), outside.taken)
+		check("  and nobody is pushed", inside.global_position == stood_at)
+		var second: BurningCrater = BurningCrater.spawn(arena, o + Vector2(6, 0), 50, Meteor.HIT_RADIUS, caster)
+		second.set_physics_process(false)
+		for i in 4:
+			await get_tree().physics_frame
+		fire.advance(BurningCrater.BURN_EVERY)
+		second.advance(BurningCrater.BURN_EVERY)
+		check("two craters on one enemy burn it once a bite, not twice", inside.taken == [50, 10, 10], inside.taken)
+		fire.advance(BurningCrater.BURN_SECONDS)
+		check("it burns for BURN_SECONDS - five bites in all - then goes out",
+			inside.taken.count(10) == 5 and not fire.burning()
+			and not (fire.get_node("flames") as CPUParticles2D).emitting, inside.taken)
+		second.advance(BurningCrater.BURN_EVERY)
+		check("  and the other crater takes over the burn once it has", inside.taken.count(10) == 6, inside.taken)
+		second.advance(BurningCrater.BURN_SECONDS)
+		check("  until that one goes out too", inside.taken.count(10) == 6 + 3 and not second.burning(), inside.taken)
+		second.queue_free()
+		fire.queue_free()
+	in_fire.queue_free()
 	meteor.advance(Meteor.COOL_SECONDS + Meteor.FADE_SECONDS + 0.05)
 	check("  then cools and is gone", meteor.is_queued_for_deletion())
 
@@ -21457,6 +21524,57 @@ func _test_the_mythic_weapons() -> void:
 	check("  the one outside it is not", past_blast.taken.is_empty(), past_blast.taken)
 	check("  and the scorch is where it went off", _marks_at(arena, land) == 1)
 
+	# CHAIN REACTION (0.12.0). The owner: "chain reaction sounds cool". A blast
+	# sets off every lit stick within CHAIN_RADIUS, CHAIN_DELAY later and
+	# CHAIN_BONUS harder; one further away, or still in the air, is not.
+	var chain_at := o + Vector2(0, 1250)
+	var lay := func(spot: Vector2) -> Dynamite:
+		var d: Dynamite = (load("res://scene/projectiles/dynamite.tscn") as PackedScene).instantiate()
+		d.explosion_damage = 40
+		arena.add_child(d)
+		d.set_physics_process(false)
+		d.throw_from(spot - Vector2(0, 60), spot)
+		d.advance(Dynamite.FLIGHT_SECONDS + 0.01)
+		return d
+	var first: Dynamite = lay.call(chain_at)
+	var second: Dynamite = lay.call(chain_at + Vector2(Dynamite.CHAIN_RADIUS - 2.0, 0))
+	var far_one: Dynamite = lay.call(chain_at + Vector2(Dynamite.CHAIN_RADIUS * 2.0 + 10.0, 0))
+	var by_first: CharacterBody2D = _weapon_dummy(arena, chain_at + Vector2(-15, 0))
+	var by_second: CharacterBody2D = _weapon_dummy(arena, second.global_position + Vector2(15, 0))
+	var by_far: CharacterBody2D = _weapon_dummy(arena, far_one.global_position + Vector2(15, 0))
+	var in_air: Dynamite = (load("res://scene/projectiles/dynamite.tscn") as PackedScene).instantiate()
+	in_air.explosion_damage = 40
+	arena.add_child(in_air)
+	in_air.set_physics_process(false)
+	in_air.throw_from(chain_at + Vector2(0, 90), chain_at + Vector2(0, 10))
+	in_air.advance(Dynamite.FLIGHT_SECONDS * 0.5)
+	for i in 4:
+		await get_tree().physics_frame
+	check("three sticks lie lit, a fourth is in the air",
+		[first, second, far_one].all(func(d: Dynamite) -> bool: return d.state == Dynamite.State.FUSE)
+		and in_air.state == Dynamite.State.FLYING)
+	first.explode()
+	check("one goes off and hits what it reaches, as ever", first.exploded and by_first.taken == [40], by_first.taken)
+	check("  and sets off the lit stick beside it - not at once, a beat later",
+		second.chained and not second.exploded and by_second.taken.is_empty())
+	check("  but not the stick further away", not far_one.chained, far_one.global_position - chain_at)
+	check("  nor the one still in the air", not in_air.chained)
+	second.advance(Dynamite.CHAIN_DELAY + 0.01)
+	check("the chained stick goes off, CHAIN_BONUS harder",
+		second.exploded and by_second.taken == [roundi(40 * (1.0 + Dynamite.CHAIN_BONUS))], by_second.taken)
+	check("  and what is beyond its reach is still untouched", not far_one.exploded and by_far.taken.is_empty(), by_far.taken)
+	second.set_off()
+	check("a stick already gone cannot be set off again", by_second.taken.size() == 1)
+	var tank_scene: Node = (load("res://scene/characters/tank.tscn") as PackedScene).instantiate()
+	check("the fuse outlasts a throw, so the next stick at one spot lands while the last still burns",
+		Dynamite.FUSE_SECONDS > float(tank_scene.get("dynamite_cooldown")), tank_scene.get("dynamite_cooldown"))
+	tank_scene.free()
+	far_one.queue_free()
+	in_air.queue_free()
+	by_first.queue_free()
+	by_second.queue_free()
+	by_far.queue_free()
+
 	var tank: Node = (load("res://src/characters/tank.gd") as GDScript).new()
 	tank._set_stat_curve()
 	tank.level = 22
@@ -21479,6 +21597,8 @@ func _test_the_mythic_weapons() -> void:
 	tank.double_cast_chance = 1.0
 	var pair: Array = tank.throw_dynamite(tank.position + Vector2(100, 0))
 	var spots: Array = pair.map(func(d): return d.landing_spot() - tank.position)
+	check("a double throw's two sticks are close enough to set each other off", 2.0 * tank.DYNAMITE_SPREAD <= Dynamite.CHAIN_RADIUS,
+		[tank.DYNAMITE_SPREAD, Dynamite.CHAIN_RADIUS])
 	check("a double throw is two sticks, either side of the aim, across the throw",
 		pair.size() == 2 and spots.has(Vector2(100, tank.DYNAMITE_SPREAD)) and spots.has(Vector2(100, -tank.DYNAMITE_SPREAD)),
 		spots)

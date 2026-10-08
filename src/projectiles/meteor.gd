@@ -12,9 +12,16 @@
 #   3. On impact (Blast): a flash, a ring of air, earth and rock thrown up,
 #      dust, a short camera shake, and a crater left behind.
 #   4. The stone itself stays in its crater, glowing, cools to grey, and fades.
+#   5. The crater burns (0.12.0, BurningCrater): flames and a glow on the
+#      ground, and fire damage to whatever stands in it for a few seconds.
 #
 # Damage happens once, on impact, to every enemy inside HIT_RADIUS, and pays the
-# caster magic XP per enemy the way the stalagmite does.
+# caster magic XP per enemy the way the stalagmite does. Then the fire.
+#
+# TWICE AS WIDE SINCE 0.12.0. The owner: "dynamite douse not feel that special
+# or meteor", then "i want the meteor to be bigger yes". Its hit was 22 across
+# the stalagmite's 18 - a spell with a better picture. At 44 it lands on a
+# group. Nothing is knocked back: the owner, "knock back is a bad idea".
 #
 # THE TIMELINE IS ADVANCED BY advance(), which _physics_process calls with the
 # frame's delta. A test calls it directly with whatever time it wants to pass,
@@ -38,8 +45,8 @@ const START_OFFSET := Vector2(-60.0, -150.0)
 # The hit. MATCHED to the CollisionShape2D in meteor.tscn and to the crater: a
 # ring that under- or over-sold the area would be the stalagmite's old mistake
 # (see circle_radius there). The stalagmite's is 18; the meteor's is the size
-# of its own crater.
-const HIT_RADIUS := 22.0
+# of its own crater, and of the fire it leaves.
+const HIT_RADIUS := 44.0
 
 # After impact: how long the stone glows in its crater, then how long it takes
 # to fade.
@@ -150,6 +157,9 @@ func _impact() -> void:
 	Audio.play("meteor_impact")
 	_hits = _apply_damage()
 	Blast.spawn(get_parent(), global_position, &"meteor", HIT_RADIUS)
+	# The fire, beside the meteor rather than under it: the stone fades in two
+	# seconds and the crater burns a little longer.
+	BurningCrater.spawn(get_parent(), global_position, explosion_damage, HIT_RADIUS, caster)
 
 
 func _apply_damage() -> int:

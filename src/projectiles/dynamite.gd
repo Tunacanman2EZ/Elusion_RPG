@@ -11,6 +11,17 @@
 #   (gone)   the blast (Blast, &"dynamite"): every enemy inside HIT_RADIUS is
 #            hit once, and the stick is freed
 #
+# CHAIN REACTION (0.12.0). The owner, offered it: "chain reaction sounds cool".
+# A blast sets off every lit stick within CHAIN_RADIUS of it, CHAIN_DELAY later
+# - a ripple, not one bang - and a stick set off that way hits for CHAIN_BONUS
+# more, with a bigger fireball. A chained stick's own blast sets off the next,
+# so a cluster goes up one after another. Sticks in the air are not lit yet and
+# are not set off. The fuse is FUSE_SECONDS, longer than the throw's cooldown,
+# so a stick thrown at the spot of the last one lands while that one is still
+# lit: every second stick at one spot is a chain, and a faster tank chains
+# more. The server's books allow for the bonus: the exporter writes it as the
+# tank's dynamite_chain_bonus, and gamedata.combat_bounds() reads it.
+#
 # One throw in ten is two sticks, spread either side of the aim - tank.gd
 # decides that and throws two of these.
 #
@@ -24,7 +35,17 @@ enum State { FLYING, FUSE }
 
 const FLIGHT_SECONDS := 0.45
 const ARC_HEIGHT := 26.0
-const FUSE_SECONDS := 0.9
+# 1.2, not the 0.9 it was before 0.12.0: longer than tank.gd's
+# dynamite_cooldown (1.0) less the flight, so the next stick lands while this
+# one burns - the chain reaction needs two sticks lit at once.
+const FUSE_SECONDS := 1.2
+
+# CHAIN REACTION: how far a blast reaches another lit stick (the blast's own
+# reach and half again, so a double throw's two sticks, 40 px apart, set each
+# other off), how long the next one takes to go, and how much harder it hits.
+const CHAIN_RADIUS := 42.0
+const CHAIN_DELAY := 0.1
+const CHAIN_BONUS := 0.25
 
 # MATCHED to the CollisionShape2D in dynamite.tscn and to the scorch it leaves.
 # Bigger than the meteor's: one stick a second against two meteors a second.
@@ -38,6 +59,9 @@ var delay: float = 0.0
 
 var state: State = State.FLYING
 var exploded: bool = false
+# Set off by another stick's blast: goes CHAIN_DELAY later, for CHAIN_BONUS more.
+var chained: bool = false
+var _chain_left: float = -1.0
 var hits_dealt: int = 0
 var _from: Vector2 = Vector2.ZERO
 var _to: Vector2 = Vector2.ZERO
@@ -45,6 +69,10 @@ var _age: float = 0.0
 
 @onready var stick: AnimatedSprite2D = $stick
 @onready var shadow: Sprite2D = $shadow
+
+
+func _init() -> void:
+	add_to_group(&"dynamite_sticks")
 
 
 func _ready() -> void:
@@ -96,6 +124,12 @@ func advance(delta: float) -> void:
 			queue_redraw()
 		return
 
+	if _chain_left >= 0.0:
+		_chain_left -= delta
+		if _chain_left <= 0.0:
+			explode()
+		return
+
 	var lit_for: float = t - FLIGHT_SECONDS
 	# Faster and faster in the last third: the warning that it is about to go.
 	var left: float = FUSE_SECONDS - lit_for
@@ -112,13 +146,42 @@ func explode() -> void:
 		return
 	exploded = true
 	Audio.play("explosion")
+	var damage: int = blast_damage()
 	for body in get_overlapping_bodies():
 		if not body.is_in_group("enemies") or not body.has_method("take_damage"):
 			continue
-		body.take_damage(explosion_damage)
+		body.take_damage(damage)
 		hits_dealt += 1
-	Blast.spawn(get_parent(), global_position, &"dynamite", HIT_RADIUS)
+	# A chained blast's fireball is bigger; what it reaches is not.
+	Blast.spawn(get_parent(), global_position, &"dynamite", HIT_RADIUS * (1.3 if chained else 1.0))
+	_set_off_the_rest()
 	queue_free()
+
+
+func blast_damage() -> int:
+	if chained:
+		return roundi(float(explosion_damage) * (1.0 + CHAIN_BONUS))
+	return explosion_damage
+
+
+func _set_off_the_rest() -> void:
+	if not is_inside_tree():
+		return
+	for node in get_tree().get_nodes_in_group(&"dynamite_sticks"):
+		if node == self or not (node is Dynamite) or not is_instance_valid(node):
+			continue
+		var other: Dynamite = node
+		if other.global_position.distance_to(global_position) <= CHAIN_RADIUS:
+			other.set_off()
+
+
+func set_off() -> void:
+	"""Another stick's blast reached this one. A lit stick goes CHAIN_DELAY
+	later, chained; one in the air, already going, or already gone does not."""
+	if exploded or chained or state != State.FUSE:
+		return
+	chained = true
+	_chain_left = CHAIN_DELAY
 
 
 func _draw() -> void:
