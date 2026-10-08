@@ -227,6 +227,7 @@ func _run_all() -> void:
 	await _test_the_guild_panel_reads_well()
 	await _test_trades_reach_the_right_people()
 	await _test_the_trade_switch_reaches_the_game()
+	await _test_old_versions_must_update()
 	await _test_no_debug_keys_the_panel_does_it()
 	await _test_escape_closes_every_window()
 	await _test_move_players_from_the_list()
@@ -15925,6 +15926,75 @@ func _test_no_debug_keys_the_panel_does_it() -> void:
 	var god: Node = gm.get_node_or_null("%godmodebutton")
 	check("god mode is a switch on the same tab", god != null and testing_tab.is_ancestor_of(god))
 	PerfOverlay.set_shown(shown_before)
+	gm.queue_free()
+	await get_tree().process_frame
+
+# =============================================================================
+# OLD VERSIONS MUST UPDATE - the minimum build, from the GM panel (0.11.8)
+# =============================================================================
+# The owner: "how to raise client build". The server's gate (POST
+# /api/server/minbuild, test_clientbuild.py) had no control in the game. The
+# Server tab's switch sets it to THIS game's build or to 0 - never a typed
+# number, so it cannot lock its owner out.
+
+func _test_old_versions_must_update() -> void:
+	section("MINIMUM BUILD - old versions must update, from the Server tab")
+
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var button: CheckButton = gm.get_node_or_null("%minbuildbutton") as CheckButton
+	var status_line: Label = gm.get_node_or_null("%minbuildstatus") as Label
+	var server_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/server")
+	check("the Server tab has the switch, under who may log in, with a line saying where it stands",
+		button != null and status_line != null and server_tab != null
+		and server_tab.is_ancestor_of(button) and server_tab.is_ancestor_of(status_line))
+	if button == null or status_line == null:
+		gm.queue_free()
+		return
+	var status: Array = [{"ok": true, "data": {"min_client_build": 0, "current_client_build": Api.BUILD}}]
+	gm.status_request = func(_path: String) -> Dictionary:
+		await get_tree().process_frame
+		return status[0]
+	var posted: Array = []
+	var answer: Array = [{"ok": true, "data": {"min_client_build": Api.BUILD, "armed": true}}]
+	gm.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		posted.append([path, body])
+		await get_tree().process_frame
+		return answer[0]
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	button.set_pressed_no_signal(true)
+	await gm._refresh_minbuild()
+	check("  it shows the server's minimum without posting it back: 0 is off",
+		not button.button_pressed and posted.is_empty() and not button.disabled
+		and status_line.text == "Every version of the game can play.", status_line.text)
+	status[0] = {"ok": true, "data": {"min_client_build": Api.BUILD}}
+	await gm._refresh_minbuild()
+	check("  and this game's build is on", button.button_pressed
+		and status_line.text.contains("build %d" % Api.BUILD), status_line.text)
+	await gm._on_minbuild_toggled(true)
+	check("switching it on asks for this game's own build, and nothing typed",
+		posted.size() == 1 and posted[0][0] == "/api/server/minbuild"
+		and posted[0][1] == {"build": Api.BUILD}, posted)
+	check("  and says what that means",
+		gm.results.get_parsed_text().contains("told to update"), gm.results.get_parsed_text())
+	answer[0] = {"ok": true, "data": {"min_client_build": 0, "armed": false}}
+	await gm._on_minbuild_toggled(false)
+	check("switching it off asks for 0, and every version can play again",
+		posted.size() == 2 and posted[1][1] == {"build": 0}
+		and status_line.text == "Every version of the game can play.", posted)
+	answer[0] = {"ok": false, "status": 400, "error": "build 9 is newer than any client that exists"}
+	status[0] = {"ok": true, "data": {"min_client_build": 0}}
+	button.set_pressed_no_signal(true)
+	await gm._on_minbuild_toggled(true)
+	check("a refusal puts the switch back to the server's state and says so",
+		not button.button_pressed and gm.results.get_parsed_text().contains("refused"))
+	Api.is_owner = false
+	var asked_before: int = posted.size()
+	await gm._on_minbuild_toggled(true)
+	check("anyone but the owner asks nothing", posted.size() == asked_before)
+	Api.is_owner = was_owner
 	gm.queue_free()
 	await get_tree().process_frame
 

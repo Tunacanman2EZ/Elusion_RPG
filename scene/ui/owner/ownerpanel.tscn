@@ -612,7 +612,7 @@ theme_override_colors/font_color = Color(0.43137, 0.83922, 0.49412, 1)
 theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("SB_status")
 text = "Server is OPEN"
-autowrap_mode = 3
+autowrap_mode = 2
 
 [node name="maintenancemessageinput" type="LineEdit" parent="frame/margin/rows/tabsscroll/ownertabs/server" unique_id=1900112248]
 unique_name_in_owner = true
@@ -631,6 +631,24 @@ theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("SB_danger")
 theme_override_styles/hover = SubResource("SB_danger_hover")
 text = "Close server"
+
+[node name="minbuildbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/server" unique_id=1900112290]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Owner only. On: a game older than the one you are playing is turned away at login and told to update. Off: every version can play. It is set to this game's own build, so it cannot lock you out, and the server logs who set it."
+focus_mode = 0
+theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+theme_override_font_sizes/font_size = 13
+text = "Old versions must update"
+
+[node name="minbuildstatus" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/server" unique_id=1900112291]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+theme_override_font_sizes/font_size = 11
+text = "Every version of the game can play."
 
 [node name="resultsrow" type="HBoxContainer" parent="frame/margin/rows"]
 layout_mode = 2

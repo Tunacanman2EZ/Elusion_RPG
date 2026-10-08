@@ -140,6 +140,9 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
 @onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
 @onready var trade_button: CheckButton = get_node_or_null("%tradebutton")
+# The Server tab's minimum build (0.11.8): old versions must update.
+@onready var minbuild_button: CheckButton = get_node_or_null("%minbuildbutton")
+@onready var minbuild_status: Label = get_node_or_null("%minbuildstatus")
 # The performance readout (PerfOverlay). It was the backslash key until 0.7.1.
 @onready var perf_button: CheckButton = get_node_or_null("%perfbutton")
 
@@ -271,6 +274,8 @@ func _ready() -> void:
 		pvp_button.toggled.connect(_on_pvp_toggled)
 	if trade_button != null and not trade_button.toggled.is_connected(_on_trade_toggled):
 		trade_button.toggled.connect(_on_trade_toggled)
+	if minbuild_button != null and not minbuild_button.toggled.is_connected(_on_minbuild_toggled):
+		minbuild_button.toggled.connect(_on_minbuild_toggled)
 	if perf_button != null and not perf_button.toggled.is_connected(_on_perf_toggled):
 		perf_button.toggled.connect(_on_perf_toggled)
 	_sync_perf_button()
@@ -607,6 +612,7 @@ func _on_visibility_changed() -> void:
 		# another machine.
 		await _refresh_pvp()
 		await _refresh_trade()
+		await _refresh_minbuild()
 		await refresh_online()
 	else:
 		_disarm()
@@ -1061,6 +1067,67 @@ func _on_trade_toggled(pressed: bool) -> void:
 			"No trade was open." if still_open == 0
 			else "%d open trade%s may still finish." % [still_open, "" if still_open == 1 else "s"]),
 			SAY_WARN)
+
+
+# =============================================================================
+# OLD VERSIONS MUST UPDATE - the minimum build (0.11.8)
+# =============================================================================
+# The server has refused a game older than a minimum it holds since the build
+# gate went in (POST /api/server/minbuild, owner only), and nothing in the game
+# could set it: the owner asked "how to raise client build", and the answer was
+# a request with his token by hand. This is that request.
+#
+# ON MEANS "THIS GAME'S BUILD", never a number typed. Api.BUILD is the build of
+# the game the owner is holding, and the server refuses a minimum newer than any
+# game it knows - so the switch cannot lock its own owner out, and there is no
+# box to mistype a 40 into. Off is 0: every version may play. The server keeps
+# who set it and when, in the staff log.
+
+func _refresh_minbuild() -> void:
+	if minbuild_button == null:
+		return
+	var res: Dictionary = await status_request.call("/api/status")
+	if not is_instance_valid(self) or not is_inside_tree() or not res.get("ok", false):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	var minimum: int = int(data.get("min_client_build", 0))
+	# NO SIGNAL: showing the server's state must not post it back.
+	minbuild_button.set_pressed_no_signal(minimum > 0 and minimum >= Api.BUILD)
+	minbuild_button.disabled = not Api.is_owner
+	_show_minbuild(minimum)
+
+
+func _show_minbuild(minimum: int) -> void:
+	if minbuild_status == null:
+		return
+	if minimum <= 0:
+		minbuild_status.text = "Every version of the game can play."
+	else:
+		minbuild_status.text = "Versions before build %d are told to update." % minimum
+
+
+func _on_minbuild_toggled(pressed: bool) -> void:
+	if not Api.is_owner:
+		await _refresh_minbuild()
+		_say("The minimum version is the owner's switch.", SAY_BAD)
+		return
+	var wanted: int = Api.BUILD if pressed else 0
+	var res: Dictionary = await post_request.call("/api/server/minbuild", {"build": wanted})
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		# PUT BACK: the switch shows what the server holds.
+		await _refresh_minbuild()
+		_say("The server refused that: %s" % str(res.get("error", "")), SAY_BAD)
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	var minimum: int = int(data.get("min_client_build", wanted))
+	_show_minbuild(minimum)
+	if minimum > 0:
+		_say("Games older than build %d are now told to update before they can play." % minimum,
+			SAY_WARN)
+	else:
+		_say("Every version of the game can play again.", SAY_GOOD)
 
 
 func _refresh_maintenance() -> void:

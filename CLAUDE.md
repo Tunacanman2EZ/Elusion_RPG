@@ -2366,7 +2366,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   0.11.4 and asks for nothing but the hot cocoa, 0.11.5 the Electric Sprite
   pet's orb reaches what it is aimed at, 0.11.6 the seven bosses are Crowned
   Beholders by name, 0.11.7 beating the Crowned opens a teleporter home to
-  town, and a pet's tooltip says a right-click summons it.
+  town, and a pet's tooltip says a right-click summons it, 0.11.8 the GM
+  panel's Server tab can make old versions update.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3689,6 +3690,35 @@ The container's `finale` run walked it and said so.
 it: the editor was still open from before 0.11.5 and exported. 0.11.7 is set
 over the copy read off the PC. Close Godot and open it again after pulling a
 version change, before exporting.
+
+### Old versions must update, from the Server tab (0.11.8)
+
+The owner, 8 Oct: "how to raise client build". The server has had the gate
+since the build header went in - `POST /api/server/minbuild`, owner only,
+`min_client_build` on `/api/status` - and nothing in the game could set it,
+so the answer was a request carrying his token by hand.
+
+- **GM panel > Server, under WHO MAY LOG IN: "Old versions must update"**
+  (`ownerpanel.gd` `_on_minbuild_toggled`). On asks for `Api.BUILD`, the
+  build of the game the owner is holding; off asks for 0. Never a typed
+  number: the server already refuses a minimum newer than any game it knows,
+  and this makes the switch unable to lock out the person throwing it.
+- It shows the server's minimum when the panel opens (`_refresh_minbuild`,
+  with PvP and trading), and a line under it says where it stands. A refusal
+  puts it back. The server logs who set it (staff log, "minbuild").
+- **When to throw it:** after a version with a new `Api.BUILD` is out on the
+  web and the download. Build 4 is every 0.11.x game; anything before 0.11.0
+  is build 3 and cannot read the resist ids the server now rolls.
+- **A word-wrapped label in a hidden tab measures as a column of letters.**
+  Adding the switch made the GM panel 22 px taller on Account and Testing than
+  on Server ("the window is the same height on every tab" failed: 642, 642,
+  620). The Server tab is the shortest when it shows (172 px) and measured 424
+  while hidden: `maintenancestatus` wrapped with `AUTOWRAP_WORD_SMART`, which
+  may break inside a word, and a tab never shown has width 0, so "Server is
+  OPEN" stood fourteen lines tall in the hidden-tab minimum. It wraps at words
+  now (`AUTOWRAP_WORD`): three lines while hidden, and the tabs measure 620 on
+  all three. The new status line does not wrap at all.
+- `_test_old_versions_must_update`.
 
 ### Inventory, bank and shop on day 1
 
