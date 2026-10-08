@@ -27,14 +27,16 @@ Options also sets the **text size** (up to 150%, for a big screen or one across 
 | Attack, aiming with the mouse | Space, or right-click |
 | Use the shop, bank, fire or fishing spot | E |
 | Use the item on a hotbar key | 1 to 0 |
-| Bag, Gear, Stats, Map | I, G, C, M |
+| Bag, Gear, Stats, Map, Kills | I, G, C, M, K |
 | Close a window, or open Options | Esc |
 
 Those are the keys as the game comes; Change keys moves any of them but Esc.
 
 The version is in the login screen's corner and at the foot of **Menu** — MAJOR.MINOR.PATCH, 0.x until launch.
 
-The bar along the bottom holds the windows a player opens all the time; Friends, Players, Guild, Trade and the Kingdom board are under **Social**, and Controls, Options and logging out under **Menu**.
+The bar along the bottom holds the windows a player opens all the time; Friends, Players, Guild, Trade, the Kingdom board and **Kills** are under **Social**, and Controls, Options and logging out under **Menu**.
+
+**Kills** (or **K**) is the kill record: every monster in the game with its picture, how many of each your character has killed and when the last one fell, and — on the Everyone tab — every player's kills added up, with who has killed the most of each. The server counts them; the pictures are cut from each monster's own art.
 
 ## What's interesting in here
 
@@ -180,6 +182,10 @@ Everyone in the same area sees everyone else: walking and idling the right way r
 
 Everyone in an area fights the same monsters. The server has no map and no AI, so it does not run them: one game does — the area's leader, the one that walked in first — and tells the others ten times a second what moved and what happened, a shot, a spike, a death. Everyone else's monsters are mirrors that ease toward where the leader has them, and a hit on one shows its number at once and goes to the leader to be applied. Each copy of an attack can only touch the player on its own screen, so you are hurt by what you see. When a monster dies, every game whose player helped reports the kill itself and gets its own XP and its own bag from the server's own roll; nobody sees anybody else's. When the leader leaves, the next game takes over with every monster where it stands. The leader is trusted with where the monsters are, not with how hard they hit: each game builds every attack from its own copy of the monster and caps the few numbers the leader sends. A game from before 0.7.0, or no presence server at all, fights its own, exactly as before.
 
+### The server watches every fight — `src/world/monstersync.gd`, `combatbook.py` (API repo)
+
+Since 0.10.0 every note of every fight passes the server on its way somewhere, so the server reads them: it keeps its own count of each monster's health from the catalogue's maximum down, holds every hit to the biggest hit and the damage a second that character could deal with what it carries and its skills — the game's own arithmetic, exported with the spawn points of every area — and judges every death as agreed, short (it died with health the server still counted) or not due (the map never held it). The leader's game sends its world even when it plays alone, with its own player's hits inside it. Nothing in play changes yet: kills are paid as before, and a week of the server's verdicts on honest play decides when it starts refusing the ones it cannot back up.
+
 ### Plays in a browser, from the API's own address — `export_presets.cfg`, `web/shell.html`, `src/systems/webpage.gd`
 
 The Web preset builds without threads. That makes it run on any current browser, and its host needs no special headers. The page is a loader in the game's own art. It stays in front of the canvas until the login screen has drawn, so the player goes from one straight to the other.
@@ -199,6 +205,8 @@ Building it turned up three things the desktop never showed:
 Items carry two independent requirements, and the split is the interesting part. `required_level` is character level, which is right for gear you **buy** — the ladder a shop sells against. `required_skill` / `required_skill_level` is a named skill, which is right for things you **made**: a cooked shark is gated on cooking, not on how many slimes you killed, because fishing and cooking grow on their own curves and a character level bound would clamp a dedicated cook. An unknown skill name is loud and permissive — it logs an error and lets the use through, because failing closed on a typo would silently delete an item's usefulness.
 
 Dropped and bought gear rolls each of its stats, 85–115% of the `.tres`, and one in a hundred is Perfect at 120% on everything — the shop shows "?" for a piece's stats and the roll is revealed when it is bought. The roll lives in the item id — `jadechest~a104h96` — rather than in a column beside it, so every cell, bag, trade and equipment slot that already holds an id carries the roll without a change, and the server's "the item you saw in that cell" check covers it too. `ItemRegistry` hands back a scaled copy for a rolled id, so nothing that reads `damage` or `bonus_max_hp` needs to know rolls exist; the server does the same integer sum, because it derives max health from what is worn.
+
+Since 0.11.0 armour also rolls an element it resists — one of the seven lands', a few percent by tier, at the end of the same id (`jadechest~a104h96r605`, fire 5%). Matching pieces add up to a 50% cap and take that share off a hit of that element, after the defense tier and the armour; a physical hit is armour's alone. Weapons never roll one: what a player hits for stays a matter of attack level and gear, and the element only decides what hurts them less. The shop shows "Resists ?" until the till rolls it, and the Gear window adds up everything worn.
 
 ## Layout
 
@@ -256,7 +264,7 @@ That serves a hundred and ten endpoints — accounts and sessions, character sav
 
 A hundred and five of the hundred and ten require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has forty-eight test suites, run together with one command:
+The backend has forty-nine test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -279,8 +287,9 @@ test_rollback.py       126 checks    the save history: snapshots, the owner's ro
 test_refusals.py       118 checks    401, 403, and the 404 that is really a 403
 test_security_doc.py   115 checks    SECURITY.md is checked, not trusted
 test_pacing.py         112 checks    the pace of the game: what the server pays, the store charges and the shop pays back
+test_quality.py        112 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
-test_quality.py         83 checks    rolled gear from drops and the shop, carried whole by every path
+test_combatbook.py      86 checks    the server's books on every monster: every hit, spawn and death judged
 test_friends.py         76 checks    asking, answering and ending a friendship
 test_presence.py        75 checks    players seeing each other, and whose game runs each area's monsters
 test_chardelete.py      72 checks    deleting a character, and only the character
@@ -298,6 +307,7 @@ test_settings.py        49 checks    the options screen's rules
 test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
 test_tradegates.py      41 checks    the owner's trade switch, and fresh mythic and Perfect finds held 48 hours
+test_killrecord.py      40 checks    every paid kill counted per character and monster
 test_clientbuild.py     37 checks    the client build gate
 test_guildlife.py       37 checks    what members are playing, what happened
 test_revocation.py      34 checks    what it costs to change your mind
@@ -326,7 +336,7 @@ Some of the suite is there to catch things the engine will not tell you about:
 - **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
 - **Configuring a node after `add_child()`.** `_ready()` has already run, so an element profile multiplies the scene's defaults and your assignment flattens the result — the thing wears its element's art and none of its behaviour. A text check, because the failure has no runtime symptom.
 - **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,437 signatures.
-- **Art nobody has classified.** Every top-level folder under `art/` and `assets/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
+- **Art nobody has classified.** Every top-level folder under `art/`, `assets/` and `audio/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
 
 `src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool answering the two questions a filename search gets wrong. **Painted cell counts per texture** — because tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet. And **reachability**, walking `ResourceLoader.get_dependencies()` from every scene and resource, which is the list you can actually delete from. It found two byte-identical art files a filename sweep had cleared as used, because their twins in other folders are.
 
@@ -350,7 +360,7 @@ This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on
 
 ## Status
 
-The game is complete and playable start to finish, online: accounts, chat, friends, guilds, trading, every other player in your area drawn live, and since 0.7.0 the same monsters for everyone in an area, with a loot bag each. Those monsters are run by one player's game, not by the server - the server still does not watch the fight. Moving it onto the server is the next big step, and the API repo's `E3_SCOPE.md` says why it is the one that matters and what shared monsters already built toward it.
+The game is complete and playable start to finish, online: accounts, chat, friends, guilds, trading, every other player in your area drawn live, and since 0.7.0 the same monsters for everyone in an area, with a loot bag each. Those monsters are run by one player's game, not by the server - but since 0.10.0 the server watches every fight and keeps its own count. Moving combat onto the server is happening in steps, and the API repo's `E3_SCOPE.md` says why it is the one that matters and where each step stands.
 
 Authority has moved off the client. The server rolls every loot drop with entropy the client never sees, owns level and XP and the stat maxima they imply, holds loot bags as rows the game renders a copy of — taking an item out of one is a request, not an announcement — and now reconciles the backpack against what it actually granted, so a modified client's fabricated items are trimmed to nothing.
 
@@ -358,7 +368,7 @@ Gold is double-entry on top of that. Every coin that enters or leaves the world 
 
 Item use is server-authoritative too now — the server checks the level and skill requirement against the character it owns and destroys the item itself, so the gates stopped being advisory the day trading made them matter. So is reviving: the server refuses anyone who is not dead by its own reckoning, takes the cost in lusions itself, and restores the resources from the class curve, which is what puts a price back on dying.
 
-One gap remains, named and tracked in the API repo's `SECURITY_NOTES.md`: the kill *event* is still asserted rather than verified — the server does not watch the fight. Skills used to be the second: three of the six had no server-side grant, and `/api/skill/train` closed it by having the client report raw activity and the server clamp it, rather than waiting for an event that does not exist. Health was the third, and is closed the way the backpack was — measured in log-only mode first, then clamped, so a rise that regeneration and an authorised potion cannot explain is trimmed rather than stored. That clamp is also what caught E-16, which is the best argument I have for building controls you hope never fire.
+One gap remains, named and tracked in the API repo's `SECURITY_NOTES.md`: the kill *event* is still asserted rather than verified — the server now watches the fight and writes down every kill its own count does not back up, but it still pays on the game's word. Skills used to be the second: three of the six had no server-side grant, and `/api/skill/train` closed it by having the client report raw activity and the server clamp it, rather than waiting for an event that does not exist. Health was the third, and is closed the way the backpack was — measured in log-only mode first, then clamped, so a rise that regeneration and an authorised potion cannot explain is trimmed rather than stored. That clamp is also what caught E-16, which is the best argument I have for building controls you hope never fire.
 
 `devlog.md` records the architecture decisions and the reasoning behind them, including the ones that turned out to be wrong.
 
@@ -366,9 +376,9 @@ One gap remains, named and tracked in the API repo's `SECURITY_NOTES.md`: the ki
 
 Code is MIT licensed — see [LICENSE](LICENSE).
 
-Art, graphics and audio are **not** covered by that license, and some of it belongs to someone else. See [assetlicense.md](assetlicense.md) before doing anything with the files under `art/` or `assets/`. If you'd like to contribute assets, read [docs/ASSET_CONTRIBUTOR_AGREEMENT.md](docs/ASSET_CONTRIBUTOR_AGREEMENT.md) first.
+Art, graphics and audio are **not** covered by that license, and some of it belongs to someone else. See [assetlicense.md](assetlicense.md) before doing anything with the files under `art/`, `assets/` or `audio/`. If you'd like to contribute art or audio, read [docs/ASSET_CONTRIBUTOR_AGREEMENT.md](docs/ASSET_CONTRIBUTOR_AGREEMENT.md) first: what you give, what you promise, how you're credited, and where to send it.
 
-Item and icon art is © **Caio Carlos / [Clockwork Raven Studios](https://www.clockworkravenstudios.com/)**, used with permission. Characters, enemies and tilesets are by **Ahvassa**, commissioned with rights assigned to Elusion Studios. Full details and links are in [assetlicense.md](assetlicense.md).
+Item and icon art is © **Caio Carlos / [Clockwork Raven Studios](https://www.clockworkravenstudios.com/)**, used with permission. Characters, enemies and tilesets are by **Ahvassa**, commissioned with rights assigned to Elusion Studios. Full details and links are in [assetlicense.md](assetlicense.md). In the game they are all in **Options → Credits**, with the fonts, the sounds, everyone who has supported the game, and the engine's licences.
 
 Two artists, and only one of them transferred rights — which is the whole job that file does. Ahvassa's work is Elusion Studios' to edit and ship, and crediting him is courtesy. Caio's is not: the IP stays with Clockwork Raven Studios, and crediting him is a condition of this repository being public at all.
 

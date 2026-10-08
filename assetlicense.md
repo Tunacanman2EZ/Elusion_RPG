@@ -2,8 +2,8 @@
 
 **The MIT licence in `LICENSE` covers the source code in this repository and
 nothing else.** It does not cover the artwork or the audio. This file does, and
-if you are here to work out what you may do with the files under `art/` or
-`assets/`, this file is the answer and `LICENSE` is not.
+if you are here to work out what you may do with the files under `art/`,
+`assets/` or `audio/`, this file is the answer and `LICENSE` is not.
 
 `LICENSE` is kept as the unmodified MIT text on purpose. Licence scanners —
 GitHub's included — match it by comparing it word for word against the
@@ -55,7 +55,8 @@ currently `amulets`, `armour`, `consumables`, `currency`, `fishing`, `icons`,
 
 **One known exception, in the other direction.**
 `/art/pack/icons/behemothcrown.png` is **not** Caio's. It was cut and edited from
-the behemoth boss art, which was commissioned from Ahvassa with rights assigned,
+the boss art - the Crowned Beholder, whose files still carry its first name,
+behemoth - which was commissioned from Ahvassa with rights assigned,
 so the crown is Elusion Studios' under the section above. It is misfiled, not
 reclassified.
 
@@ -89,9 +90,10 @@ path in two places out of three and the suite says so.
 One thing this did **not** fix, and it is the larger version of the same problem:
 the other 133 files the public code loads out of `art/pack/` are legitimately
 Caio's and legitimately private, so a fresh public clone still cannot draw any
-item, weapon or piece of armour. That is a correct boundary rather than a bug, but
-the test suite currently reports it as failures rather than as skips, which reads
-like a broken project to anybody who clones and runs it.
+item, weapon or piece of armour. That is a correct boundary rather than a bug, and
+the test suite says so: a check that needs the pack is reported as a skip, naming
+the pack as the reason (`check_needs_pack()`), not as a failure. A clone without
+it runs clean, with the pack checks listed as skipped.
 
 This used to be written as a rule about *categories* — "all item and icon
 artwork", with the note that the category governs rather than the folder list.
@@ -238,6 +240,17 @@ and the licence text travel with the font (they do, and
 their own. Using them in the game, commercially included, is what the licence
 is for.
 
+## Contributed art — none yet
+
+Art or audio sent in by anybody else comes under
+[docs/ASSET_CONTRIBUTOR_AGREEMENT.md](docs/ASSET_CONTRIBUTOR_AGREEMENT.md):
+the contributor says they made it (or own it), whether it is exclusive to this
+game, how they want to be credited, and that it may sit in this public
+repository. It gets a section here under its owner's name, with its files or
+folders, **before** it is committed; in a new top-level folder, the folder rule
+below fails the suite until it has one. To anyone reading this, it is the same
+as Elusion Studios' own art: not offered for reuse.
+
 ## Source code — MIT
 
 The source code in this repository is licensed separately under the MIT
@@ -266,8 +279,9 @@ opposite of the one condition the artist set for this repository being public.
 of writing this. The catch-all "everything under `/art` except the item art" was
 silently claiming files the project's own tooling describes as unconfirmed.
 
-So the rule this file now runs on: **every top-level folder under `/art` and
-`/assets` must be classified by name, and adding one is a licensing decision.**
+So the rule this file now runs on: **every top-level folder under `/art`,
+`/assets` and `/audio` must be classified by name, and adding one is a licensing
+decision.**
 `_test_art_folders_are_licensed()` in `src/tools/testrunner.gd` enforces it. A new
 folder fails the suite until somebody says whose it is, which means the next time
 art arrives from a new source, the thing that notices is the test run and not a
