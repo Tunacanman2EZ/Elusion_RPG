@@ -17755,10 +17755,12 @@ func _test_combat_bounds_match_the_game() -> void:
 	for item in ItemRegistry.get_all_items():
 		if int(item.weapon_attack) != ItemData.WeaponAttack.NONE:
 			attacks[item.item_id] = String(ItemData.WeaponAttack.keys()[int(item.weapon_attack)])
-	check("the Meteorite's burn and Dynamite's chain bonus are the game's, so the books allow for them",
+	check("the Meteorite's burn and Dynamite's chain bonus and smoulder are the game's, so the books allow for them",
 		is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("meteor_burn_share", -1.0)), BurningCrater.BURN_SHARE)
 		and is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("meteor_burn_every", -1.0)), BurningCrater.BURN_EVERY)
-		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_chain_bonus", -1.0)), Dynamite.CHAIN_BONUS),
+		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_chain_bonus", -1.0)), Dynamite.CHAIN_BONUS)
+		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_field_share", -1.0)), Dynamite.FIELD_SHARE)
+		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_field_every", -1.0)), Dynamite.FIELD_EVERY),
 		[classes.get("mage", {}), classes.get("tank", {})])
 	check("the Double Axe's top spin rate is the game's, so the books allow for it",
 		is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_spin_max_rate", -1.0)),
@@ -21523,6 +21525,35 @@ func _test_the_mythic_weapons() -> void:
 	check("then it goes off: the enemy inside the blast is hit once", stick.exploded and near_blast.taken == [30], near_blast.taken)
 	check("  the one outside it is not", past_blast.taken.is_empty(), past_blast.taken)
 	check("  and the scorch is where it went off", _marks_at(arena, land) == 1)
+
+	# THE SMOULDER (0.13.0). The owner: "we need some sort of bonus damage for
+	# tnt like a field effect". The scorch keeps biting for FIELD_SECONDS.
+	var smoulders: Array = arena.get_children().filter(func(n: Node) -> bool:
+		return n is BurningCrater and (n as BurningCrater).smoulder)
+	check("the blast leaves its scorch smouldering, as wide as the blast", smoulders.size() == 1
+		and (smoulders[0] as BurningCrater).global_position == land
+		and is_equal_approx((smoulders[0] as BurningCrater).radius, Dynamite.HIT_RADIUS)
+		and (smoulders[0] as BurningCrater).burning(), smoulders.size())
+	if smoulders.size() == 1:
+		var smoke: BurningCrater = smoulders[0]
+		smoke.set_physics_process(false)
+		for i in 4:
+			await get_tree().physics_frame
+		check("  smoke and sparks rising from it, not the meteor's flames",
+			smoke.get_node_or_null("flames") is CPUParticles2D and smoke.get_node_or_null("embers") is CPUParticles2D
+			and smoke.name == "smoulder")
+		smoke.advance(Dynamite.FIELD_EVERY)
+		check("every half second it bites what stands in it for FIELD_SHARE of the stick's hit",
+			near_blast.taken == [30, roundi(30 * Dynamite.FIELD_SHARE)] and smoke.burn_damage() == roundi(30 * Dynamite.FIELD_SHARE),
+			near_blast.taken)
+		check("  not what stands outside it", past_blast.taken.is_empty(), past_blast.taken)
+		check("  and it keeps its own mark, apart from a meteor's crater - two players' fires",
+			smoke.owner_meta != &"burning_by" and near_blast.has_meta(smoke.owner_meta))
+		smoke.advance(Dynamite.FIELD_SECONDS)
+		check("  FIELD_SECONDS of bites, then it goes out",
+			near_blast.taken.size() == 1 + roundi(Dynamite.FIELD_SECONDS / Dynamite.FIELD_EVERY) and not smoke.burning(),
+			near_blast.taken)
+		smoke.queue_free()
 
 	# CHAIN REACTION (0.12.0). The owner: "chain reaction sounds cool". A blast
 	# sets off every lit stick within CHAIN_RADIUS, CHAIN_DELAY later and

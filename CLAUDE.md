@@ -2370,7 +2370,7 @@ product versions are it with `.0` after (Windows wants four numbers).
   panel's Server tab can make old versions update, 0.11.9 the mythic weapons
   hit 1.4 times ember and the Double Axe spins up when left, 0.12.0 the
   Meteorite lands twice as wide and leaves a burning crater, and Dynamite
-  chains.
+  chains, 0.13.0 a Dynamite blast leaves its scorch smouldering.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3807,6 +3807,31 @@ ground where meteor hits". Nothing in this is knockback.
   stick beside it a beat later and 25% harder, not the far one, not one in
   the air, not one already gone; the fuse outlasts a throw; a double throw's
   sticks are in chain range) and the books' check of the exported numbers.
+
+### Dynamite's scorch smoulders (0.13.0)
+
+The owner, 8 Oct: "we need some sort of bonus damage for tnt like a field
+effect".
+
+- **Every blast leaves its scorch smouldering** for `Dynamite.FIELD_SECONDS`
+  (1.5): smoke rolling up and white-hot sparks spitting out over a deep red
+  glow, and every `FIELD_EVERY` (0.5) whatever stands in it takes
+  `FIELD_SHARE` (15%) of the stick's plain hit (not a chained one's) as fire.
+  Three bites, nearly half a stick again: about a quarter more damage a second
+  on one target with the double throws and chains counted, and every enemy in
+  the scorch takes it.
+- **It is `BurningCrater`, configured**: `spawn_smoulder()` sets `bite_share`,
+  `bite_every`, `lasts`, the look (`smoulder`, named "smoulder") and its own
+  one-at-a-time mark, `&"smouldering_by"`, apart from the meteor's
+  `&"burning_by"` - a mage's crater and a tank's scorch are two players'
+  fires, and each is bounded on its own player. A chain's overlapping scorches
+  do not stack. The meteor's crater keeps its constants as the defaults.
+- **The books allow for it**: the tank's combat row carries
+  `dynamite_field_share` and `dynamite_field_every`, and the API adds the
+  smoulder to a Dynamite tank's rate. The API's gamedata.json goes out first.
+- Tests: the scorch is left as wide as the blast, smoke and sparks, a bite of
+  FIELD_SHARE, not outside it, its own mark, FIELD_SECONDS of bites then out;
+  and the exported numbers.
 
 ### Inventory, bank and shop on day 1
 

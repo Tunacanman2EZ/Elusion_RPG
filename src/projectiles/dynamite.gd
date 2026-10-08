@@ -22,6 +22,15 @@
 # more. The server's books allow for the bonus: the exporter writes it as the
 # tank's dynamite_chain_bonus, and gamedata.combat_bounds() reads it.
 #
+# THE SMOULDER (0.13.0). The owner: "we need some sort of bonus damage for tnt
+# like a field effect". Every blast leaves its scorch smouldering for
+# FIELD_SECONDS - smoke and spitting sparks - and every FIELD_EVERY seconds
+# whatever stands in it takes FIELD_SHARE of the stick's hit (the plain hit,
+# not a chained one's) as fire. It is BurningCrater with Dynamite's numbers
+# and look (BurningCrater.spawn_smoulder()): one smoulder per enemy at a time,
+# so a chain's overlapping scorches do not stack. The books allow for it: the
+# exporter writes the tank's dynamite_field_share and dynamite_field_every.
+#
 # One throw in ten is two sticks, spread either side of the aim - tank.gd
 # decides that and throws two of these.
 #
@@ -46,6 +55,14 @@ const FUSE_SECONDS := 1.2
 const CHAIN_RADIUS := 42.0
 const CHAIN_DELAY := 0.1
 const CHAIN_BONUS := 0.25
+
+# THE SMOULDER: how long a scorch keeps biting, how often, and how much of the
+# stick's hit a bite is. Three bites of 15%: nearly half a stick again for
+# whatever stays in it - about a quarter more damage a second on one target,
+# with the double throws and chains counted.
+const FIELD_SECONDS := 1.5
+const FIELD_EVERY := 0.5
+const FIELD_SHARE := 0.15
 
 # MATCHED to the CollisionShape2D in dynamite.tscn and to the scorch it leaves.
 # Bigger than the meteor's: one stick a second against two meteors a second.
@@ -154,6 +171,8 @@ func explode() -> void:
 		hits_dealt += 1
 	# A chained blast's fireball is bigger; what it reaches is not.
 	Blast.spawn(get_parent(), global_position, &"dynamite", HIT_RADIUS * (1.3 if chained else 1.0))
+	BurningCrater.spawn_smoulder(get_parent(), global_position, explosion_damage, HIT_RADIUS, caster,
+		FIELD_SHARE, FIELD_EVERY, FIELD_SECONDS)
 	_set_off_the_rest()
 	queue_free()
 

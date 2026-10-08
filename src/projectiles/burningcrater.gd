@@ -21,6 +21,13 @@
 # gamedata.json as the mage's meteor_burn_share and meteor_burn_every, and
 # gamedata.combat_bounds() adds them to a mage holding the Meteorite.
 #
+# DYNAMITE'S SMOULDER IS THE SAME NODE (0.13.0). The owner: "we need some sort
+# of bonus damage for tnt like a field effect". A blast leaves its scorch
+# smouldering - sparks and smoke rather than flames - and it bites the same
+# way, by Dynamite's own numbers (spawn_smoulder(), dynamite.gd FIELD_*). It
+# keeps its own one-at-a-time mark (&"smouldering_by"), apart from the
+# meteor's: a mage's crater and a tank's scorch are two players' fires.
+#
 # BUILT IN CODE, like Blast: an Area2D with a circle the size of the hit, a
 # glow on the floor and a fire emitter, all of whole-pixel squares so it is the
 # same size of dot as the art. advance() is the timeline; _physics_process
@@ -35,8 +42,6 @@ extends Area2D
 const BURN_SECONDS := 2.5
 const BURN_EVERY := 0.5
 const BURN_SHARE := 0.2
-# Bites in a whole burn: one every BURN_EVERY, the last as it goes out.
-const BITES := int(BURN_SECONDS / BURN_EVERY)
 
 # The flames die down over the end of the burn rather than stopping at once.
 const FADE_SECONDS := 0.6
@@ -49,8 +54,15 @@ const LAYER := 32
 const ENEMY_MASK := 8
 
 var radius: float = 44.0
-# The meteor's hit; a bite is BURN_SHARE of it.
+# The hit it came from; a bite is bite_share of it.
 var hit_damage: int = 0
+# What this fire is. The defaults are the meteor's crater; spawn_smoulder()
+# sets Dynamite's.
+var bite_share: float = BURN_SHARE
+var bite_every: float = BURN_EVERY
+var lasts: float = BURN_SECONDS
+var owner_meta: StringName = &"burning_by"
+var smoulder: bool = false
 var caster: Node = null
 var burns_dealt: int = 0
 
@@ -79,8 +91,28 @@ static func spawn(parent: Node, at: Vector2, from_hit: int, reach: float, by: No
 	return crater
 
 
+static func spawn_smoulder(parent: Node, at: Vector2, from_hit: int, reach: float, by: Node,
+		share: float, every: float, seconds: float) -> BurningCrater:
+	# Dynamite's: the same burn by the stick's numbers, with its own look and
+	# its own one-at-a-time mark.
+	var field := BurningCrater.new()
+	field.radius = reach
+	field.hit_damage = from_hit
+	field.caster = by
+	field.bite_share = share
+	field.bite_every = maxf(every, 0.05)
+	field.lasts = seconds
+	field.owner_meta = &"smouldering_by"
+	field.smoulder = true
+	parent.add_child(field)
+	field.global_position = at
+	field.reset_physics_interpolation()
+	field._build()
+	return field
+
+
 func _build() -> void:
-	name = "burningcrater"
+	name = "smoulder" if smoulder else "burningcrater"
 	collision_layer = LAYER
 	collision_mask = ENEMY_MASK
 	monitorable = false
@@ -97,7 +129,9 @@ func _build() -> void:
 
 	_glow = Sprite2D.new()
 	_glow.name = "glow"
-	_glow.texture = Blast.disc_texture(int(radius * 0.8), Color(1.0, 0.62, 0.2), Color(0.75, 0.2, 0.05))
+	# A smoulder glows deeper and redder than a crater's fire.
+	_glow.texture = Blast.disc_texture(int(radius * 0.8), Color(1.0, 0.45, 0.15), Color(0.55, 0.08, 0.03)) \
+		if smoulder else Blast.disc_texture(int(radius * 0.8), Color(1.0, 0.62, 0.2), Color(0.75, 0.2, 0.05))
 	_glow.modulate = Color(1, 1, 1, GLOW_ALPHA)
 	# Squashed to the floor: the world is seen from above and at a slant.
 	_glow.scale = Vector2(1.0, 0.7)
@@ -107,17 +141,31 @@ func _build() -> void:
 	_glow.material = light
 	add_child(_glow)
 
-	# Tongues of fire: the round puff Blast's fireballs are made of, smaller,
-	# rising and shrinking as they go.
-	_flames = _emitter(maxi(16, int(radius * 1.1)), 0.7, Vector2(10, 24), 0.45, 1.05, -45.0, 4)
-	_flames.name = "flames"
-	_flames.texture = Blast.puff_texture()
-	_flames.scale_amount_curve = _shrink()
-	# And sparks: single squares, slower, drifting up out of it.
-	_embers = _emitter(maxi(8, int(radius * 0.4)), 1.2, Vector2(4, 12), 1.0, 2.0, -14.0, 4)
-	_embers.name = "embers"
-	_embers.color_ramp = _ramp([[0.0, Color(1.0, 0.85, 0.4)], [0.5, Color(1.0, 0.45, 0.1)],
-		[1.0, Color(0.6, 0.15, 0.05, 0.0)]])
+	if smoulder:
+		# Smoke and spitting sparks: grey puffs rolling up slowly, and white-hot
+		# squares thrown out fast and short, the blast still crackling.
+		_flames = _emitter(maxi(10, int(radius * 0.6)), 1.0, Vector2(6, 14), 0.5, 1.1, -18.0, 4)
+		_flames.name = "flames"
+		_flames.texture = Blast.puff_texture()
+		_flames.color_ramp = _ramp([[0.0, Color(0.55, 0.5, 0.45, 0.0)], [0.2, Color(0.45, 0.42, 0.4, 0.7)],
+			[1.0, Color(0.3, 0.28, 0.27, 0.0)]])
+		_embers = _emitter(maxi(12, int(radius * 0.8)), 0.35, Vector2(20, 55), 1.0, 1.0, 60.0, 5)
+		_embers.name = "embers"
+		_embers.spread = 180.0
+		_embers.color_ramp = _ramp([[0.0, Color(1.0, 1.0, 0.85)], [0.5, Color(1.0, 0.75, 0.3)],
+			[1.0, Color(0.9, 0.35, 0.1, 0.0)]])
+	else:
+		# Tongues of fire: the round puff Blast's fireballs are made of,
+		# smaller, rising and shrinking as they go.
+		_flames = _emitter(maxi(16, int(radius * 1.1)), 0.7, Vector2(10, 24), 0.45, 1.05, -45.0, 4)
+		_flames.name = "flames"
+		_flames.texture = Blast.puff_texture()
+		_flames.scale_amount_curve = _shrink()
+		# And sparks: single squares, slower, drifting up out of it.
+		_embers = _emitter(maxi(8, int(radius * 0.4)), 1.2, Vector2(4, 12), 1.0, 2.0, -14.0, 4)
+		_embers.name = "embers"
+		_embers.color_ramp = _ramp([[0.0, Color(1.0, 0.85, 0.4)], [0.5, Color(1.0, 0.45, 0.1)],
+			[1.0, Color(0.6, 0.15, 0.05, 0.0)]])
 
 
 func _emitter(amount: int, lifetime: float, velocity: Vector2, size_min: float, size_max: float,
@@ -176,17 +224,17 @@ func advance(delta: float) -> void:
 	# BY THE BITE'S OWN TIME, not by what is left of a step: a long step (a
 	# hitch, or a test) still bites every time it should have, and never past
 	# the end of the burn.
-	while _bites < BITES and float(_bites + 1) * BURN_EVERY <= _age + 0.0001:
+	while _bites < bite_count() and float(_bites + 1) * bite_every <= _age + 0.0001:
 		_bites += 1
 		_burn()
-	var left: float = BURN_SECONDS - _age
+	var left: float = lasts - _age
 	if left < FADE_SECONDS:
 		var f: float = clampf(left / FADE_SECONDS, 0.0, 1.0)
 		if _glow != null:
 			_glow.modulate.a = GLOW_ALPHA * f
 		if _flames != null and f < 0.5:
 			_flames.emitting = false
-	if _age >= BURN_SECONDS:
+	if _age >= lasts:
 		_go_out()
 
 
@@ -195,7 +243,12 @@ func burning() -> bool:
 
 
 func burn_damage() -> int:
-	return maxi(1, roundi(float(hit_damage) * BURN_SHARE))
+	return maxi(1, roundi(float(hit_damage) * bite_share))
+
+
+func bite_count() -> int:
+	"""Bites in a whole burn: one every bite_every, the last as it goes out."""
+	return roundi(lasts / bite_every)
 
 
 func _burn() -> void:
@@ -204,13 +257,13 @@ func _burn() -> void:
 		if not body.is_in_group("enemies") or not body.has_method("take_damage"):
 			continue
 		# ONE FIRE AT A TIME: see the top of the file.
-		var by: int = int(body.get_meta(&"burning_by", 0))
+		var by: int = int(body.get_meta(owner_meta, 0))
 		if by != 0 and by != get_instance_id():
 			var other: Object = instance_from_id(by)
 			if other != null and is_instance_valid(other) and other is BurningCrater \
 					and (other as BurningCrater).burning():
 				continue
-		body.set_meta(&"burning_by", get_instance_id())
+		body.set_meta(owner_meta, get_instance_id())
 		body.take_damage(bite, Element.Type.FIRE)
 		burns_dealt += 1
 

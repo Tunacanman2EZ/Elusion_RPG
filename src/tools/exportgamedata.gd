@@ -1629,6 +1629,11 @@ func _export_combat(_items: Array) -> Dictionary:
 				var stick_script: Script = load("res://src/projectiles/dynamite.gd") as Script
 				row["dynamite_chain_bonus"] = float(stick_script.get_script_constant_map().get("CHAIN_BONUS", 0.0)) \
 					if stick_script != null else 0.0
+				# Each blast's smoulder bites a share of the stick's hit every so
+				# often, one smoulder per enemy at a time (0.13.0).
+				var stick_consts: Dictionary = stick_script.get_script_constant_map() if stick_script != null else {}
+				row["dynamite_field_share"] = float(stick_consts.get("FIELD_SHARE", 0.0))
+				row["dynamite_field_every"] = float(stick_consts.get("FIELD_EVERY", 1.0))
 		classes[class_id] = row
 		node.free()
 

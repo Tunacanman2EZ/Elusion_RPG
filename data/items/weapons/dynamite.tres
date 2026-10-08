@@ -7,7 +7,7 @@
 script = ExtResource("2_itemdata")
 item_id = "dynamite"
 display_name = "Dynamite"
-description = "Your attack throws a lit stick where you aim, in place of the aura. A blast sets off any lit stick near it, and a stick set off that way hits harder. One throw in ten is two sticks."
+description = "Your attack throws a lit stick where you aim, in place of the aura. Each blast leaves the ground smouldering, burning anything that stays in it, and sets off any lit stick near it, which hits harder. One throw in ten is two sticks."
 icon = ExtResource("1_icon")
 max_stack = 1
 value = 42000
