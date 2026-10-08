@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_enemydata")
 enemy_id = "fireboss"
-display_name = "Fire The Crowned"
+display_name = "Fire The Crowned Beholder"
 element = 6
 recolour_to_element = true
 saturation_scale = 1.0

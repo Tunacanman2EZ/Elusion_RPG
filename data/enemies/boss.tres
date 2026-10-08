@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_enemydata")
 enemy_id = "boss"
-display_name = "The Crowned"
+display_name = "The Crowned Beholder"
 element = 1
 projectile_damage = 83
 xp_reward = 1858

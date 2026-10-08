@@ -19138,8 +19138,17 @@ func _test_the_sweep_words() -> void:
 	check("and no screen capitalises an area id itself", capitalised.is_empty(), capitalised)
 
 	var sign_text := FileAccess.get_file_as_string("res://scene/interactables/sign.tscn")
-	check("the town sign names the Crowned, not a Beholder the game does not have",
-		sign_text.contains("slay the Crowned") and not sign_text.contains("Beholder"))
+	# THE CROWNED BEHOLDER, by name (0.11.6). This check used to keep "Beholder"
+	# OFF the sign, because no monster in the game was called one; the owner
+	# named them on 8 Oct ("this is a crowned beholder"), so it holds the
+	# opposite now: the sign and all seven bosses say Crowned Beholder.
+	check("the town sign names the Crowned Beholders", sign_text.contains("Crowned Beholders"), sign_text)
+	var unnamed: Array = []
+	for boss_id in ["boss", "lightboss", "windboss", "waterboss", "iceboss", "earthboss", "fireboss"]:
+		var boss_data := load("res://data/enemies/%s.tres" % boss_id) as EnemyData
+		if boss_data == null or not boss_data.display_name.ends_with("The Crowned Beholder"):
+			unnamed.append("%s: %s" % [boss_id, boss_data.display_name if boss_data else "missing"])
+	check("  and every one of the seven bosses is a Crowned Beholder by name", unnamed.is_empty(), unnamed)
 	var over := FileAccess.get_file_as_string("res://scene/ui/menus/gameover.tscn")
 	check("the game-over screen reads GAME OVER and 'Return to character select'",
 		over.contains("\"GAME OVER\"") and over.contains("\"Return to character select\""))
@@ -21386,7 +21395,7 @@ func _test_mythic_drops() -> void:
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	hud._build_message_box()
 	var red: Color = GameConstants.rarity_colour(GameConstants.MYTHIC_TIER)
-	var said: String = "Tunacan found the Meteorite on The Crowned!"
+	var said: String = "Tunacan found the Meteorite on The Crowned Beholder!"
 	hud._read_broadcast_messages([{"kind": "mythic", "body": said, "by": "Tunacan", "at": 1700000000}], true)
 	var banner: Control = hud.mythic_banner
 	check("a find by somebody else puts the red banner up for everyone online",

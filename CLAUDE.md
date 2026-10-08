@@ -2364,7 +2364,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   at the offset in force when it happened (a browser), and the calendar tested,
   0.11.3 the Credits' Support tab sends a name through the PayPal note,
   0.11.4 and asks for nothing but the hot cocoa, 0.11.5 the Electric Sprite
-  pet's orb reaches what it is aimed at.
+  pet's orb reaches what it is aimed at, 0.11.6 the seven bosses are Crowned
+  Beholders by name.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3626,6 +3627,29 @@ given" before the write went ahead. It asks `has_section_key()` first now.
 The suite's display section attaches an `EngineErrorCounter` (a `Logger`
 that hears every engine error, not only script errors) around the write and
 fails if it hears one.
+
+### The Crowned Beholder, by name (0.11.6)
+
+The owner, 8 Oct: "this is a crowned beholder". The seven bosses were "The
+Crowned" and "Light The Crowned" to "Fire The Crowned"; they are "The Crowned
+Beholder" and "Light The Crowned Beholder" and so on now
+(`data/enemies/*boss*.tres` `display_name`), and the Crowned pet's
+`pet_source_name` says the same. The names reach players in the Kills window
+and the mythic banner, whose sentence the server writes from gamedata.json -
+so it is re-exported, and **the API's copy has to follow** or a find off a
+boss is still announced under the old name.
+
+- **The town sign is the owner's**: he set it to the seven of them; 0.11.6
+  only takes the apostrophe out of "Beholders".
+- `_test_the_sweep_words()` (the sign check) used to keep "Beholder" OFF
+  the sign, because no monster was called one; it holds the opposite now, and
+  checks all seven bosses' names.
+- Seven elements, seven bosses: the Crowned itself is Dark (`boss.tres`
+  element 1), so there is one crown for every element.
+
+**export_presets.cfg was written back as 0.11.0.0 on 8 Oct**, the trap under
+"The version" again: the editor had been open since before 0.11.5 and saved
+its old presets on export. 0.11.6 is set over the copy read off the PC.
 
 ### Inventory, bank and shop on day 1
 

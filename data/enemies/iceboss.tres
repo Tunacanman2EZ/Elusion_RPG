@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_enemydata")
 enemy_id = "iceboss"
-display_name = "Ice The Crowned"
+display_name = "Ice The Crowned Beholder"
 element = 3
 recolour_to_element = true
 saturation_scale = 1.0

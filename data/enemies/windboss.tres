@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_enemydata")
 enemy_id = "windboss"
-display_name = "Wind The Crowned"
+display_name = "Wind The Crowned Beholder"
 element = 4
 recolour_to_element = true
 saturation_scale = 1.0

@@ -22,5 +22,5 @@ droppable = false
 required_level = 1
 type = 5
 pet_scene = ExtResource("3_pet")
-pet_source_name = "The Crowned"
+pet_source_name = "The Crowned Beholder"
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

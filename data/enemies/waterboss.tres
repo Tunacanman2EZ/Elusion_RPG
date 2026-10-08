@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1_enemydata")
 enemy_id = "waterboss"
-display_name = "Water The Crowned"
+display_name = "Water The Crowned Beholder"
 element = 7
 recolour_to_element = true
 saturation_scale = 1.0

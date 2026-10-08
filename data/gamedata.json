@@ -1,4 +1,1406 @@
 {
+	"areas": {
+		"bigfield": {
+			"respawn_jitter": 6.0,
+			"respawn_seconds": 30.0,
+			"scene": "res://scene/bigfield.tscn",
+			"spawns": [
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_01_darksprite",
+					"x": 2787.0,
+					"y": 289.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_02_darksprite",
+					"x": 2712.0,
+					"y": 558.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_03_darksprite",
+					"x": 2738.0,
+					"y": 258.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_04_darksprite",
+					"x": 2576.0,
+					"y": 546.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_05_darksprite",
+					"x": 2521.0,
+					"y": 433.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_06_darkfiresprite",
+					"x": 2623.0,
+					"y": 267.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_07_darkfiresprite",
+					"x": 2506.0,
+					"y": 348.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_08_darkfiresprite",
+					"x": 2685.0,
+					"y": 481.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_09_darkfiresprite",
+					"x": 2630.0,
+					"y": 324.0
+				},
+				{
+					"e": "darkbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_10_darkbushmage",
+					"x": 2694.0,
+					"y": 388.0
+				},
+				{
+					"e": "darkbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_11_darkbushmage",
+					"x": 2824.0,
+					"y": 346.0
+				},
+				{
+					"e": "darkbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_12_darkbushsniper",
+					"x": 2658.0,
+					"y": 543.0
+				},
+				{
+					"e": "darkbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_13_darkbushsniper",
+					"x": 2562.0,
+					"y": 484.0
+				},
+				{
+					"e": "darkslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darknorth_14_darkslimelarge",
+					"x": 2738.0,
+					"y": 449.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_01_darksprite",
+					"x": 2497.0,
+					"y": 1718.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_02_darksprite",
+					"x": 2499.0,
+					"y": 1518.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_03_darksprite",
+					"x": 2692.0,
+					"y": 1560.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_04_darksprite",
+					"x": 2801.0,
+					"y": 1649.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_05_darksprite",
+					"x": 2588.0,
+					"y": 1765.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_06_darkfiresprite",
+					"x": 2830.0,
+					"y": 1723.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_07_darkfiresprite",
+					"x": 2779.0,
+					"y": 1523.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_08_darkfiresprite",
+					"x": 2554.0,
+					"y": 1595.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_09_darkfiresprite",
+					"x": 2612.0,
+					"y": 1522.0
+				},
+				{
+					"e": "darkbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_10_darkbushmage",
+					"x": 2692.0,
+					"y": 1683.0
+				},
+				{
+					"e": "darkbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_11_darkbushmage",
+					"x": 2748.0,
+					"y": 1618.0
+				},
+				{
+					"e": "darkbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_12_darkbushsniper",
+					"x": 2756.0,
+					"y": 1472.0
+				},
+				{
+					"e": "darkbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_13_darkbushsniper",
+					"x": 2608.0,
+					"y": 1614.0
+				},
+				{
+					"e": "darkslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/darksouth_14_darkslimelarge",
+					"x": 2554.0,
+					"y": 1649.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_01_earthsprite",
+					"x": 1492.0,
+					"y": 497.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_02_earthsprite",
+					"x": 1624.0,
+					"y": 464.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_03_earthsprite",
+					"x": 1466.0,
+					"y": 387.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_04_earthsprite",
+					"x": 1470.0,
+					"y": 556.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_05_earthfiresprite",
+					"x": 1584.0,
+					"y": 422.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_06_earthfiresprite",
+					"x": 1380.0,
+					"y": 409.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_07_earthfiresprite",
+					"x": 1456.0,
+					"y": 455.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_08_bushmage",
+					"x": 1583.0,
+					"y": 502.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_09_bushmage",
+					"x": 1688.0,
+					"y": 560.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_10_earthbushsniper",
+					"x": 1429.0,
+					"y": 516.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_11_earthbushsniper",
+					"x": 1676.0,
+					"y": 384.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/earth_12_earthslimelarge",
+					"x": 1610.0,
+					"y": 271.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_01_firesprite",
+					"x": 1957.0,
+					"y": 514.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_02_firesprite",
+					"x": 2116.0,
+					"y": 243.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_03_firesprite",
+					"x": 2094.0,
+					"y": 333.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_04_firesprite",
+					"x": 2106.0,
+					"y": 561.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_05_firesprite",
+					"x": 2182.0,
+					"y": 362.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_06_firesprite",
+					"x": 2180.0,
+					"y": 444.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_07_firesprite",
+					"x": 2038.0,
+					"y": 260.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_08_firebushmage",
+					"x": 2111.0,
+					"y": 416.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_09_firebushmage",
+					"x": 2226.0,
+					"y": 564.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_10_firebushmage",
+					"x": 1955.0,
+					"y": 416.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_11_firebushmage",
+					"x": 2040.0,
+					"y": 367.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_12_firebushmage",
+					"x": 1992.0,
+					"y": 315.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_13_firebushmage",
+					"x": 2234.0,
+					"y": 391.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firenorth_14_firebushmage",
+					"x": 2170.0,
+					"y": 512.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_01_firesprite",
+					"x": 1924.0,
+					"y": 1668.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_02_firesprite",
+					"x": 2170.0,
+					"y": 1562.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_03_firesprite",
+					"x": 2006.0,
+					"y": 1529.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_04_firesprite",
+					"x": 2236.0,
+					"y": 1580.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_05_firesprite",
+					"x": 2115.0,
+					"y": 1647.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_06_firesprite",
+					"x": 2091.0,
+					"y": 1596.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_07_firesprite",
+					"x": 2015.0,
+					"y": 1667.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_08_firebushmage",
+					"x": 2158.0,
+					"y": 1689.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_09_firebushmage",
+					"x": 1932.0,
+					"y": 1565.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_10_firebushmage",
+					"x": 2066.0,
+					"y": 1809.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_11_firebushmage",
+					"x": 1925.0,
+					"y": 1758.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_12_firebushmage",
+					"x": 2015.0,
+					"y": 1777.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_13_firebushmage",
+					"x": 2211.0,
+					"y": 1525.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/firesouth_14_firebushmage",
+					"x": 2144.0,
+					"y": 1490.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_01_icesprite",
+					"x": 1100.0,
+					"y": 1520.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_02_icesprite",
+					"x": 1034.0,
+					"y": 1762.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_03_icesprite",
+					"x": 866.0,
+					"y": 1632.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_04_icesprite",
+					"x": 880.0,
+					"y": 1783.0
+				},
+				{
+					"e": "icefiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_05_icefiresprite",
+					"x": 926.0,
+					"y": 1639.0
+				},
+				{
+					"e": "icefiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_06_icefiresprite",
+					"x": 1152.0,
+					"y": 1786.0
+				},
+				{
+					"e": "icefiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_07_icefiresprite",
+					"x": 1144.0,
+					"y": 1639.0
+				},
+				{
+					"e": "icebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_08_icebushmage",
+					"x": 985.0,
+					"y": 1579.0
+				},
+				{
+					"e": "icebushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_09_icebushmage",
+					"x": 961.0,
+					"y": 1526.0
+				},
+				{
+					"e": "icebushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_10_icebushsniper",
+					"x": 1139.0,
+					"y": 1703.0
+				},
+				{
+					"e": "icebushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_11_icebushsniper",
+					"x": 861.0,
+					"y": 1572.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/ice_12_iceslimelarge",
+					"x": 1082.0,
+					"y": 1791.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_01_lightsprite",
+					"x": 487.0,
+					"y": 481.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_02_lightsprite",
+					"x": 542.0,
+					"y": 555.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_03_lightsprite",
+					"x": 297.0,
+					"y": 379.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_04_lightsprite",
+					"x": 590.0,
+					"y": 447.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_05_lightfiresprite",
+					"x": 576.0,
+					"y": 250.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_06_lightfiresprite",
+					"x": 438.0,
+					"y": 299.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_07_lightfiresprite",
+					"x": 462.0,
+					"y": 419.0
+				},
+				{
+					"e": "lightbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_08_lightbushmage",
+					"x": 292.0,
+					"y": 288.0
+				},
+				{
+					"e": "lightbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_09_lightbushmage",
+					"x": 377.0,
+					"y": 545.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_10_lightbushsniper",
+					"x": 486.0,
+					"y": 255.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_11_lightbushsniper",
+					"x": 289.0,
+					"y": 529.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/light_12_lightslimelarge",
+					"x": 355.0,
+					"y": 287.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_01_earthsprite",
+					"x": 1626.0,
+					"y": 1686.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_02_earthsprite",
+					"x": 1589.0,
+					"y": 1627.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_03_earthsprite",
+					"x": 1576.0,
+					"y": 1757.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_04_earthfiresprite",
+					"x": 1385.0,
+					"y": 1531.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_05_earthfiresprite",
+					"x": 1517.0,
+					"y": 1711.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_06_bushmage",
+					"x": 1446.0,
+					"y": 1724.0
+				},
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_07_bushmage",
+					"x": 1578.0,
+					"y": 1487.0
+				},
+				{
+					"e": "electricsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_08_electricsprite",
+					"x": 1527.0,
+					"y": 1555.0
+				},
+				{
+					"e": "electricsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_09_electricsprite",
+					"x": 1438.0,
+					"y": 1485.0
+				},
+				{
+					"e": "bushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_10_bushsniper",
+					"x": 1525.0,
+					"y": 1612.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_11_earthbushsniper",
+					"x": 1376.0,
+					"y": 1621.0
+				},
+				{
+					"e": "poisonslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/oddities_12_poisonslime",
+					"x": 1465.0,
+					"y": 1623.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_01_watersprite",
+					"x": 1000.0,
+					"y": 493.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_02_watersprite",
+					"x": 867.0,
+					"y": 483.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_03_watersprite",
+					"x": 1087.0,
+					"y": 524.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_04_watersprite",
+					"x": 844.0,
+					"y": 556.0
+				},
+				{
+					"e": "waterfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_05_waterfiresprite",
+					"x": 861.0,
+					"y": 333.0
+				},
+				{
+					"e": "waterfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_06_waterfiresprite",
+					"x": 1027.0,
+					"y": 546.0
+				},
+				{
+					"e": "waterfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_07_waterfiresprite",
+					"x": 941.0,
+					"y": 548.0
+				},
+				{
+					"e": "waterbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_08_waterbushmage",
+					"x": 1006.0,
+					"y": 323.0
+				},
+				{
+					"e": "waterbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_09_waterbushmage",
+					"x": 933.0,
+					"y": 273.0
+				},
+				{
+					"e": "waterbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_10_waterbushsniper",
+					"x": 857.0,
+					"y": 263.0
+				},
+				{
+					"e": "waterbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_11_waterbushsniper",
+					"x": 1148.0,
+					"y": 404.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/water_12_waterslimelarge",
+					"x": 842.0,
+					"y": 390.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_01_windsprite",
+					"x": 461.0,
+					"y": 1721.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_02_windsprite",
+					"x": 574.0,
+					"y": 1582.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_03_windsprite",
+					"x": 404.0,
+					"y": 1533.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_04_windsprite",
+					"x": 335.0,
+					"y": 1496.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_05_windfiresprite",
+					"x": 384.0,
+					"y": 1694.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_06_windfiresprite",
+					"x": 289.0,
+					"y": 1721.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_07_windfiresprite",
+					"x": 550.0,
+					"y": 1649.0
+				},
+				{
+					"e": "windbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_08_windbushmage",
+					"x": 513.0,
+					"y": 1493.0
+				},
+				{
+					"e": "windbushmage",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_09_windbushmage",
+					"x": 600.0,
+					"y": 1480.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_10_windbushsniper",
+					"x": 528.0,
+					"y": 1783.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_11_windbushsniper",
+					"x": 351.0,
+					"y": 1750.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 250.0,
+					"o": "ysortworld/enemies/wind_12_windslimelarge",
+					"x": 398.0,
+					"y": 1603.0
+				}
+			]
+		},
+		"boss": {
+			"respawn_jitter": 0.0,
+			"respawn_seconds": 120.0,
+			"scene": "res://scene/boss.tscn",
+			"spawns": [
+				{
+					"e": "boss",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/bossenemy",
+					"x": -400.0,
+					"y": 100.0
+				}
+			]
+		},
+		"bossarena": {
+			"respawn_jitter": 0.0,
+			"respawn_seconds": 120.0,
+			"scene": "res://scene/bossarena.tscn",
+			"spawns": [
+				{
+					"e": "earthboss",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/earthboss",
+					"x": 0.0,
+					"y": -172.0
+				},
+				{
+					"e": "fireboss",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/fireboss",
+					"x": 175.0,
+					"y": -172.0
+				},
+				{
+					"e": "iceboss",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/iceboss",
+					"x": -175.0,
+					"y": -172.0
+				},
+				{
+					"e": "lightboss",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/lightboss",
+					"x": 0.0,
+					"y": -30.0
+				},
+				{
+					"e": "waterboss",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/waterboss",
+					"x": 115.0,
+					"y": -105.0
+				},
+				{
+					"e": "windboss",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/windboss",
+					"x": -115.0,
+					"y": -105.0
+				}
+			]
+		},
+		"easteregg": {
+			"respawn_jitter": 0.0,
+			"respawn_seconds": 0.0,
+			"scene": "res://scene/easteregg.tscn",
+			"spawns": []
+		},
+		"elusion": {
+			"respawn_jitter": 0.0,
+			"respawn_seconds": 0.0,
+			"scene": "res://scene/elusion.tscn",
+			"spawns": []
+		},
+		"field": {
+			"respawn_jitter": 6.0,
+			"respawn_seconds": 30.0,
+			"scene": "res://scene/field.tscn",
+			"spawns": [
+				{
+					"e": "bushmage",
+					"gated": false,
+					"leash": 1500.0,
+					"o": "bushmage",
+					"x": 1403.0,
+					"y": 891.0
+				},
+				{
+					"e": "bushsniper",
+					"gated": false,
+					"leash": 500.0,
+					"o": "bushsniper",
+					"x": 1295.0,
+					"y": 943.0
+				},
+				{
+					"e": "darkbushmage",
+					"gated": false,
+					"leash": 1500.0,
+					"o": "ysortworld/enemies/darkbushmage",
+					"x": 256.0,
+					"y": 847.0
+				},
+				{
+					"e": "darkbushsniper",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/darkbushsniper",
+					"x": 351.0,
+					"y": 930.0
+				},
+				{
+					"e": "darkfiresprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/darkfiresprite",
+					"x": 341.0,
+					"y": 781.0
+				},
+				{
+					"e": "darkslimelarge",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/darkslimelarge",
+					"x": 409.0,
+					"y": 761.0
+				},
+				{
+					"e": "darksprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/darksprite",
+					"x": 408.0,
+					"y": 857.0
+				},
+				{
+					"e": "earthbushsniper",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/earthbushsniper",
+					"x": 802.0,
+					"y": 35.0
+				},
+				{
+					"e": "earthfiresprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/earthfiresprite",
+					"x": 799.0,
+					"y": 103.0
+				},
+				{
+					"e": "earthslimelarge",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/earthslimelarge",
+					"x": 838.0,
+					"y": 146.0
+				},
+				{
+					"e": "earthsprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/earthsprite",
+					"x": 890.0,
+					"y": 130.0
+				},
+				{
+					"e": "electricsprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/electricsprite",
+					"x": 878.0,
+					"y": 64.0
+				},
+				{
+					"e": "firebushmage",
+					"gated": false,
+					"leash": 1500.0,
+					"o": "ysortworld/enemies/firebushmage",
+					"x": 1298.0,
+					"y": 63.0
+				},
+				{
+					"e": "firesprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/firesprite",
+					"x": 1305.0,
+					"y": 118.0
+				},
+				{
+					"e": "icebushmage",
+					"gated": false,
+					"leash": 1500.0,
+					"o": "ysortworld/enemies/icebushmage",
+					"x": 1334.0,
+					"y": 153.0
+				},
+				{
+					"e": "icebushsniper",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/icebushsniper",
+					"x": 1363.0,
+					"y": 116.0
+				},
+				{
+					"e": "icefiresprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/icefiresprite",
+					"x": 1380.0,
+					"y": 84.0
+				},
+				{
+					"e": "iceslimelarge",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/iceslimelarge",
+					"x": 1342.0,
+					"y": 72.0
+				},
+				{
+					"e": "icesprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/icesprite",
+					"x": 1368.0,
+					"y": 37.0
+				},
+				{
+					"e": "lightbushmage",
+					"gated": false,
+					"leash": 1500.0,
+					"o": "ysortworld/enemies/lightbushmage",
+					"x": 300.0,
+					"y": 71.0
+				},
+				{
+					"e": "lightbushsniper",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/lightbushsniper",
+					"x": 417.0,
+					"y": 141.0
+				},
+				{
+					"e": "lightfiresprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/lightfiresprite",
+					"x": 276.0,
+					"y": 151.0
+				},
+				{
+					"e": "lightslimelarge",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/lightslimelarge",
+					"x": 328.0,
+					"y": 153.0
+				},
+				{
+					"e": "lightsprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/lightsprite",
+					"x": 286.0,
+					"y": 230.0
+				},
+				{
+					"e": "poisonslimelarge",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/poisonslime",
+					"x": 361.0,
+					"y": 228.0
+				},
+				{
+					"e": "waterbushmage",
+					"gated": false,
+					"leash": 1500.0,
+					"o": "ysortworld/enemies/waterbushmage",
+					"x": 1307.0,
+					"y": 683.0
+				},
+				{
+					"e": "waterbushsniper",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/waterbushsniper",
+					"x": 1353.0,
+					"y": 659.0
+				},
+				{
+					"e": "waterfiresprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/waterfiresprite",
+					"x": 1398.0,
+					"y": 705.0
+				},
+				{
+					"e": "waterslimelarge",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/waterslimelarge",
+					"x": 1372.0,
+					"y": 748.0
+				},
+				{
+					"e": "watersprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/watersprite",
+					"x": 1310.0,
+					"y": 745.0
+				},
+				{
+					"e": "windbushmage",
+					"gated": false,
+					"leash": 1500.0,
+					"o": "ysortworld/enemies/windbushmage",
+					"x": 967.0,
+					"y": 870.0
+				},
+				{
+					"e": "windbushsniper",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/windbushsniper",
+					"x": 997.0,
+					"y": 831.0
+				},
+				{
+					"e": "windfiresprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/windfiresprite",
+					"x": 1037.0,
+					"y": 860.0
+				},
+				{
+					"e": "windslimelarge",
+					"gated": false,
+					"leash": 400.0,
+					"o": "ysortworld/enemies/windslimelarge",
+					"x": 1044.0,
+					"y": 908.0
+				},
+				{
+					"e": "windsprite",
+					"gated": false,
+					"leash": 500.0,
+					"o": "ysortworld/enemies/windsprite",
+					"x": 977.0,
+					"y": 920.0
+				}
+			]
+		}
+	},
 	"classes": [
 		{
 			"class_id": "healer",
@@ -41,6 +1443,78 @@
 			"stam_per_lvl": 5
 		}
 	],
+	"combat": {
+		"agility_cap": 2.0,
+		"agility_speed": 10,
+		"agility_step": 0.01,
+		"classes": {
+			"healer": {
+				"base": 3,
+				"cooldown": 0.1,
+				"speed": 140
+			},
+			"mage": {
+				"base": 9,
+				"cooldown": 0.45,
+				"speed": 165
+			},
+			"tank": {
+				"base": 4,
+				"cooldown": 0.25,
+				"dynamite_cooldown": 1.0,
+				"speed": 160
+			},
+			"warrior": {
+				"base": 24,
+				"cooldown": 1.0,
+				"speed": 200,
+				"swing_seconds": 0.4,
+				"wave_ratio": 0.75
+			}
+		},
+		"double_chance": 0.1,
+		"pet_share": 0.5,
+		"pet_speed_share": 0.5,
+		"pets": {
+			"petboss": {
+				"cooldown": 2.0,
+				"damage": 54
+			},
+			"petelectricsprite": {
+				"cooldown": 2.0,
+				"damage": 40
+			},
+			"petfiresprite": {
+				"cooldown": 2.0,
+				"damage": 44
+			},
+			"petmage": {
+				"cooldown": 2.0,
+				"damage": 36
+			},
+			"petpoisonslimelarge": {
+				"cooldown": 2.0,
+				"damage": 52
+			},
+			"petpoisonslimesmall": {
+				"cooldown": 2.0,
+				"damage": 46
+			},
+			"petsniper": {
+				"cooldown": 2.0,
+				"damage": 38
+			}
+		},
+		"physics_ticks": 80,
+		"puddle_damage": 5,
+		"skill_step": 0.01,
+		"sprint": 2.0,
+		"weapon_attacks": {
+			"doubleaxe": "SPINNING_AXE",
+			"dynamite": "DYNAMITE",
+			"meteorite": "METEOR"
+		}
+	},
 	"constants": {
 		"armour_half_point": 200.0,
 		"bank_capacity": 50,
@@ -118,6 +1592,43 @@
 		"regen_idle_threshold": 1.0,
 		"regen_minimum_per_second": 1.0,
 		"regen_percent_per_second": 0.0167,
+		"resist_cap": 50,
+		"resist_elements": [
+			1,
+			2,
+			3,
+			4,
+			5,
+			6,
+			7
+		],
+		"resist_letter": "r",
+		"resist_ranges": [
+			[
+				0,
+				0
+			],
+			[
+				2,
+				5
+			],
+			[
+				3,
+				7
+			],
+			[
+				4,
+				9
+			],
+			[
+				5,
+				11
+			],
+			[
+				6,
+				13
+			]
+		],
 		"revive_cost": 20,
 		"revive_gold_minimum": 100,
 		"revive_gold_rate": 0.8,
@@ -138,7 +1649,7 @@
 			"attack_xp_reward": 239,
 			"bag_drop_chance": 1.0,
 			"bonus_potion_chance": 0.5,
-			"display_name": "The Crowned",
+			"display_name": "The Crowned Beholder",
 			"element": 1,
 			"enemy_id": "boss",
 			"grants_rewards": true,
@@ -156,13 +1667,16 @@
 			"resource": "res://data/enemies/boss.tres",
 			"slot_fill_chance": 1.0,
 			"slots_are_gear": true,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.0,
 				0.25,
 				0.75
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 1858
 		},
 		{
@@ -187,13 +1701,16 @@
 			"resource": "res://data/enemies/bushmage.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 190
 		},
 		{
@@ -218,13 +1735,16 @@
 			"resource": "res://data/enemies/bushsniper.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 65
 		},
 		{
@@ -249,13 +1769,16 @@
 			"resource": "res://data/enemies/darkbushmage.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.03,
 				0.47,
 				0.5
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 580
 		},
 		{
@@ -280,13 +1803,16 @@
 			"resource": "res://data/enemies/darkbushsniper.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.03,
 				0.47,
 				0.5
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 580
 		},
 		{
@@ -311,13 +1837,16 @@
 			"resource": "res://data/enemies/darkfiresprite.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.03,
 				0.47,
 				0.5
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 490
 		},
 		{
@@ -342,13 +1871,16 @@
 			"resource": "res://data/enemies/darkslime.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.03,
 				0.47,
 				0.5
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 148
 		},
 		{
@@ -373,13 +1905,16 @@
 			"resource": "res://data/enemies/darkslimelarge.tres",
 			"slot_fill_chance": 0.15,
 			"slots_are_gear": false,
+			"split_count": 4,
 			"split_into": "darkslime",
+			"splits_into": "darkslime",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": true,
 			"xp_reward": 0
 		},
 		{
@@ -404,20 +1939,23 @@
 			"resource": "res://data/enemies/darksprite.tres",
 			"slot_fill_chance": 0.36,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.03,
 				0.47,
 				0.5
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 439
 		},
 		{
 			"attack_xp_reward": 128,
 			"bag_drop_chance": 1.0,
 			"bonus_potion_chance": 0.5,
-			"display_name": "Earth The Crowned",
+			"display_name": "Earth The Crowned Beholder",
 			"element": 5,
 			"enemy_id": "earthboss",
 			"grants_rewards": true,
@@ -435,7 +1973,9 @@
 			"resource": "res://data/enemies/earthboss.tres",
 			"slot_fill_chance": 1.0,
 			"slots_are_gear": true,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.0,
 				0.0,
@@ -443,6 +1983,7 @@
 				0.65
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 994
 		},
 		{
@@ -467,13 +2008,16 @@
 			"resource": "res://data/enemies/earthbushsniper.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 269
 		},
 		{
@@ -498,13 +2042,16 @@
 			"resource": "res://data/enemies/earthfiresprite.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 228
 		},
 		{
@@ -529,13 +2076,16 @@
 			"resource": "res://data/enemies/earthslime.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 63
 		},
 		{
@@ -560,13 +2110,16 @@
 			"resource": "res://data/enemies/earthslimelarge.tres",
 			"slot_fill_chance": 0.15,
 			"slots_are_gear": false,
+			"split_count": 4,
 			"split_into": "earthslime",
+			"splits_into": "earthslime",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": true,
 			"xp_reward": 0
 		},
 		{
@@ -591,13 +2144,16 @@
 			"resource": "res://data/enemies/earthsprite.tres",
 			"slot_fill_chance": 0.36,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 199
 		},
 		{
@@ -622,20 +2178,23 @@
 			"resource": "res://data/enemies/electricsprite.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 45
 		},
 		{
 			"attack_xp_reward": 159,
 			"bag_drop_chance": 1.0,
 			"bonus_potion_chance": 0.5,
-			"display_name": "Fire The Crowned",
+			"display_name": "Fire The Crowned Beholder",
 			"element": 6,
 			"enemy_id": "fireboss",
 			"grants_rewards": true,
@@ -653,13 +2212,16 @@
 			"resource": "res://data/enemies/fireboss.tres",
 			"slot_fill_chance": 1.0,
 			"slots_are_gear": true,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.0,
 				0.25,
 				0.75
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 1238
 		},
 		{
@@ -684,13 +2246,16 @@
 			"resource": "res://data/enemies/firebushmage.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 428
 		},
 		{
@@ -715,20 +2280,23 @@
 			"resource": "res://data/enemies/firesprite.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 256
 		},
 		{
 			"attack_xp_reward": 107,
 			"bag_drop_chance": 1.0,
 			"bonus_potion_chance": 0.5,
-			"display_name": "Ice The Crowned",
+			"display_name": "Ice The Crowned Beholder",
 			"element": 3,
 			"enemy_id": "iceboss",
 			"grants_rewards": true,
@@ -746,13 +2314,16 @@
 			"resource": "res://data/enemies/iceboss.tres",
 			"slot_fill_chance": 1.0,
 			"slots_are_gear": true,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.0,
 				0.35,
 				0.65
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 833
 		},
 		{
@@ -777,13 +2348,16 @@
 			"resource": "res://data/enemies/icebushmage.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 172
 		},
 		{
@@ -808,13 +2382,16 @@
 			"resource": "res://data/enemies/icebushsniper.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 172
 		},
 		{
@@ -839,13 +2416,16 @@
 			"resource": "res://data/enemies/icefiresprite.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 146
 		},
 		{
@@ -870,13 +2450,16 @@
 			"resource": "res://data/enemies/iceslime.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 44
 		},
 		{
@@ -901,13 +2484,16 @@
 			"resource": "res://data/enemies/iceslimelarge.tres",
 			"slot_fill_chance": 0.15,
 			"slots_are_gear": false,
+			"split_count": 4,
 			"split_into": "iceslime",
+			"splits_into": "iceslime",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": true,
 			"xp_reward": 0
 		},
 		{
@@ -932,20 +2518,23 @@
 			"resource": "res://data/enemies/icesprite.tres",
 			"slot_fill_chance": 0.36,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 125
 		},
 		{
 			"attack_xp_reward": 79,
 			"bag_drop_chance": 1.0,
 			"bonus_potion_chance": 0.5,
-			"display_name": "Light The Crowned",
+			"display_name": "Light The Crowned Beholder",
 			"element": 2,
 			"enemy_id": "lightboss",
 			"grants_rewards": true,
@@ -963,13 +2552,16 @@
 			"resource": "res://data/enemies/lightboss.tres",
 			"slot_fill_chance": 1.0,
 			"slots_are_gear": true,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.0,
 				0.35,
 				0.65
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 616
 		},
 		{
@@ -994,13 +2586,16 @@
 			"resource": "res://data/enemies/lightbushmage.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 106
 		},
 		{
@@ -1025,13 +2620,16 @@
 			"resource": "res://data/enemies/lightbushsniper.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 106
 		},
 		{
@@ -1056,13 +2654,16 @@
 			"resource": "res://data/enemies/lightfiresprite.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 89
 		},
 		{
@@ -1087,13 +2688,16 @@
 			"resource": "res://data/enemies/lightslime.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 27
 		},
 		{
@@ -1118,13 +2722,16 @@
 			"resource": "res://data/enemies/lightslimelarge.tres",
 			"slot_fill_chance": 0.15,
 			"slots_are_gear": false,
+			"split_count": 4,
 			"split_into": "lightslime",
+			"splits_into": "lightslime",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": true,
 			"xp_reward": 0
 		},
 		{
@@ -1149,13 +2756,16 @@
 			"resource": "res://data/enemies/lightsprite.tres",
 			"slot_fill_chance": 0.36,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 74
 		},
 		{
@@ -1180,13 +2790,16 @@
 			"resource": "res://data/enemies/poisonslimelarge.tres",
 			"slot_fill_chance": 0.15,
 			"slots_are_gear": false,
+			"split_count": 4,
 			"split_into": "",
+			"splits_into": "poisonslimesmall",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": true,
 			"xp_reward": 0
 		},
 		{
@@ -1211,20 +2824,23 @@
 			"resource": "res://data/enemies/poisonslimesmall.tres",
 			"slot_fill_chance": 0.15,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 25
 		},
 		{
 			"attack_xp_reward": 97,
 			"bag_drop_chance": 1.0,
 			"bonus_potion_chance": 0.5,
-			"display_name": "Water The Crowned",
+			"display_name": "Water The Crowned Beholder",
 			"element": 7,
 			"enemy_id": "waterboss",
 			"grants_rewards": true,
@@ -1242,13 +2858,16 @@
 			"resource": "res://data/enemies/waterboss.tres",
 			"slot_fill_chance": 1.0,
 			"slots_are_gear": true,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.0,
 				0.35,
 				0.65
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 756
 		},
 		{
@@ -1273,13 +2892,16 @@
 			"resource": "res://data/enemies/waterbushmage.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 157
 		},
 		{
@@ -1304,13 +2926,16 @@
 			"resource": "res://data/enemies/waterbushsniper.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 157
 		},
 		{
@@ -1335,13 +2960,16 @@
 			"resource": "res://data/enemies/waterfiresprite.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 132
 		},
 		{
@@ -1366,13 +2994,16 @@
 			"resource": "res://data/enemies/waterslime.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 40
 		},
 		{
@@ -1397,13 +3028,16 @@
 			"resource": "res://data/enemies/waterslimelarge.tres",
 			"slot_fill_chance": 0.15,
 			"slots_are_gear": false,
+			"split_count": 4,
 			"split_into": "waterslime",
+			"splits_into": "waterslime",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": true,
 			"xp_reward": 0
 		},
 		{
@@ -1428,20 +3062,23 @@
 			"resource": "res://data/enemies/watersprite.tres",
 			"slot_fill_chance": 0.36,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 112
 		},
 		{
 			"attack_xp_reward": 86,
 			"bag_drop_chance": 1.0,
 			"bonus_potion_chance": 0.5,
-			"display_name": "Wind The Crowned",
+			"display_name": "Wind The Crowned Beholder",
 			"element": 4,
 			"enemy_id": "windboss",
 			"grants_rewards": true,
@@ -1459,13 +3096,16 @@
 			"resource": "res://data/enemies/windboss.tres",
 			"slot_fill_chance": 1.0,
 			"slots_are_gear": true,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.0,
 				0.35,
 				0.65
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 672
 		},
 		{
@@ -1490,13 +3130,16 @@
 			"resource": "res://data/enemies/windbushmage.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 115
 		},
 		{
@@ -1521,13 +3164,16 @@
 			"resource": "res://data/enemies/windbushsniper.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 115
 		},
 		{
@@ -1552,13 +3198,16 @@
 			"resource": "res://data/enemies/windfiresprite.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 99
 		},
 		{
@@ -1583,13 +3232,16 @@
 			"resource": "res://data/enemies/windslime.tres",
 			"slot_fill_chance": 0.3,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 29
 		},
 		{
@@ -1614,13 +3266,16 @@
 			"resource": "res://data/enemies/windslimelarge.tres",
 			"slot_fill_chance": 0.15,
 			"slots_are_gear": false,
+			"split_count": 4,
 			"split_into": "windslime",
+			"splits_into": "windslime",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": true,
 			"xp_reward": 0
 		},
 		{
@@ -1645,17 +3300,20 @@
 			"resource": "res://data/enemies/windsprite.tres",
 			"slot_fill_chance": 0.36,
 			"slots_are_gear": false,
+			"split_count": 0,
 			"split_into": "",
+			"splits_into": "",
 			"tier_odds": [
 				0.15,
 				0.45,
 				0.4
 			],
 			"tier_up_chance": 0.0,
+			"twins": false,
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791185694,
+	"generated_at": 1791421911,
 	"items": [
 		{
 			"armor_value": 6,
