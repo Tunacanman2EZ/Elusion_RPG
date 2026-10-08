@@ -17765,6 +17765,15 @@ func _test_combat_bounds_match_the_game() -> void:
 	check("the Double Axe's top spin rate is the game's, so the books allow for it",
 		is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_spin_max_rate", -1.0)),
 			SpinningAxe.SPIN_MAX_RATE), classes.get("warrior", {}))
+	check("  and so is its bleed (0.14.0)",
+		is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_bleed_share", -1.0)), Bleed.BLEED_SHARE)
+		and is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_bleed_every", -1.0)), Bleed.BLEED_EVERY),
+		classes.get("warrior", {}))
+	var tank_consts: Dictionary = (load("res://src/characters/tank.gd") as GDScript).get_script_constant_map()
+	check("Dynamite's bundle is the game's, so the books allow for it (0.14.0)",
+		int((classes.get("tank", {}) as Dictionary).get("dynamite_bundle_every", -1)) == int(tank_consts.get("DYNAMITE_BUNDLE_EVERY", -2))
+		and int((classes.get("tank", {}) as Dictionary).get("dynamite_bundle_sticks", -1)) == int(tank_consts.get("DYNAMITE_BUNDLE_STICKS", -2)),
+		classes.get("tank", {}))
 	check("every weapon that brings its own attack is named, by its attack",
 		not attacks.is_empty() and attacks == combat.get("weapon_attacks", {}), [attacks, combat.get("weapon_attacks")])
 
@@ -17816,7 +17825,8 @@ func _test_combat_bounds_match_the_game() -> void:
 		"warrior": {"base": "base_melee_damage", "cooldown": "attack_lock_duration", "wave_ratio": "wave_damage_ratio"},
 		"mage": {"base": "damage_per_magic", "cooldown": "spell_cooldown"},
 		"healer": {"base": "damage_per_magic", "cooldown": "shot_cooldown"},
-		"tank": {"base": "aura_damage", "cooldown": "aura_tick", "dynamite_cooldown": "dynamite_cooldown"},
+		"tank": {"base": "aura_damage", "cooldown": "aura_tick", "dynamite_cooldown": "dynamite_cooldown",
+			"dynamite_stick_ticks": "dynamite_stick_ticks"},
 	}
 	var off: Array = []
 	for cls in reads:
@@ -21087,8 +21097,9 @@ func _test_character_select_has_a_way_out() -> void:
 #
 #   Meteorite (mage)    a meteor falls where you aim; one cast in ten, two
 #   Double Axe (warrior) thrown to a spot, spins there, attack calls it back
-#   Dynamite (tank)     a lit stick thrown where you aim, in place of the aura;
-#                       one throw in ten, two sticks spread apart
+#   Dynamite (tank)     a lit stick thrown where you aim, the ring lit while
+#                       you throw; one throw in ten two sticks spread apart,
+#                       every fifth a bundle of three (0.14.0)
 #
 # What can go wrong without a sound, and so is held here: an item that is not
 # in the catalogue the server reads (it could never be worn), an attack that
@@ -21270,8 +21281,23 @@ func _test_the_mythic_weapons() -> void:
 		meteor.rock.position)
 	check("  its shadow is already on the ground, and nobody has been hit",
 		meteor.shadow.visible and inside.taken.is_empty())
+	# THE FIRE VORTEX (0.14.0). The owner: "can you add a fire vortex around the
+	# meteo when it falls to really draw out that final fantasy effect".
+	var swirl: CPUParticles2D = meteor.get_node_or_null("swirl")
+	var whirl: CPUParticles2D = meteor.get_node_or_null("whirl")
+	check("  wrapped in its fire vortex: ribbons round its path, sparks round the stone, fire swirling on a glowing ground",
+		meteor.vortex_burning() and meteor.get_node_or_null("vortex") is Node2D
+		and whirl != null and whirl.position == meteor.rock.position
+		and meteor.get_node_or_null("floorglow") is Sprite2D and (meteor.get_node("floorglow") as Sprite2D).visible)
+	check("  the ground's ring of fire swirling in from past the hit toward the landing spot",
+		swirl != null and swirl.emission_sphere_radius < Meteor.HIT_RADIUS * Meteor.SWIRL_FROM
+		and swirl.emission_sphere_radius > Meteor.HIT_RADIUS * Meteor.SWIRL_TO, swirl.emission_sphere_radius if swirl else -1.0)
+	check("  the ribbons in the sky with the stone, over everything",
+		(meteor.get_node("vortex") as Node2D).z_index == meteor.rock.z_index)
 	meteor.advance(Meteor.FALL_SECONDS * 0.6)
 	check("it lands, and the enemy inside its ring takes the hit once", meteor.landed and inside.taken == [50], inside.taken)
+	check("  and the vortex goes out as it does - the blast takes over", not meteor.vortex_burning()
+		and not (meteor.get_node("floorglow") as Sprite2D).visible)
 	check("  the one outside the ring is not touched", outside.taken.is_empty(), outside.taken)
 	check("  the caster is paid the stalagmite's magic XP for each enemy it hit (two are inside)",
 		meteor.hit_count() == 2 and caster.magic_xp == Meteor.MAGIC_XP_ON_HIT * 2, [meteor.hit_count(), caster.magic_xp])
@@ -21357,6 +21383,8 @@ func _test_the_mythic_weapons() -> void:
 	var at_spot: CharacterBody2D = _weapon_dummy(arena, row_y + Vector2(160, 0))
 	var axe: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
 	axe.caster = hand
+	# The cuts alone here; the wounds they leave are counted below (BLEED).
+	axe.wounds = false
 	arena.add_child(axe)
 	axe.set_physics_process(false)
 	axe.throw_to(hand.global_position, hand.global_position + Vector2(150, 0))
@@ -21391,6 +21419,7 @@ func _test_the_mythic_weapons() -> void:
 	var ramp_spot: CharacterBody2D = _weapon_dummy(arena, row_y + Vector2(100, -60))
 	var ramp: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
 	ramp.caster = hand
+	ramp.wounds = false
 	arena.add_child(ramp)
 	ramp.set_physics_process(false)
 	ramp.throw_to(hand.global_position, ramp_spot.global_position)
@@ -21431,6 +21460,99 @@ func _test_the_mythic_weapons() -> void:
 	check("  and a new throw starts again at 1x", is_equal_approx(ramp.spin_rate(), 1.0), ramp.spin_rate())
 	ramp.queue_free()
 	ramp_spot.queue_free()
+
+	# THE WHIRLWIND (0.14.0). The owner: "we need to add a effect to double axe
+	# also to give it that feel". Its reach grows with the spin, on its own
+	# copy of the circle, and the wind is drawn.
+	var gust_at: Vector2 = row_y + Vector2(0, 150)
+	var rim: CharacterBody2D = _weapon_dummy(arena, gust_at + Vector2(SpinningAxe.HIT_RADIUS + 8.0, 0))
+	var gust: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+	gust.caster = hand
+	gust.wounds = false
+	arena.add_child(gust)
+	gust.set_physics_process(false)
+	var circle: CircleShape2D = (gust.get_node("hitshape") as CollisionShape2D).shape
+	var shared: CircleShape2D = ((load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate().get_node("hitshape") as CollisionShape2D).shape
+	check("each axe cuts with its own circle, not the one the scene shares", circle != shared
+		and is_equal_approx(circle.radius, SpinningAxe.HIT_RADIUS) and is_equal_approx(shared.radius, SpinningAxe.HIT_RADIUS),
+		[circle.radius, shared.radius])
+	gust.throw_to(gust_at, gust_at)
+	gust.advance(0.001)
+	for i in 4:
+		await get_tree().physics_frame
+	check("it lands with its own reach, and the wind is up", gust.state == SpinningAxe.State.SPINNING
+		and is_equal_approx(gust.reach(), SpinningAxe.HIT_RADIUS) and (gust.get_node("whirl") as CPUParticles2D).emitting,
+		gust.reach())
+	for i in 4:
+		gust.advance(SpinningAxe.TICK_SECONDS * 0.99)
+	check("  what stands just past that reach is not cut at 1x", rim.taken.is_empty(), rim.taken)
+	for i in roundi(SpinningAxe.SPIN_RAMP_SECONDS * 20.0):
+		gust.advance(0.05)
+	for i in 4:
+		await get_tree().physics_frame
+	rim.taken.clear()
+	gust.advance(SpinningAxe.TICK_SECONDS)
+	check("at the top of the spin its reach is REACH_AT_TOP times as far, on its circle",
+		is_equal_approx(gust.reach(), SpinningAxe.HIT_RADIUS * SpinningAxe.REACH_AT_TOP) and SpinningAxe.REACH_AT_TOP > 1.0
+		and is_equal_approx(circle.radius, gust.reach()), [gust.reach(), circle.radius])
+	check("  and cuts what stands there", not rim.taken.is_empty(), rim.taken)
+	check("  the scene's own circle is untouched", is_equal_approx(shared.radius, SpinningAxe.HIT_RADIUS), shared.radius)
+	check("  the dust is swept round the rim, faster with the spin",
+		is_equal_approx((gust.get_node("whirl") as CPUParticles2D).emission_sphere_radius, gust.reach())
+		and (gust.get_node("whirl") as CPUParticles2D).orbit_velocity_min >= 0.7 * SpinningAxe.SPIN_MAX_RATE - 0.01)
+	check("  and the streaks are drawn by the axe itself, while it spins",
+		_func_body(_code_src("res://src/projectiles/spinningaxe.gd"), "func _draw(").contains("draw_arc("))
+	gust.recall()
+	check("called back, it is back to its own reach and the wind drops",
+		is_equal_approx(gust.reach(), SpinningAxe.HIT_RADIUS) and is_equal_approx(circle.radius, SpinningAxe.HIT_RADIUS)
+		and not (gust.get_node("whirl") as CPUParticles2D).emitting, [gust.reach(), circle.radius])
+	gust.queue_free()
+	rim.queue_free()
+
+	# THE BLEED (0.14.0). Every cut opens a wound: BLEED_SHARE of a swing every
+	# BLEED_EVERY for BLEED_SECONDS after the last cut, one wound per enemy.
+	var cut_at: Vector2 = row_y + Vector2(0, 300)
+	var bled: CharacterBody2D = _weapon_dummy(arena, cut_at)
+	var slicer: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+	slicer.caster = hand
+	arena.add_child(slicer)
+	slicer.set_physics_process(false)
+	slicer.throw_to(cut_at, cut_at)
+	slicer.advance(0.001)
+	for i in 4:
+		await get_tree().physics_frame
+	slicer.advance(SpinningAxe.TICK_SECONDS)
+	var wounds: Array = bled.get_children().filter(func(n: Node) -> bool: return n is Bleed)
+	for w in wounds:
+		(w as Bleed).set_physics_process(false)
+	check("a cut opens a wound on what it cut, a quarter of the swing it was part of",
+		wounds.size() == 1 and (wounds[0] as Bleed).bite == roundi(40 * Bleed.BLEED_SHARE)
+		and (wounds[0] as Bleed).bleeding(), [wounds.size(), bled.taken])
+	check("  with red drops falling from it", wounds.size() == 1
+		and (wounds[0] as Bleed).get_node_or_null("drops") is CPUParticles2D
+		and ((wounds[0] as Bleed).get_node("drops") as CPUParticles2D).emitting)
+	slicer.advance(SpinningAxe.TICK_SECONDS)
+	slicer.advance(SpinningAxe.TICK_SECONDS)
+	var still: Array = bled.get_children().filter(func(n: Node) -> bool: return n is Bleed)
+	check("  more cuts keep the one wound open rather than opening another", still.size() == 1, still.size())
+	if wounds.size() == 1:
+		var wound: Bleed = wounds[0]
+		slicer.queue_free()
+		var cuts: int = bled.taken.size()
+		wound.advance(Bleed.BLEED_EVERY)
+		check("every BLEED_EVERY seconds it bleeds the enemy for its bite",
+			bled.taken.size() == cuts + 1 and bled.taken[-1] == wound.bite, bled.taken)
+		wound.advance(Bleed.BLEED_SECONDS * 3.0)
+		check("  for BLEED_SECONDS after the last cut, then it closes",
+			not wound.bleeding() and wound.bites_dealt == roundi(Bleed.BLEED_SECONDS / Bleed.BLEED_EVERY),
+			[wound.bites_dealt, bled.taken])
+		check("  and the drops stop", not (wound.get_node("drops") as CPUParticles2D).emitting)
+		var reopened: Bleed = Bleed.open(bled, 40, hand)
+		check("a cut after it has closed opens a new one", reopened != null and reopened != wound and reopened.bleeding())
+		if reopened != null:
+			reopened.set_physics_process(false)
+			reopened.queue_free()
+	bled.queue_free()
 
 	var far_throw: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
 	far_throw.caster = hand
@@ -21503,7 +21625,7 @@ func _test_the_mythic_weapons() -> void:
 	# --- THE DYNAMITE --------------------------------------------------------
 	var land := o + Vector2(0, 1100)
 	var near_blast: CharacterBody2D = _weapon_dummy(arena, land + Vector2(15, 0))
-	var past_blast: CharacterBody2D = _weapon_dummy(arena, land + Vector2(50, 0))
+	var past_blast: CharacterBody2D = _weapon_dummy(arena, land + Vector2(Dynamite.HIT_RADIUS + 10.0, 0))
 	var stick: Dynamite = (load("res://scene/projectiles/dynamite.tscn") as PackedScene).instantiate()
 	stick.explosion_damage = 30
 	arena.add_child(stick)
@@ -21525,6 +21647,10 @@ func _test_the_mythic_weapons() -> void:
 	check("then it goes off: the enemy inside the blast is hit once", stick.exploded and near_blast.taken == [30], near_blast.taken)
 	check("  the one outside it is not", past_blast.taken.is_empty(), past_blast.taken)
 	check("  and the scorch is where it went off", _marks_at(arena, land) == 1)
+	check("the blast is the meteor's size since 0.14.0, and its shape matches its ring",
+		is_equal_approx(Dynamite.HIT_RADIUS, Meteor.HIT_RADIUS) and Dynamite.CHAIN_RADIUS >= Dynamite.HIT_RADIUS * 1.5 - 0.01
+		and is_equal_approx(((load("res://scene/projectiles/dynamite.tscn") as PackedScene).instantiate().get_node("hitshape").shape as CircleShape2D).radius,
+			Dynamite.HIT_RADIUS))
 
 	# THE SMOULDER (0.13.0). The owner: "we need some sort of bonus damage for
 	# tnt like a field effect". The scorch keeps biting for FIELD_SECONDS.
@@ -21611,21 +21737,46 @@ func _test_the_mythic_weapons() -> void:
 	tank.level = 22
 	tank.spawn_parent_override = arena
 	tank.equipped = {"weapon": "dynamite"}
+	tank.refresh_gear_stats()
 	tank.mana = 100
 	tank.position = o + Vector2(0, 1400)
 	tank.double_cast_chance = 0.0
+	check("the ring is out until the first throw", not tank.aura_active)
 	var sticks: Array = tank.throw_dynamite(tank.position + Vector2(1000, 0))
 	check("the tank throws one stick, as far as a throw goes, for its mana",
 		sticks.size() == 1 and sticks[0].landing_spot() == tank.position + Vector2(tank.DYNAMITE_MAX_THROW, 0)
 		and tank.mana == 100 - tank.dynamite_mana_cost,
 		[sticks.size(), tank.mana])
-	check("  worth the four aura ticks it replaces, with the Dynamite's damage in them",
-		sticks.size() == 1 and sticks[0].explosion_damage >= roundi(tank.aura_damage * tank.get_damage_multiplier() * 4.0),
+	check("  worth dynamite_stick_ticks ring ticks, with the Dynamite's damage in them - more than one tick",
+		sticks.size() == 1 and tank.dynamite_stick_ticks > 1.0
+		and sticks[0].explosion_damage >= roundi(tank.aura_damage * tank.get_damage_multiplier() * tank.dynamite_stick_ticks),
 		sticks[0].explosion_damage if sticks.size() == 1 else -1)
 	check("  and not again until the cooldown is over",
 		tank.throw_dynamite(tank.position + Vector2(50, 0)).is_empty() and tank.mana == 100 - tank.dynamite_mana_cost)
+	check("faster than a throw a second (0.14.0), and priced at the ring's own mana a second",
+		tank.dynamite_cooldown < 1.0
+		and is_equal_approx(tank.dynamite_mana_cost / tank.dynamite_cooldown, tank.mana_drain_cost / tank.mana_drain_tick),
+		[tank.dynamite_cooldown, tank.dynamite_mana_cost])
+
+	# THE RING (0.14.0). The owner: "use tank ring". A throw lights it; it
+	# burns no mana of its own, and goes out DYNAMITE_RING_LINGER after the
+	# last throw.
+	check("the throw lit the ring, the Dynamite's way", tank.aura_active and tank.ring_by_dynamite)
+	var mana_lit: int = tank.mana
+	tank._tick_aura(tank.DYNAMITE_RING_LINGER * 0.5)
+	check("  it burns no mana of its own - the throws pay for it",
+		tank.aura_active and tank.mana == mana_lit, tank.mana)
 	tank._dynamite_cooldown_left = 0.0
+	tank.throw_dynamite(tank.position + Vector2(60, 0))
+	tank._tick_aura(tank.DYNAMITE_RING_LINGER * 0.75)
+	check("  each throw keeps it lit", tank.aura_active and tank.ring_by_dynamite)
+	tank._tick_aura(tank.DYNAMITE_RING_LINGER * 0.5)
+	check("  and it goes out a little after the last one", not tank.aura_active and not tank.ring_by_dynamite)
+
+	tank._dynamite_cooldown_left = 0.0
+	tank.mana = 100
 	tank.double_cast_chance = 1.0
+	tank._dynamite_throws = 1
 	var pair: Array = tank.throw_dynamite(tank.position + Vector2(100, 0))
 	var spots: Array = pair.map(func(d): return d.landing_spot() - tank.position)
 	check("a double throw's two sticks are close enough to set each other off", 2.0 * tank.DYNAMITE_SPREAD <= Dynamite.CHAIN_RADIUS,
@@ -21634,11 +21785,60 @@ func _test_the_mythic_weapons() -> void:
 		pair.size() == 2 and spots.has(Vector2(100, tank.DYNAMITE_SPREAD)) and spots.has(Vector2(100, -tank.DYNAMITE_SPREAD)),
 		spots)
 	check("  for one throw's mana, the second a moment behind the first",
-		tank.mana == 100 - 2 * tank.dynamite_mana_cost and pair.size() == 2
+		tank.mana == 100 - tank.dynamite_mana_cost and pair.size() == 2
 		and pair[0].delay == 0.0 and is_equal_approx(pair[1].delay, tank.DYNAMITE_SECOND_DELAY))
-	tank.aura_active = true
+
+	# THE BUNDLE (0.14.0): every fifth throw is three sticks in a triangle,
+	# close enough that the first sets off the rest. The owner: "i feel like 1
+	# by its self is not enough to be impressive".
+	tank._dynamite_cooldown_left = 0.0
+	tank._dynamite_throws = tank.DYNAMITE_BUNDLE_EVERY - 1
+	check("the tank knows a bundle is next", tank.is_bundle_next())
+	var bundle_aim: Vector2 = tank.position + Vector2(0, 120)
+	var bundle: Array = tank.throw_dynamite(bundle_aim)
+	for d in bundle:
+		(d as Dynamite).set_physics_process(false)
+	var bundle_spots: Array = bundle.map(func(d): return (d as Dynamite).landing_spot())
+	check("every DYNAMITE_BUNDLE_EVERY-th throw is a bundle of DYNAMITE_BUNDLE_STICKS, round the aim - and no double on top",
+		bundle.size() == tank.DYNAMITE_BUNDLE_STICKS and tank.DYNAMITE_BUNDLE_STICKS == 3
+		and bundle_spots.all(func(p: Vector2) -> bool: return absf(p.distance_to(bundle_aim) - tank.DYNAMITE_BUNDLE_SPREAD) < 0.01),
+		bundle_spots)
+	check("  each a beat behind the last, for one throw's mana",
+		bundle.size() == 3 and bundle[0].delay == 0.0 and is_equal_approx(bundle[1].delay, tank.DYNAMITE_SECOND_DELAY)
+		and is_equal_approx(bundle[2].delay, tank.DYNAMITE_SECOND_DELAY * 2.0) and tank.mana == 100 - 2 * tank.dynamite_mana_cost)
+	var middle: CharacterBody2D = _weapon_dummy(arena, bundle_aim)
+	for d in bundle:
+		(d as Dynamite).advance((d as Dynamite).delay + Dynamite.FLIGHT_SECONDS + 0.01)
+	for i in 4:
+		await get_tree().physics_frame
+	check("  all three land lit", bundle.all(func(d) -> bool: return (d as Dynamite).state == Dynamite.State.FUSE))
+	(bundle[0] as Dynamite).explode()
+	for d in bundle.slice(1):
+		(d as Dynamite).advance(Dynamite.CHAIN_DELAY + 0.01)
+	var want: Array = [bundle[0].explosion_damage,
+		roundi(bundle[1].explosion_damage * (1.0 + Dynamite.CHAIN_BONUS)), roundi(bundle[2].explosion_damage * (1.0 + Dynamite.CHAIN_BONUS))]
+	check("  the first sets off the other two, and what stands in the middle is hit by all three, two of them chained",
+		middle.taken == want, [middle.taken, want])
+	middle.queue_free()
+	check("  and the count starts again", not tank.is_bundle_next() and tank._dynamite_throws % tank.DYNAMITE_BUNDLE_EVERY == 0)
+
+	# THE GEAR AND THE RING.
+	tank._deactivate_aura()
+	tank.equipped = {}
 	tank.refresh_gear_stats()
-	check("dynamite on while the aura burns puts the aura out", not tank.aura_active)
+	tank._activate_aura()
+	check("without Dynamite the aura key lights the ring as ever, paid by the second",
+		tank.aura_active and not tank.ring_by_dynamite)
+	tank.equipped = {"weapon": "dynamite"}
+	tank.refresh_gear_stats()
+	check("Dynamite put on while that ring burns puts it out - attack no longer reaches it", not tank.aura_active)
+	tank._dynamite_cooldown_left = 0.0
+	tank.throw_dynamite(tank.position + Vector2(40, 0))
+	check("  the next throw lights it the Dynamite's way", tank.aura_active and tank.ring_by_dynamite)
+	tank.equipped = {}
+	tank.refresh_gear_stats()
+	check("taken off, the ring its throws lit goes out - nothing would be paying for it",
+		not tank.aura_active and not tank.ring_by_dynamite and tank._dynamite_throws == 0)
 	check("attack throws dynamite instead of toggling the aura when it is worn",
 		_func_body(_code_src("res://src/characters/tank.gd"), "func attack_action(").contains(
 			"if equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:\n\t\tthrow_dynamite("))

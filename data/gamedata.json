@@ -1463,13 +1463,18 @@
 			"tank": {
 				"base": 4,
 				"cooldown": 0.25,
+				"dynamite_bundle_every": 5,
+				"dynamite_bundle_sticks": 3,
 				"dynamite_chain_bonus": 0.25,
-				"dynamite_cooldown": 1.0,
+				"dynamite_cooldown": 0.75,
 				"dynamite_field_every": 0.5,
 				"dynamite_field_share": 0.15,
+				"dynamite_stick_ticks": 1.5,
 				"speed": 160
 			},
 			"warrior": {
+				"axe_bleed_every": 0.5,
+				"axe_bleed_share": 0.25,
 				"axe_spin_max_rate": 2.0,
 				"base": 24,
 				"cooldown": 1.0,
@@ -3319,7 +3324,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791436517,
+	"generated_at": 1791438993,
 	"items": [
 		{
 			"armor_value": 6,

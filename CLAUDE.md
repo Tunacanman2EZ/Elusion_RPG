@@ -2370,7 +2370,10 @@ product versions are it with `.0` after (Windows wants four numbers).
   panel's Server tab can make old versions update, 0.11.9 the mythic weapons
   hit 1.4 times ember and the Double Axe spins up when left, 0.12.0 the
   Meteorite lands twice as wide and leaves a burning crater, and Dynamite
-  chains, 0.13.0 a Dynamite blast leaves its scorch smouldering.
+  chains, 0.13.0 a Dynamite blast leaves its scorch smouldering, 0.14.0
+  Dynamite blasts as wide as a meteor, throws faster with the ring lit and
+  bundles every fifth throw, the Double Axe whirls wider and its cuts bleed,
+  and the Meteorite falls in a fire vortex.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3832,6 +3835,70 @@ effect".
 - Tests: the scorch is left as wide as the blast, smoke and sparks, a bite of
   FIELD_SHARE, not outside it, its own mark, FIELD_SECONDS of bites then out;
   and the exported numbers.
+
+### Bigger Dynamite, a bleeding axe and the meteor's vortex (0.14.0)
+
+The owner, 8 Oct: "dynamite needs a bigger blast radios need to be able to
+throw faster and use tank ring i feel like 1 by its self is not enough to be
+impressive"; of all three, "each weapon is unique but i want them to be
+powerful but balanced i mean the odds of getting one might aswell pay for";
+"we need to add a effect to double axe also to give it that feel mind you
+there will be much more difficult enemies later in the game so they may feel
+over powered now but i expect them to prove their worth"; and "can you add a
+fire vortex around the meteo when it falls to really draw out that final
+fantasy effect".
+
+- **Dynamite** (`tank.gd`, DYNAMITE SETTINGS, which has the before and after):
+  the blast is the meteor's 44 (`Dynamite.HIT_RADIUS`, was 28, and
+  `dynamite.tscn`'s shape), the chain reaches 66 (`CHAIN_RADIUS`, was 42) and
+  the smoulder follows the blast. A throw every 0.75 s (`dynamite_cooldown`,
+  was 1.0) for 3 mana (was 4): the ring's own 4 a second. **The ring burns
+  while it throws**: a throw lights it (`_light_ring_by_dynamite()`,
+  `ring_by_dynamite`), it drains no mana of its own, and it goes out
+  `DYNAMITE_RING_LINGER` (3 s) after the last throw. Putting Dynamite on puts
+  out a ring the aura key lit (attack cannot reach it to turn it off);
+  taking Dynamite off puts out one its throws lit. A stick is
+  `dynamite_stick_ticks` (1.5) ring ticks, where it was the cooldown's worth
+  (4) - smaller, because there are more of them and the ring burns too.
+  **Every fifth throw is a bundle**: `DYNAMITE_BUNDLE_STICKS` (3) sticks in a
+  triangle `DYNAMITE_BUNDLE_SPREAD` (14) round the aim, each a beat behind the
+  last; the first sets off the other two, so the middle takes all three, two
+  chained. A bundle does not also roll a double. The double's spread went to
+  28 for the bigger blast.
+- **What it comes to**, one boss at level 22 in Ember gear by the Boss Sim's
+  model: an Ember maul tank ~165 a second, Dynamite in 0.13.0 ~338, now ~440
+  (2.7x), the ring about half of it and reaching every enemy round the tank.
+- **The Double Axe** (`spinningaxe.gd`, WHIRLWIND AND BLEED): its reach grows
+  with the spin, from `HIT_RADIUS` (20) to `REACH_AT_TOP` (1.6) times that at
+  full speed, on **its own copy** of the scene's CircleShape2D (the scene's is
+  shared by every axe); wind streaks are drawn round it (`_draw`) and dust is
+  swept round the rim ("whirl", orbiting particles), both faster and brighter
+  as it spins up, and gone when it is called back. **Every cut opens a wound**
+  (`src/projectiles/bleed.gd`, `Bleed`, a child of the enemy): `BLEED_SHARE`
+  (a quarter) of a swing every `BLEED_EVERY` (0.5) for `BLEED_SECONDS` (2)
+  after the last cut, red drops falling, one wound per enemy (meta
+  `&"bleed_wound"`; a fresh cut keeps it open at the new size, and it bites
+  on its own clock). One boss at level 22: ~486 at 1x and ~829 at full spin
+  against an Ember sword's ~428 (1.9x). `SpinningAxe.wounds` is the suite's
+  switch for counting cuts alone.
+- **The Meteorite** (`meteor.gd`, THE FIRE VORTEX): picture only. Two ribbons
+  of fire corkscrew round the path behind the stone (`_sky`, a Node2D in the
+  sky layer drawing through `_draw_sky()`), sparks orbit the stone ("whirl"),
+  and on the ground a ring of fire swirls in from `SWIRL_FROM` to `SWIRL_TO`
+  of the hit with flames twisting up off it ("swirl"), tighter and brighter as
+  it falls; all of it goes out on impact. `vortex_burning()` is for the tests.
+- **The books** (the API's `combat_bounds()`): the warrior's row carries
+  `axe_bleed_share` / `axe_bleed_every`, added to the axe's rate; the tank's
+  `dynamite_stick_ticks` and `dynamite_bundle_every` / `_sticks`, bounded at
+  three sticks every throw on top of the ring. **The API's gamedata.json goes
+  out first.** The Boss Sim models all of it and its test holds the numbers.
+- Tests: the mythic section (the vortex up while it falls and out on impact;
+  an axe's own circle, its reach at 1x and at the top, what stands past it
+  cut only at the top, the wind, a recall; a wound a quarter of a swing, the
+  drops, one wound however many cuts, its bites, closing, a new one after;
+  the blast the meteor's size; the ring lit by a throw, no mana, kept lit,
+  out after; the bundle round the aim, its delays and price, all three on
+  the middle; the gear and the ring) and the books' checks.
 
 ### Inventory, bank and shop on day 1
 

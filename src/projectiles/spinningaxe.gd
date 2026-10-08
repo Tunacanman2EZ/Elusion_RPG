@@ -5,7 +5,7 @@
 #
 #   OUT        thrown from the warrior to the spot aimed at, cutting every
 #              enemy it passes on the way, once each
-#   SPINNING   turning in place, cutting everything within HIT_RADIUS every
+#   SPINNING   turning in place, cutting everything within its reach every
 #              TICK_SECONDS - faster the longer it is left (SPIN UP, below) -
 #              for as long as the warrior leaves it there
 #   RETURNING  attack again and it flies back to the warrior's hand, cutting
@@ -40,6 +40,20 @@
 # allow for the top rate: the exporter writes SPIN_MAX_RATE into gamedata.json
 # as the warrior's axe_spin_max_rate, and gamedata.combat_bounds() reads it.
 #
+# THE WHIRLWIND AND THE BLEED (0.14.0). The owner: "we need to add a effect
+# to double axe also to give it that feel", after the Meteorite's burning
+# crater and Dynamite's smoulder, and of all three, "powerful but balanced".
+#   - WHIRLWIND: its reach grows with its spin, from HIT_RADIUS when it lands
+#     to REACH_AT_TOP times that at SPIN_MAX_RATE, and the wind it makes is
+#     drawn - streaks circling it and dust swept round with them, fainter and
+#     slower at 1x, thick and fast at the top. A pack around it is cut by
+#     more of the axe the longer it is left. What it reaches a second on any
+#     one enemy is unchanged; the area is the upgrade.
+#   - BLEED: every cut - out, spinning or home - opens a wound on what it cut
+#     (bleed.gd): a quarter of a swing every half second for two seconds after
+#     the last cut, one wound per enemy, red drops falling from it. The books
+#     allow for it: axe_bleed_share and axe_bleed_every in gamedata.json.
+#
 # THE TIMELINE IS ADVANCED BY advance(), which _physics_process calls with the
 # frame's delta; a test calls it directly.
 class_name SpinningAxe
@@ -72,8 +86,12 @@ const TICK_SECONDS := 0.25
 const SPIN_MAX_RATE := 2.0
 const SPIN_RAMP_SECONDS := 4.0
 
-# MATCHED to the CollisionShape2D in spinningaxe.tscn.
+# MATCHED to the CollisionShape2D in spinningaxe.tscn: the reach as it flies
+# and as it lands. Left spinning, the reach grows with the rate to
+# REACH_AT_TOP times this (WHIRLWIND, above) - on this axe's own copy of the
+# shape, never the scene's, which every axe shares.
 const HIT_RADIUS := 20.0
+const REACH_AT_TOP := 1.6
 
 # The axe flies at about waist height: its picture is drawn this far above the
 # node, and the node - with its shadow - is on the ground. That is what lets it
@@ -91,6 +109,14 @@ var _tick: float = 0.0
 # Seconds spent spinning since this throw landed; spin_rate() reads it.
 var _spun: float = 0.0
 var hits_dealt: int = 0
+# Cuts open wounds (bleed.gd). The suite turns it off to count the cuts alone.
+var wounds: bool = true
+
+# The whirlwind: this axe's own circle, the angle the wind has turned through,
+# and the dust swept round with it.
+var _circle: CircleShape2D = null
+var _swirl: float = 0.0
+var _whirl: CPUParticles2D = null
 
 @onready var spin: AnimatedSprite2D = $spin
 @onready var shadow: Sprite2D = $shadow
@@ -101,6 +127,41 @@ func _ready() -> void:
 	spin.play("spin")
 	shadow.texture = Blast.shadow_texture(6, 3)
 	shadow.modulate.a = 0.7
+	# ITS OWN CIRCLE. The scene's CircleShape2D is one resource every axe
+	# shares; growing that one would grow every warrior's axe at once.
+	var hitshape: CollisionShape2D = get_node_or_null("hitshape")
+	if hitshape != null and hitshape.shape is CircleShape2D:
+		_circle = (hitshape.shape as CircleShape2D).duplicate()
+		_circle.radius = HIT_RADIUS
+		hitshape.shape = _circle
+	_build_whirl()
+
+
+func _build_whirl() -> void:
+	# Dust on the rim of the reach, swept round it. Squares, whole pixels.
+	_whirl = CPUParticles2D.new()
+	_whirl.name = "whirl"
+	_whirl.amount = 28
+	_whirl.lifetime = 0.6
+	_whirl.emitting = false
+	_whirl.local_coords = true
+	_whirl.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE_SURFACE
+	_whirl.emission_sphere_radius = HIT_RADIUS
+	_whirl.gravity = Vector2.ZERO
+	_whirl.direction = Vector2(0, -1)
+	_whirl.spread = 180.0
+	_whirl.initial_velocity_min = 0.0
+	_whirl.initial_velocity_max = 4.0
+	_whirl.orbit_velocity_min = 0.7
+	_whirl.orbit_velocity_max = 1.1
+	_whirl.scale_amount_min = 1.5
+	_whirl.scale_amount_max = 2.5
+	_whirl.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.3, 1.0])
+	ramp.colors = PackedColorArray([Color(0.95, 0.95, 0.9, 0.0), Color(0.85, 0.85, 0.8, 0.8), Color(0.7, 0.7, 0.68, 0.0)])
+	_whirl.color_ramp = ramp
+	add_child(_whirl)
 
 
 func _physics_process(delta: float) -> void:
@@ -122,14 +183,18 @@ func advance(delta: float) -> void:
 				state = State.SPINNING
 				_tick = 0.0
 				_spun = 0.0
+				if _whirl != null:
+					_whirl.emitting = true
 		State.SPINNING:
 			# The rate for this step is the rate it had at the start of it,
 			# so the first tick still lands TICK_SECONDS after it stops.
 			var rate: float = spin_rate()
 			_spun += delta
 			_tick += delta * rate
+			_swirl = fmod(_swirl + delta * TAU * 1.2 * rate, TAU * 8.0)
 			if spin != null:
 				spin.speed_scale = rate
+			_wind_up()
 			while _tick >= TICK_SECONDS:
 				_tick -= TICK_SECONDS
 				_cut_everything_near()
@@ -154,14 +219,71 @@ func recall() -> void:
 	_passed.clear()
 	if spin != null:
 		spin.speed_scale = 1.0
+	_calm()
 
 
 func spin_rate() -> float:
 	"""How fast it is spinning: 1 when it lands, climbing evenly to
 	SPIN_MAX_RATE over SPIN_RAMP_SECONDS, then holding there."""
+	return 1.0 + (SPIN_MAX_RATE - 1.0) * _wound_up()
+
+
+func reach() -> float:
+	"""How far it cuts: HIT_RADIUS flying and as it lands, growing with the
+	spin to HIT_RADIUS * REACH_AT_TOP (WHIRLWIND)."""
+	if state != State.SPINNING:
+		return HIT_RADIUS
+	return HIT_RADIUS * (1.0 + (REACH_AT_TOP - 1.0) * _wound_up())
+
+
+func _wound_up() -> float:
+	# How far up the spin it is: 0 when it lands, 1 at the top.
 	if SPIN_RAMP_SECONDS <= 0.0:
-		return SPIN_MAX_RATE
-	return 1.0 + (SPIN_MAX_RATE - 1.0) * clampf(_spun / SPIN_RAMP_SECONDS, 0.0, 1.0)
+		return 1.0
+	return clampf(_spun / SPIN_RAMP_SECONDS, 0.0, 1.0)
+
+
+func _wind_up() -> void:
+	# The whirlwind keeps up with the spin: the circle that cuts, the dust on
+	# its rim and the streaks drawn round it.
+	var r: float = reach()
+	if _circle != null:
+		_circle.radius = r
+	if _whirl != null:
+		var rate: float = spin_rate()
+		_whirl.emission_sphere_radius = r
+		_whirl.orbit_velocity_min = 0.7 * rate
+		_whirl.orbit_velocity_max = 1.1 * rate
+		_whirl.modulate.a = lerpf(0.4, 1.0, _wound_up())
+	queue_redraw()
+
+
+func _calm() -> void:
+	# Out of the spin - flying home, or thrown again: back to its own reach.
+	if _circle != null:
+		_circle.radius = HIT_RADIUS
+	if _whirl != null:
+		_whirl.emitting = false
+	queue_redraw()
+
+
+func _draw() -> void:
+	# The wind, while it spins: four streaks on the rim of the reach and four
+	# inside them turning faster, fainter and shorter at 1x, brighter and
+	# longer at the top.
+	if state != State.SPINNING:
+		return
+	var up: float = _wound_up()
+	var r: float = reach()
+	var a: float = lerpf(0.2, 0.6, up)
+	var length: float = lerpf(0.5, 1.1, up)
+	for ring in 2:
+		var radius: float = r if ring == 0 else r * 0.62
+		var turn: float = _swirl * (1.0 + 0.5 * ring) + 0.5 * ring
+		var colour := Color(0.92, 0.95, 1.0, a if ring == 0 else a * 0.7)
+		for i in 4:
+			var from: float = turn + TAU * i / 4.0
+			draw_arc(Vector2.ZERO, radius, from, from + length, 12, colour, 2.0 if ring == 0 else 1.0, false)
 
 
 func throw_to(from: Vector2, aimed_at: Vector2) -> void:
@@ -175,6 +297,7 @@ func throw_to(from: Vector2, aimed_at: Vector2) -> void:
 	state = State.OUT
 	_passed.clear()
 	_spun = 0.0
+	_calm()
 
 
 func _fly_toward(where: Vector2, step: float) -> void:
@@ -232,21 +355,27 @@ func _cut_what_it_passes() -> void:
 		if _passed.has(id):
 			continue
 		_passed[id] = true
-		_cut(enemy, _swing_damage())
+		var swing: int = _swing_damage()
+		_cut(enemy, swing, swing)
 
 
 func _cut_everything_near() -> void:
-	var swing: float = _swing_seconds()
-	var damage: int = maxi(1, roundi(float(_swing_damage()) * TICK_SECONDS / swing))
+	var swing_seconds: float = _swing_seconds()
+	var swing: int = _swing_damage()
+	var damage: int = maxi(1, roundi(float(swing) * TICK_SECONDS / swing_seconds))
 	for enemy in _enemies_touching():
-		_cut(enemy, damage)
+		_cut(enemy, damage, swing)
 
 
-func _cut(enemy: Node, damage: int) -> void:
+func _cut(enemy: Node, damage: int, swing: int) -> void:
 	if not enemy.has_method("take_damage"):
 		return
 	enemy.take_damage(damage)
 	hits_dealt += 1
+	# The wound is a share of a whole swing, whatever share of one this cut
+	# was (bleed.gd).
+	if wounds and swing > 0:
+		Bleed.open(enemy, swing, caster)
 
 
 func _swing_damage() -> int:

@@ -40,7 +40,7 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_hit"]
-radius = 28.0
+radius = 44.0
 
 [node name="dynamite" type="Area2D"]
 z_index = -1

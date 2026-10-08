@@ -7,7 +7,7 @@
 script = ExtResource("2_itemdata")
 item_id = "doubleaxe"
 display_name = "Double Axe"
-description = "Your attack throws it where you aim, and it spins there, faster the longer it is left, cutting everything near it until you attack again to call it back."
+description = "Your attack throws it where you aim, and it spins there, faster and wider the longer it is left, cutting everything near it until you attack again to call it back. Every cut leaves the enemy bleeding."
 icon = ExtResource("1_icon")
 max_stack = 1
 value = 40000

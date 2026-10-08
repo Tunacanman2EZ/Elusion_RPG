@@ -1,6 +1,6 @@
 # dynamite.gd - one stick of the tank's attack while Dynamite is equipped.
 #
-# Thrown by tank.gd in place of the aura. The stick and its lit fuse are
+# Thrown by tank.gd, its ring lit as it throws. The stick and its lit fuse are
 # Ahvassa's art; the throw, the wait and the bang are here:
 #
 #   FLYING   an arc from the tank to the spot aimed at, turning end over end,
@@ -31,8 +31,17 @@
 # so a chain's overlapping scorches do not stack. The books allow for it: the
 # exporter writes the tank's dynamite_field_share and dynamite_field_every.
 #
-# One throw in ten is two sticks, spread either side of the aim - tank.gd
-# decides that and throws two of these.
+# BIGGER, FASTER, AND THE RING (0.14.0). The owner: "dynamite needs a bigger
+# blast radios need to be able to throw faster and use tank ring i feel like 1
+# by its self is not enough to be impressive". The blast is the meteor's size
+# (HIT_RADIUS 44, from 28), so the chain reaches further with it (CHAIN_RADIUS
+# 66) and the smoulder is as wide. tank.gd throws more of them, lights its
+# ring while it throws, and makes every fifth throw a bundle of three - see
+# its DYNAMITE SETTINGS for the numbers and what they come to.
+#
+# One throw in ten is two sticks, spread either side of the aim, and every
+# fifth is a bundle of three in a triangle - tank.gd decides that and throws
+# that many of these.
 #
 # THE TIMELINE IS ADVANCED BY advance(), which _physics_process calls with the
 # frame's delta; a test calls it directly.
@@ -45,14 +54,15 @@ enum State { FLYING, FUSE }
 const FLIGHT_SECONDS := 0.45
 const ARC_HEIGHT := 26.0
 # 1.2, not the 0.9 it was before 0.12.0: longer than tank.gd's
-# dynamite_cooldown (1.0) less the flight, so the next stick lands while this
-# one burns - the chain reaction needs two sticks lit at once.
+# dynamite_cooldown (0.75 since 0.14.0) less the flight, so the next stick
+# lands while this one burns - the chain reaction needs two sticks lit at once.
 const FUSE_SECONDS := 1.2
 
 # CHAIN REACTION: how far a blast reaches another lit stick (the blast's own
-# reach and half again, so a double throw's two sticks, 40 px apart, set each
-# other off), how long the next one takes to go, and how much harder it hits.
-const CHAIN_RADIUS := 42.0
+# reach and half again, so a double throw's two sticks, 56 px apart, and a
+# bundle's three set each other off), how long the next one takes to go, and
+# how much harder it hits.
+const CHAIN_RADIUS := 66.0
 const CHAIN_DELAY := 0.1
 const CHAIN_BONUS := 0.25
 
@@ -65,8 +75,8 @@ const FIELD_EVERY := 0.5
 const FIELD_SHARE := 0.15
 
 # MATCHED to the CollisionShape2D in dynamite.tscn and to the scorch it leaves.
-# Bigger than the meteor's: one stick a second against two meteors a second.
-const HIT_RADIUS := 28.0
+# The meteor's size (0.14.0; it was 28): "dynamite needs a bigger blast".
+const HIT_RADIUS := 44.0
 
 var explosion_damage: int = 0
 var caster: Node = null
@@ -210,4 +220,4 @@ func _draw() -> void:
 		return
 	var lit_for: float = _age - delay - FLIGHT_SECONDS
 	var a: float = lerpf(0.25, 0.7, clampf(lit_for / FUSE_SECONDS, 0.0, 1.0))
-	draw_arc(Vector2.ZERO, HIT_RADIUS, 0.0, TAU, 44, Color(1.0, 0.2, 0.1, a), 1.0, false)
+	draw_arc(Vector2.ZERO, HIT_RADIUS, 0.0, TAU, 64, Color(1.0, 0.2, 0.1, a), 1.0, false)

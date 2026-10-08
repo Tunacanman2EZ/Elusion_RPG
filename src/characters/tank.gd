@@ -70,16 +70,34 @@ const CLASS_SPEED := 160
 # =============================================================================
 # DYNAMITE SETTINGS
 # =============================================================================
-# THE DYNAMITE'S ATTACK, in place of the aura while it is equipped - see
-# dynamite.gd. Priced against the aura so the weapon changes how the tank
-# fights rather than how hard:
+# THE DYNAMITE'S ATTACK - see dynamite.gd. Attack throws a lit stick where
+# the tank aims, and since 0.14.0 the ring burns as well.
 #
-#   a throw a second at 4 mana   = the aura's 2 mana every half second
-#   a stick worth four aura ticks = the aura's four ticks a second, landed at
-#                                   once, on everything inside the blast
+# THE OWNER, 0.14.0: "dynamite needs a bigger blast radios need to be able to
+# throw faster and use tank ring i feel like 1 by its self is not enough to be
+# impressive", and of all three mythics, "powerful but balanced i mean the
+# odds of getting one might aswell pay for". So, against 0.13.0:
 #
-# The aura reaches everything around the tank all the time; a stick reaches
-# further away, once, after a fuse. Same damage per second per enemy hit.
+#   the blast       the meteor's size, 44 (dynamite.gd HIT_RADIUS; was 28)
+#   a throw         every 0.75 s (dynamite_cooldown; was 1.0)
+#   the ring        LIT BY THROWING: a throw lights it, or keeps it lit, and
+#                   it goes out DYNAMITE_RING_LINGER seconds after the last
+#                   one. It burns no mana of its own while it is lit that way
+#                   - the throws pay for it (was: put out while Dynamite is
+#                   worn)
+#   the mana        3 a throw (was 4): at 0.75 s that is the ring's own 4 a
+#                   second, so Dynamite costs what the ring costs
+#   a stick         worth dynamite_stick_ticks ring ticks, 1.5 (was the
+#                   cooldown's worth, 4): smaller, because there are more of
+#                   them and the ring is burning too
+#   every 5th throw a bundle: DYNAMITE_BUNDLE_STICKS sticks in a triangle,
+#                   close enough that the first sets off the rest
+#
+# WHAT THAT COMES TO, one target at level 22 with Ember-tier gear, by the
+# Boss Sim's model (the site's bosssim.js): an Ember maul tank about 165 a
+# second; Dynamite in 0.13.0 about 338; Dynamite now about 440 - the ring
+# about half of it, and the bigger blast and the ring both reach more of a
+# crowd than one target says.
 const DYNAMITE_SCENE := preload("res://scene/projectiles/dynamite.tscn")
 
 # The furthest a stick goes. A spot further than this is taken as the
@@ -88,16 +106,37 @@ const DYNAMITE_MAX_THROW := 150.0
 
 # A double throw's two sticks land this far either side of the aim, across
 # the line of the throw: "we need to spread out the double cast". The two
-# blasts (28 each) overlap in the middle, so the aim point is hit by both.
-const DYNAMITE_SPREAD := 20.0
+# blasts (44 each) overlap in the middle, so the aim point is hit by both.
+const DYNAMITE_SPREAD := 28.0
 
 # ...and the second leaves this much after the first.
 const DYNAMITE_SECOND_DELAY := 0.06
 
-@export var dynamite_mana_cost: int = 4
-@export var dynamite_cooldown: float = 1.0
+# THE BUNDLE: every DYNAMITE_BUNDLE_EVERY-th throw is DYNAMITE_BUNDLE_STICKS
+# sticks, in a triangle DYNAMITE_BUNDLE_SPREAD from the aim (well inside each
+# other's blast, so the middle is hit by all three, and inside CHAIN_RADIUS,
+# so the first sets off the rest), each DYNAMITE_SECOND_DELAY behind the last.
+# A bundle does not also roll a double.
+const DYNAMITE_BUNDLE_EVERY := 5
+const DYNAMITE_BUNDLE_STICKS := 3
+const DYNAMITE_BUNDLE_SPREAD := 14.0
+
+# The ring a throw lights stays lit this long after the last throw.
+const DYNAMITE_RING_LINGER := 3.0
+
+@export var dynamite_mana_cost: int = 3
+@export var dynamite_cooldown: float = 0.75
+# What a stick is worth, in ring ticks. The exporter writes it for the
+# server's books (gamedata.combat_bounds()).
+@export var dynamite_stick_ticks: float = 1.5
 
 var _dynamite_cooldown_left: float = 0.0
+# Throws since the Dynamite went on: every DYNAMITE_BUNDLE_EVERY-th is a bundle.
+var _dynamite_throws: int = 0
+# TRUE while the ring is lit by throwing rather than by the aura key: it
+# burns no mana and goes out when _ring_linger_left runs out.
+var ring_by_dynamite: bool = false
+var _ring_linger_left: float = 0.0
 
 # =============================================================================
 # NODE REFERENCES
@@ -227,14 +266,22 @@ func _tick_aura(delta: float) -> void:
 	# doesn't kick in while the tank is actively damaging enemies
 	_set_active()
 
-	# mana drain tick
-	mana_drain_timer += delta
-	if mana_drain_timer >= mana_drain_tick:
-		mana_drain_timer = 0.0
-		mana = clamp(mana - mana_drain_cost, 0, max_mana)
-		if mana <= 0:
+	if ring_by_dynamite:
+		# Lit by throwing: the throws paid for it, and it goes out a little
+		# after the last one (DYNAMITE SETTINGS).
+		_ring_linger_left -= delta
+		if _ring_linger_left <= 0.0:
 			_deactivate_aura()
 			return
+	else:
+		# mana drain tick
+		mana_drain_timer += delta
+		if mana_drain_timer >= mana_drain_tick:
+			mana_drain_timer = 0.0
+			mana = clamp(mana - mana_drain_cost, 0, max_mana)
+			if mana <= 0:
+				_deactivate_aura()
+				return
 
 	# damage tick. hasten() applies agility — read per tick rather than cached,
 	# because agility can go up mid-fight on a skill-up and the aura is the one
@@ -338,7 +385,7 @@ func _handle_idle() -> void:
 func attack_action() -> void:
 	# OVERRIDE: tank's spacebar attack TOGGLES the aura on or off.
 	# the tank has no direct strike — the aura IS the attack. Unless Dynamite is
-	# equipped, when attack throws a stick instead and the aura stays off.
+	# equipped, when attack throws a stick, and the throw lights the ring.
 	if equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:
 		throw_dynamite(get_global_mouse_position())
 		return
@@ -366,6 +413,7 @@ func _activate_aura() -> void:
 	Audio.play("aura_on")
 
 	aura_active      = true
+	ring_by_dynamite = false
 	aura_timer       = 0.0
 	mana_drain_timer = 0.0
 
@@ -376,6 +424,8 @@ func _activate_aura() -> void:
 
 func _deactivate_aura() -> void:
 	aura_active = false
+	ring_by_dynamite = false
+	_ring_linger_left = 0.0
 	if _firering != null:
 		_firering.visible = false
 
@@ -385,8 +435,9 @@ func _deactivate_aura() -> void:
 # =============================================================================
 
 func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
-	# One stick, or one throw in ten two (Player.rolls_double()), for one
-	# price. Returns what was thrown - empty when refused - for the tests.
+	# One stick; or one throw in ten two (Player.rolls_double()); or, every
+	# DYNAMITE_BUNDLE_EVERY-th throw, a bundle - all for one price. Returns
+	# what was thrown - empty when refused - for the tests.
 	var thrown: Array[Dynamite] = []
 	if _dynamite_cooldown_left > 0.0:
 		return thrown
@@ -399,18 +450,25 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 	mana -= dynamite_mana_cost
 	# hasten() applies agility, the same as the aura's tick and the mage's cast.
 	_dynamite_cooldown_left = hasten(dynamite_cooldown)
-	if aura_active:
-		_deactivate_aura()
+	_light_ring_by_dynamite()
 	Audio.play("dynamite_throw")
+	_dynamite_throws += 1
 
 	var reach: Vector2 = aimed_at - global_position
 	if reach.length() > DYNAMITE_MAX_THROW:
 		reach = reach.normalized() * DYNAMITE_MAX_THROW
 	var landing: Vector2 = global_position + reach
-	if rolls_double():
-		# Either side of the aim, across the line of the throw. A throw at the
-		# tank's own feet has no line, so it spreads left and right.
-		var across: Vector2 = reach.orthogonal().normalized() if reach.length() > 0.5 else Vector2.RIGHT
+	# The line of the throw. A throw at the tank's own feet has none, so it is
+	# taken as thrown to the right.
+	var along: Vector2 = reach.normalized() if reach.length() > 0.5 else Vector2.RIGHT
+	if _dynamite_throws % DYNAMITE_BUNDLE_EVERY == 0:
+		# A triangle around the aim, one point toward the throw.
+		for i in DYNAMITE_BUNDLE_STICKS:
+			var at: Vector2 = landing + along.rotated(TAU * i / DYNAMITE_BUNDLE_STICKS) * DYNAMITE_BUNDLE_SPREAD
+			thrown.append(_throw_stick(at, DYNAMITE_SECOND_DELAY * i))
+	elif rolls_double():
+		# Either side of the aim, across the line of the throw.
+		var across: Vector2 = along.orthogonal()
 		thrown.append(_throw_stick(landing + across * DYNAMITE_SPREAD, 0.0))
 		thrown.append(_throw_stick(landing - across * DYNAMITE_SPREAD, DYNAMITE_SECOND_DELAY))
 	else:
@@ -418,12 +476,32 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 	return thrown
 
 
+func is_bundle_next() -> bool:
+	"""TRUE when the next throw is a bundle."""
+	return (_dynamite_throws + 1) % DYNAMITE_BUNDLE_EVERY == 0
+
+
+func _light_ring_by_dynamite() -> void:
+	# A throw lights the ring, or keeps it lit. A ring already lit by the aura
+	# key cannot be here: putting Dynamite on puts that one out (_on_gear_changed).
+	_ring_linger_left = DYNAMITE_RING_LINGER
+	if aura_active:
+		return
+	Audio.play("aura_on")
+	aura_active = true
+	ring_by_dynamite = true
+	aura_timer = 0.0
+	mana_drain_timer = 0.0
+	if _firering != null:
+		_firering.visible = true
+		_firering.play("firering")
+
+
 func _throw_stick(landing: Vector2, delay: float) -> Dynamite:
 	var stick: Dynamite = DYNAMITE_SCENE.instantiate()
-	# A stick is worth the aura ticks it replaces - see DYNAMITE SETTINGS.
+	# A stick is worth dynamite_stick_ticks ring ticks - see DYNAMITE SETTINGS.
 	# Rolled per stick: two sticks are two hits.
-	var ticks: float = dynamite_cooldown / aura_tick
-	stick.explosion_damage = roundi((aura_damage + weapon_damage_roll()) * get_damage_multiplier() * ticks)
+	stick.explosion_damage = roundi((aura_damage + weapon_damage_roll()) * get_damage_multiplier() * dynamite_stick_ticks)
 	stick.caster = self
 	stick.delay = delay
 	spawn_parent().add_child(stick)
@@ -432,10 +510,18 @@ func _throw_stick(landing: Vector2, delay: float) -> Dynamite:
 
 
 func _on_gear_changed() -> void:
-	# Dynamite put on while the aura is burning: the aura goes out, because
-	# attack no longer reaches it to turn it off.
-	if aura_active and equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:
+	var dynamite: bool = equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE
+	# Dynamite put on while the aura key's ring is burning: it goes out,
+	# because attack no longer reaches it to turn it off. The first throw
+	# lights it again, the Dynamite's way.
+	if aura_active and dynamite and not ring_by_dynamite:
 		_deactivate_aura()
+	# Dynamite taken off while its throws have the ring lit: out, or it would
+	# burn on with nothing paying for it.
+	if aura_active and ring_by_dynamite and not dynamite:
+		_deactivate_aura()
+	if not dynamite:
+		_dynamite_throws = 0
 
 
 func _deal_aura_damage() -> void:

@@ -1608,6 +1608,12 @@ func _export_combat(_items: Array) -> Dictionary:
 				var axe_script: Script = load("res://src/projectiles/spinningaxe.gd") as Script
 				row["axe_spin_max_rate"] = float(axe_script.get_script_constant_map().get("SPIN_MAX_RATE", 1.0)) \
 					if axe_script != null else 1.0
+				# And every cut leaves a wound that bites a share of a swing every
+				# so often, one wound per enemy at a time (bleed.gd, 0.14.0).
+				var bleed_script: Script = load("res://src/projectiles/bleed.gd") as Script
+				var bleed_consts: Dictionary = bleed_script.get_script_constant_map() if bleed_script != null else {}
+				row["axe_bleed_share"] = float(bleed_consts.get("BLEED_SHARE", 0.0))
+				row["axe_bleed_every"] = float(bleed_consts.get("BLEED_EVERY", 1.0))
 			"mage":
 				row["base"] = int(node.get("damage_per_magic"))
 				row["cooldown"] = float(node.get("spell_cooldown"))
@@ -1624,6 +1630,12 @@ func _export_combat(_items: Array) -> Dictionary:
 				row["base"] = int(node.get("aura_damage"))
 				row["cooldown"] = float(node.get("aura_tick"))
 				row["dynamite_cooldown"] = float(node.get("dynamite_cooldown"))
+				# What a stick is worth in ring ticks, and the bundle: every so
+				# many throws, so many sticks (tank.gd, DYNAMITE SETTINGS, 0.14.0).
+				row["dynamite_stick_ticks"] = float(node.get("dynamite_stick_ticks"))
+				var tank_consts: Dictionary = script.get_script_constant_map() if script != null else {}
+				row["dynamite_bundle_every"] = int(tank_consts.get("DYNAMITE_BUNDLE_EVERY", 0))
+				row["dynamite_bundle_sticks"] = int(tank_consts.get("DYNAMITE_BUNDLE_STICKS", 1))
 				# A stick set off by another's blast hits this much harder
 				# (dynamite.gd, CHAIN REACTION, 0.12.0).
 				var stick_script: Script = load("res://src/projectiles/dynamite.gd") as Script
@@ -1639,8 +1651,8 @@ func _export_combat(_items: Array) -> Dictionary:
 
 	var pets: Dictionary = {}
 	# The weapons that bring their own attack (ItemData.weapon_attack): the
-	# meteor casts twice one time in ten, the dynamite hits for a second's
-	# worth of aura, the axe spins. By name, like every enum that crosses.
+	# meteor casts twice one time in ten, the dynamite throws sticks with the
+	# ring lit, the axe spins. By name, like every enum that crosses.
 	var weapon_attacks: Dictionary = {}
 	for path in _find_files(ITEMS_PATH, ".tres"):
 		var res: Resource = ResourceLoader.load(path)
