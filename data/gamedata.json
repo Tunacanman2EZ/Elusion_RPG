@@ -1465,6 +1465,7 @@
 				"speed": 160
 			},
 			"warrior": {
+				"axe_spin_max_rate": 2.0,
 				"base": 24,
 				"cooldown": 1.0,
 				"speed": 200,
@@ -3313,7 +3314,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791421911,
+	"generated_at": 1791433737,
 	"items": [
 		{
 			"armor_value": 6,
@@ -4751,14 +4752,14 @@
 		},
 		{
 			"armor_value": 0,
-			"bonus_damage_percent": 9,
+			"bonus_damage_percent": 15,
 			"bonus_max_hp": 0,
 			"bonus_max_mana": 0,
 			"cook_level": 1,
 			"cook_mastery_level": 1,
 			"cook_xp": 0,
 			"cooks_into": "",
-			"damage": 110,
+			"damage": 140,
 			"damage_spread": 0.25,
 			"display_name": "Double Axe",
 			"droppable": true,
@@ -4784,14 +4785,14 @@
 		},
 		{
 			"armor_value": 0,
-			"bonus_damage_percent": 9,
+			"bonus_damage_percent": 15,
 			"bonus_max_hp": 0,
 			"bonus_max_mana": 0,
 			"cook_level": 1,
 			"cook_mastery_level": 1,
 			"cook_xp": 0,
 			"cooks_into": "",
-			"damage": 18,
+			"damage": 23,
 			"damage_spread": 0.25,
 			"display_name": "Dynamite",
 			"droppable": true,
@@ -7247,14 +7248,14 @@
 		},
 		{
 			"armor_value": 0,
-			"bonus_damage_percent": 9,
+			"bonus_damage_percent": 15,
 			"bonus_max_hp": 0,
 			"bonus_max_mana": 0,
 			"cook_level": 1,
 			"cook_mastery_level": 1,
 			"cook_xp": 0,
 			"cooks_into": "",
-			"damage": 41,
+			"damage": 53,
 			"damage_spread": 0.25,
 			"display_name": "Meteorite",
 			"droppable": true,

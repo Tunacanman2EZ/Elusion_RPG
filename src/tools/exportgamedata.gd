@@ -1602,6 +1602,12 @@ func _export_combat(_items: Array) -> Dictionary:
 				# animation_finished), so the real swing is frames / fps /
 				# attack_animation_speed - 0.4 s against the 1.0 the lock says.
 				row["swing_seconds"] = _shortest_clip(node, "attack", float(node.get("attack_animation_speed")))
+				# The Double Axe left spinning climbs to this many times a swing's
+				# damage a second (spinningaxe.gd, SPIN UP, 0.11.9). Read off the
+				# script by path, like CLASS_SPEED above.
+				var axe_script: Script = load("res://src/projectiles/spinningaxe.gd") as Script
+				row["axe_spin_max_rate"] = float(axe_script.get_script_constant_map().get("SPIN_MAX_RATE", 1.0)) \
+					if axe_script != null else 1.0
 			"mage":
 				row["base"] = int(node.get("damage_per_magic"))
 				row["cooldown"] = float(node.get("spell_cooldown"))

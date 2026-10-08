@@ -6,7 +6,8 @@
 #   OUT        thrown from the warrior to the spot aimed at, cutting every
 #              enemy it passes on the way, once each
 #   SPINNING   turning in place, cutting everything within HIT_RADIUS every
-#              TICK_SECONDS, for as long as the warrior leaves it there
+#              TICK_SECONDS - faster the longer it is left (SPIN UP, below) -
+#              for as long as the warrior leaves it there
 #   RETURNING  attack again and it flies back to the warrior's hand, cutting
 #              everything it passes on the way home, once each
 #
@@ -27,7 +28,17 @@
 # _calculate_melee_damage(), which already has the axe's own damage in it. A
 # spin tick hits for the share of a swing its tick is of a swing's time, so a
 # spinning axe deals a swinging warrior's damage per second to everything near
-# it - the area is the upgrade, not a bigger number.
+# it - the area is the upgrade, not a bigger number. Left spinning, it speeds
+# up to SPIN_MAX_RATE times that.
+#
+# SPIN UP (0.11.9). The owner: "double axe needs to speed up when left
+# deployed". From the moment it starts spinning its rate climbs evenly from 1x
+# to SPIN_MAX_RATE over SPIN_RAMP_SECONDS and stays there. The ticks come
+# faster - each still a tick's share of a swing, so the damage a second climbs
+# with the rate - and the picture spins faster with them. Every throw starts at
+# 1x again, so the reward is for leaving it where it is. The server's books
+# allow for the top rate: the exporter writes SPIN_MAX_RATE into gamedata.json
+# as the warrior's axe_spin_max_rate, and gamedata.combat_bounds() reads it.
 #
 # THE TIMELINE IS ADVANCED BY advance(), which _physics_process calls with the
 # frame's delta; a test calls it directly.
@@ -57,6 +68,10 @@ const WALL_LAYERS := 0b11
 
 const TICK_SECONDS := 0.25
 
+# SPIN UP: the most the rate climbs to, and how long it takes to get there.
+const SPIN_MAX_RATE := 2.0
+const SPIN_RAMP_SECONDS := 4.0
+
 # MATCHED to the CollisionShape2D in spinningaxe.tscn.
 const HIT_RADIUS := 20.0
 
@@ -73,6 +88,8 @@ var state: State = State.OUT
 # _hit_targets for why ids and not nodes. Cleared when a pass begins.
 var _passed: Dictionary = {}
 var _tick: float = 0.0
+# Seconds spent spinning since this throw landed; spin_rate() reads it.
+var _spun: float = 0.0
 var hits_dealt: int = 0
 
 @onready var spin: AnimatedSprite2D = $spin
@@ -104,8 +121,15 @@ func advance(delta: float) -> void:
 			if stopped_short or global_position.distance_to(target) < 0.5:
 				state = State.SPINNING
 				_tick = 0.0
+				_spun = 0.0
 		State.SPINNING:
-			_tick += delta
+			# The rate for this step is the rate it had at the start of it,
+			# so the first tick still lands TICK_SECONDS after it stops.
+			var rate: float = spin_rate()
+			_spun += delta
+			_tick += delta * rate
+			if spin != null:
+				spin.speed_scale = rate
 			while _tick >= TICK_SECONDS:
 				_tick -= TICK_SECONDS
 				_cut_everything_near()
@@ -128,6 +152,16 @@ func recall() -> void:
 		return
 	state = State.RETURNING
 	_passed.clear()
+	if spin != null:
+		spin.speed_scale = 1.0
+
+
+func spin_rate() -> float:
+	"""How fast it is spinning: 1 when it lands, climbing evenly to
+	SPIN_MAX_RATE over SPIN_RAMP_SECONDS, then holding there."""
+	if SPIN_RAMP_SECONDS <= 0.0:
+		return SPIN_MAX_RATE
+	return 1.0 + (SPIN_MAX_RATE - 1.0) * clampf(_spun / SPIN_RAMP_SECONDS, 0.0, 1.0)
 
 
 func throw_to(from: Vector2, aimed_at: Vector2) -> void:
@@ -140,6 +174,7 @@ func throw_to(from: Vector2, aimed_at: Vector2) -> void:
 	target = from + reach
 	state = State.OUT
 	_passed.clear()
+	_spun = 0.0
 
 
 func _fly_toward(where: Vector2, step: float) -> void:

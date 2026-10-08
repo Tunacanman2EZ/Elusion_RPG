@@ -2367,7 +2367,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   pet's orb reaches what it is aimed at, 0.11.6 the seven bosses are Crowned
   Beholders by name, 0.11.7 beating the Crowned opens a teleporter home to
   town, and a pet's tooltip says a right-click summons it, 0.11.8 the GM
-  panel's Server tab can make old versions update.
+  panel's Server tab can make old versions update, 0.11.9 the mythic weapons
+  hit 1.4 times ember and the Double Axe spins up when left.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3720,6 +3721,44 @@ so the answer was a request carrying his token by hand.
   all three. The new status line does not wrap at all.
 - `_test_old_versions_must_update`.
 
+### Mythic weapons worth the wait, and the axe spins up (0.11.9)
+
+The owner, 8 Oct: "mythic weapons need a power buff they are pretty weak for a
+super rare drop", and "double axe needs to speed up when left deployed".
+
+- **Why they were weak.** A mythic rolls quality like any drop (85-115%, a
+  Perfect 120%), and the Double Axe was 110 against the Ember Sword's 100,
+  with 9% against 8%. An ember sword rolled 110% or better matched it, and a
+  Perfect ember sword (120) beat it - for a drop of one in 20,000 from the
+  dark band.
+- **Now 1.4 times ember, and 15%.** `doubleaxe.tres` 140, `meteorite.tres` 53,
+  `dynamite.tres` 23; `bonus_damage_percent` 15 on all three. The Meteorite
+  and Dynamite are the axe's share of their class's dps, as the API's
+  `test_equipment.py` requires (52.5 and 23.3). A warrior's hit with the axe
+  ((24 + 140) x 1.15) is about 1.4 times an ember sword's ((24 + 100) x 1.08),
+  and about 1.2 times a Perfect one's.
+- **The axe spins up** (`spinningaxe.gd`, SPIN UP). Left spinning, its rate
+  climbs evenly from 1x to `SPIN_MAX_RATE` (2) over `SPIN_RAMP_SECONDS` (4),
+  and holds. Each tick is still a tick's share of a swing, so the cuts a
+  second double, and `spin.speed_scale` follows so it looks faster. Recalling
+  it puts the picture back to 1x; every throw starts at 1x. The first tick
+  still lands `TICK_SECONDS` after it stops (the step's rate is the rate at
+  its start), so the old tick check is unchanged.
+- **The server's books allow for it.** The exporter writes `SPIN_MAX_RATE`
+  as `combat.classes.warrior.axe_spin_max_rate`, and the API's
+  `combat_bounds()` bounds a warrior with the axe at a pass plus
+  `(1 + axe_spin_max_rate)` swings a second (it was 2 a swing). **The API's
+  gamedata.json has to go out first**, or a warrior with the axe left
+  spinning is written down as too fast. The books only watch, but it is a
+  false line on an honest player.
+- The Boss Sim on the site models it the same way (`AXE_SPIN_MAX`,
+  `AXE_SPIN_RAMP`, a new target a new throw), and its test holds the numbers
+  to this file.
+- Tests: the mythic section's SPIN UP checks (lands at 1x, about four cuts in
+  the first second, eight a second at the top, each still a tick's share, the
+  picture's speed, a recall and a new throw back at 1x) and the books' check
+  that the exported rate is the game's.
+
 ### Inventory, bank and shop on day 1
 
 A sweep of the backpack, the bank chest and the vendor, driven through the
@@ -4083,9 +4122,11 @@ healer's (a heal) is a later commission.
   and a crater or scorch that fades). Particles are untextured squares or an
   8-px round puff, the textures small images drawn pixel by pixel, so it is the
   same size of dot as the art.
-- **Balance.** Damage follows the ladder: the Double Axe (110) is the tier's
-  sword, and the Meteorite (41) and Dynamite (18) add the same share of their
-  class's dps as it does - `test_equipment.py` holds it. A meteor's hit is 22 px
+- **Balance.** Damage follows the ladder: the Double Axe is the tier's sword,
+  and the Meteorite and Dynamite add the same share of their class's dps as it
+  does - `test_equipment.py` holds it. Since 0.11.9 that sword is 140 (it was
+  110, against ember's 100) and each adds 15% (was 9%): see "Mythic weapons
+  worth the wait" below. A meteor's hit is 22 px
   across (the stalagmite's is 18); a stick's is 28.
 - **They drop from anything, on a roll of their own.** No `tier_odds` reaches
   tier 6. See "Mythic drops" below.

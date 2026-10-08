@@ -17755,6 +17755,9 @@ func _test_combat_bounds_match_the_game() -> void:
 	for item in ItemRegistry.get_all_items():
 		if int(item.weapon_attack) != ItemData.WeaponAttack.NONE:
 			attacks[item.item_id] = String(ItemData.WeaponAttack.keys()[int(item.weapon_attack)])
+	check("the Double Axe's top spin rate is the game's, so the books allow for it",
+		is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_spin_max_rate", -1.0)),
+			SpinningAxe.SPIN_MAX_RATE), classes.get("warrior", {}))
 	check("every weapon that brings its own attack is named, by its attack",
 		not attacks.is_empty() and attacks == combat.get("weapon_attacks", {}), [attacks, combat.get("weapon_attacks")])
 
@@ -21311,6 +21314,54 @@ func _test_the_mythic_weapons() -> void:
 		steps += 1
 	check("called back, it cuts what it passes on the way home too", passed_by.taken == [40, 40], passed_by.taken)
 	check("  and the warrior catches it", hand.caught == 1 and (not is_instance_valid(axe) or axe.is_queued_for_deletion()))
+
+	# SPIN UP (0.11.9). The owner: "double axe needs to speed up when left
+	# deployed". Left spinning it climbs from 1x to SPIN_MAX_RATE over
+	# SPIN_RAMP_SECONDS; each tick is still a tick's share of a swing, so it is
+	# the number of cuts a second that climbs.
+	var ramp_spot: CharacterBody2D = _weapon_dummy(arena, row_y + Vector2(100, -60))
+	var ramp: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+	ramp.caster = hand
+	arena.add_child(ramp)
+	ramp.set_physics_process(false)
+	ramp.throw_to(hand.global_position, ramp_spot.global_position)
+	steps = 0
+	while ramp.state == SpinningAxe.State.OUT and steps < 200:
+		await get_tree().physics_frame
+		ramp.advance(1.0 / 80.0)
+		steps += 1
+	await get_tree().physics_frame
+	ramp_spot.taken.clear()
+	check("it lands spinning at 1x", ramp.state == SpinningAxe.State.SPINNING
+		and is_equal_approx(ramp.spin_rate(), 1.0), ramp.spin_rate())
+	for i in 80:
+		ramp.advance(1.0 / 80.0)
+	var first_second: int = ramp_spot.taken.size()
+	var climbing: float = ramp.spin_rate()
+	for i in roundi((SpinningAxe.SPIN_RAMP_SECONDS - 1.0) * 80.0):
+		ramp.advance(1.0 / 80.0)
+	ramp_spot.taken.clear()
+	for i in 80:
+		ramp.advance(1.0 / 80.0)
+	var top_second: int = ramp_spot.taken.size()
+	check("its first second cuts about four times, as before", first_second >= 4 and first_second <= 5, first_second)
+	check("  and it is climbing by the end of it", climbing > 1.0 and climbing < SpinningAxe.SPIN_MAX_RATE, climbing)
+	check("after SPIN_RAMP_SECONDS it spins at SPIN_MAX_RATE, and holds there",
+		is_equal_approx(ramp.spin_rate(), SpinningAxe.SPIN_MAX_RATE) and SpinningAxe.SPIN_MAX_RATE > 1.0,
+		ramp.spin_rate())
+	check("  cutting SPIN_MAX_RATE times as often", top_second == roundi(4.0 * SpinningAxe.SPIN_MAX_RATE),
+		[top_second, first_second])
+	check("  each cut still a tick's share of a swing", ramp_spot.taken.all(func(d) -> bool: return d == 10),
+		ramp_spot.taken)
+	check("  and the picture spins that much faster", is_equal_approx(ramp.spin.speed_scale, SpinningAxe.SPIN_MAX_RATE),
+		ramp.spin.speed_scale)
+	ramp.recall()
+	check("called back, the picture slows to its own speed", is_equal_approx(ramp.spin.speed_scale, 1.0))
+	ramp.throw_to(hand.global_position, ramp_spot.global_position + Vector2(10, 0))
+	ramp.state = SpinningAxe.State.SPINNING
+	check("  and a new throw starts again at 1x", is_equal_approx(ramp.spin_rate(), 1.0), ramp.spin_rate())
+	ramp.queue_free()
+	ramp_spot.queue_free()
 
 	var far_throw: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
 	far_throw.caster = hand
