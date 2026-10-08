@@ -165,6 +165,8 @@ func _run_all() -> void:
 	_test_settings()
 	_test_map_landmarks()
 	_test_boss_arena_exits()
+	await _test_the_finale_sends_you_home()
+	await _test_a_pet_says_how_to_summon_it()
 	_test_staff_panel()
 	_test_collision_contract()
 	_test_pet_shots_reach()
@@ -6472,6 +6474,165 @@ func _test_boss_arena_exits() -> void:
 
 	arena.free()
 	field.free()
+
+
+# =============================================================================
+# THE FINALE SENDS YOU HOME (0.11.7)
+# =============================================================================
+# The owner: "final teleport does not return to town". The arena's victory door
+# leads to the Crowned's room, and that room's only exit was its ladder up to
+# the field - so beating the last boss in the game put you back in the Field.
+# The room now has a victory teleporter of its own, which waits for the Crowned
+# to die rather than for a gauntlet, and its destination is the town.
+#
+# Two halves. The room is wired, read off the scene. And the node does what the
+# wiring promises: hidden while the boss lives, not fooled by another monster
+# dying, open when the boss dies - including when the boss that dies is not
+# the node the scene placed, which is what the respawner and shared monsters
+# both hand you. The container's finale run walks the real thing: arena,
+# victory door, the Crowned, this teleporter, the town.
+
+func _test_the_finale_sends_you_home() -> void:
+	section("THE FINALE - beat the Crowned and a teleporter takes you to town")
+
+	var packed: PackedScene = load("res://scene/boss.tscn") as PackedScene
+	check("the Crowned's room loads", packed != null)
+	if packed == null:
+		return
+	var room: Node = packed.instantiate()
+	var doors: Array = []
+	_collect_by_script(room, "res://src/world/victoryteleporter.gd", doors)
+	check("the Crowned's room has exactly one victory teleporter", doors.size() == 1, "%d found" % doors.size())
+	if doors.size() == 1:
+		var door: Node = doors[0]
+		check("  and it goes to the town",
+			str(door.destination_scene_path) == str(AreaRegistry.AREAS.get("elusion", "-")),
+			door.destination_scene_path)
+		check("  it starts hidden and unsteppable", not door.visible and not door.monitoring)
+		var shape: Node = door.get_node_or_null("collisionshape2d")
+		check("  its collider starts disabled", shape != null and shape.disabled)
+		var boss: Node = door.get_node_or_null(door.boss_path) if not door.boss_path.is_empty() else null
+		check("  it waits for the Crowned, not a gauntlet",
+			boss != null and boss.scene_file_path == "res://scene/enemy/bossenemy.tscn", door.boss_path)
+	var ladders: Array = []
+	_collect_by_script(room, "res://src/world/ladder.gd", ladders)
+	check("the ladder up to the field stays, for leaving without the win",
+		ladders.size() == 1 and str(ladders[0].destination_scene_path) == "res://scene/field.tscn")
+	room.free()
+
+	# THE NODE DOES WHAT THE WIRING SAYS. Stand-ins with a died signal, named by
+	# scene the way the respawner's and the mirrors' nodes are.
+	var fake := GDScript.new()
+	fake.source_code = "extends Node2D\nsignal died\n"
+	fake.reload()
+	var make_monster := func(scene_path: String, monster_name: String) -> Node2D:
+		var m := Node2D.new()
+		m.set_script(fake)
+		m.name = monster_name
+		m.scene_file_path = scene_path
+		return m
+	var door_script: GDScript = load("res://src/world/victoryteleporter.gd") as GDScript
+
+	var holder := Node2D.new()
+	var enemies := Node2D.new()
+	enemies.name = "enemies"
+	holder.add_child(enemies)
+	var crowned: Node2D = make_monster.call("res://scene/enemy/bossenemy.tscn", "bossenemy")
+	var bystander: Node2D = make_monster.call("res://scene/enemy/lightbushmage.tscn", "bushmage")
+	enemies.add_child(crowned)
+	enemies.add_child(bystander)
+	var way_home: Area2D = door_script.new()
+	way_home.appear_delay = 0.0
+	way_home.boss_path = NodePath("../enemies/bossenemy")
+	holder.add_child(way_home)
+	add_child(holder)
+	await get_tree().process_frame
+	check("while the Crowned lives there is no way home", not way_home.visible and not way_home._armed)
+	bystander.died.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("another monster dying does not open it", not way_home.visible and not way_home._armed)
+	crowned.died.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("the Crowned dying opens it", way_home.visible and way_home._armed and way_home.monitoring)
+	holder.queue_free()
+
+	# A REPLACEMENT CROWNED. The placed one goes without a death (a mirror the
+	# leader no longer has: net_remove, no signal), and a new node of the same
+	# scene comes in later and is the one that dies.
+	var holder2 := Node2D.new()
+	var enemies2 := Node2D.new()
+	enemies2.name = "enemies"
+	holder2.add_child(enemies2)
+	var placed: Node2D = make_monster.call("res://scene/enemy/bossenemy.tscn", "bossenemy")
+	enemies2.add_child(placed)
+	var way_home2: Area2D = door_script.new()
+	way_home2.appear_delay = 0.0
+	way_home2.boss_path = NodePath("../enemies/bossenemy")
+	holder2.add_child(way_home2)
+	add_child(holder2)
+	await get_tree().process_frame
+	placed.queue_free()
+	await get_tree().process_frame
+	var respawned: Node2D = make_monster.call("res://scene/enemy/bossenemy.tscn", "bossenemy2")
+	enemies2.add_child(respawned)
+	await get_tree().process_frame
+	check("a respawned or mirrored Crowned is watched too", not way_home2.visible)
+	respawned.died.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  and its death opens the way home", way_home2.visible and way_home2._armed)
+	var again: Node2D = make_monster.call("res://scene/enemy/bossenemy.tscn", "bossenemy3")
+	enemies2.add_child(again)
+	again.died.emit()
+	await get_tree().process_frame
+	check("  a second kill while it is open keeps it open", way_home2.visible and way_home2._armed)
+	holder2.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
+# A PET SAYS HOW TO SUMMON IT (0.11.7)
+# =============================================================================
+# The owner: "issues with pet spawning when clicked on from inventory". A
+# right-click summons a pet and a second one puts it away (inventoryscreen.gd
+# _use_pet); a left click only selects the cell, and nothing but Options >
+# Controls said which. Walked in the container with real mouse events: left
+# and double click leave the pet in the bag, a right-click brings it out. The
+# tooltip now says so on every pet.
+
+func _test_a_pet_says_how_to_summon_it() -> void:
+	section("A PET SAYS HOW TO SUMMON IT - right-click, in its tooltip")
+
+	var pet: ItemData = ItemRegistry.get_item("petsniper")
+	var sword: ItemData = ItemRegistry.get_item("ironsword")
+	check("the pet's use line says right-click", pet != null and ItemTooltip.use_line(pet).begins_with("Right-click"),
+		ItemTooltip.use_line(pet) if pet != null else "no petsniper")
+	check("  and an item that is not a pet has none", sword != null and ItemTooltip.use_line(sword) == "")
+	var pets_seen := 0
+	var silent: Array = []
+	for item in ItemRegistry.get_all_items():
+		if int(item.type) == int(ItemData.Type.PET):
+			pets_seen += 1
+			if ItemTooltip.use_line(item) == "":
+				silent.append(item.item_id)
+	check("  every pet item has it", pets_seen >= 7 and silent.is_empty(), "%d pets, silent %s" % [pets_seen, silent])
+	if pet == null:
+		return
+	var tip: Control = (load("res://scene/ui/inventory/itemtooltip.tscn") as PackedScene).instantiate()
+	add_child(tip)
+	await get_tree().process_frame
+	tip.show_for_stack(ItemStack.new(pet, 1), null)
+	check("the tooltip over a pet shows it, between what it is and what it is worth",
+		tip.description_label.text.contains(ItemTooltip.PET_USE_LINE)
+		and tip.description_label.text.find(ItemTooltip.PET_USE_LINE) < tip.description_label.text.find("Worth"),
+		tip.description_label.text)
+	tip.show_for_stack(ItemStack.new(sword, 1), null)
+	check("  and the one over a sword does not", not tip.description_label.text.contains("summon"),
+		tip.description_label.text)
+	tip.queue_free()
+	await get_tree().process_frame
 
 
 func _collect_by_script(node: Node, script_path: String, into: Array) -> void:

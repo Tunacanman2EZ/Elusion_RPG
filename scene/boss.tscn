@@ -11,6 +11,8 @@
 [ext_resource type="PackedScene" uid="uid://y8py0d7k22ov" path="res://scene/ui/characterhud.tscn" id="10_24v5s"]
 [ext_resource type="PackedScene" uid="uid://d0rq5big47ahs" path="res://scene/enemy/bossenemy.tscn" id="11_bossenemy"]
 [ext_resource type="PackedScene" uid="uid://b7mqtx4vhjs2e" path="res://scene/world/enemyrespawner.tscn" id="12_respawner"]
+[ext_resource type="Script" uid="uid://c34sutp7765kr" path="res://src/world/victoryteleporter.gd" id="s_victory"]
+[ext_resource type="SpriteFrames" path="res://art/teleport/teleportframes.tres" id="tp_frames"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_x2yxj"]
 texture = ExtResource("2_b5yaj")
@@ -471,6 +473,9 @@ sources/2 = SubResource("TileSetAtlasSource_kv6pe")
 sources/3 = SubResource("TileSetAtlasSource_3ic3x")
 sources/4 = SubResource("TileSetAtlasSource_vxsja")
 
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_victory"]
+size = Vector2(44, 44)
+
 [node name="bossroom" type="Node2D" unique_id=1194927593]
 script = ExtResource("1_27m4v")
 
@@ -503,6 +508,24 @@ position = Vector2(-839, 138)
 script = ExtResource("9_nbucm")
 portal_id = "boss_entrance"
 metadata/_custom_type_script = "uid://blrs7e81o2jg4"
+
+[node name="victoryteleporter" type="Area2D" parent="ysortworld/inteactables" unique_id=1991000101]
+visible = false
+position = Vector2(-464, -8)
+collision_layer = 16
+collision_mask = 4
+monitoring = false
+script = ExtResource("s_victory")
+boss_path = NodePath("../../enemies/bossenemy")
+
+[node name="teleporter" type="AnimatedSprite2D" parent="ysortworld/inteactables/victoryteleporter" unique_id=1991000102]
+texture_filter = 1
+scale = Vector2(2.5, 2.25)
+sprite_frames = ExtResource("tp_frames")
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="ysortworld/inteactables/victoryteleporter" unique_id=1991000103]
+shape = SubResource("RectangleShape2D_victory")
+disabled = true
 
 [node name="enemies" type="Node2D" parent="ysortworld" unique_id=1609630585]
 y_sort_enabled = true
@@ -537,3 +560,5 @@ min_player_distance = 400.0
 
 [connection signal="body_entered" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/inteactables/ladderup" to="ysortworld/inteactables/ladderup" method="_on_body_exited"]
+[connection signal="body_entered" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_entered"]
+[connection signal="body_exited" from="ysortworld/inteactables/victoryteleporter" to="ysortworld/inteactables/victoryteleporter" method="_on_body_exited"]

@@ -2,7 +2,9 @@
 # reached through the boss arena's victory door once the six element bosses are
 # down (it used to be the field's ladder, which now leads to the arena; for a
 # while nothing led here but a staff teleport). Its ladder goes up to the
-# field. mirrors field.gd's structure closely:
+# field, and when the Crowned falls a teleporter home to town appears in the
+# room (victoryteleporter.gd with boss_path, 0.11.7) - the end of the game ends
+# in town. mirrors field.gd's structure closely:
 # spawns the actual player character (same responsibility elusion.gd has
 # for town), positions them at the correct FieldPortal arrival marker.
 #

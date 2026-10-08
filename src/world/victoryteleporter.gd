@@ -7,11 +7,18 @@
 #
 # THE ARENA'S DOOR LEADS TO THE CROWNED NOW (bossarena.tscn sets boss.tscn and
 # its "boss_entrance" marker), because the original boss is the finale and no
-# door reached its room. That room's ladder goes up to the field, so this is
-# still a way out - just one that passes the last fight. The default below is
-# the town, for any other place that uses this node.
+# door reached its room. The default below is the town, and THE CROWNED'S ROOM
+# USES IT (0.11.7): beat the last boss and a teleporter home appears there.
+# Before that the finale's only exit was its ladder back up to the field, so
+# the game's ending sent you back into the game's middle - the owner: "final
+# teleport does not return to town". That room keeps its ladder, for leaving
+# without the win.
 #
-# IT IS THE ONLY WAY OUT. The arena used to also have a ladder back up to the
+# TWO WAYS TO KNOW YOU WON. The arena has a gauntlet and waits for its
+# gauntlet_cleared. The Crowned's room has one boss and no waves, so it sets
+# boss_path instead and waits for that boss's `died` - see _watch_single_boss().
+#
+# IN THE ARENA IT IS THE ONLY WAY OUT. The arena used to also have a ladder back up to the
 # field, so this node was the reward and the ladder was the escape hatch. The
 # ladder is gone: walk in and the room is a commitment. That makes everything
 # below load-bearing in a way it was not before — if this teleporter fails to
@@ -67,6 +74,11 @@ extends Area2D
 # How this node finds the sequencer. bossgauntlet.gd joins this group in _init.
 @export var gauntlet_group: StringName = &"bossgauntlet"
 
+# A single boss instead of a gauntlet: set, and this appears when that boss
+# dies rather than on gauntlet_cleared (the Crowned's room). Left empty, the
+# gauntlet is what this waits for (the arena).
+@export var boss_path: NodePath = NodePath()
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -87,6 +99,13 @@ var can_teleport := true
 # be sent home by brushing the spot where the teleporter will be.
 var _armed := false
 
+# Between the win and the reveal (appear_delay). A second win in that window -
+# a respawned boss killed again - must not start a second reveal.
+var _revealing := false
+
+# The single boss's scene, so a replacement for it can be recognised.
+var _boss_scene_path: String = ""
+
 
 # =============================================================================
 # LIFECYCLE
@@ -94,6 +113,10 @@ var _armed := false
 
 func _ready() -> void:
 	_hide_until_won()
+
+	if not boss_path.is_empty():
+		_watch_single_boss(get_node_or_null(boss_path))
+		return
 
 	# CONNECT, don't reach in. The gauntlet is found by group, so this node
 	# does not name a path into the arena's tree - move the gauntlet in the
@@ -113,6 +136,7 @@ func _ready() -> void:
 func _hide_until_won() -> void:
 	visible = false
 	_armed = false
+	_revealing = false
 	can_teleport = true
 	# Monitoring off AND the shape disabled: the player must not be able to
 	# step onto a teleporter that is not there yet. The scene sets these too,
@@ -122,6 +146,46 @@ func _hide_until_won() -> void:
 		_shape.disabled = true
 	if _sprite != null:
 		_sprite.stop()
+
+
+# =============================================================================
+# ONE BOSS (the Crowned's room)
+# =============================================================================
+# THE BOSS THAT DIES MAY NOT BE THE NODE THE SCENE PLACED. The respawner brings
+# a boss back as a new node, and with shared monsters a player who walks in
+# after someone else's kill has their copy removed without a death (net_remove,
+# no `died`) and later fights a mirror built fresh. Watching only the placed
+# node would leave all of them without a way home. So the placed boss names
+# the scene and the container, and any node of that scene entering that
+# container is watched too.
+
+func _watch_single_boss(boss: Node) -> void:
+	if boss == null:
+		push_warning("victoryteleporter: boss_path '%s' finds nothing - it will never appear" % boss_path)
+		return
+	_boss_scene_path = boss.scene_file_path
+	_watch_boss(boss)
+	var container: Node = boss.get_parent()
+	if container != null and not container.child_entered_tree.is_connected(_on_enemy_entered):
+		container.child_entered_tree.connect(_on_enemy_entered)
+
+
+func _on_enemy_entered(node: Node) -> void:
+	# The scene is known from instantiate(), before _ready - this runs inside
+	# add_child(), and the replacement's _ready has not.
+	if _boss_scene_path != "" and node.scene_file_path == _boss_scene_path:
+		_watch_boss(node)
+
+
+func _watch_boss(boss: Node) -> void:
+	if not boss.has_signal("died"):
+		push_warning("victoryteleporter: '%s' has no died signal - it will never appear" % boss.name)
+		return
+	var cb := Callable(self, "_on_gauntlet_cleared")
+	if not boss.is_connected("died", cb):
+		# ONE-SHOT for the same reason as the gauntlet's: BaseEnemy can emit
+		# while its death animation plays, and once is the win.
+		boss.connect("died", cb, CONNECT_ONE_SHOT)
 
 
 # =============================================================================
@@ -136,6 +200,12 @@ func _on_gauntlet_cleared() -> void:
 	# So the reveal waits at least a frame - and the wait also reads better:
 	# the room noticing you won, rather than a teleporter blinking on over the
 	# last boss before the body has finished falling.
+	#
+	# Once open it stays open, and one reveal at a time: in the Crowned's room a
+	# respawned Crowned can die again, while this is showing or still waiting.
+	if _armed or _revealing:
+		return
+	_revealing = true
 	if appear_delay > 0.0:
 		await get_tree().create_timer(appear_delay).timeout
 	else:
@@ -156,6 +226,7 @@ func _on_gauntlet_cleared() -> void:
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 
+	_revealing = false
 	_appear()
 
 

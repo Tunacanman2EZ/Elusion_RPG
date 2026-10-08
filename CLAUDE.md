@@ -2365,7 +2365,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   0.11.3 the Credits' Support tab sends a name through the PayPal note,
   0.11.4 and asks for nothing but the hot cocoa, 0.11.5 the Electric Sprite
   pet's orb reaches what it is aimed at, 0.11.6 the seven bosses are Crowned
-  Beholders by name.
+  Beholders by name, 0.11.7 beating the Crowned opens a teleporter home to
+  town, and a pet's tooltip says a right-click summons it.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3650,6 +3651,44 @@ boss is still announced under the old name.
 **export_presets.cfg was written back as 0.11.0.0 on 8 Oct**, the trap under
 "The version" again: the editor had been open since before 0.11.5 and saved
 its old presets on export. 0.11.6 is set over the copy read off the PC.
+
+### The finale ends in town, and a pet says how to summon it (0.11.7)
+
+The owner, 8 Oct: "final teleport does not return to town". The way through
+is field ladder -> arena (six bosses) -> the arena's victory teleporter ->
+the Crowned's room (`boss.tscn`). That room's only exit was its ladder up to
+the field, so beating the last boss in the game put you back in the Field.
+The container's `finale` run walked it and said so.
+
+- **The Crowned's room has a victory teleporter now**, at (-464, -8) in the
+  north half of the room, clear of the corridor along its south side that
+  leads to the ladder. Hidden and unsteppable until the Crowned dies, then
+  it appears and goes to the town (its default destination), where the town
+  puts you at `playerspawn` as a login does. The ladder stays, for leaving
+  without the win. Move the node in the editor if you want it elsewhere; the
+  walk test checks it can be reached.
+- **`victoryteleporter.gd` has `boss_path`**. Set, it waits for that boss's
+  `died` instead of the arena's `gauntlet_cleared`. It also watches every node
+  of the same scene that enters the boss's container, because **the boss that
+  dies may not be the node the scene placed**: the respawner brings a boss back
+  as a new node, and with shared monsters a player who walks in after someone
+  else's kill has their copy removed without a death (`net_remove`, no
+  `died`) and fights a mirror built fresh. A second kill while it is open or
+  opening does nothing (`_revealing`).
+- **A pet's tooltip says "Right-click in your bag to summon it, and again to
+  put it away"** (`ItemTooltip.use_line()`). Reported as "issues with pet
+  spawning when clicked on from inventory"; walked in the container with real
+  mouse events, a left click and a double click leave the pet in the bag (a
+  left click selects the cell; a double click is the bank's transfer), and a
+  right-click summons it - which only Options > Controls said.
+- Tests: `_test_the_finale_sends_you_home` (the room's wiring, and the node
+  with stand-in bosses: not fooled by another monster, opened by the boss,
+  opened by a replacement boss) and `_test_a_pet_says_how_to_summon_it`.
+
+**export_presets.cfg came back as 0.11.0.0 again** an hour after 0.11.6 set
+it: the editor was still open from before 0.11.5 and exported. 0.11.7 is set
+over the copy read off the PC. Close Godot and open it again after pulling a
+version change, before exporting.
 
 ### Inventory, bank and shop on day 1
 

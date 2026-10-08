@@ -262,6 +262,17 @@ func _populate_labels(stack: ItemStack, unrevealed: bool = false) -> void:
 				desc += "\n"
 			desc += facts
 
+		# HOW TO USE IT, where that is not obvious. A pet in the bag is summoned
+		# by a right-click and nothing said so outside Options > Controls, so a
+		# left click - which only selects - read as the pet not spawning (the
+		# owner, 0.11.7: "issues with pet spawning when clicked on from
+		# inventory").
+		var how: String = use_line(stack.data)
+		if how != "":
+			if desc != "":
+				desc += "\n"
+			desc += how
+
 		# WHAT IT IS WORTH, and it goes below the requirements because it is the
 		# thing you check last.
 		#
@@ -460,6 +471,13 @@ static func _requirement_lines(data: ItemData, unrevealed: bool = false) -> Stri
 			stats.append("restores %d %s" % [int(data.restore_amount), noun])
 	if not stats.is_empty():
 		lines.append(", ".join(stats).capitalize())
+	# THE ELEMENT IT RESISTS (0.11.0), its own line: "Resists fire 5%". On the
+	# shelf, a "?" and the range its tier rolls, like every other stat there.
+	if unrevealed and data.resists_when_rolled():
+		var window: Vector2i = GameConstants.resist_range(int(data.tier))
+		lines.append("Resists ? - one element, %d-%d%%" % [window.x, window.y])
+	elif data.resistance_text() != "":
+		lines.append(data.resistance_text())
 	if unrevealed:
 		lines.append("Stats are rolled when you buy it: %d-%d%% each, 1 in %d Perfect" % [
 			GameConstants.QUALITY_LOW, GameConstants.QUALITY_HIGH, GameConstants.QUALITY_PERFECT_ODDS])
@@ -484,6 +502,17 @@ static func _requirement_lines(data: ItemData, unrevealed: bool = false) -> Stri
 		lines.append("Needs %s" % ", ".join(needs))
 
 	return "\n".join(lines)
+
+
+const PET_USE_LINE := "Right-click in your bag to summon it, and again to put it away"
+
+static func use_line(data: ItemData) -> String:
+	"""The one line saying how an item is used, for the items whose use is not
+	obvious from what they are. A pet only, for now: inventoryscreen.gd's
+	_use_pet() is what a right-click does with one, summon or dismiss."""
+	if data != null and int(data.type) == int(ItemData.Type.PET):
+		return PET_USE_LINE
+	return ""
 
 
 func _worth_line(data: ItemData, quantity: int) -> String:
