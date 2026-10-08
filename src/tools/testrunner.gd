@@ -282,6 +282,7 @@ func _run_all() -> void:
 	_test_character_select_has_a_way_out()
 	await _test_every_area_can_be_walked()
 	await _test_the_big_field()
+	_test_the_road_through_the_game()
 	await _test_far_enemies_sleep()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
@@ -6714,6 +6715,76 @@ const BIG_FIELD := "res://scene/bigfield.tscn"
 const BIG_FIELD_BANDS := {"light": 1, "wind": 1, "water": 2, "ice": 2, "earth": 3,
 	"electric": 3, "poison": 3, "bushmage": 3, "bushsniper": 3, "fire": 4, "dark": 5}
 
+# =============================================================================
+# THE ROAD THROUGH THE GAME (0.15.0)
+# =============================================================================
+# The owner: "keep both big field -> small field -> gauntlet -> main boss ->
+# teleport back to town". Each door is read off its scene, and its landing spot
+# looked for in the scene it leads to: a door whose spawn id the next scene does
+# not have drops the player at (0, 0) - out of sight of the arrival, and in the
+# walls of every area here.
+const ROAD := [
+	["elusion", "res://src/world/leavetown.gd", "bigfield"],
+	["bigfield", "res://src/world/ladder.gd", "field"],
+	["field", "res://src/world/ladder.gd", "bossarena"],
+	["bossarena", "res://src/world/victoryteleporter.gd", "boss"],
+	["boss", "res://src/world/victoryteleporter.gd", "elusion"],
+]
+
+func _test_the_road_through_the_game() -> void:
+	section("THE ROAD - town, Big Field, Field, the gauntlet, the Crowned, and home")
+
+	for hop in ROAD:
+		var from_id: String = hop[0]
+		var to_id: String = hop[2]
+		var from_scene: Node = (load(AreaRegistry.AREAS[from_id]) as PackedScene).instantiate()
+		var to_scene: Node = (load(AreaRegistry.AREAS[to_id]) as PackedScene).instantiate()
+		var doors: Array = []
+		_collect_by_script(from_scene, hop[1], doors)
+		# The way on: a door that leads somewhere (an arrival-only portal does not).
+		var onward: Array = doors.filter(func(d: Node) -> bool:
+			var dest: String = str(d.get("destination_scene_path")) if "destination_scene_path" in d else ""
+			if dest == "" and d.get("destination_scene") is PackedScene:
+				dest = (d.get("destination_scene") as PackedScene).resource_path
+			return dest == str(AreaRegistry.AREAS[to_id]))
+		var ids: Array = []
+		_collect_portal_ids(to_scene, ids)
+		var lands: String = str(onward[0].get("target_spawn_id")) if onward.size() == 1 else "-"
+		check("%s leads on to %s" % [AreaRegistry.display_name(from_id), AreaRegistry.display_name(to_id)],
+			onward.size() == 1, "%d doors there, none to %s" % [doors.size(), to_id] if onward.is_empty() else onward.size())
+		check("  and lands where %s has an arrival for it" % AreaRegistry.display_name(to_id),
+			onward.size() == 1 and (lands == "" or ids.has(lands)), "wants '%s', has %s" % [lands, ids])
+		from_scene.free()
+		to_scene.free()
+
+	# EVERY DOOR IS CONNECTED. A door's script only runs when its Area2D's
+	# body_entered reaches it, and the scene file is what connects the two.
+	# bigfield.tscn was generated without those lines, so its ladder and its
+	# arrival portal never fired - unnoticed while nobody but /goto went there,
+	# and found the first time a player walked onto the ladder (0.15.0).
+	var unwired: Array = []
+	for area_id in AreaRegistry.area_ids():
+		var area: Node = (load(AreaRegistry.AREAS[area_id]) as PackedScene).instantiate()
+		for script_path in DOOR_SCRIPTS:
+			var found: Array = []
+			_collect_by_script(area, script_path, found)
+			for door in found:
+				for sig in [["body_entered", "_on_body_entered"], ["body_exited", "_on_body_exited"]]:
+					if door.has_method(sig[1]) and not door.is_connected(sig[0], Callable(door, sig[1])):
+						unwired.append("%s %s %s" % [area_id, door.name, sig[0]])
+		area.free()
+	check("every door in every area hears a player step in and out", unwired.is_empty(), unwired)
+
+	# Nothing else in town leads into the fields: one way out, to the Big Field.
+	var town: Node = (load(AreaRegistry.AREAS["elusion"]) as PackedScene).instantiate()
+	var exits: Array = []
+	_collect_by_script(town, "res://src/world/leavetown.gd", exits)
+	check("the town has one way out, and it is to the Big Field",
+		exits.size() == 1 and (exits[0].get("destination_scene") as PackedScene).resource_path == str(AreaRegistry.AREAS["bigfield"])
+		and str(exits[0].get("target_spawn_id")) == "field_entrance", exits.size())
+	town.free()
+
+
 func _test_the_big_field() -> void:
 	section("THE BIG FIELD - packed fields off one road, harder the further you go")
 
@@ -6735,8 +6806,9 @@ func _test_the_big_field() -> void:
 	check("players arrive where the town's portal sends them (field_entrance)",
 		arrival != null and str(arrival.get("portal_id")) == "field_entrance")
 	var ladder: Node = area.get_node_or_null("ysortworld/interactables/ladderdown")
-	check("the ladder at the far end goes down to the boss arena",
-		ladder != null and str(ladder.get("destination_scene_path")) == "res://scene/bossarena.tscn")
+	check("the ladder at the far end goes down to the Field, landing at its arrival (0.15.0)",
+		ladder != null and str(ladder.get("destination_scene_path")) == "res://scene/field.tscn"
+		and str(ladder.get("target_spawn_id")) == "field_entrance")
 	check("a respawner brings the fields back", area.get_node_or_null("enemyrespawner") != null)
 	check("128 enemies are placed", enemies.size() == 128, enemies.size())
 
@@ -16810,8 +16882,8 @@ func _test_the_world_loads_in_the_background() -> void:
 	check("the walk reaches character select's script (it is not blind)",
 		login.has("res://src/ui/menus/characterselect.gd"), login.keys().size())
 	var town_walk := _load_closure(areas["elusion"])
-	check("and it follows an exported scene: the town pulls the field",
-		town_walk.has(areas["field"]))
+	check("and it follows an exported scene: the town pulls the Big Field, where its portal leads (0.15.0)",
+		town_walk.has(areas["bigfield"]))
 	var hud_walk := _load_closure("res://src/ui/characterhud.gd")
 	check("and a script's preloads: the HUD pulls the trade window",
 		hud_walk.has("res://scene/ui/trade/tradepanel.tscn"))

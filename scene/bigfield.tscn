@@ -288,8 +288,8 @@ portal_id = "field_entrance"
 position = Vector2(3032, 1024)
 collision_layer = 16
 collision_mask = 4
-destination_scene_path = "res://scene/bossarena.tscn"
-target_spawn_id = "boss_entrance"
+destination_scene_path = "res://scene/field.tscn"
+target_spawn_id = "field_entrance"
 
 [node name="ladderarrival" type="Node2D" parent="ysortworld/interactables"]
 position = Vector2(3032, 1051)
@@ -854,3 +854,8 @@ y_sort_enabled = true
 z_index = 90
 
 [node name="enemyrespawner" parent="." instance=ExtResource("9_respawner")]
+
+[connection signal="body_entered" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_entered"]
+[connection signal="body_exited" from="ysortworld/interactables/fieldteleport" to="ysortworld/interactables/fieldteleport" method="_on_body_exited"]
+[connection signal="body_entered" from="ysortworld/interactables/ladderdown" to="ysortworld/interactables/ladderdown" method="_on_body_entered"]
+[connection signal="body_exited" from="ysortworld/interactables/ladderdown" to="ysortworld/interactables/ladderdown" method="_on_body_exited"]

@@ -30,9 +30,10 @@ const AREAS := {
 	"elusion":   "res://scene/elusion.tscn",
 	"field":     "res://scene/field.tscn",
 	# Day 2: the Field at twice the size, built from the blueprint, for the
-	# owner to decorate. No door leads here yet; the owner reaches it with
-	# /goto bigfield. The day it replaces the Field, the town's portal points
-	# here and this note goes.
+	# owner to decorate. Since 0.15.0 it is the first stop out of town: the
+	# town's portal lands here, and its ladder at the far end goes down to the
+	# Field. The owner: "big field -> small field -> gauntlet -> main boss ->
+	# teleport back to town".
 	"bigfield":  "res://scene/bigfield.tscn",
 	"boss":      "res://scene/boss.tscn",
 	"bossarena": "res://scene/bossarena.tscn",
