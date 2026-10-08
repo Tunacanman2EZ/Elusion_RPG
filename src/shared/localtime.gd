@@ -17,20 +17,42 @@ extends RefCounted
 # everybody. That is exactly right for storage and exactly useless on screen.
 # The conversion belongs at the edge, once, and this is the edge.
 #
-# THE ONE THING IT CANNOT DO, said plainly rather than hidden:
-# get_time_zone_from_system() reports the offset in force RIGHT NOW, including
-# whether daylight saving is on TODAY. Applied to a timestamp from the other
-# side of a DST change it is an hour out. For chat, which is minutes old, that
-# never happens; for a broadcast up to a week old it can, twice a year. Fixing
-# it properly needs a timezone database, which is not worth shipping to make a
-# week-old server notice an hour righter. If that changes, this is the one
-# place it changes.
+# THE CALENDAR IS GODOT'S. Leap years (2028 has a Feb 29, 2100 does not, 2000
+# did), month lengths and weekdays all come from Time's own conversions, and
+# nothing here counts days in a month or years in days. _test_the_calendar
+# holds Godot's answers against an independent algorithm for every day of
+# 1970-2199. A duration - a ban, "3 days ago" - is seconds, which a leap year
+# does not change.
+#
+# DAYLIGHT SAVING, said plainly. Godot reports the offset in force RIGHT NOW
+# (get_time_zone_from_system()), not the one in force at some other moment.
+#   - IN A BROWSER, where most people play, the browser knows every zone's
+#     rules, so each timestamp is shown with the offset in force AT IT
+#     (bias_minutes_at(), through JavaScript): a notice from before the clocks
+#     changed reads the hour it was.
+#   - ON A DESKTOP there is no timezone database to ask, so a timestamp from
+#     the other side of a change is an hour out - a week-old broadcast, twice
+#     a year. The offset itself is re-read every minute, so a game left
+#     running across the change shows the new hour from then on; until 7 Oct
+#     2026 it was read once and kept until the game was closed.
 
 
-# READ ONCE, LAZILY. get_time_zone_from_system() is a system call, this is
-# asked per rendered line, and the offset does not move while somebody plays.
+# THE SYSTEM OFFSET, re-read at most once a minute: it is asked per rendered
+# line, and it moves twice a year.
+const BIAS_REREAD_MSEC := 60000
 static var _bias_minutes: int = 0
 static var _bias_known: bool = false
+static var _bias_read_at: int = 0
+
+# WHERE THE OFFSET AT A GIVEN MOMENT COMES FROM: unix time -> minutes east of
+# UTC, or null for "cannot say". A browser's JavaScript on the web build; the
+# suite puts its own here to play out a change of clocks. Nothing elsewhere.
+static var offset_reader: Callable = Callable()
+static var _reader_checked: bool = false
+# The browser's answers, by quarter hour: every zone's offset is a multiple of
+# fifteen minutes, so every change of clocks falls on one.
+static var _browser_offsets: Dictionary = {}
+const BROWSER_OFFSETS_KEPT := 512
 
 const WEEKDAYS := ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const MONTHS := ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -64,10 +86,51 @@ static func ago(at: int, now: int) -> String:
 
 
 static func bias_minutes() -> int:
-	if not _bias_known:
+	"""The system's offset from UTC now, in minutes east (Denver in summer is
+	-360). Re-read once a minute, so a change of clocks during play lands."""
+	var now_ms: int = Time.get_ticks_msec()
+	if not _bias_known or now_ms - _bias_read_at >= BIAS_REREAD_MSEC:
 		_bias_minutes = int(Time.get_time_zone_from_system().get("bias", 0))
 		_bias_known = true
+		_bias_read_at = now_ms
 	return _bias_minutes
+
+
+static func bias_minutes_at(unix_time: int) -> int:
+	"""The offset in force AT this moment, where the platform can say - the
+	browser can - and the offset now where it cannot."""
+	var reader: Callable = _reader()
+	if reader.is_valid():
+		var answer: Variant = reader.call(unix_time)
+		if answer is int or answer is float:
+			return int(answer)
+	return bias_minutes()
+
+
+static func _reader() -> Callable:
+	if not _reader_checked:
+		_reader_checked = true
+		if not offset_reader.is_valid() and OS.has_feature("web"):
+			offset_reader = func(unix_time: int) -> Variant: return _browser_offset(unix_time)
+	return offset_reader
+
+
+static func _browser_offset(unix_time: int) -> Variant:
+	"""Minutes east of UTC at this moment, by the browser's own zone rules.
+	JavaScript's getTimezoneOffset() counts the other way (Denver in summer is
+	+360), hence the minus."""
+	@warning_ignore("integer_division")
+	var quarter: int = unix_time / 900
+	if _browser_offsets.has(quarter):
+		return _browser_offsets[quarter]
+	var answer: Variant = JavaScriptBridge.eval(
+		"-new Date(%d * 1000).getTimezoneOffset()" % (quarter * 900), true)
+	if not (answer is int or answer is float):
+		return null
+	if _browser_offsets.size() >= BROWSER_OFFSETS_KEPT:
+		_browser_offsets.clear()
+	_browser_offsets[quarter] = int(answer)
+	return int(answer)
 
 
 static func parts(unix_time: int) -> Dictionary:
@@ -76,8 +139,10 @@ static func parts(unix_time: int) -> Dictionary:
 	SHIFT THEN READ. Godot's get_datetime_dict_from_unix_time() is UTC with no
 	way to ask it for anything else, so the offset goes on the integer BEFORE
 	it is decomposed. Every field that comes back - hour, day, weekday - is
-	then local, because they are all pure functions of the shifted number."""
-	return Time.get_datetime_dict_from_unix_time(unix_time + bias_minutes() * 60)
+	then local, because they are all pure functions of the shifted number. The
+	offset is the one in force at that moment where that is known
+	(bias_minutes_at())."""
+	return Time.get_datetime_dict_from_unix_time(unix_time + bias_minutes_at(unix_time) * 60)
 
 
 static func clock(unix_time: int) -> String:
@@ -88,7 +153,7 @@ static func clock(unix_time: int) -> String:
 	return "%02d:%02d" % [int(local.get("hour", 0)), int(local.get("minute", 0))]
 
 
-static func stamp(unix_time: int) -> String:
+static func stamp(unix_time: int, now_time: int = 0) -> String:
 	"""The time, plus as much date as it takes to be unambiguous.
 
 		today            14:32
@@ -111,7 +176,9 @@ static func stamp(unix_time: int) -> String:
 		return UNKNOWN
 
 	var local: Dictionary = parts(unix_time)
-	var now: Dictionary = parts(int(Time.get_unix_time_from_system()))
+	# `now_time` is the suite's: a stamp is relative to today, and a test of
+	# Feb 29 cannot wait for one.
+	var now: Dictionary = parts(now_time if now_time > 0 else int(Time.get_unix_time_from_system()))
 	var time_part: String = "%02d:%02d" % [
 		int(local.get("hour", 0)), int(local.get("minute", 0))]
 

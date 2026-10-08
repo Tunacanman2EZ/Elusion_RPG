@@ -232,7 +232,7 @@ text = "Chat"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-tooltip_text = "Friends, Players, Guild, Trade and Kingdom"
+tooltip_text = "Friends, Players, Guild, Trade, Kingdom and Kills"
 focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Social"
@@ -300,6 +300,15 @@ tooltip_text = "What the realm has taken in tax, and your share of it"
 focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Kingdom"
+
+[node name="killsbutton" type="Button" parent="socialmenu/socialitems" unique_id=1699508890]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+tooltip_text = "Every monster you have killed, and everybody's"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Kills"
 
 [node name="systemmenu" type="PanelContainer" parent="." unique_id=1733059305]
 unique_name_in_owner = true

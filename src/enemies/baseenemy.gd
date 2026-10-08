@@ -2095,25 +2095,34 @@ func _apply_element_recolour() -> void:
 	if sprite == null:
 		return
 
+	sprite.material = element_material(enemy_data, current_element())
+
+
+static func element_material(data: EnemyData, element: int) -> ShaderMaterial:
+	"""The recolour a creature of `data` wears for `element`. Static so the
+	Kills window can draw a creature's picture the colour it is in the world
+	without one being alive (EnemyPortraits)."""
 	# A FRESH MATERIAL PER ENEMY, for the same reason slashwave.gd builds a
 	# fresh shape: a Material is a Resource, and one shared between instances
 	# would mean the last slime to spawn decided the colour of every slime
 	# already on screen.
 	var mat := ShaderMaterial.new()
 	mat.shader = ELEMENT_SHADER
-	mat.set_shader_parameter("element_hue", Element.hue_for(current_element()))
-	mat.set_shader_parameter("saturation_scale", enemy_data.saturation_scale)
+	mat.set_shader_parameter("element_hue", Element.hue_for(element))
+	if data == null:
+		return mat
+	mat.set_shader_parameter("saturation_scale", data.saturation_scale)
 	# The outfit mask (see EnemyData.outfit_hue). Default -1 recolours the whole
 	# sheet, so a slime is untouched; a robed creature sets these to recolour only
 	# its garment. Projectiles skip this on purpose - they have no outfit - and so
 	# fall back to the shader's own -1 default.
-	mat.set_shader_parameter("source_hue", enemy_data.outfit_hue)
-	mat.set_shader_parameter("source_hue_band", enemy_data.outfit_hue_band)
+	mat.set_shader_parameter("source_hue", data.outfit_hue)
+	mat.set_shader_parameter("source_hue_band", data.outfit_hue_band)
 	# Grey tint (see EnemyData.grey_tint). Default 0 leaves greys as drawn; the
 	# boss turns this up so its mostly-grey body takes the element's colour and the
 	# six elemental bosses stop looking identical.
-	mat.set_shader_parameter("grey_tint", enemy_data.grey_tint)
-	sprite.material = mat
+	mat.set_shader_parameter("grey_tint", data.grey_tint)
+	return mat
 
 
 func _recolour_projectile(projectile: Node) -> void:
@@ -2539,6 +2548,12 @@ func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 		_net_remote_hit = true
 	else:
 		_net_local_hit = true
+		# AND THE SERVER HEARS IT (0.10.0): presence.py keeps its own count
+		# of every monster's health, and this game's own hits reach it only
+		# from here. Before the hp moves, so it is sent ahead of any death it
+		# causes. A remote hit was counted on its way through the server.
+		if _net_sync != null:
+			_net_sync.own_hit(self, amount, _element)
 
 	hp = max(hp - amount, 0)
 	damaged.emit(amount)

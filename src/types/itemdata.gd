@@ -470,6 +470,13 @@ var base_id: String = ""
 # {stat field: percent}, e.g. {"armor_value": 104, "bonus_max_hp": 96}
 var rolls: Dictionary = {}
 
+# THE ELEMENT A PIECE OF ARMOUR RESISTS, and by how many percent
+# (GameConstants.RESIST_*): rolled with the rest, the last part of the id
+# ("r605": fire, 5%). NONE and 0 on the catalogue piece, on a weapon, and on a
+# piece from before resistances.
+var resist_element: int = Element.Type.NONE
+var resist_percent: int = 0
+
 
 func catalogue_id() -> String:
 	# The .tres this piece is a roll of, or its own id when it is not rolled.
@@ -480,6 +487,20 @@ func catalogue_id() -> String:
 
 func is_rolled() -> bool:
 	return not rolls.is_empty()
+
+
+func resists_when_rolled() -> bool:
+	# Armour - worn, and not a weapon - of a tier that has a resistance range:
+	# what the drop and the till give an element to resist.
+	return int(type) == int(Type.ARMOR) and int(equip_slot) != int(EquipSlot.NONE) \
+		and GameConstants.resist_range(int(tier)).y > 0
+
+
+func resistance_text() -> String:
+	# "Resists fire 5%", or "" for a piece that resists nothing.
+	if resist_percent <= 0 or resist_element == Element.Type.NONE:
+		return ""
+	return "Resists %s %d%%" % [Element.name_for(resist_element), resist_percent]
 
 
 func is_perfect() -> bool:

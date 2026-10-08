@@ -55,8 +55,11 @@ var _item_files_seen: int = 0
 var _rolled: Dictionary = {}
 
 # The shape of a roll after QUALITY_MARK: one lowercase letter and a two- or
-# three-digit percent, repeated. Compiled once.
-var _roll_suffix: RegEx = RegEx.create_from_string("^(?:[a-z][0-9]{2,3})+$")
+# three-digit percent, repeated. Compiled once. \z, NOT $: PCRE's $ also
+# matches before a final newline, so "ironsword~d107\n" was read as the 107
+# roll - a second spelling of one piece. gamedata.py had the same hole (and
+# Unicode digits through \d); both closed 7 Oct.
+var _roll_suffix: RegEx = RegEx.create_from_string("^(?:[a-z][0-9]{2,3})+\\z")
 var _roll_part: RegEx = RegEx.create_from_string("([a-z])([0-9]{2,3})")
 
 # =============================================================================
@@ -205,16 +208,19 @@ func has_item(item_id: String) -> bool:
 # derives max health from the same rolled numbers this hands to Player.
 
 func split_roll(item_id: String) -> Dictionary:
-	# {"base": "jadechest", "rolls": {"armor_value": 104, "bonus_max_hp": 96}}
-	# for a rolled id; {"base": item_id, "rolls": {}} for a plain one; and {}
-	# for anything that only looks like a roll.
+	# {"base": "jadechest", "rolls": {"armor_value": 104, "bonus_max_hp": 96},
+	# "resist": {"element": 6, "percent": 5}} for a rolled id ("resist" {} when
+	# it resists nothing); {"base": item_id, "rolls": {}, "resist": {}} for a
+	# plain one; and {} for anything that only looks like a roll.
 	#
 	# STRICT, BECAUSE THE ID IS THE IDENTITY - the same rules as the server:
 	# every stat the base piece has, each once, in QUALITY_FIELDS order, and
-	# either all at QUALITY_PERFECT or each inside QUALITY_LOW..QUALITY_HIGH.
+	# either all at QUALITY_PERFECT or each inside QUALITY_LOW..QUALITY_HIGH;
+	# then at most one resistance, read_resist()'s rules, at the top of its
+	# range on a Perfect piece.
 	var mark: int = item_id.find(GameConstants.QUALITY_MARK)
 	if mark < 0:
-		return {"base": item_id, "rolls": {}}
+		return {"base": item_id, "rolls": {}, "resist": {}}
 	var base: String = item_id.substr(0, mark)
 	var suffix: String = item_id.substr(mark + 1)
 	if not _items.has(base) or _roll_suffix.search(suffix) == null:
@@ -222,7 +228,16 @@ func split_roll(item_id: String) -> Dictionary:
 
 	var expected: Array = rolled_fields(_items[base])
 	var matches: Array = _roll_part.search_all(suffix)
-	if matches.size() != expected.size():
+	# THE RESISTANCE COMES LAST, after every stat: its letter, the element's
+	# number and the percent in two digits ("r605"). Optional - a piece from
+	# before resistances has none - but only on armour, inside its tier's range.
+	var resist: Dictionary = {}
+	if not matches.is_empty() and matches.back().get_string(1) == GameConstants.RESIST_LETTER:
+		resist = read_resist(_items[base], matches.back().get_string(2))
+		if resist.is_empty():
+			return {}
+		matches = matches.slice(0, matches.size() - 1)
+	if matches.is_empty() or matches.size() != expected.size():
 		return {}
 	var rolls: Dictionary = {}
 	var perfect_count: int = 0
@@ -239,7 +254,27 @@ func split_roll(item_id: String) -> Dictionary:
 		rolls[String(expected[i][1])] = percent
 	if perfect_count != 0 and perfect_count != rolls.size():
 		return {}
-	return {"base": base, "rolls": rolls}
+	# A PERFECT PIECE RESISTS AT THE TOP OF ITS RANGE, as every stat sits at the
+	# top of its own - so a Perfect has one spelling per element, not five.
+	if perfect_count != 0 and not resist.is_empty() \
+			and int(resist["percent"]) != GameConstants.resist_range(int(_items[base].tier)).y:
+		return {}
+	return {"base": base, "rolls": rolls, "resist": resist}
+
+
+func read_resist(data: ItemData, digits: String) -> Dictionary:
+	# {"element", "percent"} from a resistance's three digits, or {} when they
+	# are not one this piece could have rolled - the server's rule
+	# (gamedata._parse_variant): armour, one of RESIST_ELEMENTS, inside the
+	# tier's range, two digits of percent.
+	if data == null or not data.resists_when_rolled() or digits.length() != 3:
+		return {}
+	var element: int = int(digits.substr(0, 1))
+	var percent: int = int(digits.substr(1, 2))
+	var window: Vector2i = GameConstants.resist_range(int(data.tier))
+	if not GameConstants.RESIST_ELEMENTS.has(element) or percent < window.x or percent > window.y:
+		return {}
+	return {"element": element, "percent": percent}
 
 
 func rolled_fields(data: ItemData) -> Array:
@@ -284,6 +319,10 @@ func rolled_item(item_id: String) -> ItemData:
 		copy.set(field, scale_stat(int(base.get(field)), int(copy.rolls[field])))
 	if copy.is_perfect():
 		copy.display_name = "Perfect " + base.display_name
+	var resist: Dictionary = parts.get("resist", {})
+	if not resist.is_empty():
+		copy.resist_element = int(resist["element"])
+		copy.resist_percent = int(resist["percent"])
 	_rolled[item_id] = copy
 	return copy
 

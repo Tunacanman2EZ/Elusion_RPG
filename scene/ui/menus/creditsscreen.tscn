@@ -1,0 +1,134 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/ui/menus/creditsscreen.gd" id="1_credits"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
+
+[node name="creditsscreen" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -235.0
+offset_top = -280.0
+offset_right = 235.0
+offset_bottom = 280.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_credits")
+
+[node name="mainpanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
+layout_mode = 2
+
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 20
+text = "CREDITS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(28, 28)
+layout_mode = 2
+focus_mode = 0
+theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
+theme_override_colors/font_hover_color = Color(1, 0.5, 0.4, 1)
+theme_override_font_sizes/font_size = 18
+text = "×"
+flat = true
+
+[node name="tabsrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="artbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tabsrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 30)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+toggle_mode = true
+button_pressed = true
+text = "Art"
+
+[node name="audiobutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tabsrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 30)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+toggle_mode = true
+text = "Audio"
+
+[node name="supportbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tabsrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 30)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+toggle_mode = true
+text = "Support"
+
+[node name="enginebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tabsrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 30)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+toggle_mode = true
+text = "Engine"
+
+[node name="bylinelabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.82, 0.74, 1)
+theme_override_font_sizes/font_size = 13
+text = "Elusion RPG - a game by Robert, Elusion Studios"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="listscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/scrollbar_v_separation = 8
+horizontal_scroll_mode = 0
+
+[node name="list" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/listscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10

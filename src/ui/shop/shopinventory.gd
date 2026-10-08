@@ -530,9 +530,12 @@ static func purchase_line(item: ItemData, bought: String, paid: int) -> String:
 	var line: String = "Bought %s for %s" % [label, GameConstants.gold_text(paid)]
 	if item == null or not item.is_rolled():
 		return line + "."
+	# AND WHAT IT RESISTS, the other half of the reveal: "resists fire 5%".
+	var resists: String = item.resistance_text()
+	var tail: String = (", " + resists.to_lower()) if resists != "" else ""
 	if item.is_perfect():
-		return line + " - a Perfect roll, every stat at %d%%!" % GameConstants.QUALITY_PERFECT
-	return line + " - quality %d%%." % item.quality_percent()
+		return line + " - a Perfect roll, every stat at %d%%%s!" % [GameConstants.QUALITY_PERFECT, tail]
+	return line + " - quality %d%%%s." % [item.quality_percent(), tail]
 
 
 func _player_inventory_container() -> Node:

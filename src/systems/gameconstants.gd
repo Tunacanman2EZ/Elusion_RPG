@@ -260,6 +260,43 @@ const QUALITY_FIELDS: Array = [
 const QUALITY_PERFECT_COLOUR: Color = Color(1.0, 0.86, 0.35)
 
 
+# ELEMENT RESISTANCE (0.11.0). The owner, 7 Oct: "add resistance to armor with a
+# ? random roll also in the shop", "i want elements to do something". Every
+# monster already deals its own element. Now every piece of ARMOUR - anything
+# worn that is not a weapon - rolls one of the seven lands' elements and a
+# resistance to it, when it drops and at the shop's till, and the roll is part
+# of the rolled id like quality: "jadechest~a104h96r605" is a jade cuirass at
+# 104% armour and 96% health that resists fire (Element.Type 6) by 5%. The
+# letter, the element's number, the percent in two digits. A piece from before
+# resists nothing.
+#
+# Matching pieces add up, to RESIST_CAP, and take that share off a hit of their
+# element only (Player.take_damage), after armour and the defense tier.
+#
+# NEVER ON A WEAPON. The owner, 7 Oct: "the main goal should be to keep players
+# damage consistent with attack level and gear". Elements defend; they do not
+# change what anybody hits for.
+const RESIST_LETTER: String = "r"
+const RESIST_ELEMENTS: Array = [
+	Element.Type.DARK, Element.Type.LIGHT, Element.Type.ICE, Element.Type.WIND,
+	Element.Type.EARTH, Element.Type.FIRE, Element.Type.WATER,
+]
+# The percent a piece of each tier may roll, low and high: iron 2-5 up to ember
+# 6-13. A Perfect piece resists at the top of its tier's range. Seven pieces
+# are worn, so a matching set reaches the cap and one stray piece is a nudge.
+const RESIST_RANGES: Array = [[0, 0], [2, 5], [3, 7], [4, 9], [5, 11], [6, 13]]
+const RESIST_CAP: int = 50
+
+
+func resist_range(tier: int) -> Vector2i:
+	"""The resistance a piece of this tier may roll, low and high; past the
+	table, its last row. (0, 0) for none."""
+	if tier < 1:
+		return Vector2i.ZERO
+	var row: Array = RESIST_RANGES[mini(tier, RESIST_RANGES.size() - 1)]
+	return Vector2i(int(row[0]), int(row[1]))
+
+
 # THE LANDS EACH GEAR TIER COMES FROM, indexed by tier like the two above. The
 # element bands decide what drops where - light and wind creatures drop up to
 # iron, water and ice up to jade, earth cobalt, fire amethyst, dark ember - and

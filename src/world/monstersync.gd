@@ -49,6 +49,17 @@
 # A record is {id, o (the spot it was authored at, or ""), s (scene), pp (its
 # parent), x, y, a, hp, mh, p (BaseEnemy.net_props())}.
 # And presence's "h" (follower to leader): [[id, damage, element], ...].
+#
+# THE SERVER'S BOOKS (0.10.0). A presence server whose welcome says "books"
+# keeps its own count of every monster's health (presence.py, combatbook.py) -
+# E3_SCOPE.md option C, step 1: it watches, and nothing in play changes. It
+# needs the whole fight, so with books the leader SENDS ITS WORLD EVEN ALONE
+# (_sending(), not only when somebody shares the area), and puts its own
+# player's hits inside it:
+#   {"hits": [[id, damage, element], ...]}       the leader's own, before the
+#                                                 deaths they caused
+# Every other game's hits already pass through the server on their way here.
+# Shots, vines and swings still go only to games that draw them (_sharing()).
 extends Node
 
 const NODE_NAME := "monstersync"
@@ -108,6 +119,11 @@ var _next_id: int = 1
 var _last_sent: Dictionary = {}    # net id -> the state last sent
 var _events: Array = []            # (leader) waiting for the next tick
 var _hits: Array = []              # (follower) waiting for the next tick
+var _own_hits: Array = []          # (leader, books) this game's own, for the server
+# (Leader, books) whether the server has been sent everything since the link
+# opened. A scene loads before its socket does - every change of area opens a
+# new one - so the monsters start running with nobody told.
+var _told_books: bool = false
 var _hit_ids: Dictionary = {}      # (follower) monsters this game's player hit
 var _awaiting_full: bool = false   # (follower) nothing applies before everything
 var _full_parts: Array = []        # (follower) a full world arriving in parts
@@ -177,9 +193,20 @@ func monsters() -> Dictionary:
 func _on_lead(area: String, leader_id: int, _sharers: int) -> void:
 	if area != "" and area != area_id:
 		return
+	if leader_id < 0:
+		# The link went: whatever the server's books knew, they will be told
+		# again when it comes back.
+		_told_books = false
 	if leader_id < 0 or link == null or leader_id == link.my_id():
 		if role != Role.LEAD:
 			_become(Role.LEAD)
+		elif leader_id >= 0 and _books() and not _told_books:
+			# ALREADY RUNNING THEM, AND THE SERVER NEVER HEARD: this scene
+			# loaded while its link was still opening. Everything, as a new
+			# scene's - nobody else can be drawing these monsters, or they
+			# would lead the area instead.
+			_register_all(false)
+			_send_full(-1, true)
 	elif role != Role.FOLLOW:
 		_become(Role.FOLLOW)
 
@@ -197,6 +224,7 @@ func _become(new_role: int) -> void:
 				e.net_set_mirror(true)
 		Role.LEAD:
 			_hits.clear()
+			_own_hits.clear()
 			_awaiting_full = false
 			_full_parts.clear()
 			# TAKEN OVER WHERE THEY STAND. A monster this game's player had
@@ -216,11 +244,13 @@ func _become(new_role: int) -> void:
 			_events.clear()
 			# FROM PENDING THE IDS ARE THIS GAME'S OWN, so anyone already
 			# drawing monsters forgets theirs ("reset"); from FOLLOW they are
-			# the old leader's, and carry on.
-			if _sharing():
+			# the old leader's, and carry on. With books, the server is told
+			# even when nobody else is here.
+			if _sending():
 				_send_full(-1, was != Role.FOLLOW)
 		Role.FOLLOW:
 			_events.clear()
+			_own_hits.clear()
 			for e in _all_enemies():
 				e.net_set_mirror(true)
 			_awaiting_full = true
@@ -230,6 +260,18 @@ func _become(new_role: int) -> void:
 
 func _sharing() -> bool:
 	return link != null and link.shares() and link.sharers() > 0
+
+
+func _books() -> bool:
+	"""The server keeps books on the monsters (0.10.0): it hears the world
+	even with nobody else here, and this game's own hits with it."""
+	return link != null and link.has_method("books") and link.books()
+
+
+func _sending() -> bool:
+	"""Whether the leader's world goes out at all: to other games, or to the
+	server's books."""
+	return _sharing() or _books()
 
 
 func _respawner_resume() -> void:
@@ -282,12 +324,13 @@ func _process(delta: float) -> void:
 func tick_lead() -> void:
 	"""(Leader.) Number anything new, and tell the others what changed."""
 	_register_all(true)
-	if _sharing():
+	if _sending():
 		_send_delta()
 	else:
 		# NOBODY LISTENING: nothing to build up for later. A game that joins
 		# is sent everything ("need"), not the backlog.
 		_events.clear()
+		_own_hits.clear()
 
 
 # =============================================================================
@@ -308,12 +351,16 @@ func _register_all(announce: bool) -> void:
 	for e in _all_enemies():
 		if e.net_id >= 0 and _enemies.get(e.net_id) == e:
 			continue
-		if e._death_resolved:
+		# DEAD IS DEAD, even while it is still on screen: a large slime says
+		# it died as its split begins and stands flashing a moment before its
+		# smalls appear. Numbered again it would be a second monster at its
+		# spot - on every follower's screen, and to the server's books.
+		if e._death_resolved or e.has_meta(&"net_dead"):
 			continue
 		var id: int = _next_id
 		_next_id += 1
 		_bind(e, id)
-		if announce and _sharing():
+		if announce and _sending():
 			_events.append({"k": "spawn", "r": record_of(e)})
 			_last_sent[id] = e.net_state()
 
@@ -329,14 +376,17 @@ func _bind(e: BaseEnemy, id: int) -> void:
 
 
 func _on_died(e: BaseEnemy) -> void:
-	if role != Role.LEAD or not is_instance_valid(e):
+	if not is_instance_valid(e):
+		return
+	e.set_meta(&"net_dead", true)
+	if role != Role.LEAD:
 		return
 	var id: int = e.net_id
 	if _enemies.get(id) != e:
 		return
 	_enemies.erase(id)
 	_last_sent.erase(id)
-	if _sharing():
+	if _sending():
 		_events.append({"k": "die", "id": id,
 			"x": snappedf(e.global_position.x, 0.1), "y": snappedf(e.global_position.y, 0.1)})
 
@@ -349,7 +399,7 @@ func _on_gone(e: BaseEnemy) -> void:
 		return
 	_enemies.erase(id)
 	_last_sent.erase(id)
-	if role == Role.LEAD and _sharing() and is_inside_tree() and not is_queued_for_deletion():
+	if role == Role.LEAD and _sending() and is_inside_tree() and not is_queued_for_deletion():
 		_events.append({"k": "gone", "id": id})
 
 
@@ -387,6 +437,11 @@ func _send_delta() -> void:
 		snap.append(now)
 		_last_sent[id] = now
 	var message: Dictionary = {}
+	# OWN HITS FIRST: they happened before the deaths in "ev" they caused, and
+	# the server reads them in that order.
+	if not _own_hits.is_empty():
+		message["hits"] = _own_hits.slice(0, MAX_HITS_PER_MESSAGE)
+		_own_hits = _own_hits.slice(MAX_HITS_PER_MESSAGE)
 	if not _events.is_empty():
 		message["ev"] = _events
 		_events = []
@@ -401,6 +456,9 @@ func _send_delta() -> void:
 
 
 func _send_full(to: int, reset: bool) -> void:
+	# To everyone, or to the books alone ("game 0"): the server has it all.
+	if to <= 0 and _books():
+		_told_books = true
 	var records: Array = []
 	for id in _enemies.keys():
 		var e: BaseEnemy = _enemies[id]
@@ -437,6 +495,14 @@ func _on_hits(_from_id: int, hits: Array) -> void:
 		if not is_instance_valid(e) or (e as BaseEnemy).net_mirror or (e as BaseEnemy)._death_resolved:
 			continue
 		(e as BaseEnemy).net_take_remote_hit(clampi(int(hit[1]), 1, MAX_HIT), clampi(int(hit[2]), 0, 64))
+
+
+func own_hit(enemy: BaseEnemy, amount: int, element: int) -> void:
+	"""(Leader, from BaseEnemy.take_damage.) This game's own player or pet hit
+	one of the monsters it runs: for the server's books, in the next world."""
+	if role != Role.LEAD or enemy.net_id < 0 or not _books():
+		return
+	_own_hits.append([enemy.net_id, clampi(amount, 1, MAX_HIT), clampi(element, 0, 64)])
 
 
 func leader_shot(enemy: BaseEnemy, projectile: Node, at: Vector2) -> void:

@@ -62,6 +62,11 @@ const LOOTBAG_PANEL_SCENE := preload("res://scene/ui/lootbag/lootbaginventory.ts
 const COOKING_PANEL_SCENE := preload("res://scene/ui/cooking/cookingscreen.tscn")
 const SHOP_PANEL_SCENE    := preload("res://scene/ui/shop/shopinventory.tscn")
 const KINGDOM_PANEL_SCENE := preload("res://scene/ui/kingdom/kingdomboard.tscn")
+# Every monster killed, yours and everybody's (0.9.0). See killrecord.gd.
+const KILLS_PANEL_SCENE := preload("res://scene/ui/kills/killrecord.tscn")
+# Who made the art and the sound, who supported, the engine (0.11.1). Options >
+# Credits. See creditsscreen.gd.
+const CREDITS_SCENE := preload("res://scene/ui/menus/creditsscreen.tscn")
 const TRADE_PANEL_SCENE   := preload("res://scene/ui/trade/tradepanel.tscn")
 # The script as well, for its static result_line() - the one wording of "what a
 # trade gave you", shared by the window's history and the HUD's announcement.
@@ -131,6 +136,8 @@ var lootbag_panel:    Control         = null
 var cooking_panel:    Control         = null
 var shop_panel:       Control         = null
 var kingdom_panel:    Control         = null
+var kills_panel:      KillRecord      = null
+var credits_panel:    CreditsScreen   = null
 var trade_panel:      Control         = null
 var owner_panel:      Control         = null
 var item_spawner:     Control         = null
@@ -413,6 +420,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
+	# K, THE KILL RECORD (0.9.0). Made at launch by Keybinds, like the hotbar's
+	# keys, so it can be changed with the rest.
+	if InputMap.has_action("kills_toggle") and event.is_action_pressed("kills_toggle"):
+		toggle_kills()
+		get_viewport().set_input_as_handled()
+		return
+
 	# Backquote / tilde toggles the owner panel. Anyone who is not the owner
 	# gets no response at all by design, not even an error — see
 	# _toggle_owner_panel().
@@ -642,6 +656,7 @@ func _wire_nav_buttons() -> void:
 		"statsbutton":             "_on_stats_pressed",
 		"shopbutton":              "_on_shop_pressed",
 		"kingdombutton":           "_on_kingdom_pressed",
+		"killsbutton":             "_on_kills_pressed",
 		"tradebutton":             "_on_trade_pressed",
 		"mapbutton":               "_on_map_pressed",
 		"optionsbutton":           "_on_options_pressed",
@@ -700,7 +715,7 @@ func _paint_nav_key_hints() -> void:
 const NAV_BUTTON_NAMES := [
 	"inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton",
 	"chatbutton", "socialbutton", "menubutton",
-	"friendsbutton", "playersbutton", "guildbutton", "tradebutton", "kingdombutton",
+	"friendsbutton", "playersbutton", "guildbutton", "tradebutton", "kingdombutton", "killsbutton",
 	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
 ]
 
@@ -716,6 +731,7 @@ const NAV_KEY_HINTS := {
 	"statsbutton":     "character_toggle",
 	"mapbutton":       "minimap_toggle",
 	"controlsbutton":  "help_toggle",
+	"killsbutton":     "kills_toggle",
 }
 
 # Room left between a dropdown and the button it opened from.
@@ -2633,6 +2649,8 @@ func _ensure_options_screen() -> void:
 	# "Change keys" on Options opens the Controls card ready to change them.
 	if options_screen.has_signal("keys_requested"):
 		options_screen.keys_requested.connect(open_key_settings)
+	if options_screen.has_signal("credits_requested"):
+		options_screen.credits_requested.connect(open_credits)
 
 	# NOTHING IS CONNECTED TO `closed`, ON PURPOSE. There is nothing to tear
 	# down: the panel writes through Settings, which has already applied and
@@ -2654,6 +2672,18 @@ func toggle_options() -> void:
 		options_screen.close()
 	else:
 		options_screen.open()
+
+
+func open_credits() -> void:
+	"""The Credits window (Options' Credits), in front: built the first time,
+	and left as it was if already open. Not freed at logout, like Options: it
+	holds nobody's data."""
+	if credits_panel == null:
+		credits_panel = CREDITS_SCENE.instantiate() as CreditsScreen
+		add_child(credits_panel)
+	if not credits_panel.visible:
+		credits_panel.open()
+	credits_panel.move_to_front()
 
 
 func _on_options_pressed() -> void:
@@ -2773,6 +2803,7 @@ func _on_logout_pressed() -> void:
 	if cooking_panel:    cooking_panel.queue_free()
 	if shop_panel:       shop_panel.queue_free()
 	if kingdom_panel:    kingdom_panel.queue_free()
+	if kills_panel:      kills_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
 	if item_spawner:     item_spawner.queue_free()
@@ -2786,6 +2817,7 @@ func _on_logout_pressed() -> void:
 	cooking_panel    = null
 	shop_panel       = null
 	kingdom_panel    = null
+	kills_panel      = null
 	trade_panel      = null
 	owner_panel      = null
 	item_spawner     = null
@@ -2877,6 +2909,7 @@ func _on_switch_character_pressed() -> void:
 	if cooking_panel:    cooking_panel.queue_free()
 	if shop_panel:       shop_panel.queue_free()
 	if kingdom_panel:    kingdom_panel.queue_free()
+	if kills_panel:      kills_panel.queue_free()
 	if trade_panel:      trade_panel.queue_free()
 	if owner_panel:      owner_panel.queue_free()
 	if item_spawner:     item_spawner.queue_free()
@@ -2890,6 +2923,7 @@ func _on_switch_character_pressed() -> void:
 	cooking_panel    = null
 	shop_panel       = null
 	kingdom_panel    = null
+	kills_panel      = null
 	trade_panel      = null
 	owner_panel      = null
 	item_spawner     = null
@@ -3157,6 +3191,17 @@ func toggle_kingdom() -> void:
 		await kingdom_panel.toggle_board()
 
 
+func toggle_kills() -> void:
+	if kills_panel == null:
+		kills_panel = KILLS_PANEL_SCENE.instantiate() as KillRecord
+		add_child(kills_panel)
+	await kills_panel.toggle()
+
+
+func _on_kills_pressed() -> void:
+	await toggle_kills()
+
+
 func _on_chat_pressed() -> void:
 	toggle_chat()
 
@@ -3329,6 +3374,7 @@ func _escape_windows() -> Array:
 		[cooking_panel, "close_panel"],
 		[shop_panel, "close_shop"],
 		[kingdom_panel, "close_board"],
+		[kills_panel, "close"],
 		[trade_panel, "close_panel"],
 		[chat_panel, "close"],
 		[friends_panel, "close"],
@@ -3339,6 +3385,7 @@ func _escape_windows() -> Array:
 		[item_spawner, "close"],
 		[save_history, "close"],
 		[options_screen, "close"],
+		[credits_panel, "close"],
 		[map_screen, "close"],
 		[controls_panel, "close"],
 	]

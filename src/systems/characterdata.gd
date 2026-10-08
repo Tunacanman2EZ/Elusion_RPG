@@ -1553,6 +1553,12 @@ func _apply_equip_result(player: Node, data: Dictionary) -> void:
 		# to the lower ceiling in the same request - this keeps the two level.
 		if player.has_method("refresh_gear_stats"):
 			player.refresh_gear_stats()
+		# AND THE SERVER'S BOOKS HEAR OF IT NOW (0.10.0): presence.py holds
+		# every hit to what the ticket says is in hand, and a ticket is only
+		# renewed once a minute.
+		var link: Node = get_node_or_null("/root/Presence")
+		if link != null and link.has_method("renew_soon"):
+			link.renew_soon()
 
 	# THE WHOLE BACKPACK, laid out the way the server laid it out. Same
 	# reasoning as /api/loot/take: the server tops up a part-used stack before

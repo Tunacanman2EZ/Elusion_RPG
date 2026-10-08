@@ -64,6 +64,7 @@ const ROWS := [
 	["Gear", "equipment_toggle"],
 	["Stats", "character_toggle"],
 	["Map", "minimap_toggle"],
+	["Kills - yours and everyone's", "kills_toggle"],
 	["Close a window, or open Options", "Esc"],
 	["This card", "help_toggle"],
 ]

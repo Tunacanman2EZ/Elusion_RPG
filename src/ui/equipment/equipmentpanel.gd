@@ -78,6 +78,8 @@ const COLOUR_GOOD    := Color(0.55, 0.85, 0.5)
 @onready var health_bonus_label: Label = get_node_or_null("%equiphealthbonusvalue")
 @onready var mana_bonus_label:   Label = get_node_or_null("%equipmanabonusvalue")
 @onready var damage_bonus_label: Label = get_node_or_null("%equipdamagebonusvalue")
+# WHAT THE ARMOUR RESISTS (0.11.0), every element at once: "Fire 18%, Ice 5%".
+@onready var resist_label: Label = get_node_or_null("%equipresistvalue")
 
 # THE LIVING DOLL. An AnimatedSprite2D in the middle of the squares, walking on
 # the spot, so the panel shows who is wearing all this rather than a grid of
@@ -377,6 +379,38 @@ func _refresh_summary() -> void:
 		_show_bonus(health_bonus_label, player.equipped_bonus("bonus_max_hp"), "")
 		_show_bonus(mana_bonus_label, player.equipped_bonus("bonus_max_mana"), "")
 		_show_bonus(damage_bonus_label, player.equipped_bonus("bonus_damage_percent"), "%")
+
+	if resist_label != null and player.has_method("resistances"):
+		var rows: Array = player.resistances()
+		var text: String = resistances_text(rows, RESISTS_SHOWN)
+		resist_label.text = text if text != "" else "-"
+		# Every one of them on hover, when the row had to stop at RESISTS_SHOWN.
+		resist_label.tooltip_text = resistances_text(rows) if rows.size() > RESISTS_SHOWN else ""
+		resist_label.mouse_filter = Control.MOUSE_FILTER_STOP if rows.size() > RESISTS_SHOWN \
+			else Control.MOUSE_FILTER_IGNORE
+		resist_label.add_theme_color_override("font_color", COLOUR_GOOD if text != "" else COLOUR_NEUTRAL)
+
+
+# THE ROW SHOWS THE STRONGEST TWO, then "+N". Seven pieces can resist seven
+# different elements, and "Dark 13%, Light 13%, Ice 13%, ..." on one line
+# would push the window wider than the screen's right-hand column; the whole
+# list is the row's tooltip.
+const RESISTS_SHOWN := 2
+
+
+static func resistances_text(rows: Array, most: int = -1) -> String:
+	# "Fire 18%, Ice 5%" - the elements the armour resists, strongest first,
+	# each at most RESIST_CAP; past `most` of them, " +N" for the rest. "" for
+	# none.
+	var parts := PackedStringArray()
+	for row in rows:
+		if most >= 0 and parts.size() >= most:
+			break
+		parts.append("%s %d%%" % [Element.name_for(int(row[0])).capitalize(), int(row[1])])
+	var text: String = ", ".join(parts)
+	if most >= 0 and rows.size() > most:
+		text += " +%d" % (rows.size() - most)
+	return text
 
 
 func _show_bonus(label: Label, amount: int, suffix: String) -> void:

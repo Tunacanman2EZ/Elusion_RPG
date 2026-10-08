@@ -137,6 +137,13 @@ const EQUIP_SLOT_NAMES := [
 # depends on anyone seeing it.
 var _errors: int = 0
 var _warnings: int = 0
+# Enemy scene -> enemy_id, filled by _annotate_placement() and read again by
+# _export_areas(), which needs to know what each placed monster is.
+var _scene_to_enemy: Dictionary = {}
+# A splitting monster's scene that names its data only as LARGE_DATA (the
+# poison slime, which holds both its forms): what it is, for the books - NOT
+# counted toward placed_count, which this export leaves exactly as it was.
+var _splitter_scene_to_enemy: Dictionary = {}
 
 # The text of every verdict this run, in the order it was reached, already
 # prefixed for printing. Kept rather than counted so the summary can show what
@@ -198,6 +205,8 @@ func _run() -> void:
 	_warnings = 0
 	_verdicts.clear()
 	_iconless.clear()
+	_scene_to_enemy.clear()
+	_splitter_scene_to_enemy.clear()
 	var constants: Dictionary = _export_constants()
 	var items: Array = _export_items()
 	var enemies: Array = _export_enemies(constants)
@@ -207,6 +216,11 @@ func _run() -> void:
 	_annotate_placement(enemies)
 	var classes: Array = _export_classes()
 	var shops: Array = _export_shops(items)
+	# THE SERVER KEEPS THE BOOKS ON EVERY MONSTER (0.10.0, E3_SCOPE.md option C,
+	# step 1): where each area's monsters stand when it loads and how soon they
+	# come back, and the numbers that bound how hard a character can hit.
+	var areas: Dictionary = _export_areas()
+	var combat: Dictionary = _export_combat(items)
 
 	if items.is_empty():
 		_fail("found no items under %s — refusing to write an empty catalogue." % ITEMS_PATH)
@@ -226,6 +240,8 @@ func _run() -> void:
 		"enemies": enemies,
 		"classes": classes,
 		"shops": shops,
+		"areas": areas,
+		"combat": combat,
 	}
 
 	if not _validate(constants, items, enemies, classes):
@@ -678,6 +694,20 @@ func _validate_quality(constants: Dictionary) -> void:
 		if not (field in probe) or typeof(probe.get(field)) != TYPE_INT:
 			_fail("quality_fields names '%s', which is not a whole-number ItemData stat." % field)
 
+	# THE RESISTANCE'S LETTER IS ITS OWN, and its numbers fit its spelling: one
+	# digit of element, two of percent.
+	var resist_letter: String = String(constants.get("resist_letter", ""))
+	if resist_letter.length() != 1 or resist_letter < "a" or resist_letter > "z" or letters.has(resist_letter):
+		_fail("constants.resist_letter '%s' must be one lowercase letter no stat uses." % resist_letter)
+	for element in constants.get("resist_elements", []):
+		if int(element) < 1 or int(element) > 9:
+			_fail("constants.resist_elements holds %s - an element is spelled with one digit, 1-9." % str(element))
+	for row in constants.get("resist_ranges", []):
+		if not (row is Array) or row.size() != 2 or int(row[0]) > int(row[1]) or int(row[1]) > 99 or int(row[0]) < 0:
+			_fail("constants.resist_ranges holds %s - each is [low, high], 0-99." % str(row))
+	if int(constants.get("resist_cap", 0)) < 1 or int(constants.get("resist_cap", 0)) > 90:
+		_fail("constants.resist_cap must be 1-90: a resistance never makes an element harmless.")
+
 
 func _report_iconless() -> void:
 	if _iconless.is_empty():
@@ -730,7 +760,7 @@ func _annotate_placement(enemies: Array) -> void:
 		known[String(row.get("enemy_id", ""))] = true
 
 	var enemy_scenes: Array = _find_files("res://scene/enemy/", ".tscn")
-	var scene_to_enemy: Dictionary = {}
+	var scene_to_enemy: Dictionary = _scene_to_enemy
 	var unresolved: Array = []
 
 	for scene_path in enemy_scenes:
@@ -776,6 +806,9 @@ func _annotate_placement(enemies: Array) -> void:
 
 		if enemy_id == "":
 			unresolved.append(String(scene_path).get_file())
+			var splitter: String = _splitter_from_scripts(text, known)
+			if splitter != "":
+				_splitter_scene_to_enemy[scene_path] = splitter
 		else:
 			scene_to_enemy[scene_path] = enemy_id
 
@@ -819,6 +852,33 @@ func _annotate_placement(enemies: Array) -> void:
 
 	for row in enemies:
 		row["placed_count"] = int(counts.get(String(row.get("enemy_id", "")), 0))
+		# HOW A SPLITTER SPLITS, for presence.py's books (0.10.0): a monster
+		# with no authored spot is one of these, and only as many as its
+		# large ones can have made.
+		row["split_count"] = 0
+		row["twins"] = false
+		row["splits_into"] = String(row.get("split_into", ""))
+	var splitters: Dictionary = _splitter_scene_to_enemy.duplicate()
+	for scene_path in scene_to_enemy.keys():
+		if split_yield.has(String(scene_to_enemy[scene_path])):
+			splitters[scene_path] = scene_to_enemy[scene_path]
+	for scene_path in splitters.keys():
+		var splitter_id: String = String(splitters[scene_path])
+		if not by_id.has(splitter_id):
+			continue
+		# WHAT IT SPLITS INTO: its EnemyData's split_into, or - for the
+		# poison slime, whose script holds both forms - its SMALL_DATA.
+		if String(by_id[splitter_id]["splits_into"]) == "":
+			by_id[splitter_id]["splits_into"] = _small_from_scripts(String(scene_path), known)
+		if String(by_id[splitter_id]["splits_into"]) == "":
+			continue
+		var packed: PackedScene = load(String(scene_path)) as PackedScene
+		if packed == null:
+			continue
+		var node: Node = packed.instantiate()
+		by_id[splitter_id]["split_count"] = int(node.get("small_count")) if "small_count" in node else 0
+		by_id[splitter_id]["twins"] = "duplicate_range" in node and float(node.get("duplicate_range")) > 0.0
+		node.free()
 
 	var total: int = 0
 	for eid in counts.keys():
@@ -835,6 +895,53 @@ func _annotate_placement(enemies: Array) -> void:
 		# that is NOT one of those two is an enemy the ceiling cannot protect.
 		print("      (%d scene(s) map to no enemy_id, so they are left uncounted: %s)"
 			% [unresolved.size(), ", ".join(names)])
+
+
+func _small_from_scripts(scene_path: String, known: Dictionary) -> String:
+	# The enemy_id a scene's script names as SMALL_DATA, or "".
+	var scene_text: String = FileAccess.get_file_as_string(scene_path)
+	var at: int = scene_text.find("res://src/")
+	while at != -1:
+		var end: int = scene_text.find(".gd", at)
+		if end == -1:
+			break
+		var code: String = FileAccess.get_file_as_string(scene_text.substr(at, end - at + 3))
+		var const_at: int = code.find("const SMALL_DATA")
+		if const_at != -1:
+			var marker: String = "res://data/enemies/"
+			var path_at: int = code.find(marker, const_at)
+			var tres_at: int = code.find(".tres", path_at) if path_at != -1 else -1
+			if tres_at != -1:
+				var candidate: String = code.substr(path_at + marker.length(), tres_at - path_at - marker.length())
+				if known.has(candidate):
+					return candidate
+		at = scene_text.find("res://src/", end)
+	return ""
+
+
+func _splitter_from_scripts(scene_text: String, known: Dictionary) -> String:
+	# The enemy_id a scene's script names as LARGE_DATA - the large form of a
+	# monster that holds both of its forms in one scene - or "".
+	var at: int = scene_text.find("res://src/")
+	while at != -1:
+		var end: int = scene_text.find(".gd", at)
+		if end == -1:
+			break
+		var file := FileAccess.open(scene_text.substr(at, end - at + 3), FileAccess.READ)
+		if file != null:
+			var code: String = file.get_as_text()
+			file.close()
+			var const_at: int = code.find("const LARGE_DATA")
+			if const_at != -1:
+				var marker: String = "res://data/enemies/"
+				var path_at: int = code.find(marker, const_at)
+				var tres_at: int = code.find(".tres", path_at) if path_at != -1 else -1
+				if tres_at != -1:
+					var candidate: String = code.substr(path_at + marker.length(), tres_at - path_at - marker.length())
+					if known.has(candidate):
+						return candidate
+		at = scene_text.find("res://src/", end)
+	return ""
 
 
 func _enemy_id_from_scripts(scene_text: String, known: Dictionary) -> String:
@@ -1376,6 +1483,201 @@ func _split_yield(scene_path: String) -> int:
 	return larges * smalls
 
 
+# =============================================================================
+# THE BOOKS ON EVERY MONSTER (0.10.0)
+# =============================================================================
+# presence.py keeps its own count of every monster's health (E3_SCOPE.md, option
+# C, step 1). To know a monster the area's leader says it spawned is one the map
+# holds, it needs each area's monsters as authored: the string the game names
+# each by (monstersync.gd _tag_origins(): the path from the scene's root), what
+# it is, where it stands, how far it chases, whether it waits behind a gate -
+# and how soon a dead one may come back (the area's respawner).
+
+const AREA_REGISTRY := "res://src/systems/arearegistry.gd"
+const RESPAWNER_SCRIPT := "res://src/world/enemyrespawner.gd"
+const ENEMY_SCENES := "res://scene/enemy/"
+
+
+func _export_areas() -> Dictionary:
+	var out: Dictionary = {}
+	var registry: GDScript = load(AREA_REGISTRY) as GDScript
+	var area_map: Dictionary = registry.get_script_constant_map().get("AREAS", {}) if registry != null else {}
+	for area_id in area_map.keys():
+		var packed: PackedScene = load(String(area_map[area_id])) as PackedScene
+		if packed == null:
+			_fail("area '%s': cannot load %s" % [area_id, area_map[area_id]])
+			continue
+		var root: Node = packed.instantiate()
+		var spawns: Array = []
+		var respawn: Dictionary = {}
+		_collect_spawns(root, root, spawns, respawn)
+		spawns.sort_custom(func(a, b): return String(a["o"]) < String(b["o"]))
+		out[area_id] = {
+			"scene": String(area_map[area_id]),
+			# No respawner: nothing that dies there comes back while the area
+			# is loaded (the town, the easter egg - they hold no monsters).
+			"respawn_seconds": float(respawn.get("seconds", 0.0)),
+			"respawn_jitter": float(respawn.get("jitter", 0.0)),
+			"spawns": spawns,
+		}
+		root.free()
+	return out
+
+
+func _collect_spawns(root: Node, node: Node, spawns: Array, respawn: Dictionary) -> void:
+	for child in node.get_children():
+		var script: Script = child.get_script() as Script
+		if script != null and script.resource_path == RESPAWNER_SCRIPT:
+			respawn["seconds"] = float(child.get("respawn_seconds"))
+			respawn["jitter"] = float(child.get("respawn_jitter"))
+		if child.scene_file_path.begins_with(ENEMY_SCENES):
+			var at: Vector2 = _authored_position(root, child)
+			spawns.append({
+				"o": str(root.get_path_to(child)),
+				"e": String(_scene_to_enemy.get(child.scene_file_path,
+					_splitter_scene_to_enemy.get(child.scene_file_path, ""))),
+				"x": snappedf(at.x, 0.1),
+				"y": snappedf(at.y, 0.1),
+				"leash": float(child.get("leash_range")) if "leash_range" in child else 400.0,
+				"gated": bool(child.get("gated")) if "gated" in child else false,
+			})
+			# An enemy scene's own children are its parts, not more monsters.
+			continue
+		_collect_spawns(root, child, spawns, respawn)
+
+
+static func _authored_position(root: Node, node: Node) -> Vector2:
+	# Where the monster stands when the area loads, without putting the area in
+	# a tree: every Node2D's transform from the scene's root down to it.
+	var chain: Array = []
+	var at: Node = node
+	while at != null:
+		chain.push_front(at)
+		if at == root:
+			break
+		at = at.get_parent()
+	var xform := Transform2D.IDENTITY
+	for piece in chain:
+		if piece is Node2D:
+			xform = xform * (piece as Node2D).transform
+	return xform.origin
+
+
+# The four classes' scenes. Their numbers are @export vars, read off an
+# instance like _split_yield() does, so a value tuned in the inspector is the
+# value exported. presence.py turns them into the most one character can hit
+# for and how often (gamedata.py, "COMBAT BOUNDS").
+const CLASS_SCENES := {
+	"warrior": "res://scene/characters/warrior.tscn",
+	"mage": "res://scene/characters/mage.tscn",
+	"healer": "res://scene/characters/healer.tscn",
+	"tank": "res://scene/characters/tank.tscn",
+}
+
+
+func _export_combat(_items: Array) -> Dictionary:
+	var classes: Dictionary = {}
+	var sprint: float = 0.0
+	for class_id in CLASS_SCENES.keys():
+		var packed: PackedScene = load(String(CLASS_SCENES[class_id])) as PackedScene
+		if packed == null:
+			_fail("combat: cannot load %s" % CLASS_SCENES[class_id])
+			continue
+		var node: Node = packed.instantiate()
+		var row: Dictionary = {}
+		# How fast it walks, before agility and sprinting: the class script's
+		# CLASS_SPEED (its _ready() sets speed from it, so an instance read
+		# here would still say player.gd's default).
+		var script: Script = node.get_script() as Script
+		row["speed"] = int(script.get_script_constant_map().get("CLASS_SPEED", 0)) if script != null else 0
+		if sprint <= 0.0:
+			sprint = float(node.get("sprint_speed_multiplier"))
+		match String(class_id):
+			"warrior":
+				row["base"] = int(node.get("base_melee_damage"))
+				row["wave_ratio"] = float(node.get("wave_damage_ratio"))
+				row["cooldown"] = float(node.get("attack_lock_duration"))
+				# THE SWING IS THE ANIMATION, NOT attack_lock_duration: the lock
+				# is released when the clip ends (player.gd connects
+				# animation_finished), so the real swing is frames / fps /
+				# attack_animation_speed - 0.4 s against the 1.0 the lock says.
+				row["swing_seconds"] = _shortest_clip(node, "attack", float(node.get("attack_animation_speed")))
+			"mage":
+				row["base"] = int(node.get("damage_per_magic"))
+				row["cooldown"] = float(node.get("spell_cooldown"))
+			"healer":
+				row["base"] = int(node.get("damage_per_magic"))
+				row["cooldown"] = float(node.get("shot_cooldown"))
+			"tank":
+				row["base"] = int(node.get("aura_damage"))
+				row["cooldown"] = float(node.get("aura_tick"))
+				row["dynamite_cooldown"] = float(node.get("dynamite_cooldown"))
+		classes[class_id] = row
+		node.free()
+
+	var pets: Dictionary = {}
+	# The weapons that bring their own attack (ItemData.weapon_attack): the
+	# meteor casts twice one time in ten, the dynamite hits for a second's
+	# worth of aura, the axe spins. By name, like every enum that crosses.
+	var weapon_attacks: Dictionary = {}
+	for path in _find_files(ITEMS_PATH, ".tres"):
+		var res: Resource = ResourceLoader.load(path)
+		if res == null or not (res is ItemData):
+			continue
+		var item: ItemData = res
+		if int(item.weapon_attack) != ItemData.WeaponAttack.NONE:
+			weapon_attacks[item.item_id] = String(ItemData.WeaponAttack.keys()[int(item.weapon_attack)])
+		if item.pet_scene == null:
+			continue
+		var pet: Node = item.pet_scene.instantiate()
+		pets[item.item_id] = {
+			"damage": int(pet.get("projectile_damage")) if "projectile_damage" in pet else 0,
+			"cooldown": float(pet.get("attack_cooldown")) if "attack_cooldown" in pet else 2.0,
+		}
+		pet.free()
+
+	return {
+		"classes": classes,
+		"pets": pets,
+		"weapon_attacks": weapon_attacks,
+		"sprint": sprint,                # player.gd sprint_speed_multiplier
+		# Code, not data - each named where it is written, and held to these
+		# by _test_combat_bounds_match_the_game in the suite.
+		"skill_step": 0.01,            # playerstats.gd: +1% a level of attack and of magic
+		"agility_step": 0.01,          # playerstats.gd hasten(): +1% speed a level of agility
+		"agility_cap": 2.0,            # ...never more than twice as fast
+		"pet_share": 0.5,              # pet.gd: a pet hits for half the character's multiplier
+		"pet_speed_share": 0.5,        # pet.gd _attack_speed_factor(): half the agility bonus
+		"double_chance": 0.10,         # player.gd WEAPON_DOUBLE_CHANCE: a second meteor or stick
+		"puddle_damage": 5,            # petbossprojectile.gd: the boss pet's poison puddle tick
+		"physics_ticks": 80,           # project.godot: a healer cannot fire between ticks
+		"agility_speed": 10,           # player.gd and tank.gd: speed + (agility - 1) * 10
+	}
+
+
+static func _shortest_clip(node: Node, prefix: String, speed: float) -> float:
+	var sprite: Node = node.get_node_or_null("animatedsprite2d")
+	if sprite == null or speed <= 0.0:
+		return 0.0
+	var frames: SpriteFrames = sprite.get("sprite_frames") as SpriteFrames
+	if frames == null:
+		return 0.0
+	var best: float = 0.0
+	for anim in frames.get_animation_names():
+		if not String(anim).begins_with(prefix):
+			continue
+		var fps: float = frames.get_animation_speed(anim)
+		if fps <= 0.0:
+			continue
+		var units: float = 0.0
+		for i in frames.get_frame_count(anim):
+			units += frames.get_frame_duration(anim, i)
+		var seconds: float = units / fps / speed
+		if best == 0.0 or seconds < best:
+			best = seconds
+	return snappedf(best, 0.0001)
+
+
 func _rounded_odds(odds: PackedFloat32Array) -> Array:
 	var out: Array = []
 	for p in odds:
@@ -1578,6 +1880,12 @@ func _export_constants() -> Dictionary:
 		"quality_perfect":      int(game_consts.get("QUALITY_PERFECT", 120)),
 		"quality_perfect_odds": int(game_consts.get("QUALITY_PERFECT_ODDS", 100)),
 		"quality_fields":       game_consts.get("QUALITY_FIELDS", []),
+		# ELEMENT RESISTANCE (0.11.0): armour rolls one of these elements and a
+		# percent from its tier's row, as the last part of a rolled id.
+		"resist_letter":        String(game_consts.get("RESIST_LETTER", "")),
+		"resist_elements":      game_consts.get("RESIST_ELEMENTS", []),
+		"resist_ranges":        game_consts.get("RESIST_RANGES", []),
+		"resist_cap":           int(game_consts.get("RESIST_CAP", 0)),
 
 		# The gold alternative to that lusion price. A share rather than a
 		# figure, so the server computes it against a balance it owns rather

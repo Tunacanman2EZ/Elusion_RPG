@@ -46,6 +46,9 @@ signal closed
 # HUD owns; this only asks for it.
 signal keys_requested
 
+# "Credits" (0.11.1): the Credits window, which the HUD owns, like the keys.
+signal credits_requested
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -54,6 +57,7 @@ signal keys_requested
 @onready var close_button:  Button       = get_node_or_null("%optionsclosebutton")
 @onready var reset_button:  Button       = get_node_or_null("%optionsresetbutton")
 @onready var keys_button:   Button       = get_node_or_null("%optionskeysbutton")
+@onready var credits_button: Button      = get_node_or_null("%optionscreditsbutton")
 
 @onready var master_slider: HSlider      = get_node_or_null("%mastervolume")
 @onready var music_slider:  HSlider      = get_node_or_null("%musicvolume")
@@ -335,6 +339,8 @@ func _connect_controls() -> void:
 		reset_button.pressed.connect(_on_reset_pressed)
 	if keys_button != null:
 		keys_button.pressed.connect(keys_requested.emit)
+	if credits_button != null:
+		credits_button.pressed.connect(credits_requested.emit)
 
 
 # =============================================================================

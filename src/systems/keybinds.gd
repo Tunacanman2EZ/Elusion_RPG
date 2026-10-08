@@ -47,8 +47,17 @@ const ACTIONS := [
 	["equipment_toggle", "Gear"],
 	["character_toggle", "Stats"],
 	["minimap_toggle", "Map"],
+	["kills_toggle", "Kills"],
 	["help_toggle", "Controls (this card)"],
 ]
+
+# ACTIONS MADE HERE rather than in project.godot, with the key each starts on:
+# the ten hotbar keys (below) and the Kills window (0.9.0). project.godot is
+# rewritten by the editor, and an action added to it from outside is lost the
+# next time the editor saves its own copy.
+const MADE_HERE := {
+	"kills_toggle": KEY_K,
+}
 
 # Two keys an action: a first and a second.
 const SLOTS := 2
@@ -146,6 +155,11 @@ func _add_hotbar_actions() -> void:
 			InputMap.add_action(action)
 		if InputMap.action_get_events(action).is_empty():
 			InputMap.action_add_event(action, key_press(int(Hotbar.SLOT_KEYS[i])))
+	for action in MADE_HERE:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+		if InputMap.action_get_events(action).is_empty():
+			InputMap.action_add_event(action, key_press(int(MADE_HERE[action])))
 
 
 func _read_defaults() -> void:
@@ -153,7 +167,7 @@ func _read_defaults() -> void:
 	_project_events.clear()
 	for action in all_actions():
 		var events: Array = []
-		if action.begins_with("hotbar_"):
+		if action.begins_with("hotbar_") or MADE_HERE.has(action):
 			events = InputMap.action_get_events(action)
 		elif ProjectSettings.has_setting("input/" + action):
 			events = (ProjectSettings.get_setting("input/" + action) as Dictionary).get("events", [])

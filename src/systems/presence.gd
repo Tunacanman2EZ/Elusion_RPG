@@ -30,11 +30,21 @@
 # them to the area's MonsterSync (src/world/monstersync.gd) through the signals
 # below. A server from before 0.7.0 never names a leader, and every game then
 # fights its own monsters exactly as it used to.
+#
+# AND, SINCE 0.10.0, THE SERVER'S BOOKS. A server whose welcome says "books"
+# keeps its own count of every monster's health from the leader's world and
+# everybody's hits (presence.py, combatbook.py) - E3_SCOPE.md option C, step 1:
+# it watches, and nothing in play changes. For that the leader sends its world
+# even when nobody else is in the area, with its own player's hits inside it
+# (monstersync.gd), and the ticket is renewed at once after an equip, so the
+# server holds hits to the weapon actually in hand.
 extends Node
 
 # The shared-monster wire this game speaks; the server's welcome says whether
-# it does too.
-const SHARED_VERSION := 2
+# it does too. 3 (0.10.0) is 2 plus the leader's own hits inside its world.
+const SHARED_VERSION := 3
+# The oldest server wire this game shares monsters with.
+const SHARED_MINIMUM := 2
 
 # Who runs this area's monsters: the leader's account id, -1 for nobody (or no
 # link at all), and how many other games share them.
@@ -86,6 +96,7 @@ var _remotes: Dictionary = {}     # user id -> RemotePlayer
 var _sync_pending: bool = false
 var _anim_rule: RegEx = RegEx.create_from_string(ANIM_PATTERN)
 var _server_shares: bool = false
+var _server_books: bool = false
 var _lead_area: String = ""
 var _leader_id: int = -1
 var _lead_sharers: int = 0
@@ -152,6 +163,19 @@ func stop() -> void:
 func shares() -> bool:
 	"""True while the link is open to a server that shares monsters."""
 	return _phase == "open" and _server_shares and _my_id >= 0
+
+
+func books() -> bool:
+	"""True while the link is open to a server that keeps books on the
+	monsters: the leader sends its world even alone, its own hits inside."""
+	return shares() and _server_books
+
+
+func renew_soon() -> void:
+	"""A fresh ticket now rather than within the minute - after an equip, so
+	the server's books hold hits to the weapon in hand."""
+	if _phase == "open":
+		_renew_clock = RENEW_SECONDS
 
 
 func my_id() -> int:
@@ -258,6 +282,7 @@ func _pump(delta: float, player: Node) -> void:
 		_sync_pending = false
 		_renew_clock = 0.0
 		_server_shares = false
+		_server_books = false
 		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION})
 	while _socket != null and _socket.get_available_packet_count() > 0:
 		var parsed: Variant = JSON.parse_string(_socket.get_packet().get_string_from_utf8())
@@ -335,7 +360,8 @@ func handle_message(message: Dictionary) -> void:
 	match str(message.get("t", "")):
 		"welcome":
 			_my_id = int(message.get("id", -1))
-			_server_shares = int(message.get("v", 0)) >= SHARED_VERSION
+			_server_shares = int(message.get("v", 0)) >= SHARED_MINIMUM
+			_server_books = typeof(message.get("books")) == TYPE_BOOL and bool(message["books"])
 		"join":
 			for entry in message.get("p", []):
 				if entry is Dictionary:

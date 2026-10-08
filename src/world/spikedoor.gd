@@ -169,4 +169,7 @@ func _on_hurtzone_body_entered(body: Node) -> void:
 		return
 	if not body.is_in_group("player"):
 		return
-	body.take_damage(contact_damage, &"physical")
+	# Element.Type.NONE, the int Player.take_damage() takes - this passed the
+	# StringName &"physical", a type error the first time a door is given
+	# contact damage (none is yet). Physical: armour stops it, no resistance.
+	body.take_damage(contact_damage, Element.Type.NONE)

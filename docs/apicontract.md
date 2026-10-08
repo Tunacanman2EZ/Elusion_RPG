@@ -477,18 +477,34 @@ An item id is a catalogue id (`ironsword`) - or, for a piece of gear that
     jadechest~a104h96          armour 104%, max health 96%
     ironsword~d107             damage 107%
     jadeamulet~a120h120m120p120   Perfect: every stat at 120%
+    jadechest~a104h96r605      and resists fire by 5% (0.11.0)
 
 One letter per stat the piece has above zero, in this order and only those:
 `d` damage, `a` armor_value, `h` bonus_max_hp, `m` bonus_max_mana,
 `p` bonus_damage_percent; each percent 85-115, or every one at 120 (Perfect).
 The letters, the range and the odds are `GameConstants.QUALITY_*`, exported as
-`quality_*` in gamedata.json. Anything else after a `~` is not an item.
+`quality_*` in gamedata.json.
+
+**Armour** - an `ARMOR` item worn in any slot but the weapon's - also rolls an
+element it resists, last, after every stat: `r`, one digit of element
+(`Element.Type`: 1 dark, 2 light, 3 ice, 4 wind, 5 earth, 6 fire, 7 water) and
+two of percent, inside its tier's range (`resist_ranges`: tier 1 2-5, 2 3-7,
+3 4-9, 4 5-11, 5 6-13), at the top of it on a Perfect. Optional: a piece from
+before 0.11.0 has none. Never on a weapon. `resist_*` in gamedata.json. What it
+does is the game's alone (matching pieces add up to `resist_cap`, 50%, off a
+hit of that element); the server only rolls and reads it, and `item_row()`
+reports `resist_element` / `resist_percent`.
+
+Anything else after a `~` is not an item - including a newline after the roll
+or digits that are not ASCII 0-9, which the server read as a roll until 7 Oct.
 
 - **The server rolls; nothing else names a roll.** Drops roll (bags and the
   mythic), and so does a purchase: the shelf lists the plain id, and
   `/api/shop/buy` answers `item_id` with the roll that arrived and `stock_id`
   with the shelf's id, at the shelf's price. A staff grant takes
-  `"quality": "plain" | "roll" | "perfect"` (`"store"` is read as plain).
+  `"quality": "plain" | "roll" | "perfect"` (`"store"` is read as plain); a
+  `roll` or `perfect` piece of armour comes with its resistance, a Perfect's at
+  the top of its range.
 - **Every route that takes an item takes the id as seen**, roll and all: a
   move, the bin, the bank, equip, a trade offer, a sale. A rolled piece is
   never stacked (its stack is one), and naming the plain id for a rolled cell
@@ -500,7 +516,8 @@ The letters, the range and the odds are `GameConstants.QUALITY_*`, exported as
   catalogue's; `sell_prices` and the trade tax use it, keyed by the catalogue
   id.
 - **Client build 3** reads rolled ids; a build-2 game shows one as the error
-  item.
+  item. **Client build 4** (0.11.0) reads the resistance; a build-3 game shows
+  a resisting piece as the error item, so set the minimum to 4 once it is out.
 
 ---
 
@@ -555,6 +572,31 @@ kills. Real combat is bursty: an AoE or a splitting slime produces several
 simultaneous kills, and a minimum gap can never allow a burst no matter how it
 is tuned. A player should essentially never see this; if they do, the bucket is
 mis-sized, not the player.
+
+### The kill record: `GET /api/kills?slot=0` and `GET /api/kills/everyone`
+
+Every paid kill is also counted on the kill record (`kill_tally`, one row per
+character per monster, in the kill's own transaction) and kept for good -
+`kill_reports` is pruned after two weeks. The game's Kills window (Social >
+Kills, or K) reads two routes, both behind the bearer token and both read-only:
+
+```json
+GET /api/kills?slot=0
+{"slot": 0, "since": 1791331200, "total": 186, "kinds": 7,
+ "kills": [{"enemy_id": "darkslime", "kills": 64, "first_at": 1791332000, "last_at": 1791341000}, ...]}
+
+GET /api/kills/everyone
+{"since": 1791331200, "total": 3410, "players": 12,
+ "kills": [{"enemy_id": "darkslime", "kills": 1204, "players": 11,
+            "top": "caster", "top_kills": 402, "yours": 64}, ...]}
+```
+
+Most killed first. `since` is when counting began: the first boot after the
+record existed counted what `kill_reports` still held, and that is its date.
+**Everyone** is per account - a player's characters added together - and
+`top` is the username with the most kills of that monster, a tie going to
+whoever started first; `yours` is the caller's own account total. A deleted
+character's record goes with it. **`400`** on a bad slot.
 
 ---
 
@@ -718,24 +760,24 @@ JSON text frames. The game sends:
 
 | Message | When |
 |---|---|
-| `{"t": "hello", "ticket", "v": 2}` | first, within 5 seconds; `v` 2 means this game shares monsters (0.7.0) |
+| `{"t": "hello", "ticket", "v": 3}` | first, within 5 seconds; `v` 2 means this game shares monsters (0.7.0), 3 that as leader it also sends its own hits inside its world (0.10.0) |
 | `{"t": "s", "a", "x", "y", "m", "fx", "pet"}` | where it stands, on a change, at most 10 a second: area id, world position, the body's animation (`idle\|walk\|attack\|death\|hitflash` + a facing), the lit auras (`ring`, `firering`) and the pet out |
 | `{"t": "renew", "ticket"}` | every minute |
 | `{"t": "sync"}` | after a new scene: tell me who is here again (and, sharing monsters, who leads and send me the monsters) |
-| `{"t": "w", "d": {...}, "to"?}` | the area's LEADER only: its monsters, to everyone else in the area or to one game; anyone else's is dropped |
+| `{"t": "w", "d": {...}, "to"?}` | the area's LEADER only: its monsters, to everyone else in the area or to one game; anyone else's is dropped. To a server that keeps books, sent even alone, and `d` may carry `"hits": [[monster, damage, element]]`, the leader's own player's (0.10.0) |
 | `{"t": "h", "p": [[monster, damage, element]]}` | a follower's hits, for the leader: whole numbers, damage 1-100000, at most 64 |
 
 The server sends:
 
 | Message | Meaning |
 |---|---|
-| `{"t": "welcome", "id", "v": 2}` | in; `id` is your account id; `v` 2 means this server shares monsters |
+| `{"t": "welcome", "id", "v": 2, "books"}` | in; `id` is your account id; `v` 2 means this server shares monsters; `books` true that it keeps its own count of every monster's health (0.10.0) |
 | `{"t": "join", "p": [{"id", "name", "cls", "lvl", "role", "hue", "guild", "x", "y", "m", "fx", "pet", "v"}]}` | people now in your area (and anyone whose identity changed); `v` says whether their game shares monsters |
 | `{"t": "moves", "p": [[id, x, y, m, fx, pet]]}` | who moved this tick, ten a second; your own id is in it, skip it |
 | `{"t": "leave", "ids": [...]}` | gone from your area |
 | `{"t": "bye", "why"}` | then the socket closes: `ticket`, `replaced` (signed in elsewhere), `signed out`, `too fast`, `too big` |
 | `{"t": "lead", "a", "id", "n"}` | who runs this area's monsters (`-1`: nobody) and how many other games share them |
-| `{"t": "need", "id"}` | (to the leader) send that game every monster |
+| `{"t": "need", "id"}` | (to the leader) send that game every monster; `id` 0 is the server's books |
 | `{"t": "w", "d"}` | the leader's monsters, as it sent them |
 | `{"t": "h", "from", "p"}` | (to the leader) another game's hits |
 
@@ -752,6 +794,15 @@ the events, the full world - is between the games: see the header of
 takes a `w` as where the monsters are and what they do, never as how hard they
 hit: damage comes from its own copy of each monster, and the few numbers a `w`
 carries that could reach a player are capped by the follower.
+
+**The server's books (0.10.0).** The server reads every leader's `w` and every
+hit into its own count of each monster's health, holds every hit to what that
+character could deal - from the ticket, which carries `gear` (worn and carried)
+and `skills` (attack, magic, agility) as well as who the player is, none of it
+ever shown to another player - and judges every death. It writes down what it
+finds and **changes nothing in play**: a kill is still `POST /api/combat/kill`,
+paid as before. The game renews its ticket right after an equip, so the bound
+follows the weapon in hand. api/CLAUDE.md, "The books on every monster".
 
 ---
 

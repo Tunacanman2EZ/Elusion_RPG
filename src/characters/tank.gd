@@ -47,6 +47,10 @@ extends "res://src/characters/player.gd"
 # literals in _set_stat_curve() below, which meant the server knew your level
 # and your class and still could not work out your maximum health.
 const CLASS_DATA := preload("res://data/classes/tank.tres")
+# How fast this class walks, before agility and sprinting (player.gd). A
+# constant so the exporter can read it: presence.py holds a character to it
+# (gamedata.py, "COMBAT BOUNDS").
+const CLASS_SPEED := 160
 
 
 # =============================================================================
@@ -157,7 +161,7 @@ func _set_skill_proficiency() -> void:
 func _ready() -> void:
 	# class identity — always set, regardless of save state.
 	character_name = "tank"
-	speed = 160
+	speed = CLASS_SPEED
 
 	# super._ready() calls _set_stat_curve(), loads save, recomputes maxes
 	# from level, and fills resources to full. no manual stat block needed.

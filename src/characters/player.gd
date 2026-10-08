@@ -1462,9 +1462,9 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	# without silently retuning the other — see PlayerStats.ARMOUR_HALF_POINT
 	# for the scale, and note that enemy damage was deliberately NOT raised to
 	# compensate: a geared player taking less is the entire point of armour.
-	var reduction: float = _get_defense_tier()["reduction"]
-	var armour: float = PlayerStats.armour_reduction(equipped_armor_value())
-	var reduced_amount: int = maxi(1, int(amount * (1.0 - reduction) * (1.0 - armour)))
+	#
+	# AND WHAT THE ARMOUR RESISTS (0.11.0), a third factor - damage_taken().
+	var reduced_amount: int = damage_taken(amount, element)
 
 	hp = clamp(hp - reduced_amount, 0, max_hp)
 	took_damage.emit(reduced_amount, Element.name_for(element))
@@ -2716,6 +2716,46 @@ func attack_period() -> float:
 	# deliberately under-promised rather than advertise a speed the game did
 	# not deliver. Both halves are fixed together — see Player.hasten().
 	return 0.0
+
+
+func damage_taken(amount: int, element: int = Element.Type.NONE) -> int:
+	# WHAT A HIT OF THIS SIZE AND ELEMENT LEAVES, the arithmetic take_damage()
+	# applies, kept apart so it can be asked without the hit landing. Three
+	# shares, each taken off what the one before left: the defense tier, the
+	# armour, and the resistance to this element (equipped_resistance(), 0 for
+	# a physical hit) - a fire sprite's shot against fire-resistant plate.
+	# Multiplied, never added, so nothing reaches zero; maxi(1, ...) is the
+	# floor under all three.
+	var reduction: float = _get_defense_tier()["reduction"]
+	var armour: float = PlayerStats.armour_reduction(equipped_armor_value())
+	var resisted: float = float(equipped_resistance(element)) / 100.0
+	return maxi(1, int(amount * (1.0 - reduction) * (1.0 - armour) * (1.0 - resisted)))
+
+
+func equipped_resistance(element: int) -> int:
+	# HOW MANY PERCENT OF A HIT OF THIS ELEMENT what is worn takes off: every
+	# piece that rolled a resistance to it, added up, never past RESIST_CAP. A
+	# physical hit (NONE) is armour's business alone.
+	if element == Element.Type.NONE:
+		return 0
+	var total: int = 0
+	for slot_name in equipped:
+		var data: ItemData = ItemRegistry.get_item(str(equipped[slot_name]))
+		if data != null and int(data.resist_element) == element:
+			total += int(data.resist_percent)
+	return mini(total, GameConstants.RESIST_CAP)
+
+
+func resistances() -> Array:
+	# [[element, percent], ...] for every element something worn resists,
+	# strongest first - each already held to RESIST_CAP. For the Gear window.
+	var out: Array = []
+	for element in GameConstants.RESIST_ELEMENTS:
+		var percent: int = equipped_resistance(int(element))
+		if percent > 0:
+			out.append([int(element), percent])
+	out.sort_custom(func(a, b): return int(a[1]) > int(b[1]) or (int(a[1]) == int(b[1]) and int(a[0]) < int(b[0])))
+	return out
 
 
 func equipped_armor_value() -> int:

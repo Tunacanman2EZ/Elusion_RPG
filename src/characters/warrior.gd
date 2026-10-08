@@ -84,6 +84,10 @@ extends "res://src/characters/player.gd"
 # literals in _set_stat_curve() below, which meant the server knew your level
 # and your class and still could not work out your maximum health.
 const CLASS_DATA := preload("res://data/classes/warrior.tres")
+# How fast this class walks, before agility and sprinting (player.gd). A
+# constant so the exporter can read it: presence.py holds a character to it
+# (gamedata.py, "COMBAT BOUNDS").
+const CLASS_SPEED := 200
 
 
 # =============================================================================
@@ -317,7 +321,7 @@ func _set_skill_proficiency() -> void:
 func _ready() -> void:
 	# class identity — always set, regardless of save state.
 	character_name = "warrior"
-	speed = 200
+	speed = CLASS_SPEED
 
 	# don't freeze movement while is_attacking — warrior keeps walking through
 	# its swing. mage/tank/healer are unaffected since this defaults to true on

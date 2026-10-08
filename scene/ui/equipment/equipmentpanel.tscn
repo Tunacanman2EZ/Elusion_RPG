@@ -321,3 +321,25 @@ theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
 theme_override_font_sizes/font_size = 11
 text = "-"
 horizontal_alignment = 2
+
+[node name="resistrow" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/summary" unique_id=1930055446]
+layout_mode = 2
+theme_type_variation = &"PanelStatBg"
+
+[node name="box" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/summary/resistrow" unique_id=1930055447]
+layout_mode = 2
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/resistrow/box" unique_id=1930055448]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.65, 0.55, 1)
+theme_override_font_sizes/font_size = 11
+text = "Resists:"
+
+[node name="equipresistvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/summary/resistrow/box" unique_id=1930055449]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.75, 0.65, 1)
+theme_override_font_sizes/font_size = 11
+text = "-"
+horizontal_alignment = 2
