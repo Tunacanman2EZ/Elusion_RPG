@@ -2375,12 +2375,18 @@ product versions are it with `.0` after (Windows wants four numbers).
   bundles every fifth throw, the Double Axe whirls wider and its cuts bleed,
   and the Meteorite falls in a fire vortex, 0.15.0 the town's portal leads
   to the Big Field and its ladder down to the Field, 0.15.1 an arrival
-  portal closes as you walk away from it.
+  portal closes as you walk away from it, 0.16.0 a monster with no death of
+  its own flashes white and breaks into pixels when it dies.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
   the PC first: the editor rewrites it when it exports, so a copy from here is
-  stale. The website's update entries name the version.
+  stale.
+- **The website is not versioned with the game.** The owner, at 0.16.0: "do
+  not update website with 0.16.0 we should have one for the game and one for
+  the website". A game release is the game's commit; a website change is its
+  own commit with its own message, and does not add the game's version to the
+  site unless the owner asks for it.
 - **And close Godot before export_presets.cfg is replaced.** The editor holds
   the presets in memory from when it opened and writes them back on every
   export. On 7 Oct the 0.10.0 web export wrote a copy from before 0.7.2:
@@ -4581,6 +4587,48 @@ a real respawn; the walk test walks the Big Field with every other area;
 caught. Played as the owner through `/goto`: the sleeper attached, all 128
 enemies chase from 250, and three light enemies killed paid through the
 server.
+
+### Monsters with no death of their own break into pixels (0.16.0)
+
+Only the Crowned (and the element bosses, which are instances of
+`bossenemy.tscn`) has `death*` frames, and only the small poison slime has
+`smalldeath*`. Every sprite, bush mage and bush sniper - 28 of the 48 enemy
+scenes - was simply freed on the frame it died. The owner wanted the
+website's arena to show each creature's death, facing down, and a creature
+with no death cannot be shown dying; so the game got one first, and the
+website plays it, recorded from the game.
+
+- **`DeathBurst` (`src/enemies/deathburst.gd`)** is a picture, not the
+  monster. `BaseEnemy._die()` and `net_vanish()` spawn it in the `elif` after
+  the death-animation branch, then `queue_free()` exactly as before - the kill
+  report, the respawner's clock, a gauntlet wave and the slot release do not
+  wait on it. It copies the frame the sprite was showing (texture, offset,
+  flip, the sprite's own material so an element's recolour is kept, the
+  enemy's `body_tint`) into the enemy's parent at the enemy's transform, so it
+  y-sorts where the monster stood. No group, no collision. `net_remove()`
+  (taken away, not killed) leaves none.
+- **What it shows:** `FLASH_SECONDS` of the frame overexposed by
+  `BaseEnemy.HIT_FLASH_COLOR` (the killing hit's flash, which the old instant
+  free never let anyone see), `WHITE_SECONDS` of a pure white shape, then
+  `CRUMBLE_SECONDS` of that shape breaking into 2x2 squares of its own pixels,
+  top first, lifting `LIFT` px, while single pixels are thrown up out of the
+  hurtbox, white cooling to `Element.colour_for()` the monster's element. It
+  frees itself when the last pixel lands: `DeathBurst.seconds()`, about
+  0.95 s.
+- **The white shape is a shader (`src/shared/death_crumble.gdshader`) on the
+  copy, never on a monster's sprite.** baseenemy.gd's hit-flash note is why: a
+  shader left on an enemy, with a state that can stick, was a mistake once.
+  The copy is gone in a second.
+- **`_bursts_on_death()`** says whether a monster bursts; `poisonslime.gd`
+  says no for both forms (the small shows `smalldeath*` before handing to
+  `BaseEnemy._die()`, the large splits).
+- **Cost:** forty made at once 1.5-2.5 ms of CPU, a frame of forty running
+  about 0.2 ms (measured with the container driver's `burstcost`;
+  `_test_monsters_go_out_in_a_burst` holds them to a quarter and a tenth of
+  the 33.3 ms frame). The test also kills a fire sprite and walks the
+  burst through its timeline, checks the slime and the Crowned keep their own
+  deaths, a mirror bursts on `net_vanish()` and not on `net_remove()`, and
+  every bursting scene has a sprite and a hurtbox.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

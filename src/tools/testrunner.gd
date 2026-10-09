@@ -285,6 +285,7 @@ func _run_all() -> void:
 	await _test_the_big_field()
 	_test_the_road_through_the_game()
 	await _test_the_arrival_portal_closes_behind_you()
+	await _test_monsters_go_out_in_a_burst()
 	await _test_far_enemies_sleep()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
@@ -6767,6 +6768,165 @@ const ROAD := [
 # trigger (the marker 12 px down, the feet 13 px below that, the trigger 25 px
 # across), so it never saw them arrive and closed only when walked over. Both
 # fields, read off the scenes; then the fix, driven with a stand-in player.
+
+# =============================================================================
+# THE DEATH BURST (0.16.0)
+# =============================================================================
+# Only the Crowned (and the element bosses built on it) and the small poison
+# slime were drawn dying; every other monster was there one frame and gone the
+# next. Now each of those leaves a DeathBurst (deathburst.gd) - the killing
+# hit's flash, a white shape, the shape breaking into pixels - and the website's
+# arena plays the deaths, recorded from the game. These hold the burst to what
+# it promises: a picture only, the kill itself untouched, and gone in a second.
+
+func _test_monsters_go_out_in_a_burst() -> void:
+	section("THE DEATH BURST - a monster with no death of its own breaks into pixels")
+	var world := Node2D.new()
+	world.y_sort_enabled = true
+	add_child(world)
+	var at := Vector2(-61000, -61000)
+	var foe_at := func(path: String, offset: Vector2) -> BaseEnemy:
+		var e: BaseEnemy = (load(path) as PackedScene).instantiate()
+		e.position = at + offset
+		world.add_child(e)
+		e.set_physics_process(false)
+		return e
+	var bursts := func() -> Array:
+		return world.get_children().filter(func(c: Node) -> bool: return c is DeathBurst)
+
+	# ---- a fire sprite, killed ----------------------------------------------
+	var fire: BaseEnemy = foe_at.call("res://scene/enemy/firesprite.tscn", Vector2.ZERO)
+	fire.attack_direction = "down"
+	fire.play_idle_animation("down")
+	await get_tree().process_frame
+	var sprite: AnimatedSprite2D = fire.get_node("animatedsprite2d")
+	var shown: Texture2D = sprite.sprite_frames.get_frame_texture(sprite.animation, sprite.frame)
+	var stood: Vector2 = fire.global_position
+	var fire_element: int = fire.current_element()
+	fire.net_take_remote_hit(fire.max_hp * 3)
+	var made: Array = bursts.call()
+	check("a fire sprite killed leaves one DeathBurst, where it stood",
+		made.size() == 1 and (made[0] as Node2D).global_position == stood, made.size())
+	check("  and is freed that frame, as it always was - nothing waits on the burst",
+		fire.is_queued_for_deletion())
+	if made.size() != 1:
+		world.free()
+		return
+	var burst: DeathBurst = made[0]
+	burst.set_physics_process(false)
+	var body: Sprite2D = burst.get_node("body")
+	var white: Sprite2D = burst.get_node("white")
+	var pixels: CPUParticles2D = burst.get_node("pixels")
+	check("  it is the frame the sprite was showing, placed as the sprite was",
+		body.texture == shown and white.texture == shown and body.offset == sprite.offset
+		and body.flip_h == sprite.flip_h and body.position == sprite.position, [body.texture, shown])
+	check("  it is nobody's target: in no group, nothing in it to hit",
+		burst.get_groups().is_empty() and burst.find_children("*", "CollisionObject2D", true, false).is_empty())
+	check("  it opens on the killing hit's flash", burst.showing() == &"flash"
+		and body.modulate == BaseEnemy.HIT_FLASH_COLOR, burst.showing())
+	burst.advance(DeathBurst.FLASH_SECONDS)
+	check("  then a white shape, drawn by the crumble shader on a copy",
+		burst.showing() == &"white" and white.material is ShaderMaterial
+		and (white.material as ShaderMaterial).shader == DeathBurst.CRUMBLE_SHADER and sprite.material != white.material,
+		burst.showing())
+	burst.advance(DeathBurst.WHITE_SECONDS + DeathBurst.CRUMBLE_SECONDS * 0.5)
+	check("  which breaks apart, throwing pixels out of it",
+		burst.showing() == &"crumble" and burst.crumble > 0.3 and burst.crumble < 0.7 and pixels.emitting,
+		[burst.showing(), burst.crumble])
+	check("  the pixels cool from white to the colour of its element",
+		pixels.color_ramp.colors[0] == Color.WHITE and pixels.color_ramp.colors[1] == Element.colour_for(fire_element),
+		pixels.color_ramp.colors)
+	check("  and come out of its body (its hurtbox), not a fixed square",
+		pixels.emission_shape == CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+		and pixels.amount >= DeathBurst.PIXELS_MIN and pixels.amount <= DeathBurst.PIXELS_MAX, pixels.amount)
+	burst.advance(DeathBurst.CRUMBLE_SECONDS)
+	check("  until nothing is left of the shape", not white.visible and not body.visible)
+	burst.advance(DeathBurst.seconds())
+	check("  and it frees itself once the last pixel has landed - about a second",
+		burst.is_queued_for_deletion() and DeathBurst.seconds() <= 1.2, DeathBurst.seconds())
+
+	# ---- the ones drawn dying keep their own death ---------------------------
+	var small: BaseEnemy = (load("res://scene/enemy/poisonslime.tscn") as PackedScene).instantiate()
+	small.set("is_small", true)
+	small.position = at + Vector2(200, 0)
+	world.add_child(small)
+	small.set_physics_process(false)
+	var large: BaseEnemy = foe_at.call("res://scene/enemy/poisonslime.tscn", Vector2(300, 0))
+	check("the poison slime opts out, both forms: the small has its own death, the large splits",
+		not small._bursts_on_death() and not large._bursts_on_death())
+	small.net_take_remote_hit(small.max_hp * 3)
+	await get_tree().create_timer(float(small.get("small_death_duration")) + 0.15).timeout
+	# (The fire sprite's burst freed itself above, so the world holds none.)
+	check("  a small slime plays smalldeath and goes, with no burst on top",
+		(not is_instance_valid(small) or small.is_queued_for_deletion()) and bursts.call().is_empty(),
+		bursts.call().size())
+	var boss: BaseEnemy = foe_at.call("res://scene/enemy/bossenemy.tscn", Vector2(500, 0))
+	boss.attack_direction = "down"
+	var count_now: int = bursts.call().size()
+	boss.net_take_remote_hit(boss.max_hp * 3)
+	check("the Crowned plays its own death frames, with no burst",
+		boss._dying and bursts.call().size() == count_now, [boss._dying, bursts.call().size()])
+
+	# ---- another game's monster --------------------------------------------
+	var mirrored: BaseEnemy = foe_at.call("res://scene/enemy/lightsprite.tscn", Vector2(700, 0))
+	mirrored.net_mirror = true
+	count_now = bursts.call().size()
+	mirrored.net_vanish()
+	check("a monster another game runs bursts here too when that game says it died",
+		bursts.call().size() == count_now + 1)
+	var dropped: BaseEnemy = foe_at.call("res://scene/enemy/lightsprite.tscn", Vector2(800, 0))
+	count_now = bursts.call().size()
+	dropped.net_remove()
+	check("  but one simply taken away (net_remove) does not - that was no death",
+		bursts.call().size() == count_now)
+
+	# ---- every monster that bursts has a body to burst from ------------------
+	var bodiless: Array = []
+	var bursting: int = 0
+	var dir := DirAccess.open("res://scene/enemy")
+	for f in dir.get_files():
+		if not f.ends_with(".tscn"):
+			continue
+		var e: Node = (load("res://scene/enemy/" + f) as PackedScene).instantiate()
+		var spr: AnimatedSprite2D = e.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+		var drawn_dying: bool = spr != null and spr.sprite_frames != null and (
+			spr.sprite_frames.has_animation(&"deathdown") or spr.sprite_frames.has_animation(&"smalldeathdown"))
+		if not drawn_dying and e.has_method("_bursts_on_death") and e.call("_bursts_on_death"):
+			bursting += 1
+			var box: CollisionShape2D = e.get_node_or_null("hurtbox/collisionshape2d") as CollisionShape2D
+			if spr == null or box == null or box.shape == null:
+				bodiless.append(f)
+		e.free()
+	check("every monster that bursts has a sprite and a hurtbox to break up (%d of them)" % bursting,
+		bursting > 0 and bodiless.is_empty(), bodiless)
+
+	# ---- what it costs -------------------------------------------------------
+	# A meteor or a bundle of dynamite kills a crowd in one frame. Forty bursts
+	# made at once, and a frame of all forty running, against the frame budget.
+	var crowd: Array = []
+	for i in 40:
+		crowd.append(foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(1000 + (i % 8) * 40, (i / 8) * 40)))
+	await get_tree().process_frame
+	var t0 := Time.get_ticks_usec()
+	var many: Array = []
+	for e in crowd:
+		many.append(DeathBurst.spawn(e))
+	var make_ms := float(Time.get_ticks_usec() - t0) / 1000.0
+	t0 = Time.get_ticks_usec()
+	for b in many:
+		(b as DeathBurst).advance(DeathBurst.FLASH_SECONDS + DeathBurst.WHITE_SECONDS + 0.05)
+	var run_ms := float(Time.get_ticks_usec() - t0) / 1000.0
+	check("forty bursts at once take under a quarter of a frame to make",
+		many.size() == 40 and make_ms < FRAME_BUDGET_MS * 0.25, "%.2f ms" % make_ms)
+	check("  and a frame of all forty running is a sliver of one",
+		run_ms < FRAME_BUDGET_MS * 0.1, "%.2f ms" % run_ms)
+
+	check("the burst is spawned only where a monster has no death* frames, in both deaths",
+		_func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _die(").contains("elif _bursts_on_death():")
+		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func net_vanish(").contains("elif _bursts_on_death():")
+		and not _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func net_remove(").contains("DeathBurst"))
+	world.free()
+
 
 func _test_the_arrival_portal_closes_behind_you() -> void:
 	section("THE ARRIVAL PORTAL - it closes as you walk away from where you landed")

@@ -2662,7 +2662,10 @@ func _die() -> void:
 	# lingering or cut it off halfway.
 	#
 	# Enemies whose sheet has no death* frames — which is all of them except the
-	# boss right now — skip straight to queue_free() exactly as before.
+	# boss right now — are still freed straight away, exactly as before; but
+	# since 0.16.0 they leave a DeathBurst where they stood (deathburst.gd): the
+	# killing hit's flash, a white shape, and that shape breaking into pixels. A
+	# picture of the last frame, not the monster - nothing above waits on it.
 	#
 	# THE NAME IS DELIBERATELY UNPREFIXED. poisonslime.gd has an _anim_prefix()
 	# that turns its small form's clips into smallwalkdown, smallidleleft and so
@@ -2679,8 +2682,17 @@ func _die() -> void:
 		await get_tree().create_timer(_animation_seconds(death_anim)).timeout
 		if not is_instance_valid(self):
 			return
+	elif _bursts_on_death():
+		DeathBurst.spawn(self)
 
 	queue_free()
+
+
+func _bursts_on_death() -> bool:
+	"""Whether a monster with no death* frames leaves a DeathBurst when it
+	dies. Yes, unless its script shows a death of its own - poisonslime.gd
+	does, and says no."""
+	return true
 
 
 # =============================================================================
@@ -2864,8 +2876,9 @@ func net_take_remote_hit(amount: int, element: int = Element.Type.NONE) -> void:
 
 func net_vanish() -> void:
 	"""(Mirror.) The leader says it died: the death plays here as it did
-	there - sound, signal, animation - with no kill report. Whether this
-	game's player earned one is monstersync.gd's question, asked before this."""
+	there - sound, signal, animation or DeathBurst - with no kill report.
+	Whether this game's player earned one is monstersync.gd's question, asked
+	before this."""
 	if _death_resolved:
 		return
 	_death_resolved = true
@@ -2880,6 +2893,8 @@ func net_vanish() -> void:
 		await get_tree().create_timer(_animation_seconds(death_anim)).timeout
 		if not is_instance_valid(self):
 			return
+	elif _bursts_on_death():
+		DeathBurst.spawn(self)
 	queue_free()
 
 

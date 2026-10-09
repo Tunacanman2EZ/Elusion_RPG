@@ -526,6 +526,13 @@ func _die() -> void:
 	super._die()
 
 
+# Both forms already show their own end - the large its split, the small its
+# smalldeath* frames, which _die() above plays before BaseEnemy frees it - so
+# neither leaves a DeathBurst on top (deathburst.gd, 0.16.0).
+func _bursts_on_death() -> bool:
+	return false
+
+
 # (Mirror.) The leader's slime split or died: this copy plays the same
 # moment - the large's flash, a small's death - and goes. No smalls here: the
 # leader's arrive as their own monsters.
