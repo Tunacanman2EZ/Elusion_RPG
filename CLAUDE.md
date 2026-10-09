@@ -2374,7 +2374,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   Dynamite blasts as wide as a meteor, throws faster with the ring lit and
   bundles every fifth throw, the Double Axe whirls wider and its cuts bleed,
   and the Meteorite falls in a fire vortex, 0.15.0 the town's portal leads
-  to the Big Field and its ladder down to the Field.
+  to the Big Field and its ladder down to the Field, 0.15.1 an arrival
+  portal closes as you walk away from it.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -4492,6 +4493,46 @@ untouched**, and its layout stays his to adjust.
   never faded - unnoticed while only `/goto` went there, found walking a
   character onto the ladder. The four lines are in, and the road test checks
   every door in every area is wired both ways.
+- **The arrival portal closes by your steps (0.15.1).** The owner: "portal
+  took way to long to vanish in big field". It waited for `body_exited`, but
+  the player lands clear of its trigger (the marker is 12 px below the
+  portal's middle, the feet circle 13 px below that, the trigger 25 px
+  across), so it never saw them arrive and closed only when walked over -
+  in both fields. `leavetown.gd` now has an arrival portal watch the player:
+  first seen within `LANDED_WITHIN` (48) it landed there, and `LEAVE_DISTANCE`
+  (20) from that spot it closes, fading in `FADE_SECONDS` (0.6, was 1.0).
+  Measured: closed 0.13 s into the walk, gone at 0.73 s.
+  `_test_the_arrival_portal_closes_behind_you`.
+
+### The new-content performance sweep (0.15.1)
+
+The owner: "we need to speed up the game again ... have not done in new
+content sweep". Measured with the container driver (`_run.gd`, `newperf` and
+`fieldprof`), headless for what the CPU spends and under xvfb for drawing.
+The budget is the suite's: 30 fps, 33.3 ms a frame (`_test_frame_budget`).
+
+- **What the CPU spends is small everywhere.** Process and physics a frame:
+  town 0.5 + 0.2 ms; Field 0.4 + 1.6; Big Field standing 0.5 + 0.7 and its
+  road end to end 0.6 + 0.9 (128 enemies, the sleeper on); a Meteorite
+  barrage into a pack 0.9 + 1.4; Dynamite throwing 0.9 + 2.0; the Double Axe
+  spinning 0.8 + 1.4. A browser runs the same work slower, still well inside
+  33 ms.
+- **Nothing leaks.** Eight seconds after each mythic stops, no meteor,
+  crater, stick, blast, wound or axe is left, and the node count is back to
+  where it was.
+- **The heaviest thing on screen was the Field's `Black` layer**, and it is
+  gone. 28,548 solid black tiles (`art/tiles/black tile.png`) in a
+  rectangle under the whole Field at z -100, from before the screen past the
+  map was made black (MapBackdrop): black drawn on black. The owner, shown
+  it: "remove layer". The node, its TileSet and the texture's line in the
+  scene went; the PNG stays, the town's ground uses it. In the container's
+  renderer the Field's frame went from 74-76 ms to 37 (every frame over
+  50 ms before, two in six seconds after), and field.tscn from 564 KB to
+  107 KB, which is that much less to load. Screenshots before and after look
+  the same at the arrival; anywhere a floor tile has see-through pixels now
+  shows the grey mortar the town and the Big Field show.
+  `_test_no_black_underlay` fails on any area with a layer of nothing but
+  black tiles, and failed on the old Field.
   Before 0.15.0 no door led there and the owner used `/goto bigfield`
   (`chatpanel.gd`, owner only), which still works; `AreaRegistry.AREAS`
   holds it as `"bigfield"`, "Big Field".

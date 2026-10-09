@@ -204,6 +204,7 @@ func _run_all() -> void:
 	_test_no_unused_parameters()
 	_test_floor_coverage()
 	_test_frame_budget()
+	_test_no_black_underlay()
 	_test_only_levelling_up_refills()
 	_test_nothing_shadows_its_base_class()
 	_test_every_resource_reference_exists()
@@ -283,6 +284,7 @@ func _run_all() -> void:
 	await _test_every_area_can_be_walked()
 	await _test_the_big_field()
 	_test_the_road_through_the_game()
+	await _test_the_arrival_portal_closes_behind_you()
 	await _test_far_enemies_sleep()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
@@ -4648,6 +4650,32 @@ func _distinct_scripts(refs: Array[String]) -> int:
 const FRAME_BUDGET_MS := 33.3
 
 
+# NO LAYER OF BLACK UNDER A MAP (0.15.1). The Field had one: 28,548 solid
+# black tiles in a rectangle under the whole area, from before the screen past
+# the map was made black (MapBackdrop). It drew black on black, and in the
+# sweep it was the heaviest thing on screen - the Field's frame went from 74 ms
+# to 37 in the container's renderer, and its scene file from 564 KB to 107.
+# The owner: "remove layer". This keeps one from coming back unnoticed.
+func _test_no_black_underlay() -> void:
+	section("NO BLACK UNDERLAY - the screen past the map is black already")
+	var found: Array = []
+	for area_id in AreaRegistry.area_ids():
+		var area: Node = (load(AreaRegistry.AREAS[area_id]) as PackedScene).instantiate()
+		for layer in area.find_children("*", "TileMapLayer", true, false):
+			var tl := layer as TileMapLayer
+			if tl.tile_set == null or tl.get_used_cells().size() < 500:
+				continue
+			var only_black := true
+			for i in tl.tile_set.get_source_count():
+				var src := tl.tile_set.get_source(tl.tile_set.get_source_id(i)) as TileSetAtlasSource
+				if src == null or src.texture == null or not src.texture.resource_path.ends_with("black tile.png"):
+					only_black = false
+			if only_black:
+				found.append("%s/%s (%d tiles)" % [area_id, tl.name, tl.get_used_cells().size()])
+		area.free()
+	check("no area paints a layer of nothing but black tiles under itself", found.is_empty(), found)
+
+
 func _test_frame_budget() -> void:
 	section("FRAME BUDGET — what every frame costs")
 
@@ -6730,6 +6758,71 @@ const ROAD := [
 	["bossarena", "res://src/world/victoryteleporter.gd", "boss"],
 	["boss", "res://src/world/victoryteleporter.gd", "elusion"],
 ]
+
+# =============================================================================
+# THE ARRIVAL PORTAL CLOSES BEHIND YOU (0.15.1)
+# =============================================================================
+# The owner: "portal took way to long to vanish in big field". It closed on
+# body_exited, and a player who lands at the marker stands clear of the
+# trigger (the marker 12 px down, the feet 13 px below that, the trigger 25 px
+# across), so it never saw them arrive and closed only when walked over. Both
+# fields, read off the scenes; then the fix, driven with a stand-in player.
+
+func _test_the_arrival_portal_closes_behind_you() -> void:
+	section("THE ARRIVAL PORTAL - it closes as you walk away from where you landed")
+
+	for area_id in ["bigfield", "field"]:
+		var area: Node = (load(AreaRegistry.AREAS[area_id]) as PackedScene).instantiate()
+		var door: Node = area.get_node_or_null("ysortworld/interactables/fieldteleport")
+		check("%s: its arrival portal closes by itself, not only through its trigger" % AreaRegistry.display_name(area_id),
+			door != null and bool(door.get("vanish_after_first_use")) and door.has_method("_physics_process"))
+		area.free()
+
+	var consts: Dictionary = (load("res://src/world/leavetown.gd") as GDScript).get_script_constant_map()
+	var leave: float = float(consts.get("LEAVE_DISTANCE", 0.0))
+	var holder := Node2D.new()
+	add_child(holder)
+	var at := Vector2(5000, 5000)
+	var make_portal := func() -> Node:
+		var d = (load("res://src/world/leavetown.gd") as GDScript).new()
+		d.arrival_only = true
+		d.vanish_after_first_use = true
+		holder.add_child(d)
+		d.global_position = at
+		return d
+	var walker := Node2D.new()
+	walker.name = "walker"
+	walker.add_to_group("player")
+	holder.add_child(walker)
+	walker.global_position = at + Vector2(0, 12)
+	check("(the stand-in is the player the portal will find)", get_tree().get_first_node_in_group("player") == walker)
+	var portal: Node = make_portal.call()
+	for i in 3:
+		await get_tree().physics_frame
+	check("landing on it, nothing happens yet", not portal.get("_has_vanished") and portal.is_physics_processing())
+	walker.global_position += Vector2(leave - 6.0, 0)
+	for i in 2:
+		await get_tree().physics_frame
+	check("  a step or two off the spot, it is still open", not portal.get("_has_vanished"))
+	walker.global_position += Vector2(12.0, 0)
+	for i in 2:
+		await get_tree().physics_frame
+	check("walk LEAVE_DISTANCE from where you landed and it closes - the trigger never saw you",
+		portal.get("_has_vanished") == true and not portal.is_physics_processing())
+	check("  fading quickly", float(consts.get("FADE_SECONDS", 9.0)) <= 0.6, consts.get("FADE_SECONDS"))
+
+	walker.global_position = at + Vector2(400, 0)
+	var other: Node = make_portal.call()
+	for i in 3:
+		await get_tree().physics_frame
+	check("a player who arrived somewhere else does not close it from afar",
+		not other.get("_has_vanished") and not other.is_physics_processing())
+	var exit_door = (load("res://src/world/leavetown.gd") as GDScript).new()
+	holder.add_child(exit_door)
+	check("and a way out (not an arrival portal) watches nobody", not exit_door.is_physics_processing())
+	holder.queue_free()
+	await get_tree().process_frame
+
 
 func _test_the_road_through_the_game() -> void:
 	section("THE ROAD - town, Big Field, Field, the gauntlet, the Crowned, and home")

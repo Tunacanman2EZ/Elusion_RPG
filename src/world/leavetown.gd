@@ -79,6 +79,48 @@ extends Area2D
 var can_teleport := true
 var _has_vanished := false
 
+# CLOSING BEHIND YOU, BY THE STEPS YOU TAKE (0.15.1). The owner: "portal took
+# way to long to vanish in big field". It waited for body_exited, and the
+# player never stood in it: the arrival marker is 12 px below the portal's
+# middle and a player's feet circle 13 px below that, so the body landed
+# clear of the 25 px trigger, body_entered never fired, and walking away
+# could not be "leaving". The portal closed only when somebody happened to
+# walk back over it. Both fields have the same shape and marker.
+#
+# So an arrival portal also watches the player itself: one first seen within
+# LANDED_WITHIN of it landed here, and once they are LEAVE_DISTANCE from
+# where they landed, it closes - whether or not the trigger ever saw them.
+# A player first seen further off arrived some other way (a relog, a staff
+# teleport) and the portal waits to be walked over, as before.
+const LANDED_WITHIN := 48.0
+const LEAVE_DISTANCE := 20.0
+# How long the picture takes to fade once it closes (was 1.0).
+const FADE_SECONDS := 0.6
+var _landed_at: Vector2 = Vector2.INF
+
+
+func _ready() -> void:
+	# Only an arrival portal watches; a way out has nothing to watch for.
+	set_physics_process(vanish_after_first_use)
+
+
+func _physics_process(_delta: float) -> void:
+	if _has_vanished:
+		set_physics_process(false)
+		return
+	var player: Node2D = get_tree().get_first_node_in_group("player") as Node2D
+	if player == null:
+		return
+	if _landed_at == Vector2.INF:
+		if player.global_position.distance_to(global_position) > LANDED_WITHIN:
+			set_physics_process(false)
+			return
+		_landed_at = player.global_position
+		return
+	if player.global_position.distance_to(_landed_at) > LEAVE_DISTANCE:
+		_has_vanished = true
+		_vanish()
+
 func _on_body_entered(body):
 	if body and can_teleport and (body.name == "Player" or body.is_in_group("player")):
 		can_teleport = false
@@ -140,7 +182,7 @@ func _vanish() -> void:
 	# modulate, because there the art IS its child.
 	var property: String = "modulate:a" if target == self else "self_modulate:a"
 	var tween := create_tween()
-	tween.tween_property(target, property, 0.0, 1.0)
+	tween.tween_property(target, property, 0.0, FADE_SECONDS)
 	tween.tween_callback(_disable_after_vanish)
 
 
