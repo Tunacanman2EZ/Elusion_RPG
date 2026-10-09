@@ -6905,7 +6905,7 @@ func _test_monsters_go_out_in_a_burst() -> void:
 	# made at once, and a frame of all forty running, against the frame budget.
 	var crowd: Array = []
 	for i in 40:
-		crowd.append(foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(1000 + (i % 8) * 40, (i / 8) * 40)))
+		crowd.append(foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(1000 + (i % 8) * 40, floorf(i / 8.0) * 40)))
 	await get_tree().process_frame
 	var t0 := Time.get_ticks_usec()
 	var many: Array = []

@@ -169,7 +169,7 @@ func _build_vortex() -> void:
 
 
 func _fire_emitter(id: String, amount: int, lifetime: float, radius: float, orbit_min: float, orbit_max: float,
-		gravity: Vector2, z: int) -> CPUParticles2D:
+		pull: Vector2, z: int) -> CPUParticles2D:
 	# Squares of fire on a circle, turning round its middle: the crater's fire
 	# colours (burningcrater.gd), whole pixels.
 	var p := CPUParticles2D.new()
@@ -181,7 +181,7 @@ func _fire_emitter(id: String, amount: int, lifetime: float, radius: float, orbi
 	p.emission_sphere_radius = radius
 	p.direction = Vector2(0, -1)
 	p.spread = 180.0
-	p.gravity = gravity
+	p.gravity = pull
 	p.initial_velocity_min = 0.0
 	p.initial_velocity_max = 6.0
 	p.orbit_velocity_min = orbit_min

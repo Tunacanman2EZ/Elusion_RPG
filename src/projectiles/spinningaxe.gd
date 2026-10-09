@@ -290,10 +290,10 @@ func throw_to(from: Vector2, aimed_at: Vector2) -> void:
 	# Called once, by the warrior, after the axe is in the tree.
 	global_position = from
 	reset_physics_interpolation()
-	var reach: Vector2 = aimed_at - from
-	if reach.length() > MAX_THROW:
-		reach = reach.normalized() * MAX_THROW
-	target = from + reach
+	var flight: Vector2 = aimed_at - from
+	if flight.length() > MAX_THROW:
+		flight = flight.normalized() * MAX_THROW
+	target = from + flight
 	state = State.OUT
 	_passed.clear()
 	_spun = 0.0
