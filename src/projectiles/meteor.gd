@@ -32,6 +32,12 @@
 #      is quick, because its own steps are not cancelled, only added to.
 #      Bosses hold their ground, and a monster another game runs is pulled on
 #      that game's screen or not at all (BaseEnemy, DRAWN IN).
+#      ONE METEOR IN TEN (0.17.1). The owner: "meteor has 10% chance to pull
+#      enemies i think sounds better". mage.gd rolls PULL_CHANCE for each
+#      meteor it calls - a double cast's two roll apart - and only a meteor
+#      that rolled it (`pulls`) draws anything in. You can tell which is which
+#      before it lands: a pulling meteor's ring of fire starts out at the
+#      pull's edge, twice as wide as an ordinary one's.
 #
 # Damage happens once, on impact, to every enemy inside HIT_RADIUS, and pays the
 # caster magic XP per enemy the way the stalagmite does. Then the fire.
@@ -85,16 +91,20 @@ const VORTEX_STRANDS := 3
 const VORTEX_POINTS := 24
 const VORTEX_TURNS_PER_SECOND := 3.0
 # The ground's ring of fire starts this far out (times HIT_RADIUS) and has
-# swirled in to the inner figure by the time the stone lands. It starts at the
-# pull's edge (2.0 since 0.17.0; it was 1.25), so the ring is the pull.
-const SWIRL_FROM := 2.0
+# swirled in to the inner figure by the time the stone lands. A meteor that
+# pulls starts its ring at the pull's edge, PULL_SWIRL_FROM, so the ring is the
+# pull and a player can see which meteor it is.
+const SWIRL_FROM := 1.25
+const PULL_SWIRL_FROM := 2.0
 const SWIRL_TO := 0.55
 
-# THE PULL: how far out it reaches (twice the hit), how close to the middle it
+# THE PULL: the chance a meteor has it (rolled by mage.gd as each is called),
+# how far out it reaches (twice the hit), how close to the middle it
 # brings a monster, and how fast, in world pixels a second - PULL_START of
 # PULL_SPEED at the top of the fall, all of it as the stone lands. Over the
 # 0.55 s fall that is about 60 px for a monster standing still: one at the
 # edge of the pull ends up well inside the hit.
+const PULL_CHANCE := 0.10
 const PULL_RADIUS := 88.0
 const PULL_STOP := 14.0
 const PULL_SPEED := 150.0
@@ -110,6 +120,9 @@ const PULL_EVERY := 1.0 / 60.0
 # Set by mage.gd before the meteor enters the tree.
 var explosion_damage: int = 0
 var caster: Node = null
+# Whether this one pulls (PULL_CHANCE, rolled by mage.gd). Read when the vortex
+# is built, so it is set before the meteor enters the tree.
+var pulls: bool = false
 
 # The second meteor of a double cast waits this long before it starts to fall,
 # so the two land one after the other instead of as one bigger bang.
@@ -194,7 +207,7 @@ func _build_vortex() -> void:
 	_floor_glow.visible = false
 	add_child(_floor_glow)
 	# Flames twisting up off the ring of fire on the ground.
-	_swirl = _fire_emitter("swirl", 64, 0.5, HIT_RADIUS * SWIRL_FROM, 1.2, 1.8, Vector2(0, -60), 4)
+	_swirl = _fire_emitter("swirl", 64 if pulls else 48, 0.5, HIT_RADIUS * swirl_from(), 1.2, 1.8, Vector2(0, -60), 4)
 	_swirl.local_coords = true
 	_swirl.scale = Vector2(1.0, 0.7)
 	_swirl.scale_amount_min = 1.5
@@ -283,13 +296,14 @@ func _fall(t: float, delta: float) -> void:
 		_whirl.position = rock.position
 	if _swirl != null:
 		_swirl.emitting = true
-		_swirl.emission_sphere_radius = HIT_RADIUS * lerpf(SWIRL_FROM, SWIRL_TO, t)
+		_swirl.emission_sphere_radius = HIT_RADIUS * lerpf(swirl_from(), SWIRL_TO, t)
 		_swirl.orbit_velocity_min = lerpf(1.2, 2.4, t)
 		_swirl.orbit_velocity_max = lerpf(1.8, 3.2, t)
 	if _floor_glow != null:
 		_floor_glow.visible = true
 		_floor_glow.modulate.a = lerpf(0.08, 0.5, t)
-	_pull(t, delta)
+	if pulls:
+		_pull(t, delta)
 	queue_redraw()
 
 
@@ -326,6 +340,17 @@ func _pull(t: float, delta: float) -> void:
 			continue
 		body.call("pull_toward", global_position, minf(step, far - PULL_STOP))
 		_pulled[body.get_instance_id()] = true
+
+
+static func rolls_pull(roll: float) -> bool:
+	"""Whether a roll of randf() gives a meteor the pull: PULL_CHANCE of them."""
+	return roll < PULL_CHANCE
+
+
+func swirl_from() -> float:
+	"""Where this meteor's ring of fire starts, times HIT_RADIUS: the pull's
+	edge for one that pulls, the ordinary ring for one that does not."""
+	return PULL_SWIRL_FROM if pulls else SWIRL_FROM
 
 
 func pulled_count() -> int:
@@ -411,7 +436,7 @@ func _draw() -> void:
 	# spot and swirling in toward it, longer and brighter as the stone comes.
 	# Squashed to the floor, as the crater's glow is.
 	var t: float = _fallen
-	var r: float = HIT_RADIUS * lerpf(SWIRL_FROM, SWIRL_TO, t)
+	var r: float = HIT_RADIUS * lerpf(swirl_from(), SWIRL_TO, t)
 	var turn: float = _age * TAU * VORTEX_TURNS_PER_SECOND * lerpf(0.6, 1.4, t)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.7))
 	for i in 3:

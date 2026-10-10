@@ -2377,7 +2377,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   to the Big Field and its ladder down to the Field, 0.15.1 an arrival
   portal closes as you walk away from it, 0.16.0 a monster with no death of
   its own flashes white and breaks into pixels when it dies, 0.17.0 the
-  Meteorite's fire vortex pulls monsters in before the stone lands.
+  Meteorite's fire vortex pulls monsters in before the stone lands, 0.17.1
+  one meteor in ten does.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -4631,10 +4632,17 @@ website plays it, recorded from the game.
   deaths, a mirror bursts on `net_vanish()` and not on `net_remove()`, and
   every bursting scene has a sprite and a hurtbox.
 
-### The Meteorite pulls monsters in before it lands (0.17.0)
+### The Meteorite pulls monsters in before it lands (0.17.0, one in ten since 0.17.1)
 
 The owner: "on the spin up of meteor can we pull enemies closer to the
-center?", then "like before the meteor falls".
+center?", then "like before the meteor falls". Then, at 0.17.1: "meteor has
+10% chance to pull enemies i think sounds better".
+
+- **One meteor in ten pulls** (`Meteor.PULL_CHANCE`, 0.10). `mage.gd`'s
+  `_drop_meteor()` rolls it for each meteor (`Meteor.rolls_pull(randf())`), so
+  a double cast's two roll apart, and sets `pulls` BEFORE `add_child()`: the
+  meteor builds its ring of fire at a size that says which kind it is. A
+  meteor made anywhere else (a test, a tool) does not pull unless told to.
 
 - **While the stone falls (`Meteor.FALL_SECONDS`, 0.55 s)** every monster
   within `PULL_RADIUS` (88, twice the hit) of the landing spot is drawn toward
@@ -4644,9 +4652,11 @@ center?", then "like before the meteor falls".
   own walking is not cancelled, only added to, so one running away can still
   get out. Nothing before the fall starts (a double cast's second meteor
   waits), nothing after the impact.
-- **The ring of fire is the pull.** `SWIRL_FROM` went from 1.25 to 2.0, so the
-  ground's ring starts at `PULL_RADIUS` and swirls in with the monsters (64
-  flames, was 48, for the wider ring).
+- **The ring of fire is the pull.** A pulling meteor's ring starts at
+  `PULL_SWIRL_FROM` (2.0, so at `PULL_RADIUS`) and swirls in with the monsters,
+  with 64 flames for the wider ring; an ordinary meteor's starts at
+  `SWIRL_FROM` (1.25) with 48, as in 0.14.0. A player sees the wide ring and
+  knows this one will gather the pack.
 - **Through the physics engine.** `BaseEnemy.pull_toward()` moves with
   `move_and_collide()` and slides along what it meets: walls stop it the way
   they stop a monster walking, and a pack bunches rather than stacks. Found by

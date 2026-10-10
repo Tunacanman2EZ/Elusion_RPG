@@ -21493,7 +21493,8 @@ func _marks_at(parent: Node, at: Vector2) -> int:
 # THE METEOR'S PULL (0.17.0). The owner: "on the spin up of meteor can we pull
 # enemies closer to the center?", "like before the meteor falls". While the
 # stone comes down, monsters within PULL_RADIUS are drawn toward where it
-# lands, through the physics engine, and stop PULL_STOP from the middle.
+# lands, through the physics engine, and stop PULL_STOP from the middle. One
+# meteor in ten since 0.17.1: "meteor has 10% chance to pull enemies".
 func _test_the_meteor_pulls() -> void:
 	section("THE METEOR'S PULL - the vortex draws a pack in before the stone lands")
 	var arena := Node2D.new()
@@ -21534,6 +21535,7 @@ func _test_the_meteor_pulls() -> void:
 	var met: Meteor = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
 	met.explosion_damage = 50
 	met.delay = 0.2
+	met.pulls = true
 	arena.add_child(met)
 	met.global_position = o
 	met.set_physics_process(false)
@@ -21569,11 +21571,44 @@ func _test_the_meteor_pulls() -> void:
 	met.advance(0.3)
 	await get_tree().physics_frame
 	check("once it has landed it pulls no more", near.global_position == landed_at)
-	check("the ring of fire on the ground starts at the pull's edge, so the ring is the pull",
-		is_equal_approx(Meteor.HIT_RADIUS * Meteor.SWIRL_FROM, Meteor.PULL_RADIUS))
+	check("a pulling meteor's ring of fire starts at the pull's edge, so the ring is the pull",
+		is_equal_approx(Meteor.HIT_RADIUS * Meteor.PULL_SWIRL_FROM, Meteor.PULL_RADIUS)
+		and is_equal_approx(met.swirl_from(), Meteor.PULL_SWIRL_FROM))
 	check("the pull reaches twice the hit, and is quick enough to beat a walk (90 a second)",
 		is_equal_approx(Meteor.PULL_RADIUS, Meteor.HIT_RADIUS * 2.0)
 		and Meteor.PULL_SPEED * lerpf(Meteor.PULL_START, 1.0, 0.5) > 90.0)
+
+	# ---- one in ten (0.17.1) -------------------------------------------------
+	var plain_foe: BaseEnemy = foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(400 + 70, 0))
+	for i in 3:
+		await get_tree().physics_frame
+	var plain_from: Vector2 = plain_foe.global_position
+	var plain: Meteor = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
+	plain.explosion_damage = 50
+	arena.add_child(plain)
+	plain.global_position = o + Vector2(400, 0)
+	plain.set_physics_process(false)
+	await get_tree().physics_frame
+	steps = 0
+	while not plain.landed and steps < 200:
+		plain.advance(1.0 / 60.0)
+		steps += 1
+		await get_tree().physics_frame
+	check("a meteor that did not roll the pull draws nothing in",
+		plain.pulled_count() == 0 and plain_foe.global_position == plain_from, plain_foe.global_position - plain_from)
+	check("  and its ring of fire is the ordinary one, so a player can tell them apart",
+		is_equal_approx(plain.swirl_from(), Meteor.SWIRL_FROM) and Meteor.SWIRL_FROM < Meteor.PULL_SWIRL_FROM)
+	var rolled: int = 0
+	for i in 20000:
+		if Meteor.rolls_pull(randf()):
+			rolled += 1
+	check("one meteor in ten pulls", is_equal_approx(Meteor.PULL_CHANCE, 0.10)
+		and Meteor.rolls_pull(0.099) and not Meteor.rolls_pull(0.10)
+		and rolled > 1700 and rolled < 2300, rolled)
+	var drop: String = _func_body(_code_src("res://src/characters/mage.gd"), "func _drop_meteor(")
+	check("  rolled by the mage for each meteor it calls, before the meteor is built",
+		drop.contains("meteor.pulls = Meteor.rolls_pull(randf())")
+		and drop.find("meteor.pulls =") < drop.find("add_child(meteor)"))
 	arena.free()
 
 
