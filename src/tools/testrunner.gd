@@ -323,6 +323,7 @@ func _run_all() -> void:
 	await _test_the_mythic_weapons()
 	await _test_the_meteor_pulls()
 	await _test_the_axe_rolls()
+	await _test_the_rare_roll_switch()
 	await _test_the_item_menu()
 	await _test_the_gm_panel_sets_a_level()
 	await _test_the_gm_panel_sets_skills()
@@ -21613,7 +21614,7 @@ func _test_the_meteor_pulls() -> void:
 		and rolled > 850 and rolled < 1150, rolled)
 	var drop: String = _func_body(_code_src("res://src/characters/mage.gd"), "func _drop_meteor(")
 	check("  rolled by the mage for each meteor it calls, before the meteor is built",
-		drop.contains("meteor.pulls = Meteor.rolls_pull(randf())")
+		drop.contains("Meteor.rolls_pull(randf())") and drop.contains("meteor.pulls =")
 		and drop.find("meteor.pulls =") < drop.find("add_child(meteor)"))
 	arena.free()
 
@@ -21719,6 +21720,98 @@ func _test_the_axe_rolls() -> void:
 	both.queue_free()
 	warrior.free()
 	arena.free()
+
+
+# ALWAYS ROLL THE 1% (0.18.1). An owner switch on the Testing tab: every
+# meteor pulls, every axe throw is bloody, every Dynamite throw is five sticks.
+# The owner, after not seeing two of them: "yes that sounds amazing".
+func _test_the_rare_roll_switch() -> void:
+	section("ALWAYS ROLL THE 1% - the owner's switch for seeing the rare rolls")
+	var was_role: String = Api.role
+	var was_flag: bool = GameState.force_rare_rolls
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var rare: CheckButton = gm.get_node_or_null("%rarebutton") as CheckButton
+	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
+	check("the Testing tab has an \"Always roll the 1%\" switch",
+		rare != null and testing_tab != null and testing_tab.is_ancestor_of(rare) and rare.text.contains("1%"))
+	if rare == null:
+		gm.queue_free()
+		return
+
+	var arena := Node2D.new()
+	add_child(arena)
+	var o := Vector2(-91000, -91000)
+	var mage: Node = (load("res://src/characters/mage.gd") as GDScript).new()
+	mage.spawn_parent_override = arena
+	mage.equipped = {"weapon": "meteorite"}
+	mage.double_cast_chance = 0.0
+	mage.position = o
+	var warrior: Node = (load("res://src/characters/warrior.gd") as GDScript).new()
+	warrior._set_stat_curve()
+	warrior.spawn_parent_override = arena
+	warrior.equipped = {"weapon": "doubleaxe"}
+	warrior.position = o + Vector2(0, 300)
+	warrior.axe_blood_chance = 0.0
+	warrior.axe_wide_chance = 0.0
+	var tank: Node = (load("res://src/characters/tank.gd") as GDScript).new()
+	tank._set_stat_curve()
+	tank.level = 22
+	tank.spawn_parent_override = arena
+	tank.equipped = {"weapon": "dynamite"}
+	tank.refresh_gear_stats()
+	tank.position = o + Vector2(0, 600)
+	tank.dynamite_bundle_chance = 0.0
+	tank.dynamite_barrage_chance = 0.0
+	var roll_all := func() -> Array:
+		var met: Array = mage.call_meteor(o + Vector2(40, 0))
+		var axe: SpinningAxe = warrior.throw_axe(warrior.position + Vector2(60, 0))
+		tank.mana = 100
+		tank._dynamite_cooldown_left = 0.0
+		var sticks: Array = tank.throw_dynamite(tank.position + Vector2(0, 80))
+		var got: Array = [met.size() == 1 and (met[0] as Meteor).pulls, axe != null and axe.bloody, sticks.size()]
+		for m in met:
+			(m as Node).queue_free()
+		if axe != null:
+			axe.queue_free()
+			warrior._axe = null
+		for st in sticks:
+			(st as Node).queue_free()
+		return got
+
+	Api.role = "owner"
+	GameState.force_rare_rolls = false
+	gm._sync_rare_button()
+	check("  off, with every chance at zero, nothing rolls rare", roll_all.call() == [false, false, 1], roll_all.call())
+	rare.button_pressed = true
+	check("on, the owner's every attack takes its rare roll: the meteor pulls, the axe bleeds, five sticks",
+		GameState.force_rare_rolls and roll_all.call() == [true, true, tank.DYNAMITE_BARRAGE_STICKS])
+	check("  and the panel says what it does", gm.results.get_parsed_text().contains("rare rolls ON"),
+		gm.results.get_parsed_text())
+	Api.role = "dev"
+	check("a flag left on does nothing for anyone below the owner - the rank is read every roll",
+		roll_all.call() == [false, false, 1])
+	gm._sync_rare_button()
+	check("  and their switch is disabled", rare.disabled)
+	rare.button_pressed = false
+	check("  turning it off from there is refused too - only the owner flips it", GameState.force_rare_rolls
+		and rare.button_pressed)
+	Api.role = "owner"
+	gm._sync_rare_button()
+	rare.button_pressed = false
+	check("off again, back to the dice", not GameState.force_rare_rolls and roll_all.call() == [false, false, 1])
+	check("the flag lives on GameState, which never survives a restart",
+		FileAccess.get_file_as_string("res://src/systems/gamestate.gd").contains("var force_rare_rolls: bool = false"))
+
+	GameState.force_rare_rolls = was_flag
+	Api.role = was_role
+	mage.free()
+	warrior.free()
+	tank.free()
+	arena.queue_free()
+	gm.queue_free()
+	await get_tree().process_frame
 
 
 func _test_the_mythic_weapons() -> void:

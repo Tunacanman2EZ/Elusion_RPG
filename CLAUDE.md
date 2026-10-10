@@ -2380,7 +2380,7 @@ product versions are it with `.0` after (Windows wants four numbers).
   Meteorite's fire vortex pulls monsters in before the stone lands, 0.17.1
   one meteor in ten does, 0.17.2 one in a hundred, 0.18.0 every mythic has a
   10% roll and a 1% one (the Double Axe wide or bloody, Dynamite three
-  sticks or five).
+  sticks or five), 0.18.1 the owner panel can make every one the 1%.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -4719,6 +4719,14 @@ one - and named them:
   bloody axe's wind runs red and its blood stays where it fell, the spatter on
   the floor (z -1) for a couple of seconds. A barrage is five sticks in the
   air. Each weapon's tooltip names its rolls.
+- **Always roll the 1% (0.18.1).** A switch on the owner panel's Testing
+  tab (`%rarebutton`) sets `GameState.force_rare_rolls`, and
+  `Player.rare_forced()` - the flag AND `Api.GOD_MODE_MIN_ROLE`, read on every
+  roll - makes every meteor pull, every axe throw bloody and every Dynamite
+  throw the barrage. The owner, who had seen the pull but neither of the
+  others: "yes that sounds amazing". Off after every restart (GameState), and
+  nothing it does is outside the books: they already take every throw as five.
+  `_test_the_rare_roll_switch`.
 - Tests: `_test_the_axe_rolls` (the wide reach cutting past a plain one's and
   no harder, home still wide; the blood while spinning and not after, none on
   a plain axe, the red wind, the cuts never reading it; the dice; the

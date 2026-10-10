@@ -145,6 +145,7 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var minbuild_status: Label = get_node_or_null("%minbuildstatus")
 # The performance readout (PerfOverlay). It was the backslash key until 0.7.1.
 @onready var perf_button: CheckButton = get_node_or_null("%perfbutton")
+@onready var rare_button: CheckButton = get_node_or_null("%rarebutton")
 
 # What the switch looked like the last time we asked. The button has to know
 # whether pressing it closes or reopens, and asking the server at press time
@@ -279,6 +280,9 @@ func _ready() -> void:
 	if perf_button != null and not perf_button.toggled.is_connected(_on_perf_toggled):
 		perf_button.toggled.connect(_on_perf_toggled)
 	_sync_perf_button()
+	if rare_button != null and not rare_button.toggled.is_connected(_on_rare_toggled):
+		rare_button.toggled.connect(_on_rare_toggled)
+	_sync_rare_button()
 
 	_set_testing_status("")
 
@@ -607,6 +611,7 @@ func _on_visibility_changed() -> void:
 		# so they are re-read on every open rather than remembered.
 		_sync_god_mode_button()
 		_sync_perf_button()
+		_sync_rare_button()
 		# SERVER STATE, so it is asked rather than remembered - the same rule
 		# the maintenance switch follows. The owner may have thrown it from
 		# another machine.
@@ -679,6 +684,36 @@ func _on_perf_toggled(pressed: bool) -> void:
 		_set_testing_status("Performance readout ON - top left. Worst counts from now.")
 	else:
 		_set_testing_status("Performance readout OFF.")
+
+
+# =============================================================================
+# ALWAYS ROLL THE 1% (0.18.1)
+# =============================================================================
+# Every mythic attack takes its rare roll while this is on: every meteor pulls,
+# every axe throw is bloody, every Dynamite throw is five sticks. The owner,
+# offered it after not seeing two of them in an evening: "yes that sounds
+# amazing". It writes GameState.force_rare_rolls, which Player.rare_forced()
+# reads with the rank checked again - god mode's arrangement, for god mode's
+# reasons.
+
+func _sync_rare_button() -> void:
+	if rare_button == null:
+		return
+	rare_button.set_pressed_no_signal(GameState.force_rare_rolls)
+	rare_button.disabled = not Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+
+
+func _on_rare_toggled(pressed: bool) -> void:
+	if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
+		_sync_rare_button()
+		_set_testing_status("[GM] the rare roll needs %s or above." % Api.GOD_MODE_MIN_ROLE)
+		return
+	GameState.force_rare_rolls = pressed
+	if pressed:
+		_set_testing_status("[GM] rare rolls ON - every meteor pulls, every axe throw is bloody, every Dynamite throw is five sticks.")
+	else:
+		_set_testing_status("[GM] rare rolls OFF - back to 1 in 100.")
+	print("[GM] rare rolls %s (%s)" % ["ON" if pressed else "OFF", Api.username])
 
 
 # =============================================================================

@@ -705,7 +705,7 @@ func throw_axe(aimed_at: Vector2) -> SpinningAxe:
 	# hundred bloody, rolled apart - and before add_child(), because the axe
 	# builds its circle, its dust and its blood at what it rolled.
 	_axe.wide = SpinningAxe.rolls(randf(), axe_wide_chance)
-	_axe.bloody = SpinningAxe.rolls(randf(), axe_blood_chance)
+	_axe.bloody = rare_forced() or SpinningAxe.rolls(randf(), axe_blood_chance)
 	spawn_parent().add_child(_axe)
 	_axe.throw_to(global_position, aimed_at)
 	Audio.play("axe_throw")

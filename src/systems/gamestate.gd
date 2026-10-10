@@ -124,3 +124,16 @@ var ui_absorbed_right_click: bool = false
 # nothing they did not have; it grants the people who have to test the game a way
 # to do it without dying a hundred times.
 var god_mode: bool = false
+
+# THE RARE ROLL, EVERY TIME (0.18.1). The owner, of the mythics' 1% rolls -
+# the Meteorite's pull, the Double Axe's blood, Dynamite's five sticks -
+# after an evening of not seeing two of them: "yes that sounds amazing", to a
+# switch on the owner panel's Testing tab that makes every attack roll the
+# rare one. Player.rare_forced() reads it, gated on the same rank as god mode,
+# and the three characters ask that before they roll.
+#
+# Here for god mode's reasons: it survives the town gate and never a restart.
+# It earns nothing the books do not already allow - they take every Dynamite
+# throw as the barrage's five (gamedata.combat_bounds()), the pull hits no
+# monster harder, and the blood is a picture.
+var force_rare_rolls: bool = false

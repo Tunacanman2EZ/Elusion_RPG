@@ -2580,6 +2580,13 @@ func rolls_double() -> bool:
 	return randf() < double_cast_chance
 
 
+func rare_forced() -> bool:
+	"""TRUE while the owner panel's "Always roll the 1%" switch is on
+	(GameState.force_rare_rolls), and only for the rank god mode needs: every
+	mythic attack then takes its rare roll - the pull, the blood, the five."""
+	return GameState.force_rare_rolls and Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+
+
 # WHERE A WEAPON'S ATTACK GOES. Thrown things (the axe, a stick of dynamite) go
 # in the area's y-sorted "projectiles" container with everything else in the
 # air; a meteor goes on the scene root, like the stalagmite, because it draws

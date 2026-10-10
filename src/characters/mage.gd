@@ -347,7 +347,7 @@ func _drop_meteor(at: Vector2, delay: float) -> Meteor:
 	# One meteor in a hundred draws the pack in as it falls (meteor.gd, THE PULL),
 	# rolled for each - and before add_child(), because the meteor builds its
 	# ring of fire at the size that tells the player which kind it is.
-	meteor.pulls = Meteor.rolls_pull(randf())
+	meteor.pulls = rare_forced() or Meteor.rolls_pull(randf())
 	# The scene root, like the stalagmite: it stays where it was aimed if the
 	# mage walks off, and draws its own layers - see meteor.gd.
 	spawn_parent(false).add_child(meteor)
