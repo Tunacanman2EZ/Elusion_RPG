@@ -344,7 +344,7 @@ func _drop_meteor(at: Vector2, delay: float) -> Meteor:
 	meteor.explosion_damage = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
 	meteor.caster = self
 	meteor.delay = delay
-	# One meteor in ten draws the pack in as it falls (meteor.gd, THE PULL),
+	# One meteor in a hundred draws the pack in as it falls (meteor.gd, THE PULL),
 	# rolled for each - and before add_child(), because the meteor builds its
 	# ring of fire at the size that tells the player which kind it is.
 	meteor.pulls = Meteor.rolls_pull(randf())

@@ -32,8 +32,9 @@
 #      is quick, because its own steps are not cancelled, only added to.
 #      Bosses hold their ground, and a monster another game runs is pulled on
 #      that game's screen or not at all (BaseEnemy, DRAWN IN).
-#      ONE METEOR IN TEN (0.17.1). The owner: "meteor has 10% chance to pull
-#      enemies i think sounds better". mage.gd rolls PULL_CHANCE for each
+#      ONE METEOR IN A HUNDRED (0.17.2; one in ten at 0.17.1). The owner:
+#      "meteor has 10% chance to pull enemies i think sounds better", then
+#      "1% chance instead of 10". mage.gd rolls PULL_CHANCE for each
 #      meteor it calls - a double cast's two roll apart - and only a meteor
 #      that rolled it (`pulls`) draws anything in. You can tell which is which
 #      before it lands: a pulling meteor's ring of fire starts out at the
@@ -104,7 +105,7 @@ const SWIRL_TO := 0.55
 # PULL_SPEED at the top of the fall, all of it as the stone lands. Over the
 # 0.55 s fall that is about 60 px for a monster standing still: one at the
 # edge of the pull ends up well inside the hit.
-const PULL_CHANCE := 0.10
+const PULL_CHANCE := 0.01
 const PULL_RADIUS := 88.0
 const PULL_STOP := 14.0
 const PULL_SPEED := 150.0

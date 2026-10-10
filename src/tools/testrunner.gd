@@ -21494,7 +21494,8 @@ func _marks_at(parent: Node, at: Vector2) -> int:
 # enemies closer to the center?", "like before the meteor falls". While the
 # stone comes down, monsters within PULL_RADIUS are drawn toward where it
 # lands, through the physics engine, and stop PULL_STOP from the middle. One
-# meteor in ten since 0.17.1: "meteor has 10% chance to pull enemies".
+# meteor in ten at 0.17.1, one in a hundred since 0.17.2: "1% chance instead
+# of 10".
 func _test_the_meteor_pulls() -> void:
 	section("THE METEOR'S PULL - the vortex draws a pack in before the stone lands")
 	var arena := Node2D.new()
@@ -21578,7 +21579,7 @@ func _test_the_meteor_pulls() -> void:
 		is_equal_approx(Meteor.PULL_RADIUS, Meteor.HIT_RADIUS * 2.0)
 		and Meteor.PULL_SPEED * lerpf(Meteor.PULL_START, 1.0, 0.5) > 90.0)
 
-	# ---- one in ten (0.17.1) -------------------------------------------------
+	# ---- one in a hundred (0.17.2) -------------------------------------------
 	var plain_foe: BaseEnemy = foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(400 + 70, 0))
 	for i in 3:
 		await get_tree().physics_frame
@@ -21599,12 +21600,12 @@ func _test_the_meteor_pulls() -> void:
 	check("  and its ring of fire is the ordinary one, so a player can tell them apart",
 		is_equal_approx(plain.swirl_from(), Meteor.SWIRL_FROM) and Meteor.SWIRL_FROM < Meteor.PULL_SWIRL_FROM)
 	var rolled: int = 0
-	for i in 20000:
+	for i in 100000:
 		if Meteor.rolls_pull(randf()):
 			rolled += 1
-	check("one meteor in ten pulls", is_equal_approx(Meteor.PULL_CHANCE, 0.10)
-		and Meteor.rolls_pull(0.099) and not Meteor.rolls_pull(0.10)
-		and rolled > 1700 and rolled < 2300, rolled)
+	check("one meteor in a hundred pulls", is_equal_approx(Meteor.PULL_CHANCE, 0.01)
+		and Meteor.rolls_pull(0.0099) and not Meteor.rolls_pull(0.01)
+		and rolled > 850 and rolled < 1150, rolled)
 	var drop: String = _func_body(_code_src("res://src/characters/mage.gd"), "func _drop_meteor(")
 	check("  rolled by the mage for each meteor it calls, before the meteor is built",
 		drop.contains("meteor.pulls = Meteor.rolls_pull(randf())")

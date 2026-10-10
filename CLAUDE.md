@@ -2378,7 +2378,7 @@ product versions are it with `.0` after (Windows wants four numbers).
   portal closes as you walk away from it, 0.16.0 a monster with no death of
   its own flashes white and breaks into pixels when it dies, 0.17.0 the
   Meteorite's fire vortex pulls monsters in before the stone lands, 0.17.1
-  one meteor in ten does.
+  one meteor in ten does, 0.17.2 one in a hundred.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -4632,13 +4632,15 @@ website plays it, recorded from the game.
   deaths, a mirror bursts on `net_vanish()` and not on `net_remove()`, and
   every bursting scene has a sprite and a hurtbox.
 
-### The Meteorite pulls monsters in before it lands (0.17.0, one in ten since 0.17.1)
+### The Meteorite pulls monsters in before it lands (0.17.0; one in a hundred since 0.17.2)
 
 The owner: "on the spin up of meteor can we pull enemies closer to the
 center?", then "like before the meteor falls". Then, at 0.17.1: "meteor has
-10% chance to pull enemies i think sounds better".
+10% chance to pull enemies i think sounds better", and at 0.17.2: "1% chance
+instead of 10".
 
-- **One meteor in ten pulls** (`Meteor.PULL_CHANCE`, 0.10). `mage.gd`'s
+- **One meteor in a hundred pulls** (`Meteor.PULL_CHANCE`, 0.01; 0.10 at
+  0.17.1). `mage.gd`'s
   `_drop_meteor()` rolls it for each meteor (`Meteor.rolls_pull(randf())`), so
   a double cast's two roll apart, and sets `pulls` BEFORE `add_child()`: the
   meteor builds its ring of fire at a size that says which kind it is. A
