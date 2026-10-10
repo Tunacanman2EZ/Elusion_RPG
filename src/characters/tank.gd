@@ -91,35 +91,54 @@ const CLASS_SPEED := 160
 #                   cooldown's worth, 4): smaller, because there are more of
 #                   them and the ring is burning too
 #   every 5th throw a bundle: DYNAMITE_BUNDLE_STICKS sticks in a triangle,
-#                   close enough that the first sets off the rest
+#                   close enough that the first sets off the rest (until
+#                   0.18.0 - see THE ROLL, below)
 #
 # WHAT THAT COMES TO, one target at level 22 with Ember-tier gear, by the
 # Boss Sim's model (the site's bosssim.js): an Ember maul tank about 165 a
 # second; Dynamite in 0.13.0 about 338; Dynamite now about 440 - the ring
 # about half of it, and the bigger blast and the ring both reach more of a
 # crowd than one target says.
+#
+# THE ROLL (0.18.0). The owner, setting one rule for all three mythics - a
+# 10% roll and a rarer 1% one - and of this one, "dynamite is already getting a
+# bonus from aoe of ring hmm / 10% chance to toss 3 dynamite / 1% chance to toss
+# 5 sticks". So the every-fifth-throw bundle and the one-in-ten double are
+# gone, and every throw rolls once:
+#
+#   1 in 100   a barrage: DYNAMITE_BARRAGE_STICKS (5) in a ring round the aim
+#   1 in 10    a bundle: DYNAMITE_BUNDLE_STICKS (3) in a triangle round it
+#   otherwise  one stick
+#
+# 1.24 sticks a throw on average where it was 1.48, so Dynamite comes down a
+# little: by the Boss Sim's model, at level 22 in Ember gear with skills at 30,
+# from about 523 a second to about 486, 7% - the ring is where its weight is.
+# The most one throw can be is the barrage's five: the exporter writes the
+# bundle's and the barrage's sticks and chances, and gamedata.combat_bounds()
+# allows a throw the most of them.
 const DYNAMITE_SCENE := preload("res://scene/projectiles/dynamite.tscn")
 
 # The furthest a stick goes. A spot further than this is taken as the
 # direction, and the stick lands here.
 const DYNAMITE_MAX_THROW := 150.0
 
-# A double throw's two sticks land this far either side of the aim, across
-# the line of the throw: "we need to spread out the double cast". The two
-# blasts (44 each) overlap in the middle, so the aim point is hit by both.
-const DYNAMITE_SPREAD := 28.0
-
-# ...and the second leaves this much after the first.
+# Each stick of a throw of several leaves this much after the one before.
 const DYNAMITE_SECOND_DELAY := 0.06
 
-# THE BUNDLE: every DYNAMITE_BUNDLE_EVERY-th throw is DYNAMITE_BUNDLE_STICKS
-# sticks, in a triangle DYNAMITE_BUNDLE_SPREAD from the aim (well inside each
-# other's blast, so the middle is hit by all three, and inside CHAIN_RADIUS,
-# so the first sets off the rest), each DYNAMITE_SECOND_DELAY behind the last.
-# A bundle does not also roll a double.
-const DYNAMITE_BUNDLE_EVERY := 5
+# THE BUNDLE: one throw in ten is DYNAMITE_BUNDLE_STICKS sticks, in a triangle
+# DYNAMITE_BUNDLE_SPREAD from the aim (well inside each other's blast, so the
+# middle is hit by all three, and inside CHAIN_RADIUS, so the first sets off
+# the rest), each DYNAMITE_SECOND_DELAY behind the last.
+const DYNAMITE_BUNDLE_CHANCE := 0.10
 const DYNAMITE_BUNDLE_STICKS := 3
 const DYNAMITE_BUNDLE_SPREAD := 14.0
+
+# THE BARRAGE: one throw in a hundred is DYNAMITE_BARRAGE_STICKS sticks in a
+# ring DYNAMITE_BARRAGE_SPREAD from the aim - wider, so it covers more ground,
+# and still well inside CHAIN_RADIUS of its neighbours, so it goes up as one.
+const DYNAMITE_BARRAGE_CHANCE := 0.01
+const DYNAMITE_BARRAGE_STICKS := 5
+const DYNAMITE_BARRAGE_SPREAD := 24.0
 
 # The ring a throw lights stays lit this long after the last throw.
 const DYNAMITE_RING_LINGER := 3.0
@@ -131,8 +150,10 @@ const DYNAMITE_RING_LINGER := 3.0
 @export var dynamite_stick_ticks: float = 1.5
 
 var _dynamite_cooldown_left: float = 0.0
-# Throws since the Dynamite went on: every DYNAMITE_BUNDLE_EVERY-th is a bundle.
-var _dynamite_throws: int = 0
+# The two chances, as vars so a test can make a roll certain either way rather
+# than throwing until the dice agree (as Player.double_cast_chance is).
+var dynamite_bundle_chance: float = DYNAMITE_BUNDLE_CHANCE
+var dynamite_barrage_chance: float = DYNAMITE_BARRAGE_CHANCE
 # TRUE while the ring is lit by throwing rather than by the aura key: it
 # burns no mana and goes out when _ring_linger_left runs out.
 var ring_by_dynamite: bool = false
@@ -435,9 +456,9 @@ func _deactivate_aura() -> void:
 # =============================================================================
 
 func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
-	# One stick; or one throw in ten two (Player.rolls_double()); or, every
-	# DYNAMITE_BUNDLE_EVERY-th throw, a bundle - all for one price. Returns
-	# what was thrown - empty when refused - for the tests.
+	# One stick; or one throw in ten a bundle of three; or one in a hundred a
+	# barrage of five (THE ROLL) - all for one price. Returns what was thrown
+	# - empty when refused - for the tests.
 	var thrown: Array[Dynamite] = []
 	if _dynamite_cooldown_left > 0.0:
 		return thrown
@@ -452,7 +473,6 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 	_dynamite_cooldown_left = hasten(dynamite_cooldown)
 	_light_ring_by_dynamite()
 	Audio.play("dynamite_throw")
-	_dynamite_throws += 1
 
 	var reach: Vector2 = aimed_at - global_position
 	if reach.length() > DYNAMITE_MAX_THROW:
@@ -461,24 +481,28 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 	# The line of the throw. A throw at the tank's own feet has none, so it is
 	# taken as thrown to the right.
 	var along: Vector2 = reach.normalized() if reach.length() > 0.5 else Vector2.RIGHT
-	if _dynamite_throws % DYNAMITE_BUNDLE_EVERY == 0:
-		# A triangle around the aim, one point toward the throw.
-		for i in DYNAMITE_BUNDLE_STICKS:
-			var at: Vector2 = landing + along.rotated(TAU * i / DYNAMITE_BUNDLE_STICKS) * DYNAMITE_BUNDLE_SPREAD
-			thrown.append(_throw_stick(at, DYNAMITE_SECOND_DELAY * i))
-	elif rolls_double():
-		# Either side of the aim, across the line of the throw.
-		var across: Vector2 = along.orthogonal()
-		thrown.append(_throw_stick(landing + across * DYNAMITE_SPREAD, 0.0))
-		thrown.append(_throw_stick(landing - across * DYNAMITE_SPREAD, DYNAMITE_SECOND_DELAY))
-	else:
+	var count: int = sticks_for(randf(), dynamite_barrage_chance, dynamite_bundle_chance)
+	if count == 1:
 		thrown.append(_throw_stick(landing, 0.0))
+		return thrown
+	# A ring round the aim, one point toward the throw: a bundle's triangle or
+	# a barrage's wider five.
+	var spread: float = DYNAMITE_BARRAGE_SPREAD if count == DYNAMITE_BARRAGE_STICKS else DYNAMITE_BUNDLE_SPREAD
+	for i in count:
+		var at: Vector2 = landing + along.rotated(TAU * i / count) * spread
+		thrown.append(_throw_stick(at, DYNAMITE_SECOND_DELAY * i))
 	return thrown
 
 
-func is_bundle_next() -> bool:
-	"""TRUE when the next throw is a bundle."""
-	return (_dynamite_throws + 1) % DYNAMITE_BUNDLE_EVERY == 0
+static func sticks_for(roll: float, barrage_chance: float, bundle_chance: float) -> int:
+	"""How many sticks a throw is, for a roll of randf(): the barrage's five
+	for the lowest barrage_chance of rolls, the bundle's three for the next
+	bundle_chance, one for the rest."""
+	if roll < barrage_chance:
+		return DYNAMITE_BARRAGE_STICKS
+	if roll < barrage_chance + bundle_chance:
+		return DYNAMITE_BUNDLE_STICKS
+	return 1
 
 
 func _light_ring_by_dynamite() -> void:
@@ -520,8 +544,6 @@ func _on_gear_changed() -> void:
 	# burn on with nothing paying for it.
 	if aura_active and ring_by_dynamite and not dynamite:
 		_deactivate_aura()
-	if not dynamite:
-		_dynamite_throws = 0
 
 
 func _deal_aura_damage() -> void:

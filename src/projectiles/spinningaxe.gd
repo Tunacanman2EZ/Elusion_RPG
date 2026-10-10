@@ -54,6 +54,20 @@
 #     the last cut, one wound per enemy, red drops falling from it. The books
 #     allow for it: axe_bleed_share and axe_bleed_every in gamedata.json.
 #
+# THE ROLL (0.18.0). The owner, setting one rule for all three mythics - a
+# 10% roll and a rarer 1% one: "warrior 10% chance to expand area of attack /
+# 1% chance to cause blood to spray we can just use particles to make the axe
+# spin blood everywhere". warrior.gd rolls both for each throw, apart, so one
+# throw can be both:
+#   WIDE (1 in 10)     this throw reaches WIDE_REACH times as far, from the
+#                      throw to the catch, with the spin's growth on top - the
+#                      dust and the streaks ride its rim, so it shows. More is
+#                      cut; nothing is cut harder, so the books are unchanged.
+#   BLOODY (1 in 100)  while it spins it flings blood off in every direction
+#                      (_blood) and spatters the ground round it (_spatter),
+#                      and its wind runs red. Picture only: the cuts and the
+#                      bleed are what they always are.
+#
 # THE TIMELINE IS ADVANCED BY advance(), which _physics_process calls with the
 # frame's delta; a test calls it directly.
 class_name SpinningAxe
@@ -93,12 +107,20 @@ const SPIN_RAMP_SECONDS := 4.0
 const HIT_RADIUS := 20.0
 const REACH_AT_TOP := 1.6
 
+# THE ROLL: the two chances, and how much further a wide throw reaches.
+const WIDE_CHANCE := 0.10
+const WIDE_REACH := 1.5
+const BLOOD_CHANCE := 0.01
+
 # The axe flies at about waist height: its picture is drawn this far above the
 # node, and the node - with its shadow - is on the ground. That is what lets it
 # sort in front of and behind enemies by where it really is.
 const HEIGHT := 7.0
 
 var caster: Node2D = null
+# THE ROLL, set by warrior.gd before the axe enters the tree.
+var wide: bool = false
+var bloody: bool = false
 var target: Vector2 = Vector2.ZERO
 var state: State = State.OUT
 
@@ -117,6 +139,9 @@ var wounds: bool = true
 var _circle: CircleShape2D = null
 var _swirl: float = 0.0
 var _whirl: CPUParticles2D = null
+# A bloody axe's blood: drops flung off it, and spatter left on the ground.
+var _blood: CPUParticles2D = null
+var _spatter: CPUParticles2D = null
 
 @onready var spin: AnimatedSprite2D = $spin
 @onready var shadow: Sprite2D = $shadow
@@ -132,9 +157,11 @@ func _ready() -> void:
 	var hitshape: CollisionShape2D = get_node_or_null("hitshape")
 	if hitshape != null and hitshape.shape is CircleShape2D:
 		_circle = (hitshape.shape as CircleShape2D).duplicate()
-		_circle.radius = HIT_RADIUS
+		_circle.radius = base_reach()
 		hitshape.shape = _circle
 	_build_whirl()
+	if bloody:
+		_build_blood()
 
 
 func _build_whirl() -> void:
@@ -146,7 +173,7 @@ func _build_whirl() -> void:
 	_whirl.emitting = false
 	_whirl.local_coords = true
 	_whirl.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE_SURFACE
-	_whirl.emission_sphere_radius = HIT_RADIUS
+	_whirl.emission_sphere_radius = base_reach()
 	_whirl.gravity = Vector2.ZERO
 	_whirl.direction = Vector2(0, -1)
 	_whirl.spread = 180.0
@@ -159,9 +186,71 @@ func _build_whirl() -> void:
 	_whirl.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var ramp := Gradient.new()
 	ramp.offsets = PackedFloat32Array([0.0, 0.3, 1.0])
-	ramp.colors = PackedColorArray([Color(0.95, 0.95, 0.9, 0.0), Color(0.85, 0.85, 0.8, 0.8), Color(0.7, 0.7, 0.68, 0.0)])
+	if bloody:
+		# A red mist, for the axe that runs red.
+		ramp.colors = PackedColorArray([Color(0.9, 0.2, 0.2, 0.0), Color(0.75, 0.08, 0.1, 0.8), Color(0.45, 0.02, 0.05, 0.0)])
+	else:
+		ramp.colors = PackedColorArray([Color(0.95, 0.95, 0.9, 0.0), Color(0.85, 0.85, 0.8, 0.8), Color(0.7, 0.7, 0.68, 0.0)])
 	_whirl.color_ramp = ramp
 	add_child(_whirl)
+
+
+func _build_blood() -> void:
+	# BLOODY: drops flung off the spinning axe, outward and round with the
+	# spin, arcing down to the ground - and spatter left where they land,
+	# dark, fading a few seconds later. Both stay where they fell as the axe
+	# moves on (not local), and both are whole-pixel squares, like the bleed's
+	# drops (bleed.gd) and every other particle in the game.
+	_blood = CPUParticles2D.new()
+	_blood.name = "blood"
+	_blood.amount = 48
+	_blood.lifetime = 0.7
+	_blood.emitting = false
+	_blood.local_coords = false
+	_blood.position = Vector2(0, -HEIGHT)
+	_blood.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	_blood.emission_sphere_radius = 5.0
+	_blood.direction = Vector2(0, -1)
+	_blood.spread = 180.0
+	_blood.initial_velocity_min = 45.0
+	_blood.initial_velocity_max = 110.0
+	_blood.tangential_accel_min = 60.0
+	_blood.tangential_accel_max = 140.0
+	_blood.damping_min = 20.0
+	_blood.damping_max = 40.0
+	_blood.gravity = Vector2(0, 220)
+	_blood.scale_amount_min = 1.0
+	_blood.scale_amount_max = 2.5
+	_blood.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var drops := Gradient.new()
+	drops.offsets = PackedFloat32Array([0.0, 0.6, 1.0])
+	drops.colors = PackedColorArray([Color(0.9, 0.06, 0.08), Color(0.62, 0.02, 0.05), Color(0.38, 0.0, 0.02, 0.0)])
+	_blood.color_ramp = drops
+	add_child(_blood)
+
+	_spatter = CPUParticles2D.new()
+	_spatter.name = "spatter"
+	_spatter.amount = 40
+	_spatter.lifetime = 2.5
+	_spatter.emitting = false
+	_spatter.local_coords = false
+	# On the floor, under whoever is standing in it.
+	_spatter.z_as_relative = false
+	_spatter.z_index = -1
+	_spatter.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	_spatter.emission_sphere_radius = base_reach()
+	_spatter.gravity = Vector2.ZERO
+	_spatter.initial_velocity_min = 0.0
+	_spatter.initial_velocity_max = 0.0
+	_spatter.scale = Vector2(1.0, 0.7)
+	_spatter.scale_amount_min = 1.0
+	_spatter.scale_amount_max = 2.0
+	_spatter.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var stains := Gradient.new()
+	stains.offsets = PackedFloat32Array([0.0, 0.8, 1.0])
+	stains.colors = PackedColorArray([Color(0.55, 0.02, 0.05, 0.9), Color(0.4, 0.01, 0.03, 0.7), Color(0.3, 0.0, 0.02, 0.0)])
+	_spatter.color_ramp = stains
+	add_child(_spatter)
 
 
 func _physics_process(delta: float) -> void:
@@ -185,6 +274,9 @@ func advance(delta: float) -> void:
 				_spun = 0.0
 				if _whirl != null:
 					_whirl.emitting = true
+				if _blood != null:
+					_blood.emitting = true
+					_spatter.emitting = true
 		State.SPINNING:
 			# The rate for this step is the rate it had at the start of it,
 			# so the first tick still lands TICK_SECONDS after it stops.
@@ -229,11 +321,21 @@ func spin_rate() -> float:
 
 
 func reach() -> float:
-	"""How far it cuts: HIT_RADIUS flying and as it lands, growing with the
-	spin to HIT_RADIUS * REACH_AT_TOP (WHIRLWIND)."""
+	"""How far it cuts: base_reach() flying and as it lands, growing with the
+	spin to base_reach() * REACH_AT_TOP (WHIRLWIND)."""
 	if state != State.SPINNING:
-		return HIT_RADIUS
-	return HIT_RADIUS * (1.0 + (REACH_AT_TOP - 1.0) * _wound_up())
+		return base_reach()
+	return base_reach() * (1.0 + (REACH_AT_TOP - 1.0) * _wound_up())
+
+
+func base_reach() -> float:
+	"""HIT_RADIUS, or WIDE_REACH times it for a wide throw (THE ROLL)."""
+	return HIT_RADIUS * (WIDE_REACH if wide else 1.0)
+
+
+static func rolls(roll: float, chance: float) -> bool:
+	"""Whether a roll of randf() comes up for a chance: warrior.gd's two."""
+	return roll < chance
 
 
 func _wound_up() -> float:
@@ -247,23 +349,30 @@ func _wind_up() -> void:
 	# The whirlwind keeps up with the spin: the circle that cuts, the dust on
 	# its rim and the streaks drawn round it.
 	var r: float = reach()
+	var rate: float = spin_rate()
 	if _circle != null:
 		_circle.radius = r
 	if _whirl != null:
-		var rate: float = spin_rate()
 		_whirl.emission_sphere_radius = r
 		_whirl.orbit_velocity_min = 0.7 * rate
 		_whirl.orbit_velocity_max = 1.1 * rate
 		_whirl.modulate.a = lerpf(0.4, 1.0, _wound_up())
+	if _blood != null:
+		# Flung faster, and further round, the faster it spins.
+		_blood.speed_scale = rate
+		_spatter.emission_sphere_radius = r
 	queue_redraw()
 
 
 func _calm() -> void:
 	# Out of the spin - flying home, or thrown again: back to its own reach.
 	if _circle != null:
-		_circle.radius = HIT_RADIUS
+		_circle.radius = base_reach()
 	if _whirl != null:
 		_whirl.emitting = false
+	if _blood != null:
+		_blood.emitting = false
+		_spatter.emitting = false
 	queue_redraw()
 
 
@@ -280,7 +389,8 @@ func _draw() -> void:
 	for ring in 2:
 		var radius: float = r if ring == 0 else r * 0.62
 		var turn: float = _swirl * (1.0 + 0.5 * ring) + 0.5 * ring
-		var colour := Color(0.92, 0.95, 1.0, a if ring == 0 else a * 0.7)
+		var colour := (Color(0.85, 0.1, 0.12) if bloody else Color(0.92, 0.95, 1.0))
+		colour.a = a if ring == 0 else a * 0.7
 		for i in 4:
 			var from: float = turn + TAU * i / 4.0
 			draw_arc(Vector2.ZERO, radius, from, from + length, 12, colour, 2.0 if ring == 0 else 1.0, false)

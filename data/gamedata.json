@@ -1463,7 +1463,9 @@
 			"tank": {
 				"base": 4,
 				"cooldown": 0.25,
-				"dynamite_bundle_every": 5,
+				"dynamite_barrage_chance": 0.01,
+				"dynamite_barrage_sticks": 5,
+				"dynamite_bundle_chance": 0.1,
 				"dynamite_bundle_sticks": 3,
 				"dynamite_chain_bonus": 0.25,
 				"dynamite_cooldown": 0.75,
@@ -3324,7 +3326,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791438993,
+	"generated_at": 1791595049,
 	"items": [
 		{
 			"armor_value": 6,

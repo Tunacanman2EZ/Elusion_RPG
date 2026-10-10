@@ -322,6 +322,7 @@ func _run_all() -> void:
 	_test_the_game_says_its_version()
 	await _test_the_mythic_weapons()
 	await _test_the_meteor_pulls()
+	await _test_the_axe_rolls()
 	await _test_the_item_menu()
 	await _test_the_gm_panel_sets_a_level()
 	await _test_the_gm_panel_sets_skills()
@@ -18096,10 +18097,14 @@ func _test_combat_bounds_match_the_game() -> void:
 		and is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_bleed_every", -1.0)), Bleed.BLEED_EVERY),
 		classes.get("warrior", {}))
 	var tank_consts: Dictionary = (load("res://src/characters/tank.gd") as GDScript).get_script_constant_map()
-	check("Dynamite's bundle is the game's, so the books allow for it (0.14.0)",
-		int((classes.get("tank", {}) as Dictionary).get("dynamite_bundle_every", -1)) == int(tank_consts.get("DYNAMITE_BUNDLE_EVERY", -2))
-		and int((classes.get("tank", {}) as Dictionary).get("dynamite_bundle_sticks", -1)) == int(tank_consts.get("DYNAMITE_BUNDLE_STICKS", -2)),
-		classes.get("tank", {}))
+	var tank_row: Dictionary = classes.get("tank", {})
+	check("Dynamite's roll is the game's - the bundle and the barrage - so the books allow for it (0.18.0)",
+		int(tank_row.get("dynamite_bundle_sticks", -1)) == int(tank_consts.get("DYNAMITE_BUNDLE_STICKS", -2))
+		and is_equal_approx(float(tank_row.get("dynamite_bundle_chance", -1.0)), float(tank_consts.get("DYNAMITE_BUNDLE_CHANCE", -2.0)))
+		and int(tank_row.get("dynamite_barrage_sticks", -1)) == int(tank_consts.get("DYNAMITE_BARRAGE_STICKS", -2))
+		and is_equal_approx(float(tank_row.get("dynamite_barrage_chance", -1.0)), float(tank_consts.get("DYNAMITE_BARRAGE_CHANCE", -2.0)))
+		and not tank_row.has("dynamite_bundle_every"),
+		tank_row)
 	check("every weapon that brings its own attack is named, by its attack",
 		not attacks.is_empty() and attacks == combat.get("weapon_attacks", {}), [attacks, combat.get("weapon_attacks")])
 
@@ -21424,8 +21429,8 @@ func _test_character_select_has_a_way_out() -> void:
 #   Meteorite (mage)    a meteor falls where you aim; one cast in ten, two
 #   Double Axe (warrior) thrown to a spot, spins there, attack calls it back
 #   Dynamite (tank)     a lit stick thrown where you aim, the ring lit while
-#                       you throw; one throw in ten two sticks spread apart,
-#                       every fifth a bundle of three (0.14.0)
+#                       you throw; one throw in ten a bundle of three, one
+#                       in a hundred a barrage of five (0.18.0)
 #
 # What can go wrong without a sound, and so is held here: an item that is not
 # in the catalogue the server reads (it could never be worn), an attack that
@@ -21610,6 +21615,109 @@ func _test_the_meteor_pulls() -> void:
 	check("  rolled by the mage for each meteor it calls, before the meteor is built",
 		drop.contains("meteor.pulls = Meteor.rolls_pull(randf())")
 		and drop.find("meteor.pulls =") < drop.find("add_child(meteor)"))
+	arena.free()
+
+
+# THE DOUBLE AXE'S ROLL (0.18.0). The owner: "warrior 10% chance to expand
+# area of attack / 1% chance to cause blood to spray we can just use particles
+# to make the axe spin blood everywhere". Rolled apart for each throw.
+func _test_the_axe_rolls() -> void:
+	section("THE DOUBLE AXE'S ROLL - one throw in ten wide, one in a hundred bloody")
+	var arena := Node2D.new()
+	add_child(arena)
+	var o := Vector2(-81000, -81000)
+	var hand: Node2D = _weapon_hand(arena, o)
+	var axe_at := func(at: Vector2, is_wide: bool, is_bloody: bool) -> SpinningAxe:
+		var a: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+		a.caster = hand
+		a.wounds = false
+		a.wide = is_wide
+		a.bloody = is_bloody
+		arena.add_child(a)
+		a.set_physics_process(false)
+		a.throw_to(at, at)
+		a.advance(0.001)
+		return a
+
+	# WIDE: further, from the throw to the catch; no harder.
+	check("one throw in ten is wide, reaching half as far again",
+		is_equal_approx(SpinningAxe.WIDE_CHANCE, 0.10) and is_equal_approx(SpinningAxe.WIDE_REACH, 1.5)
+		and SpinningAxe.rolls(0.0999, 0.10) and not SpinningAxe.rolls(0.10, 0.10))
+	# Both inside LEASH of the hand, so neither comes home on its own.
+	var plain_spot := o + Vector2(-60, 150)
+	var wide_spot := o + Vector2(60, 150)
+	var plain_axe: SpinningAxe = axe_at.call(plain_spot, false, false)
+	var wide_axe: SpinningAxe = axe_at.call(wide_spot, true, false)
+	# 30 px out: past a plain axe's 20 (and the dummy's 5), inside a wide one's.
+	var by_plain: CharacterBody2D = _weapon_dummy(arena, plain_spot + Vector2(30, 0))
+	var by_wide: CharacterBody2D = _weapon_dummy(arena, wide_spot + Vector2(30, 0))
+	for i in 4:
+		await get_tree().physics_frame
+	plain_axe.advance(SpinningAxe.TICK_SECONDS)
+	wide_axe.advance(SpinningAxe.TICK_SECONDS)
+	check("  what stands just past a plain axe's reach is cut by a wide one",
+		by_plain.taken.is_empty() and by_wide.taken.size() == 1, [by_plain.taken, by_wide.taken])
+	check("  on its own circle, as wide as it reaches, and it grows with the spin from there",
+		is_equal_approx(wide_axe.base_reach(), SpinningAxe.HIT_RADIUS * SpinningAxe.WIDE_REACH)
+		and is_equal_approx((wide_axe.get_node("hitshape").shape as CircleShape2D).radius, wide_axe.reach())
+		and is_equal_approx(plain_axe.base_reach(), SpinningAxe.HIT_RADIUS))
+	var near_plain: CharacterBody2D = _weapon_dummy(arena, plain_spot + Vector2(0, 10))
+	var near_wide: CharacterBody2D = _weapon_dummy(arena, wide_spot + Vector2(0, 10))
+	for i in 4:
+		await get_tree().physics_frame
+	plain_axe.advance(SpinningAxe.TICK_SECONDS)
+	wide_axe.advance(SpinningAxe.TICK_SECONDS)
+	check("  and cuts no harder - the area is the roll, so the books are unchanged",
+		near_plain.taken.size() == 1 and near_wide.taken == near_plain.taken, [near_plain.taken, near_wide.taken])
+	wide_axe.recall()
+	check("  still wide flying home", is_equal_approx(wide_axe.reach(), SpinningAxe.HIT_RADIUS * SpinningAxe.WIDE_REACH))
+
+	# BLOODY: picture only.
+	check("one throw in a hundred is bloody", is_equal_approx(SpinningAxe.BLOOD_CHANCE, 0.01)
+		and SpinningAxe.rolls(0.0099, 0.01) and not SpinningAxe.rolls(0.01, 0.01))
+	var red: SpinningAxe = axe_at.call(o + Vector2(0, -150), false, true)
+	var blood: CPUParticles2D = red.get_node_or_null("blood")
+	var spatter: CPUParticles2D = red.get_node_or_null("spatter")
+	check("  a bloody axe flings blood as it spins, and spatters the ground round it",
+		blood != null and spatter != null and blood.emitting and spatter.emitting
+		and not blood.local_coords and not spatter.local_coords and spatter.z_index < 0)
+	check("  a plain one has no blood at all", plain_axe.get_node_or_null("blood") == null
+		and plain_axe.get_node_or_null("spatter") == null)
+	check("  its wind runs red", (red.get_node("whirl") as CPUParticles2D).color_ramp.colors[1].r
+		> (red.get_node("whirl") as CPUParticles2D).color_ramp.colors[1].g * 3.0)
+	check("  and it is picture only: the cuts never ask whether it is bloody",
+		not _func_body(_code_src("res://src/projectiles/spinningaxe.gd"), "func _cut(").contains("bloody")
+		and not _func_body(_code_src("res://src/projectiles/spinningaxe.gd"), "func _cut_everything_near(").contains("bloody"))
+	red.recall()
+	check("  called back, the blood stops", blood != null and not blood.emitting and not spatter.emitting)
+
+	# THE WARRIOR ROLLS BOTH, apart, for each throw.
+	var rolled_wide: int = 0
+	var rolled_blood: int = 0
+	for i in 100000:
+		if SpinningAxe.rolls(randf(), SpinningAxe.WIDE_CHANCE):
+			rolled_wide += 1
+		if SpinningAxe.rolls(randf(), SpinningAxe.BLOOD_CHANCE):
+			rolled_blood += 1
+	check("the dice agree: about 10,000 wide and 1,000 bloody in 100,000 throws",
+		rolled_wide > 9400 and rolled_wide < 10600 and rolled_blood > 850 and rolled_blood < 1150,
+		[rolled_wide, rolled_blood])
+	var warrior: Node = (load("res://src/characters/warrior.gd") as GDScript).new()
+	warrior._set_stat_curve()
+	warrior.spawn_parent_override = arena
+	warrior.equipped = {"weapon": "doubleaxe"}
+	warrior.position = o + Vector2(0, 600)
+	warrior.axe_wide_chance = 1.0
+	warrior.axe_blood_chance = 1.0
+	var both: SpinningAxe = warrior.throw_axe(warrior.position + Vector2(80, 0))
+	check("the warrior rolls them for the throw, and one throw can be both",
+		both != null and both.wide and both.bloody and both.get_node_or_null("blood") != null)
+	var throw_src: String = _func_body(_code_src("res://src/characters/warrior.gd"), "func throw_axe(")
+	check("  rolled before the axe is built, so its circle and its blood are made to match",
+		throw_src.find("_axe.wide =") < throw_src.find("add_child(_axe)")
+		and throw_src.find("_axe.bloody =") < throw_src.find("add_child(_axe)"))
+	both.queue_free()
+	warrior.free()
 	arena.free()
 
 
@@ -22055,6 +22163,8 @@ func _test_the_mythic_weapons() -> void:
 	warrior.spawn_parent_override = arena
 	warrior.equipped = {"weapon": "doubleaxe"}
 	warrior.position = o + Vector2(0, 800)
+	warrior.axe_wide_chance = 0.0
+	warrior.axe_blood_chance = 0.0
 	var thrown: SpinningAxe = warrior.throw_axe(warrior.position + Vector2(100, 0))
 	check("the warrior throws one axe, at the spot", thrown != null and warrior.axe_is_out()
 		and thrown.caster == warrior and thrown.target == warrior.position + Vector2(100, 0))
@@ -22189,7 +22299,8 @@ func _test_the_mythic_weapons() -> void:
 	tank.refresh_gear_stats()
 	tank.mana = 100
 	tank.position = o + Vector2(0, 1400)
-	tank.double_cast_chance = 0.0
+	tank.dynamite_bundle_chance = 0.0
+	tank.dynamite_barrage_chance = 0.0
 	check("the ring is out until the first throw", not tank.aura_active)
 	var sticks: Array = tank.throw_dynamite(tank.position + Vector2(1000, 0))
 	check("the tank throws one stick, as far as a throw goes, for its mana",
@@ -22222,39 +22333,41 @@ func _test_the_mythic_weapons() -> void:
 	tank._tick_aura(tank.DYNAMITE_RING_LINGER * 0.5)
 	check("  and it goes out a little after the last one", not tank.aura_active and not tank.ring_by_dynamite)
 
+	# THE ROLL (0.18.0). The owner: "10% chance to toss 3 dynamite / 1% chance
+	# to toss 5 sticks". One roll a throw; the every-fifth bundle and the double
+	# are gone.
+	check("one throw in ten is a bundle of three, one in a hundred a barrage of five, the rest one stick",
+		is_equal_approx(tank.DYNAMITE_BUNDLE_CHANCE, 0.10) and is_equal_approx(tank.DYNAMITE_BARRAGE_CHANCE, 0.01)
+		and tank.DYNAMITE_BUNDLE_STICKS == 3 and tank.DYNAMITE_BARRAGE_STICKS == 5
+		and tank.sticks_for(0.0099, 0.01, 0.10) == 5 and tank.sticks_for(0.01, 0.01, 0.10) == 3
+		and tank.sticks_for(0.1099, 0.01, 0.10) == 3 and tank.sticks_for(0.11, 0.01, 0.10) == 1)
+	var roll_counts: Dictionary = {1: 0, 3: 0, 5: 0}
+	for i in 100000:
+		var n: int = tank.sticks_for(randf(), tank.DYNAMITE_BARRAGE_CHANCE, tank.DYNAMITE_BUNDLE_CHANCE)
+		roll_counts[n] = int(roll_counts.get(n, 0)) + 1
+	check("  and the dice agree: about 10,000 bundles and 1,000 barrages in 100,000 throws",
+		roll_counts[3] > 9400 and roll_counts[3] < 10600 and roll_counts[5] > 850 and roll_counts[5] < 1150
+		and roll_counts.size() == 3, roll_counts)
+	check("  no double any more - the throw does not ask for one",
+		not _func_body(_code_src("res://src/characters/tank.gd"), "func throw_dynamite(").contains("rolls_double"))
+
+	# THE BUNDLE: three sticks in a triangle, close enough that the first sets
+	# off the rest.
 	tank._dynamite_cooldown_left = 0.0
 	tank.mana = 100
-	tank.double_cast_chance = 1.0
-	tank._dynamite_throws = 1
-	var pair: Array = tank.throw_dynamite(tank.position + Vector2(100, 0))
-	var spots: Array = pair.map(func(d): return d.landing_spot() - tank.position)
-	check("a double throw's two sticks are close enough to set each other off", 2.0 * tank.DYNAMITE_SPREAD <= Dynamite.CHAIN_RADIUS,
-		[tank.DYNAMITE_SPREAD, Dynamite.CHAIN_RADIUS])
-	check("a double throw is two sticks, either side of the aim, across the throw",
-		pair.size() == 2 and spots.has(Vector2(100, tank.DYNAMITE_SPREAD)) and spots.has(Vector2(100, -tank.DYNAMITE_SPREAD)),
-		spots)
-	check("  for one throw's mana, the second a moment behind the first",
-		tank.mana == 100 - tank.dynamite_mana_cost and pair.size() == 2
-		and pair[0].delay == 0.0 and is_equal_approx(pair[1].delay, tank.DYNAMITE_SECOND_DELAY))
-
-	# THE BUNDLE (0.14.0): every fifth throw is three sticks in a triangle,
-	# close enough that the first sets off the rest. The owner: "i feel like 1
-	# by its self is not enough to be impressive".
-	tank._dynamite_cooldown_left = 0.0
-	tank._dynamite_throws = tank.DYNAMITE_BUNDLE_EVERY - 1
-	check("the tank knows a bundle is next", tank.is_bundle_next())
+	tank.dynamite_bundle_chance = 1.0
 	var bundle_aim: Vector2 = tank.position + Vector2(0, 120)
 	var bundle: Array = tank.throw_dynamite(bundle_aim)
 	for d in bundle:
 		(d as Dynamite).set_physics_process(false)
 	var bundle_spots: Array = bundle.map(func(d): return (d as Dynamite).landing_spot())
-	check("every DYNAMITE_BUNDLE_EVERY-th throw is a bundle of DYNAMITE_BUNDLE_STICKS, round the aim - and no double on top",
-		bundle.size() == tank.DYNAMITE_BUNDLE_STICKS and tank.DYNAMITE_BUNDLE_STICKS == 3
+	check("a bundle is DYNAMITE_BUNDLE_STICKS sticks round the aim",
+		bundle.size() == tank.DYNAMITE_BUNDLE_STICKS
 		and bundle_spots.all(func(p: Vector2) -> bool: return absf(p.distance_to(bundle_aim) - tank.DYNAMITE_BUNDLE_SPREAD) < 0.01),
 		bundle_spots)
 	check("  each a beat behind the last, for one throw's mana",
 		bundle.size() == 3 and bundle[0].delay == 0.0 and is_equal_approx(bundle[1].delay, tank.DYNAMITE_SECOND_DELAY)
-		and is_equal_approx(bundle[2].delay, tank.DYNAMITE_SECOND_DELAY * 2.0) and tank.mana == 100 - 2 * tank.dynamite_mana_cost)
+		and is_equal_approx(bundle[2].delay, tank.DYNAMITE_SECOND_DELAY * 2.0) and tank.mana == 100 - tank.dynamite_mana_cost)
 	var middle: CharacterBody2D = _weapon_dummy(arena, bundle_aim)
 	for d in bundle:
 		(d as Dynamite).advance((d as Dynamite).delay + Dynamite.FLIGHT_SECONDS + 0.01)
@@ -22269,7 +22382,31 @@ func _test_the_mythic_weapons() -> void:
 	check("  the first sets off the other two, and what stands in the middle is hit by all three, two of them chained",
 		middle.taken == want, [middle.taken, want])
 	middle.queue_free()
-	check("  and the count starts again", not tank.is_bundle_next() and tank._dynamite_throws % tank.DYNAMITE_BUNDLE_EVERY == 0)
+
+	# THE BARRAGE: five, in a wider ring, still going up as one.
+	tank._dynamite_cooldown_left = 0.0
+	tank.mana = 100
+	tank.dynamite_bundle_chance = 0.0
+	tank.dynamite_barrage_chance = 1.0
+	var barrage_aim: Vector2 = tank.position + Vector2(0, -120)
+	var barrage: Array = tank.throw_dynamite(barrage_aim)
+	for d in barrage:
+		(d as Dynamite).set_physics_process(false)
+	var barrage_spots: Array = barrage.map(func(d): return (d as Dynamite).landing_spot())
+	check("a barrage is DYNAMITE_BARRAGE_STICKS sticks in a wider ring round the aim, for one throw's mana",
+		barrage.size() == tank.DYNAMITE_BARRAGE_STICKS and tank.DYNAMITE_BARRAGE_SPREAD > tank.DYNAMITE_BUNDLE_SPREAD
+		and barrage_spots.all(func(p: Vector2) -> bool: return absf(p.distance_to(barrage_aim) - tank.DYNAMITE_BARRAGE_SPREAD) < 0.01)
+		and tank.mana == 100 - tank.dynamite_mana_cost, barrage_spots)
+	var nearest_apart: float = INF
+	for a in barrage_spots:
+		for b in barrage_spots:
+			if a != b:
+				nearest_apart = minf(nearest_apart, (a as Vector2).distance_to(b))
+	check("  each within CHAIN_RADIUS of its neighbours, so the first sets off the ring",
+		nearest_apart <= Dynamite.CHAIN_RADIUS, nearest_apart)
+	for d in barrage:
+		(d as Dynamite).queue_free()
+	tank.dynamite_barrage_chance = 0.0
 
 	# THE GEAR AND THE RING.
 	tank._deactivate_aura()
@@ -22287,7 +22424,7 @@ func _test_the_mythic_weapons() -> void:
 	tank.equipped = {}
 	tank.refresh_gear_stats()
 	check("taken off, the ring its throws lit goes out - nothing would be paying for it",
-		not tank.aura_active and not tank.ring_by_dynamite and tank._dynamite_throws == 0)
+		not tank.aura_active and not tank.ring_by_dynamite)
 	check("attack throws dynamite instead of toggling the aura when it is worn",
 		_func_body(_code_src("res://src/characters/tank.gd"), "func attack_action(").contains(
 			"if equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:\n\t\tthrow_dynamite("))

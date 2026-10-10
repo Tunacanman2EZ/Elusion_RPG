@@ -7,7 +7,7 @@
 script = ExtResource("2_itemdata")
 item_id = "dynamite"
 display_name = "Dynamite"
-description = "Your attack throws a lit stick where you aim, and your ring burns while you keep throwing. Each blast leaves the ground smouldering, burning anything that stays in it, and sets off any lit stick near it, which hits harder. Every fifth throw is a bundle of three, and one throw in ten is two sticks."
+description = "Your attack throws a lit stick where you aim, and your ring burns while you keep throwing. Each blast leaves the ground smouldering, burning anything that stays in it, and sets off any lit stick near it, which hits harder. One throw in ten is a bundle of three, and one in a hundred a barrage of five."
 icon = ExtResource("1_icon")
 max_stack = 1
 value = 42000

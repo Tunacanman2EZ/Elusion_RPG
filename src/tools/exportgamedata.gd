@@ -1630,12 +1630,16 @@ func _export_combat(_items: Array) -> Dictionary:
 				row["base"] = int(node.get("aura_damage"))
 				row["cooldown"] = float(node.get("aura_tick"))
 				row["dynamite_cooldown"] = float(node.get("dynamite_cooldown"))
-				# What a stick is worth in ring ticks, and the bundle: every so
-				# many throws, so many sticks (tank.gd, DYNAMITE SETTINGS, 0.14.0).
+				# What a stick is worth in ring ticks (tank.gd, DYNAMITE SETTINGS,
+				# 0.14.0), and the roll every throw makes (THE ROLL, 0.18.0): a
+				# bundle of so many sticks at one chance, a barrage of so many at
+				# another. The books allow a throw the most of them.
 				row["dynamite_stick_ticks"] = float(node.get("dynamite_stick_ticks"))
 				var tank_consts: Dictionary = script.get_script_constant_map() if script != null else {}
-				row["dynamite_bundle_every"] = int(tank_consts.get("DYNAMITE_BUNDLE_EVERY", 0))
+				row["dynamite_bundle_chance"] = float(tank_consts.get("DYNAMITE_BUNDLE_CHANCE", 0.0))
 				row["dynamite_bundle_sticks"] = int(tank_consts.get("DYNAMITE_BUNDLE_STICKS", 1))
+				row["dynamite_barrage_chance"] = float(tank_consts.get("DYNAMITE_BARRAGE_CHANCE", 0.0))
+				row["dynamite_barrage_sticks"] = int(tank_consts.get("DYNAMITE_BARRAGE_STICKS", 1))
 				# A stick set off by another's blast hits this much harder
 				# (dynamite.gd, CHAIN REACTION, 0.12.0).
 				var stick_script: Script = load("res://src/projectiles/dynamite.gd") as Script
@@ -1682,7 +1686,7 @@ func _export_combat(_items: Array) -> Dictionary:
 		"agility_cap": 2.0,            # ...never more than twice as fast
 		"pet_share": 0.5,              # pet.gd: a pet hits for half the character's multiplier
 		"pet_speed_share": 0.5,        # pet.gd _attack_speed_factor(): half the agility bonus
-		"double_chance": 0.10,         # player.gd WEAPON_DOUBLE_CHANCE: a second meteor or stick
+		"double_chance": 0.10,         # player.gd WEAPON_DOUBLE_CHANCE: a second meteor
 		"puddle_damage": 5,            # petbossprojectile.gd: the boss pet's poison puddle tick
 		"physics_ticks": 80,           # project.godot: a healer cannot fire between ticks
 		"agility_speed": 10,           # player.gd and tank.gd: speed + (agility - 1) * 10

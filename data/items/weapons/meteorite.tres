@@ -7,7 +7,7 @@
 script = ExtResource("2_itemdata")
 item_id = "meteorite"
 display_name = "Meteorite"
-description = "Your attack calls a meteor down where you aim, and the crater it leaves burns anything standing in it for a few seconds. One cast in ten calls a second beside it."
+description = "Your attack calls a meteor down where you aim, and the crater it leaves burns anything standing in it for a few seconds. One cast in ten calls a second beside it, and one meteor in a hundred comes down in a whirlwind that pulls everything near it in."
 icon = ExtResource("1_icon")
 max_stack = 1
 value = 38000

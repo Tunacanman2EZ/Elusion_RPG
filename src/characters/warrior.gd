@@ -106,6 +106,10 @@ const SPINNING_AXE_SCENE := preload("res://scene/projectiles/spinningaxe.tscn")
 # is_instance_valid(): the axe frees itself when it is caught, and a scene
 # change frees it with everything else.
 var _axe: SpinningAxe = null
+# THE ROLL's two chances (spinningaxe.gd), as vars so a test can make a roll
+# certain either way, as Player.double_cast_chance is.
+var axe_wide_chance: float = SpinningAxe.WIDE_CHANCE
+var axe_blood_chance: float = SpinningAxe.BLOOD_CHANCE
 
 # cardinal directions array — used by _detect_hitboxes() to avoid 4x duplication
 const CARDINAL_DIRECTIONS := ["left", "right", "up", "down"]
@@ -697,6 +701,11 @@ func throw_axe(aimed_at: Vector2) -> SpinningAxe:
 		return _axe
 	_axe = SPINNING_AXE_SCENE.instantiate()
 	_axe.caster = self
+	# THE ROLL (spinningaxe.gd, 0.18.0): one throw in ten wide, one in a
+	# hundred bloody, rolled apart - and before add_child(), because the axe
+	# builds its circle, its dust and its blood at what it rolled.
+	_axe.wide = SpinningAxe.rolls(randf(), axe_wide_chance)
+	_axe.bloody = SpinningAxe.rolls(randf(), axe_blood_chance)
 	spawn_parent().add_child(_axe)
 	_axe.throw_to(global_position, aimed_at)
 	Audio.play("axe_throw")

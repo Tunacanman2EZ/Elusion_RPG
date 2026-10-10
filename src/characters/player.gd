@@ -2565,9 +2565,10 @@ func equipped_weapon_attack() -> int:
 	return int(data.weapon_attack)
 
 
-# ONE CAST IN TEN COMES TWICE. The owner's number for the meteor and the
-# dynamite: "10% chance meteor double casts ... we need to spread out the double
-# cast". The mana is paid once; the second meteor or stick is the luck.
+# ONE CAST IN TEN COMES TWICE. The owner's number for the meteor: "10% chance
+# meteor double casts ... we need to spread out the double cast". The mana is
+# paid once; the second meteor is the luck. (Dynamite rolled it too until
+# 0.18.0, when its one in ten became a bundle of three - tank.gd, THE ROLL.)
 #
 # A var rather than the const alone so a test can make the roll certain either
 # way instead of casting until the dice agree.

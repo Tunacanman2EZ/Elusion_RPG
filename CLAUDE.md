@@ -2378,7 +2378,9 @@ product versions are it with `.0` after (Windows wants four numbers).
   portal closes as you walk away from it, 0.16.0 a monster with no death of
   its own flashes white and breaks into pixels when it dies, 0.17.0 the
   Meteorite's fire vortex pulls monsters in before the stone lands, 0.17.1
-  one meteor in ten does, 0.17.2 one in a hundred.
+  one meteor in ten does, 0.17.2 one in a hundred, 0.18.0 every mythic has a
+  10% roll and a 1% one (the Double Axe wide or bloody, Dynamite three
+  sticks or five).
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -3874,7 +3876,8 @@ fantasy effect".
   triangle `DYNAMITE_BUNDLE_SPREAD` (14) round the aim, each a beat behind the
   last; the first sets off the other two, so the middle takes all three, two
   chained. A bundle does not also roll a double. The double's spread went to
-  28 for the bigger blast.
+  28 for the bigger blast. (Both replaced at 0.18.0 by one roll a throw - see
+  "The mythics' rolls".)
 - **What it comes to**, one boss at level 22 in Ember gear by the Boss Sim's
   model: an Ember maul tank ~165 a second, Dynamite in 0.13.0 ~338, now ~440
   (2.7x), the ring about half of it and reaching every enemy round the tank.
@@ -4678,6 +4681,51 @@ instead of 10".
 - **The server's books do not change**: the meteor hits each monster for what
   it always did, it just reaches more of them.
 - `_test_the_meteor_pulls`.
+
+### The mythics' rolls: one in ten, one in a hundred (0.18.0)
+
+The owner set one rule for the three mythic weapons - a common roll and a rare
+one - and named them:
+
+| Weapon | 1 in 10 | 1 in 100 |
+|---|---|---|
+| Meteorite (mage) | a second meteor beside the first (`Player.WEAPON_DOUBLE_CHANCE`, since 0.11) | the pull (`Meteor.PULL_CHANCE`, 0.17.2) |
+| Double Axe (warrior) | WIDE: reaches `WIDE_REACH` (1.5) times as far, flying, spinning and home | BLOODY: flings blood as it spins and spatters the ground; picture only |
+| Dynamite (tank) | a bundle of `DYNAMITE_BUNDLE_STICKS` (3) in a triangle | a barrage of `DYNAMITE_BARRAGE_STICKS` (5) in a wider ring (`DYNAMITE_BARRAGE_SPREAD` 24) |
+
+- **Each roll is made by the character as the attack is made**, and set on
+  the projectile before `add_child()` so it builds itself to match: `mage.gd`
+  `_drop_meteor()` (`Meteor.rolls_pull()`), `warrior.gd` `throw_axe()`
+  (`SpinningAxe.rolls()`, the two apart, so a throw can be both), `tank.gd`
+  `throw_dynamite()` (`sticks_for()`: one roll, the lowest
+  `DYNAMITE_BARRAGE_CHANCE` five, the next `DYNAMITE_BUNDLE_CHANCE` three).
+  The chances are vars on the characters (`axe_wide_chance`,
+  `axe_blood_chance`, `dynamite_bundle_chance`, `dynamite_barrage_chance`) so
+  the suite can make a roll certain, as `double_cast_chance` always was.
+- **Dynamite lost the every-fifth-throw bundle and the one-in-ten double.**
+  The owner: "dynamite is already getting a bonus from aoe of ring hmm". A
+  throw is 1.24 sticks on average where it was 1.48: by the Boss Sim's model
+  (level 22, Ember, skills 30) about 523 a second to about 486, 7%.
+  `_dynamite_throws` and `is_bundle_next()` are gone with the count.
+- **The books.** The exporter writes the tank's `dynamite_bundle_chance` /
+  `_sticks` and `dynamite_barrage_chance` / `_sticks` (`dynamite_bundle_every`
+  is gone), and the API's `combat_bounds()` allows a throw the most of them,
+  five; a catalogue without the barrage keeps three. The axe's wide throw cuts
+  more monsters, none harder, and the bloody one is a picture, so the
+  warrior's bound is unchanged. **The API's gamedata.json goes out first.**
+  The Boss Sim models the dynamite's average throw; neither axe roll moves
+  one boss's numbers.
+- **What a player sees.** A wide axe's dust and streaks ride its wider rim; a
+  bloody axe's wind runs red and its blood stays where it fell, the spatter on
+  the floor (z -1) for a couple of seconds. A barrage is five sticks in the
+  air. Each weapon's tooltip names its rolls.
+- Tests: `_test_the_axe_rolls` (the wide reach cutting past a plain one's and
+  no harder, home still wide; the blood while spinning and not after, none on
+  a plain axe, the red wind, the cuts never reading it; the dice; the
+  warrior's roll before the build) and the mythic section's roll checks (the
+  odds, the dice over 100,000 throws, no double, the bundle's triangle and its
+  chain, the barrage's ring and its spacing), and the books' check on the
+  exported fields.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 
