@@ -2577,7 +2577,8 @@ var double_cast_chance: float = WEAPON_DOUBLE_CHANCE
 
 
 func rolls_double() -> bool:
-	return randf() < double_cast_chance
+	# The owner panel's "Always roll the 10%" (common_forced()) makes it every cast.
+	return common_forced() or randf() < double_cast_chance
 
 
 func rare_forced() -> bool:
@@ -2585,6 +2586,13 @@ func rare_forced() -> bool:
 	(GameState.force_rare_rolls), and only for the rank god mode needs: every
 	mythic attack then takes its rare roll - the pull, the blood, the five."""
 	return GameState.force_rare_rolls and Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+
+
+func common_forced() -> bool:
+	"""TRUE while the owner panel's "Always roll the 10%" switch is on
+	(GameState.force_common_rolls), for god mode's rank: every mythic attack
+	takes its common roll - the second meteor, the wide axe, the three sticks."""
+	return GameState.force_common_rolls and Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
 
 
 # WHERE A WEAPON'S ATTACK GOES. Thrown things (the axe, a stick of dynamite) go

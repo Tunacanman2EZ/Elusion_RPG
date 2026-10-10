@@ -481,9 +481,14 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 	# The line of the throw. A throw at the tank's own feet has none, so it is
 	# taken as thrown to the right.
 	var along: Vector2 = reach.normalized() if reach.length() > 0.5 else Vector2.RIGHT
-	# The owner panel's "Always roll the 1%" (Player.rare_forced()): the barrage.
-	var count: int = DYNAMITE_BARRAGE_STICKS if rare_forced() \
-		else sticks_for(randf(), dynamite_barrage_chance, dynamite_bundle_chance)
+	# The owner panel's "Always roll the 1%" (Player.rare_forced()) is the
+	# barrage, and its "Always roll the 10%" (common_forced()) the bundle - the
+	# rare one first, with both on, as the dice take it first.
+	var count: int = sticks_for(randf(), dynamite_barrage_chance, dynamite_bundle_chance)
+	if rare_forced():
+		count = DYNAMITE_BARRAGE_STICKS
+	elif common_forced():
+		count = DYNAMITE_BUNDLE_STICKS
 	if count == 1:
 		thrown.append(_throw_stick(landing, 0.0))
 		return thrown

@@ -2380,7 +2380,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   Meteorite's fire vortex pulls monsters in before the stone lands, 0.17.1
   one meteor in ten does, 0.17.2 one in a hundred, 0.18.0 every mythic has a
   10% roll and a 1% one (the Double Axe wide or bloody, Dynamite three
-  sticks or five), 0.18.1 the owner panel can make every one the 1%.
+  sticks or five), 0.18.1 the owner panel can make every one the 1%, 0.18.2
+  and every one the 10%.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -4726,7 +4727,12 @@ one - and named them:
   throw the barrage. The owner, who had seen the pull but neither of the
   others: "yes that sounds amazing". Off after every restart (GameState), and
   nothing it does is outside the books: they already take every throw as five.
-  `_test_the_rare_roll_switch`.
+  **And the 10% (0.18.2)**, the owner: "do another switch for 10% casts" -
+  `%commonbutton`, `GameState.force_common_rolls`, `Player.common_forced()`:
+  every Meteorite cast is two (`rolls_double()` asks it), every axe throw wide,
+  every Dynamite throw three sticks. Both on: two meteors that both pull, a
+  wide bloody axe, and Dynamite's five (one throw is one count; the rare one
+  wins, as the dice take it first). `_test_the_rare_roll_switch` covers both.
 - Tests: `_test_the_axe_rolls` (the wide reach cutting past a plain one's and
   no harder, home still wide; the blood while spinning and not after, none on
   a plain axe, the red wind, the cuts never reading it; the dice; the

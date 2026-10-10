@@ -137,3 +137,11 @@ var god_mode: bool = false
 # throw as the barrage's five (gamedata.combat_bounds()), the pull hits no
 # monster harder, and the blood is a picture.
 var force_rare_rolls: bool = false
+
+# THE COMMON ROLL, EVERY TIME (0.18.2): its sibling for the 10% rolls - the
+# Meteorite's second meteor, the Double Axe's wide throw, Dynamite's three
+# sticks. The owner: "do another switch for 10% casts". Player.common_forced()
+# reads it, on the same rank. With both on, Dynamite throws the rare five (one
+# throw is one count of sticks); the meteor and the axe take both rolls, as
+# their dice already could.
+var force_common_rolls: bool = false

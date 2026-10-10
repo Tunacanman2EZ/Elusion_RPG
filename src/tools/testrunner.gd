@@ -21722,21 +21722,26 @@ func _test_the_axe_rolls() -> void:
 	arena.free()
 
 
-# ALWAYS ROLL THE 1% (0.18.1). An owner switch on the Testing tab: every
-# meteor pulls, every axe throw is bloody, every Dynamite throw is five sticks.
-# The owner, after not seeing two of them: "yes that sounds amazing".
+# ALWAYS ROLL THE 1% (0.18.1) AND THE 10% (0.18.2). Owner switches on the
+# Testing tab. The 1%: every meteor pulls, every axe throw is bloody, every
+# Dynamite throw is five sticks - the owner, after not seeing two of them: "yes
+# that sounds amazing". The 10%: every cast is two meteors, every axe throw is
+# wide, every Dynamite throw is three - "do another switch for 10% casts".
 func _test_the_rare_roll_switch() -> void:
-	section("ALWAYS ROLL THE 1% - the owner's switch for seeing the rare rolls")
+	section("ALWAYS ROLL THE 1% AND THE 10% - the owner's switches for seeing the rolls")
 	var was_role: String = Api.role
-	var was_flag: bool = GameState.force_rare_rolls
+	var was_rare: bool = GameState.force_rare_rolls
+	var was_common: bool = GameState.force_common_rolls
 	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
 	add_child(gm)
 	await get_tree().process_frame
 	var rare: CheckButton = gm.get_node_or_null("%rarebutton") as CheckButton
+	var common: CheckButton = gm.get_node_or_null("%commonbutton") as CheckButton
 	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
-	check("the Testing tab has an \"Always roll the 1%\" switch",
-		rare != null and testing_tab != null and testing_tab.is_ancestor_of(rare) and rare.text.contains("1%"))
-	if rare == null:
+	check("the Testing tab has an \"Always roll the 1%\" switch and an \"Always roll the 10%\" one",
+		rare != null and common != null and testing_tab != null and testing_tab.is_ancestor_of(rare)
+		and testing_tab.is_ancestor_of(common) and rare.text.contains("1%") and common.text.contains("10%"))
+	if rare == null or common == null:
 		gm.queue_free()
 		return
 
@@ -21764,13 +21769,20 @@ func _test_the_rare_roll_switch() -> void:
 	tank.position = o + Vector2(0, 600)
 	tank.dynamite_bundle_chance = 0.0
 	tank.dynamite_barrage_chance = 0.0
-	var roll_all := func() -> Array:
+	# Every chance is zero, so whatever rolls, a switch made it.
+	var roll_all := func() -> Dictionary:
 		var met: Array = mage.call_meteor(o + Vector2(40, 0))
 		var axe: SpinningAxe = warrior.throw_axe(warrior.position + Vector2(60, 0))
 		tank.mana = 100
 		tank._dynamite_cooldown_left = 0.0
 		var sticks: Array = tank.throw_dynamite(tank.position + Vector2(0, 80))
-		var got: Array = [met.size() == 1 and (met[0] as Meteor).pulls, axe != null and axe.bloody, sticks.size()]
+		var rolled: Dictionary = {
+			"meteors": met.size(),
+			"pull": not met.is_empty() and met.all(func(m) -> bool: return (m as Meteor).pulls),
+			"wide": axe != null and axe.wide,
+			"blood": axe != null and axe.bloody,
+			"sticks": sticks.size(),
+		}
 		for m in met:
 			(m as Node).queue_free()
 		if axe != null:
@@ -21778,33 +21790,56 @@ func _test_the_rare_roll_switch() -> void:
 			warrior._axe = null
 		for st in sticks:
 			(st as Node).queue_free()
-		return got
+		return rolled
+	var plain := {"meteors": 1, "pull": false, "wide": false, "blood": false, "sticks": 1}
 
 	Api.role = "owner"
 	GameState.force_rare_rolls = false
+	GameState.force_common_rolls = false
 	gm._sync_rare_button()
-	check("  off, with every chance at zero, nothing rolls rare", roll_all.call() == [false, false, 1], roll_all.call())
+	var got: Dictionary = roll_all.call()
+	check("  both off, with every chance at zero, nothing rolls", got == plain, got)
 	rare.button_pressed = true
-	check("on, the owner's every attack takes its rare roll: the meteor pulls, the axe bleeds, five sticks",
-		GameState.force_rare_rolls and roll_all.call() == [true, true, tank.DYNAMITE_BARRAGE_STICKS])
+	got = roll_all.call()
+	check("the 1% on: the meteor pulls, the axe bleeds, five sticks - and nothing of the 10%",
+		GameState.force_rare_rolls and got == {"meteors": 1, "pull": true, "wide": false, "blood": true,
+		"sticks": tank.DYNAMITE_BARRAGE_STICKS}, got)
 	check("  and the panel says what it does", gm.results.get_parsed_text().contains("rare rolls ON"),
 		gm.results.get_parsed_text())
-	Api.role = "dev"
-	check("a flag left on does nothing for anyone below the owner - the rank is read every roll",
-		roll_all.call() == [false, false, 1])
-	gm._sync_rare_button()
-	check("  and their switch is disabled", rare.disabled)
 	rare.button_pressed = false
-	check("  turning it off from there is refused too - only the owner flips it", GameState.force_rare_rolls
-		and rare.button_pressed)
+	common.button_pressed = true
+	got = roll_all.call()
+	check("the 10% on: two meteors, a wide axe, three sticks - and nothing of the 1%",
+		GameState.force_common_rolls and got == {"meteors": 2, "pull": false, "wide": true, "blood": false,
+		"sticks": tank.DYNAMITE_BUNDLE_STICKS}, got)
+	check("  and the panel says what it does", gm.results.get_parsed_text().contains("10% rolls ON"),
+		gm.results.get_parsed_text())
+	rare.button_pressed = true
+	got = roll_all.call()
+	check("both on: two meteors that both pull, a wide bloody axe, and the five - the rare one wins a throw",
+		got == {"meteors": 2, "pull": true, "wide": true, "blood": true, "sticks": tank.DYNAMITE_BARRAGE_STICKS}, got)
+	Api.role = "dev"
+	got = roll_all.call()
+	check("flags left on do nothing for anyone below the owner - the rank is read every roll", got == plain, got)
+	gm._sync_rare_button()
+	check("  and their switches are disabled", rare.disabled and common.disabled)
+	rare.button_pressed = false
+	common.button_pressed = false
+	check("  turning them off from there is refused too - only the owner flips them",
+		GameState.force_rare_rolls and GameState.force_common_rolls and rare.button_pressed and common.button_pressed)
 	Api.role = "owner"
 	gm._sync_rare_button()
 	rare.button_pressed = false
-	check("off again, back to the dice", not GameState.force_rare_rolls and roll_all.call() == [false, false, 1])
-	check("the flag lives on GameState, which never survives a restart",
-		FileAccess.get_file_as_string("res://src/systems/gamestate.gd").contains("var force_rare_rolls: bool = false"))
+	common.button_pressed = false
+	got = roll_all.call()
+	check("off again, back to the dice", not GameState.force_rare_rolls and not GameState.force_common_rolls
+		and got == plain, got)
+	var gs: String = FileAccess.get_file_as_string("res://src/systems/gamestate.gd")
+	check("the flags live on GameState, which never survives a restart",
+		gs.contains("var force_rare_rolls: bool = false") and gs.contains("var force_common_rolls: bool = false"))
 
-	GameState.force_rare_rolls = was_flag
+	GameState.force_rare_rolls = was_rare
+	GameState.force_common_rolls = was_common
 	Api.role = was_role
 	mage.free()
 	warrior.free()

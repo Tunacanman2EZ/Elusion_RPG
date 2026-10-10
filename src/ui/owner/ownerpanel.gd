@@ -146,6 +146,7 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 # The performance readout (PerfOverlay). It was the backslash key until 0.7.1.
 @onready var perf_button: CheckButton = get_node_or_null("%perfbutton")
 @onready var rare_button: CheckButton = get_node_or_null("%rarebutton")
+@onready var common_button: CheckButton = get_node_or_null("%commonbutton")
 
 # What the switch looked like the last time we asked. The button has to know
 # whether pressing it closes or reopens, and asking the server at press time
@@ -282,6 +283,8 @@ func _ready() -> void:
 	_sync_perf_button()
 	if rare_button != null and not rare_button.toggled.is_connected(_on_rare_toggled):
 		rare_button.toggled.connect(_on_rare_toggled)
+	if common_button != null and not common_button.toggled.is_connected(_on_common_toggled):
+		common_button.toggled.connect(_on_common_toggled)
 	_sync_rare_button()
 
 	_set_testing_status("")
@@ -697,10 +700,14 @@ func _on_perf_toggled(pressed: bool) -> void:
 # reasons.
 
 func _sync_rare_button() -> void:
-	if rare_button == null:
-		return
-	rare_button.set_pressed_no_signal(GameState.force_rare_rolls)
-	rare_button.disabled = not Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+	# Both roll switches, the 1% and (0.18.2) the 10%.
+	var allowed: bool = Api.role_at_least(Api.GOD_MODE_MIN_ROLE)
+	if rare_button != null:
+		rare_button.set_pressed_no_signal(GameState.force_rare_rolls)
+		rare_button.disabled = not allowed
+	if common_button != null:
+		common_button.set_pressed_no_signal(GameState.force_common_rolls)
+		common_button.disabled = not allowed
 
 
 func _on_rare_toggled(pressed: bool) -> void:
@@ -714,6 +721,23 @@ func _on_rare_toggled(pressed: bool) -> void:
 	else:
 		_set_testing_status("[GM] rare rolls OFF - back to 1 in 100.")
 	print("[GM] rare rolls %s (%s)" % ["ON" if pressed else "OFF", Api.username])
+
+
+# ALWAYS ROLL THE 10% (0.18.2). Its sibling: every meteor cast is two, every
+# axe throw is wide, every Dynamite throw is three sticks. The owner: "do
+# another switch for 10% casts". GameState.force_common_rolls, read through
+# Player.common_forced() with the rank checked there too.
+func _on_common_toggled(pressed: bool) -> void:
+	if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
+		_sync_rare_button()
+		_set_testing_status("[GM] the 10%% roll needs %s or above." % Api.GOD_MODE_MIN_ROLE)
+		return
+	GameState.force_common_rolls = pressed
+	if pressed:
+		_set_testing_status("[GM] 10% rolls ON - every meteor cast is two, every axe throw is wide, every Dynamite throw is three sticks.")
+	else:
+		_set_testing_status("[GM] 10% rolls OFF - back to 1 in 10.")
+	print("[GM] 10%% rolls %s (%s)" % ["ON" if pressed else "OFF", Api.username])
 
 
 # =============================================================================
