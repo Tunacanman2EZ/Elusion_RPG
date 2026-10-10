@@ -78,6 +78,16 @@ const FIELD_SHARE := 0.15
 # The meteor's size (0.14.0; it was 28): "dynamite needs a bigger blast".
 const HIT_RADIUS := 44.0
 
+# A PICTURE OF SOMEBODY ELSE'S (0.19.0). With `cosmetic` set, this is a copy of
+# an attack another player made, drawn on this screen from the presence
+# server's word (remoteattacks.gd): it flies, spins, falls and burns exactly as
+# theirs does, and it touches nothing - no hit, no XP, no camera shake, and
+# nothing set off or pulled. The monsters are the area's leader's and every
+# hit still travels as a hit; this is only what the owner asked to see: "i
+# could not see their attacks but they could see mine".
+# A picture's blast sets off only other pictures, and a real one's only real
+# ones: somebody else's stick going off beside yours does not light your fuse.
+var cosmetic: bool = false
 var explosion_damage: int = 0
 var caster: Node = null
 
@@ -106,6 +116,8 @@ func _ready() -> void:
 	stick.play("lit")
 	shadow.texture = Blast.shadow_texture(5, 2)
 	visible = delay <= 0.0
+	if cosmetic:
+		RemoteAttacks.go_quiet(self)
 
 
 func throw_from(from: Vector2, to: Vector2) -> void:
@@ -172,17 +184,21 @@ func explode() -> void:
 	if exploded:
 		return
 	exploded = true
-	Audio.play("explosion")
-	var damage: int = blast_damage()
-	for body in get_overlapping_bodies():
-		if not body.is_in_group("enemies") or not body.has_method("take_damage"):
-			continue
-		body.take_damage(damage)
-		hits_dealt += 1
+	if cosmetic:
+		Audio.play_at("explosion", global_position)
+	else:
+		Audio.play("explosion")
+		var damage: int = blast_damage()
+		for body in get_overlapping_bodies():
+			if not body.is_in_group("enemies") or not body.has_method("take_damage"):
+				continue
+			body.take_damage(damage)
+			hits_dealt += 1
 	# A chained blast's fireball is bigger; what it reaches is not.
-	Blast.spawn(get_parent(), global_position, &"dynamite", HIT_RADIUS * (1.3 if chained else 1.0))
-	BurningCrater.spawn_smoulder(get_parent(), global_position, explosion_damage, HIT_RADIUS, caster,
-		FIELD_SHARE, FIELD_EVERY, FIELD_SECONDS)
+	Blast.spawn(get_parent(), global_position, &"dynamite", HIT_RADIUS * (1.3 if chained else 1.0), not cosmetic)
+	var field: BurningCrater = BurningCrater.spawn_smoulder(get_parent(), global_position, explosion_damage,
+		HIT_RADIUS, caster, FIELD_SHARE, FIELD_EVERY, FIELD_SECONDS)
+	field.cosmetic = cosmetic
 	_set_off_the_rest()
 	queue_free()
 
@@ -200,6 +216,8 @@ func _set_off_the_rest() -> void:
 		if node == self or not (node is Dynamite) or not is_instance_valid(node):
 			continue
 		var other: Dynamite = node
+		if other.cosmetic != cosmetic:
+			continue
 		if other.global_position.distance_to(global_position) <= CHAIN_RADIUS:
 			other.set_off()
 

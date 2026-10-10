@@ -119,6 +119,14 @@ const PULL_MAX := 64
 const PULL_EVERY := 1.0 / 60.0
 
 # Set by mage.gd before the meteor enters the tree.
+# A PICTURE OF SOMEBODY ELSE'S (0.19.0). With `cosmetic` set, this is a copy of
+# an attack another player made, drawn on this screen from the presence
+# server's word (remoteattacks.gd): it flies, spins, falls and burns exactly as
+# theirs does, and it touches nothing - no hit, no XP, no camera shake, and
+# nothing set off or pulled. The monsters are the area's leader's and every
+# hit still travels as a hit; this is only what the owner asked to see: "i
+# could not see their attacks but they could see mine".
+var cosmetic: bool = false
 var explosion_damage: int = 0
 var caster: Node = null
 # Whether this one pulls (PULL_CHANCE, rolled by mage.gd). Read when the vortex
@@ -176,6 +184,8 @@ func _ready() -> void:
 	trail.emitting = false
 	smoke_trail.emitting = false
 	_build_vortex()
+	if cosmetic:
+		RemoteAttacks.go_quiet(self)
 	queue_redraw()
 
 
@@ -303,7 +313,9 @@ func _fall(t: float, delta: float) -> void:
 	if _floor_glow != null:
 		_floor_glow.visible = true
 		_floor_glow.modulate.a = lerpf(0.08, 0.5, t)
-	if pulls:
+	# A picture pulls nothing: its ring of fire is drawn at the pull's size
+	# (swirl_from()), and the monsters are left where they are.
+	if pulls and not cosmetic:
 		_pull(t, delta)
 	queue_redraw()
 
@@ -372,12 +384,16 @@ func _impact() -> void:
 	smoke_trail.emitting = false
 	_vortex_out()
 	queue_redraw()
-	Audio.play("meteor_impact")
-	_hits = _apply_damage()
-	Blast.spawn(get_parent(), global_position, &"meteor", HIT_RADIUS)
+	if cosmetic:
+		Audio.play_at("meteor_impact", global_position)
+	else:
+		Audio.play("meteor_impact")
+		_hits = _apply_damage()
+	Blast.spawn(get_parent(), global_position, &"meteor", HIT_RADIUS, not cosmetic)
 	# The fire, beside the meteor rather than under it: the stone fades in two
 	# seconds and the crater burns a little longer.
-	BurningCrater.spawn(get_parent(), global_position, explosion_damage, HIT_RADIUS, caster)
+	var crater: BurningCrater = BurningCrater.spawn(get_parent(), global_position, explosion_damage, HIT_RADIUS, caster)
+	crater.cosmetic = cosmetic
 
 
 func _apply_damage() -> int:

@@ -288,6 +288,8 @@ const WORLD_KEYS: Array[StringName] = [&"move_left", &"move_right", &"move_up", 
 
 
 func _input(event: InputEvent) -> void:
+	if _chat_key(event):
+		return
 	# A GAME KEY TAKES THE KEYBOARD BACK FROM A CLICKED CONTROL. A click gives a
 	# button or slider the keyboard focus, and the GUI then reads the same
 	# presses as the player. Measured in Options: after one click on Damage
@@ -301,6 +303,38 @@ func _input(event: InputEvent) -> void:
 	# keys are letters in it.
 	release_for_world_key(event, get_viewport())
 	_click_outside_nav_menus(event)
+
+
+# ENTER IS CHAT (WALK AND TALK, 0.18.3 - chatpanel.gd says the rest). The owner:
+# "enter would open chat". keybinds.gd had kept Enter for chat all along -
+# nobody may bind it - and nothing listened for it. Read in _input, before the
+# GUI, so a button that a click left holding the focus cannot take the press
+# for itself; a text box that has the keyboard keeps it, and Enter there is
+# whatever that box does with it (the chat box sends).
+func _chat_key(event: InputEvent) -> bool:
+	if not is_chat_key(event, get_viewport().gui_get_focus_owner()):
+		return false
+	open_chat_to_type()
+	get_viewport().set_input_as_handled()
+	return true
+
+
+static func is_chat_key(event: InputEvent, focused: Control) -> bool:
+	"""Enter (either one) going down, with no text box holding the keyboard."""
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo:
+		return false
+	if key.keycode != KEY_ENTER and key.keycode != KEY_KP_ENTER:
+		return false
+	return focused == null or not keeps_the_keyboard(focused)
+
+
+func open_chat_to_type() -> void:
+	"""Chat with the keyboard in its box: opened if it is shut."""
+	if chat_panel == null or not chat_panel.visible:
+		toggle_chat()
+	elif chat_panel.has_method("focus_entry"):
+		chat_panel.focus_entry()
 
 
 static func release_for_world_key(event: InputEvent, viewport: Viewport) -> bool:

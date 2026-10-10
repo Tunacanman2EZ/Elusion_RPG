@@ -308,6 +308,8 @@ func _spawn_projectile(direction: Vector2) -> void:
 	# here, since it lives in projectile_scene's own script, not this one.
 	if "caster" in projectile:
 		projectile.caster = self
+	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
+	Presence.tell_attack("orb", global_position, global_position + direction * RemoteAttacks.AIM_AHEAD)
 
 
 # =============================================================================

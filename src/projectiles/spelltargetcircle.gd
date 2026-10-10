@@ -44,6 +44,15 @@ const IMPACT_FRAME := 4
 # scales with the mage's magic skill (magic × damage_per_magic in mage.gd).
 var explosion_damage: int = 0
 
+# A PICTURE OF SOMEBODY ELSE'S (0.19.0). With `cosmetic` set, this is a copy of
+# an attack another player made, drawn on this screen from the presence
+# server's word (remoteattacks.gd): it flies, spins, falls and burns exactly as
+# theirs does, and it touches nothing - no hit, no XP, no camera shake, and
+# nothing set off or pulled. The monsters are the area's leader's and every
+# hit still travels as a hit; this is only what the owner asked to see: "i
+# could not see their attacks but they could see mine".
+var cosmetic: bool = false
+
 # NEW: identifies who cast this spell — set by mage.gd on spawn, mirrors
 # slashwave.gd's caster reference for warrior. used to grant XP back to
 # the caster on impact, see _grant_caster_xp() below. null-guarded
@@ -87,6 +96,8 @@ func _ready() -> void:
 		return
 
 	_layer_ring_on_the_ground()
+	if cosmetic:
+		RemoteAttacks.go_quiet(self)
 
 	anim.animation_finished.connect(_on_animation_finished)
 	anim.frame_changed.connect(_on_frame_changed)
@@ -181,6 +192,8 @@ func _apply_area_damage() -> void:
 	# damage all enemies currently inside the Area2D's collision shape.
 	# scans get_overlapping_bodies at the moment of impact — enemies that
 	# enter the area AFTER this frame are not hit (instant AoE, no DoT).
+	if cosmetic:
+		return
 	for body in get_overlapping_bodies():
 		if not body.is_in_group("enemies"):
 			continue

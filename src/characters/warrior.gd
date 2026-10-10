@@ -709,6 +709,9 @@ func throw_axe(aimed_at: Vector2) -> SpinningAxe:
 	spawn_parent().add_child(_axe)
 	_axe.throw_to(global_position, aimed_at)
 	Audio.play("axe_throw")
+	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
+	Presence.tell_attack("axe", global_position, _axe.target, 0.0,
+		RemoteAttacks.flags_for_axe(_axe.wide, _axe.bloody))
 	return _axe
 
 
@@ -759,6 +762,8 @@ func _spawn_slashwave() -> void:
 	# while melee keeps granting attack XP as before.
 	wave.caster = self
 	wave.shoot_vector(_swing_aim_direction)
+	Presence.tell_attack("slash", wave.global_position,
+		wave.global_position + _swing_aim_direction * RemoteAttacks.AIM_AHEAD)
 
 
 func _parent_to_projectiles_container(wave: Node) -> void:

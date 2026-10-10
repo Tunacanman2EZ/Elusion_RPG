@@ -179,6 +179,16 @@ var direction_name: String = "down"
 # NEW: whoever fired this wave — set by the caster right after instantiate,
 # e.g. warrior.gd's _spawn_slashwave() does `wave.caster = self`. optional;
 # defensively checked before use, so this scene works fine without one.
+# A PICTURE OF SOMEBODY ELSE'S (0.19.0). With `cosmetic` set, this is a copy of
+# an attack another player made, drawn on this screen from the presence
+# server's word (remoteattacks.gd): it flies, spins, falls and burns exactly as
+# theirs does, and it touches nothing - no hit, no XP, no camera shake, and
+# nothing set off or pulled. The monsters are the area's leader's and every
+# hit still travels as a hit; this is only what the owner asked to see: "i
+# could not see their attacks but they could see mine".
+# A picture still stops at a wall and still swells as it passes through a
+# monster - only the hit and the XP are left out.
+var cosmetic: bool = false
 var caster: Node = null
 
 # NEW: true once this wave is despawning and playing its dissolve out.
@@ -219,6 +229,10 @@ func _ready() -> void:
 	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
 	if sprite != null:
 		_base_scale = sprite.scale
+	if cosmetic:
+		# Still looking (walls stop it, monsters make it swell), never seen.
+		set_deferred("monitorable", false)
+		set_deferred("collision_layer", 0)
 
 
 func _physics_process(delta: float) -> void:
@@ -388,8 +402,9 @@ func _try_hit(target: Node) -> void:
 		return
 	_hit_targets.append(target_id)
 
-	target.take_damage(damage, element)
-	_grant_caster_magic_xp()
+	if not cosmetic:
+		target.take_damage(damage, element)
+		_grant_caster_magic_xp()
 	_play_hit_pulse()
 
 	# max_pierce = 0 means unlimited — the wave runs until it meets a wall

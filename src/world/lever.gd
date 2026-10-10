@@ -36,6 +36,17 @@
 # lever's handle moves to match. Linked by the doors themselves, not by a name
 # typed into both: a lever pointed at a gate is in step with every other lever
 # pointed at it, and nothing has to be kept in sync by hand.
+#
+#
+# AND EVERYBODY IN THE AREA SEES IT (0.19.0).
+#
+# A lever was each game's own: the owner opened the boss gates and the player
+# with him found them shut - "the had to lower the gate to boss". Now a pull
+# here is told to the presence server (Presence.tell_lever(), by the lever's
+# path in the scene), every other game in the area pulls the same lever
+# (follow_pull()), and the server remembers it for the area, so a game that
+# walks in later opens what is open. The partner levers follow on every screen
+# exactly as they do on this one.
 extends Area2D
 
 
@@ -125,7 +136,11 @@ func _process(_delta: float) -> void:
 		return
 	if not Input.is_action_just_pressed("interact"):
 		return
+	var was_on: bool = _is_on
 	throw()
+	# Pulled by THIS player: everyone else in the area pulls it too.
+	if _is_on != was_on:
+		Presence.tell_lever(self, _is_on)
 
 
 # =============================================================================
@@ -162,6 +177,27 @@ func throw() -> void:
 	if not is_instance_valid(self):
 		return
 	_throwing = false
+	_show_state(_is_on)
+
+
+func follow_pull(on: bool) -> void:
+	"""Somebody else in the area pulled this lever (presence.gd) - now, or
+	before this game walked in. It moves as if pulled here, partners and all,
+	and is told to nobody: they already know."""
+	if on == _is_on:
+		return
+	_is_on = on
+	if one_shot:
+		_spent = true
+	_apply_to_targets()
+	_bring_partners_into_step()
+	toggled.emit(_is_on)
+	Audio.play_at("lever", global_position)
+	if anim != null:
+		anim.play(&"throwon" if _is_on else &"throwoff")
+		await get_tree().create_timer(throw_seconds).timeout
+		if not is_instance_valid(self) or _is_on != on:
+			return
 	_show_state(_is_on)
 
 

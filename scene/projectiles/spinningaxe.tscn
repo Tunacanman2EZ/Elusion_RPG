@@ -3,6 +3,9 @@
 [ext_resource type="Script" uid="uid://c23lx3d62ibjh" path="res://src/projectiles/spinningaxe.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://cbmrly64r1ogq" path="res://art/maincharacter/axe.png" id="2_axe"]
 
+[sub_resource type="CircleShape2D" id="CircleShape2D_hit"]
+radius = 20.0
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_spin0"]
 atlas = ExtResource("2_axe")
 region = Rect2(0, 0, 24, 24)
@@ -39,22 +42,20 @@ animations = [{
 "speed": 16.0
 }]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_hit"]
-radius = 20.0
-
-[node name="spinningaxe" type="Area2D"]
+[node name="spinningaxe" type="Area2D" unique_id=953265320]
 collision_layer = 32
 collision_mask = 8
 monitorable = false
 script = ExtResource("1_script")
 
-[node name="hitshape" type="CollisionShape2D" parent="."]
+[node name="hitshape" type="CollisionShape2D" parent="." unique_id=242243423]
 shape = SubResource("CircleShape2D_hit")
 
-[node name="shadow" type="Sprite2D" parent="."]
+[node name="shadow" type="Sprite2D" parent="." unique_id=1497973465]
 texture_filter = 1
 
-[node name="spin" type="AnimatedSprite2D" parent="."]
+[node name="spin" type="AnimatedSprite2D" parent="." unique_id=1618554892]
 texture_filter = 1
 sprite_frames = SubResource("SpriteFrames_spin")
 animation = &"spin"
+frame = 3

@@ -106,6 +106,15 @@ var direction: Vector2 = Vector2.RIGHT
 var speed: float = 400.0
 var damage: int = 8
 var owner_group: String = "player"
+# A PICTURE OF SOMEBODY ELSE'S (0.19.0). With `cosmetic` set, this is a copy of
+# an attack another player made, drawn on this screen from the presence
+# server's word (remoteattacks.gd): it flies, spins, falls and burns exactly as
+# theirs does, and it touches nothing - no hit, no XP, no camera shake, and
+# nothing set off or pulled. The monsters are the area's leader's and every
+# hit still travels as a hit; this is only what the owner asked to see: "i
+# could not see their attacks but they could see mine".
+# A picture still homes and still goes out on the monster it reaches.
+var cosmetic: bool = false
 var caster: Node = null
 
 
@@ -291,8 +300,9 @@ func _find_nearest_enemy() -> Node2D:
 func _hit(enemy: Node2D) -> void:
 	# deal the damage, pay out the caster's XP, and despawn. take_damage's second
 	# arg (element) defaults, so one arg is correct here — see baseenemy.take_damage.
-	enemy.take_damage(damage)
-	_grant_caster_xp()
+	if not cosmetic:
+		enemy.take_damage(damage)
+		_grant_caster_xp()
 	queue_free()
 
 

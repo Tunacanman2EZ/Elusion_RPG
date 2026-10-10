@@ -537,6 +537,8 @@ func _throw_stick(landing: Vector2, delay: float) -> Dynamite:
 	stick.delay = delay
 	spawn_parent().add_child(stick)
 	stick.throw_from(global_position, landing)
+	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
+	Presence.tell_attack("dyn", global_position, landing, delay)
 	return stick
 
 

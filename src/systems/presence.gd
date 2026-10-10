@@ -38,6 +38,20 @@
 # even when nobody else is in the area, with its own player's hits inside it
 # (monstersync.gd), and the ticket is renewed at once after an equip, so the
 # server holds hits to the weapon actually in hand.
+#
+# AND, SINCE 0.19.0, ATTACKS AND LEVERS. The owner, after his first game with
+# somebody else: "i could not see their attacks but they could see mine the had
+# to lower the gate to boss". A server whose welcome says "x" passes both on:
+#   - tell_attack(): the class scripts say what they threw, cast or fired; it
+#     goes out with the next state, every attack made since, each with this
+#     game's clock. Other games draw a picture of it (remoteattacks.gd) that
+#     touches nothing - the hits still go as hits.
+#   - tell_lever(): lever.gd says it was pulled; the others pull theirs, and the
+#     server remembers it for the area, so a game walking in later is told
+#     ("levers") and opens what is open.
+# And every state carries this game's clock ("ts"), which the others play our
+# steps back on (remoteplayer.gd, PLAYED BACK) - the "lag wobble" the owner saw
+# running past somebody was their picture chasing steps that came unevenly.
 extends Node
 
 # The shared-monster wire this game speaks; the server's welcome says whether
@@ -73,6 +87,11 @@ const ANIM_PATTERN := "^(idle|walk|attack|death|hitflash)(up|down|left|right)$"
 const EFFECTS: Array = ["ring", "firering"]
 # How long a "go to them" (meet()) waits for them to be drawn before giving up.
 const MEET_SECONDS := 10.0
+# The server's MAX_ATTACKS_PER_MESSAGE: attack pictures sent with one state.
+const MAX_ATTACKS_PER_SEND := 16
+# What the server takes as a lever's name: a node path in the area's scene
+# (presence.py LEVER_PATTERN).
+const LEVER_PATTERN := "^[A-Za-z0-9_/-]{1,128}$"
 
 # Off switch, for a test or a future setting.
 var enabled: bool = true
@@ -80,6 +99,8 @@ var enabled: bool = true
 # game: Api.post, and the local player's own parent (the area's y-sort world).
 var request_ticket: Callable
 var world_override: Node = null
+# And where a message goes: the socket, or (the suite) anything that takes it.
+var send_override: Callable = Callable()
 
 var _socket: WebSocketPeer = null
 var _phase: String = "off"     # off, ticket, connecting, open, waiting
@@ -97,6 +118,13 @@ var _sync_pending: bool = false
 var _anim_rule: RegEx = RegEx.create_from_string(ANIM_PATTERN)
 var _server_shares: bool = false
 var _server_books: bool = false
+# Whether the server passes on attacks and levers (its welcome's "x").
+var _server_relays: bool = false
+# Attack pictures waiting for the next send: [kind, ts, ox, oy, tx, ty, delay ms, flags].
+var _attacks: Array = []
+var _lever_rule: RegEx = RegEx.create_from_string(LEVER_PATTERN)
+# The clock this game puts on what it sends, in ms. A seam for the suite.
+var clock_override_ms: int = -1
 var _lead_area: String = ""
 var _leader_id: int = -1
 var _lead_sharers: int = 0
@@ -169,6 +197,59 @@ func books() -> bool:
 	"""True while the link is open to a server that keeps books on the
 	monsters: the leader sends its world even alone, its own hits inside."""
 	return shares() and _server_books
+
+
+func relays() -> bool:
+	"""True while the link is open to a server that passes on attacks and
+	levers (0.19.0)."""
+	return _phase == "open" and _server_relays and _my_id >= 0
+
+
+func clock_ms() -> int:
+	"""This game's clock, as it goes on the wire ("ts")."""
+	return clock_override_ms if clock_override_ms >= 0 else Time.get_ticks_msec()
+
+
+func tell_attack(kind: String, from: Vector2, to: Vector2, delay: float = 0.0, flags: int = 0) -> void:
+	"""A picture of an attack this player just made, for everyone else in the
+	area (remoteattacks.gd draws it): which kind (RemoteAttacks.KINDS), where
+	it starts and where it is aimed, in world positions, how long after now it
+	goes (a second meteor, a stick in a bundle) and its rolls. Sent with the
+	next state; nothing at all while no server is passing them on."""
+	if not relays() or _attacks.size() >= MAX_ATTACKS_PER_SEND:
+		return
+	_attacks.append([kind, clock_ms(), snappedf(from.x, 0.1), snappedf(from.y, 0.1),
+		snappedf(to.x, 0.1), snappedf(to.y, 0.1), clampi(roundi(delay * 1000.0), 0, 3000), flags])
+
+
+func attacks_queued() -> Array:
+	return _attacks
+
+
+func tell_lever(lever: Node, on: bool) -> void:
+	"""This player pulled `lever`: everyone else in the area pulls theirs."""
+	var called: String = lever_name(lever)
+	if relays() and called != "":
+		_send({"t": "l", "n": called, "on": on})
+
+
+func lever_name(lever: Node) -> String:
+	"""What a lever is called on the wire: its path in the scene, which every
+	game that loaded the scene has the same - or "" when it has none the
+	server would take."""
+	var scene: Node = get_tree().current_scene if is_inside_tree() else null
+	if scene == null or lever == null or not lever.is_inside_tree() or not scene.is_ancestor_of(lever):
+		return ""
+	var path: String = String(scene.get_path_to(lever))
+	return path if _lever_rule.search(path) != null else ""
+
+
+func _pull_lever(called: String, on: bool) -> void:
+	# Looked for among the levers by name, never by get_node(): the name came
+	# over the wire.
+	for lever in get_tree().get_nodes_in_group(&"levers"):
+		if lever.has_method("follow_pull") and lever_name(lever) == called:
+			lever.follow_pull(on)
 
 
 func renew_soon() -> void:
@@ -283,6 +364,8 @@ func _pump(delta: float, player: Node) -> void:
 		_renew_clock = 0.0
 		_server_shares = false
 		_server_books = false
+		_server_relays = false
+		_attacks = []
 		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION})
 	while _socket != null and _socket.get_available_packet_count() > 0:
 		var parsed: Variant = JSON.parse_string(_socket.get_packet().get_string_from_utf8())
@@ -290,21 +373,40 @@ func _pump(delta: float, player: Node) -> void:
 			handle_message(parsed)
 	_send_clock += delta
 	if _send_clock >= SEND_SECONDS:
-		_send_clock = 0.0
-		var now: Dictionary = state_for(player)
-		if now != _last_state:
-			_send(now)
-			_last_state = now
-		# AFTER THE STATE, NOT BEFORE: asked first, the server would answer
-		# with the area it still had us in, and the new world would be filled
-		# with people from the old one.
-		if _sync_pending:
-			_sync_pending = false
-			_send({"t": "sync"})
+		# ON THE BEAT, not a beat after the frame that crossed it: zeroing it
+		# made every send a little late, and the steps went out a tenth and a
+		# bit apart against the server's tenth (remoteplayer.gd, PLAYED BACK).
+		_send_clock = minf(_send_clock - SEND_SECONDS, SEND_SECONDS)
+		send_tick(player)
 	_renew_clock += delta
 	if _renew_clock >= RENEW_SECONDS:
 		_renew_clock = 0.0
 		_renew()
+
+
+func send_tick(player: Node) -> void:
+	"""One beat of sending: the state if it changed, the attacks made since the
+	last beat, and a sync if one is owed."""
+	var now: Dictionary = state_for(player)
+	if now != _last_state:
+		# The clock goes on the wire and not into the comparison, or every
+		# state would be new and a player standing still would send ten.
+		var out: Dictionary = now.duplicate()
+		out["ts"] = clock_ms()
+		_send(out)
+		_last_state = now
+	# The attacks since the last send, after the state: the server checks each
+	# against where the newest state put us.
+	if not _attacks.is_empty():
+		if relays():
+			_send({"t": "x", "e": _attacks})
+		_attacks = []
+	# AFTER THE STATE, NOT BEFORE: asked first, the server would answer with
+	# the area it still had us in, and the new world would be filled with
+	# people from the old one.
+	if _sync_pending:
+		_sync_pending = false
+		_send({"t": "sync"})
 
 
 func _renew() -> void:
@@ -316,6 +418,9 @@ func _renew() -> void:
 
 
 func _send(message: Dictionary) -> void:
+	if send_override.is_valid():
+		send_override.call(message)
+		return
 	if _socket != null and _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		_socket.send_text(JSON.stringify(message))
 
@@ -362,6 +467,7 @@ func handle_message(message: Dictionary) -> void:
 			_my_id = int(message.get("id", -1))
 			_server_shares = int(message.get("v", 0)) >= SHARED_MINIMUM
 			_server_books = typeof(message.get("books")) == TYPE_BOOL and bool(message["books"])
+			_server_relays = int(message.get("x", 0)) >= 1
 		"join":
 			for entry in message.get("p", []):
 				if entry is Dictionary:
@@ -390,6 +496,17 @@ func handle_message(message: Dictionary) -> void:
 			var batch: Variant = message.get("p")
 			if batch is Array:
 				hits_received.emit(int(message.get("from", -1)), batch)
+		"x":
+			var found: Variant = _remotes.get(int(message.get("id", -1)))
+			if is_instance_valid(found) and message.get("e") is Array:
+				(found as Node).hear_attacks(message["e"])
+		"l":
+			if int(message.get("id", -1)) != _my_id and typeof(message.get("on")) == TYPE_BOOL:
+				_pull_lever(str(message.get("n", "")), bool(message["on"]))
+		"levers":
+			for pulled in message.get("p", []):
+				if pulled is Array and pulled.size() == 2 and typeof(pulled[1]) == TYPE_BOOL:
+					_pull_lever(str(pulled[0]), bool(pulled[1]))
 
 
 # =============================================================================
@@ -464,18 +581,20 @@ func _join(entry: Dictionary) -> void:
 	var found: Variant = _remotes.get(id)
 	var body: Node2D = found if is_instance_valid(found) else null
 	var at: Vector2 = _local(Vector2(float(entry.get("x", 0.0)), float(entry.get("y", 0.0))))
+	var fx: Array = entry.get("fx", []) if entry.get("fx", []) is Array else []
+	var ts: int = _clock_of(entry.get("ts", -1))
 	if body == null:
 		body = RemotePlayer.new()
 		body.user_id = id
 		_world.add_child(body)
 		_remotes[id] = body
 		body.set_identity(entry)
-		body.place(at)
+		# Doing it before placing it: the playback starts from that step.
+		body.set_motion(str(entry.get("m", "idledown")), fx, str(entry.get("pet", "")))
+		body.place(at, ts)
 	else:
 		body.set_identity(entry)
-		body.set_target(at)
-	var fx: Array = entry.get("fx", []) if entry.get("fx", []) is Array else []
-	body.set_motion(str(entry.get("m", "idledown")), fx, str(entry.get("pet", "")))
+		body.push_step(at, str(entry.get("m", "idledown")), fx, str(entry.get("pet", "")), ts)
 
 
 func _move(move: Array) -> void:
@@ -486,8 +605,16 @@ func _move(move: Array) -> void:
 	if not is_instance_valid(found):
 		return
 	var body: Node2D = found
-	body.set_target(_local(Vector2(float(move[1]), float(move[2]))))
-	body.set_motion(str(move[3]), move[4] if move[4] is Array else [], str(move[5]))
+	# The seventh, their clock, since 0.19.0; a server from before sends six.
+	body.push_step(_local(Vector2(float(move[1]), float(move[2]))), str(move[3]),
+		move[4] if move[4] is Array else [], str(move[5]), _clock_of(move[6]) if move.size() >= 7 else -1)
+
+
+static func _clock_of(value: Variant) -> int:
+	# A clock from the wire: a whole number of ms, or -1 for none.
+	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
+		return -1
+	return int(value) if float(value) >= 0.0 else -1
 
 
 func _local(at: Vector2) -> Vector2:
@@ -526,5 +653,7 @@ func _follow_world(player: Node) -> void:
 	_clear_remotes()
 	_world = world
 	_last_state = {}
+	# Attacks made in the old world are no picture of anything in the new one.
+	_attacks = []
 	_send_clock = SEND_SECONDS
 	_sync_pending = _phase == "open"

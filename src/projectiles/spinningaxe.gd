@@ -117,6 +117,16 @@ const BLOOD_CHANCE := 0.01
 # sort in front of and behind enemies by where it really is.
 const HEIGHT := 7.0
 
+# A PICTURE OF SOMEBODY ELSE'S (0.19.0). With `cosmetic` set, this is a copy of
+# an attack another player made, drawn on this screen from the presence
+# server's word (remoteattacks.gd): it flies, spins, falls and burns exactly as
+# theirs does, and it touches nothing - no hit, no XP, no camera shake, and
+# nothing set off or pulled. The monsters are the area's leader's and every
+# hit still travels as a hit; this is only what the owner asked to see: "i
+# could not see their attacks but they could see mine".
+# Its caster is then the other player's picture (remoteplayer.gd), which it
+# flies home to.
+var cosmetic: bool = false
 var caster: Node2D = null
 # THE ROLL, set by warrior.gd before the axe enters the tree.
 var wide: bool = false
@@ -162,6 +172,8 @@ func _ready() -> void:
 	_build_whirl()
 	if bloody:
 		_build_blood()
+	if cosmetic:
+		RemoteAttacks.go_quiet(self)
 
 
 func _build_whirl() -> void:
@@ -260,7 +272,7 @@ func _physics_process(delta: float) -> void:
 func advance(delta: float) -> void:
 	# `== true` rather than bool(): get() is null on a caster with no such
 	# member, and bool(null) is an error, not a false.
-	if caster == null or not is_instance_valid(caster) or caster.get("is_dying") == true:
+	if caster == null or not is_instance_valid(caster) or _caster_dying():
 		queue_free()
 		return
 
@@ -308,6 +320,10 @@ func recall() -> void:
 	if state == State.RETURNING:
 		return
 	state = State.RETURNING
+	# Called home for any reason - attack again, the leash, away from the
+	# keyboard - the picture of it on other screens comes home too (0.19.0).
+	if not cosmetic and caster != null and is_instance_valid(caster) and caster.is_in_group("player"):
+		Presence.tell_attack("recall", caster.global_position, caster.global_position)
 	_passed.clear()
 	if spin != null:
 		spin.speed_scale = 1.0
@@ -441,6 +457,15 @@ func _fly_out(step: float) -> bool:
 # CUTTING
 # =============================================================================
 
+func _caster_dying() -> bool:
+	# A warrior says so with a field; another player's picture with a method
+	# (remoteplayer.gd's is_dying()). Asked the second way of a picture, the
+	# first gives back a Callable, and comparing that with true is an error.
+	if caster.has_method("is_dying"):
+		return bool(caster.call("is_dying"))
+	return caster.get("is_dying") == true
+
+
 func _enemies_touching() -> Array[Node]:
 	# Bodies and hurtbox areas both, the way slashwave.gd reads them, folded to
 	# one entry per enemy - a creature with a body AND a hurtbox would
@@ -460,6 +485,8 @@ func _enemies_touching() -> Array[Node]:
 
 
 func _cut_what_it_passes() -> void:
+	if cosmetic:
+		return
 	for enemy in _enemies_touching():
 		var id: int = enemy.get_instance_id()
 		if _passed.has(id):
@@ -470,6 +497,8 @@ func _cut_what_it_passes() -> void:
 
 
 func _cut_everything_near() -> void:
+	if cosmetic:
+		return
 	var swing_seconds: float = _swing_seconds()
 	var swing: int = _swing_damage()
 	var damage: int = maxi(1, roundi(float(swing) * TICK_SECONDS / swing_seconds))

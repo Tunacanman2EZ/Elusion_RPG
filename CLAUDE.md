@@ -2465,6 +2465,8 @@ and the game is logged in, and draws everybody in the same area as a
   socket: the game plays as before, nobody is drawn, and it tries again after
   2, 5, 10, then 30 seconds. It never tells the player.
 - **And, since 0.7.0, the monsters** - see "Shared monsters" below.
+- **And, since 0.19.0, their attacks, the levers they pull, and a playback
+  instead of a chase** - see "Seeing each other's attacks" below.
 
 `_test_other_players_are_drawn`; the server's rules are `test_presence.py` in
 the API repo.
@@ -2562,8 +2564,8 @@ monster each got the kill and a bag of their own, a follower was hurt by the
 leader's shots, a boss arena advanced to wave 2 on both screens, and the
 follower took the arena over when the leader left.
 
-**Not shared, and said so:** levers and spike gates (each game pulls its own),
-and loot (by design). The leader is trusted with the monsters exactly as every
+**Not shared, and said so:** loot (by design). Levers and spike gates were
+each game's own until 0.19.0 - see "Seeing each other's attacks" below. The leader is trusted with the monsters exactly as every
 game is trusted with its own kills (E-3): a cheating leader can do no more to
 the monsters than a cheating game always could, and the caps above keep an
 invented number from reaching anybody's health.
@@ -4740,6 +4742,143 @@ one - and named them:
   odds, the dice over 100,000 throws, no double, the bundle's triangle and its
   chain, the barrage's ring and its spacing), and the books' check on the
   exported fields.
+
+### Walk and talk: Enter opens chat, and chat stays up while you walk (0.18.3)
+
+The owner, after his first game with somebody else: "i cant see chat while i
+walk stopping to chat is a hassle i was thinking enter would open chat and we
+could keep it a transparent box on hudscreen", and, pointing at the HUD's
+floating notice box, "maybe we could see chat here or something like this".
+
+Two things made chat a place you stopped at. Opening it put the keyboard in
+the box and nothing ever gave it back - a send called `entry.grab_focus()`
+again - so `player.gd`'s `_typing_in_ui()` held the character still until the
+box was clicked away from. And a solid window that size, over the world, is a
+window you close.
+
+- **Enter opens chat with the keyboard in the box** (`characterhud.gd`
+  `_chat_key()`, `is_chat_key()`, `open_chat_to_type()`): shut, it opens
+  (`open()` focuses the box); open, `ChatPanel.focus_entry()`. Read in the
+  HUD's `_input`, first, before the GUI, so a button a click left holding the
+  focus cannot take the press. A text box that has the keyboard keeps Enter -
+  it is that box's (the chat box sends). `keybinds.gd` had reserved Enter and
+  the keypad's Enter for chat all along, and nothing listened for them.
+- **Enter sends and hands the keyboard back** (`hand_back_keyboard()`, in
+  `_send()`'s success where the `grab_focus()` was). Enter on an empty box
+  just hands it back - unless a picture is waiting, when the empty line is its
+  caption and it sends. Walking and attacking work the moment the line is
+  said; Enter again to say the next.
+- **Up and not typing, the window is see-through** (`_refresh_look()`): the
+  frame (`IDLE_FRAME_ALPHA`), the title bar, the tabs and the entry row
+  (`IDLE_CHROME_ALPHA`) go, and the lines stay on the log's backing at
+  `IDLE_LOG_ALPHA` - `self_modulate`, so the backing fades and the lines do
+  not. Typing in either box (the message box or the whisper name box), or the
+  mouse over the window, draws it whole again. The mouse is read from motion
+  events in `_input` (`mouse_at()`), taken into the frame's own coordinates;
+  nothing polls it, as the window rule in `_test_panels_are_windows`
+  asks. Shut, the window forgets the mouse, so it never opens awake.
+- **Nothing new is fetched.** It is the same window, polling every
+  `POLL_SECONDS` while open as it always did; a player who never opens chat
+  still never starts the timer. The floating notice box still stands down
+  while chat is up.
+- Tests: `_test_chat_walk_and_talk` (Enter and the keypad's from the game and
+  from a clicked button, not from a text box, only the press; the HUD wiring;
+  open to type, Enter on an empty box out, the see-through look and the whole
+  one, the whisper box, the mouse over and off by real motion events, a window
+  shut under the mouse; a send hands back).
+
+### Seeing each other's attacks, one gate for everyone, and an even walk (0.19.0)
+
+The owner, after his first game with somebody else (a student): "i could not
+see their attacks but they could see mine the had to lower the gate to boss
+even though i did some" and "as i was running past them i noticed some lag
+wobble". Three gaps in the presence link, each found in the code before
+anything was changed:
+
+- **Their attacks were never sent.** A remote player was its body, its auras
+  and its pet. A sword swing is the body's own animation, so his warrior's
+  swings were seen; a meteor, a thrown axe, a stick of dynamite, a slash wave
+  or a healer's orb is a thing in the world, and nothing carried those.
+- **Levers were each game's own** ("Not shared, and said so", above).
+- **The walk was chased, not played.** remoteplayer.gd eased toward the newest
+  step - fast just after one arrived, slowing as it closed in - and steps come
+  unevenly (the game's ten a second, the server's ten ticks and the network
+  are three clocks). Measured between two games against the local server, on
+  a steady walk of 120 a second, the old picture moved at anything from 4 to
+  198 a second, surging and stalling from one frame to the next.
+
+What changed:
+
+- **Attack pictures.** The class scripts call `Presence.tell_attack(kind,
+  from, to, delay, flags)` where they spawn an attack: warrior.gd `throw_axe()`
+  ("axe", the rolls as flags) and `_spawn_slashwave()` ("slash"), mage.gd
+  `_spawn_stalagmite()` ("stalag") and `_drop_meteor()` ("meteor", the pull as
+  a flag, a double cast's second with its delay), tank.gd `_throw_stick()`
+  ("dyn", one per stick), healer.gd `_spawn_projectile()` ("orb"), and
+  spinningaxe.gd `recall()` ("recall", for a real axe called home for any
+  reason). Presence sends them after the next state (`send_tick()`), each with
+  the game's clock, at most `MAX_ATTACKS_PER_SEND`, and only to a server whose
+  welcome says `"x"`. Another game hands them to that player's picture
+  (`hear_attacks()`), which spawns each (`RemoteAttacks.fire()`,
+  `src/characters/remoteattacks.gd`) when its playback reaches the moment it
+  was made - so the meteor falls as their body finishes the cast.
+- **A picture touches nothing.** It is the class's own scene with `cosmetic`
+  set: spinningaxe, meteor, burningcrater, slashwave, dynamite,
+  spelltargetcircle and turretprojectile each say under "A PICTURE OF SOMEBODY
+  ELSE'S" what that leaves out - no hit, no XP, no wound, no pull, no camera
+  shake (`Blast.spawn(..., shake)`), and a picture's stick sets off only other
+  pictures. The monsters are the leader's and the attacker's real hits still go
+  as hits; a picture that hit too would hit twice. `RemoteAttacks.go_quiet()`
+  turns a picture's Area2D off; the slash wave keeps looking (walls stop it, a
+  monster makes it swell) and is never seen. A thrown axe's picture flies home
+  to the remote body (`axe`, `_on_axe_caught()`); spinningaxe.gd asks a caster
+  `is_dying()` as a method when it has one, because `get("is_dying")` on a
+  picture is a Callable and comparing that with true is a SCRIPT ERROR.
+- **Levers.** A pull at the lever (`_process()`, not `throw()`, which a
+  cutscene may call) goes out as `Presence.tell_lever()`, named by its path in
+  the scene (`lever_name()`, which every game that loaded the scene has the
+  same; the Field's are `ysortworld/interactables/levergatesout` and `...in`).
+  Another game pulls its own (`follow_pull()`: the doors, the partner levers,
+  the sound at the lever, told to nobody). The server remembers each area's
+  pulls in order and tells a game that walks in (`levers`), and forgets them
+  when the area empties, as a fresh scene has every lever as built.
+- **Played back, not chased.** Every state carries the game's clock (`ts`,
+  `clock_ms()`, kept out of the "did it change" comparison so standing still
+  still sends nothing), and the send beat no longer drifts late
+  (`_send_clock` keeps its remainder). remoteplayer.gd keeps every step with
+  its time on their clock and draws the body `PLAYBACK_DELAY` (0.2 s) behind
+  the newest, between the steps either side of that moment; the animation,
+  aura and pet change when the playback reaches the step that says so. The
+  link between their clock and ours is the quickest any reading took to
+  arrive over `CLOCK_WINDOW`, followed at `CLOCK_SLEW` only when it moves by
+  more than `CLOCK_DEADBAND` (following every few-millisecond wander made the
+  walk surge by a tenth), and taken at once past `CLOCK_SNAP` (a join from
+  somebody who stood still for a minute carries a clock a minute old). A
+  pause longer than `PAUSE_SECONDS` was a stop: the walk starts a step before
+  the next step, not across the pause. A clock going back a second is their
+  game restarting. A game from before sends no clock and is played back by
+  when its steps arrived. The same two games, the same walk: drawn at 118 to
+  122 a second.
+- **The server** (api `presence.py`, "ATTACKS AND LEVERS") checks every
+  attack's shape and passes it to the rest of the area, never back; relays
+  every step of a tick, not only the newest (`moves` entries carry `ts`); and
+  allows 40 messages a second, burst 80, where it was 30 and 60 - a follower
+  healer's ten orbs a second go out as ten more messages. **The API goes out
+  first**: this game sends `x` and `l` only to a server that says it takes
+  them, so a game ahead of its server plays exactly as 0.18.
+- Not drawn yet: pets' shots (a remote pet follows its owner, as before).
+  PvP is still "Decided, not built" below - the switch is real and nothing in
+  the game can hurt another player.
+- Tests: `_test_other_players_move_evenly` (uneven arrivals walked evenly, the
+  delay, a stop, a start after a pause, a restart, a quicker road caught up
+  without a skip, a wandering one ignored, a stale join, a game with no
+  clock), `_test_other_players_attacks_are_pictures` (the class scenes, each
+  kind against real monsters touching nothing, the axe home, when, routing),
+  `_test_presence_sends_attacks` (only to a server that takes them, the shape,
+  the cap, the beat and its clock, a new world, every class's call),
+  `_test_levers_are_shared` (the name, telling, following, partners, the
+  order, the wiring), and `_test_other_players_are_drawn` played back on a
+  hand clock (`RemotePlayer.clock_override`).
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

@@ -321,6 +321,8 @@ func _spawn_stalagmite() -> void:
 	# script, not this one.
 	if "caster" in spell:
 		spell.caster = self
+	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
+	Presence.tell_attack("stalag", global_position, spell.global_position)
 
 
 # =============================================================================
@@ -353,6 +355,7 @@ func _drop_meteor(at: Vector2, delay: float) -> Meteor:
 	spawn_parent(false).add_child(meteor)
 	meteor.global_position = at
 	meteor.reset_physics_interpolation()
+	Presence.tell_attack("meteor", global_position, at, delay, RemoteAttacks.FLAG_PULL if meteor.pulls else 0)
 	return meteor
 
 

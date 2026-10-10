@@ -64,6 +64,14 @@ var lasts: float = BURN_SECONDS
 var owner_meta: StringName = &"burning_by"
 var smoulder: bool = false
 var caster: Node = null
+# A PICTURE OF SOMEBODY ELSE'S (0.19.0). With `cosmetic` set, this is a copy of
+# an attack another player made, drawn on this screen from the presence
+# server's word (remoteattacks.gd): it burns exactly as theirs does, and it touches nothing - no hit, no XP, no camera shake, and
+# nothing set off or pulled. The monsters are the area's leader's and every
+# hit still travels as a hit; this is only what the owner asked to see: "i
+# could not see their attacks but they could see mine".
+# Set by the meteor or the stick that left it, after spawn().
+var cosmetic: bool = false
 var burns_dealt: int = 0
 
 var _age: float = 0.0
@@ -252,6 +260,8 @@ func bite_count() -> int:
 
 
 func _burn() -> void:
+	if cosmetic:
+		return
 	var bite: int = burn_damage()
 	for body in get_overlapping_bodies():
 		if not body.is_in_group("enemies") or not body.has_method("take_damage"):

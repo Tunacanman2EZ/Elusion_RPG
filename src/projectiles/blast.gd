@@ -44,6 +44,9 @@ const SHAKE := {
 
 var kind: StringName = &"dynamite"
 var radius: float = 24.0
+# Whether it shakes the local player's camera: not for a picture of somebody
+# else's meteor or stick (0.19.0) - their blast shakes their screen.
+var shakes: bool = true
 
 # The longest-lived part, so the node knows when it has nothing left to show.
 var _life: float = 1.4
@@ -57,11 +60,13 @@ static var _texture_cache: Dictionary = {}
 # SPAWNING
 # =============================================================================
 
-static func spawn(parent: Node, at: Vector2, blast_kind: StringName, blast_radius: float) -> Blast:
+static func spawn(parent: Node, at: Vector2, blast_kind: StringName, blast_radius: float,
+		shake: bool = true) -> Blast:
 	# The one way in. Returns the node so a test can look at what was built.
 	var blast := Blast.new()
 	blast.kind = blast_kind
 	blast.radius = blast_radius
+	blast.shakes = shake
 	parent.add_child(blast)
 	blast.global_position = at
 	blast.reset_physics_interpolation()
@@ -186,8 +191,11 @@ func _burst(colours: Gradient, amount: int, lifetime: float, velocity: Vector2,
 
 
 func _shake_the_thrower() -> void:
-	# The local player's camera, if there is one. A blast is only ever the
-	# local player's - nobody else's attacks are drawn on this screen.
+	# The local player's camera, if there is one - for the local player's own
+	# blasts. Since 0.19.0 other players' attacks are drawn here too, as
+	# pictures, and those are spawned with shakes off.
+	if not shakes:
+		return
 	var player: Node = get_tree().get_first_node_in_group("player")
 	if player != null and player.has_method("shake_camera"):
 		var shake: Vector2 = SHAKE.get(kind, Vector2.ZERO)

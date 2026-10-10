@@ -13,9 +13,24 @@
 # their chosen colour, the guild tag above it, the crown or MOD / DEV badge);
 # and their pet, following behind.
 #
-# SMOOTH, NOT EXACT. Updates arrive ten times a second at best, so the body
-# eases toward the newest position rather than jumping to it, and snaps only
-# when the gap is too wide to be a walk (a teleport, a door).
+# PLAYED BACK, NOT CHASED (0.19.0). Steps arrive about ten times a second, and
+# not evenly: the game sends on its clock, the server passes them on on its
+# own, and the network adds its own wait. This body used to ease toward the
+# newest step - fast just after one arrived, slowing as it closed in, waiting
+# for the next - and the owner, running past the first other player he played
+# with: "i noticed some lag wobble". Now every step is kept with the time on
+# THEIR clock it was taken (the state's "ts"), and the body is drawn
+# PLAYBACK_DELAY behind the newest, moving between the two steps either side
+# of that moment at the speed they really walked. So it is a fifth of a second
+# behind where they are, and it moves evenly. A step too far from the last to
+# be a walk (a door, a teleport) is a jump, made when the playback reaches it.
+# What they are doing - the animation, the aura, the pet - changes when the
+# playback reaches the step that says so, so the walk stops where they stopped.
+#
+# AND THEIR ATTACKS (0.19.0). The presence server passes on a picture of every
+# attack they make, with the same clock; hear_attacks() holds each until the
+# playback reaches it, and remoteattacks.gd spawns it - a meteor falls as this
+# body finishes the cast. A thrown axe flies home to this body (`axe`).
 #
 # AND, SINCE 0.7.0, SOMETHING THE AREA'S MONSTERS CAN CHASE - on the game that
 # runs them (monstersync.gd). It joins "remoteplayers", carries a "bodyshape"
@@ -30,9 +45,36 @@ extends Node2D
 const NameTag := preload("res://src/shared/nametag.gd")
 
 
-# How quickly the body closes on where it was last said to be. Per second, as
-# an exponential: at 15 it covers 95% of a gap in a fifth of a second.
-const FOLLOW_RATE := 15.0
+# PLAYED BACK (see the top): how far behind their newest step the body is
+# drawn. Two of the server's ticks, so a step that waited for one, or a late
+# one, has arrived before the playback needs it.
+const PLAYBACK_DELAY := 0.2
+# How often their game sends a step while they move.
+const STEP_SECONDS := 0.1
+# Two steps further apart than this were a stop and a start: their game sends
+# nothing while they stand still, so the walk began a step before the second.
+const PAUSE_SECONDS := 0.35
+# Steps kept at most - a couple of seconds of them.
+const MAX_STEPS := 40
+# THE LINK BETWEEN THEIR CLOCK AND OURS is how far ours runs ahead: the least
+# any reading of theirs took to get here over the last CLOCK_WINDOW seconds -
+# the quickest the road has been lately. When that moves by more than
+# CLOCK_DEADBAND the link follows it at CLOCK_SLEW seconds a second, so the
+# playback runs a little fast or slow for a moment rather than skipping; a
+# change bigger than CLOCK_SNAP (a first guess from a stale join, a road that
+# changed) is made at once. Inside the deadband nothing moves: measured
+# between two games, the quickest road wanders by a few milliseconds as old
+# readings leave the window, and following every one of those wanders made
+# the walk speed up and slow down by a tenth.
+const CLOCK_WINDOW := 4.0
+const CLOCK_DEADBAND := 0.03
+const CLOCK_SLEW := 0.05
+const CLOCK_SNAP := 0.5
+# Their clock going back further than this is their game starting again: the
+# playback starts again with it.
+const CLOCK_RESTART := 1.0
+# Attack pictures waiting for the playback, at most.
+const MAX_ATTACKS_WAITING := 64
 # A gap wider than this is a jump, not a walk: snap.
 const SNAP_DISTANCE := 160.0
 # The pet trails this far behind, and follows more lazily.
@@ -49,6 +91,9 @@ static var _class_parts: Dictionary = {}
 static var _body_offsets: Dictionary = {}
 static var _pet_parts: Dictionary = {}
 static var _plate_consts: Dictionary = {}
+# The clock the playback reads, in seconds: the engine's, unless the suite sets
+# one (any value of nought or more) to step through a playback by hand.
+static var clock_override: float = -1.0
 
 var user_id: int = -1
 var class_id: String = ""
@@ -66,9 +111,23 @@ var shares: bool = false
 # How fast they are moving, worked out from the positions that arrive - the
 # same thing a CharacterBody2D's velocity says about the local player.
 var velocity: Vector2 = Vector2.ZERO
-var _target_at_msec: int = -1
+# The picture of their Double Axe while it is out (remoteattacks.gd).
+var axe: Node = null
 
 var _target: Vector2 = Vector2.ZERO
+# THE PLAYBACK: [their seconds, position, animation, effects, pet] for every
+# step not yet played past, oldest first; how far our clock runs ahead of
+# theirs, and when that was last learned; the step whose motion is showing;
+# and the attack pictures waiting, as [their seconds, attack].
+var _steps: Array = []
+var _clock_gap: float = 0.0
+var _clock_aim: float = 0.0
+var _clock_known: bool = false
+var _clock_moved_at: float = 0.0
+var _clock_settling: bool = false
+var _clock_seen: Array = []   # [our seconds, how far ahead ours was], the last CLOCK_WINDOW
+var _shown_step: float = -INF
+var _waiting: Array = []
 var _placed: bool = false
 var _body: AnimatedSprite2D = null
 var _plate: Label = null
@@ -116,29 +175,132 @@ func set_identity(entry: Dictionary) -> void:
 	_paint_plate()
 
 
-func place(at: Vector2) -> void:
-	"""Put it here now, no easing - where somebody is when they first appear."""
+func place(at: Vector2, ts: int = -1) -> void:
+	"""Put it here now, no easing - where somebody is when they first appear.
+	`ts` is their clock at that moment, when the join carried it: the playback
+	starts from there."""
 	_target = at
 	position = at
 	_placed = true
+	# A new start: what was learned of their clock is forgotten with it.
+	_clock_known = false
+	_clock_seen = []
+	_steps = [[_their_time(ts), at, anim, effects.duplicate(), pet_id]]
+	_shown_step = float(_steps[0][0])
+	velocity = Vector2.ZERO
 	if _pet != null:
 		_pet.position = at + Vector2(0, -2)
 
 
-func set_target(at: Vector2) -> void:
+func set_target(at: Vector2, ts: int = -1) -> void:
+	"""A step to here, doing what they were already doing."""
+	push_step(at, anim, effects, pet_id, ts)
+
+
+func push_step(at: Vector2, new_anim: String, new_effects: Array, new_pet: String, ts: int = -1) -> void:
+	"""A step from the presence server: where they are and what they are doing,
+	at `ts` on their clock (-1: a game that sends none, timed by when the step
+	arrived here). Played back PLAYBACK_DELAY behind the newest - see the top."""
 	if not _placed:
-		place(at)
+		place(at, ts)
+		set_motion(new_anim, new_effects, new_pet)
 		return
-	# THE SPEED IS THE GAP OVER THE TIME BETWEEN REPORTS, eased so one late
-	# packet does not read as a sprint. A gap a walk could not make is a jump
-	# (a door, a teleport) and says nothing about speed.
-	var now: int = Time.get_ticks_msec()
-	if _target_at_msec >= 0:
-		var seconds: float = maxf(float(now - _target_at_msec) / 1000.0, 0.05)
-		var step: Vector2 = (at - _target) / seconds
-		velocity = Vector2.ZERO if (at - _target).length() > SNAP_DISTANCE else velocity.lerp(step, 0.6)
-	_target_at_msec = now
+	var t: float = _their_time(ts)
+	if not _steps.is_empty():
+		var last: Array = _steps.back()
+		var last_t: float = float(last[0])
+		if t < last_t - CLOCK_RESTART:
+			# Their game started again: so does the playback, from here.
+			place(at, ts)
+			set_motion(new_anim, new_effects, new_pet)
+			return
+		if t <= last_t:
+			return   # an older step than one already here
+		var from: Vector2 = last[1]
+		if t - last_t > PAUSE_SECONDS:
+			# They stood still, then set off: from where they stood, a step ago.
+			_steps.append([t - STEP_SECONDS, from, new_anim, new_effects.duplicate(), new_pet])
+			last_t = t - STEP_SECONDS
+		# THE SPEED IS THE STEP OVER THE TIME BETWEEN THEM, on their clock, eased
+		# so one odd step does not read as a sprint. A gap a walk could not make is
+		# a jump (a door, a teleport) and says nothing about speed.
+		var seconds: float = maxf(t - last_t, 0.05)
+		velocity = Vector2.ZERO if (at - from).length() > SNAP_DISTANCE \
+			else velocity.lerp((at - from) / seconds, 0.6)
+	_steps.append([t, at, new_anim, new_effects.duplicate(), new_pet])
+	while _steps.size() > MAX_STEPS:
+		_steps.pop_front()
 	_target = at
+
+
+func hear_attacks(attacks: Array) -> void:
+	"""Attack pictures from the presence server, [[kind, ts, ox, oy, tx, ty,
+	delay, flags]]: each spawned (remoteattacks.gd) when the playback reaches
+	the moment they made it."""
+	for attack in attacks:
+		if not (attack is Array) or (attack as Array).size() < 8:
+			continue
+		if not RemoteAttacks.KINDS.has(str(attack[0])):
+			continue
+		_waiting.append([_their_time(int(attack[1])), attack])
+	_waiting.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
+	while _waiting.size() > MAX_ATTACKS_WAITING:
+		_waiting.pop_front()
+
+
+func attacks_waiting() -> int:
+	return _waiting.size()
+
+
+static func clock() -> float:
+	"""The playback's clock, in seconds."""
+	return clock_override if clock_override >= 0.0 else float(Time.get_ticks_usec()) / 1000000.0
+
+
+func playhead() -> float:
+	"""The moment on their clock the body is drawn at: their newest, less
+	PLAYBACK_DELAY, as near as the link between the clocks says."""
+	return clock() - _clock_gap - PLAYBACK_DELAY
+
+
+func _their_time(ts: int) -> float:
+	# A reading of their clock, in their seconds, and what it says about the
+	# link (see CLOCK_WINDOW). No reading - a game from before 0.19.0 - is
+	# timed by when it arrived here: their clock is ours.
+	var here: float = clock()
+	if ts < 0:
+		_learn_clock(here, 0.0)
+		return here
+	var t: float = float(ts) / 1000.0
+	_learn_clock(here, here - t)
+	return t
+
+
+func _learn_clock(here: float, ahead: float) -> void:
+	_clock_seen.append([here, ahead])
+	while _clock_seen.size() > 1 and float(_clock_seen[0][0]) < here - CLOCK_WINDOW:
+		_clock_seen.pop_front()
+	var aim: float = INF
+	for seen in _clock_seen:
+		aim = minf(aim, float(seen[1]))
+	_clock_aim = aim
+	if not _clock_known or absf(aim - _clock_gap) > CLOCK_SNAP:
+		_clock_gap = aim
+		_clock_moved_at = here
+		_clock_settling = false
+	_clock_known = true
+
+
+func _settle_clock() -> void:
+	# Out of the deadband, the link moves to what the window says, CLOCK_SLEW
+	# at a time, all the way; inside it, it stays.
+	var here: float = clock()
+	if absf(_clock_aim - _clock_gap) > CLOCK_DEADBAND:
+		_clock_settling = true
+	if _clock_settling:
+		_clock_gap = move_toward(_clock_gap, _clock_aim, CLOCK_SLEW * maxf(here - _clock_moved_at, 0.0))
+		_clock_settling = absf(_clock_aim - _clock_gap) > 0.0005
+	_clock_moved_at = here
 
 
 func is_dying() -> bool:
@@ -203,7 +365,14 @@ func set_motion(new_anim: String, new_effects: Array, new_pet: String) -> void:
 
 
 func target() -> Vector2:
+	"""Where their newest step put them - ahead of where the body is drawn."""
 	return _target
+
+
+func _on_axe_caught() -> void:
+	# spinningaxe.gd calls this as the picture of their axe reaches this body.
+	axe = null
+	Audio.play_at("axe_catch", global_position)
 
 
 func pet_sprite() -> AnimatedSprite2D:
@@ -219,13 +388,44 @@ func plate() -> Label:
 # =============================================================================
 
 func _process(delta: float) -> void:
-	if position.distance_to(_target) > SNAP_DISTANCE:
-		position = _target
-	else:
-		position = position.lerp(_target, 1.0 - exp(-delta * FOLLOW_RATE))
+	_settle_clock()
+	_play_back()
+	_fire_due_attacks()
 	if _plate != null and absf(_camera_zoom() - _plate_zoom) > 0.001:
 		_place_plate()
 	_follow_with_pet(delta)
+
+
+func _play_back() -> void:
+	if _steps.is_empty():
+		return
+	var head: float = playhead()
+	# Every step the playback is past goes, but the last of them: it is where
+	# the body is coming from.
+	while _steps.size() >= 2 and float(_steps[1][0]) <= head:
+		_steps.pop_front()
+	var from: Array = _steps[0]
+	var at: Vector2 = from[1]
+	if _steps.size() >= 2 and head > float(from[0]):
+		var to: Array = _steps[1]
+		var to_at: Vector2 = to[1]
+		var span: float = float(to[0]) - float(from[0])
+		# Too far to walk: stay until the playback reaches it, then jump.
+		if span > 0.0 and at.distance_to(to_at) <= SNAP_DISTANCE:
+			at = at.lerp(to_at, clampf((head - float(from[0])) / span, 0.0, 1.0))
+	position = at
+	if head >= float(from[0]) and float(from[0]) != _shown_step:
+		_shown_step = float(from[0])
+		set_motion(str(from[2]), from[3], str(from[4]))
+
+
+func _fire_due_attacks() -> void:
+	if _waiting.is_empty():
+		return
+	var head: float = playhead()
+	while not _waiting.is_empty() and float(_waiting[0][0]) <= head:
+		var due: Array = _waiting.pop_front()
+		RemoteAttacks.fire(self, due[1])
 
 
 # =============================================================================

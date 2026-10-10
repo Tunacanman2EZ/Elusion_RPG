@@ -270,6 +270,7 @@ func _run_all() -> void:
 	_test_staff_logins_take_a_code()
 	_test_chat_is_one_line_per_message()
 	await _test_chat_keeps_your_place()
+	await _test_chat_walk_and_talk()
 	await _test_whispers_reach_you()
 	_test_black_past_the_map()
 	_test_signing_in_never_makes_an_account()
@@ -300,6 +301,10 @@ func _run_all() -> void:
 	await _test_armour_resistance()
 	await _test_the_boss_gates_lever()
 	await _test_other_players_are_drawn()
+	_test_other_players_move_evenly()
+	await _test_other_players_attacks_are_pictures()
+	_test_presence_sends_attacks()
+	await _test_levers_are_shared()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -9953,6 +9958,12 @@ func _test_other_players_are_drawn() -> void:
 	add_child(world)
 	Presence.world_override = world
 	Presence._world = world
+	# THE PLAYBACK'S CLOCK BY HAND (remoteplayer.gd, PLAYED BACK, 0.19.0): these
+	# moves carry no clock of their own, as a server from before sends them, so
+	# each is timed by when it arrives, and the body is drawn PLAYBACK_DELAY
+	# behind.
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	Remote.clock_override = 100.0
 	var cleanup := func() -> void:
 		Presence.stop()
 		Presence.world_override = null
@@ -9960,6 +9971,7 @@ func _test_other_players_are_drawn() -> void:
 		Presence.request_ticket = Callable(Presence, "_post_ticket")
 		Presence._failures = 0
 		Presence.set_process(true)
+		Remote.clock_override = -1.0
 
 	# ---- who joins ---------------------------------------------------------------
 	Presence.handle_message({"t": "welcome", "id": 7})
@@ -10008,7 +10020,10 @@ func _test_other_players_are_drawn() -> void:
 		fire != null and fire.visible and ring != null and not ring.visible,
 		[fire != null and fire.visible, ring != null and ring.visible])
 	var healer_body: AnimatedSprite2D = healer.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	Remote.clock_override = 100.1
 	Presence.handle_message({"t": "moves", "p": [[12, 140.0, 90.0, "attackleft", [], ""]]})
+	Remote.clock_override = 100.1 + Remote.PLAYBACK_DELAY + 0.01
+	healer._process(1.0 / 60.0)
 	check("  a class with no swing of its own stands facing the same way rather than vanish",
 		healer_body != null and str(healer_body.animation) == "idleleft" and healer_body.is_playing(),
 		str(healer_body.animation) if healer_body != null else "no body")
@@ -10056,19 +10071,32 @@ func _test_other_players_are_drawn() -> void:
 		pet != null and pet.get_parent() == world, pet.get_parent() if pet != null else null)
 	check("  and nobody without one has one", healer.pet_sprite() == null)
 
-	# ---- moving ---------------------------------------------------------------------
+	# ---- moving: played back, a fifth of a second behind (0.19.0) --------------------
+	# The tank joined at 100.0 at (200, 200); this step, 0.2 later, is 10 along.
+	Remote.clock_override = 100.2
 	Presence.handle_message({"t": "moves", "p": [[11, 310.0, 250.0, "walkright", [], "petfiresprite"]]})
+	Remote.clock_override = 100.25
 	tank._process(1.0 / 60.0)
-	check("a step eases toward where they went rather than jumping",
-		tank.target() == Vector2(210, 200) and tank.position.x > 200.0 and tank.position.x < 210.0,
-		[tank.target(), tank.position])
-	check("  turning plays the new way round", body != null and str(body.animation) == "walkright",
+	check("a step is played back at the pace it was walked: a quarter of the way a quarter of the time in",
+		tank.target() == Vector2(210, 200) and is_equal_approx(tank.position.x, 202.5)
+		and is_equal_approx(tank.position.y, 200.0), [tank.target(), tank.position])
+	check("  still doing what they were doing until the playback reaches the step that says otherwise",
+		body != null and str(body.animation) == "walkleft" and fire != null and fire.visible,
 		str(body.animation) if body != null else "no body")
-	check("  and the aura goes out when they put it out", fire != null and not fire.visible)
-	Presence.handle_message({"t": "moves", "p": [[11, 1100.0, 1050.0, "idledown", [], "petfiresprite"]]})
+	Remote.clock_override = 100.2 + Remote.PLAYBACK_DELAY
 	tank._process(1.0 / 60.0)
-	check("a jump too far to be a walk - a door, a teleport - snaps", tank.position == Vector2(1000, 1000),
-		tank.position)
+	check("  turning plays the new way round when it does", body != null and str(body.animation) == "walkright"
+		and tank.position == Vector2(210, 200), [str(body.animation) if body != null else "no body", tank.position])
+	check("  and the aura goes out when they put it out", fire != null and not fire.visible)
+	Remote.clock_override = 100.5
+	Presence.handle_message({"t": "moves", "p": [[11, 1100.0, 1050.0, "idledown", [], "petfiresprite"]]})
+	Remote.clock_override = 100.55
+	tank._process(1.0 / 60.0)
+	var before_jump: Vector2 = tank.position
+	Remote.clock_override = 100.5 + Remote.PLAYBACK_DELAY
+	tank._process(1.0 / 60.0)
+	check("a jump too far to be a walk - a door, a teleport - is made when the playback reaches it, not glided",
+		before_jump == Vector2(210, 200) and tank.position == Vector2(1000, 1000), [before_jump, tank.position])
 	Presence.handle_message({"t": "moves", "p": [[7, 5.0, 5.0, "walkup", [], ""], [99, 5.0, 5.0, "walkup", [], ""]]})
 	check("a move for yourself or for somebody never introduced draws nothing",
 		Presence.remotes().size() == 3 and not Presence.remotes().has(99) and not Presence.remotes().has(7),
@@ -10181,6 +10209,536 @@ func _test_other_players_are_drawn() -> void:
 	world.queue_free()
 	world2.queue_free()
 	cleanup.call()
+
+
+# PLAYED BACK, NOT CHASED (0.19.0). The owner, running past the first other
+# player he played with: "i noticed some lag wobble". Their picture eased
+# toward each step as it came, and steps come unevenly. Now it is played back
+# on their clock, PLAYBACK_DELAY behind (remoteplayer.gd).
+func _test_other_players_move_evenly() -> void:
+	section("OTHER PLAYERS - played back evenly, on their own clock, however the steps arrive")
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var holder := Node2D.new()
+	add_child(holder)
+	var them: Node2D = Remote.new()
+	them.user_id = 601
+	holder.add_child(them)
+	them.set_identity({"id": 601, "name": "Runner", "cls": "warrior", "lvl": 3, "v": 2})
+	them.set_process(false)
+	Remote.clock_override = 50.0
+	them.set_motion("walkright", [], "")
+	them.place(Vector2.ZERO, 1000)
+	# Six steps a tenth apart on their clock, 10 along each - arriving as a
+	# network delivers them: a little late, later, two together, on time.
+	var arrives: Array = [50.13, 50.21, 50.30, 50.48, 50.50, 50.65]
+	var next_step: int = 0
+	var xs: Array = []
+	for i in 13:
+		var now: float = 50.2 + 0.05 * i
+		while next_step < arrives.size() and float(arrives[next_step]) <= now:
+			Remote.clock_override = float(arrives[next_step])
+			them.push_step(Vector2(10.0 * (next_step + 1), 0.0), "walkright", [], "", 1000 + 100 * (next_step + 1))
+			next_step += 1
+		Remote.clock_override = now
+		them._process(1.0 / 60.0)
+		xs.append(them.position.x)
+	var steps: Array = []
+	for i in range(1, xs.size()):
+		steps.append(snappedf(float(xs[i]) - float(xs[i - 1]), 0.001))
+	var even: bool = true
+	for step in steps:
+		even = even and absf(float(step) - 5.0) < 0.01
+	check("steps that arrived unevenly are walked evenly: the same distance every twentieth of a second",
+		even and is_equal_approx(float(xs[0]), 0.0) and is_equal_approx(float(xs.back()), 60.0), [xs, steps])
+	check("  a fifth of a second behind their newest step", is_equal_approx(Remote.PLAYBACK_DELAY, 0.2)
+		and them.target() == Vector2(60, 0))
+	check("  and how fast they go is known, for a boss to lead", them.velocity.x > 95.0 and them.velocity.x < 101.0,
+		them.velocity)
+	Remote.clock_override = 51.5
+	them._process(1.0 / 60.0)
+	check("past their last step it holds there: they stopped", them.position == Vector2(60, 0), them.position)
+	# A second and a half standing still, then off again: their game sends
+	# nothing while they stand.
+	Remote.clock_override = 52.05
+	them.push_step(Vector2(70, 0), "walkright", [], "", 3000)
+	var at_start: Array = []
+	for now in [52.1, 52.15, 52.2]:
+		Remote.clock_override = now
+		them._process(1.0 / 60.0)
+		at_start.append(them.position.x)
+	check("setting off after a stand starts from where they stood, a step before - not a crawl across the pause",
+		is_equal_approx(float(at_start[0]), 60.0) and is_equal_approx(float(at_start[1]), 65.0)
+		and is_equal_approx(float(at_start[2]), 70.0), at_start)
+	Remote.clock_override = 53.0
+	them.push_step(Vector2(500, 0), "walkright", [], "", 50)
+	them._process(1.0 / 60.0)
+	check("their clock starting again (their game restarted) starts the playback again, where they are",
+		them.position == Vector2(500, 0), them.position)
+	Remote.clock_override = 53.1
+	them.push_step(Vector2(510, 0), "walkright", [], "", 150)
+	Remote.clock_override = 53.25
+	them._process(1.0 / 60.0)
+	check("  and plays on from there", them.position.x > 500.0 and them.position.x < 510.0, them.position)
+
+	# THE ROAD GETS QUICKER: steps that took a tenth longer start arriving on
+	# time. The link moves to it a little at a time - no skip.
+	var quick: Node2D = Remote.new()
+	quick.user_id = 603
+	holder.add_child(quick)
+	quick.set_identity({"id": 603, "name": "Quick", "cls": "tank", "lvl": 3, "v": 2})
+	quick.set_process(false)
+	Remote.clock_override = 80.1
+	quick.place(Vector2.ZERO, 1000)
+	var quick_xs: Array = []
+	var k_next: int = 1
+	for i in 40:
+		var now: float = 80.4 + 0.05 * i
+		while k_next <= 40:
+			var lag: float = 0.1 if k_next <= 4 else 0.0
+			var lands: float = 80.0 + 0.1 * k_next + lag
+			if lands > now:
+				break
+			Remote.clock_override = lands
+			quick.push_step(Vector2(10.0 * k_next, 0.0), "walkright", [], "", 1000 + 100 * k_next)
+			k_next += 1
+		Remote.clock_override = now
+		quick._process(1.0 / 60.0)
+		quick_xs.append(quick.position.x)
+	var biggest: float = 0.0
+	var least: float = INF
+	for i in range(1, quick_xs.size()):
+		biggest = maxf(biggest, float(quick_xs[i]) - float(quick_xs[i - 1]))
+		least = minf(least, float(quick_xs[i]) - float(quick_xs[i - 1]))
+	check("a road that gets quicker is caught up with a little faster for a moment, never a skip",
+		biggest <= 5.0 * (1.0 + Remote.CLOCK_SLEW) + 0.01 and least >= 4.99 and biggest > 5.01, [least, biggest])
+	# THE QUICKEST ROAD WANDERS: the step that set the link leaves the window
+	# and the rest took a few milliseconds longer. Inside the deadband the pace
+	# does not move at all.
+	var steady: Node2D = Remote.new()
+	steady.user_id = 605
+	holder.add_child(steady)
+	steady.set_identity({"id": 605, "name": "Steady", "cls": "warrior", "lvl": 3, "v": 2})
+	steady.set_process(false)
+	Remote.clock_override = 90.0
+	steady.place(Vector2.ZERO, 1000)
+	var steady_xs: Array = []
+	var s_next: int = 1
+	var steps_total: int = int((Remote.CLOCK_WINDOW + 2.0) / 0.1)
+	for i in int((Remote.CLOCK_WINDOW + 1.0) / 0.05):
+		var now: float = 90.3 + 0.05 * i
+		while s_next <= steps_total:
+			var lands: float = 90.0 + 0.1 * s_next + (0.0 if s_next <= 3 else Remote.CLOCK_DEADBAND * 0.6)
+			if lands > now:
+				break
+			Remote.clock_override = lands
+			steady.push_step(Vector2(10.0 * s_next, 0.0), "walkright", [], "", 1000 + 100 * s_next)
+			s_next += 1
+		Remote.clock_override = now
+		steady._process(1.0 / 60.0)
+		steady_xs.append(steady.position.x)
+	var steady_even: bool = true
+	for i in range(1, steady_xs.size()):
+		steady_even = steady_even and absf(float(steady_xs[i]) - float(steady_xs[i - 1]) - 5.0) < 0.01
+	check("a quickest road that wanders by a few milliseconds leaves the pace exactly as it was",
+		steady_even and steady_xs.size() > int(Remote.CLOCK_WINDOW / 0.05), steady_xs.slice(0, 8))
+	# A join from a player who has stood still for a minute carries a clock a
+	# minute old.
+	var stood: Node2D = Remote.new()
+	stood.user_id = 604
+	holder.add_child(stood)
+	stood.set_identity({"id": 604, "name": "Stood", "cls": "mage", "lvl": 3, "v": 2})
+	stood.set_process(false)
+	Remote.clock_override = 70.0
+	stood.place(Vector2.ZERO, 1000)
+	Remote.clock_override = 70.05
+	stood.push_step(Vector2(10, 0), "walkdown", [], "", 61000)
+	Remote.clock_override = 70.2
+	stood._process(1.0 / 60.0)
+	check("a join a minute old does not hold their picture a minute behind: the next step sets it right",
+		is_equal_approx(stood.position.x, 5.0), stood.position)
+
+	# A game from before 0.19.0 sends no clock: its steps are timed by arrival.
+	var old_game: Node2D = Remote.new()
+	old_game.user_id = 602
+	holder.add_child(old_game)
+	old_game.set_identity({"id": 602, "name": "Old", "cls": "mage", "lvl": 3, "v": 2})
+	old_game.set_process(false)
+	Remote.clock_override = 60.0
+	old_game.place(Vector2.ZERO)
+	for k in [1, 2, 3]:
+		Remote.clock_override = 60.0 + 0.1 * k
+		old_game.push_step(Vector2(10.0 * k, 0.0), "walkdown", [], "")
+	Remote.clock_override = 60.35
+	old_game._process(1.0 / 60.0)
+	check("a game that sends no clock is played back by when its steps arrived",
+		is_equal_approx(old_game.position.x, 15.0), old_game.position)
+	Remote.clock_override = 60.4
+	old_game.push_step(Vector2(1.0, 0.0), "walkdown", [], "", -1)
+	old_game.push_step(Vector2(2.0, 0.0), "walkdown", [], "", -1)
+	check("  and a step no newer than the last is not played twice", old_game.target() == Vector2(1, 0),
+		old_game.target())
+	Remote.clock_override = -1.0
+	holder.free()
+	print("  playback: even steps, the delay, a stop, a start, a restart, a game with no clock")
+
+
+# OTHER PLAYERS' ATTACKS (0.19.0). The owner: "i could not see their attacks
+# but they could see mine". The attacker's game sends a picture of each one and
+# this game spawns it from the class's own scene, with `cosmetic` set
+# (remoteattacks.gd): drawn exactly as theirs, touching nothing.
+func _test_other_players_attacks_are_pictures() -> void:
+	section("OTHER PLAYERS' ATTACKS - drawn from the class's own scenes, touching nothing")
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var warrior_consts: Dictionary = (load("res://src/characters/warrior.gd") as GDScript).get_script_constant_map()
+	var mage_consts: Dictionary = (load("res://src/characters/mage.gd") as GDScript).get_script_constant_map()
+	var tank_consts: Dictionary = (load("res://src/characters/tank.gd") as GDScript).get_script_constant_map()
+	var healer_orb: PackedScene = RemoteAttacks.class_setting("healer", "projectile_scene") as PackedScene
+	var healer_real: Node = (load("res://scene/characters/healer.tscn") as PackedScene).instantiate()
+	var mage_real: Node = (load("res://scene/characters/mage.tscn") as PackedScene).instantiate()
+	check("the pictures are the very scenes the classes spawn",
+		(warrior_consts["SLASHWAVE_SCENE"] as PackedScene).resource_path == RemoteAttacks.SLASHWAVE_PATH
+		and (warrior_consts["SPINNING_AXE_SCENE"] as PackedScene).resource_path == RemoteAttacks.SPINNING_AXE_PATH
+		and (mage_consts["METEOR_SCENE"] as PackedScene).resource_path == RemoteAttacks.METEOR_PATH
+		and (tank_consts["DYNAMITE_SCENE"] as PackedScene).resource_path == RemoteAttacks.DYNAMITE_PATH
+		and healer_orb == healer_real.get("projectile_scene")
+		and RemoteAttacks.class_setting("mage", "target_circle_scene") == mage_real.get("target_circle_scene"))
+	check("  and a healer's orb flies at the healer's speed, in the healer's colour",
+		is_equal_approx(float(RemoteAttacks.class_setting("healer", "projectile_speed")), float(healer_real.get("projectile_speed")))
+		and RemoteAttacks.class_setting("healer", "projectile_tint") == healer_real.get("projectile_tint"))
+	healer_real.free()
+	mage_real.free()
+	var fire_body := _func_body(_code_src("res://src/characters/remoteattacks.gd"), "static func fire(")
+	var handled: Array = []
+	for kind in RemoteAttacks.KINDS:
+		if fire_body.contains("\"%s\":" % kind):
+			handled.append(kind)
+	check("every kind on the wire is drawn", handled == RemoteAttacks.KINDS, handled)
+
+	var arena := Node2D.new()
+	add_child(arena)
+	var o := Vector2(-73000, -73000)
+	var foe_at := func(offset: Vector2) -> BaseEnemy:
+		var e: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+		e.position = o + offset
+		arena.add_child(e)
+		e.set_physics_process(false)
+		return e
+	var close: BaseEnemy = foe_at.call(Vector2(4, 0))
+	var near: BaseEnemy = foe_at.call(Vector2(-70, 0))
+	var them: Node2D = Remote.new()
+	them.user_id = 611
+	arena.add_child(them)
+	them.set_identity({"id": 611, "name": "Student", "cls": "warrior", "lvl": 22, "v": 2})
+	them.set_process(false)
+	them.place(o + Vector2(0, 30))
+	var scene_root: Node = get_tree().current_scene
+	var before: Array = scene_root.get_children()
+	for i in 3:
+		await get_tree().physics_frame
+	var close_hp: int = close.hp
+	var near_at: Vector2 = near.global_position
+	var ends_with := func(script_type: Variant) -> Array:
+		var found: Array = []
+		for child in scene_root.get_children():
+			if not before.has(child) and is_instance_of(child, script_type):
+				found.append(child)
+		return found
+
+	# ---- a meteor that pulls ----
+	var made: Array = RemoteAttacks.fire(them, ["meteor", 0, o.x, o.y + 30.0, o.x, o.y, 0, RemoteAttacks.FLAG_PULL])
+	var met: Meteor = made[0] if not made.is_empty() else null
+	check("a meteor is dropped where they aimed it, pulling as theirs did, and a picture",
+		met != null and met.cosmetic and met.pulls and met.global_position == o, made)
+	if met != null:
+		met.set_physics_process(false)
+		for i in 3:
+			await get_tree().physics_frame
+		var guard: int = 0
+		while not met.landed and guard < 200:
+			met.advance(1.0 / 60.0)
+			guard += 1
+		await get_tree().physics_frame
+	var craters: Array = ends_with.call(BurningCrater)
+	var blasts: Array = ends_with.call(Blast)
+	for crater in craters:
+		(crater as BurningCrater).advance(BurningCrater.BURN_SECONDS)
+	check("  it falls and lands, and hurts nothing it lands on, nor its crater after",
+		met != null and met.landed and close.hp == close_hp and met.hit_count() == 0
+		and not craters.is_empty() and (craters[0] as BurningCrater).cosmetic
+		and (craters[0] as BurningCrater).burns_dealt == 0, [close.hp, close_hp, craters.size()])
+	check("  pulls nothing - the monsters are the leader's", near.global_position == near_at
+		and met != null and met.pulled_count() == 0, near.global_position - near_at)
+	check("  and shakes nobody's camera", not blasts.is_empty() and not (blasts[0] as Blast).shakes, blasts.size())
+
+	# ---- a stick of dynamite, beside a real one of yours ----
+	var mine: Dynamite = (load(RemoteAttacks.DYNAMITE_PATH) as PackedScene).instantiate()
+	arena.add_child(mine)
+	mine.throw_from(o + Vector2(8, 0), o + Vector2(8, 0))
+	mine.set_physics_process(false)
+	mine.advance(Dynamite.FLIGHT_SECONDS + 0.01)
+	made = RemoteAttacks.fire(them, ["dyn", 0, o.x, o.y + 30.0, o.x, o.y, 0, 0])
+	var stick: Dynamite = made[0] if not made.is_empty() else null
+	check("a stick is thrown from them to where they threw it, a picture",
+		stick != null and stick.cosmetic and stick.landing_spot() == o, made)
+	if stick != null:
+		stick.set_physics_process(false)
+		for i in 3:
+			await get_tree().physics_frame
+		stick.advance(Dynamite.FLIGHT_SECONDS + 0.01)
+		stick.advance(Dynamite.FUSE_SECONDS + 0.05)
+	check("  it goes off and hurts nothing", stick != null and stick.exploded and stick.hits_dealt == 0
+		and close.hp == close_hp, [close.hp, close_hp])
+	check("  and does not light a fuse of yours beside it", mine.state == Dynamite.State.FUSE and not mine.chained)
+	mine.queue_free()
+
+	# ---- the Double Axe, wide and bloody, out and home ----
+	made = RemoteAttacks.fire(them, ["axe", 0, o.x, o.y + 30.0, o.x + 60.0, o.y + 30.0, 0,
+		RemoteAttacks.FLAG_WIDE | RemoteAttacks.FLAG_BLOODY])
+	var axe: SpinningAxe = made[0] if not made.is_empty() else null
+	check("an axe flies from them, as they rolled it, and is theirs to call home",
+		axe != null and axe.cosmetic and axe.wide and axe.bloody and axe.caster == them and them.get("axe") == axe
+		and not axe.wounds, made)
+	var on_path: BaseEnemy = foe_at.call(Vector2(30, 30))
+	for i in 3:
+		await get_tree().physics_frame
+	var path_hp: int = on_path.hp
+	if axe != null:
+		axe.set_physics_process(false)
+		for i in 90:
+			axe.advance(1.0 / 30.0)
+		await get_tree().physics_frame
+		for i in 30:
+			axe.advance(1.0 / 30.0)
+	check("  it cuts nothing it passes or spins over, and opens no wound",
+		axe != null and axe.hits_dealt == 0 and on_path.hp == path_hp and not on_path.has_meta(Bleed.META),
+		[on_path.hp, path_hp])
+	RemoteAttacks.fire(them, ["recall", 0, o.x, o.y + 30.0, o.x, o.y + 30.0, 0, 0])
+	var home: bool = false
+	for i in 120:
+		if axe == null or not is_instance_valid(axe) or axe.is_queued_for_deletion():
+			home = true
+			break
+		axe.advance(1.0 / 30.0)
+	check("  called home, it flies back to them and is gone", home and them.get("axe") == null)
+
+	# ---- the stalagmite, a slash wave and an orb ----
+	made = RemoteAttacks.fire(them, ["stalag", 0, o.x, o.y + 30.0, o.x + 4.0, o.y, 0, 0])
+	var spell: Node2D = made[0] if not made.is_empty() else null
+	for i in 3:
+		await get_tree().physics_frame
+	if spell != null:
+		spell.call("_apply_area_damage")
+	check("a stalagmite comes down where they aimed it, and its impact hurts nothing",
+		spell != null and spell.get("cosmetic") == true and spell.global_position == o + Vector2(4, 0)
+		and close.hp == close_hp, [close.hp, close_hp])
+	made = RemoteAttacks.fire(them, ["slash", 0, o.x, o.y + 30.0, o.x + 100.0, o.y + 30.0, 0, 0])
+	var wave: SlashWave = made[0] if not made.is_empty() else null
+	if wave != null:
+		wave._try_hit(close)
+	check("a slash wave flies the way they swung, and passes through a monster without a hit",
+		wave != null and wave.cosmetic and wave.direction == Vector2.RIGHT and close.hp == close_hp,
+		[str(wave.direction) if wave != null else "no wave", close.hp])
+	made = RemoteAttacks.fire(them, ["orb", 0, o.x, o.y + 30.0, o.x, o.y + 130.0, 0, 0])
+	var orb: Node2D = made[0] if not made.is_empty() else null
+	if orb != null:
+		orb.call("_hit", close)
+	check("a healer's orb leaves them the way they fired, and goes out on a monster without a hit",
+		orb != null and orb.get("cosmetic") == true and orb.get("direction") == Vector2.DOWN
+		and is_equal_approx(float(orb.get("speed")), float(RemoteAttacks.class_setting("healer", "projectile_speed")))
+		and orb.is_queued_for_deletion() and close.hp == close_hp, [close.hp, close_hp])
+
+	# ---- when: as the playback reaches the moment they made it ----
+	Remote.clock_override = 20.0
+	them.place(o + Vector2(0, 30), 1000)
+	Remote.clock_override = 20.6
+	them.hear_attacks([["stalag", 1500, o.x, o.y + 30.0, o.x + 40.0, o.y, 0, 0],
+		["laser", 1500, 0.0, 0.0, 0.0, 0.0, 0, 0], ["meteor", 1500]])
+	them._process(1.0 / 60.0)
+	check("an attack waits until the playback of them reaches the moment they made it",
+		them.attacks_waiting() == 1, them.attacks_waiting())
+	var circle_script: Script = load("res://src/projectiles/spelltargetcircle.gd")
+	var spells_before: int = ends_with.call(circle_script).size()
+	Remote.clock_override = 20.0 + 0.5 + Remote.PLAYBACK_DELAY + 0.001
+	them._process(1.0 / 60.0)
+	var spells_after: int = ends_with.call(circle_script).size()
+	check("  and then it is drawn - one, the kind nobody knows and the broken one never",
+		them.attacks_waiting() == 0 and spells_after == spells_before + 1, [them.attacks_waiting(), spells_before, spells_after])
+	Presence._remotes[611] = them
+	Presence.handle_message({"t": "x", "id": 611, "e": [["meteor", 1600, o.x, o.y, o.x, o.y, 0, 0]]})
+	Presence.handle_message({"t": "x", "id": 612, "e": [["meteor", 1600, o.x, o.y, o.x, o.y, 0, 0]]})
+	check("the presence link hands each attack to the picture of whoever made it, and nobody else's",
+		them.attacks_waiting() == 1, them.attacks_waiting())
+	Presence._remotes.erase(611)
+	Remote.clock_override = -1.0
+	for child in scene_root.get_children():
+		if not before.has(child):
+			child.queue_free()
+	arena.queue_free()
+	await get_tree().process_frame
+	print("  pictures: the scenes, meteor, stick, axe, stalagmite, slash, orb, when, routing")
+
+
+# AND THIS GAME'S OWN (0.19.0): what it tells the presence server.
+func _test_presence_sends_attacks() -> void:
+	section("PRESENCE - this game's attacks and levers go out, with its clock on every step")
+	Presence.set_process(false)
+	Presence.stop()
+	var sent: Array = []
+	Presence.send_override = func(message: Dictionary) -> void:
+		sent.append(message)
+	var cleanup := func() -> void:
+		Presence.send_override = Callable()
+		Presence.clock_override_ms = -1
+		Presence.stop()
+		Presence._server_relays = false
+		Presence._last_state = {}
+		Presence.set_process(true)
+	Presence._phase = "open"
+	Presence.handle_message({"t": "welcome", "id": 7, "v": 2, "books": true})
+	Presence.tell_attack("meteor", Vector2(1, 2), Vector2(3, 4))
+	check("a server that does not pass attacks on is sent none", not Presence.relays()
+		and Presence.attacks_queued().is_empty())
+	Presence.handle_message({"t": "welcome", "id": 7, "v": 2, "books": true, "x": 1})
+	Presence.clock_override_ms = 81234
+	Presence.tell_attack("meteor", Vector2(100.04, 200.0), Vector2(140.26, 210.0), 0.25, RemoteAttacks.FLAG_PULL)
+	check("one that does is: kind, this game's clock, where from and to (to a tenth), the delay in ms, the rolls",
+		Presence.relays() and Presence.attacks_queued() == [["meteor", 81234, 100.0, 200.0, 140.3, 210.0, 250, 1]],
+		Presence.attacks_queued())
+	for i in 30:
+		Presence.tell_attack("orb", Vector2.ZERO, Vector2.RIGHT)
+	check("  no more between two sends than the server takes in one message",
+		Presence.attacks_queued().size() == Presence.MAX_ATTACKS_PER_SEND, Presence.attacks_queued().size())
+
+	var stand_script := GDScript.new()
+	stand_script.source_code = "extends Node2D\nvar active_pet_id: String = \"\"\n"
+	stand_script.reload()
+	var stand: Node2D = stand_script.new()
+	add_child(stand)
+	stand.global_position = Vector2(100, 200)
+	Presence._last_state = {}
+	Presence._sync_pending = false
+	Presence.send_tick(stand)
+	check("a beat sends the state with this game's clock on it, then the attacks since the last beat",
+		sent.size() == 2 and sent[0].get("t") == "s" and sent[0].get("ts") == 81234
+		and sent[1].get("t") == "x" and (sent[1].get("e") as Array).size() == Presence.MAX_ATTACKS_PER_SEND
+		and Presence.attacks_queued().is_empty(), sent.map(func(m: Dictionary) -> String: return str(m.get("t"))))
+	sent.clear()
+	Presence.clock_override_ms = 81334
+	Presence.send_tick(stand)
+	check("  standing still sends nothing, clock or no clock", sent.is_empty(), sent)
+	stand.global_position = Vector2(110, 200)
+	Presence.send_tick(stand)
+	check("  a step sends one, with the new clock", sent.size() == 1 and sent[0].get("ts") == 81334
+		and is_equal_approx(float(sent[0].get("x")), 110.0), sent)
+	Presence.tell_attack("dyn", Vector2.ZERO, Vector2.ONE)
+	var other_world := Node2D.new()
+	add_child(other_world)
+	Presence.world_override = other_world
+	Presence._follow_world(stand)
+	check("attacks made in a world just left are not sent into the next", Presence.attacks_queued().is_empty())
+	Presence.world_override = null
+	Presence._world = null
+	other_world.queue_free()
+	stand.queue_free()
+
+	# ---- the class scripts say what they made ----
+	var said := func(path: String, header: String, kind: String) -> bool:
+		return _func_body(_code_src(path), header).contains("Presence.tell_attack(\"%s\"" % kind)
+	check("the warrior's thrown axe and slash wave, the mage's stalagmite and meteor, the tank's sticks and the healer's orbs are told",
+		said.call("res://src/characters/warrior.gd", "func throw_axe(", "axe")
+		and said.call("res://src/characters/warrior.gd", "func _spawn_slashwave(", "slash")
+		and said.call("res://src/characters/mage.gd", "func _spawn_stalagmite(", "stalag")
+		and said.call("res://src/characters/mage.gd", "func _drop_meteor(", "meteor")
+		and said.call("res://src/characters/tank.gd", "func _throw_stick(", "dyn")
+		and said.call("res://src/characters/healer.gd", "func _spawn_projectile(", "orb"))
+	var recall_body := _func_body(_code_src("res://src/projectiles/spinningaxe.gd"), "func recall(")
+	check("  and an axe called home for any reason - but never a picture telling it back",
+		recall_body.contains("Presence.tell_attack(\"recall\"") and recall_body.contains("not cosmetic"))
+	cleanup.call()
+	print("  sending: only to a server that takes them, the shape, the cap, the beat, the clock, a new world, the classes")
+
+
+# LEVERS (0.19.0). The owner: "the had to lower the gate to boss" - a gate one
+# player opened stayed shut on the other's screen.
+func _test_levers_are_shared() -> void:
+	section("LEVERS - one pull opens the gate on every screen in the area")
+	var holder := Node2D.new()
+	holder.name = "levertest"
+	add_child(holder)
+	var door_script := GDScript.new()
+	door_script.source_code = "extends Node2D\nvar raised: bool = true\nfunc set_raised(up: bool) -> void:\n\traised = up\n"
+	door_script.reload()
+	var door: Node2D = door_script.new()
+	door.name = "gate"
+	holder.add_child(door)
+	var lever_scene: PackedScene = load("res://scene/interactables/lever.tscn") as PackedScene
+	var to_gate: Array[NodePath] = [NodePath("../gate")]
+	var outside: Area2D = lever_scene.instantiate()
+	outside.name = "leverout"
+	outside.set("targets", to_gate)
+	holder.add_child(outside)
+	var inside: Area2D = lever_scene.instantiate()
+	inside.name = "leverin"
+	inside.set("targets", to_gate.duplicate())
+	holder.add_child(inside)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var out_name: String = Presence.lever_name(outside)
+	var in_name: String = Presence.lever_name(inside)
+	check("a lever is named by its path in the scene - the same in every game that loaded it",
+		out_name == String(get_tree().current_scene.get_path_to(outside)) and out_name.ends_with("levertest/leverout")
+		and in_name.ends_with("levertest/leverin"), [out_name, in_name])
+	var field_text: String = FileAccess.get_file_as_string("res://scene/field.tscn")
+	var rule := RegEx.create_from_string(Presence.LEVER_PATTERN)
+	var field_levers: Array = []
+	for found in RegEx.create_from_string("\\[node name=\"(lever[^\"]*)\" parent=\"([^\"]+)\"").search_all(field_text):
+		field_levers.append("%s/%s" % [found.get_string(2), found.get_string(1)])
+	var all_taken: bool = not field_levers.is_empty()
+	for path in field_levers:
+		all_taken = all_taken and rule.search(path) != null
+	check("  and the Field's two boss-gate levers have names the server takes", all_taken and field_levers.size() == 2,
+		field_levers)
+	var odd: Area2D = lever_scene.instantiate()
+	odd.name = "lever two"
+	holder.add_child(odd)
+	check("  a lever whose path the server would refuse is not named at all", Presence.lever_name(odd) == "")
+	odd.free()
+
+	Presence.set_process(false)
+	Presence.stop()
+	var sent: Array = []
+	Presence.send_override = func(message: Dictionary) -> void:
+		sent.append(message)
+	Presence._phase = "open"
+	Presence.handle_message({"t": "welcome", "id": 7, "v": 2, "books": true, "x": 1})
+	Presence.tell_lever(outside, true)
+	check("pulled here, it is told to the server by name", sent == [{"t": "l", "n": out_name, "on": true}], sent)
+	sent.clear()
+	Presence.handle_message({"t": "l", "id": 40, "n": out_name, "on": true})
+	check("pulled by somebody else, it is pulled here: the gate goes down",
+		outside.call("is_on") == true and door.get("raised") == false, [outside.call("is_on"), door.get("raised")])
+	check("  the lever on the other side of the gate follows, as it does on their screen", inside.call("is_on") == true)
+	check("  and nothing is told back: they already know", sent.is_empty(), sent)
+	Presence.handle_message({"t": "l", "id": 7, "n": out_name, "on": false})
+	Presence.handle_message({"t": "l", "id": 40, "n": "levertest/nothere", "on": false})
+	Presence.handle_message({"t": "l", "id": 40, "n": out_name, "on": "no"})
+	check("our own pull, a lever not in this scene, or an answer that is not yes or no changes nothing",
+		outside.call("is_on") == true and door.get("raised") == false)
+	Presence.handle_message({"t": "levers", "p": [[in_name, false], [out_name, true]]})
+	check("walking in, the levers pulled before are pulled in the order they were - the gate ends where the last left it",
+		door.get("raised") == false and outside.call("is_on") == true and inside.call("is_on") == true,
+		[door.get("raised"), outside.call("is_on"), inside.call("is_on")])
+	Presence.handle_message({"t": "levers", "p": [[out_name, false]]})
+	check("  and a gate somebody shut again is shut", door.get("raised") == true and inside.call("is_on") == false)
+	var interact_body := _func_body(_code_src("res://src/world/lever.gd"), "func _process(")
+	check("a pull at the lever itself is the one that is told", interact_body.contains("Presence.tell_lever(self, _is_on)"))
+	Presence.send_override = Callable()
+	Presence.stop()
+	Presence._server_relays = false
+	Presence.set_process(true)
+	holder.queue_free()
+	await get_tree().process_frame
+	print("  levers: the name, telling, following, partners, the order, the wiring")
 
 
 func _test_founding_a_guild_shows_what_it_cost() -> void:
@@ -20479,6 +21037,137 @@ func _test_chat_is_one_line_per_message() -> void:
 		picture.free()
 	chat.free()
 	print("  chat lines: newlines, fake server lines, invisible characters, emoji, spaces, the drawn line, captions")
+
+
+func _test_chat_walk_and_talk() -> void:
+	section("CHAT - Enter to talk, Enter to walk, and see-through while you do")
+
+	# ---- the HUD's Enter ----
+	var HUD: Script = load("res://src/ui/characterhud.gd") as Script
+	var key := func(code: Key, down: bool = true, echo: bool = false) -> InputEventKey:
+		var k := InputEventKey.new()
+		k.keycode = code
+		k.physical_keycode = code
+		k.pressed = down
+		k.echo = echo
+		return k
+	var layer := CanvasLayer.new()
+	var box := LineEdit.new()
+	var button := Button.new()
+	layer.add_child(box)
+	layer.add_child(button)
+	add_child(layer)
+	check("Enter, and the keypad's Enter, open chat from the game",
+		HUD.is_chat_key(key.call(KEY_ENTER), null) and HUD.is_chat_key(key.call(KEY_KP_ENTER), null))
+	check("  and from a button a click left holding the focus", HUD.is_chat_key(key.call(KEY_ENTER), button))
+	check("  but not from a text box: there Enter is the box's own",
+		not HUD.is_chat_key(key.call(KEY_ENTER), box))
+	box.editable = false
+	check("  (one that cannot be typed in does not count)", HUD.is_chat_key(key.call(KEY_ENTER), box))
+	check("  and only the press: not its release, not a held key repeating, not another key",
+		not HUD.is_chat_key(key.call(KEY_ENTER, false), null)
+		and not HUD.is_chat_key(key.call(KEY_ENTER, true, true), null)
+		and not HUD.is_chat_key(key.call(KEY_T), null))
+	layer.queue_free()
+
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	var input_body := _func_body(hud_src, "func _input(")
+	check("the HUD reads Enter in _input, first, before the GUI",
+		input_body.get_slice("\n", 1).strip_edges() == "if _chat_key(event):", input_body.left(80))
+	var chat_key_body := _func_body(hud_src, "func _chat_key(")
+	check("  opens chat to type, and takes the press",
+		chat_key_body.contains("open_chat_to_type()") and chat_key_body.contains("set_input_as_handled()"))
+	var to_type := _func_body(hud_src, "func open_chat_to_type(")
+	check("  a shut chat is opened (which puts the keyboard in the box); an open one is typed in",
+		to_type.contains("toggle_chat()") and to_type.contains("focus_entry()"))
+
+	# ---- the window ----
+	var packed: PackedScene = load("res://scene/ui/chat/chatpanel.tscn") as PackedScene
+	if packed == null or not packed.can_instantiate():
+		check("chatpanel.tscn loads", false)
+		return
+	var chat: Control = packed.instantiate() as Control
+	add_child(chat)
+	var poll_timer: Timer = chat.get_node_or_null("ChatPoll") as Timer
+	if poll_timer != null:
+		poll_timer.stop()
+	await get_tree().process_frame
+	var viewport: Viewport = get_viewport()
+	var frame: Control = chat.window_frame
+	var header: CanvasItem = chat.get_node("frame/margin/rows/headerpanel")
+	var entry_row: CanvasItem = chat.get_node("frame/margin/rows/entryrow")
+	var entry: LineEdit = chat.entry
+	var chrome := func() -> Array:
+		return [header.modulate.a, chat.tabs_box.modulate.a, entry_row.modulate.a]
+	var see_through := func() -> bool:
+		return is_equal_approx(frame.self_modulate.a, chat.IDLE_FRAME_ALPHA) \
+			and is_equal_approx(chat.scroll.self_modulate.a, chat.IDLE_LOG_ALPHA) \
+			and chrome.call() == [chat.IDLE_CHROME_ALPHA, chat.IDLE_CHROME_ALPHA, chat.IDLE_CHROME_ALPHA] \
+			and is_equal_approx(chat.lines_box.modulate.a, 1.0) \
+			and is_equal_approx(chat.lines_box.self_modulate.a, 1.0)
+	var solid := func() -> bool:
+		return is_equal_approx(frame.self_modulate.a, 1.0) \
+			and is_equal_approx(chat.scroll.self_modulate.a, 1.0) and chrome.call() == [1.0, 1.0, 1.0]
+
+	chat.focus_entry()
+	await get_tree().process_frame
+	check("Enter with chat shut opens it with the keyboard in the box",
+		chat.visible and viewport.gui_get_focus_owner() == entry and chat.is_typing())
+	check("  and drawn whole while typing", solid.call(), [frame.self_modulate.a, chat.scroll.self_modulate.a, chrome.call()])
+
+	entry.text = ""
+	viewport.push_input(key.call(KEY_ENTER))
+	viewport.push_input(key.call(KEY_ENTER, false))
+	await get_tree().process_frame
+	check("Enter on an empty box hands the keyboard back to the game",
+		chat.visible and viewport.gui_get_focus_owner() == null and not chat.is_typing())
+	check("  and the window stays up, see-through: no frame, title, tabs or box; the lines on their backing",
+		see_through.call(), [frame.self_modulate.a, chat.scroll.self_modulate.a, chrome.call()])
+
+	chat.focus_entry()
+	await get_tree().process_frame
+	check("Enter with chat up puts the keyboard back in the box, and wakes it",
+		viewport.gui_get_focus_owner() == entry and solid.call())
+	chat.hand_back_keyboard()
+	chat.whisper_to.grab_focus()
+	await get_tree().process_frame
+	check("the whisper name box counts as typing too", chat.is_typing() and solid.call())
+	chat.hand_back_keyboard()
+	check("  and is handed back the same way", viewport.gui_get_focus_owner() == null and see_through.call())
+
+	# THE REAL PATH: motion pushed into the viewport, read by the window's
+	# _input, at points in the viewport's coordinates. (Pushed as local: a
+	# window's own coordinates would be stretched to the viewport's first, and
+	# a headless run's window is a postage stamp.)
+	var on_screen: Transform2D = frame.get_global_transform_with_canvas()
+	var move_to := func(point: Vector2) -> void:
+		var motion := InputEventMouseMotion.new()
+		motion.position = point
+		motion.global_position = point
+		viewport.push_input(motion, true)
+	move_to.call(on_screen * (frame.size * 0.5))
+	check("the mouse over the window wakes it", chat.is_awake() and solid.call())
+	move_to.call(on_screen * (frame.size + Vector2(40, 40)))
+	check("  and it goes see-through again when the mouse leaves", not chat.is_awake() and see_through.call())
+	move_to.call(on_screen * (frame.size * 0.5))
+	chat.close()
+	chat.focus_entry()
+	chat.hand_back_keyboard()
+	check("a window shut with the mouse on it does not open awake", see_through.call())
+	chat.close()
+	chat.queue_free()
+
+	var chat_src: String = _code_src("res://src/ui/chat/chatpanel.gd")
+	var sent := _func_body(chat_src, "func _send(")
+	check("a line sent hands the keyboard back - it no longer grabs it again",
+		sent.contains("hand_back_keyboard()") and not sent.contains("entry.grab_focus()"))
+	var submitted := _func_body(chat_src, "func _on_entry_submitted(")
+	check("  an empty Enter is a send when a picture is waiting (the empty line is its caption)",
+		submitted.contains("_pending.is_empty()"))
+	var reads := _func_body(chat_src, "func _input(")
+	check("  and the mouse is read from motion, not every frame",
+		reads.contains("InputEventMouseMotion") and reads.contains("mouse_at("))
+	print("  walk and talk: Enter in and out, the see-through look, the whisper box, the mouse")
 
 
 func _test_chat_keeps_your_place() -> void:

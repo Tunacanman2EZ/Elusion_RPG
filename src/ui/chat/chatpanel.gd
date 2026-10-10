@@ -34,6 +34,28 @@ const ApiScript := preload("res://src/systems/api.gd")
 # because a restart notice can afford to be late and a reply cannot.
 const POLL_SECONDS := 3.0
 
+# WALK AND TALK (0.18.3). The owner, after his first game with somebody else:
+# "i cant see chat while i walk stopping to chat is a hassle i was thinking
+# enter would open chat and we could keep it a transparent box on hudscreen".
+# Two things stood in the way. Opening chat put the keyboard in the box and it
+# never gave it back - a send grabbed the focus again - so walking meant
+# clicking away first; and a window that big, solid, in the corner of the
+# world, is a window you close. Now:
+#
+#   Enter         opens chat if it is shut, and puts the keyboard in the box
+#                 (characterhud.gd, _chat_key())
+#   Enter again   sends the line and hands the keyboard back to the game; on an
+#                 empty box it just hands it back
+#   chat open     stays up while you walk, and is see-through: the frame, the
+#                 title, the tabs and the box disappear, and the lines stay on
+#                 a dark backing - the look of the HUD's floating notice box,
+#                 which the owner pointed at ("maybe we could see chat here or
+#                 something like this"). The whole window comes back the
+#                 moment you type in it or put the mouse over it.
+const IDLE_FRAME_ALPHA := 0.0
+const IDLE_CHROME_ALPHA := 0.0
+const IDLE_LOG_ALPHA := 0.8
+
 # Matches MAX_CHAT_LENGTH in app.py. Enforced here as well as there so an
 # over-long line is stopped at the keyboard rather than silently cut by the
 # server after it has been sent.
@@ -216,6 +238,9 @@ var _world_wait_read_at: float = 0.0
 @onready var attach_name: Label = get_node_or_null("%attachname")
 @onready var attach_size: Label = get_node_or_null("%attachsize")
 @onready var attach_remove: Button = get_node_or_null("%attachremove")
+@onready var window_frame: PanelContainer = get_node_or_null("frame")
+# Whether the mouse is over the window - WALK AND TALK's other way of waking it.
+var _hovered: bool = false
 
 
 # Drag by the header, resize from any edge, and come back where it was left.
@@ -278,6 +303,12 @@ func _ready() -> void:
 	add_child(timer)
 
 	set_process(false)
+	# WALK AND TALK: either box taking or losing the keyboard changes the look.
+	for box in [entry, whisper_to]:
+		if box != null:
+			box.focus_entered.connect(_refresh_look)
+			box.focus_exited.connect(_refresh_look)
+	_refresh_look()
 
 
 # =============================================================================
@@ -325,10 +356,72 @@ func close() -> void:
 	set_process(false)
 	if entry != null:
 		entry.release_focus()
+	# Shut, the mouse is over nothing; it is read again on the next move.
+	_hovered = false
+	_refresh_look()
 
 
 func is_open() -> bool:
 	return visible
+
+
+# =============================================================================
+# WALK AND TALK (0.18.3) - see the note at the top
+# =============================================================================
+
+func focus_entry() -> void:
+	"""Enter, from the HUD: the keyboard goes into the box, the window opening
+	first if it was shut (open() focuses it)."""
+	if not visible:
+		open()
+	elif entry != null:
+		entry.grab_focus()
+
+
+func is_typing() -> bool:
+	"""Whether one of the window's boxes has the keyboard - the message box,
+	or the name box a whisper is aimed with."""
+	if not is_inside_tree():
+		return false
+	var focused: Control = get_viewport().gui_get_focus_owner()
+	return focused is LineEdit and is_ancestor_of(focused)
+
+
+func hand_back_keyboard() -> void:
+	"""Out of the box and back to the game: walking and attacking work again,
+	and the window fades to its see-through look."""
+	if is_typing():
+		get_viewport().gui_get_focus_owner().release_focus()
+	_refresh_look()
+
+
+func is_awake() -> bool:
+	"""Whether the window is drawn solid: while typing, or with the mouse over
+	it. Otherwise it is the see-through HUD box."""
+	return is_typing() or _hovered
+
+
+func mouse_at(point: Vector2) -> void:
+	"""The mouse has moved to `point`, in the viewport's coordinates - where
+	_input's events are - which are taken into the frame's own."""
+	var over: bool = window_frame != null and Rect2(Vector2.ZERO, window_frame.size).has_point(
+			window_frame.get_global_transform_with_canvas().affine_inverse() * point)
+	if over != _hovered:
+		_hovered = over
+		_refresh_look()
+
+
+func _refresh_look() -> void:
+	var awake: bool = is_awake()
+	if window_frame != null:
+		window_frame.self_modulate.a = 1.0 if awake else IDLE_FRAME_ALPHA
+	if scroll != null:
+		# self_modulate: the log's backing fades, the lines in it do not.
+		scroll.self_modulate.a = 1.0 if awake else IDLE_LOG_ALPHA
+	for part in [get_node_or_null("frame/margin/rows/headerpanel"), tabs_box,
+			get_node_or_null("frame/margin/rows/entryrow")]:
+		if part != null:
+			(part as CanvasItem).modulate.a = 1.0 if awake else IDLE_CHROME_ALPHA
 
 
 # =============================================================================
@@ -1914,6 +2007,11 @@ func _on_setting_changed(key: String, _value: Variant) -> void:
 
 
 func _on_entry_submitted(_text: String) -> void:
+	# ENTER ON AN EMPTY BOX IS "BACK TO THE GAME" (WALK AND TALK), unless a
+	# picture is waiting - then the empty line is its caption.
+	if entry != null and entry.text.strip_edges() == "" and _pending.is_empty():
+		hand_back_keyboard()
+		return
 	_on_send_pressed()
 
 
@@ -2003,6 +2101,12 @@ func _on_send_pressed() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not visible:
+		return
+
+	# THE MOUSE OVER THE WINDOW WAKES IT (WALK AND TALK) - read from motion
+	# that is happening anyway, rather than polled every frame.
+	if event is InputEventMouseMotion:
+		mouse_at((event as InputEventMouseMotion).position)
 		return
 
 	var key := event as InputEventKey
@@ -2596,8 +2700,10 @@ func _send(channel: String, text: String, image_id: String) -> void:
 		# those would show a message that looks subtly unlike everyone else's.
 		_stick_to_bottom = true
 		_poll()
-		if entry != null:
-			entry.grab_focus()
+		# BACK TO THE GAME (WALK AND TALK). This used to grab the focus again,
+		# and the box kept the keyboard until it was clicked away from: you
+		# could not take a step after saying something. Enter opens it again.
+		hand_back_keyboard()
 		return
 
 	# PUT IT BACK. The message was never said, and losing what somebody typed

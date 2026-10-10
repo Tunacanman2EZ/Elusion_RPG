@@ -761,25 +761,30 @@ JSON text frames. The game sends:
 | Message | When |
 |---|---|
 | `{"t": "hello", "ticket", "v": 3}` | first, within 5 seconds; `v` 2 means this game shares monsters (0.7.0), 3 that as leader it also sends its own hits inside its world (0.10.0) |
-| `{"t": "s", "a", "x", "y", "m", "fx", "pet"}` | where it stands, on a change, at most 10 a second: area id, world position, the body's animation (`idle\|walk\|attack\|death\|hitflash` + a facing), the lit auras (`ring`, `firering`) and the pet out |
+| `{"t": "s", "a", "x", "y", "m", "fx", "pet", "ts"?}` | where it stands, on a change, at most 10 a second: area id, world position, the body's animation (`idle\|walk\|attack\|death\|hitflash` + a facing), the lit auras (`ring`, `firering`) and the pet out; `ts` (0.19.0) is the game's own clock in whole ms, passed on so others play the steps back evenly |
 | `{"t": "renew", "ticket"}` | every minute |
 | `{"t": "sync"}` | after a new scene: tell me who is here again (and, sharing monsters, who leads and send me the monsters) |
 | `{"t": "w", "d": {...}, "to"?}` | the area's LEADER only: its monsters, to everyone else in the area or to one game; anyone else's is dropped. To a server that keeps books, sent even alone, and `d` may carry `"hits": [[monster, damage, element]]`, the leader's own player's (0.10.0) |
 | `{"t": "h", "p": [[monster, damage, element]]}` | a follower's hits, for the leader: whole numbers, damage 1-100000, at most 64 |
+| `{"t": "x", "e": [[kind, ts, ox, oy, tx, ty, delay, flags]]}` | (0.19.0, to a server whose welcome says `x`) the attacks made since the last state, sent after it, at most 16: `kind` one of `slash axe recall stalag meteor dyn orb`, the game's clock, where it starts (within 400 of the last state) and where it is aimed (within 1000 of that), `delay` 0-3000 ms after `ts`, `flags` 1 a pulling meteor, 2 a wide axe, 4 a bloody one. A picture for the others - never a hit |
+| `{"t": "l", "n", "on"}` | (0.19.0) this player pulled a lever: `n` its node path in the area's scene (`[A-Za-z0-9_/-]`, 128 at most), `on` where it was pulled to |
 
 The server sends:
 
 | Message | Meaning |
 |---|---|
-| `{"t": "welcome", "id", "v": 2, "books"}` | in; `id` is your account id; `v` 2 means this server shares monsters; `books` true that it keeps its own count of every monster's health (0.10.0) |
-| `{"t": "join", "p": [{"id", "name", "cls", "lvl", "role", "hue", "guild", "x", "y", "m", "fx", "pet", "v"}]}` | people now in your area (and anyone whose identity changed); `v` says whether their game shares monsters |
-| `{"t": "moves", "p": [[id, x, y, m, fx, pet]]}` | who moved this tick, ten a second; your own id is in it, skip it |
+| `{"t": "welcome", "id", "v": 2, "books", "x"?}` | in; `id` is your account id; `v` 2 means this server shares monsters; `books` true that it keeps its own count of every monster's health (0.10.0); `x` 1 that it passes attacks and levers on (0.19.0) |
+| `{"t": "join", "p": [{"id", "name", "cls", "lvl", "role", "hue", "guild", "x", "y", "m", "fx", "pet", "v", "ts"}]}` | people now in your area (and anyone whose identity changed); `v` says whether their game shares monsters; `ts` their clock at that state, -1 for none |
+| `{"t": "moves", "p": [[id, x, y, m, fx, pet, ts]]}` | who moved this tick, ten a second: every step each game sent in it (4 at most), oldest first; `ts` their clock, -1 for a game that sends none (a server from before 0.19.0 sends six, no `ts`); your own id is in it, skip it |
 | `{"t": "leave", "ids": [...]}` | gone from your area |
 | `{"t": "bye", "why"}` | then the socket closes: `ticket`, `replaced` (signed in elsewhere), `signed out`, `too fast`, `too big` |
 | `{"t": "lead", "a", "id", "n"}` | who runs this area's monsters (`-1`: nobody) and how many other games share them |
 | `{"t": "need", "id"}` | (to the leader) send that game every monster; `id` 0 is the server's books |
 | `{"t": "w", "d"}` | the leader's monsters, as it sent them |
 | `{"t": "h", "from", "p"}` | (to the leader) another game's hits |
+| `{"t": "x", "id", "e"}` | (0.19.0) that player's attacks, checked: drawn as pictures that touch nothing (`src/characters/remoteattacks.gd`), each when the playback of them reaches its `ts` |
+| `{"t": "l", "id", "n", "on"}` | (0.19.0) that player pulled a lever: pull yours the same way |
+| `{"t": "levers", "p": [[n, on]]}` | (0.19.0) arriving or after `sync`: the levers pulled in this area since it was last empty, the latest pulled last |
 
 **Who somebody is comes only from `join`**, written by the API from its own
 rows. A state naming a pet the character does not hold shows no pet; a
