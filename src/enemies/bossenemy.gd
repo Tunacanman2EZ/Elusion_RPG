@@ -2232,6 +2232,13 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 # SUBCLASS OVERRIDES
 # =============================================================================
 
+# A BOSS HOLDS ITS GROUND against a meteor's vortex (meteor.gd, THE PULL): its
+# rings, spikes and swings are placed from where it stands, and a boss a mage
+# could drag about would turn its fight into something nobody designed.
+func can_be_pulled() -> bool:
+	return false
+
+
 func get_move_speed() -> float:
 	# STILL SLOWER THAN THE PLAYER (90), and that ceiling is the real rule: a
 	# boss that can outrun you turns the telegraph into decoration, because you

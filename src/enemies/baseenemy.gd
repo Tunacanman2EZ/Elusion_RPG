@@ -2441,6 +2441,39 @@ func _vec_from_dir(dir: String) -> Vector2:
 
 
 # =============================================================================
+# DRAWN IN (0.17.0)
+# =============================================================================
+# A Meteorite's fire vortex draws monsters in toward where the stone will land
+# (meteor.gd, THE PULL). It moves them through the physics engine, so a wall or
+# another body stops them exactly as it stops them walking; nothing is put
+# anywhere a monster could not have walked to.
+#
+# NOT A MONSTER ANOTHER GAME RUNS. A mirror stands where the leader says, ten
+# times a second; pulling it here would only make it jump back. The leader's
+# own meteors pull, and the leader's world carries the result to everyone.
+
+func can_be_pulled() -> bool:
+	"""Whether a meteor's vortex may draw this monster in. Not a mirror, not
+	one already dying, not one behind a boss gate - and a boss holds its
+	ground (BossEnemy overrides this)."""
+	return not net_mirror and not _dying and not _death_resolved and not gated
+
+
+func pull_toward(point: Vector2, step: float) -> void:
+	"""Moves this monster up to step world pixels toward point, sliding along
+	whatever it meets. Does nothing to one that cannot be pulled."""
+	if step <= 0.0 or not can_be_pulled() or not is_inside_tree():
+		return
+	var to: Vector2 = point - global_position
+	var far: float = to.length()
+	if far < 0.01:
+		return
+	var hit: KinematicCollision2D = move_and_collide(to / far * minf(step, far))
+	if hit != null:
+		move_and_collide(hit.get_remainder().slide(hit.get_normal()))
+
+
+# =============================================================================
 # DAMAGE AND DEATH
 # =============================================================================
 

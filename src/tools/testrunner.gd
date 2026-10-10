@@ -321,6 +321,7 @@ func _run_all() -> void:
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
 	await _test_the_mythic_weapons()
+	await _test_the_meteor_pulls()
 	await _test_the_item_menu()
 	await _test_the_gm_panel_sets_a_level()
 	await _test_the_gm_panel_sets_skills()
@@ -21487,6 +21488,93 @@ func _marks_at(parent: Node, at: Vector2) -> int:
 		if child.is_in_group("blastmarks") and (child as Node2D).global_position.distance_to(at) < 1.0:
 			found += 1
 	return found
+
+
+# THE METEOR'S PULL (0.17.0). The owner: "on the spin up of meteor can we pull
+# enemies closer to the center?", "like before the meteor falls". While the
+# stone comes down, monsters within PULL_RADIUS are drawn toward where it
+# lands, through the physics engine, and stop PULL_STOP from the middle.
+func _test_the_meteor_pulls() -> void:
+	section("THE METEOR'S PULL - the vortex draws a pack in before the stone lands")
+	var arena := Node2D.new()
+	add_child(arena)
+	var o := Vector2(-71000, -71000)
+	var foe_at := func(path: String, offset: Vector2) -> BaseEnemy:
+		var e: BaseEnemy = (load(path) as PackedScene).instantiate()
+		e.position = o + offset
+		arena.add_child(e)
+		e.set_physics_process(false)
+		return e
+	var near: BaseEnemy = foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(70, 0))
+	var close: BaseEnemy = foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(0, 8))
+	var far: BaseEnemy = foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(0, -(Meteor.PULL_RADIUS + 25.0)))
+	var boss: BaseEnemy = foe_at.call("res://scene/enemy/bossenemy.tscn", Vector2(-60, 0))
+	var mirror: BaseEnemy = foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(0, 60))
+	mirror.net_mirror = true
+	var walled: BaseEnemy = foe_at.call("res://scene/enemy/firesprite.tscn", Vector2(50, 70))
+	# A wall between that one and the middle, on the walls layer.
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 2
+	var wall_shape := CollisionShape2D.new()
+	var wall_rect := RectangleShape2D.new()
+	wall_rect.size = Vector2(80, 6)
+	wall_shape.shape = wall_rect
+	wall.add_child(wall_shape)
+	arena.add_child(wall)
+	wall.global_position = o + Vector2(50, 55)
+	for i in 3:
+		await get_tree().physics_frame
+	var near_from: float = near.global_position.distance_to(o)
+	var near_hp: int = near.hp
+	var boss_at: Vector2 = boss.global_position
+	var mirror_at: Vector2 = mirror.global_position
+	var far_at: Vector2 = far.global_position
+	var walled_from: float = walled.global_position.distance_to(o)
+
+	var met: Meteor = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
+	met.explosion_damage = 50
+	met.delay = 0.2
+	arena.add_child(met)
+	met.global_position = o
+	met.set_physics_process(false)
+	for i in 3:
+		await get_tree().physics_frame
+	met.advance(0.15)
+	check("nothing is pulled before the stone starts to fall (a double cast's second waits)",
+		met.pulled_count() == 0 and is_equal_approx(near.global_position.distance_to(o), near_from))
+	met.advance(0.05)
+	var steps: int = 0
+	while not met.landed and steps < 200:
+		met.advance(1.0 / 60.0)
+		steps += 1
+		await get_tree().physics_frame
+	var near_to: float = near.global_position.distance_to(o) if is_instance_valid(near) else -1.0
+	check("a monster inside the pull and outside the hit is drawn in, and is hit",
+		near_from > Meteor.HIT_RADIUS and near_to < Meteor.HIT_RADIUS and near.hp < near_hp,
+		[near_from, near_to, near.hp])
+	check("  not past PULL_STOP from the middle - gathered, not piled on one pixel",
+		near_to >= Meteor.PULL_STOP - 0.5 and close.global_position.distance_to(o) >= 8.0 - 0.01,
+		[near_to, close.global_position.distance_to(o)])
+	check("one beyond the pull stays where it was", far.global_position == far_at, far.global_position - far_at)
+	check("a boss holds its ground", boss.global_position == boss_at and not boss.can_be_pulled(),
+		boss.global_position - boss_at)
+	check("a monster another game runs is not moved here - its own game says where it is",
+		mirror.global_position == mirror_at and not mirror.can_be_pulled())
+	check("a wall stops the pull the way it stops a monster walking",
+		walled.global_position.y > wall.global_position.y and walled.global_position.distance_to(o) < walled_from,
+		[walled.global_position - o, walled_from])
+	check("  it counts what it drew in: the near one and the walled one",
+		met.pulled_count() == 2, met.pulled_count())
+	var landed_at: Vector2 = near.global_position
+	met.advance(0.3)
+	await get_tree().physics_frame
+	check("once it has landed it pulls no more", near.global_position == landed_at)
+	check("the ring of fire on the ground starts at the pull's edge, so the ring is the pull",
+		is_equal_approx(Meteor.HIT_RADIUS * Meteor.SWIRL_FROM, Meteor.PULL_RADIUS))
+	check("the pull reaches twice the hit, and is quick enough to beat a walk (90 a second)",
+		is_equal_approx(Meteor.PULL_RADIUS, Meteor.HIT_RADIUS * 2.0)
+		and Meteor.PULL_SPEED * lerpf(Meteor.PULL_START, 1.0, 0.5) > 90.0)
+	arena.free()
 
 
 func _test_the_mythic_weapons() -> void:

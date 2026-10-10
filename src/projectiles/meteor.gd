@@ -21,7 +21,17 @@
 #      and on the ground a ring of fire swirls in toward the landing spot over
 #      a growing glow, flames twisting up off it, tighter and brighter as the
 #      stone comes down. All of it goes out on impact, where the blast takes over.
-#      Picture only: what it hits and for how much is unchanged.
+#   7. THE PULL (0.17.0). The owner: "on the spin up of meteor can we pull
+#      enemies closer to the center?", "like before the meteor falls". While
+#      the stone comes down, every monster within PULL_RADIUS of where it
+#      will land is drawn in toward it - slowly at first, fastest as it lands
+#      - and stops PULL_STOP from the middle, so a scattered pack is gathered
+#      into the hit rather than piled on one pixel. The ring of fire on the
+#      ground starts at PULL_RADIUS and swirls in with them: what stands inside
+#      the ring is what is pulled. A monster walking away still gets out if it
+#      is quick, because its own steps are not cancelled, only added to.
+#      Bosses hold their ground, and a monster another game runs is pulled on
+#      that game's screen or not at all (BaseEnemy, DRAWN IN).
 #
 # Damage happens once, on impact, to every enemy inside HIT_RADIUS, and pays the
 # caster magic XP per enemy the way the stalagmite does. Then the fire.
@@ -29,7 +39,8 @@
 # TWICE AS WIDE SINCE 0.12.0. The owner: "dynamite douse not feel that special
 # or meteor", then "i want the meteor to be bigger yes". Its hit was 22 across
 # the stalagmite's 18 - a spell with a better picture. At 44 it lands on a
-# group. Nothing is knocked back: the owner, "knock back is a bad idea".
+# group. Nothing is knocked back: the owner, "knock back is a bad idea". The
+# pull (7.) draws in before the stone lands; nothing is ever thrown out.
 #
 # THE TIMELINE IS ADVANCED BY advance(), which _physics_process calls with the
 # frame's delta. A test calls it directly with whatever time it wants to pass,
@@ -74,9 +85,27 @@ const VORTEX_STRANDS := 3
 const VORTEX_POINTS := 24
 const VORTEX_TURNS_PER_SECOND := 3.0
 # The ground's ring of fire starts this far out (times HIT_RADIUS) and has
-# swirled in to the inner figure by the time the stone lands.
-const SWIRL_FROM := 1.25
+# swirled in to the inner figure by the time the stone lands. It starts at the
+# pull's edge (2.0 since 0.17.0; it was 1.25), so the ring is the pull.
+const SWIRL_FROM := 2.0
 const SWIRL_TO := 0.55
+
+# THE PULL: how far out it reaches (twice the hit), how close to the middle it
+# brings a monster, and how fast, in world pixels a second - PULL_START of
+# PULL_SPEED at the top of the fall, all of it as the stone lands. Over the
+# 0.55 s fall that is about 60 px for a monster standing still: one at the
+# edge of the pull ends up well inside the hit.
+const PULL_RADIUS := 88.0
+const PULL_STOP := 14.0
+const PULL_SPEED := 150.0
+const PULL_START := 0.4
+# The most monsters one meteor looks at in a tick.
+const PULL_MAX := 64
+# How often it pulls: sixty times a second, not on every physics tick (180).
+# Moving a packed crowd through the physics engine is the costly part - about
+# 25 us a monster - and a step a third as often, three times as long, looks the
+# same with the movement smoothed between ticks.
+const PULL_EVERY := 1.0 / 60.0
 
 # Set by mage.gd before the meteor enters the tree.
 var explosion_damage: int = 0
@@ -89,6 +118,10 @@ var delay: float = 0.0
 var landed: bool = false
 var _age: float = 0.0
 var _hits: int = 0
+# Every monster the vortex has drawn in, by instance id, for the tests.
+var _pulled: Dictionary = {}
+var _pull_query: PhysicsShapeQueryParameters2D = null
+var _pull_owed: float = 0.0
 # How far down the fall is (0 at the top, 1 landed), for the vortex.
 var _fallen: float = 0.0
 
@@ -161,7 +194,7 @@ func _build_vortex() -> void:
 	_floor_glow.visible = false
 	add_child(_floor_glow)
 	# Flames twisting up off the ring of fire on the ground.
-	_swirl = _fire_emitter("swirl", 48, 0.5, HIT_RADIUS * SWIRL_FROM, 1.2, 1.8, Vector2(0, -60), 4)
+	_swirl = _fire_emitter("swirl", 64, 0.5, HIT_RADIUS * SWIRL_FROM, 1.2, 1.8, Vector2(0, -60), 4)
 	_swirl.local_coords = true
 	_swirl.scale = Vector2(1.0, 0.7)
 	_swirl.scale_amount_min = 1.5
@@ -256,7 +289,48 @@ func _fall(t: float, delta: float) -> void:
 	if _floor_glow != null:
 		_floor_glow.visible = true
 		_floor_glow.modulate.a = lerpf(0.08, 0.5, t)
+	_pull(t, delta)
 	queue_redraw()
+
+
+func _pull(t: float, delta: float) -> void:
+	# THE PULL: everything inside PULL_RADIUS, a step toward the landing spot.
+	# Found by a physics query on the enemies layer (the hit's own mask), so a
+	# meteor looks only at what is near it, however full the area is.
+	if not is_inside_tree():
+		return
+	_pull_owed += delta
+	if _pull_owed < PULL_EVERY - 0.0001:
+		return
+	var owed: float = _pull_owed
+	_pull_owed = 0.0
+	if _pull_query == null:
+		var reach := CircleShape2D.new()
+		reach.radius = PULL_RADIUS
+		_pull_query = PhysicsShapeQueryParameters2D.new()
+		_pull_query.shape = reach
+		_pull_query.collision_mask = collision_mask
+		_pull_query.collide_with_bodies = true
+		# Not areas: bushmage carries attack boxes on the enemies layer.
+		_pull_query.collide_with_areas = false
+	_pull_query.transform = Transform2D(0.0, global_position)
+	var step: float = PULL_SPEED * lerpf(PULL_START, 1.0, t) * owed
+	for found in get_world_2d().direct_space_state.intersect_shape(_pull_query, PULL_MAX):
+		var body: Object = found.get("collider")
+		if not (body is Node2D) or not (body as Node).is_in_group("enemies") or not body.has_method("pull_toward"):
+			continue
+		if not body.call("can_be_pulled"):
+			continue
+		var far: float = (body as Node2D).global_position.distance_to(global_position)
+		if far <= PULL_STOP or far > PULL_RADIUS:
+			continue
+		body.call("pull_toward", global_position, minf(step, far - PULL_STOP))
+		_pulled[body.get_instance_id()] = true
+
+
+func pulled_count() -> int:
+	"""How many monsters the vortex has drawn in, for the tests."""
+	return _pulled.size()
 
 
 func _impact() -> void:

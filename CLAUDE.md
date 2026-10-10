@@ -2376,7 +2376,8 @@ product versions are it with `.0` after (Windows wants four numbers).
   and the Meteorite falls in a fire vortex, 0.15.0 the town's portal leads
   to the Big Field and its ladder down to the Field, 0.15.1 an arrival
   portal closes as you walk away from it, 0.16.0 a monster with no death of
-  its own flashes white and breaks into pixels when it dies.
+  its own flashes white and breaks into pixels when it dies, 0.17.0 the
+  Meteorite's fire vortex pulls monsters in before the stone lands.
 - **Raise it with every delivered change to the game**, in the same batch:
   the PATCH for a fix, the MINOR (PATCH back to 0) for a feature. Both
   `DISPLAY_VERSION` and export_presets.cfg - and read export_presets.cfg off
@@ -4629,6 +4630,42 @@ website plays it, recorded from the game.
   burst through its timeline, checks the slime and the Crowned keep their own
   deaths, a mirror bursts on `net_vanish()` and not on `net_remove()`, and
   every bursting scene has a sprite and a hurtbox.
+
+### The Meteorite pulls monsters in before it lands (0.17.0)
+
+The owner: "on the spin up of meteor can we pull enemies closer to the
+center?", then "like before the meteor falls".
+
+- **While the stone falls (`Meteor.FALL_SECONDS`, 0.55 s)** every monster
+  within `PULL_RADIUS` (88, twice the hit) of the landing spot is drawn toward
+  it at `PULL_SPEED` (150 px/s at the landing, `PULL_START` 0.4 of that at the
+  top), and stops `PULL_STOP` (14) from the middle. A monster standing still
+  moves about 60 px: one at the edge of the pull ends up inside the hit. Its
+  own walking is not cancelled, only added to, so one running away can still
+  get out. Nothing before the fall starts (a double cast's second meteor
+  waits), nothing after the impact.
+- **The ring of fire is the pull.** `SWIRL_FROM` went from 1.25 to 2.0, so the
+  ground's ring starts at `PULL_RADIUS` and swirls in with the monsters (64
+  flames, was 48, for the wider ring).
+- **Through the physics engine.** `BaseEnemy.pull_toward()` moves with
+  `move_and_collide()` and slides along what it meets: walls stop it the way
+  they stop a monster walking, and a pack bunches rather than stacks. Found by
+  a shape query on the hit's own mask, bodies only (a bush mage's attack boxes
+  are areas on the enemies layer).
+- **Who is not pulled** (`can_be_pulled()`): a boss (`BossEnemy` overrides it,
+  so its rings and spikes stay placed from where it stands), a monster behind
+  a boss gate, one already dying, and a mirror - a monster another game runs
+  stands where that game says, so in a shared area only the leader's meteors
+  pull, and the leader's world carries the result to everyone. Making a
+  follower's meteor pull would need a new message through the presence server.
+- **Sixty times a second, not every physics tick** (`PULL_EVERY`). Moving a
+  packed crowd through the physics engine is about 25 us a monster; forty
+  monsters in the pull cost about 1 ms a frame for the 0.55 s of the fall
+  (container driver, `pullcost`). The impact itself, forty hit at once, is
+  5-7 ms in that frame, as it was before the pull.
+- **The server's books do not change**: the meteor hits each monster for what
+  it always did, it just reaches more of them.
+- `_test_the_meteor_pulls`.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 
