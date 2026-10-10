@@ -25,9 +25,10 @@ const CROWN_PATH := "res://art/enemy/behemothcrown.png"
 const CROWN_SIZE := Vector2(26, 15)
 const CROWN_RANK := "owner"
 
-# The ranks that wear a word, and the word. The owner wears the crown instead;
-# a player wears nothing, which is what makes the other three stand out.
-const BADGES := {"mod": "MOD", "dev": "DEV"}
+# The ranks that wear a word, and the word. The owner wears the crown instead -
+# there is one owner, and one crown; a co-owner (0.21.0) wears the word, in the
+# owner's gold. A player wears nothing, which is what makes the others stand out.
+const BADGES := {"mod": "MOD", "dev": "DEV", "coowner": "CO-OWNER"}
 const BADGE_FONT_SIZE := 9
 
 

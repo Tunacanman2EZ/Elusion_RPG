@@ -121,6 +121,7 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var item_count_input: LineEdit = get_node_or_null("%itemcountinput")
 @onready var item_button: Button = get_node_or_null("%itembutton")
 @onready var catalogue_button: Button = get_node_or_null("%cataloguebutton")
+@onready var gifts_button: Button = get_node_or_null("%giftsbutton")
 @onready var level_input: LineEdit = get_node_or_null("%levelinput")
 @onready var level_button: Button = get_node_or_null("%levelbutton")
 @onready var skill_pick: OptionButton = get_node_or_null("%skillpick")
@@ -143,6 +144,9 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 # The Server tab's minimum build (0.11.8): old versions must update.
 @onready var minbuild_button: CheckButton = get_node_or_null("%minbuildbutton")
 @onready var minbuild_status: Label = get_node_or_null("%minbuildstatus")
+# THE CO-OWNERS' SWITCH (0.21.0), the owner's alone.
+@onready var coowner_button: CheckButton = get_node_or_null("%coownerbutton")
+@onready var coowner_status: Label = get_node_or_null("%coownerstatus")
 # The performance readout (PerfOverlay). It was the backslash key until 0.7.1.
 @onready var perf_button: CheckButton = get_node_or_null("%perfbutton")
 @onready var rare_button: CheckButton = get_node_or_null("%rarebutton")
@@ -183,7 +187,7 @@ const ARM_SECONDS := 4.0
 # server's users.role has a CHECK that refuses it outright; it comes from
 # ELUSION_OWNER in the environment, which is what makes it the one rank no
 # request can hand out.
-const RANKS := ["player", "mod", "dev", "owner"]
+const RANKS := ["player", "mod", "dev", "coowner", "owner"]
 
 var _armed_action: String = ""
 var _armed_label: String = ""
@@ -242,6 +246,8 @@ func _ready() -> void:
 		item_input.text_submitted.connect(func(_t): _on_item_pressed())
 	if catalogue_button != null and not catalogue_button.pressed.is_connected(_on_catalogue_pressed):
 		catalogue_button.pressed.connect(_on_catalogue_pressed)
+	if gifts_button != null and not gifts_button.pressed.is_connected(show_what_i_have_given):
+		gifts_button.pressed.connect(show_what_i_have_given)
 	if level_button != null and not level_button.pressed.is_connected(_on_level_pressed):
 		level_button.pressed.connect(_on_level_pressed)
 	if level_input != null:
@@ -278,6 +284,8 @@ func _ready() -> void:
 		trade_button.toggled.connect(_on_trade_toggled)
 	if minbuild_button != null and not minbuild_button.toggled.is_connected(_on_minbuild_toggled):
 		minbuild_button.toggled.connect(_on_minbuild_toggled)
+	if coowner_button != null and not coowner_button.toggled.is_connected(_on_coowner_toggled):
+		coowner_button.toggled.connect(_on_coowner_toggled)
 	if perf_button != null and not perf_button.toggled.is_connected(_on_perf_toggled):
 		perf_button.toggled.connect(_on_perf_toggled)
 	_sync_perf_button()
@@ -332,7 +340,7 @@ func _on_give_pressed() -> void:
 	if not open_window.call("open_item_spawner_for", who):
 		_say("[GM] the item catalogue opens from inside the game.", SAY_WARN)
 		return
-	_say("[GM] the item catalogue is open with %s in Give to - click an item to give it." % who, SAY_NOTE)
+	_say("[GM] the item catalogue is open with %s in Give to - click an item to give it, or set their level beside the name." % who, SAY_NOTE)
 
 
 func _on_history_pressed() -> void:
@@ -530,9 +538,12 @@ func _populate_ranks() -> void:
 	if role_option == null:
 		return
 
-	var mine: int = RANKS.find("owner") if Api.is_owner else RANKS.find(Api.role)
+	var mine: int = RANKS.find(Api.own_rank())
 	if mine < 0:
 		mine = 0
+	# coowner and owner are never offered: they come from the server's
+	# environment, and the rank route refuses them.
+	mine = mini(mine, Api.GRANTABLE_RANKS.size())
 
 	# Rebuilt rather than filtered in place, because rank can change under us -
 	# the owner may have just demoted the account this client is logged in as.
@@ -621,6 +632,7 @@ func _on_visibility_changed() -> void:
 		await _refresh_pvp()
 		await _refresh_trade()
 		await _refresh_minbuild()
+		await refresh_coowners()
 		await refresh_online()
 	else:
 		_disarm()
@@ -648,7 +660,7 @@ func _on_god_mode_toggled(pressed: bool) -> void:
 	if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
 		_sync_god_mode_button()
 		_set_testing_status("[GM] god mode needs %s or above."
-			% Api.GOD_MODE_MIN_ROLE)
+			% Api.rank_name(Api.GOD_MODE_MIN_ROLE))
 		return
 
 	GameState.god_mode = pressed
@@ -713,7 +725,7 @@ func _sync_rare_button() -> void:
 func _on_rare_toggled(pressed: bool) -> void:
 	if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
 		_sync_rare_button()
-		_set_testing_status("[GM] the rare roll needs %s or above." % Api.GOD_MODE_MIN_ROLE)
+		_set_testing_status("[GM] the rare roll needs %s or above." % Api.rank_name(Api.GOD_MODE_MIN_ROLE))
 		return
 	GameState.force_rare_rolls = pressed
 	if pressed:
@@ -730,7 +742,7 @@ func _on_rare_toggled(pressed: bool) -> void:
 func _on_common_toggled(pressed: bool) -> void:
 	if not Api.role_at_least(Api.GOD_MODE_MIN_ROLE):
 		_sync_rare_button()
-		_set_testing_status("[GM] the 10%% roll needs %s or above." % Api.GOD_MODE_MIN_ROLE)
+		_set_testing_status("[GM] the 10%% roll needs %s or above." % Api.rank_name(Api.GOD_MODE_MIN_ROLE))
 		return
 	GameState.force_common_rolls = pressed
 	if pressed:
@@ -1189,6 +1201,86 @@ func _on_minbuild_toggled(pressed: bool) -> void:
 		_say("Every version of the game can play again.", SAY_GOOD)
 
 
+# =============================================================================
+# THE CO-OWNERS (0.21.0) - the owner's switch
+# =============================================================================
+# The owner, 10 Oct: "i would promote allmind to owner but there can only be 1
+# however thats why i want to build another gate that allows him to enter", and
+# "maybe a switch in my gm panel that gives him access as long as i leave it on".
+# WHO it lets in is named in the server's .env (ELUSION_CO_OWNERS), where no
+# request can write it; WHETHER they are in is this switch. On, they have every
+# power the owner has, this panel included - except over the owner. Only THE
+# owner throws it (Api.is_the_owner()); a co-owner sees it and cannot move it.
+
+# Swapped by the suite for a stand-in, like status_request.
+var coowner_request: Callable = Callable(Api, "get_json")
+
+
+func refresh_coowners() -> void:
+	if coowner_button == null:
+		return
+	var res: Dictionary = await coowner_request.call("/api/server/coowners")
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		coowner_button.set_pressed_no_signal(false)
+		coowner_button.disabled = true
+		_show_coowners({}, int(res.get("status", 0)) == 404)
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	# NO SIGNAL: showing the server's state must not post it back.
+	coowner_button.set_pressed_no_signal(bool(data.get("on", false)))
+	# The owner's alone; and with nobody named there is nothing to switch on.
+	var nobody: bool = (data.get("names", []) as Array).is_empty() and not bool(data.get("on", false))
+	coowner_button.disabled = not Api.is_the_owner() or nobody
+	_show_coowners(data)
+
+
+func _show_coowners(data: Dictionary, no_switch: bool = false) -> void:
+	if coowner_status == null:
+		return
+	coowner_status.text = coowner_line(data, no_switch)
+
+
+static func coowner_line(data: Dictionary, no_switch: bool = false) -> String:
+	"""What the line under the switch says, from GET /api/server/coowners."""
+	# ONE SHORT LINE, like the minimum build's under it: a wrapping label in a
+	# hidden tab measures as a column of single words and stretches the panel.
+	if no_switch:
+		return "This server has no co-owner switch yet."
+	var names: Array = data.get("names", []) if data.get("names") is Array else []
+	if names.is_empty():
+		return "Nobody named in the server's ELUSION_CO_OWNERS."
+	var who: String = ", ".join(PackedStringArray(names.map(func(n): return str(n))))
+	if bool(data.get("on", false)):
+		return "%s: in, with all you have but power over you." % who
+	return "%s: out - just their own rank." % who
+
+
+func _on_coowner_toggled(pressed: bool) -> void:
+	if not Api.is_the_owner():
+		await refresh_coowners()
+		_say("Only the owner lets co-owners in or takes them out.", SAY_BAD)
+		return
+	var res: Dictionary = await post_request.call("/api/server/coowners", {"on": pressed})
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		# PUT BACK: the switch shows what the server holds.
+		await refresh_coowners()
+		_say(_refused(res), SAY_BAD)
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	coowner_button.set_pressed_no_signal(bool(data.get("on", pressed)))
+	_show_coowners(data)
+	var who: String = ", ".join(PackedStringArray((data.get("names", []) as Array).map(func(n): return str(n))))
+	if bool(data.get("on", pressed)):
+		_say(("%s can use everything you can now - the GM panel on their next heartbeat. Every gift"
+			+ " they make goes in the gifts ledger under their name.") % who, SAY_WARN)
+	else:
+		_say("%s is back to their own rank, from their next request." % who, SAY_GOOD)
+
+
 func _refresh_maintenance() -> void:
 	# /api/status carries no token and needs no rank - it is the same call the
 	# login screen makes before anyone has logged in.
@@ -1411,17 +1503,20 @@ func _on_item_pressed() -> void:
 	# redraw from it, found through the HUD's group the way the cooking screen
 	# finds it.
 	var data = res.get("data", {})
+	# What it came to, when it is money (THE GIFTS LEDGER, 0.20.0).
+	var money: String = ItemSpawner.money_text(data.get("worth") if data is Dictionary else null)
+	var came_to: String = " (%s)" % money if money != "" else ""
 	var container: Node = _open_inventory_container()
 	if container != null and data is Dictionary:
 		container.load_server_array(data.get("inventory", []))
-		_set_testing_status("Added %d x %s to your bag." % [how_many, wanted])
+		_set_testing_status("Added %d x %s to your bag%s." % [how_many, wanted, came_to])
 		return
 
 	# THE ITEM IS REAL EVEN WHEN NOTHING IS OPEN TO SHOW IT. Saying "nothing
 	# happened" here would be a lie - it is on the server and will be in the
 	# bag on the next load.
 	_set_testing_status(
-		"Added %d x %s - open the inventory to see it." % [how_many, wanted])
+		"Added %d x %s%s - open the inventory to see it." % [how_many, wanted, came_to])
 
 
 # THE ITEM CATALOGUE (itemspawner.gd) opens from here. It had a button of its
@@ -1435,6 +1530,147 @@ func _on_catalogue_pressed() -> void:
 		_set_testing_status("The item catalogue opens from inside the game.")
 		return
 	hud.toggle_item_spawner()
+
+
+# THE GIFTS LEDGER (0.20.0; "What I've given" until 0.21.0, when a co-owner's
+# gifts joined the owner's and it says who gave what). The owner, 10 Oct, after giving the first other
+# player 10,990 Piles of Gold and deciding to keep it: "make a ledger for
+# anthing i give to players so its accounted for if i ever ask how much did i
+# inflate my server". The server writes a row for every gift as it is made -
+# to a player, to yourself, gold put straight in - with what it was worth that
+# day, and read the gifts from before back out of its logs once (THE GIFTS
+# LEDGER in app.py). GET /api/staff/gifts adds it up; this prints it into the
+# box below, beside the gold there is in the game now. On the server,
+# giftwatch.py prints the same from the database.
+
+const GIFTS_PATH := "/api/staff/gifts?recent=10"
+
+# Swapped by the suite for a stand-in, like status_request.
+var gifts_request: Callable = Callable(Api, "get_json")
+
+
+func show_what_i_have_given() -> void:
+	if not Api.is_owner:
+		return
+	if gifts_button != null:
+		gifts_button.disabled = true
+	var res: Dictionary = await gifts_request.call(GIFTS_PATH)
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if gifts_button != null:
+		gifts_button.disabled = false
+	if not res.get("ok", false):
+		if int(res.get("status", 0)) == 404:
+			# The owner is never refused it, so a 404 is a server from before.
+			_say("[GM] this server has no gifts ledger yet - update the API, then ask again.", SAY_WARN)
+		else:
+			_say("[GM] " + _refused(res), SAY_BAD)
+		return
+	var data: Variant = res.get("data", {})
+	if not data is Dictionary:
+		_say("[GM] the server did not say.", SAY_BAD)
+		return
+	var start: int = 0
+	if results != null:
+		# Read from the top, like an account view.
+		results.scroll_following = false
+		start = maxi(results.get_paragraph_count() - 1, 0)
+	for line in gift_report_lines(data):
+		_view_line(str(line[0]), line[1])
+	if results != null:
+		results.call_deferred("scroll_to_paragraph", start)
+
+
+static func gift_report_lines(data: Dictionary) -> Array:
+	"""GET /api/staff/gifts's answer as [text, colour] lines, in words."""
+	var lines: Array = [["========== THE GIFTS LEDGER ==========", SAY_HEAD]]
+	var totals: Dictionary = _as_dict(data.get("totals"))
+	var since: int = _whole(data.get("ledger_since"))
+	if since > 0:
+		lines.append(["counted from %s, the first gift the server's logs remember" % LocalTime.full(since), SAY_NOTE])
+	if _whole(totals.get("gifts")) == 0:
+		lines.append(["Nothing given yet.", SAY_NOTE])
+		return lines
+	lines.append(["everything  : %s" % _gift_sum_text(totals), SAY_NOTE])
+	lines.append(["to players  : %s" % _gift_sum_text(_as_dict(data.get("to_players"))), SAY_NOTE])
+	# A giver to his own account - the owner's, or a co-owner's (0.21.0).
+	lines.append(["to themselves: %s" % _gift_sum_text(_as_dict(data.get("to_yourself"))), SAY_NOTE])
+	if _whole(totals.get("item_value")) > 0:
+		lines.append(["  the items would sell to the shop for %s gold"
+			% GameConstants.commas(_whole(totals.get("item_sells_for"))), SAY_NOTE])
+
+	var economy: Dictionary = _as_dict(data.get("economy"))
+	lines.append(["--- the gold in the game now ---", SAY_HEAD])
+	lines.append(["  %s gold in purses and banks" % GameConstants.commas(_whole(economy.get("gold_now"))), SAY_NOTE])
+	var share: Variant = data.get("share_of_gold_now")
+	if (share is float or share is int) and _whole(totals.get("gold")) != 0:
+		if float(share) > 1.0:
+			# Piles given and not used yet: they count as given, and are in
+			# nobody's purse, so a percentage would be thousands.
+			lines.append(["  the gold given is more than all of it: a pile still in a bag", SAY_NOTE])
+			lines.append(["  counts as given, and is in nobody's purse until it is used", SAY_NOTE])
+		else:
+			lines.append(["  the gold given is %.1f%% of that" % (float(share) * 100.0), SAY_NOTE])
+			lines.append(["  (a pile still in a bag counts as given, and is in nobody's purse until it is used)", SAY_NOTE])
+
+	# WHO GAVE IT (0.21.0), once there is more than the owner giving.
+	var givers: Array = data.get("by_giver", []) if data.get("by_giver") is Array else []
+	if givers.size() > 1:
+		lines.append(["--- who gave it ---", SAY_HEAD])
+		for entry in givers:
+			var row: Dictionary = _as_dict(entry)
+			lines.append(["  %s: %s" % [str(row.get("username", "?")), _gift_sum_text(row)], SAY_NOTE])
+
+	var people: Array = data.get("by_player", []) if data.get("by_player") is Array else []
+	if not people.is_empty():
+		lines.append(["--- who got it, the most gold first ---", SAY_HEAD])
+		for entry in people:
+			var row: Dictionary = _as_dict(entry)
+			lines.append(["  %s: %s" % [str(row.get("username", "?")), _gift_sum_text(row)], SAY_NOTE])
+
+	var newest: Array = data.get("recent", []) if data.get("recent") is Array else []
+	if not newest.is_empty():
+		lines.append(["--- the newest ---", SAY_HEAD])
+		var several: bool = givers.size() > 1
+		for entry in newest:
+			var row: Dictionary = _as_dict(entry)
+			var item_id: String = str(row.get("item_id", ""))
+			var what: String = "gold"
+			if item_id != "":
+				var item: ItemData = ItemRegistry.get_item(item_id)
+				what = "%s × %s" % [GameConstants.commas(_whole(row.get("quantity"))),
+					item.display_name if item != null else item_id]
+			# "by AllMind" only when more than one has given: otherwise it is
+			# the owner on every line.
+			var by: String = " (by %s)" % str(row.get("by", "?")) if several else ""
+			lines.append(["  %s  %s: %s, %s%s" % [LocalTime.full(_whole(row.get("at"))),
+				str(row.get("username", "?")), what, _worth_text(row), by], SAY_NOTE])
+	return lines
+
+
+static func _gift_sum_text(sums: Dictionary) -> String:
+	"""'274,750,000 gold, 199 lusions, items worth 400 (14 gifts)'."""
+	return "%s (%s)" % [_worth_text(sums), GameConstants.counted(_whole(sums.get("gifts")), "gift")]
+
+
+static func _worth_text(row: Dictionary) -> String:
+	var parts: Array = []
+	if _whole(row.get("gold")) != 0:
+		parts.append("%s gold" % GameConstants.commas(_whole(row.get("gold"))))
+	if _whole(row.get("lusions")) != 0:
+		parts.append(GameConstants.counted(_whole(row.get("lusions")), "lusion"))
+	if _whole(row.get("item_value")) != 0:
+		parts.append("items worth %s" % GameConstants.commas(_whole(row.get("item_value"))))
+	return ", ".join(parts) if not parts.is_empty() else "nothing"
+
+
+static func _as_dict(value: Variant) -> Dictionary:
+	return value if value is Dictionary else {}
+
+
+static func _whole(value: Variant) -> int:
+	# JSON's numbers arrive as floats, and a null is not a number.
+	return int(value) if value is int or value is float else 0
 
 
 # YOUR LEVEL, ON THE SERVER. It was a SpinBox in the Items window, and a

@@ -305,6 +305,9 @@ func _run_all() -> void:
 	await _test_other_players_attacks_are_pictures()
 	_test_presence_sends_attacks()
 	await _test_levers_are_shared()
+	await _test_held_keys_are_let_go()
+	await _test_gifts_are_counted()
+	await _test_coowners_and_their_levels()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -2029,9 +2032,10 @@ func _test_god_mode_earns_nothing() -> void:
 		"a threshold written at each call site is a threshold that drifts")
 	# THE OWNER'S, SINCE 0.7.1. It was "dev" because Ctrl+G was a dev's way in;
 	# the key went with the other debug keys, and the switch on the owner panel
-	# is the only way in now, so the rank says so.
+	# is the only way in now, so the rank says so. "coowner" since 0.21.0: the
+	# GM panel opens for a co-owner too, and the switch is on it.
 	check("and it is the owner's - the panel switch is the only way in",
-		api_src.contains("const GOD_MODE_MIN_ROLE := \"owner\""),
+		api_src.contains("const GOD_MODE_MIN_ROLE := \"coowner\""),
 		"a lower rank here describes a way in that no longer exists")
 	for rank in ["player", "mod", "dev"]:
 		var was_role: String = Api.role
@@ -10741,6 +10745,451 @@ func _test_levers_are_shared() -> void:
 	print("  levers: the name, telling, following, partners, the order, the wiring")
 
 
+# HELD KEYS (0.19.1). The first other player to play found it: Shift+right-click
+# - a sprinting attack - opens Firefox's own menu, the key-up of the direction
+# being held goes to the menu, and the character walks that way until the key
+# is pressed again. He died of it. keybinds.gd, LETTING GO; settings.gd, THE
+# KEYBOARD GOES ELSEWHERE.
+func _test_held_keys_are_let_go() -> void:
+	section("HELD KEYS - let go when the keyboard goes where the game cannot hear it")
+	var key := func(code: Key, down: bool) -> void:
+		var k := InputEventKey.new()
+		k.physical_keycode = code
+		k.pressed = down
+		Input.parse_input_event(k)
+		Input.flush_buffered_events()
+	var click := func(down: bool, shift: bool) -> void:
+		var c := InputEventMouseButton.new()
+		c.button_index = MOUSE_BUTTON_RIGHT
+		c.pressed = down
+		c.shift_pressed = shift
+		c.position = Vector2(-5000, -5000)
+		Input.parse_input_event(c)
+		Input.flush_buffered_events()
+	var clean := func() -> void:
+		Keybinds.let_go(true)
+		key.call(KEY_F9, false)
+		Input.flush_buffered_events()
+		Settings.native_menu_on_shift_click = false
+
+	# ---- the bug, and letting go ----
+	key.call(KEY_S, true)
+	for i in 3:
+		await get_tree().physics_frame
+	check("a direction whose key-up never comes stays held: the walk nobody could stop",
+		Input.is_action_pressed("move_down") and Input.is_physical_key_pressed(KEY_S))
+	key.call(KEY_SHIFT, true)
+	key.call(KEY_F9, true)
+	click.call(true, false)
+	var gone: Array = Keybinds.let_go()
+	Input.flush_buffered_events()
+	check("let_go() lets go of it - the key and the walk - and of sprint",
+		not Input.is_action_pressed("move_down") and not Input.is_physical_key_pressed(KEY_S)
+		and not Input.is_action_pressed("sprint") and gone.has(KEY_S) and gone.has(KEY_SHIFT), gone)
+	check("  and of nothing that is not a key the game holds: another key, the mouse unless asked",
+		Input.is_physical_key_pressed(KEY_F9) and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	Keybinds.let_go(true)
+	Input.flush_buffered_events()
+	check("  asked, the mouse buttons too", not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	clean.call()
+
+	# ---- Shift+right-click, where the browser opens its own menu ----
+	Settings.native_menu_on_shift_click = true
+	key.call(KEY_S, true)
+	click.call(true, true)
+	var walking_after: bool = Input.is_action_pressed("move_down")
+	await get_tree().physics_frame
+	var mouse_on_the_first_step: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	for i in 3:
+		await get_tree().physics_frame
+	check("Shift+right-click in Firefox lets go of the walk at once - the menu is about to take its key-up",
+		not walking_after, walking_after)
+	check("  and of the right button only after the physics step, so the click still attacks",
+		mouse_on_the_first_step and not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	key.call(KEY_S, true)
+	click.call(true, false)
+	await get_tree().physics_frame
+	check("  a right-click without Shift lets go of nothing - no menu comes", Input.is_action_pressed("move_down"))
+	clean.call()
+	key.call(KEY_S, true)
+	click.call(true, true)
+	check("in a browser that keeps its menu shut (Chrome, Edge, Safari) a sprinting attack lets go of nothing",
+		Input.is_action_pressed("move_down") and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	clean.call()
+	var firefox := "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0"
+	var firefox_android := "Mozilla/5.0 (Android 14; Mobile; rv:131.0) Gecko/131.0 Firefox/131.0"
+	var chrome := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+	var edge := chrome + " Edg/129.0.0.0"
+	var safari := "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15"
+	var chromebook := "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+	check("Firefox is the browser that opens its own menu; Chrome, Edge, Safari and a Chromebook are not",
+		Keybinds.opens_its_own_menu(firefox) and Keybinds.opens_its_own_menu(firefox_android)
+		and not Keybinds.opens_its_own_menu(chrome) and not Keybinds.opens_its_own_menu(edge)
+		and not Keybinds.opens_its_own_menu(safari) and not Keybinds.opens_its_own_menu(chromebook))
+	var ready_body := _func_body(_code_src("res://src/systems/settings.gd"), "func _ready(")
+	check("  read from the browser itself, in the web build", ready_body.contains("OS.has_feature(\"web\")")
+		and ready_body.contains("Keybinds.opens_its_own_menu(") and ready_body.contains("navigator.userAgent"))
+
+	# ---- the window losing focus, and a text box taking the keyboard ----
+	key.call(KEY_S, true)
+	Settings._notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
+	check("the game losing focus (another window, a tab, a prompt) lets go", not Input.is_action_pressed("move_down"))
+	Settings._notification(NOTIFICATION_APPLICATION_FOCUS_IN)
+	key.call(KEY_D, true)
+	click.call(true, false)
+	Settings._notification(NOTIFICATION_WM_WINDOW_FOCUS_OUT)
+	# The mouse's release is read with the next batch of input, as a real one is.
+	Input.flush_buffered_events()
+	check("  so does the window losing it, the mouse with it",
+		not Input.is_action_pressed("move_right") and not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	var layer := CanvasLayer.new()
+	var box := LineEdit.new()
+	var button := Button.new()
+	layer.add_child(box)
+	layer.add_child(button)
+	add_child(layer)
+	key.call(KEY_W, true)
+	button.grab_focus()
+	var after_button: bool = Input.is_action_pressed("move_up")
+	box.grab_focus()
+	check("a text box taking the keyboard lets go - nobody walks while typing; a button does not",
+		after_button and not Input.is_action_pressed("move_up"))
+	box.release_focus()
+	layer.queue_free()
+	clean.call()
+	print("  held keys: the bug, letting go, Firefox's menu, other browsers, focus, a text box")
+
+
+# THE GIFTS LEDGER (0.20.0). The owner, 10 Oct: "make a ledger for anthing i
+# give to players so its accounted for if i ever ask how much did i inflate my
+# server". The server counts (test_gifts.py); the game says what each gift came
+# to as it is given, and the GM panel's Testing tab asks for the totals.
+func _test_gifts_are_counted() -> void:
+	section("THE GIFTS LEDGER - what a gift came to, and what I've given")
+	var pile: ItemData = ItemRegistry.get_item("goldpile")
+	var sword: ItemData = ItemRegistry.get_item("ironsword")
+	check("the catalogue has the Pile of Gold and the Iron Sword to say it with",
+		pile != null and sword != null and pile.display_name == "Pile of Gold")
+	if pile == null or sword == null:
+		return
+
+	# --- AS IT IS GIVEN --------------------------------------------------------
+	var gold_worth: Dictionary = {"kind": "gold", "gold": 24975000.0, "lusions": 0.0, "value": 0.0, "sells_for": 0.0}
+	check("money is said as money: gold with its commas, lusions counted",
+		ItemSpawner.money_text(gold_worth) == "24,975,000 gold"
+		and ItemSpawner.money_text({"kind": "lusions", "gold": 0, "lusions": 50}) == "50 lusions"
+		and ItemSpawner.money_text({"kind": "lusions", "gold": 0, "lusions": 1}) == "1 lusion",
+		ItemSpawner.money_text(gold_worth))
+	check("  a sword is not money, and a server from before the ledger says nothing",
+		ItemSpawner.money_text({"kind": "item", "gold": 0, "lusions": 0, "value": 400}) == ""
+		and ItemSpawner.money_text(null) == "")
+	var to_him: Dictionary = {"username": "allmind", "character": "tank", "granted_quantity": 999.0,
+		"online": true, "worth": gold_worth}
+	var line: String = ItemSpawner.gift_line(to_him, pile, 999)
+	check("a give to a player says what it came to, before anybody asks",
+		line == "Gave 999 × Pile of Gold (24,975,000 gold) to allmind's tank. Their game is told on its next poll.",
+		line)
+	to_him["worth"] = {"kind": "item", "gold": 0, "lusions": 0, "value": 400, "sells_for": 20}
+	to_him["granted_quantity"] = 1
+	check("  a sword's line is as it was", ItemSpawner.gift_line(to_him, sword, 1)
+		== "Gave 1 × Iron Sword to allmind's tank. Their game is told on its next poll.",
+		ItemSpawner.gift_line(to_him, sword, 1))
+	check("your own bag says it too",
+		ItemSpawner.added_line({"worth": gold_worth}, pile, 999) == "Added 999 × Pile of Gold to your bag (24,975,000 gold).",
+		ItemSpawner.added_line({"worth": gold_worth}, pile, 999))
+	check("  and an answer with no worth in it reads as before",
+		ItemSpawner.added_line({}, pile, 2) == "Added 2 × Pile of Gold to your bag.")
+	var panel_code: String = _code_src("res://src/ui/owner/ownerpanel.gd")
+	check("the Testing tab's Give item says it the same way",
+		panel_code.split("func _on_item_pressed")[1].split("\nfunc ")[0].contains("ItemSpawner.money_text("))
+
+	# --- WHAT I'VE GIVEN -------------------------------------------------------
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var button: Button = gm.get_node_or_null("%giftsbutton") as Button
+	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
+	check("the Testing tab has the Gifts ledger, under the item catalogue",
+		button != null and testing_tab != null and testing_tab.is_ancestor_of(button)
+		and button.get_index() == gm.get_node("%cataloguebutton").get_index() + 1
+		and button.text == "Gifts ledger")
+	if button == null:
+		gm.queue_free()
+		Api.is_owner = was_owner
+		return
+	var asked: Array = []
+	# Through JSON and back, so every number is the float the real answer has.
+	var report: Variant = JSON.parse_string(JSON.stringify({
+		"totals": {"gifts": 14, "gold": 274750000, "lusions": 199, "item_value": 400, "item_sells_for": 20},
+		"to_players": {"gifts": 13, "gold": 274750000, "lusions": 199, "item_value": 400, "item_sells_for": 20},
+		"to_yourself": {"gifts": 1, "gold": 0, "lusions": 0, "item_value": 0, "item_sells_for": 0},
+		"by_player": [{"username": "allmind", "gifts": 13, "gold": 274750000, "lusions": 199, "item_value": 400}],
+		"by_item": [],
+		"recent": [{"at": 1791598980, "by": "Tunacan", "username": "allmind", "kind": "gold", "item_id": "goldpile",
+			"quantity": 999, "gold": 24975000, "lusions": 0, "item_value": 0, "source": "log"}],
+		"economy": {"gold_now": 275000000, "lusions_now": 300, "gold_ever_made": 276000000},
+		"share_of_gold_now": 0.9991, "ledger_since": 1791598000}))
+	var answer: Array = [{"ok": true, "data": report}]
+	gm.gifts_request = func(path: String) -> Dictionary:
+		asked.append(path)
+		await get_tree().process_frame
+		return answer[0]
+	button.pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var text: String = gm.results.get_parsed_text()
+	check("pressing it asks the gifts route", asked == [gm.GIFTS_PATH] and gm.GIFTS_PATH.begins_with("/api/staff/gifts"),
+		asked)
+	check("  and prints the totals in words: everything, to players, to themselves",
+		text.contains("THE GIFTS LEDGER") and text.contains("everything  : 274,750,000 gold, 199 lusions, items worth 400 (14 gifts)")
+		and text.contains("to players  : 274,750,000 gold") and text.contains("to themselves: nothing (1 gift)"), text)
+	check("  beside the gold in the game now, and the share of it",
+		text.contains("275,000,000 gold in purses and banks") and text.contains("is 99.9% of that"), text)
+	check("  by player, and the newest gift by the item's name",
+		text.contains("allmind: 274,750,000 gold") and text.contains("allmind: 999 × Pile of Gold, 24,975,000 gold"), text)
+	check("  and since when it counts", text.contains("counted from %s" % LocalTime.full(1791598000)), text)
+	check("the button is back for the next press", not button.disabled)
+	var unused: Dictionary = (report as Dictionary).duplicate(true)
+	unused["share_of_gold_now"] = 4829.6111
+	var panel_script: Variant = gm.get_script()
+	var unused_lines: Array = panel_script.gift_report_lines(unused)
+	var unused_text: String = "\n".join(unused_lines.map(func(l: Array) -> String: return str(l[0])))
+	check("  piles given and not used yet are said as more than all of it, not as thousands of per cent",
+		unused_text.contains("more than all of it") and not unused_text.contains("%"), unused_text)
+	gm.results.clear()
+	answer[0] = {"ok": true, "data": {"totals": {"gifts": 0}, "ledger_since": null}}
+	await gm.show_what_i_have_given()
+	check("nothing given yet is said so", gm.results.get_parsed_text().contains("Nothing given yet."),
+		gm.results.get_parsed_text())
+	answer[0] = {"ok": false, "status": 404, "error": "Not found."}
+	await gm.show_what_i_have_given()
+	check("a server from before the ledger is said to need updating",
+		gm.results.get_parsed_text().contains("no gifts ledger yet"), gm.results.get_parsed_text())
+	Api.is_owner = false
+	var before: int = asked.size()
+	await gm.show_what_i_have_given()
+	check("anyone but the owner asks nothing", asked.size() == before)
+	Api.is_owner = was_owner
+	gm.queue_free()
+	await get_tree().process_frame
+	print("  gifts: money in the give lines, older servers, What I've given, nothing yet, an old server")
+
+
+# THE CO-OWNERS (0.21.0). The owner: "i would promote allmind to owner but
+# there can only be 1 however thats why i want to build another gate that
+# allows him to enter", "maybe a switch in my gm panel that gives him access as
+# long as i leave it on", and "i also need the ability to set a players level
+# so they can try out the game". The server decides (test_coowner.py); these
+# hold the game's half: the rank, the badge, the switch, the doors, the level.
+func _test_coowners_and_their_levels() -> void:
+	section("CO-OWNERS - the owner's switch, the rank, the doors, and a player's level")
+	var was_owner: bool = Api.is_owner
+	var was_role: String = Api.role
+	var was_name: String = Api.username
+
+	# --- THE RANK ---------------------------------------------------------------
+	check("the ladder has the co-owner between dev and owner, as app.py's ROLES",
+		Api.RANK_ORDER == PackedStringArray(["player", "mod", "dev", "coowner", "owner"]))
+	Api.is_owner = true
+	Api.role = "coowner"
+	check("a co-owner has the owner's powers (is_owner) and is not THE owner",
+		Api.own_rank() == "coowner" and not Api.is_the_owner()
+		and Api.role_at_least("dev") and Api.role_at_least("coowner") and not Api.role_at_least("owner"))
+	check("  god mode and the always-roll switches are his", Api.role_at_least(Api.GOD_MODE_MIN_ROLE))
+	Api.role = "owner"
+	check("the owner is the owner", Api.own_rank() == "owner" and Api.is_the_owner())
+	check("a co-owner reads as a person says it", Api.rank_name("coowner") == "co-owner"
+		and Api.rank_name("dev") == "dev")
+	check("he wears CO-OWNER in the owner's gold, and only the owner the crown",
+		NameTag.badge("coowner") == "CO-OWNER" and not NameTag.wears_crown("coowner")
+		and NameTag.wears_crown("owner") and NameTag.badge_colour("coowner") == NameTag.badge_colour("owner"))
+	var chat_script: Variant = load("res://src/ui/chat/chatpanel.gd")
+	var desk_script: Variant = load("res://src/ui/staff/staffpanel.gd")
+	check("the chat menu and the staff desk rank him on the same ladder",
+		chat_script.rank_at("coowner") == 3 and desk_script.rank_index("coowner") == 3)
+	var on_him: Dictionary = desk_script.actions_for("owner", {"role": "coowner", "actionable": true})
+	check("the owner can kick him from the desk, and is not offered a demotion that would not move him",
+		on_him["kick"] and on_him["demote_to"] == "" and on_him["promote_to"] == "", on_him)
+	var by_him: Dictionary = desk_script.actions_for("coowner", {"role": "dev", "actionable": true})
+	check("  and he can demote a dev, and promote nobody to a rank that is not grantable",
+		by_him["demote_to"] == "mod" and by_him["promote_to"] == "", by_him)
+
+	# --- THE GM PANEL -------------------------------------------------------------
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var switch: CheckButton = gm.get_node_or_null("%coownerbutton") as CheckButton
+	var line: Label = gm.get_node_or_null("%coownerstatus") as Label
+	var server_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/server")
+	check("the Server tab has the co-owners' switch, with a line saying where it stands",
+		switch != null and line != null and server_tab != null and server_tab.is_ancestor_of(switch)
+		and server_tab.is_ancestor_of(line) and switch.text == "Co-owners in")
+	if switch == null or line == null:
+		gm.queue_free()
+		Api.is_owner = was_owner
+		Api.role = was_role
+		return
+	var got: Array = []
+	var posted: Array = []
+	var state: Array = [{"ok": true, "data": {"on": false, "names": ["AllMind"]}}]
+	var post_answer: Array = [{"ok": true, "data": {"on": true, "names": ["AllMind"]}}]
+	gm.coowner_request = func(path: String) -> Dictionary:
+		got.append(path)
+		await get_tree().process_frame
+		return state[0]
+	gm.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		posted.append([path, body])
+		await get_tree().process_frame
+		return post_answer[0]
+	Api.is_owner = true
+	Api.role = "owner"
+	await gm.refresh_coowners()
+	check("it asks the server, shows off, and says who it would let in",
+		got == ["/api/server/coowners"] and not switch.button_pressed and not switch.disabled
+		and line.text == "AllMind: out - just their own rank.", line.text)
+	switch.button_pressed = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("the owner throws it: on, to the switch route",
+		posted.size() == 1 and posted[0][0] == "/api/server/coowners" and posted[0][1] == {"on": true}
+		and switch.button_pressed and line.text.begins_with("AllMind: in"), [posted, line.text])
+	check("  and the box says what that means",
+		gm.results.get_parsed_text().contains("AllMind can use everything you can now"), gm.results.get_parsed_text())
+	Api.role = "coowner"
+	state[0] = {"ok": true, "data": {"on": true, "names": ["AllMind"]}}
+	await gm.refresh_coowners()
+	check("a co-owner sees it on, and cannot move it", switch.button_pressed and switch.disabled)
+	switch.set_pressed_no_signal(false)
+	gm._on_coowner_toggled(false)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  even past the disabled button: nothing is sent, and it is put back",
+		posted.size() == 1 and switch.button_pressed
+		and gm.results.get_parsed_text().contains("Only the owner lets co-owners in"), posted.size())
+	Api.role = "owner"
+	state[0] = {"ok": true, "data": {"on": false, "names": []}}
+	await gm.refresh_coowners()
+	check("nobody named: the switch cannot be turned on, and the line says where to name them",
+		switch.disabled and line.text.contains("ELUSION_CO_OWNERS"), line.text)
+	state[0] = {"ok": false, "status": 404, "error": "Not found."}
+	await gm.refresh_coowners()
+	check("a server from before has no switch, and says so", switch.disabled
+		and line.text == "This server has no co-owner switch yet.", line.text)
+	check("the lines are short enough not to stretch the panel",
+		[gm.coowner_line({"names": ["AllMind"], "on": true}), gm.coowner_line({"names": []}),
+			gm.coowner_line({}, true)].all(func(t: String) -> bool: return t.length() <= 52))
+	var ranks: Array = []
+	for rank in ["owner", "coowner"]:
+		Api.role = rank
+		gm._populate_ranks()
+		var offered: Array = []
+		for i in gm.role_option.item_count:
+			offered.append(gm.role_option.get_item_text(i))
+		ranks.append(offered)
+	check("the rank picker offers player, mod and dev - to the owner and to a co-owner - never co-owner",
+		ranks == [["player", "mod", "dev"], ["player", "mod", "dev"]], ranks)
+	Api.role = "owner"
+	gm.queue_free()
+	await get_tree().process_frame
+
+	# --- THE DOORS FOLLOW THE SWITCH ------------------------------------------------
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var row: Control = hud.get_node_or_null("%staffrow") as Control
+	Api.is_owner = false
+	Api.role = "dev"
+	hud._add_owner_button()
+	check("a dev named in the .env, switched off, has the Staff button and no Owner button",
+		row.visible and not row.has_node("ownerbutton"))
+	Api.is_owner = true
+	Api.role = "coowner"
+	hud._on_rank_changed("AllMind", "coowner")
+	check("the heartbeat lets him in: Owner and Powers appear, without signing in again",
+		row.has_node("ownerbutton") and row.has_node("powersbutton"))
+	Api.is_owner = false
+	Api.role = "dev"
+	hud._on_rank_changed("AllMind", "dev")
+	check("switched off: they go again, and the Staff button stays",
+		not row.has_node("ownerbutton") and not row.has_node("powersbutton") and row.visible)
+	hud.free()
+	check("the Powers window says co-owner", _code_src("res://src/ui/characterhud.gd").contains(
+		"Api.rank_name(str(entry.get(\"rank\", \"?\"))).to_upper()"))
+
+	# --- A PLAYER'S LEVEL, BESIDE GIVE TO -------------------------------------------
+	Api.is_owner = true
+	Api.role = "owner"
+	Api.username = "boss"
+	var menu: Control = (load("res://scene/ui/owner/itemspawner.tscn") as PackedScene).instantiate() as Control
+	add_child(menu)
+	await get_tree().process_frame
+	var level_box: LineEdit = menu.get_node_or_null("%theirlevel") as LineEdit
+	var level_button: Button = menu.get_node_or_null("%theirlevelbutton") as Button
+	check("the catalogue has a level box and Set level, on the Give to row",
+		level_box != null and level_button != null and level_box.get_parent() == menu.give_to.get_parent()
+		and level_button.text == "Set level")
+	var asked: Array = []
+	var answer: Array = [{"ok": true, "data": {"username": "newbie", "character": "tank", "slot": 0,
+		"level": 30, "was": 1, "sessions_ended": 1}}]
+	menu.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		asked.append([path, body])
+		await get_tree().process_frame
+		return answer[0]
+	menu.set_recipient("")
+	level_box.text = "30"
+	await menu.set_their_level()
+	check("no name in Give to: nothing is asked, and it says where your own level is",
+		asked.is_empty() and menu.status.text.contains("Testing tab"), menu.status.text)
+	menu.set_recipient("newbie")
+	# Two digits is all the box takes; 0 is the one it can hold and the server refuses.
+	level_box.text = "0"
+	await menu.set_their_level()
+	check("  a level outside 1-99 is said, not sent", asked.is_empty() and menu.status.text.contains("1 to 99"))
+	level_box.text = "30"
+	level_button.pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("a name and a level: the level route, with their name and no slot",
+		asked.size() == 1 and asked[0][0] == "/api/staff/level"
+		and asked[0][1] == {"username": "newbie", "level": 30}, asked)
+	check("  and it says what changed, and that their game was signed out to load it",
+		menu.status.text == "newbie's tank is level 30 now (was 1). Their game was signed out to load it - they sign back in.",
+		menu.status.text)
+	check("an offline player is told it is theirs when they sign in",
+		ItemSpawner.level_line({"username": "ivy", "character": "mage", "level": 5, "was": 2,
+			"sessions_ended": 0}).ends_with("They are offline; it is theirs when they sign in."))
+	answer[0] = {"ok": false, "status": 403, "error": "That is the owner's account - a co-owner cannot change it."}
+	await menu.set_their_level()
+	check("a refusal is said in the server's words",
+		menu.status.text == "That is the owner's account - a co-owner cannot change it.", menu.status.text)
+	menu.queue_free()
+	check("the save history names the snapshot a level change takes",
+		SaveHistory.REASON_WORDS.get("before-level", "") == "before a level change")
+
+	# --- THE LEDGER SAYS WHO GAVE IT ---------------------------------------------------
+	var panel_script: Variant = load("res://src/ui/owner/ownerpanel.gd")
+	var two: Dictionary = {"totals": {"gifts": 3, "gold": 3000}, "to_players": {"gifts": 2, "gold": 2000},
+		"to_yourself": {"gifts": 1, "gold": 1000},
+		"by_giver": [{"username": "Tunacan", "gifts": 2, "gold": 2000}, {"username": "AllMind", "gifts": 1, "gold": 1000}],
+		"recent": [{"at": 1791598980, "by": "AllMind", "username": "newbie", "item_id": "goldcoin",
+			"quantity": 1, "gold": 1000}]}
+	var lines: Array = panel_script.gift_report_lines(two)
+	var text: String = "\n".join(lines.map(func(l: Array) -> String: return str(l[0])))
+	check("with a co-owner giving too, the ledger says who gave what, and on each newest line",
+		text.contains("--- who gave it ---") and text.contains("Tunacan: 2,000 gold (2 gifts)")
+		and text.contains("AllMind: 1,000 gold (1 gift)") and text.contains("(by AllMind)"), text)
+	two["by_giver"] = [{"username": "Tunacan", "gifts": 3, "gold": 3000}]
+	lines = panel_script.gift_report_lines(two)
+	text = "\n".join(lines.map(func(l: Array) -> String: return str(l[0])))
+	check("  and with only the owner giving, it does not say so on every line",
+		not text.contains("who gave it") and not text.contains("(by "), text)
+
+	Api.is_owner = was_owner
+	Api.role = was_role
+	Api.username = was_name
+	print("  co-owners: the rank, the badge, the switch, the doors, a player's level, the ledger")
+
+
 func _test_founding_a_guild_shows_what_it_cost() -> void:
 	section("GUILD - founding shows the purse and bank the server left")
 
@@ -12638,7 +13087,7 @@ func _test_staff_panel() -> void:
 	# ---- one statement of what a rank looks like ----
 	# The nameplate over a player's head, their name in chat and their row in
 	# the friends list all paint from this. Three copies would drift.
-	check("every rank has a colour", Api.RANK_COLOURS.size() == 4, Api.RANK_COLOURS.size())
+	check("every rank has a colour", Api.RANK_COLOURS.size() == Api.RANK_ORDER.size(), Api.RANK_COLOURS.size())
 	check("the owner's is not the player's",
 		Api.colour_for_role("owner") != Api.colour_for_role("player"))
 	check("a rank this build has never heard of paints as a player",

@@ -4880,6 +4880,120 @@ What changed:
   order, the wiring), and `_test_other_players_are_drawn` played back on a
   hand clock (`RemotePlayer.clock_override`).
 
+### A held direction is let go when the keyboard goes elsewhere (0.19.1)
+
+The owner, passing on what the first other player found: "you need to disable
+the ability to shift rightclick to bring up the native context menu, it causes
+the character to get locked in the direction of whatever movement state its in
+at the time". He died like that, walking south.
+
+- **Why.** Shift is sprint and right-click is attack, so a running attack is a
+  Shift+right-click. Firefox opens its own right-click menu on one whatever
+  the page says - the export's shell cancels the menu, which Chrome, Edge and
+  Safari obey and Firefox, with Shift held, does not; no page can switch that
+  off. The menu takes the keyboard, the key-up of the direction being held goes
+  to the menu, and Godot's Input goes on holding that key: the character walks
+  that way until it is pressed again. The same happens to any key held while
+  the keyboard leaves - another window, a tab, a browser prompt.
+- **What the game does: lets go.** `Keybinds.let_go()` sends the key-up of
+  every key bound to `HELD_ACTIONS` (walking, sprint, attack) that is held, as
+  if it had arrived, and releases the action at once; with `mouse_too`, the
+  mouse buttons. The Settings autoload calls it (settings.gd, THE KEYBOARD
+  GOES ELSEWHERE) when the app or the window loses focus, when an editable
+  text box takes the keyboard (nobody walks while typing, and on a touch-screen
+  browser the box is a page element of its own), and on a Shift+right-click in
+  a browser that opens its own menu (`native_menu_on_shift_click`, from
+  `Keybinds.opens_its_own_menu(navigator.userAgent)`: Firefox and its forks).
+  There the keys go at once and the mouse button two physics frames later, so
+  the click still attacks. In Chrome, Edge and Safari a sprinting attack lets
+  go of nothing.
+- What a player sees in Firefox: Shift+right-click still opens the browser's
+  menu, and the character stops instead of walking off. The Windows build has
+  no browser menu.
+- Tests: `_test_held_keys_are_let_go` (the stuck key reproduced, letting go and
+  of what, Firefox's menu and the click still attacking, a right-click without
+  Shift, other browsers, the user agents, the window and the app losing focus,
+  a text box and a button).
+
+### Every gift the owner makes is counted, and what it came to (0.20.0)
+
+The owner, 10 Oct, after giving the first other player 10,990 Piles of Gold
+(274,750,000 gold) by accident, and keeping it: "do not roll back but make a
+ledger for anthing i give to players so its accounted for if i ever ask how
+much did i inflate my server".
+
+- **The server keeps the ledger** (THE GIFTS LEDGER in the API's app.py,
+  `owner_gifts`): every give to a player, every grant to yourself, every gold
+  put in from the Testing tab, with what it was worth that day. The gifts
+  from before were read back out of the staff log and the gold ledger the
+  first time the server started with it, so the 274,750,000 is in it.
+- **A gift says what it came to.** `/api/staff/grant` answers `worth`, and
+  `ItemSpawner.money_text()` says the money in it: the catalogue's lines are
+  "Gave 999 × Pile of Gold (24,975,000 gold) to allmind's tank." and "Added 3 ×
+  Gold Coin to your bag (3,000 gold).", and the Testing tab's Give item the
+  same. A sword is not money: its line is as it was, and its price is in the
+  ledger. A server from before sends no `worth`, and the lines are as before.
+- **"What I've given"**, in the GM panel's Testing tab under the item
+  catalogue, asks `GET /api/staff/gifts` and prints it into the results box
+  (`gift_report_lines()`, a static so the suite can read it): since when it
+  counts, everything, to players and to yourself apart, the gold in purses and
+  banks now and what share of it the gifts are, by player, and the newest ten
+  by the item's name. Piles given and not used yet count as given and are in
+  nobody's purse, so when the gifts are more than all the gold there is, it
+  says that instead of a percentage in the thousands. A 404 is a server from
+  before the ledger: update the API.
+- **On the server, without the game:** `giftwatch.py` in the API folder prints
+  the same, read only: `sudo -u elusion python3 giftwatch.py --db
+  /var/lib/elusion/elusion.db` (add `--player <name>` for one account).
+- Tests: `_test_gifts_are_counted` here (the lines with and without `worth`,
+  the button, the report in words, more than all of it, nothing yet, an old
+  server, anyone but the owner); `test_gifts.py` in the API.
+
+### A co-owner, let in by the owner's switch, and a player's level (0.21.0)
+
+The owner, 10 Oct: "i would promote allmind to owner but there can only be 1
+however thats why i want to build another gate that allows him to enter", then
+"maybe a switch in my gm panel that gives him access as long as i leave it on
+... people want to try the new weapons and i dont mind for first time players
+so i also need the ability to set a players level so they can try out the
+game".
+
+- **Two keys, both the owner's.** The server's `.env` names who may be a
+  co-owner (`ELUSION_CO_OWNERS=AllMind`, beside `ELUSION_OWNER`; no request can
+  write it), and the **Co-owners in** switch on the GM panel's Server tab says
+  whether they are in now. Only THE owner moves it (`Api.is_the_owner()`); a
+  co-owner sees it on, disabled. The line under it is one short sentence on
+  purpose - an autowrapped label in a hidden tab measures as a column of single
+  words and stretched the panel past the menu bar.
+- **On, a co-owner has everything the owner has, except over the owner.** The
+  server answers his login and heartbeat `role: "coowner"`, `is_owner: true`:
+  `Api.is_owner` means "has the owner's powers" now, so every door on it - the
+  Owner and Powers buttons, the GM panel, the catalogue - opens for him, and
+  `Api.own_rank()` says which of the two he is. He wears **CO-OWNER** in the
+  owner's gold (`Nametag.BADGES`); the crown is the owner's alone. God mode and
+  the always-roll switches are his (`GOD_MODE_MIN_ROLE` is `"coowner"`). The
+  rank lists - chat, the staff desk, the GM panel - read `Api.RANK_ORDER`, and
+  the rank picker offers only `Api.GRANTABLE_RANKS`. The desk offers the owner
+  a kick on him, not a demotion that would not move him.
+- **The doors follow the switch while he plays.** The HUD listens to
+  `Api.identity_changed`: switched on, the Owner and Powers buttons appear on
+  his next heartbeat; off, they go, with the GM panel and the catalogue if open
+  (`_on_rank_changed`). The server refused him the moment it moved.
+- **Set level beside Give to**, in the item catalogue: a name, a level, Set
+  level, then the weapon. `POST /api/staff/level {username, level}` sets the
+  character they are playing, takes a snapshot first (Save history can put it
+  back - "before a level change"), puts a line on their record, and signs their
+  game out so it loads the level. Not on the GM panel's Account tab: one more
+  row there pushed the panel past the menu bar. Your own level is still the
+  Testing tab's.
+- **The gifts ledger** button is "Gifts ledger" now (it was "What I've given"),
+  because it is a co-owner's gifts too: with more than one giver it says who
+  gave what, and "(by AllMind)" on each of the newest lines.
+- Tests: `_test_coowners_and_their_levels` (the rank, the badge, the switch for
+  the owner and for him, nobody named, an old server, the rank picker, the
+  doors following the switch, Set level, the ledger by giver);
+  `test_coowner.py` in the API.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

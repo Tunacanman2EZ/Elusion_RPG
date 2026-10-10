@@ -828,9 +828,43 @@ keeps no copy of the rule.
 
 ---
 
+## The co-owners (game 0.21.0)
+
+An account the server's `ELUSION_CO_OWNERS` names (environment only, never the
+database) has every power the owner has - every `require_owner` route below -
+**while the owner's switch is on**, and none over the owner. The login, the
+session (`GET /api/auth/session`) and the resume answer `"role": "coowner"`
+and `"is_owner": true`: **on the wire `is_owner` means "has the owner's
+powers"**, and `role` says which of the two. The ladder is `player < mod < dev
+< coowner < owner`; neither of the top two can be set by `PUT /api/staff/role`
+(400). A co-owner aiming the owner's powers at the owner's account - a give, a
+level, the save history, a rollback - gets **403** "That is the owner's account
+- a co-owner cannot change it."; moderating the owner is the usual 404.
+
+**`GET /api/server/coowners`** (owner or co-owner) -> `{"on", "names", "by",
+"at", "stored_on"}`: whether they are in, and who the switch lets in.
+**`POST /api/server/coowners`** `{"on": bool}` - **the owner alone** (a
+co-owner gets the bare 404, so he cannot keep himself in) - answers the same
+shape; `409` turning it on with nobody named. Off takes effect on the next
+request; nobody is signed out. `/api/staff/powers` lists the owner's routes on
+the `coowner` rung, the lowest that opens them, and the switch on `owner`'s.
+
+---
+
 ## Giving a player an item, and the save history
 
-Owner only (`require_owner`; a bare 404 to everyone else). Since game 0.7.5.
+Owner only (`require_owner`; a bare 404 to everyone else; a co-owner too while
+the switch is on). Since game 0.7.5.
+
+**`POST /api/staff/level`** takes `username` too (game 0.21.0): `{"username",
+"level"}` sets the character that account is PLAYING - never a slot from the
+request - to `level` (1-99): XP from zero, the maxima, full pools. A
+`before-level` snapshot first, a `player_level` line in the moderation log about
+them, and **every session of the account ended** so their game loads it at
+sign-in. -> `{"username", "character", "slot", "level", "was", "xp_to_next",
+"max_hp", "sessions_ended"}` (0 when they were not signed in). `404` no such
+account or no character; `403` a co-owner naming the owner. No `username`, or
+your own, is your own `slot` as before.
 
 **`POST /api/staff/grant`** takes `username` as well as the owner's own `slot`.
 Your own name, in any case, is your own grant as before (and needs `slot`). Any
@@ -843,6 +877,37 @@ its next poll: `trade_resync` on `GET /api/server/broadcasts` (or `resync` on
 the trade poll) is `{"slot", "gold", "inventory", "trade": null, "gifts":
 [{"by", "item_id", "quantity"}, ...]}` - the newest five gifts, once, and a
 waiting trade result is never replaced by one.
+
+Since game 0.20.0 both answers - your own bag and somebody else's - also carry
+**`worth`**: `{"kind", "gold", "lusions", "value", "sells_for"}`, what the gift
+was worth as the gifts ledger wrote it. `kind` is `gold` (coins and piles, at
+what using them pays; `gold` is that), `lusions` (a pile of lusions; `lusions`
+is what it cashes into) or `item` (`value` the catalogue's price, `sells_for`
+what the general store pays). A server from before sends no `worth`, and the
+game then says the line it always did.
+
+**`GET /api/staff/gifts[?username=<name>][&recent=N]`** - what the owner has
+given away (since game 0.20.0). Every give, every grant to yourself and every
+`/api/staff/gold` is a row, written with the gift; the ones from before the
+ledger were read back from the logs once, marked `"source": "log"`. ->
+`{"totals", "to_players", "to_yourself", "by_player", "by_item", "recent",
+"economy", "share_of_gold_now", "ledger_since"}`. The three sums are `{"gifts",
+"gold", "lusions", "item_value", "item_sells_for", "first_at", "last_at"}`.
+`by_player` is up to 50 `{"username", "gifts", "gold", "lusions", "item_value",
+"item_sells_for", "last_at"}`, the most gold first; `by_item` up to 15
+`{"item_id", "kind", "quantity", "gold", "lusions", "item_value"}`; `recent` the
+newest `recent` (1-100, default 20) `{"at", "by", "username", "kind", "item_id",
+"quantity", "gold", "lusions", "item_value", "source"}`, by when. `item_id` is
+`""` for gold put straight in (and a negative `gold` is gold taken back).
+`by_giver` (0.21.0) is up to 20 `{"username", "gifts", "gold", "lusions",
+"item_value", "item_sells_for", "last_at"}` - the owner, and a co-owner - and
+`to_yourself` is a giver to his own account.
+`economy` is `{"gold_now", "lusions_now", "gold_ever_made"}`: the gold in every
+purse and bank now, and every gold the gold ledger ever recorded made.
+`share_of_gold_now` is the given gold over `gold_now` (null when there is
+none) and passes 1 while piles given are still unused in bags. `ledger_since` is
+the time of the first gift the logs remembered. `username` narrows all of it to
+what that account was given; `404` no such account.
 
 **`GET /api/staff/snapshots?username=<name>[&slot=N]`** -> `{"username",
 "slot", "playing", "characters": [{"slot", "name", "class_id", "level"}],

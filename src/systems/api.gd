@@ -90,7 +90,7 @@ const BUILD := 4
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.19.0"
+const DISPLAY_VERSION := "0.21.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -364,9 +364,14 @@ var staff_unprotected: bool = false
 var _told_staff_unprotected: bool = false
 
 # This account's rank, as the server understands it. The chain of command runs
-# owner > dev > mod > player, and there is no fifth rank. Same rules as is_owner
-# - memory only, re-read on every login and resume, never written to
-# session.cfg.
+# owner > coowner > dev > mod > player (the co-owner since 0.21.0: an account
+# the server's ELUSION_CO_OWNERS names, while the owner's switch is on). Same
+# rules as is_owner - memory only, re-read on every login and resume, never
+# written to session.cfg.
+#
+# IS_OWNER IS "HAS THE OWNER'S POWERS" since 0.21.0: the server sends it true
+# for a co-owner too, so every gate on it - the GM panel, the catalogue, the
+# Owner button - opens for him, and `role` says which of the two he is.
 var role: String = "player"
 
 # What the login screen should say when the game was signed out FROM THE
@@ -405,7 +410,7 @@ const SIGNED_IN_ELSEWHERE_NOTICE := "This account signed in somewhere else, so t
 # stationary one does. hp is client-written and only clamped server-side (E-9),
 # so a modified client could always refuse to die - this keeps an HONEST build
 # honest, which is the whole of what a client-side gate can buy.
-const GOD_MODE_MIN_ROLE := "owner"
+const GOD_MODE_MIN_ROLE := "coowner"
 
 
 # WHAT EACH RANK LOOKS LIKE - ON ITS BADGE. These used to paint the NAME: the
@@ -420,6 +425,8 @@ const GOD_MODE_MIN_ROLE := "owner"
 # player wears no badge to put it on.
 const RANK_COLOURS := {
 	"owner":  Color(1.0, 0.78, 0.35),
+	# The owner's gold: a co-owner has everything the owner has.
+	"coowner": Color(1.0, 0.78, 0.35),
 	"dev":    Color(0.62, 0.82, 1.0),
 	"mod":    Color(0.55, 0.95, 0.68),
 	"player": Color(0.95, 0.85, 0.6),
@@ -483,12 +490,39 @@ func role_at_least(minimum: String) -> bool:
 	# An unrecognised rank sorts as the LOWEST, never the highest. A response
 	# from a newer server naming a rank this build has never heard of must not
 	# be read as more privilege than the player has.
-	var order: PackedStringArray = ["player", "mod", "dev", "owner"]
+	var order: PackedStringArray = RANK_ORDER
 	var mine: int = order.find(role)
 	var needed: int = order.find(minimum)
 	if mine < 0 or needed < 0:
 		return false
 	return mine >= needed
+
+
+# THE LADDER, lowest first, as ROLES in app.py has it. Every rank list in the
+# game is this one: chatpanel, the staff desk and the GM panel read it here.
+const RANK_ORDER: PackedStringArray = ["player", "mod", "dev", "coowner", "owner"]
+# The ranks a rank change may hand out. coowner and owner come from the
+# server's environment, never from a request.
+const GRANTABLE_RANKS: PackedStringArray = ["player", "mod", "dev"]
+
+
+func own_rank() -> String:
+	"""This account's place on the ladder: "owner" for the owner, "coowner" for
+	a co-owner (is_owner is true for both), otherwise the role."""
+	if is_owner and role != "coowner":
+		return "owner"
+	return role
+
+
+func is_the_owner() -> bool:
+	"""THE owner - not a co-owner. The one switch only the owner throws (the
+	co-owners' own) asks this; everything else asks is_owner."""
+	return is_owner and role == "owner"
+
+
+func rank_name(which: String) -> String:
+	"""A rank as a person reads it: "co-owner", not "coowner"."""
+	return "co-owner" if which == "coowner" else which
 
 
 func is_logged_in() -> bool:

@@ -1714,7 +1714,7 @@ const MENU_IGNORE := 2
 const MENU_REPORT := 10
 const MENU_MUTE := 20
 const MENU_UNMUTE := 30
-const RANK_ORDER := ["player", "mod", "dev", "owner"]
+const RANK_ORDER := ["player", "mod", "dev", "coowner", "owner"]
 const NEW_BELOW_TEXT := "New messages below - click to see them"
 const COMMANDS_HELP := "/w name text  whisper   /r text  answer the last whisper\n" \
 	+ "/ignore name   /unignore name   /ignored  who you are ignoring"
@@ -1780,7 +1780,7 @@ func open_line_menu(line: Dictionary) -> void:
 		menu.add_separator("Report this message")
 		for i in REPORT_CHOICES.size():
 			menu.add_item(REPORT_CHOICES[i][1], MENU_REPORT + i)
-	var mine: int = rank_at("owner" if Api.is_owner else Api.role)
+	var mine: int = rank_at(Api.own_rank())
 	if mine >= rank_at("mod") and mine > rank_at(rank):
 		menu.add_separator("Staff")
 		for i in MUTE_CHOICES.size():

@@ -41,6 +41,8 @@ const REASON_WORDS := {
 	"save": "",
 	"before-give": "before a gift",
 	"before-rollback": "before a rollback",
+	# 0.21.0: the GM panel's Set their level.
+	"before-level": "before a level change",
 }
 
 const COLOUR_BAD := Color(1.0, 0.55, 0.45)

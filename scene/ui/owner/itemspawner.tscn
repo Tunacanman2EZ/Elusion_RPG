@@ -136,6 +136,25 @@ theme_override_font_sizes/font_size = 13
 placeholder_text = "you - or a player's name"
 clear_button_enabled = true
 
+[node name="theirlevel" type="LineEdit" parent="frame/margin/rows/giverow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+tooltip_text = "A level, 1 to 99, for the player named in Give to."
+theme_override_colors/font_color = Color(0.87843, 0.9098, 0.9451, 1)
+theme_override_colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
+theme_override_font_sizes/font_size = 13
+placeholder_text = "level"
+max_length = 2
+
+[node name="theirlevelbutton" type="Button" parent="frame/margin/rows/giverow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Set the level of the character the player in Give to is playing: XP from zero, health and mana full. A snapshot is taken first, so Save history can put it back, and their game is signed out to load it."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Set level"
+
 [node name="spawnrow" type="HBoxContainer" parent="frame/margin/rows"]
 layout_mode = 2
 theme_override_constants/separation = 6

@@ -66,7 +66,7 @@ signal closed
 const TradePanelScript := preload("res://src/ui/trade/tradepanel.gd")
 const Marks := preload("res://src/shared/marks.gd")
 
-const RANKS: PackedStringArray = ["player", "mod", "dev", "owner"]
+const RANKS: PackedStringArray = ["player", "mod", "dev", "coowner", "owner"]
 
 # Ban lengths offered as buttons. Days, because that is what the endpoint
 # takes. All within MAX_MOD_BAN_DAYS, so a mod gets every one of them and only
@@ -294,7 +294,9 @@ static func actions_for(viewer_rank: String, entry: Dictionary) -> Dictionary:
 		var up: int = theirs + 1
 		if up < mine and up <= rank_index("dev"):
 			promote_to = RANKS[up]
-		if theirs > 0:
+		# A co-owner is not demoted here: the rank comes from the server's
+		# environment and the owner's switch, and a row change would not move it.
+		if theirs > 0 and theirs <= rank_index("dev"):
 			demote_to = RANKS[theirs - 1]
 
 	return {
@@ -535,7 +537,7 @@ static func describe_count(shown: int, matched: int, online: int) -> String:
 
 
 static func my_rank() -> String:
-	return "owner" if Api.is_owner else Api.role
+	return Api.own_rank()
 
 
 # =============================================================================

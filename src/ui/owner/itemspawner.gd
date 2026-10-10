@@ -33,6 +33,21 @@
 #   poll with a line saying who gave what, and logs a "give" about them. Gear
 #   is never put on for them - "put gear on" is about your own character. The
 #   GM panel's Give item opens this with the name already in the box.
+# - WHAT IT CAME TO (0.20.0). The server keeps every gift in a ledger (the owner,
+#   10 Oct: "make a ledger for anthing i give to players so its accounted for if
+#   i ever ask how much did i inflate my server") and answers what each one was
+#   worth. Money is said in the line - "999 × Pile of Gold (24,975,000 gold)" -
+#   so 274 million is never found out later; a sword is not money, and its
+#   price is in the ledger, not the line. The GM panel's Testing tab has the
+#   Gifts ledger for the totals.
+# - "SET THEIR LEVEL" BESIDE GIVE TO (0.21.0; the owner, 10 Oct: "people want
+#   to try the new weapons and i dont mind for first time players so i also
+#   need the ability to set a players level so they can try out the game").
+#   Here because this is where the weapon is given: a name in Give to, a
+#   level, Set level, then the weapon. POST /api/staff/level with the name:
+#   the character they are playing, a snapshot first (Save history can put
+#   it back), a line on their record, and their game signed out so it loads
+#   the level. Your own level is the GM panel's Testing tab, as before.
 #
 # OWNER ONLY, three times over: the HUD builds the button only for the owner,
 # every request here asks Api.is_owner first, and the server is the gate that
@@ -81,6 +96,8 @@ var equip_request: Callable
 @onready var quality_pick: OptionButton = %itemquality
 @onready var status: Label = %spawnstatus
 @onready var give_to: LineEdit = %givetoinput
+@onready var their_level: LineEdit = get_node_or_null("%theirlevel")
+@onready var their_level_button: Button = get_node_or_null("%theirlevelbutton")
 @onready var close_button: Button = %itemspawnerclose
 
 # One frame per tier, built once: the frame is the rarity colour, so an ember
@@ -104,6 +121,10 @@ func _ready() -> void:
 	category.item_selected.connect(func(_i: int) -> void: refresh())
 	search.text_changed.connect(func(_t: String) -> void: refresh())
 	close_button.pressed.connect(close)
+	if their_level_button != null:
+		their_level_button.pressed.connect(set_their_level)
+	if their_level != null:
+		their_level.text_submitted.connect(func(_t: String) -> void: set_their_level())
 	refresh()
 
 
@@ -343,9 +364,7 @@ func spawn(item_id: String) -> void:
 
 	var cells: Array = data.get("inventory", []) if data.get("inventory", []) is Array else []
 	adopt_bag.call(CharacterData.active_character_index, cells)
-	var line: String = "Added %d × %s to your bag." % [how_many, item.display_name]
-	if item.is_rolled():
-		line = "Added %s to your bag, quality %d%%." % [item.display_name, item.quality_percent()]
+	var line: String = added_line(data, item, how_many)
 
 	var wearable: bool = item.equip_slot != ItemData.EquipSlot.NONE
 	if wearable and wear_toggle.button_pressed:
@@ -359,18 +378,45 @@ func spawn(item_id: String) -> void:
 	_say(line)
 
 
+static func added_line(data: Dictionary, item: ItemData, how_many: int) -> String:
+	"""What a grant to your own bag did, from the server's answer."""
+	if item.is_rolled():
+		return "Added %s to your bag, quality %d%%." % [item.display_name, item.quality_percent()]
+	var money: String = money_text(data.get("worth"))
+	return "Added %d × %s to your bag%s." % [how_many, item.display_name,
+		" (%s)" % money if money != "" else ""]
+
+
 static func gift_line(data: Dictionary, item: ItemData, how_many: int) -> String:
 	"""What a gift to somebody else did, from the server's answer."""
 	var who: String = "%s's %s" % [str(data.get("username", "?")), str(data.get("character", "character"))]
 	var what: String = "%d × %s" % [int(data.get("granted_quantity", how_many)), item.display_name]
 	if item.is_rolled():
 		what = "%s, quality %d%%," % [item.display_name, item.quality_percent()]
+	var money: String = money_text(data.get("worth"))
+	if money != "":
+		what += " (%s)" % money
 	var line: String = "Gave %s to %s." % [what, who]
 	if bool(data.get("online", false)):
 		line += " Their game is told on its next poll."
 	else:
 		line += " They are offline; it is in their bag when they sign in."
 	return line
+
+
+static func money_text(worth: Variant) -> String:
+	"""The money in the server's "worth" for a gift - "24,975,000 gold" or
+	"50 lusions" - and "" for an item that is not money, or for an answer from a
+	server older than the ledger, which sends none."""
+	if not worth is Dictionary:
+		return ""
+	var gold: int = int((worth as Dictionary).get("gold", 0))
+	var lusions: int = int((worth as Dictionary).get("lusions", 0))
+	if gold != 0:
+		return "%s gold" % GameConstants.commas(gold)
+	if lusions != 0:
+		return GameConstants.counted(lusions, "lusion")
+	return ""
 
 
 # =============================================================================
@@ -406,6 +452,42 @@ func _refused(res: Dictionary) -> String:
 
 
 const ApiScript := preload("res://src/systems/api.gd")
+# STAFF_LEVEL_MAX in app.py.
+const LEVEL_MAX := 99
+
+
+func set_their_level() -> void:
+	"""The level box beside Give to: the character the named player is playing."""
+	if not Api.is_owner or _busy:
+		return
+	var to: String = recipient()
+	if to == "":
+		_say("Type a player's name in Give to. Your own level is on the GM panel's Testing tab.", true)
+		return
+	var typed: String = their_level.text.strip_edges() if their_level != null else ""
+	if not typed.is_valid_int() or int(typed) < 1 or int(typed) > LEVEL_MAX:
+		_say("A level is a whole number from 1 to %d." % LEVEL_MAX, true)
+		return
+	_busy = true
+	_say("Setting %s's level to %d..." % [to, int(typed)])
+	var res: Dictionary = await post_request.call("/api/staff/level", {"username": to, "level": int(typed)})
+	_busy = false
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		_say(_refused(res), true)
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	_say(level_line(data))
+
+
+static func level_line(data: Dictionary) -> String:
+	"""What setting somebody's level did, from the server's answer."""
+	var line: String = "%s's %s is level %d now (was %d)." % [str(data.get("username", "?")),
+		str(data.get("character", "character")), int(data.get("level", 0)), int(data.get("was", 0))]
+	if int(data.get("sessions_ended", 0)) > 0:
+		return line + " Their game was signed out to load it - they sign back in."
+	return line + " They are offline; it is theirs when they sign in."
 
 
 func _say(line: String, bad: bool = false) -> void:

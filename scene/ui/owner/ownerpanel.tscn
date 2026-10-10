@@ -492,6 +492,14 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 13
 text = "Item catalogue..."
 
+[node name="giftsbutton" type="Button" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Everything given away - by you, and by a co-owner - to players and to themselves, and what it came to, beside the gold in the game now. Printed in the box below."
+focus_mode = 0
+theme_override_font_sizes/font_size = 13
+text = "Gifts ledger"
+
 [node name="levelrow" type="HBoxContainer" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 layout_mode = 2
 theme_override_constants/separation = 5
@@ -671,6 +679,24 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
 theme_override_font_sizes/font_size = 11
 text = "Every version of the game can play."
+
+[node name="coownerbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/server"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Yours alone. On: the account your server's .env names in ELUSION_CO_OWNERS has every power you have - this panel, items, gold, levels, the switches - except over you. Off: they are their own rank again, from their next request."
+focus_mode = 0
+theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
+theme_override_font_sizes/font_size = 13
+text = "Co-owners in"
+
+[node name="coownerstatus" type="Label" parent="frame/margin/rows/tabsscroll/ownertabs/server"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.82, 1)
+theme_override_font_sizes/font_size = 11
+text = "Asking the server..."
 
 [node name="resultsrow" type="HBoxContainer" parent="frame/margin/rows"]
 layout_mode = 2

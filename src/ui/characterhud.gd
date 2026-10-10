@@ -267,6 +267,10 @@ func _ready() -> void:
 	_wire_nav_buttons()
 	_add_version_to_menu()
 	_add_owner_button()
+	# THE OWNER'S POWERS CAN ARRIVE AND GO WHILE PLAYING (0.21.0): the owner
+	# lets a co-owner in or takes him out, and the heartbeat says so.
+	if not Api.identity_changed.is_connected(_on_rank_changed):
+		Api.identity_changed.connect(_on_rank_changed)
 	_build_message_box()
 	_warn_unprotected_staff()
 	# A NEW AREA'S HUD KEEPS THE DOT: something said to you before the door
@@ -956,6 +960,31 @@ func _add_owner_button() -> void:
 		row.add_child(button)
 
 
+func _on_rank_changed(_new_username: String, _new_role: String) -> void:
+	"""A co-owner let in gets the Owner and Powers buttons on his next
+	heartbeat; taken out, they go, with the GM panel and the item catalogue if
+	they were open. The server refused him the moment the switch moved - this
+	is only the doors catching up."""
+	if Api.is_owner:
+		_add_owner_button()
+		return
+	var row: Control = get_node_or_null("%staffrow") as Control
+	if row != null:
+		for button_name in ["ownerbutton", "powersbutton"]:
+			var button: Node = row.get_node_or_null(button_name)
+			if button != null:
+				row.remove_child(button)
+				button.queue_free()
+		row.visible = is_staff()
+	if owner_panel != null and owner_panel.visible:
+		owner_panel.visible = false
+	if item_spawner != null and item_spawner.visible:
+		item_spawner.close()
+	var powers: Control = get_node_or_null("powerspanel") as Control
+	if powers != null:
+		powers.visible = false
+
+
 func _style_staff_row_button(button: Button) -> void:
 	button.focus_mode = Control.FOCUS_NONE
 	button.add_theme_font_size_override("font_size", 12)
@@ -1154,7 +1183,7 @@ func _render_powers(rows: VBoxContainer, data: Dictionary) -> void:
 	for entry in data.get("ladder", []):
 		if not (entry is Dictionary):
 			continue
-		var rank: String = str(entry.get("rank", "?")).to_upper()
+		var rank: String = Api.rank_name(str(entry.get("rank", "?"))).to_upper()
 		var grantable: bool = bool(entry.get("grantable", false))
 		_powers_line(rows, "", Color(1, 1, 1), 4)
 		_powers_line(rows, "%s%s" % [rank, "" if grantable else "   (cannot be granted)"],
@@ -1179,7 +1208,7 @@ func _render_powers(rows: VBoxContainer, data: Dictionary) -> void:
 	var grant_text: String = "nothing"
 	if not may_grant.is_empty():
 		grant_text = ", ".join(PackedStringArray(may_grant))
-	_powers_line(rows, "You are %s. You may grant: %s" % [str(data.get("you_are", "?")), grant_text],
+	_powers_line(rows, "You are %s. You may grant: %s" % [Api.rank_name(str(data.get("you_are", "?"))), grant_text],
 		Color(0.43, 0.84, 0.49), 12)
 
 
