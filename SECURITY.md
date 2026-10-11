@@ -15,27 +15,51 @@ buttons are drawn and they refuse nothing. `require_role()` and `require_owner()
 on the server are what actually say no. A patched build setting itself to `owner`
 gains exactly nothing.
 
-**There are no debug keys.** Until 0.7.1 keyboard shortcuts granted items,
-pets and lusions in a debug build, and Ctrl+G switched god mode. They are gone:
-the owner panel does that work, and the panel only asks.
-`POST /api/staff/grant` refuses everyone but the owner, so a patched build that
-opens the panel gains nothing. An edited client cannot write its own bag either - the
-backpack and the bank are the server's, every drag and bin is a request it
-carries out, and a player's whole-bag write is ignored.
+**A co-owner's buttons follow the owner's switch; the server does not wait for
+them** (0.21.0). Since a co-owner exists, `Api.is_owner` means "has the owner's
+powers" - the owner always, a co-owner while the owner's **Co-owners in** switch
+is on - and `Api.own_rank()` says which. Who may be a co-owner is named only in
+the server's environment, and only the owner can move the switch. The HUD takes
+the owner's buttons away on the next heartbeat after the switch goes off, but
+that is for an honest build: the server reads the switch on every request, so a
+patched build that keeps drawing the buttons gets the same 404 as anyone else
+from the moment it moved.
 
-**Give item to a player, and the Save history** (0.7.5, the owner only, on the
-GM panel's Account tab) are requests like everything else on it. The server
-decides which character a gift goes into and hands that player's game the new
-bag; a rollback is carried out entirely on the server, which signs the player
-out so their game loads the restored character. A patched build that draws the
-buttons gets the same 404 as a route that does not exist.
+**There are no debug keys.** Until 0.7.1 keyboard shortcuts granted items, pets
+and lusions in a debug build, and Ctrl+G switched god mode. They are gone: the
+owner panel does that work, and the panel only asks. `POST /api/staff/grant`
+refuses everyone but the owner (and a co-owner while the owner lets him in), so a
+patched build that opens the panel gains nothing. An edited client cannot write
+its own bag either - the backpack and the bank are the server's, every drag and
+bin is a request it carries out, and a player's whole-bag write is ignored.
 
-**God mode** (a switch on the owner panel, the owner only) turns damage off so
-the game can be tested without dying repeatedly. It grants nothing: the guard
-returns before the hit is applied *and* before the defense XP that
+**Give item to a player, Set level and the Save history** (0.7.5 and 0.21.0,
+for the owner and a co-owner, on the GM panel's Account tab and in the item
+catalogue) are requests like everything else on it. The server decides which
+character a gift or a level goes into - the one the player is playing, never a
+slot the game names - and hands that player's game the new bag. A level change
+and a rollback are carried out entirely on the server, after a snapshot that
+can undo them, and the player is signed out so their game loads what the server
+holds. Each is a line on the player's record, and every gift is a row in the
+gifts ledger (0.20.0) with what it was worth and who gave it; the ledger is read
+back from the server, never added up by the game. A patched build that draws
+the buttons gets the same 404 as a route that does not exist, and a co-owner
+cannot use any of them on the owner's own account.
+
+**God mode** (a switch on the owner panel, for the owner and a co-owner) turns
+damage off so the game can be tested without dying repeatedly. It grants nothing:
+the guard returns before the hit is applied *and* before the defense XP that
 `/api/skill/train` would otherwise bank, so an invincible character earns exactly
 as much as a stationary one. `hp` is client-written in any case, so a modified
 client could always refuse to die — the gate keeps an honest build honest.
+
+**The always-roll switches** (0.18.1 and 0.18.2, the same two ranks) make every
+mythic attack take its one-in-a-hundred or its one-in-ten roll, so the rare ones
+can be seen on demand. The character asks for the flag *and* the rank on every
+roll, so a flag left on does nothing for anyone else, and both are off after
+every restart. They are client dice, like every roll an attack makes: a
+modified client could always roll its own, and nothing the switches can do is
+outside what the server's books already allow a throw.
 
 **No secrets are in this repository**, and none should ever be. No keys, no
 tokens, no database. The session token lives in `user://session.cfg` on the
@@ -77,6 +101,30 @@ show come from the server's rows, and the socket is opened with a two-minute
 ticket rather than the login token. A modified game can stand anywhere on other
 people's screens; it cannot be someone else, and nothing on that socket deals
 damage or moves an item. A drawn player has no hitbox and is never "the player".
+
+**Their attacks are pictures too** (0.19.0). A meteor, a thrown axe, a stick of
+Dynamite, a slash wave or a healer's orb from another player is the class's own
+scene with everything that hits switched off: no damage, no XP, no wound, no
+pull, no camera shake. The server checks each one's shape before passing it on -
+a kind it knows, and a start near where that player last said they stood - so a
+modified game can draw an attack that never happened, and hurt nobody with it.
+Only the attacker's own game lands hits, and those go where they always went.
+
+**A lever pulled is pulled for the whole area** (0.19.0), and the server
+remembers it for whoever walks in later. The game only ever matches the name it
+is told to a real lever in its own copy of the scene - looked for among the
+levers, never fetched by path - so a message cannot reach any other node. A
+modified game can throw any lever in its area from anywhere in it, opening or
+shutting that gate for everyone there: a gate is a door, not a lock, and moving
+one changes nobody's health, bag or gold.
+
+**The monsters you share an area with are run by one player's game** (0.7.0),
+the area's leader, and every other game draws them from what it says. A
+modified leader can move, heal or kill those monsters on everyone's screen. It
+cannot reach anyone's health, bag, gold or kills: each game builds every attack
+from its own copy of the monster and caps the few numbers the leader sends, and
+the server keeps its own count of every fight (0.10.0). The server's page has
+the detail under *Honest limits*.
 
 **Most of what looks like a client-side vulnerability is a server question.** "I
 can edit my save", "I can spawn items", "I can claim a kill" — all true, all

@@ -303,10 +303,10 @@ test_moderation.py     156 checks    the moderation record, a log that opens on 
 test_ownership.py      150 checks    no route hands over a row that is not yours
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
+test_security_doc.py   135 checks    SECURITY.md is checked, not trusted
 test_refusals.py       127 checks    401, 403, and the 404 that is really a 403
 test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
 test_presence.py       122 checks    players seeing each other, whose game runs each area's monsters, every attack and lever
-test_security_doc.py   122 checks    SECURITY.md is checked, not trusted
 test_quality.py        113 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
 test_pacing.py         112 checks    the pace of the game: what the server pays, the store charges and the shop pays back
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
@@ -344,7 +344,7 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,917 checks, 0 failures
+					4,930 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
