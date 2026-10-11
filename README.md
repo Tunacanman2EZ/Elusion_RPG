@@ -353,6 +353,8 @@ The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run 
 
 **If you cloned this repo, it will report `3597 passed, 0 failed, 25 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-four are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
+**Both suites run on GitHub for every push and every pull request** (`.github/workflows/tests.yml`, here and in the API repo). The game's run is a clone — no art pack — so a new check that needs the art and does not say so fails there before it reaches anybody who clones this. The API's runs `run_tests.ps1` itself, so a green tick means what a green run on the PC means.
+
 Some of the suite is there to catch things the engine will not tell you about:
 
 - **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
@@ -367,6 +369,8 @@ Some of the suite is there to catch things the engine will not tell you about:
 Without the service running, the login screen will tell you it can't reach the server — the game does not fall back to local accounts by design.
 
 **In a browser:** export the **Web** preset (Project → Export), which writes `builds/web/`, then run `python web/serve.py` and open `http://localhost:8060`. It serves the export and passes `/api/` through to the service, as the real site does.
+
+**On the live server:** `.\tools\deploy_web.ps1 -Export` exports the Web preset, uploads it under a new name and swaps it in, keeping the build it replaced; `-Rollback` puts that one back, and `-DryRun` prints every command without running any. Files whose bytes did not change keep their dates, so a returning player downloads only what changed. The API repo's `DEPLOY.md` has the rest.
 
 **On Windows:** export the **Windows** preset, which writes one file, `builds/windows/ElusionRPG.exe`, with the game inside it. It looks for the service at `127.0.0.1:5000` unless told otherwise: `--server=<address>` on its command line, or a one-line `server.cfg` beside its save data.
 

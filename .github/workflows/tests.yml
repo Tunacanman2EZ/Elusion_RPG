@@ -1,0 +1,72 @@
+# The game's in-engine suite (src/tools/testrunner.gd), headless, on every
+# push and every pull request.
+#
+# This is a CLONE: the private art pack (art/pack, a submodule) is not checked
+# out, because it holds purchased art that may not be redistributed. The checks
+# that need its art report as skipped, each with the reason, and the run exits
+# 0 - see README, "A clone is missing the item art on purpose". A check that
+# needs the art and is not marked so fails here, which is how a new one is
+# caught before it reaches anybody who clones the repo.
+
+name: Game tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: game-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  godot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GODOT_VERSION: "4.6.1"
+      # SHA-512 of Godot_v4.6.1-stable_linux.x86_64.zip, as the release's own
+      # SHA512-SUMS.txt gives it. A download that does not match is refused.
+      # Changing GODOT_VERSION means changing this too.
+      GODOT_SHA512: a76fd0fe1d44a2dd6c065b6f7b434ad75f5593c07bda3d3017f8304f2d069acbcf0f39cb5d0976f0434b56e9ea852032ddbcbdb7e0ce1c75a47e1dacb6794bd7
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+
+      - name: Cache the engine
+        id: engine
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+
+      - name: Download the engine
+        if: steps.engine.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot
+          curl -fsSL -o /tmp/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          echo "${GODOT_SHA512}  /tmp/godot.zip" | sha512sum -c -
+          unzip -q /tmp/godot.zip -d ~/godot
+          chmod +x ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64
+
+      # A fresh clone has no .godot folder, and without the class index every
+      # class_name reads as undeclared (run_tests.ps1 says the same on a PC).
+      # The import writes it.
+      - name: Import the project
+        run: ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 --headless --path . --import
+
+      - name: Run the suite
+        run: ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 --headless --path . res://scene/tests/tests.tscn
+
+      - name: Keep the transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-test-results
+          path: test_results.txt
+          if-no-files-found: ignore
