@@ -18995,6 +18995,38 @@ func _test_shared_monsters_keep_the_books() -> void:
 	check("a killing hit travels in the same world as the death it caused, ahead of it",
 		died and _sm_hits(last).has([sn_id, 100000, 0]), last)
 
+	# BORN SINCE THE LAST TICK (0.21.2). The books' first week: 41 deaths of
+	# 1,182 SHORT, every one a small slime - born from a split or a respawn
+	# into a fire ring or a burning crater, hit before the next tick gave it a
+	# number, and that hit sent nowhere. A new monster is numbered on its
+	# first hit now, and its spawn rides in the same world as the hit.
+	link.sent_world.clear()
+	var newborn: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	newborn.name = "fsnew"
+	newborn.position = Vector2(-20050, -20050)
+	world.get_node("enemies").add_child(newborn)
+	var unnumbered: bool = newborn.net_id < 0
+	newborn.take_damage(9)
+	var born_id: int = newborn.net_id
+	sync.tick_lead()
+	var born: Dictionary = _sm_last_world(link)
+	var spawned: int = 0
+	for ev in born.get("ev", []):
+		if ev.get("k", "") == "spawn" and int((ev.get("r", {}) as Dictionary).get("id", -1)) == born_id:
+			spawned += 1
+	check("a monster hit before the leader's tick reached it is numbered by the hit, and the hit is sent",
+		unnumbered and born_id >= 0 and sync.monsters().get(born_id) == newborn
+		and _sm_hits(born).has([born_id, 9, 0]), born)
+	check("  with its spawn in the same world, for the server to read before the hit", spawned == 1, born)
+	link.sent_world.clear()
+	sync.tick_lead()
+	var twice: bool = false
+	for ev in _sm_last_world(link).get("ev", []):
+		if ev.get("k", "") == "spawn":
+			twice = true
+	check("  and the next tick does not number it again", not twice and newborn.net_id == born_id,
+		_sm_last_world(link))
+
 	link.sent_world.clear()
 	link.deliver_need(0)
 	var to_books: Array = link.sent_world.filter(func(m: Array) -> bool: return m[1] == 0)

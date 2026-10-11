@@ -2585,8 +2585,17 @@ func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 		# of every monster's health, and this game's own hits reach it only
 		# from here. Before the hp moves, so it is sent ahead of any death it
 		# causes. A remote hit was counted on its way through the server.
-		if _net_sync != null:
-			_net_sync.own_hit(self, amount, _element)
+		#
+		# A MONSTER BORN SINCE THE LEADER'S LAST TICK HAS NO _net_sync YET
+		# (0.21.2): it is numbered on the next tick, a tenth of a second
+		# later, and a hit before then used to go nowhere. That is how the
+		# books' first week came out SHORT - 41 deaths of 1,182, every one a
+		# small slime, born into a fire ring or a burning crater and hit
+		# before it had a number. The area's sync is asked instead, and
+		# numbers it on the spot.
+		var sync: Node = _net_sync if _net_sync != null else _unbound_sync()
+		if sync != null:
+			sync.own_hit(self, amount, _element)
 
 	hp = max(hp - amount, 0)
 	damaged.emit(amount)
@@ -2798,6 +2807,22 @@ var _net_applying_remote: bool = false
 var _net_goal: Vector2 = Vector2.ZERO
 const NET_FOLLOW_RATE := 12.0
 const NET_SNAP_DISTANCE := 200.0
+
+
+func _unbound_sync() -> Node:
+	"""The area's MonsterSync, for a monster it has not numbered yet - one
+	born since the leader's last tick (0.21.2). Null where there is none: a
+	test, or a scene from before shared monsters."""
+	if not is_inside_tree():
+		return null
+	# The one in this monster's own scene: it sits beside the monsters, so
+	# its parent holds them. Asked of every sync rather than the first, so a
+	# scene that is leaving cannot answer for the one that arrived.
+	for sync in get_tree().get_nodes_in_group(&"monstersync"):
+		var holder: Node = (sync as Node).get_parent()
+		if holder != null and holder.is_ancestor_of(self):
+			return sync
+	return null
 
 
 func net_set_mirror(on: bool) -> void:

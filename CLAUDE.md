@@ -4998,6 +4998,38 @@ game".
   the game began, and back as co-owner. The website's About page says the
   same (the team chapter and a credits card).
 
+### A monster born since the leader's last tick is numbered by its first hit (0.21.2)
+
+The server's books' first live week (8 to 11 Oct, 1,182 deaths): 1,141
+AGREED, 41 SHORT - and every SHORT was a small slime, alive about half a
+second, in the Field or the Big Field. No hit too big, too fast or too far for
+anyone, so the bounds were right; the books were missing hits.
+
+- **Why.** A monster gets its number (`net_id`) and its `_net_sync` from
+  `_register_all()`, on the leader's tick, every `TICK_SECONDS` (0.1). A small
+  slime out of a split, or a respawn, born into a fire ring, a burning crater
+  or a smoulder field is hit inside that tenth of a second - and
+  `take_damage()` only reported a hit through `_net_sync`, which was still
+  null. The game took the health; the server never heard; the death read
+  SHORT.
+- **Now.** `take_damage()` asks the area's sync when the monster has none
+  (`_unbound_sync()`: the sync whose parent holds this monster), and
+  `own_hit()` numbers a monster it has not numbered yet on the spot
+  (`_number()`, the body `_register_all()` uses), so its "spawn" and the hit go
+  in the same world. Not a mirror, not dead, in the tree - the same rules as
+  the tick.
+- **The server's half** (API, combatbook.py `world()`): a hit on a monster the
+  books do not know yet waits for that monster's spawn in the same message,
+  and lands as it is read - before a "die" for it later on. Spawns are not
+  simply read first: a split's "die" has to come before its smalls' "spawn",
+  or the books do not owe them.
+- **Deploy the API first.** A 0.21.2 game against an older server sends the
+  hit ahead of the spawn and loses it, as before; nothing worse.
+- Tests: `_test_shared_monsters_keep_the_books` ("a monster hit before the
+  leader's tick reached it is numbered by the hit, and the hit is sent", its
+  spawn in the same world, numbered once); the API's `test_combatbook.py`
+  CB-14.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

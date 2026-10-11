@@ -357,12 +357,19 @@ func _register_all(announce: bool) -> void:
 		# spot - on every follower's screen, and to the server's books.
 		if e._death_resolved or e.has_meta(&"net_dead"):
 			continue
-		var id: int = _next_id
-		_next_id += 1
-		_bind(e, id)
-		if announce and _sending():
-			_events.append({"k": "spawn", "r": record_of(e)})
-			_last_sent[id] = e.net_state()
+		_number(e, announce)
+
+
+func _number(e: BaseEnemy, announce: bool) -> void:
+	"""Give a monster its number, and tell the others (and the books) it is
+	here. On the leader's tick for most; on its first hit for one born since
+	the last tick (own_hit)."""
+	var id: int = _next_id
+	_next_id += 1
+	_bind(e, id)
+	if announce and _sending():
+		_events.append({"k": "spawn", "r": record_of(e)})
+		_last_sent[id] = e.net_state()
 
 
 func _bind(e: BaseEnemy, id: int) -> void:
@@ -500,8 +507,18 @@ func _on_hits(_from_id: int, hits: Array) -> void:
 func own_hit(enemy: BaseEnemy, amount: int, element: int) -> void:
 	"""(Leader, from BaseEnemy.take_damage.) This game's own player or pet hit
 	one of the monsters it runs: for the server's books, in the next world."""
-	if role != Role.LEAD or enemy.net_id < 0 or not _books():
+	if role != Role.LEAD or not _books():
 		return
+	# BORN SINCE THE LAST TICK (0.21.2): a split's small slime or a respawn,
+	# hit before _register_all() reached it. It is numbered now, so the hit
+	# has a monster to land on, and its "spawn" goes in the same message as
+	# the hit - which the server reads first (combatbook.py, world()). Before
+	# this, the hit went nowhere and the books called the death SHORT.
+	if enemy.net_id < 0 or _enemies.get(enemy.net_id) != enemy:
+		if enemy.net_mirror or enemy._death_resolved or enemy.has_meta(&"net_dead") \
+				or not enemy.is_inside_tree():
+			return
+		_number(enemy, true)
 	_own_hits.append([enemy.net_id, clampi(amount, 1, MAX_HIT), clampi(element, 0, 64)])
 
 
