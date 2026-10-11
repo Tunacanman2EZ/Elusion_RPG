@@ -6652,7 +6652,9 @@ func _test_a_pet_says_how_to_summon_it() -> void:
 	var sword: ItemData = ItemRegistry.get_item("ironsword")
 	check("the pet's use line says right-click", pet != null and ItemTooltip.use_line(pet).begins_with("Right-click"),
 		ItemTooltip.use_line(pet) if pet != null else "no petsniper")
-	check("  and an item that is not a pet has none", sword != null and ItemTooltip.use_line(sword) == "")
+	# The sword's icon is in the private art pack, and ItemRegistry turns away
+	# an item whose icon is missing - so in a clone there is no sword to ask.
+	check_needs_pack("  and an item that is not a pet has none", sword != null and ItemTooltip.use_line(sword) == "")
 	var pets_seen := 0
 	var silent: Array = []
 	for item in ItemRegistry.get_all_items():
@@ -6671,9 +6673,10 @@ func _test_a_pet_says_how_to_summon_it() -> void:
 		tip.description_label.text.contains(ItemTooltip.PET_USE_LINE)
 		and tip.description_label.text.find(ItemTooltip.PET_USE_LINE) < tip.description_label.text.find("Worth"),
 		tip.description_label.text)
-	tip.show_for_stack(ItemStack.new(sword, 1), null)
-	check("  and the one over a sword does not", not tip.description_label.text.contains("summon"),
-		tip.description_label.text)
+	if sword != null:
+		tip.show_for_stack(ItemStack.new(sword, 1), null)
+	check_needs_pack("  and the one over a sword does not",
+		sword != null and not tip.description_label.text.contains("summon"), tip.description_label.text)
 	tip.queue_free()
 	await get_tree().process_frame
 
@@ -10874,7 +10877,9 @@ func _test_gifts_are_counted() -> void:
 	section("THE GIFTS LEDGER - what a gift came to, and what I've given")
 	var pile: ItemData = ItemRegistry.get_item("goldpile")
 	var sword: ItemData = ItemRegistry.get_item("ironsword")
-	check("the catalogue has the Pile of Gold and the Iron Sword to say it with",
+	# Both icons are in the private art pack, so a clone has neither item and
+	# this section is a skip there, not a failure.
+	check_needs_pack("the catalogue has the Pile of Gold and the Iron Sword to say it with",
 		pile != null and sword != null and pile.display_name == "Pile of Gold")
 	if pile == null or sword == null:
 		return
@@ -22914,7 +22919,16 @@ func _test_the_rare_roll_switch() -> void:
 	tank.dynamite_bundle_chance = 0.0
 	tank.dynamite_barrage_chance = 0.0
 	# Every chance is zero, so whatever rolls, a switch made it.
+	# ALL BUT ONE. The meteor's pull is Meteor.PULL_CHANCE, a constant, not a
+	# var on the mage, so it cannot be set to zero like the rest - and one cast
+	# in a hundred pulled on its own and failed a "nothing rolls" check about
+	# one run in thirty (seen 11 Oct, in a run without the art pack). So the
+	# dice are seeded before every roll here: none of the first forty draws of
+	# pull_seed is under 0.01, so no pull happens unless a switch forces it.
+	# randomize() puts the dice back at the end of the section.
+	var pull_seed: int = 20261011
 	var roll_all := func() -> Dictionary:
+		seed(pull_seed)
 		var met: Array = mage.call_meteor(o + Vector2(40, 0))
 		var axe: SpinningAxe = warrior.throw_axe(warrior.position + Vector2(60, 0))
 		tank.mana = 100
@@ -22985,6 +22999,7 @@ func _test_the_rare_roll_switch() -> void:
 	GameState.force_rare_rolls = was_rare
 	GameState.force_common_rolls = was_common
 	Api.role = was_role
+	randomize()
 	mage.free()
 	warrior.free()
 	tank.free()

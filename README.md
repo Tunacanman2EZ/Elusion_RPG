@@ -8,15 +8,15 @@ A top-down 2.5D action RPG built in Godot 4.6 with GDScript, backed by a Flask a
 
 ## The run
 
-Register or log in → pick one of four class slots → town → leave town for the field → take the ladder down to the boss floor → defeat the boss → easter egg → game over → restart at town.
+Register or log in → pick one of four class slots → town → through the portal to the Big Field, one long road with ten fields off it, a different element in each and harder the further you go → the ladder at its far end down to the Field → the gauntlet → the Crowned Beholder → the teleporter that opens in its room → home to town.
 
-It is short on purpose. It has a beginning, an escalation, an ending, and a loop back to the start.
+It has a beginning, an escalation, an ending, and a road back to the start.
 
 ## Playing it
 
 Elusion is a PC game, played with a keyboard and mouse in a desktop browser at [play.elusionrpg.com](https://play.elusionrpg.com). It is not made for phones.
 
-The first time a character stands in town, a welcome card gives the way out to the Field and lists every key. **H** brings the keys back at any time, and they are read from the game's own input settings, so the card cannot drift from the game. **Change keys** on that card (or on Options) turns the list into buttons: click one, press the new key. Every key but Escape can be moved, each action takes two, and a key taken from another action says so.
+The first time a character stands in town, a welcome card gives the way out to the Field and lists every key. **H** brings the keys back at any time, and they are read from the game's own input settings, so the card cannot drift from the game. **Change keys** on that card (or on Options) turns the list into buttons: click one, press the new key. Every key but Escape and Enter can be moved, each action takes two, and a key taken from another action says so.
 
 Options also sets the **text size** (up to 150%, for a big screen or one across the room) and the **font**: the standard one, or one of five that suit the game — Pixelify Sans, Tiny5, MedievalSharp, IM Fell English and Grenze Gotisch, each under the SIL Open Font License (see [assetlicense.md](assetlicense.md)).
 
@@ -28,15 +28,25 @@ Options also sets the **text size** (up to 150%, for a big screen or one across 
 | Use the shop, bank, fire or fishing spot | E |
 | Use the item on a hotbar key | 1 to 0 |
 | Bag, Gear, Stats, Map, Kills | I, G, C, M, K |
+| Open chat and type; send the line | Enter |
 | Close a window, or open Options | Esc |
 
-Those are the keys as the game comes; Change keys moves any of them but Esc.
+Those are the keys as the game comes; Change keys moves any of them but Esc and Enter. Enter hands the keys back as it sends, so you can walk and talk without stopping, and chat left open goes see-through over the world until you type or point at it.
 
 The version is in the login screen's corner and at the foot of **Menu** — MAJOR.MINOR.PATCH, 0.x until launch.
 
 The bar along the bottom holds the windows a player opens all the time; Friends, Players, Guild, Trade, the Kingdom board and **Kills** are under **Social**, and Controls, Options and logging out under **Menu**.
 
 **Kills** (or **K**) is the kill record: every monster in the game with its picture, how many of each your character has killed and when the last one fell, and — on the Everyone tab — every player's kills added up, with who has killed the most of each. The server counts them; the pictures are cut from each monster's own art.
+
+## Who makes it
+
+Elusion is made by **Elusion Studios**, and there are two of us:
+
+- **Tunacan** (Robert A. Clear), owner. I built Elusion solo up to launch, from zero coding experience: the code, the design and the server. Where this README says "I", it means me.
+- **[AllMind](https://allmind.dev/)** (Charles E. Clemmey Jr.), co-owner since 0.21.0. A self-taught coder, five years in, and a friend of more than ten years — we met in Mirage Realms and shared a guild. He gave Elusion its first push, some of the UI and the first inventory, and now we develop it together.
+
+The artists, and everyone else whose work is in the game, are credited under [License](#license) and in the game's Credits.
 
 ## What's interesting in here
 
@@ -58,7 +68,7 @@ The poison slime duplicates once when you get close, then each copy converts int
 
 ### One sheet, seven creatures — `src/shared/element.gd`, `src/shared/puddles.gd`
 
-Six enemy families exist as forty-three variants, and none of the extra art was drawn. A shader rotates the hue of a sprite's chromatic pixels and leaves its near-greys alone, so a green slime becomes a blue one without the black outline turning blue with it. There is a second, opposite shader for the boss: its spike is 84% grey rock, so hue rotation repaints sixteen highlight pixels and leaves the stone unchanged — that one tints the pixels *below* a saturation threshold instead. Which shader an asset takes was decided by measuring the sheet, not by eye, and both files carry the measurement.
+Six enemy families exist as forty-three variants, and none of the extra art was drawn. A shader rotates the hue of a sprite's chromatic pixels and leaves its near-greys alone, so a green slime becomes a blue one without the black outline turning blue with it. There is a second, opposite shader for the boss: its spike is 84% grey rock, so hue rotation repaints sixteen highlight pixels and leaves the stone unchanged — that one tints the pixels *below* a saturation threshold instead. Which shader an asset takes was decided by measuring the sheet, not by eye, and both files carry the measurement. The sprites, bush mages and bush snipers had no death animation at all, so since 0.16.0 they flash white and break into pixels thrown up in their element's colour — drawn in code, so it costs no art either.
 
 What keeps that from reading as seven coats of paint is that the colour is the least of it. Three separate layers decide what an element *is*, and they are deliberately orthogonal:
 
@@ -99,19 +109,25 @@ Confirming means the offer that was on the screen: every change moves a revision
 
 ### Real accounts, not a local profile gate — `src/systems/api.gd`
 
-Passwords are salted and hashed server-side; the client holds a bearer token and never sees a hash. Login and "no such user" return an identical 401 so the endpoint can't be used to enumerate usernames. Rank is a ladder — player, mod, dev, owner — decided on the server, and **owner cannot be stored at all**: it comes from an environment variable, so no request and no database edit can grant it.
+Passwords are salted and hashed server-side; the client holds a bearer token and never sees a hash. Login and "no such user" return an identical 401 so the endpoint can't be used to enumerate usernames. Rank is a ladder — player, mod, dev, co-owner, owner — decided on the server, and **neither of the top two can be stored at all**: both come from environment variables, so no request and no database edit can grant them. A co-owner also needs the owner's switch to be on (next section).
 
 ### Staff tools that actually reach the player — `src/ui/staff/staffpanel.gd`, `src/ui/characterhud.gd`
 
-Mods, devs and the owner get a Staff button on the HUD: every account with who is online right now, and kick, ban (1, 7 or 30 days, or permanent), unban, promote and demote. The panel decides nothing — it only hides what the server would refuse. A mod cannot touch a mod, only a dev or the owner bans permanently, and nobody grants a rank at or above their own. And no staff rank can create an item: giving yourself one, and writing a whole bag or bank at once, are the owner's alone.
+Mods, devs, a co-owner and the owner get a Staff button on the HUD: every account with who is online right now, and kick, ban (1, 7 or 30 days, or permanent), unban, promote and demote. The panel decides nothing — it only hides what the server would refuse. A mod cannot touch a mod, only a dev or above bans permanently, and nobody grants a rank at or above their own. And no staff rank can create an item: giving yourself one, and writing a whole bag or bank at once, are the owner's alone — and a co-owner's, while the owner lets him in.
 
 The interesting part was what a kick looked like from the other side: nothing. The server deleted the session, but the game never asked again after the login screen, so a kicked player played on until they restarted. The game now sends a heartbeat every fifteen seconds and re-checks at once on any refused request — a kick lands in about a second — and only a 401 counts, so restarting the server never signs everyone out.
 
-The owner's GM panel has a **Testing** tab: gold and items by id, an **Item catalogue** (`src/ui/owner/itemspawner.gd`) - every item the game loaded, with its picture and rarity, searchable by name or id, spawned into the bag with one click and put straight on, for gear - and boxes that set the owner's own character's level and skill levels on the server - one skill or all six - so level 22 gear and high-level recipes can be tested without the hours of play. Beside them are a **God mode** switch and a **Performance readout**. Every grant is a server request the server logs; the tools only exist for the owner, and the routes refuse anyone else.
+The owner's GM panel has a **Testing** tab: gold and items by id, an **Item catalogue** (`src/ui/owner/itemspawner.gd`) - every item the game loaded, with its picture and rarity, searchable by name or id, spawned into the bag with one click and put straight on, for gear - and boxes that set the owner's own character's level and skill levels on the server - one skill or all six - so level 22 gear and high-level recipes can be tested without the hours of play. Beside them are a **God mode** switch, two switches that make every mythic attack take its one-in-ten or its one-in-a-hundred roll (so the rare ones can be seen on demand), and a **Performance readout**. Every grant is a server request the server logs; the tools only exist for the owner (and a co-owner, while he is in), and the routes refuse anyone else.
 
 Its **Account** tab lists who is online, each with **Bring** and **Go to**. Go to lands you beside them, which the server alone could not do: it only knows which area a character is in. But the presence link draws everyone in your area where they stand, so once you arrive the game finds their picture and puts you next to it.
 
 Beside **View account** are **Give item** and **Save history**. Give item opens the catalogue with the player's name in it: a click puts the item in the bag of the character they are playing, and their game is handed the new bag on its next poll with a line saying who gave them what. Save history lists that character's last twenty snapshots - the server keeps one when the game saves, at most every ten minutes and only if something changed, and one before every gift and every rollback - and **Restore**, pressed twice, puts the character back: level, XP, gold, gear, pet, bag and skills, but not the account's bank. The gold moves through the ledger, the player is signed out so their game reloads, and the snapshot taken first undoes it. It is the owner's alone because it can bring back an item the player has since traded away, and the window says so.
+
+**Set level**, beside Give to in the catalogue, puts the character a player is playing at any level, so somebody who has just arrived can try the later weapons while the game is in testing. It takes a snapshot first, so Save history can put it back, writes a line on their record, and signs their game out so it loads the new level.
+
+**Every gift is counted.** The server keeps a ledger of everything given out from these tools — items and gold, to a player or to the giver himself — with what each gift was worth on the day, so a price changed later never rewrites it. **Gifts ledger** on the Testing tab reads it back: the totals, by player and by giver, set beside all the gold in the game now. Gifts from before the ledger existed were read back out of the staff log and the gold ledger the first time the server started with it. It exists to answer one question honestly: how much of this economy came from me rather than from play.
+
+**A second key, for a co-owner.** There can only be one owner, so a co-owner is a second gate rather than a promotion. The server's environment names who may be one, beside the owner, and the **Co-owners in** switch on the GM panel's Server tab says whether they are in right now; only the owner can move it. While it is on, a co-owner has every owner tool and wears a gold CO-OWNER badge, but still cannot touch the owner's own account. Off, he is back to his own rank on his next request, and the owner's buttons leave his screen while he plays.
 
 There are no debug keys. The game used to have a row of them for items, pets and god mode, and they were a second way in to things the panel already did, gated on a check the client makes about itself. They are gone, and a test fails if a function key comes back.
 
@@ -127,11 +143,13 @@ A pet is a shrunk, ally-flipped enemy, so inheriting `BaseEnemy` looks obvious. 
 
 ### Weapons that bring their own attack — `src/projectiles/meteor.gd`, `src/projectiles/spinningaxe.gd`, `src/projectiles/dynamite.gd`
 
-Every weapon up to ember adds its damage to the class's own attack. The mythic tier changes what the attack *is*. A **Meteorite** turns the mage's spell into a meteor that comes in at an angle, its shadow growing where it will land, and leaves a crater with the stone cooling in it. A **Double Axe** is thrown to a spot and spins there, cutting everything near it, until the warrior attacks again to call it back. **Dynamite** replaces the tank's aura with a lit stick on a fuse. One meteor or throw in ten comes twice, spread apart.
+Every weapon up to ember adds its damage to the class's own attack. The mythic tier changes what the attack *is*. A **Meteorite** turns the mage's spell into a meteor that comes in at an angle wrapped in a fire vortex, a ring of flame swirling on the ground where it will land, and leaves its crater on fire, burning anything that stays in it. A **Double Axe** is thrown to a spot and spins there, cutting everything near it and leaving each cut bleeding — faster and wider the longer it spins — until the warrior attacks again to call it back. **Dynamite** replaces the tank's aura with a lit stick on a fuse; the aura's fire ring keeps burning while it is thrown, a blast sets off any lit stick near it, which goes up a beat later and a quarter harder, and the scorch smoulders.
+
+Each one has two rolls, made as the attack is made: one in ten, and a rare one in a hundred. The Meteorite drops a second meteor, or, rarely, its ring drags the monsters around it in toward the impact (bosses stand their ground). The Double Axe flies wide, half as far again, or, rarely, bloody, spattering the ground as it spins. Dynamite throws a bundle of three, or, rarely, a barrage of five. Each weapon's tooltip names its rolls.
 
 The three are Ahvassa's art; the flight, the impact and the explosion are built in code from whole-pixel particles, so they read as the same pixel art. Their damage climbs the same ladder as every other weapon, and the axe can't be left grinding a spawn point with nobody playing.
 
-Any enemy can drop one, and the tougher it is, the better the odds. The Crowned is about 1 in 150 kills. The dark band is 1 in 20,000, and a light slime is a lottery ticket at 1 in 2,000,000. The server makes the roll and gives the killer their own class's weapon. The bag lands with a red pillar of light and a burst of sparks, and the finder gets a red flash and a MYTHIC DROP banner. Everyone else online sees a banner naming who found it and on what.
+Any enemy can drop one, and the tougher it is, the better the odds. The Crowned Beholder is about 1 in 150 kills. The dark band is 1 in 20,000, and a light slime is a lottery ticket at 1 in 2,000,000. The server makes the roll and gives the killer their own class's weapon. The bag lands with a red pillar of light and a burst of sparks, and the finder gets a red flash and a MYTHIC DROP banner. Everyone else online sees a banner naming who found it and on what.
 
 ### Frame-accurate combat — `src/enemies/bushsniper.gd`, `src/enemies/poisonslime.gd`
 
@@ -177,6 +195,8 @@ Player trading arrived after the audit and gets its own section there, because i
 ### Other players, on your screen — `src/systems/presence.gd`, `src/characters/remoteplayer.gd`, `presence.py` (API repo)
 
 Everyone in the same area sees everyone else: walking and idling the right way round, swinging, the tank's aura lit, the pet trailing behind, and the name over the head in the colour they chose, with the guild tag and the crown or staff badge. It runs over a WebSocket to a small asyncio server beside the API, ten updates a second per area, and none of it touches the database. The socket never sees a login: the game trades its session for a two-minute ticket, so a ban or a sign-out elsewhere ends the connection within seconds without the socket server knowing how logins work. And the game only ever says *where* it is — who somebody is (name, rank, colour, which pets they may show) comes from the server's own rows. Since 0.7.0 the same socket carries the monsters too — next section.
+
+Since 0.19.0 you see their attacks as well: meteors, thrown axes, Dynamite, slash waves and healing orbs, each built from the class's own scene as a *picture* that touches nothing — no hit, no XP, no pull — so only the attacker's own game ever lands a blow. A lever pulled opens its gate for everyone in the area, and the server remembers it for whoever walks in later. And other players are played back on their own game's clock instead of chased toward their newest step, so they walk past evenly rather than surging and stalling.
 
 ### The same monsters, and a bag each — `src/world/monstersync.gd`, `src/shared/targets.gd`
 
@@ -260,11 +280,11 @@ Calling the virtualenv's interpreter directly is deliberate: it skips having to 
 
 To see other players and share monsters with them, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before: it draws nobody else and fights its own monsters.
 
-That serves a hundred and ten endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred and sixteen endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-A hundred and five of the hundred and ten require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+A hundred and eleven of the hundred and sixteen require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has forty-nine test suites, run together with one command:
+The backend has fifty-two test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -279,19 +299,19 @@ test_loot.py           259 checks    every finished item is actually obtainable
 test_equipment.py      212 checks    the equipment system, client and server
 test_gearbonus.py      173 checks    what gear adds, counted by the server
 test_guilds.py         167 checks    founding, joining, ranks, taking a guild down
-test_moderation.py     155 checks    the moderation record, a log that opens on moderation, the powers in words
+test_moderation.py     156 checks    the moderation record, a log that opens on moderation, the powers in words
 test_ownership.py      150 checks    no route hands over a row that is not yours
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
+test_refusals.py       127 checks    401, 403, and the 404 that is really a 403
 test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
-test_refusals.py       118 checks    401, 403, and the 404 that is really a 403
-test_security_doc.py   115 checks    SECURITY.md is checked, not trusted
+test_presence.py       122 checks    players seeing each other, whose game runs each area's monsters, every attack and lever
+test_security_doc.py   122 checks    SECURITY.md is checked, not trusted
+test_quality.py        113 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
 test_pacing.py         112 checks    the pace of the game: what the server pays, the store charges and the shop pays back
-test_quality.py        112 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
-test_combatbook.py      86 checks    the server's books on every monster: every hit, spawn and death judged
+test_combatbook.py      91 checks    the server's books on every monster: every hit, spawn and death judged
 test_friends.py         76 checks    asking, answering and ending a friendship
-test_presence.py        75 checks    players seeing each other, and whose game runs each area's monsters
 test_chardelete.py      72 checks    deleting a character, and only the character
 test_chat.py            67 checks    world chat, end to end, one line as typed
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
@@ -300,6 +320,7 @@ test_staffcode.py       60 checks    a staff password alone opens nothing, once 
 test_bagmoves.py        59 checks    the bag and the bank are the server's: moves, the bin, piles
 test_broadcast.py       59 checks    the server's voice, end to end
 test_gathering.py       57 checks    fishing and cooking authority, and a save that cannot undo a cook
+test_coowner.py         56 checks    the co-owner's gate: named by the server, let in by the owner's switch; a player's level
 test_recovery.py        54 checks    account recovery, adversarially
 test_maintenance.py     53 checks    the owner's kill switch
 test_accounts.py        50 checks    signing in: one game per account, locks, no mail
@@ -307,35 +328,36 @@ test_settings.py        49 checks    the options screen's rules
 test_teleport.py        49 checks    moving players and landing them spread out
 test_map.py             48 checks    the map's fog rules and their storage
 test_tradegates.py      41 checks    the owner's trade switch, and fresh mythic and Perfect finds held 48 hours
+test_gifts.py           40 checks    the gifts ledger: every gift and what it was worth, the report, the past read back
 test_killrecord.py      40 checks    every paid kill counted per character and monster
 test_clientbuild.py     37 checks    the client build gate
 test_guildlife.py       37 checks    what members are playing, what happened
-test_revocation.py      34 checks    what it costs to change your mind
 test_healing.py         34 checks    the heal clamp stays quiet for honest play
+test_revocation.py      34 checks    what it costs to change your mind
+test_killwatch.py       31 checks    the kill-fraud watch fires when it must
 test_rewards.py         30 checks    better loot carries more; legendary is rare
 test_namecolour.py      27 checks    the colour a player chose, on every name
 test_playing.py         25 checks    which character an account is playing
 test_concurrency.py     23 checks    requests sent together cannot both spend the same thing
 test_equipmove.py       22 checks    equipping moves the item, never copies it
-test_killwatch.py       20 checks    the kill-fraud watch fires when it must
 test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,585 checks, 0 failures
+					4,917 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The forty-eighth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **3,085 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 134 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **3,661 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 142 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `3045 passed, 0 failed, 21 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `3597 passed, 0 failed, 25 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-four are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 Some of the suite is there to catch things the engine will not tell you about:
 
 - **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
 - **Configuring a node after `add_child()`.** `_ready()` has already run, so an element profile multiplies the scene's defaults and your assignment flattens the result — the thing wears its element's art and none of its behaviour. A text check, because the failure has no runtime symptom.
-- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,437 signatures.
+- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,659 signatures.
 - **Art nobody has classified.** Every top-level folder under `art/`, `assets/` and `audio/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
 
 `src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool answering the two questions a filename search gets wrong. **Painted cell counts per texture** — because tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet. And **reachability**, walking `ResourceLoader.get_dependencies()` from every scene and resource, which is the list you can actually delete from. It found two byte-identical art files a filename sweep had cleared as used, because their twins in other folders are.
@@ -354,7 +376,7 @@ Without the service running, the login screen will tell you it can't reach the s
 
 What that means if you clone: 148 textures the code loads will be absent, so items, weapons, armour and the stat icons render blank. Everything else — the world, the characters, the enemies, the bosses, all the systems — works.
 
-The test suite understands the difference. The twenty checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
+The test suite understands the difference. The twenty-four checks that genuinely need that art report as **skipped, with the reason**, and the run exits 0. They stay ordinary failing checks on a machine that has the pack, so a renamed icon is still caught by someone who can see it.
 
 This boundary was also worth one real bug. `kingdomboard.gd` used `preload()` on two of those textures, and `preload` resolves at compile time — so in a clone that script did not compile and `KingdomBoard` did not exist. One missing decoration removed an entire screen, silently. It now holds paths and loads lazily, and the header keeps its column widths when the texture is null.
 
