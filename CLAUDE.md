@@ -4993,6 +4993,10 @@ game".
   the owner and for him, nobody named, an old server, the rank picker, the
   doors following the switch, Set level, the ledger by giver);
   `test_coowner.py` in the API.
+- **0.21.1: the Credits byline is "a game by Robert and AllMind".** The owner,
+  of AllMind: "he built my inventory and helped me with ui a bit" - there when
+  the game began, and back as co-owner. The website's About page says the
+  same (the team chapter and a credits card).
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

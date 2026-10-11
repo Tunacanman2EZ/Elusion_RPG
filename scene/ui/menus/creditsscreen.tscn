@@ -115,7 +115,7 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.82, 0.74, 1)
 theme_override_font_sizes/font_size = 13
-text = "Elusion RPG - a game by Robert, Elusion Studios"
+text = "Elusion RPG - a game by Robert and AllMind, Elusion Studios"
 horizontal_alignment = 1
 autowrap_mode = 3
 

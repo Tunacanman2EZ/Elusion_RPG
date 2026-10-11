@@ -7558,6 +7558,12 @@ func _test_the_credits() -> void:
 	await get_tree().process_frame
 	check("it opens on Art", screen.visible and screen.tab == Credits.Tab.ART
 		and screen.art_button.button_pressed and not screen.engine_button.button_pressed)
+	# 0.21.1: the owner, of AllMind, back as co-owner - "he built my inventory
+	# and helped me with ui".
+	var byline: Label = screen.get_node_or_null("%bylinelabel") as Label
+	check("the byline names the two of them",
+		byline != null and byline.text == "Elusion RPG - a game by Robert and AllMind, Elusion Studios",
+		byline.text if byline != null else "")
 
 	# ---- Art ------------------------------------------------------------------------
 	var art: Array = _credit_texts(screen)
