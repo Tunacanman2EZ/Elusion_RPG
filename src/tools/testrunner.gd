@@ -329,6 +329,7 @@ func _run_all() -> void:
 	_test_the_stats_window_reads_cleanly()
 	await _test_bank_buttons_and_the_cooking_window()
 	await _test_the_fire_shows_the_fish_it_cooks()
+	_test_the_healer_aims_from_its_middle()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -12036,6 +12037,54 @@ func _test_connections_are_kept_open() -> void:
 	Api.reachability_known = kept_known
 	fake.queue_free()
 	print("  network: %d connections opened by the pool for %d requests" % [pool.connections_opened - opened, fake.seen.size()])
+
+
+# =============================================================================
+# THE HEALER'S AIM (0.26.0)
+# =============================================================================
+
+func _test_the_healer_aims_from_its_middle() -> void:
+	section("HEALER - the stream leaves the middle of the body, and a ring shows where it goes (0.26.0)")
+	# The owner: auto fire "is broken between flipping from left auto fire to
+	# top left and right to top right where as bottom directionals are fine",
+	# and the ring under the character was the owner's idea. Not added to the
+	# tree: player.gd's _ready() is the camera, the pets and the save.
+	var healer: Node2D = (load("res://scene/characters/healer.tscn") as PackedScene).instantiate()
+	healer.position = Vector2(300, 200)
+	var middle: Vector2 = healer.aim_origin()
+	check("a healer aims and fires from the middle of its body, 16 px above its feet",
+		middle.is_equal_approx(Vector2(300, 184)), middle)
+	var level: Vector2 = healer.aim_direction_to(middle + Vector2(-90, 0))
+	var from_feet: float = rad_to_deg(absf(angle_difference((middle + Vector2(-90, 0) - healer.position).angle(), PI)))
+	check("  so a cursor level with the chest, to the left, is straight left (from the feet it was %.0f degrees up)" % from_feet,
+		level.is_equal_approx(Vector2.LEFT) and from_feet > 9.0, [level, from_feet])
+	var up_left: Vector2 = healer.aim_direction_to(middle + Vector2(-60, -30))
+	var down_left: Vector2 = healer.aim_direction_to(middle + Vector2(-60, 30))
+	check("  and the upper and lower diagonals are mirror images of each other",
+		is_equal_approx(up_left.x, down_left.x) and is_equal_approx(up_left.y, -down_left.y), [up_left, down_left])
+	var spawn_body: String = _func_body(_code_src("res://src/characters/healer.gd"), "func _spawn_projectile(")
+	check("  the orb is placed there too, and the others' picture of it leaves from there",
+		spawn_body.contains("projectile.global_position = aim_origin()")
+		and spawn_body.contains("Presence.tell_attack(\"orb\", aim_origin()"))
+
+	healer.call("_add_aim_ring")
+	var ring: AimRing = healer.get_node_or_null(^"aimring") as AimRing
+	check("the healer carries an aim ring round its feet, drawn under its sprite",
+		ring != null and healer.get_child(0) == ring and ring.position.y > -4.0, ring)
+	if ring != null:
+		ring.point_at(healer.aim_direction_to(middle + Vector2(-90, 0)))
+		var left_ball: Vector2 = ring.ball_position()
+		ring.point_at(healer.aim_direction_to(middle + Vector2(0, -90)))
+		var top_ball: Vector2 = ring.ball_position()
+		check("  its ball sits where the next shot goes: the left end for left, the far side for up",
+			left_ball.is_equal_approx(Vector2(-AimRing.RADII.x, 0)) and top_ball.is_equal_approx(Vector2(0, -AimRing.RADII.y)),
+			[left_ball, top_ball])
+		var ball: Node2D = ring.get_node_or_null(^"ball") as Node2D
+		check("  the ball is drawn a layer above the healer, so aiming up does not hide it behind the legs",
+			ball != null and ball.z_index >= 1 and ball.z_as_relative, ball)
+		ring.fired()
+		check("  and it brightens as a shot leaves", ring.get("_glow") > 0.0)
+	healer.free()
 
 
 # =============================================================================

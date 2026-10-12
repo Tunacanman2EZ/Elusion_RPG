@@ -5270,6 +5270,35 @@ multiplies it by `sprint_speed_multiplier`.
 - Tests: the export agrees with the code in both places a walk is worked out,
   and a level-99 warrior walks 298 and runs 447.
 
+### The healer aims from the middle of its body, and shows it (0.26.0)
+
+The owner: auto fire "is broken between flipping from left auto fire to top
+left and right to top right where as bottom directionals are fine", and the
+fix the owner proposed: "a small circle under the character with a ball in
+it ... the ball would move when player clicks on the screen to show the
+accuracy of aim" - "the same thing as games that show directional movement
+with the circle around the character".
+
+- **The stream left from the feet.** healer.gd aimed and spawned from the
+  node's origin, which is the healer's feet; the picture is drawn 15 px above
+  them. A cursor level with the chest was 10 to 20 degrees up from the feet,
+  and a stream aimed up and across left the feet and crossed the healer's own
+  body on its way out - the upper diagonals - while one aimed down left from
+  below the body and looked right. `AIM_FROM` (0, -16), the hurtbox's height,
+  is now where a shot is aimed from (`aim_origin()`, `aim_direction_to()`),
+  where the orb is placed, and where the others' picture of it starts.
+- **The aim ring** (`src/characters/aimring.gd`, `AimRing`): an ellipse on the
+  floor round the feet (18 x 8 px), the healer's first child so it draws under
+  the sprite, with a ball at the aim's angle that reads the same
+  `aim_direction_to()` the shot does. The ball is drawn on a child at
+  z_index 1, because aiming up puts it on the far side, behind the legs. Both
+  are unshaded (the Field's CanvasModulate turned the first one grey), and
+  brighten for a moment as each shot leaves. Hidden when the healer dies.
+- Not in the tree in the suite (player.gd's _ready() is the camera, the pets
+  and the save): `_test_the_healer_aims_from_its_middle` positions a healer
+  instance, calls `_add_aim_ring()`, and reads the spawn from the source. With
+  `AIM_FROM` back at the feet, two of its checks fail.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

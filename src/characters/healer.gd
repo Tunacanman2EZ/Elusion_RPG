@@ -73,12 +73,27 @@ const CLASS_SPEED := 140
 # the same threshold warrior uses for the same question.
 const AIM_EPSILON_SQUARED: float = 0.000001
 
+# WHERE THE STREAM LEAVES FROM, AND WHERE IT IS AIMED FROM (0.26.0): the middle
+# of the healer's picture, 16 px above its feet - its sprite is drawn 15 above
+# the node, and the hurtbox sits at 16 - rather than the node's origin, which
+# is the feet. The owner, 12 Oct: auto fire "is broken between flipping from
+# left auto fire to top left and right to top right where as bottom
+# directionals are fine". From the feet, a cursor level with the healer's
+# chest was 10 to 20 degrees UP, and a stream aimed up and across left the
+# feet and crossed the healer's own body on its way out; aimed down, it left
+# from below the body and looked right. Aimed and fired from the middle, the
+# stream leaves where the player is looking from in every direction.
+const AIM_FROM := Vector2(0.0, -16.0)
+
 
 # =============================================================================
 # STATE
 # =============================================================================
 
 var _shot_timer: float = 0.0
+
+# The ring under the feet that shows where the next shot goes (aimring.gd).
+var _aim_ring: AimRing = null
 
 # _is_firing USED TO LIVE HERE. It was assigned true on every shot and false on
 # every frame between shots, and read by absolutely nothing — not by this file,
@@ -126,15 +141,34 @@ func _ready() -> void:
 	# from level, and fills resources to full. no manual stat block needed.
 	super._ready()
 
+	_add_aim_ring()
+
+
+func _add_aim_ring() -> void:
+	"""THE AIM RING (0.26.0) round the feet, as the first child so it draws
+	under the sprite. Once."""
+	if _aim_ring != null:
+		return
+	_aim_ring = AimRing.new()
+	_aim_ring.name = "aimring"
+	_aim_ring.position = Vector2(-1.0, -1.0)
+	add_child(_aim_ring)
+	move_child(_aim_ring, 0)
+
 
 func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 
 	if is_dying:
+		if _aim_ring != null:
+			_aim_ring.visible = false
 		return
 
 	if _shot_timer > 0.0:
 		_shot_timer -= delta
+
+	if _aim_ring != null:
+		_aim_ring.point_at(_get_direction_to_cursor())
 
 	if _can_fire():
 		_fire_projectile()
@@ -218,6 +252,8 @@ func _fire_projectile() -> void:
 
 	_play_cast_animation(direction)
 	_spawn_projectile(direction)
+	if _aim_ring != null:
+		_aim_ring.fired()
 
 
 func _get_direction_to_cursor() -> Vector2:
@@ -232,10 +268,22 @@ func _get_direction_to_cursor() -> Vector2:
 	# motionless orbs on top of the player. Falling back to the last real facing
 	# fires the shot the way the player is already looking, which is the only
 	# answer that isn't a guess.
-	var to_cursor: Vector2 = get_global_mouse_position() - global_position
-	if to_cursor.length_squared() <= AIM_EPSILON_SQUARED:
+	return aim_direction_to(get_global_mouse_position())
+
+
+func aim_origin() -> Vector2:
+	"""Where a shot leaves from and is aimed from: the middle of the body (see
+	AIM_FROM)."""
+	return global_position + AIM_FROM
+
+
+func aim_direction_to(point: Vector2) -> Vector2:
+	"""The way a shot at `point` goes - the cursor, for a real shot, and the
+	same answer the aim ring shows."""
+	var to_point: Vector2 = point - aim_origin()
+	if to_point.length_squared() <= AIM_EPSILON_SQUARED:
 		return last_direction
-	return to_cursor.normalized()
+	return to_point.normalized()
 
 
 func _play_cast_animation(direction: Vector2) -> void:
@@ -255,7 +303,7 @@ func _spawn_projectile(direction: Vector2) -> void:
 	var projectile: Node = projectile_scene.instantiate()
 	get_tree().current_scene.add_child(projectile)
 
-	projectile.global_position = global_position
+	projectile.global_position = aim_origin()
 
 	# THE ONLY SPAWNER IN THE PROJECT THAT WAS MISSING THIS. mage.gd, warrior.gd,
 	# pet.gd, petcontroller.gd, baseenemy.gd, bossenemy.gd, bushmage.gd,
@@ -309,7 +357,7 @@ func _spawn_projectile(direction: Vector2) -> void:
 	if "caster" in projectile:
 		projectile.caster = self
 	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
-	Presence.tell_attack("orb", global_position, global_position + direction * RemoteAttacks.AIM_AHEAD)
+	Presence.tell_attack("orb", aim_origin(), aim_origin() + direction * RemoteAttacks.AIM_AHEAD)
 
 
 # =============================================================================
