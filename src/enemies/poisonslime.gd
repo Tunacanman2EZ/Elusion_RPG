@@ -67,6 +67,25 @@ const POISONBALL_SCENE := preload("res://scene/projectiles/poisonball.tscn")
 # the same arrow.gd; only the sprite and hitbox differ.
 const ARROW_SCENE := preload("res://scene/projectiles/poisonarrow.tscn")
 
+# THE SLIME'S VOLLEYS (0.23.0), in an area with a BulletZone - the Field. Each
+# form keeps its shot's character: a small's arrow becomes a TWIN, two orbs a
+# hair apart; a large's acid ball becomes a SPRAY of five big slow orbs; and a
+# large that splits bursts into a RING as it goes, aimed nowhere - the split is
+# the attack. The ring is "split" on the wire (monstersync.gd's "v"), so a
+# follower's copy of the large fires the ring and not its spray.
+const TWIN_ORBS := 2
+const TWIN_SPREAD := 0.24
+const TWIN_SPEED := 140.0
+const TWIN_SHARE := 0.6        # of the small's arrow, per orb
+const SPRAY_ORBS := 5
+const SPRAY_SPREAD := 0.8
+const SPRAY_SPEED := 90.0
+const SPRAY_SHARE := 0.45      # of the large's acid ball, per orb
+const SPLIT_ORBS := 12
+const SPLIT_SPEED := 65.0
+const SPLIT_SHARE := 0.35      # of the large's acid ball, per orb
+const SPLIT_VOLLEY := "split"
+
 # directional spawn markers, named the same way the animations are: the
 # large form has no prefix, the small form takes a "small" one.
 #
@@ -409,6 +428,18 @@ func fire_projectile() -> void:
 	if scene == null:
 		return
 
+	# IN THE BULLET-HELL ZONE, THE FORM'S VOLLEY. Aimed at the player as the
+	# shot would have been, from the same marker.
+	var zone: BulletZone = BulletZone.find(self)
+	if zone != null:
+		var from: Vector2 = _projectile_origin(attack_direction)
+		var aim: float = (target_point() - from).angle() if is_instance_valid(player) \
+			else Facing.to_vec(attack_direction).angle()
+		fire_volley(zone, from, aim)
+		if _net_sync != null and not net_mirror:
+			_net_sync.leader_bullets(self, from, aim)
+		return
+
 	# THE ELEMENT PICKS THE SCENE — see bushsniper.gd. current_element() rather
 	# than enemy_data.element, so a small split off a water parent fires water:
 	# element_override carries the parent's element down, and a small that
@@ -426,6 +457,29 @@ func fire_projectile() -> void:
 		projectile.shoot(attack_direction)
 
 	spawn_projectile_node(projectile, origin)
+
+
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String = "",
+		_reach: float = 0.0) -> void:
+	"""This form's volley, or the large's split ring when `volley` is
+	"split". Anything else names no volley of a slime's and fires nothing.
+	This slime's own damage and element (BulletZone's header has the
+	contract)."""
+	var element: int = current_element()
+	if volley == SPLIT_VOLLEY:
+		if is_small:
+			return
+		var ring: int = BulletZone.share_of(BulletZone.base_damage(self, POISONBALL_SCENE), SPLIT_SHARE)
+		zone.fire_ring(origin, aim, SPLIT_ORBS, SPLIT_SPEED, ring, element)
+		return
+	if volley != "":
+		return
+	if is_small:
+		var twin: int = BulletZone.share_of(BulletZone.base_damage(self, ARROW_SCENE), TWIN_SHARE)
+		zone.fire_fan(origin, aim, TWIN_ORBS, TWIN_SPREAD, TWIN_SPEED, twin, element)
+	else:
+		var spray: int = BulletZone.share_of(BulletZone.base_damage(self, POISONBALL_SCENE), SPRAY_SHARE)
+		zone.fire_fan(origin, aim, SPRAY_ORBS, SPRAY_SPREAD, SPRAY_SPEED, spray, element, true)
 
 
 func _projectile_origin(dir: String) -> Vector2:
@@ -591,6 +645,15 @@ func _begin_split() -> void:
 	# BEFORE THE AWAIT, NOT AFTER THE SPLIT. A node freed during the hitflash
 	# never resumes its coroutine, silently, and a signal below the await would
 	# go with it - _test_await_does_not_lose_work holds that rule.
+	#
+	# THE SPLIT RING GOES FIRST (0.23.0): before died.emit(), because the
+	# leader's "die" for the large is what removes it from every follower's
+	# list, and a "b" behind it would find no slime there to fire it.
+	var zone: BulletZone = BulletZone.find(self)
+	if zone != null:
+		fire_volley(zone, global_position, 0.0, SPLIT_VOLLEY)
+		if _net_sync != null and not net_mirror:
+			_net_sync.leader_bullets(self, global_position, 0.0, SPLIT_VOLLEY)
 	died.emit()
 
 	_stop_acting()

@@ -5045,13 +5045,13 @@ existing Field, not a copy. Step 1 is the Bush Snipers.
   false (absent) in bigfield.tscn, which shares the script.
 - **A monster supports both with one branch.** `BulletZone.find(self)` is
   null everywhere but the Field, so the monster fires its ordinary projectile
-  there. `BushSniper.fire_projectile()`: in the zone, `fire_fan()` - three
+  there. `BushSniper.fire_projectile()`: in the zone, `fire_volley()` - three
   orbs over 0.5 rad at 150 px/s, each 60% of the arrow (`FAN_SHARE`, the
   owner's "lower dps on projectiles") - and otherwise the arrow, untouched.
 - **Shared as where and which way, never how hard.** The leader's sniper
   adds `{k: "b", id, x, y, a}` to its world (`MonsterSync.leader_bullets`);
-  a follower's copy of that monster fires its own fan (`fire_fan`) with its
-  own damage and element. Anything else in the message is ignored, like
+  a follower's copy of that monster fires its own volley (`fire_volley`) with
+  its own damage and element. Anything else in the message is ignored, like
   `safe_spike()`. The books (combatbook.py) read only spawn/die/gone, so the
   API needs nothing.
 - **Unshaded, or invisible.** The Field sits under a CanvasModulate of
@@ -5080,7 +5080,44 @@ existing Field, not a copy. Step 1 is the Bush Snipers.
   not, unshaded, the culling box, the element colour, flight, hits, mercy,
   catch-up along a curve, walls and a door, the sniper's fan in and out of
   a zone) and `_test_the_bullet_zone_is_shared` (the leader's "b", a
-  follower's own damage, nothing from a monster that does not fire volleys).
+  follower's own damage, "r" and "v", nothing from an id it does not have).
+
+**0.23.0: every monster in the Field fires its own shape.** The owner: "lets
+do it", to the list of the other four.
+
+| monster | in the Field | each orb |
+|---|---|---|
+| Bush Sniper | a fan of 3 | 60% of the arrow |
+| Bush Mage | its vine as before, and a ring of 10 at 70 px/s with a GAP toward the player | 35% of the vine |
+| Fire Sprite | a pincer: 4 orbs leave 0.45 and 0.9 rad wide and curve back to meet where the player stood | 50% of the fire orb |
+| Electric Sprite | a chain: 5 down one line at 110 to 170 px/s, leaving together and stringing out | 50% of the electric orb |
+| Poison Slime | small: a twin; large: a spray of 5 big orbs; and a ring of 12 as it splits | 60% / 45% / 35% |
+
+- **One contract.** Every one has `fire_volley(zone, origin, aim, volley,
+  reach)`, and `BulletZone` has the shapes (`fire_fan`, `fire_ring`,
+  `fire_chain`, `fire_pincer`) and `base_damage()` / `share_of()`:
+  `projectile_damage` when the .tres has one, else the shot scene's own
+  `damage`, read once.
+- **The wire grew two optional keys.** `"v"`, which volley (the slime's
+  `"split"`; anything a monster does not have fires nothing), and `"r"`, how
+  far (the pincer's meeting point, held on every screen to the sprite's own
+  `PINCER_REACH_MIN..MAX`). Capped at `MAX_VOLLEY_NAME` / `MAX_VOLLEY_REACH`.
+- **The pincer closes together.** The first version flew all four at one
+  speed, and the wide ones, with the longer arcs, arrived later - a stream,
+  not a pincer, and the test that waited for all four in one place never saw
+  it. The widest flies at `PINCER_SPEED` and the others are slowed to take as
+  long (`fire_pincer`'s docstring has the arc).
+- **The split ring goes out before the large's death.** `_begin_split()`
+  fires it ahead of `died.emit()`: the leader's "die" is what takes the large
+  out of every follower's list, and a "b" behind it found no slime to fire.
+- **The mage's ring has its gap toward you.** The vine already punishes
+  standing where you are; the ring punishes the panicked sidestep.
+- **Recorded in the real Field**, the player among the five dark monsters:
+  about 190 orbs on screen at once, every element its own colour.
+- Tests: `_test_the_field_volleys` (each monster's shape, count, share and
+  element; the mage's vine still raised; the pincer leaving wide and all four
+  meeting; the chain's speeds on one line; the slime's three; the leader's
+  "r", and its "b:split" ahead of "die").
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

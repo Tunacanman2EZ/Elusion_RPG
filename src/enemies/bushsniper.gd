@@ -24,11 +24,6 @@ const FAN_SPREAD := 0.5        # radians edge to edge, about 29 degrees
 const FAN_SPEED := 150.0       # px/s
 const FAN_SHARE := 0.6         # of the arrow's damage, per orb
 
-# arrow.gd's own damage, read once from the scene, for a sniper whose .tres
-# leaves projectile_damage at 0 (the plain one). Read, not copied, so the two
-# cannot drift.
-static var _arrow_damage: int = -1
-
 
 # =============================================================================
 # NODE REFERENCES
@@ -103,7 +98,7 @@ func fire_projectile() -> void:
 	if zone != null:
 		var origin: Vector2 = spawn_node.global_position
 		var aim: float = (target_point() - origin).angle()
-		fire_fan(zone, origin, aim)
+		fire_volley(zone, origin, aim)
 		if _net_sync != null and not net_mirror:
 			_net_sync.leader_bullets(self, origin, aim)
 		return
@@ -121,22 +116,18 @@ func fire_projectile() -> void:
 	spawn_projectile_node(arrow, spawn_node.global_position)
 
 
-func fire_fan(zone: BulletZone, origin: Vector2, aim: float) -> void:
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
+		_reach: float = 0.0) -> void:
 	"""The fan, from `origin` toward `aim` (radians). Damage and element are
 	this monster's own - which is what a follower relies on when it replays the
-	leader's volley: the message says where and which way, never how hard."""
+	leader's volley: the message says where and which way, never how hard. The
+	archer has one volley, so the name and reach a message may carry are
+	ignored (BulletZone's header has the contract)."""
 	zone.fire_fan(origin, aim, FAN_ORBS, FAN_SPREAD, FAN_SPEED, orb_damage(), current_element())
 
 
 func orb_damage() -> int:
-	var arrow: int = enemy_data.projectile_damage if enemy_data != null else 0
-	if arrow <= 0:
-		if _arrow_damage < 0:
-			var probe: Node = ARROW_SCENE.instantiate()
-			_arrow_damage = int(probe.get("damage"))
-			probe.free()
-		arrow = _arrow_damage
-	return maxi(1, roundi(arrow * FAN_SHARE))
+	return BulletZone.share_of(BulletZone.base_damage(self, ARROW_SCENE), FAN_SHARE)
 
 
 # =============================================================================

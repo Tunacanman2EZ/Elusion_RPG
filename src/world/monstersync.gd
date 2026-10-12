@@ -44,8 +44,11 @@
 #       gone {id}            gone without dying  p   a shot        v  a vine
 #       e     a boss spike   sp  a stalker pillar  m  a boss swing
 #       b     a volley of orbs into the area's BulletZone (0.22.0): where and
-#             which way only - {id, x, y, a} - and the follower's own copy of
-#             the monster fires it, with its own damage and element
+#             which way - {id, x, y, a}, and since 0.23.0 "v" (which volley,
+#             for a monster with more than one: the slime's "split") and "r"
+#             (how far, for the fire sprite's pincer). The follower's own copy
+#             of the monster fires it (fire_volley), with its own damage,
+#             element, count and speed
 #   {"wave": n}                                  the boss gauntlet's wave
 #   {"full": true, "reset": bool, "part": i, "parts": n, "spawn": [records],
 #    "wave": n}                                  everything, to a game joining
@@ -539,17 +542,32 @@ func leader_shot(enemy: BaseEnemy, projectile: Node, at: Vector2) -> void:
 		"ax": snappedf(dir.x, 0.0001), "ay": snappedf(dir.y, 0.0001)})
 
 
-func leader_bullets(enemy: BaseEnemy, at: Vector2, aim: float) -> void:
+# The longest volley name a "b" may carry, and the furthest reach: a monster
+# reads either only through its own fire_volley(), and these only bound what a
+# message can make it look at.
+const MAX_VOLLEY_NAME := 16
+const MAX_VOLLEY_REACH := 400.0
+
+
+func leader_bullets(enemy: BaseEnemy, at: Vector2, aim: float, volley: String = "",
+		reach: float = 0.0) -> void:
 	"""(Leader, from a monster firing into a BulletZone - the Field's orbs,
-	0.22.0.) A volley for every screen: where it left and which way. Each
-	follower fires its own copy of that monster's volley (fire_fan), with its
-	own copy's damage and element, so a leader can aim a volley but never make
-	one hit harder - the same shape as safe_spike() and safe_pillar_damage()."""
+	0.22.0.) A volley for every screen: where it left, which way, and - for
+	the monsters that need them (0.23.0) - which volley and how far. Each
+	follower fires its own copy of that monster's volley (fire_volley), with
+	its own copy's damage and element, so a leader can aim a volley but never
+	make one hit harder - the same shape as safe_spike() and
+	safe_pillar_damage()."""
 	if role != Role.LEAD or not _sharing() or enemy.net_id < 0:
 		return
-	_events.append({"k": "b", "id": enemy.net_id,
+	var event: Dictionary = {"k": "b", "id": enemy.net_id,
 		"x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1),
-		"a": snappedf(wrapf(aim, -PI, PI), 0.0001)})
+		"a": snappedf(wrapf(aim, -PI, PI), 0.0001)}
+	if volley != "":
+		event["v"] = volley.left(MAX_VOLLEY_NAME)
+	if reach > 0.0:
+		event["r"] = snappedf(minf(reach, MAX_VOLLEY_REACH), 0.1)
+	_events.append(event)
 
 
 func leader_event(enemy: Node, event: Dictionary) -> void:
@@ -791,8 +809,10 @@ func _apply_event(event: Dictionary) -> void:
 			# Only a monster this game has, that fires volleys, into this
 			# area's zone: anything else in a "b" changes nothing.
 			var zone: BulletZone = BulletZone.find(self)
-			if mirror != null and zone != null and mirror.has_method(&"fire_fan"):
-				mirror.call(&"fire_fan", zone, at, wrapf(float(event.get("a", 0.0)), -PI, PI))
+			if mirror != null and zone != null and mirror.has_method(&"fire_volley"):
+				mirror.call(&"fire_volley", zone, at, wrapf(float(event.get("a", 0.0)), -PI, PI),
+					str(event.get("v", "")).left(MAX_VOLLEY_NAME),
+					clampf(float(event.get("r", 0.0)), 0.0, MAX_VOLLEY_REACH))
 		"v":
 			if mirror != null and mirror.has_method("_place_vine"):
 				mirror.call("_place_vine", at, str(event.get("d", "down")))

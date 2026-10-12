@@ -286,6 +286,7 @@ func _run_all() -> void:
 	await _test_the_big_field()
 	await _test_the_bullet_zone()
 	await _test_the_bullet_zone_is_shared()
+	await _test_the_field_volleys()
 	_test_the_road_through_the_game()
 	await _test_the_arrival_portal_closes_behind_you()
 	await _test_monsters_go_out_in_a_burst()
@@ -24701,12 +24702,232 @@ func _test_the_bullet_zone_is_shared() -> void:
 		zone2.field.damage_of(0) == int(sn2.call("orb_damage")) and zone2.field.damage_of(0) < 9999,
 		zone2.field.damage_of(0))
 	var before: int = zone2.field.count
-	sync2.apply_world({"ev": [{"k": "b", "id": 8, "x": 0.0, "y": 0.0, "a": 0.0},
-		{"k": "b", "id": 99, "x": 0.0, "y": 0.0, "a": 0.0}]})
-	check("  a monster that does not fire volleys, or one this game does not have, fires nothing",
-		zone2.field.count == before, zone2.field.count)
+	sync2.apply_world({"ev": [{"k": "b", "id": 99, "x": 0.0, "y": 0.0, "a": 0.0}]})
+	check("  one this game does not have fires nothing", zone2.field.count == before, zone2.field.count)
+
+	# 0.23.0: "r", how far - the fire sprite's pincer closes where the leader's
+	# did, held to the sprite's own range on this screen.
+	zone2.field.clear()
+	sync2.apply_world({"ev": [{"k": "b", "id": 8, "x": -20000.0, "y": -20000.0, "a": 0.0, "r": 120.0}]})
+	var meet := Vector2(-20000.0 + 120.0, -20000.0)
+	for frame in 120:
+		zone2.field.step(1.0 / 60.0, Vector2(9999, 9999), 3.0, 0.0, false)
+		var close: int = 0
+		for i in zone2.field.count:
+			if zone2.field.position_of(i).distance_to(meet) < 4.0:
+				close += 1
+		if close == 4:
+			break
+	var gathered: int = 0
+	for i in zone2.field.count:
+		if zone2.field.position_of(i).distance_to(meet) < 4.0:
+			gathered += 1
+	check("a follower's fire sprite closes its pincer where the leader's reach says (\"r\")",
+		gathered == 4, gathered)
+	zone2.field.clear()
+	sync2.apply_world({"ev": [{"k": "b", "id": 8, "x": -20000.0, "y": -20000.0, "a": 0.0, "r": 99999.0}]})
+	var far_meet := Vector2(-20000.0 + float(fs2.get("PINCER_REACH_MAX")), -20000.0)
+	var closed: bool = false
+	for frame in 240:
+		zone2.field.step(1.0 / 60.0, Vector2(9999, 9999), 3.0, 0.0, false)
+		var close2: int = 0
+		for i in zone2.field.count:
+			if zone2.field.position_of(i).distance_to(far_meet) < 4.0:
+				close2 += 1
+		if close2 == 4:
+			closed = true
+			break
+	check("  and a reach past the sprite's own is held to it", closed)
+
+	# 0.23.0: "v", which volley - a large slime's split ring, and only that.
+	var slime: BaseEnemy = (load("res://scene/enemy/darkslimelarge.tscn") as PackedScene).instantiate()
+	slime.position = Vector2(-20200, -20000)
+	world2.get_node("enemies").add_child(slime)
+	await get_tree().process_frame
+	sync2._enemies[9] = slime
+	zone2.field.clear()
+	sync2.apply_world({"ev": [{"k": "b", "id": 9, "x": -20200.0, "y": -20000.0, "a": 0.0, "v": "split"}]})
+	check("a follower's large slime fires the split ring when the volley says \"split\"",
+		zone2.field.count == int(slime.get("SPLIT_ORBS")), zone2.field.count)
+	zone2.field.clear()
+	sync2.apply_world({"ev": [{"k": "b", "id": 9, "x": -20200.0, "y": -20000.0, "a": 0.0, "v": "everything"}]})
+	check("  a volley it does not have fires nothing", zone2.field.count == 0, zone2.field.count)
 	world2.queue_free()
 	link2.queue_free()
+	for o in others:
+		if is_instance_valid(o):
+			o.add_to_group(&"player")
+	await get_tree().process_frame
+
+
+func _test_the_field_volleys() -> void:
+	section("THE FIELD'S VOLLEYS (0.23.0) - every monster there fires its own shape, a share of its shot")
+	const Targets := preload("res://src/shared/targets.gd")
+	var others: Array = get_tree().get_nodes_in_group(&"player")
+	for o in others:
+		o.remove_from_group(&"player")
+	var world := Node2D.new()
+	add_child(world)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	var shots := Node2D.new()
+	shots.add_to_group(&"projectiles")
+	world.add_child(shots)
+	var ground := Node2D.new()
+	ground.add_to_group(&"groundeffects")
+	world.add_child(ground)
+	var dummy := ZoneDummy.new()
+	dummy.position = Vector2(-40000, -40000)
+	dummy.add_to_group(&"player")
+	world.add_child(dummy)
+	var body: Vector2 = Targets.body_point(dummy)
+
+	# --- the Bush Mage: the vine, and a ring with its gap toward you -----------
+	var mage: BaseEnemy = (load("res://scene/enemy/darkbushmage.tscn") as PackedScene).instantiate()
+	mage.position = body + Vector2(-36, 0)
+	world.add_child(mage)
+	await get_tree().process_frame
+	mage.player = dummy
+	mage.attack_direction = "right"
+	mage.call("_spawn_vine")
+	var orbs: int = zone.field.count
+	var to_you: float = (body - (mage as Node2D).global_position).angle()
+	var nearest: float = INF
+	for i in zone.field.count:
+		nearest = minf(nearest, absf(angle_difference(zone.field.velocity_of(i).angle(), to_you)))
+	var mage_hit: int = (mage.enemy_data as EnemyData).projectile_damage
+	check("a Bush Mage in the zone still raises its vine", ground.get_child_count() == 1, ground.get_child_count())
+	check("  and sends a ring of %d orbs, %d each (35%% of the vine's %d)" % [orbs, roundi(mage_hit * 0.35), mage_hit],
+		orbs == 10 and zone.field.damage_of(0) == roundi(mage_hit * 0.35)
+		and zone.field.element_of(0) == Element.Type.DARK, [orbs, zone.field.damage_of(0)])
+	check("  with a gap, not an orb, toward the player", absf(nearest - PI / 10.0) < 0.02, nearest)
+	zone.field.clear()
+
+	# --- the Fire Sprite: a pincer that closes where you stood -----------------
+	var fire: BaseEnemy = (load("res://scene/enemy/darkfiresprite.tscn") as PackedScene).instantiate()
+	fire.position = body + Vector2(-150, 0)
+	world.add_child(fire)
+	await get_tree().process_frame
+	fire.player = dummy
+	fire.attack_direction = "right"
+	fire.call("fire_projectile")
+	var fire_hit: int = (fire.enemy_data as EnemyData).projectile_damage
+	check("a Fire Sprite looses a pincer of 4 orbs, %d each (half its %d)" % [roundi(fire_hit * 0.5), fire_hit],
+		zone.field.count == 4 and zone.field.damage_of(0) == roundi(fire_hit * 0.5)
+		and shots.get_child_count() == 0, [zone.field.count, zone.field.damage_of(0)])
+	var started_wide: bool = true
+	for i in zone.field.count:
+		var off: float = absf(angle_difference(zone.field.velocity_of(i).angle(),
+			(body - zone.field.position_of(i)).angle()))
+		started_wide = started_wide and off > 0.4
+	var met: bool = false
+	for frame in 180:
+		zone.field.step(1.0 / 60.0, Vector2(99999, 99999), 3.0, 0.0, false)
+		var close: int = 0
+		for i in zone.field.count:
+			if zone.field.position_of(i).distance_to(body) < 4.0:
+				close += 1
+		if close == 4:
+			met = true
+			break
+	check("  the orbs leave wide of the player and all four meet where the player stood",
+		started_wide and met, [started_wide, met])
+	zone.field.clear()
+
+	# --- the Electric Sprite: a chain that strings out --------------------------
+	var spark: BaseEnemy = (load("res://scene/enemy/darksprite.tscn") as PackedScene).instantiate()
+	spark.position = body + Vector2(-150, 0)
+	world.add_child(spark)
+	await get_tree().process_frame
+	spark.player = dummy
+	spark.attack_direction = "right"
+	spark.call("fire_projectile")
+	var speeds: Array = []
+	var line: bool = true
+	var aim: float = zone.field.velocity_of(0).angle() if zone.field.count > 0 else 0.0
+	for i in zone.field.count:
+		speeds.append(roundi(zone.field.velocity_of(i).length()))
+		line = line and absf(angle_difference(zone.field.velocity_of(i).angle(), aim)) < 0.001
+	speeds.sort()
+	var spark_hit: int = (spark.enemy_data as EnemyData).projectile_damage
+	check("an Electric Sprite looses a chain of 5 down one line, 110 to 170 px/s, %d each" % roundi(spark_hit * 0.5),
+		zone.field.count == 5 and line and speeds == [110, 125, 140, 155, 170]
+		and zone.field.damage_of(0) == roundi(spark_hit * 0.5), [speeds, line])
+	zone.field.clear()
+
+	# --- the Poison Slime: twin, spray, and the ring as it splits ---------------
+	var small: BaseEnemy = (load("res://scene/enemy/poisonslime.tscn") as PackedScene).instantiate()
+	small.set("is_small", true)
+	small.position = body + Vector2(-100, 0)
+	world.add_child(small)
+	await get_tree().process_frame
+	small.player = dummy
+	small.attack_direction = "right"
+	small.call("fire_projectile")
+	check("a small slime looses a twin",
+		zone.field.count == 2 and shots.get_child_count() == 0 and zone.field.radius_of(0) < 3.0,
+		zone.field.count)
+	zone.field.clear()
+	var large: BaseEnemy = (load("res://scene/enemy/darkslimelarge.tscn") as PackedScene).instantiate()
+	large.position = body + Vector2(-120, 0)
+	world.add_child(large)
+	await get_tree().process_frame
+	large.player = dummy
+	large.attack_direction = "right"
+	large.call("fire_projectile")
+	var large_hit: int = (large.enemy_data as EnemyData).projectile_damage
+	check("a large slime sprays 5 big orbs, %d each (45%% of its %d)" % [roundi(large_hit * 0.45), large_hit],
+		zone.field.count == 5 and zone.field.radius_of(0) > 5.0
+		and zone.field.damage_of(0) == roundi(large_hit * 0.45), [zone.field.count, zone.field.damage_of(0)])
+	zone.field.clear()
+	large.call("_begin_split")
+	check("  and bursts into a ring of 12 as it splits, %d each" % roundi(large_hit * 0.35),
+		zone.field.count == 12 and zone.field.damage_of(0) == roundi(large_hit * 0.35), zone.field.count)
+	zone.field.clear()
+	world.queue_free()
+	await get_tree().process_frame
+
+	# --- the leader: a split's ring goes out ahead of the large's death --------
+	var lead_world: Node2D = _sm_world()
+	var lead_zone := BulletZone.new()
+	lead_world.add_child(lead_zone)
+	lead_zone.set_process(false)
+	var big: BaseEnemy = (load("res://scene/enemy/darkslimelarge.tscn") as PackedScene).instantiate()
+	big.name = "sl1"
+	big.position = Vector2(-20200, -20000)
+	lead_world.get_node("enemies").add_child(big)
+	var lead_fire: BaseEnemy = lead_world.get_node("enemies/fs1")
+	var lead_dummy := ZoneDummy.new()
+	lead_dummy.position = Vector2(-19950, -20000)
+	lead_dummy.add_to_group(&"player")
+	lead_world.add_child(lead_dummy)
+	var link := FakeLink.new()
+	link.area = SM_AREA
+	link.leader = 1
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	lead_world.add_child(sync)
+	await get_tree().process_frame
+	link.sent_world.clear()
+	lead_fire.player = lead_dummy
+	lead_fire.attack_direction = "right"
+	lead_fire.call("fire_projectile")
+	big.call("_begin_split")
+	sync.tick_lead()
+	var kinds: Array = []
+	var pincer: Dictionary = {}
+	for event in _sm_last_world(link).get("ev", []):
+		if int(event.get("id", -1)) == big.net_id:
+			kinds.append(str(event.get("k", "")) + ":" + str(event.get("v", "")))
+		if int(event.get("id", -1)) == lead_fire.net_id and str(event.get("k", "")) == "b":
+			pincer = event
+	check("the leader's fire sprite sends its reach with its volley (\"r\")",
+		float(pincer.get("r", 0.0)) > 0.0 and not pincer.has("v"), pincer)
+	check("the leader's large slime sends its split ring, then its death",
+		kinds == ["b:split", "die:"], kinds)
+	lead_world.queue_free()
+	link.queue_free()
 	for o in others:
 		if is_instance_valid(o):
 			o.add_to_group(&"player")

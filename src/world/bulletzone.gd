@@ -7,9 +7,27 @@
 # these when its scene says `bullet_zone = true`, which field.tscn does and
 # bigfield.tscn does not, so the Big Field fights exactly as before.
 #
-# WHAT A MONSTER DOES WITH IT: BulletZone.find(self) and fire_fan(). A monster
-# with no zone in its area (every area but the Field) gets null and fires its
+# WHAT A MONSTER DOES WITH IT: BulletZone.find(self), then one of the shapes
+# below - fire_fan(), fire_ring(), fire_chain(), fire_pincer(). A monster with
+# no zone in its area (every area but the Field) gets null and fires its
 # ordinary projectile, so a monster script supports both with one branch.
+#
+# EVERY MONSTER THAT FIRES HERE HAS fire_volley(zone, origin, aim, volley,
+# reach), and that one signature is the whole contract with monstersync.gd:
+# the leader sends where, which way, which volley (a monster with more than
+# one, the slime's "split") and how far (the fire sprite's pincer), and a
+# follower's own copy of the monster fires it. Damage, element, count and speed
+# are never on the wire (0.22.0's rule: a leader can aim a volley, never make
+# one hit harder).
+#
+# WHAT EACH MONSTER FIRES (0.23.0), every orb a share of the shot it replaces
+# (base_damage()):
+#   Bush Sniper     a fan of 3                      bushsniper.gd
+#   Bush Mage       a slow ring of 10 with its vine  bushmage.gd
+#   Fire Sprite     a pincer of 4 that closes where you stood   firesprite.gd
+#   Electric Sprite a chain of 5 that stretches as it flies     electricsprite.gd
+#   Poison Slime    small: a twin shot; large: a spray of 5 big orbs, and a
+#                   ring of 12 as it splits          poisonslime.gd
 #
 # THE PLAYER IT HURTS is this game's own (the first node in group "player").
 # The hitbox is HITBOX_RADIUS around Targets.body_point() - the body, where
@@ -53,6 +71,11 @@ const DRAWN_ABOVE: int = 20
 
 var field: BulletField = null
 
+# scene path -> its script's own `damage`, for a monster whose .tres leaves
+# projectile_damage at 0. Read once per scene, not copied into a constant, so
+# the two cannot drift.
+static var _scene_damage: Dictionary = {}
+
 var _mercy_until_ms: int = 0
 var _walls: PackedByteArray = PackedByteArray()
 var _walls_origin: Vector2 = Vector2.ZERO
@@ -88,6 +111,28 @@ func _ready() -> void:
 			door.connect(&"raised_changed", _on_door_changed.bind(door))
 
 
+static func base_damage(enemy: BaseEnemy, scene: PackedScene, fallback: int = 0) -> int:
+	"""What the shot a volley replaces would have hit for: the monster's
+	EnemyData.projectile_damage when it has one (every elemental variant
+	does), else `fallback` when given, else the shot scene's own `damage`."""
+	if enemy != null and enemy.enemy_data != null and enemy.enemy_data.projectile_damage > 0:
+		return enemy.enemy_data.projectile_damage
+	if fallback > 0:
+		return fallback
+	if scene == null:
+		return 1
+	var key: String = scene.resource_path
+	if not _scene_damage.has(key):
+		var probe: Node = scene.instantiate()
+		_scene_damage[key] = maxi(1, int(probe.get("damage")) if probe.get("damage") != null else 1)
+		probe.free()
+	return int(_scene_damage[key])
+
+
+static func share_of(damage: int, share: float) -> int:
+	return maxi(1, roundi(damage * share))
+
+
 func fire_fan(origin: Vector2, aim: float, count: int, spread: float, speed: float,
 		damage: int, element: int, big: bool = false) -> void:
 	"""`count` orbs spread evenly across `spread` radians, centred on `aim`."""
@@ -96,6 +141,57 @@ func fire_fan(origin: Vector2, aim: float, count: int, spread: float, speed: flo
 		var share: float = 0.0 if count <= 1 else float(k) / float(count - 1) - 0.5
 		field.spawn(origin, aim + share * spread, speed, colour, big, 0.0, 0.0, LIFE,
 			damage, element)
+
+
+func fire_ring(origin: Vector2, aim: float, count: int, speed: float, damage: int,
+		element: int, big: bool = false) -> void:
+	"""`count` orbs evenly round a circle, one of them along `aim`: a player
+	who stands still in front of the caster meets that one."""
+	var colour: Color = shot_colour(element)
+	for k in count:
+		field.spawn(origin, aim + TAU * k / maxi(count, 1), speed, colour, big, 0.0, 0.0, LIFE,
+			damage, element)
+
+
+func fire_chain(origin: Vector2, aim: float, count: int, slowest: float, fastest: float,
+		damage: int, element: int) -> void:
+	"""`count` orbs down one line at speeds from `slowest` to `fastest`: they
+	leave together and string out, so the volley arrives as a stream that a
+	sidestep clears and standing still eats several of."""
+	var colour: Color = shot_colour(element)
+	for k in count:
+		var speed: float = slowest if count <= 1 else lerpf(slowest, fastest, float(k) / float(count - 1))
+		field.spawn(origin, aim, speed, colour, false, 0.0, 0.0, LIFE, damage, element)
+
+
+func fire_pincer(origin: Vector2, aim: float, reach: float, offsets: Array[float], speed: float,
+		damage: int, element: int) -> void:
+	"""Orbs that leave at `offsets` radians either side of `aim` and curve back
+	to meet `reach` px along it - where the player stood when the volley left -
+	all at the same moment.
+
+	Each flies a circular arc: leaving at angle t to the chord of length D, the
+	arc turns through 2t, its radius is D / (2 sin t) and its length is
+	t * D / sin t. The widest orb flies at `speed`; the others are slowed so
+	they take as long, which is what makes it close like a pincer rather than
+	arrive as a stream (the first version did). The turn rate that bends an orb
+	of speed v onto its arc is -2 * v * sin t / D. They live a little past the
+	meeting point and are gone, rather than carrying on round the circle."""
+	var colour: Color = shot_colour(element)
+	var d: float = maxf(reach, 1.0)
+	var widest: float = 0.0
+	for t in offsets:
+		widest = maxf(widest, absf(t))
+	var meet_time: float = _arc_length(widest, d) / speed
+	for t in offsets:
+		var own_speed: float = _arc_length(absf(t), d) / meet_time
+		var turn: float = 0.0 if absf(t) < 0.001 else -2.0 * own_speed * sin(t) / d
+		field.spawn(origin, aim + t, own_speed, colour, false, turn, 0.0, meet_time * 1.4,
+			damage, element)
+
+
+static func _arc_length(t: float, chord: float) -> float:
+	return chord if t < 0.001 else t * chord / sin(t)
 
 
 func _process(delta: float) -> void:

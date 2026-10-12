@@ -33,6 +33,15 @@ const ELECTRIC_ORB_SCENE := preload("res://scene/projectiles/magicprojectile.tsc
 # release). adjust if you retime the attack animation.
 const ORB_RELEASE_FRAME := 5
 
+# THE CHAIN (0.23.0). In an area with a BulletZone - the Field - the sprite
+# looses five orbs down one line at rising speeds, so they leave as a clump and
+# arrive as a stretched bolt (BulletZone.fire_chain): one sidestep clears it,
+# standing still eats one every time the mercy runs out.
+const CHAIN_ORBS := 5
+const CHAIN_SLOWEST := 110.0
+const CHAIN_FASTEST := 170.0
+const CHAIN_SHARE := 0.5       # of the electric orb's damage, per orb
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -88,6 +97,14 @@ func fire_projectile() -> void:
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
 	if spawn_node == null or not is_instance_valid(player):
 		return
+	var zone: BulletZone = BulletZone.find(self)
+	if zone != null:
+		var origin: Vector2 = spawn_node.global_position
+		var aim: float = (target_point() - origin).angle()
+		fire_volley(zone, origin, aim)
+		if _net_sync != null and not net_mirror:
+			_net_sync.leader_bullets(self, origin, aim)
+		return
 
 	# THE ELEMENT PICKS THE ORB — see bushsniper.gd. The plain electric sprite
 	# is LIGHTNING and has no variant, so it fires the artist's own blue.
@@ -129,6 +146,14 @@ func fire_projectile() -> void:
 	# A helper that duplicates part of a shared function is worse than no helper,
 	# because it silently stops inheriting the fixes made to the original.
 	spawn_projectile_node(orb, spawn_node.global_position)
+
+
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
+		_reach: float = 0.0) -> void:
+	"""The chain, from `origin` down `aim`. This sprite's own damage and
+	element (BulletZone's header has the contract)."""
+	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, ELECTRIC_ORB_SCENE), CHAIN_SHARE)
+	zone.fire_chain(origin, aim, CHAIN_ORBS, CHAIN_SLOWEST, CHAIN_FASTEST, damage, current_element())
 
 
 # =============================================================================

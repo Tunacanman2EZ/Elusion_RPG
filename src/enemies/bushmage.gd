@@ -70,6 +70,15 @@ const CAST_RANGE := Formation.RING_RADIUS + 24.0
 # vine projectile scene — assign in inspector or rely on the default preload
 @export var vine_scene: PackedScene = preload("res://scene/projectiles/vine.tscn")
 
+# THE RING (0.23.0). In an area with a BulletZone - the Field - the vine still
+# erupts as it always has (the heavy hit, from below) and the mage also sends a
+# slow ring of orbs out from itself (the chip). The ring leaves with a GAP
+# toward the player, half a step round: the vine already punishes standing
+# where you are, and the ring punishes the panicked sidestep into it.
+const RING_ORBS := 10
+const RING_SPEED := 70.0       # px/s
+const RING_SHARE := 0.35       # of the vine's damage, per orb
+
 
 # =============================================================================
 # STATE
@@ -331,6 +340,24 @@ func _spawn_vine() -> void:
 	if _net_sync != null and not net_mirror:
 		_net_sync.leader_event(self, {"k": "v", "x": snappedf(global_position.x, 0.1),
 			"y": snappedf(global_position.y, 0.1), "d": attack_direction})
+
+	# IN THE BULLET-HELL ZONE, THE RING TOO - after the vine, so the "v" goes
+	# out ahead of the "b" and every screen plays them in the same order.
+	var zone: BulletZone = BulletZone.find(self)
+	if zone != null:
+		var aim: float = (target_point() - global_position).angle() if is_instance_valid(player) \
+			else _vec_from_dir(attack_direction).angle()
+		fire_volley(zone, global_position, aim)
+		if _net_sync != null and not net_mirror:
+			_net_sync.leader_bullets(self, global_position, aim)
+
+
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
+		_reach: float = 0.0) -> void:
+	"""The ring, from `origin`, its gap toward `aim`. This mage's own damage
+	and element, as for every volley (BulletZone's header has the contract)."""
+	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, null, attack_power), RING_SHARE)
+	zone.fire_ring(origin, aim + PI / RING_ORBS, RING_ORBS, RING_SPEED, damage, current_element())
 
 
 # The vine itself, at `at`, facing `dir`. Split from _spawn_vine() so a mirror

@@ -284,6 +284,10 @@ func velocity_of(i: int) -> Vector2:
 	return _vel[i] if i >= 0 and i < count else Vector2.ZERO
 
 
+func radius_of(i: int) -> float:
+	return _radius[i] if i >= 0 and i < count else 0.0
+
+
 func damage_of(i: int) -> int:
 	return _damage[i] if i >= 0 and i < count else 0
 

@@ -13,6 +13,19 @@ const ENEMY_DATA := preload("res://data/enemies/firesprite.tres")
 const FIRE_ORB_SCENE := preload("res://scene/projectiles/fireprojectile.tscn")
 const ORB_RELEASE_FRAME := 5
 
+# THE PINCER (0.23.0). In an area with a BulletZone - the Field - the sprite
+# spits four orbs that leave wide of the player on both sides and curve back
+# to meet where the player stood when it fired (BulletZone.fire_pincer). Easy
+# to see coming and lethal to stand in: step out of the meeting point. How far
+# that point is (`reach`) goes to the other games with the volley, held to
+# PINCER_REACH_MIN..MAX on every one of them.
+const PINCER_OFFSETS: Array[float] = [-0.9, -0.45, 0.45, 0.9]
+const PINCER_SPEED := 150.0
+const PINCER_SHARE := 0.5      # of the fire orb's damage, per orb
+const PINCER_REACH_MIN := 60.0
+const PINCER_REACH_MAX := 260.0
+const PINCER_REACH_DEFAULT := 160.0
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -60,6 +73,15 @@ func fire_projectile() -> void:
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
 	if spawn_node == null or not is_instance_valid(player):
 		return
+	var zone: BulletZone = BulletZone.find(self)
+	if zone != null:
+		var origin: Vector2 = spawn_node.global_position
+		var to_target: Vector2 = target_point() - origin
+		fire_volley(zone, origin, to_target.angle(), "", to_target.length())
+		if _net_sync != null and not net_mirror:
+			_net_sync.leader_bullets(self, origin, to_target.angle(), "",
+				clampf(to_target.length(), PINCER_REACH_MIN, PINCER_REACH_MAX))
+		return
 	# The element picks the orb — see bushsniper.gd for the full note. The fire
 	# sprite itself is FIRE and has no variant, so it fires the artist's own art.
 	var orb: Node = Projectiles.variant_of(FIRE_ORB_SCENE, current_element()).instantiate()
@@ -70,6 +92,15 @@ func fire_projectile() -> void:
 	elif orb.has_method("shoot"):
 		orb.shoot(attack_direction)
 	spawn_projectile_node(orb, spawn_node.global_position)
+
+
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
+		reach: float = 0.0) -> void:
+	"""The pincer, closing `reach` px along `aim` from `origin`. This sprite's
+	own damage and element (BulletZone's header has the contract)."""
+	var meet: float = PINCER_REACH_DEFAULT if reach <= 0.0 else clampf(reach, PINCER_REACH_MIN, PINCER_REACH_MAX)
+	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, FIRE_ORB_SCENE), PINCER_SHARE)
+	zone.fire_pincer(origin, aim, meet, PINCER_OFFSETS, PINCER_SPEED, damage, current_element())
 
 
 # =============================================================================
