@@ -9041,6 +9041,17 @@ func _test_the_store_sells_the_next_set() -> void:
 	check("the stock runs potions, fishing, then iron, jade, cobalt, amethyst, each once",
 		shelves == ["supplies", "fishing", "gear 1", "gear 2", "gear 3", "gear 4"], shelves)
 
+	# EVERY POTION, TINY TO GREATER (0.25.4). The owner: "need to unlock all of
+	# the potions we set up" - the large and greater ones were drops only.
+	var potions: Array = stock.filter(func(id: String) -> bool:
+		return panel_script.shelf_of(exported_items.get(id, {"item_id": id})) == "supplies")
+	var every_potion: Array = []
+	for size in ["tiny", "small", "medium", "large", "greater"]:
+		for pool in ["health", "mana", "stamina"]:
+			every_potion.append("%s%spotion" % [size, pool])
+	check("the supplies shelf is every potion, tiny to greater, health, mana and stamina of each (0.25.4)",
+		potions == every_potion, potions)
+
 	# FISHING: the worm and every rod but ember, decided by the owner on day 1.
 	# Only the iron rod could be had before, and worms dropped one at a time.
 	var fishing: Array = stock.filter(func(id: String) -> bool:

@@ -293,7 +293,7 @@ cd <your-path>\game\api
 
 ```
 test_api.py            527 checks    the endpoint surface, moderation, presence
-test_economy.py        395 checks    the gold ledger and the supply invariant, and selling to the shop
+test_economy.py        397 checks    the gold ledger and the supply invariant, and selling to the shop
 test_security.py       299 checks    the audit's findings, held closed
 test_loot.py           259 checks    every finished item is actually obtainable
 test_equipment.py      212 checks    the equipment system, client and server
@@ -308,7 +308,7 @@ test_refusals.py       127 checks    401, 403, and the 404 that is really a 403
 test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
 test_presence.py       122 checks    players seeing each other, whose game runs each area's monsters, every attack and lever
 test_quality.py        113 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
-test_pacing.py         112 checks    the pace of the game: what the server pays, the store charges and the shop pays back
+test_pacing.py         114 checks    the pace of the game: what the server pays, the store charges and the shop pays back
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
 test_combatbook.py      95 checks    the server's books on every monster: every hit, spawn and death judged
 test_friends.py         76 checks    asking, answering and ending a friendship
@@ -344,14 +344,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,934 checks, 0 failures
+					4,938 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **3,748 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 148 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **3,749 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 148 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `3684 passed, 0 failed, 25 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-four are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `3685 passed, 0 failed, 25 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-four are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 **Both suites run on GitHub for every push and every pull request** (`.github/workflows/tests.yml`, here and in the API repo). The game's run is a clone — no art pack — so a new check that needs the art and does not say so fails there before it reaches anybody who clones this. The API's runs `run_tests.ps1` itself, so a green tick means what a green run on the PC means.
 

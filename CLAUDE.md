@@ -2127,11 +2127,18 @@ odds - where it was. `_test_better_loot_carries_more` and the API's
 ### The store sells iron to amethyst; ember is found
 
 Decided by the owner on day 1, so a player farming one band can save up for
-the next band's set. `generalstore.tres` stocks the nine potions, the fishing
+the next band's set. `generalstore.tres` stocks every potion, the fishing
 worm and the iron to amethyst rods, and every weapon and armour piece from iron
 (tier 1) to amethyst (tier 4), bonus amulets included, at its value
 (`price_multiplier` 1.0). Ember, the ember rod and the boss trophies stay
 drop-only.
+
+- **Every potion since 0.25.4.** The store sold the tiny, small and medium
+  ones (levels 1, 5, 10); the large (16) and greater (22) were drops only.
+  The owner: "need to unlock all of the potions we set up". Asked the same
+  day whether ember and the mythics should go on the shelf too, the owner
+  kept them drops ("Only the potions"). The game's shop test and the API's
+  `test_pacing.py` / `test_economy.py` hold all fifteen, at value.
 
 - **Anyone may buy any piece; it is worn at its level.** The row says "Lv 5"
   before you pay, and the server's equip check refuses it until then.

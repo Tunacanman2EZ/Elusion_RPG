@@ -398,8 +398,9 @@ func _on_row_unhovered(row: Control) -> void:
 func _requirement_suffix(entry: Dictionary) -> String:
 	# SHOWN, NOT ENFORCED. Buying ahead of your level is legitimate — a stack of
 	# Greater Potions bought at 18 and drunk at 22 is planning, not an exploit,
-	# and the store's own stock (potion tiers 1-3, needing levels 1, 5 and 10)
-	# would be half-unbuyable if the shop refused. The line exists so the player
+	# and the store's own stock (every potion since 0.25.4: tiny to greater,
+	# needing levels 1, 5, 10, 16 and 22) would be half-unbuyable if the shop
+	# refused. The line exists so the player
 	# is told BEFORE they spend, rather than finding out when the potion refuses
 	# to go down.
 	#
