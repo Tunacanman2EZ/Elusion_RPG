@@ -4054,6 +4054,37 @@ BANK and INVENTORY; the level is a "Lv 1" badge on the left as wide as the ×
 on the right, so the title sits in the middle (it read "Cooking  Cooking 1  ×").
 `_test_bank_buttons_and_the_cooking_window` holds all of it.
 
+**The fire shows the fish it is cooking (0.25.2).** The owner: "cooking meter
+was not matching up and burned fish vanished to quickly". Recorded against a
+stand-in server before the fix, four faults:
+
+- **A burnt fish stayed charred through the next fish's bar.** The result
+  tinted the icon, and nothing put the next fish on the fire as its own: it
+  went on still burnt, and turned back only when ITS result came in, one fish
+  late. `_show_fish()` now puts every fish on, in its own colours, as its bar
+  starts.
+- **A click on another fish showed it, and cooked the first kind.** The loop
+  held the item_id it started with and cooked that to the end of its stack;
+  `_update_controls()` redrew the fire from `_selected`. The loop reads
+  `_selected` before every fish now, and a switch says "Next: ..." while the
+  fish on the fire finishes.
+- **The bar meant two things.** The cook, gold, and then for the 0.35 s
+  between fish the burn chance, orange, at another length. The bar is the cook
+  alone now - gold, or ash when the fish burnt - and the chance is words under
+  the fish ("Raw Marsh Carp  ·  5% burn", `risk_text()`).
+- **A burnt fish was gone in 0.35 s, and the last one at once.** Every result
+  is held before the next fish (`_show_result()`): the cooked fish itself for
+  `cook_interval`, a burnt one charred with "Burnt!" for `burnt_hold` (1.2 s),
+  and the last fish of a run too, which then fades off (`_end_fire()`).
+
+The fire is drawn by the run alone (`_show_fish`, `_show_result`,
+`_end_fire`); `_update_controls()` only clears it when no run is on it. A run
+has a number (`_run_id`), moved on by closing or opening the panel, so a loop
+still waiting on a fish from before leaves without touching the new one.
+`_test_the_fire_shows_the_fish_it_cooks` runs the panel against a stand-in
+server (`CookingServer`) and a stand-in backpack, and each of its checks was
+watched failing with its fault put back.
+
 ### Pets, the map, the kingdom board, Options and the owner panel on day 1
 
 Driven in the game against the real server.

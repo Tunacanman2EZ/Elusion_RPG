@@ -43,6 +43,13 @@
 extends Control
 
 
+# What the fire is showing, as it shows it - for the suite, which has no other
+# way to see a run's beats from outside.
+signal fish_started(item_id: String)
+signal fish_done(item_id: String, burnt: bool)
+signal run_ended
+
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
@@ -97,17 +104,35 @@ const COOK_TIMEOUT := 4.0
 # and few enough that each step is a visible event.
 @export var cook_segments: int = 6
 
+# How long a BURNT fish stays on the fire, charred, before the next goes on
+# (0.25.2). The owner: "burned fish vanished to quickly". A burnt fish
+# used to get cook_interval like any other - 0.35 s - and the last one of a
+# stack not even that: the fire was cleared the moment the run ended. A burn is
+# the one result worth a look, so it gets a beat of its own.
+@export var burnt_hold: float = 1.2
+
+# The fire's last fish fades out over this long when a run ends, rather than
+# being wiped in one frame.
+const END_FADE := 0.45
+
 # Divider colour between segments, drawn over the fill.
 const SEGMENT_LINE := Color(0.05, 0.04, 0.03, 0.85)
 
-# Fill colour while cooking, as distinct from the burn-risk fill.
+# THE BAR MEANS ONE THING: how far along the fish on the fire is (0.25.2).
 #
-# THE BAR MEANS TWO THINGS AND MUST NEVER LOOK LIKE IT MEANS ONE. At rest it is
-# the chance this fish burns; while cooking it is how far along the fish is.
-# They never show at the same time, but a player who sees the same orange in
-# both will read the second as the first. Risk stays the hot orange it was;
-# progress is a cooler gold.
+# It used to mean two. At rest it was the chance the fish burns; while cooking,
+# how far along it was - and a run flipped between them every fish: the gold
+# fill to the end, then for the 0.35 s between fish an orange bar as long as
+# the burn chance, then back to nothing. The owner: "cooking meter was not
+# matching up". The burn chance is now words under the fish ("5% burn"),
+# which never move while it cooks, and the bar is the cook alone - gold while
+# it fills, and ash when the fish it filled for burnt.
 const COOK_FILL := Color(0.98, 0.82, 0.35, 1.0)
+const BURNT_FILL := Color(0.36, 0.31, 0.28, 1.0)
+
+# A burnt fish on the fire: the raw fish's own picture, charred.
+const BURNT_TINT := Color(0.32, 0.26, 0.22, 1.0)
+const BURNT_WORD := Color(1.0, 0.55, 0.42, 1.0)
 
 # ONE ROW OF SIX, one cell per kind of fish (day 1: twelve empty boxes under
 # the fire, for at most eight kinds of fish in the game). A second row appears
@@ -155,8 +180,9 @@ const HEARTH_LIFT_COOKING := 0.44
 # A status line is what a screen uses when its visuals carry no state: the panel
 # said "Select a fish." because nothing on it could show that no fish was
 # selected. Here the fish sits on the fire or it does not. The bar under it is
-# the burn risk. A refusal floats up and fades, because a refusal is an event
-# and not a field.
+# how far along it is, and the words under that what it risks (0.25.2 - the
+# bar was the risk until then; COOK_FILL says why it is not). A refusal floats
+# up and fades, because a refusal is an event and not a field.
 #
 # The Cook button went for the same reason: clicking a fish is already the
 # instruction, so a second click on a different control to confirm it was
@@ -168,6 +194,9 @@ const HEARTH_LIFT_COOKING := 0.44
 @onready var fire_sprite: AnimatedSprite2D = %firepit
 @onready var sparks: CPUParticles2D = %sparks
 @onready var cook_icon: TextureRect = %cookicon
+# THE COOK BAR. Still named riskbar in the scene, from when it showed the burn
+# chance (until 0.25.2); renaming a unique node is a second file to keep in step
+# for nothing a player sees.
 @onready var risk_bar: ProgressBar = %riskbar
 @onready var flash_label: Label = %flash
 @onready var catch_label: Label = %catchlabel
@@ -192,14 +221,26 @@ var _cooking: bool = false
 # Set false to stop a run partway through a stack.
 var _running: bool = false
 
+# True while a _cook_run() loop is alive, including the beat after its last
+# fish. A click that restarts a run while the old loop is still finishing its
+# fish hands the fish to that loop rather than starting a second one beside it.
+var _looping: bool = false
+
+# Which run is the current one. Closing or reopening the panel moves it on, so a
+# loop still waiting on its last fish from before wakes up, sees it is not the
+# current run, and leaves without touching the fire or the new run's flags.
+var _run_id: int = 0
+
 # The bar's two fills, built once in _ready() and swapped between.
 #
 # CACHED RATHER THAN REBUILT, because get_theme_stylebox("fill") returns the
 # OVERRIDE once one has been applied. Rebuilding from it each cook would make
-# the second cook a copy of the cook colour and the risk fill would never come
-# back. See _cache_fill_styles().
-var _fill_risk: StyleBox = null
+# every later box a copy of the last colour set. See _cache_fill_styles().
 var _fill_cook: StyleBox = null
+var _fill_burnt: StyleBox = null
+
+# The end-of-run fade, so a new fish going on can stop it.
+var _fade: Tween = null
 
 
 # =============================================================================
@@ -271,6 +312,8 @@ func open_for_firepit(firepit: Node, player: Node) -> void:
 	_selected = ""
 	_running = false
 	_cooking = false
+	_run_id += 1
+	_looping = false
 
 	# EVERY SLOT HERE IS A VIEW, NOT A HOLDING PLACE. See the header: stamping
 	# them "lootbag" is what stops a drag moving a stack out of the backpack
@@ -363,6 +406,8 @@ func close_panel() -> void:
 
 func _on_close_pressed() -> void:
 	_running = false
+	_run_id += 1
+	_looping = false
 
 	if is_instance_valid(_firepit) and _firepit.has_method("notify_panel_closed"):
 		_firepit.notify_panel_closed()
@@ -524,45 +569,96 @@ func _dragged_item_id(data: Variant) -> String:
 func _update_controls() -> void:
 	# Kept under its old name because every existing caller uses it, and renaming
 	# a function to describe a redesign is how a diff stops being readable.
-	var level: int = _cooking_level()
-	# A BADGE ON THE LEFT OF THE TITLE, as wide as the × on the right, so
-	# "COOKING" sits in the middle like every other window's title (day 1: the
-	# header read "Cooking  Cooking 1  ×").
-	skill_label.text = "Lv %d" % level
-	skill_label.tooltip_text = "Your cooking level is %d" % level
+	_update_badge()
 
-	if _selected == "" or not _running:
+	# THE FIRE IS THE RUN'S TO DRAW, NOT THIS FUNCTION'S (0.25.2). _show_fish()
+	# puts each fish on as its bar starts, _show_result() shows how it came out,
+	# and _end_fire() takes the last one off. This used to redraw the fire from
+	# _selected whenever it ran - after every cook, and on a click - so the fire
+	# showed whatever was selected rather than the fish actually cooking. Only
+	# with no run on the fire at all is there nothing to show.
+	if not _looping:
 		_clear_fire()
-		return
 
-	var data: ItemData = ItemRegistry.get_item(_selected)
+
+func _show_fish(item_id: String) -> void:
+	"""The fish whose bar is about to fill, as it goes on the fire: its own
+	picture in its own colours, and what it risks in words under it."""
+	var data: ItemData = ItemRegistry.get_item(item_id)
 	if data == null:
-		_clear_fire()
 		return
-
+	if _fade != null and _fade.is_valid():
+		_fade.kill()
 	cook_icon.texture = data.icon
 	cook_icon.modulate = data.icon_tint
+	cook_icon.scale = Vector2.ONE
 	cook_icon.visible = true
-	catch_label.text = data.display_name
-
-	# THE BAR IS THE SENTENCE THAT USED TO BE HERE. "about 30% will burn" became
-	# a bar that is 30% full: same number, read at a glance, and it sits under
-	# the fish it is talking about instead of in a line of prose below the panel.
-	var burn: float = _burn_chance(data, level)
-	risk_bar.visible = burn > 0.0
-	risk_bar.value = burn * 100.0
-
+	risk_bar.modulate.a = 1.0
+	catch_label.text = risk_text(data.display_name, _burn_chance(data, _cooking_level()))
+	catch_label.modulate = Color.WHITE
 	fire_sprite.speed_scale = FIRE_SPEED_COOKING
 	sparks.amount = 40
 	_set_hearth_lift(HEARTH_LIFT_COOKING)
+	fish_started.emit(item_id)
+
+
+static func risk_text(fish_name: String, burn: float) -> String:
+	"""The fish's name, and its chance of burning when there is one: "Raw Marsh
+	Carp  ·  5% burn". Never "0%" for a chance that is not nothing."""
+	if burn <= 0.0:
+		return fish_name
+	return "%s  ·  %d%% burn" % [fish_name, maxi(1, roundi(burn * 100.0))]
+
+
+func _show_result(item_id: String, burnt: bool) -> void:
+	"""How the fish on the fire came out, held there for a beat: the cooked
+	fish itself, or the raw one charred with "Burnt!" under it. The bar stays
+	full - gold for cooked, ash for burnt."""
+	var raw: ItemData = ItemRegistry.get_item(item_id)
+	if burnt:
+		cook_icon.modulate = BURNT_TINT
+		catch_label.text = "Burnt!"
+		catch_label.modulate = BURNT_WORD
+		if _fill_burnt != null:
+			risk_bar.add_theme_stylebox_override("fill", _fill_burnt)
+		sparks.amount = 22
+	else:
+		var cooked: ItemData = ItemRegistry.get_item(str(raw.cooks_into)) if raw != null else null
+		if cooked != null:
+			cook_icon.texture = cooked.icon
+			cook_icon.modulate = cooked.icon_tint
+			catch_label.text = cooked.display_name
+		sparks.amount = 64
+	risk_bar.value = 100.0
+	_pulse_fire(burnt)
+	fish_done.emit(item_id, burnt)
+
+
+func _end_fire() -> void:
+	"""The run is over: the last fish fades off the fire, then it is cleared."""
+	if not cook_icon.visible:
+		_clear_fire()
+		return
+	if _fade != null and _fade.is_valid():
+		_fade.kill()
+	_fade = create_tween().set_parallel(true)
+	_fade.tween_property(cook_icon, "modulate:a", 0.0, END_FADE)
+	_fade.tween_property(risk_bar, "modulate:a", 0.0, END_FADE)
+	_fade.tween_property(catch_label, "modulate:a", 0.0, END_FADE)
+	_fade.chain().tween_callback(func() -> void:
+		if is_instance_valid(self) and not _looping:
+			_clear_fire())
 
 
 func _clear_fire() -> void:
 	cook_icon.texture = null
 	cook_icon.visible = false
 	cook_icon.scale = Vector2.ONE
+	cook_icon.modulate = Color.WHITE
 	risk_bar.visible = false
+	risk_bar.modulate.a = 1.0
 	catch_label.text = ""
+	catch_label.modulate = Color.WHITE
 	fire_sprite.speed_scale = FIRE_SPEED_IDLE
 	sparks.amount = 22
 	_set_hearth_lift(HEARTH_LIFT_IDLE)
@@ -592,22 +688,24 @@ func _start_run(item_id: String) -> void:
 		_flash("Needs cooking level %d." % data.cook_level)
 		return
 
+	var switching: bool = _looping and item_id != _selected
 	_selected = item_id
-	if _running:
-		# Already cooking something else. Point at the new fish and let the run
-		# pick it up — the fish currently with the server still finishes.
-		_update_controls()
+	_running = true
+	if _looping:
+		# A RUN IS ALREADY ON THE FIRE. The fish on it finishes as it is, and the
+		# next one off the stack is this one - the loop reads _selected before
+		# every fish (0.25.2: it used to keep cooking the fish it started with
+		# while the fire showed this one). Said, so the click is seen to land.
+		if switching:
+			_flash("Next: %s" % data.display_name)
 		return
 
-	_running = true
-	_update_controls()
-	await _cook_run(_selected)
+	await _cook_run()
 
 
 func _stop_run() -> void:
-	# The fish already in flight finishes; nothing after it starts.
+	# The fish already in flight finishes, and is shown; nothing after it starts.
 	_running = false
-	_update_controls()
 
 
 # =============================================================================
@@ -683,13 +781,12 @@ func _build_segment_dividers() -> void:
 
 
 func _cache_fill_styles() -> void:
-	# BOTH BOXES BUILT ONCE, FROM THE ORIGINAL, AND STORED.
+	# BOTH BOXES BUILT ONCE, FROM THE SCENE'S, AND STORED.
 	#
-	# Building the cook box on demand meant reading get_theme_stylebox("fill")
-	# after an override had already been applied — so the second cook would
-	# duplicate the cook colour, the third would duplicate that, and the risk
-	# fill would never come back. Reading a value you have already overwritten
-	# is the same bug shape as the stale copies elsewhere in this project.
+	# Building a box on demand meant reading get_theme_stylebox("fill") after an
+	# override had already been applied — so each would be a copy of the last
+	# colour set. Reading a value you have already overwritten is the same bug
+	# shape as the stale copies elsewhere in this project.
 	#
 	# The duplicate() also matters on its own: a StyleBox is a Resource and the
 	# one in the theme is shared with anything else using it. Recolouring in
@@ -697,15 +794,18 @@ func _cache_fill_styles() -> void:
 	# costume.
 	if risk_bar == null:
 		return
-	_fill_risk = risk_bar.get_theme_stylebox("fill")
-
-	var box: StyleBoxFlat = (_fill_risk as StyleBoxFlat)
+	var authored: StyleBox = risk_bar.get_theme_stylebox("fill")
+	var box: StyleBoxFlat = authored as StyleBoxFlat
 	if box == null:
-		_fill_cook = _fill_risk
+		_fill_cook = authored
+		_fill_burnt = authored
 		return
-	var copy: StyleBoxFlat = box.duplicate()
-	copy.bg_color = COOK_FILL
-	_fill_cook = copy
+	var gold: StyleBoxFlat = box.duplicate()
+	gold.bg_color = COOK_FILL
+	_fill_cook = gold
+	var ash: StyleBoxFlat = box.duplicate()
+	ash.bg_color = BURNT_FILL
+	_fill_burnt = ash
 
 
 func _run_cook_bar() -> Tween:
@@ -764,28 +864,36 @@ func _burn_chance(data: ItemData, level: int) -> float:
 # COOKING
 # =============================================================================
 
-func _cook_run(item_id: String) -> void:
+func _cook_run() -> void:
 	var cooked: int = 0
 	var burnt: int = 0
+	_run_id += 1
+	var mine: int = _run_id
+	_looping = true
 
 	while _running:
+		# THE FISH IS READ AGAIN BEFORE EVERY COOK, from _selected (0.25.2). A
+		# click on another fish mid-run changes _selected; this loop used to hold
+		# the item_id it started with and cook that to the end of its stack, while
+		# the fire showed the new one - the bar filling for a fish the server
+		# never saw.
+		var item_id: String = _selected
 		# RE-READ FROM THE BACKPACK EVERY ITERATION rather than counting down a
 		# number captured at the start. The backpack is the server's answer to
 		# the last cook, so it already knows how many are left — and a local
 		# counter would drift the moment anything else touched the bag.
 		var backpack: Node = _player_backpack()
-		if backpack == null or not backpack.has_method("get_quantity_of"):
+		if item_id == "" or backpack == null or not backpack.has_method("get_quantity_of"):
 			break
 		if backpack.get_quantity_of(item_id) <= 0:
 			break
 
+		_show_fish(item_id)
 		var result: String = await _cook_one(item_id)
 
 		# PAST AN AWAIT. Four seconds is long enough to close the panel, walk
-		# away, or die.
-		if not is_instance_valid(self) or not is_inside_tree():
-			return
-		if not visible:
+		# away, or die - and closing or reopening it makes this a past run.
+		if not is_instance_valid(self) or not is_inside_tree() or mine != _run_id:
 			return
 
 		match result:
@@ -797,19 +905,18 @@ func _cook_run(item_id: String) -> void:
 				# Anything else is a refusal that already told the player why.
 				break
 
-		# REFRESH FIRST, THEN PULSE. _refresh() runs _update_controls(), which
-		# rewrites cook_icon.modulate from the item's tint. Pulsing before it
-		# set the burnt charcoal and then wiped it in the same frame.
 		_refresh()
-		_pulse_fire(result == "burnt")
+		_show_result(item_id, result == "burnt")
 
-		if not _running:
-			break
-		await get_tree().create_timer(cook_interval).timeout
-		if not is_instance_valid(self) or not is_inside_tree() or not visible:
+		# THE BEAT AFTER EVERY FISH, the last one's too: long enough to see how
+		# it came out before the next goes on or the fire is cleared. A burn gets
+		# longer (burnt_hold) - "burned fish vanished to quickly".
+		await get_tree().create_timer(burnt_hold if result == "burnt" else cook_interval).timeout
+		if not is_instance_valid(self) or not is_inside_tree() or mine != _run_id:
 			return
 
 	_running = false
+	_looping = false
 
 	# THE TALLY IS THE ONE SENTENCE WORTH SAYING, because it is the only thing
 	# on this screen the art cannot show: what happened across a whole stack,
@@ -820,7 +927,18 @@ func _cook_run(item_id: String) -> void:
 		else:
 			_flash("Cooked %d." % cooked)
 	_selected = ""
-	_update_controls()
+	_update_badge()
+	_end_fire()
+	run_ended.emit()
+
+
+func _update_badge() -> void:
+	# A BADGE ON THE LEFT OF THE TITLE, as wide as the × on the right, so
+	# "COOKING" sits in the middle like every other window's title (day 1: the
+	# header read "Cooking  Cooking 1  ×").
+	var level: int = _cooking_level()
+	skill_label.text = "Lv %d" % level
+	skill_label.tooltip_text = "Your cooking level is %d" % level
 
 
 func _cook_one(item_id: String) -> String:
@@ -860,14 +978,6 @@ func _cook_one(item_id: String) -> String:
 
 	if not is_instance_valid(self) or not is_inside_tree():
 		return "refused"
-
-	# AFTER THE GUARD, not before it. This touches a child node, and this file's
-	# own rule is that nothing past an await assumes the tree is as it was.
-	#
-	# Hands the bar back to the risk readout. _refresh() below rewrites the
-	# value; this is the colour, which _refresh() has no reason to know about.
-	if is_instance_valid(risk_bar) and _fill_risk != null:
-		risk_bar.add_theme_stylebox_override("fill", _fill_risk)
 
 	# Re-collapse: valid a moment ago is not valid now.
 	player = player if is_instance_valid(player) else null

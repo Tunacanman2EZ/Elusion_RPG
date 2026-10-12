@@ -328,6 +328,7 @@ func _run_all() -> void:
 	await _test_players_right_click_menu()
 	_test_the_stats_window_reads_cleanly()
 	await _test_bank_buttons_and_the_cooking_window()
+	await _test_the_fire_shows_the_fish_it_cooks()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -12024,6 +12025,245 @@ func _test_connections_are_kept_open() -> void:
 	Api.reachability_known = kept_known
 	fake.queue_free()
 	print("  network: %d connections opened by the pool for %d requests" % [pool.connections_opened - opened, fake.seen.size()])
+
+
+# =============================================================================
+# THE COOKING PANEL'S RUN (0.25.2)
+# =============================================================================
+
+class CookingServer extends Node:
+	# Answers POST /api/cooking/cook as the server would: one fish fewer in the
+	# backpack it is told about, burnt or not in the order given.
+	var server := TCPServer.new()
+	var port := 0
+	var asked: Array = []
+	var burns: Array = []
+	var bag: Node = null
+	var _peers: Array = []
+
+	func start() -> bool:
+		for p in range(47200, 47300):
+			if server.listen(p, "127.0.0.1") == OK:
+				port = p
+				return true
+		return false
+
+	func _process(_delta: float) -> void:
+		while server.is_connection_available():
+			_peers.append({"peer": server.take_connection(), "buf": PackedByteArray()})
+		for c in _peers.duplicate():
+			var peer: StreamPeerTCP = c.peer
+			peer.poll()
+			if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+				_peers.erase(c)
+				continue
+			var waiting := peer.get_available_bytes()
+			if waiting > 0:
+				c.buf.append_array(peer.get_data(waiting)[1])
+			var text: String = c.buf.get_string_from_utf8()
+			var end := text.find("\r\n\r\n")
+			if end == -1:
+				continue
+			var length := 0
+			for h in text.substr(0, end).split("\r\n"):
+				if h.to_lower().begins_with("content-length:"):
+					length = int(h.get_slice(":", 1).strip_edges())
+			if c.buf.size() < end + 4 + length:
+				continue
+			var body: Variant = JSON.parse_string(c.buf.slice(end + 4, end + 4 + length).get_string_from_utf8())
+			c.buf = c.buf.slice(end + 4 + length)
+			var id: String = str((body as Dictionary).get("item_id", "")) if body is Dictionary else ""
+			asked.append(id)
+			var burnt: bool = bool(burns[(asked.size() - 1) % maxi(burns.size(), 1)]) if not burns.is_empty() else false
+			var counts: Dictionary = bag.get("counts").duplicate()
+			counts[id] = int(counts.get(id, 0)) - 1
+			var cells: Array = []
+			for k in counts:
+				if int(counts[k]) > 0:
+					cells.append({"item_id": k, "quantity": int(counts[k])})
+			var answer := JSON.stringify({"burnt": burnt, "inventory": cells, "skills": {}}).to_utf8_buffer()
+			var out := ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n"
+				% answer.size()).to_ascii_buffer()
+			out.append_array(answer)
+			peer.put_data(out)
+
+
+class CookingBag extends Node:
+	# The backpack the panel reads: counts by item_id.
+	var counts: Dictionary = {}
+
+	func get_all_stacks() -> Array[ItemStack]:
+		var out: Array[ItemStack] = []
+		for id in counts:
+			if int(counts[id]) > 0:
+				out.append(ItemStack.new(ItemRegistry.get_item(id), int(counts[id])))
+		return out
+
+	func get_quantity_of(id: String) -> int:
+		return int(counts.get(id, 0))
+
+	func load_server_array(cells: Array) -> void:
+		counts.clear()
+		for c in cells:
+			counts[str(c["item_id"])] = int(counts.get(str(c["item_id"]), 0)) + int(c["quantity"])
+
+
+class CookingHud extends Node:
+	var inventory_screen: Node = null
+
+
+class CookingCook extends Node:
+	var cooking: int = 20
+	var cooking_xp: int = 0
+
+
+func _test_the_fire_shows_the_fish_it_cooks() -> void:
+	section("COOKING - the fire shows the fish it is cooking, and how each came out (0.25.2)")
+	# The owner: "cooking meter was not matching up and burned fish vanished to
+	# quickly". Recorded before the fix: a burnt fish stayed charred on the fire
+	# through the NEXT fish's bar; a click on another fish showed that fish while
+	# the first kind went on cooking; the bar flipped to the burn chance between
+	# fish; and the last burnt fish was gone 0.35 s after it burnt.
+	# STAND-IN FISH, so this runs in a clone without the private art pack (the
+	# real fish's icons are in it, and without them they are not loaded). A
+	# mudfish-like one that never burns at level 20, and a carp-like one that
+	# does 5% of the time, each cooking into a fish with a picture of its own.
+	var made: Array[ItemData] = []
+	for spec in [["zz_cook_a", "Raw Test Mudfish", "zz_cook_a_done", 1, 1, Color(1, 0.8, 0.8)],
+			["zz_cook_b", "Raw Test Carp", "zz_cook_b_done", 5, 22, Color(0.8, 1, 0.8)],
+			["zz_cook_a_done", "Cooked Test Mudfish", "", 1, 1, Color(1, 1, 0.7)],
+			["zz_cook_b_done", "Cooked Test Carp", "", 1, 1, Color(0.7, 1, 1)]]:
+		var fish := ItemData.new()
+		fish.item_id = spec[0]
+		fish.display_name = spec[1]
+		fish.cooks_into = spec[2]
+		fish.cook_level = spec[3]
+		fish.cook_mastery_level = spec[4]
+		fish.icon_tint = spec[5]
+		var picture := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		picture.fill(spec[5])
+		fish.icon = ImageTexture.create_from_image(picture)
+		ItemRegistry._items[fish.item_id] = fish
+		made.append(fish)
+
+	var server := CookingServer.new()
+	add_child(server)
+	if not server.start():
+		check("a free local port for the suite's cooking server", false)
+		server.queue_free()
+		for fish in made:
+			ItemRegistry._items.erase(fish.item_id)
+		return
+	var kept_url: String = ApiForTests.BASE_URL
+	var kept_token: String = Api.token
+	var kept_online: bool = Api.server_online
+	var kept_known: bool = Api.reachability_known
+	ApiForTests.BASE_URL = "http://127.0.0.1:%d" % server.port
+	Api.token = "suite"
+	var huds: Array = get_tree().get_nodes_in_group(&"hud")
+	for h in huds:
+		h.remove_from_group(&"hud")
+
+	var hud := CookingHud.new()
+	hud.add_to_group(&"hud")
+	add_child(hud)
+	var screen_node := Node.new()
+	hud.add_child(screen_node)
+	hud.inventory_screen = screen_node
+	var bag := CookingBag.new()
+	bag.name = "inventorycontainer"
+	screen_node.add_child(bag)
+	bag.owner = screen_node
+	bag.unique_name_in_owner = true
+	bag.counts = {"zz_cook_a": 2, "zz_cook_b": 3}
+	server.bag = bag
+	server.burns = [false, true, false, true]
+	var cook := CookingCook.new()
+	add_child(cook)
+
+	var panel: Control = (load("res://scene/ui/cooking/cookingscreen.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	panel.set("cook_duration", 0.15)
+	panel.set("cook_interval", 0.1)
+	panel.set("burnt_hold", 0.5)
+	panel.open_for_firepit(null, cook)
+	var icon: TextureRect = panel.find_child("cookicon", true, false) as TextureRect
+	var bar: ProgressBar = panel.find_child("riskbar", true, false) as ProgressBar
+	var words: Label = panel.find_child("catchlabel", true, false) as Label
+	var Cooking: Script = panel.get_script() as Script
+	var events: Array = []
+	panel.connect(&"fish_started", func(id: String) -> void:
+		events.append({"k": "on", "id": id, "at": Time.get_ticks_msec(), "tint": icon.modulate, "words": words.text}))
+	panel.connect(&"fish_done", func(id: String, burnt: bool) -> void:
+		var fill: StyleBoxFlat = bar.get_theme_stylebox("fill") as StyleBoxFlat
+		events.append({"k": "done", "id": id, "burnt": burnt, "at": Time.get_ticks_msec(), "tint": icon.modulate,
+			"icon": icon.texture, "words": words.text, "bar": bar.value, "fill": fill.bg_color if fill != null else Color.BLACK}))
+	panel.connect(&"run_ended", func() -> void:
+		events.append({"k": "end", "at": Time.get_ticks_msec(), "shown": icon.visible, "tint": icon.modulate}))
+
+	panel.call("_start_run", "zz_cook_a")
+	var waited := 0.0
+	while events.filter(func(e: Dictionary) -> bool: return e.k == "done").is_empty() and waited < 5.0:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	# A click on the carp while the first mudfish is showing how it came out.
+	panel.call("_start_run", "zz_cook_b")
+	waited = 0.0
+	while events.filter(func(e: Dictionary) -> bool: return e.k == "end").is_empty() and waited < 10.0:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+
+	check("a click on another fish mid-run cooks that fish next, not more of the first",
+		server.asked == ["zz_cook_a", "zz_cook_b", "zz_cook_b", "zz_cook_b"], server.asked)
+	var ons: Array = events.filter(func(e: Dictionary) -> bool: return e.k == "on")
+	var dones: Array = events.filter(func(e: Dictionary) -> bool: return e.k == "done")
+	var ends: Array = events.filter(func(e: Dictionary) -> bool: return e.k == "end")
+	var mud: ItemData = made[0]
+	var carp: ItemData = made[1]
+	var cooked_mud: ItemData = made[2]
+	check("  and the fire shows each fish as its bar starts: the mudfish, then the carp",
+		ons.size() == 4 and ons.map(func(e: Dictionary) -> String: return e.id) \
+			== ["zz_cook_a", "zz_cook_b", "zz_cook_b", "zz_cook_b"], ons.size())
+	check("a fish going on after a burnt one is shown raw, not still charred from the last",
+		ons.size() == 4 and (ons[2].tint as Color).is_equal_approx(carp.icon_tint), ons[2].tint if ons.size() == 4 else null)
+	check("a cooked fish comes off as the cooked fish, its bar full and gold",
+		dones.size() == 4 and not dones[0].burnt and dones[0].icon == cooked_mud.icon
+		and dones[0].words == cooked_mud.display_name and is_equal_approx(dones[0].bar, 100.0)
+		and (dones[0].fill as Color).is_equal_approx(Cooking.COOK_FILL), dones[0] if dones.size() > 0 else null)
+	check("  a burnt one stays on, charred, \"Burnt!\" under it and its bar ash",
+		dones.size() == 4 and dones[1].burnt and (dones[1].tint as Color).is_equal_approx(Cooking.BURNT_TINT)
+		and dones[1].words == "Burnt!" and (dones[1].fill as Color).is_equal_approx(Cooking.BURNT_FILL),
+		dones[1] if dones.size() > 1 else null)
+	var held: int = int(ons[2].at) - int(dones[1].at) if ons.size() == 4 and dones.size() == 4 else -1
+	var brief: int = int(ons[1].at) - int(dones[0].at) if ons.size() == 4 and dones.size() == 4 else -1
+	check("  for burnt_hold before the next fish goes on, where a cooked one moves on after cook_interval",
+		held >= 450 and brief >= 80 and brief < 400, [held, brief])
+	check("the burn chance is words under the fish (\"5% burn\"); the bar is the cook alone",
+		ons.size() == 4 and str(ons[1].words) == "Raw Test Carp  ·  5% burn" and str(ons[0].words) == mud.display_name
+		and Cooking.risk_text("Raw Mudfish", 0.0) == "Raw Mudfish" and Cooking.risk_text("X", 0.001) == "X  ·  1% burn",
+		[ons[1].words if ons.size() > 1 else "", ons[0].words if ons.size() > 0 else ""])
+	var last_held: int = int(ends[0].at) - int(dones[3].at) if ends.size() == 1 and dones.size() == 4 else -1
+	check("the last fish, burnt, is still on the fire when the run ends - held, not cleared at once",
+		ends.size() == 1 and last_held >= 450 and bool(ends[0].shown)
+		and (ends[0].tint as Color).is_equal_approx(Cooking.BURNT_TINT), [last_held, ends])
+	await get_tree().create_timer(0.6).timeout
+	check("  then it fades off and the fire is empty", not icon.visible and words.text == "" and not bar.visible,
+		[icon.visible, words.text, bar.visible])
+
+	panel.queue_free()
+	hud.queue_free()
+	cook.queue_free()
+	server.queue_free()
+	for fish in made:
+		ItemRegistry._items.erase(fish.item_id)
+	for h in huds:
+		if is_instance_valid(h):
+			h.add_to_group(&"hud")
+	ApiForTests.BASE_URL = kept_url
+	Api.token = kept_token
+	Api.server_online = kept_online
+	Api.reachability_known = kept_known
+	await get_tree().process_frame
 
 
 func _test_the_powers_panel_closes() -> void:
