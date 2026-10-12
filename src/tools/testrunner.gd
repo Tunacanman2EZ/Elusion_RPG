@@ -284,6 +284,8 @@ func _run_all() -> void:
 	_test_character_select_has_a_way_out()
 	await _test_every_area_can_be_walked()
 	await _test_the_big_field()
+	await _test_the_bullet_zone()
+	await _test_the_bullet_zone_is_shared()
 	_test_the_road_through_the_game()
 	await _test_the_arrival_portal_closes_behind_you()
 	await _test_monsters_go_out_in_a_burst()
@@ -24402,3 +24404,310 @@ func _test_the_gm_panel_sets_skills() -> void:
 	warrior.free()
 	await get_tree().process_frame
 	print("  the GM panel's Testing tab sets your skills, one or all, owner only")
+
+
+# =============================================================================
+# THE BULLET-HELL ZONE (0.22.0)
+# =============================================================================
+
+class ZoneDummy extends Node2D:
+	# Stands in for this game's player: a body point, a take_damage() that
+	# writes down what it was given, and is_dying.
+	var taken: Array = []
+	var is_dying: bool = false
+
+	func _init() -> void:
+		var body := Node2D.new()
+		body.name = "bodyshape"
+		body.position = Vector2(0, 13)
+		add_child(body)
+
+	func take_damage(amount: int, element: int = 0) -> void:
+		taken.append([amount, element])
+
+
+func _root_property(scene_path: String, property: StringName) -> Variant:
+	var packed: PackedScene = load(scene_path) as PackedScene
+	if packed == null:
+		return null
+	var state: SceneState = packed.get_state()
+	for p in state.get_node_property_count(0):
+		if state.get_node_property_name(0, p) == property:
+			return state.get_node_property_value(0, p)
+	return null
+
+
+func _test_the_bullet_zone() -> void:
+	section("THE BULLET-HELL ZONE (0.22.0) - the Field's orbs: one draw, your hits only, stopped by walls")
+	const Targets := preload("res://src/shared/targets.gd")
+
+	check("the Field is the bullet-hell zone", _root_property("res://scene/field.tscn", &"bullet_zone") == true)
+	check("  and the Big Field is not: it stays the RPG",
+		_root_property("res://scene/bigfield.tscn", &"bullet_zone") != true)
+	check("orbs are drawn unshaded, so the crypt's CanvasModulate cannot swallow them",
+		BulletField.SHADER_CODE.contains("render_mode unshaded"))
+	var culled := BulletField.new()
+	add_child(culled)
+	culled.bounds = Rect2(-64, 600, 1600, 700)
+	var box: AABB = culled._multimesh.custom_aabb
+	check("the renderer is told the bullets are on the floor, wherever the floor is (the Field drew no orbs without it)",
+		box.has_point(Vector3(1500, 1250, 0)) and box.has_point(Vector3(-60, 610, 0)), box)
+	culled.queue_free()
+	check("an orb wears its element's colour, lifted toward white",
+		BulletZone.shot_colour(Element.Type.ICE).is_equal_approx(
+			Element.colour_for(Element.Type.ICE).lerp(Color.WHITE, 0.2)))
+
+	# --- the field on its own -------------------------------------------------
+	var far := Vector2(9999, 9999)
+	var f := BulletField.new()
+	add_child(f)
+	f.bounds = Rect2(-500, -500, 1000, 1000)
+	f.spawn(Vector2.ZERO, 0.0, 100.0, Color.RED, false, 0.0, 0.0, 10.0, 7, Element.Type.FIRE)
+	f.step(0.5, far, 3.0, 0.0, false)
+	check("an orb flies its own line at its own speed",
+		f.count == 1 and f.position_of(0).distance_to(Vector2(50, 0)) < 0.01, f.position_of(0))
+	var result: Vector2i = f.step(0.5, Vector2(100, 0), 3.0, 0.0, false)
+	check("one that reaches the hitbox is a hit, carrying its damage and element, and is spent",
+		result.x == 1 and f.hits == [Vector2i(7, Element.Type.FIRE)] and f.count == 0, [result, f.hits, f.count])
+	f.spawn(Vector2.ZERO, 0.0, 100.0, Color.RED, false, 0.0, 0.0, 10.0, 7, 0)
+	f.step(1.0, Vector2(100, 0), 3.0, 0.0, true)
+	check("  while untouchable it passes through and flies on", f.count == 1 and f.hits.is_empty())
+	f.step(5.0, far, 3.0, 0.0, false)
+	check("  and the floor's edge ends it", f.count == 0)
+
+	for k in 3:
+		f.spawn(Vector2(0, k * 50), 0.0, 10.0, Color.RED, false, 0.0, 0.0, 10.0, k + 1, k)
+	f.step(0.1, Vector2(1, 50), 3.0, 0.0, false)
+	var left: Array = []
+	for i in f.count:
+		left.append([f.damage_of(i), f.element_of(i), roundi(f.position_of(i).y)])
+	left.sort()
+	check("taking one out of the middle leaves the others their own damage, element and place",
+		f.count == 2 and left == [[1, 0, 0], [3, 2, 100]], left)
+	f.clear()
+
+	var on_time := BulletField.new()
+	var late := BulletField.new()
+	add_child(on_time)
+	add_child(late)
+	on_time.bounds = f.bounds
+	late.bounds = f.bounds
+	# A curving one, the hard case: on time and stepped in uneven frames, or
+	# fired 0.25 s late and caught up in one go.
+	on_time.spawn(Vector2.ZERO, 0.3, 80.0, Color.WHITE, false, 0.6)
+	for frame in [0.016, 0.05, 0.034, 0.1, 0.05]:
+		on_time.step(frame, far, 3.0, 0.0, false)
+	late.spawn(Vector2.ZERO, 0.3, 80.0, Color.WHITE, false, 0.6, 0.25)
+	late.step(0.0, far, 3.0, 0.0, false)
+	check("a shot fired 0.25 s late is caught up to where one fired on time is - every screen draws the same orb",
+		on_time.position_of(0).distance_to(late.position_of(0)) < 0.05,
+		[on_time.position_of(0), late.position_of(0)])
+	on_time.queue_free()
+	late.queue_free()
+
+	var cells := PackedByteArray()
+	cells.resize(100)
+	cells[5 * 10 + 6] = 1
+	f.set_walls(cells, Vector2.ZERO, 8.0, Vector2i(10, 10))
+	f.spawn(Vector2(4, 44), 0.0, 100.0, Color.RED)
+	f.spawn(Vector2(4, 36), 0.0, 100.0, Color.RED)
+	f.step(0.3, far, 3.0, 0.0, false)
+	check("orbs fly on until a wall", f.count == 2)
+	f.step(0.2, far, 3.0, 0.0, false)
+	check("  the one that flies into a wall cell is gone, and the one beside it is not",
+		f.count == 1 and roundi(f.position_of(0).y) == 36, [f.count, f.position_of(0)])
+	f.queue_free()
+
+	# --- the zone, and the player it hurts -----------------------------------
+	var others: Array = get_tree().get_nodes_in_group(&"player")
+	for o in others:
+		o.remove_from_group(&"player")
+	var world := Node2D.new()
+	add_child(world)
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	var dummy := ZoneDummy.new()
+	dummy.position = Vector2(-30000, -30000)
+	dummy.add_to_group(&"player")
+	world.add_child(dummy)
+	check("the zone is found from anything in its area", BulletZone.find(dummy) == zone)
+
+	var body: Vector2 = Targets.body_point(dummy)
+	zone.field.spawn(body + Vector2(-2, 0), 0.0, 1.0, Color.RED, false, 0.0, 0.0, 6.0, 9, Element.Type.ICE)
+	zone.field.spawn(body + Vector2(2, 0), 0.0, 1.0, Color.RED, false, 0.0, 0.0, 6.0, 4, Element.Type.ICE)
+	zone._process(0.01)
+	check("orbs that reach the body hurt through take_damage, with the element: the strongest of a frame lands",
+		dummy.taken == [[9, Element.Type.ICE]], dummy.taken)
+	check("  and every orb that touched is spent", zone.field.count == 0)
+	zone.field.spawn(body, 0.0, 1.0, Color.RED, false, 0.0, 0.0, 6.0, 9, Element.Type.ICE)
+	zone._process(0.01)
+	check("for a moment after a hit, orbs pass through (chip mercy)",
+		dummy.taken.size() == 1 and zone.field.count == 1, [dummy.taken, zone.field.count])
+	zone._mercy_until_ms = 0
+	zone._process(0.01)
+	check("  then they land again", dummy.taken.size() == 2 and zone.field.count == 0, dummy.taken)
+	dummy.is_dying = true
+	zone.field.spawn(body, 0.0, 1.0, Color.RED, false, 0.0, 0.0, 6.0, 9, 0)
+	zone._process(0.01)
+	check("a dying player is not hit again", dummy.taken.size() == 2)
+	dummy.is_dying = false
+	zone.field.clear()
+
+	zone.fire_fan(Vector2(100, 0), PI, 3, 0.5, 150.0, 5, Element.Type.DARK)
+	var angles: Array = []
+	for i in zone.field.count:
+		angles.append(snappedf((zone.field.position_of(i) - Vector2(100, 0)).angle(), 0.01))
+	check("a fan is its orbs spread evenly about the aim",
+		zone.field.count == 3 and zone.field.damage_of(0) == 5 and zone.field.element_of(0) == Element.Type.DARK
+		and zone.field.colour_of(0).is_equal_approx(BulletZone.shot_colour(Element.Type.DARK)), angles)
+	zone.field.clear()
+
+	# --- walls from the physics world, and a door that opens -------------------
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 1
+	var wall_shape := CollisionShape2D.new()
+	var wall_rect := RectangleShape2D.new()
+	wall_rect.size = Vector2(16, 64)
+	wall_shape.shape = wall_rect
+	wall.add_child(wall_shape)
+	wall.position = Vector2(-29900, -30000)
+	world.add_child(wall)
+	zone.field.bounds = Rect2(-30200, -30200, 400, 400)
+	zone._start_walls()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	zone.build_all_walls()
+	check("the wall grid is solid where a body on layer 1 stands, and open beside it",
+		zone.walls_ready() and zone.field.is_wall(Vector2(-29900, -30000))
+		and not zone.field.is_wall(Vector2(-29950, -30000)))
+	zone.field.spawn(Vector2(-29960, -30000), 0.0, 120.0, Color.RED)
+	for frame in 60:
+		zone.field.step(1.0 / 60.0, far, 3.0, 0.0, false)
+	check("  so an orb fired at it stops there", zone.field.count == 0)
+
+	var door: Node2D = (load("res://scene/interactables/spikedoor.tscn") as PackedScene).instantiate()
+	door.position = Vector2(-30100, -30100)
+	world.add_child(door)
+	door.raised_changed.connect(zone._on_door_changed.bind(door))
+	for i in 3:
+		await get_tree().physics_frame
+	zone._start_walls()
+	zone.build_all_walls()
+	var closed: bool = zone.field.is_wall(Vector2(-30100, -30100))
+	door.call("set_raised", false)
+	await get_tree().create_timer(float(door.get("travel_seconds")) + 0.15).timeout
+	check("a raised spike door is a wall, and once lowered it is not",
+		closed and not zone.field.is_wall(Vector2(-30100, -30100)), closed)
+
+	# --- the Bush Sniper -------------------------------------------------------
+	var shots := Node2D.new()
+	shots.add_to_group(&"projectiles")
+	world.add_child(shots)
+	var sn: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	sn.position = Vector2(-30100, -30000)
+	world.add_child(sn)
+	await get_tree().process_frame
+	sn.player = dummy
+	sn.attack_direction = "right"
+	zone.field.clear()
+	sn.call("fire_projectile")
+	await get_tree().process_frame
+	var dark_arrow: int = (sn.enemy_data as EnemyData).projectile_damage
+	check("a sniper in the zone looses a fan of three orbs instead of an arrow",
+		zone.field.count == 3 and shots.get_child_count() == 0, [zone.field.count, shots.get_child_count()])
+	check("  in its own element, each 60%% of its arrow (%d -> %d)" % [dark_arrow, roundi(dark_arrow * 0.6)],
+		zone.field.element_of(0) == Element.Type.DARK and zone.field.damage_of(0) == roundi(dark_arrow * 0.6),
+		[zone.field.element_of(0), zone.field.damage_of(0)])
+	var nearest_aim: float = INF
+	for i in zone.field.count:
+		var to_body: float = (Targets.body_point(dummy) - zone.field.position_of(i)).angle()
+		nearest_aim = minf(nearest_aim, absf(angle_difference(zone.field.velocity_of(i).angle(), to_body)))
+	check("  the middle orb aimed at the player's body, where every monster aims", nearest_aim < 0.05, nearest_aim)
+	zone.queue_free()
+	await get_tree().process_frame
+	zone = null
+	sn.call("fire_projectile")
+	await get_tree().process_frame
+	check("the same sniper with no zone in its area fires its arrow, as everywhere but the Field",
+		shots.get_child_count() == 1, shots.get_child_count())
+	world.queue_free()
+	for o in others:
+		if is_instance_valid(o):
+			o.add_to_group(&"player")
+	await get_tree().process_frame
+
+
+func _test_the_bullet_zone_is_shared() -> void:
+	section("THE BULLET-HELL ZONE - a volley is shared as where and which way, never how hard")
+	var others: Array = get_tree().get_nodes_in_group(&"player")
+	for o in others:
+		o.remove_from_group(&"player")
+
+	# The leader: its sniper's volley goes out in the next tick.
+	var world: Node2D = _sm_world()
+	var zone := BulletZone.new()
+	world.add_child(zone)
+	zone.set_process(false)
+	var sn: BaseEnemy = world.get_node("enemies/sn1")
+	var dummy := ZoneDummy.new()
+	dummy.position = Vector2(-19950, -20000)
+	dummy.add_to_group(&"player")
+	world.add_child(dummy)
+	var link := FakeLink.new()
+	link.area = SM_AREA
+	link.leader = 1
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	world.add_child(sync)
+	await get_tree().process_frame
+	sn.player = dummy
+	sn.attack_direction = "right"
+	link.sent_world.clear()
+	sn.call("fire_projectile")
+	sync.tick_lead()
+	var volley: Dictionary = {}
+	for event in _sm_last_world(link).get("ev", []):
+		if str(event.get("k", "")) == "b":
+			volley = event
+	check("the leader's volley goes to the others as {k: b, id, x, y, a}",
+		int(volley.get("id", -1)) == sn.net_id and volley.has("a") and volley.has("x")
+		and not volley.has("d") and zone.field.count == 3, volley)
+	world.queue_free()
+	link.queue_free()
+	await get_tree().process_frame
+
+	# A follower: the volley is fired by its own copy of the monster.
+	var world2: Node2D = _sm_world()
+	var zone2 := BulletZone.new()
+	world2.add_child(zone2)
+	zone2.set_process(false)
+	var sn2: BaseEnemy = world2.get_node("enemies/sn1")
+	var fs2: BaseEnemy = world2.get_node("enemies/fs1")
+	var link2 := FakeLink.new()
+	link2.me = 2
+	add_child(link2)
+	var sync2: Node = _sm_sync(link2)
+	world2.add_child(sync2)
+	await get_tree().process_frame
+	link2.lead_changed.emit(SM_AREA, 1, 1)
+	sync2._enemies[7] = sn2
+	sync2._enemies[8] = fs2
+	sync2.apply_world({"ev": [{"k": "b", "id": 7, "x": -20090.0, "y": -20000.0, "a": 0.25, "d": 9999}]})
+	check("a follower fires the leader's volley from where it left, which way it went",
+		zone2.field.count == 3 and zone2.field.position_of(1).distance_to(Vector2(-20090, -20000)) < 1.0,
+		[zone2.field.count, zone2.field.position_of(1)])
+	check("  with its own copy's damage: anything the leader adds is ignored",
+		zone2.field.damage_of(0) == int(sn2.call("orb_damage")) and zone2.field.damage_of(0) < 9999,
+		zone2.field.damage_of(0))
+	var before: int = zone2.field.count
+	sync2.apply_world({"ev": [{"k": "b", "id": 8, "x": 0.0, "y": 0.0, "a": 0.0},
+		{"k": "b", "id": 99, "x": 0.0, "y": 0.0, "a": 0.0}]})
+	check("  a monster that does not fire volleys, or one this game does not have, fires nothing",
+		zone2.field.count == before, zone2.field.count)
+	world2.queue_free()
+	link2.queue_free()
+	for o in others:
+		if is_instance_valid(o):
+			o.add_to_group(&"player")
+	await get_tree().process_frame

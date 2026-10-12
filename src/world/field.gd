@@ -24,6 +24,12 @@ extends Node2D
 
 var current_player: Node = null
 
+# THE BULLET-HELL ZONE (0.22.0). On in field.tscn and off in bigfield.tscn,
+# which share this script: the owner's Big Field stays the RPG it is, and the
+# Field's monsters fire orbs (BulletZone, src/world/bulletzone.gd). A monster
+# in an area without a zone fires its ordinary projectile.
+@export var bullet_zone: bool = false
+
 @onready var active_char_ui = get_node_or_null("hudcontrol")
 
 
@@ -32,6 +38,8 @@ var current_player: Node = null
 # =============================================================================
 
 func _ready() -> void:
+	if bullet_zone:
+		add_child(BulletZone.new())
 	spawn_player_from_selection()
 	_position_player_at_spawn()
 	# ONCE PER LOGIN - see GameState.opening_story_told.

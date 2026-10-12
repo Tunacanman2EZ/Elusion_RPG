@@ -13,6 +13,22 @@ const ENEMY_DATA := preload("res://data/enemies/bushsniper.tres")
 const ARROW_SCENE := preload("res://scene/projectiles/arrow.tscn")
 const ARROW_RELEASE_FRAME := 5
 
+# THE FAN (0.22.0). In an area with a BulletZone - the Field - the archer looses
+# FAN_ORBS orbs across FAN_SPREAD instead of one arrow. The owner: "lower dps on
+# projectiles", so each orb is FAN_SHARE of what the arrow hit for, and the
+# orbs are slow enough to read and step between where the arrow is a 400 px/s
+# streak. A player who stands still takes the middle orb; one who reads the fan
+# takes nothing. Everywhere else it is the arrow, exactly as before.
+const FAN_ORBS := 3
+const FAN_SPREAD := 0.5        # radians edge to edge, about 29 degrees
+const FAN_SPEED := 150.0       # px/s
+const FAN_SHARE := 0.6         # of the arrow's damage, per orb
+
+# arrow.gd's own damage, read once from the scene, for a sniper whose .tres
+# leaves projectile_damage at 0 (the plain one). Read, not copied, so the two
+# cannot drift.
+static var _arrow_damage: int = -1
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -80,6 +96,17 @@ func fire_projectile() -> void:
 	var spawn_node: Marker2D = spawn_nodes.get(attack_direction)
 	if spawn_node == null or not is_instance_valid(player):
 		return
+	# IN THE BULLET-HELL ZONE, A FAN OF ORBS. The leader tells every other game
+	# where it fired and which way (monstersync.gd, event "b"); each of them
+	# fires its own copy of this monster's fan.
+	var zone: BulletZone = BulletZone.find(self)
+	if zone != null:
+		var origin: Vector2 = spawn_node.global_position
+		var aim: float = (target_point() - origin).angle()
+		fire_fan(zone, origin, aim)
+		if _net_sync != null and not net_mirror:
+			_net_sync.leader_bullets(self, origin, aim)
+		return
 	# THE ELEMENT PICKS THE ARROW. An ice sniper fires icearrow.tscn, which is
 	# this same scene with an authored material on it — so the shot is blue
 	# because the file is blue, not because something built a Material for this
@@ -92,6 +119,24 @@ func fire_projectile() -> void:
 	arrow.shoot_vector(to_player)
 	# parent into the y-sorted projectiles container at the marker position.
 	spawn_projectile_node(arrow, spawn_node.global_position)
+
+
+func fire_fan(zone: BulletZone, origin: Vector2, aim: float) -> void:
+	"""The fan, from `origin` toward `aim` (radians). Damage and element are
+	this monster's own - which is what a follower relies on when it replays the
+	leader's volley: the message says where and which way, never how hard."""
+	zone.fire_fan(origin, aim, FAN_ORBS, FAN_SPREAD, FAN_SPEED, orb_damage(), current_element())
+
+
+func orb_damage() -> int:
+	var arrow: int = enemy_data.projectile_damage if enemy_data != null else 0
+	if arrow <= 0:
+		if _arrow_damage < 0:
+			var probe: Node = ARROW_SCENE.instantiate()
+			_arrow_damage = int(probe.get("damage"))
+			probe.free()
+		arrow = _arrow_damage
+	return maxi(1, roundi(arrow * FAN_SHARE))
 
 
 # =============================================================================

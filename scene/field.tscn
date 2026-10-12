@@ -275,6 +275,7 @@ size = Vector2(16.666668, 16.666668)
 
 [node name="field" type="Node2D" unique_id=1775886105]
 script = ExtResource("1_odcg7")
+bullet_zone = true
 
 [node name="water" type="TileMapLayer" parent="." unique_id=1476936095]
 z_index = -20

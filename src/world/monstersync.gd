@@ -43,6 +43,9 @@
 #       spawn {r: record}    a new monster       die {id, x, y}    it died
 #       gone {id}            gone without dying  p   a shot        v  a vine
 #       e     a boss spike   sp  a stalker pillar  m  a boss swing
+#       b     a volley of orbs into the area's BulletZone (0.22.0): where and
+#             which way only - {id, x, y, a} - and the follower's own copy of
+#             the monster fires it, with its own damage and element
 #   {"wave": n}                                  the boss gauntlet's wave
 #   {"full": true, "reset": bool, "part": i, "parts": n, "spawn": [records],
 #    "wave": n}                                  everything, to a game joining
@@ -536,6 +539,19 @@ func leader_shot(enemy: BaseEnemy, projectile: Node, at: Vector2) -> void:
 		"ax": snappedf(dir.x, 0.0001), "ay": snappedf(dir.y, 0.0001)})
 
 
+func leader_bullets(enemy: BaseEnemy, at: Vector2, aim: float) -> void:
+	"""(Leader, from a monster firing into a BulletZone - the Field's orbs,
+	0.22.0.) A volley for every screen: where it left and which way. Each
+	follower fires its own copy of that monster's volley (fire_fan), with its
+	own copy's damage and element, so a leader can aim a volley but never make
+	one hit harder - the same shape as safe_spike() and safe_pillar_damage()."""
+	if role != Role.LEAD or not _sharing() or enemy.net_id < 0:
+		return
+	_events.append({"k": "b", "id": enemy.net_id,
+		"x": snappedf(at.x, 0.1), "y": snappedf(at.y, 0.1),
+		"a": snappedf(wrapf(aim, -PI, PI), 0.0001)})
+
+
 func leader_event(enemy: Node, event: Dictionary) -> void:
 	"""(Leader.) A vine, a spike, a pillar or a swing, for every screen."""
 	if role != Role.LEAD or not _sharing():
@@ -771,6 +787,12 @@ func _apply_event(event: Dictionary) -> void:
 			mirror.net_remove()
 		"p":
 			_replay_shot(mirror, event, at)
+		"b":
+			# Only a monster this game has, that fires volleys, into this
+			# area's zone: anything else in a "b" changes nothing.
+			var zone: BulletZone = BulletZone.find(self)
+			if mirror != null and zone != null and mirror.has_method(&"fire_fan"):
+				mirror.call(&"fire_fan", zone, at, wrapf(float(event.get("a", 0.0)), -PI, PI))
 		"v":
 			if mirror != null and mirror.has_method("_place_vine"):
 				mirror.call("_place_vine", at, str(event.get("d", "down")))

@@ -5030,6 +5030,58 @@ anyone, so the bounds were right; the books were missing hits.
   spawn in the same world, numbered once); the API's `test_combatbook.py`
   CB-14.
 
+### The Field is the bullet-hell zone (0.22.0)
+
+The owner, 11 Oct: the goal is "top down bullet hell hardcore survival", and
+"set up field monsters to fire more projectiles small patterns and leave
+large field as it is ... keeping rpg and bullet hell both well tuned" - the
+existing Field, not a copy. Step 1 is the Bush Snipers.
+
+- **The pieces.** `src/shared/bulletfield.gd` (BulletField): enemy bullets as
+  packed arrays and ONE MultiMesh draw, no physics - an enemy bullet only has
+  to hit this game's player. `src/world/bulletzone.gd` (BulletZone): one per
+  area, the field plus the area's walls plus the player it hurts.
+  `field.gd`'s `@export var bullet_zone` turns it on: true in field.tscn,
+  false (absent) in bigfield.tscn, which shares the script.
+- **A monster supports both with one branch.** `BulletZone.find(self)` is
+  null everywhere but the Field, so the monster fires its ordinary projectile
+  there. `BushSniper.fire_projectile()`: in the zone, `fire_fan()` - three
+  orbs over 0.5 rad at 150 px/s, each 60% of the arrow (`FAN_SHARE`, the
+  owner's "lower dps on projectiles") - and otherwise the arrow, untouched.
+- **Shared as where and which way, never how hard.** The leader's sniper
+  adds `{k: "b", id, x, y, a}` to its world (`MonsterSync.leader_bullets`);
+  a follower's copy of that monster fires its own fan (`fire_fan`) with its
+  own damage and element. Anything else in the message is ignored, like
+  `safe_spike()`. The books (combatbook.py) read only spawn/die/gone, so the
+  API needs nothing.
+- **Unshaded, or invisible.** The Field sits under a CanvasModulate of
+  (0.28, 0.3, 0.4). An orb drawn like everything else measured (71, 77, 102)
+  at its white core; `render_mode unshaded` measured (255, 255, 255).
+- **And told where it is.** A MultiMeshInstance2D is culled by its mesh's
+  box, which left alone sat around the world origin: the preview (an arena
+  centred on 0) drew every orb and the real Field, 900 px from 0, drew none.
+  `bounds` sets `custom_aabb`. Both of these only showed up by looking at a
+  frame of the real Field - the suite passed either way until it checked.
+- **The hitbox is the body**, `Targets.body_point()` with a 3 px radius,
+  where every monster aims and what the walls stop - not the hurtbox, which
+  the warrior carries 10 px higher. Damage goes through `take_damage()`, so
+  armour, resistance, numbers and defense XP are what any hit gets.
+- **Chip mercy.** After an orb lands, orbs pass through for `CHIP_MERCY`
+  (0.2 s); several touching in one frame are all spent and the strongest
+  lands. A dying player is not hit.
+- **Walls** are 8 px cells, solid where a point query on layer 1 finds a
+  body (what the game's arrows stop on), built 12 rows a frame after loading
+  (the whole Field is 200 x 164 cells, about 20 ms if done at once), and
+  rescanned around a spike door when it rises or lowers.
+- **The preview stays a preview.** `scene/prototype/bullethellpreview.tscn`
+  (F6) uses the same BulletField and the pattern library in
+  `src/prototype/bulletpattern.gd`; nothing in the game loads either.
+- Tests: `_test_the_bullet_zone` (the Field is the zone and the Big Field is
+  not, unshaded, the culling box, the element colour, flight, hits, mercy,
+  catch-up along a curve, walls and a door, the sniper's fan in and out of
+  a zone) and `_test_the_bullet_zone_is_shared` (the leader's "b", a
+  follower's own damage, nothing from a monster that does not fire volleys).
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —
