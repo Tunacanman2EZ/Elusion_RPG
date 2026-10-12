@@ -5298,6 +5298,15 @@ with the circle around the character".
   and the save): `_test_the_healer_aims_from_its_middle` positions a healer
   instance, calls `_add_aim_ring()`, and reads the spawn from the source. With
   `AIM_FROM` back at the feet, two of its checks fail.
+- **The warrior has one too (0.27.0)** - the owner: "add to warrior also".
+  The ring's helpers moved to player.gd (`_add_aim_ring()`, `aim_ring_feet()`,
+  `_point_aim_ring()`, `_aim_ring_fired()`), and a class that aims at the
+  cursor calls them. The warrior's origin is already the middle of its
+  picture (sprite 3 px above it, feet 13 below), so it aims from there as it
+  always did - now through `aim_direction_to()`, which the swing and the ring
+  both read; its ring sits at (0, 12.5), a hair above the sprite in its
+  y-sorted body so the ring draws first. It brightens on every swing. Mage and
+  tank aim at a point, not a direction, and carry none.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

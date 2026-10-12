@@ -338,6 +338,8 @@ func _ready() -> void:
 
 	_detect_hitboxes()
 	_wire_animation_signal()
+	# THE AIM RING (0.26.0, player.gd): "add to warrior also".
+	_add_aim_ring()
 
 
 func _physics_process(delta: float) -> void:
@@ -345,6 +347,8 @@ func _physics_process(delta: float) -> void:
 	# right-click, animation switching, universal regen, and universal sprint.
 	# warrior adds nothing to the input path any more.
 	super._physics_process(delta)
+	# The ball points where the next swing - its wave, or the axe - would go.
+	_point_aim_ring(aim_direction_to(get_global_mouse_position()))
 
 
 # =============================================================================
@@ -446,11 +450,8 @@ func attack_action() -> void:
 	# last_direction if the cursor is sitting exactly on the player
 	# (zero-length vector, e.g. controller/edge case) so we never animate
 	# toward a garbage direction.
-	var to_cursor: Vector2 = get_global_mouse_position() - global_position
-	if to_cursor.length_squared() > AIM_EPSILON_SQUARED:
-		_swing_aim_direction = to_cursor.normalized()
-	else:
-		_swing_aim_direction = last_direction
+	_swing_aim_direction = aim_direction_to(get_global_mouse_position())
+	_aim_ring_fired()
 
 	# Sync last_direction to the aim. Without this, get_idle_animation()
 	# (called by player.gd once the swing animation finishes) reads
@@ -486,6 +487,25 @@ func attack_action() -> void:
 		sprite.speed_scale = _agile_animation_speed()
 
 	_release_attack_lock_after(_swing_lock_duration(anim), this_swing_id)
+
+
+func aim_direction_to(point: Vector2) -> Vector2:
+	"""The way a swing at `point` goes - the cursor, for a real one - from the
+	warrior's origin, which is the middle of its picture (its sprite is drawn
+	3 px above it and its feet 13 below). The aim ring reads this too, so the
+	ball and the wave cannot disagree. The cursor exactly on the warrior
+	keeps the last facing."""
+	var to_point: Vector2 = point - global_position
+	if to_point.length_squared() <= AIM_EPSILON_SQUARED:
+		return last_direction
+	return to_point.normalized()
+
+
+func aim_ring_feet() -> Vector2:
+	# The aim ring (player.gd): the warrior's feet are 13 px below its origin
+	# (bodyshape), and the ring sits a hair above them so the sprite - also at
+	# 13, in a y-sorted body - is drawn after it.
+	return Vector2(0.0, 12.5)
 
 
 func _resolve_swing_hitbox(cardinal: String) -> Area2D:

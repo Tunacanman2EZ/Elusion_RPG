@@ -12044,7 +12044,7 @@ func _test_connections_are_kept_open() -> void:
 # =============================================================================
 
 func _test_the_healer_aims_from_its_middle() -> void:
-	section("HEALER - the stream leaves the middle of the body, and a ring shows where it goes (0.26.0)")
+	section("HEALER AND WARRIOR - the attack leaves the middle of the body, and a ring shows where it goes (0.26.0)")
 	# The owner: auto fire "is broken between flipping from left auto fire to
 	# top left and right to top right where as bottom directionals are fine",
 	# and the ring under the character was the owner's idea. Not added to the
@@ -12085,6 +12085,31 @@ func _test_the_healer_aims_from_its_middle() -> void:
 		ring.fired()
 		check("  and it brightens as a shot leaves", ring.get("_glow") > 0.0)
 	healer.free()
+
+	# THE WARRIOR TOO - the owner: "add to warrior also". Its origin is already
+	# the middle of its picture (sprite drawn 3 px above, feet 13 below), so it
+	# aims from there; the ring goes round its feet.
+	var warrior: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior.position = Vector2(300, 200)
+	warrior.call("_add_aim_ring")
+	var wring: AimRing = warrior.get_node_or_null(^"aimring") as AimRing
+	check("the warrior carries the ring too, round its feet 13 px below its origin, under its sprite",
+		wring != null and warrior.get_child(0) == wring and wring.position.is_equal_approx(Vector2(0, 12.5)), wring)
+	check("  and aims from its middle: a cursor level with it, to the left, is straight left",
+		(warrior.aim_direction_to(Vector2(210, 200)) as Vector2).is_equal_approx(Vector2.LEFT))
+	var swing_body: String = _func_body(_code_src("res://src/characters/warrior.gd"), "func attack_action(")
+	var frame_body: String = _func_body(_code_src("res://src/characters/warrior.gd"), "func _physics_process(")
+	check("  its swing and its ring read the same aim, and the ring brightens as it swings",
+		swing_body.contains("_swing_aim_direction = aim_direction_to(get_global_mouse_position())")
+		and swing_body.contains("_aim_ring_fired()")
+		and frame_body.contains("_point_aim_ring(aim_direction_to(get_global_mouse_position()))"))
+	warrior.free()
+	check("both put the ring on as they are set up",
+		_func_body(_code_src("res://src/characters/warrior.gd"), "func _ready(").contains("_add_aim_ring()")
+		and _func_body(_code_src("res://src/characters/healer.gd"), "func _ready(").contains("_add_aim_ring()"))
+	check("mage and tank aim at a point, not a direction, and carry no ring",
+		not _code_src("res://src/characters/mage.gd").contains("_add_aim_ring(")
+		and not _code_src("res://src/characters/tank.gd").contains("_add_aim_ring("))
 
 
 # =============================================================================

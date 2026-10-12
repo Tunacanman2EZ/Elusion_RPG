@@ -1365,6 +1365,49 @@ func _on_animatedsprite2d_animation_finished() -> void:
 var _right_click_was_held: bool = false
 
 
+# =============================================================================
+# THE AIM RING (aimring.gd, 0.26.0)
+# =============================================================================
+# A ring on the floor round the feet with a ball where the next attack goes -
+# the owner's idea, for the healer first and then "add to warrior also". The
+# classes that aim at the cursor carry one: each calls _add_aim_ring() once it
+# is set up, says where its feet are (aim_ring_feet()), and points it every
+# frame with the same direction its attack will use (_point_aim_ring()).
+# Mage and tank aim at a POINT (a meteor, a stick of Dynamite), not a
+# direction, and have none.
+var _aim_ring: AimRing = null
+
+
+func aim_ring_feet() -> Vector2:
+	"""Where this class's feet are drawn, relative to its origin - the middle
+	of the ring. Each class that carries one says."""
+	return Vector2.ZERO
+
+
+func _add_aim_ring() -> void:
+	"""The ring, as the first child so it draws under the sprite. Once."""
+	if _aim_ring != null:
+		return
+	_aim_ring = AimRing.new()
+	_aim_ring.name = "aimring"
+	_aim_ring.position = aim_ring_feet()
+	add_child(_aim_ring)
+	move_child(_aim_ring, 0)
+
+
+func _point_aim_ring(direction: Vector2) -> void:
+	"""Where the ball sits this frame - and no ring on a body that is dying."""
+	if _aim_ring == null:
+		return
+	_aim_ring.visible = not is_dying
+	_aim_ring.point_at(direction)
+
+
+func _aim_ring_fired() -> void:
+	if _aim_ring != null:
+		_aim_ring.fired()
+
+
 func right_click_attack_held() -> bool:
 	# Right mouse as an ATTACK input: held, and NOT part of a click the UI
 	# already consumed. Public because healer polls it for continuous fire.

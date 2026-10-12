@@ -92,8 +92,6 @@ const AIM_FROM := Vector2(0.0, -16.0)
 
 var _shot_timer: float = 0.0
 
-# The ring under the feet that shows where the next shot goes (aimring.gd).
-var _aim_ring: AimRing = null
 
 # _is_firing USED TO LIVE HERE. It was assigned true on every shot and false on
 # every frame between shots, and read by absolutely nothing — not by this file,
@@ -144,31 +142,22 @@ func _ready() -> void:
 	_add_aim_ring()
 
 
-func _add_aim_ring() -> void:
-	"""THE AIM RING (0.26.0) round the feet, as the first child so it draws
-	under the sprite. Once."""
-	if _aim_ring != null:
-		return
-	_aim_ring = AimRing.new()
-	_aim_ring.name = "aimring"
-	_aim_ring.position = Vector2(-1.0, -1.0)
-	add_child(_aim_ring)
-	move_child(_aim_ring, 0)
+func aim_ring_feet() -> Vector2:
+	# The aim ring (player.gd): the healer's feet are its origin, a pixel in.
+	return Vector2(-1.0, -1.0)
 
 
 func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 
 	if is_dying:
-		if _aim_ring != null:
-			_aim_ring.visible = false
+		_point_aim_ring(last_direction)
 		return
 
 	if _shot_timer > 0.0:
 		_shot_timer -= delta
 
-	if _aim_ring != null:
-		_aim_ring.point_at(_get_direction_to_cursor())
+	_point_aim_ring(_get_direction_to_cursor())
 
 	if _can_fire():
 		_fire_projectile()
@@ -252,8 +241,7 @@ func _fire_projectile() -> void:
 
 	_play_cast_animation(direction)
 	_spawn_projectile(direction)
-	if _aim_ring != null:
-		_aim_ring.fired()
+	_aim_ring_fired()
 
 
 func _get_direction_to_cursor() -> Vector2:
