@@ -98,6 +98,17 @@ var _radius: PackedFloat32Array = PackedFloat32Array()
 var _damage: PackedInt32Array = PackedInt32Array()
 var _element: PackedInt32Array = PackedInt32Array()
 var _grazed: PackedByteArray = PackedByteArray()
+# THE SWAY (0.24.0): a bullet whose drawn place weaves about the point it is
+# flying - `_pos` is that point, and the orb is drawn, hit and walled at
+#   point + side * sin(rate * age + phase) * (across the flight)
+#         + along * cos(rate * age + phase) * (along the flight)
+# so side alone is a weave (the sniper's helix: two orbs with phases half a
+# turn apart cross over the arrow), and side == along is an orbit round it.
+# A function of age, like everything here, so every screen draws it the same.
+var _sway_side: PackedFloat32Array = PackedFloat32Array()
+var _sway_along: PackedFloat32Array = PackedFloat32Array()
+var _sway_rate: PackedFloat32Array = PackedFloat32Array()
+var _sway_phase: PackedFloat32Array = PackedFloat32Array()
 var _buffer: PackedFloat32Array = PackedFloat32Array()
 var _multimesh: MultiMesh = null
 
@@ -120,6 +131,10 @@ func _ready() -> void:
 	_damage.resize(capacity)
 	_element.resize(capacity)
 	_grazed.resize(capacity)
+	_sway_side.resize(capacity)
+	_sway_along.resize(capacity)
+	_sway_rate.resize(capacity)
+	_sway_phase.resize(capacity)
 	_buffer.resize(capacity * STRIDE)
 
 	var quad: QuadMesh = QuadMesh.new()
@@ -214,6 +229,10 @@ func spawn(origin: Vector2, angle: float, speed: float, colour: Color, big: bool
 	_damage[i] = damage
 	_element[i] = element
 	_grazed[i] = 0
+	_sway_side[i] = 0.0
+	_sway_along[i] = 0.0
+	_sway_rate[i] = 0.0
+	_sway_phase[i] = 0.0
 
 	var size: float = BIG_SIZE if big else SMALL_SIZE
 	var o: int = i * STRIDE
@@ -230,6 +249,33 @@ func spawn(origin: Vector2, angle: float, speed: float, colour: Color, big: bool
 	_buffer[o + 10] = colour.b
 	_buffer[o + 11] = colour.a
 	count += 1
+
+
+func spawn_swaying(origin: Vector2, angle: float, speed: float, colour: Color, side: float,
+		along: float, rate: float, phase: float, damage: int = 0, element: int = 0,
+		life: float = 14.0, big: bool = false) -> void:
+	"""A bullet flying `angle` at `speed` and drawn weaving about that line -
+	see _sway_side above."""
+	if count >= capacity:
+		return
+	spawn(origin, angle, speed, colour, big, 0.0, 0.0, life, damage, element)
+	var i: int = count - 1
+	_sway_side[i] = side
+	_sway_along[i] = along
+	_sway_rate[i] = rate
+	_sway_phase[i] = phase
+	var drawn: Vector2 = _drawn(i, _pos[i], _vel[i], 0.0)
+	_buffer[i * STRIDE + 3] = roundf(drawn.x)
+	_buffer[i * STRIDE + 7] = roundf(drawn.y)
+
+
+func _drawn(i: int, point: Vector2, velocity: Vector2, age: float) -> Vector2:
+	var rate: float = _sway_rate[i]
+	if rate == 0.0:
+		return point
+	var ahead: Vector2 = velocity.normalized()
+	var turn: float = rate * age + _sway_phase[i]
+	return point + ahead.orthogonal() * (_sway_side[i] * sin(turn)) + ahead * (_sway_along[i] * cos(turn))
 
 
 func step(delta: float, target: Vector2, target_radius: float, graze_radius: float,
@@ -261,11 +307,12 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		else:
 			at = _pos[i] + velocity * delta
 		var age: float = _age[i] + delta
-		if age > _life[i] or not area.has_point(at) or (walled and is_wall(at)):
+		var drawn: Vector2 = at if _sway_rate[i] == 0.0 else _drawn(i, at, velocity, age)
+		if age > _life[i] or not area.has_point(drawn) or (walled and is_wall(drawn)):
 			_remove(i)
 			continue
 		var reach: float = _radius[i] + target_radius
-		var gap_squared: float = at.distance_squared_to(target)
+		var gap_squared: float = drawn.distance_squared_to(target)
 		if gap_squared < reach * reach and not untouchable:
 			hits.append(Vector2i(_damage[i], _element[i]))
 			_remove(i)
@@ -277,8 +324,8 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		_pos[i] = at
 		_age[i] = age
 		var o: int = i * STRIDE
-		_buffer[o + 3] = roundf(at.x)
-		_buffer[o + 7] = roundf(at.y)
+		_buffer[o + 3] = roundf(drawn.x)
+		_buffer[o + 7] = roundf(drawn.y)
 		i += 1
 
 	_multimesh.buffer = _buffer
@@ -288,6 +335,12 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 
 
 func position_of(i: int) -> Vector2:
+	"""Where the bullet is drawn - and hits, and meets walls."""
+	return _drawn(i, _pos[i], _vel[i], _age[i]) if i >= 0 and i < count else Vector2.INF
+
+
+func anchor_of(i: int) -> Vector2:
+	"""The point a swaying bullet weaves about; for any other, where it is."""
 	return _pos[i] if i >= 0 and i < count else Vector2.INF
 
 
@@ -347,6 +400,10 @@ func _remove(i: int) -> void:
 		_damage[i] = _damage[last]
 		_element[i] = _element[last]
 		_grazed[i] = _grazed[last]
+		_sway_side[i] = _sway_side[last]
+		_sway_along[i] = _sway_along[last]
+		_sway_rate[i] = _sway_rate[last]
+		_sway_phase[i] = _sway_phase[last]
 		var o: int = i * STRIDE
 		var from: int = last * STRIDE
 		for k in STRIDE:

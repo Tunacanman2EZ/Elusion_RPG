@@ -24624,23 +24624,50 @@ func _test_the_bullet_zone() -> void:
 	sn.call("fire_projectile")
 	await get_tree().process_frame
 	var dark_arrow: int = (sn.enemy_data as EnemyData).projectile_damage
-	check("a sniper in the zone looses a fan of three orbs instead of an arrow",
-		zone.field.count == 3 and shots.get_child_count() == 0, [zone.field.count, shots.get_child_count()])
-	check("  in its own element, each 60%% of its arrow (%d -> %d)" % [dark_arrow, roundi(dark_arrow * 0.6)],
-		zone.field.element_of(0) == Element.Type.DARK and zone.field.damage_of(0) == roundi(dark_arrow * 0.6),
-		[zone.field.element_of(0), zone.field.damage_of(0)])
-	var nearest_aim: float = INF
+	var helix_hit: int = roundi(dark_arrow * 0.35)
+	var helix: Array[int] = []
 	for i in zone.field.count:
-		var to_body: float = (Targets.body_point(dummy) - zone.field.position_of(i)).angle()
+		if zone.field.damage_of(i) == helix_hit:
+			helix.append(i)
+	var arrow: Node = shots.get_child(0) if shots.get_child_count() == 1 else null
+	check("a sniper in the zone looses its own arrow, slowed to 160 px/s, with a helix of 2 orbs (0.24.0)",
+		arrow != null and is_equal_approx(float(arrow.get("speed")), 160.0) and helix.size() == 2,
+		[shots.get_child_count(), helix.size()])
+	check("  the orbs in its element, each 35%% of its arrow (%d -> %d)" % [dark_arrow, helix_hit],
+		helix.size() == 2 and zone.field.element_of(helix[0]) == Element.Type.DARK)
+	var nearest_aim: float = INF
+	for i in helix:
+		var to_body: float = (Targets.body_point(dummy) - zone.field.anchor_of(i)).angle()
 		nearest_aim = minf(nearest_aim, absf(angle_difference(zone.field.velocity_of(i).angle(), to_body)))
-	check("  the middle orb aimed at the player's body, where every monster aims", nearest_aim < 0.05, nearest_aim)
+	check("  winding round the arrow's line, which aims at the player's body", nearest_aim < 0.05, nearest_aim)
+	zone.field.step(0.15, Vector2(99999, 99999), 3.0, 0.0, false)
+	var sides: Array[float] = []
+	for i in helix:
+		var off: Vector2 = zone.field.position_of(i) - zone.field.anchor_of(i)
+		sides.append(off.dot(zone.field.velocity_of(i).normalized().orthogonal()))
+	check("  weaving up to 12 px either side of it, on opposite sides",
+		sides.size() == 2 and absf(sides[0]) > 8.0 and absf(sides[0]) <= 12.01 and sides[0] * sides[1] < 0.0, sides)
+	var wake: BulletWake = arrow.get_node_or_null(^"wake") as BulletWake if arrow != null else null
+	var shed_from: int = zone.field.count
+	if wake != null:
+		wake.shed_once(Vector2(-30000, -30000), Vector2.LEFT)
+	var backs: Array = []
+	for i in range(shed_from, zone.field.count):
+		backs.append(snappedf(zone.field.velocity_of(i).angle(), 0.01))
+	backs.sort()
+	check("the arrow sheds a wake: pairs flying back and out, a < behind an arrow flying left",
+		wake != null and backs.size() == 2 and is_equal_approx(backs[0], -0.55) and is_equal_approx(backs[1], 0.55)
+		and zone.field.damage_of(shed_from) == roundi(dark_arrow * 0.2), backs)
 	zone.queue_free()
 	await get_tree().process_frame
 	zone = null
+	var before_shots: int = shots.get_child_count()
 	sn.call("fire_projectile")
 	await get_tree().process_frame
-	check("the same sniper with no zone in its area fires its arrow, as everywhere but the Field",
-		shots.get_child_count() == 1, shots.get_child_count())
+	var plain: Node = shots.get_child(shots.get_child_count() - 1) if shots.get_child_count() > before_shots else null
+	check("the same sniper with no zone in its area fires its plain arrow, as everywhere but the Field",
+		plain != null and is_equal_approx(float(plain.get("speed")), 400.0) and plain.get_node_or_null(^"wake") == null,
+		shots.get_child_count() - before_shots)
 	world.queue_free()
 	for o in others:
 		if is_instance_valid(o):
@@ -24680,9 +24707,14 @@ func _test_the_bullet_zone_is_shared() -> void:
 	for event in _sm_last_world(link).get("ev", []):
 		if str(event.get("k", "")) == "b":
 			volley = event
+	var shots_sent: int = 0
+	for event in _sm_last_world(link).get("ev", []):
+		if str(event.get("k", "")) == "p" and int(event.get("id", -1)) == sn.net_id:
+			shots_sent += 1
 	check("the leader's volley goes to the others as {k: b, id, x, y, a}",
 		int(volley.get("id", -1)) == sn.net_id and volley.has("a") and volley.has("x")
-		and not volley.has("d") and zone.field.count == 3, volley)
+		and not volley.has("d") and zone.field.count >= 2, volley)
+	check("  and its arrow is not sent again as a shot: the volley brings it (0.24.0)", shots_sent == 0, shots_sent)
 	world.queue_free()
 	link.queue_free()
 	await get_tree().process_frame
@@ -24703,10 +24735,18 @@ func _test_the_bullet_zone_is_shared() -> void:
 	link2.lead_changed.emit(SM_AREA, 1, 1)
 	sync2._enemies[7] = sn2
 	sync2._enemies[8] = fs2
+	var shots2: Node = world2.get_node("shots")
+	var shots2_before: int = shots2.get_child_count()
 	sync2.apply_world({"ev": [{"k": "b", "id": 7, "x": -20090.0, "y": -20000.0, "a": 0.25, "d": 9999}]})
-	check("a follower fires the leader's volley from where it left, which way it went",
-		zone2.field.count == 3 and zone2.field.position_of(1).distance_to(Vector2(-20090, -20000)) < 1.0,
-		[zone2.field.count, zone2.field.position_of(1)])
+	await get_tree().process_frame
+	var helix2: int = 0
+	for i in zone2.field.count:
+		if zone2.field.damage_of(i) == int(sn2.call("orb_damage")) \
+				and zone2.field.anchor_of(i).distance_to(Vector2(-20090, -20000)) < 6.0:
+			helix2 += 1
+	check("a follower fires the leader's volley from where it left, which way it went - its arrow and helix",
+		helix2 == 2 and shots2.get_child_count() == shots2_before + 1,
+		[helix2, shots2.get_child_count() - shots2_before])
 	check("  with its own copy's damage: anything the leader adds is ignored",
 		zone2.field.damage_of(0) == int(sn2.call("orb_damage")) and zone2.field.damage_of(0) < 9999,
 		zone2.field.damage_of(0))
@@ -24823,8 +24863,16 @@ func _test_the_field_volleys() -> void:
 	fire.call("fire_projectile")
 	var fire_hit: int = (fire.enemy_data as EnemyData).projectile_damage
 	check("a Fire Sprite looses a pincer of 4 orbs, %d each (half its %d)" % [roundi(fire_hit * 0.5), fire_hit],
-		zone.field.count == 4 and zone.field.damage_of(0) == roundi(fire_hit * 0.5)
-		and shots.get_child_count() == 0, [zone.field.count, zone.field.damage_of(0)])
+		zone.field.count == 4 and zone.field.damage_of(0) == roundi(fire_hit * 0.5), [zone.field.count, zone.field.damage_of(0)])
+	await get_tree().process_frame
+	var fire_orb: Node = shots.get_child(0) if shots.get_child_count() == 1 else null
+	var fire_meet: float = (body - (fire.get_node("projectileright") as Node2D).global_position).length()
+	check("  and its own fire orb flies down the middle, timed to arrive as the pincer closes (0.24.0)",
+		fire_orb != null and absf(float(fire_orb.get("speed"))
+			- fire_meet / BulletZone.pincer_time(fire_meet, fire.get("PINCER_OFFSETS"), 150.0)) < 0.5,
+		[shots.get_child_count(), fire_orb.get("speed") if fire_orb != null else 0])
+	for s in shots.get_children():
+		s.free()
 	var started_wide: bool = true
 	for i in zone.field.count:
 		var off: float = absf(angle_difference(zone.field.velocity_of(i).angle(),
@@ -24863,6 +24911,12 @@ func _test_the_field_volleys() -> void:
 	check("an Electric Sprite looses a chain of 5 down one line, 110 to 170 px/s, %d each" % roundi(spark_hit * 0.5),
 		zone.field.count == 5 and line and speeds == [110, 125, 140, 155, 170]
 		and zone.field.damage_of(0) == roundi(spark_hit * 0.5), [speeds, line])
+	await get_tree().process_frame
+	var spark_orb: Node = shots.get_child(0) if shots.get_child_count() == 1 else null
+	check("  its own electric orb at the head of the chain, at 170 px/s (0.24.0)",
+		spark_orb != null and is_equal_approx(float(spark_orb.get("speed")), 170.0), shots.get_child_count())
+	for s in shots.get_children():
+		s.free()
 	zone.field.clear()
 
 	# --- the Poison Slime: twin, spray, and the ring as it splits ---------------
@@ -24874,9 +24928,12 @@ func _test_the_field_volleys() -> void:
 	small.player = dummy
 	small.attack_direction = "right"
 	small.call("fire_projectile")
-	check("a small slime looses a twin",
-		zone.field.count == 2 and shots.get_child_count() == 0 and zone.field.radius_of(0) < 3.0,
-		zone.field.count)
+	await get_tree().process_frame
+	check("a small slime looses a twin, its own arrow between them (0.24.0)",
+		zone.field.count == 2 and shots.get_child_count() == 1 and zone.field.radius_of(0) < 3.0,
+		[zone.field.count, shots.get_child_count()])
+	for s in shots.get_children():
+		s.free()
 	zone.field.clear()
 	var large: BaseEnemy = (load("res://scene/enemy/darkslimelarge.tscn") as PackedScene).instantiate()
 	large.position = body + Vector2(-120, 0)
@@ -24889,6 +24946,11 @@ func _test_the_field_volleys() -> void:
 	check("a large slime sprays 5 big orbs, %d each (45%% of its %d)" % [roundi(large_hit * 0.45), large_hit],
 		zone.field.count == 5 and zone.field.radius_of(0) > 5.0
 		and zone.field.damage_of(0) == roundi(large_hit * 0.45), [zone.field.count, zone.field.damage_of(0)])
+	await get_tree().process_frame
+	check("  its own acid ball in the middle of the spray (0.24.0)", shots.get_child_count() == 1,
+		shots.get_child_count())
+	for s in shots.get_children():
+		s.free()
 	zone.field.clear()
 	large.call("_begin_split")
 	check("  and bursts into a ring of 12 as it splits, %d each" % roundi(large_hit * 0.35),

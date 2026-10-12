@@ -13,16 +13,24 @@ const ENEMY_DATA := preload("res://data/enemies/bushsniper.tres")
 const ARROW_SCENE := preload("res://scene/projectiles/arrow.tscn")
 const ARROW_RELEASE_FRAME := 5
 
-# THE FAN (0.22.0). In an area with a BulletZone - the Field - the archer looses
-# FAN_ORBS orbs across FAN_SPREAD instead of one arrow. The owner: "lower dps on
-# projectiles", so each orb is FAN_SHARE of what the arrow hit for, and the
-# orbs are slow enough to read and step between where the arrow is a 400 px/s
-# streak. A player who stands still takes the middle orb; one who reads the fan
-# takes nothing. Everywhere else it is the arrow, exactly as before.
-const FAN_ORBS := 3
-const FAN_SPREAD := 0.5        # radians edge to edge, about 29 degrees
-const FAN_SPEED := 150.0       # px/s
-const FAN_SHARE := 0.6         # of the arrow's damage, per orb
+# THE HELIX AND THE WAKE (0.24.0). In an area with a BulletZone - the Field.
+# 0.22.0 replaced the arrow with a fan of three orbs. The owner, of that: "i
+# want the orbs to spin in a circle around the arrows", then, of the helix
+# that came of it, "if only the arrow hits its pointless howabout the vortex
+# stays but it sprays bullet like a < if the arrow fired left" - and of every
+# monster, "we are not taking away from my artists art but adding to it".
+#
+# So the ARROW flies again, the artist's own, slowed to HELIX_SPEED so what
+# rides it can be seen; two orbs wind round its line HELIX_WIDTH px either
+# side, crossing over it (the helix, BulletZone.fire_helix); and it sheds a
+# pair of orbs every WAKE_INTERVAL back and out to both sides, drawing a
+# chevron behind it (BulletWake). Everywhere else it is the arrow, as ever.
+const HELIX_ORBS := 2
+const HELIX_SPEED := 160.0     # px/s, the arrow and the orbs together
+const HELIX_WIDTH := 12.0      # px either side of the arrow
+const HELIX_RATE := 10.0       # radians a second: a full weave every 0.63 s
+const HELIX_SHARE := 0.35      # of the arrow's damage, per orb
+const WAKE_SHARE := 0.2        # of the arrow's damage, per wake orb
 
 
 # =============================================================================
@@ -118,16 +126,24 @@ func fire_projectile() -> void:
 
 func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
 		_reach: float = 0.0) -> void:
-	"""The fan, from `origin` toward `aim` (radians). Damage and element are
-	this monster's own - which is what a follower relies on when it replays the
-	leader's volley: the message says where and which way, never how hard. The
-	archer has one volley, so the name and reach a message may carry are
-	ignored (BulletZone's header has the contract)."""
-	zone.fire_fan(origin, aim, FAN_ORBS, FAN_SPREAD, FAN_SPEED, orb_damage(), current_element())
+	"""The helix: the arrow, slowed, from `origin` toward `aim` (radians), and
+	its orbs winding round it. Damage and element are this monster's own -
+	which is what a follower relies on when it replays the leader's volley:
+	the message says where and which way, never how hard. The archer has one
+	volley, so the name and reach a message may carry are ignored
+	(BulletZone's header has the contract)."""
+	var arrow: Node = Projectiles.variant_of(ARROW_SCENE, current_element()).instantiate()
+	arrow.set("speed", HELIX_SPEED)
+	arrow.shoot_vector(Vector2.from_angle(aim))
+	var arrow_damage: int = BulletZone.base_damage(self, ARROW_SCENE)
+	BulletWake.on(arrow, zone, BulletZone.share_of(arrow_damage, WAKE_SHARE), current_element())
+	spawn_projectile_node(arrow, origin, false)
+	zone.fire_helix(origin, aim, HELIX_SPEED, HELIX_ORBS, HELIX_WIDTH, HELIX_RATE, orb_damage(),
+		current_element())
 
 
 func orb_damage() -> int:
-	return BulletZone.share_of(BulletZone.base_damage(self, ARROW_SCENE), FAN_SHARE)
+	return BulletZone.share_of(BulletZone.base_damage(self, ARROW_SCENE), HELIX_SHARE)
 
 
 # =============================================================================

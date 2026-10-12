@@ -16,7 +16,9 @@ const ORB_RELEASE_FRAME := 5
 # THE PINCER (0.23.0). In an area with a BulletZone - the Field - the sprite
 # spits four orbs that leave wide of the player on both sides and curve back
 # to meet where the player stood when it fired (BulletZone.fire_pincer). Easy
-# to see coming and lethal to stand in: step out of the meeting point. How far
+# to see coming and lethal to stand in: step out of the meeting point. Since
+# 0.24.0 its own fire orb flies too, straight down the middle, timed to arrive
+# as the pincer closes - the artist's art, with the orbs added to it. How far
 # that point is (`reach`) goes to the other games with the volley, held to
 # PINCER_REACH_MIN..MAX on every one of them.
 const PINCER_OFFSETS: Array[float] = [-0.9, -0.45, 0.45, 0.9]
@@ -101,6 +103,12 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String 
 	var meet: float = PINCER_REACH_DEFAULT if reach <= 0.0 else clampf(reach, PINCER_REACH_MIN, PINCER_REACH_MAX)
 	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, FIRE_ORB_SCENE), PINCER_SHARE)
 	zone.fire_pincer(origin, aim, meet, PINCER_OFFSETS, PINCER_SPEED, damage, current_element())
+	# THE ARTIST'S FIRE ORB TOO (0.24.0), straight down the middle and timed
+	# to arrive as the pincer closes round it.
+	var orb: Node = Projectiles.variant_of(FIRE_ORB_SCENE, current_element()).instantiate()
+	orb.set("speed", meet / BulletZone.pincer_time(meet, PINCER_OFFSETS, PINCER_SPEED))
+	orb.shoot_vector(Vector2.from_angle(aim))
+	spawn_projectile_node(orb, origin, false)
 
 
 # =============================================================================

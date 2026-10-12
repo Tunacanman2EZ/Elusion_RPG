@@ -72,7 +72,8 @@ const ARROW_SCENE := preload("res://scene/projectiles/poisonarrow.tscn")
 # hair apart; a large's acid ball becomes a SPRAY of five big slow orbs; and a
 # large that splits bursts into a RING as it goes, aimed nowhere - the split is
 # the attack. The ring is "split" on the wire (monstersync.gd's "v"), so a
-# follower's copy of the large fires the ring and not its spray.
+# follower's copy of the large fires the ring and not its spray. Since 0.24.0
+# the form's own shot flies too, in the middle of its twin or spray.
 const TWIN_ORBS := 2
 const TWIN_SPREAD := 0.24
 const TWIN_SPEED := 140.0
@@ -480,6 +481,12 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 	else:
 		var spray: int = BulletZone.share_of(BulletZone.base_damage(self, POISONBALL_SCENE), SPRAY_SHARE)
 		zone.fire_fan(origin, aim, SPRAY_ORBS, SPRAY_SPREAD, SPRAY_SPEED, spray, element, true)
+	# THE ARTIST'S SHOT TOO (0.24.0): the small's arrow between its twin, the
+	# large's acid ball in the middle of its spray, at the volley's speed.
+	var shot: Node = Projectiles.variant_of(ARROW_SCENE if is_small else POISONBALL_SCENE, element).instantiate()
+	shot.set("speed", TWIN_SPEED if is_small else SPRAY_SPEED)
+	shot.shoot_vector(Vector2.from_angle(aim))
+	spawn_projectile_node(shot, origin, false)
 
 
 func _projectile_origin(dir: String) -> Vector2:

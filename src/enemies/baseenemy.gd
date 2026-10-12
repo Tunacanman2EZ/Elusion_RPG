@@ -2166,7 +2166,7 @@ func _recolour_projectile(projectile: Node) -> void:
 	target.material = mat
 
 
-func spawn_projectile_node(projectile: Node, spawn_pos: Vector2) -> void:
+func spawn_projectile_node(projectile: Node, spawn_pos: Vector2, announce: bool = true) -> void:
 	# parent a projectile into the y-sorted "projectiles" container so it
 	# depth-sorts correctly against characters. falls back to the scene root
 	# if the container is missing (wrongly-sorted but still functional).
@@ -2237,7 +2237,11 @@ func spawn_projectile_node(projectile: Node, spawn_pos: Vector2) -> void:
 	# here, the one function every enemy shot passes through, with the aim the
 	# caller already gave it - the other games fire a copy from the same spot
 	# the same way, and each copy can hurt only its own game's player.
-	if _net_sync != null and not net_mirror:
+	#
+	# `announce` false: a shot that is part of a volley (the sniper's helix
+	# arrow, 0.24.0) - the volley's own "b" brings it to the other games, and a
+	# "p" as well would fire it twice there.
+	if announce and _net_sync != null and not net_mirror:
 		_net_sync.leader_shot(self, projectile, spawn_pos)
 
 

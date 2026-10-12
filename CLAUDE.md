@@ -5127,6 +5127,38 @@ do it", to the list of the other four.
   meeting; the chain's speeds on one line; the slime's three; the leader's
   "r", and its "b:split" ahead of "die").
 
+**0.24.0: the artist's shots fly again, and the orbs ride with them.** The
+owner, watching the sprites and slimes fire only orbs: "for slime and sprites
+i want the projectiles to be their art we are not taking away from my artists
+art but adding to it". And of the sniper: "i want the orbs to spin in a circle
+around the arrows", then, of the helix that came of it, "if only the arrow
+hits its pointless howabout the vortex stays but it sprays bullet like a < if
+the arrow fired left".
+
+| monster | the artist's shot | and the orbs |
+|---|---|---|
+| Bush Sniper | its arrow, slowed to 160 px/s | a helix of 2 winding 12 px either side (35%), and a wake: a pair every 0.08 s flying back and out, a < behind an arrow going left (20%) |
+| Fire Sprite | its fire orb, down the middle at reach / the pincer's time | the pincer, closing round it as it lands |
+| Electric Sprite | its electric orb at 170 px/s | the chain behind it |
+| Poison Slime | small: its arrow at 140; large: its acid ball at 90 | between the twin; in the middle of the spray |
+
+- **The shot hits for its full damage, as it always did;** the orbs are the
+  shares above. The mage's vine and the slime's split were already the art.
+- **Sent once.** The shot is part of the volley, so
+  `spawn_projectile_node(shot, at, false)` does not also send it as a "p":
+  each game's own `fire_volley` fires it, from the one "b".
+- **The sway** (`BulletField.spawn_swaying`, `_sway_side` / `_sway_along`):
+  a bullet drawn weaving about the point it is flying, a function of age so
+  every screen agrees. Side alone is the helix; side and along equal would
+  be an orbit. `position_of()` is where it is drawn and hits;
+  `anchor_of()` the point it weaves about.
+- **The wake** (`src/world/bulletwake.gd`) is a child of the arrow, so it
+  sheds only while that arrow flies and stops where it stops - a wall, a
+  body, its lifetime. Each game's own arrow sheds its own.
+- Tests: the sniper's arrow, helix and wake and its plain arrow outside a
+  zone; the leader's arrow not sent as a "p"; the follower's arrow and helix;
+  each sprite's and slime's own shot with its volley.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

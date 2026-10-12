@@ -36,7 +36,8 @@ const ORB_RELEASE_FRAME := 5
 # THE CHAIN (0.23.0). In an area with a BulletZone - the Field - the sprite
 # looses five orbs down one line at rising speeds, so they leave as a clump and
 # arrive as a stretched bolt (BulletZone.fire_chain): one sidestep clears it,
-# standing still eats one every time the mercy runs out.
+# standing still eats one every time the mercy runs out. Since 0.24.0 its own
+# electric orb flies at the head of the chain.
 const CHAIN_ORBS := 5
 const CHAIN_SLOWEST := 110.0
 const CHAIN_FASTEST := 170.0
@@ -154,6 +155,11 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String 
 	element (BulletZone's header has the contract)."""
 	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, ELECTRIC_ORB_SCENE), CHAIN_SHARE)
 	zone.fire_chain(origin, aim, CHAIN_ORBS, CHAIN_SLOWEST, CHAIN_FASTEST, damage, current_element())
+	# THE ARTIST'S ELECTRIC ORB TOO (0.24.0), at the head of the chain.
+	var orb: Node = Projectiles.variant_of(ELECTRIC_ORB_SCENE, current_element()).instantiate()
+	orb.set("speed", CHAIN_FASTEST)
+	orb.shoot_vector(Vector2.from_angle(aim))
+	spawn_projectile_node(orb, origin, false)
 
 
 # =============================================================================

@@ -20,14 +20,19 @@
 # are never on the wire (0.22.0's rule: a leader can aim a volley, never make
 # one hit harder).
 #
-# WHAT EACH MONSTER FIRES (0.23.0), every orb a share of the shot it replaces
-# (base_damage()):
-#   Bush Sniper     a fan of 3                      bushsniper.gd
-#   Bush Mage       a slow ring of 10 with its vine  bushmage.gd
-#   Fire Sprite     a pincer of 4 that closes where you stood   firesprite.gd
-#   Electric Sprite a chain of 5 that stretches as it flies     electricsprite.gd
-#   Poison Slime    small: a twin shot; large: a spray of 5 big orbs, and a
-#                   ring of 12 as it splits          poisonslime.gd
+# WHAT EACH MONSTER FIRES. The owner, 0.24.0: "we are not taking away from my
+# artists art but adding to it" - every monster's own shot still flies, the
+# artist's sprite and its full damage, and the orbs ride with it, each a
+# share of that shot (base_damage()):
+#   Bush Sniper     its arrow, slowed, wound round by a helix of 2 and
+#                   shedding a chevron wake (BulletWake)     bushsniper.gd
+#   Bush Mage       its vine, and a slow ring of 10          bushmage.gd
+#   Fire Sprite     its fire orb, and a pincer of 4 closing on the same
+#                   spot at the same moment                  firesprite.gd
+#   Electric Sprite its electric orb, leading a chain of 5   electricsprite.gd
+#   Poison Slime    small: its arrow between a twin; large: its acid ball in
+#                   a spray of 5 big orbs, and a ring of 12 as it splits
+#                                                            poisonslime.gd
 #
 # THE PLAYER IT HURTS is this game's own (the first node in group "player").
 # The hitbox is HITBOX_RADIUS around Targets.body_point() - the body, where
@@ -181,15 +186,33 @@ func fire_pincer(origin: Vector2, aim: float, reach: float, offsets: Array[float
 	meeting point and are gone, rather than carrying on round the circle."""
 	var colour: Color = shot_colour(element)
 	var d: float = maxf(reach, 1.0)
-	var widest: float = 0.0
-	for t in offsets:
-		widest = maxf(widest, absf(t))
-	var meet_time: float = _arc_length(widest, d) / speed
+	var meet_time: float = pincer_time(d, offsets, speed)
 	for t in offsets:
 		var own_speed: float = _arc_length(absf(t), d) / meet_time
 		var turn: float = 0.0 if absf(t) < 0.001 else -2.0 * own_speed * sin(t) / d
 		field.spawn(origin, aim + t, own_speed, colour, false, turn, 0.0, meet_time * 1.4,
 			damage, element)
+
+
+func fire_helix(origin: Vector2, aim: float, speed: float, count: int, width: float, rate: float,
+		damage: int, element: int) -> void:
+	"""`count` orbs flying down `aim` at `speed`, each weaving `width` px
+	either side of the line `rate` radians a second, their phases spread
+	evenly: two of them cross over the line twice a turn, like a strand of
+	DNA wound round whatever flies down the middle (the sniper's arrow)."""
+	var colour: Color = shot_colour(element)
+	for k in count:
+		field.spawn_swaying(origin, aim, speed, colour, width, 0.0, rate, PI * 2.0 * k / maxi(count, 1),
+			damage, element, LIFE)
+
+
+static func pincer_time(reach: float, offsets: Array[float], speed: float) -> float:
+	"""How long a pincer takes to close: the widest orb's arc at `speed`. A
+	shot sent straight down the middle at reach / this arrives with it."""
+	var widest: float = 0.0
+	for t in offsets:
+		widest = maxf(widest, absf(t))
+	return _arc_length(widest, maxf(reach, 1.0)) / maxf(speed, 1.0)
 
 
 static func _arc_length(t: float, chord: float) -> float:
