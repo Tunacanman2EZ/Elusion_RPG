@@ -5140,7 +5140,7 @@ the arrow fired left".
 | Bush Sniper | its arrow, slowed to 160 px/s | a helix of 2 winding 12 px either side (35%), and a wake: a pair every 0.08 s flying back and out, a < behind an arrow going left (20%) |
 | Fire Sprite | its fire orb, down the middle at reach / the pincer's time | the pincer, closing round it as it lands |
 | Electric Sprite | its electric orb at 170 px/s | the chain behind it |
-| Poison Slime | small: its arrow at 140; large: its acid ball at 90 | between the twin; in the middle of the spray |
+| Poison Slime | small: its arrow at 140; large: its acid ball at 90 (150 since 0.25.0) | between the twin; in the middle of the spray |
 
 - **The shot hits for its full damage, as it always did;** the orbs are the
   shares above. The mage's vine and the slime's split were already the art.
@@ -5158,6 +5158,47 @@ the arrow fired left".
 - Tests: the sniper's arrow, helix and wake and its plain arrow outside a
   zone; the leader's arrow not sent as a "p"; the follower's arrow and helix;
   each sprite's and slime's own shot with its volley.
+
+**0.25.0: the large slime controls the floor.** The owner: "slimes are not
+dangerous enough ideas?", and of the list, "2 and 3" - the mortar and the
+settling acid. Every slime shot had been aimed where you were, so a sidestep
+beat all of them.
+
+| the large slime's | what it does | each orb |
+|---|---|---|
+| spray (turn 1) | its acid ball at 150 px/s, and 5 big orbs leaving at 150 that slow evenly to a stop where you stood (`SPRAY_REACH_MIN..MAX`) and lie there 3 s as mines | 45% |
+| mortar (turn 2) | its acid ball LOBBED over everything onto your spot, marked on the floor as it flies; 1 s later: the full acid ball on the spot, a ring of 8 settling 40 px out, and the acid puddle | 100% on the spot, 35% the ring |
+
+- **Settling** (`BulletField.spawn_settling`, `_brake`): a bullet slows evenly
+  from v to rest over d px - a brake of v²/2d, taking 2d/v - and lies there
+  until its life is up, fading over the last `FADE_SECONDS` (0.75, the
+  puddle's own fade). The step is exact however the frames fall: the frame's
+  average speed times its length, or v²/2·brake in the frame it stops.
+  `fire_fan` and `fire_ring` take `stop_at` for it; `SETTLE_LINGER` is 3 s.
+- **The lob** (`src/world/bulletlob.gd`, `BulletZone.fire_mortar`) carries the
+  artist's acid ball sprite - taken off the element's ball scene by
+  `poisonslime.gd`'s `_lob_art`, tinted and recoloured as a shot of that
+  slime's is - along a parabola, drawn up to twice its size at the top, with a
+  shadow under it. Nothing touches it in the air. The crater's edge is drawn on
+  the floor from the moment it leaves and fills in as it falls.
+- **The puddle is the one the ball always left** on a hit
+  (`Puddles.scene_for`), so a mortar leaves the same acid, in the same
+  element, that the straight ball does.
+- **The two shots take turns** (`_mortar_next`, the leader's), the spray first.
+  The mortar is `"v": "mortar"` on the wire, and both carry `"r"`, held on
+  every screen to `MORTAR_REACH_MAX` / `SPRAY_REACH_MIN..MAX`.
+- **A player standing in the impact meets the ring too**, at the same instant:
+  every orb that touches in one frame is spent and only the strongest lands
+  (the acid ball), so the crater forms round whoever moved.
+- **Recorded in the real Field** with two large slimes: the sprays settle in a
+  wall across the player's spot, and each mortar leaves a ring of mines round
+  a puddle.
+- Tests: settling exact under uneven frames, three quarters of the way at
+  half its time, lying 3 s and fading, spent on contact; the spray settling
+  where the player stood; the mortar's art, its spot, its arc, its landing
+  (impact + 8), the crater at 40 px, the puddle in its element, the hit on a
+  player who stayed, the turns; the leader's "r" and "v": "mortar"; the
+  follower's lob and its range, and its spray settling at the leader's "r".
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

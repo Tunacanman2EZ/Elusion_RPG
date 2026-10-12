@@ -24515,6 +24515,44 @@ func _test_the_bullet_zone() -> void:
 	on_time.queue_free()
 	late.queue_free()
 
+	# 0.25.0: an orb that settles - slows evenly to a stop and lies there.
+	var even := BulletField.new()
+	var chopped := BulletField.new()
+	add_child(even)
+	add_child(chopped)
+	even.bounds = f.bounds
+	chopped.bounds = f.bounds
+	even.spawn_settling(Vector2.ZERO, 0.0, 150.0, Color.GREEN, 120.0, 3.0, 4, 0, true)
+	chopped.spawn_settling(Vector2.ZERO, 0.0, 150.0, Color.GREEN, 120.0, 3.0, 4, 0, true)
+	even.step(2.0, far, 3.0, 0.0, false)
+	for frame in [0.016, 0.05, 0.3, 0.034, 0.1, 0.3, 0.5, 0.4]:
+		chopped.step(frame, far, 3.0, 0.0, false)
+	check("a settling orb slows to a stop exactly where it was told, however the time is cut into frames (0.25.0)",
+		even.position_of(0).distance_to(Vector2(120, 0)) < 0.01 and chopped.position_of(0).distance_to(Vector2(120, 0)) < 0.01
+		and even.velocity_of(0) == Vector2.ZERO and chopped.velocity_of(0) == Vector2.ZERO,
+		[even.position_of(0), chopped.position_of(0)])
+	var half := BulletField.new()
+	add_child(half)
+	half.bounds = f.bounds
+	half.spawn_settling(Vector2.ZERO, 0.0, 150.0, Color.GREEN, 120.0, 3.0)
+	half.step(0.8, far, 3.0, 0.0, false)
+	check("  slowing evenly on the way: halfway through its time it has gone three quarters of the way",
+		absf(half.position_of(0).x - 90.0) < 0.01 and absf(half.velocity_of(0).length() - 75.0) < 0.01, half.position_of(0))
+	half.queue_free()
+	var solid: float = even._buffer[11]
+	even.step(2.3, far, 3.0, 0.0, false)
+	var fading: float = even._buffer[11]
+	check("  it lies there for its 3 s, and fades over the last %.2f s of them" % BulletField.FADE_SECONDS,
+		even.count == 1 and even.position_of(0).distance_to(Vector2(120, 0)) < 0.01
+		and is_equal_approx(solid, 1.0) and fading > 0.0 and fading < 0.5, [even.count, solid, fading])
+	even.step(0.5, far, 3.0, 0.0, false)
+	check("  then it is gone", even.count == 0, even.count)
+	var mine: Vector2 = chopped.position_of(0)
+	var mine_hit: Vector2i = chopped.step(0.1, mine, 3.0, 0.0, false)
+	check("  and a player who walks onto it is hit, and it is spent", mine_hit.x == 1 and chopped.count == 0, mine_hit)
+	even.queue_free()
+	chopped.queue_free()
+
 	var cells := PackedByteArray()
 	cells.resize(100)
 	cells[5 * 10 + 6] = 1
@@ -24801,6 +24839,35 @@ func _test_the_bullet_zone_is_shared() -> void:
 	zone2.field.clear()
 	sync2.apply_world({"ev": [{"k": "b", "id": 9, "x": -20200.0, "y": -20000.0, "a": 0.0, "v": "everything"}]})
 	check("  a volley it does not have fires nothing", zone2.field.count == 0, zone2.field.count)
+	sync2.apply_world({"ev": [{"k": "b", "id": 9, "x": -20200.0, "y": -20000.0, "a": PI / 2.0, "v": "mortar", "r": 150.0}]})
+	var lobs2: Array = []
+	for child in zone2.get_children():
+		if child is BulletLob:
+			lobs2.append(child)
+	check("a follower's large slime lobs the mortar where the leader's landed (0.25.0)",
+		lobs2.size() == 1 and (lobs2[0] as BulletLob).to.distance_to(Vector2(-20200, -19850)) < 0.5,
+		[lobs2.size(), (lobs2[0] as BulletLob).to if lobs2.size() > 0 else null])
+	for l in lobs2:
+		l.free()
+	sync2.apply_world({"ev": [{"k": "b", "id": 9, "x": -20200.0, "y": -20000.0, "a": 0.0, "v": "mortar", "r": 99999.0}]})
+	var far_lob: BulletLob = null
+	for child in zone2.get_children():
+		if child is BulletLob:
+			far_lob = child
+	check("  no further than its own range, whatever the reach says",
+		far_lob != null and is_equal_approx(far_lob.to.x - (-20200.0), float(slime.get("MORTAR_REACH_MAX"))),
+		far_lob.to if far_lob != null else null)
+	if far_lob != null:
+		far_lob.free()
+	zone2.field.clear()
+	sync2.apply_world({"ev": [{"k": "b", "id": 9, "x": -20200.0, "y": -20000.0, "a": 0.0, "r": 100.0}]})
+	for frame in 120:
+		zone2.field.step(1.0 / 60.0, Vector2(9999, 9999), 3.0, 0.0, false)
+	var settled2: bool = zone2.field.count == 5
+	for i in zone2.field.count:
+		settled2 = settled2 and absf(zone2.field.anchor_of(i).distance_to(Vector2(-20200, -20000)) - 100.0) < 0.5
+	check("  and settles its spray as far off as the leader's (\"r\")", settled2, zone2.field.count)
+	zone2.field.clear()
 	world2.queue_free()
 	link2.queue_free()
 	for o in others:
@@ -24946,9 +25013,104 @@ func _test_the_field_volleys() -> void:
 	check("a large slime sprays 5 big orbs, %d each (45%% of its %d)" % [roundi(large_hit * 0.45), large_hit],
 		zone.field.count == 5 and zone.field.radius_of(0) > 5.0
 		and zone.field.damage_of(0) == roundi(large_hit * 0.45), [zone.field.count, zone.field.damage_of(0)])
+	var stood: float = ((large.get_node("projectileright") as Node2D).global_position).distance_to(body)
+	var spray_from: Vector2 = (large.get_node("projectileright") as Node2D).global_position
+	for frame in 150:
+		zone.field.step(1.0 / 60.0, Vector2(99999, 99999), 3.0, 0.0, false)
+	var settled: Array = []
+	for i in zone.field.count:
+		settled.append(roundi(zone.field.position_of(i).distance_to(spray_from)))
+	check("  that leave at 150 px/s and settle where the player stood, %d px off (0.25.0)" % roundi(stood),
+		zone.field.count == 5 and settled.all(func(d: int) -> bool: return absi(d - roundi(stood)) <= 1)
+		and zone.field.velocity_of(0) == Vector2.ZERO, settled)
 	await get_tree().process_frame
 	check("  its own acid ball in the middle of the spray (0.24.0)", shots.get_child_count() == 1,
 		shots.get_child_count())
+	for s in shots.get_children():
+		s.free()
+	zone.field.clear()
+
+	# 0.25.0: and every other shot, the mortar.
+	large.call("fire_projectile")
+	var lob: BulletLob = null
+	for child in zone.get_children():
+		if child is BulletLob:
+			lob = child
+	if lob != null:
+		lob.set_process(false)
+	await get_tree().process_frame
+	check("its next shot is the mortar: nothing flies straight, a lob goes up (0.25.0)",
+		lob != null and zone.field.count == 0 and shots.get_child_count() == 0,
+		[lob, zone.field.count, shots.get_child_count()])
+	if lob != null:
+		var lob_art: AnimatedSprite2D = lob.art as AnimatedSprite2D
+		var ball: Node = Projectiles.variant_of(load("res://scene/projectiles/poisonball.tscn"),
+			Element.Type.DARK).instantiate()
+		var ball_frames: SpriteFrames = (ball.get_node("animatedsprite2d") as AnimatedSprite2D).sprite_frames
+		ball.free()
+		check("  what it lobs is the artist's acid ball - its own sprite, in its element",
+			lob_art != null and lob_art.get_parent() == lob and lob_art.sprite_frames == ball_frames, lob_art)
+		check("  onto the spot the player stood on, marked on the floor from the start",
+			lob.to.distance_to(body) < 0.5 and is_equal_approx(lob.crater, 40.0), [lob.to, body])
+		lob.advance(0.5)
+		check("  up over everything on the way: at the top of its arc and drawn twice its size",
+			lob.height() > 20.0 and is_equal_approx(lob_art.scale.x, 2.0) and zone.field.count == 0,
+			[lob.height(), lob_art.scale])
+		lob.advance(0.51)
+		check("  it lands after 1 s: one big orb on the spot and a ring of 8 around it",
+			zone.field.count == 9 and lob.is_queued_for_deletion(), zone.field.count)
+		var impact: int = -1
+		var ring_share: int = roundi(large_hit * 0.35)
+		var ring_count: int = 0
+		for i in zone.field.count:
+			if zone.field.damage_of(i) == large_hit and zone.field.radius_of(i) > 5.0:
+				impact = i
+			elif zone.field.damage_of(i) == ring_share:
+				ring_count += 1
+		check("  the one on the spot is the whole acid ball (%d); the ring %d each" % [large_hit, ring_share],
+			impact >= 0 and ring_count == 8, [impact, ring_count])
+		for frame in 60:
+			zone.field.step(1.0 / 60.0, Vector2(99999, 99999), 3.0, 0.0, false)
+		var crater: Array = []
+		for i in zone.field.count:
+			crater.append(roundi(zone.field.position_of(i).distance_to(body)))
+		check("  the ring settles into a crater 40 px out, and the spot itself is clear again",
+			zone.field.count == 8 and crater.all(func(d: int) -> bool: return d == 40), crater)
+		await get_tree().process_frame
+		var pool: Node = ground.get_child(ground.get_child_count() - 1) if ground.get_child_count() > 0 else null
+		check("  and it leaves the acid puddle the ball leaves on a hit, in its element, on the spot",
+			pool is AcidPuddle and int(pool.get("element")) == Element.Type.DARK
+			and (pool as Node2D).global_position.distance_to(body) < 0.5
+			and pool.scene_file_path == Puddles.scene_for(Element.Type.DARK).resource_path, pool)
+		if pool != null:
+			pool.free()
+	zone.field.clear()
+	var from_marker: Vector2 = (large.get_node("projectileright") as Node2D).global_position
+	large.call("fire_volley", zone, from_marker, (body - from_marker).angle(), "mortar", from_marker.distance_to(body))
+	var lob2: BulletLob = null
+	for child in zone.get_children():
+		if child is BulletLob and not child.is_queued_for_deletion():
+			lob2 = child
+	if lob2 != null:
+		lob2.set_process(false)
+		lob2.advance(1.0)
+	zone._mercy_until_ms = 0
+	dummy.taken.clear()
+	zone._process(0.01)
+	check("  a player still standing there when it lands takes the acid ball",
+		dummy.taken.size() == 1 and int(dummy.taken[0][0]) == large_hit and int(dummy.taken[0][1]) == Element.Type.DARK,
+		dummy.taken)
+	zone.field.clear()
+	await get_tree().process_frame
+	for child in ground.get_children():
+		child.free()
+	large.call("fire_projectile")
+	var turns: int = zone.field.count
+	for child in zone.get_children():
+		if child is BulletLob:
+			turns = -1
+	check("  and the shot after that is the spray again: they take turns", turns == 5, turns)
+	await get_tree().process_frame
 	for s in shots.get_children():
 		s.free()
 	zone.field.clear()
@@ -24997,6 +25159,28 @@ func _test_the_field_volleys() -> void:
 		float(pincer.get("r", 0.0)) > 0.0 and not pincer.has("v"), pincer)
 	check("the leader's large slime sends its split ring, then its death",
 		kinds == ["b:split", "die:"], kinds)
+
+	# 0.25.0: the large's two shots, spray then mortar, each with its reach.
+	var big2: BaseEnemy = (load("res://scene/enemy/darkslimelarge.tscn") as PackedScene).instantiate()
+	big2.position = Vector2(-20200, -20100)
+	lead_world.get_node("enemies").add_child(big2)
+	await get_tree().process_frame
+	sync.tick_lead()
+	big2.player = lead_dummy
+	big2.attack_direction = "right"
+	link.sent_world.clear()
+	big2.call("fire_projectile")
+	sync.tick_lead()
+	big2.call("fire_projectile")
+	sync.tick_lead()
+	var big2_volleys: Array = []
+	for sent in link.sent_world:
+		for event in ((sent as Array)[0] as Dictionary).get("ev", []):
+			if int(event.get("id", -1)) == big2.net_id and str(event.get("k", "")) == "b":
+				big2_volleys.append(event)
+	check("the leader's large slime sends its spray with its reach, then its mortar (\"v\": \"mortar\") (0.25.0)",
+		big2_volleys.size() == 2 and not big2_volleys[0].has("v") and float(big2_volleys[0].get("r", 0.0)) > 100.0
+		and str(big2_volleys[1].get("v", "")) == "mortar" and float(big2_volleys[1].get("r", 0.0)) > 100.0, big2_volleys)
 	lead_world.queue_free()
 	link.queue_free()
 	for o in others:

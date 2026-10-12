@@ -50,6 +50,11 @@ const BIG_SIZE: float = 16.0
 const SMALL_RADIUS: float = 2.5
 const BIG_RADIUS: float = 5.5
 
+# A settled bullet (spawn_settling) fades out over its last this-many seconds:
+# the ground it guards is about to be safe again. The same 0.75 s an acid
+# puddle takes (acidpuddle.gd's fade_duration), so the two read alike.
+const FADE_SECONDS: float = 0.75
+
 # The bullet's own colour is taken in vertex(): by fragment(), COLOR has
 # already been multiplied by the texture, which tinted every bullet the orb's
 # green in the first preview.
@@ -109,6 +114,13 @@ var _sway_side: PackedFloat32Array = PackedFloat32Array()
 var _sway_along: PackedFloat32Array = PackedFloat32Array()
 var _sway_rate: PackedFloat32Array = PackedFloat32Array()
 var _sway_phase: PackedFloat32Array = PackedFloat32Array()
+# THE BRAKE (0.25.0): px/s of speed lost every second, 0 for none. A braking
+# bullet slows evenly to a stop, lies where it stopped - a mine on the floor -
+# until its life is up, and fades over the last FADE_SECONDS of it. The large
+# slime's spray and its mortar's crater ("control the floor"). `_alpha` is
+# the colour's own alpha, which the fade is a share of.
+var _brake: PackedFloat32Array = PackedFloat32Array()
+var _alpha: PackedFloat32Array = PackedFloat32Array()
 var _buffer: PackedFloat32Array = PackedFloat32Array()
 var _multimesh: MultiMesh = null
 
@@ -135,6 +147,8 @@ func _ready() -> void:
 	_sway_along.resize(capacity)
 	_sway_rate.resize(capacity)
 	_sway_phase.resize(capacity)
+	_brake.resize(capacity)
+	_alpha.resize(capacity)
 	_buffer.resize(capacity * STRIDE)
 
 	var quad: QuadMesh = QuadMesh.new()
@@ -233,6 +247,8 @@ func spawn(origin: Vector2, angle: float, speed: float, colour: Color, big: bool
 	_sway_along[i] = 0.0
 	_sway_rate[i] = 0.0
 	_sway_phase[i] = 0.0
+	_brake[i] = 0.0
+	_alpha[i] = colour.a
 
 	var size: float = BIG_SIZE if big else SMALL_SIZE
 	var o: int = i * STRIDE
@@ -269,6 +285,21 @@ func spawn_swaying(origin: Vector2, angle: float, speed: float, colour: Color, s
 	_buffer[i * STRIDE + 7] = roundf(drawn.y)
 
 
+func spawn_settling(origin: Vector2, angle: float, speed: float, colour: Color, stop_at: float,
+		linger: float, damage: int = 0, element: int = 0, big: bool = false) -> void:
+	"""A bullet that leaves at `speed`, slows evenly to a stop `stop_at` px
+	along `angle`, and lies there for `linger` seconds - see _brake above.
+	Slowing evenly from v to rest over a distance d takes a brake of
+	v * v / (2 * d) and a time of 2 * d / v."""
+	if count >= capacity:
+		return
+	var distance: float = maxf(stop_at, 1.0)
+	var moving: float = 0.0 if speed <= 0.0 else 2.0 * distance / speed
+	spawn(origin, angle, speed, colour, big, 0.0, 0.0, moving + maxf(linger, 0.0), damage, element)
+	if speed > 0.0:
+		_brake[count - 1] = speed * speed / (2.0 * distance)
+
+
 func _drawn(i: int, point: Vector2, velocity: Vector2, age: float) -> Vector2:
 	var rate: float = _sway_rate[i]
 	if rate == 0.0:
@@ -292,8 +323,23 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 	while i < count:
 		var velocity: Vector2 = _vel[i]
 		var turn: float = _turn[i]
+		var brake: float = _brake[i]
 		var at: Vector2
-		if turn != 0.0:
+		if brake > 0.0:
+			# Evenly slower: the distance is the frame's average speed times
+			# its length, or - in the frame it stops - all that was left,
+			# v * v / (2 * brake). Exact however the time is cut into frames.
+			var speed: float = velocity.length()
+			at = _pos[i]
+			if speed > 0.0:
+				var slower: float = maxf(speed - brake * delta, 0.0)
+				var travelled: float = (speed + slower) * 0.5 * delta if slower > 0.0 \
+					else speed * speed / (2.0 * brake)
+				var heading: Vector2 = velocity / speed
+				at += heading * travelled
+				velocity = heading * slower
+				_vel[i] = velocity
+		elif turn != 0.0:
 			# Along the arc's chord, half a turn in - the same sum spawn()
 			# catches a late shot up with, so a curving orb lands in the same
 			# place however the time is cut into frames.
@@ -326,6 +372,8 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		var o: int = i * STRIDE
 		_buffer[o + 3] = roundf(drawn.x)
 		_buffer[o + 7] = roundf(drawn.y)
+		if brake > 0.0:
+			_buffer[o + 11] = _alpha[i] * clampf((_life[i] - age) / FADE_SECONDS, 0.0, 1.0)
 		i += 1
 
 	_multimesh.buffer = _buffer
@@ -346,6 +394,14 @@ func anchor_of(i: int) -> Vector2:
 
 func velocity_of(i: int) -> Vector2:
 	return _vel[i] if i >= 0 and i < count else Vector2.ZERO
+
+
+func brake_of(i: int) -> float:
+	return _brake[i] if i >= 0 and i < count else 0.0
+
+
+func life_of(i: int) -> float:
+	return _life[i] if i >= 0 and i < count else 0.0
 
 
 func radius_of(i: int) -> float:
@@ -404,6 +460,8 @@ func _remove(i: int) -> void:
 		_sway_along[i] = _sway_along[last]
 		_sway_rate[i] = _sway_rate[last]
 		_sway_phase[i] = _sway_phase[last]
+		_brake[i] = _brake[last]
+		_alpha[i] = _alpha[last]
 		var o: int = i * STRIDE
 		var from: int = last * STRIDE
 		for k in STRIDE:

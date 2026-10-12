@@ -74,18 +74,43 @@ const ARROW_SCENE := preload("res://scene/projectiles/poisonarrow.tscn")
 # the attack. The ring is "split" on the wire (monstersync.gd's "v"), so a
 # follower's copy of the large fires the ring and not its spray. Since 0.24.0
 # the form's own shot flies too, in the middle of its twin or spray.
+#
+# THE LARGE CONTROLS THE FLOOR (0.25.0). The owner, 12 Oct: "slimes are not
+# dangerous enough" - and of the ideas, "2 and 3". Every shot a slime had was
+# aimed where you were, so a sidestep beat all of them. Now:
+#   its SPRAY leaves faster and SETTLES where you stood - five big orbs that
+#     slow to a stop across your old spot and lie there as mines for
+#     BulletZone.SETTLE_LINGER seconds (BulletField.spawn_settling)
+#   and every other shot is the MORTAR: the acid ball, the artist's sprite,
+#     lobbed over everything onto your spot (BulletLob). It lands MORTAR_FLIGHT
+#     later, where the floor has been marked since it left: the full acid ball
+#     to anyone still standing there, a crater of MORTAR_RING orbs settling
+#     MORTAR_CRATER px out, and the acid puddle the ball leaves on a hit.
+# Its volley is "mortar" on the wire, with how far ("r"), and the spray carries
+# its reach too, so a follower's copy settles both where the leader's did.
 const TWIN_ORBS := 2
 const TWIN_SPREAD := 0.24
 const TWIN_SPEED := 140.0
 const TWIN_SHARE := 0.6        # of the small's arrow, per orb
 const SPRAY_ORBS := 5
 const SPRAY_SPREAD := 0.8
-const SPRAY_SPEED := 90.0
+const SPRAY_SPEED := 150.0     # as it leaves; 90, and straight, until 0.25.0
 const SPRAY_SHARE := 0.45      # of the large's acid ball, per orb
+const SPRAY_REACH_MIN := 60.0
+const SPRAY_REACH_MAX := 260.0
+const SPRAY_REACH_DEFAULT := 160.0
 const SPLIT_ORBS := 12
 const SPLIT_SPEED := 65.0
 const SPLIT_SHARE := 0.35      # of the large's acid ball, per orb
 const SPLIT_VOLLEY := "split"
+const MORTAR_VOLLEY := "mortar"
+const MORTAR_FLIGHT := 1.0     # seconds in the air
+const MORTAR_RING := 8
+const MORTAR_RING_SPEED := 120.0
+const MORTAR_CRATER := 40.0    # px from the spot the crater's orbs settle
+const MORTAR_RING_SHARE := 0.35  # of the large's acid ball, per orb
+const MORTAR_REACH_MAX := 280.0
+const MORTAR_REACH_DEFAULT := 160.0
 
 # directional spawn markers, named the same way the animations are: the
 # large form has no prefix, the small form takes a "small" one.
@@ -223,6 +248,10 @@ var _has_split: bool = false
 # true once this slime is playing out a death or a split, so nothing tries
 # to attack, move, or die a second time while that resolves.
 var _is_resolving: bool = false
+
+# (Leader, large, in the bullet-hell zone.) Whether the next shot is the
+# mortar: they take turns, the spray first.
+var _mortar_next: bool = false
 
 
 # =============================================================================
@@ -436,9 +465,16 @@ func fire_projectile() -> void:
 		var from: Vector2 = _projectile_origin(attack_direction)
 		var aim: float = (target_point() - from).angle() if is_instance_valid(player) \
 			else Facing.to_vec(attack_direction).angle()
-		fire_volley(zone, from, aim)
+		# The large's two shots take turns, and both land where you stood.
+		var volley: String = ""
+		var reach: float = 0.0
+		if not is_small:
+			volley = MORTAR_VOLLEY if _mortar_next else ""
+			_mortar_next = not _mortar_next
+			reach = from.distance_to(target_point()) if is_instance_valid(player) else SPRAY_REACH_DEFAULT
+		fire_volley(zone, from, aim, volley, reach)
 		if _net_sync != null and not net_mirror:
-			_net_sync.leader_bullets(self, from, aim)
+			_net_sync.leader_bullets(self, from, aim, volley, reach)
 		return
 
 	# THE ELEMENT PICKS THE SCENE — see bushsniper.gd. current_element() rather
@@ -461,17 +497,27 @@ func fire_projectile() -> void:
 
 
 func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String = "",
-		_reach: float = 0.0) -> void:
-	"""This form's volley, or the large's split ring when `volley` is
-	"split". Anything else names no volley of a slime's and fires nothing.
-	This slime's own damage and element (BulletZone's header has the
-	contract)."""
+		reach: float = 0.0) -> void:
+	"""This form's volley; the large's mortar when `volley` is "mortar", or
+	its split ring when it is "split". Anything else names no volley of a
+	slime's and fires nothing. `reach` is how far off the player stood, held
+	to this slime's own range. This slime's own damage and element
+	(BulletZone's header has the contract)."""
 	var element: int = current_element()
 	if volley == SPLIT_VOLLEY:
 		if is_small:
 			return
 		var ring: int = BulletZone.share_of(BulletZone.base_damage(self, POISONBALL_SCENE), SPLIT_SHARE)
 		zone.fire_ring(origin, aim, SPLIT_ORBS, SPLIT_SPEED, ring, element)
+		return
+	if volley == MORTAR_VOLLEY:
+		if is_small:
+			return
+		var acid: int = BulletZone.base_damage(self, POISONBALL_SCENE)
+		var landing: float = MORTAR_REACH_DEFAULT if reach <= 0.0 else minf(reach, MORTAR_REACH_MAX)
+		zone.fire_mortar(origin, aim, landing, MORTAR_FLIGHT, _lob_art(element), acid,
+			MORTAR_RING, MORTAR_RING_SPEED, MORTAR_CRATER, BulletZone.share_of(acid, MORTAR_RING_SHARE),
+			element, Puddles.scene_for(element))
 		return
 	if volley != "":
 		return
@@ -480,13 +526,35 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 		zone.fire_fan(origin, aim, TWIN_ORBS, TWIN_SPREAD, TWIN_SPEED, twin, element)
 	else:
 		var spray: int = BulletZone.share_of(BulletZone.base_damage(self, POISONBALL_SCENE), SPRAY_SHARE)
-		zone.fire_fan(origin, aim, SPRAY_ORBS, SPRAY_SPREAD, SPRAY_SPEED, spray, element, true)
+		var settle: float = SPRAY_REACH_DEFAULT if reach <= 0.0 \
+			else clampf(reach, SPRAY_REACH_MIN, SPRAY_REACH_MAX)
+		zone.fire_fan(origin, aim, SPRAY_ORBS, SPRAY_SPREAD, SPRAY_SPEED, spray, element, true, settle)
 	# THE ARTIST'S SHOT TOO (0.24.0): the small's arrow between its twin, the
 	# large's acid ball in the middle of its spray, at the volley's speed.
 	var shot: Node = Projectiles.variant_of(ARROW_SCENE if is_small else POISONBALL_SCENE, element).instantiate()
 	shot.set("speed", TWIN_SPEED if is_small else SPRAY_SPEED)
 	shot.shoot_vector(Vector2.from_angle(aim))
 	spawn_projectile_node(shot, origin, false)
+
+
+func _lob_art(element: int) -> Node2D:
+	"""The acid ball's own sprite, for the mortar to carry: taken off this
+	element's ball scene, coloured as a shot of this slime's would be
+	(spawn_projectile_node's tint and recolour), and the rest of the ball -
+	its body, its hitbox, its script - thrown away, because a lob touches
+	nothing on the way."""
+	var ball: Node = Projectiles.variant_of(POISONBALL_SCENE, element).instantiate()
+	_recolour_projectile(ball)
+	var sprite: Node2D = ball.get_node_or_null(^"animatedsprite2d") as Node2D
+	if sprite != null:
+		sprite.owner = null
+		ball.remove_child(sprite)
+		if enemy_data != null and enemy_data.body_tint != Color.WHITE:
+			sprite.modulate = enemy_data.body_tint
+		if sprite is AnimatedSprite2D:
+			(sprite as AnimatedSprite2D).play(&"projectile")
+	ball.free()
+	return sprite
 
 
 func _projectile_origin(dir: String) -> Vector2:

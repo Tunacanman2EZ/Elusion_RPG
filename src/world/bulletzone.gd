@@ -8,7 +8,10 @@
 # bigfield.tscn does not, so the Big Field fights exactly as before.
 #
 # WHAT A MONSTER DOES WITH IT: BulletZone.find(self), then one of the shapes
-# below - fire_fan(), fire_ring(), fire_chain(), fire_pincer(). A monster with
+# below - fire_fan(), fire_ring(), fire_chain(), fire_pincer(), fire_helix(),
+# fire_mortar(). A fan or a ring can SETTLE (0.25.0): given `stop_at`, its orbs
+# slow to a stop that far out and lie there as mines for SETTLE_LINGER
+# seconds, fading as they go (BulletField.spawn_settling). A monster with
 # no zone in its area (every area but the Field) gets null and fires its
 # ordinary projectile, so a monster script supports both with one branch.
 #
@@ -31,8 +34,11 @@
 #                   spot at the same moment                  firesprite.gd
 #   Electric Sprite its electric orb, leading a chain of 5   electricsprite.gd
 #   Poison Slime    small: its arrow between a twin; large: its acid ball in
-#                   a spray of 5 big orbs, and a ring of 12 as it splits
-#                                                            poisonslime.gd
+#                   a spray of 5 big orbs that settle where you stood, and
+#                   every other shot a MORTAR - the acid ball lobbed onto
+#                   your spot, bursting into a crater of 8 settled orbs and
+#                   leaving its puddle (BulletLob, 0.25.0); and a ring of 12
+#                   as it splits                             poisonslime.gd
 #
 # THE PLAYER IT HURTS is this game's own (the first node in group "player").
 # The hitbox is HITBOX_RADIUS around Targets.body_point() - the body, where
@@ -72,6 +78,8 @@ const CHIP_MERCY: float = 0.1
 const HITBOX_RADIUS: float = 3.0
 # An orb lives this long at most; walls and the floor's edge end most sooner.
 const LIFE: float = 6.0
+# A settled orb lies on the floor this long once it has stopped (0.25.0).
+const SETTLE_LINGER: float = 3.0
 # Drawn above the y-sorted world (monsters, players, props): a bullet behind a
 # tree is a bullet nobody saw.
 const DRAWN_ABOVE: int = 20
@@ -141,23 +149,31 @@ static func share_of(damage: int, share: float) -> int:
 
 
 func fire_fan(origin: Vector2, aim: float, count: int, spread: float, speed: float,
-		damage: int, element: int, big: bool = false) -> void:
-	"""`count` orbs spread evenly across `spread` radians, centred on `aim`."""
+		damage: int, element: int, big: bool = false, stop_at: float = 0.0) -> void:
+	"""`count` orbs spread evenly across `spread` radians, centred on `aim`.
+	Given `stop_at`, they settle that far out (see the header)."""
 	var colour: Color = shot_colour(element)
 	for k in count:
 		var share: float = 0.0 if count <= 1 else float(k) / float(count - 1) - 0.5
-		field.spawn(origin, aim + share * spread, speed, colour, big, 0.0, 0.0, LIFE,
-			damage, element)
+		_spawn_one(origin, aim + share * spread, speed, colour, big, damage, element, stop_at)
 
 
 func fire_ring(origin: Vector2, aim: float, count: int, speed: float, damage: int,
-		element: int, big: bool = false) -> void:
+		element: int, big: bool = false, stop_at: float = 0.0) -> void:
 	"""`count` orbs evenly round a circle, one of them along `aim`: a player
-	who stands still in front of the caster meets that one."""
+	who stands still in front of the caster meets that one. Given `stop_at`,
+	they settle into a ring that far out."""
 	var colour: Color = shot_colour(element)
 	for k in count:
-		field.spawn(origin, aim + TAU * k / maxi(count, 1), speed, colour, big, 0.0, 0.0, LIFE,
-			damage, element)
+		_spawn_one(origin, aim + TAU * k / maxi(count, 1), speed, colour, big, damage, element, stop_at)
+
+
+func _spawn_one(origin: Vector2, angle: float, speed: float, colour: Color, big: bool,
+		damage: int, element: int, stop_at: float) -> void:
+	if stop_at > 0.0:
+		field.spawn_settling(origin, angle, speed, colour, stop_at, SETTLE_LINGER, damage, element, big)
+	else:
+		field.spawn(origin, angle, speed, colour, big, 0.0, 0.0, LIFE, damage, element)
 
 
 func fire_chain(origin: Vector2, aim: float, count: int, slowest: float, fastest: float,
@@ -204,6 +220,32 @@ func fire_helix(origin: Vector2, aim: float, speed: float, count: int, width: fl
 	for k in count:
 		field.spawn_swaying(origin, aim, speed, colour, width, 0.0, rate, PI * 2.0 * k / maxi(count, 1),
 			damage, element, LIFE)
+
+
+func fire_mortar(origin: Vector2, aim: float, reach: float, flight: float, art: Node2D,
+		impact: int, ring: int, ring_speed: float, crater: float, ring_damage: int,
+		element: int, puddle: PackedScene = null) -> BulletLob:
+	"""A lob (bulletlob.gd): `art` thrown from `origin` over everything to the
+	spot `reach` px along `aim`, landing `flight` seconds later. There it hits
+	for `impact`, bursts into `ring` orbs that settle `crater` px out, each
+	`ring_damage`, and leaves `puddle`. The spot is marked from the start."""
+	var lob: BulletLob = BulletLob.new()
+	lob.name = "lob"
+	lob.zone = self
+	lob.from = origin
+	lob.to = origin + Vector2.from_angle(aim) * maxf(reach, 0.0)
+	lob.aim = aim
+	lob.flight = maxf(flight, 0.05)
+	lob.art = art
+	lob.element = element
+	lob.impact_damage = impact
+	lob.ring = ring
+	lob.ring_speed = ring_speed
+	lob.crater = crater
+	lob.ring_damage = ring_damage
+	lob.puddle = puddle
+	add_child(lob)
+	return lob
 
 
 static func pincer_time(reach: float, offsets: Array[float], speed: float) -> float:
