@@ -5100,14 +5100,22 @@ existing Field, not a copy. Step 1 is the Bush Snipers.
   centred on 0) drew every orb and the real Field, 900 px from 0, drew none.
   `bounds` sets `custom_aabb`. Both of these only showed up by looking at a
   frame of the real Field - the suite passed either way until it checked.
-- **The hitbox is the body**, `Targets.body_point()` with a 3 px radius,
+- **The hitbox is the body**, `Targets.body_point()` with a 6 px radius (3
+  until 0.25.3, when an orb could cross the middle of a sprite and miss),
   where every monster aims and what the walls stop - not the hurtbox, which
   the warrior carries 10 px higher. Damage goes through `take_damage()`, so
   armour, resistance, numbers and defense XP are what any hit gets.
-- **Chip mercy.** After an orb lands, orbs pass through for `CHIP_MERCY`
-  (0.1 s since 0.23.1, the owner's "more hits"; 0.2 before); several
-  touching in one frame are all spent and the strongest
-  lands. A dying player is not hit.
+- **Every orb that reaches you lands (0.25.3).** Until then, after one
+  landed the rest passed through for `CHIP_MERCY` (0.2 s, then 0.1 s at
+  0.23.1), and of several touching in one frame only the strongest landed.
+  The owner, the third time: "i still want more projectiles to hit
+  player". `CHIP_MERCY` is 0 and kept as the knob; above 0 it only passes
+  through the frames after a hit. Each orb is its own `take_damage()`, so
+  each is armoured, resisted and numbered. A dying player is not hit.
+  Measured in the Field, a warrior among two snipers, a fire sprite, an
+  electric sprite, a large slime and a mage for 25 s: standing still, 148
+  hits became 294 (3,998 damage to 7,555); walking up and down, 43 became
+  80.
 - **Walls** are 8 px cells, solid where a point query on layer 1 finds a
   body (what the game's arrows stop on), built 12 rows a frame after loading
   (the whole Field is 200 x 164 cells, about 20 ms if done at once), and
@@ -5218,9 +5226,11 @@ beat all of them.
 - **The two shots take turns** (`_mortar_next`, the leader's), the spray first.
   The mortar is `"v": "mortar"` on the wire, and both carry `"r"`, held on
   every screen to `MORTAR_REACH_MAX` / `SPRAY_REACH_MIN..MAX`.
-- **A player standing in the impact meets the ring too**, at the same instant:
-  every orb that touches in one frame is spent and only the strongest lands
-  (the acid ball), so the crater forms round whoever moved.
+- **The ring leaves from 12 px out** (`BulletLob.RING_STARTS_OUT`), past the
+  impact's reach on a player at the spot. Since 0.25.3 every orb that
+  reaches you lands, and a ring born on the spot added eight hits to the
+  acid ball (watched: 55 and eight 19s). The spot is the ball's; the
+  crater is for whoever was near it.
 - **Recorded in the real Field** with two large slimes: the sprays settle in a
   wall across the player's spot, and each mortar leaves a ring of mines round
   a puddle.

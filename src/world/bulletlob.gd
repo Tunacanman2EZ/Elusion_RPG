@@ -39,6 +39,10 @@ const RISE_SHARE: float = 0.3
 const RISE_LEAST: float = 28.0
 # The art is drawn up to (1 + ART_GROWS) times its size at the top of the arc.
 const ART_GROWS: float = 1.0
+# Where the crater's ring starts: past the impact orb's reach on a player at the
+# spot (BulletField.BIG_RADIUS + BulletZone.HITBOX_RADIUS, 11.5) and past what a
+# ring orb of its own would reach from the middle.
+const RING_STARTS_OUT: float = 12.0
 
 var zone: BulletZone = null
 var from: Vector2 = Vector2.ZERO
@@ -118,7 +122,11 @@ func land() -> void:
 	if zone != null and is_instance_valid(zone):
 		zone.field.spawn(to, aim, 0.0, BulletZone.shot_colour(element), true, 0.0, 0.0, IMPACT_LIFE,
 			impact_damage, element)
-		zone.fire_ring(to, aim, ring, ring_speed, ring_damage, element, false, crater)
+		# THE RING LEAVES FROM JUST OUTSIDE THE IMPACT'S REACH (0.25.3). Every
+		# orb that reaches a player lands now, so a ring born on the spot would
+		# hit a player standing there eight more times on top of the impact. The
+		# spot is the acid ball's; the crater is for whoever was near it.
+		zone.fire_ring(to, aim, ring, ring_speed, ring_damage, element, false, crater, RING_STARTS_OUT)
 	_leave_puddle()
 	queue_free()
 

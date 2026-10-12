@@ -45,17 +45,25 @@
 # every monster aims and what the walls stop - not the hurtbox, which sits
 # somewhere else for every class (the warrior's is 10 px above its body). A
 # fan aimed at the body and judged at the hurtbox would sail under a player
-# standing still. Small on purpose: a bullet hell is fair when what has to
-# miss is smaller than what you see.
+# standing still. Smaller than what you see, on purpose - a bullet hell is fair
+# when what has to miss is smaller than the picture - but not by much: 3 px
+# until 0.25.3, when an orb could cross the middle of a character's sprite and
+# miss, and the owner still wanted "more projectiles to hit player". 6 is about
+# the width of a body's middle.
 #
 # Damage goes through player.take_damage(), so armour, the defense tier, the
 # element's resistance, the floating number and the defense XP are all exactly
 # what any other hit gets.
 #
-# CHIP DAMAGE AND MERCY. Orbs are small hits meant to be dodged in numbers, so
-# after one lands every orb passes through for CHIP_MERCY seconds. Without it a
-# fan arriving together would land all of its orbs in one frame. Several orbs
-# touching in the same frame are all spent, and only the strongest lands.
+# EVERY ORB THAT REACHES YOU LANDS (0.25.3). Orbs are small hits - a share of
+# the shot each - so a fan that arrives together is several of them, as the
+# monster's own shot always was. Until 0.25.3 one hit made every orb pass
+# through for CHIP_MERCY seconds (0.2, then 0.1), and of several touching in
+# one frame only the strongest landed; the owner, three times: "i want more
+# hits to hit player", "0.1 seconds then", "i still want more projectiles to
+# hit player". CHIP_MERCY is 0 now and kept as the knob: above 0, every orb
+# touching in the frame of a hit still lands, and only the frames after it are
+# passed through.
 #
 # THE WALLS are a grid of 8-pixel cells, solid where a physics point query on
 # layer 1 ("ground", which holds the tile walls and solid props, and which the
@@ -72,10 +80,9 @@ const GROUP: StringName = &"bulletzone"
 const WALL_CELL: float = 8.0
 const WALL_MASK: int = 1
 const WALL_ROWS_PER_FRAME: int = 12
-# 0.2 until 0.23.1; the owner, 12 Oct: "i want more hits to hit player" - "0.1
-# seconds then".
-const CHIP_MERCY: float = 0.1
-const HITBOX_RADIUS: float = 3.0
+# 0.2 until 0.23.1, 0.1 until 0.25.3 - see the header.
+const CHIP_MERCY: float = 0.0
+const HITBOX_RADIUS: float = 6.0
 # An orb lives this long at most; walls and the floor's edge end most sooner.
 const LIFE: float = 6.0
 # A settled orb lies on the floor this long once it has stopped (0.25.0).
@@ -159,13 +166,17 @@ func fire_fan(origin: Vector2, aim: float, count: int, spread: float, speed: flo
 
 
 func fire_ring(origin: Vector2, aim: float, count: int, speed: float, damage: int,
-		element: int, big: bool = false, stop_at: float = 0.0) -> void:
+		element: int, big: bool = false, stop_at: float = 0.0, start_out: float = 0.0) -> void:
 	"""`count` orbs evenly round a circle, one of them along `aim`: a player
 	who stands still in front of the caster meets that one. Given `stop_at`,
-	they settle into a ring that far out."""
+	they settle into a ring that far out. Given `start_out`, they leave from a
+	circle that wide rather than from the point itself."""
 	var colour: Color = shot_colour(element)
 	for k in count:
-		_spawn_one(origin, aim + TAU * k / maxi(count, 1), speed, colour, big, damage, element, stop_at)
+		var angle: float = aim + TAU * k / maxi(count, 1)
+		var settle: float = maxf(stop_at - start_out, 1.0) if stop_at > 0.0 else 0.0
+		_spawn_one(origin + Vector2.from_angle(angle) * start_out, angle, speed, colour, big, damage,
+			element, settle)
 
 
 func _spawn_one(origin: Vector2, angle: float, speed: float, colour: Color, big: bool,
@@ -272,12 +283,13 @@ func _process(delta: float) -> void:
 	field.step(delta, at, HITBOX_RADIUS, 0.0, untouchable)
 	if field.hits.is_empty() or player == null or not player.has_method(&"take_damage"):
 		return
-	var worst: Vector2i = field.hits[0]
+	if CHIP_MERCY > 0.0:
+		_mercy_until_ms = Time.get_ticks_msec() + int(CHIP_MERCY * 1000.0)
+	# Each its own hit, so each is armoured, resisted and numbered on its own.
 	for hit in field.hits:
-		if hit.x > worst.x:
-			worst = hit
-	_mercy_until_ms = Time.get_ticks_msec() + int(CHIP_MERCY * 1000.0)
-	player.call(&"take_damage", maxi(worst.x, 1), worst.y)
+		if bool(player.get("is_dying")):
+			break
+		player.call(&"take_damage", maxi(hit.x, 1), hit.y)
 
 
 func _floor_rect() -> Rect2:

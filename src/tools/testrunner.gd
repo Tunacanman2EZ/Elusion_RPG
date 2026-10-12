@@ -24703,8 +24703,9 @@ func _test_the_bullet_zone() -> void:
 		drawer != null and drawer.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF
 		and not drawer.is_physics_interpolated())
 	drawn.queue_free()
-	check("after a hit, orbs pass through for a tenth of a second - the owner's \"more hits\" (0.23.1)",
-		is_equal_approx(BulletZone.CHIP_MERCY, 0.1), BulletZone.CHIP_MERCY)
+	check("no orb passes through after a hit any more, and the hitbox is 6 px - the owner's \"more projectiles to hit player\" (0.25.3)",
+		is_zero_approx(BulletZone.CHIP_MERCY) and is_equal_approx(BulletZone.HITBOX_RADIUS, 6.0),
+		[BulletZone.CHIP_MERCY, BulletZone.HITBOX_RADIUS])
 	var culled := BulletField.new()
 	add_child(culled)
 	culled.bounds = Rect2(-64, 600, 1600, 700)
@@ -24834,20 +24835,24 @@ func _test_the_bullet_zone() -> void:
 	zone.field.spawn(body + Vector2(-2, 0), 0.0, 1.0, Color.RED, false, 0.0, 0.0, 6.0, 9, Element.Type.ICE)
 	zone.field.spawn(body + Vector2(2, 0), 0.0, 1.0, Color.RED, false, 0.0, 0.0, 6.0, 4, Element.Type.ICE)
 	zone._process(0.01)
-	check("orbs that reach the body hurt through take_damage, with the element: the strongest of a frame lands",
-		dummy.taken == [[9, Element.Type.ICE]], dummy.taken)
+	check("orbs that reach the body hurt through take_damage, with the element: every one of a frame lands (0.25.3)",
+		dummy.taken == [[9, Element.Type.ICE], [4, Element.Type.ICE]], dummy.taken)
 	check("  and every orb that touched is spent", zone.field.count == 0)
 	zone.field.spawn(body, 0.0, 1.0, Color.RED, false, 0.0, 0.0, 6.0, 9, Element.Type.ICE)
 	zone._process(0.01)
-	check("for a moment after a hit, orbs pass through (chip mercy)",
-		dummy.taken.size() == 1 and zone.field.count == 1, [dummy.taken, zone.field.count])
-	zone._mercy_until_ms = 0
+	check("the next orb lands at once - nothing passes through after a hit",
+		dummy.taken.size() == 3 and zone.field.count == 0, [dummy.taken, zone.field.count])
+	zone.field.spawn(body + Vector2(7, 0), 0.0, 0.0, Color.RED, false, 0.0, 0.0, 6.0, 2, 0)
+	zone.field.spawn(body + Vector2(0, -11), 0.0, 0.0, Color.RED, false, 0.0, 0.0, 6.0, 1, 0)
 	zone._process(0.01)
-	check("  then they land again", dummy.taken.size() == 2 and zone.field.count == 0, dummy.taken)
+	check("an orb across the middle of the body lands (7 px off; 3 px of hitbox let it by), one 11 px off does not",
+		dummy.taken.size() == 4 and int(dummy.taken[3][0]) == 2 and zone.field.count == 1,
+		[dummy.taken, zone.field.count])
+	zone.field.clear()
 	dummy.is_dying = true
 	zone.field.spawn(body, 0.0, 1.0, Color.RED, false, 0.0, 0.0, 6.0, 9, 0)
 	zone._process(0.01)
-	check("a dying player is not hit again", dummy.taken.size() == 2)
+	check("a dying player is not hit again", dummy.taken.size() == 4)
 	dummy.is_dying = false
 	zone.field.clear()
 

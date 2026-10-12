@@ -36,7 +36,8 @@ const ORB_RELEASE_FRAME := 5
 # THE CHAIN (0.23.0). In an area with a BulletZone - the Field - the sprite
 # looses five orbs down one line at rising speeds, so they leave as a clump and
 # arrive as a stretched bolt (BulletZone.fire_chain): one sidestep clears it,
-# standing still eats one every time the mercy runs out. Since 0.24.0 its own
+# standing still eats the lot (one at a time until 0.25.3, when the zone's
+# mercy went). Since 0.24.0 its own
 # electric orb flies at the head of the chain.
 const CHAIN_ORBS := 5
 const CHAIN_SLOWEST := 110.0
