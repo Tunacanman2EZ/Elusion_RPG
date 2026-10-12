@@ -40,6 +40,11 @@ const BALL_COLOUR := Color(0.7, 1.0, 0.6, 0.85)
 const GLOW_SECONDS := 0.35
 
 var aim: Vector2 = Vector2.RIGHT
+# The ring's size and colours, the constants above unless a ring is made for
+# something else - a monster's (threatring.gd, 0.28.0) is red and sized to it.
+var radii: Vector2 = RADII
+var ring_colour: Color = RING_COLOUR
+var ball_colour: Color = BALL_COLOUR
 var _glow: float = 0.0
 var _ball: Node2D = null
 
@@ -75,7 +80,7 @@ func fired() -> void:
 func ball_position() -> Vector2:
 	"""Where the ball is drawn, relative to the ring's centre: the point of the
 	ellipse at the aim's angle."""
-	return Vector2(aim.x * RADII.x, aim.y * RADII.y)
+	return Vector2(aim.x * radii.x, aim.y * radii.y)
 
 
 func _process(delta: float) -> void:
@@ -87,19 +92,19 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var lift: float = _glow / GLOW_SECONDS
-	var ring: Color = RING_COLOUR
-	ring.a = lerpf(RING_COLOUR.a, 0.6, lift)
+	var ring: Color = ring_colour
+	ring.a = lerpf(ring_colour.a, 0.6, lift)
 	# Points rather than a squashed circle, so the line is as thin across the
 	# top as down the sides.
 	var points := PackedVector2Array()
 	for k in 41:
 		var a: float = TAU * k / 40.0
-		points.append(Vector2(cos(a) * RADII.x, sin(a) * RADII.y))
+		points.append(Vector2(cos(a) * radii.x, sin(a) * radii.y))
 	draw_polyline(points, ring, 1.0)
 
 
 func _draw_ball() -> void:
 	var lift: float = _glow / GLOW_SECONDS
-	var ball: Color = BALL_COLOUR
-	ball.a = lerpf(BALL_COLOUR.a, 1.0, lift)
+	var ball: Color = ball_colour
+	ball.a = lerpf(ball_colour.a, 1.0, lift)
 	_ball.draw_circle(ball_position(), BALL_RADIUS + lift * 0.8, ball)

@@ -330,6 +330,7 @@ func _run_all() -> void:
 	await _test_bank_buttons_and_the_cooking_window()
 	await _test_the_fire_shows_the_fish_it_cooks()
 	_test_the_healer_aims_from_its_middle()
+	await _test_monsters_show_who_they_are_after()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -12110,6 +12111,108 @@ func _test_the_healer_aims_from_its_middle() -> void:
 	check("mage and tank aim at a point, not a direction, and carry no ring",
 		not _code_src("res://src/characters/mage.gd").contains("_add_aim_ring(")
 		and not _code_src("res://src/characters/tank.gd").contains("_add_aim_ring("))
+
+
+# =============================================================================
+# THE MONSTERS' THREAT RINGS (0.28.0)
+# =============================================================================
+
+func _test_monsters_show_who_they_are_after() -> void:
+	section("MONSTERS - a red ring round the feet, its dot on whoever the monster is after (0.28.0)")
+	# The owner: "i want the same ring for enemies but with a red dot and we
+	# will us detection to make the dot aim to the player".
+	var sniper: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	var ring: ThreatRing = ThreatRing.on(sniper)
+	var footprint: Node2D = sniper.get_node("bodyshape") as Node2D
+	check("a monster's ring is red, round its feet, and drawn under it",
+		sniper.get_child(0) == ring and ring.position.is_equal_approx(footprint.position + Vector2(0, ThreatRing.BELOW_FOOTPRINT))
+		and ring.ball_colour.r > 0.9 and ring.ball_colour.g < 0.3 and is_equal_approx(ring.radii.x, 18.0),
+		[ring.position, ring.radii, ring.ball_colour])
+	var boss: BaseEnemy = (load("res://scene/enemy/bossenemy.tscn") as PackedScene).instantiate()
+	var boss_ring: ThreatRing = ThreatRing.on(boss)
+	check("  sized to the monster: a boss's is wider than a sniper's",
+		boss_ring.radii.x > ring.radii.x + 4.0, [boss_ring.radii, ring.radii])
+	boss.free()
+	check("every monster puts one on as it is set up, and it flashes as an attack begins",
+		_func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _ready(").contains("_threat_ring = ThreatRing.on(self)")
+		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _trigger_attack(").contains("_threat_ring.fired()"))
+
+	# Not in the tree: the monster's own setup is navigation and a health bar.
+	# Out of the tree _ready() never ran, so its health is set here.
+	sniper.set_physics_process(true)
+	sniper.position = Vector2.ZERO
+	sniper.hp = sniper.max_hp
+	sniper.player = null
+	ring.visible = true
+	ring.refresh()
+	check("no one about, or no one after: no ring", not ring.visible, ring.visible)
+	# The stand-in player is in the tree (under this Node, so where it is is
+	# where it is drawn): out of it, its body's place is never worked out again
+	# once read.
+	var dummy := ZoneDummy.new()
+	add_child(dummy)
+	sniper.player = dummy
+	var body_of := func() -> Vector2: return (dummy.get_node("bodyshape") as Node2D).global_position
+	dummy.position = Vector2(-120, 0)
+	ring.refresh()
+	var toward: Vector2 = (body_of.call() as Vector2).normalized()
+	check("a player inside its reach: the ring shows, the dot on their body, full red",
+		ring.visible and ring.aim.is_equal_approx(toward) and ring.in_reach
+		and is_equal_approx(ring.ball_colour.a, ThreatRing.RED_BALL.a), [ring.visible, ring.aim, toward])
+	dummy.position = Vector2(0, sniper.attack_range + 60.0)
+	ring.refresh()
+	check("  chasing, out of its reach: still shown, the dot dimmed, and it follows",
+		ring.visible and not ring.in_reach and ring.ball_colour.a < ThreatRing.RED_BALL.a
+		and ring.aim.y > 0.99, [ring.in_reach, ring.aim])
+	dummy.position = Vector2(sniper.leash_range + 50.0, 0)
+	ring.refresh()
+	check("  past the distance it chases from: no ring - it has let them go", not ring.visible)
+	dummy.position = Vector2(-120, 0)
+	sniper.gated = true
+	ring.refresh()
+	var gated_hidden: bool = not ring.visible
+	sniper.gated = false
+	sniper.set_physics_process(false)
+	ring.refresh()
+	var frozen_hidden: bool = not ring.visible
+	sniper.set_physics_process(true)
+	sniper._death_resolved = true
+	ring.refresh()
+	check("  none behind a gate, while frozen (the welcome story) or once dead",
+		gated_hidden and frozen_hidden and not ring.visible, [gated_hidden, frozen_hidden, ring.visible])
+	sniper._death_resolved = false
+	ring.fired()
+	check("  and it brightens as an attack begins", ring.get("_glow") > 0.0)
+	dummy.free()
+	sniper.free()
+
+	# A FOLLOWER'S COPY has no target of its own: it points at the nearest.
+	var others: Array = get_tree().get_nodes_in_group(&"player")
+	for o in others:
+		o.remove_from_group(&"player")
+	var world := Node2D.new()
+	add_child(world)
+	var here := ZoneDummy.new()
+	here.position = Vector2(-61000, -61000)
+	here.add_to_group(&"player")
+	world.add_child(here)
+	var copy: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	copy.position = Vector2(-61100, -61000)
+	world.add_child(copy)
+	await get_tree().process_frame
+	copy.net_mirror = true
+	copy.player = null
+	var copy_ring: ThreatRing = copy.get_node_or_null(^"threatring") as ThreatRing
+	if copy_ring != null:
+		copy_ring.refresh()
+	check("a follower's copy of a monster points at the player nearest it",
+		copy_ring != null and copy_ring.target() == here and copy_ring.visible and copy_ring.aim.x > 0.9,
+		[copy_ring, copy_ring.target() if copy_ring else null])
+	world.queue_free()
+	for o in others:
+		if is_instance_valid(o):
+			o.add_to_group(&"player")
+	await get_tree().process_frame
 
 
 # =============================================================================

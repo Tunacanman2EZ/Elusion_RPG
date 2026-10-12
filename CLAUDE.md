@@ -5308,6 +5308,35 @@ with the circle around the character".
   y-sorted body so the ring draws first. It brightens on every swing. Mage and
   tank aim at a point, not a direction, and carry none.
 
+### Every monster shows who it is after: a red ring and dot (0.28.0)
+
+The owner: "i want the same ring for enemies but with a red dot and we will us
+detection to make the dot aim to the player".
+
+- **`ThreatRing`** (`src/enemies/threatring.gd`) extends `AimRing`, whose size
+  and colours became instance vars (`radii`, `ring_colour`, `ball_colour`) for
+  it. `BaseEnemy._ready()` puts one on every monster, bosses included
+  (`ThreatRing.on(self)`, first child so it draws under the monster), and
+  `_trigger_attack()` makes it flash. Sized from the monster's own shapes:
+  centred 4 px below `bodyshape`, as wide as the larger of that and the
+  hurtbox (1.8 x / 0.8 x the radius, at least 8).
+- **The detection is the monster's own.** The ball points at `player`, the
+  body BaseEnemy chases and shoots at (its `bodyshape`, `Targets.body_point`),
+  so in a group it shows which of you it picked. It shows only while that
+  target is within `leash_range`, measured as BaseEnemy measures it (origin to
+  origin) - past it the monster walks home - and not while gated, frozen
+  (`is_physics_processing()`, the welcome story) or dead. Dim (45%) while it
+  only chases; full red once you are inside its `attack_range`. A bush mage's
+  leash is 1,500, so its ring is up from far off: that is how far it chases.
+- **A follower's copy** (`net_mirror`) has no target of its own; its ring
+  points at the nearest player (`Targets.nearest`).
+- `_test_monsters_show_who_they_are_after` runs a darkbushsniper out of the
+  tree with a ZoneDummy target **in** the tree - out of it the dummy's body
+  position is cached after the first read and never moves. The sniper's `hp`
+  is set by hand, since its `_ready()` never ran. Dropping the ring from
+  `_ready()`, the leash check, the frozen check or the dimming each fails a
+  check.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

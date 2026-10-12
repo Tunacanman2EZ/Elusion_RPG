@@ -370,6 +370,8 @@ signal died
 # =============================================================================
 
 var hp: int
+# The red ring round the feet (threatring.gd), made in _ready().
+var _threat_ring: ThreatRing = null
 # WHO THIS MONSTER IS AFTER. A Node2D, not a CharacterBody2D, since 0.7.0: on
 # the game that runs an area's shared monsters it may be another player's
 # RemotePlayer picture (see targets.gd), which is drawn, not simulated. Anything
@@ -437,6 +439,10 @@ func _ready() -> void:
 	# enemies layer this enemy was just added to, and it needs get_rid() to
 	# exclude itself, which only exists once the node is in the tree.
 	_setup_separation()
+
+	# THE THREAT RING (0.28.0, threatring.gd): a red dot round the feet that
+	# points at whoever this monster is after.
+	_threat_ring = ThreatRing.on(self)
 
 	play_idle_animation("down")
 
@@ -1998,6 +2004,8 @@ func _trigger_attack() -> void:
 
 	attack_ready = false
 	is_attacking = true
+	if _threat_ring != null:
+		_threat_ring.fired()
 	if has_node("attacktimer"):
 		$attacktimer.start()
 	play_attack_animation(attack_direction)
