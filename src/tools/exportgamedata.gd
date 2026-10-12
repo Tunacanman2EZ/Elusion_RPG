@@ -1689,7 +1689,7 @@ func _export_combat(_items: Array) -> Dictionary:
 		"double_chance": 0.10,         # player.gd WEAPON_DOUBLE_CHANCE: a second meteor
 		"puddle_damage": 5,            # petbossprojectile.gd: the boss pet's poison puddle tick
 		"physics_ticks": 80,           # project.godot: a healer cannot fire between ticks
-		"agility_speed": 10,           # player.gd and tank.gd: speed + (agility - 1) * 10
+		"agility_speed": PlayerStats.AGILITY_SPEED_PER_LEVEL,  # player.gd and tank.gd: speed + (agility - 1) * it
 	}
 
 

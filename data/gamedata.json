@@ -1445,7 +1445,7 @@
 	],
 	"combat": {
 		"agility_cap": 2.0,
-		"agility_speed": 10,
+		"agility_speed": 1,
 		"agility_step": 0.01,
 		"classes": {
 			"healer": {
@@ -1521,7 +1521,7 @@
 		"physics_ticks": 80,
 		"puddle_damage": 5,
 		"skill_step": 0.01,
-		"sprint": 2.0,
+		"sprint": 1.5,
 		"weapon_attacks": {
 			"doubleaxe": "SPINNING_AXE",
 			"dynamite": "DYNAMITE",

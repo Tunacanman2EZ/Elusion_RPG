@@ -19120,8 +19120,17 @@ func _test_combat_bounds_match_the_game() -> void:
 	check("  and _ready() walks it at that speed, not a number of its own",
 		scripts.values().all(func(path: String) -> bool: return _code_src(path).contains("speed = CLASS_SPEED")))
 	check("agility adds the same to a walk as exported, in both places a walk is worked out",
-		_code_src("res://src/characters/player.gd").contains("speed + (agility - 1) * %d" % int(combat.get("agility_speed", -1)))
-		and _code_src("res://src/characters/tank.gd").contains("speed + (agility - 1) * %d" % int(combat.get("agility_speed", -1))))
+		int(combat.get("agility_speed", -1)) == PlayerStats.AGILITY_SPEED_PER_LEVEL
+		and _code_src("res://src/characters/player.gd").contains("speed + (agility - 1) * PlayerStats.AGILITY_SPEED_PER_LEVEL")
+		and _code_src("res://src/characters/tank.gd").contains("speed + (agility - 1) * PlayerStats.AGILITY_SPEED_PER_LEVEL"),
+		combat.get("agility_speed"))
+	# 0.25.1, the owner: "at level 99 max speed chars are way too fast
+	# especially with the option to run" - 1,180 px/s walking, 2,360 running.
+	var warrior_speed: int = int((load(scripts["warrior"]) as GDScript).get_script_constant_map().get("CLASS_SPEED", 0))
+	var top_walk: float = warrior_speed + 98 * float(combat.get("agility_speed", 0))
+	var top_run: float = top_walk * float(combat.get("sprint", 0.0))
+	check("a level-99 warrior, the fastest, walks 298 px/s and runs 447 - not 1,180 and 2,360 (0.25.1)",
+		is_equal_approx(top_walk, 298.0) and is_equal_approx(top_run, 447.0), [top_walk, top_run])
 	check("the skill, agility, pet and double-cast numbers are the game's",
 		is_equal_approx(float(combat.get("skill_step", -1)), PlayerStats.ATTACK_DAMAGE_PERCENT_PER_LEVEL)
 		and is_equal_approx(float(combat.get("skill_step", -1)), PlayerStats.MAGIC_DAMAGE_PERCENT_PER_LEVEL)

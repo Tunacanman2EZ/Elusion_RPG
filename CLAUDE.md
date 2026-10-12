@@ -5200,6 +5200,28 @@ beat all of them.
   player who stayed, the turns; the leader's "r" and "v": "mortar"; the
   follower's lob and its range, and its spray settling at the leader's "r".
 
+### How fast a character moves (0.25.1)
+
+A walk is `speed + (agility - 1) * PlayerStats.AGILITY_SPEED_PER_LEVEL`
+(player.gd, and tank.gd's own copy), where `speed` is the class's
+`CLASS_SPEED` (warrior 200, mage 165, tank 160, healer 140); sprinting
+multiplies it by `sprint_speed_multiplier`.
+
+- **1 a level and 1.5x since 0.25.1; 10 and 2x before.** The owner: "at level
+  99 max speed chars are way too fast especially with the option to run". A
+  level-99 warrior walked 1,180 px/s and sprinted 2,360, past every orb in the
+  Field; now 298 and 447. Every class at 99 is about half again its agility-1
+  speed.
+- **Both numbers are the server's too.** `"agility_speed"` and `"sprint"` in
+  gamedata.json are what the presence server's combat book judges a walk
+  against (gamedata.py `combat_bounds()`), so a change goes through the
+  exporter and the API's copy of gamedata.json. A server still holding the old
+  numbers only judges more loosely, never wrongly.
+- Agility XP for ground covered is per 1,000 px, so a slower walk trains it a
+  little slower at high levels; the sprint's per-second XP is unchanged.
+- Tests: the export agrees with the code in both places a walk is worked out,
+  and a level-99 warrior walks 298 and runs 447.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

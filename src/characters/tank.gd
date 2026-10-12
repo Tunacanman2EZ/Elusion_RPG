@@ -355,7 +355,7 @@ func _handle_moving(direction: Vector2, delta: float) -> void:
 	_is_sprinting = wants_sprint
 
 	# compute target velocity, then lerp toward it for smooth heavy-class feel
-	var base_speed:   float = speed + (agility - 1) * 10
+	var base_speed:   float = speed + (agility - 1) * PlayerStats.AGILITY_SPEED_PER_LEVEL
 	var actual_speed: float = base_speed * sprint_speed_multiplier if _is_sprinting else base_speed
 	velocity = velocity.lerp(direction.normalized() * actual_speed, 0.3)
 

@@ -214,6 +214,27 @@ static func armour_reduction(armour_value: int) -> float:
 
 
 # =============================================================================
+# AGILITY ADDS A LITTLE TO HOW FAST YOU MOVE
+# =============================================================================
+# px/s a level of agility adds to a walk: speed + (agility - 1) * this, in
+# player.gd and tank.gd, and sprinting multiplies the sum (player.gd's
+# sprint_speed_multiplier).
+#
+# 1 SINCE 0.25.1; 10 BEFORE. Ten a level doubled a class's own 140-200 px/s by
+# agility 21 and multiplied it six times over by 99: a level-99 warrior walked
+# 1,180 px/s and sprinted 2,360, past every orb in the Field (65-170 px/s) and
+# across the screen in half a second. The owner, 12 Oct: "at level 99 max speed
+# chars are way too fast especially with the option to run". One a level is
+# +98 at 99 - a warrior walks 298 and sprints 447 (sprint 1.5 since the same
+# day, 2.0 before) - still half again as fast as at agility 1.
+#
+# The server judges a walk against the same sum (gamedata.py's
+# combat_bounds(), from "agility_speed" and "sprint" in gamedata.json), so a
+# change here goes out through the exporter like every other shared number.
+const AGILITY_SPEED_PER_LEVEL: int = 1
+
+
+# =============================================================================
 # AGILITY DRIVES ATTACK SPEED
 # =============================================================================
 # Agility used to do exactly one thing: move_speed = speed + (agility-1)*10. It

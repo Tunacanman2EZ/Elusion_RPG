@@ -194,8 +194,10 @@ var cooking: int = 1;  var cooking_xp: int = 0;  var cooking_xp_next: int = 100
 # electric sprite keeps its identity as the one enemy that can run you down;
 # everything else can be walked away from.
 #
-# The real speed is this plus (agility - 1) * 10. That term used to be
-# decorative — see the agility block in _handle_movement() for why.
+# The real speed is this plus (agility - 1) * PlayerStats.AGILITY_SPEED_PER_LEVEL
+# (1 a level since 0.25.1, 10 before - playerstats.gd says why). That term used
+# to be decorative — see the agility block in _handle_movement() for why.
+# Each class sets its own (CLASS_SPEED, 140-200) in _ready().
 @export var speed := 90
 var last_direction := Vector2.DOWN
 var is_attacking := false
@@ -259,7 +261,9 @@ var is_attacking := false
 # SPRINT
 # =============================================================================
 
-@export var sprint_speed_multiplier: float = 2.0
+# 1.5 since 0.25.1; 2.0 doubled a level-99 walk into 2,360 px/s (see
+# PlayerStats.AGILITY_SPEED_PER_LEVEL).
+@export var sprint_speed_multiplier: float = 1.5
 @export var sprint_stamina_drain_per_sec: float = 15.0
 # NEW: agility XP granted per second of actual sprinting. universal here
 # (not warrior-specific) since sprinting itself is shared base-class
@@ -664,7 +668,7 @@ func _physics_process(_delta):
 		var wants_sprint: bool = Input.is_action_pressed("sprint") and stamina > 0
 		_is_sprinting = wants_sprint
 
-		var base_speed: float = speed + (agility - 1) * 10
+		var base_speed: float = speed + (agility - 1) * PlayerStats.AGILITY_SPEED_PER_LEVEL
 		var actual_speed: float = base_speed * sprint_speed_multiplier if _is_sprinting else base_speed
 		velocity = direction.normalized() * actual_speed
 
