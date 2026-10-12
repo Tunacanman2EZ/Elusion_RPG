@@ -144,7 +144,18 @@ func _ready() -> void:
 	drawer.texture = orb_texture()
 	drawer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	drawer.material = shading
+	# NOT PHYSICS-INTERPOLATED. The project interpolates physics, and on the
+	# desktop renderer a MultiMesh under an interpolated node is blended between
+	# buffers set on physics ticks - so a buffer set every rendered frame, from
+	# _process, drew orbs blended toward a stale copy and logged, the first time
+	# the owner played the Field from the editor (12 Oct):
+	#   "[Physics interpolation] MultiMesh interpolation is being triggered from
+	#    outside physics process, this might lead to issues (possibly benign)."
+	# The orbs are moved every frame, so there is nothing to blend: off on the
+	# node, and off on the MultiMesh itself.
+	drawer.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(drawer)
+	RenderingServer.multimesh_set_physics_interpolated(_multimesh.get_rid(), false)
 
 
 func _fit_culling() -> void:

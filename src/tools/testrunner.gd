@@ -24447,6 +24447,15 @@ func _test_the_bullet_zone() -> void:
 		_root_property("res://scene/bigfield.tscn", &"bullet_zone") != true)
 	check("orbs are drawn unshaded, so the crypt's CanvasModulate cannot swallow them",
 		BulletField.SHADER_CODE.contains("render_mode unshaded"))
+	var drawn := BulletField.new()
+	add_child(drawn)
+	var drawer: MultiMeshInstance2D = drawn.get_node_or_null(^"bullets") as MultiMeshInstance2D
+	check("orbs are not physics-interpolated: they move every frame, and the editor warned (0.23.1)",
+		drawer != null and drawer.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF
+		and not drawer.is_physics_interpolated())
+	drawn.queue_free()
+	check("after a hit, orbs pass through for a tenth of a second - the owner's \"more hits\" (0.23.1)",
+		is_equal_approx(BulletZone.CHIP_MERCY, 0.1), BulletZone.CHIP_MERCY)
 	var culled := BulletField.new()
 	add_child(culled)
 	culled.bounds = Rect2(-64, 600, 1600, 700)

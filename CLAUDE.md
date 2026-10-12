@@ -5057,6 +5057,13 @@ existing Field, not a copy. Step 1 is the Bush Snipers.
 - **Unshaded, or invisible.** The Field sits under a CanvasModulate of
   (0.28, 0.3, 0.4). An orb drawn like everything else measured (71, 77, 102)
   at its white core; `render_mode unshaded` measured (255, 255, 255).
+- **Not physics-interpolated (0.23.1).** The project interpolates physics,
+  and on the desktop renderer an interpolated MultiMesh blends between
+  buffers set on physics ticks; the orbs' buffer is set every frame from
+  `_process`, which logged "MultiMesh interpolation is being triggered from
+  outside physics process" in the editor. Off on the drawing node and on the
+  MultiMesh (`RenderingServer.multimesh_set_physics_interpolated`). The
+  browser build's renderer never showed it, nor did the suite.
 - **And told where it is.** A MultiMeshInstance2D is culled by its mesh's
   box, which left alone sat around the world origin: the preview (an arena
   centred on 0) drew every orb and the real Field, 900 px from 0, drew none.
@@ -5067,7 +5074,8 @@ existing Field, not a copy. Step 1 is the Bush Snipers.
   the warrior carries 10 px higher. Damage goes through `take_damage()`, so
   armour, resistance, numbers and defense XP are what any hit gets.
 - **Chip mercy.** After an orb lands, orbs pass through for `CHIP_MERCY`
-  (0.2 s); several touching in one frame are all spent and the strongest
+  (0.1 s since 0.23.1, the owner's "more hits"; 0.2 before); several
+  touching in one frame are all spent and the strongest
   lands. A dying player is not hit.
 - **Walls** are 8 px cells, solid where a point query on layer 1 finds a
   body (what the game's arrows stop on), built 12 rows a frame after loading

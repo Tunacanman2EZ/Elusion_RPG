@@ -48,7 +48,10 @@ const DASH_SPEED: float = 330.0
 const DASH_SECONDS: float = 0.16
 const DASH_UNTOUCHABLE: float = 0.24
 const DASH_COOLDOWN: float = 0.9
-const HIT_UNTOUCHABLE: float = 1.0
+# After a hit, how long bullets pass through. The owner, 12 Oct: "i want more
+# hits to hit player reduce the time to 0.50 sec" - it was 1.0. The Field
+# itself uses BulletZone.CHIP_MERCY (0.1 since 0.23.1).
+const HIT_UNTOUCHABLE: float = 0.5
 
 # The player's hitbox: a few pixels at the chest, about the size of the real
 # hurtbox (warrior.tscn's capsule is 3 wide), drawn when focusing.

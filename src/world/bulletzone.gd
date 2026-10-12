@@ -61,7 +61,9 @@ const GROUP: StringName = &"bulletzone"
 const WALL_CELL: float = 8.0
 const WALL_MASK: int = 1
 const WALL_ROWS_PER_FRAME: int = 12
-const CHIP_MERCY: float = 0.2
+# 0.2 until 0.23.1; the owner, 12 Oct: "i want more hits to hit player" - "0.1
+# seconds then".
+const CHIP_MERCY: float = 0.1
 const HITBOX_RADIUS: float = 3.0
 # An orb lives this long at most; walls and the floor's edge end most sooner.
 const LIFE: float = 6.0
