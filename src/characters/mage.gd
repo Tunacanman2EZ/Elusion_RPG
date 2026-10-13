@@ -144,6 +144,17 @@ func _ready() -> void:
 	# from level, and fills resources to full. no manual stat block needed.
 	super._ready()
 
+	# THE AIM RING (player.gd, 0.33.0): "meant mage and tank just aim ring".
+	_add_aim_ring()
+
+
+func aim_ring_feet() -> Vector2:
+	# The aim ring (player.gd): the hem of the mage's robe is at its origin
+	# (0 facing down or up, 1 px above facing across), and the ring sits a pixel
+	# above it. The picture is placed 19 px up, so the ring is placed there and
+	# drawn down here (aimring.gd).
+	return Vector2(0.0, -1.0)
+
 
 func _physics_process(delta: float) -> void:
 	# parent handles movement (WASD), attack dispatch from BOTH spacebar and
@@ -155,6 +166,9 @@ func _physics_process(delta: float) -> void:
 	# _cast_stalagmite_drop() guards on it itself, which is what made this
 	# second check redundant.
 	super._physics_process(delta)
+	# The ball points at where the next spell comes down: the cursor, for the
+	# stalagmite and the meteor alike.
+	_point_aim_ring_at(get_global_mouse_position())
 
 
 # =============================================================================
@@ -227,6 +241,7 @@ func _cast_stalagmite_drop() -> void:
 		call_meteor(get_global_mouse_position())
 	else:
 		_spawn_stalagmite()
+	_aim_ring_fired()
 
 	# Cooldown unlocks casting after spell_cooldown seconds. This is the ONLY
 	# way is_casting clears — there is no animation_finished hook, because the

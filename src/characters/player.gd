@@ -1369,13 +1369,23 @@ var _right_click_was_held: bool = false
 # THE AIM RING (aimring.gd, 0.26.0)
 # =============================================================================
 # A ring on the floor round the feet with a ball where the next attack goes -
-# the owner's idea, for the healer first and then "add to warrior also". The
-# classes that aim at the cursor carry one: each calls _add_aim_ring() once it
-# is set up, says where its feet are (aim_ring_feet()), and points it every
-# frame with the same direction its attack will use (_point_aim_ring()).
-# Mage and tank aim at a POINT (a meteor, a stick of Dynamite), not a
-# direction, and have none.
+# the owner's idea, for the healer first and then "add to warrior also", and
+# since 0.33.0 every class ("meant mage and tank just aim ring"). Each calls
+# _add_aim_ring() once it is set up, says where its feet are (aim_ring_feet()),
+# and points it every frame:
+#   healer, warrior   _point_aim_ring(): the direction its shot or swing will
+#                     go, from where it leaves the body
+#   mage, tank        _point_aim_ring_at(): the POINT its attack lands on - the
+#                     spell at the cursor, the stick where it falls - seen
+#                     from the middle of the ring
 var _aim_ring: AimRing = null
+
+# How far above the picture a y-sorted body's ring is placed, so that it is
+# drawn first (aimring.gd, PLACED AT ONE HEIGHT, DRAWN AT ANOTHER).
+const AIM_RING_ABOVE_PICTURE := 0.5
+# A point this close to the middle of the ring (squared) has no direction:
+# the ball keeps the facing.
+const AIM_RING_DEAD_SQUARED := 1.0
 
 
 func aim_ring_feet() -> Vector2:
@@ -1384,13 +1394,41 @@ func aim_ring_feet() -> Vector2:
 	return Vector2.ZERO
 
 
+func aim_ring_radii() -> Vector2:
+	"""The ring's half-width and half-height. The tank's is its orange
+	ring's."""
+	return AimRing.RADII
+
+
+func aim_ring_has_line() -> bool:
+	"""Whether the ring draws a line of its own - not the tank's, whose ball
+	rides the orange ring it already wears."""
+	return true
+
+
+func aim_ring_placed_at(feet: Vector2) -> float:
+	"""The height the ring is placed at, for feet at `feet`. A y-sorted body
+	draws its children in order of height, so a ring lower than the picture
+	would be drawn over it: there it goes a hair above the picture, and is
+	drawn down at the feet. Anywhere else, at the feet."""
+	var picture: Node2D = get_node_or_null(^"animatedsprite2d") as Node2D
+	if not y_sort_enabled or picture == null:
+		return feet.y
+	return minf(feet.y, picture.position.y - AIM_RING_ABOVE_PICTURE)
+
+
 func _add_aim_ring() -> void:
 	"""The ring, as the first child so it draws under the sprite. Once."""
 	if _aim_ring != null:
 		return
+	var feet: Vector2 = aim_ring_feet()
+	var placed: float = aim_ring_placed_at(feet)
 	_aim_ring = AimRing.new()
 	_aim_ring.name = "aimring"
-	_aim_ring.position = aim_ring_feet()
+	_aim_ring.position = Vector2(feet.x, placed)
+	_aim_ring.drawn_at = Vector2(0.0, feet.y - placed)
+	_aim_ring.radii = aim_ring_radii()
+	_aim_ring.line = aim_ring_has_line()
 	add_child(_aim_ring)
 	move_child(_aim_ring, 0)
 
@@ -1402,6 +1440,16 @@ func _point_aim_ring(direction: Vector2) -> void:
 		return
 	_aim_ring.visible = not is_dying and bool(Settings.get_value("aim_rings"))
 	_aim_ring.point_at(direction)
+
+
+func _point_aim_ring_at(point: Vector2) -> void:
+	"""For a class whose attack lands ON a point: the ball on the line from
+	the middle of the ring to it, so that line runs through where the spell
+	or the stick comes down. A point on the middle keeps the facing."""
+	if _aim_ring == null:
+		return
+	var to_point: Vector2 = point - _aim_ring.centre()
+	_point_aim_ring(to_point if to_point.length_squared() > AIM_RING_DEAD_SQUARED else last_direction)
 
 
 func _aim_ring_fired() -> void:

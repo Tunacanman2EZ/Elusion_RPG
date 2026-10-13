@@ -177,6 +177,23 @@ var _ring_linger_left: float = 0.0
 
 
 # =============================================================================
+# THE AIM RING (player.gd, 0.33.0)
+# =============================================================================
+# The owner: "meant mage and tank just aim ring". The tank already wears an
+# orange ring at its feet - tank.tscn's "ring", smalltankring.png, always on;
+# not the aura's fire ring - so its ball rides that one, at its size, and the
+# aim ring draws no line of its own inside it.
+#
+# The orange ellipse, measured off the art in the frame's own pixels (each
+# 128 px frame, drawn centred): the middle of its 2 px line runs 31.5 px out
+# to each side and 16.5 up and down, round a point 0.5 right of and 19.5 below
+# the middle of the frame. Where the frame is drawn, and how big, is read off
+# the node, so moving the ring in the editor moves the ball's with it.
+const OWN_RING_FROM_FRAME_MIDDLE := Vector2(0.5, 19.5)
+const OWN_RING_HALF := Vector2(31.5, 16.5)
+
+
+# =============================================================================
 # AURA STATE
 # =============================================================================
 
@@ -232,6 +249,42 @@ func _ready() -> void:
 		_firering.play("firering")
 		_firering.visible = false
 
+	# THE AIM RING (player.gd, and above): "meant mage and tank just aim ring".
+	_add_aim_ring()
+
+
+func _own_ring() -> Node2D:
+	return get_node_or_null(^"ring") as Node2D
+
+
+func aim_ring_feet() -> Vector2:
+	# The aim ring (player.gd): the middle of the orange ring, which is round
+	# the tank's feet (their soles are 17 to 18 px above its origin).
+	var own: Node2D = _own_ring()
+	if own == null:
+		return Vector2(0.0, -16.0)
+	return own.position + OWN_RING_FROM_FRAME_MIDDLE * own.scale
+
+
+func aim_ring_radii() -> Vector2:
+	# The orange ring's half-width and half-height, as drawn.
+	var own: Node2D = _own_ring()
+	return OWN_RING_HALF * (own.scale if own != null else Vector2.ONE)
+
+
+func aim_ring_has_line() -> bool:
+	# The orange ring is the line.
+	return false
+
+
+func aim_ring_point() -> Vector2:
+	"""Where the ball points: where a stick would come down, with Dynamite on
+	- the cursor, or as far toward it as a throw goes; the cursor, without."""
+	var cursor: Vector2 = get_global_mouse_position()
+	if equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:
+		return dynamite_landing(cursor)
+	return cursor
+
 
 func _physics_process(delta: float) -> void:
 	# Sampled FIRST, before every early return below, because the edge
@@ -245,6 +298,9 @@ func _physics_process(delta: float) -> void:
 	# never instead of it - see player.gd's loop.
 	if attack_pressed and _typing_in_ui():
 		attack_pressed = false
+
+	# The ball, every frame - and none while dying (player.gd's _point_aim_ring()).
+	_point_aim_ring_at(aim_ring_point())
 
 	# block all input/movement during death sequence so the death animation
 	# can play through without being overwritten by walk/idle animations.
@@ -437,6 +493,7 @@ func _activate_aura() -> void:
 	ring_by_dynamite = false
 	aura_timer       = 0.0
 	mana_drain_timer = 0.0
+	_aim_ring_fired()
 
 	if _firering != null:
 		_firering.visible = true
@@ -473,11 +530,10 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 	_dynamite_cooldown_left = hasten(dynamite_cooldown)
 	_light_ring_by_dynamite()
 	Audio.play("dynamite_throw")
+	_aim_ring_fired()
 
-	var reach: Vector2 = aimed_at - global_position
-	if reach.length() > DYNAMITE_MAX_THROW:
-		reach = reach.normalized() * DYNAMITE_MAX_THROW
-	var landing: Vector2 = global_position + reach
+	var landing: Vector2 = dynamite_landing(aimed_at)
+	var reach: Vector2 = landing - global_position
 	# The line of the throw. A throw at the tank's own feet has none, so it is
 	# taken as thrown to the right.
 	var along: Vector2 = reach.normalized() if reach.length() > 0.5 else Vector2.RIGHT
@@ -499,6 +555,15 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 		var at: Vector2 = landing + along.rotated(TAU * i / count) * spread
 		thrown.append(_throw_stick(at, DYNAMITE_SECOND_DELAY * i))
 	return thrown
+
+
+func dynamite_landing(aimed_at: Vector2) -> Vector2:
+	"""Where a stick aimed at `aimed_at` comes down: there, or
+	DYNAMITE_MAX_THROW toward it. The aim ring's ball points here too."""
+	var reach: Vector2 = aimed_at - global_position
+	if reach.length() > DYNAMITE_MAX_THROW:
+		reach = reach.normalized() * DYNAMITE_MAX_THROW
+	return global_position + reach
 
 
 static func sticks_for(roll: float, barrage_chance: float, bundle_chance: float) -> int:

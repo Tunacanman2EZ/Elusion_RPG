@@ -12112,12 +12112,101 @@ func _test_the_healer_aims_from_its_middle() -> void:
 		and swing_body.contains("_aim_ring_fired()")
 		and frame_body.contains("_point_aim_ring(aim_direction_to(get_global_mouse_position()))"))
 	warrior.free()
-	check("both put the ring on as they are set up",
-		_func_body(_code_src("res://src/characters/warrior.gd"), "func _ready(").contains("_add_aim_ring()")
-		and _func_body(_code_src("res://src/characters/healer.gd"), "func _ready(").contains("_add_aim_ring()"))
-	check("mage and tank aim at a point, not a direction, and carry no ring",
-		not _code_src("res://src/characters/mage.gd").contains("_add_aim_ring(")
-		and not _code_src("res://src/characters/tank.gd").contains("_add_aim_ring("))
+	var putting_on: Array[String] = []
+	for kit in ["healer", "warrior", "mage", "tank"]:
+		if _func_body(_code_src("res://src/characters/%s.gd" % kit), "func _ready(").contains("_add_aim_ring()"):
+			putting_on.append(kit)
+	check("all four classes put the ring on as they are set up (the mage and the tank since 0.33.0)",
+		putting_on.size() == 4, putting_on)
+	_test_the_mage_and_tank_aim_rings()
+
+
+func _test_the_mage_and_tank_aim_rings() -> void:
+	# THE MAGE AND THE TANK (0.33.0) - the owner: "meant mage and tank just aim
+	# ring". Both attack a POINT, so the ball points at it from the middle of
+	# the ring. Both bodies are y-sorted with their pictures placed above their
+	# feet, so the ring is placed above the picture - drawn first - and drawn
+	# down at the feet.
+	var mage: Node2D = (load("res://scene/characters/mage.tscn") as PackedScene).instantiate()
+	mage.position = Vector2(300, 200)
+	mage.call("_add_aim_ring")
+	var mring: AimRing = mage.get_node_or_null(^"aimring") as AimRing
+	var mage_picture: Node2D = mage.get_node(^"animatedsprite2d") as Node2D
+	check("the mage carries the ring round the hem of its robe, a pixel above its origin",
+		mring != null and mage.get_child(0) == mring and mring.line
+		and (mring.position + mring.drawn_at).is_equal_approx(Vector2(0, -1)), mring)
+	if mring != null:
+		check("  placed just above its picture, where its y-sorted body draws it first - not over the robe",
+			mage.y_sort_enabled and mring.position.y < mage_picture.position.y
+			and mring.position.y > mage_picture.position.y - 1.0, [mring.position, mage_picture.position])
+		check("  and its middle, in the world, is where it is drawn",
+			mring.centre().is_equal_approx(Vector2(300, 199)), mring.centre())
+		mage.call("_point_aim_ring_at", Vector2(210, 199))
+		var left_ball: Vector2 = mring.ball_position()
+		mage.call("_point_aim_ring_at", Vector2(300, 260))
+		var down_ball: Vector2 = mring.ball_position()
+		check("  its ball points at where the spell comes down, seen from the middle of the ring",
+			left_ball.is_equal_approx(Vector2(-AimRing.RADII.x, 0)) and down_ball.is_equal_approx(Vector2(0, AimRing.RADII.y)),
+			[left_ball, down_ball])
+		mage.set("last_direction", Vector2.UP)
+		mage.call("_point_aim_ring_at", mring.centre())
+		check("  and a cursor on the middle of the ring keeps the facing",
+			mring.ball_position().is_equal_approx(Vector2(0, -AimRing.RADII.y)), mring.ball_position())
+	mage.free()
+	var mage_src: String = _code_src("res://src/characters/mage.gd")
+	check("  it follows the cursor every frame, and brightens as a stalagmite or a meteor is cast",
+		_func_body(mage_src, "func _physics_process(").contains("_point_aim_ring_at(get_global_mouse_position())")
+		and _func_body(mage_src, "func _cast_stalagmite_drop(").contains("_aim_ring_fired()"))
+
+	var tank: Node2D = (load("res://scene/characters/tank.tscn") as PackedScene).instantiate()
+	tank.position = Vector2(300, 200)
+	tank.call("_add_aim_ring")
+	var tring: AimRing = tank.get_node_or_null(^"aimring") as AimRing
+	var own: Node2D = tank.get_node(^"ring") as Node2D
+	var own_middle: Vector2 = own.position + tank.OWN_RING_FROM_FRAME_MIDDLE * own.scale
+	check("the tank's ball rides the orange ring it already wears: its middle, its size, and no second line",
+		tring != null and tank.get_child(0) == tring and not tring.line
+		and (tring.position + tring.drawn_at).is_equal_approx(own_middle)
+		and tring.radii.is_equal_approx(tank.OWN_RING_HALF * own.scale), tring)
+	if tring != null:
+		check("  placed above the tank's picture, as the mage's is",
+			tring.position.y < (tank.get_node(^"animatedsprite2d") as Node2D).position.y, tring.position)
+		# The orange ellipse measured off the art's first frame: the outer edge
+		# of its 2 px line along the middle row and the middle column.
+		var art: Image = (load("res://art/maincharacter/smalltankring.png") as Texture2D).get_image()
+		var frame_middle := Vector2i(64, 64)
+		var row: int = frame_middle.y + int(tank.OWN_RING_FROM_FRAME_MIDDLE.y)
+		var across: Array[int] = []
+		var down: Array[int] = []
+		for i in 128:
+			if art.get_pixel(i, row).a > 0.08:
+				across.append(i)
+			if art.get_pixel(frame_middle.x, i).a > 0.08:
+				down.append(i)
+		var outer := Rect2()
+		if not across.is_empty() and not down.is_empty():
+			var left: int = across[0]
+			var right: int = across[across.size() - 1] + 1
+			var top: int = down[0]
+			var bottom: int = down[down.size() - 1] + 1
+			outer = Rect2(left, top, right - left, bottom - top)
+		check("  the orange ring's size and middle are the art's",
+			(outer.get_center() - Vector2(frame_middle)).is_equal_approx(tank.OWN_RING_FROM_FRAME_MIDDLE)
+			and (outer.size / 2.0 - Vector2.ONE).is_equal_approx(tank.OWN_RING_HALF), outer)
+		tank.call("_point_aim_ring_at", tring.centre() + Vector2(0, 200))
+		check("  its ball points at the cursor: below, the near side of the orange ring",
+			tring.ball_position().is_equal_approx(Vector2(0, tring.radii.y)), tring.ball_position())
+		var far: Vector2 = tank.dynamite_landing(Vector2(300 + 1000, 200))
+		check("  and with Dynamite on, at where the stick comes down - as far toward the cursor as a throw goes",
+			far.is_equal_approx(Vector2(300 + tank.DYNAMITE_MAX_THROW, 200)), far)
+	tank.free()
+	var tank_src: String = _code_src("res://src/characters/tank.gd")
+	check("  it follows every frame, and brightens as a stick is thrown or the aura lit",
+		_func_body(tank_src, "func _physics_process(").contains("_point_aim_ring_at(aim_ring_point())")
+		and _func_body(tank_src, "func aim_ring_point(").contains("return dynamite_landing(cursor)")
+		and _func_body(tank_src, "func throw_dynamite(").contains("_aim_ring_fired()")
+		and _func_body(tank_src, "func throw_dynamite(").contains("var landing: Vector2 = dynamite_landing(aimed_at)")
+		and _func_body(tank_src, "func _activate_aura(").contains("_aim_ring_fired()"))
 
 
 # =============================================================================

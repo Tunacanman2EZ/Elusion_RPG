@@ -5306,7 +5306,22 @@ with the circle around the character".
   always did - now through `aim_direction_to()`, which the swing and the ring
   both read; its ring sits at (0, 12.5), a hair above the sprite in its
   y-sorted body so the ring draws first. It brightens on every swing. Mage and
-  tank aim at a point, not a direction, and carry none.
+  tank had none until 0.33.0 (below).
+- **The mage and the tank (0.33.0)** - the owner: "meant mage and tank just aim
+  ring". Both attack a POINT (the spell at the cursor; the stick where it
+  lands, `tank.dynamite_landing()`, up to 150 px toward the cursor), so they
+  point it with `_point_aim_ring_at(point)`: the ball on the line from the
+  middle of the ring to that point. Both bodies are y-sorted with the picture
+  placed well above the feet (mage 19 px), so a ring at the feet would draw
+  over the robe: `aim_ring_placed_at()` puts it a hair above the picture
+  (drawn first) and `AimRing.drawn_at` draws it down at the feet - mage
+  (0, -1). The tank already wears an orange ring at its feet (tank.tscn's
+  `ring`, smalltankring.png - not the aura's fire ring), so its ball rides
+  that one: `aim_ring_radii()` is its size, measured off the art
+  (`OWN_RING_HALF` 31.5 x 16.5 frame px round `OWN_RING_FROM_FRAME_MIDDLE`,
+  times the node's 0.9), and `aim_ring_has_line()` is false. It flashes on a
+  cast, a throw and the aura switched on. `_test_the_mage_and_tank_aim_rings`
+  measures the orange ellipse off the PNG, so redrawn art fails a check.
 
 ### Every monster shows who it is after: a red ring and dot (0.28.0)
 

@@ -26,6 +26,15 @@
 # UNSHADED, like the orbs (turretprojectile.gd, bulletfield.gd). Drawn like the
 # floor, the Field's dark CanvasModulate took it down to a grey smudge in the
 # first recording; an aid you cannot see is no aid.
+#
+# PLACED AT ONE HEIGHT, DRAWN AT ANOTHER (0.33.0, the mage's and the tank's -
+# the owner: "meant mage and tank just aim ring"). Those two bodies are
+# y-sorted: their children are drawn in order of height, not of the tree, and
+# their pictures are placed well above their feet (the mage's 19 px). A ring
+# placed at the feet would be drawn after the picture - over the robe. So it is
+# placed a hair above the picture, where it is drawn first, and drawn
+# `drawn_at` below that, round the feet. player.gd's _add_aim_ring() works the
+# two out.
 class_name AimRing
 extends Node2D
 
@@ -45,6 +54,12 @@ var aim: Vector2 = Vector2.RIGHT
 var radii: Vector2 = RADII
 var ring_colour: Color = RING_COLOUR
 var ball_colour: Color = BALL_COLOUR
+# Where the middle of the ring is drawn, from where it is placed (above).
+var drawn_at: Vector2 = Vector2.ZERO
+# Whether the ring draws a line of its own. The tank's does not: it wears an
+# orange ring at its feet already (tank.tscn's "ring"), and its ball rides
+# that one rather than a second line just inside it.
+var line: bool = true
 var _glow: float = 0.0
 var _ball: Node2D = null
 
@@ -83,6 +98,12 @@ func ball_position() -> Vector2:
 	return Vector2(aim.x * radii.x, aim.y * radii.y)
 
 
+func centre() -> Vector2:
+	"""The middle of the ring, in the world - where it is drawn, not where it
+	is placed."""
+	return to_global(drawn_at)
+
+
 func _process(delta: float) -> void:
 	if _glow > 0.0:
 		_glow = maxf(_glow - delta, 0.0)
@@ -91,6 +112,8 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	if not line:
+		return
 	var lift: float = _glow / GLOW_SECONDS
 	var ring: Color = ring_colour
 	ring.a = lerpf(ring_colour.a, 0.6, lift)
@@ -99,7 +122,7 @@ func _draw() -> void:
 	var points := PackedVector2Array()
 	for k in 41:
 		var a: float = TAU * k / 40.0
-		points.append(Vector2(cos(a) * radii.x, sin(a) * radii.y))
+		points.append(drawn_at + Vector2(cos(a) * radii.x, sin(a) * radii.y))
 	draw_polyline(points, ring, 1.0)
 
 
@@ -107,4 +130,4 @@ func _draw_ball() -> void:
 	var lift: float = _glow / GLOW_SECONDS
 	var ball: Color = ball_colour
 	ball.a = lerpf(ball_colour.a, 1.0, lift)
-	_ball.draw_circle(ball_position(), BALL_RADIUS + lift * 0.8, ball)
+	_ball.draw_circle(drawn_at + ball_position(), BALL_RADIUS + lift * 0.8, ball)
