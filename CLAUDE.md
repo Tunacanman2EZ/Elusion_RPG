@@ -5581,6 +5581,73 @@ offered for the ice stalagmite, all four.
   the cold flash, the shake, the frost and its melt, and the cache key. Each
   was broken on purpose to see it fail.
 
+### The healer's orbs, mixed with the crypt's (0.36.0)
+
+The owner, of the healer's attack: he paid for its orb, so keep it, "mixing
+with the bullets from crypt and adding a effect also" - and, offered how,
+"Patterns too". (The healing animation he showed is an AoE effect still to
+come; nothing here heals.)
+
+- **The paid orb, dressed** (turretprojectile.gd, THE ORB, DRESSED): a 2 x 2
+  white-hot core on its ball and a faint green glow behind (added, unshaded) -
+  the crypt bullet's look; green wisps behind it that outlive it by their own
+  0.35 s (`_let_go_of_trail()` hands them to the parent); and where it hits,
+  `splash()` - eight green sparks and a small `Blast.BlastRing`, z 5. The root
+  is drawn at 2x, so what is added in world pixels is scaled by half. The
+  first glow (radius 5, alpha 0.35) made every orb a blob twice its size; it
+  is 4 and 0.25.
+- **THE FAN** (healer.gd): every `FAN_EVERY` (5th) shot also throws
+  `FAN_ORBS` (2) orbs `FAN_SPREAD_DEGREES` (16) either side, each for
+  `FAN_SHARE` (half) of the shot's damage, no mana of its own. A fan orb is
+  turretprojectile with `fan` set BEFORE add_child (its _ready() reads it):
+  the paid sprite hidden, the crypt bullet's 8 x 8 orb (bulletfield.gd's,
+  coloured: white core, `ORB_GREEN` body, darker rim) in its place, straight -
+  no homing, no weave. Smaller and greener than a monster's bullet, and
+  trailing wisps, so it does not read as one.
+- **At most a fifth more on one monster** (all three hitting it). The exporter
+  writes `fan_every`, `fan_orbs` and `fan_share` into gamedata.json, and the
+  API's `gamedata.combat_bounds()` multiplies the healer's rate by
+  `1 + fan_orbs * fan_share / fan_every`. Inside `SLACK` (1.5) even on a
+  server not yet updated. The stats window's dps stays the single stream.
+- **Motes off each shot**: `CastSparkle.muzzle()`, five green motes at
+  `AIM_FROM`, no streak (ten a second).
+- **Others see it**: the "orb" attack carries `RemoteAttacks.FLAG_FAN` (8) on a
+  shot that fanned - presence.py passes any flags up to 255 - and the picture
+  throws the fan too (`fan_ways()` asks healer.gd), with the motes.
+- `_test_the_healer_orbs` checks the rhythm, the angles, the share, the order
+  `fan` is set in, the dressing, the splash, the wisps left behind, the fan
+  orb's look and flight, the picture's fan and the export. Each was broken on
+  purpose to see it fail.
+
+### Longer glowing trails and the golden double (0.37.0)
+
+The owner: "make the glowing trails longer and add a 20% chance to deal dbl
+damage on 1 main projectile" - and "can make a diff color if needed".
+
+- **The trails** (turretprojectile.gd): `TRAIL_SECONDS` 0.8 (was 0.35),
+  `TRAIL_WISPS` 24 / `FAN_TRAIL_WISPS` 16 (were 10 / 8), added (they glow),
+  drifting up less (-5, was -14) so each orb draws a line behind it.
+- **THE DOUBLE** (healer.gd): every main orb rolls `DOUBLE_HIT_CHANCE` (0.2)
+  - `rolls_double_hit()`, `double_hit_chance` a var for the tests, forced by
+  the owner panel's "Always roll the 10%" like every class's common roll - to
+  hit `DOUBLE_HIT` (2) times as hard. Rolled before add_child() (`doubled`
+  dresses the orb in _ready()); the fan is figured from the shot before it
+  doubles, so a fan orb never does.
+- **Gold**, the healer's halo's colour: the flame `self_modulate`d by
+  `DOUBLE_TINT` (2.0, 0.95, 0.5 - over 1, so the green flame comes out gold; the
+  first try, 1.9 / 1.15 / 0.45, came out lemon), a gold glow and core, gold
+  wisps (`gold_colours()`), and `splash(..., big)`: 16 gold sparks and a 15 px
+  ring. Others see it: `RemoteAttacks.FLAG_DOUBLE` (16) on the "orb" attack.
+- **The server's books**: the exporter writes `double_chance` and `double_hit`,
+  and the API's healer bound takes the worst, as it does for every roll: its
+  biggest hit is a doubled orb and its rate every orb doubled plus the fan
+  (`unit * (double_hit + fan) / cooldown`). The server has to be updated
+  before players get 0.37.0 - a doubled hit is past the old biggest hit
+  times SLACK, and would be capped and flagged `hit_too_big`.
+- `_test_the_healer_orbs` adds the roll, the order (the roll before the add,
+  the fan before the double), the gold, the bigger splash, the longer glowing
+  trail, the picture's gold and the export. Each was broken on purpose.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

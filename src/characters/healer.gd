@@ -66,6 +66,33 @@ const CLASS_SPEED := 140
 @export var projectile_speed: float = 200.0
 @export var projectile_tint: Color = Color(1.0, 1.0, 1.0, 1.0)
 
+# THE FAN (0.36.0). The owner, of the healer's attack: keep the orb he paid for
+# and mix in "the bullets from crypt" - the Field's glowing orbs - with their
+# patterns too. Every FAN_EVERY-th shot also throws FAN_ORBS crypt-style orbs
+# FAN_SPREAD_DEGREES either side of it (turretprojectile.gd, `fan`), straight
+# like a crypt bullet, each for FAN_SHARE of the shot's damage and no mana of
+# its own. Twice a second at the base rate: at most 20% more on one monster,
+# if all three hit it - usually they fan out over a pack. The exporter writes
+# all four into gamedata.json, and the server's books (gamedata.combat_bounds())
+# allow for them.
+const FAN_EVERY := 5
+const FAN_ORBS := 2
+const FAN_SHARE := 0.5
+const FAN_SPREAD_DEGREES := 16.0
+
+# THE DOUBLE (0.37.0). The owner: "add a 20% chance to deal dbl damage on 1
+# main projectile", and "can make a diff color if needed". Each main orb rolls
+# DOUBLE_HIT_CHANCE to hit for DOUBLE_HIT times its damage - the fan beside it
+# never, it is figured from the shot before the roll - and a doubled orb is
+# gold (turretprojectile.gd). The owner panel's "Always roll the 10%" makes
+# every orb one (Player.common_forced(), the common roll every class has).
+# Exported, and the server's books take the worst of it: every orb doubled.
+const DOUBLE_HIT_CHANCE := 0.2
+const DOUBLE_HIT := 2
+# A var as well, so a test can make the roll certain either way, as
+# Player.double_cast_chance is.
+var double_hit_chance: float = DOUBLE_HIT_CHANCE
+
 
 # A cursor delta shorter than this counts as "no direction at all" — see
 # _get_direction_to_cursor(). Compared against length_squared() so the check
@@ -91,6 +118,8 @@ const AIM_FROM := Vector2(0.0, -16.0)
 # =============================================================================
 
 var _shot_timer: float = 0.0
+# Shots since the healer was made, for THE FAN.
+var _shots: int = 0
 
 
 # _is_firing USED TO LIVE HERE. It was assigned true on every shot and false on
@@ -239,9 +268,32 @@ func _fire_projectile() -> void:
 	var direction: Vector2 = _get_direction_to_cursor()
 	last_direction = direction
 
+	_shots += 1
 	_play_cast_animation(direction)
-	_spawn_projectile(direction)
+	_spawn_projectile(direction, fans_on(_shots))
 	_aim_ring_fired()
+	# Motes where the orb leaves (castsparkle.gd, 0.36.0).
+	CastSparkle.muzzle(self, AIM_FROM, aim_origin() + direction * RemoteAttacks.AIM_AHEAD)
+
+
+func rolls_double_hit() -> bool:
+	"""Whether the next main orb is THE DOUBLE."""
+	return common_forced() or randf() < double_hit_chance
+
+
+static func fans_on(shot: int) -> bool:
+	"""Whether shot number `shot` (the first is 1) throws the fan."""
+	return shot > 0 and shot % FAN_EVERY == 0
+
+
+static func fan_directions(direction: Vector2) -> Array[Vector2]:
+	"""The fan's orbs' ways, FAN_SPREAD_DEGREES either side of `direction`."""
+	var out: Array[Vector2] = []
+	for i in FAN_ORBS:
+		var side: float = -1.0 if i % 2 == 0 else 1.0
+		var step: float = float(i >> 1) + 1.0
+		out.append(direction.rotated(deg_to_rad(FAN_SPREAD_DEGREES * step * side)))
+	return out
 
 
 func _get_direction_to_cursor() -> Vector2:
@@ -287,8 +339,12 @@ func _play_cast_animation(direction: Vector2) -> void:
 		sprite.play(anim_name)
 
 
-func _spawn_projectile(direction: Vector2) -> void:
+func _spawn_projectile(direction: Vector2, fanned: bool = false) -> void:
 	var projectile: Node = projectile_scene.instantiate()
+	# THE DOUBLE, rolled before add_child(): the orb's _ready() dresses it gold.
+	var doubled: bool = rolls_double_hit()
+	if "doubled" in projectile:
+		projectile.set("doubled", doubled)
 	get_tree().current_scene.add_child(projectile)
 
 	projectile.global_position = aim_origin()
@@ -344,8 +400,39 @@ func _spawn_projectile(direction: Vector2) -> void:
 	# here, since it lives in projectile_scene's own script, not this one.
 	if "caster" in projectile:
 		projectile.caster = self
-	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
-	Presence.tell_attack("orb", aim_origin(), aim_origin() + direction * RemoteAttacks.AIM_AHEAD)
+	if "damage" in projectile:
+		# The fan from the shot as rolled, then the double on the main orb alone.
+		var shot_damage: int = int(projectile.damage)
+		if fanned:
+			_spawn_fan(direction, shot_damage)
+		if doubled:
+			projectile.damage = shot_damage * DOUBLE_HIT
+	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd),
+	# with the fan when it has one (0.36.0) and gold when it doubled (0.37.0).
+	Presence.tell_attack("orb", aim_origin(), aim_origin() + direction * RemoteAttacks.AIM_AHEAD, 0.0,
+		(RemoteAttacks.FLAG_FAN if fanned else 0) | (RemoteAttacks.FLAG_DOUBLE if doubled else 0))
+
+
+func _spawn_fan(direction: Vector2, shot_damage: int) -> Array[Node]:
+	"""THE FAN's orbs beside a shot that did `shot_damage`. Returned for the
+	tests."""
+	var made: Array[Node] = []
+	for way in fan_directions(direction):
+		var orb: Node2D = projectile_scene.instantiate() as Node2D
+		# Before add_child(): _ready() reads it, to fly straight and look like a
+		# crypt bullet.
+		orb.set("fan", true)
+		orb.set("direction", way)
+		orb.set("speed", projectile_speed)
+		orb.set("damage", maxi(1, roundi(shot_damage * FAN_SHARE)))
+		orb.set("owner_group", "player")
+		orb.set("caster", self)
+		get_tree().current_scene.add_child(orb)
+		orb.global_position = aim_origin()
+		orb.reset_physics_interpolation()
+		orb.modulate = projectile_tint
+		made.append(orb)
+	return made
 
 
 # =============================================================================

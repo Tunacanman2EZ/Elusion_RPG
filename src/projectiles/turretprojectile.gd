@@ -63,6 +63,36 @@
 #
 # XP ON HIT: grants XP back to whoever fired this — see _grant_caster_xp(),
 # same pattern as slashwave.gd (warrior) and spelltargetcircle.gd (mage).
+#
+# =============================================================================
+# THE ORB, DRESSED (0.36.0)
+# =============================================================================
+# The owner, of the healer's attack: keep the orb he paid for and mix in "the
+# bullets from crypt" - the glowing orbs the Field's monsters fire
+# (bulletfield.gd) - "and adding a effect also", with their patterns too.
+#
+#   the core    a white-hot core on the paid orb's ball and a soft green glow
+#               behind it, added and unshaded: the crypt bullet's look, so it
+#               pops in the dark
+#   the trail   green wisps left behind it, single pixels that rise and fade,
+#               and that stay a moment after it is gone (_let_go_of_trail())
+#   the splash  where it hits, a handful of green sparks and a small ring of
+#               air (Blast.BlastRing), drawn over whoever was hit
+#   a fan orb   `fan` set: one of the two the healer throws beside every
+#               FAN_EVERY-th shot (healer.gd, THE FAN). It IS a crypt bullet -
+#               the paid sprite hidden, the crypt orb's pixels in its place -
+#               and flies like one, straight, no homing and no weave.
+#
+# The orb's root is drawn at 2x (turretprojectile.tscn), so everything added
+# here is scaled by half to come out in the world's own pixels.
+#
+# LONGER, GLOWING TRAILS AND THE GOLDEN DOUBLE (0.37.0). The owner: "make the
+# glowing trails longer and add a 20% chance to deal dbl damage on 1 main
+# projectile" - "can make a diff color if needed". The wisps last TRAIL_SECONDS
+# (0.8, was 0.35), twice as many, added so they glow, and drift up less, so
+# each orb draws a line behind it. A `doubled` orb (healer.gd, THE DOUBLE) is
+# gold - the healer's halo's colour: its flame tinted, its glow, core, wisps
+# and splash gold, the splash bigger - so a double hit is seen as it flies.
 extends Area2D
 
 
@@ -116,6 +146,11 @@ var owner_group: String = "player"
 # A picture still homes and still goes out on the monster it reaches.
 var cosmetic: bool = false
 var caster: Node = null
+# One of the healer's fan orbs (THE ORB, DRESSED).
+var fan: bool = false
+# A main orb that rolled the double (healer.gd, THE DOUBLE): gold. Set before
+# add_child(), like `fan`.
+var doubled: bool = false
 
 
 # =============================================================================
@@ -144,6 +179,33 @@ var _time: float = 0.0
 # shared unshaded material so the orb ignores scene lighting. static: one for
 # every orb, built lazily on the first spawn.
 static var _glow_material: CanvasItemMaterial = null
+static var _added_material: CanvasItemMaterial = null
+static var _crypt_orb: ImageTexture = null
+static var _core: ImageTexture = null
+
+# The healer's green, for the crypt orb and the wisps: the paid orb's own
+# brightest body colour.
+const ORB_GREEN := Color(0.55, 0.95, 0.42)
+# The ball of the paid orb, from the middle of its 32 px frame.
+const BALL := Vector2(-0.5, 0.3)
+# The root's scale, undone for what is added in world pixels.
+const ROOT_SCALE := 2.0
+# The glow behind the paid orb, in the orb's own (2x) pixels: a little past
+# its ball (6 across), and faint - at 5 and 0.35 the first recording drew
+# every orb as a green blob twice its size.
+const GLOW_RADIUS := 4
+const GLOW_ALPHA := 0.25
+const TRAIL_SECONDS := 0.8
+# Wisps a second an orb leaves, and a fan orb (smaller) leaves.
+const TRAIL_WISPS := 24
+const FAN_TRAIL_WISPS := 16
+# The double's gold, on the flame (over 1 brightens: the green flame comes out
+# a yellow-gold) and on everything added.
+const DOUBLE_TINT := Color(2.0, 0.95, 0.5)
+const GOLD := Color(1.0, 0.82, 0.3)
+const SPLASH_SECONDS := 0.4
+
+var _trail: CPUParticles2D = null
 
 
 # =============================================================================
@@ -173,7 +235,13 @@ func _ready() -> void:
 	# LATCH A TARGET ON SPAWN, not every frame. re-acquiring mid-flight makes a
 	# shot chase whatever wanders closest and reads as a bug; the pet orbs latch
 	# the same way. no enemy → _homing_target stays null and the orb just weaves.
-	_homing_target = _find_nearest_enemy()
+	# A fan orb flies like a crypt bullet: straight.
+	if fan:
+		homing_turn_rate = 0.0
+		weave_amplitude_deg = 0.0
+	else:
+		_homing_target = _find_nearest_enemy()
+	_dress(sprite)
 
 
 func _physics_process(delta: float) -> void:
@@ -202,6 +270,7 @@ func _physics_process(delta: float) -> void:
 	# lifetime expiry — covers a shot that never reaches anything.
 	_lifetime += delta
 	if _lifetime >= max_lifetime:
+		_let_go_of_trail()
 		queue_free()
 
 
@@ -303,6 +372,8 @@ func _hit(enemy: Node2D) -> void:
 	if not cosmetic:
 		enemy.take_damage(damage)
 		_grant_caster_xp()
+	splash(get_parent(), global_position, doubled)
+	_let_go_of_trail()
 	queue_free()
 
 
@@ -313,3 +384,174 @@ func _grant_caster_xp() -> void:
 		return
 	if caster.has_method("gain_magic_xp"):
 		caster.gain_magic_xp(magic_xp_on_hit)
+
+
+# =============================================================================
+# THE ORB, DRESSED (0.36.0) - see the header
+# =============================================================================
+
+func _dress(sprite: AnimatedSprite2D) -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	if fan:
+		# A crypt bullet: the paid sprite hidden, the crypt orb's pixels shown.
+		if sprite != null:
+			sprite.visible = false
+		var orb := Sprite2D.new()
+		orb.name = "cryptorb"
+		orb.texture = crypt_orb_texture()
+		orb.scale = Vector2.ONE / ROOT_SCALE
+		orb.material = _unshaded()
+		add_child(orb)
+	else:
+		# The paid orb with the crypt bullet's glow behind and core on top -
+		# gold, and brighter, on a double.
+		if doubled and sprite != null:
+			sprite.self_modulate = DOUBLE_TINT
+		var glow := Sprite2D.new()
+		glow.name = "glow"
+		glow.texture = Blast.disc_texture(GLOW_RADIUS + 1, Color(1.0, 0.95, 0.7), GOLD.darkened(0.2)) if doubled \
+			else Blast.disc_texture(GLOW_RADIUS, Color(0.8, 1.0, 0.7), ORB_GREEN.darkened(0.3))
+		glow.modulate = Color(1, 1, 1, GLOW_ALPHA * (1.6 if doubled else 1.0))
+		glow.position = BALL
+		glow.material = _added()
+		add_child(glow)
+		move_child(glow, 0)
+		var core := Sprite2D.new()
+		core.name = "core"
+		core.texture = core_texture()
+		core.position = BALL
+		if doubled:
+			core.modulate = Color(1.0, 0.95, 0.75)
+		core.material = _added()
+		add_child(core)
+	_trail = _make_trail()
+	add_child(_trail)
+
+
+func _make_trail() -> CPUParticles2D:
+	var p := CPUParticles2D.new()
+	p.name = "trail"
+	p.amount = FAN_TRAIL_WISPS if fan else TRAIL_WISPS
+	p.lifetime = TRAIL_SECONDS
+	p.lifetime_randomness = 0.4
+	p.local_coords = false
+	p.scale = Vector2.ONE / ROOT_SCALE
+	p.position = BALL
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 2.0
+	p.direction = Vector2.UP
+	p.spread = 180.0
+	p.initial_velocity_min = 0.0
+	p.initial_velocity_max = 3.0
+	p.gravity = Vector2(0.0, -5.0)
+	p.color_ramp = gold_colours() if doubled else CastSparkle.colours(CastSparkle.HEAL)
+	p.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	# Added, so the wisps glow.
+	p.material = _added()
+	p.emitting = true
+	return p
+
+
+func _let_go_of_trail() -> void:
+	"""The wisps outlive the orb by their own lifetime: handed to the orb's
+	parent, stopped, and freed once the last has faded."""
+	if _trail == null or not is_instance_valid(_trail) or get_parent() == null:
+		return
+	var trail: CPUParticles2D = _trail
+	_trail = null
+	trail.emitting = false
+	trail.reparent(get_parent())
+	get_tree().create_timer(TRAIL_SECONDS + 0.1).timeout.connect(trail.queue_free)
+
+
+static func splash(parent: Node, at: Vector2, big: bool = false) -> Node2D:
+	"""Where an orb lands: green sparks thrown out and a small ring of air,
+	over whoever was hit - gold, twice the sparks and a wider ring for a
+	double. Frees itself."""
+	if parent == null:
+		return null
+	var root := Node2D.new()
+	root.name = "orbsplash"
+	root.z_as_relative = false
+	root.z_index = 5
+	root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var sparks := CPUParticles2D.new()
+	sparks.name = "sparks"
+	sparks.one_shot = true
+	sparks.explosiveness = 0.95
+	sparks.amount = 16 if big else 8
+	sparks.lifetime = SPLASH_SECONDS
+	sparks.lifetime_randomness = 0.3
+	sparks.direction = Vector2.UP
+	sparks.spread = 180.0
+	sparks.initial_velocity_min = 25.0
+	sparks.initial_velocity_max = 55.0
+	sparks.damping_min = 30.0
+	sparks.damping_max = 60.0
+	sparks.color_ramp = gold_colours() if big else CastSparkle.colours(CastSparkle.HEAL)
+	sparks.material = _unshaded()
+	sparks.emitting = true
+	root.add_child(sparks)
+	var ring := Blast.BlastRing.new()
+	ring.name = "ring"
+	ring.reach = 15.0 if big else 9.0
+	ring.colour = Color(1.0, 0.9, 0.55, 0.95) if big else Color(0.75, 1.0, 0.65, 0.9)
+	root.add_child(ring)
+	parent.add_child(root)
+	root.global_position = at
+	root.get_tree().create_timer(SPLASH_SECONDS + 0.1).timeout.connect(root.queue_free)
+	return root
+
+
+static func gold_colours() -> Gradient:
+	"""The double's wisps and sparks: white, then the halo's gold, fading
+	to a deep orange."""
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
+	ramp.colors = PackedColorArray([Color(1.0, 1.0, 0.9), GOLD, Color(0.85, 0.45, 0.1, 0.0)])
+	return ramp
+
+
+static func crypt_orb_texture() -> ImageTexture:
+	"""The Field's bullet (bulletfield.gd's orb_texture()), coloured here
+	rather than by its shader: a white-hot core, the healer's green body, a
+	darker rim. 8 x 8."""
+	if _crypt_orb != null:
+		return _crypt_orb
+	var image := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	for y in 8:
+		for x in 8:
+			var gap: float = Vector2(x - 3.5, y - 3.5).length()
+			if gap <= 1.6:
+				image.set_pixel(x, y, Color.WHITE)
+			elif gap <= 2.6:
+				image.set_pixel(x, y, ORB_GREEN)
+			elif gap <= 3.9:
+				image.set_pixel(x, y, Color(ORB_GREEN.r * 0.55, ORB_GREEN.g * 0.55, ORB_GREEN.b * 0.55))
+	_crypt_orb = ImageTexture.create_from_image(image)
+	return _crypt_orb
+
+
+static func core_texture() -> ImageTexture:
+	"""Two by two pixels of white, on the paid orb's ball."""
+	if _core != null:
+		return _core
+	var image := Image.create(2, 2, false, Image.FORMAT_RGBA8)
+	image.fill(Color(1.0, 1.0, 0.95, 0.85))
+	_core = ImageTexture.create_from_image(image)
+	return _core
+
+
+static func _unshaded() -> CanvasItemMaterial:
+	if _glow_material == null:
+		_glow_material = CanvasItemMaterial.new()
+		_glow_material.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	return _glow_material
+
+
+static func _added() -> CanvasItemMaterial:
+	if _added_material == null:
+		_added_material = CanvasItemMaterial.new()
+		_added_material.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		_added_material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	return _added_material

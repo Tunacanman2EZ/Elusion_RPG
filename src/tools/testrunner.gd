@@ -339,6 +339,7 @@ func _run_all() -> void:
 	await _test_the_tank_aura_burns()
 	_test_every_area_floor_is_under_its_floor_effects()
 	await _test_the_mage_spell_effects()
+	await _test_the_healer_orbs()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -12537,6 +12538,169 @@ func _test_the_mage_spell_effects() -> void:
 			"t.parallel().tween_property(mark, \"scale\", Vector2(0.7, 0.7), MARK_SECONDS * 0.4)"))
 	check("a disc's colours are part of what it is cached as - one size in two colours is two textures",
 		Blast.disc_texture(9, Color.RED, Color.RED) != Blast.disc_texture(9, Color.BLUE, Color.BLUE))
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
+# THE HEALER'S ORBS, MIXED WITH THE CRYPT'S (0.36.0)
+# =============================================================================
+
+func _test_the_healer_orbs() -> void:
+	section("THE HEALER'S ORBS - the paid orb with the crypt bullet's glow, a fan of crypt orbs, wisps and a splash (0.36.0)")
+	# The owner: keep the orb he paid for, mix in "the bullets from crypt", and
+	# "adding a effect also" - with their patterns too.
+	const HealerScript := preload("res://src/characters/healer.gd")
+	var scene_root: Node = get_tree().current_scene
+	var arena := Node2D.new()
+	arena.name = "orbtest"
+	scene_root.add_child(arena)
+
+	var fanning: Array[int] = []
+	for shot in range(1, 11):
+		if HealerScript.fans_on(shot):
+			fanning.append(shot)
+	check("every fifth shot throws the fan", fanning == [5, 10] and HealerScript.FAN_EVERY == 5, fanning)
+	var ways: Array[Vector2] = HealerScript.fan_directions(Vector2.RIGHT)
+	var angles: Array[float] = []
+	for way in ways:
+		angles.append(snappedf(rad_to_deg(way.angle()), 0.01))
+	angles.sort()
+	check("  two orbs, FAN_SPREAD_DEGREES either side of the shot",
+		HealerScript.FAN_ORBS == 2 and angles == [-HealerScript.FAN_SPREAD_DEGREES, HealerScript.FAN_SPREAD_DEGREES], angles)
+	var healer_src: String = _code_src("res://src/characters/healer.gd")
+	var fan_body: String = _func_body(healer_src, "func _spawn_fan(")
+	check("  each a crypt orb for FAN_SHARE of the shot, set as one before it is added - its _ready() reads it",
+		is_equal_approx(HealerScript.FAN_SHARE, 0.5)
+		and fan_body.contains("orb.set(\"damage\", maxi(1, roundi(shot_damage * FAN_SHARE)))")
+		and fan_body.find("orb.set(\"fan\", true)") >= 0
+		and fan_body.find("orb.set(\"fan\", true)") < fan_body.find("add_child(orb)"))
+	var fire_body: String = _func_body(healer_src, "func _fire_projectile(")
+	var spawn_body: String = _func_body(healer_src, "func _spawn_projectile(")
+	check("  thrown with the shot that fans, no mana of its own, and told to everyone with the shot",
+		fire_body.contains("_spawn_projectile(direction, fans_on(_shots))")
+		and fire_body.count("mana -=") == 1
+		and spawn_body.contains("_spawn_fan(direction, shot_damage)")
+		and spawn_body.contains("RemoteAttacks.FLAG_FAN if fanned else 0"))
+	check("  motes where every orb leaves", fire_body.contains("CastSparkle.muzzle(self, AIM_FROM,"))
+
+	# ---- the paid orb, dressed -------------------------------------------------------
+	var orb_scene: PackedScene = load("res://scene/projectiles/turretprojectile.tscn") as PackedScene
+	var orb: Area2D = orb_scene.instantiate() as Area2D
+	orb.set("cosmetic", true)
+	arena.add_child(orb)
+	orb.global_position = Vector2(400, 300)
+	var paid: AnimatedSprite2D = orb.get_node(^"animatedsprite2d") as AnimatedSprite2D
+	var glow: Sprite2D = orb.get_node_or_null(^"glow") as Sprite2D
+	var core: Sprite2D = orb.get_node_or_null(^"core") as Sprite2D
+	var trail: CPUParticles2D = orb.get_node_or_null(^"trail") as CPUParticles2D
+	check("the paid orb keeps its art, with the crypt bullet's glow behind it and a white-hot core on its ball",
+		paid.visible and glow != null and orb.get_child(0) == glow and core != null
+		and (glow.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+		and (core.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and core.texture.get_image().get_pixel(0, 0).r > 0.9, [glow, core])
+	check("  and leaves green wisps behind it, a world pixel each, staying where they were left",
+		trail != null and trail.emitting and not trail.local_coords
+		and is_equal_approx(trail.global_scale.x, 1.0), trail)
+	var homing: float = float(orb.get("homing_turn_rate"))
+	var struck := Node2D.new()
+	orb.call("_hit", struck)
+	struck.free()
+	var splash: Node = null
+	var left_trail: CPUParticles2D = null
+	for child in arena.get_children():
+		if str(child.name) == "orbsplash":
+			splash = child
+		elif child is CPUParticles2D and str(child.name) == "trail":
+			left_trail = child
+	check("where it lands: a splash of green sparks and a small ring of air, over whoever it hit",
+		splash != null and splash.get_node_or_null(^"sparks") is CPUParticles2D
+		and splash.get_node_or_null(^"ring") != null and (splash as Node2D).z_index == 5
+		and (splash as Node2D).global_position.is_equal_approx(Vector2(400, 300)), splash)
+	check("  and its wisps stay a moment after it has gone, no longer coming",
+		left_trail != null and not left_trail.emitting and orb.is_queued_for_deletion())
+	check("  the paid orb still homes", homing > 0.0)
+
+	# ---- a fan orb is a crypt bullet ----------------------------------------------------
+	var fan_orb: Area2D = orb_scene.instantiate() as Area2D
+	fan_orb.set("cosmetic", true)
+	fan_orb.set("fan", true)
+	arena.add_child(fan_orb)
+	var crypt: Sprite2D = fan_orb.get_node_or_null(^"cryptorb") as Sprite2D
+	var crypt_image: Image = crypt.texture.get_image() if crypt != null else null
+	check("a fan orb is the crypt's bullet: the paid art hidden, a white core in a green body, 8 world pixels",
+		crypt != null and not (fan_orb.get_node(^"animatedsprite2d") as CanvasItem).visible
+		and crypt_image.get_pixel(3, 3) == Color.WHITE and crypt_image.get_pixel(1, 3).g > crypt_image.get_pixel(1, 3).r
+		and is_equal_approx(crypt.global_scale.x * crypt_image.get_width(), 8.0), crypt)
+	check("  and flies like one: straight, no homing, no weave",
+		float(fan_orb.get("homing_turn_rate")) == 0.0 and float(fan_orb.get("weave_amplitude_deg")) == 0.0
+		and fan_orb.get("_homing_target") == null)
+	fan_orb.queue_free()
+
+	# ---- THE DOUBLE (0.37.0) -------------------------------------------------------------
+	# The owner: "add a 20% chance to deal dbl damage on 1 main projectile" -
+	# "can make a diff color if needed".
+	var healer: Node = (load("res://scene/characters/healer.tscn") as PackedScene).instantiate()
+	healer.set("double_hit_chance", 1.0)
+	var always: bool = healer.call("rolls_double_hit")
+	healer.set("double_hit_chance", 0.0)
+	var never: bool = healer.call("rolls_double_hit")
+	healer.free()
+	check("one main orb in five hits double", is_equal_approx(HealerScript.DOUBLE_HIT_CHANCE, 0.2)
+		and HealerScript.DOUBLE_HIT == 2 and always and not never)
+	var rolled_at: int = spawn_body.find("var doubled: bool = rolls_double_hit()")
+	check("  rolled before the orb is added (it dresses itself gold), the fan figured from the shot before it doubles",
+		rolled_at >= 0 and spawn_body.find("projectile.set(\"doubled\", doubled)") < spawn_body.find("add_child(projectile)")
+		and spawn_body.find("_spawn_fan(direction, shot_damage)") < spawn_body.find("projectile.damage = shot_damage * DOUBLE_HIT")
+		and spawn_body.contains("(RemoteAttacks.FLAG_DOUBLE if doubled else 0)"))
+	var gold: Area2D = orb_scene.instantiate() as Area2D
+	gold.set("cosmetic", true)
+	gold.set("doubled", true)
+	arena.add_child(gold)
+	gold.global_position = Vector2(500, 300)
+	var gold_trail: CPUParticles2D = gold.get_node_or_null(^"trail") as CPUParticles2D
+	var gold_mid: Color = gold_trail.color_ramp.sample(0.35) if gold_trail != null else Color.BLACK
+	check("  a double is gold - the halo's colour - flame, wisps and all",
+		(gold.get_node(^"animatedsprite2d") as CanvasItem).self_modulate.is_equal_approx(gold.get("DOUBLE_TINT"))
+		and gold_mid.r > gold_mid.b + 0.4 and gold_mid.r > 0.9, gold_mid)
+	var big: Node2D = gold.call("splash", arena, Vector2(500, 300), true)
+	var small: Node2D = gold.call("splash", arena, Vector2(520, 300))
+	check("  and it lands bigger: twice the sparks, a wider ring, gold",
+		(big.get_node(^"sparks") as CPUParticles2D).amount == 2 * (small.get_node(^"sparks") as CPUParticles2D).amount
+		and float(big.get_node(^"ring").get("reach")) > float(small.get_node(^"ring").get("reach")))
+	gold.queue_free()
+	check("the wisps last longer - a line behind every orb - and glow",
+		gold_trail != null and gold_trail.lifetime >= 0.8 and gold_trail.amount >= 24
+		and (gold_trail.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD,
+		gold_trail)
+
+	# ---- somebody else's ---------------------------------------------------------------
+	var them := Node2D.new()
+	arena.add_child(them)
+	them.global_position = Vector2(200, 200)
+	var before: Array = scene_root.get_children()
+	var made: Array = RemoteAttacks.fire(them, ["orb", 0, 200.0, 184.0, 300.0, 184.0, 0,
+		RemoteAttacks.FLAG_FAN | RemoteAttacks.FLAG_DOUBLE])
+	var fans: int = 0
+	for child in scene_root.get_children():
+		if not before.has(child) and child.get("fan") == true and child.get("cosmetic") == true:
+			fans += 1
+	check("a picture of somebody else's shot that fanned shows its fan too, touching nothing - and gold if it doubled",
+		made.size() == 1 and made[0].get("fan") == false and made[0].get("doubled") == true
+		and fans == HealerScript.FAN_ORBS, [made, fans])
+	check("  with the motes where it left their picture", them.get_node_or_null(^"muzzle") is CastSparkle)
+	for child in scene_root.get_children():
+		if not before.has(child):
+			child.queue_free()
+
+	# ---- the server's books -------------------------------------------------------------
+	var combat: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json")) as Dictionary).get("combat", {})
+	var row: Dictionary = ((combat.get("classes", {}) as Dictionary).get("healer", {})) as Dictionary
+	check("the fan and the double are in gamedata.json for the server's books (re-run the exporter if not)",
+		int(row.get("fan_every", -1)) == HealerScript.FAN_EVERY and int(row.get("fan_orbs", -1)) == HealerScript.FAN_ORBS
+		and is_equal_approx(float(row.get("fan_share", -1.0)), HealerScript.FAN_SHARE)
+		and is_equal_approx(float(row.get("double_chance", -1.0)), HealerScript.DOUBLE_HIT_CHANCE)
+		and is_equal_approx(float(row.get("double_hit", -1.0)), float(HealerScript.DOUBLE_HIT)), row)
 	arena.queue_free()
 	await get_tree().process_frame
 

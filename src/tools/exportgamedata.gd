@@ -1626,6 +1626,15 @@ func _export_combat(_items: Array) -> Dictionary:
 			"healer":
 				row["base"] = int(node.get("damage_per_magic"))
 				row["cooldown"] = float(node.get("shot_cooldown"))
+				# Every fan_every-th shot throws fan_orbs more beside it, each
+				# for fan_share of the shot (healer.gd, THE FAN, 0.36.0).
+				var healer_consts: Dictionary = script.get_script_constant_map() if script != null else {}
+				row["fan_every"] = int(healer_consts.get("FAN_EVERY", 0))
+				row["fan_orbs"] = int(healer_consts.get("FAN_ORBS", 0))
+				row["fan_share"] = float(healer_consts.get("FAN_SHARE", 0.0))
+				# And a main orb in five hits double (healer.gd, THE DOUBLE, 0.37.0).
+				row["double_chance"] = float(healer_consts.get("DOUBLE_HIT_CHANCE", 0.0))
+				row["double_hit"] = float(healer_consts.get("DOUBLE_HIT", 1))
 			"tank":
 				row["base"] = int(node.get("aura_damage"))
 				row["cooldown"] = float(node.get("aura_tick"))

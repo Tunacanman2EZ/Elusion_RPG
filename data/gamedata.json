@@ -1451,6 +1451,11 @@
 			"healer": {
 				"base": 3,
 				"cooldown": 0.1,
+				"double_chance": 0.2,
+				"double_hit": 2.0,
+				"fan_every": 5,
+				"fan_orbs": 2,
+				"fan_share": 0.5,
 				"speed": 140
 			},
 			"mage": {
@@ -3326,7 +3331,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791859512,
+	"generated_at": 1791871077,
 	"items": [
 		{
 			"armor_value": 6,

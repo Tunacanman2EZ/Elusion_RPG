@@ -37,6 +37,8 @@ const KINDS: Array = ["slash", "axe", "recall", "stalag", "meteor", "dyn", "orb"
 const FLAG_PULL := 1      # a meteor that pulls (meteor.gd, THE PULL)
 const FLAG_WIDE := 2      # a wide axe (spinningaxe.gd, THE ROLL)
 const FLAG_BLOODY := 4    # a bloody one
+const FLAG_FAN := 8       # a healer's orb with its fan beside it (healer.gd, THE FAN)
+const FLAG_DOUBLE := 16   # a healer's orb that doubled - gold (healer.gd, THE DOUBLE)
 # The scenes warrior.gd, mage.gd and tank.gd preload. Loaded when first needed
 # rather than preloaded: the projectile scripts call go_quiet() below, and a
 # preload here would make each scene part of the script that loads it.
@@ -48,6 +50,9 @@ const DYNAMITE_PATH := "res://scene/projectiles/dynamite.tscn"
 # only the direction is read.
 const AIM_AHEAD := 100.0
 
+# The healer's script, for its fan's ways (THE FAN). Loaded, not preloaded,
+# for the reason the scene paths above give.
+const HEALER_PATH := "res://src/characters/healer.gd"
 static var _scenes: Dictionary = {}
 static var _class_settings: Dictionary = {}
 
@@ -93,7 +98,7 @@ static func fire(body: Node2D, attack: Array) -> Array:
 		"dyn":
 			made = _stick(body, origin, target, delay)
 		"orb":
-			made = _orb(body, origin, target)
+			made = _orb(body, origin, target, flags)
 	return [made] if made != null else []
 
 
@@ -173,20 +178,43 @@ static func _stick(body: Node2D, origin: Vector2, target: Vector2, delay: float)
 	return stick
 
 
-static func _orb(body: Node2D, origin: Vector2, target: Vector2) -> Node:
+static func _orb(body: Node2D, origin: Vector2, target: Vector2, flags: int = 0) -> Node:
 	# Ten a second from a healer, so no sound: their own game plays it for them.
 	var scene: PackedScene = class_setting("healer", "projectile_scene") as PackedScene
 	if scene == null:
 		return null
+	var way: Vector2 = _aim(origin, target)
+	var orb: Node2D = _one_orb(body, scene, origin, way, false, flags & FLAG_DOUBLE != 0)
+	# And the fan beside it, as their game threw it (0.36.0).
+	if flags & FLAG_FAN != 0:
+		for side in fan_ways(way):
+			_one_orb(body, scene, origin, side as Vector2, true)
+	CastSparkle.muzzle(body, origin - body.global_position, target)
+	return orb
+
+
+static func fan_ways(way: Vector2) -> Array:
+	"""The fan's orbs' ways beside a shot going `way`, as healer.gd throws
+	them."""
+	var healer: GDScript = load(HEALER_PATH) as GDScript
+	return healer.call("fan_directions", way) if healer != null else []
+
+
+static func _one_orb(body: Node2D, scene: PackedScene, origin: Vector2, way: Vector2, fan: bool,
+		doubled: bool = false) -> Node2D:
 	var orb: Node2D = scene.instantiate() as Node2D
 	if "cosmetic" in orb:
 		orb.set("cosmetic", true)
+	if "fan" in orb:
+		orb.set("fan", fan)
+	if "doubled" in orb:
+		orb.set("doubled", doubled)
 	body.get_tree().current_scene.add_child(orb)
 	orb.global_position = origin
 	orb.reset_physics_interpolation()
 	orb.modulate = class_setting("healer", "projectile_tint", Color.WHITE)
 	if "direction" in orb:
-		orb.set("direction", _aim(origin, target))
+		orb.set("direction", way)
 	if "speed" in orb:
 		orb.set("speed", float(class_setting("healer", "projectile_speed", 200.0)))
 	if "damage" in orb:
