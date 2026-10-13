@@ -1614,6 +1614,11 @@ func _export_combat(_items: Array) -> Dictionary:
 				var bleed_consts: Dictionary = bleed_script.get_script_constant_map() if bleed_script != null else {}
 				row["axe_bleed_share"] = float(bleed_consts.get("BLEED_SHARE", 0.0))
 				row["axe_bleed_every"] = float(bleed_consts.get("BLEED_EVERY", 1.0))
+				# Every finisher_every-th swing's wave hits finisher_mult as hard
+				# (warrior.gd, THE FINISHER, 0.38.0).
+				var warrior_consts: Dictionary = script.get_script_constant_map() if script != null else {}
+				row["finisher_every"] = int(warrior_consts.get("FINISHER_EVERY", 0))
+				row["finisher_mult"] = float(warrior_consts.get("FINISHER_MULT", 1.0))
 			"mage":
 				row["base"] = int(node.get("damage_per_magic"))
 				row["cooldown"] = float(node.get("spell_cooldown"))

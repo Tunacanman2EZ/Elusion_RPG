@@ -340,6 +340,7 @@ func _run_all() -> void:
 	_test_every_area_floor_is_under_its_floor_effects()
 	await _test_the_mage_spell_effects()
 	await _test_the_healer_orbs()
+	await _test_the_warrior_blows()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -12701,6 +12702,195 @@ func _test_the_healer_orbs() -> void:
 		and is_equal_approx(float(row.get("fan_share", -1.0)), HealerScript.FAN_SHARE)
 		and is_equal_approx(float(row.get("double_chance", -1.0)), HealerScript.DOUBLE_HIT_CHANCE)
 		and is_equal_approx(float(row.get("double_hit", -1.0)), float(HealerScript.DOUBLE_HIT)), row)
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
+# THE WARRIOR'S BLOWS, SEEN AND FELT (0.38.0)
+# =============================================================================
+
+func _test_the_warrior_blows() -> void:
+	section("THE WARRIOR - a swing's arc, sparks, a hit-stop, a dressed wave and the third-swing finisher (0.38.0)")
+	# The owner: "the final character warrioe how can we make him better
+	# also", and all four of what was offered.
+	const WarriorScript := preload("res://src/characters/warrior.gd")
+	const Strike := preload("res://src/shared/strikefx.gd")
+	var scene_root: Node = get_tree().current_scene
+	var arena := Node2D.new()
+	arena.name = "bladetest"
+	scene_root.add_child(arena)
+
+	var finishing: Array[int] = []
+	for swing in range(1, 10):
+		if WarriorScript.finisher_on(swing):
+			finishing.append(swing)
+	check("every third swing is the finisher, at one and a half",
+		finishing == [3, 6, 9] and is_equal_approx(WarriorScript.FINISHER_MULT, 1.5), finishing)
+
+	# ---- the arc ---------------------------------------------------------------------
+	var body := Node2D.new()
+	arena.add_child(body)
+	body.global_position = Vector2(300, 300)
+	var cut: Line2D = Strike.arc(body, Vector2.LEFT, true)
+	var gold_cut: Line2D = Strike.arc(body, Vector2.UP, false, true)
+	var sweep: Tween = cut.get_meta(&"sweep") as Tween
+	var gold_sweep: Tween = gold_cut.get_meta(&"sweep") as Tween
+	check("a swing cuts an arc round the warrior: a line two whole pixels wide, its head white, a finisher's gold",
+		cut.get_parent() == body and str(cut.name) == "swingarc" and cut.width == 2.0 and not cut.antialiased
+		and cut.gradient.get_color(cut.gradient.get_point_count() - 1) == Color.WHITE
+		and gold_cut.gradient.get_color(gold_cut.gradient.get_point_count() - 1).b < 0.6
+		and (cut.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED)
+	# Stepped by hand, so it is where the step put it and nowhere else.
+	sweep.custom_step(Strike.ARC_SECONDS * 0.5)
+	gold_sweep.custom_step(Strike.ARC_SECONDS)
+	var head_at: Vector2 = cut.points[cut.points.size() - 1]
+	var tail_at: Vector2 = cut.points[0]
+	check("  halfway through, its head is on the aim, its tail where the swing began",
+		head_at.is_equal_approx(Vector2.LEFT * Strike.ARC_RADIUS)
+		and is_equal_approx(absf(tail_at.angle_to(head_at)), deg_to_rad(Strike.ARC_SWEEP_DEGREES)), [tail_at, head_at])
+	sweep.custom_step(Strike.ARC_SECONDS + Strike.ARC_FADE_SECONDS)
+	check("  sweeping round in a moment, and gone a moment after",
+		cut.is_queued_for_deletion() and cut.modulate.a < 0.01, cut.modulate.a)
+	# Both swept all the way round now: the angle between one point and the next.
+	var step_of := func(line: Line2D) -> float: return absf(line.points[0].angle_to(line.points[1]))
+	check("  a finisher's is further out and further round",
+		is_equal_approx(gold_cut.points[0].length(), Strike.FINISHER_ARC_RADIUS) and Strike.FINISHER_ARC_RADIUS > Strike.ARC_RADIUS
+		and float(step_of.call(gold_cut)) > float(step_of.call(cut)) * 1.2, [step_of.call(gold_cut), step_of.call(cut)])
+	var warrior_src: String = _code_src("res://src/characters/warrior.gd")
+	var frame_body: String = _func_body(warrior_src, "func _on_frame_changed(")
+	check("  cut on the first contact frame of a sword swing, each the other way from the last",
+		frame_body.contains("Strike.arc(self, _swing_aim_direction, _arc_clockwise, _finisher)")
+		and frame_body.contains("_arc_clockwise = not _arc_clockwise")
+		and frame_body.contains("_swing_hitbox != null"))
+
+	# ---- the sparks -----------------------------------------------------------------
+	var steel: Node2D = Strike.sparks(arena, Vector2(100, 100))
+	var gold_sparks: Node2D = Strike.sparks(arena, Vector2(120, 100), Strike.GOLD)
+	check("where a blow lands: a flash and steel sparks over whoever was hit - gold, and more, for a finisher",
+		steel.z_index == 5 and not steel.z_as_relative and steel.get_node_or_null(^"flash") is Sprite2D
+		and (steel.get_node(^"sparks") as CPUParticles2D).amount < (gold_sparks.get_node(^"sparks") as CPUParticles2D).amount
+		and steel.global_position == Vector2(100, 100))
+	var try_body: String = _func_body(warrior_src, "func _try_damage(")
+	check("  on every monster the sword lands on, at the middle of its hurtbox",
+		try_body.contains("Strike.sparks(get_parent(), Strike.hit_point(target as Node2D),"))
+
+	# ---- the hit-stop ----------------------------------------------------------------
+	var victim := Node2D.new()
+	var their_picture := AnimatedSprite2D.new()
+	their_picture.name = "animatedsprite2d"
+	their_picture.speed_scale = 1.25
+	victim.add_child(their_picture)
+	arena.add_child(victim)
+	var warrior: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	# Its own picture, mid-swing: a swing of its own frames (not the art's, so
+	# the numbers are known), on frame 1 of 6 and half through it, at 1.5x - so
+	# 4.5 frames at 10 a second at 1.5x, 0.3 s, are left of it. Out of the
+	# tree its `sprite` is never set, so it is set here.
+	var swing_frames := SpriteFrames.new()
+	swing_frames.add_animation(&"attackright")
+	swing_frames.set_animation_loop(&"attackright", false)
+	swing_frames.set_animation_speed(&"attackright", 10.0)
+	for i in 6:
+		swing_frames.add_frame(&"attackright", PlaceholderTexture2D.new())
+	var own: AnimatedSprite2D = warrior.get_node(^"animatedsprite2d") as AnimatedSprite2D
+	own.sprite_frames = swing_frames
+	own.play(&"attackright")
+	own.set_frame_and_progress(1, 0.5)
+	own.speed_scale = 1.5
+	warrior.set("sprite", own)
+	var left: float = WarriorScript.swing_time_left(own)
+	warrior.call("_hit_stop", victim)
+	var frozen: float = their_picture.speed_scale
+	var own_frozen: float = own.speed_scale
+	await get_tree().create_timer(WarriorScript.HITSTOP_SECONDS + 0.05).timeout
+	check("the first blow of a swing holds the monster's picture still a moment, then lets it go on as it was",
+		frozen == 0.0 and is_equal_approx(their_picture.speed_scale, 1.25), [frozen, their_picture.speed_scale])
+	# The swing lock ends when the swing's animation does: held and then
+	# played at the same speed, every swing that hit would end - and the next
+	# begin - a hit-stop later.
+	check("  and the warrior's, then plays the rest of the swing faster - so it ends, and the next swing comes, when it would have",
+		is_equal_approx(left, 0.3) and own_frozen == 0.0 and own.speed_scale > 1.5
+		and is_equal_approx(WarriorScript.HITSTOP_SECONDS + left * 1.5 / own.speed_scale, left), [left, own_frozen, own.speed_scale])
+	own.speed_scale = 1.0
+	own.set_frame_and_progress(5, 0.9)
+	warrior.call("_hit_stop", victim)
+	check("  but not the warrior's so near the end of a swing that the rest would have to rush",
+		own.speed_scale == 1.0 and WarriorScript.swing_time_left(own) < WarriorScript.HITSTOP_SECONDS, own.speed_scale)
+	await get_tree().create_timer(WarriorScript.HITSTOP_SECONDS + 0.05).timeout
+	warrior.free()
+	check("  once a swing, with a small shake - a picture only, the fight goes on",
+		try_body.contains("if not _stopped_this_swing:") and try_body.contains("_hit_stop(target)")
+		and _func_body(warrior_src, "func _hit_stop(").contains("shake_camera(")
+		and not _func_body(warrior_src, "func _hit_stop(").contains("is_attacking"))
+
+	# ---- the wave, dressed -------------------------------------------------------------
+	var wave_scene: PackedScene = load("res://scene/projectiles/slashwave.tscn") as PackedScene
+	var wave: SlashWave = wave_scene.instantiate() as SlashWave
+	wave.cosmetic = true
+	arena.add_child(wave)
+	wave.global_position = Vector2(400, 300)
+	wave.shoot_vector(Vector2.RIGHT)
+	var glow: AnimatedSprite2D = wave.get_node_or_null(^"glow") as AnimatedSprite2D
+	var crescent: AnimatedSprite2D = wave.get_node(^"animatedsprite2d") as AnimatedSprite2D
+	check("the wave glows: a copy of its crescent behind it, larger and added, and the crescent unshaded",
+		glow != null and wave.get_child(0) == glow and glow.animation == crescent.animation
+		and (glow.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+		and (crescent.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and glow.scale.x > crescent.scale.x)
+	var before: Array = arena.get_children()
+	wave._physics_process(SlashWave.GHOST_EVERY)
+	var ghosts: Array = arena.get_children().filter(func(n: Node) -> bool: return not before.has(n) and str(n.name).begins_with("waveghost"))
+	check("  and streaks: an afterimage left where it was, fading",
+		ghosts.size() == 1 and is_equal_approx((ghosts[0] as CanvasItem).modulate.a, SlashWave.GHOST_ALPHA), ghosts)
+	var dummy: CharacterBody2D = _weapon_dummy(arena, Vector2(430, 300))
+	before = arena.get_children()
+	wave.call("_try_hit", dummy)
+	# By what they hold, not their names: siblings of one name get renamed.
+	var is_sparks := func(n: Node) -> bool: return n.get_node_or_null(^"flash") is Sprite2D and n.get_node_or_null(^"sparks") is CPUParticles2D
+	var cut_sparks: int = arena.get_children().filter(func(n: Node) -> bool: return not before.has(n) and is_sparks.call(n)).size()
+	before = arena.get_children()
+	wave.destroy_wave()
+	var broke: int = arena.get_children().filter(func(n: Node) -> bool: return not before.has(n) and is_sparks.call(n)).size()
+	check("  sparks where it cuts a monster, and where it breaks on a wall", cut_sparks == 1 and broke == 1, [cut_sparks, broke])
+
+	var big: SlashWave = wave_scene.instantiate() as SlashWave
+	big.cosmetic = true
+	big.finisher = true
+	big.hitbox_scale = SlashWave.FINISHER_SCALE
+	arena.add_child(big)
+	big.shoot_vector(Vector2.RIGHT)
+	var big_crescent: AnimatedSprite2D = big.get_node(^"animatedsprite2d") as AnimatedSprite2D
+	var big_box: RectangleShape2D = (big.get_node(^"CollisionShape2D") as CollisionShape2D).shape as RectangleShape2D
+	check("a finisher's wave is gold and bigger - its picture and its hitbox both",
+		is_equal_approx(big_crescent.scale.x, crescent.scale.x * SlashWave.FINISHER_SCALE)
+		and big_crescent.modulate.b < 0.6
+		and is_equal_approx(big_box.size.y, SlashWave.HITBOX_SWEEP * SlashWave.FINISHER_SCALE)
+		and is_equal_approx(WarriorScript.FINISHER_SCALE, SlashWave.FINISHER_SCALE), big_box.size)
+	var spawn_body: String = _func_body(warrior_src, "func _spawn_slashwave(")
+	var attack_body: String = _func_body(warrior_src, "func attack_action(")
+	check("  thrown on every third sword swing - not with the Double Axe - for one and a half its damage",
+		attack_body.contains("_swings += 1") and attack_body.contains("_finisher = finisher_on(_swings)")
+		and attack_body.find("_swings += 1") > attack_body.find("throw_axe(get_global_mouse_position())")
+		and spawn_body.contains("wave_damage_ratio * (FINISHER_MULT if _finisher else 1.0)")
+		and spawn_body.find("wave.finisher = true") < spawn_body.find("wave.shoot_vector(")
+		and spawn_body.contains("RemoteAttacks.FLAG_FINISHER if _finisher else 0"))
+
+	# ---- somebody else's ------------------------------------------------------------------
+	var them := Node2D.new()
+	arena.add_child(them)
+	var made: Array = RemoteAttacks.fire(them, ["slash", 0, 200.0, 200.0, 300.0, 200.0, 0, RemoteAttacks.FLAG_FINISHER])
+	check("a picture of somebody else's finisher is gold and bigger too",
+		made.size() == 1 and (made[0] as SlashWave).finisher and is_equal_approx((made[0] as SlashWave).hitbox_scale, SlashWave.FINISHER_SCALE))
+	for n in made:
+		(n as Node).queue_free()
+
+	# ---- the server's books -------------------------------------------------------------
+	var combat: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json")) as Dictionary).get("combat", {})
+	var row: Dictionary = ((combat.get("classes", {}) as Dictionary).get("warrior", {})) as Dictionary
+	check("the finisher is in gamedata.json for the server's books (re-run the exporter if not)",
+		int(row.get("finisher_every", -1)) == WarriorScript.FINISHER_EVERY
+		and is_equal_approx(float(row.get("finisher_mult", -1.0)), WarriorScript.FINISHER_MULT), row)
 	arena.queue_free()
 	await get_tree().process_frame
 

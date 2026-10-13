@@ -5648,6 +5648,52 @@ damage on 1 main projectile" - and "can make a diff color if needed".
   the fan before the double), the gold, the bigger splash, the longer glowing
   trail, the picture's gold and the export. Each was broken on purpose.
 
+### The warrior's blows, seen and felt (0.38.0)
+
+The owner: "the final character warrioe how can we make him better also" -
+and of the four offered, all four: "Swing arc + sparks", "Dressed slash
+wave", "Heavier hits", "Third-swing finisher".
+
+- **src/shared/strikefx.gd**, preloaded as `Strike` by warrior.gd and
+  slashwave.gd (no class_name). `arc()`: a Line2D two whole pixels wide,
+  unshaded, its tail clear and its head bright, swept round the warrior's
+  origin (the middle of its picture) through `ARC_SWEEP_DEGREES` (75) either
+  side of the aim in `ARC_SECONDS`, then faded and freed - its tween is the
+  meta "sweep", which the tests step by hand. warrior.gd cuts one on the first
+  contact frame of every sword swing, each the other way from the last.
+  `sparks()`: a small flash and 8 steel sparks at z 5 where the sword or the
+  wave lands (`hit_point()`, the middle of the hurtbox), and where a wave
+  breaks on a wall.
+- **The wave, dressed** (slashwave.gd, THE WAVE, DRESSED): the crescent
+  unshaded, a larger copy behind it added (`glow`, playing the same
+  animation), and an afterimage left beside it every `GHOST_EVERY` (0.03 s),
+  fading over `GHOST_SECONDS`.
+- **THE HIT-STOP** (warrior.gd): the first time a swing connects, the
+  monster's picture and the warrior's hold still `HITSTOP_SECONDS` (0.06) and
+  the camera shakes a little - pictures only, the fight is not paused. The
+  swing lock ends on the attack animation's `animation_finished`
+  (player.gd), so a held picture would have made every next swing that much
+  later - about 13% fewer swings for a warrior that hits with every one. So
+  the warrior's picture plays the rest of the swing faster after the hold
+  (`swing_time_left()`) and the swing ends when it would have; so near the
+  end that the rest would have to rush, it is not held at all.
+- **THE FINISHER**: every `FINISHER_EVERY` (3rd) sword swing - not the Double
+  Axe's, whose swing is the throw - throws a gold wave `FINISHER_SCALE`
+  (1.35) as big, its hitbox too, for `FINISHER_MULT` (1.5x) the wave's
+  damage, with a gold arc, gold sparks and a longer stop (0.09). Set before
+  `shoot_vector()`, which dresses the wave. Others see it:
+  `RemoteAttacks.FLAG_FINISHER` (32) on the "slash" attack.
+- **The server's books**: the exporter writes `finisher_every` and
+  `finisher_mult`, and the API's warrior bound takes the worst - every wave a
+  finisher's - for its biggest hit and its rate. A finisher's wave is 1.125
+  sword hits and the rate about 7% more, both inside `SLACK` (1.5) of the old
+  bound, so the game and the server can be updated in either order.
+- `_test_the_warrior_blows` checks the rhythm, the arc (its line, its head on
+  the aim halfway, a finisher's further out and round, gone after), where it
+  is cut, the sparks, the hit-stop and the catch-up, the wave's glow, ghosts
+  and sparks, the finisher's wave, the picture's finisher and the export.
+  Each was broken on purpose to see it fail.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

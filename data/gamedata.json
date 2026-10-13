@@ -1485,6 +1485,8 @@
 				"axe_spin_max_rate": 2.0,
 				"base": 24,
 				"cooldown": 1.0,
+				"finisher_every": 3,
+				"finisher_mult": 1.5,
 				"speed": 200,
 				"swing_seconds": 0.4,
 				"wave_ratio": 0.75
@@ -3331,7 +3333,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791871077,
+	"generated_at": 1791872314,
 	"items": [
 		{
 			"armor_value": 6,

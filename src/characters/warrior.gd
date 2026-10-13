@@ -97,6 +97,9 @@ const CLASS_SPEED := 200
 # preloaded slash wave projectile scene
 const SLASHWAVE_SCENE := preload("res://scene/projectiles/slashwave.tscn")
 
+# The arc and the sparks (strikefx.gd, 0.38.0).
+const Strike := preload("res://src/shared/strikefx.gd")
+
 # THE DOUBLE AXE'S ATTACK. With it equipped, attack throws the axe and attack
 # again calls it back - see spinningaxe.gd. The swing animation still plays as
 # the throw, but it carries no hitbox and no slash wave: the axe is the hit.
@@ -285,6 +288,45 @@ var _swing_hitbox: Area2D = null
 # rather than not at all, which is the failure worth having.
 var _swing_wave_frame: int = 0
 
+# =============================================================================
+# THE WARRIOR'S BLOWS, SEEN AND FELT (0.38.0)
+# =============================================================================
+# The owner: "the final character warrioe how can we make him better also",
+# and all four of what was offered.
+#
+#   the arc        Strike.arc(): a white crescent swept round the warrior on
+#                  the first contact frame, the way the swing aims, each swing
+#                  the other way from the last
+#   the sparks     Strike.sparks() where the sword lands on each monster
+#   the weight     THE HIT-STOP: the first time a swing connects, the warrior's
+#                  picture and the monster's stop for HITSTOP_SECONDS - a
+#                  picture only: nothing in the fight is paused - and the
+#                  camera gives a small shake (HIT_SHAKE). The swing lock ends
+#                  when the swing's animation does (player.gd), so a held
+#                  picture would make every next swing that much later; the
+#                  warrior's plays the rest of the swing faster after the
+#                  hold (swing_time_left()), and ends when it would have.
+#   the finisher   every FINISHER_EVERY-th swing (3rd) throws a gold wave
+#                  FINISHER_SCALE as big for FINISHER_MULT (1.5x) its damage,
+#                  with a gold arc, gold sparks and a longer stop. The exporter
+#                  writes both numbers, and the server's books allow for it.
+#                  Not with the Double Axe: its swing is the throw.
+const FINISHER_EVERY := 3
+const FINISHER_MULT := 1.5
+const FINISHER_SCALE := SlashWave.FINISHER_SCALE
+const HITSTOP_SECONDS := 0.06
+const FINISHER_HITSTOP_SECONDS := 0.09
+const HIT_SHAKE := Vector2(0.8, 0.08)
+
+# Swings with the sword since the warrior was made, for THE FINISHER.
+var _swings: int = 0
+# This swing is the finisher.
+var _finisher: bool = false
+# Which way the next arc sweeps; it turns over every swing.
+var _arc_clockwise: bool = true
+var _arc_cut_this_swing: bool = false
+var _stopped_this_swing: bool = false
+
 # right-click attack lives in Player (see its ATTACK INPUT section). The
 # private tracker that used to sit here is gone, along with the reasoning
 # about avoiding a collision with mage's cast — that collision was never real.
@@ -465,6 +507,9 @@ func attack_action() -> void:
 
 	_hit_this_swing.clear()
 	_wave_spawned_this_swing = false
+	_arc_cut_this_swing = false
+	_stopped_this_swing = false
+	_finisher = false
 
 	# Aim toward the cursor instead of the last WASD direction. Fall back to
 	# last_direction if the cursor is sitting exactly on the player
@@ -499,6 +544,9 @@ func attack_action() -> void:
 		_swing_hitbox = null
 		_wave_spawned_this_swing = true
 		throw_axe(get_global_mouse_position())
+	else:
+		_swings += 1
+		_finisher = finisher_on(_swings)
 
 	var anim: String = _resolve_swing_animation(swing_cardinal)
 	_swing_wave_frame = _resolve_wave_frame(anim)
@@ -683,6 +731,11 @@ func _on_frame_changed() -> void:
 
 	var frame: int = sprite.frame
 
+	if frame >= contact_frame_start and not _arc_cut_this_swing and _swing_hitbox != null:
+		_arc_cut_this_swing = true
+		Strike.arc(self, _swing_aim_direction, _arc_clockwise, _finisher)
+		_arc_clockwise = not _arc_clockwise
+
 	if frame >= contact_frame_start and frame <= contact_frame_end:
 		_deal_melee_damage()
 
@@ -726,7 +779,68 @@ func _try_damage(target: Node) -> int:
 
 	_hit_this_swing[target_id] = true
 	target.take_damage(_calculate_melee_damage())
+	if target is Node2D and is_inside_tree():
+		Strike.sparks(get_parent(), Strike.hit_point(target as Node2D),
+			Strike.GOLD if _finisher else Strike.STEEL)
+	if not _stopped_this_swing:
+		_stopped_this_swing = true
+		_hit_stop(target)
 	return 1
+
+
+static func finisher_on(swing: int) -> bool:
+	"""Whether sword swing number `swing` (the first is 1) is THE FINISHER."""
+	return swing > 0 and swing % FINISHER_EVERY == 0
+
+
+func _hit_stop(target: Node) -> void:
+	"""THE HIT-STOP: the warrior's picture and the monster's held still for a
+	moment, and a small shake. Pictures only - the fight goes on."""
+	var seconds: float = FINISHER_HITSTOP_SECONDS if _finisher else HITSTOP_SECONDS
+	# Each picture held, and the speed it goes on at after.
+	var held: Array[AnimatedSprite2D] = []
+	var speeds: Array[float] = []
+	var theirs: AnimatedSprite2D = target.get_node_or_null(^"animatedsprite2d") as AnimatedSprite2D
+	if theirs != null:
+		held.append(theirs)
+		speeds.append(theirs.speed_scale)
+	# The warrior's own: the rest of the swing played in what is left of it
+	# after the hold, so it ends - and the swing lock with it - on time. Not
+	# held at all so near the end that it would have to rush.
+	if sprite != null:
+		var left: float = swing_time_left(sprite)
+		if left > seconds * 2.0:
+			held.append(sprite)
+			speeds.append(sprite.speed_scale * left / (left - seconds))
+	for picture in held:
+		picture.speed_scale = 0.0
+	shake_camera(HIT_SHAKE.x * (1.5 if _finisher else 1.0), HIT_SHAKE.y)
+	var tree: SceneTree = get_tree() if is_inside_tree() else (target.get_tree() if target.is_inside_tree() else null)
+	if tree == null:
+		return
+	await tree.create_timer(seconds).timeout
+	for i in held.size():
+		# Only a picture still held: one that has played something else since
+		# (a new swing sets its own speed) is left alone.
+		if is_instance_valid(held[i]) and held[i].speed_scale == 0.0:
+			held[i].speed_scale = speeds[i]
+
+
+static func swing_time_left(picture: AnimatedSprite2D) -> float:
+	"""Seconds until `picture`'s animation ends at its speed now - 0 for one
+	that loops, is stopped, or has nothing to play."""
+	var frames: SpriteFrames = picture.sprite_frames
+	var anim: StringName = picture.animation
+	if frames == null or not frames.has_animation(anim) or frames.get_animation_loop(anim) or picture.speed_scale <= 0.0:
+		return 0.0
+	var fps: float = frames.get_animation_speed(anim)
+	var count: int = frames.get_frame_count(anim)
+	if fps <= 0.0 or picture.frame >= count:
+		return 0.0
+	var left: float = -picture.frame_progress * frames.get_frame_duration(anim, picture.frame)
+	for f in range(picture.frame, count):
+		left += frames.get_frame_duration(anim, f)
+	return maxf(left, 0.0) / fps / picture.speed_scale
 
 
 # =============================================================================
@@ -849,7 +963,12 @@ func _spawn_slashwave() -> void:
 	# as teleporter.gd; same one-line fix.
 	wave.reset_physics_interpolation()
 
-	wave.damage = int(_calculate_melee_damage() * wave_damage_ratio)
+	wave.damage = int(_calculate_melee_damage() * wave_damage_ratio * (FINISHER_MULT if _finisher else 1.0))
+	# THE FINISHER's wave: gold, and bigger - its hitbox too. Before
+	# shoot_vector(), which builds the hitbox and dresses the wave.
+	if _finisher:
+		wave.finisher = true
+		wave.hitbox_scale = FINISHER_SCALE
 
 	# Identifies the warrior for slashwave.gd's magic-XP-on-hit — see that
 	# file's class comment for why the wave (not the swing) grants magic XP,
@@ -857,7 +976,8 @@ func _spawn_slashwave() -> void:
 	wave.caster = self
 	wave.shoot_vector(_swing_aim_direction)
 	Presence.tell_attack("slash", wave.global_position,
-		wave.global_position + _swing_aim_direction * RemoteAttacks.AIM_AHEAD)
+		wave.global_position + _swing_aim_direction * RemoteAttacks.AIM_AHEAD, 0.0,
+		RemoteAttacks.FLAG_FINISHER if _finisher else 0)
 
 
 func _parent_to_projectiles_container(wave: Node) -> void:

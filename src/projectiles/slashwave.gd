@@ -46,6 +46,9 @@
 extends Area2D
 class_name SlashWave
 
+# The sparks (strikefx.gd, 0.38.0).
+const Strike := preload("res://src/shared/strikefx.gd")
+
 
 # =============================================================================
 # HITBOX GEOMETRY
@@ -209,6 +212,31 @@ var _base_scale: Vector2 = Vector2.ONE
 # of stacking a second tween on the same property.
 var _pulse_tween: Tween = null
 
+# =============================================================================
+# THE WAVE, DRESSED (0.38.0)
+# =============================================================================
+# The owner's "Dressed slash wave", with the warrior's other three (warrior.gd,
+# THE WARRIOR'S BLOWS): a glowing edge - a copy of the crescent behind it, a
+# little larger, added and unshaded - and AFTERIMAGES, one left every
+# GHOST_EVERY seconds where it was, fading over GHOST_SECONDS, so it streaks.
+# Sparks where it cuts a monster (Strike.sparks()), and where it breaks on a
+# wall. A `finisher` (warrior.gd, THE FINISHER) is gold and its sprite is
+# FINISHER_SCALE as big, as its hitbox is (hitbox_scale, set with it). Set
+# before shoot_vector(), which dresses it.
+const GHOST_EVERY := 0.03
+const GHOST_SECONDS := 0.16
+const GHOST_ALPHA := 0.4
+const GLOW_SCALE := 1.15
+const GLOW_COLOUR := Color(0.75, 0.9, 1.0, 0.35)
+const GOLD_GLOW := Color(1.0, 0.8, 0.35, 0.5)
+const FINISHER_TINT := Color(1.0, 0.85, 0.45)
+const FINISHER_SCALE := 1.35
+
+var finisher: bool = false
+var _glow: AnimatedSprite2D = null
+var _ghost_clock: float = 0.0
+static var _added: CanvasItemMaterial = null
+
 
 # =============================================================================
 # LIFECYCLE
@@ -239,6 +267,12 @@ func _physics_process(delta: float) -> void:
 	# straight-line motion at constant velocity. direction is pre-normalized
 	# in shoot() / shoot_vector() so no per-frame normalization needed.
 	position += direction * speed * delta
+	# An afterimage every GHOST_EVERY while it flies (THE WAVE, DRESSED).
+	if direction != Vector2.ZERO and not _is_dying:
+		_ghost_clock += delta
+		if _ghost_clock >= GHOST_EVERY:
+			_ghost_clock = 0.0
+			_leave_ghost()
 
 
 # =============================================================================
@@ -281,6 +315,7 @@ func shoot_vector(dir: Vector2) -> void:
 	# made explicit. testrunner checks Facing against the original body on a
 	# grid of vectors, so this delegation is pinned rather than assumed.
 	direction_name = Facing.from_vec_total(direction)
+	_dress()
 	_play_directional_animation()
 	_apply_directional_hitbox()
 
@@ -295,6 +330,8 @@ func _play_directional_animation() -> void:
 	var sprite: AnimatedSprite2D = $animatedsprite2d
 	var anim_name: String = "slash" + direction_name
 
+	if _glow != null and sprite.sprite_frames.has_animation(anim_name):
+		_glow.play(anim_name)
 	if sprite.sprite_frames.has_animation(anim_name):
 		sprite.play(anim_name)
 	elif sprite.sprite_frames.has_animation("slash"):
@@ -406,6 +443,9 @@ func _try_hit(target: Node) -> void:
 		target.take_damage(damage, element)
 		_grant_caster_magic_xp()
 	_play_hit_pulse()
+	if target is Node2D and get_parent() != null:
+		Strike.sparks(get_parent(), Strike.hit_point(target as Node2D),
+			Strike.GOLD if finisher else Strike.STEEL)
 
 	# max_pierce = 0 means unlimited — the wave runs until it meets a wall
 	# or leaves the screen.
@@ -485,6 +525,9 @@ func destroy_wave(with_impact: bool = true) -> void:
 	direction = Vector2.ZERO
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
+	# It breaks on what stopped it: sparks (THE WAVE, DRESSED).
+	if get_parent() != null:
+		Strike.sparks(get_parent(), global_position + SPRITE_CENTRE, Strike.GOLD if finisher else Strike.STEEL)
 
 	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
 	if sprite == null:
@@ -506,3 +549,64 @@ func destroy_wave(with_impact: bool = true) -> void:
 		.set_ease(Tween.EASE_IN)
 	# chain() makes this run AFTER the parallel pair above, not alongside it.
 	tween.chain().tween_callback(queue_free)
+
+
+# =============================================================================
+# THE WAVE, DRESSED (0.38.0) - see STATE
+# =============================================================================
+
+func _dress() -> void:
+	"""The glow behind the crescent, and a finisher's gold and size. Once."""
+	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
+	if sprite == null or _glow != null:
+		return
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	sprite.material = unshaded
+	if finisher:
+		sprite.scale = _base_scale * FINISHER_SCALE
+		_base_scale = sprite.scale
+		sprite.modulate = FINISHER_TINT
+	_glow = AnimatedSprite2D.new()
+	_glow.name = "glow"
+	_glow.sprite_frames = sprite.sprite_frames
+	_glow.position = sprite.position
+	_glow.scale = sprite.scale * GLOW_SCALE
+	_glow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_glow.modulate = GOLD_GLOW if finisher else GLOW_COLOUR
+	_glow.material = added_material()
+	add_child(_glow)
+	move_child(_glow, 0)
+
+
+func _leave_ghost() -> void:
+	"""An afterimage of the crescent where it is now, fading where it was
+	left. Beside the wave, so it stays put as the wave flies on."""
+	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
+	if sprite == null or sprite.sprite_frames == null or get_parent() == null:
+		return
+	var frame: Texture2D = sprite.sprite_frames.get_frame_texture(sprite.animation, sprite.frame)
+	if frame == null:
+		return
+	var ghost := Sprite2D.new()
+	ghost.name = "waveghost"
+	ghost.texture = frame
+	ghost.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	ghost.material = added_material()
+	var tint: Color = FINISHER_TINT if finisher else Color(0.8, 0.92, 1.0)
+	ghost.modulate = Color(tint.r, tint.g, tint.b, GHOST_ALPHA)
+	ghost.z_index = z_index
+	get_parent().add_child(ghost)
+	ghost.global_position = sprite.global_position
+	ghost.global_scale = sprite.global_scale
+	var t := ghost.create_tween()
+	t.tween_property(ghost, "modulate:a", 0.0, GHOST_SECONDS)
+	t.tween_callback(ghost.queue_free)
+
+
+static func added_material() -> CanvasItemMaterial:
+	if _added == null:
+		_added = CanvasItemMaterial.new()
+		_added.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		_added.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	return _added

@@ -39,6 +39,7 @@ const FLAG_WIDE := 2      # a wide axe (spinningaxe.gd, THE ROLL)
 const FLAG_BLOODY := 4    # a bloody one
 const FLAG_FAN := 8       # a healer's orb with its fan beside it (healer.gd, THE FAN)
 const FLAG_DOUBLE := 16   # a healer's orb that doubled - gold (healer.gd, THE DOUBLE)
+const FLAG_FINISHER := 32 # a warrior's third-swing wave - gold and bigger (warrior.gd, THE FINISHER)
 # The scenes warrior.gd, mage.gd and tank.gd preload. Loaded when first needed
 # rather than preloaded: the projectile scripts call go_quiet() below, and a
 # preload here would make each scene part of the script that loads it.
@@ -84,7 +85,7 @@ static func fire(body: Node2D, attack: Array) -> Array:
 	var made: Node = null
 	match kind:
 		"slash":
-			made = _slash(body, origin, target)
+			made = _slash(body, origin, target, flags)
 		"axe":
 			made = _axe(body, origin, target, flags)
 		"recall":
@@ -106,10 +107,14 @@ static func fire(body: Node2D, attack: Array) -> Array:
 # EACH KIND - what the class script does when it attacks, less the numbers
 # =============================================================================
 
-static func _slash(body: Node2D, origin: Vector2, target: Vector2) -> Node:
+static func _slash(body: Node2D, origin: Vector2, target: Vector2, flags: int = 0) -> Node:
 	var wave: SlashWave = _scene(SLASHWAVE_PATH).instantiate()
 	wave.cosmetic = true
 	wave.damage = 0
+	# Their finisher, gold and bigger (0.38.0).
+	if flags & FLAG_FINISHER != 0:
+		wave.finisher = true
+		wave.hitbox_scale = SlashWave.FINISHER_SCALE
 	_parent(body, true).add_child(wave)
 	wave.global_position = origin
 	wave.reset_physics_interpolation()
