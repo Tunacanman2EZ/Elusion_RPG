@@ -32,7 +32,7 @@ class_name RemoteAttacks
 extends RefCounted
 
 # The kinds, as presence.py ATTACK_KINDS has them.
-const KINDS: Array = ["slash", "axe", "recall", "stalag", "meteor", "dyn", "orb"]
+const KINDS: Array = ["slash", "axe", "recall", "stalag", "meteor", "dyn", "orb", "heal"]
 # What `flags` carries.
 const FLAG_PULL := 1      # a meteor that pulls (meteor.gd, THE PULL)
 const FLAG_WIDE := 2      # a wide axe (spinningaxe.gd, THE ROLL)
@@ -103,6 +103,8 @@ static func fire(body: Node2D, attack: Array) -> Array:
 			made = _stick(body, origin, target, delay)
 		"orb":
 			made = _orb(body, origin, target, flags)
+		"heal":
+			made = _heal(body, target)
 	return [made] if made != null else []
 
 
@@ -214,6 +216,13 @@ static func _orb(body: Node2D, origin: Vector2, target: Vector2, flags: int = 0)
 			_one_orb(body, scene, origin, side as Vector2, true)
 	CastSparkle.muzzle(body, origin - body.global_position, target)
 	return orb
+
+
+static func _heal(body: Node2D, target: Vector2) -> Node:
+	# A healer's aura (0.40.0): a picture - it burns nothing - but it heals
+	# this game's own player if they stand in it, as the healer's own heals the
+	# healer (healaura.gd). On the floor, so in the area, not the projectiles.
+	return HealAura.drop(_parent(body, false), target, 0, true)
 
 
 static func fan_ways(way: Vector2) -> Array:

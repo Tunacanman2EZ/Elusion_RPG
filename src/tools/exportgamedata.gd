@@ -1652,6 +1652,23 @@ func _export_combat(_items: Array) -> Dictionary:
 				# And a main orb in five hits double (healer.gd, THE DOUBLE, 0.37.0).
 				row["double_chance"] = float(healer_consts.get("DOUBLE_HIT_CHANCE", 0.0))
 				row["double_hit"] = float(healer_consts.get("DOUBLE_HIT", 1))
+				# And THE AURA (healer.gd, healaura.gd, 0.40.0): every aura_cooldown
+				# at most, aura_ticks ticks, each burning every monster in it for
+				# aura_damage_share of an orb, and healing whoever stands in it -
+				# all the ticks together aura_heal_share of their maximum - inside
+				# aura_radius of its middle, and the blobs it sends the same to
+				# players outside it within aura_reach. The books take the burn;
+				# the presence server writes the heals down for the healing check.
+				var aura_script: Script = load("res://src/projectiles/healaura.gd") as Script
+				var aura_consts: Dictionary = aura_script.get_script_constant_map() if aura_script != null else {}
+				row["aura_cooldown"] = float(healer_consts.get("AURA_COOLDOWN", 0.0))
+				row["aura_damage_share"] = float(healer_consts.get("AURA_DAMAGE_SHARE", 0.0))
+				row["aura_ticks"] = (aura_consts.get("TICK_FRAMES", []) as Array).size()
+				row["aura_heal_share"] = float(aura_consts.get("HEAL_SHARE", 0.0))
+				var radii: Vector2 = aura_consts.get("RADII", Vector2.ZERO)
+				row["aura_radius"] = maxf(radii.x, radii.y) + float(aura_consts.get("REACH_PAD", 0.0))
+				row["aura_range"] = float(healer_consts.get("AURA_RANGE", 0.0))
+				row["aura_reach"] = float(aura_consts.get("SEEK_RANGE", 0.0))
 			"tank":
 				row["base"] = int(node.get("aura_damage"))
 				row["cooldown"] = float(node.get("aura_tick"))

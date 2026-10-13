@@ -78,7 +78,7 @@ var opening_story_told: bool = false
 # true while a right-click that the UI already consumed is still held down.
 #
 # set by inventoryslot.gd when a slot handles a right-click; read by
-# player.gd's right_click_attack_held(), which clears it the moment the
+# player.gd's right_click_held(), which clears it the moment the
 # button comes back up.
 #
 # WHY THIS HAS TO BE GLOBAL: accept_event() stops an event travelling through

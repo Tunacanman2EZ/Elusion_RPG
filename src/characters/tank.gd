@@ -201,7 +201,8 @@ var aura_timer:       float = 0.0
 var mana_drain_timer: float = 0.0
 var aura_active: bool = false
 
-# right-click edge detection moved to Player — see its ATTACK INPUT section.
+# the mouse attack's edge detection moved to Player — see its ATTACK INPUT
+# section (left-click since 0.40.0, right-click before).
 # tank still needs its own _physics_process (it replaces the base loop rather
 # than extending it), so it calls the inherited _poll_attack_pressed() below
 # instead of keeping a private tracker.
@@ -323,7 +324,7 @@ func _physics_process(delta: float) -> void:
 		_set_active()
 		return
 
-	# spacebar OR right-click toggles the aura — both land on attack_action(),
+	# spacebar OR left-click toggles the aura — both land on attack_action(),
 	# same as every other class.
 	if attack_pressed:
 		attack_action()

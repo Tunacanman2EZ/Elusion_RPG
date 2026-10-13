@@ -32,11 +32,12 @@
 #
 # CURSOR-AIM ATTACK
 # -----------------
-# - triggered by EITHER spacebar OR right-click, both dispatched by
-#   player.gd's _poll_attack_pressed() for every class alike. warrior used to
-#   poll right-click privately to avoid colliding with mage's separate
-#   right-click cast; that collision was imaginary, since mage's
-#   attack_action() IS that cast, so all four copies of the poll are gone.
+# - triggered by EITHER spacebar OR left-click (right-click until 0.40.0),
+#   both dispatched by player.gd's _poll_attack_pressed() for every class
+#   alike. warrior used to poll right-click privately to avoid colliding with
+#   mage's separate right-click cast; that collision was imaginary, since
+#   mage's attack_action() IS that cast, so all four copies of the poll are
+#   gone.
 # - on trigger, we read get_global_mouse_position() and compute a direction
 #   vector from the warrior to the cursor. that direction drives:
 #     1. which attack animation plays — snapped to the nearest of 8 equal
@@ -347,12 +348,12 @@ var _finisher: bool = false
 var _fanned_this_swing: bool = false
 var _stopped_this_swing: bool = false
 
-# right-click attack lives in Player (see its ATTACK INPUT section). The
-# private tracker that used to sit here is gone, along with the reasoning
-# about avoiding a collision with mage's cast — that collision was never real.
-# mage's attack_action() IS its stalagmite cast, so routing right-click to
-# attack_action() for everyone gives mage exactly the same cast it already had,
-# through one path instead of two.
+# the mouse attack lives in Player (see its ATTACK INPUT section - left-click
+# since 0.40.0, right-click before). The private tracker that used to sit here
+# is gone, along with the reasoning about avoiding a collision with mage's
+# cast — that collision was never real. mage's attack_action() IS its
+# stalagmite cast, so routing the mouse to attack_action() for everyone gives
+# mage exactly the same cast it already had, through one path instead of two.
 
 
 # =============================================================================

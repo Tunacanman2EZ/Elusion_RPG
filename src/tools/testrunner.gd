@@ -341,6 +341,7 @@ func _run_all() -> void:
 	await _test_the_mage_spell_effects()
 	await _test_the_healer_orbs()
 	await _test_the_warrior_blows()
+	await _test_the_healer_aura()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -1878,8 +1879,15 @@ func _test_security_policy() -> void:
 	check("the page says there are no debug keys",
 		doc.contains("There are no debug keys"),
 		"SECURITY.md used to describe the keys' gate; a page describing a gate that is gone is lying")
-	check("  and player.gd reads no keys of its own, so that is true",
-		not player_src.contains("func _unhandled_input(") and not player_src.contains("func _input("),
+	# ITS ONE INPUT HANDLER IS THE MOUSE'S (0.40.0): _unhandled_input() is where
+	# an attack's click is told from a click a window took (ATTACK INPUT), and
+	# it may read the mouse buttons and nothing else.
+	var unhandled: String = _func_body(player_src, "func _unhandled_input(")
+	check("  and player.gd reads no keys of its own, so that is true - its one handler reads the mouse buttons alone",
+		not player_src.contains("func _input(") and not player_src.contains("func _unhandled_key_input(")
+		and not player_src.contains("func _shortcut_input(")
+		and (unhandled == "" or (unhandled.contains("as InputEventMouseButton") and not unhandled.contains("InputEventKey")
+			and not unhandled.contains("keycode") and not unhandled.contains("is_action") and not unhandled.contains("KEY_"))),
 		"a key handler back in player.gd is a debug key back, whatever it is called")
 
 	# "The session token lives in user://session.cfg and is a bearer credential."
@@ -13046,6 +13054,290 @@ func _test_the_warrior_blows() -> void:
 
 
 # =============================================================================
+# THE HEALER'S AURA (0.40.0)
+# =============================================================================
+
+func _aura_patient(parent: Node, at: Vector2, top: int = 200) -> Node2D:
+	"""A stand-in player: heal() writes down what it was given."""
+	var script := GDScript.new()
+	script.source_code = "extends Node2D\nvar max_hp: int = 200\nvar is_dying: bool = false\nvar got: Array = []\n" \
+		+ "func heal(amount: int) -> void:\n\tgot.append(amount)\n" \
+		+ "func aim_ring_feet() -> Vector2:\n\treturn Vector2.ZERO\n"
+	script.reload()
+	var body := Node2D.new()
+	body.set_script(script)
+	body.set("max_hp", top)
+	parent.add_child(body)
+	body.global_position = at
+	return body
+
+
+func _test_the_healer_aura() -> void:
+	section("THE HEALER'S AURA - right-click: a beam lands, the ring heals and burns, blobs heal those outside (0.40.0)")
+	# The owner sent the art ("healer ff"), chose "Heal players + hurt
+	# monsters", then: "nope hold right click to drop the aura", the orbs on
+	# "left click", and "energy beam crashes down around the circle green orbs
+	# spawn around the circle and each blob travels to players outside of the
+	# circle giving them hp".
+	const HealerScript := preload("res://src/characters/healer.gd")
+	var arena := Node2D.new()
+	arena.name = "auratest"
+	get_tree().current_scene.add_child(arena)
+
+	# ---- the art -------------------------------------------------------------------------
+	var sheet: Texture2D = load(HealAura.SHEET) as Texture2D
+	var frames: SpriteFrames = HealAura.sprite_frames()
+	check("the art: 25 frames of 64 x 64 in one strip, at the artist's 70 ms, played once",
+		sheet != null and sheet.get_width() == 64 * 25 and sheet.get_height() == 64
+		and frames.get_frame_count(&"aura") == HealAura.FRAMES and HealAura.FRAMES == 25
+		and is_equal_approx(frames.get_animation_speed(&"aura"), 1000.0 / 70.0) and not frames.get_animation_loop(&"aura"),
+		[sheet, frames.get_frame_count(&"aura")])
+	# The ring measured off its first frame on the floor: its left and right
+	# ends, and the rows of its leftmost column.
+	var art: Image = sheet.get_image() if sheet != null else null
+	var lefts: Array[int] = []
+	var xs: Array[int] = []
+	if art != null:
+		if art.is_compressed():
+			art.decompress()
+		for y in range(36, 64):
+			for x in 64:
+				if art.get_pixel(HealAura.LANDS_ON * 64 + x, y).a > 0.0:
+					xs.append(x)
+		var left_x: int = xs.min() if not xs.is_empty() else -1
+		for y in range(36, 64):
+			if art.get_pixel(HealAura.LANDS_ON * 64 + left_x, y).a > 0.0:
+				lefts.append(y)
+	var ring_mid := Vector2((float(xs.min()) + float(xs.max()) + 1.0) / 2.0 - 32.0,
+		(float(lefts.min()) + float(lefts.max()) + 1.0) / 2.0 - 32.0) if not xs.is_empty() and not lefts.is_empty() else Vector2(-99, -99)
+	check("  its ring measured off the art: the node is the ring's middle, 45 px across",
+		ring_mid.distance_to(HealAura.RING_FROM_MIDDLE) <= 1.0
+		and absf((float(xs.max()) - float(xs.min()) + 1.0) / 2.0 - HealAura.RADII.x) <= 1.0,
+		[ring_mid, xs.min() if not xs.is_empty() else null, xs.max() if not xs.is_empty() else null])
+
+	# ---- the beam, then the ring -------------------------------------------------------------
+	var aura: HealAura = HealAura.drop(arena, Vector2(400, 400), 7)
+	var picture: AnimatedSprite2D = aura.get_node(^"picture") as AnimatedSprite2D
+	picture.stop()
+	var aura_unshaded: bool = picture.material is CanvasItemMaterial \
+		and (picture.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	# The owner: "i can tell the image was streched keep it original size".
+	check("his art as he drew it - its own size, nothing stretched, nothing added - the beam over everyone, unshaded",
+		picture.scale == Vector2.ONE and aura.get_child_count() == 1 and picture.offset == -HealAura.RING_FROM_MIDDLE
+		and aura.z_index == HealAura.SKY_Z and not aura.z_as_relative and aura_unshaded,
+		[picture.scale, aura.get_children()])
+	var patient: Node2D = _aura_patient(arena, Vector2(410, 404), 200)
+	aura.heal_target = patient
+	aura.reached(HealAura.LANDS_ON)
+	check("  and lands: a ring on the floor under whoever stands in it",
+		aura.z_index == HealAura.FLOOR_Z)
+
+	# ---- inside: the ring heals ---------------------------------------------------------------
+	for frame in HealAura.TICK_FRAMES:
+		aura.reached(frame)
+	aura.reached(HealAura.TICK_FRAMES[HealAura.TICK_FRAMES.size() - 1])
+	var got: Array = patient.get("got")
+	check("a player inside the ring is healed on each of its four ticks - a quarter of their own maximum in all",
+		got.size() == HealAura.TICK_FRAMES.size() and got.all(func(n: int) -> bool: return n == HealAura.heal_each(200))
+		and HealAura.heal_each(200) * 4 >= 50 and aura.ticks_done == 4, got)
+	check("  inside is the ring as drawn - a little past its line, measured at the feet",
+		aura.inside(aura.global_position) and aura.inside(aura.global_position + Vector2(HealAura.RADII.x + HealAura.REACH_PAD - 1.0, 0.0))
+		and not aura.inside(aura.global_position + Vector2(0.0, HealAura.RADII.y + HealAura.REACH_PAD + 2.0))
+		and not aura.inside(aura.global_position + Vector2(HealAura.RADII.x + 10.0, 0.0)))
+	check("  and the blobs, with nobody outside, lift off the ring and go to nobody",
+		aura.blobs.size() == HealAura.BLOBS and aura.blobs.all(func(b: HealBlob) -> bool: return b.target == null and not b.heals))
+
+	# ---- outside: the blobs -------------------------------------------------------------------
+	var near: Node2D = _aura_patient(arena, Vector2(800, 540), 160)
+	# Somebody else, further than SEEK_RANGE: a picture of them.
+	var far_one: Node2D = Node2D.new()
+	far_one.add_to_group(&"remoteplayers")
+	arena.add_child(far_one)
+	far_one.global_position = Vector2(800, 400 + HealAura.SEEK_RANGE + 60.0)
+	var second: HealAura = HealAura.drop(arena, Vector2(800, 400), 7)
+	(second.get_node(^"picture") as AnimatedSprite2D).stop()
+	second.heal_target = near
+	second.reached(HealAura.LANDS_ON)
+	far_one.remove_from_group(&"remoteplayers")
+	var each: int = ceili(160.0 * HealAura.HEAL_SHARE / float(HealAura.BLOBS))
+	# On the ring's line - an ellipse RADII round its middle, to a whole pixel -
+	# and each where ring_point() says.
+	var on_ring: bool = true
+	for i in second.blobs.size():
+		var d: Vector2 = second.blobs[i].global_position - second.global_position
+		on_ring = on_ring and d == HealAura.ring_point(i) \
+			and absf(pow(d.x / HealAura.RADII.x, 2.0) + pow(d.y / HealAura.RADII.y, 2.0) - 1.0) < 0.15
+	check("a player outside the ring, near it: the beam lands and green orbs lift off all round the ring, every one for them",
+		second.blobs.size() == HealAura.BLOBS and on_ring
+		and second.blobs.all(func(b: HealBlob) -> bool: return b.target == near and b.heals and b.amount == each),
+		second.blobs.map(func(b: HealBlob) -> Array: return [b.target, b.amount]))
+	for i in 60:
+		for blob in second.blobs:
+			if is_instance_valid(blob) and not blob.arrived:
+				blob.step(1.0 / 30.0)
+	var arrived: int = second.blobs.filter(func(b: HealBlob) -> bool: return is_instance_valid(b) and b.arrived).size()
+	check("  each blob travels to them and gives them hp: a quarter of their maximum between them",
+		arrived == HealAura.BLOBS and near.get("got") == Array([each, each, each, each, each, each, each, each])
+		and each * HealAura.BLOBS >= 40, [arrived, near.get("got")])
+	for tick in HealAura.TICK_FRAMES:
+		second.reached(tick)
+	check("  and the ring does not heal them twice as it ticks", (near.get("got") as Array).size() == HealAura.BLOBS,
+		near.get("got"))
+	check("  and none goes to someone further than SEEK_RANGE",
+		second.blobs.all(func(b: HealBlob) -> bool: return not is_instance_valid(b) or b.target != far_one))
+
+	var two_of_us: Node2D = _aura_patient(arena, Vector2(1200, 520), 120)
+	var their_picture: Node2D = Node2D.new()
+	their_picture.add_to_group(&"remoteplayers")
+	arena.add_child(their_picture)
+	their_picture.global_position = Vector2(1300, 400)
+	var third: HealAura = HealAura.drop(arena, Vector2(1200, 400), 0, true)
+	(third.get_node(^"picture") as AnimatedSprite2D).stop()
+	third.heal_target = two_of_us
+	third.reached(HealAura.LANDS_ON)
+	var mine: Array = third.blobs.filter(func(b: HealBlob) -> bool: return b.target == two_of_us)
+	var theirs: Array = third.blobs.filter(func(b: HealBlob) -> bool: return b.target == their_picture)
+	their_picture.remove_from_group(&"remoteplayers")
+	check("  with two outside, the blobs are shared out in turn: yours heal you, theirs are a picture of theirs",
+		mine.size() == 4 and theirs.size() == 4
+		and mine.all(func(b: HealBlob) -> bool: return b.heals and b.amount == ceili(120.0 * HealAura.HEAL_SHARE / 4.0))
+		and theirs.all(func(b: HealBlob) -> bool: return not b.heals), [mine.size(), theirs.size()])
+	var dying: Node2D = _aura_patient(arena, Vector2(1600, 400), 100)
+	dying.set("is_dying", true)
+	var fourth: HealAura = HealAura.drop(arena, Vector2(1600, 400), 0, true)
+	(fourth.get_node(^"picture") as AnimatedSprite2D).stop()
+	fourth.heal_target = dying
+	for frame in range(HealAura.LANDS_ON, 11):
+		fourth.reached(frame)
+	check("  and nobody is healed back from dying", (dying.get("got") as Array).is_empty())
+
+	# ---- the burn -----------------------------------------------------------------------------
+	var in_ring: CharacterBody2D = _weapon_dummy(arena, Vector2(2000, 404))
+	var out_ring: CharacterBody2D = _weapon_dummy(arena, Vector2(2000, 470))
+	var burning: HealAura = HealAura.drop(arena, Vector2(2000, 400), 7)
+	(burning.get_node(^"picture") as AnimatedSprite2D).stop()
+	burning.heal_target = _aura_patient(arena, Vector2(2600, 2600))
+	burning.reached(HealAura.LANDS_ON)
+	burning.reached(HealAura.TICK_FRAMES[1])
+	var shown: HealAura = HealAura.drop(arena, Vector2(2000, 400), 7, true)
+	(shown.get_node(^"picture") as AnimatedSprite2D).stop()
+	shown.heal_target = burning.heal_target
+	shown.reached(HealAura.LANDS_ON)
+	shown.reached(HealAura.TICK_FRAMES[1])
+	check("the ring burns every monster in it, each tick - the healer's own; a picture of somebody else's burns nothing",
+		in_ring.get("taken") == [7, 7] and (out_ring.get("taken") as Array).is_empty() and shown.damage == 0,
+		[in_ring.get("taken"), out_ring.get("taken")])
+
+	# ---- a right-click -----------------------------------------------------------------------------
+	# The owner, of a hold that waited out the cooldown or the mana and then
+	# dropped it: "i right click and hold takes like 5 seconds should just be
+	# right click".
+	var holder := Node2D.new()
+	var healer: Node2D = (load("res://scene/characters/healer.tscn") as PackedScene).instantiate() as Node2D
+	holder.add_child(healer)
+	healer.position = Vector2(100, 100)
+	healer.set("max_mana", 200)
+	healer.set("mana", 200)
+	var far_cursor: Vector2 = Vector2(100 + HealerScript.AURA_RANGE + 300.0, 100)
+	check("a right-click drops it at the cursor, no further than AURA_RANGE from the healer",
+		healer.call("aura_point", Vector2(150, 130)) == Vector2(150, 130)
+		and (healer.call("aura_point", far_cursor) as Vector2).is_equal_approx(Vector2(100 + HealerScript.AURA_RANGE, 100)))
+	var auras := func() -> Array: return holder.get_children().filter(func(n: Node) -> bool: return n is HealAura)
+	var first_frame: HealAura = healer.call("_aura_click", 0.016, true, Vector2(150, 130))
+	var dropped: Array = auras.call()
+	check("  at once, the frame the button goes down - the mana paid, the cooldown begun",
+		first_frame != null and dropped.size() == 1 and (dropped[0] as Node2D).global_position == Vector2(150, 130)
+		and int(healer.get("mana")) == 200 - HealerScript.AURA_MANA_COST
+		and is_equal_approx(float(healer.get("aura_cooldown_left")), HealerScript.AURA_COOLDOWN)
+		and (dropped[0] as HealAura).damage >= 1, [dropped.size(), healer.get("mana"), healer.get("aura_cooldown_left")])
+	healer.set("aura_cooldown_left", 0.0)
+	for i in 30:
+		healer.call("_aura_click", 0.2, true, Vector2(150, 130))
+	var held_on: int = auras.call().size()
+	healer.call("_aura_click", 0.016, false, Vector2(150, 130))
+	healer.call("_aura_click", 0.016, true, Vector2(150, 130))
+	var clicked_again: int = auras.call().size()
+	check("  one a click: holding it on drops nothing more, ready or not - another click does",
+		held_on == 1 and clicked_again == 2, [held_on, clicked_again])
+	healer.call("_aura_click", 0.016, false, Vector2(150, 130))
+	healer.call("_aura_click", 0.016, true, Vector2(150, 130))
+	var cooling: int = auras.call().size()
+	var why_cooling: String = healer.call("aura_refusal")
+	healer.set("aura_cooldown_left", 0.0)
+	healer.set("mana", HealerScript.AURA_MANA_COST - 1)
+	var why_mana: String = healer.call("aura_refusal")
+	check("  and a click before it is ready drops nothing, and says why over the healer",
+		cooling == 2 and why_cooling == "Aura ready in %ds" % ceili(HealerScript.AURA_COOLDOWN - 0.016)
+		and why_mana == "Not enough mana" and not bool(healer.call("aura_ready"))
+		and _func_body(_code_src("res://src/characters/healer.gd"), "func _aura_click(").contains("show_notice(aura_refusal())"),
+		[cooling, why_cooling, why_mana])
+	var healer_src: String = _code_src("res://src/characters/healer.gd")
+	check("  the right button read every frame - a click no window took - and the area told (\"heal\")",
+		_func_body(healer_src, "func _physics_process(").contains("_aura_click(delta, right_click_held(), get_global_mouse_position())")
+		and _func_body(healer_src, "func drop_aura(").contains("Presence.tell_attack(\"heal\", global_position, at)"))
+
+	# ---- every class attacks on the left button --------------------------------------------------
+	# The owner: "change all attacks to left click".
+	var right := InputEventMouseButton.new()
+	right.button_index = MOUSE_BUTTON_RIGHT
+	right.pressed = true
+	healer.call("_unhandled_input", right)
+	var after_right: bool = bool(healer.get("_left_click_down"))
+	var right_noted: bool = bool(healer.get("_right_click_down"))
+	var left := InputEventMouseButton.new()
+	left.button_index = MOUSE_BUTTON_LEFT
+	left.pressed = true
+	healer.call("_unhandled_input", left)
+	var player_src: String = _code_src("res://src/characters/player.gd")
+	check("every class attacks on left-click (and Space) - a left-click no window took; the right button is the healer's aura",
+		not after_right and right_noted and bool(healer.get("_left_click_down"))
+		and _func_body(player_src, "func _poll_attack_pressed(").contains("left_click_attack_held()")
+		and not _func_body(player_src, "func _poll_attack_pressed(").contains("right_click")
+		and _func_body(healer_src, "func _is_attack_input_held(").contains("Input.is_action_pressed(\"attack\") or left_click_attack_held()")
+		and not _func_body(healer_src, "func _is_attack_input_held(").contains("right_click"))
+	check("  and a right-click a window took drops no aura - the bag's, a name in the players list",
+		_func_body(player_src, "func right_click_held(").contains("return _right_click_down and not GameState.ui_absorbed_right_click"))
+	holder.free()
+	# A click is the world's only if no window took it - and the HUD laid its
+	# bars out in a box over the whole screen that took every click: the
+	# first recording of the click dropped nothing. Nothing laid over the whole
+	# screen may take the mouse.
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	var covering: Array[String] = []
+	for c in hud.find_children("*", "Control", true, false):
+		var ctl := c as Control
+		if ctl.anchor_left == 0.0 and ctl.anchor_top == 0.0 and ctl.anchor_right == 1.0 and ctl.anchor_bottom == 1.0 \
+				and ctl.mouse_filter == Control.MOUSE_FILTER_STOP:
+			covering.append(str(hud.get_path_to(ctl)))
+	hud.free()
+	check("  and nothing the HUD lays over the whole screen takes the click first - its bars' box lets it through",
+		covering.is_empty(), covering)
+
+	# ---- somebody else's ------------------------------------------------------------------------
+	var them := Node2D.new()
+	arena.add_child(them)
+	var made: Array = RemoteAttacks.fire(them, ["heal", 0, 500.0, 500.0, 540.0, 480.0, 0, 0])
+	check("a picture of somebody else's aura: at their ring, burning nothing - and it heals you if you are there",
+		made.size() == 1 and made[0] is HealAura and (made[0] as HealAura).cosmetic and (made[0] as HealAura).damage == 0
+		and (made[0] as Node2D).global_position == Vector2(540, 480) and (made[0] as Node).get_parent() == get_tree().current_scene)
+	for n in made:
+		(n as Node).queue_free()
+
+	# ---- the server's books -------------------------------------------------------------------
+	var combat: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json")) as Dictionary).get("combat", {})
+	var row: Dictionary = ((combat.get("classes", {}) as Dictionary).get("healer", {})) as Dictionary
+	check("the aura is in gamedata.json for the server's books and its healing check (re-run the exporter if not)",
+		is_equal_approx(float(row.get("aura_cooldown", -1.0)), HealerScript.AURA_COOLDOWN)
+		and is_equal_approx(float(row.get("aura_damage_share", -1.0)), HealerScript.AURA_DAMAGE_SHARE)
+		and int(row.get("aura_ticks", -1)) == HealAura.TICK_FRAMES.size()
+		and is_equal_approx(float(row.get("aura_heal_share", -1.0)), HealAura.HEAL_SHARE)
+		and is_equal_approx(float(row.get("aura_reach", -1.0)), HealAura.SEEK_RANGE)
+		and is_equal_approx(float(row.get("aura_range", -1.0)), HealerScript.AURA_RANGE), row)
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
 # THE FLOOR IS UNDER WHAT LIES ON IT (0.34.1)
 # =============================================================================
 
@@ -14512,8 +14804,9 @@ func _test_the_first_five_minutes() -> void:
 	for i in range(0, card.key_grid.get_child_count() - 1, 2):
 		keys[(card.key_grid.get_child(i) as Label).text] = (card.key_grid.get_child(i + 1) as Label).text
 	check("the Controls card has a line for every row", keys.size() == ControlsPanel.ROWS.size(), keys.size())
-	check("  Space or right-click attacks, Shift sprints, E uses, H is the card",
-		keys.get("Attack, aiming with the mouse") == "Space or right-click" and keys.get("Sprint") == "Hold Shift"
+	check("  Space or left-click attacks, Shift sprints, E uses, H is the card - and right-click is the healer's aura",
+		keys.get("Attack, aiming with the mouse") == "Space or left-click" and keys.get("Sprint") == "Hold Shift"
+		and keys.get("Healer: drop a healing aura at the mouse") == "Right-click"
 		and keys.get("Use the shop, bank, fire or fishing spot") == "E" and keys.get("This card") == "H", keys)
 	check("  W A S D walk, and the hotbar is 1 to 0",
 		keys.get("Move") == "W A S D or arrows" and keys.get("Use the item on a hotbar key") == "1 to 0",

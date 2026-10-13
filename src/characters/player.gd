@@ -624,7 +624,7 @@ func _physics_process(_delta):
 	# leave the keyboard.
 	_stamp_input()
 
-	# Sampled FIRST, before any early return below, because the right-click
+	# Sampled FIRST, before any early return below, because the left-click
 	# edge detector has to see every frame. If it only ran when the player was
 	# alive and idle, a click held through a death or an attack lockout would
 	# look like a fresh press the instant that block lifted. Every class used
@@ -636,7 +636,7 @@ func _physics_process(_delta):
 	# keyboard directly, so every space in a chat message swung the weapon.
 	#
 	# DISCARDED AFTER THE POLL, NEVER INSTEAD OF IT. _poll_attack_pressed()
-	# holds the right-click edge detector and its own comment says it must run
+	# holds the left-click edge detector and its own comment says it must run
 	# exactly once per physics frame; skipping the call would make a held
 	# button fire twice the moment the box lost focus.
 	if attack_pressed and _typing_in_ui():
@@ -1351,18 +1351,31 @@ func _on_animatedsprite2d_animation_finished() -> void:
 
 
 # =============================================================================
-# ATTACK INPUT — SPACE + RIGHT CLICK
+# ATTACK INPUT — SPACE + LEFT CLICK
 # =============================================================================
-# Attack fires on the "attack" action (spacebar) OR right mouse, for every
+# Attack fires on the "attack" action (spacebar) OR the mouse, for every
 # class. Right-click used to be polled privately by warrior, mage and tank,
 # each with its own held-tracker and its own edge detection, because binding
 # a mouse button onto the shared action would have collided with mage's
 # separate right-click cast. That collision no longer exists — mage's
 # attack_action() already IS the stalagmite cast — so the four copies are
-# gone and this is the one place right-click is read.
+# gone and this is the one place the attack's mouse button is read.
+#
+# THE LEFT BUTTON SINCE 0.40.0. The owner, with the healer's aura on
+# right-click: "change all attacks to left click". The right button is the
+# healer's aura now (healer.gd, THE AURA) and nothing for the other three.
+#
+# ONLY A CLICK NO WINDOW TOOK. Every button, slot and window in the game is
+# clicked with the left button, and Input.is_mouse_button_pressed() reads the
+# hardware - a click on the bag is "pressed" as far as a poll can tell. So the
+# click is caught where Godot hands on what no Control used, _unhandled_input,
+# and held from there until the button physically comes back up.
 
-# Right-click hold state from the previous physics frame, for edge detection.
-var _right_click_was_held: bool = false
+# Left-click: down from a click no window took, and as it was last physics
+# frame, for edge detection. Right-click: down from a click no window took.
+var _left_click_down: bool = false
+var _left_click_was_held: bool = false
+var _right_click_down: bool = false
 
 
 # =============================================================================
@@ -1457,9 +1470,28 @@ func _aim_ring_fired() -> void:
 		_aim_ring.fired()
 
 
-func right_click_attack_held() -> bool:
-	# Right mouse as an ATTACK input: held, and NOT part of a click the UI
-	# already consumed. Public because healer polls it for continuous fire.
+func _unhandled_input(event: InputEvent) -> void:
+	# A click reaches here only when no window took it (see ATTACK INPUT).
+	var click := event as InputEventMouseButton
+	if click != null and click.pressed:
+		if click.button_index == MOUSE_BUTTON_LEFT:
+			_left_click_down = true
+		elif click.button_index == MOUSE_BUTTON_RIGHT:
+			_right_click_down = true
+
+
+func left_click_attack_held() -> bool:
+	"""Left mouse as an ATTACK input: held, and started by a click no window
+	took. Public because healer polls it for continuous fire. Let go anywhere
+	and it is up."""
+	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_left_click_down = false
+	return _left_click_down
+
+
+func right_click_held() -> bool:
+	# Right mouse: held, and NOT part of a click the UI already consumed. The
+	# healer's aura since 0.40.0 (healer.gd); every class's attack before.
 	#
 	# Input.is_mouse_button_pressed() reads the hardware, not the scene tree,
 	# so a click a Control already handled with accept_event() is still
@@ -1468,20 +1500,25 @@ func right_click_attack_held() -> bool:
 	# inventoryslot.gd raises GameState.ui_absorbed_right_click when it takes
 	# a click; this clears it the moment the button physically comes back up,
 	# so the suppression covers exactly that one click and no longer.
+	#
+	# AND ONLY A CLICK NO WINDOW TOOK, since 0.40.0, as the left button is
+	# (_unhandled_input): a right-click on a name in the players panel or a
+	# hotbar key must not drop the healer's aura either.
 	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 		GameState.ui_absorbed_right_click = false
+		_right_click_down = false
 		return false
-	return not GameState.ui_absorbed_right_click
+	return _right_click_down and not GameState.ui_absorbed_right_click
 
 
 func _poll_attack_pressed() -> bool:
-	# One frame's worth of attack input, edge-detected so a held right button
+	# One frame's worth of attack input, edge-detected so a held left button
 	# fires once rather than every frame. MUST be called exactly once per
 	# physics frame, unconditionally — see the call site in _physics_process.
-	var right_now: bool = right_click_attack_held()
-	var right_edge: bool = right_now and not _right_click_was_held
-	_right_click_was_held = right_now
-	return Input.is_action_just_pressed("attack") or right_edge
+	var left_now: bool = left_click_attack_held()
+	var left_edge: bool = left_now and not _left_click_was_held
+	_left_click_was_held = left_now
+	return Input.is_action_just_pressed("attack") or left_edge
 
 
 # =============================================================================

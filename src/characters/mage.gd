@@ -32,7 +32,7 @@
 # the cast animation visually, the stalagmite still drops correctly.
 #
 # input model:
-# - spacebar OR right-click → player.gd's _poll_attack_pressed() → this class's
+# - spacebar OR left-click → player.gd's _poll_attack_pressed() → this class's
 #   attack_action() → the cast. mage used to poll right-click privately; that
 #   copy is gone, because attack_action() IS the cast and the shared path lands
 #   on exactly the spell the private poll was reaching for.
@@ -99,7 +99,8 @@ const METEOR_SECOND_DELAY := 0.18
 # independent from parent's is_attacking — blocks new casts until cooldown ends.
 var is_casting: bool = false
 
-# right-click edge detection moved to Player — see its ATTACK INPUT section.
+# the mouse attack's edge detection moved to Player — see its ATTACK INPUT
+# section (left-click since 0.40.0, right-click before).
 # mage doesn't need a private copy: attack_action() below already IS the
 # stalagmite cast, so the shared right-click path lands on exactly the spell
 # this class used to poll for itself.

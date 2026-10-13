@@ -37,10 +37,14 @@ extends Area2D
 
 const STEEL := &"steel"
 const GOLD := &"gold"
-# The bodies: a cold steel blue, and the crypt's gold (BulletPattern.GOLD, the
-# Crowned Beholder's crown).
+# The healer aura's blobs (healblob.gd, 0.40.0) are these orbs too, green.
+const HEAL := &"heal"
+# The bodies: a cold steel blue, the crypt's gold (BulletPattern.GOLD, the
+# Crowned Beholder's crown), and the healer's green (turretprojectile.gd's
+# ORB_GREEN).
 const STEEL_BODY := Color(0.62, 0.82, 1.0)
 const GOLD_BODY := Color(1.0, 0.83, 0.3)
+const HEAL_BODY := Color(0.55, 0.95, 0.42)
 const SIZE := 8
 # How near a monster counts as touching: the orb's body, not its rim.
 const RADIUS := 3.5
@@ -117,7 +121,7 @@ static func texture_for(orb_palette: StringName) -> ImageTexture:
 	white-hot core, the body, a darker rim. SIZE x SIZE."""
 	if _textures.has(orb_palette):
 		return _textures[orb_palette]
-	var body: Color = GOLD_BODY if orb_palette == GOLD else STEEL_BODY
+	var body: Color = GOLD_BODY if orb_palette == GOLD else (HEAL_BODY if orb_palette == HEAL else STEEL_BODY)
 	var image := Image.create(SIZE, SIZE, false, Image.FORMAT_RGBA8)
 	var middle: float = float(SIZE) / 2.0 - 0.5
 	for y in SIZE:

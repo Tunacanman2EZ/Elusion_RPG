@@ -1,5 +1,6 @@
 # healer character — ranged spell spammer using mana as the cost resource.
-# holds spacebar OR right-click to continuously fire projectiles toward cursor.
+# holds spacebar OR left-click to continuously fire projectiles toward cursor,
+# and holds right-click to drop its healing aura (THE AURA, 0.40.0).
 # each shot drains mana. stamina is reserved for the universal sprint system
 # (shared across all classes via player.gd).
 #
@@ -16,7 +17,7 @@
 # CLASS_DATA below is the one source.
 #
 # combat model:
-# - hold spacebar OR right-click to fire continuously
+# - hold spacebar OR left-click to fire continuously (right-click until 0.40.0)
 # - each shot fires toward CURRENT cursor position
 # - moving the mouse during a burst creates a spray pattern (player skill)
 # - projectile sprite is tinted via modulate (green by default) — set to
@@ -24,8 +25,10 @@
 #
 # input model:
 # - spacebar held: triggers fire on cooldown
-# - right-click held: same as spacebar (alternative for mouse-focused play)
-# - both polled in _physics_process so UI events can't absorb them
+# - left-click held: same as spacebar (alternative for mouse-focused play) -
+#   started only by a click no window took (player.gd, left_click_attack_held())
+# - right-click: the aura (THE AURA below), not the orbs, since 0.40.0
+# - polled in _physics_process
 # - attack_action() is overridden to NO-OP so spacebar press doesn't trigger
 #   the parent's single-shot attack animation interrupting held-fire
 extends "res://src/characters/player.gd"
@@ -93,6 +96,26 @@ const DOUBLE_HIT := 2
 # Player.double_cast_chance is.
 var double_hit_chance: float = DOUBLE_HIT_CHANCE
 
+# THE AURA (0.40.0). The owner sent the art for the healer's heal - "the
+# character will not be there but will turn into an aoe" - and asked for it on
+# right-click, the attacks on "left click" (Space still attacks too). It was
+# first dropped by HOLDING right-click a moment, and the owner: "i right click
+# and hold takes like 5 seconds should just be right click" - a hold that
+# waited out the cooldown or the mana and then dropped it, with nothing to say
+# why. So a right-click drops it at once, at the cursor, no further than
+# AURA_RANGE from the healer - a HealAura (healaura.gd): it heals every player
+# standing in it, the healer too, sends the ones near it its blobs, and burns
+# the monsters in it, each tick for AURA_DAMAGE_SHARE of an orb. It costs
+# AURA_MANA_COST and comes back after AURA_COOLDOWN; a right-click before then
+# drops nothing and says why over the healer (aura_refusal()). Everyone in the
+# area sees it ("heal"), and it heals them if they stand in it; the presence
+# server writes those heals down for the server's healing check (presence.py).
+# The exporter writes the numbers, and the server's books allow for the burn.
+const AURA_COOLDOWN := 8.0
+const AURA_MANA_COST := 25
+const AURA_RANGE := 160.0
+const AURA_DAMAGE_SHARE := 2.0
+
 
 # A cursor delta shorter than this counts as "no direction at all" — see
 # _get_direction_to_cursor(). Compared against length_squared() so the check
@@ -120,6 +143,10 @@ const AIM_FROM := Vector2(0.0, -16.0)
 var _shot_timer: float = 0.0
 # Shots since the healer was made, for THE FAN.
 var _shots: int = 0
+# THE AURA: the cooldown still to run, and whether right-click was down last
+# frame (a click is the frame it goes down).
+var aura_cooldown_left: float = 0.0
+var _right_was_down: bool = false
 
 
 # _is_firing USED TO LIVE HERE. It was assigned true on every shot and false on
@@ -187,6 +214,7 @@ func _physics_process(delta: float) -> void:
 		_shot_timer -= delta
 
 	_point_aim_ring(_get_direction_to_cursor())
+	_aura_click(delta, right_click_held(), get_global_mouse_position())
 
 	if _can_fire():
 		_fire_projectile()
@@ -215,36 +243,73 @@ func _can_fire() -> bool:
 func _is_attack_input_held() -> bool:
 	# healer fires continuously while the input is HELD, so this stays a hold
 	# check rather than the edge-detected _poll_attack_pressed() every other
-	# class uses. right_click_attack_held() is the shared version of the mouse
-	# half, and it is what stops a right-click the inventory already consumed
-	# from reading as "player is holding attack" and draining their mana.
-	return Input.is_action_pressed("attack") or right_click_attack_held()
+	# class uses. The mouse half is LEFT-click since 0.40.0, as it is for every
+	# class (player.gd's left_click_attack_held(): only a click no window took
+	# starts it, so a click on the bag or the chat must not drain the mana) -
+	# right-click drops THE AURA.
+	return Input.is_action_pressed("attack") or left_click_attack_held()
 
 
 # =============================================================================
-# ATTACK ACTION OVERRIDE
+# THE AURA (0.40.0) - see the constants
 # =============================================================================
 
-func base_attack_damage() -> int:
-	# See player.gd's base_attack_damage(). Three, which is small because this
-	# fires ten times a second — the number only means anything next to
-	# attack_period() below.
-	return damage_per_magic
+func aura_point(cursor: Vector2) -> Vector2:
+	"""Where an aura dropped now would go: the cursor, no further than
+	AURA_RANGE from the healer."""
+	var reach: Vector2 = cursor - global_position
+	if reach.length() > AURA_RANGE:
+		reach = reach.normalized() * AURA_RANGE
+	return global_position + reach
 
 
-func attack_period() -> float:
-	# Ten shots a second. See player.gd's attack_period() for what reads this.
-	#
-	# This is the class the whole dps row exists for: a scepter's damage number
-	# is tiny — 3 at iron, 13 at ember — precisely BECAUSE of this 0.1, and a
-	# player comparing it to a 100-damage sword without the division would
-	# reasonably conclude the healer had been abandoned.
-	# hasten() applies agility, so this is the rate actually delivered.
-	return hasten(shot_cooldown)
+func aura_ready() -> bool:
+	return aura_cooldown_left <= 0.0 and mana >= AURA_MANA_COST and not is_dying
 
 
-func attack_action() -> void:
-	return
+func aura_refusal() -> String:
+	"""Why a right-click now would drop nothing, in words for over the healer
+	- or "" when it would drop."""
+	if is_dying:
+		return ""
+	if aura_cooldown_left > 0.0:
+		return "Aura ready in %ds" % ceili(aura_cooldown_left)
+	if mana < AURA_MANA_COST:
+		return "Not enough mana"
+	return ""
+
+
+func _aura_click(delta: float, down: bool, cursor: Vector2) -> HealAura:
+	"""One frame of right-click: the frame it goes down, the aura at the
+	cursor if it is ready, or why not. Holding it does nothing more."""
+	aura_cooldown_left = maxf(aura_cooldown_left - delta, 0.0)
+	var clicked: bool = down and not _right_was_down
+	_right_was_down = down
+	if not clicked:
+		return null
+	if aura_ready():
+		return drop_aura(aura_point(cursor))
+	if is_inside_tree():
+		show_notice(aura_refusal())
+	return null
+
+
+func drop_aura(at: Vector2) -> HealAura:
+	"""THE AURA, at `at`: the mana, the cooldown, the ring, and the word to
+	everyone else in the area."""
+	_set_active()
+	mana -= AURA_MANA_COST
+	aura_cooldown_left = AURA_COOLDOWN
+	Audio.play("spell_cast")
+	var toward: Vector2 = aim_direction_to(at)
+	last_direction = toward
+	_play_cast_animation(toward)
+	_aim_ring_fired()
+	var orb_hit: int = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
+	var parent: Node = get_tree().current_scene if is_inside_tree() else get_parent()
+	var aura: HealAura = HealAura.drop(parent, at, maxi(1, roundi(orb_hit * AURA_DAMAGE_SHARE)))
+	Presence.tell_attack("heal", global_position, at)
+	return aura
 
 
 # =============================================================================

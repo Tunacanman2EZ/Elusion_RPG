@@ -56,6 +56,7 @@ const ROWS := [
 	["Move", "move"],
 	["Sprint", "sprint"],
 	["Attack, aiming with the mouse", "attack"],
+	["Healer: drop a healing aura at the mouse", "Right-click"],
 	["Use the shop, bank, fire or fishing spot", "interact"],
 	["Use the item on a hotbar key", "hotbar"],
 	["Put an item on a hotbar key", "Drag it from your bag"],
@@ -389,9 +390,10 @@ static func key_text(how: String) -> String:
 		"hotbar":
 			return hotbar_text()
 		"attack":
-			# The right button swings too; player.gd's right_click_attack_held()
-			# is the second half of the attack poll, and it is not in the map.
-			return "%s or right-click" % action_key("attack")
+			# The left button attacks too (the right until 0.40.0); player.gd's
+			# left_click_attack_held() is the second half of the attack poll,
+			# and it is not in the map.
+			return "%s or left-click" % action_key("attack")
 		"sprint":
 			return "Hold %s" % action_key("sprint")
 	if InputMap.has_action(how):

@@ -5741,6 +5741,82 @@ ways to use the crypt's orbs, he took all four.
   material check that threw on a missing material, and one that indexed a
   filtered list, were made to fail instead of ending the section.
 
+### The healer's aura, and every attack on left-click (0.40.0)
+
+The owner sent the art for the healer's heal (his "healer ff": 25 frames of
+64 x 64 at 70 ms - a green pillar slamming down, a ring on the ground with
+sparks rising, white motes as it fades) - "the character will not be there but
+will turn into an aoe" - chose "Heal players + hurt monsters", and: "energy
+beam crashes down around the circle green orbs spawn around the circle and
+each blob travels to players outside of the circle giving them hp". Then,
+trying it: "i can tell the image was streched keep it original size" (it had
+been drawn at 2x, the pillar's top row carried on up the screen), and "i right
+click and hold takes like 5 seconds should just be right click if we are using
+that approach and change all attacks to left click".
+
+- **The art**: art/maincharacter/healaura.png, the 25 frames in one strip
+  (1600 x 64), beside the paid orb, and drawn at its own size - every pixel
+  his, nothing stretched, nothing added. Its .import is the orb's settings.
+- **Every class attacks on left-click** (and Space). player.gd's ATTACK INPUT
+  catches the click in `_unhandled_input` - only a click no window took - and
+  holds it until the button comes up (`left_click_attack_held()`);
+  `_poll_attack_pressed()` edge-detects it for warrior, mage and tank, and the
+  healer streams orbs while it is held. The right button is the healer's aura
+  and nothing for the others; `right_click_held()` also needs a click no
+  window took. The Controls card, the README and the healer's line on
+  character select (64 characters at most) say so.
+- **The HUD took every click.** characterhud.tscn laid its bars out in a
+  `barcontainer` over the whole screen, a Control left at the default STOP:
+  harmless while attacks read the mouse button straight off the hardware, but
+  with the click caught where no window took it, the first recording of a
+  right-click dropped nothing. It is `mouse_filter = 2` (ignore) now, and the
+  suite holds that nothing the HUD lays over the whole screen takes the mouse.
+- **player.gd has an input handler again** - the mouse buttons' - and the
+  security check that it "reads no keys of its own" (SECURITY.md, "There are
+  no debug keys") now reads its body: no key, no keycode, no action.
+- **THE AURA** (healer.gd): a right-click drops it at once, at the cursor, no
+  further than `AURA_RANGE` (160): `AURA_MANA_COST` (25) mana, `AURA_COOLDOWN`
+  (8 s), one a click - holding it on does nothing more. A click before it is
+  ready drops nothing and says why over the healer (`aura_refusal()`: "Aura
+  ready in Ns", "Not enough mana"). It was first a hold of 0.3 s, which waited
+  out the cooldown or the mana while held and then dropped it with nothing to
+  say why - the owner's "takes like 5 seconds". Told to the area as "heal".
+- **HealAura** (src/projectiles/healaura.gd, class_name): the ring's middle on
+  the node (`RING_FROM_MIDDLE`, measured off the art, to the whole pixel; the
+  ring 45 x 19, `RADII` 22 x 9), unshaded. While the pillar falls (frames 0-3)
+  it is over everyone (z 5); from `LANDS_ON` (frame 4) it is on the floor
+  (z -1).
+- **Who is healed**, decided as it lands: a player inside the ring gets
+  `heal_each()` on each of `TICK_FRAMES` (4, 6, 8, 10) while still in it -
+  `HEAL_SHARE` (a quarter) of their own maximum in all. `BLOBS` (8) green
+  crypt orbs lift off the ring (healblob.gd, `BladeOrb.HEAL`) and fly to the
+  players outside it within `SEEK_RANGE` (200), shared out in turn, the ones a
+  player gets healing `HEAL_SHARE` between them; with nobody out there they
+  lift and fade. Nobody dying is healed.
+- **Every game heals its own player, and draws everyone else's.** A picture of
+  somebody else's aura (remoteattacks.gd, "heal") heals you if you are in it,
+  or sends you blobs, as your own does, and sends blobs to the pictures of the
+  others for you to see. The presence server writes each heal down for the
+  API's healing check (presence.py, THE AURA'S HEALS): a `__spellheal__`
+  consume grant of the share for every player in the area within the reach
+  (with slack), from a healer, at most once a cooldown. **The server has to be
+  updated first**: an older one refuses a batch with "heal" in it whole, the
+  healer's orb pictures with it.
+- **The burn**: each tick, every monster in the ring takes `AURA_DAMAGE_SHARE`
+  (2) orbs of damage - the healer's own aura only - through take_damage(), so a
+  monster another game runs is hit where it is run. The exporter writes the
+  aura's numbers (`aura_*` on the healer's row), and the API's healer bound
+  adds the burn (`unit * ticks * share / cooldown`, one orb a second).
+- `_test_the_healer_aura` checks the art and where the ring sits in it, that
+  it is drawn as he drew it, the landing, the ring's ticks and its edge, the
+  blobs (on the ring, to whom, how much, arriving, not twice, not past the
+  reach, shared between two), nobody dying, the burn and a picture's, the
+  click (the range, at once, one a click, why not), every class on the left
+  button, the right button needing a click no window took, the HUD letting
+  clicks through, a picture of somebody else's, and the export. Each was
+  broken on purpose to see it fail; one blob check compared ring_point() with
+  itself and was made to measure the ellipse instead.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

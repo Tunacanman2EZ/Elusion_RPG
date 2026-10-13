@@ -1449,6 +1449,13 @@
 		"agility_step": 0.01,
 		"classes": {
 			"healer": {
+				"aura_cooldown": 8.0,
+				"aura_damage_share": 2.0,
+				"aura_heal_share": 0.25,
+				"aura_radius": 26.0,
+				"aura_range": 160.0,
+				"aura_reach": 200.0,
+				"aura_ticks": 4,
 				"base": 3,
 				"cooldown": 0.1,
 				"double_chance": 0.2,
@@ -3338,7 +3345,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791877408,
+	"generated_at": 1791927517,
 	"items": [
 		{
 			"armor_value": 6,
