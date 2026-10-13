@@ -7,7 +7,7 @@
 script = ExtResource("2_itemdata")
 item_id = "cobaltwand"
 display_name = "Cobalt Wand"
-description = "Cold in the hand. The staff casts truer with it near."
+description = "Cold in the hand. Whatever the other hand holds casts truer for it."
 icon = ExtResource("1_icon")
 max_stack = 1
 value = 2720
@@ -15,7 +15,7 @@ tier = 3
 required_level = 10
 type = 2
 equip_slot = 6
-required_classes = Array[String](["mage"])
+required_classes = Array[String](["mage", "healer"])
 bonus_max_mana = 10
 bonus_damage_percent = 3
 metadata/_custom_type_script = "uid://ccaysp573wbjk"

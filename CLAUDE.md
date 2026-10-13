@@ -5455,7 +5455,7 @@ off hand wands i can make them special later but give them some stats".
   the staff - (281,1), (301,1), (291,1), (296,1), (286,1); the grimoires from
   `New updates/Epic Weapons 3` (row 1, columns 6-8). In `art/pack/armour/`,
   the private submodule, like every other item icon.
-- **Thirteen items in the shield square, mage only** (`data/items/armour/`):
+- **Thirteen items in the shield square, mage and healer** (`data/items/armour/`):
   `<tier>tome` (armour + mana), `<tier>wand` (damage % + mana), each on its
   tier's shield rung - same tier, level and price - and `arcanegrimoire`
   (damage), `verdantgrimoire` (health) and `sapphiregrimoire` (mana), tier 5,
@@ -5469,11 +5469,13 @@ off hand wands i can make them special later but give them some stats".
   one** - equip, shop and loot all read it. The API's `test_equipment.py` and
   `test_economy.py` check the mage wears them and nobody else does, the
   grimoire's level, the shelf and the drop pools.
-- The healer has no off hand either. `required_classes` is one line per item
-  if it should share these.
+- **The healer wears them too (0.32.1)** - the owner: "and the healer?". It
+  had no off hand either, and cloth (robes, hoods) was already shared by the
+  two, so `required_classes` is `["mage", "healer"]` on all thirteen rather
+  than a second set. Warrior and tank keep their shields.
 - `_test_the_mage_has_an_off_hand` reads the .tres as text (so a clone checks
   the numbers too), the store, gamedata.json, and with the pack the icons
-  (16 px) and the registry. A flat wand tier or a tome another class can wear
+  (16 px) and the registry. A flat wand tier or a tome a third class can wear
   each fails a check.
 
 ### Mixed tabs and spaces inside one indent is a parse error

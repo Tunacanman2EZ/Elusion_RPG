@@ -12436,10 +12436,11 @@ const _GRIMOIRES := ["arcanegrimoire", "verdantgrimoire", "sapphiregrimoire"]
 
 
 func _test_the_mage_has_an_off_hand() -> void:
-	section("MAGE - a tome, a wand or a grimoire in the off hand (0.32.0)")
+	section("MAGE AND HEALER - a tome, a wand or a grimoire in the off hand (0.32.0)")
 	# The owner: "i noticed mage hass no offhand", then, shown what the art pack
 	# held, "tombs grimoires and off hand wands i can make them special later but
-	# give them some stats". Read as text, so a clone without the pack checks
+	# give them some stats" - and, for the healer, which had none either: "and
+	# the healer?" (0.32.1). Read as text, so a clone without the pack checks
 	# the numbers too.
 	var dir := "res://data/items/armour/"
 	var missing: Array = []
@@ -12457,7 +12458,7 @@ func _test_the_mage_has_an_off_hand() -> void:
 			if f.is_empty():
 				missing.append(t + kind)
 				continue
-			if f.get("equip_slot") != "6" or f.get("required_classes") != "Array[String]([\"mage\"])" \
+			if f.get("equip_slot") != "6" or f.get("required_classes") != "Array[String]([\"mage\", \"healer\"])" \
 					or f.get("item_id") != t + kind:
 				wrong_slot.append(t + kind)
 			for key in ["tier", "required_level", "value"]:
@@ -12472,7 +12473,7 @@ func _test_the_mage_has_an_off_hand() -> void:
 					and int(f.get("bonus_max_mana", "0")) > last_wand["bonus_max_mana"]
 				last_wand = {"bonus_damage_percent": int(f.get("bonus_damage_percent", "0")), "bonus_max_mana": int(f.get("bonus_max_mana", "0"))}
 	check("a tome and a wand at every tier, iron to ember", missing.is_empty(), missing)
-	check("  in the off hand (the shield square), and the mage's alone", wrong_slot.is_empty(), wrong_slot)
+	check("  in the off hand (the shield square), for the mage and the healer and nobody else", wrong_slot.is_empty(), wrong_slot)
 	check("  each on its tier's shield rung: same tier, level and price", off_rung.is_empty(), off_rung)
 	check("  a tome is armour and mana, a wand damage and mana, and each tier is more than the last",
 		tomes_rise and wands_rise, [last_tome, last_wand])
@@ -12480,7 +12481,7 @@ func _test_the_mage_has_an_off_hand() -> void:
 	for id in _GRIMOIRES:
 		var g: Dictionary = _tres_fields(dir + id + ".tres")
 		grimoires_ok = grimoires_ok and g.get("tier") == "5" and g.get("required_level") == "22" \
-			and g.get("equip_slot") == "6" and g.get("required_classes") == "Array[String]([\"mage\"])" \
+			and g.get("equip_slot") == "6" and g.get("required_classes") == "Array[String]([\"mage\", \"healer\"])" \
 			and int(g.get("bonus_max_mana", "0")) > 0 and int(g.get("bonus_damage_percent", "0")) > 0 \
 			and int(g.get("value", "0")) > int(_tres_fields(dir + "embertome.tres").get("value", "0"))
 	check("three grimoires at the top: tier 5, level 22, mana and damage, dearer than the ember tome", grimoires_ok)
@@ -12508,9 +12509,9 @@ func _test_the_mage_has_an_off_hand() -> void:
 	var not_exported: Array = []
 	for id in all_ids:
 		if not exported.has(id) or exported[id].get("equip_slot_name") != "SHIELD" \
-				or exported[id].get("required_classes") != ["mage"]:
+				or exported[id].get("required_classes") != ["mage", "healer"]:
 			not_exported.append(id)
-	check("gamedata.json carries all thirteen, in the SHIELD square, the mage's", not_exported.is_empty(), not_exported)
+	check("gamedata.json carries all thirteen, in the SHIELD square, the mage's and the healer's", not_exported.is_empty(), not_exported)
 
 	# The pictures, from the Raven Fantasy pack - 16 px like every item icon.
 	var bad_icons: Array = []
@@ -12521,7 +12522,7 @@ func _test_the_mage_has_an_off_hand() -> void:
 			bad_icons.append(id)
 	check_needs_pack("  each has its own 16 px icon in the pack", bad_icons.is_empty(), bad_icons)
 	var mage_ok: bool = ItemRegistry.has_item("irontome") \
-		and ItemRegistry.get_item("irontome").required_classes == ["mage"] \
+		and ItemRegistry.get_item("irontome").required_classes == ["mage", "healer"] \
 		and ItemData.slot_name(ItemRegistry.get_item("embertome").equip_slot) == "shield"
 	check_needs_pack("  and the game's registry has them", mage_ok)
 

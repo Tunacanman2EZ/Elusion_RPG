@@ -296,7 +296,7 @@ test_api.py            527 checks    the endpoint surface, moderation, presence
 test_economy.py        403 checks    the gold ledger and the supply invariant, and selling to the shop
 test_security.py       299 checks    the audit's findings, held closed
 test_loot.py           259 checks    every finished item is actually obtainable
-test_equipment.py      223 checks    the equipment system, client and server
+test_equipment.py      224 checks    the equipment system, client and server
 test_gearbonus.py      173 checks    what gear adds, counted by the server
 test_guilds.py         167 checks    founding, joining, ranks, taking a guild down
 test_moderation.py     156 checks    the moderation record, a log that opens on moderation, the powers in words
@@ -344,7 +344,7 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,955 checks, 0 failures
+					4,956 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.

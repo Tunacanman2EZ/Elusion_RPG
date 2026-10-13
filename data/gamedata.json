@@ -3326,7 +3326,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1791856816,
+	"generated_at": 1791859512,
 	"items": [
 		{
 			"armor_value": 6,
@@ -3844,7 +3844,8 @@
 			"item_id": "amethysttome",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 16,
 			"required_skill": "",
@@ -3911,7 +3912,8 @@
 			"item_id": "amethystwand",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 16,
 			"required_skill": "",
@@ -3975,7 +3977,8 @@
 			"item_id": "arcanegrimoire",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 22,
 			"required_skill": "",
@@ -4536,7 +4539,8 @@
 			"item_id": "cobalttome",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 10,
 			"required_skill": "",
@@ -4603,7 +4607,8 @@
 			"item_id": "cobaltwand",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 10,
 			"required_skill": "",
@@ -5509,7 +5514,8 @@
 			"item_id": "embertome",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 22,
 			"required_skill": "",
@@ -5576,7 +5582,8 @@
 			"item_id": "emberwand",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 22,
 			"required_skill": "",
@@ -6602,7 +6609,8 @@
 			"item_id": "irontome",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 1,
 			"required_skill": "",
@@ -6669,7 +6677,8 @@
 			"item_id": "ironwand",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 1,
 			"required_skill": "",
@@ -7199,7 +7208,8 @@
 			"item_id": "jadetome",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 5,
 			"required_skill": "",
@@ -7266,7 +7276,8 @@
 			"item_id": "jadewand",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 5,
 			"required_skill": "",
@@ -8169,7 +8180,8 @@
 			"item_id": "sapphiregrimoire",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 22,
 			"required_skill": "",
@@ -8481,7 +8493,8 @@
 			"item_id": "verdantgrimoire",
 			"max_stack": 1,
 			"required_classes": [
-				"mage"
+				"mage",
+				"healer"
 			],
 			"required_level": 22,
 			"required_skill": "",
