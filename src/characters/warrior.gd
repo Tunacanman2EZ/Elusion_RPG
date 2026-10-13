@@ -796,10 +796,11 @@ func _fit_reach_ring() -> void:
 	_show_reach_for(equipped_weapon_attack())
 
 
-func _show_reach_for(attack: int) -> void:
-	"""The ring for the weapon in hand: at its reach, or hidden for one with
-	none to show."""
-	_mythic_reach = mythic_reach(attack)
+func _show_reach_for(weapon_attack: int) -> void:
+	"""The ring for the weapon in hand (an ItemData.WeaponAttack): at its reach,
+	or hidden for one with none to show. Not `attack`, which is the attack skill
+	(player.gd)."""
+	_mythic_reach = mythic_reach(weapon_attack)
 	if _reach_ring == null:
 		return
 	if _mythic_reach > 0.0:
@@ -807,12 +808,12 @@ func _show_reach_for(attack: int) -> void:
 	_reach_ring.visible = _mythic_reach > 0.0 and not is_dying
 
 
-func mythic_reach(attack: int) -> float:
+func mythic_reach(weapon_attack: int) -> float:
 	"""How far a mythic's attack reaches from the warrior's origin, or 0 for
 	any other weapon - the sword's own reach is about the warrior's width, and
 	the owner wants no line for it. The Double Axe's is the furthest it can be
 	thrown plus its blade (SpinningAxe.HIT_RADIUS) where it lands."""
-	if attack == ItemData.WeaponAttack.SPINNING_AXE:
+	if weapon_attack == ItemData.WeaponAttack.SPINNING_AXE:
 		return SpinningAxe.MAX_THROW + SpinningAxe.HIT_RADIUS
 	return 0.0
 

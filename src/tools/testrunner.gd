@@ -332,6 +332,7 @@ func _run_all() -> void:
 	_test_the_healer_aims_from_its_middle()
 	await _test_monsters_show_who_they_are_after()
 	_test_how_far_they_reach()
+	await _test_monsters_notice_close_and_chase_far()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -7866,7 +7867,7 @@ func _test_a_character_can_be_deleted() -> void:
 		store._last_pushed.has("save:2") and store._last_pushed.has("lusions"))
 	check("  by the same names its pushes use",
 		ServerStorage._slot_keys(3) == store._slot_sections(3, {"character": "healer"}).map(
-			func(section: Array) -> String: return section[0]))
+			func(part: Array) -> String: return part[0]))
 
 	# ---- a character made again starts whole ----
 	# Found by deleting and making a warrior live: the new character was pushed
@@ -12154,21 +12155,28 @@ func _test_monsters_show_who_they_are_after() -> void:
 	add_child(dummy)
 	sniper.player = dummy
 	var body_of := func() -> Vector2: return (dummy.get_node("bodyshape") as Node2D).global_position
+	# Whether it is after them is its AI's (BaseEnemy.keep_after(), 0.30.0),
+	# which does not run out of the tree: `think` is that one step of it.
+	var think := func() -> void: sniper.keep_after(sniper.global_position.distance_to(dummy.global_position))
 	dummy.position = Vector2(-120, 0)
+	think.call()
 	ring.refresh()
 	var toward: Vector2 = (body_of.call() as Vector2).normalized()
 	check("a player inside its reach: the ring shows, the dot on their body, full red",
 		ring.visible and ring.aim.is_equal_approx(toward) and ring.in_reach
 		and is_equal_approx(ring.ball_colour.a, ThreatRing.RED_BALL.a), [ring.visible, ring.aim, toward])
 	dummy.position = Vector2(0, sniper.attack_range + 60.0)
+	think.call()
 	ring.refresh()
 	check("  chasing, out of its reach: still shown, the dot dimmed, and it follows",
 		ring.visible and not ring.in_reach and ring.ball_colour.a < ThreatRing.RED_BALL.a
 		and ring.aim.y > 0.99, [ring.in_reach, ring.aim])
 	dummy.position = Vector2(sniper.leash_range + 50.0, 0)
+	think.call()
 	ring.refresh()
 	check("  past the distance it chases from: no ring - it has let them go", not ring.visible)
 	dummy.position = Vector2(-120, 0)
+	think.call()
 	sniper.gated = true
 	ring.refresh()
 	var gated_hidden: bool = not ring.visible
@@ -12253,7 +12261,7 @@ func _test_how_far_they_reach() -> void:
 		reach != null and warrior.get_child(0) == reach and reach.position == Vector2.ZERO, reach)
 	check("  with a sword or nothing in hand there is no ring",
 		reach != null and not reach.visible and is_zero_approx(warrior.call("mythic_reach", ItemData.WeaponAttack.NONE)),
-		[reach.visible if reach else null])
+		reach)
 	warrior.call("_show_reach_for", ItemData.WeaponAttack.SPINNING_AXE)
 	var axe: float = SpinningAxe.MAX_THROW + SpinningAxe.HIT_RADIUS
 	check("  with the Double Axe it shows, at the furthest throw plus the blade, every way (190)",
@@ -12271,7 +12279,9 @@ func _test_how_far_they_reach() -> void:
 		and _func_body(wsrc, "func attack_action(").contains("_reach_ring.fired()")
 		and _func_body(wsrc, "func _physics_process(").contains("_reach_ring.visible = _mythic_reach > 0.0 and not is_dying"))
 
-	# A MONSTER'S DETECTION: its leash_range, round its middle, always there.
+	# A MONSTER'S DETECTION, round its middle, always there - since 0.30.0 two
+	# lines: how close you can come before it notices, and once it is after
+	# you, how far you have to get.
 	var sniper: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
 	var ring: ThreatRing = ThreatRing.on(sniper)
 	var sense: RangeRing = sniper.get_node_or_null(^"detectionring") as RangeRing
@@ -12282,25 +12292,52 @@ func _test_how_far_they_reach() -> void:
 	sniper.hp = sniper.max_hp
 	sniper.player = null
 	ring.refresh()
-	check("  with no one about it is there all the same, faint, as wide as its leash",
-		sense.visible and is_equal_approx(sense.reach_up, sniper.leash_range)
-		and is_equal_approx(sense.reach_left, sniper.leash_range)
+	check("  with no one about it is there all the same, faint, as wide as it notices from (250, inside its 500 leash)",
+		sense.visible and is_equal_approx(sense.reach_up, 250.0) and is_equal_approx(sense.reach_left, 250.0)
+		and is_equal_approx(sniper.notice_reach(), 250.0) and is_equal_approx(sniper.leash_range, 500.0)
 		and sense.colour.is_equal_approx(ThreatRing.SENSE_IDLE), [sense.visible, sense.reach_up, sniper.leash_range])
 	var dummy := ZoneDummy.new()
 	add_child(dummy)
 	sniper.player = dummy
-	dummy.position = Vector2(sniper.leash_range - 20.0, 0)
+	# Its AI's step (BaseEnemy.keep_after()), which does not run out of the tree.
+	var think := func() -> void: sniper.keep_after(sniper.global_position.distance_to(dummy.global_position))
+	dummy.position = Vector2(300.0, 0)
+	think.call()
 	ring.refresh()
-	check("  once you are inside it, it is after you: brighter",
-		sense.visible and sense.colour.is_equal_approx(ThreatRing.SENSE_AFTER) and ring.visible)
-	dummy.position = Vector2(sniper.leash_range + 20.0, 0)
+	check("  inside its leash but outside that line, it has not noticed you: faint, 250, no red dot",
+		sense.visible and sense.colour.is_equal_approx(ThreatRing.SENSE_IDLE) and is_equal_approx(sense.reach_right, 250.0)
+		and not ring.visible and not sniper.engaged)
+	dummy.position = Vector2(230.0, 0)
+	think.call()
 	ring.refresh()
-	check("  past it, it has let you go: faint again, still there",
-		sense.visible and sense.colour.is_equal_approx(ThreatRing.SENSE_IDLE) and not ring.visible)
+	check("  across it, it is after you: the circle goes out to its leash (500), brighter, and the dot is on you",
+		sniper.engaged and sense.colour.is_equal_approx(ThreatRing.SENSE_AFTER) and is_equal_approx(sense.reach_right, 500.0)
+		and ring.visible, [sniper.engaged, sense.reach_right])
+	dummy.position = Vector2(480.0, 0)
+	think.call()
+	ring.refresh()
+	check("  back out past 250 it keeps after you, all the way to the leash",
+		sniper.engaged and ring.visible and is_equal_approx(sense.reach_right, 500.0))
+	dummy.position = Vector2(520.0, 0)
+	think.call()
+	ring.refresh()
+	check("  past the leash it has let you go: faint, back to 250, no dot",
+		not sniper.engaged and sense.colour.is_equal_approx(ThreatRing.SENSE_IDLE)
+		and is_equal_approx(sense.reach_right, 250.0) and not ring.visible)
 	sniper.leash_range = 1500.0
+	think.call()
 	ring.refresh()
-	check("  as wide as THIS monster notices from (a bush mage's is 1,500)",
-		is_equal_approx(sense.reach_right, 1500.0) and sense.colour.is_equal_approx(ThreatRing.SENSE_AFTER))
+	check("  a bush mage's 1,500 leash is how far it chases, not how far it notices (still 250)",
+		not sniper.engaged and is_equal_approx(sense.reach_right, 250.0))
+	sniper.engaged = true
+	ring.refresh()
+	check("  ... and once after you, its circle is the 1,500", is_equal_approx(sense.reach_right, 1500.0))
+	sniper.engaged = false
+	sniper.leash_range = 200.0
+	ring.refresh()
+	check("  a leash shorter than 250 (the Big Field's 250, or less) is how far it notices too",
+		is_equal_approx(sniper.notice_reach(), 200.0) and is_equal_approx(sense.reach_right, 200.0))
+	sniper.leash_range = 500.0
 	sniper.gated = true
 	ring.refresh()
 	var gated_hidden: bool = not sense.visible
@@ -12315,6 +12352,73 @@ func _test_how_far_they_reach() -> void:
 		gated_hidden and frozen_hidden and not sense.visible, [gated_hidden, frozen_hidden, sense.visible])
 	dummy.free()
 	sniper.free()
+	var boss: BaseEnemy = (load("res://scene/enemy/bossenemy.tscn") as PackedScene).instantiate()
+	check("  a boss notices as far as it chases, as it always did", is_equal_approx(boss.notice_reach(), boss.leash_range),
+		[boss.notice_reach(), boss.leash_range])
+	boss.free()
+
+
+# =============================================================================
+# NOTICE CLOSE, CHASE FAR (0.30.0)
+# =============================================================================
+
+func _test_monsters_notice_close_and_chase_far() -> void:
+	section("MONSTERS - notice you close, chase you far: notice_range, then leash_range (0.30.0)")
+	# The owner: "now fix monster leash and radius", picking "Notice close,
+	# chase far". A real monster's own AI, in the tree, a long way from
+	# everything, with a stand-in player.
+	var others: Array = get_tree().get_nodes_in_group(&"player")
+	for o in others:
+		o.remove_from_group(&"player")
+	var world := Node2D.new()
+	add_child(world)
+	var home := Vector2(-63000, -63000)
+	var you := ZoneDummy.new()
+	you.position = home + Vector2(320, 0)
+	you.add_to_group(&"player")
+	world.add_child(you)
+	var monster: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	monster.position = home
+	world.add_child(monster)
+	for i in 8:
+		await get_tree().physics_frame
+	check("a monster with you inside its leash (500) but further than it notices (250) has not noticed you",
+		is_instance_valid(monster.player) and monster.player == you and not monster.engaged
+		and monster.global_position.distance_to(home) < 2.0,
+		[monster.player, monster.engaged, monster.global_position - home])
+	you.position = home + Vector2(240, 0)
+	for i in 4:
+		await get_tree().physics_frame
+	check("  step inside 250 and it is after you", monster.engaged and not monster.is_returning_home)
+	you.position = home + Vector2(470, 0)
+	for i in 4:
+		await get_tree().physics_frame
+	check("  step back out to 470 and it is still after you - it chases to its leash",
+		monster.engaged, monster.global_position.distance_to(you.global_position))
+	you.position = home + Vector2(700, 0)
+	for i in 4:
+		await get_tree().physics_frame
+	check("  past the leash it lets you go and heads home", not monster.engaged)
+	you.position = monster.global_position + Vector2(380, 0)
+	for i in 4:
+		await get_tree().physics_frame
+	var unnoticed: bool = not monster.engaged
+	monster.take_damage(1)
+	for i in 4:
+		await get_tree().physics_frame
+	check("  shot from outside 250 (inside its leash), it notices you all the same",
+		unnoticed and monster.engaged, [unnoticed, monster.engaged])
+	world.queue_free()
+	for o in others:
+		if is_instance_valid(o):
+			o.add_to_group(&"player")
+	await get_tree().process_frame
+	var src: String = _code_src("res://src/enemies/bushmage.gd")
+	check("the bush mage, which runs its own AI, notices the same way",
+		_func_body(src, "func _physics_process(").contains("keep_after(dist)")
+		and not _func_body(src, "func _physics_process(").contains("if dist > leash_range"))
+	check("a slime's twin and its smalls are after whoever it was after",
+		_func_body(_code_src("res://src/enemies/poisonslime.gd"), "func _spawn_slime(").contains("slime.engaged = engaged"))
 
 
 # =============================================================================
