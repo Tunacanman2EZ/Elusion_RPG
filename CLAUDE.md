@@ -5532,6 +5532,55 @@ seconds.
   glow, light, particles, scorch rates, fade, cap and the no-floor rule. Each
   was broken on purpose to see it fail.
 
+### The boss rooms' floor was over everything that lies on it (0.34.1)
+
+Found while the tank's scorch went in. Whatever lies on the floor pins an
+absolute z under the entities' 0: blast marks -2 (blast.gd); a crater's glow,
+a lit stick of Dynamite, a meteor's shadow, the mage's target circle and the
+Double Axe's spatter -1; the boss gate's far pane -5. The field, the big field
+and the town put `ground` at z -10 and `water` at -20, but boss.tscn and
+bossarena.tscn left both at 0 - so in the boss room and the gauntlet all of
+those were drawn under the floor tiles and never seen (a red square at -2 was
+hidden there and plain in the field). Both scenes now match the others. The
+gates in the arena show their back pane for the first time, as bossgate.gd
+always meant ("far" behind the boss, "near" in front).
+`_test_every_area_floor_is_under_its_floor_effects` reads every area's .tscn
+and fails on a ground at -5 or above, or water not below the ground.
+
+### The mage's spell, with effects (0.35.0)
+
+The owner: "time to give the mages attack some effects", and of the four
+offered for the ice stalagmite, all four.
+
+- **Motes off the staff** (`src/characters/castsparkle.gd`, `CastSparkle`):
+  a one-shot burst round the staff's gem and a streak toward where the spell
+  goes, whole-pixel and unshaded, frost for the stalagmite and embers for the
+  Meteorite's meteor. The gem's place per facing (`CastSparkle.GEM`, from the
+  middle of the picture) was measured off the first frame of each attack
+  animation in mage.png - the suite measures it again. mage.gd's
+  `_cast_stalagmite_drop()` throws one on every cast; remoteattacks.gd throws
+  one for a picture of somebody else's mage (`facing_of()` reads the facing
+  off the picture's animation; a double meteor's second throws none).
+- **The frost ring and the shadow** (spelltargetcircle.gd): the red
+  antialiased 2 px circle became a 1 px ice-blue ring with a faint band inside
+  and six glints, frosting in as the spike falls, and the meteor's pixel shadow
+  (`Blast.shadow_texture()`) growing under it - both timed off the animation
+  (`fall_progress()`, `after_progress()`), fading after the impact. Still
+  exactly the hit (`circle_radius` 18, the collision shape's).
+- **The shatter and the frost** (blast.gd, a third kind, `&"stalagmite"`):
+  spawned on IMPACT_FRAME beside the spell, a cold flash, a ring of air, mist,
+  ice shards and glints, the smallest camera shake (0.6 px, 0.1 s - a mage
+  casts every half second; none for a picture), and `frost_texture()` left at
+  z -2 that glints (unshaded twinkles) and melts - it fades and draws in to 70%
+  over the last 40% of MARK_SECONDS.
+- **`Blast.disc_texture()` caches by colour too.** The key was the size alone,
+  so two discs of one size in different colours were whichever was made first
+  - a smoulder's glow could come out a crater's, and the cold flash a hot one.
+- `_test_the_mage_spell_effects` measures the gem off the art and checks the
+  burst, the palettes, both casters, the ring's timing, the shatter's parts,
+  the cold flash, the shake, the frost and its melt, and the cache key. Each
+  was broken on purpose to see it fail.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

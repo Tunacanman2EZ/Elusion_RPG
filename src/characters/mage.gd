@@ -237,11 +237,16 @@ func _cast_stalagmite_drop() -> void:
 		print("[MAGE] casting stalagmite (mana now %d)" % mana)
 
 	_play_cast_animation()
-	if equipped_weapon_attack() == ItemData.WeaponAttack.METEOR:
+	var meteor: bool = equipped_weapon_attack() == ItemData.WeaponAttack.METEOR
+	if meteor:
 		call_meteor(get_global_mouse_position())
 	else:
 		_spawn_stalagmite()
 	_aim_ring_fired()
+	# Motes off the staff (castsparkle.gd, 0.35.0): frost for the stalagmite,
+	# embers for the meteor, streaking the way the spell went.
+	CastSparkle.burst(self, _direction_to_string(last_direction), get_global_mouse_position(),
+		CastSparkle.EMBER if meteor else CastSparkle.FROST)
 
 	# Cooldown unlocks casting after spell_cooldown seconds. This is the ONLY
 	# way is_casting clears — there is no animation_finished hook, because the

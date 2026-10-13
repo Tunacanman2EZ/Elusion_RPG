@@ -14,6 +14,12 @@
 #              crater with a raised rim. It hit the ground; it did not burn.
 #   dynamite   mostly fire: a bright core, a bigger fireball, black smoke, and a
 #              scorch mark rather than a hole.
+#   stalagmite the mage's ice spike shattering (0.35.0, the owner's "give the
+#              mages attack some effects"): a cold flash, a ring of air, shards
+#              of ice thrown out and falling, a puff of mist, glints drifting
+#              up, and frost left on the floor that glints and melts away.
+#              Small - the spike's hit is 18 px - and it shakes the camera
+#              least, because a mage casts one every half second.
 #
 # PIXELS, NOT SMOOTH SHAPES. The world is pixel art drawn at three times its
 # size. Every particle is an untextured square of whole world pixels, and the
@@ -40,6 +46,7 @@ const MARK_SECONDS := 4.0
 const SHAKE := {
 	&"meteor": Vector2(2.0, 0.22),
 	&"dynamite": Vector2(1.5, 0.18),
+	&"stalagmite": Vector2(0.6, 0.1),
 }
 
 var kind: StringName = &"dynamite"
@@ -93,7 +100,11 @@ func _build() -> void:
 	# started a beat after the flash: drawn on top from the first frame, it
 	# put a dark hole in the middle of every fireball.
 	var puff: Texture2D = Blast.puff_texture()
-	if kind == &"meteor":
+	if kind == &"stalagmite":
+		_burst(_mist(), 7, 0.9, Vector2(6, 18), 0.8, 1.3, -10.0, puff, 0.04)
+		_burst(_shards(), 14, 0.55, Vector2(45, 100), 1.0, 2.0, 230.0)
+		_burst(_glints(), 9, 0.8, Vector2(8, 26), 1.0, 1.0, -8.0)
+	elif kind == &"meteor":
 		_burst(_smoke(), 6, 1.3, Vector2(6, 16), 1.0, 1.8, -16.0, puff, 0.12)
 		_burst(_fire(), 8, 0.3, Vector2(10, 30), 0.8, 1.4, 0.0, puff)
 		_burst(_dust(), 16, 0.9, Vector2(25, 70), 0.7, 1.5, 0.0, puff)
@@ -117,7 +128,8 @@ func _flash() -> void:
 	# a tenth of a second. It is what makes the impact read as an impact.
 	var flash := Sprite2D.new()
 	flash.name = "flash"
-	flash.texture = Blast.disc_texture(int(radius * 0.6), Color(1.0, 1.0, 0.9), Color(1.0, 0.8, 0.45))
+	flash.texture = Blast.disc_texture(int(radius * 0.6), Color(0.92, 0.98, 1.0), Color(0.55, 0.82, 1.0)) \
+		if kind == &"stalagmite" else Blast.disc_texture(int(radius * 0.6), Color(1.0, 1.0, 0.9), Color(1.0, 0.8, 0.45))
 	add_child(flash)
 	var t := flash.create_tween()
 	t.tween_interval(0.05)
@@ -130,7 +142,10 @@ func _ring() -> void:
 	var ring := BlastRing.new()
 	ring.name = "ring"
 	ring.reach = radius * 1.35
-	ring.colour = Color(1.0, 0.9, 0.7, 0.9) if kind == &"dynamite" else Color(0.85, 0.8, 0.7, 0.9)
+	if kind == &"stalagmite":
+		ring.colour = Color(0.75, 0.92, 1.0, 0.9)
+	else:
+		ring.colour = Color(1.0, 0.9, 0.7, 0.9) if kind == &"dynamite" else Color(0.85, 0.8, 0.7, 0.9)
 	add_child(ring)
 
 
@@ -139,7 +154,10 @@ func _leave_mark() -> void:
 	# outlive the fire above it by a few seconds and fade on its own.
 	var mark := Sprite2D.new()
 	mark.name = "blastmark"
-	mark.texture = Blast.crater_texture(int(radius)) if kind == &"meteor" else Blast.scorch_texture(int(radius))
+	if kind == &"stalagmite":
+		mark.texture = Blast.frost_texture(int(radius))
+	else:
+		mark.texture = Blast.crater_texture(int(radius)) if kind == &"meteor" else Blast.scorch_texture(int(radius))
 	mark.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	mark.z_as_relative = false
 	mark.z_index = -2
@@ -149,7 +167,34 @@ func _leave_mark() -> void:
 	var t := mark.create_tween()
 	t.tween_interval(MARK_SECONDS * 0.6)
 	t.tween_property(mark, "modulate:a", 0.0, MARK_SECONDS * 0.4)
+	if kind == &"stalagmite":
+		# FROST MELTS: it glints while it lasts, and draws in as it fades.
+		mark.add_child(_twinkles())
+		t.parallel().tween_property(mark, "scale", Vector2(0.7, 0.7), MARK_SECONDS * 0.4)
 	t.tween_callback(mark.queue_free)
+
+
+func _twinkles() -> CPUParticles2D:
+	# Glints in the frost: single white pixels that wink on and off where they
+	# are, unshaded so they catch the eye in a dark area. Children of the mark,
+	# so they fade and go with it.
+	var p := CPUParticles2D.new()
+	p.name = "twinkles"
+	p.amount = 5
+	p.lifetime = 0.6
+	p.lifetime_randomness = 0.4
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(radius * 0.75, radius * 0.5)
+	p.initial_velocity_min = 0.0
+	p.initial_velocity_max = 0.0
+	p.gravity = Vector2.ZERO
+	p.color_ramp = _ramp([[0.0, Color(1, 1, 1, 0.0)], [0.4, Color(1, 1, 1, 1.0)], [1.0, Color(0.7, 0.9, 1.0, 0.0)]])
+	p.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	p.material = unshaded
+	p.emitting = true
+	return p
 
 
 func _burst(colours: Gradient, amount: int, lifetime: float, velocity: Vector2,
@@ -178,7 +223,9 @@ func _burst(colours: Gradient, amount: int, lifetime: float, velocity: Vector2,
 	p.color_ramp = colours
 	# Each particle a little different in shade and in how long it lasts, so
 	# a burst of them reads as a mottled cloud and not one flat blob.
-	p.color_initial_ramp = _ramp([[0.0, Color(1, 1, 1)], [1.0, Color(0.82, 0.74, 0.7)]])
+	# Ice is mottled cold, not warm.
+	p.color_initial_ramp = _ramp([[0.0, Color(1, 1, 1)], [1.0, Color(0.8, 0.88, 0.95)]]) if kind == &"stalagmite" \
+		else _ramp([[0.0, Color(1, 1, 1)], [1.0, Color(0.82, 0.74, 0.7)]])
 	p.lifetime_randomness = 0.35
 	p.texture = texture
 	add_child(p)
@@ -235,6 +282,22 @@ func _rocks() -> Gradient:
 		[1.0, Color(0.16, 0.17, 0.19, 0.0)]])
 
 
+func _shards() -> Gradient:
+	# The spike's own ice: white at the break, its blues as it flies.
+	return _ramp([[0.0, Color(0.95, 0.99, 1.0)], [0.4, Color(0.55, 0.82, 1.0)],
+		[1.0, Color(0.2, 0.42, 0.8, 0.0)]])
+
+
+func _mist() -> Gradient:
+	return _ramp([[0.0, Color(0.85, 0.95, 1.0, 0.0)], [0.15, Color(0.8, 0.92, 1.0, 0.55)],
+		[1.0, Color(0.7, 0.85, 1.0, 0.0)]])
+
+
+func _glints() -> Gradient:
+	return _ramp([[0.0, Color(1.0, 1.0, 1.0)], [0.6, Color(0.75, 0.95, 1.0, 0.9)],
+		[1.0, Color(0.6, 0.85, 1.0, 0.0)]])
+
+
 func _smoke() -> Gradient:
 	var dark: float = 0.18 if kind == &"dynamite" else 0.42
 	return _ramp([[0.0, Color(dark, dark, dark, 0.0)], [0.15, Color(dark, dark, dark, 0.75)],
@@ -244,6 +307,41 @@ func _smoke() -> Gradient:
 # =============================================================================
 # PIXEL TEXTURES
 # =============================================================================
+
+static func frost_texture(r: int) -> Texture2D:
+	# The stalagmite's mark (0.35.0): frost on the floor where it broke - a pale
+	# rime, whiter where it is thickest, ragged at the edge, with a few cracks
+	# of white ice running out and bright crystals in it. Seeded, like the
+	# crater, so the cache can hold it.
+	r = maxi(r, 4)
+	return _cached("frost%d" % r, func() -> Image:
+		var size: int = r * 2 + 6
+		var img := Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 9100 + r
+		var c := Vector2(size / 2.0, size / 2.0)
+		for y in size:
+			for x in size:
+				var v := Vector2(x + 0.5 - c.x, (y + 0.5 - c.y) * 1.35)
+				var d: float = v.length() / float(r * 0.85) + rng.randf_range(-0.14, 0.14)
+				if d < 0.4:
+					img.set_pixel(x, y, Color(0.9, 0.97, 1.0, 0.55))
+				elif d < 0.75:
+					img.set_pixel(x, y, Color(0.72, 0.88, 1.0, 0.4))
+				elif d < 1.0 and rng.randf() < 0.6:
+					img.set_pixel(x, y, Color(0.62, 0.82, 1.0, 0.25))
+		for i in 6:
+			var a: float = rng.randf() * TAU
+			var reach: float = float(r) * rng.randf_range(0.7, 1.1)
+			for step in int(reach * 0.6):
+				var p := c + Vector2(cos(a), sin(a) / 1.35) * (float(r) * 0.35 + step)
+				var px := Vector2i(clampi(int(p.x), 0, size - 1), clampi(int(p.y), 0, size - 1))
+				img.set_pixelv(px, Color(0.95, 1.0, 1.0, 0.6))
+		for i in 5:
+			var p := c + Vector2(rng.randf_range(-0.6, 0.6), rng.randf_range(-0.45, 0.45)) * float(r)
+			img.set_pixelv(Vector2i(clampi(int(p.x), 0, size - 1), clampi(int(p.y), 0, size - 1)), Color(1, 1, 1, 0.9))
+		return img)
+
 
 static func _cached(key: String, build: Callable) -> Texture2D:
 	if not _texture_cache.has(key):
@@ -255,7 +353,11 @@ static func disc_texture(r: int, core: Color, edge: Color) -> Texture2D:
 	# A filled disc, white-hot in the middle and the edge colour at the rim, in
 	# three hard bands rather than a smooth fade: pixel art does not blend.
 	r = maxi(r, 2)
-	return _cached("disc%d" % r, func() -> Image:
+	# THE COLOURS ARE PART OF THE KEY (0.35.0). The key was the size alone, so
+	# two discs of one size in different colours were one texture - whichever
+	# was asked for first: a smoulder's glow could come out a crater's, and the
+	# stalagmite's cold flash a dynamite's hot one.
+	return _cached("disc%d-%s-%s" % [r, core.to_html(), edge.to_html()], func() -> Image:
 		var img := Image.create_empty(r * 2, r * 2, false, Image.FORMAT_RGBA8)
 		for y in r * 2:
 			for x in r * 2:

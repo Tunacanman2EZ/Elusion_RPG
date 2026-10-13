@@ -337,6 +337,8 @@ func _run_all() -> void:
 	_test_the_rings_have_switches()
 	_test_the_mage_has_an_off_hand()
 	await _test_the_tank_aura_burns()
+	_test_every_area_floor_is_under_its_floor_effects()
+	await _test_the_mage_spell_effects()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -12399,6 +12401,192 @@ func _test_the_tank_aura_burns() -> void:
 
 
 # =============================================================================
+# THE MAGE'S SPELL, WITH EFFECTS (0.35.0)
+# =============================================================================
+
+func _test_the_mage_spell_effects() -> void:
+	section("THE MAGE'S SPELL - motes off the staff, a frost ring and a shadow, the shatter, frost left to melt (0.35.0)")
+	# The owner: "time to give the mages attack some effects", and all four of
+	# the ones offered.
+	var scene_root: Node = get_tree().current_scene
+	var arena := Node2D.new()
+	arena.name = "spelltest"
+	scene_root.add_child(arena)
+
+	# ---- the motes off the staff ----------------------------------------------
+	# Where the gem is in each facing's cast, measured off mage.png: the cyan
+	# pixels of the gem in the first frame of each attack animation.
+	var sheet: Image = (load("res://art/maincharacter/mage.png") as Texture2D).get_image()
+	var rows: Dictionary = {"down": 1344, "up": 1536, "left": 1472, "right": 1408}
+	var off_by: Dictionary = {}
+	for facing in rows:
+		var sum := Vector2.ZERO
+		var count: int = 0
+		for y in 64:
+			for x in 64:
+				var c: Color = sheet.get_pixel(x, int(rows[facing]) + y)
+				if c.a > 0.8 and c.b > 0.7 and c.g > 0.6 and c.r < 0.55:
+					sum += Vector2(x, y)
+					count += 1
+		var gem: Vector2 = sum / maxf(count, 1.0) - Vector2(32, 32)
+		off_by[facing] = snappedf(gem.distance_to(CastSparkle.GEM[facing]), 0.1)
+	var all_close: bool = true
+	for facing in off_by:
+		all_close = all_close and float(off_by[facing]) <= 1.0
+	check("the motes leave the staff's gem, wherever the cast holds it: each facing within a pixel of the art",
+		all_close, off_by)
+	var body := Node2D.new()
+	var picture := Node2D.new()
+	picture.name = "animatedsprite2d"
+	picture.position = Vector2(0, -19)
+	body.add_child(picture)
+	body.position = Vector2(200, 200)
+	arena.add_child(body)
+	var frost: CastSparkle = CastSparkle.burst(body, "left", Vector2(100, 200))
+	var streak: CPUParticles2D = frost.get_node_or_null(^"streak") as CPUParticles2D
+	check("  a burst round the gem and a streak toward where the spell goes, both whole-pixel and unshaded",
+		frost.get_parent() == body and frost.position.is_equal_approx(Vector2(0, -19) + CastSparkle.GEM["left"])
+		and frost.emitting and frost.one_shot and streak != null and streak.emitting
+		and streak.direction.x < -0.9 and frost.scale_amount_min == 1.0 and frost.scale_amount_max == 1.0
+		and (frost.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED,
+		[frost.position, streak])
+	check("  and gone once the last of them is (it frees itself)",
+		frost.finished.is_connected(frost.queue_free))
+	var cold: Color = CastSparkle.colours(CastSparkle.FROST).sample(0.4)
+	var hot: Color = CastSparkle.colours(CastSparkle.EMBER).sample(0.4)
+	check("  frost for the stalagmite, embers for the meteor", cold.b > cold.r and hot.r > hot.b, [cold, hot])
+	var cast_body: String = _func_body(_code_src("res://src/characters/mage.gd"), "func _cast_stalagmite_drop(")
+	check("  thrown on every cast, the way the mage faces, toward the cursor",
+		cast_body.contains("CastSparkle.burst(self, _direction_to_string(last_direction), get_global_mouse_position(),")
+		and cast_body.contains("CastSparkle.EMBER if meteor else CastSparkle.FROST"))
+	var remote_src: String = _code_src("res://src/characters/remoteattacks.gd")
+	var them: Node2D = (load("res://src/characters/remoteplayer.gd") as GDScript).new()
+	them.set("anim", "attackleft")
+	check("  and by a picture of somebody else's mage, facing the way it faces",
+		_func_body(remote_src, "static func _stalagmite(").contains("CastSparkle.burst(body, facing_of(body), target, CastSparkle.FROST)")
+		and _func_body(remote_src, "static func _meteor(").contains("CastSparkle.burst(body, facing_of(body), target, CastSparkle.EMBER)")
+		and RemoteAttacks.facing_of(them) == "left")
+	them.free()
+
+	# ---- the frost ring and the shadow ------------------------------------------
+	var spell: Node2D = (load("res://scene/projectiles/spelltargetcircle.tscn") as PackedScene).instantiate()
+	spell.set("cosmetic", true)
+	arena.add_child(spell)
+	spell.global_position = Vector2(300, 260)
+	await get_tree().process_frame
+	var fall_anim: AnimatedSprite2D = spell.get_node(^"stalagmiteprojectile") as AnimatedSprite2D
+	fall_anim.pause()
+	fall_anim.frame = 0
+	var at_cast: float = spell.call("fall_progress")
+	fall_anim.set_frame_and_progress(2, 0.0)
+	var halfway: float = spell.call("fall_progress")
+	check("the ring frosts in and the shadow grows as the spike falls: 0 at the cast, halfway at frame 2",
+		is_equal_approx(at_cast, 0.0) and is_equal_approx(halfway, 2.0 / 4.0), [at_cast, halfway])
+	var src: String = _code_src("res://src/projectiles/spelltargetcircle.gd")
+	var draw_body: String = _func_body(src, "func _draw(")
+	check("  a 1 px ring, not antialiased, still exactly the hit; the meteor's pixel shadow under it",
+		draw_body.contains("draw_arc(Vector2.ZERO, circle_radius, 0.0, TAU, 48, ring, 1.0, false)")
+		and draw_body.contains("Blast.shadow_texture(") and not src.contains("Color(1.0, 0.1, 0.1")
+		and is_equal_approx(float(spell.get("circle_radius")),
+			((spell.get_node(^"targetcircle") as CollisionShape2D).shape as CircleShape2D).radius))
+
+	# ---- the shatter, and the frost left behind ----------------------------------
+	var before: Array = arena.get_children()
+	fall_anim.frame = 4
+	var made: Array = arena.get_children().filter(func(n: Node) -> bool: return not before.has(n))
+	var shatter: Blast = null
+	var mark: Sprite2D = null
+	for n in made:
+		if n is Blast:
+			shatter = n
+		elif n is Sprite2D and (n as Node).is_in_group("blastmarks"):
+			mark = n
+	check("it shatters as it lands: Blast's stalagmite kind, where it struck, beside the spell so it outlives it",
+		shatter != null and shatter.kind == &"stalagmite" and shatter.global_position == Vector2(300, 260)
+		and is_equal_approx(shatter.radius, float(spell.get("circle_radius"))), made)
+	check("  a picture of somebody else's shakes nobody's camera",
+		shatter != null and not shatter.shakes)
+	var parts: Array[String] = []
+	if shatter != null:
+		for child in shatter.get_children():
+			parts.append(str(child.name) if not (child is CPUParticles2D) else "particles")
+	check("  a flash, a ring of air and three handfuls - mist, shards, glints",
+		parts.has("flash") and parts.has("ring") and parts.count("particles") == 3, parts)
+	var flash: Sprite2D = shatter.get_node_or_null(^"flash") as Sprite2D if shatter != null else null
+	var flash_middle: Color = Color.BLACK
+	if flash != null:
+		var flash_image: Image = flash.texture.get_image()
+		flash_middle = flash_image.get_pixel(flash_image.get_width() >> 1, flash_image.get_height() >> 1)
+	check("  the flash is cold: blue-white, where a dynamite's is yellow-white",
+		flash_middle.b > flash_middle.r - 0.01 and flash_middle.b > 0.95 and flash_middle.r < 0.95, flash_middle)
+	check("  and the camera shakes least of all the blasts - a mage casts every half second",
+		Blast.SHAKE[&"stalagmite"].x < Blast.SHAKE[&"dynamite"].x and Blast.SHAKE[&"stalagmite"].x < Blast.SHAKE[&"meteor"].x)
+	var frost_image: Image = mark.texture.get_image() if mark != null else null
+	var pale: int = 0
+	if frost_image != null:
+		for y in frost_image.get_height():
+			for x in frost_image.get_width():
+				var c: Color = frost_image.get_pixel(x, y)
+				if c.a > 0.0 and c.b >= c.r and c.b > 0.9:
+					pale += 1
+	check("frost is left on the floor - pale ice, on the floor's layer, glinting",
+		mark != null and mark.z_index == -2 and not mark.z_as_relative and pale > 20
+		and mark.get_node_or_null(^"twinkles") is CPUParticles2D, [mark, pale])
+	check("  and it melts: it fades and draws in over the last part of Blast.MARK_SECONDS",
+		_func_body(_code_src("res://src/projectiles/blast.gd"), "func _leave_mark(").contains(
+			"t.parallel().tween_property(mark, \"scale\", Vector2(0.7, 0.7), MARK_SECONDS * 0.4)"))
+	check("a disc's colours are part of what it is cached as - one size in two colours is two textures",
+		Blast.disc_texture(9, Color.RED, Color.RED) != Blast.disc_texture(9, Color.BLUE, Color.BLUE))
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
+# THE FLOOR IS UNDER WHAT LIES ON IT (0.34.1)
+# =============================================================================
+
+func _test_every_area_floor_is_under_its_floor_effects() -> void:
+	section("EVERY AREA - its floor draws under what lies on it: craters, scorch, target circles (0.34.1)")
+	# What lies on the floor pins an absolute z under the entities' 0: blast
+	# marks -2 (blast.gd), a crater's glow, a lit stick, a meteor's shadow, the
+	# mage's target circle and the axe's spatter -1, the boss gate's far pane
+	# -5. The field, the big field and the town put "ground" at -10 and "water"
+	# at -20; the boss room and the arena left both at 0, so every one of those
+	# was drawn under the floor there - found while the tank's scorch went in
+	# (0.34.0), and checked with a red square at -2 that the arena hid.
+	var lowest_effect: int = -5
+	var with_ground: Array[String] = []
+	var wrong: Array = []
+	for area in AreaRegistry.AREAS:
+		var src: String = FileAccess.get_file_as_string(str(AreaRegistry.AREAS[area]))
+		var ground: Variant = _root_layer_z(src, "ground")
+		if ground == null:
+			continue
+		with_ground.append(str(area))
+		var water: Variant = _root_layer_z(src, "water")
+		if int(ground) >= lowest_effect or (water != null and int(water) >= int(ground)):
+			wrong.append([area, ground, water])
+	with_ground.sort()
+	check("the ground is below every floor effect, and the water below the ground, in every area that has one",
+		wrong.is_empty() and with_ground == ["bigfield", "boss", "bossarena", "elusion", "field"], [with_ground, wrong])
+
+
+func _root_layer_z(scene_src: String, layer: String) -> Variant:
+	"""The z_index of the root's TileMapLayer named `layer` in a .tscn's text
+	(0 when it sets none), or null when there is no such layer."""
+	var header: String = "[node name=\"%s\" type=\"TileMapLayer\" parent=\".\"" % layer
+	var at: int = scene_src.find(header)
+	if at < 0:
+		return null
+	var block_end: int = scene_src.find("\n\n", at)
+	var block: String = scene_src.substr(at, (block_end if block_end >= 0 else scene_src.length()) - at)
+	for line in block.split("\n"):
+		if line.begins_with("z_index = "):
+			return int(line.trim_prefix("z_index = "))
+	return 0
+
+
+# =============================================================================
 # THE MONSTERS' THREAT RINGS (0.28.0)
 # =============================================================================
 
@@ -24416,7 +24604,7 @@ func _test_the_mythic_weapons() -> void:
 	check("  the second is not even in the sky until then", not two[1].rock.visible)
 	check("the mage's cast calls the meteor in place of the stalagmite when one is worn",
 		_func_body(_code_src("res://src/characters/mage.gd"), "func _cast_stalagmite_drop(").contains(
-			"if equipped_weapon_attack() == ItemData.WeaponAttack.METEOR:\n\t\tcall_meteor("))
+			"var meteor: bool = equipped_weapon_attack() == ItemData.WeaponAttack.METEOR\n\tif meteor:\n\t\tcall_meteor("))
 
 	# --- THE DOUBLE AXE ------------------------------------------------------
 	var row_y := o + Vector2(0, 500)

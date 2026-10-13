@@ -102,8 +102,10 @@ func _ready() -> void:
 	anim.animation_finished.connect(_on_animation_finished)
 	anim.frame_changed.connect(_on_frame_changed)
 	anim.play("fall")
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
-	# trigger _draw so the targeting ring renders on the first frame
+	# trigger _draw so the targeting ring renders on the first frame; _process
+	# redraws it as it frosts in.
 	queue_redraw()
 
 
@@ -152,25 +154,82 @@ func _validate_animation() -> bool:
 
 
 # =============================================================================
-# VISUAL TARGETING RING
+# THE FROST RING AND THE SHADOW (0.35.0)
 # =============================================================================
+# The owner: "time to give the mages attack some effects" - and of the four
+# offered, "Frost ring + shadow" among them. Until 0.35.0 this was a red
+# antialiased circle, 2 px, drawn once: the only thing on the floor before
+# the spike landed.
+#
+# NOW IT FROSTS IN as the spike falls, in whole pixels like the rest of the
+# floor: a 1 px ring of ice-blue, faint at the cast and full as it lands, a
+# fainter band 3 px inside it, and six glints round it that turn as it comes.
+# It is still exactly the hit - circle_radius, the collision shape's 18 - and
+# still a circle, because the hit is one.
+#
+# AND A SHADOW under the spike, a pixel-art ellipse (Blast.shadow_texture(),
+# the meteor's) that grows as it comes down, so where it will land reads
+# before it does. After the impact both fade over the shatter's frames; the
+# shatter itself, and the frost it leaves, are Blast's "stalagmite" kind,
+# spawned on IMPACT_FRAME.
+
+const RING_COLOUR := Color(0.7, 0.92, 1.0, 0.9)
+const GLINT_COLOUR := Color(0.92, 0.98, 1.0, 1.0)
+const GLINTS := 6
+# How far round the glints turn while it falls, in turns.
+const GLINT_TURN := 0.35
+# The shadow's half-width at the impact; it is half as tall.
+const SHADOW_MAX := 7
+
+
+func fall_progress() -> float:
+	"""0 as the spike appears, 1 as it lands (IMPACT_FRAME), read off the
+	animation so the ring and the shadow keep time with the art."""
+	if anim == null:
+		return 1.0
+	return clampf((float(anim.frame) + anim.frame_progress) / float(IMPACT_FRAME), 0.0, 1.0)
+
+
+func after_progress() -> float:
+	"""0 at the impact, 1 as the last frame ends: how far the ring has faded."""
+	if anim == null or anim.sprite_frames == null:
+		return 0.0
+	var frames: int = anim.sprite_frames.get_frame_count("fall")
+	var past: float = float(anim.frame) + anim.frame_progress - float(IMPACT_FRAME)
+	return clampf(past / float(maxi(frames - IMPACT_FRAME, 1)), 0.0, 1.0)
+
+
+func _process(_delta: float) -> void:
+	queue_redraw()
+
 
 func _draw() -> void:
-	# red ring on the ground at spell position — shows the AoE radius.
-	# rendered every frame _draw is called, but since the circle is static
-	# we only queue_redraw once on _ready (no per-frame overdraw cost).
-	var outline_color: Color = Color(1.0, 0.1, 0.1, 0.75)
-	var line_thickness: float = 2.0
-	draw_arc(
-		Vector2.ZERO,
-		circle_radius,
-		0,
-		TAU,
-		32,
-		outline_color,
-		line_thickness,
-		true,
-	)
+	var fall: float = fall_progress()
+	var left: float = 1.0 - after_progress()
+	if left <= 0.0:
+		return
+	# The shadow: two pixels across at the cast, SHADOW_MAX at the impact.
+	var rx: int = maxi(2, roundi(lerpf(2.0, float(SHADOW_MAX), fall)))
+	var shadow: Texture2D = Blast.shadow_texture(rx, maxi(1, int(rx / 2.0)))
+	draw_texture(shadow, -(shadow.get_size() / 2.0).floor(), Color(1, 1, 1, left))
+	# The ring, frosting in.
+	var ring: Color = RING_COLOUR
+	ring.a = RING_COLOUR.a * lerpf(0.35, 1.0, fall) * left
+	draw_arc(Vector2.ZERO, circle_radius, 0.0, TAU, 48, ring, 1.0, false)
+	var band: Color = ring
+	band.a *= 0.35
+	draw_arc(Vector2.ZERO, circle_radius - 3.0, 0.0, TAU, 40, band, 1.0, false)
+	# The glints: a pixel and its four neighbours, turning as it falls.
+	var glint: Color = GLINT_COLOUR
+	glint.a = lerpf(0.4, 1.0, fall) * left
+	var arm: Color = glint
+	arm.a *= 0.5
+	for i in GLINTS:
+		var angle: float = TAU * (float(i) / GLINTS + fall * GLINT_TURN)
+		var at: Vector2 = (Vector2.from_angle(angle) * circle_radius).round()
+		draw_rect(Rect2(at, Vector2.ONE), glint)
+		for step in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			draw_rect(Rect2(at + step, Vector2.ONE), arm)
 
 
 # =============================================================================
@@ -186,6 +245,18 @@ func _on_frame_changed() -> void:
 	if anim.frame != IMPACT_FRAME:
 		return
 	_apply_area_damage()
+	_shatter()
+
+
+func _shatter() -> void:
+	# THE SHATTER (0.35.0): Blast's "stalagmite" kind - a cold flash, a ring of
+	# air, ice shards, mist and glints, and frost left on the floor to melt.
+	# Beside this, not on it, so it outlives the spell's own short life. A
+	# picture of somebody else's shakes nobody's camera.
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	Blast.spawn(parent, global_position, &"stalagmite", circle_radius, not cosmetic)
 
 
 func _apply_area_damage() -> void:

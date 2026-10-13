@@ -143,6 +143,7 @@ static func _stalagmite(body: Node2D, origin: Vector2, target: Vector2) -> Node:
 	spell.global_position = target
 	spell.reset_physics_interpolation()
 	Audio.play_at("spell_cast", origin)
+	CastSparkle.burst(body, facing_of(body), target, CastSparkle.FROST)
 	return spell
 
 
@@ -156,6 +157,8 @@ static func _meteor(body: Node2D, origin: Vector2, target: Vector2, delay: float
 	meteor.reset_physics_interpolation()
 	if delay <= 0.0:
 		Audio.play_at("spell_cast", origin)
+		# The second of a double cast falls on its own; the staff threw once.
+		CastSparkle.burst(body, facing_of(body), target, CastSparkle.EMBER)
 	return meteor
 
 
@@ -194,6 +197,16 @@ static func _orb(body: Node2D, origin: Vector2, target: Vector2) -> Node:
 # =============================================================================
 # HELPERS
 # =============================================================================
+
+static func facing_of(body: Node2D) -> String:
+	"""The way a picture faces, from the animation it plays ("attackleft" is
+	"left") - for the motes off a mage's staff (castsparkle.gd)."""
+	var playing: String = str(body.get("anim")) if "anim" in body else ""
+	for facing in ["down", "up", "left", "right"]:
+		if playing.ends_with(facing):
+			return facing
+	return "down"
+
 
 static func _aim(origin: Vector2, target: Vector2) -> Vector2:
 	var aim: Vector2 = target - origin
