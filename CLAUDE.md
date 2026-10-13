@@ -5756,7 +5756,7 @@ that approach and change all attacks to left click".
 
 - **The art**: art/maincharacter/healaura.png, the 25 frames in one strip
   (1600 x 64), beside the paid orb, and drawn at its own size - every pixel
-  his, nothing stretched, nothing added. Its .import is the orb's settings.
+  his, nothing stretched, nothing tinted. Its .import is the orb's settings.
 - **Every class attacks on left-click** (and Space). player.gd's ATTACK INPUT
   catches the click in `_unhandled_input` - only a click no window took - and
   holds it until the button comes up (`left_click_attack_held()`);
@@ -5786,6 +5786,25 @@ that approach and change all attacks to left click".
   ring 45 x 19, `RADII` 22 x 9), unshaded. While the pillar falls (frames 0-3)
   it is over everyone (z 5); from `LANDS_ON` (frame 4) it is on the floor
   (z -1).
+- **The beam, dressed.** The owner: "is there any way we can make the beam
+  look better?" - and of four ways offered, "Fade the top", "Glow + light" and
+  "Falling sparkles". Each is its own node beside his frames (`_dress_up()`,
+  `_dress(frame)`); his frames are untouched. **The shaft**: `SHAFT_HEIGHT`
+  (96) px standing on the frame's top edge while the pillar falls, its own
+  texture (`shaft_texture()`): each column the colour of the pillar's top row
+  there, its foot exactly that row (no seam), fading to nothing going up in
+  whole quarters of his alpha with a 4 x 4 dither - so the beam comes out of
+  the sky instead of ending in a lid. **The glow**: a halo added round the
+  shaft and pillar, `GLOW_SPREAD` past each side, fading in at the top as the
+  shaft does, shown down to where his pillar's sides end in each frame
+  (`PILLAR_FOOT`, measured off the art) through `region_rect` - never scaled;
+  then a glow round the ring once it lands, fading over `RING_GLOW_FRAMES`.
+  **The light**: in a dark area only (`AuraBurn.scene_is_dark()`, read as it
+  is made), a green PointLight2D rising as the beam falls and out by
+  `LIGHT_OUT_ON` (`light_energy()`), switched with `enabled` - Settings'
+  simple lighting hides lights with `visible`. **The sparkles**: white-to-lime
+  pixels streaming down the shaft and pillar while it falls, gone with it as
+  it lands.
 - **Who is healed**, decided as it lands: a player inside the ring gets
   `heal_each()` on each of `TICK_FRAMES` (4, 6, 8, 10) while still in it -
   `HEAL_SHARE` (a quarter) of their own maximum in all. `BLOBS` (8) green
@@ -5808,14 +5827,19 @@ that approach and change all attacks to left click".
   aura's numbers (`aura_*` on the healer's row), and the API's healer bound
   adds the burn (`unit * ticks * share / cooldown`, one orb a second).
 - `_test_the_healer_aura` checks the art and where the ring sits in it, that
-  it is drawn as he drew it, the landing, the ring's ticks and its edge, the
+  it is drawn as he drew it with the dressing as its own nodes, the dressing
+  (the shaft's seam and fade, the pillar measured off the art, the halo's foot
+  frame by frame and never scaled, the light only in the dark and only by
+  `enabled`, the sparkles, all gone as it lands, the ring's glow fading), the
+  landing, the ring's ticks and its edge, the
   blobs (on the ring, to whom, how much, arriving, not twice, not past the
   reach, shared between two), nobody dying, the burn and a picture's, the
   click (the range, at once, one a click, why not), every class on the left
   button, the right button needing a click no window took, the HUD letting
   clicks through, a picture of somebody else's, and the export. Each was
   broken on purpose to see it fail; one blob check compared ring_point() with
-  itself and was made to measure the ellipse instead.
+  itself and was made to measure the ellipse instead, and the dressing was
+  broken twelve ways in three runs, every one caught.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

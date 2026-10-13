@@ -13122,15 +13122,134 @@ func _test_the_healer_aura() -> void:
 	var aura_unshaded: bool = picture.material is CanvasItemMaterial \
 		and (picture.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
 	# The owner: "i can tell the image was streched keep it original size".
-	check("his art as he drew it - its own size, nothing stretched, nothing added - the beam over everyone, unshaded",
-		picture.scale == Vector2.ONE and aura.get_child_count() == 1 and picture.offset == -HealAura.RING_FROM_MIDDLE
-		and aura.z_index == HealAura.SKY_Z and not aura.z_as_relative and aura_unshaded,
-		[picture.scale, aura.get_children()])
+	# The dressing (0.40.0, "is there any way we can make the beam look
+	# better?") is its own nodes beside his frames, never on them.
+	var dressing: Array[String] = []
+	for child in aura.get_children():
+		if child != picture:
+			dressing.append(str(child.name))
+	dressing.sort()
+	check("his art as he drew it - its own size, nothing stretched, nothing tinted, the dressing its own nodes beside it - the beam over everyone, unshaded",
+		picture.scale == Vector2.ONE and aura.scale == Vector2.ONE and picture.offset == -HealAura.RING_FROM_MIDDLE
+		and picture.modulate == Color.WHITE and picture.self_modulate == Color.WHITE and picture.get_child_count() == 0
+		and aura_unshaded and (picture.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_MIX
+		and dressing == ["beamglow", "light", "ringglow", "shaft", "sparkles"]
+		and aura.z_index == HealAura.SKY_Z and not aura.z_as_relative,
+		[picture.scale, dressing])
 	var patient: Node2D = _aura_patient(arena, Vector2(410, 404), 200)
 	aura.heal_target = patient
 	aura.reached(HealAura.LANDS_ON)
 	check("  and lands: a ring on the floor under whoever stands in it",
 		aura.z_index == HealAura.FLOOR_Z)
+	check("  not a dark area here, so its light stays out", not aura.dark and not aura.light.enabled)
+
+	# ---- the beam, dressed: the shaft, the glow and light, the sparkles ---------------------
+	# The owner: "is there any way we can make the beam look better?" - "Fade
+	# the top", "Glow + light", "Falling sparkles".
+	var dressed: HealAura = HealAura.drop(arena, Vector2(400, 1400), 0, true)
+	(dressed.get_node(^"picture") as AnimatedSprite2D).stop()
+	dressed.heal_target = _aura_patient(arena, Vector2(400, 2400), 100)
+	dressed.dark = true
+	# Whatever Settings' lighting made of it as it arrived.
+	var light_shown: bool = dressed.light.visible if dressed.light != null else false
+	var shaft_image: Image = dressed.shaft.texture.get_image() if dressed.shaft != null and dressed.shaft.texture != null else null
+	# Each column of the shaft: the art's top row there at the foot, nothing
+	# at the top, the alpha only ever growing going down, in whole quarters of
+	# the art's alpha, in the art's colour.
+	var seam: bool = shaft_image != null and art != null
+	var fades: bool = seam
+	if seam:
+		for x in HealAura.PILLAR_WIDTH:
+			var art_px: Color = art.get_pixel(HealAura.PILLAR_LEFT + x, 0)
+			var foot: Color = shaft_image.get_pixel(x, HealAura.SHAFT_HEIGHT - 1)
+			seam = seam and art_px.a > 0.0 and foot.to_rgba32() == art_px.to_rgba32()
+			fades = fades and shaft_image.get_pixel(x, 0).a == 0.0
+			var column_alpha: Array[float] = [0.0, 0.0, 0.0, 0.0]
+			for y in HealAura.SHAFT_HEIGHT:
+				var shaft_px: Color = shaft_image.get_pixel(x, y)
+				column_alpha[floori(float(y) * 4.0 / float(HealAura.SHAFT_HEIGHT))] += shaft_px.a
+				if shaft_px.a > 0.0:
+					var quarters: float = shaft_px.a / art_px.a * 4.0
+					# To the 8-bit step.
+					fades = fades and shaft_px.a <= art_px.a + 0.003 and absf(shaft_px.a - roundf(quarters) / 4.0 * art_px.a) <= 1.5 / 255.0 \
+						and is_equal_approx(shaft_px.r, art_px.r) and is_equal_approx(shaft_px.g, art_px.g) and is_equal_approx(shaft_px.b, art_px.b)
+			fades = fades and column_alpha[0] < column_alpha[1] and column_alpha[1] < column_alpha[2] and column_alpha[2] < column_alpha[3]
+	check("the shaft: light standing on the frame's top edge as the pillar falls - its own texture, the pillar's width, never scaled",
+		dressed.shaft != null and dressed.shaft.texture.get_size() == Vector2(HealAura.PILLAR_WIDTH, HealAura.SHAFT_HEIGHT)
+		and dressed.shaft.scale == Vector2.ONE and not dressed.shaft.centered
+		and dressed.shaft.position == HealAura.pillar_top_left() - Vector2(0.0, HealAura.SHAFT_HEIGHT)
+		and HealAura.pillar_top_left() == -HealAura.RING_FROM_MIDDLE - Vector2(32.0, 32.0) + Vector2(HealAura.PILLAR_LEFT, 0.0)
+		and dressed.shaft.visible)
+	check("  meeting his pillar without a seam: its foot is his top row, column by column", seam)
+	check("  and fading to nothing going up - in whole quarters of his alpha, in his colours, dithered", fades)
+	# The pillar where the art has it, in its falling frames.
+	var pillar_where: bool = art != null
+	if art != null:
+		for f in HealAura.LANDS_ON:
+			for x in [HealAura.PILLAR_LEFT, HealAura.PILLAR_LEFT + HealAura.PILLAR_WIDTH - 1]:
+				pillar_where = pillar_where and art.get_pixel(f * 64 + x, 0).a > 0.0 \
+					and art.get_pixel(f * 64 + x, HealAura.PILLAR_FOOT[f]).a > 0.0 and art.get_pixel(f * 64 + x, HealAura.PILLAR_FOOT[f] + 1).a == 0.0
+			pillar_where = pillar_where and art.get_pixel(f * 64 + HealAura.PILLAR_LEFT - 1, 0).a == 0.0 \
+				and art.get_pixel(f * 64 + HealAura.PILLAR_LEFT + HealAura.PILLAR_WIDTH, 0).a == 0.0
+	check("  the pillar measured off the art: PILLAR_WIDTH across from PILLAR_LEFT, its sides ending on PILLAR_FOOT frame by frame",
+		pillar_where and HealAura.PILLAR_FOOT.size() == HealAura.LANDS_ON)
+	var glow_material: CanvasItemMaterial = dressed.beam_glow.material as CanvasItemMaterial if dressed.beam_glow != null else null
+	var glow_feet: Array = []
+	var glow_falls: bool = glow_material != null
+	var sparkles_fall: bool = dressed.sparkles != null
+	var light_rises: Array[float] = []
+	for f in HealAura.LANDS_ON:
+		dressed.reached(f)
+		glow_feet.append(dressed.beam_glow.position.y + dressed.beam_glow.region_rect.size.y)
+		glow_falls = glow_falls and dressed.beam_glow.visible and dressed.shaft.visible
+		sparkles_fall = sparkles_fall and dressed.sparkles.emitting and dressed.sparkles.visible
+		light_rises.append(dressed.light.energy if dressed.light.enabled else -1.0)
+	var feet_wanted: Array = HealAura.PILLAR_FOOT.map(func(foot_row: int) -> float: return HealAura.frame_top_left().y + foot_row + 1.0)
+	var glow_image: Image = dressed.beam_glow.texture.get_image() if dressed.beam_glow != null else null
+	check("the glow: a halo added round the shaft and the falling pillar, its foot following where his pillar's sides end, frame by frame",
+		glow_falls and glow_material.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+		and glow_material.light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and glow_feet == feet_wanted
+		and dressed.get_children().find(dressed.beam_glow) < dressed.get_children().find(dressed.get_node(^"picture")),
+		[glow_feet, feet_wanted])
+	check("  never scaled, wider than the pillar, fading in at the top as the shaft does",
+		dressed.beam_glow.scale == Vector2.ONE and dressed.beam_glow.region_enabled
+		and dressed.beam_glow.position == HealAura.pillar_top_left() - Vector2(HealAura.GLOW_SPREAD, HealAura.SHAFT_HEIGHT)
+		and glow_image != null and glow_image.get_width() == HealAura.PILLAR_WIDTH + HealAura.GLOW_SPREAD * 2
+		and glow_image.get_pixel(HealAura.GLOW_SPREAD + 20, 0).a == 0.0
+		and absf(glow_image.get_pixel(HealAura.GLOW_SPREAD + 20, HealAura.SHAFT_HEIGHT + 4).a - HealAura.GLOW_ALPHA) < 0.01
+		and glow_image.get_pixel(0, HealAura.SHAFT_HEIGHT + 4).a < glow_image.get_pixel(HealAura.GLOW_SPREAD, HealAura.SHAFT_HEIGHT + 4).a)
+	check("the light, in a dark area: green, rising as the beam falls",
+		light_rises.size() == 4 and light_rises[0] > 0.0 and light_rises[0] < light_rises[1] and light_rises[1] < light_rises[3]
+		and dressed.light.color == HealAura.LIGHT_COLOUR, light_rises)
+	check("the sparkles stream down the shaft and the pillar while it falls",
+		sparkles_fall and dressed.sparkles.direction == Vector2.DOWN and dressed.sparkles.initial_velocity_min > 0.0
+		and absf(dressed.sparkles.position.x - (HealAura.pillar_top_left().x + HealAura.PILLAR_WIDTH / 2.0)) < 0.5
+		and dressed.sparkles.emission_rect_extents.x < HealAura.PILLAR_WIDTH / 2.0
+		and dressed.sparkles.material is CanvasItemMaterial and (dressed.sparkles.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED)
+	check("  the ring's glow waits under the floor until it lands", not dressed.ring_glow.visible)
+	dressed.reached(HealAura.LANDS_ON)
+	var landed_light: float = dressed.light.energy if dressed.light.enabled else -1.0
+	check("as it lands: the shaft, the halo and the sparkles go with the beam",
+		not dressed.shaft.visible and not dressed.beam_glow.visible and not dressed.sparkles.emitting and not dressed.sparkles.visible)
+	check("  and the ring's glow shows round the ring, added, under it",
+		dressed.ring_glow.visible and is_equal_approx(dressed.ring_glow.modulate.a, 1.0) and dressed.ring_glow.z_index < 0
+		and dressed.ring_glow.material is CanvasItemMaterial and (dressed.ring_glow.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+		and dressed.ring_glow.position == Vector2.ZERO and dressed.ring_glow.scale == Vector2.ONE
+		and dressed.ring_glow.texture.get_width() > HealAura.RADII.x * 2.0 and dressed.ring_glow.texture.get_height() > HealAura.RADII.y * 2.0)
+	var halfway: int = floori(HealAura.RING_GLOW_FRAMES / 2.0)
+	dressed.reached(HealAura.LANDS_ON + halfway)
+	var half_glow: float = dressed.ring_glow.modulate.a
+	var half_light: float = dressed.light.energy if dressed.light.enabled else -1.0
+	dressed.reached(HealAura.LANDS_ON + HealAura.RING_GLOW_FRAMES)
+	check("  fading over RING_GLOW_FRAMES, the light with it - full as it lands",
+		is_equal_approx(half_glow, 1.0 - float(halfway) / float(HealAura.RING_GLOW_FRAMES)) and not dressed.ring_glow.visible
+		and is_equal_approx(landed_light, HealAura.LIGHT_ENERGY) and half_light > 0.0 and half_light < landed_light,
+		[half_glow, landed_light, half_light])
+	dressed.reached(HealAura.LIGHT_OUT_ON)
+	check("  and the light out by LIGHT_OUT_ON - switched with `enabled`, never `visible` (Settings' simple lighting hides lights with that)",
+		not dressed.light.enabled and dressed.light.visible == light_shown and HealAura.LIGHT_OUT_ON < HealAura.FRAMES)
+	dressed.queue_free()
 
 	# ---- inside: the ring heals ---------------------------------------------------------------
 	for frame in HealAura.TICK_FRAMES:
