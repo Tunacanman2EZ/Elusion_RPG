@@ -331,6 +331,7 @@ func _run_all() -> void:
 	await _test_the_fire_shows_the_fish_it_cooks()
 	_test_the_healer_aims_from_its_middle()
 	await _test_monsters_show_who_they_are_after()
+	_test_how_far_they_reach()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -12213,6 +12214,107 @@ func _test_monsters_show_who_they_are_after() -> void:
 		if is_instance_valid(o):
 			o.add_to_group(&"player")
 	await get_tree().process_frame
+
+
+# =============================================================================
+# HOW FAR THINGS REACH: THE WARRIOR'S REACH, A MONSTER'S DETECTION (0.29.0)
+# =============================================================================
+
+func _test_how_far_they_reach() -> void:
+	section("RANGE RINGS - how far the warrior's mythic reaches, and how far a monster notices you (0.29.0)")
+	# The owner: "now we need one for range on warrior like distance for attack
+	# and enemies so i can see their detection range so a much bigger circle",
+	# and for the monsters' "Always, faint".
+	var line := RangeRing.new()
+	line.set_reaches(31.0, 32.0, 25.0, 28.0)
+	check("a range line is exact straight out each way, and between them in between",
+		is_equal_approx(line.radius_at(PI), 31.0) and is_equal_approx(line.radius_at(0.0), 32.0)
+		and is_equal_approx(line.radius_at(-PI / 2.0), 25.0) and is_equal_approx(line.radius_at(PI / 2.0), 28.0)
+		and line.radius_at(-PI * 0.75) > 25.0 and line.radius_at(-PI * 0.75) < 31.0,
+		[line.radius_at(PI), line.radius_at(0.0), line.radius_at(-PI / 2.0), line.radius_at(PI / 2.0)])
+	line.set_radius(500.0)
+	check("  a circle is a circle, not squashed like the aim rings: the game measures distance the same every way",
+		is_equal_approx(line.radius_at(PI / 2.0), 500.0) and is_equal_approx(line.radius_at(0.7), 500.0))
+	check("  dashed, and unshaded (the Field's dark would hide a faint line)",
+		line.dash_count() > 100 and line.dash_count() <= RangeRing.MOST_DASHES
+		and (line.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED,
+		line.dash_count())
+	line.fired()
+	check("  ... and flashes as an attack goes", line.get("_glow") > 0.0 and line.is_processing())
+	line.free()
+
+	# THE WARRIOR'S REACH - a mythic's only, since 0.29.1. The owner, of the
+	# sword's 25-to-32 px line: "that small circle for warrir for range with that
+	# weapon is not needed", and "when holding mythic to show the change in range".
+	var warrior: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior.call("_add_reach_ring")
+	var reach: RangeRing = warrior.get_node_or_null(^"reachring") as RangeRing
+	check("the warrior wears a reach ring round its middle, where a throw is measured from, under its sprite",
+		reach != null and warrior.get_child(0) == reach and reach.position == Vector2.ZERO, reach)
+	check("  with a sword or nothing in hand there is no ring",
+		reach != null and not reach.visible and is_zero_approx(warrior.call("mythic_reach", ItemData.WeaponAttack.NONE)),
+		[reach.visible if reach else null])
+	warrior.call("_show_reach_for", ItemData.WeaponAttack.SPINNING_AXE)
+	var axe: float = SpinningAxe.MAX_THROW + SpinningAxe.HIT_RADIUS
+	check("  with the Double Axe it shows, at the furthest throw plus the blade, every way (190)",
+		reach.visible and is_equal_approx(axe, 190.0) and is_equal_approx(reach.reach_left, axe)
+		and is_equal_approx(reach.reach_up, axe) and is_equal_approx(reach.reach_down, axe),
+		[reach.visible, reach.reach_left, reach.reach_up])
+	warrior.call("_show_reach_for", ItemData.WeaponAttack.NONE)
+	check("  and the axe taken off takes the ring with it", not reach.visible)
+	warrior.free()
+	var wsrc: String = _code_src("res://src/characters/warrior.gd")
+	check("  put on in _ready(), refitted when gear changes, flashed by every throw, gone when dying",
+		_func_body(wsrc, "func _ready(").contains("_add_reach_ring()")
+		and _func_body(wsrc, "func _on_gear_changed(").contains("_fit_reach_ring()")
+		and _func_body(wsrc, "func _fit_reach_ring(").contains("_show_reach_for(equipped_weapon_attack())")
+		and _func_body(wsrc, "func attack_action(").contains("_reach_ring.fired()")
+		and _func_body(wsrc, "func _physics_process(").contains("_reach_ring.visible = _mythic_reach > 0.0 and not is_dying"))
+
+	# A MONSTER'S DETECTION: its leash_range, round its middle, always there.
+	var sniper: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	var ring: ThreatRing = ThreatRing.on(sniper)
+	var sense: RangeRing = sniper.get_node_or_null(^"detectionring") as RangeRing
+	check("a monster carries a detection circle round its middle, beside its red ring, under its picture",
+		sense != null and ring.sense == sense and sniper.get_child(0) == ring and sniper.get_child(1) == sense
+		and sense.position == Vector2.ZERO, [sense, sniper.get_child(1)])
+	sniper.set_physics_process(true)
+	sniper.hp = sniper.max_hp
+	sniper.player = null
+	ring.refresh()
+	check("  with no one about it is there all the same, faint, as wide as its leash",
+		sense.visible and is_equal_approx(sense.reach_up, sniper.leash_range)
+		and is_equal_approx(sense.reach_left, sniper.leash_range)
+		and sense.colour.is_equal_approx(ThreatRing.SENSE_IDLE), [sense.visible, sense.reach_up, sniper.leash_range])
+	var dummy := ZoneDummy.new()
+	add_child(dummy)
+	sniper.player = dummy
+	dummy.position = Vector2(sniper.leash_range - 20.0, 0)
+	ring.refresh()
+	check("  once you are inside it, it is after you: brighter",
+		sense.visible and sense.colour.is_equal_approx(ThreatRing.SENSE_AFTER) and ring.visible)
+	dummy.position = Vector2(sniper.leash_range + 20.0, 0)
+	ring.refresh()
+	check("  past it, it has let you go: faint again, still there",
+		sense.visible and sense.colour.is_equal_approx(ThreatRing.SENSE_IDLE) and not ring.visible)
+	sniper.leash_range = 1500.0
+	ring.refresh()
+	check("  as wide as THIS monster notices from (a bush mage's is 1,500)",
+		is_equal_approx(sense.reach_right, 1500.0) and sense.colour.is_equal_approx(ThreatRing.SENSE_AFTER))
+	sniper.gated = true
+	ring.refresh()
+	var gated_hidden: bool = not sense.visible
+	sniper.gated = false
+	sniper.set_physics_process(false)
+	ring.refresh()
+	var frozen_hidden: bool = not sense.visible
+	sniper.set_physics_process(true)
+	sniper._death_resolved = true
+	ring.refresh()
+	check("  none behind a gate, while frozen (the welcome story) or once dead - it notices no one then",
+		gated_hidden and frozen_hidden and not sense.visible, [gated_hidden, frozen_hidden, sense.visible])
+	dummy.free()
+	sniper.free()
 
 
 # =============================================================================

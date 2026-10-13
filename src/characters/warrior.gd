@@ -111,6 +111,22 @@ var _axe: SpinningAxe = null
 var axe_wide_chance: float = SpinningAxe.WIDE_CHANCE
 var axe_blood_chance: float = SpinningAxe.BLOOD_CHANCE
 
+# THE REACH RING (0.29.0, rangering.gd) - the owner: "now we need one for
+# range on warrior like distance for attack". A dashed line round the warrior
+# at how far a mythic's attack reaches: with the Double Axe, the furthest it
+# flies plus the reach of its blade (190).
+#
+# MYTHIC ONLY SINCE 0.29.1. 0.29.0 drew one for the sword too, read off its
+# four hitboxes - 25 to 32 px, about the warrior's own width - and the owner,
+# seeing it: "i need to change when holding mythic to show the change in range
+# also" / "that small circle for warrir for range with that weapon is not
+# needed". So with anything but a mythic in hand there is no line. The slash
+# wave never had one: it flies until it hits a wall or leaves the screen.
+const REACH_COLOUR := Color(1.0, 0.95, 0.8, 0.3)
+var _reach_ring: RangeRing = null
+# How far the weapon in hand reaches, as the ring shows it: 0 for no ring.
+var _mythic_reach: float = 0.0
+
 # cardinal directions array — used by _detect_hitboxes() to avoid 4x duplication
 const CARDINAL_DIRECTIONS := ["left", "right", "up", "down"]
 
@@ -340,6 +356,8 @@ func _ready() -> void:
 	_wire_animation_signal()
 	# THE AIM RING (0.26.0, player.gd): "add to warrior also".
 	_add_aim_ring()
+	# And how far the attack reaches (0.29.0).
+	_add_reach_ring()
 
 
 func _physics_process(delta: float) -> void:
@@ -349,6 +367,8 @@ func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 	# The ball points where the next swing - its wave, or the axe - would go.
 	_point_aim_ring(aim_direction_to(get_global_mouse_position()))
+	if _reach_ring != null:
+		_reach_ring.visible = _mythic_reach > 0.0 and not is_dying
 
 
 # =============================================================================
@@ -452,6 +472,8 @@ func attack_action() -> void:
 	# toward a garbage direction.
 	_swing_aim_direction = aim_direction_to(get_global_mouse_position())
 	_aim_ring_fired()
+	if _reach_ring != null:
+		_reach_ring.fired()
 
 	# Sync last_direction to the aim. Without this, get_idle_animation()
 	# (called by player.gd once the swing animation finishes) reads
@@ -747,6 +769,52 @@ func _on_gear_changed() -> void:
 	if axe_is_out() and equipped_weapon_attack() != ItemData.WeaponAttack.SPINNING_AXE:
 		_axe.queue_free()
 		_axe = null
+	# The axe put on or taken off shows or hides the reach ring.
+	_fit_reach_ring()
+
+
+# =============================================================================
+# THE REACH RING (0.29.0; a mythic's only since 0.29.1)
+# =============================================================================
+
+func _add_reach_ring() -> void:
+	"""The dashed line round the warrior at its mythic's reach, once - hidden
+	while what is in hand is not one. Round its origin, which is where a throw
+	is measured from; in the warrior's y-sorted body that is above the sprite
+	(13), so it draws under it."""
+	if _reach_ring != null:
+		return
+	_reach_ring = RangeRing.new()
+	_reach_ring.name = "reachring"
+	_reach_ring.colour = REACH_COLOUR
+	add_child(_reach_ring)
+	move_child(_reach_ring, 0)
+	_fit_reach_ring()
+
+
+func _fit_reach_ring() -> void:
+	_show_reach_for(equipped_weapon_attack())
+
+
+func _show_reach_for(attack: int) -> void:
+	"""The ring for the weapon in hand: at its reach, or hidden for one with
+	none to show."""
+	_mythic_reach = mythic_reach(attack)
+	if _reach_ring == null:
+		return
+	if _mythic_reach > 0.0:
+		_reach_ring.set_radius(_mythic_reach)
+	_reach_ring.visible = _mythic_reach > 0.0 and not is_dying
+
+
+func mythic_reach(attack: int) -> float:
+	"""How far a mythic's attack reaches from the warrior's origin, or 0 for
+	any other weapon - the sword's own reach is about the warrior's width, and
+	the owner wants no line for it. The Double Axe's is the furthest it can be
+	thrown plus its blade (SpinningAxe.HIT_RADIUS) where it lands."""
+	if attack == ItemData.WeaponAttack.SPINNING_AXE:
+		return SpinningAxe.MAX_THROW + SpinningAxe.HIT_RADIUS
+	return 0.0
 
 
 # =============================================================================

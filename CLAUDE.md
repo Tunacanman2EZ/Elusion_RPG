@@ -5337,6 +5337,42 @@ detection to make the dot aim to the player".
   `_ready()`, the leash check, the frozen check or the dimming each fails a
   check.
 
+### How far things reach: the warrior's reach, a monster's detection (0.29.0)
+
+The owner: "now we need one for range on warrior like distance for attack and
+enemies so i can see their detection range so a much bigger circle"; asked
+when a monster's should show, "Always, faint".
+
+- **`RangeRing`** (`src/shared/rangering.gd`): a dashed line on the floor at
+  a distance. Dashed where the aim rings are solid - an aim ring says which
+  way, a range ring how far. **Not squashed**: the game measures distance the
+  same every way (`distance_to`), so the line is a world-space circle. It
+  takes four reaches (left, right, up, down) and blends between them
+  (cos^2 / sin^2), exact straight out each way; a circle is the four the
+  same. Unshaded; `fired()` flashes it.
+- **A monster's detection** (`ThreatRing.sense`, node "detectionring", the
+  monster's second child after the red ring): a circle of its `leash_range`
+  round its origin, where BaseEnemy measures from. Shown whenever it could
+  notice anyone (not gated, frozen or dead), faint (`SENSE_IDLE`), brighter
+  once it is after someone (`SENSE_AFTER`). At the default zoom (3) the screen
+  is 427 x 240 world px and most leashes are 400 to 500, so what shows is
+  mostly edges crossing the floor - the Field has many. Bush mages' are 1,500
+  (the Big Field's mages are placed at 250).
+- **The warrior's reach** (`warrior.gd`, node "reachring", round its origin):
+  **a mythic's only (0.29.1).** With the Double Axe, `mythic_reach()` gives
+  `SpinningAxe.MAX_THROW + HIT_RADIUS` (190); with anything else it is 0 and
+  the ring is hidden. 0.29.0 also drew the sword's reach, read off its four
+  hitboxes (31 left, 32 right, 25 up, 28 down - about the warrior's own
+  width), and the owner: "that small circle for warrir for range with that
+  weapon is not needed". Refitted in `_on_gear_changed()` (through
+  `_show_reach_for()`, which the suite calls without equipping), flashed by
+  every throw, hidden while dying. **The slash wave has no line**: it flies
+  until it hits a wall or leaves the screen (slashwave.gd's
+  VisibleOnScreenNotifier2D), so its range is the camera's.
+- `_test_how_far_they_reach`. Taking out the warrior's ring, showing it for
+  the sword, squashing the circle, dropping the detection circle, its
+  brightening or its hiding each fails a check.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —
