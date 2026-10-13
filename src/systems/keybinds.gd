@@ -133,6 +133,75 @@ static func reserved_for(keycode: int) -> String:
 
 
 # =============================================================================
+# LETTING GO (0.19.1)
+# =============================================================================
+# The owner, passing on what the first other player found: "you need to
+# disable the ability to shift rightclick to bring up the native context menu,
+# it causes the character to get locked in the direction of whatever movement
+# state its in at the time". Shift is sprint and right-click is attack, so a
+# running attack is a Shift+right-click - and Firefox opens its own menu on
+# one whatever the page says (Chrome, Edge and Safari let the page keep it
+# shut; Firefox does not, and no page can change that). The menu takes the
+# keyboard: the key-up of the direction being held goes to the menu, the
+# game never hears it, and it walks that way until the key is pressed again.
+# He died like that.
+#
+# The game cannot stop the menu, so it lets go instead: every key that walks,
+# sprints or attacks, and the mouse buttons, released as if their key-up had
+# arrived - Settings calls this whenever the keyboard is about to go
+# somewhere the game cannot hear it (see "THE KEYBOARD GOES ELSEWHERE" there).
+
+# What the game holds down while a key is held.
+const HELD_ACTIONS: Array = ["move_up", "move_left", "move_down", "move_right", "sprint", "attack"]
+
+
+static func let_go(mouse_too: bool = false) -> Array:
+	"""Releases every held key bound to HELD_ACTIONS - the key-up sent as if it
+	had arrived, so the key and its action both come up - and, with
+	`mouse_too`, a held mouse button. Returns the keys (and "mouse") it let go
+	of, for the tests."""
+	var released: Array = []
+	for action in HELD_ACTIONS:
+		if not InputMap.has_action(action):
+			continue
+		for event in InputMap.action_get_events(action):
+			var key := event as InputEventKey
+			if key == null:
+				continue
+			var held: bool = (key.physical_keycode != KEY_NONE and Input.is_physical_key_pressed(key.physical_keycode)) \
+				or (key.keycode != KEY_NONE and Input.is_key_pressed(key.keycode))
+			if not held or released.has(event_key(key)):
+				continue
+			var up := key.duplicate() as InputEventKey
+			up.pressed = false
+			up.echo = false
+			Input.parse_input_event(up)
+			released.append(event_key(key))
+		# And the action itself, now: the key-up above is read with the next
+		# batch of input, and the walk should stop on this frame.
+		if Input.is_action_pressed(action):
+			Input.action_release(action)
+	if mouse_too:
+		for button in [MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_LEFT]:
+			if Input.is_mouse_button_pressed(button):
+				var up := InputEventMouseButton.new()
+				up.button_index = button
+				up.pressed = false
+				Input.parse_input_event(up)
+				released.append("mouse")
+	return released
+
+
+static func opens_its_own_menu(user_agent: String) -> bool:
+	"""Whether a browser opens its own right-click menu on Shift+right-click
+	whatever the page asks: Firefox, by its own rule (and the forks built on
+	it). The others let the game keep its right button."""
+	# "Gecko/" with the slash is Firefox's engine; Chrome, Edge and Safari say
+	# "like Gecko)".
+	return user_agent.contains("Firefox/") or user_agent.contains("Gecko/")
+
+
+# =============================================================================
 # SETTING UP
 # =============================================================================
 

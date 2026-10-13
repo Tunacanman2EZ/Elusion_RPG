@@ -806,6 +806,12 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	# a small can never split either — it has no smaller form to become.
 	slime._has_split = true if small else false
 
+	# AFTER WHOEVER THIS ONE WAS AFTER (0.30.0, BaseEnemy.keep_after()). A large
+	# splits because it was hit, so it is after someone, and four smalls that
+	# had to notice them afresh would stand about while a player shooting from
+	# further than notice_range picked them off.
+	slime.engaged = engaged
+
 	var parent: Node = get_parent()
 	if parent == null:
 		parent = get_tree().current_scene
@@ -842,5 +848,3 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	slime.call_deferred("set", "spawn_position", safe_position)
 
 	slime.call_deferred("reset_physics_interpolation")
-
-

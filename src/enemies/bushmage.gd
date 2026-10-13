@@ -173,7 +173,14 @@ func _physics_process(_delta: float) -> void:
 	# home, which is also why they ended up far from the bushes they spawn in.
 	# Every other enemy respects leash_range; this one silently opted out by
 	# overriding the only place it was enforced.
-	if dist > leash_range:
+	#
+	# AND NOTICE (0.30.0): it comes after you inside notice_range, like every
+	# other monster (BaseEnemy.keep_after()), and only then follows you out to
+	# its 1,500 - it used to notice you from 1,500 too.
+	if not keep_after(dist) and _retarget_nearer(_delta):
+		dist = global_position.distance_to(player.global_position)
+		keep_after(dist)
+	if not engaged:
 		_handle_return_home()
 		return
 	is_returning_home = false
