@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://p7rln4v1coww"]
+
+[ext_resource type="Texture2D" path="res://art/pack/armour/sapphiregrimoire.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "sapphiregrimoire"
+display_name = "Sapphire Grimoire"
+description = "Gilt and blue, and heavier than any book has a right to be."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 22800
+tier = 5
+required_level = 22
+type = 2
+equip_slot = 6
+required_classes = Array[String](["mage"])
+armor_value = 10
+bonus_max_mana = 50
+bonus_damage_percent = 3
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

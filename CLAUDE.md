@@ -5440,6 +5440,42 @@ and add the option in options to enable veiw of the circles or disable".
   holds. `_test_the_rings_have_switches` turns each off and on. No pressing,
   or a ring that ignores its switch, each fails a check.
 
+### The mage's off hand: tomes, wands and grimoires (0.32.0)
+
+The owner: "i noticed mage hass no offhand can we check clockworks art for
+something of the sort", then, shown what the pack held, "tombs grimoires and
+off hand wands i can make them special later but give them some stats".
+
+- **The art is Caio's** (Clockwork Raven), from the owner's copy of
+  **Premium - Raven Fantasy Icons** on his desktop - the pack every item icon
+  already came from. Its full 16 px sheet (`Full Spritesheet/16x16.png`, 16
+  across, 516 rows) is where each icon was cut: tomes from the magic set
+  (row, column) iron (105,2), jade (108,12), cobalt (105,3), amethyst (109,5),
+  ember (108,3); wands from each tier's own weapon block, the short wand beside
+  the staff - (281,1), (301,1), (291,1), (296,1), (286,1); the grimoires from
+  `New updates/Epic Weapons 3` (row 1, columns 6-8). In `art/pack/armour/`,
+  the private submodule, like every other item icon.
+- **Thirteen items in the shield square, mage only** (`data/items/armour/`):
+  `<tier>tome` (armour + mana), `<tier>wand` (damage % + mana), each on its
+  tier's shield rung - same tier, level and price - and `arcanegrimoire`
+  (damage), `verdantgrimoire` (health) and `sapphiregrimoire` (mana), tier 5,
+  level 22, 22,800 gold, a little past the ember pair. Tomes 2/4/6/9/13 armour
+  and 5/10/16/24/34 mana; wands 1/2/3/4/6 % and 3/6/10/14/20 mana.
+- **The store** sells iron to amethyst, beside each shield; the ember pair and
+  the grimoires drop, like all ember gear. Drops need nothing new: the server
+  picks a tier's gear evenly from gamedata.json, so these join their tiers'
+  pools once the API has the new catalogue.
+- **The server must have the new gamedata.json before anyone can be given
+  one** - equip, shop and loot all read it. The API's `test_equipment.py` and
+  `test_economy.py` check the mage wears them and nobody else does, the
+  grimoire's level, the shelf and the drop pools.
+- The healer has no off hand either. `required_classes` is one line per item
+  if it should share these.
+- `_test_the_mage_has_an_off_hand` reads the .tres as text (so a clone checks
+  the numbers too), the store, gamedata.json, and with the pack the icons
+  (16 px) and the registry. A flat wand tier or a tome another class can wear
+  each fails a check.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

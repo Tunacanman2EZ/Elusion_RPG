@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://jvvsc1gblwem"]
+
+[ext_resource type="Texture2D" path="res://art/pack/armour/cobalttome.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "cobalttome"
+display_name = "Cobalt Tome"
+description = "Blue as deep water. Read in the dark, the words still show."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 2720
+tier = 3
+required_level = 10
+type = 2
+equip_slot = 6
+required_classes = Array[String](["mage"])
+armor_value = 6
+bonus_max_mana = 16
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

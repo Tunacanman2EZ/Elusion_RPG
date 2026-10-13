@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dmfjnakwptyx"]
+
+[ext_resource type="Texture2D" path="res://art/pack/armour/jadewand.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "jadewand"
+display_name = "Jade Wand"
+description = "Light enough to forget you are holding it, until it hums."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 1040
+tier = 2
+required_level = 5
+type = 2
+equip_slot = 6
+required_classes = Array[String](["mage"])
+bonus_max_mana = 6
+bonus_damage_percent = 2
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://il86ehyfemlc"]
+
+[ext_resource type="Texture2D" path="res://art/pack/armour/ironwand.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "ironwand"
+display_name = "Iron Wand"
+description = "A short iron rod with a chip of red stone. Held in the off hand, it steadies the other."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 400
+tier = 1
+required_level = 1
+type = 2
+equip_slot = 6
+required_classes = Array[String](["mage"])
+bonus_max_mana = 3
+bonus_damage_percent = 1
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

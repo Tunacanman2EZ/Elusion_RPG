@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b0y0flocsnpvv"]
+
+[ext_resource type="Texture2D" path="res://art/pack/armour/arcanegrimoire.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "arcanegrimoire"
+display_name = "Arcane Grimoire"
+description = "Locked with a ruby. It opens for whoever it has decided to."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 22800
+tier = 5
+required_level = 22
+type = 2
+equip_slot = 6
+required_classes = Array[String](["mage"])
+armor_value = 8
+bonus_max_mana = 30
+bonus_damage_percent = 7
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

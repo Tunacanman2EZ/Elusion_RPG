@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://5ufu5ygoi0gq"]
+
+[ext_resource type="Texture2D" path="res://art/pack/armour/amethysttome.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_itemdata"]
+
+[resource]
+script = ExtResource("2_itemdata")
+item_id = "amethysttome"
+display_name = "Amethyst Tome"
+description = "The star on the cover is warm. The spells inside are not."
+icon = ExtResource("1_icon")
+max_stack = 1
+value = 7040
+tier = 4
+required_level = 16
+type = 2
+equip_slot = 6
+required_classes = Array[String](["mage"])
+armor_value = 9
+bonus_max_mana = 24
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

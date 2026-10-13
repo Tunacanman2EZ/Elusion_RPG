@@ -335,6 +335,7 @@ func _run_all() -> void:
 	await _test_monsters_notice_close_and_chase_far()
 	await _test_monsters_walk_in_between_attacks()
 	_test_the_rings_have_switches()
+	_test_the_mage_has_an_off_hand()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -12424,6 +12425,105 @@ func _test_monsters_notice_close_and_chase_far() -> void:
 		and not _func_body(src, "func _physics_process(").contains("if dist > leash_range"))
 	check("a slime's twin and its smalls are after whoever it was after",
 		_func_body(_code_src("res://src/enemies/poisonslime.gd"), "func _spawn_slime(").contains("slime.engaged = engaged"))
+
+
+# =============================================================================
+# THE MAGE'S OFF HAND: TOMES, WANDS AND GRIMOIRES (0.32.0)
+# =============================================================================
+
+const _OFFHAND_TIERS := [["iron", 1], ["jade", 2], ["cobalt", 3], ["amethyst", 4], ["ember", 5]]
+const _GRIMOIRES := ["arcanegrimoire", "verdantgrimoire", "sapphiregrimoire"]
+
+
+func _test_the_mage_has_an_off_hand() -> void:
+	section("MAGE - a tome, a wand or a grimoire in the off hand (0.32.0)")
+	# The owner: "i noticed mage hass no offhand", then, shown what the art pack
+	# held, "tombs grimoires and off hand wands i can make them special later but
+	# give them some stats". Read as text, so a clone without the pack checks
+	# the numbers too.
+	var dir := "res://data/items/armour/"
+	var missing: Array = []
+	var wrong_slot: Array = []
+	var off_rung: Array = []
+	var last_tome := {"armor_value": 0, "bonus_max_mana": 0}
+	var last_wand := {"bonus_damage_percent": 0, "bonus_max_mana": 0}
+	var tomes_rise := true
+	var wands_rise := true
+	for row in _OFFHAND_TIERS:
+		var t: String = row[0]
+		var shield: Dictionary = _tres_fields(dir + t + "shield.tres")
+		for kind in ["tome", "wand"]:
+			var f: Dictionary = _tres_fields(dir + t + kind + ".tres")
+			if f.is_empty():
+				missing.append(t + kind)
+				continue
+			if f.get("equip_slot") != "6" or f.get("required_classes") != "Array[String]([\"mage\"])" \
+					or f.get("item_id") != t + kind:
+				wrong_slot.append(t + kind)
+			for key in ["tier", "required_level", "value"]:
+				if f.get(key) != shield.get(key):
+					off_rung.append([t + kind, key, f.get(key), shield.get(key)])
+			if kind == "tome":
+				tomes_rise = tomes_rise and int(f.get("armor_value", "0")) > last_tome["armor_value"] \
+					and int(f.get("bonus_max_mana", "0")) > last_tome["bonus_max_mana"]
+				last_tome = {"armor_value": int(f.get("armor_value", "0")), "bonus_max_mana": int(f.get("bonus_max_mana", "0"))}
+			else:
+				wands_rise = wands_rise and int(f.get("bonus_damage_percent", "0")) > last_wand["bonus_damage_percent"] \
+					and int(f.get("bonus_max_mana", "0")) > last_wand["bonus_max_mana"]
+				last_wand = {"bonus_damage_percent": int(f.get("bonus_damage_percent", "0")), "bonus_max_mana": int(f.get("bonus_max_mana", "0"))}
+	check("a tome and a wand at every tier, iron to ember", missing.is_empty(), missing)
+	check("  in the off hand (the shield square), and the mage's alone", wrong_slot.is_empty(), wrong_slot)
+	check("  each on its tier's shield rung: same tier, level and price", off_rung.is_empty(), off_rung)
+	check("  a tome is armour and mana, a wand damage and mana, and each tier is more than the last",
+		tomes_rise and wands_rise, [last_tome, last_wand])
+	var grimoires_ok := true
+	for id in _GRIMOIRES:
+		var g: Dictionary = _tres_fields(dir + id + ".tres")
+		grimoires_ok = grimoires_ok and g.get("tier") == "5" and g.get("required_level") == "22" \
+			and g.get("equip_slot") == "6" and g.get("required_classes") == "Array[String]([\"mage\"])" \
+			and int(g.get("bonus_max_mana", "0")) > 0 and int(g.get("bonus_damage_percent", "0")) > 0 \
+			and int(g.get("value", "0")) > int(_tres_fields(dir + "embertome.tres").get("value", "0"))
+	check("three grimoires at the top: tier 5, level 22, mana and damage, dearer than the ember tome", grimoires_ok)
+
+	# On the shelf: iron to amethyst, like every piece; ember and the grimoires drop.
+	var stock: Array[String] = (load("res://data/shops/generalstore.tres") as ShopData).stock
+	var shelf := true
+	for row in _OFFHAND_TIERS:
+		var on: bool = stock.has(row[0] + "tome") and stock.has(row[0] + "wand")
+		shelf = shelf and (on if int(row[1]) <= 4 else not on)
+	for id in _GRIMOIRES:
+		shelf = shelf and not stock.has(id)
+	check("the store sells iron to amethyst tomes and wands, beside each shield; ember and grimoires drop",
+		shelf and stock.find("irontome") == stock.find("ironshield") + 1)
+
+	# The server's catalogue has them as the game does.
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
+	var exported: Dictionary = {}
+	for item in data.get("items", []):
+		exported[str(item.get("item_id", ""))] = item
+	var all_ids: Array = _GRIMOIRES.duplicate()
+	for row in _OFFHAND_TIERS:
+		all_ids.append(row[0] + "tome")
+		all_ids.append(row[0] + "wand")
+	var not_exported: Array = []
+	for id in all_ids:
+		if not exported.has(id) or exported[id].get("equip_slot_name") != "SHIELD" \
+				or exported[id].get("required_classes") != ["mage"]:
+			not_exported.append(id)
+	check("gamedata.json carries all thirteen, in the SHIELD square, the mage's", not_exported.is_empty(), not_exported)
+
+	# The pictures, from the Raven Fantasy pack - 16 px like every item icon.
+	var bad_icons: Array = []
+	for id in all_ids:
+		var icon: Texture2D = load("res://art/pack/armour/%s.png" % id) as Texture2D \
+			if ResourceLoader.exists("res://art/pack/armour/%s.png" % id) else null
+		if icon == null or icon.get_size() != Vector2(16, 16):
+			bad_icons.append(id)
+	check_needs_pack("  each has its own 16 px icon in the pack", bad_icons.is_empty(), bad_icons)
+	var mage_ok: bool = ItemRegistry.has_item("irontome") \
+		and ItemRegistry.get_item("irontome").required_classes == ["mage"] \
+		and ItemData.slot_name(ItemRegistry.get_item("embertome").equip_slot) == "shield"
+	check_needs_pack("  and the game's registry has them", mage_ok)
 
 
 # =============================================================================
