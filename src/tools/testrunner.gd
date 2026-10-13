@@ -336,6 +336,7 @@ func _run_all() -> void:
 	await _test_monsters_walk_in_between_attacks()
 	_test_the_rings_have_switches()
 	_test_the_mage_has_an_off_hand()
+	await _test_the_tank_aura_burns()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -10056,6 +10057,9 @@ func _test_other_players_are_drawn() -> void:
 	check("  a tank's lit aura is drawn, and the unlit one is not",
 		fire != null and fire.visible and ring != null and not ring.visible,
 		[fire != null and fire.visible, ring != null and ring.visible])
+	var remote_burn: AuraBurn = tank.get_node_or_null(^"auraburn") as AuraBurn
+	check("  and it burns the ground here too, lit with it, under the body (auraburn.gd, 0.34.0)",
+		remote_burn != null and remote_burn.fire == fire and remote_burn.lit and tank.get_child(0) == remote_burn, remote_burn)
 	var healer_body: AnimatedSprite2D = healer.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
 	Remote.clock_override = 100.1
 	Presence.handle_message({"t": "moves", "p": [[12, 140.0, 90.0, "attackleft", [], ""]]})
@@ -12207,6 +12211,191 @@ func _test_the_mage_and_tank_aim_rings() -> void:
 		and _func_body(tank_src, "func throw_dynamite(").contains("_aim_ring_fired()")
 		and _func_body(tank_src, "func throw_dynamite(").contains("var landing: Vector2 = dynamite_landing(aimed_at)")
 		and _func_body(tank_src, "func _activate_aura(").contains("_aim_ring_fired()"))
+
+
+# =============================================================================
+# THE TANK'S AURA BURNS ON THE GROUND (0.34.0)
+# =============================================================================
+
+func _test_the_tank_aura_burns() -> void:
+	section("THE TANK'S AURA BURNS ON THE GROUND - glow, flames and embers while it is lit, scorch left behind (0.34.0)")
+	# The owner, with a picture of the lit aura: "i want us to elavate the
+	# animation by adding effects and born on the ground", and "Both" - the
+	# floor inside the ring glowing with small flames, and scorch left behind.
+	# The tank's own scene with its script taken off, so the real fire ring is
+	# in the tree without player.gd's _ready() (the camera, the pets, the save).
+	var scene_root: Node = get_tree().current_scene
+	var ground := Node2D.new()
+	ground.name = "ground"
+	scene_root.add_child(ground)
+	var body: Node2D = (load("res://scene/characters/tank.tscn") as PackedScene).instantiate()
+	body.set_script(null)
+	body.position = Vector2(400, 300)
+	var fire: AnimatedSprite2D = body.get_node(^"firering") as AnimatedSprite2D
+	fire.visible = false
+	scene_root.add_child(body)
+	var burn: AuraBurn = AuraBurn.on(body)
+	await get_tree().process_frame
+	if burn == null:
+		check("a tank's fire ring gets a burn", false)
+		body.queue_free()
+		ground.queue_free()
+		return
+	check("a tank's fire ring gets a burn, once, as its first child, placed above its pictures - the fire ring's too - so it draws under them",
+		AuraBurn.on(body) == burn and body.get_child(0) == burn
+		and burn.position.y < fire.position.y
+		and burn.position.y < (body.get_node(^"ring") as Node2D).position.y
+		and burn.position.y < (body.get_node(^"animatedsprite2d") as Node2D).position.y, burn.position)
+
+	# Round the fire ring's own ellipse, measured off its art - the third
+	# frame, where no spark stands on the line at the middle row (in the first,
+	# one sticks a pixel out past its right end).
+	var art: Image = (load("res://art/maincharacter/largeringonly.png") as Texture2D).get_image()
+	var frame_x: int = 256
+	var row: int = int(AuraBurn.FIRE_FROM_FRAME_CORNER.y)
+	var col: int = int(AuraBurn.FIRE_FROM_FRAME_CORNER.x)
+	var across: Array[int] = []
+	var down: Array[int] = []
+	for i in 128:
+		if art.get_pixel(frame_x + i, row).a > 0.08:
+			across.append(i)
+		if art.get_pixel(frame_x + col, i).a > 0.08:
+			down.append(i)
+	var outer := Rect2()
+	if not across.is_empty() and not down.is_empty():
+		outer = Rect2(across[0], down[0], across[across.size() - 1] + 1 - across[0], down[down.size() - 1] + 1 - down[0])
+	check("  round the fire ring's own ellipse, measured off its art",
+		outer.get_center().is_equal_approx(AuraBurn.FIRE_FROM_FRAME_CORNER)
+		and (outer.size / 2.0 - Vector2.ONE).is_equal_approx(AuraBurn.FIRE_HALF), outer)
+	var aura_shape: CollisionShape2D = body.get_node(^"aura/collisionshape2d") as CollisionShape2D
+	var capsule: CapsuleShape2D = aura_shape.shape as CapsuleShape2D
+	var aura_middle: Vector2 = (body.get_node(^"aura") as Node2D).position + aura_shape.position
+	var aura_half := Vector2(capsule.height / 2.0, capsule.radius)
+	check("  which is where the aura burns: its middle and its size within 2 px of the aura's own shape",
+		burn.centre.distance_to(aura_middle) <= 2.0 and absf(burn.radii.x - aura_half.x) <= 2.0
+		and absf(burn.radii.y - aura_half.y) <= 2.0, [burn.centre, burn.radii, aura_middle, aura_half])
+
+	check("out while the aura is out: no glow, no flames, no embers, no light",
+		not burn.lit and burn.heat == 0.0 and not burn.flames.emitting and not burn.embers.emitting and not burn.light.enabled)
+	fire.visible = true
+	burn._process(AuraBurn.LIGHT_UP_SECONDS)
+	check("lit with the fire ring: flames and embers, and the glow up to full",
+		burn.lit and burn.flames.emitting and burn.embers.emitting and is_equal_approx(burn.heat, 1.0))
+	var ring_material: CanvasItemMaterial = fire.material as CanvasItemMaterial
+	check("  the ring itself is unshaded - fire in the dark - and pulses brighter, never darker than its art",
+		ring_material != null and ring_material.light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		and fire.self_modulate.r >= 1.0 and fire.self_modulate.r <= 1.0 + AuraBurn.RING_PULSE + 0.001, fire.self_modulate)
+	check("  the glow is brightest just inside the flames, dimmer in the middle, gone a little past them",
+		is_equal_approx(AuraBurn.glow_band(0.0), AuraBurn.GLOW_MIDDLE) and is_equal_approx(AuraBurn.glow_band(0.9), 1.0)
+		and AuraBurn.glow_band(1.05) > 0.0 and AuraBurn.glow_band(AuraBurn.GLOW_SPILL) == 0.0)
+	var glow_material: CanvasItemMaterial = burn.material as CanvasItemMaterial
+	check("  added and unshaded, so it lights the floor under it rather than painting over it",
+		glow_material != null and glow_material.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+		and glow_material.light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED)
+	var on_floor: bool = true
+	for point in burn.flames.emission_points:
+		on_floor = on_floor and Vector2(point.x / burn.radii.x, point.y / burn.radii.y).length() <= 0.9
+	var on_line: bool = true
+	for point in burn.embers.emission_points:
+		on_line = on_line and absf(Vector2(point.x / burn.radii.x, point.y / burn.radii.y).length() - 1.0) < 0.01
+	check("  the flames rise off the floor inside the ring, the embers off its line",
+		on_floor and on_line and burn.flames.position.is_equal_approx(burn.drawn_at()))
+	check("  no light where it is not dark (no CanvasModulate here)", not burn.light.enabled)
+
+	var dark := CanvasModulate.new()
+	dark.color = Color.WHITE
+	scene_root.add_child(dark)
+	fire.visible = false
+	fire.visible = true
+	burn._process(0.05)
+	check("  in a dark area a light flickers with it, switched by enabled - visible stays Settings' (\"simple\" hides it)",
+		burn.light.enabled and burn.light.energy > 0.0
+		and not _code_src("res://src/characters/auraburn.gd").contains("light.visible"))
+	scene_root.remove_child(dark)
+	dark.free()
+
+	# THE SCORCH.
+	var marks: ScorchMarks = ScorchMarks.of(get_tree())
+	check("the scorch goes on the area's floor - a child of its \"ground\" - and only one",
+		marks != null and marks.get_parent() == ground and ScorchMarks.of(get_tree()) == marks)
+	if marks == null:
+		body.queue_free()
+		ground.queue_free()
+		return
+	marks.marks.clear()
+	burn.set("_scorch_owed", 0.0)
+	burn.set("_has_last_spot", false)
+	burn._process(1.0)
+	var middle: Vector2 = burn.to_global(burn.drawn_at())
+	var inside: bool = true
+	for mark in marks.marks:
+		var off: Vector2 = marks.to_global(mark["at"]) - middle
+		inside = inside and Vector2(off.x / burn.radii.x, off.y / burn.radii.y).length() <= AuraBurn.SCORCH_REACH + 0.05
+	check("  standing still, SCORCH_PER_SECOND patches a second, all on the floor inside the ring",
+		marks.marks.size() == int(AuraBurn.SCORCH_PER_SECOND) and inside, marks.marks.size())
+	var before: int = marks.marks.size()
+	body.position += Vector2(AuraBurn.SCORCH_EVERY_PX * 5.0, 0.0)
+	burn._process(0.0)
+	check("  walking lays more: one for every SCORCH_EVERY_PX the ring moves",
+		marks.marks.size() - before == 5, marks.marks.size() - before)
+	before = marks.marks.size()
+	body.position += Vector2(AuraBurn.SCORCH_JUMP * 4.0, 0.0)
+	burn._process(0.0)
+	check("  and a jump (a portal, a respawn) is not a walk", marks.marks.size() == before, marks.marks.size() - before)
+	check("a patch holds, then fades, and is gone by LIFE",
+		ScorchMarks.fade(0.0) == 1.0 and ScorchMarks.fade(ScorchMarks.HOLD) == 1.0
+		and ScorchMarks.fade((ScorchMarks.HOLD + ScorchMarks.LIFE) / 2.0) > 0.0
+		and ScorchMarks.fade((ScorchMarks.HOLD + ScorchMarks.LIFE) / 2.0) < 1.0 and ScorchMarks.fade(ScorchMarks.LIFE) == 0.0)
+	check("  its embers are hot as it is laid and out within EMBER_SECONDS",
+		ScorchMarks.ember_heat(0.0, 1.0) == 1.0 and ScorchMarks.ember_heat(ScorchMarks.EMBER_SECONDS, 1.0) == 0.0
+		and ScorchMarks.ember_heat(ScorchMarks.EMBER_SECONDS * 0.5, 0.5) == 0.0
+		and ScorchMarks.EMBER_SECONDS < ScorchMarks.LIFE)
+	var all_embered: bool = true
+	for mark in marks.marks:
+		all_embered = all_embered and (mark["embers"] as Array).size() >= 2 and (mark["embers"] as Array).size() <= 4
+	check("  two to four embers in every patch", all_embered and not marks.marks.is_empty())
+	fire.visible = false
+	burn._process(AuraBurn.GO_OUT_SECONDS)
+	before = marks.marks.size()
+	burn._process(1.0)
+	check("out again: the fire dies down and lays no more scorch",
+		not burn.lit and burn.heat == 0.0 and not burn.flames.emitting and not burn.embers.emitting
+		and not burn.light.enabled and marks.marks.size() == before)
+	marks._process(ScorchMarks.LIFE + 0.01)
+	check("  and what it left is gone once LIFE has passed", marks.marks.is_empty())
+	for i in ScorchMarks.MOST + 20:
+		marks.burn(middle)
+	check("  at most ScorchMarks.MOST at once, the oldest going first", marks.marks.size() == ScorchMarks.MOST, marks.marks.size())
+	marks.marks.clear()
+	# NOT ON WATER: a ground of tiles is floor only where it has one.
+	var tiles := TileMapLayer.new()
+	var tile_set := TileSet.new()
+	tile_set.tile_size = Vector2i(16, 16)
+	var source := TileSetAtlasSource.new()
+	source.texture = ImageTexture.create_from_image(Image.create(16, 16, false, Image.FORMAT_RGBA8))
+	source.texture_region_size = Vector2i(16, 16)
+	source.create_tile(Vector2i(0, 0))
+	var source_id: int = tile_set.add_source(source)
+	tiles.tile_set = tile_set
+	tiles.set_cell(Vector2i(2, 2), source_id, Vector2i(0, 0))
+	var tiled := ScorchMarks.new()
+	tiles.add_child(tiled)
+	scene_root.add_child(tiles)
+	check("  and never off the floor: where the ground has no tile (water shows through) no patch is laid",
+		tiled.burn(Vector2(40, 40)) and not tiled.burn(Vector2(100, 40)) and tiled.marks.size() == 1, tiled.marks.size())
+	tiles.queue_free()
+	var blots: Array[ImageTexture] = ScorchMarks.blot_textures()
+	var widths: Array[int] = []
+	for blot in blots:
+		widths.append(blot.get_width())
+	check("  drawn from ScorchMarks.VARIANTS small pixel blots, 16 to 30 px across",
+		blots.size() == ScorchMarks.VARIANTS and widths.min() == 16 and widths.max() == 30, widths)
+
+	body.queue_free()
+	ground.queue_free()
+	check("the tank puts it on as it is set up, and a remote tank gets one with its body",
+		_func_body(_code_src("res://src/characters/tank.gd"), "func _ready(").contains("AuraBurn.on(self)")
+		and _func_body(_code_src("res://src/characters/remoteplayer.gd"), "func _build_body(").contains("AuraBurn.on(self)"))
 
 
 # =============================================================================

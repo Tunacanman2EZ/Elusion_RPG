@@ -251,6 +251,10 @@ func _ready() -> void:
 
 	# THE AIM RING (player.gd, and above): "meant mage and tank just aim ring".
 	_add_aim_ring()
+	# THE AURA BURNS ON THE GROUND (auraburn.gd, 0.34.0): a glow and flames on
+	# the floor inside the fire ring while it is lit, embers off it, and
+	# scorch left behind.
+	AuraBurn.on(self)
 
 
 func _own_ring() -> Node2D:

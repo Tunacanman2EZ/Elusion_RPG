@@ -494,6 +494,14 @@ func _build_body() -> void:
 			move_child(sprite, 0)
 	if _body != null and not _body.animation_finished.is_connected(_on_body_finished):
 		_body.animation_finished.connect(_on_body_finished)
+	# A tank's aura burns the ground here too (auraburn.gd, 0.34.0), following
+	# its "firering" as set_motion() shows and hides it. Rebuilt with the body,
+	# since it holds the old fire ring.
+	var old_burn: Node = get_node_or_null(^"auraburn")
+	if old_burn != null:
+		remove_child(old_burn)
+		old_burn.queue_free()
+	AuraBurn.on(self)
 	_play_body()
 	_place_plate()
 

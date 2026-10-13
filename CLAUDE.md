@@ -5493,6 +5493,45 @@ off hand wands i can make them special later but give them some stats".
   (16 px) and the registry. A flat wand tier or a tome a third class can wear
   each fails a check.
 
+### The tank's aura burns on the ground (0.34.0)
+
+The owner, with a picture of the lit aura: "i want us to elavate the animation
+by adding effects and born on the ground", and, asked how the ground should
+burn, "Both" - the floor inside the ring glowing with small flames while it is
+lit, and the ground it passes over left scorched, with dying embers, for a few
+seconds.
+
+- **`AuraBurn`** (`src/characters/auraburn.gd`), put on by `tank._ready()`
+  (`AuraBurn.on(self)`), follows the `firering` sprite's visibility - no new
+  calls in tank.gd's aura code. Lit, it fades in over 0.3 s and out over 0.6:
+  the ring made unshaded (fire in the dark) with a small pulse; a pixel-banded
+  additive glow on the floor inside it (brightest by the flames, spilling a
+  little past); a flickering `PointLight2D` in a dark area only (an area with
+  a CanvasModulate), switched with `enabled` so Settings' "simple" lighting
+  still hides it by `visible`; flames (a 3 x 7 spark like the ring's own) off
+  the floor inside, and embers off the ring's line (`CPUParticles2D`, unshaded).
+- **Placed above the fire ring's own sort point** (its frame is placed by the
+  top-left corner, 131 px up) so the y-sorted tank draws it first: the glow
+  under the ring's line (added on top, it turned the line white in the first
+  recording) and under any monster standing inside the ring.
+- **Measured off the art**: the fire ring's line runs 51 x 30 frame px round
+  (64, 83) of its 128 px frames, times the node's scale - about 75 x 43 round
+  (-0.9, -12), which is the aura's own capsule within 2 px.
+- **`ScorchMarks`** (`src/world/scorchmarks.gd`): one per area, a child of the
+  area's `ground` layer, so it draws with the floor in every scene (field,
+  bigfield and elusion have the ground at z -10, boss and bossarena at 0 in
+  tree order). Patches are 8 seeded pixel blots, 16 to 30 px, dark for 1.4 s
+  and gone by 4.5, each with 2 to 4 embers that cool within 2.6 s; at most 140.
+  The burn lays 4 a second standing and one per 7 px the ring moves (a jump
+  past 64 px is not a walk), anywhere on the floor inside the ring, and none
+  where the ground has no tile - water showed through there in town.
+- **Remote tanks too**: `remoteplayer.gd`'s `_build_body()` puts one on the
+  copy's `firering` and rebuilds it with the body.
+- `_test_the_tank_aura_burns` uses the real tank scene with its script taken
+  off (no player _ready()), measures the ring off the PNG, and checks the
+  glow, light, particles, scorch rates, fade, cap and the no-floor rule. Each
+  was broken on purpose to see it fail.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —
