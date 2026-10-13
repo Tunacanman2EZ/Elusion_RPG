@@ -1619,6 +1619,18 @@ func _export_combat(_items: Array) -> Dictionary:
 				var warrior_consts: Dictionary = script.get_script_constant_map() if script != null else {}
 				row["finisher_every"] = int(warrior_consts.get("FINISHER_EVERY", 0))
 				row["finisher_mult"] = float(warrior_consts.get("FINISHER_MULT", 1.0))
+				# And the crypt's orbs (bladeorb.gd, 0.39.0): every sword swing
+				# flings sword_fan_orbs, each for sword_fan_share of a swing; a
+				# finisher's wave flies with finisher_fan_orbs beside it and
+				# bursts into finisher_burst_orbs (slashwave.gd, THE BURST), each
+				# for finisher_orb_share of the wave.
+				var wave_script: Script = load("res://src/projectiles/slashwave.gd") as Script
+				var wave_consts: Dictionary = wave_script.get_script_constant_map() if wave_script != null else {}
+				row["sword_fan_orbs"] = int(warrior_consts.get("SWORD_FAN_ORBS", 0))
+				row["sword_fan_share"] = float(warrior_consts.get("SWORD_FAN_SHARE", 0.0))
+				row["finisher_fan_orbs"] = int(warrior_consts.get("FINISHER_FAN_ORBS", 0))
+				row["finisher_burst_orbs"] = int(wave_consts.get("BURST_ORBS", 0))
+				row["finisher_orb_share"] = float(warrior_consts.get("FINISHER_ORB_SHARE", 0.0))
 			"mage":
 				row["base"] = int(node.get("damage_per_magic"))
 				row["cooldown"] = float(node.get("spell_cooldown"))

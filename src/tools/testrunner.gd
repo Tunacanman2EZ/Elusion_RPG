@@ -12707,19 +12707,30 @@ func _test_the_healer_orbs() -> void:
 
 
 # =============================================================================
-# THE WARRIOR'S BLOWS, SEEN AND FELT (0.38.0)
+# THE WARRIOR'S BLOWS, SEEN AND FELT (0.38.0, 0.39.0)
 # =============================================================================
 
 func _test_the_warrior_blows() -> void:
-	section("THE WARRIOR - a swing's arc, sparks, a hit-stop, a dressed wave and the third-swing finisher (0.38.0)")
+	section("THE WARRIOR - sparks, a hit-stop, the crypt's orbs and the third-swing finisher (0.38.0, 0.39.0)")
 	# The owner: "the final character warrioe how can we make him better
-	# also", and all four of what was offered.
+	# also", and all four of what was offered. Then, of 0.38.0's arc and
+	# trails: "its horrible ... no trails we can use projectiles from crypt to
+	# elavate" - and all four ways the orbs were offered.
 	const WarriorScript := preload("res://src/characters/warrior.gd")
 	const Strike := preload("res://src/shared/strikefx.gd")
 	var scene_root: Node = get_tree().current_scene
 	var arena := Node2D.new()
 	arena.name = "bladetest"
 	scene_root.add_child(arena)
+	var warrior_src: String = _code_src("res://src/characters/warrior.gd")
+	var wave_src: String = _code_src("res://src/projectiles/slashwave.gd")
+	# By what they are, not their names: siblings of one name get renamed.
+	var new_orbs := func(was: Array) -> Array:
+		return arena.get_children().filter(func(n: Node) -> bool: return not was.has(n) and n is BladeOrb)
+	# Drawn unshaded - and false, not a SCRIPT ERROR, for one with no material.
+	var unshaded := func(item: CanvasItem) -> bool:
+		return item != null and item.material is CanvasItemMaterial \
+			and (item.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
 
 	var finishing: Array[int] = []
 	for swing in range(1, 10):
@@ -12727,42 +12738,10 @@ func _test_the_warrior_blows() -> void:
 			finishing.append(swing)
 	check("every third swing is the finisher, at one and a half",
 		finishing == [3, 6, 9] and is_equal_approx(WarriorScript.FINISHER_MULT, 1.5), finishing)
-
-	# ---- the arc ---------------------------------------------------------------------
-	var body := Node2D.new()
-	arena.add_child(body)
-	body.global_position = Vector2(300, 300)
-	var cut: Line2D = Strike.arc(body, Vector2.LEFT, true)
-	var gold_cut: Line2D = Strike.arc(body, Vector2.UP, false, true)
-	var sweep: Tween = cut.get_meta(&"sweep") as Tween
-	var gold_sweep: Tween = gold_cut.get_meta(&"sweep") as Tween
-	check("a swing cuts an arc round the warrior: a line two whole pixels wide, its head white, a finisher's gold",
-		cut.get_parent() == body and str(cut.name) == "swingarc" and cut.width == 2.0 and not cut.antialiased
-		and cut.gradient.get_color(cut.gradient.get_point_count() - 1) == Color.WHITE
-		and gold_cut.gradient.get_color(gold_cut.gradient.get_point_count() - 1).b < 0.6
-		and (cut.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED)
-	# Stepped by hand, so it is where the step put it and nowhere else.
-	sweep.custom_step(Strike.ARC_SECONDS * 0.5)
-	gold_sweep.custom_step(Strike.ARC_SECONDS)
-	var head_at: Vector2 = cut.points[cut.points.size() - 1]
-	var tail_at: Vector2 = cut.points[0]
-	check("  halfway through, its head is on the aim, its tail where the swing began",
-		head_at.is_equal_approx(Vector2.LEFT * Strike.ARC_RADIUS)
-		and is_equal_approx(absf(tail_at.angle_to(head_at)), deg_to_rad(Strike.ARC_SWEEP_DEGREES)), [tail_at, head_at])
-	sweep.custom_step(Strike.ARC_SECONDS + Strike.ARC_FADE_SECONDS)
-	check("  sweeping round in a moment, and gone a moment after",
-		cut.is_queued_for_deletion() and cut.modulate.a < 0.01, cut.modulate.a)
-	# Both swept all the way round now: the angle between one point and the next.
-	var step_of := func(line: Line2D) -> float: return absf(line.points[0].angle_to(line.points[1]))
-	check("  a finisher's is further out and further round",
-		is_equal_approx(gold_cut.points[0].length(), Strike.FINISHER_ARC_RADIUS) and Strike.FINISHER_ARC_RADIUS > Strike.ARC_RADIUS
-		and float(step_of.call(gold_cut)) > float(step_of.call(cut)) * 1.2, [step_of.call(gold_cut), step_of.call(cut)])
-	var warrior_src: String = _code_src("res://src/characters/warrior.gd")
-	var frame_body: String = _func_body(warrior_src, "func _on_frame_changed(")
-	check("  cut on the first contact frame of a sword swing, each the other way from the last",
-		frame_body.contains("Strike.arc(self, _swing_aim_direction, _arc_clockwise, _finisher)")
-		and frame_body.contains("_arc_clockwise = not _arc_clockwise")
-		and frame_body.contains("_swing_hitbox != null"))
+	check("no arc round the swing and no trail behind the wave any more - \"the trails are bad\" (0.39.0)",
+		not _code_src("res://src/shared/strikefx.gd").contains("func arc(")
+		and not warrior_src.contains("Strike.arc(") and not wave_src.contains("_leave_ghost")
+		and not wave_src.contains("waveghost"))
 
 	# ---- the sparks -----------------------------------------------------------------
 	var steel: Node2D = Strike.sparks(arena, Vector2(100, 100))
@@ -12818,55 +12797,201 @@ func _test_the_warrior_blows() -> void:
 	check("  but not the warrior's so near the end of a swing that the rest would have to rush",
 		own.speed_scale == 1.0 and WarriorScript.swing_time_left(own) < WarriorScript.HITSTOP_SECONDS, own.speed_scale)
 	await get_tree().create_timer(WarriorScript.HITSTOP_SECONDS + 0.05).timeout
-	warrior.free()
 	check("  once a swing, with a small shake - a picture only, the fight goes on",
 		try_body.contains("if not _stopped_this_swing:") and try_body.contains("_hit_stop(target)")
 		and _func_body(warrior_src, "func _hit_stop(").contains("shake_camera(")
 		and not _func_body(warrior_src, "func _hit_stop(").contains("is_attacking"))
 
-	# ---- the wave, dressed -------------------------------------------------------------
+	# ---- the crypt's orb ---------------------------------------------------------------
+	var steel_orb: Image = BladeOrb.texture_for(BladeOrb.STEEL).get_image()
+	var gold_orb: Image = BladeOrb.texture_for(BladeOrb.GOLD).get_image()
+	# Within a step of eight bits: the image holds bytes.
+	var near := func(a: Color, b: Color) -> bool:
+		return absf(a.r - b.r) < 0.01 and absf(a.g - b.g) < 0.01 and absf(a.b - b.b) < 0.01
+	check("a crypt orb: the Field's bullet, 8 x 8 - a white-hot core, a steel or a gold body, a darker rim",
+		steel_orb.get_width() == 8 and steel_orb.get_pixel(4, 4) == Color.WHITE
+		and near.call(steel_orb.get_pixel(6, 4), BladeOrb.STEEL_BODY)
+		and near.call(gold_orb.get_pixel(6, 4), BladeOrb.GOLD_BODY)
+		and steel_orb.get_pixel(7, 4).v < steel_orb.get_pixel(6, 4).v and steel_orb.get_pixel(0, 0).a == 0.0,
+		[steel_orb.get_pixel(6, 4), gold_orb.get_pixel(6, 4)])
+	var dummy: CharacterBody2D = _weapon_dummy(arena, Vector2(530, 100))
+	var orb: BladeOrb = BladeOrb.fire(arena, Vector2(500, 100), Vector2.RIGHT, 240.0, 100.0, 7)
+	var picture: Sprite2D = orb.get_node(^"picture") as Sprite2D
+	for i in 12:
+		await get_tree().physics_frame
+	check("  unshaded, so it shows in a dark crypt; it flies, hits the first monster it touches, and is gone",
+		unshaded.call(picture)
+		and dummy.get("taken") == [7] and bool(orb.get("_done")), [dummy.get("taken"), orb.flown])
+	var passed_over: CharacterBody2D = _weapon_dummy(arena, Vector2(500, 160))
+	var over: BladeOrb = BladeOrb.fire(arena, Vector2(500, 160), Vector2.DOWN, 240.0, 100.0, 7, BladeOrb.GOLD, false,
+		passed_over.get_instance_id())
+	var shown: BladeOrb = BladeOrb.fire(arena, Vector2(670, 220), Vector2.RIGHT, 240.0, 100.0, 7, BladeOrb.STEEL, true)
+	var seen: CharacterBody2D = _weapon_dummy(arena, Vector2(700, 220))
+	for i in 12:
+		await get_tree().physics_frame
+	check("  passing over the monster it is told to (where a burst starts), and a picture's touches nothing",
+		passed_over.get("taken") == [] and not bool(over.get("_done")) and seen.get("taken") == [] and bool(shown.get("_done")),
+		[passed_over.get("taken"), seen.get("taken")])
+	var short: BladeOrb = BladeOrb.fire(arena, Vector2(600, 400), Vector2.UP, 240.0, 20.0, 7)
+	short._physics_process(0.05)
+	var half_way: bool = bool(short.get("_done"))
+	short._physics_process(0.05)
+	check("  and at its reach it pops where it is", not half_way and bool(short.get("_done")) and short.flown >= 20.0, short.flown)
+
+	# ---- the sword fan -----------------------------------------------------------------
+	var three: Array[Vector2] = BladeOrb.fan_ways(Vector2.RIGHT, 3, 18.0, false)
+	var four: Array[Vector2] = BladeOrb.fan_ways(Vector2.RIGHT, 4, 12.0, true)
+	var degrees := func(ways: Array) -> Array:
+		return ways.map(func(v: Vector2) -> int: return roundi(rad_to_deg(v.angle())))
+	check("a fan: one down the aim and the rest either side - or, beside a wave, none down it",
+		degrees.call(three) == [-18, 0, 18] and degrees.call(four) == [12, -12, 24, -24], [degrees.call(three), degrees.call(four)])
+	warrior.position = Vector2(200, 300)
+	warrior.set("_swing_aim_direction", Vector2.RIGHT)
+	var before: Array = arena.get_children()
+	var flung: Array[BladeOrb] = warrior.call("fling_sword_fan", arena)
+	var fan_reach: float = WarriorScript.SWORD_FAN_REACH
+	var blade: Vector2 = Vector2(200, 300) + Vector2.RIGHT * WarriorScript.SWORD_FAN_FROM
+	var off_the_blade := func(o: BladeOrb) -> bool:
+		return o.palette == BladeOrb.STEEL and o.damage >= 1 and is_equal_approx(o.reach, fan_reach) \
+			and o.global_position.is_equal_approx(blade)
+	check("every sword swing flings SWORD_FAN_ORBS (3) steel orbs off the blade the way it aims, a short way",
+		flung.size() == WarriorScript.SWORD_FAN_ORBS and new_orbs.call(before).size() == 3
+		and flung.all(off_the_blade)
+		and degrees.call(flung.map(func(o: BladeOrb) -> Vector2: return o.direction)) == [-18, 0, 18],
+		flung.map(func(o: BladeOrb) -> Array: return [o.palette, o.damage, o.direction]))
+	warrior.set("_finisher", true)
+	var gold_flung: Array[BladeOrb] = warrior.call("fling_sword_fan", arena)
+	warrior.free()
+	var frame_body: String = _func_body(warrior_src, "func _on_frame_changed(")
+	var fan_body: String = _func_body(warrior_src, "func fling_sword_fan(")
+	check("  gold on the finisher; each for a tenth of a swing; on the first contact frame, once a swing",
+		gold_flung.all(func(o: BladeOrb) -> bool: return o.palette == BladeOrb.GOLD)
+		and fan_body.contains("maxi(1, int(_calculate_melee_damage() * SWORD_FAN_SHARE))")
+		and is_equal_approx(WarriorScript.SWORD_FAN_SHARE, 0.1)
+		and frame_body.contains("not _fanned_this_swing and _swing_hitbox != null")
+		and frame_body.contains("fling_sword_fan()")
+		and _func_body(warrior_src, "func attack_action(").contains("_fanned_this_swing = false"))
+
+	# ---- the plain wave, and its weave ---------------------------------------------------
 	var wave_scene: PackedScene = load("res://scene/projectiles/slashwave.tscn") as PackedScene
 	var wave: SlashWave = wave_scene.instantiate() as SlashWave
 	wave.cosmetic = true
 	arena.add_child(wave)
 	wave.global_position = Vector2(400, 300)
 	wave.shoot_vector(Vector2.RIGHT)
-	var glow: AnimatedSprite2D = wave.get_node_or_null(^"glow") as AnimatedSprite2D
 	var crescent: AnimatedSprite2D = wave.get_node(^"animatedsprite2d") as AnimatedSprite2D
-	check("the wave glows: a copy of its crescent behind it, larger and added, and the crescent unshaded",
-		glow != null and wave.get_child(0) == glow and glow.animation == crescent.animation
-		and (glow.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
-		and (crescent.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED
-		and glow.scale.x > crescent.scale.x)
-	var before: Array = arena.get_children()
-	wave._physics_process(SlashWave.GHOST_EVERY)
-	var ghosts: Array = arena.get_children().filter(func(n: Node) -> bool: return not before.has(n) and str(n.name).begins_with("waveghost"))
-	check("  and streaks: an afterimage left where it was, fading",
-		ghosts.size() == 1 and is_equal_approx((ghosts[0] as CanvasItem).modulate.a, SlashWave.GHOST_ALPHA), ghosts)
-	var dummy: CharacterBody2D = _weapon_dummy(arena, Vector2(430, 300))
+	check("a plain wave looks as it did before 0.38.0: no glow behind it, drawn like the world around it",
+		wave.get_node_or_null(^"glow") == null and crescent.material == null and crescent.modulate == Color.WHITE)
 	before = arena.get_children()
-	wave.call("_try_hit", dummy)
-	# By what they hold, not their names: siblings of one name get renamed.
+	for i in 5:
+		wave._physics_process(1.0 / 60.0)
+	check("  and leaves nothing behind it as it flies", arena.get_children() == before,
+		arena.get_children().filter(func(n: Node) -> bool: return not before.has(n)))
+	var weave_of := func(of: SlashWave, palette: StringName) -> Array:
+		return of.get_children().filter(func(n: Node) -> bool: return n is Sprite2D and str(n.name).begins_with("weave") \
+			and (n as Sprite2D).texture == BladeOrb.texture_for(palette) \
+			and unshaded.call(n))
+	var weave: Array = weave_of.call(wave, BladeOrb.STEEL)
+	check("two steel crypt orbs weave across it, unshaded", weave.size() == 2, wave.get_children())
+	var quarter: float = (PI / 2.0) / SlashWave.WEAVE_RATE
+	var a0: Vector2 = SlashWave.weave_point(Vector2.RIGHT, 0, quarter)
+	var a1: Vector2 = SlashWave.weave_point(Vector2.RIGHT, 1, quarter)
+	check("  crossing over: either side of its line, half a turn apart, over the crescent on the near half and under it on the far",
+		SlashWave.weave_point(Vector2.RIGHT, 0, 0.0) == SlashWave.SPRITE_CENTRE + Vector2(SlashWave.WEAVE_ALONG, 0.0)
+		and SlashWave.weave_point(Vector2.RIGHT, 1, 0.0) == SlashWave.SPRITE_CENTRE - Vector2(SlashWave.WEAVE_ALONG, 0.0)
+		and is_equal_approx(absf(a0.y - SlashWave.SPRITE_CENTRE.y), SlashWave.WEAVE_ACROSS)
+		and is_equal_approx(a0.y - SlashWave.SPRITE_CENTRE.y, -(a1.y - SlashWave.SPRITE_CENTRE.y))
+		and SlashWave.weave_near(0, 0.0) and not SlashWave.weave_near(1, 0.0), [a0, a1])
+	wave._process(0.05)
+	# By name here, whatever they look like: the check above is the look.
+	var w0: Sprite2D = wave.get_node_or_null(^"weave0") as Sprite2D
+	var w1: Sprite2D = wave.get_node_or_null(^"weave1") as Sprite2D
+	check("  turning as it flies",
+		w0 != null and w1 != null
+		and w0.position == SlashWave.weave_point(Vector2.RIGHT, 0, 0.05)
+		and w1.position == SlashWave.weave_point(Vector2.RIGHT, 1, 0.05)
+		and w0.z_index == (1 if SlashWave.weave_near(0, 0.05) else -1),
+		[w0, w1])
+	var cut_dummy: CharacterBody2D = _weapon_dummy(arena, Vector2(430, 300))
+	before = arena.get_children()
+	wave.call("_try_hit", cut_dummy)
 	var is_sparks := func(n: Node) -> bool: return n.get_node_or_null(^"flash") is Sprite2D and n.get_node_or_null(^"sparks") is CPUParticles2D
 	var cut_sparks: int = arena.get_children().filter(func(n: Node) -> bool: return not before.has(n) and is_sparks.call(n)).size()
 	before = arena.get_children()
 	wave.destroy_wave()
+	await get_tree().process_frame
 	var broke: int = arena.get_children().filter(func(n: Node) -> bool: return not before.has(n) and is_sparks.call(n)).size()
-	check("  sparks where it cuts a monster, and where it breaks on a wall", cut_sparks == 1 and broke == 1, [cut_sparks, broke])
+	check("  sparks where it cuts a monster, and where it breaks on a wall - and a plain wave never bursts",
+		cut_sparks == 1 and broke == 1 and new_orbs.call(before).is_empty() and not wave.burst_done, [cut_sparks, broke])
 
+	# ---- the finisher's wave -------------------------------------------------------------
 	var big: SlashWave = wave_scene.instantiate() as SlashWave
-	big.cosmetic = true
 	big.finisher = true
 	big.hitbox_scale = SlashWave.FINISHER_SCALE
+	big.damage = 40
+	big.burst_damage = 6
 	arena.add_child(big)
+	big.global_position = Vector2(400, 500)
 	big.shoot_vector(Vector2.RIGHT)
 	var big_crescent: AnimatedSprite2D = big.get_node(^"animatedsprite2d") as AnimatedSprite2D
 	var big_box: RectangleShape2D = (big.get_node(^"CollisionShape2D") as CollisionShape2D).shape as RectangleShape2D
-	check("a finisher's wave is gold and bigger - its picture and its hitbox both",
+	var glow: AnimatedSprite2D = big.get_node_or_null(^"glow") as AnimatedSprite2D
+	check("a finisher's wave is gold and bigger - its picture and its hitbox both - and glows, unshaded",
 		is_equal_approx(big_crescent.scale.x, crescent.scale.x * SlashWave.FINISHER_SCALE)
 		and big_crescent.modulate.b < 0.6
 		and is_equal_approx(big_box.size.y, SlashWave.HITBOX_SWEEP * SlashWave.FINISHER_SCALE)
-		and is_equal_approx(WarriorScript.FINISHER_SCALE, SlashWave.FINISHER_SCALE), big_box.size)
+		and is_equal_approx(WarriorScript.FINISHER_SCALE, SlashWave.FINISHER_SCALE)
+		and glow != null and big.get_child(0) == glow and glow.animation == big_crescent.animation
+		and glow.material is CanvasItemMaterial and (glow.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
+		and unshaded.call(big_crescent),
+		big_box.size)
+	check("  its weave gold", weave_of.call(big, BladeOrb.GOLD).size() == 2, big.get_children())
+	var first_cut: CharacterBody2D = _weapon_dummy(arena, Vector2(440, 500))
+	var second_cut: CharacterBody2D = _weapon_dummy(arena, Vector2(480, 500))
+	before = arena.get_children()
+	big.call("_try_hit", first_cut)
+	var orbs_in_frame: int = new_orbs.call(before).size()
+	await get_tree().process_frame
+	var burst: Array = new_orbs.call(before)
+	# A local const is not seen inside a lambda: where the cut was, worked out here.
+	var cut_at: Vector2 = Strike.hit_point(first_cut)
+	var from_the_cut := func(o: BladeOrb) -> bool:
+		return o.palette == BladeOrb.GOLD and o.damage == 6 \
+			and (o.global_position - o.direction * o.flown).is_equal_approx(cut_at)
+	var ring: Array = BladeOrb.ring_ways(Vector2.RIGHT, SlashWave.BURST_ORBS).map(func(v: Vector2) -> int: return roundi(rad_to_deg(v.angle())))
+	check("THE BURST: where a finisher first cuts a monster, BURST_ORBS (8) gold orbs fly out from it, each for its burst damage",
+		orbs_in_frame == 0 and burst.size() == SlashWave.BURST_ORBS and big.burst_done
+		and burst.all(from_the_cut)
+		and burst.map(func(o: BladeOrb) -> int: return roundi(rad_to_deg(o.direction.angle()))) == ring,
+		[orbs_in_frame, burst.size()])
+	before = arena.get_children()
+	big.call("_try_hit", second_cut)
+	await get_tree().process_frame
+	var again: int = new_orbs.call(before).size()
+	for i in 6:
+		await get_tree().physics_frame
+	check("  once a wave - and never back into the monster it came from (in at the end of the frame: the cut is a physics callback)",
+		again == 0 and first_cut.get("taken") == [40], [again, first_cut.get("taken")])
+	var walled: SlashWave = wave_scene.instantiate() as SlashWave
+	walled.finisher = true
+	walled.cosmetic = true
+	arena.add_child(walled)
+	walled.global_position = Vector2(200, 600)
+	walled.shoot_vector(Vector2.UP)
+	var offscreen: SlashWave = wave_scene.instantiate() as SlashWave
+	offscreen.finisher = true
+	offscreen.cosmetic = true
+	arena.add_child(offscreen)
+	offscreen.shoot_vector(Vector2.UP)
+	before = arena.get_children()
+	walled.destroy_wave()
+	offscreen.destroy_wave(false)
+	var offscreen_burst: bool = offscreen.burst_done
+	await get_tree().process_frame
+	var walled_orbs: Array = new_orbs.call(before)
+	check("  or, having cut nothing, where it breaks on a wall - not off the edge of the screen; a picture's touch nothing",
+		walled_orbs.size() == SlashWave.BURST_ORBS and not offscreen_burst
+		and walled_orbs.all(func(o: BladeOrb) -> bool: return o.cosmetic and o.damage == 0), walled_orbs.size())
 	var spawn_body: String = _func_body(warrior_src, "func _spawn_slashwave(")
 	var attack_body: String = _func_body(warrior_src, "func attack_action(")
 	check("  thrown on every third sword swing - not with the Double Axe - for one and a half its damage",
@@ -12874,23 +12999,48 @@ func _test_the_warrior_blows() -> void:
 		and attack_body.find("_swings += 1") > attack_body.find("throw_axe(get_global_mouse_position())")
 		and spawn_body.contains("wave_damage_ratio * (FINISHER_MULT if _finisher else 1.0)")
 		and spawn_body.find("wave.finisher = true") < spawn_body.find("wave.shoot_vector(")
-		and spawn_body.contains("RemoteAttacks.FLAG_FINISHER if _finisher else 0"))
+		and spawn_body.contains("wave.burst_damage = maxi(1, int(wave.damage * FINISHER_ORB_SHARE))"))
+	check("  with FINISHER_FAN_ORBS (4) gold orbs fanned beside it, as fast, each for 0.15 of it",
+		spawn_body.contains("BladeOrb.fan_ways(_swing_aim_direction, FINISHER_FAN_ORBS, FINISHER_FAN_SPREAD_DEGREES, true)")
+		and spawn_body.find("BladeOrb.fan_ways(") > spawn_body.find("if _finisher:", spawn_body.find("wave.shoot_vector("))
+		and spawn_body.contains("wave.speed,") and spawn_body.contains("wave.burst_damage, BladeOrb.GOLD)")
+		and WarriorScript.FINISHER_FAN_ORBS == 4 and is_equal_approx(WarriorScript.FINISHER_ORB_SHARE, 0.15)
+		and spawn_body.contains("RemoteAttacks.FLAG_SWORD_FAN | (RemoteAttacks.FLAG_FINISHER if _finisher else 0)"))
 
 	# ---- somebody else's ------------------------------------------------------------------
 	var them := Node2D.new()
 	arena.add_child(them)
-	var made: Array = RemoteAttacks.fire(them, ["slash", 0, 200.0, 200.0, 300.0, 200.0, 0, RemoteAttacks.FLAG_FINISHER])
-	check("a picture of somebody else's finisher is gold and bigger too",
-		made.size() == 1 and (made[0] as SlashWave).finisher and is_equal_approx((made[0] as SlashWave).hitbox_scale, SlashWave.FINISHER_SCALE))
+	# Where their game would put them: the area's projectiles, not the arena.
+	var drawn_in: Node = RemoteAttacks._parent(them, true)
+	var new_in := func(seen_before: Array) -> Array:
+		return drawn_in.get_children().filter(func(n: Node) -> bool: return not seen_before.has(n) and n is BladeOrb)
+	before = drawn_in.get_children()
+	var made: Array = RemoteAttacks.fire(them, ["slash", 0, 200.0, 200.0, 300.0, 200.0, 0,
+		RemoteAttacks.FLAG_FINISHER | RemoteAttacks.FLAG_SWORD_FAN])
+	var their_orbs: Array = new_in.call(before)
+	check("a picture of somebody else's finisher is gold and bigger, with its sword's fan and its own - pictures, no damage",
+		made.size() == 1 and (made[0] as SlashWave).finisher and is_equal_approx((made[0] as SlashWave).hitbox_scale, SlashWave.FINISHER_SCALE)
+		and their_orbs.size() == WarriorScript.SWORD_FAN_ORBS + WarriorScript.FINISHER_FAN_ORBS
+		and their_orbs.all(func(o: BladeOrb) -> bool: return o.cosmetic and o.damage == 0 and o.palette == BladeOrb.GOLD),
+		their_orbs.size())
+	before = drawn_in.get_children()
+	made.append_array(RemoteAttacks.fire(them, ["slash", 0, 200.0, 200.0, 300.0, 200.0, 0, 0]))
+	check("  and a plain swing from a game from before the orbs flings none",
+		new_in.call(before).is_empty())
 	for n in made:
 		(n as Node).queue_free()
 
 	# ---- the server's books -------------------------------------------------------------
 	var combat: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json")) as Dictionary).get("combat", {})
 	var row: Dictionary = ((combat.get("classes", {}) as Dictionary).get("warrior", {})) as Dictionary
-	check("the finisher is in gamedata.json for the server's books (re-run the exporter if not)",
+	check("the finisher and the orbs are in gamedata.json for the server's books (re-run the exporter if not)",
 		int(row.get("finisher_every", -1)) == WarriorScript.FINISHER_EVERY
-		and is_equal_approx(float(row.get("finisher_mult", -1.0)), WarriorScript.FINISHER_MULT), row)
+		and is_equal_approx(float(row.get("finisher_mult", -1.0)), WarriorScript.FINISHER_MULT)
+		and int(row.get("sword_fan_orbs", -1)) == WarriorScript.SWORD_FAN_ORBS
+		and is_equal_approx(float(row.get("sword_fan_share", -1.0)), WarriorScript.SWORD_FAN_SHARE)
+		and int(row.get("finisher_fan_orbs", -1)) == WarriorScript.FINISHER_FAN_ORBS
+		and int(row.get("finisher_burst_orbs", -1)) == SlashWave.BURST_ORBS
+		and is_equal_approx(float(row.get("finisher_orb_share", -1.0)), WarriorScript.FINISHER_ORB_SHARE), row)
 	arena.queue_free()
 	await get_tree().process_frame
 

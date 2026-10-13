@@ -97,7 +97,7 @@ const CLASS_SPEED := 200
 # preloaded slash wave projectile scene
 const SLASHWAVE_SCENE := preload("res://scene/projectiles/slashwave.tscn")
 
-# The arc and the sparks (strikefx.gd, 0.38.0).
+# The sparks (strikefx.gd, 0.38.0).
 const Strike := preload("res://src/shared/strikefx.gd")
 
 # THE DOUBLE AXE'S ATTACK. With it equipped, attack throws the axe and attack
@@ -289,42 +289,62 @@ var _swing_hitbox: Area2D = null
 var _swing_wave_frame: int = 0
 
 # =============================================================================
-# THE WARRIOR'S BLOWS, SEEN AND FELT (0.38.0)
+# THE WARRIOR'S BLOWS, SEEN AND FELT (0.38.0, 0.39.0)
 # =============================================================================
 # The owner: "the final character warrioe how can we make him better also",
-# and all four of what was offered.
+# and all four of what was offered. Then, of 0.38.0's arc and the wave's
+# afterimages: "its horrible ... the trails are bad i would say maybe the gold
+# one is cool but no trails we can use projectiles from crypt to elavate" -
+# so 0.39.0 took the arc and the trails out and put the crypt's orbs in, all
+# four ways offered (bladeorb.gd).
 #
-#   the arc        Strike.arc(): a white crescent swept round the warrior on
-#                  the first contact frame, the way the swing aims, each swing
-#                  the other way from the last
-#   the sparks     Strike.sparks() where the sword lands on each monster
-#   the weight     THE HIT-STOP: the first time a swing connects, the warrior's
-#                  picture and the monster's stop for HITSTOP_SECONDS - a
-#                  picture only: nothing in the fight is paused - and the
-#                  camera gives a small shake (HIT_SHAKE). The swing lock ends
-#                  when the swing's animation does (player.gd), so a held
-#                  picture would make every next swing that much later; the
-#                  warrior's plays the rest of the swing faster after the
-#                  hold (swing_time_left()), and ends when it would have.
-#   the finisher   every FINISHER_EVERY-th swing (3rd) throws a gold wave
-#                  FINISHER_SCALE as big for FINISHER_MULT (1.5x) its damage,
-#                  with a gold arc, gold sparks and a longer stop. The exporter
-#                  writes both numbers, and the server's books allow for it.
-#                  Not with the Double Axe: its swing is the throw.
+#   the sparks       Strike.sparks() where the sword lands on each monster
+#   the sword fan    on the first contact frame of every sword swing,
+#                    SWORD_FAN_ORBS small steel crypt orbs flung the way it
+#                    aims, SWORD_FAN_SPREAD_DEGREES apart, SWORD_FAN_REACH
+#                    out, each for SWORD_FAN_SHARE of a swing
+#   the weight       THE HIT-STOP: the first time a swing connects, the
+#                    warrior's picture and the monster's stop for
+#                    HITSTOP_SECONDS - a picture only: nothing in the fight is
+#                    paused - and the camera gives a small shake (HIT_SHAKE).
+#                    The swing lock ends when the swing's animation does
+#                    (player.gd), so a held picture would make every next
+#                    swing that much later; the warrior's plays the rest of the
+#                    swing faster after the hold (swing_time_left()), and ends
+#                    when it would have.
+#   the finisher     every FINISHER_EVERY-th swing (3rd) throws a gold wave
+#                    FINISHER_SCALE as big for FINISHER_MULT (1.5x) its damage,
+#                    with gold sparks, gold orbs and a longer stop:
+#                    FINISHER_FAN_ORBS fanned out beside the wave, and the
+#                    wave's burst (slashwave.gd, THE BURST), each orb for
+#                    FINISHER_ORB_SHARE of the wave. Not with the Double Axe:
+#                    its swing is the throw.
+#   the weave        two orbs crossing over every wave (slashwave.gd)
+#
+# The exporter writes the numbers, and the server's books allow for them.
 const FINISHER_EVERY := 3
 const FINISHER_MULT := 1.5
 const FINISHER_SCALE := SlashWave.FINISHER_SCALE
 const HITSTOP_SECONDS := 0.06
 const FINISHER_HITSTOP_SECONDS := 0.09
 const HIT_SHAKE := Vector2(0.8, 0.08)
+const SWORD_FAN_ORBS := 3
+const SWORD_FAN_SHARE := 0.1
+const SWORD_FAN_SPREAD_DEGREES := 18.0
+const SWORD_FAN_SPEED := 260.0
+const SWORD_FAN_REACH := 70.0
+# From the middle of the warrior's picture, this far along the aim: the blade.
+const SWORD_FAN_FROM := 8.0
+const FINISHER_FAN_ORBS := 4
+const FINISHER_FAN_SPREAD_DEGREES := 12.0
+const FINISHER_FAN_REACH := 300.0
+const FINISHER_ORB_SHARE := 0.15
 
 # Swings with the sword since the warrior was made, for THE FINISHER.
 var _swings: int = 0
 # This swing is the finisher.
 var _finisher: bool = false
-# Which way the next arc sweeps; it turns over every swing.
-var _arc_clockwise: bool = true
-var _arc_cut_this_swing: bool = false
+var _fanned_this_swing: bool = false
 var _stopped_this_swing: bool = false
 
 # right-click attack lives in Player (see its ATTACK INPUT section). The
@@ -507,7 +527,7 @@ func attack_action() -> void:
 
 	_hit_this_swing.clear()
 	_wave_spawned_this_swing = false
-	_arc_cut_this_swing = false
+	_fanned_this_swing = false
 	_stopped_this_swing = false
 	_finisher = false
 
@@ -731,10 +751,9 @@ func _on_frame_changed() -> void:
 
 	var frame: int = sprite.frame
 
-	if frame >= contact_frame_start and not _arc_cut_this_swing and _swing_hitbox != null:
-		_arc_cut_this_swing = true
-		Strike.arc(self, _swing_aim_direction, _arc_clockwise, _finisher)
-		_arc_clockwise = not _arc_clockwise
+	if frame >= contact_frame_start and not _fanned_this_swing and _swing_hitbox != null:
+		_fanned_this_swing = true
+		fling_sword_fan()
 
 	if frame >= contact_frame_start and frame <= contact_frame_end:
 		_deal_melee_damage()
@@ -786,6 +805,22 @@ func _try_damage(target: Node) -> int:
 		_stopped_this_swing = true
 		_hit_stop(target)
 	return 1
+
+
+func fling_sword_fan(into: Node = null) -> Array[BladeOrb]:
+	"""THE SWORD FAN: SWORD_FAN_ORBS crypt orbs off the blade, the way the
+	swing aims - gold on the finisher. Into the area's projectiles, or `into`
+	(the tests)."""
+	var orbs: Array[BladeOrb] = []
+	var parent: Node = into if into != null else _projectiles_parent()
+	if parent == null:
+		return orbs
+	var each: int = maxi(1, int(_calculate_melee_damage() * SWORD_FAN_SHARE))
+	var from: Vector2 = global_position + _swing_aim_direction * SWORD_FAN_FROM
+	for way in BladeOrb.fan_ways(_swing_aim_direction, SWORD_FAN_ORBS, SWORD_FAN_SPREAD_DEGREES, false):
+		orbs.append(BladeOrb.fire(parent, from, way, SWORD_FAN_SPEED, SWORD_FAN_REACH, each,
+			BladeOrb.GOLD if _finisher else BladeOrb.STEEL))
+	return orbs
 
 
 static func finisher_on(swing: int) -> bool:
@@ -969,22 +1004,34 @@ func _spawn_slashwave() -> void:
 	if _finisher:
 		wave.finisher = true
 		wave.hitbox_scale = FINISHER_SCALE
+		wave.burst_damage = maxi(1, int(wave.damage * FINISHER_ORB_SHARE))
 
 	# Identifies the warrior for slashwave.gd's magic-XP-on-hit — see that
 	# file's class comment for why the wave (not the swing) grants magic XP,
 	# while melee keeps granting attack XP as before.
 	wave.caster = self
 	wave.shoot_vector(_swing_aim_direction)
+	# THE FINISHER's fan: gold orbs flying out beside its wave, as fast.
+	if _finisher:
+		for way in BladeOrb.fan_ways(_swing_aim_direction, FINISHER_FAN_ORBS, FINISHER_FAN_SPREAD_DEGREES, true):
+			BladeOrb.fire(wave.get_parent(), wave.global_position + SlashWave.SPRITE_CENTRE, way, wave.speed,
+				FINISHER_FAN_REACH, wave.burst_damage, BladeOrb.GOLD)
 	Presence.tell_attack("slash", wave.global_position,
 		wave.global_position + _swing_aim_direction * RemoteAttacks.AIM_AHEAD, 0.0,
-		RemoteAttacks.FLAG_FINISHER if _finisher else 0)
+		RemoteAttacks.FLAG_SWORD_FAN | (RemoteAttacks.FLAG_FINISHER if _finisher else 0))
 
 
 func _parent_to_projectiles_container(wave: Node) -> void:
+	_projectiles_parent().add_child(wave)
+
+
+func _projectiles_parent() -> Node:
+	"""Where the warrior's projectiles go: the area's "projectiles" node, or
+	the area itself - or, out of the tree (the tests), the warrior's parent."""
+	if not is_inside_tree():
+		return get_parent()
 	var container: Node = get_tree().get_first_node_in_group("projectiles")
-	if container == null:
-		container = get_tree().current_scene
-	container.add_child(wave)
+	return container if container != null else get_tree().current_scene
 
 
 # =============================================================================

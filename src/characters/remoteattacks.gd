@@ -40,6 +40,7 @@ const FLAG_BLOODY := 4    # a bloody one
 const FLAG_FAN := 8       # a healer's orb with its fan beside it (healer.gd, THE FAN)
 const FLAG_DOUBLE := 16   # a healer's orb that doubled - gold (healer.gd, THE DOUBLE)
 const FLAG_FINISHER := 32 # a warrior's third-swing wave - gold and bigger (warrior.gd, THE FINISHER)
+const FLAG_SWORD_FAN := 64 # a warrior's swing that flung its crypt orbs (warrior.gd, THE SWORD FAN, 0.39.0)
 # The scenes warrior.gd, mage.gd and tank.gd preload. Loaded when first needed
 # rather than preloaded: the projectile scripts call go_quiet() below, and a
 # preload here would make each scene part of the script that loads it.
@@ -54,6 +55,8 @@ const AIM_AHEAD := 100.0
 # The healer's script, for its fan's ways (THE FAN). Loaded, not preloaded,
 # for the reason the scene paths above give.
 const HEALER_PATH := "res://src/characters/healer.gd"
+# And the warrior's, for its crypt orbs (THE SWORD FAN, THE FINISHER).
+const WARRIOR_PATH := "res://src/characters/warrior.gd"
 static var _scenes: Dictionary = {}
 static var _class_settings: Dictionary = {}
 
@@ -115,10 +118,25 @@ static func _slash(body: Node2D, origin: Vector2, target: Vector2, flags: int = 
 	if flags & FLAG_FINISHER != 0:
 		wave.finisher = true
 		wave.hitbox_scale = SlashWave.FINISHER_SCALE
-	_parent(body, true).add_child(wave)
+	var parent: Node = _parent(body, true)
+	parent.add_child(wave)
 	wave.global_position = origin
 	wave.reset_physics_interpolation()
-	wave.shoot_vector(_aim(origin, target))
+	var aim: Vector2 = _aim(origin, target)
+	wave.shoot_vector(aim)
+	# Their crypt orbs (0.39.0): the sword's fan, from where the wave left -
+	# within a couple of pixels of their blade - and a finisher's fan beside
+	# its wave. Pictures: no damage. Their wave weaves and bursts by itself.
+	var palette: StringName = BladeOrb.GOLD if wave.finisher else BladeOrb.STEEL
+	var warrior: Dictionary = (load(WARRIOR_PATH) as GDScript).get_script_constant_map()
+	if flags & FLAG_SWORD_FAN != 0:
+		for way in BladeOrb.fan_ways(aim, int(warrior["SWORD_FAN_ORBS"]), float(warrior["SWORD_FAN_SPREAD_DEGREES"]), false):
+			BladeOrb.fire(parent, origin, way, float(warrior["SWORD_FAN_SPEED"]), float(warrior["SWORD_FAN_REACH"]),
+				0, palette, true)
+	if wave.finisher:
+		for way in BladeOrb.fan_ways(aim, int(warrior["FINISHER_FAN_ORBS"]), float(warrior["FINISHER_FAN_SPREAD_DEGREES"]), true):
+			BladeOrb.fire(parent, origin + SlashWave.SPRITE_CENTRE, way, wave.speed, float(warrior["FINISHER_FAN_REACH"]),
+				0, palette, true)
 	return wave
 
 

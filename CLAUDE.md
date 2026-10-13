@@ -5652,22 +5652,14 @@ damage on 1 main projectile" - and "can make a diff color if needed".
 
 The owner: "the final character warrioe how can we make him better also" -
 and of the four offered, all four: "Swing arc + sparks", "Dressed slash
-wave", "Heavier hits", "Third-swing finisher".
+wave", "Heavier hits", "Third-swing finisher". The arc and the dressing of a
+plain wave did not last: see 0.39.0 below.
 
 - **src/shared/strikefx.gd**, preloaded as `Strike` by warrior.gd and
-  slashwave.gd (no class_name). `arc()`: a Line2D two whole pixels wide,
-  unshaded, its tail clear and its head bright, swept round the warrior's
-  origin (the middle of its picture) through `ARC_SWEEP_DEGREES` (75) either
-  side of the aim in `ARC_SECONDS`, then faded and freed - its tween is the
-  meta "sweep", which the tests step by hand. warrior.gd cuts one on the first
-  contact frame of every sword swing, each the other way from the last.
-  `sparks()`: a small flash and 8 steel sparks at z 5 where the sword or the
-  wave lands (`hit_point()`, the middle of the hurtbox), and where a wave
-  breaks on a wall.
-- **The wave, dressed** (slashwave.gd, THE WAVE, DRESSED): the crescent
-  unshaded, a larger copy behind it added (`glow`, playing the same
-  animation), and an afterimage left beside it every `GHOST_EVERY` (0.03 s),
-  fading over `GHOST_SECONDS`.
+  slashwave.gd (no class_name). `sparks()`: a small flash and 8 steel sparks
+  at z 5 where the sword or the wave lands (`hit_point()`, the middle of the
+  hurtbox), and where a wave breaks on a wall. (Its `arc()` - a white Line2D
+  swept round every swing - went in 0.39.0.)
 - **THE HIT-STOP** (warrior.gd): the first time a swing connects, the
   monster's picture and the warrior's hold still `HITSTOP_SECONDS` (0.06) and
   the camera shakes a little - pictures only, the fight is not paused. The
@@ -5680,19 +5672,74 @@ wave", "Heavier hits", "Third-swing finisher".
 - **THE FINISHER**: every `FINISHER_EVERY` (3rd) sword swing - not the Double
   Axe's, whose swing is the throw - throws a gold wave `FINISHER_SCALE`
   (1.35) as big, its hitbox too, for `FINISHER_MULT` (1.5x) the wave's
-  damage, with a gold arc, gold sparks and a longer stop (0.09). Set before
-  `shoot_vector()`, which dresses the wave. Others see it:
-  `RemoteAttacks.FLAG_FINISHER` (32) on the "slash" attack.
+  damage: unshaded, with a gold glow behind it (a larger copy, added), gold
+  sparks and a longer stop (0.09). Set before `shoot_vector()`, which dresses
+  the wave. Others see it: `RemoteAttacks.FLAG_FINISHER` (32) on the "slash"
+  attack.
 - **The server's books**: the exporter writes `finisher_every` and
   `finisher_mult`, and the API's warrior bound takes the worst - every wave a
-  finisher's - for its biggest hit and its rate. A finisher's wave is 1.125
-  sword hits and the rate about 7% more, both inside `SLACK` (1.5) of the old
-  bound, so the game and the server can be updated in either order.
-- `_test_the_warrior_blows` checks the rhythm, the arc (its line, its head on
-  the aim halfway, a finisher's further out and round, gone after), where it
-  is cut, the sparks, the hit-stop and the catch-up, the wave's glow, ghosts
-  and sparks, the finisher's wave, the picture's finisher and the export.
-  Each was broken on purpose to see it fail.
+  finisher's - for its biggest hit and its rate.
+
+### The warrior's crypt orbs, and no trails (0.39.0)
+
+The owner, of 0.38.0: "its horrible not the kind of effects i was thinking of
+and i have a projectile faintly spawning across screen like huh? the trails
+are bad i would say maybe the gold one is cool but no trails we can use
+projectiles from crypt to elavate". The faint thing across the screen was the
+wave, now unshaded and glowing, flying off with its afterimages. Offered four
+ways to use the crypt's orbs, he took all four.
+
+- **Out**: the swing arc (strikefx.gd's `arc()`), the afterimages, and a plain
+  wave's glow and unshading - it looks as it did in 0.37.0. The gold finisher
+  keeps its gold, size and glow, with no trail.
+- **BladeOrb** (src/projectiles/bladeorb.gd, class_name): the Field's bullet
+  for the player's side. An enemy bullet only has to find one player, so it is
+  a packed-array slot (bulletfield.gd); these have to find monsters, so each is
+  a small Area2D on the slash wave's layers (32, mask 11). The crypt orb's
+  8 x 8 pixels - white core, steel (0.62, 0.82, 1.0) or the crypt's gold body,
+  darker rim - unshaded, no trail, no glow. Hits the first monster it touches
+  (`take_damage()`), pops on a wall or at `reach`, passes the player and the
+  monster `ignore_id` names; a `cosmetic` one touches nothing. No magic XP.
+  `fan_ways()` and `ring_ways()` are the shapes.
+- **THE SWORD FAN** (warrior.gd): on the first contact frame of every sword
+  swing (where the arc was cut), `fling_sword_fan()`: `SWORD_FAN_ORBS` (3)
+  steel orbs 18 degrees apart off the blade, 70 px out, each for
+  `SWORD_FAN_SHARE` (0.1) of a swing - gold on the finisher.
+- **THE FINISHER'S FAN**: `FINISHER_FAN_ORBS` (4) gold orbs 12 and 24 degrees
+  either side of the finisher's wave - none down it - as fast, 300 px out,
+  each for `FINISHER_ORB_SHARE` (0.15) of the wave (`wave.burst_damage`).
+- **THE BURST** (slashwave.gd): a finisher bursts once into `BURST_ORBS` (8)
+  gold orbs, 80 px out, each for `burst_damage`: from the first monster it
+  cuts (passing over it), or else where it breaks on a wall - not off the
+  edge of the screen. The orbs are added at the end of the frame
+  (`call_deferred`): the cut is a physics callback, where a new Area2D may not
+  join.
+- **THE WEAVE** (slashwave.gd): two orbs crossing over every wave,
+  `WEAVE_ACROSS` (7) either side of its line and `WEAVE_ALONG` (3) along it,
+  half a turn apart at `WEAVE_RATE` (16 rad/s), over the crescent on the near
+  half of the turn and under it on the far (`weave_point()`, `weave_near()`).
+  Steel, gold on a finisher. A picture: no damage.
+- **Others see them**: `RemoteAttacks.FLAG_SWORD_FAN` (64) on the "slash"
+  attack draws their sword's fan from where the wave left; a finisher's fan
+  comes with `FLAG_FINISHER`; their wave weaves and bursts by itself. All
+  cosmetic. A game from before sends no `FLAG_SWORD_FAN`, so its swings fling
+  nothing here. The orb numbers are read off warrior.gd by path
+  (`WARRIOR_PATH`), as the healer's fan is.
+- **The server's books**: the exporter writes `sword_fan_orbs`,
+  `sword_fan_share`, `finisher_fan_orbs`, `finisher_burst_orbs` (slashwave.gd)
+  and `finisher_orb_share`, and the API's warrior rate adds every orb on one
+  monster - the sword's every swing, the finisher's twelve once in three, as
+  the healer's fan is counted. A swing's worth goes from 2.125 to 3.1 (every
+  orb landing on one monster), past `SLACK` of the 0.37.0 bound, so the
+  server is updated before players get 0.39.0. No orb is bigger than a swing:
+  the biggest hit is unchanged.
+- `_test_the_warrior_blows` adds: no arc and no trails, the orb's pixels, its
+  flight, hit, pass-over, picture and reach, the fans' shapes, the sword's fan,
+  the plain wave's look, the weave and its turn, the burst (once, not into
+  its own monster, deferred, on a wall, not off-screen), the finisher's fan,
+  the pictures and the export. Each was broken on purpose to see it fail; a
+  material check that threw on a missing material, and one that indexed a
+  filtered list, were made to fail instead of ending the section.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

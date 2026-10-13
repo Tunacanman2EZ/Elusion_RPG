@@ -213,28 +213,51 @@ var _base_scale: Vector2 = Vector2.ONE
 var _pulse_tween: Tween = null
 
 # =============================================================================
-# THE WAVE, DRESSED (0.38.0)
+# THE FINISHER'S WAVE, AND THE CRYPT'S ORBS (0.38.0, 0.39.0)
 # =============================================================================
-# The owner's "Dressed slash wave", with the warrior's other three (warrior.gd,
-# THE WARRIOR'S BLOWS): a glowing edge - a copy of the crescent behind it, a
-# little larger, added and unshaded - and AFTERIMAGES, one left every
-# GHOST_EVERY seconds where it was, fading over GHOST_SECONDS, so it streaks.
-# Sparks where it cuts a monster (Strike.sparks()), and where it breaks on a
-# wall. A `finisher` (warrior.gd, THE FINISHER) is gold and its sprite is
-# FINISHER_SCALE as big, as its hitbox is (hitbox_scale, set with it). Set
-# before shoot_vector(), which dresses it.
-const GHOST_EVERY := 0.03
-const GHOST_SECONDS := 0.16
-const GHOST_ALPHA := 0.4
+# 0.38.0 dressed every wave - a glow behind it and afterimages streaking after
+# it - and the owner: "the trails are bad i would say maybe the gold one is
+# cool but no trails". So a plain wave looks as it did before 0.38.0 again,
+# and only a `finisher` (warrior.gd, THE FINISHER) is dressed: gold,
+# FINISHER_SCALE as big - its hitbox too (hitbox_scale, set with it) -
+# unshaded, with a gold glow behind it (a larger copy, added). Set before
+# shoot_vector(), which dresses it. No afterimages on either.
+#
+# Then, in place of the trails, "we can use projectiles from crypt to
+# elavate" (bladeorb.gd):
+#
+#   THE WEAVE  two crypt orbs crossing over every wave as it flies,
+#              WEAVE_ACROSS either side of its line and WEAVE_ALONG up and
+#              down it, half a turn apart, WEAVE_RATE radians a second - over
+#              the crescent on the near half of the turn, under it on the far
+#              (weave_point()). Steel, gold on a finisher. A picture only.
+#   THE BURST  a finisher bursts, once, into BURST_ORBS gold orbs flying out
+#              BURST_REACH, each for `burst_damage` (warrior.gd sets it): where
+#              it first cuts a monster - from that monster, and never back into
+#              it - or else where it breaks on a wall. Not off the edge of the
+#              screen: nobody would see it.
+#
+# Sparks where it cuts a monster and where it breaks (strikefx.gd) are 0.38.0's
+# and stay.
 const GLOW_SCALE := 1.15
-const GLOW_COLOUR := Color(0.75, 0.9, 1.0, 0.35)
 const GOLD_GLOW := Color(1.0, 0.8, 0.35, 0.5)
 const FINISHER_TINT := Color(1.0, 0.85, 0.45)
 const FINISHER_SCALE := 1.35
+const WEAVE_ACROSS := 7.0
+const WEAVE_ALONG := 3.0
+const WEAVE_RATE := 16.0
+const BURST_ORBS := 8
+const BURST_SPEED := 200.0
+const BURST_REACH := 80.0
 
 var finisher: bool = false
+# Each burst orb's damage; 0 for none (a picture's).
+var burst_damage: int = 0
+var burst_done: bool = false
 var _glow: AnimatedSprite2D = null
-var _ghost_clock: float = 0.0
+var _weave: Array[Sprite2D] = []
+var _weave_clock: float = 0.0
+var _weave_line: Vector2 = Vector2.ZERO
 static var _added: CanvasItemMaterial = null
 
 
@@ -267,12 +290,14 @@ func _physics_process(delta: float) -> void:
 	# straight-line motion at constant velocity. direction is pre-normalized
 	# in shoot() / shoot_vector() so no per-frame normalization needed.
 	position += direction * speed * delta
-	# An afterimage every GHOST_EVERY while it flies (THE WAVE, DRESSED).
-	if direction != Vector2.ZERO and not _is_dying:
-		_ghost_clock += delta
-		if _ghost_clock >= GHOST_EVERY:
-			_ghost_clock = 0.0
-			_leave_ghost()
+
+
+func _process(delta: float) -> void:
+	# THE WEAVE turns on the clock, flying or breaking.
+	if _weave.is_empty():
+		return
+	_weave_clock += delta
+	_place_weave()
 
 
 # =============================================================================
@@ -446,6 +471,8 @@ func _try_hit(target: Node) -> void:
 	if target is Node2D and get_parent() != null:
 		Strike.sparks(get_parent(), Strike.hit_point(target as Node2D),
 			Strike.GOLD if finisher else Strike.STEEL)
+		# THE BURST: from the first monster a finisher cuts.
+		burst(Strike.hit_point(target as Node2D), target)
 
 	# max_pierce = 0 means unlimited — the wave runs until it meets a wall
 	# or leaves the screen.
@@ -525,9 +552,11 @@ func destroy_wave(with_impact: bool = true) -> void:
 	direction = Vector2.ZERO
 	set_deferred("monitoring", false)
 	set_deferred("monitorable", false)
-	# It breaks on what stopped it: sparks (THE WAVE, DRESSED).
+	# It breaks on what stopped it: sparks, and a finisher that has cut nothing
+	# bursts here (THE BURST).
 	if get_parent() != null:
 		Strike.sparks(get_parent(), global_position + SPRITE_CENTRE, Strike.GOLD if finisher else Strike.STEEL)
+		burst(global_position + SPRITE_CENTRE, null)
 
 	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
 	if sprite == null:
@@ -547,61 +576,89 @@ func destroy_wave(with_impact: bool = true) -> void:
 		.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 	tween.tween_property(sprite, "modulate:a", 0.0, impact_duration) \
 		.set_ease(Tween.EASE_IN)
+	for orb in _weave:
+		tween.tween_property(orb, "modulate:a", 0.0, impact_duration)
 	# chain() makes this run AFTER the parallel pair above, not alongside it.
 	tween.chain().tween_callback(queue_free)
 
 
 # =============================================================================
-# THE WAVE, DRESSED (0.38.0) - see STATE
+# THE FINISHER'S WAVE, AND THE CRYPT'S ORBS - see STATE
 # =============================================================================
 
 func _dress() -> void:
-	"""The glow behind the crescent, and a finisher's gold and size. Once."""
+	"""A finisher's gold, size and glow, and every wave's weave. Once."""
 	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
-	if sprite == null or _glow != null:
+	if sprite == null or not _weave.is_empty():
 		return
-	var unshaded := CanvasItemMaterial.new()
-	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
-	sprite.material = unshaded
 	if finisher:
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		sprite.material = unshaded
 		sprite.scale = _base_scale * FINISHER_SCALE
 		_base_scale = sprite.scale
 		sprite.modulate = FINISHER_TINT
-	_glow = AnimatedSprite2D.new()
-	_glow.name = "glow"
-	_glow.sprite_frames = sprite.sprite_frames
-	_glow.position = sprite.position
-	_glow.scale = sprite.scale * GLOW_SCALE
-	_glow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_glow.modulate = GOLD_GLOW if finisher else GLOW_COLOUR
-	_glow.material = added_material()
-	add_child(_glow)
-	move_child(_glow, 0)
+		_glow = AnimatedSprite2D.new()
+		_glow.name = "glow"
+		_glow.sprite_frames = sprite.sprite_frames
+		_glow.position = sprite.position
+		_glow.scale = sprite.scale * GLOW_SCALE
+		_glow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_glow.modulate = GOLD_GLOW
+		_glow.material = added_material()
+		add_child(_glow)
+		move_child(_glow, 0)
+	_weave_line = direction
+	for i in 2:
+		var orb := Sprite2D.new()
+		orb.name = "weave%d" % i
+		orb.texture = BladeOrb.texture_for(BladeOrb.GOLD if finisher else BladeOrb.STEEL)
+		orb.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		orb.material = BladeOrb.unshaded_material()
+		add_child(orb)
+		_weave.append(orb)
+	_place_weave()
 
 
-func _leave_ghost() -> void:
-	"""An afterimage of the crescent where it is now, fading where it was
-	left. Beside the wave, so it stays put as the wave flies on."""
-	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
-	if sprite == null or sprite.sprite_frames == null or get_parent() == null:
+static func weave_point(line: Vector2, which: int, clock: float) -> Vector2:
+	"""Where weave orb `which` (0 or 1) is, `clock` seconds into a wave flying
+	along `line`, from the wave's origin - on whole pixels."""
+	var turn: float = clock * WEAVE_RATE + PI * float(which)
+	return (SPRITE_CENTRE + line.orthogonal() * sin(turn) * WEAVE_ACROSS
+		+ line * cos(turn) * WEAVE_ALONG).round()
+
+
+static func weave_near(which: int, clock: float) -> bool:
+	"""Whether weave orb `which` is on the near half of its turn (drawn over
+	the crescent) `clock` seconds in."""
+	return cos(clock * WEAVE_RATE + PI * float(which)) >= 0.0
+
+
+func _place_weave() -> void:
+	for i in _weave.size():
+		_weave[i].position = weave_point(_weave_line, i, _weave_clock)
+		_weave[i].z_index = 1 if weave_near(i, _weave_clock) else -1
+
+
+func burst(at: Vector2, cut: Node) -> bool:
+	"""THE BURST: a finisher's ring of gold orbs from `at`, passing over `cut`
+	(the monster it came from, or null). Once a wave; nothing for a plain one.
+	True if it burst. The orbs go in at the end of the frame: this is called
+	from the wave's collision callbacks, where a new Area2D may not join."""
+	if not finisher or burst_done or get_parent() == null:
+		return false
+	burst_done = true
+	_fire_burst.call_deferred(get_parent(), at, cut.get_instance_id() if cut != null else 0)
+	return true
+
+
+func _fire_burst(parent: Node, at: Vector2, cut_id: int) -> void:
+	if not is_instance_valid(parent) or not parent.is_inside_tree():
 		return
-	var frame: Texture2D = sprite.sprite_frames.get_frame_texture(sprite.animation, sprite.frame)
-	if frame == null:
-		return
-	var ghost := Sprite2D.new()
-	ghost.name = "waveghost"
-	ghost.texture = frame
-	ghost.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	ghost.material = added_material()
-	var tint: Color = FINISHER_TINT if finisher else Color(0.8, 0.92, 1.0)
-	ghost.modulate = Color(tint.r, tint.g, tint.b, GHOST_ALPHA)
-	ghost.z_index = z_index
-	get_parent().add_child(ghost)
-	ghost.global_position = sprite.global_position
-	ghost.global_scale = sprite.global_scale
-	var t := ghost.create_tween()
-	t.tween_property(ghost, "modulate:a", 0.0, GHOST_SECONDS)
-	t.tween_callback(ghost.queue_free)
+	var first: Vector2 = _weave_line if _weave_line != Vector2.ZERO else Vector2.RIGHT
+	for way in BladeOrb.ring_ways(first, BURST_ORBS):
+		BladeOrb.fire(parent, at, way, BURST_SPEED, BURST_REACH,
+			0 if cosmetic else burst_damage, BladeOrb.GOLD, cosmetic, cut_id)
 
 
 static func added_material() -> CanvasItemMaterial:
