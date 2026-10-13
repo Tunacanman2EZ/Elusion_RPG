@@ -815,6 +815,55 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 26)
 layout_mode = 2
 
+[node name="ringssep" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
+layout_mode = 2
+
+[node name="ringsheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_font_sizes/font_size = 12
+text = "RINGS"
+
+[node name="aimringsrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
+layout_mode = 2
+tooltip_text = "The ring under you, with a ball where your attack goes - and the red one under each monster, with its dot on whoever it is after."
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/aimringsrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+tooltip_text = "The ring under you, with a ball where your attack goes - and the red one under each monster, with its dot on whoever it is after."
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Aim rings"
+vertical_alignment = 1
+
+[node name="aimrings" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/aimringsrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "The ring under you, with a ball where your attack goes - and the red one under each monster, with its dot on whoever it is after."
+
+[node name="rangecirclesrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
+layout_mode = 2
+tooltip_text = "The dashed circles: how close you can come to a monster before it notices you, how far it chases you once it has, and how far a mythic weapon reaches."
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/rangecirclesrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+tooltip_text = "The dashed circles: how close you can come to a monster before it notices you, how far it chases you once it has, and how far a mythic weapon reaches."
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Range circles"
+vertical_alignment = 1
+
+[node name="rangecircles" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/rangecirclesrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "The dashed circles: how close you can come to a monster before it notices you, how far it chases you once it has, and how far a mythic weapon reaches."
+
 [node name="hseparator3" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
 layout_mode = 2
 

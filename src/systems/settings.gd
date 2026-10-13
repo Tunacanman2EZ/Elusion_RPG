@@ -161,6 +161,20 @@ const DEFAULTS := {
 	# can say so. Display only - see src/ui/chat/chatfilter.gd.
 	"chat_filter": true,
 
+	# THE RINGS ON THE FLOOR (0.31.0). The owner: "add the option in options to
+	# enable veiw of the circles or disable". Two switches, for the two kinds:
+	#   aim_rings      the ring under you with a ball where your attack goes
+	#                  (aimring.gd), and each monster's red ring with its dot on
+	#                  whoever it is after (threatring.gd)
+	#   range_circles  the dashed circles: how close a monster notices you, and
+	#                  once it is after you how far it chases (threatring.gd's
+	#                  `sense`), and the reach of the warrior's mythic
+	#                  (warrior.gd)
+	# Both on by default, so nobody who never opens this sees a change. Read
+	# where each ring decides whether to show, every frame - nothing to apply.
+	"aim_rings": true,
+	"range_circles": true,
+
 	# HOW CLOSE THE CAMERA SITS. 3.0 is what all four class scenes were built
 	# with and is the default, so nobody who never opens this sees a change.
 	# Lower numbers pull back and show more of the world.
@@ -312,6 +326,11 @@ var _loading: bool = false
 # The keys the player chose. Its own file and its own object - see keybinds.gd.
 var keys: Keybinds = Keybinds.new()
 
+# Whether this is a browser that opens its own menu on Shift+right-click
+# (Keybinds.opens_its_own_menu(): Firefox). Read once at launch; the suite sets
+# it by hand.
+var native_menu_on_shift_click: bool = false
+
 
 # =============================================================================
 # LIFECYCLE
@@ -336,6 +355,11 @@ func _ready() -> void:
 	# spot is on the right screen. Then the watch, which notices drags.
 	_place_window_at_launch()
 	_start_window_watch()
+	# THE KEYBOARD GOES ELSEWHERE (0.19.1, below).
+	if OS.has_feature("web"):
+		native_menu_on_shift_click = Keybinds.opens_its_own_menu(
+			str(JavaScriptBridge.eval("navigator.userAgent", true)))
+	get_viewport().gui_focus_changed.connect(_on_gui_focus_changed)
 
 
 func _notification(what: int) -> void:
@@ -344,9 +368,52 @@ func _notification(what: int) -> void:
 		NOTIFICATION_APPLICATION_FOCUS_OUT:
 			_focused = false
 			_apply_fps_cap()
+			Keybinds.let_go(true)
 		NOTIFICATION_APPLICATION_FOCUS_IN:
 			_focused = true
 			_apply_fps_cap()
+		NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+			Keybinds.let_go(true)
+
+
+# =============================================================================
+# THE KEYBOARD GOES ELSEWHERE (0.19.1)
+# =============================================================================
+# A key held down when the keyboard goes somewhere the game cannot hear it
+# stays down in the game: its key-up goes elsewhere, and the character walks
+# that way until the key is pressed again. First other player to play, in
+# Firefox, did exactly that and died (keybinds.gd, LETTING GO, has his words).
+# Three ways it goes, and each lets go of the held keys:
+#   - THE WINDOW LOSES FOCUS: another window, another tab, a browser prompt.
+#   - A TEXT BOX TAKES IT (chat, a search box): nobody walks while typing, and
+#     in a browser with a touch screen the box is a page element of its own.
+#   - SHIFT+RIGHT-CLICK IN FIREFOX: the sprinting attack, which Firefox
+#     answers with its own menu, whatever the page says. The keys go at once;
+#     the mouse button two physics frames later, so the click still attacks
+#     (the player's poll runs after the first physics_frame signal of a step).
+
+func _input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click == null or not click.pressed or click.button_index != MOUSE_BUTTON_RIGHT:
+		return
+	if click.shift_pressed and native_menu_on_shift_click:
+		_let_go_for_the_menu()
+
+
+func _let_go_for_the_menu() -> void:
+	Keybinds.let_go()
+	if not is_inside_tree():
+		return
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	if is_inside_tree():
+		Keybinds.let_go(true)
+
+
+func _on_gui_focus_changed(control: Control) -> void:
+	if control is LineEdit and (control as LineEdit).editable \
+			or control is TextEdit and (control as TextEdit).editable:
+		Keybinds.let_go()
 
 
 # =============================================================================
@@ -1611,6 +1678,10 @@ func _apply(key: String, value: Variant) -> void:
 			pass
 		"chat_filter":
 			# The chat window listens on `changed` and redraws its log.
+			pass
+		"aim_rings", "range_circles":
+			# Read by the rings themselves each frame (player.gd,
+			# threatring.gd, warrior.gd). Nothing to apply.
 			pass
 
 

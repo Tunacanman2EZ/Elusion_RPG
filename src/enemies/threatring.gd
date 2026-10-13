@@ -7,11 +7,12 @@
 # visible: it points at `player`, the body BaseEnemy chases and shoots at, and
 # so - in a group - at whichever of you that monster is after.
 #
-# WHEN IT SHOWS. Only while the monster is after someone: its target is within
-# leash_range (the distance it chases from - past it, it walks home), it is not
-# held behind a gate, not frozen (the welcome story stops every monster's
-# physics), and alive. A Field of thirty monsters would otherwise be thirty
-# rings pointing at nothing.
+# WHEN IT SHOWS. Only while the monster is after someone - BaseEnemy.engaged,
+# set as its target comes within notice_range or it is hit, cleared once they
+# are past leash_range (0.30.0; until then, simply "within leash_range") - and
+# is not held behind a gate, not frozen (the welcome story stops every
+# monster's physics), and alive. A Field of thirty monsters would otherwise be
+# thirty rings pointing at nothing.
 #
 # HOW CLOSE IT IS. The ball is dim while the monster is only chasing, and full
 # red once you are inside its attack_range - it can shoot you from where it
@@ -20,12 +21,25 @@
 # ON A FOLLOWER'S SCREEN (shared monsters, monstersync.gd) a copy of the monster
 # has no target of its own - the leader's game runs it, and only where it is
 # and what it plays are sent. The copy points at the player nearest to it,
-# which is who the leader's picked too unless a target ran off.
+# which is who the leader's picked too unless a target ran off, and works out
+# whether it is after them by the same rule (keep_after(), and a hit on it).
 #
 # SIZED TO THE MONSTER from its own shapes: the ring sits a little below the
 # middle of "bodyshape" (its footprint), and is as wide as the larger of that
 # and its hurtbox, so a boss gets a boss-sized ring. A scaled monster scales it
 # too - the ring is its child.
+#
+# AND HOW FAR IT NOTICES YOU (0.29.0). The owner: "enemies so i can see their
+# detection range so a much bigger circle", shown "Always, faint". `sense` is
+# a dashed circle (rangering.gd) round the monster's middle - where BaseEnemy
+# measures from - shown whenever the monster could notice anyone (not gated,
+# frozen or dead). Since 0.30.0 ("now fix monster leash and radius" - "Notice
+# close, chase far") it is one of two lines:
+#
+#   not after anyone   notice_reach(), faint: cross it and it comes for you
+#   after someone      leash_range, brighter: get past it and it lets you go
+#
+# In 0.29.0 both were the leash, 400 to 500 px - wider than the screen.
 class_name ThreatRing
 extends AimRing
 
@@ -42,10 +56,16 @@ const BELOW_FOOTPRINT := 4.0
 # Its half-width and half-height, per pixel of the monster's radius.
 const PER_RADIUS := Vector2(1.8, 0.8)
 const SMALLEST_RADIUS := 8.0
+# The detection circle: faint while the monster is not after anyone, brighter
+# once it is.
+const SENSE_IDLE := Color(1.0, 0.35, 0.3, 0.14)
+const SENSE_AFTER := Color(1.0, 0.35, 0.3, 0.32)
 
 var monster: BaseEnemy = null
 # Inside the monster's attack range: the full red.
 var in_reach: bool = false
+# The detection circle, the monster's child beside this ring.
+var sense: RangeRing = null
 
 
 static func on(enemy: BaseEnemy) -> ThreatRing:
@@ -61,6 +81,15 @@ static func on(enemy: BaseEnemy) -> ThreatRing:
 	ring.position = (footprint.position if footprint != null else Vector2.ZERO) + Vector2(0.0, BELOW_FOOTPRINT)
 	ring._tint(false)
 	ring.visible = false
+	# The detection circle round the monster's middle, where BaseEnemy measures
+	# from. Added first, so the ring ends up the first child and it the second:
+	# both before the monster's own picture.
+	ring.sense = RangeRing.new()
+	ring.sense.name = "detectionring"
+	ring.sense.colour = SENSE_IDLE
+	ring.sense.visible = false
+	enemy.add_child(ring.sense)
+	enemy.move_child(ring.sense, 0)
 	enemy.add_child(ring)
 	enemy.move_child(ring, 0)
 	return ring
@@ -101,27 +130,53 @@ func refresh() -> void:
 	"""Shown or not, where the ball points, and how red."""
 	if monster == null or not is_instance_valid(monster):
 		visible = false
+		if sense != null and is_instance_valid(sense):
+			sense.visible = false
 		return
 	var who: Node2D = target()
-	var after_someone: bool = who != null and not monster.gated and not monster._death_resolved \
+	var awake: bool = not monster.gated and not monster._death_resolved \
 		and monster.hp > 0 and monster.is_physics_processing()
+	var after_someone: bool = false
 	var to: Vector2 = Vector2.ZERO
 	var apart: float = INF
-	if after_someone:
+	if who != null and awake:
 		# The ball points at the body; how far apart they are is measured the
 		# way the monster measures it (BaseEnemy._physics_process(), origin to
-		# origin), so the ring shows and turns red exactly when it chases and
-		# when it may shoot.
+		# origin), so the ring turns red exactly when it may shoot.
 		to = Targets.body_point(who) - monster.global_position
 		apart = monster.global_position.distance_to(who.global_position)
-		after_someone = apart <= monster.leash_range
-	visible = after_someone
+		# WHETHER IT IS AFTER THEM is the monster's own: its AI keeps
+		# `engaged` (BaseEnemy.keep_after()). A follower's copy runs no AI, so
+		# the same rule is applied here, to the player nearest it.
+		if monster.net_mirror:
+			monster.keep_after(apart)
+		after_someone = monster.engaged and apart <= monster.leash_range
+	_sense(awake, after_someone)
+	# AIM RINGS SWITCHED OFF in Options (0.31.0) hide this one too; it is the
+	# monster's aim ring.
+	visible = after_someone and bool(Settings.get_value("aim_rings"))
 	if not after_someone:
 		return
 	point_at(to)
 	var close: bool = apart < monster.attack_range
 	if close != in_reach:
 		_tint(close)
+
+
+func _sense(awake: bool, after_someone: bool) -> void:
+	"""The detection circle: there whenever the monster could notice anyone -
+	as wide as it notices from, or once it is after someone as wide as it
+	chases, and brighter."""
+	if sense == null or not is_instance_valid(sense):
+		return
+	# RANGE CIRCLES SWITCHED OFF in Options (0.31.0): none at all.
+	sense.visible = awake and bool(Settings.get_value("range_circles"))
+	if not awake:
+		return
+	# Not after anyone: how close you can come. After someone: how far they
+	# have to get.
+	sense.set_radius(monster.leash_range if after_someone else monster.notice_reach())
+	sense.set_colour(SENSE_AFTER if after_someone else SENSE_IDLE)
 
 
 func _tint(close: bool) -> void:

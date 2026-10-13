@@ -916,6 +916,22 @@ func _ready() -> void:
 	_setup_spike_timer()
 
 
+func notice_reach() -> float:
+	# A BOSS NOTICES AS FAR AS IT CHASES (0.30.0). Every other monster takes
+	# notice inside notice_range, closer than its leash (BaseEnemy); a boss is
+	# the fight its room is built round, and once its gate is open it comes for
+	# whoever is in there, as it always did.
+	return leash_range
+
+
+func press_reach() -> float:
+	# A BOSS HOLDS ITS SPACING (0.31.0). Other monsters walk in between attacks
+	# to half their attack range (BaseEnemy, PRESSING IN); this fight is spaced
+	# round attack_range (above) and melee_range decides swing or cast, so it
+	# keeps standing where it can reach you, as it always did.
+	return attack_range
+
+
 # =============================================================================
 # ANIMATION OVERRIDES
 # =============================================================================

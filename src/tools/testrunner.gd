@@ -333,6 +333,8 @@ func _run_all() -> void:
 	await _test_monsters_show_who_they_are_after()
 	_test_how_far_they_reach()
 	await _test_monsters_notice_close_and_chase_far()
+	await _test_monsters_walk_in_between_attacks()
+	_test_the_rings_have_switches()
 	_test_the_tank_loop_takes_every_step()
 	await _test_the_first_five_minutes()
 	_test_the_game_says_its_version()
@@ -6230,6 +6232,8 @@ func _test_settings() -> void:
 		"vsync": "vsyncmode",              "frame_cap": "framecap",
 		"window_width": "windowsize",      "window_height": "windowsize",
 		"damage_numbers": "damagenumbers",   "chat_filter": "chatfilter",
+		# 0.31.0: the rings on the floor.
+		"aim_rings": "aimrings",           "range_circles": "rangecircles",
 		"render_resolution": "renderresolution", "lighting": "lighting",
 		"background_fps_limit": "backgroundlimit",
 		# BOTH OF THESE WERE MISSING FROM THE TABLE, not from the game.
@@ -12277,7 +12281,8 @@ func _test_how_far_they_reach() -> void:
 		and _func_body(wsrc, "func _on_gear_changed(").contains("_fit_reach_ring()")
 		and _func_body(wsrc, "func _fit_reach_ring(").contains("_show_reach_for(equipped_weapon_attack())")
 		and _func_body(wsrc, "func attack_action(").contains("_reach_ring.fired()")
-		and _func_body(wsrc, "func _physics_process(").contains("_reach_ring.visible = _mythic_reach > 0.0 and not is_dying"))
+		and _func_body(wsrc, "func _physics_process(").contains("_reach_ring.visible = _reach_ring_shown()")
+		and _func_body(wsrc, "func _reach_ring_shown(").contains("_mythic_reach > 0.0 and not is_dying"))
 
 	# A MONSTER'S DETECTION, round its middle, always there - since 0.30.0 two
 	# lines: how close you can come before it notices, and once it is after
@@ -12419,6 +12424,142 @@ func _test_monsters_notice_close_and_chase_far() -> void:
 		and not _func_body(src, "func _physics_process(").contains("if dist > leash_range"))
 	check("a slime's twin and its smalls are after whoever it was after",
 		_func_body(_code_src("res://src/enemies/poisonslime.gd"), "func _spawn_slime(").contains("slime.engaged = engaged"))
+
+
+# =============================================================================
+# PRESSING IN, AND THE RINGS' TWO SWITCHES (0.31.0)
+# =============================================================================
+
+func _test_monsters_walk_in_between_attacks() -> void:
+	section("MONSTERS - walk in on you between attacks, to half their range (0.31.0)")
+	# The owner: "i want enemies to actually chase the player closer while
+	# attacking". A real darkbushsniper's AI, in the tree, far from everything.
+	var sniper_probe: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	var sprite_probe: BaseEnemy = (load("res://scene/enemy/electricsprite.tscn") as PackedScene).instantiate()
+	var boss_probe: BaseEnemy = (load("res://scene/enemy/bossenemy.tscn") as PackedScene).instantiate()
+	sniper_probe.attack_range = 200.0
+	sniper_probe.flee_range = 50.0
+	sprite_probe.attack_range = 280.0
+	sprite_probe.flee_range = 50.0
+	check("a monster walks in to half its attack range, never inside where it would turn and flee",
+		is_equal_approx(sprite_probe.press_reach(), 140.0)
+		and is_equal_approx(sniper_probe.press_reach(), 50.0 * BaseEnemy.FLEE_RELEASE_FACTOR + BaseEnemy.PRESS_CLEAR),
+		[sprite_probe.press_reach(), sniper_probe.press_reach()])
+	boss_probe.attack_range = 120.0
+	check("  a boss holds its spacing at its attack range", is_equal_approx(boss_probe.press_reach(), 120.0))
+	sniper_probe.free()
+	sprite_probe.free()
+	boss_probe.free()
+
+	var others: Array = get_tree().get_nodes_in_group(&"player")
+	for o in others:
+		o.remove_from_group(&"player")
+	var world := Node2D.new()
+	add_child(world)
+	var home := Vector2(-65000, -65000)
+	var you := ZoneDummy.new()
+	# Out of its notice to begin with, so it has not fired before the test
+	# puts it between two attacks.
+	you.position = home + Vector2(400, 0)
+	you.add_to_group(&"player")
+	world.add_child(you)
+	var monster: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	monster.position = home
+	world.add_child(monster)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	# In the middle of a fight, between two attacks: after you, not ready.
+	monster.engaged = true
+	monster.attack_ready = false
+	you.position = home + Vector2(190, 0)
+	var start: float = monster.global_position.distance_to(you.global_position)
+	for i in 30:
+		await get_tree().physics_frame
+	var after: float = monster.global_position.distance_to(you.global_position)
+	check("inside its attack range (190 of 200) and between attacks, it walks in on you",
+		start > monster.press_reach() and after < start - 15.0 and not monster.is_attacking, [start, after])
+	you.position = monster.global_position + Vector2(monster.press_reach() - 10.0, 0)
+	var held_at: Vector2 = monster.global_position
+	for i in 20:
+		await get_tree().physics_frame
+	check("  within half its range it holds there and waits for its next attack",
+		monster.global_position.distance_to(held_at) < 3.0 and not monster.is_attacking,
+		monster.global_position - held_at)
+	world.queue_free()
+	for o in others:
+		if is_instance_valid(o):
+			o.add_to_group(&"player")
+	await get_tree().process_frame
+	check("  and the moment it is ready it attacks from wherever it stands - pressing in only fills the wait",
+		_func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _handle_combat(").contains(
+			"if not attack_ready and dist_to_player > press_reach():"))
+
+
+func _test_the_rings_have_switches() -> void:
+	section("OPTIONS - Aim rings and Range circles switch the rings on the floor (0.31.0)")
+	# The owner: "add the option in options to enable veiw of the circles or
+	# disable".
+	var kept_aim: bool = bool(Settings.get_value("aim_rings"))
+	var kept_range: bool = bool(Settings.get_value("range_circles"))
+	check("both are on unless you turn them off",
+		Settings.DEFAULTS["aim_rings"] == true and Settings.DEFAULTS["range_circles"] == true)
+	Settings.set_value("aim_rings", true)
+	Settings.set_value("range_circles", true)
+
+	var warrior: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior.call("_add_aim_ring")
+	warrior.call("_add_reach_ring")
+	var aim: AimRing = warrior.get_node(^"aimring") as AimRing
+	var reach: RangeRing = warrior.get_node(^"reachring") as RangeRing
+	warrior.call("_point_aim_ring", Vector2.LEFT)
+	warrior.call("_show_reach_for", ItemData.WeaponAttack.SPINNING_AXE)
+	var both_on: bool = aim.visible and reach.visible
+	Settings.set_value("aim_rings", false)
+	warrior.call("_point_aim_ring", Vector2.LEFT)
+	var aim_off: bool = not aim.visible and reach.visible
+	Settings.set_value("range_circles", false)
+	warrior.call("_show_reach_for", ItemData.WeaponAttack.SPINNING_AXE)
+	var range_off: bool = not reach.visible
+	check("Aim rings off takes away your aim ring; Range circles off, the mythic's reach",
+		both_on and aim_off and range_off, [both_on, aim_off, range_off])
+	warrior.free()
+
+	Settings.set_value("aim_rings", true)
+	Settings.set_value("range_circles", true)
+	var sniper: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	var ring: ThreatRing = ThreatRing.on(sniper)
+	sniper.set_physics_process(true)
+	sniper.hp = sniper.max_hp
+	var dummy := ZoneDummy.new()
+	add_child(dummy)
+	dummy.position = Vector2(-120, 0)
+	sniper.player = dummy
+	sniper.engaged = true
+	ring.refresh()
+	var monster_on: bool = ring.visible and ring.sense.visible
+	Settings.set_value("aim_rings", false)
+	ring.refresh()
+	var red_off: bool = not ring.visible and ring.sense.visible
+	Settings.set_value("range_circles", false)
+	ring.refresh()
+	var sense_off: bool = not ring.sense.visible
+	Settings.set_value("aim_rings", true)
+	Settings.set_value("range_circles", true)
+	ring.refresh()
+	var back_on: bool = ring.visible and ring.sense.visible
+	check("  a monster's red ring goes with Aim rings, its detection circle with Range circles, and both come back",
+		monster_on and red_off and sense_off and back_on, [monster_on, red_off, sense_off, back_on])
+	dummy.free()
+	sniper.free()
+
+	var screen_src: String = _code_src("res://src/ui/menus/optionsscreen.gd")
+	check("  the Options switches set them, and show what is set",
+		_func_body(screen_src, "func _on_aim_rings_toggled(").contains("Settings.set_value(\"aim_rings\", pressed)")
+		and _func_body(screen_src, "func _on_range_circles_toggled(").contains("Settings.set_value(\"range_circles\", pressed)")
+		and screen_src.contains("aim_rings_toggle.button_pressed = bool(Settings.get_value(\"aim_rings\"))")
+		and screen_src.contains("range_circles_toggle.button_pressed = bool(Settings.get_value(\"range_circles\"))"))
+	Settings.set_value("aim_rings", kept_aim)
+	Settings.set_value("range_circles", kept_range)
 
 
 # =============================================================================

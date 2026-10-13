@@ -1396,10 +1396,11 @@ func _add_aim_ring() -> void:
 
 
 func _point_aim_ring(direction: Vector2) -> void:
-	"""Where the ball sits this frame - and no ring on a body that is dying."""
+	"""Where the ball sits this frame - and no ring on a body that is dying, or
+	with Aim rings switched off in Options (0.31.0)."""
 	if _aim_ring == null:
 		return
-	_aim_ring.visible = not is_dying
+	_aim_ring.visible = not is_dying and bool(Settings.get_value("aim_rings"))
 	_aim_ring.point_at(direction)
 
 

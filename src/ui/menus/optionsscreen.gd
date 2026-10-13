@@ -85,6 +85,8 @@ signal credits_requested
 @onready var font_style:        OptionButton = get_node_or_null("%fontstyle")
 @onready var damage_toggle:     CheckButton = get_node_or_null("%damagenumbers")
 @onready var chat_filter_toggle: CheckButton = get_node_or_null("%chatfilter")
+@onready var aim_rings_toggle:  CheckButton = get_node_or_null("%aimrings")
+@onready var range_circles_toggle: CheckButton = get_node_or_null("%rangecircles")
 @onready var camera_zoom:       HSlider      = get_node_or_null("%camerazoom")
 @onready var camera_zoom_value: Label        = get_node_or_null("%camerazoomvalue")
 @onready var name_hue:          HSlider      = get_node_or_null("%namehue")
@@ -314,6 +316,10 @@ func _connect_controls() -> void:
 		damage_toggle.toggled.connect(_on_damage_numbers_toggled)
 	if chat_filter_toggle != null:
 		chat_filter_toggle.toggled.connect(_on_chat_filter_toggled)
+	if aim_rings_toggle != null:
+		aim_rings_toggle.toggled.connect(_on_aim_rings_toggled)
+	if range_circles_toggle != null:
+		range_circles_toggle.toggled.connect(_on_range_circles_toggled)
 
 	if render_resolution != null:
 		render_resolution.clear()
@@ -404,6 +410,10 @@ func refresh() -> void:
 		damage_toggle.button_pressed = bool(Settings.get_value("damage_numbers"))
 	if chat_filter_toggle != null:
 		chat_filter_toggle.button_pressed = bool(Settings.get_value("chat_filter"))
+	if aim_rings_toggle != null:
+		aim_rings_toggle.button_pressed = bool(Settings.get_value("aim_rings"))
+	if range_circles_toggle != null:
+		range_circles_toggle.button_pressed = bool(Settings.get_value("range_circles"))
 
 	if render_resolution != null:
 		render_resolution.selected = Settings.RENDER_RESOLUTIONS.find(
@@ -1016,6 +1026,18 @@ func _on_chat_filter_toggled(pressed: bool) -> void:
 	if _refreshing:
 		return
 	Settings.set_value("chat_filter", pressed)
+
+
+func _on_aim_rings_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("aim_rings", pressed)
+
+
+func _on_range_circles_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("range_circles", pressed)
 
 
 func _on_reset_pressed() -> void:

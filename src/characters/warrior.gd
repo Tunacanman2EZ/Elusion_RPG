@@ -368,7 +368,7 @@ func _physics_process(delta: float) -> void:
 	# The ball points where the next swing - its wave, or the axe - would go.
 	_point_aim_ring(aim_direction_to(get_global_mouse_position()))
 	if _reach_ring != null:
-		_reach_ring.visible = _mythic_reach > 0.0 and not is_dying
+		_reach_ring.visible = _reach_ring_shown()
 
 
 # =============================================================================
@@ -805,7 +805,12 @@ func _show_reach_for(weapon_attack: int) -> void:
 		return
 	if _mythic_reach > 0.0:
 		_reach_ring.set_radius(_mythic_reach)
-	_reach_ring.visible = _mythic_reach > 0.0 and not is_dying
+	_reach_ring.visible = _reach_ring_shown()
+
+
+func _reach_ring_shown() -> bool:
+	"""A mythic in hand, alive, and Range circles on in Options (0.31.0)."""
+	return _mythic_reach > 0.0 and not is_dying and bool(Settings.get_value("range_circles"))
 
 
 func mythic_reach(weapon_attack: int) -> float:

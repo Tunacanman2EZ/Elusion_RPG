@@ -12,6 +12,10 @@
 # leash system: enemies remember spawn position and return home if the
 # player gets more than leash_range away, preventing map-wide migration.
 #
+# notice and leash (0.30.0): a monster comes after you once you are within
+# notice_range (or it is hit), and keeps on until you are past leash_range -
+# see NOTICE, CHASE, LET GO below `engaged`.
+#
 # stacking avoidance: overlapping enemies nudge apart via velocity every
 # 3rd frame (staggered per instance id).
 #
@@ -263,6 +267,23 @@ const PET_ODDS_FALLBACK := 1296
 
 @export var leash_range:      float = 400.0
 
+# NOTICE, CHASE, LET GO (0.30.0). Until 0.30.0 one number did both jobs: a
+# monster chased anyone inside leash_range, so it noticed you from as far as it
+# would follow you - 400 to 500 px in the Field, wider than the screen at the
+# default zoom (427 x 240 world px), and 1,500 for a bush mage. The owner, once
+# the detection circles (threatring.gd) drew it: "now fix monster leash and
+# radius", picking "Notice close, chase far":
+#
+#   notice_range   it comes after you once you are this close (origin to
+#                  origin), or the moment it is hit
+#   leash_range    once after you, it keeps on until you are further than
+#                  this, then walks home and has to notice you again
+#
+# notice_reach() is the smaller of the two, so a placement that shortens the
+# leash (the Big Field's 250) shortens the notice with it. Bosses notice as
+# far as they chase (bossenemy.gd), as before.
+@export var notice_range:     float = 250.0
+
 # HELD BEHIND A GATE: immune, motionless, and not attacking.
 #
 # WHAT IT IS FOR. The boss arena runs a gauntlet - one boss, then two, then
@@ -304,6 +325,18 @@ const PET_ODDS_FALLBACK := 1296
 # _handle_combat() for why giving this to an enemy slower than the player
 # stops it ever fighting again.
 const FLEE_RELEASE_FACTOR := 1.8
+
+# PRESSING IN (0.31.0). The owner: "i want enemies to actually chase the
+# player closer while attacking". A monster used to stop the moment you were
+# inside attack_range and shoot from there - 200 to 280 px, the edge of the
+# screen at the default zoom - for the rest of the fight. Now, between attacks,
+# it keeps walking in until it is within press_reach(): PRESS_SHARE of its
+# attack range, but never closer than where it would turn and flee (flee_range,
+# out to where a kiting archer stops fleeing) plus PRESS_CLEAR, or it would walk
+# in, flee, and walk in again. It still attacks the moment it is ready, from
+# wherever it stands. Bosses hold their spacing (bossenemy.gd).
+const PRESS_SHARE := 0.5
+const PRESS_CLEAR := 20.0
 
 @export var xp_reward:        int = 20
 @export var attack_xp_reward: int = 5
@@ -390,6 +423,10 @@ var current_anim: String = ""
 var _walk_facing: String = "down"
 var spawn_position: Vector2 = Vector2.ZERO
 var is_returning_home: bool = false
+
+# AFTER SOMEONE (0.30.0): set when its target comes within notice_reach() or it
+# is hit, cleared when the target is past leash_range. See keep_after().
+var engaged: bool = false
 
 # Latched while backing away, so the retreat runs to a real distance instead of
 # stopping the instant flee_range is crossed. See _handle_combat().
@@ -484,15 +521,17 @@ func _physics_process(_delta: float) -> void:
 
 	var dist_to_player: float = global_position.distance_to(player.global_position)
 
-	# A TARGET OUT OF REACH IS NO LONGER THE TARGET, when somebody else is
+	# A TARGET IT IS NOT AFTER IS NO LONGER THE TARGET, when somebody else is
 	# nearer. With one player this never changes hands; with several sharing
 	# the area, a monster whose quarry ran off turns on whoever is still
-	# standing next to it instead of walking home past them. Checked on a
+	# standing next to it instead of walking home past them - and one that has
+	# not noticed anyone yet notices whoever walks up first. Checked on a
 	# clock, not every tick - see _retarget_left.
-	if dist_to_player > leash_range and _retarget_nearer(_delta):
+	if not keep_after(dist_to_player) and _retarget_nearer(_delta):
 		dist_to_player = global_position.distance_to(player.global_position)
+		keep_after(dist_to_player)
 
-	if dist_to_player > leash_range:
+	if not engaged:
 		# Cleared here rather than left latched: an enemy that leashed out mid
 		# retreat should come back as a fresh chaser, not resume a retreat from
 		# a player who is no longer anywhere near it.
@@ -502,6 +541,24 @@ func _physics_process(_delta: float) -> void:
 
 	is_returning_home = false
 	_handle_combat(dist_to_player)
+
+
+func notice_reach() -> float:
+	"""How close its target has to come before it notices them: notice_range,
+	or the leash if that is shorter (the Big Field's 250)."""
+	return minf(notice_range, leash_range)
+
+
+func keep_after(dist: float) -> bool:
+	"""Whether it is after its target, `dist` away (origin to origin, as
+	everything here measures): it notices them inside notice_reach(), and once
+	after them keeps on until they are past leash_range. Being hit sets it too
+	(take_damage())."""
+	if dist > leash_range:
+		engaged = false
+	elif dist <= notice_reach():
+		engaged = true
+	return engaged
 
 
 # =============================================================================
@@ -1493,7 +1550,8 @@ var _retarget_left: float = 0.0
 
 func _retarget_nearer(delta: float) -> bool:
 	"""True when the target changed to somebody nearer. Only ever looks while
-	the current target is out of leash range, and at most every
+	it is not after its current target (out of leash range, or not yet
+	noticed - keep_after()), and at most every
 	RETARGET_SECONDS - a scan of two groups is cheap, but not per tick for a
 	room full of monsters walking home."""
 	_retarget_left -= delta
@@ -1869,6 +1927,12 @@ func _handle_combat(dist_to_player: float) -> void:
 	# straight to you" and "I can shoot you" are one question, and asking it
 	# twice is how the two answers start disagreeing.
 	if dist_to_player < attack_range and _has_line_of_sight(target_point()):
+		# BETWEEN ATTACKS IT CLOSES IN (0.31.0) - see PRESSING IN. Out past
+		# press_reach() it walks on toward its slot exactly as it chases; inside
+		# it, it holds and waits for the next attack, as it always did.
+		if not attack_ready and dist_to_player > press_reach():
+			_chase_slot()
+			return
 		velocity = _standoff_velocity()
 		move_and_slide()
 		if attack_ready:
@@ -1877,6 +1941,17 @@ func _handle_combat(dist_to_player: float) -> void:
 			play_idle_animation(attack_direction)
 		return
 
+	_chase_slot()
+
+
+func press_reach() -> float:
+	"""How close it walks in while it fights (PRESSING IN): half its attack
+	range, but never inside where it would turn and flee."""
+	return maxf(attack_range * PRESS_SHARE, flee_range * FLEE_RELEASE_FACTOR + PRESS_CLEAR)
+
+
+func _chase_slot() -> void:
+	"""One step of the chase, toward this monster's slot round its target."""
 	# Routes toward this enemy's claimed WEDGE on the ring around the player
 	# (see SLOT SYSTEM above and the header of formation.gd) rather than at the
 	# player's raw position — which is what spreads a pack into a circle around
@@ -2571,6 +2646,11 @@ func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 	# would keep taking hits, spawning damage numbers and re-entering _die().
 	if _death_resolved or _dying:
 		return
+
+	# HIT, IT NOTICES (0.30.0): whoever shot it from outside notice_range has
+	# its attention now, as long as they are inside its leash (keep_after()).
+	# On a mirror only its ring reads this (threatring.gd).
+	engaged = true
 
 	# A MONSTER THIS GAME DOES NOT RUN (SHARED MONSTERS). The hit is shown here
 	# at once - the number, the flash, the sound, all of it is your feedback -

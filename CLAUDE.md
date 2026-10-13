@@ -5351,13 +5351,12 @@ when a monster's should show, "Always, faint".
   (cos^2 / sin^2), exact straight out each way; a circle is the four the
   same. Unshaded; `fired()` flashes it.
 - **A monster's detection** (`ThreatRing.sense`, node "detectionring", the
-  monster's second child after the red ring): a circle of its `leash_range`
-  round its origin, where BaseEnemy measures from. Shown whenever it could
-  notice anyone (not gated, frozen or dead), faint (`SENSE_IDLE`), brighter
-  once it is after someone (`SENSE_AFTER`). At the default zoom (3) the screen
-  is 427 x 240 world px and most leashes are 400 to 500, so what shows is
-  mostly edges crossing the floor - the Field has many. Bush mages' are 1,500
-  (the Big Field's mages are placed at 250).
+  monster's second child after the red ring): a circle round its origin, where
+  BaseEnemy measures from. Shown whenever it could notice anyone (not gated,
+  frozen or dead). In 0.29.0 it was the `leash_range`, faint, brighter once
+  the monster was after someone - 400 to 500 px, wider than the screen at the
+  default zoom (427 x 240 world px), and the owner's next word was "now fix
+  monster leash and radius". Since 0.30.0 it is two lines - see below.
 - **The warrior's reach** (`warrior.gd`, node "reachring", round its origin):
   **a mythic's only (0.29.1).** With the Double Axe, `mythic_reach()` gives
   `SpinningAxe.MAX_THROW + HIT_RADIUS` (190); with anything else it is 0 and
@@ -5372,6 +5371,74 @@ when a monster's should show, "Always, faint".
 - `_test_how_far_they_reach`. Taking out the warrior's ring, showing it for
   the sword, squashing the circle, dropping the detection circle, its
   brightening or its hiding each fails a check.
+
+### Monsters notice you close and chase you far (0.30.0)
+
+The owner: "now fix monster leash and radius"; asked, "Notice close, chase
+far". Until now one number, `leash_range`, was both how close you could come
+before a monster came for you and how far it followed - so it noticed you from
+off the screen (400 to 500 in the Field, 1,500 for a bush mage).
+
+- **`notice_range`** (BaseEnemy, 250 by default): it comes after you once you
+  are this close, origin to origin. **`leash_range`** is unchanged: once after
+  you it keeps on until you are further than that, then walks home and has to
+  notice you again. **Being hit** notices too (`take_damage()` sets it), so a
+  shot from outside 250 is answered. `notice_reach()` is the smaller of the
+  two, so the Big Field's 250 leashes keep their 250.
+- **`engaged`** holds it; `keep_after(dist)` is the one rule (notice inside
+  `notice_reach()`, let go past `leash_range`). BaseEnemy's
+  `_physics_process()` calls it and, while not after its target, looks for a
+  nearer one on the retarget clock - so with several players it notices
+  whoever walks up first. bushmage.gd (its own AI) calls it the same way.
+- **Bosses notice as far as they chase** - `BossEnemy.notice_reach()` returns
+  the leash, as before.
+- **A slime's twin and its smalls** inherit `engaged` (`_spawn_slime()`): a
+  large splits because it was hit, and four smalls that had to notice the
+  shooter afresh would stand about.
+- **Followers' copies** run no AI; threatring.gd applies `keep_after()` to the
+  player nearest a copy, and a hit on it sets `engaged`, so its ring and
+  circle follow the same rule. Nothing new is sent between games:
+  `notice_range` is the class's own, the same in every game.
+- **The circle** (threatring.gd `_sense()`): not after anyone, `notice_reach()`
+  and faint - cross it and it comes for you; after someone, `leash_range` and
+  brighter - get past it and it lets you go.
+- `_test_monsters_notice_close_and_chase_far` runs a real darkbushsniper's AI
+  in the tree with a stand-in player at 320 (not noticed), 240 (noticed), 470
+  (still after you), 700 (let go) and 380 then hit (noticed).
+  `_test_how_far_they_reach` checks the circle's two lines. Putting the notice
+  back to the leash, dropping the hit, never letting go, or drawing the circle
+  at the leash each fails a check.
+
+### Monsters walk in between attacks, and the rings have switches (0.31.0)
+
+The owner: "i want enemies to actually chase the player closer while attacking
+and add the option in options to enable veiw of the circles or disable".
+
+- **Pressing in** (BaseEnemy `_handle_combat()`, `press_reach()`): a monster
+  used to stop the moment you were inside `attack_range` (200 to 280 px) and
+  shoot from there for the whole fight. Now, between attacks
+  (`attack_ready` false), out past `press_reach()` it keeps walking toward its
+  slot (`_chase_slot()`, the chase it always had); inside it, it holds as
+  before. It still attacks the moment it is ready, from wherever it stands.
+  `press_reach()` is `PRESS_SHARE` (0.5) of the attack range, but never inside
+  where it would turn and flee - `flee_range * FLEE_RELEASE_FACTOR +
+  PRESS_CLEAR` - or a kiting archer would walk in, flee, and walk in again:
+  sniper 110, sprite 140, fire sprite and large slime 120. **Bosses hold their
+  spacing** (`BossEnemy.press_reach()` is the attack range; melee_range
+  decides swing or cast). The bush mage runs its own AI from a 36 px ring and
+  was already close.
+- **Two switches in Options, under RINGS** in the right-hand column (the left
+  was already the taller, and the panel is drawn at 600 px - the suite checks
+  it still opens at that): `aim_rings` (your aim ring, player.gd
+  `_point_aim_ring()`, and each monster's red ring, threatring.gd) and
+  `range_circles` (each monster's detection circle, threatring.gd `_sense()`,
+  and the warrior's mythic reach, warrior.gd `_reach_ring_shown()`). Both on
+  by default; read where each ring decides whether to show, every frame, so a
+  change shows at once. What each covers is in the rows' tooltips.
+- `_test_monsters_walk_in_between_attacks` runs a darkbushsniper's AI in the
+  tree: between attacks at 190 of its 200 it walks in, and inside its 110 it
+  holds. `_test_the_rings_have_switches` turns each off and on. No pressing,
+  or a ring that ignores its switch, each fails a check.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 
