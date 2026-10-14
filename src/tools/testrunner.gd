@@ -310,6 +310,8 @@ func _run_all() -> void:
 	await _test_attacks_aim_with_no_cursor()
 	await _test_other_players_aim_and_health()
 	await _test_parties()
+	await _test_names_open_the_player_menu()
+	await _test_party_voice()
 	_test_every_class_answers_its_own_attack()
 	_test_presence_sends_attacks()
 	await _test_levers_are_shared()
@@ -327,6 +329,7 @@ func _run_all() -> void:
 	_test_a_door_is_quick()
 	_test_the_emoji_font_is_chat_sized()
 	await _test_connections_are_kept_open()
+	await _test_token_lifecycle()
 	_test_the_powers_panel_closes()
 	_test_the_powers_read_in_words()
 	_test_the_staff_windows_share_one_look()
@@ -1922,17 +1925,22 @@ func _test_security_policy() -> void:
 		"the browser paragraph promises this; the code has to still do it")
 
 	# "--server=, ELUSION_SERVER and user://server.cfg all override the address,
-	# and plain http:// is accepted." Both halves are a warning to the reader,
-	# so both are asked of the code: an override removed, or http refused, makes
-	# the page wrong in the reassuring direction.
+	# ... plain http:// to this computer only." The first half is a warning to
+	# the reader, so it is asked of the code: an override removed makes the page
+	# wrong in the reassuring direction. The second is a promise (0.44.0), so it
+	# is asked too: http let out again would make the page wrong the bad way.
 	var resolve: String = _func_body(api_src, "static func _resolve_base_url(")
 	check("the three overrides the page names are the three the game reads",
 		doc.contains("--server=") and doc.contains("ELUSION_SERVER") and doc.contains("user://server.cfg")
 		and resolve.contains("\"--server=\"") and resolve.contains("\"ELUSION_SERVER\"")
 		and api_src.contains("SERVER_OVERRIDE_FILE := \"user://server.cfg\""))
-	check("  and plain http:// is still accepted, as the page warns",
-		_func_body(api_src, "static func _clean_base_url(").contains("url.begins_with(\"http://\")"),
-		"if http is refused now, say so on the page")
+	check("  and plain http:// only to this computer, as the page promises",
+		doc.contains("plain `http://` to this computer only")
+		and _func_body(api_src, "static func _clean_base_url(").contains(
+			"if url.begins_with(\"http://\") and not page_origin and not is_this_computer(url):")
+		and ApiForTests._clean_base_url("http://example.com") == ApiForTests.DEFAULT_BASE_URL
+		and ApiForTests._clean_base_url("http://127.0.0.1:5000") == "http://127.0.0.1:5000",
+		"if http goes anywhere again, say so on the page")
 
 	# "The pack ... holds the scripts compiled but not encrypted."
 	var presets := ConfigFile.new()
@@ -10601,6 +10609,436 @@ func _test_parties() -> void:
 	await get_tree().process_frame
 
 
+class MenuHost extends Node:
+	var opened: Array = []
+
+	func open_player_menu(who: String) -> void:
+		opened.append(who)
+
+
+class FakeVoiceBridge extends RefCounted:
+	var calls: Array = []
+	var st: String = "off"
+	var outbox: Array = []
+	var lv: Dictionary = {"st": "off", "me": 0.0, "peers": {}}
+	var mic: bool = false
+	var vols: Dictionary = {}
+	var started_with: String = ""
+
+	func start(config_json: String) -> void:
+		started_with = config_json
+		st = "starting"
+		calls.append("start")
+
+	func stop() -> void:
+		st = "off"
+		calls.append("stop")
+
+	func status() -> String:
+		return st
+
+	func reason() -> String:
+		return "NotFoundError"
+
+	func dial(id: int) -> void:
+		calls.append("dial %d" % id)
+
+	func hear(from_id: int, json: String) -> void:
+		calls.append("hear %d %s" % [from_id, json])
+
+	func hangup(id: int) -> void:
+		calls.append("hangup %d" % id)
+
+	func set_mic(open: bool) -> void:
+		mic = open
+
+	func set_volume(id: int, volume: float) -> void:
+		vols[id] = volume
+
+	func take_outbox() -> String:
+		var out: String = JSON.stringify(outbox)
+		outbox = []
+		return out
+
+	func levels() -> String:
+		return JSON.stringify(lv)
+
+
+func _test_names_open_the_player_menu() -> void:
+	section("A NAME, CLICKED - add friend, invite to party or guild, report, wherever the name is (0.43.0)")
+	# The owner: "clicking over a person should have add friend inv to guild or
+	# party and report button that syncs to our mod/dev/owner same thing in chat
+	# if i hover over some ones name". test_voice.py holds the report's server.
+	var kept_name: String = Api.username
+	Api.username = "nme"
+	Party.forget()
+
+	# ---- the items ----
+	var menu := PopupMenu.new()
+	add_child(menu)
+	PlayerMenu.fill(menu, "gary")
+	var items: Array = []
+	var separators: Array = []
+	for i in menu.item_count:
+		if menu.is_item_separator(i):
+			separators.append(menu.get_item_text(i))
+		else:
+			items.append(menu.get_item_text(i))
+	check("every name offers Whisper, Add friend, Trade, Invite to party, Invite to guild, and a report for each reason",
+		items == ["Whisper", "Add friend", "Trade", "Invite to party", "Invite to guild", "Spam", "Harassment",
+		"Hate speech", "Cheating or scams", "Something else"] and separators == ["Report gary"], [items, separators])
+	var actions: Array = []
+	for id in [PlayerMenu.WHISPER, PlayerMenu.FRIEND, PlayerMenu.TRADE, PlayerMenu.PARTY, PlayerMenu.GUILD,
+			PlayerMenu.REPORT, PlayerMenu.REPORT + 4]:
+		actions.append(PlayerMenu.action_of(id))
+	check("  each item says what it is, a report with its reason",
+		actions == [["whisper", ""], ["friend", ""], ["trade", ""], ["party", ""], ["guild", ""], ["report", "spam"],
+		["report", "other"]] and not PlayerMenu.is_ours(1) and not PlayerMenu.is_ours(PlayerMenu.REPORT + 5), actions)
+	check("  the reasons are the server's (app.py REPORT_REASONS)",
+		PlayerMenu.REPORT_REASONS.map(func(r: Array) -> String: return r[0]) == ["spam", "harassment", "hate", "cheating", "other"])
+	Party.apply({"id": 3, "leader": "nme", "members": ["nme", "Gary"]})
+	menu.clear()
+	PlayerMenu.fill(menu, "gary")
+	check("  somebody already in your party is not invited to it again",
+		menu.is_item_disabled(menu.get_item_index(PlayerMenu.PARTY)))
+	Party.forget()
+	menu.free()
+
+	# ---- the name over their head ----
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var host := MenuHost.new()
+	host.add_to_group(&"player_menu_host")
+	add_child(host)
+	var them: Node2D = Remote.new()
+	them.user_id = 652
+	add_child(them)
+	them.set_identity({"id": 652, "name": "Gary", "cls": "mage", "lvl": 4, "v": 2})
+	them.set_process(false)
+	var plate: Label = them.plate()
+	check("the name over another player is a button: it takes the click, under a pointing hand",
+		plate != null and plate.mouse_filter == Control.MOUSE_FILTER_STOP
+		and plate.mouse_default_cursor_shape == Control.CURSOR_POINTING_HAND)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	plate.gui_input.emit(click)
+	var right := InputEventMouseButton.new()
+	right.button_index = MOUSE_BUTTON_RIGHT
+	right.pressed = true
+	plate.gui_input.emit(right)
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	plate.gui_input.emit(wheel)
+	check("  a left or right click on it opens their menu (the wheel does not)", host.opened == ["Gary", "Gary"], host.opened)
+	var player_src: String = _func_body(FileAccess.get_file_as_string("res://src/characters/player.gd"), "func _unhandled_input(")
+	check("  and never swings: attacks hear only clicks no control took (player.gd _unhandled_input)",
+		player_src.contains("_left_click_down = true") and not FileAccess.get_file_as_string(
+		"res://src/characters/player.gd").contains("func _input(event"))
+	plate.mouse_entered.emit()
+	var lit: bool = plate.modulate != Color.WHITE
+	plate.mouse_exited.emit()
+	check("  hovered, it brightens", lit and plate.modulate == Color.WHITE)
+	them.free()
+	host.free()
+
+	# ---- the HUD's menu and where each item goes ----
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	check("the HUD answers names clicked in the world", hud.is_in_group(&"player_menu_host"))
+	hud.open_player_menu("Gary")
+	var hud_menu: PopupMenu = hud.player_menu
+	var hud_items: Array = []
+	var hud_title: String = ""
+	if hud_menu != null:
+		for i in hud_menu.item_count:
+			if hud_menu.is_item_separator(i):
+				if hud_title == "":
+					hud_title = hud_menu.get_item_text(i)
+			else:
+				hud_items.append(hud_menu.get_item_text(i))
+	check("  their menu, with their name on top", hud_menu != null and hud_title == "Gary" and hud_items.size() == 10
+		and hud_items[3] == "Invite to party" and hud_items[4] == "Invite to guild", [hud_title, hud_items])
+	hud.player_menu.clear()
+	hud.open_player_menu("NME")
+	check("  none for yourself", hud.player_menu.item_count == 0)
+	var posted: Array = []
+	var reply: Array = [{"ok": true, "status": 200, "data": {"reported": true}}]
+	hud.api_post = func(route: String, body: Dictionary) -> Dictionary:
+		posted.append([route, body])
+		return reply[0]
+	await hud.player_action("report", "Gary", "harassment")
+	await hud.player_action("guild", "Gary")
+	reply[0] = {"ok": false, "status": 403, "error": "Only the leader and officers can invite."}
+	await hud.player_action("guild", "Gary")
+	var report_body: Dictionary = posted[0][1] if posted.size() > 0 else {}
+	check("Report sends the player, the reason and where you are to /api/report/player",
+		posted.size() == 3 and posted[0][0] == "/api/report/player" and report_body.get("username") == "Gary"
+		and report_body.get("reason") == "harassment" and report_body.get("area") == AreaRegistry.current_area_id(), posted)
+	check("  Invite to guild asks the guild's own route; the server's refusal is said as it is",
+		posted.size() == 3 and posted[1] == ["/api/guild/invite", {"username": "Gary"}]
+		and posted[2][0] == "/api/guild/invite" and hud._refusal_line(reply[0], "x") == "Only the leader and officers can invite.")
+	var hud_src: String = FileAccess.get_file_as_string("res://src/ui/characterhud.gd")
+	var action_body: String = _func_body(hud_src, "func player_action(")
+	check("  and the rest go where they always went: whisper, the Friends, Trade and Party windows",
+		action_body.contains("whisper_player(who)") and action_body.contains("ask_to_be_friends(who)")
+		and action_body.contains("trade_with(who)") and action_body.contains("invite_to_party(who)"))
+	hud.queue_free()
+	await get_tree().process_frame
+
+	# ---- the chat's name ----
+	var chat_src: String = FileAccess.get_file_as_string("res://src/ui/chat/chatpanel.gd")
+	check("in chat, a hovered name is underlined under a pointing hand, and its items go to the HUD",
+		_func_body(chat_src, "func _wire_name_click(").contains("meta_hover_started")
+		and _func_body(chat_src, "func _wire_name_click(").contains("CURSOR_POINTING_HAND")
+		and _func_body(chat_src, "func _on_line_menu_id(").contains("&\"player_action\""))
+
+	# ---- the staff card ----
+	var Staff := preload("res://src/ui/staff/staffpanel.gd")
+	check("on the staff card a report about the player says so - not a quote nobody said, not 'gone from chat'",
+		Staff.quoted("Reported in field", "player") == "Reported in field"
+		and Staff.quoted("hello", "world") == "\"hello\""
+		and not Staff.describe_card_line({"channel": "player", "line_exists": false, "said_at": 0}, 0).contains("gone")
+		and Staff.describe_card_line({"channel": "player", "line_exists": false, "said_at": 0}, 0).contains("the player")
+		and Staff.describe_card_line({"channel": "world", "line_exists": false, "said_at": 0}, 0).contains("gone from chat"))
+	Api.username = kept_name
+
+
+func _test_party_voice() -> void:
+	section("PARTY VOICE - the browser's own calls through the relay, a switch, mute and push to talk (0.43.0)")
+	# The owner: "I really really want the option for voice chat in game for
+	# parties ... could even be a flappable switch". test_voice.py holds the
+	# relay's route, test_presence.py P-11 who may pass a call's setup to whom.
+	var kept := {"name": Api.username, "bridge": Voice.bridge, "fetch": Voice.fetch, "path": Voice.path,
+		"mode": Voice.mode, "muted": Voice.muted, "volumes": Voice.volumes.duplicate(), "link": Voice.link_open,
+		"send": Presence.send_override, "id": Presence._my_id}
+	Api.username = "vme"
+	Party.forget()
+	Voice.stop()
+	Voice.path = "user://test_voice_settings.cfg"
+	DirAccess.remove_absolute(Voice.path)
+	Voice.mode = Voice.MODE_OPEN
+	Voice.muted = false
+	Voice.volumes = {}
+	var sent: Array = []
+	Presence.send_override = func(message: Dictionary) -> void: sent.append(message)
+	Voice.link_open = func() -> bool: return true
+	Presence._my_id = 30
+
+	# ---- the JavaScript ----
+	var js: String = VoiceBridge.SOURCE
+	var missing: Array = []
+	for piece in ["V.start", "V.stop", "V.status", "V.reason", "V.dial", "V.hear", "V.hangup", "V.setMic",
+			"V.setVolume", "V.takeOutbox", "V.levels"]:
+		if not js.contains(piece + " = function"):
+			missing.append(piece)
+	if not js.contains("window.elusionVoice = V;"):
+		missing.append("window.elusionVoice")
+	check("the browser's side defines every call the game makes on it", missing.is_empty(), missing)
+	check("  with no backslash in it (it sits inside a GDScript string)", not js.contains("\\"))
+	check("  every call through the relay unless the server says otherwise, and the browser's echo cancellation and noise suppression",
+		js.contains("iceTransportPolicy: V.cfg.policy === \"all\" ? \"all\" : \"relay\"")
+		and js.contains("echoCancellation: true") and js.contains("noiseSuppression: true"))
+	check("  and none of its names is one GDScript's Object already has (call, connect, set, get, free)",
+		not js.contains("V.call = ") and not js.contains("V.connect = ") and not js.contains("V.set = ")
+		and not js.contains("V.get = ") and not js.contains("V.free = "))
+	check("off the web there is no bridge", VoiceBridge.make() == null)
+
+	# ---- the switch, before it can work ----
+	Voice.bridge = null
+	await Voice.switch(true)
+	check("where there is no browser, the switch says voice is in the browser version",
+		not Voice.wanted() and Voice.note.contains("browser version"), Voice.note)
+	var fake := FakeVoiceBridge.new()
+	Voice.bridge = fake
+	await Voice.switch(true)
+	check("  in no party, that voice is for parties", not Voice.wanted() and Voice.note.contains("for parties"), Voice.note)
+	Party.apply({"id": 5, "leader": "vme", "members": ["vme", "VBob", "vcat"]})
+	var asked: Array = []
+	var relay: Array = [{"ok": false, "status": 503, "error": "Voice is not set up on this server yet."}]
+	Voice.fetch = func(route: String) -> Dictionary:
+		asked.append(route)
+		return relay[0]
+	await Voice.switch(true)
+	check("  a server without a relay: said as the server says it, and voice stays off",
+		not Voice.wanted() and Voice.note == "Voice is not set up on this server yet." and asked == ["/api/party/voice"]
+		and fake.calls.is_empty(), [Voice.note, asked])
+
+	# ---- on ----
+	relay[0] = {"ok": true, "status": 200, "data": {"policy": "relay", "expires_at": 1,
+		"ice_servers": [{"urls": ["turns:turn.example.com:443?transport=tcp"], "username": "u", "credential": "c"}]}}
+	await Voice.switch(true)
+	var config: Variant = JSON.parse_string(fake.started_with)
+	check("with a relay: the browser is started with it, told 'relay', and who this player is",
+		Voice.state == "starting" and config is Dictionary and config.get("policy") == "relay"
+		and (config.get("ice_servers") as Array).size() == 1 and int(config.get("me", 0)) == 30
+		and Voice.note.contains("microphone"), [Voice.state, fake.started_with])
+	Voice._process(0.2)
+	check("  waiting for the microphone, nothing is said to anybody", Voice.state == "starting" and sent.is_empty())
+	fake.st = "live"
+	Voice._process(0.2)
+	check("  with it: on, and the socket told this game is in voice",
+		Voice.is_on() and sent == [{"t": "vs", "on": true}] and fake.mic, sent)
+	Voice.hear({"t": "vs", "in": [{"id": 40, "name": "VBob"}]})
+	check("told who is already in voice, it calls each of them",
+		fake.calls.has("dial 40") and Voice.members == {40: "VBob"} and Voice.in_voice("vbob"), fake.calls)
+	Voice.hear({"t": "vs", "join": {"id": 41, "name": "vcat"}})
+	check("  told somebody came, it waits for their call", not fake.calls.has("dial 41") and Voice.in_voice("vcat"))
+	Voice.hear({"t": "vc", "from": 40, "d": {"k": "sdp", "sdp": {"type": "answer"}}})
+	Voice.hear({"t": "vc", "from": 99, "d": {"k": "ice"}})
+	var heard: Array = fake.calls.filter(func(e: String) -> bool: return e.begins_with("hear"))
+	check("  a call's setup from somebody in voice goes to the browser - from anybody else, nowhere",
+		heard.size() == 1 and heard[0].begins_with("hear 40 ") and heard[0].contains("answer"), heard)
+	fake.outbox = [[40, {"k": "ice", "c": {"candidate": "x"}}]]
+	sent.clear()
+	Voice._process(0.2)
+	check("  and what the browser wants sent goes over the socket, to whom it is for",
+		sent == [{"t": "vc", "to": 40, "d": {"k": "ice", "c": {"candidate": "x"}}}], sent)
+
+	# ---- who is talking ----
+	fake.lv = {"st": "live", "me": 0.3, "peers": {"40": {"lv": 0.4, "st": "connected"}, "41": {"lv": 0.0, "st": "connecting"}}}
+	Voice._process(0.2)
+	check("who is talking: the browser's loudness, by name, over SPEAKING_LEVEL - you too, while your microphone is open",
+		Voice.speaking("vbob") and not Voice.speaking("vcat") and Voice.speaking("vme")
+		and Voice.call_state("VBob") == "connected" and Voice.call_state("vcat") == "connecting")
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var bob: Node2D = Remote.new()
+	bob.user_id = 40
+	add_child(bob)
+	bob.set_identity({"id": 40, "name": "VBob", "cls": "warrior", "lvl": 3, "v": 2})
+	bob.set_process(false)
+	bob.call("_show_talking", Voice.speaking("VBob"))
+	var mark: Node2D = bob.get_node_or_null(^"talkmark") as Node2D
+	check("  and over their head, a speaker beside their name", mark != null and mark.visible)
+	bob.call("_show_talking", false)
+	check("  gone when they stop", mark != null and not mark.visible)
+	bob.free()
+
+	# ---- the microphone ----
+	Voice.set_muted(true)
+	var muted_off: bool = not fake.mic and not Voice.mic_open() and not Voice.speaking("vme")
+	Voice.set_muted(false)
+	Voice.set_mode(Voice.MODE_PUSH)
+	var push_idle: bool = not fake.mic
+	var talk := InputEventAction.new()
+	talk.action = Voice.TALK_ACTION
+	talk.pressed = true
+	Voice._unhandled_input(talk)
+	var push_held: bool = fake.mic
+	var let_go := InputEventAction.new()
+	let_go.action = Voice.TALK_ACTION
+	let_go.pressed = false
+	Voice._unhandled_input(let_go)
+	check("Mute closes the microphone; push to talk opens it only while the key is held",
+		muted_off and push_idle and push_held and not fake.mic, [muted_off, push_idle, push_held])
+	Voice._unhandled_input(talk)
+	Voice._notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
+	check("  and the window losing focus lets go of it - the key's release would never arrive", not fake.mic)
+	var mute_key := InputEventAction.new()
+	mute_key.action = Voice.MUTE_ACTION
+	mute_key.pressed = true
+	Voice._unhandled_input(mute_key)
+	var by_key: bool = Voice.muted
+	Voice._unhandled_input(mute_key)
+	check("  the mute key toggles it", by_key and not Voice.muted)
+	check("both keys can be rebound, V and B to start, on keys nothing else uses",
+		Keybinds.all_actions().has(Voice.TALK_ACTION) and Keybinds.all_actions().has(Voice.MUTE_ACTION)
+		and Settings.keys.first_key(Voice.TALK_ACTION) == KEY_V and Settings.keys.first_key(Voice.MUTE_ACTION) == KEY_B
+		and Settings.keys.action_for_key(KEY_V) == Voice.TALK_ACTION and Settings.keys.action_for_key(KEY_B) == Voice.MUTE_ACTION)
+
+	# ---- volumes, kept ----
+	Voice.set_volume("VBob", 0.4)
+	check("each voice has its own volume, set on its call", is_equal_approx(float(fake.vols.get(40, -1.0)), 0.4))
+	Voice.volumes = {}
+	Voice.mode = Voice.MODE_OPEN
+	Voice.load_settings()
+	check("  kept on this machine with the mode: read back after a restart",
+		is_equal_approx(Voice.volume_of("vbob"), 0.4) and Voice.mode == Voice.MODE_PUSH, [Voice.volumes, Voice.mode])
+
+	# ---- the Party window ----
+	var panel: PartyPanel = (load("res://scene/ui/party/partypanel.tscn") as PackedScene).instantiate() as PartyPanel
+	add_child(panel)
+	var party_answer: Dictionary = {"ok": true, "data": {"capacity": 4, "invites": [], "party": {
+		"id": 5, "leader": "vme", "size": 3, "capacity": 4, "members": [
+			{"username": "vme", "leader": true, "online": true, "class_id": "healer", "level": 8, "area": "field", "hp": 50, "max_hp": 100},
+			{"username": "VBob", "leader": false, "online": true, "class_id": "warrior", "level": 5, "area": "field", "hp": 30, "max_hp": 120},
+			{"username": "vdan", "leader": false, "online": true, "class_id": "tank", "level": 9, "area": "town", "hp": 200, "max_hp": 200}]}}}
+	panel.fetch = func(_path: String) -> Dictionary: return party_answer
+	panel.send = func(_path: String, _body: Dictionary) -> Dictionary: return party_answer
+	await panel.open()
+	var bob_row: Node = panel.list.get_node_or_null(^"member_VBob")
+	var dan_row: Node = panel.list.get_node_or_null(^"member_vdan")
+	var bob_mark: Node = bob_row.find_child("voice", true, false) if bob_row else null
+	var bob_volume: HSlider = bob_row.find_child("volume", true, false) as HSlider if bob_row else null
+	check("the Party window: the Voice switch on, push to talk named with its key, Mute",
+		panel.voice_box.visible and panel.voice_switch.button_pressed and panel.voice_switch.text == "Voice on"
+		and panel.voice_mode.selected == 1 and panel.voice_mode.get_item_text(1) == "Push to talk (V)"
+		and not panel.mute_button.disabled, [panel.voice_switch.text, panel.voice_mode.get_item_text(1)])
+	check("  each member in voice: a speaker that lights while they talk, and their own volume",
+		bob_mark != null and bob_volume != null and is_equal_approx(bob_volume.value, 40.0)
+		and dan_row != null and dan_row.find_child("voice", true, false) == null, [bob_mark != null, bob_volume != null])
+	panel._process(0.1)
+	check("  lit now: VBob is talking", bob_mark != null and bool(bob_mark.get("lit")))
+	if bob_volume != null:
+		bob_volume.value = 70.0
+	check("  their slider sets their volume", is_equal_approx(Voice.volume_of("vbob"), 0.7))
+	check("  and under the switch, how to talk", PartyPanel.voice_line() == "Hold V to talk.", PartyPanel.voice_line())
+	panel.mute_button.button_pressed = true
+	check("Mute in the window mutes", Voice.muted and PartyPanel.voice_line() == "You are muted.")
+	panel.mute_button.button_pressed = false
+	panel.voice_mode.select(0)
+	panel.voice_mode.item_selected.emit(0)
+	check("  the mode in the window sets it", Voice.mode == Voice.MODE_OPEN)
+
+	# ---- out again ----
+	fake.calls.clear()
+	Voice.hear({"t": "vs", "left": 40})
+	check("somebody leaving voice: their call hung up", fake.calls == ["hangup 40"] and not Voice.in_voice("vbob"), fake.calls)
+	Voice.hear({"t": "vs", "join": {"id": 41, "name": "vcat"}})
+	check("  somebody known saying they joined again (their link dropped): the old call hung up, and they call anew",
+		fake.calls.has("hangup 41") and not fake.calls.has("dial 41"), fake.calls)
+	sent.clear()
+	Party.apply({"id": 0, "leader": "", "members": []})
+	Voice._process(0.2)
+	check("the party gone: voice off by itself, the socket told, and why said",
+		not Voice.wanted() and fake.st == "off" and sent == [{"t": "vs", "on": false}]
+		and Voice.note.contains("not in a party"), [sent, Voice.note])
+	Party.apply({"id": 5, "leader": "vme", "members": ["vme", "VBob"]})
+	await Voice.switch(true)
+	fake.st = "denied"
+	Voice._process(0.2)
+	check("a microphone the browser was not allowed: off, and it says how to allow it",
+		not Voice.wanted() and Voice.note.contains("did not allow the microphone"), Voice.note)
+	await Voice.switch(true)
+	fake.st = "live"
+	Voice._process(0.2)
+	Voice.hear({"t": "vs", "off": "party"})
+	check("the server taking this game out of voice turns it off", not Voice.wanted() and Voice.note.contains("not in a party"))
+	await Voice.switch(true)
+	fake.st = "live"
+	Voice._process(0.2)
+	panel.voice_switch.button_pressed = false
+	await get_tree().process_frame
+	check("the switch off: off", not Voice.wanted() and fake.st == "off")
+
+	panel.queue_free()
+	await get_tree().process_frame
+	Voice.stop()
+	Party.forget()
+	DirAccess.remove_absolute(Voice.path)
+	Voice.path = kept["path"]
+	Voice.bridge = kept["bridge"]
+	Voice.fetch = kept["fetch"]
+	Voice.mode = kept["mode"]
+	Voice.muted = kept["muted"]
+	Voice.volumes = kept["volumes"]
+	Voice.note = ""
+	Voice.link_open = kept["link"]
+	Presence.send_override = kept["send"]
+	Presence._my_id = kept["id"]
+	Api.username = kept["name"]
+
+
 func _test_other_players_aim_and_health() -> void:
 	section("OTHER PLAYERS - their aim ring and their health, as they see their own (0.41.0)")
 	# The owner: "i need to be able to see other players directional bar etc ...
@@ -12275,12 +12713,18 @@ func _test_the_emoji_font_is_chat_sized() -> void:
 # does, reading nothing more from it; "drop" answers and closes without saying so;
 # "eat_next" reads the next request, closes, and goes back to "keep".
 # /slow is answered two seconds late; /gz is answered gzip-compressed when asked
-# for.
+# for. /power is a route that wants the password first (STEP-UP, 0.44.0), until
+# /api/auth/confirm is sent "right"; /forbidden is a 403 that does not ask for
+# it. `heads` keeps each request's headers and `bodies` its body.
 class FakeHttpServer extends Node:
 	var server := TCPServer.new()
 	var port := 0
 	var accepted := 0
 	var seen: Array[String] = []
+	var heads: Array[String] = []
+	var bodies: Array[String] = []
+	var confirmed := false
+	var resume_refusal: Dictionary = {}
 	var mode := "keep"
 	var _peers: Array = []
 	var _late: Array = []
@@ -12344,26 +12788,47 @@ class FakeHttpServer extends Node:
 					length = int(h.get_slice(":", 1).strip_edges())
 			if c.buf.size() < end + 4 + length:
 				continue
+			var sent_body: String = c.buf.slice(end + 4, end + 4 + length).get_string_from_utf8()
 			c.buf = c.buf.slice(end + 4 + length)
 			var first := head.get_slice("\r\n", 0)
 			seen.append(first.get_slice(" ", 0) + " " + first.get_slice(" ", 1))
-			_answer(c, peer, first.get_slice(" ", 1), head)
+			heads.append(head)
+			bodies.append(sent_body)
+			_answer(c, peer, first.get_slice(" ", 1), head, sent_body)
 
-	func _answer(c: Dictionary, peer: StreamPeerTCP, path: String, head: String) -> void:
+	func _answer(c: Dictionary, peer: StreamPeerTCP, path: String, head: String, sent_body: String = "") -> void:
 		if mode == "eat_next":
 			mode = "keep"
 			peer.disconnect_from_host()
 			_peers.erase(c)
 			return
 		var body := JSON.stringify({"path": path, "n": seen.size()}).to_utf8_buffer()
+		var status_line := "200 OK"
+		if path == "/api/auth/confirm":
+			var said: Variant = JSON.parse_string(sent_body) if sent_body != "" else null
+			confirmed = said is Dictionary and str((said as Dictionary).get("password", "")) == "right"
+			if not confirmed:
+				status_line = "403 FORBIDDEN"
+				body = JSON.stringify({"error": "Forbidden", "message": "That is not your password.",
+					"confirm_password": true}).to_utf8_buffer()
+		elif path == "/power" and not confirmed:
+			status_line = "403 FORBIDDEN"
+			body = JSON.stringify({"error": "Forbidden", "message": "Type your password to do this.",
+				"confirm_password": true}).to_utf8_buffer()
+		elif path == "/forbidden":
+			status_line = "403 FORBIDDEN"
+			body = JSON.stringify({"error": "Forbidden", "message": "Staff only."}).to_utf8_buffer()
+		elif path == "/api/auth/resume" and not resume_refusal.is_empty():
+			status_line = "401 UNAUTHORIZED"
+			body = JSON.stringify(resume_refusal).to_utf8_buffer()
 		var extra := ""
 		if path == "/gz" and head.to_lower().contains("accept-encoding: gzip"):
 			body = body.compress(FileAccess.COMPRESSION_GZIP)
 			extra = "Content-Encoding: gzip\r\n"
 		if mode == "close":
 			extra += "Connection: close\r\n"
-		var out := ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n%s\r\n"
-			% [body.size(), extra]).to_ascii_buffer()
+		var out := ("HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n%s\r\n"
+			% [status_line, body.size(), extra]).to_ascii_buffer()
 		out.append_array(body)
 		if path == "/slow":
 			_late.append({"peer": peer, "out": out, "at": Time.get_ticks_msec() + 2000})
@@ -12518,6 +12983,292 @@ func _test_connections_are_kept_open() -> void:
 	Api.reachability_known = kept_known
 	fake.queue_free()
 	print("  network: %d connections opened by the pool for %d requests" % [pool.connections_opened - opened, fake.seen.size()])
+
+
+# =============================================================================
+# TOKEN LIFECYCLE (0.44.0) - the students' "token-lifecycle hardening"
+# =============================================================================
+#
+# app.py's TOKEN LIFECYCLE does the work: a login from build 6 is bound to the
+# copy of the game it was made on, a replaced token coming back is theft, a
+# staff login is short, and the most powerful routes want the password again.
+# The game's part is small, and all of it is asked here: say which copy it is
+# on every request, ask for the password when the server wants it, say what an
+# ended session means, and send nothing over plain http that leaves this
+# computer.
+
+func _test_token_lifecycle() -> void:
+	section("TOKEN LIFECYCLE - which copy of the game, the password again, https only (0.44.0)")
+
+	var consts: Dictionary = (load("res://src/systems/api.gd") as GDScript).get_script_constant_map()
+	check("the install header's name matches the one app.py reads",
+		str(consts.get("INSTALL_HEADER", "")) == "X-Elusion-Install", consts.get("INSTALL_HEADER"))
+	check("  and this is build 6 or later, the first build the server binds",
+		int(consts.get("BUILD", 0)) >= 6, consts.get("BUILD"))
+	# The same count as the build stamp's, for the same reason: a builder that
+	# forgot it sends a hardened token without its copy, which the server
+	# reads as the token having been taken somewhere else.
+	var code: String = _code_src("res://src/systems/api.gd")
+	var builders: int = code.count("headers := PackedStringArray")
+	var stamps: int = code.count("INSTALL_HEADER + \": \" + install_id()")
+	check("every header builder says which copy of the game it is",
+		builders >= 4 and stamps >= builders,
+		"%d builders, %d stamped - one without it ends the player's session as stolen" % [builders, stamps])
+
+	# ---- against the suite's own server ----------------------------------------
+	var fake := FakeHttpServer.new()
+	add_child(fake)
+	if not fake.start():
+		check("a free local port for the suite's own server", false)
+		fake.queue_free()
+		return
+	var kept_url: String = ApiForTests.BASE_URL
+	var kept_online: bool = Api.server_online
+	var kept_known: bool = Api.reachability_known
+	var kept_token: String = Api.token
+	var kept_handler: Callable = Api.confirm_handler
+	Api.token = ""
+	Api.confirm_handler = Callable()
+	ApiForTests.BASE_URL = "http://127.0.0.1:%d" % fake.port
+	var mine: String = "X-Elusion-Install: " + Api.install_id()
+
+	var seen_at := fake.seen.size()
+	await Api.get_json("/which")
+	await Api.post_bytes("/which_bytes", PackedByteArray([1, 2, 3]), "application/octet-stream")
+	await Api.get_bytes("/which_picture")
+	var stamped: Array = []
+	for i in range(seen_at, fake.heads.size()):
+		stamped.append(fake.heads[i].contains(mine))
+	check("  and on the wire: JSON, a raw upload and a picture all carry it",
+		fake.seen.slice(seen_at) == ["GET /which", "POST /which_bytes", "GET /which_picture"]
+		and stamped == [true, true, true], [fake.seen.slice(seen_at), stamped])
+
+	# STEP-UP. The server answers 403 with confirm_password; the game asks for
+	# the password (the HUD's prompt), confirms it, and sends the request again.
+	var asked: Array = []
+	var answer := ["right"]
+	Api.confirm_handler = func(message: String) -> String:
+		asked.append(message)
+		return answer[0]
+	fake.confirmed = false
+	seen_at = fake.seen.size()
+	var power: Dictionary = await Api.post("/power", {"n": 1})
+	check("a route that wants the password asks for it, in the server's words",
+		asked == ["Type your password to do this."], asked)
+	check("  confirms it, sends the request again, and that is the answer",
+		power.get("ok", false)
+		and fake.seen.slice(seen_at) == ["POST /power", "POST /api/auth/confirm", "POST /power"],
+		[power.get("status"), fake.seen.slice(seen_at)])
+	var confirm_body: Variant = JSON.parse_string(fake.bodies[seen_at + 1]) \
+		if fake.bodies.size() > seen_at + 1 else null
+	check("  the password goes in the confirm's body and nowhere else",
+		confirm_body is Dictionary and str((confirm_body as Dictionary).get("password", "")) == "right"
+		and not fake.bodies[seen_at].contains("right") and not fake.bodies[seen_at + 2].contains("right")
+		and not fake.heads[seen_at + 1].contains("right"))
+	fake.confirmed = false
+	asked.clear()
+	seen_at = fake.seen.size()
+	var again_get: Dictionary = await Api.get_json("/power")
+	check("  a GET is sent again as a GET",
+		again_get.get("ok", false) and asked.size() == 1
+		and fake.seen.slice(seen_at) == ["GET /power", "POST /api/auth/confirm", "GET /power"],
+		fake.seen.slice(seen_at))
+
+	fake.confirmed = false
+	asked.clear()
+	answer[0] = ""
+	seen_at = fake.seen.size()
+	var cancelled: Dictionary = await Api.post("/power", {"n": 2})
+	check("Cancel sends nothing more: the refusal is the answer",
+		asked.size() == 1 and int(cancelled.get("status", 0)) == 403
+		and fake.seen.slice(seen_at) == ["POST /power"], [cancelled.get("status"), fake.seen.slice(seen_at)])
+
+	asked.clear()
+	answer[0] = "wrong"
+	seen_at = fake.seen.size()
+	var wrong: Dictionary = await Api.post("/power", {"n": 3})
+	var wrong_data: Variant = wrong.get("data", {})
+	check("a wrong password is said, asked once, and the request is not sent again",
+		asked.size() == 1 and int(wrong.get("status", 0)) == 403
+		and wrong_data is Dictionary and str((wrong_data as Dictionary).get("message", "")) == "That is not your password."
+		and fake.seen.slice(seen_at) == ["POST /power", "POST /api/auth/confirm"],
+		[asked.size(), wrong.get("status"), fake.seen.slice(seen_at)])
+
+	asked.clear()
+	answer[0] = "right"
+	seen_at = fake.seen.size()
+	var forbidden: Dictionary = await Api.post("/forbidden", {})
+	check("a 403 that does not ask for the password is not asked about",
+		asked.is_empty() and int(forbidden.get("status", 0)) == 403
+		and fake.seen.slice(seen_at) == ["POST /forbidden"], fake.seen.slice(seen_at))
+	seen_at = fake.seen.size()
+	var direct: Dictionary = await Api.post(ApiForTests.CONFIRM_PATH, {"password": "wrong"})
+	check("  nor is the confirm itself - no asking in a circle",
+		asked.is_empty() and int(direct.get("status", 0)) == 403
+		and fake.seen.slice(seen_at) == ["POST /api/auth/confirm"], fake.seen.slice(seen_at))
+	Api.confirm_handler = Callable()
+	fake.confirmed = false
+	seen_at = fake.seen.size()
+	var nobody: Dictionary = await Api.post("/power", {})
+	check("  and with nobody to ask (the login screen), the refusal is the answer",
+		int(nobody.get("status", 0)) == 403 and fake.seen.slice(seen_at) == ["POST /power"],
+		fake.seen.slice(seen_at))
+
+	# A REMEMBERED LOGIN REFUSED, SAYING WHY. The game reopens, resumes, and is
+	# told the login was stolen - or is from before the update.
+	var kept_session: String = FileAccess.get_file_as_string(ApiForTests.SESSION_PATH) \
+		if FileAccess.file_exists(ApiForTests.SESSION_PATH) else ""
+	var kept_name: String = Api.username
+	var kept_role: String = Api.role
+	var kept_owner: bool = Api.is_owner
+	var spoken: Array = []
+	for refusal in [{"error": "Unauthorized", "token_stolen": true}, {"error": "Unauthorized", "old_login": true},
+			{"error": "Unauthorized"}]:
+		fake.resume_refusal = refusal
+		Api.token = "remembered"
+		var probe: Dictionary = await Api.probe_and_resume()
+		spoken.append(str(probe.get("notice", "")))
+		check("  (the remembered login is let go: %s)" % JSON.stringify(refusal),
+			not probe.get("resumed", true) and Api.token == "", probe)
+	check("a remembered login refused as stolen says so on the login screen, and so does one from before the update",
+		spoken == [ApiForTests.TOKEN_STOLEN_NOTICE, ApiForTests.OLD_LOGIN_NOTICE, ""], spoken)
+	check("  and the login screen says what the probe brought back",
+		_func_body(_code_src("res://src/ui/menus/loginmenu.gd"), "func _check_connection_and_resume(").contains(
+			"_say(str(probe.get(\"notice\", \"\")), SAY_BLOCKED)"))
+	fake.resume_refusal = {}
+	if kept_session != "":
+		var restore := FileAccess.open(ApiForTests.SESSION_PATH, FileAccess.WRITE)
+		restore.store_string(kept_session)
+		restore.close()
+	Api._set_identity(kept_name, kept_role, kept_owner)
+
+	ApiForTests.BASE_URL = kept_url
+	Api.token = kept_token
+	Api.server_online = kept_online
+	Api.reachability_known = kept_known
+	fake.shutdown()
+	fake.queue_free()
+
+	# ---- the prompt ------------------------------------------------------------
+	var prompt := PasswordPrompt.new()
+	add_child(prompt)
+	prompt.ask("Type your password to do this.")
+	check("the prompt says the server's words, and when it will ask again",
+		prompt.message_label.text.begins_with("Type your password to do this.")
+		and prompt.message_label.text.contains("quarter of an hour"), prompt.message_label.text)
+	check("  and hides what is typed", prompt.box.secret)
+	var got: Array = []
+	prompt.answered.connect(func(typed: String) -> void: got.append(typed))
+	prompt.box.text = "hunter2"
+	prompt.ok_button.pressed.emit()
+	check("Confirm answers with what was typed, and empties the box",
+		got == ["hunter2"] and prompt.box.text == "", got)
+	prompt.ok_button.pressed.emit()
+	prompt.cancel_button.pressed.emit()
+	check("  once: a second press says nothing more", got.size() == 1, got)
+	prompt.queue_free()
+
+	var by_enter := PasswordPrompt.new()
+	add_child(by_enter)
+	var entered: Array = []
+	by_enter.answered.connect(func(typed: String) -> void: entered.append(typed))
+	by_enter.box.text = "swordfish"
+	by_enter.box.text_submitted.emit("swordfish")
+	check("  Enter in the box is Confirm", entered == ["swordfish"], entered)
+	by_enter.queue_free()
+
+	var cancelling := PasswordPrompt.new()
+	add_child(cancelling)
+	var nothing: Array = []
+	cancelling.answered.connect(func(typed: String) -> void: nothing.append(typed))
+	cancelling.box.text = "half typed"
+	cancelling.cancel_button.pressed.emit()
+	check("Cancel answers with nothing, whatever was typed, and empties the box",
+		nothing == [""] and cancelling.box.text == "", nothing)
+	cancelling.queue_free()
+
+	var escaped := PasswordPrompt.new()
+	add_child(escaped)
+	var by_escape: Array = []
+	escaped.answered.connect(func(typed: String) -> void: by_escape.append(typed))
+	escaped.box.text = "half typed"
+	var escape := InputEventAction.new()
+	escape.action = &"ui_cancel"
+	escape.pressed = true
+	escaped._unhandled_input(escape)
+	check("  so does Escape", by_escape == [""], by_escape)
+	escaped.queue_free()
+
+	# ---- the HUD asks ----------------------------------------------------------
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	check("in the world, the HUD is who asks for the password",
+		Api.confirm_handler.is_valid() and Api.confirm_handler.get_object() == hud
+		and Api.confirm_handler.get_method() == &"ask_password")
+	var typed_back: Array = []
+	(func() -> void: typed_back.append(await hud.ask_password("Type your password to do this."))).call()
+	await get_tree().process_frame
+	var shown: PasswordPrompt = hud.password_prompt
+	check("  it puts the prompt up, last on the HUD so it is over every window",
+		shown != null and shown.get_parent() == hud and shown.get_index() == hud.get_child_count() - 1
+		and shown.message_label.text.begins_with("Type your password"))
+	# NOT AWAITED DIRECTLY. Broken, the second ask puts up a prompt of its own
+	# and waits for it for ever - and an awaited hang is a suite that never
+	# reports. Called aside and looked at a frame later, it is a failure.
+	var second: Array = []
+	(func() -> void: second.append(await hud.ask_password("Again?"))).call()
+	await get_tree().process_frame
+	check("  one at a time: a second ask while it is up gets nothing",
+		second == [""] and hud.password_prompt == shown, second)
+	if shown != null:
+		shown.box.text = "hunter2"
+		shown.ok_button.pressed.emit()
+	await get_tree().process_frame
+	check("  and hands back what was typed, and takes the prompt away",
+		typed_back == ["hunter2"] and hud.password_prompt == null
+		and (not is_instance_valid(shown) or shown.is_queued_for_deletion()), typed_back)
+	hud.queue_free()
+	await get_tree().process_frame
+	check("a HUD gone (the login screen) asks nothing: the refusal is the answer",
+		not Api.confirm_handler.is_valid())
+	Api.confirm_handler = kept_handler
+
+	# ---- what an ended session says ------------------------------------------
+	check("a session ended as stolen says so, and what to do about it",
+		ApiForTests.signout_notice_for({"data": {"token_stolen": true}}) == ApiForTests.TOKEN_STOLEN_NOTICE
+		and ApiForTests.TOKEN_STOLEN_NOTICE.contains("change your password"))
+	check("  a staff login that ran its course says how long one lasts",
+		ApiForTests.signout_notice_for({"data": {"staff_session_ended": true}})
+			== ApiForTests.STAFF_SESSION_ENDED_NOTICE
+		and ApiForTests.STAFF_SESSION_ENDED_NOTICE.contains("12 hours"))
+	check("  a login from before the update, ended when the minimum build reached 6, says that",
+		ApiForTests.signout_notice_for({"data": {"old_login": true}}) == ApiForTests.OLD_LOGIN_NOTICE
+		and ApiForTests.OLD_LOGIN_NOTICE.contains("updated"))
+	check("  and the others read as they did",
+		ApiForTests.signout_notice_for({"data": {"signed_in_elsewhere": true}}) == ApiForTests.SIGNED_IN_ELSEWHERE_NOTICE
+		and ApiForTests.signout_notice_for({}) == ApiForTests.SIGNED_OUT_NOTICE)
+
+	# ---- plain http only to this computer --------------------------------------
+	var here := ["http://localhost:5000", "http://127.0.0.1:5000/", "http://127.4.5.6",
+		"http://[::1]:5000", "http://[::1]", "http://LOCALHOST:5000"]
+	var away := ["http://api.elusionrpg.com", "http://192.168.1.20:5000", "http://10.0.0.1",
+		"http://127.evil.example", "http://127.0.0.1.evil.example", "http://[::1].evil.example",
+		"http://localhost:80@evil.example", "http://localhost@evil.example/", "http://evil.localhost"]
+	var wrong_here: Array = here.filter(func(url: String) -> bool: return not ApiForTests.is_this_computer(url))
+	var wrong_away: Array = away.filter(func(url: String) -> bool: return ApiForTests.is_this_computer(url))
+	check("this computer is localhost, 127.x.x.x and [::1] - exactly", wrong_here.is_empty(), wrong_here)
+	check("  and a name that only begins like one is somewhere else", wrong_away.is_empty(), wrong_away)
+	var let_out: Array = away.filter(func(url: String) -> bool:
+		return ApiForTests._clean_base_url(url) != ApiForTests.DEFAULT_BASE_URL)
+	check("an override over plain http to anywhere else is ignored, for the default",
+		let_out.is_empty(), let_out)
+	check("  https goes anywhere, and http stays for the server on this computer",
+		ApiForTests._clean_base_url("https://api.elusionrpg.com/") == "https://api.elusionrpg.com"
+		and ApiForTests._clean_base_url("http://127.0.0.1:5001") == "http://127.0.0.1:5001")
+	check("  a browser page keeps its own address, http or not - it came over it",
+		ApiForTests.web_base_url("http://192.168.1.20:8061") == "http://192.168.1.20:8061")
+	print("  tokens: install id on %d header builders; step-up asked, confirmed and sent again" % builders)
 
 
 # =============================================================================
@@ -14957,6 +15708,8 @@ func _test_players_right_click_menu() -> void:
 	panel.friend_asked.connect(func(who: String) -> void: heard.append("friend " + who))
 	panel.trade_asked.connect(func(who: String) -> void: heard.append("trade " + who))
 	panel.party_asked.connect(func(who: String) -> void: heard.append("party " + who))
+	panel.guild_asked.connect(func(who: String) -> void: heard.append("guild " + who))
+	panel.report_asked.connect(func(who: String, why: String) -> void: heard.append("report %s %s" % [who, why]))
 
 	var left := InputEventMouseButton.new()
 	left.button_index = MOUSE_BUTTON_LEFT
@@ -14973,16 +15726,20 @@ func _test_players_right_click_menu() -> void:
 	if menu != null:
 		for i in menu.item_count:
 			if menu.is_item_separator(i):
-				title = menu.get_item_text(i)
+				if title == "":
+					title = menu.get_item_text(i)
 			else:
 				items.append(menu.get_item_text(i))
-	check("a right click opens their menu: Whisper, Add friend, Trade, Invite to party",
-		menu != null and title == "rowdy" and items == ["Whisper", "Add friend", "Trade", "Invite to party"], [title, items])
+	check("a right click opens their menu - what every name offers (playermenu.gd, 0.43.0)",
+		menu != null and title == "rowdy" and items == ["Whisper", "Add friend", "Trade", "Invite to party",
+		"Invite to guild", "Spam", "Harassment", "Hate speech", "Cheating or scams", "Something else"], [title, items])
 	if menu != null:
-		for id in [panel.MENU_WHISPER, panel.MENU_FRIEND, panel.MENU_TRADE, panel.MENU_PARTY]:
+		for id in [panel.MENU_WHISPER, panel.MENU_FRIEND, panel.MENU_TRADE, panel.MENU_PARTY, panel.MENU_GUILD,
+				PlayerMenu.REPORT + 3]:
 			menu.id_pressed.emit(id)
-	check("  and each asks for that, for them",
-		heard == ["whisper rowdy", "friend rowdy", "trade rowdy", "party rowdy"], heard)
+	check("  and each asks for that, for them - the report with its reason",
+		heard == ["whisper rowdy", "friend rowdy", "trade rowdy", "party rowdy", "guild rowdy",
+		"report rowdy cheating"], heard)
 	panel._menu_who = ""
 	panel.open_row_menu("ME_MYSELF")
 	check("  there is no menu for yourself, however it is typed", panel._menu_who == "")
@@ -24994,9 +25751,10 @@ func _test_chat_safety_menu() -> void:
 		for i in menu.item_count:
 			if not menu.is_item_separator(i):
 				items.append(menu.get_item_text(i))
-	check("clicking a name opens its menu: whisper, ignore, and the five reasons to report",
+	check("clicking a name opens its menu: whisper, ignore, what every name offers, and the five reasons to report the line",
 		menu != null and chat._menu_line.get("by") == "rowdy"
-		and items == ["Whisper", "Ignore", "Spam", "Harassment", "Hate speech", "Cheating or scams", "Something else"],
+		and items == ["Whisper", "Ignore", "Add friend", "Trade", "Invite to party", "Invite to guild",
+		"Spam", "Harassment", "Hate speech", "Cheating or scams", "Something else"],
 		items)
 	check("  and a player is offered no mute", not items.has("Unmute"))
 	var own: RichTextLabel = chat._node_for({"kind": "chat", "by": "me_myself", "role": "player",

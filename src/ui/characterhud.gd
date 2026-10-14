@@ -148,6 +148,12 @@ var chat_panel:       Control         = null
 var friends_panel:    Control         = null
 var players_panel:    Control         = null
 var guild_panel:      Control         = null
+# THE PLAYER MENU (0.43.0): a name over somebody's head, clicked.
+var player_menu: PopupMenu = null
+var _player_menu_who: String = ""
+# Where the player menu's own requests go (the guild invite, a report); a seam
+# for the suite.
+var api_post: Callable = Callable(Api, "post")
 var party_panel:      PartyPanel      = null
 
 # The server's announcements, and the cursor into them. 0 means "I just got
@@ -250,6 +256,11 @@ var _mouse_mode_before_drag: Input.MouseMode = Input.MOUSE_MODE_VISIBLE
 # =============================================================================
 
 func _ready() -> void:
+	# The names over other players open the player menu here (A NAME, CLICKED).
+	add_to_group(&"player_menu_host")
+	# STEP-UP (0.44.0): the server asking for the password before a powerful
+	# route is asked here, on top of whatever window sent it.
+	Api.confirm_handler = Callable(self, "ask_password")
 	# HIDDEN IN THE SCENE FILE, SHOWN HERE.
 	#
 	# Both this and the login menu are CanvasLayers, so the 2D editor draws them
@@ -3340,7 +3351,115 @@ func _build_players_panel() -> Control:
 	panel.friend_asked.connect(ask_to_be_friends)
 	panel.trade_asked.connect(trade_with)
 	panel.party_asked.connect(invite_to_party)
+	panel.guild_asked.connect(invite_to_guild)
+	panel.report_asked.connect(report_player)
 	return panel
+
+
+# =============================================================================
+# A NAME, CLICKED (0.43.0)
+# =============================================================================
+# The owner: "clicking over a person should have add friend inv to guild or
+# party and report button that syncs to our mod/dev/owner same thing in chat".
+# The name over a player in the world calls open_player_menu() (the group
+# "player_menu_host"); chat calls player_action() for its own menu's items.
+# Every item goes where it already went - PlayerMenu says which there are.
+
+func open_player_menu(who: String) -> void:
+	"""The menu for `who`, at the mouse - from the name over their head."""
+	if who == "" or (Api.username != "" and who.to_lower() == Api.username.to_lower()):
+		return
+	if player_menu == null:
+		player_menu = PopupMenu.new()
+		player_menu.name = "playermenu"
+		add_child(player_menu)
+		player_menu.id_pressed.connect(func(id: int) -> void:
+			var chosen: Array = PlayerMenu.action_of(id)
+			player_action(str(chosen[0]), _player_menu_who, str(chosen[1])))
+	player_menu.clear()
+	_player_menu_who = who
+	player_menu.add_separator(who)
+	PlayerMenu.fill(player_menu, who)
+	player_menu.reset_size()
+	if is_inside_tree():
+		player_menu.position = Vector2i(get_viewport().get_mouse_position())
+		player_menu.popup()
+
+
+func player_action(what: String, who: String, reason: String = "") -> void:
+	"""One of PlayerMenu's items, for `who`."""
+	if who == "":
+		return
+	match what:
+		"whisper":
+			whisper_player(who)
+		"friend":
+			await ask_to_be_friends(who)
+		"trade":
+			trade_with(who)
+		"party":
+			await invite_to_party(who)
+		"guild":
+			await invite_to_guild(who)
+		"report":
+			await report_player(who, reason)
+
+
+func invite_to_guild(who: String) -> void:
+	"""Ask `who` into your guild - the server says if you may."""
+	var res: Dictionary = await api_post.call("/api/guild/invite", {"username": who})
+	if not is_instance_valid(self):
+		return
+	if res.get("ok", false):
+		_push_message("Invited %s to your guild." % who, Color(0.55, 0.85, 0.5))
+	else:
+		_push_message(_refusal_line(res, "Could not invite %s to your guild." % who), Color(1.0, 0.7, 0.45))
+
+
+func report_player(who: String, reason: String) -> void:
+	"""Tell staff about `who` - on their card on the staff Reports tab."""
+	var res: Dictionary = await api_post.call("/api/report/player",
+		{"username": who, "reason": reason, "area": AreaRegistry.current_area_id()})
+	if not is_instance_valid(self):
+		return
+	if not res.get("ok", false):
+		_push_message(_refusal_line(res, "Could not report %s." % who), Color(1.0, 0.7, 0.45))
+	elif bool((res.get("data", {}) as Dictionary).get("already", false)):
+		_push_message("You already reported %s. Staff have it." % who, Color(0.85, 0.82, 0.74))
+	else:
+		_push_message("Reported %s. Thank you - staff will look at it." % who, Color(0.55, 0.85, 0.5))
+
+
+# =============================================================================
+# THE PASSWORD, ONCE MORE (0.44.0)
+# =============================================================================
+
+var password_prompt: PasswordPrompt = null
+
+
+func ask_password(message: String) -> String:
+	"""The password, typed into a prompt over everything - or "" for Cancel.
+	One at a time: a second ask while one is open is answered with nothing."""
+	if password_prompt != null and is_instance_valid(password_prompt):
+		return ""
+	password_prompt = PasswordPrompt.new()
+	password_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	add_child(password_prompt)
+	password_prompt.position = (get_viewport().get_visible_rect().size - password_prompt.get_combined_minimum_size()) / 2.0 \
+		if is_inside_tree() else Vector2.ZERO
+	password_prompt.ask(message)
+	var typed: String = str(await password_prompt.answered)
+	if is_instance_valid(password_prompt):
+		password_prompt.queue_free()
+	password_prompt = null
+	return typed
+
+
+static func _refusal_line(res: Dictionary, fallback: String) -> String:
+	var message: String = str(res.get("error", ""))
+	if int(res.get("status", 0)) == 404 and message == "":
+		return "The server does not know that yet - it may need updating."
+	return message if message != "" else fallback
 
 
 func whisper_player(who: String) -> void:

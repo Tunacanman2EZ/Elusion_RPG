@@ -899,7 +899,11 @@ func _check_connection_and_resume() -> void:
 
 	if not probe.get("resumed", false):
 		# Either there was no cached token, or the server rejected it. Neither
-		# is worth a message — the form is right there.
+		# is worth a message — the form is right there - unless the server said
+		# why (0.44.0): a login used from the wrong place, or one from before
+		# the update.
+		if str(probe.get("notice", "")) != "":
+			_say(str(probe.get("notice", "")), SAY_BLOCKED)
 		return
 
 	# A valid session came back. But DON'T steal the screen from someone who

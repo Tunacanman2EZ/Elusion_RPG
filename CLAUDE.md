@@ -2949,7 +2949,9 @@ itself, without rcedit.
 `Api._resolve_base_url()` tries `--server=`, then `ELUSION_SERVER`, then
 `user://server.cfg`, then falls back to `http://127.0.0.1:5000`. Until the
 server moves, the .exe only finds one on a PC running the API. When it moves,
-point `DEFAULT_BASE_URL` at the real address before exporting.
+point `DEFAULT_BASE_URL` at the real address before exporting. Since 0.44.0
+an override must be `https://`, or `http://` to this computer only
+(`is_this_computer()`); any other `http://` is ignored, with a `[BOOT]` line.
 
 Measured in the sandbox: a 113 MB .exe, 104.6 MB of it the engine. Booted from
 its own pack, it loaded every item (146 of 146) and every area, and nothing from
@@ -6037,6 +6039,109 @@ and not chosen.)
   says where the rest are.
 - `_test_parties`, and the window lists that hold every window, the Social
   dropdown, the players menu and the chat channels.
+
+### Party voice, and a name clicked anywhere (0.43.0)
+
+The owner: "I really really want the option for voice chat in game for
+parties ... could even be a flappable switch", and "clicking over a person
+should have add friend inv to guild or party and report button that syncs to
+our mod/dev/owner same thing in chat if i hover over some ones name". Asked
+how voice should be built, he chose "Browser voice + Cloudflare TURN".
+
+- **Why the browser.** Godot's WebRTC carries data, not sound, and has no echo
+  cancellation. The browser's calling has the microphone, Opus, a jitter
+  buffer, echo cancellation, noise suppression and gain. So on the web the
+  game hands the call to it: `VoiceBridge.SOURCE` (src/systems/voicebridge.gd)
+  is JavaScript put into the page once as `window.elusionVoice`; the bridge
+  calls it. **No backslash in that JavaScript** - it sits in a GDScript string
+  (the suite checks), and **no method named like an Object method** (`call`,
+  `connect`, `set`, `get`): `dial`, `hear`, `status`. Off the web there is no
+  bridge, and the switch says voice is in the browser version.
+- **A mesh through a relay.** One call per other member (a party is at most
+  four), every one through the TURN relay the server names, with
+  `iceTransportPolicy: "relay"` - nobody sees anybody's address. The server
+  hands out short-lived relay credentials (`GET /api/party/voice`, only to a
+  party member) made from its own TURN key; only `ELUSION_VOICE_DIRECT=on`, for
+  a test on one computer, says "all".
+- **Who calls whom** (presence.py, PARTY VOICE): a game in voice says so
+  (`{"t": "vs", "on": true}`); it is told who is already in (`"in"`) and calls
+  each (`dial`); they are told it came (`"join"`) and wait for its call. So of
+  any two, exactly one calls. A call's setup goes over the presence socket
+  (`"vc"`), which passes it only between two in voice in the same party.
+  **Every meeting is a new call**: somebody already known saying they joined
+  again (their link dropped) is hung up first and calls anew.
+- **Voice** (src/systems/voice.gd, an autoload after Presence): the switch,
+  the relay, the microphone (`MODE_OPEN`, or `MODE_PUSH` on **Push to talk**,
+  V), **Mute my microphone** (B) - both rebindable on the Controls card - each
+  other voice's volume, who is speaking (`speaking()`, the page's loudness
+  over `SPEAKING_LEVEL`). Mode, mute and volumes are kept in
+  `user://voice.cfg` (`Voice.path`). Off by itself when the party goes, when
+  the server says so (`"off"`), or the browser refuses the microphone; the
+  window losing focus lets go of push-to-talk.
+- **The Party window**: Voice switch, Open mic / Push to talk (with its key),
+  Mute, a line saying why voice is off or how to talk; for each member in
+  voice a speaker that lights while they talk and their own volume slider
+  (the list is not rebuilt while one is dragged). **Over their heads**, a lit
+  speaker beside the name while they talk (remoteplayer.gd `TalkMark`).
+- **A name, clicked** (src/ui/players/playermenu.gd, `PlayerMenu`): the name
+  over a player in the world is a button now (the plate takes the click, so it
+  never swings) and opens the HUD's player menu (group `player_menu_host`,
+  `open_player_menu()`); the Players window and a chat name show the same
+  items - Whisper, Add friend, Trade, Invite to party (not for somebody in
+  yours), Invite to guild, and Report with a reason. Chat keeps "Report this
+  message" for a line; a hovered chat name is underlined under a pointing hand.
+  Each item goes where it already went (`CharacterHUD.player_action()`).
+- **Report a player** (`POST /api/report/player`): a `chat_reports` row with
+  channel `player` and a negative `message_id`, so it sits on that player's
+  card on the staff Reports tab, counts in the badge and closes with the same
+  buttons; the staff card says "the player" and does not quote it.
+- `_test_names_open_the_player_menu`, `_test_party_voice`. The browser side was
+  run for real: two exported game clients in Chromium with fake microphones,
+  logged in, in one party - both in voice, the call connected, sound both
+  ways, the mute key silencing one, and the party ending turning voice off.
+
+### Token lifecycle: which copy of the game, the password again (0.44.0)
+
+Students reviewing the project named one missing defence: "token-lifecycle
+hardening through rotation, short lifetime, binding, revocation, and secure
+storage". The server does the work (TOKEN LIFECYCLE in app.py, the API's
+CLAUDE.md and `test_tokens.py`); this is the game's half, held by
+`_test_token_lifecycle()`.
+
+- **Build 6 sends `X-Elusion-Install`** - `install_id()`, the random id in
+  `user://install.cfg` - on every request, from all four header builders
+  (`_request_once`, `post_bytes`, `get_bytes`, `send_before_leaving`). A login
+  from build 6 is bound to it: the same token without it, or with another
+  copy's, is theft, and the server ends every session on the account. **A new
+  header builder stamps both headers**, or every request through it signs the
+  player out as stolen. The suite counts them.
+- **Step-up.** `_request()` wraps `_request_once()`: a 403 with
+  `confirm_password` calls `Api.confirm_handler` with the server's words,
+  sends what was typed to `POST /api/auth/confirm`, and sends the request again
+  once. Cancel ("") sends nothing more and the 403 is the answer; a wrong
+  password is the confirm's own 403 ("That is not your password."), and the
+  request is not resent. Never for the confirm itself, and never for a 403
+  without the flag. `post_bytes` and `get_bytes` do not step up - no step-up
+  route is reached through them.
+- **The HUD is the handler** (`characterhud.gd` `_ready()`:
+  `Api.confirm_handler = Callable(self, "ask_password")`). `ask_password()`
+  puts a `PasswordPrompt` (src/ui/passwordprompt.gd) up as the HUD's last
+  child, one at a time, and returns what was typed. At the login screen there
+  is no HUD, the Callable is invalid, and the 403 is the answer.
+- **What an ended session says** (`signout_notice_for()`): `token_stolen` -
+  sign in again, change the password if it was not you; `staff_session_ended`
+  - 12 hours, half an hour away; `old_login` - the game was updated. A
+  remembered login refused on reopening says the first and last of those on
+  the login screen too (`probe_and_resume()`'s `notice`).
+- **Plain `http://` only to this computer.** `_clean_base_url()` ignores an
+  `http://` override that is not `is_this_computer()` - exactly `localhost`,
+  `127.x.x.x` or `[::1]`, never a name that begins like one, a login part
+  (`localhost:80@evil.example`) or `name.localhost` (a desktop game asks DNS).
+  A browser page keeps its own origin, http or not (`web_base_url()`): it came
+  over that connection.
+- **It switches on with the minimum build.** Until the owner sets it to 6 on
+  the Server tab, a build-5 game plays as before. At 6, every login made
+  before is ended once (everyone types the password again).
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

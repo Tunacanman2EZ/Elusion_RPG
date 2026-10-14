@@ -85,9 +85,14 @@ the server keeps only its hash.)
 override the address, which is how a build is moved to a new host without a
 rebuild. It also means a build, a shortcut or a `server.cfg` from someone else can
 point the game at their server and collect the password typed into it. Only run a
-build you exported yourself. A public server must be `https://`: plain `http://`
-is accepted, because the local development server is, and would carry the password
-across the network unencrypted.
+build you exported yourself. Since 0.44.0 an override must be `https://`, or plain
+`http://` to this computer only (`localhost`, `127.x.x.x`, `[::1]`) for the local
+development server; plain `http://` to anywhere else is ignored and the default
+server used, because it would carry the password and the token across the network
+unencrypted. That keeps the password off the wire; it does not change the warning
+above, because a build pointed at somebody's `https://` server still sends it to
+them. (A browser game reads none of the three and talks to the address its page
+came from, http or not: the page arrived over that same connection.)
 
 **An export can be read by anyone who has it.** The pack inside a Windows `.exe`
 or a browser export holds the scripts compiled but not encrypted

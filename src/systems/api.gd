@@ -92,18 +92,21 @@ const WebPage := preload("res://src/systems/webpage.gd")
 # left". The first build worth making the minimum since 4: every game in an
 # area then sees the same things.
 # Matches CURRENT_CLIENT_BUILD in app.py.
-const BUILD := 5
+const BUILD := 6
 # MAJOR.MINOR.PATCH: 0.x until launch, the middle number for a new chunk of
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.42.0"
+const DISPLAY_VERSION := "0.44.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
 # because an absent header reads as a very old client and the server is not
 # refusing anybody by default.
 const BUILD_HEADER := "X-Elusion-Build"
+# TOKEN LIFECYCLE (0.44.0, app.py): which copy of the game, on every request.
+const INSTALL_HEADER := "X-Elusion-Install"
+const CONFIRM_PATH := "/api/auth/confirm"
 
 static var BASE_URL: String = DEFAULT_BASE_URL
 
@@ -222,14 +225,20 @@ static func web_base_url(origin: String) -> String:
 	"""The API address for a page served from `origin`, or "" for none.
 
 	window.location.origin is the string "null" for a page opened from disk,
-	and the engine cannot start from one anyway; only http(s) is an answer."""
+	and the engine cannot start from one anyway; only http(s) is an answer.
+
+	PLAIN http:// IS KEPT HERE, wherever it points (0.44.0). The page itself
+	came over that connection, so anyone able to read the password on it could
+	have changed the game it came in; refusing it would protect nothing and
+	break a game opened from another computer at home. The microphone is what
+	such a page loses - browsers only give it to https and to localhost."""
 	var cleaned: String = origin.strip_edges()
 	if not (cleaned.begins_with("https://") or cleaned.begins_with("http://")):
 		return ""
-	return _clean_base_url(cleaned)
+	return _clean_base_url(cleaned, true)
 
 
-static func _clean_base_url(raw: String) -> String:
+static func _clean_base_url(raw: String, page_origin: bool = false) -> String:
 	"""Normalise an override, or refuse it and fall back.
 
 	TWO MISTAKES THAT LOOK LIKE AN OUTAGE. Both produce a client that cannot
@@ -255,7 +264,36 @@ static func _clean_base_url(raw: String) -> String:
 			% [raw, DEFAULT_BASE_URL])
 		return DEFAULT_BASE_URL
 
+	# PLAIN http:// ONLY TO THIS COMPUTER (0.44.0, TOKEN LIFECYCLE). Anywhere
+	# else it would carry the password and the token across the network
+	# unencrypted - to a server, or to whoever is between.
+	if url.begins_with("http://") and not page_origin and not is_this_computer(url):
+		push_warning("Api: ignoring server override %s - only https:// leaves this computer" % raw)
+		print("[BOOT] Api: ignoring server override %s (plain http to another machine); using %s"
+			% [raw, DEFAULT_BASE_URL])
+		return DEFAULT_BASE_URL
+
 	return url
+
+
+static func is_this_computer(url: String) -> bool:
+	"""Whether `url`'s host is this computer: localhost, 127.x.x.x or [::1].
+
+	EXACT, NOT A PREFIX. `127.evil.example` begins with "127." and is
+	somebody's server; `[::1].evil.example` begins with "[::1]"; and
+	`localhost:80@evil.example` is a login of "localhost" at evil.example.
+	Each would carry the password over plain http to another machine. So is
+	`name.localhost`: a browser keeps it here, but a desktop game asks DNS."""
+	var rest: String = url.substr(url.find("://") + 3)
+	var host: String = rest.split("/")[0].split("?")[0].split("#")[0].to_lower()
+	if host.contains("@"):
+		return false
+	if host.begins_with("["):
+		return host == "[::1]" or host.begins_with("[::1]:")
+	host = host.split(":")[0]
+	if host == "localhost":
+		return true
+	return host.begins_with("127.") and host.is_valid_ip_address()
 
 # how long to wait before giving up on a request, in seconds. This is the
 # budget for a request the PLAYER ASKED FOR — they pressed Login and are
@@ -342,6 +380,10 @@ func is_known_offline() -> bool:
 # that proves who this client is — username and role are conveniences echoed by
 # the server, never something we decide locally.
 var token: String = ""
+# STEP-UP (0.44.0): asked for the password when the server wants it typed
+# again before a powerful route - set by the HUD (passwordprompt.gd), which
+# answers with what was typed, or "" for Cancel. Unset, the 403 is the answer.
+var confirm_handler: Callable = Callable()
 var username: String = ""
 
 # Whether this account is the server's OWNER, as the server understands it.
@@ -402,6 +444,9 @@ var last_refusal: Dictionary = {}
 
 const SIGNED_OUT_NOTICE := "You were signed out by the server."
 const SIGNED_IN_ELSEWHERE_NOTICE := "This account signed in somewhere else, so this game was signed out."
+const TOKEN_STOLEN_NOTICE := "This login was used from somewhere it should not have been, so every session on the account was ended. Sign in again - and if that was not you, change your password."
+const STAFF_SESSION_ENDED_NOTICE := "A staff login lasts 12 hours, and half an hour away. Sign in again."
+const OLD_LOGIN_NOTICE := "The game was updated, and logins from before the update have ended. Sign in again."
 
 
 # The rank god mode requires. ONE statement of the policy, asserted by the
@@ -744,7 +789,7 @@ func post_bytes(path: String, payload: PackedByteArray, content_type: String,
 		# three functions in this file build headers and the gate is only as
 		# good as the least of them. A route reached through a builder that
 		# omitted this would read as a pre-versioning client forever.
-		BUILD_HEADER + ": " + str(BUILD)])
+		BUILD_HEADER + ": " + str(BUILD), INSTALL_HEADER + ": " + install_id()])
 	var sent_token: String = token
 	if token != "":
 		headers.append("Authorization: Bearer " + token)
@@ -774,7 +819,7 @@ func get_bytes(path: String, timeout_override: float = 0.0) -> Dictionary:
 	http.timeout = timeout_override if timeout_override > 0.0 else TIMEOUT
 	add_child(http)
 
-	var headers := PackedStringArray([BUILD_HEADER + ": " + str(BUILD)])
+	var headers := PackedStringArray([BUILD_HEADER + ": " + str(BUILD), INSTALL_HEADER + ": " + install_id()])
 	if token != "":
 		headers.append("Authorization: Bearer " + token)
 
@@ -811,12 +856,33 @@ func send_before_leaving(method: String, path: String, body: Dictionary) -> bool
 	# THE SAME THREE HEADERS AS EVERY OTHER REQUEST, the build among them.
 	var headers := PackedStringArray(["Content-Type: application/json",
 		BUILD_HEADER + ": " + str(BUILD),
+		INSTALL_HEADER + ": " + install_id(),
 		"Authorization: Bearer " + token])
 	_note_request()
 	return WebPage.send_now(BASE_URL + path, method, headers, JSON.stringify(body))
 
 
 func _request(method: int, path: String, body: Dictionary, timeout_override: float = 0.0) -> Dictionary:
+	"""One request - and, when the server asks for the password first (STEP-UP,
+	app.py TOKEN LIFECYCLE: 403 with confirm_password), the password asked for
+	through confirm_handler, confirmed, and the request sent once more."""
+	var res: Dictionary = await _request_once(method, path, body, timeout_override)
+	if int(res.get("status", 0)) != 403 or path == CONFIRM_PATH or not confirm_handler.is_valid():
+		return res
+	var data: Variant = res.get("data", {})
+	if not (data is Dictionary and bool((data as Dictionary).get("confirm_password", false))):
+		return res
+	var password: String = str(await confirm_handler.call(str((data as Dictionary).get("message", ""))))
+	if password == "":
+		return res
+	var confirmed: Dictionary = await _request_once(HTTPClient.METHOD_POST, CONFIRM_PATH, {"password": password},
+		timeout_override)
+	if not confirmed.get("ok", false):
+		return confirmed
+	return await _request_once(method, path, body, timeout_override)
+
+
+func _request_once(method: int, path: String, body: Dictionary, timeout_override: float = 0.0) -> Dictionary:
 	# 0.0 means "use the normal budget" rather than "no timeout" — an explicit
 	# zero on HTTPRequest.timeout disables the timeout entirely, which is the
 	# opposite of what a caller passing a smaller number wants.
@@ -828,7 +894,11 @@ func _request(method: int, path: String, body: Dictionary, timeout_override: flo
 		# and then refused on the next call is worse than being told at the
 		# door - and the login screen is the one place this client already
 		# knows how to show a refusal.
-		BUILD_HEADER + ": " + str(BUILD)])
+		BUILD_HEADER + ": " + str(BUILD),
+		# AND WHICH COPY OF THE GAME (0.44.0, app.py TOKEN LIFECYCLE): a login
+		# from this build is bound to it, and the token without it is refused
+		# as stolen. A random id, kept in user://install.cfg; not a credential.
+		INSTALL_HEADER + ": " + install_id()])
 	# Remembered, because the answer is only about THIS token. A logout and a
 	# fresh login can both happen while a slow request is in flight, and a 401
 	# for the old token says nothing about the new one.
@@ -1178,7 +1248,16 @@ func probe_and_resume() -> Dictionary:
 
 	# Reached the server and it said no — the token expired or was revoked.
 	_clear_session()
-	return {"online": true, "resumed": false}
+	# SAID, WHEN THE SERVER SAID WHY (0.44.0). An ended login is usually not
+	# worth a word - the form is right there - but "used from somewhere it
+	# should not have been" is the one line the player must read, and "the
+	# game was updated" saves them wondering where Remember me went.
+	var refused: Variant = res.get("data", {})
+	var why: String = ""
+	if refused is Dictionary and (bool((refused as Dictionary).get("token_stolen", false))
+			or bool((refused as Dictionary).get("old_login", false))):
+		why = signout_notice_for(res)
+	return {"online": true, "resumed": false, "notice": why}
 
 
 func heartbeat() -> String:
@@ -1318,6 +1397,15 @@ static func signout_notice_for(res: Dictionary) -> String:
 	var data: Variant = res.get("data", {})
 	if data is Dictionary and bool(data.get("signed_in_elsewhere", false)):
 		return SIGNED_IN_ELSEWHERE_NOTICE
+	# TOKEN LIFECYCLE (0.44.0): the login was used from somewhere it should not
+	# have been, a staff login ran its course, or it was from before the update.
+	if data is Dictionary and bool(data.get("token_stolen", false)):
+		return TOKEN_STOLEN_NOTICE
+	if data is Dictionary and bool(data.get("staff_session_ended", false)):
+		return STAFF_SESSION_ENDED_NOTICE
+	# Every unbound login ends when the owner sets the minimum build to 6.
+	if data is Dictionary and bool(data.get("old_login", false)):
+		return OLD_LOGIN_NOTICE
 	return SIGNED_OUT_NOTICE
 
 
