@@ -306,6 +306,8 @@ func _run_all() -> void:
 	await _test_other_players_are_drawn()
 	_test_other_players_move_evenly()
 	await _test_other_players_attacks_are_pictures()
+	await _test_other_players_attacks_switch()
+	_test_every_class_answers_its_own_attack()
 	_test_presence_sends_attacks()
 	await _test_levers_are_shared()
 	await _test_held_keys_are_let_go()
@@ -6248,6 +6250,8 @@ func _test_settings() -> void:
 		"damage_numbers": "damagenumbers",   "chat_filter": "chatfilter",
 		# 0.31.0: the rings on the floor.
 		"aim_rings": "aimrings",           "range_circles": "rangecircles",
+		# 0.40.1: other players' attacks.
+		"others_attacks": "othersattacks",
 		"render_resolution": "renderresolution", "lighting": "lighting",
 		"background_fps_limit": "backgroundlimit",
 		# BOTH OF THESE WERE MISSING FROM THE TABLE, not from the game.
@@ -10439,9 +10443,139 @@ func _test_other_players_move_evenly() -> void:
 # but they could see mine". The attacker's game sends a picture of each one and
 # this game spawns it from the class's own scene, with `cosmetic` set
 # (remoteattacks.gd): drawn exactly as theirs, touching nothing.
+func _test_other_players_attacks_switch() -> void:
+	section("OTHER PLAYERS - drawn as their own scene sorts, and a switch for their attacks (0.40.1)")
+	# The owner: "on my screen garys ring is over the character and i cannot
+	# see his attacks we need a switch to allow the sight of player attacks that
+	# are not their own".
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var kept: bool = bool(Settings.get_value("others_attacks"))
+	var arena := Node2D.new()
+	add_child(arena)
+	var o := Vector2(-74000, -74000)
+
+	# ---- sorted as their own scene sorts ----
+	var tank_scene: Node2D = (load("res://scene/characters/tank.tscn") as PackedScene).instantiate() as Node2D
+	var tank_sorts: bool = tank_scene.y_sort_enabled
+	tank_scene.free()
+	var tanky: Node2D = Remote.new()
+	tanky.user_id = 641
+	arena.add_child(tanky)
+	tanky.set_identity({"id": 641, "name": "Gary", "cls": "tank", "lvl": 20, "v": 2})
+	tanky.set_process(false)
+	tanky.place(o)
+	var body: Node2D = tanky.get_node_or_null(^"animatedsprite2d") as Node2D
+	var fire: Node2D = tanky.get_node_or_null(^"firering") as Node2D
+	var small: Node2D = tanky.get_node_or_null(^"ring") as Node2D
+	check("a tank's picture y-sorts as the tank's own scene does, so its fire ring and small ring draw under it - and under everyone in the fire",
+		tank_sorts and tanky.y_sort_enabled and body != null and fire != null and small != null
+		and fire.position.y < body.position.y and small.position.y < body.position.y,
+		[tanky.y_sort_enabled, str(fire.position.y) if fire else "no fire ring", str(body.position.y) if body else "no body"])
+	check("  every class as its own: the warrior, mage and tank sort, the healer does not",
+		Remote.class_sorted("warrior") and Remote.class_sorted("mage") and Remote.class_sorted("tank")
+		and not Remote.class_sorted("healer") and not Remote.class_sorted(""))
+
+	# ---- the switch ----
+	check("Options has the switch - on by default, as their attacks have been drawn since 0.19.0",
+		Settings.DEFAULTS.get("others_attacks") == true
+		and _func_body(_code_src("res://src/ui/menus/optionsscreen.gd"), "func _on_others_attacks_toggled(").contains("Settings.set_value(\"others_attacks\", pressed)")
+		and _code_src("res://src/ui/menus/optionsscreen.gd").contains("others_attacks_toggle.button_pressed = bool(Settings.get_value(\"others_attacks\"))")
+		and _code_src("res://scene/ui/menus/optionsscreen.tscn").contains("text = \"Other players' attacks\""))
+	Settings.set_value("others_attacks", true)
+	tanky.set_motion("idledown", ["ring", "firering"], "")
+	var lit_on: bool = fire != null and fire.visible and small != null and small.visible
+	var made: Array = RemoteAttacks.fire(tanky, ["slash", 0, o.x, o.y, o.x + 100.0, o.y, 0, 0])
+	var drawn_on: int = made.size()
+	for n in made:
+		(n as Node).queue_free()
+	Settings.set_value("others_attacks", false)
+	var lit_off: bool = (fire != null and fire.visible) or (small != null and small.visible)
+	var hidden_kinds: Array = []
+	for attack in [["slash", 0, o.x, o.y, o.x + 100.0, o.y, 0, 0], ["axe", 0, o.x, o.y, o.x + 60.0, o.y, 0, 0],
+			["stalag", 0, o.x, o.y, o.x + 4.0, o.y, 0, 0], ["meteor", 0, o.x, o.y, o.x, o.y, 0, 0],
+			["dyn", 0, o.x, o.y, o.x + 30.0, o.y, 0, 0], ["orb", 0, o.x, o.y, o.x, o.y + 100.0, 0, 0]]:
+		var got: Array = RemoteAttacks.fire(tanky, attack)
+		if got.is_empty():
+			hidden_kinds.append(attack[0])
+		for n in got:
+			(n as Node).queue_free()
+	check("switched on, they are drawn: their wave, and the tank's rings lit", drawn_on == 1 and lit_on)
+	check("switched off, none of them: no wave, axe, stalagmite, meteor, stick or orb",
+		hidden_kinds == ["slash", "axe", "stalag", "meteor", "dyn", "orb"], hidden_kinds)
+	check("  and their auras go out at once - the rings are their attacks too", not lit_off)
+	tanky.set_motion("idledown", ["ring", "firering"], "")
+	check("  and stay out as the steps keep coming", fire != null and not fire.visible and small != null and not small.visible)
+
+	# A healer's aura still heals you, unseen - in it, or by its blobs.
+	var heals: Array = RemoteAttacks.fire(tanky, ["heal", 0, o.x, o.y, o.x + 400.0, o.y, 0, 0])
+	var unseen: HealAura = heals[0] if not heals.is_empty() and heals[0] is HealAura else null
+	var inside: Node2D = _aura_patient(arena, o + Vector2(400, 2), 200)
+	var outside: Node2D = _aura_patient(arena, o + Vector2(400 + 120, 40), 160)
+	if unseen != null:
+		(unseen.get_node(^"picture") as AnimatedSprite2D).stop()
+		unseen.heal_target = inside
+		for frame in [HealAura.LANDS_ON] + HealAura.TICK_FRAMES:
+			unseen.reached(frame)
+	check("switched off, a healer's aura is not drawn - beam, ring, light or blob - and it still heals you",
+		unseen != null and unseen.unseen and not unseen.visible
+		and (inside.get("got") as Array).size() == HealAura.TICK_FRAMES.size(),
+		[unseen != null, inside.get("got") if inside else null])
+	var unseen_blobs: Array = RemoteAttacks.fire(tanky, ["heal", 0, o.x, o.y, o.x + 400.0, o.y, 0, 0])
+	var by_blob: HealAura = unseen_blobs[0] if not unseen_blobs.is_empty() and unseen_blobs[0] is HealAura else null
+	var blobs_hidden: bool = by_blob != null
+	if by_blob != null:
+		(by_blob.get_node(^"picture") as AnimatedSprite2D).stop()
+		by_blob.heal_target = outside
+		by_blob.reached(HealAura.LANDS_ON)
+		for blob in by_blob.blobs:
+			blobs_hidden = blobs_hidden and is_instance_valid(blob) and not blob.visible
+		for i in 60:
+			for blob in by_blob.blobs:
+				if is_instance_valid(blob) and not blob.arrived:
+					blob.step(1.0 / 30.0)
+	check("  outside it, its blobs fly unseen and heal you all the same",
+		blobs_hidden and by_blob.blobs.size() == HealAura.BLOBS and (outside.get("got") as Array).size() == HealAura.BLOBS,
+		[blobs_hidden, outside.get("got") if outside else null])
+	Settings.set_value("others_attacks", true)
+	check("switched back on, the tank's rings light again at once", fire != null and fire.visible and small != null and small.visible)
+	Settings.set_value("others_attacks", kept)
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+func _test_every_class_answers_its_own_attack() -> void:
+	section("EVERY CLASS - its own attack, damage and attack period (the healer lost all three in 0.40.0)")
+	# The owner's log after 0.40.0: "player.gd:1545 @ attack_action(): Player:
+	# missing animation 'attackright' - attack canceled ... like 16 errors". The
+	# aura's rewrite of healer.gd took its ATTACK ACTION OVERRIDE with it, so
+	# every click and Space ran the base swing, and the equipment panel read a
+	# healer with no attack.
+	var missing: Array = []
+	for cls in ["warrior", "mage", "tank", "healer"]:
+		var src: String = _code_src("res://src/characters/%s.gd" % cls)
+		for header in ["func attack_action() -> void:", "func base_attack_damage() -> int:", "func attack_period() -> float:"]:
+			if not src.contains("\n" + header):
+				missing.append("%s %s" % [cls, header])
+	check("all four classes answer attack_action(), base_attack_damage() and attack_period() themselves",
+		missing.is_empty(), missing)
+	var bare: Node = (load("res://src/characters/healer.gd") as GDScript).new()
+	bare.attack_action()
+	check("  the healer's click and Space are its orbs, never the base swing: its attack_action() starts nothing",
+		not bool(bare.get("is_attacking")))
+	var dmg: int = int(bare.call("base_attack_damage"))
+	var period: float = float(bare.call("attack_period"))
+	check("  and it says what it hits for and how often - the equipment panel's damage and dps",
+		dmg == int(bare.get("damage_per_magic")) and dmg > 0 and period > 0.0
+		and period <= float(bare.get("shot_cooldown")) + 0.0001, [dmg, period])
+	bare.free()
+
+
 func _test_other_players_attacks_are_pictures() -> void:
 	section("OTHER PLAYERS' ATTACKS - drawn from the class's own scenes, touching nothing")
 	var Remote := preload("res://src/characters/remoteplayer.gd")
+	# Drawn: whatever this machine's Options say (0.40.1's switch), put back after.
+	var kept_shown: bool = bool(Settings.get_value("others_attacks"))
+	Settings.set_value("others_attacks", true)
 	var warrior_consts: Dictionary = (load("res://src/characters/warrior.gd") as GDScript).get_script_constant_map()
 	var mage_consts: Dictionary = (load("res://src/characters/mage.gd") as GDScript).get_script_constant_map()
 	var tank_consts: Dictionary = (load("res://src/characters/tank.gd") as GDScript).get_script_constant_map()
@@ -10629,9 +10763,11 @@ func _test_other_players_attacks_are_pictures() -> void:
 	arena.queue_free()
 	await get_tree().process_frame
 	print("  pictures: the scenes, meteor, stick, axe, stalagmite, slash, orb, when, routing")
+	Settings.set_value("others_attacks", kept_shown)
 
 
 # AND THIS GAME'S OWN (0.19.0): what it tells the presence server.
+
 func _test_presence_sends_attacks() -> void:
 	section("PRESENCE - this game's attacks and levers go out, with its clock on every step")
 	Presence.set_process(false)
@@ -21090,6 +21226,31 @@ func _test_shared_monsters_pieces() -> void:
 			back = child
 	check("  and brings it back, keyed to the same spot",
 		back != null and str(back.get_meta(&"net_origin", "")) == str(entry.get("key", "")), back)
+
+	# A SCENE ON ITS WAY OUT HEARS NOTHING. Changing area takes the old scene
+	# out of the tree a moment before it is freed; Presence, finding no player,
+	# stops and says nobody leads - and the old scene's sync took the area
+	# over and started a clock with no tree: the owner's "Cannot call method
+	# 'create_timer' on a null value" (enemyrespawner.gd, _respawn_after).
+	link.lead_changed.emit(SM_AREA, 1, 1)
+	if back != null:
+		(back as BaseEnemy).net_vanish()
+	var dead_again: bool = not bool(entry.get("pending", false)) and int(entry.get("live", -1)) == 0
+	remove_child(area)
+	link.lead_changed.emit("", -1, 0)
+	check("a scene taken out of the tree is off the link: told nobody leads as it goes, its sync stays as it was",
+		dead_again and sync.is_following() and not link.lead_changed.is_connected(sync._on_lead)
+		and not link.world_received.is_connected(sync._on_world), [dead_again, sync.role])
+	check("  and its respawner starts no clock", not bool(entry.get("pending", false)))
+	respawner.resume_authority()
+	respawner._respawn_after(entry, 0.01)
+	check("  a respawner out of the tree starts none even when asked - no tree to time it",
+		not bool(entry.get("pending", false)))
+	add_child(area)
+	link.lead_changed.emit(SM_AREA, 2, 1)
+	check("back in the tree it is on the link again, once: it takes the area and starts the clock",
+		sync.has_authority() and bool(entry.get("pending", false))
+		and link.lead_changed.get_connections().filter(func(c: Dictionary) -> bool: return c["callable"] == Callable(sync, "_on_lead")).size() == 1)
 	area.free()
 	link.free()
 

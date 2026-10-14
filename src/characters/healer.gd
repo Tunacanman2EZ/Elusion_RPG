@@ -313,6 +313,37 @@ func drop_aura(at: Vector2) -> HealAura:
 
 
 # =============================================================================
+# ATTACK ACTION OVERRIDE
+# =============================================================================
+
+func base_attack_damage() -> int:
+	# See player.gd's base_attack_damage(). Three, which is small because this
+	# fires ten times a second — the number only means anything next to
+	# attack_period() below.
+	return damage_per_magic
+
+
+func attack_period() -> float:
+	# Ten shots a second. See player.gd's attack_period() for what reads this.
+	#
+	# This is the class the whole dps row exists for: a scepter's damage number
+	# is tiny — 3 at iron, 13 at ember — precisely BECAUSE of this 0.1, and a
+	# player comparing it to a 100-damage sword without the division would
+	# reasonably conclude the healer had been abandoned.
+	# hasten() applies agility, so this is the rate actually delivered.
+	return hasten(shot_cooldown)
+
+
+func attack_action() -> void:
+	# NOTHING: the healer's attack is the stream of orbs (_physics_process,
+	# _is_attack_input_held()). Without this the base swing ran on every click
+	# and Space - a sword's swoosh, and "Player: missing animation
+	# 'attackright' - attack canceled" - which is what 0.40.0 shipped, this
+	# block lost in the aura's rewrite (the owner's log, 0.40.1).
+	return
+
+
+# =============================================================================
 # PROJECTILE FIRING
 # =============================================================================
 

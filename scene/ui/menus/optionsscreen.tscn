@@ -822,7 +822,7 @@ layout_mode = 2
 layout_mode = 2
 theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
 theme_override_font_sizes/font_size = 12
-text = "RINGS"
+text = "ON SCREEN"
 
 [node name="aimringsrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
 layout_mode = 2
@@ -863,6 +863,26 @@ vertical_alignment = 1
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "The dashed circles: how close you can come to a monster before it notices you, how far it chases you once it has, and how far a mythic weapon reaches."
+
+[node name="othersattacksrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
+layout_mode = 2
+tooltip_text = "Other players' waves, axes, spells, dynamite, orbs and auras. Off hides them all - a healer's aura still heals you."
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/othersattacksrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+tooltip_text = "Other players' waves, axes, spells, dynamite, orbs and auras. Off hides them all - a healer's aura still heals you."
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Other players' attacks"
+vertical_alignment = 1
+
+[node name="othersattacks" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/othersattacksrow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Other players' waves, axes, spells, dynamite, orbs and auras. Off hides them all - a healer's aura still heals you."
 
 [node name="hseparator3" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer"]
 layout_mode = 2

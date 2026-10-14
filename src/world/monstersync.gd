@@ -164,11 +164,7 @@ func _ready() -> void:
 			_containers[str(root.get_path_to(e.get_parent()))] = true
 	if get_tree().current_scene != null:
 		_respawner_nodes = _respawners(get_tree().current_scene)
-	if link != null:
-		link.lead_changed.connect(_on_lead)
-		link.world_received.connect(_on_world)
-		link.hits_received.connect(_on_hits)
-		link.world_needed.connect(_on_need)
+	_listen(true)
 	if link == null or not link.shares():
 		_become(Role.LEAD)
 		return
@@ -177,6 +173,35 @@ func _ready() -> void:
 		_become(Role.PENDING)
 	else:
 		_on_lead(area_id, known, link.sharers())
+
+
+# A SCENE ON ITS WAY OUT HEARS NOTHING. Changing area takes the old scene out
+# of the tree a moment before it is freed, and the player with it - so
+# Presence, finding no player, stops, and says nobody leads any more. The old
+# scene's sync used to hear that, took its monsters back, and started its
+# respawners' clocks with no tree to time them: "Cannot call method
+# 'create_timer' on a null value" (enemyrespawner.gd, _respawn_after). Out of
+# the tree it is off the link; back in, it is on again.
+func _enter_tree() -> void:
+	_listen(true)
+
+
+func _exit_tree() -> void:
+	_listen(false)
+
+
+func _listen(on: bool) -> void:
+	"""On or off the link's four signals - once each, whichever way."""
+	if link == null:
+		return
+	for pair in [[link.lead_changed, _on_lead], [link.world_received, _on_world],
+			[link.hits_received, _on_hits], [link.world_needed, _on_need]]:
+		var heard: Signal = pair[0]
+		var handler: Callable = pair[1]
+		if on and not heard.is_connected(handler):
+			heard.connect(handler)
+		elif not on and heard.is_connected(handler):
+			heard.disconnect(handler)
 
 
 func has_authority() -> bool:

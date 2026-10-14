@@ -87,6 +87,7 @@ signal credits_requested
 @onready var chat_filter_toggle: CheckButton = get_node_or_null("%chatfilter")
 @onready var aim_rings_toggle:  CheckButton = get_node_or_null("%aimrings")
 @onready var range_circles_toggle: CheckButton = get_node_or_null("%rangecircles")
+@onready var others_attacks_toggle: CheckButton = get_node_or_null("%othersattacks")
 @onready var camera_zoom:       HSlider      = get_node_or_null("%camerazoom")
 @onready var camera_zoom_value: Label        = get_node_or_null("%camerazoomvalue")
 @onready var name_hue:          HSlider      = get_node_or_null("%namehue")
@@ -320,6 +321,8 @@ func _connect_controls() -> void:
 		aim_rings_toggle.toggled.connect(_on_aim_rings_toggled)
 	if range_circles_toggle != null:
 		range_circles_toggle.toggled.connect(_on_range_circles_toggled)
+	if others_attacks_toggle != null:
+		others_attacks_toggle.toggled.connect(_on_others_attacks_toggled)
 
 	if render_resolution != null:
 		render_resolution.clear()
@@ -414,6 +417,8 @@ func refresh() -> void:
 		aim_rings_toggle.button_pressed = bool(Settings.get_value("aim_rings"))
 	if range_circles_toggle != null:
 		range_circles_toggle.button_pressed = bool(Settings.get_value("range_circles"))
+	if others_attacks_toggle != null:
+		others_attacks_toggle.button_pressed = bool(Settings.get_value("others_attacks"))
 
 	if render_resolution != null:
 		render_resolution.selected = Settings.RENDER_RESOLUTIONS.find(
@@ -1038,6 +1043,12 @@ func _on_range_circles_toggled(pressed: bool) -> void:
 	if _refreshing:
 		return
 	Settings.set_value("range_circles", pressed)
+
+
+func _on_others_attacks_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("others_attacks", pressed)
 
 
 func _on_reset_pressed() -> void:

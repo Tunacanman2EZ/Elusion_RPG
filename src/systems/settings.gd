@@ -175,6 +175,14 @@ const DEFAULTS := {
 	"aim_rings": true,
 	"range_circles": true,
 
+	# OTHER PLAYERS' ATTACKS (0.40.1). The owner: "we need a switch to allow the
+	# sight of player attacks that are not their own". On by default, as they
+	# have been drawn since 0.19.0. Off: no picture of anybody else's waves,
+	# axes, spells, dynamite or orbs, and no aura lit on them - a healer's aura
+	# still heals you, unseen. Read where each is drawn (remoteattacks.gd
+	# shown(); remoteplayer.gd re-lights its auras on `changed`).
+	"others_attacks": true,
+
 	# HOW CLOSE THE CAMERA SITS. 3.0 is what all four class scenes were built
 	# with and is the default, so nobody who never opens this sees a change.
 	# Lower numbers pull back and show more of the world.
@@ -1679,7 +1687,7 @@ func _apply(key: String, value: Variant) -> void:
 		"chat_filter":
 			# The chat window listens on `changed` and redraws its log.
 			pass
-		"aim_rings", "range_circles":
+		"aim_rings", "range_circles", "others_attacks":
 			# Read by the rings themselves each frame (player.gd,
 			# threatring.gd, warrior.gd). Nothing to apply.
 			pass

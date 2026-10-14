@@ -5841,6 +5841,90 @@ that approach and change all attacks to left click".
   itself and was made to measure the ellipse instead, and the dressing was
   broken twelve ways in three runs, every one caught.
 
+### A scene on its way out hears nothing (0.40.1)
+
+The owner's log: "Cannot call method 'create_timer' on a null value" at
+enemyrespawner.gd `_respawn_after()`, from `resume_authority()`, from
+monstersync.gd `_respawner_resume()` / `_become()` / `_on_lead()`, from
+presence.gd `_lose_lead()` / `stop()` / `_process()`.
+
+- **What happened.** Changing area takes the old scene out of the tree a
+  moment before it is freed, and its player with it. Presence's `_process()`,
+  finding no player, calls `stop()`, which says nobody leads any more
+  (`lead_changed` with -1). The old scene's MonsterSync was still connected,
+  heard it, took its monsters back (`_become(LEAD)`), and asked its
+  respawners to start a clock for every dead spawn point - with no tree to
+  time them.
+- **The fix, twice.** MonsterSync is on the link only while it is in the
+  tree: `_listen(true)` in `_enter_tree()` and `_ready()`, `_listen(false)` in
+  `_exit_tree()` - each of the four signals connected once, whichever way. And
+  EnemyRespawner starts no clock out of the tree: `resume_authority()` and
+  `_respawn_after()` return first.
+- `_test_shared_monsters_pieces` takes a follower's area out of the tree,
+  tells it nobody leads, and checks the sync stayed a follower and off the
+  link, the respawner started nothing even when asked, and that back in the
+  tree it is on the link once and takes the area over. Each half was broken
+  on purpose to see it fail; the code as it was gave the owner's error word
+  for word ("Parameter \"data.tree\" is null", then the create_timer one).
+
+### The healer lost its own attack in 0.40.0 (0.40.1)
+
+The owner's log after 0.40.0: "player.gd:1545 @ attack_action(): Player:
+missing animation 'attackright' - attack canceled ... like 16 errors for
+that", from healer.gd's `_physics_process()`.
+
+- **The aura's second rewrite of healer.gd took the ATTACK ACTION OVERRIDE
+  block with it**: `base_attack_damage()`, `attack_period()` and the no-op
+  `attack_action()`. So every left-click and Space ran player.gd's base swing
+  - a sword's swoosh and that warning - and the equipment panel read a healer
+  with no attack (damage 0, no dps). The orbs themselves were never touched,
+  and the exporter reads the healer's numbers off its properties, so
+  gamedata.json and the server's bounds were right all along (re-exported to
+  check: the same).
+- The block is back, word for word. `_test_every_class_answers_its_own_attack`
+  holds all four classes to their own three, and a bare healer's
+  `attack_action()` to starting nothing.
+- **Every 0.40.0 script was compared with its last earlier copy for any
+  function that went missing**: only `right_click_attack_held`, renamed on
+  purpose to `right_click_held`.
+
+### Other players: sorted as their own scene, and a switch for their attacks (0.40.1)
+
+The owner: "on my screen garys ring is over the character and i cannot see
+his attacks we need a switch to allow the sight of player attacks that are not
+their own".
+
+- **The ring.** The tank's scene y-sorts its pictures: its fire ring (its
+  top-left corner 131 px up) and its small ring draw under the tank and under
+  everyone standing in the fire. remoteplayer.gd built its picture from the
+  same parts but never sorted, so both rings were drawn last - over the tank,
+  and over every player south of it, hiding them and what they did. It sorts
+  as the class scene does now (`class_sorted()`, read from the scene's root:
+  warrior, mage and tank yes, healer no).
+- **The switch**: Options, under the rings (the heading is ON SCREEN now),
+  "Other players' attacks" - `others_attacks`, on by default. Off,
+  `RemoteAttacks.fire()` draws nothing but a heal, and remoteplayer.gd lights
+  no aura (it re-lights them at once on `Settings.changed`). **A healer's aura
+  still heals you**: its picture is spawned `unseen` - HealAura hidden, its
+  blobs too - and ticks and flies as ever.
+- **Seeing his attacks.** Recorded with a picture of a warrior swinging and a
+  tank burning: every wave, finisher and crypt orb was drawn; what hid things
+  was the tank's ring over everyone. The server passes every attack on the
+  same way in every direction (presence.py `clean_attacks()`: an origin within
+  400 px of the player's last state, a target within 1000 of it); all 51 API
+  suites pass (4,977).
+- **Gary's "only attack left".** A real warrior, clicked and Spaced at the
+  cursor in all eight directions in the Field, swung that way with that side's
+  hitbox and hit a monster placed there every time. The swing follows the
+  cursor - by Space too - so a cursor resting to one side swings that way.
+- `_test_other_players_attacks_switch`: the tank's picture sorting with its
+  rings above its body; every class's sorting; the switch in Options, on by
+  default; on, a wave and the rings; off, no slash, axe, stalagmite, meteor,
+  stick or orb, the rings out at once and staying out; an unseen aura healing
+  inside and by unseen blobs outside; on again, the rings back at once. The
+  older picture test sets the switch on for itself and puts it back. Each was
+  broken on purpose to see it fail.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

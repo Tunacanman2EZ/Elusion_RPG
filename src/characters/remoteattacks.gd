@@ -61,6 +61,15 @@ static var _scenes: Dictionary = {}
 static var _class_settings: Dictionary = {}
 
 
+static func shown() -> bool:
+	"""OTHER PLAYERS' ATTACKS (0.40.1, Options, "Other players' attacks"). The
+	owner: "we need a switch to allow the sight of player attacks that are not
+	their own". On by default. Off, nothing here is drawn - no wave, axe,
+	spell, stick or orb, and remoteplayer.gd lights no aura - but a healer's
+	aura still heals you, unseen (_heal())."""
+	return bool(Settings.get_value("others_attacks"))
+
+
 static func go_quiet(area: Area2D) -> void:
 	"""A picture's Area2D: it watches nothing and nothing sees it. Deferred, as
 	this may run inside a physics callback; the picture's own guards keep the
@@ -81,6 +90,9 @@ static func fire(body: Node2D, attack: Array) -> Array:
 	if body == null or not body.is_inside_tree() or attack.size() < 8:
 		return []
 	var kind: String = str(attack[0])
+	# Switched off: nothing - but a heal, which still heals, unseen.
+	if not shown() and kind != "heal":
+		return []
 	var origin := Vector2(float(attack[2]), float(attack[3]))
 	var target := Vector2(float(attack[4]), float(attack[5]))
 	var delay: float = clampf(float(attack[6]) / 1000.0, 0.0, 3.0)
@@ -222,7 +234,10 @@ static func _heal(body: Node2D, target: Vector2) -> Node:
 	# A healer's aura (0.40.0): a picture - it burns nothing - but it heals
 	# this game's own player if they stand in it, as the healer's own heals the
 	# healer (healaura.gd). On the floor, so in the area, not the projectiles.
-	return HealAura.drop(_parent(body, false), target, 0, true)
+	var aura: HealAura = HealAura.drop(_parent(body, false), target, 0, true)
+	if not shown():
+		aura.unseen = true
+	return aura
 
 
 static func fan_ways(way: Vector2) -> Array:

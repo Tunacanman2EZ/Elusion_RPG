@@ -225,6 +225,10 @@ func _on_enemy_died(entry: Dictionary) -> void:
 
 
 func _respawn_after(entry: Dictionary, delay: float) -> void:
+	# NO TREE, NO CLOCK: a respawner whose scene is on its way out has nothing
+	# to time it, and nothing to bring a monster back into.
+	if not is_inside_tree():
+		return
 	entry["pending"] = true
 	await get_tree().create_timer(delay).timeout
 
@@ -385,7 +389,10 @@ func _has_authority() -> bool:
 func resume_authority() -> void:
 	"""This game has just taken the area's monsters over. Every spawn point
 	whose monster is dead, with no clock running, gets a fresh one - the full
-	respawn time, because nobody here knows how long the old one had left."""
+	respawn time, because nobody here knows how long the old one had left.
+	Not while out of the tree: that is a scene being left, not taken over."""
+	if not is_inside_tree():
+		return
 	for entry in _census:
 		if entry.get("pending", false) or _entry_alive(entry):
 			continue

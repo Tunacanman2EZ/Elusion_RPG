@@ -88,6 +88,8 @@ const EFFECTS := ["ring", "firering"]
 # What the class scenes say about their sprites, read once per class: building
 # a body must not instantiate a whole player scene every time somebody walks in.
 static var _class_parts: Dictionary = {}
+# Whether each class scene's root y-sorts its pictures (see _build_body()).
+static var _class_sorted: Dictionary = {}
 static var _body_offsets: Dictionary = {}
 static var _pet_parts: Dictionary = {}
 static var _plate_consts: Dictionary = {}
@@ -142,6 +144,14 @@ func _ready() -> void:
 	if user_id >= 0:
 		name = "remote_%d" % user_id
 	add_to_group(&"remoteplayers")
+	if not Settings.changed.is_connected(_on_setting_changed):
+		Settings.changed.connect(_on_setting_changed)
+
+
+func _on_setting_changed(key: String, _value: Variant) -> void:
+	# Other players' attacks switched on or off: their auras with them, now.
+	if key == "others_attacks":
+		set_motion(anim, effects, pet_id)
 
 
 func _exit_tree() -> void:
@@ -349,7 +359,9 @@ func set_motion(new_anim: String, new_effects: Array, new_pet: String) -> void:
 		var sprite: AnimatedSprite2D = get_node_or_null(effect) as AnimatedSprite2D
 		if sprite == null:
 			continue
-		var lit: bool = effects.has(effect)
+		# Their auras are their attacks: hidden with the rest when the player
+		# has switched other players' attacks off (RemoteAttacks.shown()).
+		var lit: bool = effects.has(effect) and RemoteAttacks.shown()
 		if lit and not sprite.visible:
 			sprite.visible = true
 			if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(effect):
@@ -443,6 +455,7 @@ static func class_parts(cls: String) -> Array:
 		var packed: PackedScene = load(path) as PackedScene
 		var instance: Node = packed.instantiate() if packed != null else null
 		if instance != null:
+			_class_sorted[cls] = instance is Node2D and (instance as Node2D).y_sort_enabled
 			for part_name in [BODY] + EFFECTS:
 				var sprite: AnimatedSprite2D = instance.get_node_or_null(part_name) as AnimatedSprite2D
 				if sprite != null and sprite.sprite_frames != null:
@@ -450,6 +463,13 @@ static func class_parts(cls: String) -> Array:
 			instance.free()
 	_class_parts[cls] = parts
 	return parts
+
+
+static func class_sorted(cls: String) -> bool:
+	"""Whether `cls`'s scene y-sorts its pictures - the warrior's, the mage's
+	and the tank's do; the healer's does not."""
+	class_parts(cls)
+	return bool(_class_sorted.get(cls, false))
 
 
 static func _describe(part_name: String, sprite: AnimatedSprite2D) -> Dictionary:
@@ -477,6 +497,13 @@ static func _sprite_from(part: Dictionary) -> AnimatedSprite2D:
 
 
 func _build_body() -> void:
+	# SORTED AS THEIR OWN SCENE SORTS (0.40.1). The tank's scene y-sorts its
+	# pictures, so its fire ring - its top-left corner 131 px up - and its
+	# small ring draw under the body and under everyone standing in the fire.
+	# This picture of it did not sort, so both were drawn last: over the tank,
+	# and over every player south of it. The owner: "garys ring is over the
+	# character and i cannot see his attacks".
+	y_sort_enabled = class_sorted(class_id)
 	for part_name in [BODY] + EFFECTS:
 		var old: Node = get_node_or_null(part_name)
 		if old != null:

@@ -130,6 +130,18 @@ var healed: int = 0
 # The blobs sent as the beam landed, for the tests.
 var blobs: Array[HealBlob] = []
 
+# UNSEEN (0.40.1): a picture of somebody else's aura while the player has
+# switched other players' attacks off (RemoteAttacks.shown()). Nothing of it is
+# drawn - not the beam, the ring, the light or a blob - but it heals all the
+# same.
+var unseen: bool = false:
+	set(value):
+		unseen = value
+		visible = not value
+		for blob in blobs:
+			if is_instance_valid(blob):
+				blob.visible = not value
+
 # Whether this area is dark, for the light - set as it is made; the tests set it.
 var dark: bool = false
 var shaft: Sprite2D = null
@@ -451,6 +463,8 @@ func land() -> void:
 			amount = maxi(1, ceili(float(int(me.get("max_hp"))) * HEAL_SHARE / float(shares[me])))
 		var blob: HealBlob = HealBlob.send(get_parent() if get_parent() != null else self, at,
 			whom, amount, mine)
+		if unseen and blob != null:
+			blob.visible = false
 		blobs.append(blob)
 
 
