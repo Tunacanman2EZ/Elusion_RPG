@@ -220,8 +220,17 @@ var _pulse_tween: Tween = null
 # cool but no trails". So a plain wave looks as it did before 0.38.0 again,
 # and only a `finisher` (warrior.gd, THE FINISHER) is dressed: gold,
 # FINISHER_SCALE as big - its hitbox too (hitbox_scale, set with it) -
-# unshaded, with a gold glow behind it (a larger copy, added). Set before
-# shoot_vector(), which dresses it. No afterimages on either.
+# unshaded. Set before shoot_vector(), which dresses it. No afterimages on
+# either.
+#
+# ONE PICTURE, NO GLOW BEHIND IT (0.45.1). The owner, twice: "warriors critical
+# attack is overlapped it looks bad", and after 0.41.0 took the orbs off it,
+# "still double layerd". The glow was a copy of the crescent 1.15 times as big,
+# added behind it, grown from the middle of its 64-pixel picture - and the
+# crescent sits 15 to 24 pixels off that middle (its tail runs back through
+# it), so the copy landed about 6 pixels past the crescent's front: a second,
+# paler crescent. The gold and the size are the finisher; nothing is drawn
+# behind it.
 #
 # Then, in place of the trails, "we can use projectiles from crypt to
 # elavate" (bladeorb.gd):
@@ -239,8 +248,6 @@ var _pulse_tween: Tween = null
 #
 # Sparks where it cuts a monster and where it breaks (strikefx.gd) are 0.38.0's
 # and stay.
-const GLOW_SCALE := 1.15
-const GOLD_GLOW := Color(1.0, 0.8, 0.35, 0.5)
 const FINISHER_TINT := Color(1.0, 0.85, 0.45)
 const FINISHER_SCALE := 1.35
 const WEAVE_ACROSS := 7.0
@@ -257,11 +264,9 @@ var finisher: bool = false
 # Each burst orb's damage; 0 for none (a picture's).
 var burst_damage: int = 0
 var burst_done: bool = false
-var _glow: AnimatedSprite2D = null
 var _weave: Array[Sprite2D] = []
 var _weave_clock: float = 0.0
 var _weave_line: Vector2 = Vector2.ZERO
-static var _added: CanvasItemMaterial = null
 
 
 # =============================================================================
@@ -358,8 +363,6 @@ func _play_directional_animation() -> void:
 	var sprite: AnimatedSprite2D = $animatedsprite2d
 	var anim_name: String = "slash" + direction_name
 
-	if _glow != null and sprite.sprite_frames.has_animation(anim_name):
-		_glow.play(anim_name)
 	if sprite.sprite_frames.has_animation(anim_name):
 		sprite.play(anim_name)
 	elif sprite.sprite_frames.has_animation("slash"):
@@ -590,7 +593,7 @@ func destroy_wave(with_impact: bool = true) -> void:
 # =============================================================================
 
 func _dress() -> void:
-	"""A finisher's gold, size and glow, and every wave's weave. Once."""
+	"""A finisher's gold and size, and a plain wave's weave. Once."""
 	var sprite: AnimatedSprite2D = get_node_or_null("animatedsprite2d")
 	if sprite == null or not _weave.is_empty():
 		return
@@ -601,16 +604,6 @@ func _dress() -> void:
 		sprite.scale = _base_scale * FINISHER_SCALE
 		_base_scale = sprite.scale
 		sprite.modulate = FINISHER_TINT
-		_glow = AnimatedSprite2D.new()
-		_glow.name = "glow"
-		_glow.sprite_frames = sprite.sprite_frames
-		_glow.position = sprite.position
-		_glow.scale = sprite.scale * GLOW_SCALE
-		_glow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_glow.modulate = GOLD_GLOW
-		_glow.material = added_material()
-		add_child(_glow)
-		move_child(_glow, 0)
 	_weave_line = direction
 	# Not over a finisher: the gold wave and its fan are enough (warrior.gd,
 	# THE FINISHER, UNCLUTTERED).
@@ -665,10 +658,3 @@ func _fire_burst(parent: Node, at: Vector2, cut_id: int) -> void:
 		BladeOrb.fire(parent, at + way * BURST_FROM, way, BURST_SPEED, BURST_REACH,
 			0 if cosmetic else burst_damage, BladeOrb.GOLD, cosmetic, cut_id)
 
-
-static func added_material() -> CanvasItemMaterial:
-	if _added == null:
-		_added = CanvasItemMaterial.new()
-		_added.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
-		_added.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	return _added

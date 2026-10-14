@@ -14402,16 +14402,22 @@ func _test_the_warrior_blows() -> void:
 	big.shoot_vector(Vector2.RIGHT)
 	var big_crescent: AnimatedSprite2D = big.get_node(^"animatedsprite2d") as AnimatedSprite2D
 	var big_box: RectangleShape2D = (big.get_node(^"CollisionShape2D") as CollisionShape2D).shape as RectangleShape2D
-	var glow: AnimatedSprite2D = big.get_node_or_null(^"glow") as AnimatedSprite2D
-	check("a finisher's wave is gold and bigger - its picture and its hitbox both - and glows, unshaded",
+	check("a finisher's wave is gold and bigger - its picture and its hitbox both - unshaded",
 		is_equal_approx(big_crescent.scale.x, crescent.scale.x * SlashWave.FINISHER_SCALE)
 		and big_crescent.modulate.b < 0.6
 		and is_equal_approx(big_box.size.y, SlashWave.HITBOX_SWEEP * SlashWave.FINISHER_SCALE)
 		and is_equal_approx(WarriorScript.FINISHER_SCALE, SlashWave.FINISHER_SCALE)
-		and glow != null and big.get_child(0) == glow and glow.animation == big_crescent.animation
-		and glow.material is CanvasItemMaterial and (glow.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
 		and unshaded.call(big_crescent),
 		big_box.size)
+	# The owner, after 0.41.0: "still double layerd" (0.45.1). The glow behind
+	# it was a bigger copy of the crescent, grown from the middle of a picture
+	# the crescent sits well off, so it showed as a second crescent ahead of it.
+	var pictures: Array = []
+	for n in big.get_children():
+		if n is CanvasItem and not (n is CollisionShape2D) and not (n is VisibleOnScreenNotifier2D):
+			pictures.append(n)
+	check("  and it is ONE crescent: nothing drawn behind or over it - no copy, no glow",
+		pictures == [big_crescent] and big.get_node_or_null(^"glow") == null, pictures)
 	# The owner: "warriors critical attack is overlapped it looks bad" (0.41.0).
 	check("  and nothing weaves over it - the gold wave and its fan are enough",
 		weave_of.call(big, BladeOrb.GOLD).is_empty() and weave_of.call(big, BladeOrb.STEEL).is_empty(), big.get_children())

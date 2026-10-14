@@ -5972,6 +5972,14 @@ off the blade, the weave and the burst all landed in one place.
   middle. Somebody else's finisher is drawn the same, whatever an older game
   flags. The numbers are unchanged; the server's bound counted a sword fan on
   the finisher and still does, which only leaves it higher than it needs.
+- **One crescent, no glow behind it (0.45.1).** The owner, after all that:
+  "still double layerd". The glow behind the gold wave was a copy of it 1.15
+  times as big, added, grown from the middle of its 64-pixel picture - and the
+  crescent sits 15 to 24 pixels off that middle, so the copy landed about 6
+  pixels ahead of it as a second, paler crescent. It is gone (slashwave.gd,
+  `_dress()`): gold, 1.35 times as big, unshaded, and nothing else is drawn
+  with it. The suite asks for exactly one picture on a finisher's wave. **A
+  glow made by scaling a copy only works on art centred in its picture.**
 
 ### Other players: their aim ring and their health (0.41.0)
 
