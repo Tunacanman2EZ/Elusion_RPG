@@ -54,6 +54,8 @@
 # running past somebody was their picture chasing steps that came unevenly.
 extends Node
 
+# Their aim on the wire, stepped to this many degrees (aim_degrees_of()).
+const AIM_STEP_DEGREES := 8
 # The shared-monster wire this game speaks; the server's welcome says whether
 # it does too. 3 (0.10.0) is 2 plus the leader's own hits inside its world.
 const SHARED_VERSION := 3
@@ -454,7 +456,36 @@ func state_for(player: Node) -> Dictionary:
 		"m": anim,
 		"fx": fx,
 		"pet": str(player.get("active_pet_id")) if "active_pet_id" in player else "",
+		# THEIR AIM AND THEIR HEALTH (0.41.0, remoteplayer.gd): where this
+		# player's aim ring points and how much health they have, for the
+		# others to draw.
+		"aim": aim_degrees_of(player),
+		"hp": health_percent_of(player),
 	}
+
+
+static func aim_degrees_of(player: Node) -> int:
+	"""Where `player`'s aim ring's ball points, in whole degrees to the nearest
+	AIM_STEP_DEGREES (0 is right, 90 down) - stepped so a mouse drifting a
+	degree is not a new state ten times a second. -1 with no ring."""
+	var ring: Node = player.get_node_or_null(^"aimring") if player != null else null
+	if ring == null or not ("aim" in ring):
+		return -1
+	var aim: Vector2 = ring.get("aim")
+	if aim.length_squared() < 0.0001:
+		return -1
+	var stepped: int = roundi(rad_to_deg(aim.angle()) / AIM_STEP_DEGREES) * AIM_STEP_DEGREES
+	return posmod(stepped, 360)
+
+
+static func health_percent_of(player: Node) -> int:
+	"""`player`'s health in whole percent of their most, or -1 for none."""
+	if player == null or not ("hp" in player) or not ("max_hp" in player):
+		return -1
+	var most: float = float(player.get("max_hp"))
+	if most <= 0.0:
+		return -1
+	return clampi(roundi(100.0 * float(player.get("hp")) / most), 0, 100)
 
 
 # =============================================================================
@@ -595,6 +626,8 @@ func _join(entry: Dictionary) -> void:
 	else:
 		body.set_identity(entry)
 		body.push_step(at, str(entry.get("m", "idledown")), fx, str(entry.get("pet", "")), ts)
+	# Their aim and health (0.41.0): -1 from a server or a game from before.
+	body.set_bearing(entry.get("aim", -1), entry.get("hp", -1))
 
 
 func _move(move: Array) -> void:
@@ -608,6 +641,9 @@ func _move(move: Array) -> void:
 	# The seventh, their clock, since 0.19.0; a server from before sends six.
 	body.push_step(_local(Vector2(float(move[1]), float(move[2]))), str(move[3]),
 		move[4] if move[4] is Array else [], str(move[5]), _clock_of(move[6]) if move.size() >= 7 else -1)
+	# The eighth and ninth, their aim and health, since 0.41.0.
+	if move.size() >= 9:
+		body.set_bearing(move[7], move[8])
 
 
 static func _clock_of(value: Variant) -> int:

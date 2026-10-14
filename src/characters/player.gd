@@ -429,6 +429,10 @@ signal moved(position: Vector2, direction: String)
 
 func _ready() -> void:
 	add_to_group("player")
+	# The mouse leaving the game window: aim where the character faces until it
+	# is back (THE CURSOR, WHEN THERE IS ONE).
+	if not get_window().mouse_exited.is_connected(_on_pointer_left_window):
+		get_window().mouse_exited.connect(_on_pointer_left_window)
 
 	_set_stat_curve()
 	_set_skill_proficiency()
@@ -623,6 +627,7 @@ func _physics_process(_delta):
 	# about the character, and dying or being locked out does not make someone
 	# leave the keyboard.
 	_stamp_input()
+	_watch_pointer()
 
 	# Sampled FIRST, before any early return below, because the left-click
 	# edge detector has to see every frame. If it only ran when the player was
@@ -728,6 +733,30 @@ func _physics_process(_delta):
 # all; it never paid agility for sprinting or for ground covered, never
 # uncovered the map, and walked and toggled its aura while chat was being
 # typed in. Each step lives here once, and both loops call it.
+
+func _watch_pointer() -> void:
+	"""THE CURSOR, WHEN THERE IS ONE: it is on the game once it moves there."""
+	if not is_inside_tree():
+		return
+	var now: Vector2 = get_viewport().get_mouse_position()
+	if _pointer_was.x >= 0.0 and now != _pointer_was:
+		pointer_on_game = true
+	_pointer_was = now
+
+
+func _on_pointer_left_window() -> void:
+	pointer_on_game = false
+
+
+func aim_point() -> Vector2:
+	"""Where an attack made now aims, in the world: the cursor while there is
+	one on the game, or KEYBOARD_AIM_REACH ahead the way the character faces
+	(THE CURSOR, WHEN THERE IS ONE)."""
+	if pointer_on_game:
+		return get_global_mouse_position()
+	var facing: Vector2 = last_direction if last_direction.length_squared() > 0.0001 else Vector2.DOWN
+	return global_position + facing.normalized() * KEYBOARD_AIM_REACH
+
 
 func _stamp_input() -> void:
 	"""Somebody is at the keyboard this frame. is_afk() reads it, and every
@@ -1379,6 +1408,30 @@ var _right_click_down: bool = false
 
 
 # =============================================================================
+# THE CURSOR, WHEN THERE IS ONE (0.41.0)
+# =============================================================================
+# Gary, playing in Chrome: "he can only attack left also with warrior". Every
+# attack aims at the cursor - Space too - and a game that has never seen the
+# mouse over it has its cursor at (0, 0), the screen's top-left corner. Played
+# from the keyboard, with the mouse resting off the page, every swing went up
+# and to the left, and the warrior's swing favours left and right on a
+# diagonal (warrior.gd, swing_horizontal_bias): left, every time. Reproduced in
+# Chromium: walk any way, press Space, attackleft.
+#
+# So an attack aims at the cursor only while there is one ON THE GAME - it has
+# moved over the window, or clicked it, since it last left - and otherwise
+# where the character faces: KEYBOARD_AIM_REACH ahead along last_direction,
+# the way WASD last walked it (aim_point()). A click always has a cursor.
+# Shared by every player node, so a new area's character does not forget a
+# mouse that is still over the game.
+static var pointer_on_game: bool = false
+# How far ahead a keyboard aim puts the point a spell or a stick lands on.
+const KEYBOARD_AIM_REACH := 64.0
+# Where the cursor was last frame, to see it move; x < 0 until the first look.
+var _pointer_was: Vector2 = Vector2(-1.0, -1.0)
+
+
+# =============================================================================
 # THE AIM RING (aimring.gd, 0.26.0)
 # =============================================================================
 # A ring on the floor round the feet with a ball where the next attack goes -
@@ -1474,6 +1527,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	# A click reaches here only when no window took it (see ATTACK INPUT).
 	var click := event as InputEventMouseButton
 	if click != null and click.pressed:
+		# A click is a cursor on the game (THE CURSOR, WHEN THERE IS ONE).
+		pointer_on_game = true
 		if click.button_index == MOUSE_BUTTON_LEFT:
 			_left_click_down = true
 		elif click.button_index == MOUSE_BUTTON_RIGHT:

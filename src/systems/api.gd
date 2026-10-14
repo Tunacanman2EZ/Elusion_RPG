@@ -84,13 +84,20 @@ const WebPage := preload("res://src/systems/webpage.gd")
 # which ItemRegistry reads; a build-2 game shows such a piece as the error item.
 # 4: armour's roll ends in the element it resists ("jadechest~a104h96r605",
 # GameConstants.RESIST_*); a build-3 game reads such an id as a malformed roll.
+# 5 (0.41.0): other players are drawn as they see themselves - their aim ring
+# and health ride in the state - and an attack with no cursor on the game aims
+# where the character faces. A build-4 game (0.11 to 0.40) still plays beside
+# it, but draws everyone else without either, and in a browser with the mouse
+# off the page swings every attack at the screen's corner - Gary's "only attack
+# left". The first build worth making the minimum since 4: every game in an
+# area then sees the same things.
 # Matches CURRENT_CLIENT_BUILD in app.py.
-const BUILD := 4
+const BUILD := 5
 # MAJOR.MINOR.PATCH: 0.x until launch, the middle number for a new chunk of
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.40.1"
+const DISPLAY_VERSION := "0.41.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,

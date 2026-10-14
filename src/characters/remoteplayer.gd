@@ -90,6 +90,8 @@ const EFFECTS := ["ring", "firering"]
 static var _class_parts: Dictionary = {}
 # Whether each class scene's root y-sorts its pictures (see _build_body()).
 static var _class_sorted: Dictionary = {}
+# Each class's aim ring, as its own scene places it (class_ring()).
+static var _class_rings: Dictionary = {}
 static var _body_offsets: Dictionary = {}
 static var _pet_parts: Dictionary = {}
 static var _plate_consts: Dictionary = {}
@@ -138,6 +140,26 @@ var _badge: Label = null
 var _plate_zoom: float = -1.0
 var _pet: AnimatedSprite2D = null
 var _pet_face: String = "down"
+
+# THEIR AIM AND THEIR HEALTH (0.41.0). The owner: "i need to be able to see
+# other players directional bar etc ... i want players to see everything i see
+# and everything i see players also see". Their state carries where their aim
+# ring's ball points ("aim", whole degrees, -1 for none: a game or a server
+# from before) and their health ("hp", whole percent, -1 for none); this body
+# wears the same aim ring their own does - placed as their class's scene
+# places it, under the same Aim rings switch - and a health bar under the
+# name. Taken as they arrive, not played back: a ring a fifth of a second
+# early is nothing to see.
+const HEALTH_BAR_WIDTH := 18.0
+const HEALTH_BAR_HEIGHT := 2.0
+# How fast the ball swings round to a new aim, in turns of the remaining way a
+# second - the aim arrives ten times a second, in 8-degree steps.
+const AIM_FOLLOW_RATE := 14.0
+var aim_degrees: int = -1
+var health_percent: int = -1
+var _aim_ring: AimRing = null
+var _aim_shown: Vector2 = Vector2.ZERO
+var _health_bar: Node2D = null
 
 
 func _ready() -> void:
@@ -352,6 +374,8 @@ func _place_body_marker() -> void:
 func set_motion(new_anim: String, new_effects: Array, new_pet: String) -> void:
 	"""What they are doing: the body's animation, the auras lit, the pet out."""
 	if new_anim != anim or (_body != null and not _body.is_playing()):
+		if new_anim.begins_with("attack") and not anim.begins_with("attack") and _aim_ring != null:
+			_aim_ring.fired()
 		anim = new_anim
 		_play_body()
 	effects = new_effects.duplicate()
@@ -403,6 +427,7 @@ func _process(delta: float) -> void:
 	_settle_clock()
 	_play_back()
 	_fire_due_attacks()
+	_follow_aim(delta)
 	if _plate != null and absf(_camera_zoom() - _plate_zoom) > 0.001:
 		_place_plate()
 	_follow_with_pet(delta)
@@ -438,6 +463,113 @@ func _fire_due_attacks() -> void:
 	while not _waiting.is_empty() and float(_waiting[0][0]) <= head:
 		var due: Array = _waiting.pop_front()
 		RemoteAttacks.fire(self, due[1])
+		# Their ring brightens as they attack, as their own does.
+		if _aim_ring != null:
+			_aim_ring.fired()
+
+
+# =============================================================================
+# THEIR AIM AND THEIR HEALTH (0.41.0) - see the top
+# =============================================================================
+
+func set_bearing(aim: Variant, health: Variant) -> void:
+	"""Their aim ring's direction in whole degrees and their health in whole
+	percent, from a state - each -1 (or missing) for none."""
+	var new_aim: int = int(aim) if aim is int or aim is float else -1
+	var new_health: int = int(health) if health is int or health is float else -1
+	aim_degrees = new_aim if new_aim >= 0 and new_aim < 360 else -1
+	health_percent = clampi(new_health, 0, 100) if new_health >= 0 else -1
+	if aim_degrees >= 0 and _aim_shown == Vector2.ZERO:
+		_aim_shown = aim_vector()
+	_paint_health()
+
+
+func aim_vector() -> Vector2:
+	"""Their aim as a direction, or ZERO for none."""
+	return Vector2.RIGHT.rotated(deg_to_rad(float(aim_degrees))) if aim_degrees >= 0 else Vector2.ZERO
+
+
+func aim_ring() -> AimRing:
+	return _aim_ring
+
+
+func health_bar() -> Node2D:
+	return _health_bar
+
+
+func _build_aim_ring() -> void:
+	if _aim_ring != null:
+		_aim_ring.queue_free()
+		_aim_ring = null
+	var spec: Dictionary = class_ring(class_id)
+	if spec.is_empty():
+		return
+	_aim_ring = AimRing.new()
+	_aim_ring.name = "aimring"
+	_aim_ring.position = spec["position"]
+	_aim_ring.drawn_at = spec["drawn_at"]
+	_aim_ring.radii = spec["radii"]
+	_aim_ring.line = spec["line"]
+	_aim_ring.visible = false
+	add_child(_aim_ring)
+	# Under the body, as theirs is: the first child.
+	move_child(_aim_ring, 0)
+
+
+func _follow_aim(delta: float) -> void:
+	"""The ball swung round toward their aim, and the ring shown when there is
+	one to show: an aim, Aim rings switched on here, and nobody dying."""
+	if _aim_ring == null:
+		return
+	var shown: bool = aim_degrees >= 0 and bool(Settings.get_value("aim_rings")) and not anim.begins_with("death")
+	_aim_ring.visible = shown
+	if not shown:
+		return
+	var wanted: Vector2 = aim_vector()
+	_aim_shown = wanted if _aim_shown == Vector2.ZERO else _aim_shown.slerp(wanted, clampf(delta * AIM_FOLLOW_RATE, 0.0, 1.0))
+	_aim_ring.point_at(_aim_shown)
+
+
+func _paint_health() -> void:
+	if health_percent < 0:
+		if _health_bar != null:
+			_health_bar.visible = false
+		return
+	if _health_bar == null:
+		_health_bar = RemoteHealthBar.new()
+		_health_bar.name = "healthbar"
+		_health_bar.z_index = int(plate_constant("NAMEPLATE_Z", 60))
+		add_child(_health_bar)
+		_place_plate()
+	_health_bar.visible = true
+	(_health_bar as RemoteHealthBar).set_share(float(health_percent) / 100.0)
+
+
+class RemoteHealthBar extends Node2D:
+	"""THEIR HEALTH, as a bar under their name: dark behind, green to red as
+	it falls, on whole pixels."""
+	var share: float = 1.0
+
+	func set_share(value: float) -> void:
+		value = clampf(value, 0.0, 1.0)
+		if not is_equal_approx(value, share):
+			share = value
+			queue_redraw()
+
+	static func colour_for(value: float) -> Color:
+		if value > 0.5:
+			return Color(0.35, 0.85, 0.35)
+		if value > 0.25:
+			return Color(0.95, 0.8, 0.25)
+		return Color(0.9, 0.25, 0.2)
+
+	func _draw() -> void:
+		var w: float = HEALTH_BAR_WIDTH
+		var h: float = HEALTH_BAR_HEIGHT
+		draw_rect(Rect2(-w / 2.0 - 0.5, -0.5, w + 1.0, h + 1.0), Color(0.05, 0.04, 0.06, 0.85))
+		var filled: float = roundf(w * share)
+		if filled > 0.0:
+			draw_rect(Rect2(-w / 2.0, 0.0, filled, h), colour_for(share))
 
 
 # =============================================================================
@@ -456,6 +588,7 @@ static func class_parts(cls: String) -> Array:
 		var instance: Node = packed.instantiate() if packed != null else null
 		if instance != null:
 			_class_sorted[cls] = instance is Node2D and (instance as Node2D).y_sort_enabled
+			_class_rings[cls] = _ring_of(instance)
 			for part_name in [BODY] + EFFECTS:
 				var sprite: AnimatedSprite2D = instance.get_node_or_null(part_name) as AnimatedSprite2D
 				if sprite != null and sprite.sprite_frames != null:
@@ -463,6 +596,23 @@ static func class_parts(cls: String) -> Array:
 			instance.free()
 	_class_parts[cls] = parts
 	return parts
+
+
+static func _ring_of(instance: Node) -> Dictionary:
+	"""A class scene's aim ring, as player.gd's _add_aim_ring() places it:
+	asked of the class's own script, so it can never sit differently."""
+	if not instance.has_method("aim_ring_feet"):
+		return {}
+	var feet: Vector2 = instance.call("aim_ring_feet")
+	var placed: float = float(instance.call("aim_ring_placed_at", feet))
+	return {"position": Vector2(feet.x, placed), "drawn_at": Vector2(0.0, feet.y - placed),
+		"radii": instance.call("aim_ring_radii"), "line": bool(instance.call("aim_ring_has_line"))}
+
+
+static func class_ring(cls: String) -> Dictionary:
+	"""Where `cls`'s aim ring goes - {} for none."""
+	class_parts(cls)
+	return _class_rings.get(cls, {})
 
 
 static func class_sorted(cls: String) -> bool:
@@ -521,6 +671,7 @@ func _build_body() -> void:
 			move_child(sprite, 0)
 	if _body != null and not _body.animation_finished.is_connected(_on_body_finished):
 		_body.animation_finished.connect(_on_body_finished)
+	_build_aim_ring()
 	# A tank's aura burns the ground here too (auraburn.gd, 0.34.0), following
 	# its "firering" as set_motion() shows and hides it. Rebuilt with the body,
 	# since it holds the old fire ring.
@@ -656,6 +807,9 @@ func _place_plate() -> void:
 	var text_h: float = wanted.y * plate_scale.y
 	var bottom: float = _head_y() - float(plate_constant("NAMEPLATE_GAP", 3.0))
 	_plate.position = Vector2(-text_w * 0.5, bottom - text_h)
+	# Their health, in the gap between the name and the head.
+	if _health_bar != null:
+		_health_bar.position = Vector2(0.0, bottom + 0.5)
 	var gap: float = float(plate_constant("NAMEPLATE_CROWN_GAP", 1.0)) * plate_scale.y
 	if _crown != null and _crown.visible:
 		_crown.scale = plate_scale

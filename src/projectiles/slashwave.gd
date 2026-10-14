@@ -249,6 +249,9 @@ const WEAVE_RATE := 16.0
 const BURST_ORBS := 8
 const BURST_SPEED := 200.0
 const BURST_REACH := 80.0
+# The burst leaves this far out from where the wave cut, round the monster's
+# edge rather than over its middle (warrior.gd, THE FINISHER, UNCLUTTERED).
+const BURST_FROM := 10.0
 
 var finisher: bool = false
 # Each burst orb's damage; 0 for none (a picture's).
@@ -609,7 +612,9 @@ func _dress() -> void:
 		add_child(_glow)
 		move_child(_glow, 0)
 	_weave_line = direction
-	for i in 2:
+	# Not over a finisher: the gold wave and its fan are enough (warrior.gd,
+	# THE FINISHER, UNCLUTTERED).
+	for i in (0 if finisher else 2):
 		var orb := Sprite2D.new()
 		orb.name = "weave%d" % i
 		orb.texture = BladeOrb.texture_for(BladeOrb.GOLD if finisher else BladeOrb.STEEL)
@@ -657,7 +662,7 @@ func _fire_burst(parent: Node, at: Vector2, cut_id: int) -> void:
 		return
 	var first: Vector2 = _weave_line if _weave_line != Vector2.ZERO else Vector2.RIGHT
 	for way in BladeOrb.ring_ways(first, BURST_ORBS):
-		BladeOrb.fire(parent, at, way, BURST_SPEED, BURST_REACH,
+		BladeOrb.fire(parent, at + way * BURST_FROM, way, BURST_SPEED, BURST_REACH,
 			0 if cosmetic else burst_damage, BladeOrb.GOLD, cosmetic, cut_id)
 
 

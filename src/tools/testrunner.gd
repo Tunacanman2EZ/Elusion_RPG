@@ -307,6 +307,8 @@ func _run_all() -> void:
 	_test_other_players_move_evenly()
 	await _test_other_players_attacks_are_pictures()
 	await _test_other_players_attacks_switch()
+	await _test_attacks_aim_with_no_cursor()
+	await _test_other_players_aim_and_health()
 	_test_every_class_answers_its_own_attack()
 	_test_presence_sends_attacks()
 	await _test_levers_are_shared()
@@ -10443,6 +10445,169 @@ func _test_other_players_move_evenly() -> void:
 # but they could see mine". The attacker's game sends a picture of each one and
 # this game spawns it from the class's own scene, with `cosmetic` set
 # (remoteattacks.gd): drawn exactly as theirs, touching nothing.
+func _test_other_players_aim_and_health() -> void:
+	section("OTHER PLAYERS - their aim ring and their health, as they see their own (0.41.0)")
+	# The owner: "i need to be able to see other players directional bar etc ...
+	# i want players to see everything i see and everything i see players also
+	# see".
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var kept_rings: bool = bool(Settings.get_value("aim_rings"))
+	Settings.set_value("aim_rings", true)
+	var arena := Node2D.new()
+	add_child(arena)
+
+	# ---- what this game sends ----
+	var me: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	me.set_physics_process(false)
+	me.set_process(false)
+	arena.add_child(me)
+	me.call("_add_aim_ring")
+	const PresenceScript := preload("res://src/systems/presence.gd")
+	var sent: Array = []
+	for way in [Vector2.RIGHT, Vector2.UP, Vector2.RIGHT.rotated(deg_to_rad(40.0))]:
+		(me.get_node(^"aimring") as AimRing).point_at(way)
+		sent.append(PresenceScript.aim_degrees_of(me))
+	me.set("max_hp", 74)
+	me.set("hp", 37)
+	var state: Dictionary = Presence.state_for(me)
+	check("the state carries where this player's aim ring points, in whole degrees stepped to AIM_STEP_DEGREES, and its health in whole percent",
+		sent == [0, 272, 40] and Presence.AIM_STEP_DEGREES == 8
+		and state.get("aim") == 40 and state.get("hp") == 50, [sent, state.get("aim"), state.get("hp")])
+	var ringless := Node2D.new()
+	check("  -1 for a body with no ring or no health", PresenceScript.aim_degrees_of(ringless) == -1 and PresenceScript.health_percent_of(ringless) == -1)
+	ringless.free()
+
+	# ---- each class's ring, placed as its own scene places it ----
+	var misplaced: Array = []
+	for cls in ["warrior", "mage", "tank", "healer"]:
+		var body: Node = (load("res://scene/characters/%s.tscn" % cls) as PackedScene).instantiate()
+		body.call("_add_aim_ring")
+		var theirs: AimRing = body.get_node_or_null(^"aimring") as AimRing
+		var spec: Dictionary = Remote.class_ring(cls)
+		if theirs == null or spec.is_empty() or theirs.position != spec["position"] or theirs.drawn_at != spec["drawn_at"] \
+				or theirs.radii != spec["radii"] or theirs.line != spec["line"]:
+			misplaced.append(cls)
+		body.free()
+	check("every class's ring on somebody else is where their own game puts it - the same feet, size and line",
+		misplaced.is_empty(), misplaced)
+
+	# ---- drawn here ----
+	var them: Node2D = Remote.new()
+	them.user_id = 651
+	arena.add_child(them)
+	them.set_identity({"id": 651, "name": "Gary", "cls": "warrior", "lvl": 12, "v": 2})
+	them.set_process(false)
+	them.place(Vector2(-77000, -77000))
+	them.set_bearing(90, 40)
+	them.call("_follow_aim", 1.0)
+	var ring: AimRing = them.aim_ring()
+	var bar: Node2D = them.health_bar()
+	var body_sprite: Node2D = them.get_node_or_null(^"animatedsprite2d") as Node2D
+	check("their aim ring is drawn, pointing where theirs does, under their body",
+		ring != null and ring.visible and ring.aim.dot(Vector2.DOWN) > 0.999
+		and body_sprite != null and (them.get_children().find(ring) < them.get_children().find(body_sprite)
+			or (them.y_sort_enabled and ring.position.y <= body_sprite.position.y)),
+		[ring != null, str(ring.aim) if ring != null else "no ring"])
+	check("  and their health as a bar under their name - 40%, so amber",
+		bar != null and bar.visible and is_equal_approx(float(bar.get("share")), 0.4)
+		and Remote.RemoteHealthBar.colour_for(0.4) == Remote.RemoteHealthBar.colour_for(0.3)
+		and Remote.RemoteHealthBar.colour_for(0.9) != Remote.RemoteHealthBar.colour_for(0.4)
+		and Remote.RemoteHealthBar.colour_for(0.1) != Remote.RemoteHealthBar.colour_for(0.4)
+		and bar.position.y < 0.0, [bar != null, bar.get("share") if bar else null])
+	them.set_bearing(180, 40)
+	them.call("_follow_aim", 1.0 / 60.0)
+	var swinging: Vector2 = ring.aim if ring != null else Vector2.ZERO
+	them.call("_follow_aim", 1.0)
+	check("  the ball swings round to a new aim rather than jumping, and arrives",
+		ring != null and swinging.dot(Vector2.LEFT) < 0.99 and swinging.dot(Vector2.DOWN) < 0.99 and ring.aim.dot(Vector2.LEFT) > 0.999,
+		[str(swinging), str(ring.aim) if ring != null else "no ring"])
+	Settings.set_value("aim_rings", false)
+	them.call("_follow_aim", 1.0 / 60.0)
+	var off_with_switch: bool = ring != null and not ring.visible
+	Settings.set_value("aim_rings", true)
+	them.set_motion("deathdown", [], "")
+	them.call("_follow_aim", 1.0 / 60.0)
+	var off_dying: bool = ring != null and not ring.visible
+	them.set_motion("idledown", [], "")
+	them.set_bearing(-1, -1)
+	them.call("_follow_aim", 1.0 / 60.0)
+	check("  none with Aim rings switched off here, while they are dying, or from a game or server that sends none",
+		off_with_switch and off_dying and ring != null and not ring.visible and (bar == null or not bar.visible))
+
+	# ---- off the wire ----
+	Presence._remotes[651] = them
+	Presence.handle_message({"t": "moves", "p": [[651, -77000.0, -77000.0, "walkdown", [], "", 1000, 304, 25]]})
+	var from_moves: Array = [them.aim_degrees, them.health_percent]
+	Presence.handle_message({"t": "moves", "p": [[651, -77000.0, -77000.0, "walkdown", [], "", 1100]]})
+	var old_server: Array = [them.aim_degrees, them.health_percent]
+	Presence._remotes.erase(651)
+	them.set_bearing(400, 250)
+	var clamped: Array = [them.aim_degrees, them.health_percent]
+	check("a step's eighth and ninth are their aim and health; a server from before sends seven, and changes nothing",
+		from_moves == [304, 25] and old_server == [304, 25], [from_moves, old_server])
+	check("  and an aim past a turn is none, a health past 100 is 100", clamped == [-1, 100], clamped)
+	Settings.set_value("aim_rings", kept_rings)
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+func _test_attacks_aim_with_no_cursor() -> void:
+	section("THE CURSOR, WHEN THERE IS ONE - no mouse on the game, and an attack aims the way the character faces (0.41.0)")
+	# Gary, in Chrome: "he can only attack left also with warrior". A game that
+	# never saw the mouse has it at (0, 0), the top-left corner, and every
+	# attack aims at the cursor - Space too - so from the keyboard every swing
+	# went left. Reproduced in Chromium before the fix: walk any way, Space,
+	# attackleft.
+	const PlayerScript := preload("res://src/characters/player.gd")
+	var kept: bool = PlayerScript.pointer_on_game
+	var arena := Node2D.new()
+	add_child(arena)
+	var warrior: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior.set_physics_process(false)
+	warrior.set_process(false)
+	arena.add_child(warrior)
+	warrior.global_position = Vector2(-76000, -76000)
+	PlayerScript.pointer_on_game = false
+	var faced: Array = []
+	for way in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP, Vector2(1, 1).normalized()]:
+		warrior.set("last_direction", way)
+		faced.append((warrior.aim_direction_to(warrior.aim_point()) as Vector2).dot(way) > 0.9999
+			and absf(warrior.global_position.distance_to(warrior.aim_point()) - PlayerScript.KEYBOARD_AIM_REACH) < 0.05)
+	check("no cursor on the game - the mouse off the page, a keyboard player: an attack aims the way they face, never at the screen's corner",
+		faced == [true, true, true, true, true], faced)
+	PlayerScript.pointer_on_game = true
+	check("  a cursor on the game: at the cursor, as ever",
+		warrior.aim_point() == warrior.get_global_mouse_position())
+	PlayerScript.pointer_on_game = false
+	warrior.set("_pointer_was", warrior.get_viewport().get_mouse_position() + Vector2(3, 0))
+	warrior.call("_watch_pointer")
+	var moved_on: bool = PlayerScript.pointer_on_game
+	warrior.call("_on_pointer_left_window")
+	var left_it: bool = PlayerScript.pointer_on_game
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	warrior.call("_unhandled_input", click)
+	var clicked: bool = PlayerScript.pointer_on_game
+	PlayerScript.pointer_on_game = false
+	warrior.call("_watch_pointer")
+	var still: bool = PlayerScript.pointer_on_game
+	check("  the mouse is on the game once it moves over it or clicks it, and off it as it leaves the window - a still one is not news",
+		moved_on and not left_it and clicked and not still, [moved_on, left_it, clicked, still])
+	check("  the window's mouse_exited is listened to, and the watch runs every physics frame",
+		_func_body(_code_src("res://src/characters/player.gd"), "func _ready(").contains("get_window().mouse_exited.connect(_on_pointer_left_window)")
+		and _func_body(_code_src("res://src/characters/player.gd"), "func _physics_process(").contains("_watch_pointer()"))
+	var read_directly: Array = []
+	for cls in ["warrior", "mage", "tank", "healer"]:
+		if _code_src("res://src/characters/%s.gd" % cls).contains("get_global_mouse_position()"):
+			read_directly.append(cls)
+	check("every class aims its attacks, its aim ring and its aura through aim_point() - none reads the cursor itself",
+		read_directly.is_empty(), read_directly)
+	PlayerScript.pointer_on_game = kept
+	arena.queue_free()
+	await get_tree().process_frame
+
+
 func _test_other_players_attacks_switch() -> void:
 	section("OTHER PLAYERS - drawn as their own scene sorts, and a switch for their attacks (0.40.1)")
 	# The owner: "on my screen garys ring is over the character and i cannot
@@ -12260,9 +12425,9 @@ func _test_the_healer_aims_from_its_middle() -> void:
 	var swing_body: String = _func_body(_code_src("res://src/characters/warrior.gd"), "func attack_action(")
 	var frame_body: String = _func_body(_code_src("res://src/characters/warrior.gd"), "func _physics_process(")
 	check("  its swing and its ring read the same aim, and the ring brightens as it swings",
-		swing_body.contains("_swing_aim_direction = aim_direction_to(get_global_mouse_position())")
+		swing_body.contains("_swing_aim_direction = aim_direction_to(aim_point())")
 		and swing_body.contains("_aim_ring_fired()")
-		and frame_body.contains("_point_aim_ring(aim_direction_to(get_global_mouse_position()))"))
+		and frame_body.contains("_point_aim_ring(aim_direction_to(aim_point()))"))
 	warrior.free()
 	var putting_on: Array[String] = []
 	for kit in ["healer", "warrior", "mage", "tank"]:
@@ -12307,7 +12472,7 @@ func _test_the_mage_and_tank_aim_rings() -> void:
 	mage.free()
 	var mage_src: String = _code_src("res://src/characters/mage.gd")
 	check("  it follows the cursor every frame, and brightens as a stalagmite or a meteor is cast",
-		_func_body(mage_src, "func _physics_process(").contains("_point_aim_ring_at(get_global_mouse_position())")
+		_func_body(mage_src, "func _physics_process(").contains("_point_aim_ring_at(aim_point())")
 		and _func_body(mage_src, "func _cast_stalagmite_drop(").contains("_aim_ring_fired()"))
 
 	var tank: Node2D = (load("res://scene/characters/tank.tscn") as PackedScene).instantiate()
@@ -12603,7 +12768,7 @@ func _test_the_mage_spell_effects() -> void:
 	check("  frost for the stalagmite, embers for the meteor", cold.b > cold.r and hot.r > hot.b, [cold, hot])
 	var cast_body: String = _func_body(_code_src("res://src/characters/mage.gd"), "func _cast_stalagmite_drop(")
 	check("  thrown on every cast, the way the mage faces, toward the cursor",
-		cast_body.contains("CastSparkle.burst(self, _direction_to_string(last_direction), get_global_mouse_position(),")
+		cast_body.contains("CastSparkle.burst(self, _direction_to_string(last_direction), aim_point(),")
 		and cast_body.contains("CastSparkle.EMBER if meteor else CastSparkle.FROST"))
 	var remote_src: String = _code_src("res://src/characters/remoteattacks.gd")
 	var them: Node2D = (load("res://src/characters/remoteplayer.gd") as GDScript).new()
@@ -13014,6 +13179,8 @@ func _test_the_warrior_blows() -> void:
 		and is_equal_approx(WarriorScript.SWORD_FAN_SHARE, 0.1)
 		and frame_body.contains("not _fanned_this_swing and _swing_hitbox != null")
 		and frame_body.contains("fling_sword_fan()")
+		# Never on the finisher (THE FINISHER, UNCLUTTERED, 0.41.0).
+		and frame_body.find("if not _finisher:") >= 0 and frame_body.find("if not _finisher:") < frame_body.find("fling_sword_fan()")
 		and _func_body(warrior_src, "func attack_action(").contains("_fanned_this_swing = false"))
 
 	# ---- the plain wave, and its weave ---------------------------------------------------
@@ -13089,7 +13256,9 @@ func _test_the_warrior_blows() -> void:
 		and glow.material is CanvasItemMaterial and (glow.material as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD
 		and unshaded.call(big_crescent),
 		big_box.size)
-	check("  its weave gold", weave_of.call(big, BladeOrb.GOLD).size() == 2, big.get_children())
+	# The owner: "warriors critical attack is overlapped it looks bad" (0.41.0).
+	check("  and nothing weaves over it - the gold wave and its fan are enough",
+		weave_of.call(big, BladeOrb.GOLD).is_empty() and weave_of.call(big, BladeOrb.STEEL).is_empty(), big.get_children())
 	var first_cut: CharacterBody2D = _weapon_dummy(arena, Vector2(440, 500))
 	var second_cut: CharacterBody2D = _weapon_dummy(arena, Vector2(480, 500))
 	before = arena.get_children()
@@ -13101,9 +13270,9 @@ func _test_the_warrior_blows() -> void:
 	var cut_at: Vector2 = Strike.hit_point(first_cut)
 	var from_the_cut := func(o: BladeOrb) -> bool:
 		return o.palette == BladeOrb.GOLD and o.damage == 6 \
-			and (o.global_position - o.direction * o.flown).is_equal_approx(cut_at)
+			and (o.global_position - o.direction * o.flown).is_equal_approx(cut_at + o.direction * SlashWave.BURST_FROM)
 	var ring: Array = BladeOrb.ring_ways(Vector2.RIGHT, SlashWave.BURST_ORBS).map(func(v: Vector2) -> int: return roundi(rad_to_deg(v.angle())))
-	check("THE BURST: where a finisher first cuts a monster, BURST_ORBS (8) gold orbs fly out from it, each for its burst damage",
+	check("THE BURST: where a finisher first cuts a monster, BURST_ORBS (8) gold orbs fly out from its edge, each for its burst damage",
 		orbs_in_frame == 0 and burst.size() == SlashWave.BURST_ORBS and big.burst_done
 		and burst.all(from_the_cut)
 		and burst.map(func(o: BladeOrb) -> int: return roundi(rad_to_deg(o.direction.angle()))) == ring,
@@ -13140,16 +13309,28 @@ func _test_the_warrior_blows() -> void:
 	var attack_body: String = _func_body(warrior_src, "func attack_action(")
 	check("  thrown on every third sword swing - not with the Double Axe - for one and a half its damage",
 		attack_body.contains("_swings += 1") and attack_body.contains("_finisher = finisher_on(_swings)")
-		and attack_body.find("_swings += 1") > attack_body.find("throw_axe(get_global_mouse_position())")
+		and attack_body.find("throw_axe(aim_point())") >= 0
+		and attack_body.find("_swings += 1") > attack_body.find("throw_axe(aim_point())")
 		and spawn_body.contains("wave_damage_ratio * (FINISHER_MULT if _finisher else 1.0)")
 		and spawn_body.find("wave.finisher = true") < spawn_body.find("wave.shoot_vector(")
 		and spawn_body.contains("wave.burst_damage = maxi(1, int(wave.damage * FINISHER_ORB_SHARE))"))
 	check("  with FINISHER_FAN_ORBS (4) gold orbs fanned beside it, as fast, each for 0.15 of it",
-		spawn_body.contains("BladeOrb.fan_ways(_swing_aim_direction, FINISHER_FAN_ORBS, FINISHER_FAN_SPREAD_DEGREES, true)")
-		and spawn_body.find("BladeOrb.fan_ways(") > spawn_body.find("if _finisher:", spawn_body.find("wave.shoot_vector("))
+		spawn_body.contains("for pair in finisher_fan(wave.global_position, _swing_aim_direction):")
+		and spawn_body.find("finisher_fan(") > spawn_body.find("if _finisher:", spawn_body.find("wave.shoot_vector("))
 		and spawn_body.contains("wave.speed,") and spawn_body.contains("wave.burst_damage, BladeOrb.GOLD)")
 		and WarriorScript.FINISHER_FAN_ORBS == 4 and is_equal_approx(WarriorScript.FINISHER_ORB_SHARE, 0.15)
-		and spawn_body.contains("RemoteAttacks.FLAG_SWORD_FAN | (RemoteAttacks.FLAG_FINISHER if _finisher else 0)"))
+		and spawn_body.contains("RemoteAttacks.FLAG_FINISHER if _finisher else RemoteAttacks.FLAG_SWORD_FAN"))
+	# Each from the crescent's tip on its own side, clear of the wave.
+	var fan_pairs: Array = WarriorScript.finisher_fan(Vector2(100, 100), Vector2.RIGHT)
+	var wave_middle: Vector2 = Vector2(100, 100) + SlashWave.SPRITE_CENTRE
+	var clear_of_it: bool = fan_pairs.size() == WarriorScript.FINISHER_FAN_ORBS
+	for pair in fan_pairs:
+		var off: Vector2 = (pair[0] as Vector2) - wave_middle
+		clear_of_it = clear_of_it and is_equal_approx(off.length(), WarriorScript.FINISHER_FAN_TIP) \
+			and absf(off.x) < 0.001 and signf(off.y) == signf((pair[1] as Vector2).y)
+	check("  and they leave from the crescent's tips, each on the side it flies to, past its half-width - not over it",
+		clear_of_it and WarriorScript.FINISHER_FAN_TIP > SlashWave.HITBOX_SWEEP * SlashWave.FINISHER_SCALE / 2.0,
+		fan_pairs)
 
 	# ---- somebody else's ------------------------------------------------------------------
 	var them := Node2D.new()
@@ -13162,9 +13343,9 @@ func _test_the_warrior_blows() -> void:
 	var made: Array = RemoteAttacks.fire(them, ["slash", 0, 200.0, 200.0, 300.0, 200.0, 0,
 		RemoteAttacks.FLAG_FINISHER | RemoteAttacks.FLAG_SWORD_FAN])
 	var their_orbs: Array = new_in.call(before)
-	check("a picture of somebody else's finisher is gold and bigger, with its sword's fan and its own - pictures, no damage",
+	check("a picture of somebody else's finisher is gold and bigger, with its own fan and no sword's - even from a game that still flags one - pictures, no damage",
 		made.size() == 1 and (made[0] as SlashWave).finisher and is_equal_approx((made[0] as SlashWave).hitbox_scale, SlashWave.FINISHER_SCALE)
-		and their_orbs.size() == WarriorScript.SWORD_FAN_ORBS + WarriorScript.FINISHER_FAN_ORBS
+		and their_orbs.size() == WarriorScript.FINISHER_FAN_ORBS
 		and their_orbs.all(func(o: BladeOrb) -> bool: return o.cosmetic and o.damage == 0 and o.palette == BladeOrb.GOLD),
 		their_orbs.size())
 	before = drawn_in.get_children()
@@ -13528,7 +13709,7 @@ func _test_the_healer_aura() -> void:
 		[cooling, why_cooling, why_mana])
 	var healer_src: String = _code_src("res://src/characters/healer.gd")
 	check("  the right button read every frame - a click no window took - and the area told (\"heal\")",
-		_func_body(healer_src, "func _physics_process(").contains("_aura_click(delta, right_click_held(), get_global_mouse_position())")
+		_func_body(healer_src, "func _physics_process(").contains("_aura_click(delta, right_click_held(), aim_point())")
 		and _func_body(healer_src, "func drop_aura(").contains("Presence.tell_attack(\"heal\", global_position, at)"))
 
 	# ---- every class attacks on the left button --------------------------------------------------

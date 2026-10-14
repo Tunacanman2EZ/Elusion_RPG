@@ -24,7 +24,7 @@ Options also sets the **text size** (up to 150%, for a big screen or one across 
 |---|---|
 | Move | W A S D, or the arrow keys |
 | Sprint | hold Shift |
-| Attack, aiming with the mouse | Space, or left-click |
+| Attack, aiming with the mouse (with no mouse on the game, the way you face) | Space, or left-click |
 | Healer: drop a healing aura at the mouse | right-click |
 | Use the shop, bank, fire or fishing spot | E |
 | Use the item on a hotbar key | 1 to 0 |
@@ -197,7 +197,7 @@ Player trading arrived after the audit and gets its own section there, because i
 
 Everyone in the same area sees everyone else: walking and idling the right way round, swinging, the tank's aura lit, the pet trailing behind, and the name over the head in the colour they chose, with the guild tag and the crown or staff badge. It runs over a WebSocket to a small asyncio server beside the API, ten updates a second per area, and none of it touches the database. The socket never sees a login: the game trades its session for a two-minute ticket, so a ban or a sign-out elsewhere ends the connection within seconds without the socket server knowing how logins work. And the game only ever says *where* it is — who somebody is (name, rank, colour, which pets they may show) comes from the server's own rows. Since 0.7.0 the same socket carries the monsters too — next section.
 
-Since 0.19.0 you see their attacks as well: meteors, thrown axes, Dynamite, slash waves and healing orbs, each built from the class's own scene as a *picture* that touches nothing — no hit, no XP, no pull — so only the attacker's own game ever lands a blow. A lever pulled opens its gate for everyone in the area, and the server remembers it for whoever walks in later. And other players are played back on their own game's clock instead of chased toward their newest step, so they walk past evenly rather than surging and stalling.
+Since 0.19.0 you see their attacks as well: meteors, thrown axes, Dynamite, slash waves and healing orbs, each built from the class's own scene as a *picture* that touches nothing — no hit, no XP, no pull — so only the attacker's own game ever lands a blow. A lever pulled opens its gate for everyone in the area, and the server remembers it for whoever walks in later. And other players are played back on their own game's clock instead of chased toward their newest step, so they walk past evenly rather than surging and stalling. Since 0.41.0 each of them wears the aim ring you wear, pointing where theirs points, and a health bar under their name: everything you see on yourself, they see on you.
 
 ### The same monsters, and a bag each — `src/world/monstersync.gd`, `src/shared/targets.gd`
 
@@ -307,7 +307,7 @@ test_trades.py         136 checks    a trade reaches the right person and means 
 test_security_doc.py   135 checks    SECURITY.md is checked, not trusted
 test_refusals.py       127 checks    401, 403, and the 404 that is really a 403
 test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
-test_presence.py       132 checks    players seeing each other, whose game runs each area's monsters, every attack and lever
+test_presence.py       135 checks    players seeing each other, whose game runs each area's monsters, every attack and lever
 test_quality.py        113 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
 test_pacing.py         114 checks    the pace of the game: what the server pays, the store charges and the shop pays back
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
@@ -345,14 +345,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,977 checks, 0 failures
+					4,980 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **3,976 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 158 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **3,991 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 158 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `3910 passed, 0 failed, 27 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-six are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `3925 passed, 0 failed, 27 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-six are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 **Both suites run on GitHub for every push and every pull request** (`.github/workflows/tests.yml`, here and in the API repo). The game's run is a clone — no art pack — so a new check that needs the art and does not say so fails there before it reaches anybody who clones this. The API's runs `run_tests.ps1` itself, so a green tick means what a green run on the PC means.
 

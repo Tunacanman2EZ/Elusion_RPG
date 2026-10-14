@@ -285,7 +285,7 @@ func aim_ring_has_line() -> bool:
 func aim_ring_point() -> Vector2:
 	"""Where the ball points: where a stick would come down, with Dynamite on
 	- the cursor, or as far toward it as a throw goes; the cursor, without."""
-	var cursor: Vector2 = get_global_mouse_position()
+	var cursor: Vector2 = aim_point()
 	if equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:
 		return dynamite_landing(cursor)
 	return cursor
@@ -469,7 +469,7 @@ func attack_action() -> void:
 	# the tank has no direct strike — the aura IS the attack. Unless Dynamite is
 	# equipped, when attack throws a stick, and the throw lights the ring.
 	if equipped_weapon_attack() == ItemData.WeaponAttack.DYNAMITE:
-		throw_dynamite(get_global_mouse_position())
+		throw_dynamite(aim_point())
 		return
 	if aura_active:
 		_deactivate_aura()

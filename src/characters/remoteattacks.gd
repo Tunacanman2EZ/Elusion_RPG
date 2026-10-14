@@ -143,13 +143,15 @@ static func _slash(body: Node2D, origin: Vector2, target: Vector2, flags: int = 
 	# its wave. Pictures: no damage. Their wave weaves and bursts by itself.
 	var palette: StringName = BladeOrb.GOLD if wave.finisher else BladeOrb.STEEL
 	var warrior: Dictionary = (load(WARRIOR_PATH) as GDScript).get_script_constant_map()
-	if flags & FLAG_SWORD_FAN != 0:
+	# A finisher flings no sword fan (warrior.gd, THE FINISHER, UNCLUTTERED) -
+	# whatever a game from before that says.
+	if flags & FLAG_SWORD_FAN != 0 and not wave.finisher:
 		for way in BladeOrb.fan_ways(aim, int(warrior["SWORD_FAN_ORBS"]), float(warrior["SWORD_FAN_SPREAD_DEGREES"]), false):
 			BladeOrb.fire(parent, origin, way, float(warrior["SWORD_FAN_SPEED"]), float(warrior["SWORD_FAN_REACH"]),
 				0, palette, true)
 	if wave.finisher:
-		for way in BladeOrb.fan_ways(aim, int(warrior["FINISHER_FAN_ORBS"]), float(warrior["FINISHER_FAN_SPREAD_DEGREES"]), true):
-			BladeOrb.fire(parent, origin + SlashWave.SPRITE_CENTRE, way, wave.speed, float(warrior["FINISHER_FAN_REACH"]),
+		for pair in (load(WARRIOR_PATH) as GDScript).call("finisher_fan", origin, aim):
+			BladeOrb.fire(parent, pair[0], pair[1], wave.speed, float(warrior["FINISHER_FAN_REACH"]),
 				0, palette, true)
 	return wave
 

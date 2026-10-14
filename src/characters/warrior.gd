@@ -339,6 +339,14 @@ const SWORD_FAN_FROM := 8.0
 const FINISHER_FAN_ORBS := 4
 const FINISHER_FAN_SPREAD_DEGREES := 12.0
 const FINISHER_FAN_REACH := 300.0
+# THE FINISHER, UNCLUTTERED (0.41.0). The owner: "warriors critical attack is
+# overlapped it looks bad" - the gold wave, its fan riding over it from its
+# middle, the sword's fan off the blade, the weave and the burst all in one
+# place. Now the finisher flings no sword fan (its own fan is the wave's), its
+# wave weaves nothing (slashwave.gd), its fan leaves from the crescent's tips -
+# FINISHER_FAN_TIP out from its middle, each on its own side - and flies clear
+# of it, and the burst starts at the edge of the monster (SlashWave.BURST_FROM).
+const FINISHER_FAN_TIP := 28.0
 const FINISHER_ORB_SHARE := 0.15
 
 # Swings with the sword since the warrior was made, for THE FINISHER.
@@ -429,7 +437,7 @@ func _physics_process(delta: float) -> void:
 	# warrior adds nothing to the input path any more.
 	super._physics_process(delta)
 	# The ball points where the next swing - its wave, or the axe - would go.
-	_point_aim_ring(aim_direction_to(get_global_mouse_position()))
+	_point_aim_ring(aim_direction_to(aim_point()))
 	if _reach_ring != null:
 		_reach_ring.visible = _reach_ring_shown()
 
@@ -536,7 +544,7 @@ func attack_action() -> void:
 	# last_direction if the cursor is sitting exactly on the player
 	# (zero-length vector, e.g. controller/edge case) so we never animate
 	# toward a garbage direction.
-	_swing_aim_direction = aim_direction_to(get_global_mouse_position())
+	_swing_aim_direction = aim_direction_to(aim_point())
 	_aim_ring_fired()
 	if _reach_ring != null:
 		_reach_ring.fired()
@@ -564,7 +572,7 @@ func attack_action() -> void:
 		# nothing else.
 		_swing_hitbox = null
 		_wave_spawned_this_swing = true
-		throw_axe(get_global_mouse_position())
+		throw_axe(aim_point())
 	else:
 		_swings += 1
 		_finisher = finisher_on(_swings)
@@ -754,7 +762,9 @@ func _on_frame_changed() -> void:
 
 	if frame >= contact_frame_start and not _fanned_this_swing and _swing_hitbox != null:
 		_fanned_this_swing = true
-		fling_sword_fan()
+		# Not on the finisher: its fan is its wave's (THE FINISHER, UNCLUTTERED).
+		if not _finisher:
+			fling_sword_fan()
 
 	if frame >= contact_frame_start and frame <= contact_frame_end:
 		_deal_melee_damage()
@@ -822,6 +832,19 @@ func fling_sword_fan(into: Node = null) -> Array[BladeOrb]:
 		orbs.append(BladeOrb.fire(parent, from, way, SWORD_FAN_SPEED, SWORD_FAN_REACH, each,
 			BladeOrb.GOLD if _finisher else BladeOrb.STEEL))
 	return orbs
+
+
+static func finisher_fan(from: Vector2, aim: Vector2) -> Array:
+	"""THE FINISHER's fan, [start, way] for each of its FINISHER_FAN_ORBS orbs:
+	each from the tip of the crescent on the side it flies to, FINISHER_FAN_TIP
+	out from the wave's middle, so it flies clear of the wave rather than over
+	it (THE FINISHER, UNCLUTTERED). `from` is the wave's position."""
+	var out: Array = []
+	var middle: Vector2 = from + SlashWave.SPRITE_CENTRE
+	for way in BladeOrb.fan_ways(aim, FINISHER_FAN_ORBS, FINISHER_FAN_SPREAD_DEGREES, true):
+		var across: Vector2 = (way - aim * way.dot(aim)).normalized()
+		out.append([middle + across * FINISHER_FAN_TIP, way])
+	return out
 
 
 static func finisher_on(swing: int) -> bool:
@@ -1014,12 +1037,12 @@ func _spawn_slashwave() -> void:
 	wave.shoot_vector(_swing_aim_direction)
 	# THE FINISHER's fan: gold orbs flying out beside its wave, as fast.
 	if _finisher:
-		for way in BladeOrb.fan_ways(_swing_aim_direction, FINISHER_FAN_ORBS, FINISHER_FAN_SPREAD_DEGREES, true):
-			BladeOrb.fire(wave.get_parent(), wave.global_position + SlashWave.SPRITE_CENTRE, way, wave.speed,
+		for pair in finisher_fan(wave.global_position, _swing_aim_direction):
+			BladeOrb.fire(wave.get_parent(), pair[0], pair[1], wave.speed,
 				FINISHER_FAN_REACH, wave.burst_damage, BladeOrb.GOLD)
 	Presence.tell_attack("slash", wave.global_position,
 		wave.global_position + _swing_aim_direction * RemoteAttacks.AIM_AHEAD, 0.0,
-		RemoteAttacks.FLAG_SWORD_FAN | (RemoteAttacks.FLAG_FINISHER if _finisher else 0))
+		RemoteAttacks.FLAG_FINISHER if _finisher else RemoteAttacks.FLAG_SWORD_FAN)
 
 
 func _parent_to_projectiles_container(wave: Node) -> void:

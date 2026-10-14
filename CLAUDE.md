@@ -5925,6 +5925,74 @@ their own".
   older picture test sets the switch on for itself and puts it back. Each was
   broken on purpose to see it fail.
 
+### An attack with no cursor aims where you face (0.41.0)
+
+Gary, playing in Chrome: "he can only attack left also with warrior", and the
+owner: "he was using chrome so we need to think to the max to solve the
+problem".
+
+- **Reproduced in Chromium.** Every attack aims at the cursor - Space too - and
+  a game that has never seen the mouse over it has the cursor at (0, 0), the
+  screen's top-left corner. Playing from the keyboard with the mouse off the
+  page, every swing went up and left, and the warrior's swing favours left and
+  right on a diagonal (`swing_horizontal_bias`): `attackleft`, every time,
+  whichever way he walked. The browser's own mapping was fine: a web export
+  driven in Chromium at 100%, 125%, 150% and 200% scaling and windows from
+  900x1000 to 2560x1305 aimed every click and Space exactly at the mouse.
+- **The fix** (player.gd, THE CURSOR, WHEN THERE IS ONE): an attack aims at the
+  cursor only while there is one on the game - it moved over the window or
+  clicked it since it last left (`get_window().mouse_exited`) - and otherwise
+  `KEYBOARD_AIM_REACH` (64 px) ahead the way the character faces. `aim_point()`
+  is what every class asks: the warrior's swing, axe and ring, the mage's
+  stalagmite, meteor, sparkle and ring, the tank's sticks and ring, the
+  healer's orbs, aura and ring. `pointer_on_game` is static, so a new area's
+  character does not forget a mouse still over the game. A still cursor is not
+  news (`_watch_pointer()` compares frames); a click always is. Measured after,
+  in Chromium: walk right, down, left, up, Space - `attackright`, `attackdown`,
+  `attackleft`, `attackup`; the mouse on the game wins; the mouse leaving the
+  page hands it back to the keyboard.
+- **The web build on the site was 0.21.2** (`builds\web`, exported 11 Oct), so
+  a browser player was nineteen releases behind everyone else. Hence build 5
+  (below): set the minimum once 0.41.0 is uploaded.
+- `_test_attacks_aim_with_no_cursor`.
+
+### The finisher, uncluttered (0.41.0)
+
+The owner: "warriors critical attack is overlapped it looks bad". On the third
+swing the gold wave, its fan riding over it from its middle, the sword's fan
+off the blade, the weave and the burst all landed in one place.
+
+- The finisher flings **no sword fan** (`_on_frame_changed()`: its fan is its
+  wave's), its wave **weaves nothing** (slashwave.gd), its **fan leaves from
+  the crescent's tips** - `finisher_fan()`: each orb `FINISHER_FAN_TIP` (28 px,
+  past the crescent's half-width) out on the side it flies to - and **the burst
+  starts at the monster's edge** (`SlashWave.BURST_FROM`, 10 px), not its
+  middle. Somebody else's finisher is drawn the same, whatever an older game
+  flags. The numbers are unchanged; the server's bound counted a sword fan on
+  the finisher and still does, which only leaves it higher than it needs.
+
+### Other players: their aim ring and their health (0.41.0)
+
+The owner: "i need to be able to see other players directional bar etc ... i
+want players to see everything i see and everything i see players also see".
+
+- **The state carries** `aim` (where the aim ring's ball points, whole
+  degrees, stepped to `Presence.AIM_STEP_DEGREES`, 8, so a drifting mouse is
+  not a new state ten times a second) and `hp` (health, whole percent). The
+  presence server checks both and passes them on in every step and join
+  (presence.py, THEIR AIM AND THEIR HEALTH) - **update the server first**; an
+  older one simply drops them.
+- **remoteplayer.gd draws** their aim ring - placed by asking their class's own
+  scene (`class_ring()`: the same feet, size and line their game uses), under
+  their body, under the same Aim rings switch, hidden while they die - with the
+  ball swinging round to each new aim (`AIM_FOLLOW_RATE`) and brightening as
+  they attack; and their health as a bar in the gap under their name, green,
+  amber under half, red under a quarter. Taken as they arrive, not played back.
+- **Build 5** (`Api.BUILD`, app.py `CURRENT_CLIENT_BUILD`): a build-4 game
+  plays on but draws none of it. The owner panel's minimum makes everyone in an
+  area draw the same.
+- `_test_other_players_aim_and_health`.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

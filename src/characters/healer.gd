@@ -214,7 +214,7 @@ func _physics_process(delta: float) -> void:
 		_shot_timer -= delta
 
 	_point_aim_ring(_get_direction_to_cursor())
-	_aura_click(delta, right_click_held(), get_global_mouse_position())
+	_aura_click(delta, right_click_held(), aim_point())
 
 	if _can_fire():
 		_fire_projectile()
@@ -404,7 +404,7 @@ func _get_direction_to_cursor() -> Vector2:
 	# motionless orbs on top of the player. Falling back to the last real facing
 	# fires the shot the way the player is already looking, which is the only
 	# answer that isn't a guess.
-	return aim_direction_to(get_global_mouse_position())
+	return aim_direction_to(aim_point())
 
 
 func aim_origin() -> Vector2:

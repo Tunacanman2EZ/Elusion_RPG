@@ -169,7 +169,7 @@ func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 	# The ball points at where the next spell comes down: the cursor, for the
 	# stalagmite and the meteor alike.
-	_point_aim_ring_at(get_global_mouse_position())
+	_point_aim_ring_at(aim_point())
 
 
 # =============================================================================
@@ -240,13 +240,13 @@ func _cast_stalagmite_drop() -> void:
 	_play_cast_animation()
 	var meteor: bool = equipped_weapon_attack() == ItemData.WeaponAttack.METEOR
 	if meteor:
-		call_meteor(get_global_mouse_position())
+		call_meteor(aim_point())
 	else:
 		_spawn_stalagmite()
 	_aim_ring_fired()
 	# Motes off the staff (castsparkle.gd, 0.35.0): frost for the stalagmite,
 	# embers for the meteor, streaking the way the spell went.
-	CastSparkle.burst(self, _direction_to_string(last_direction), get_global_mouse_position(),
+	CastSparkle.burst(self, _direction_to_string(last_direction), aim_point(),
 		CastSparkle.EMBER if meteor else CastSparkle.FROST)
 
 	# Cooldown unlocks casting after spell_cooldown seconds. This is the ONLY
@@ -296,7 +296,7 @@ func _spawn_stalagmite() -> void:
 	# animation and damages on impact frame (frame 4).
 	var spell: Node = target_circle_scene.instantiate()
 	get_tree().current_scene.add_child(spell)
-	spell.global_position = get_global_mouse_position()
+	spell.global_position = aim_point()
 
 	# The target circle used to SLIDE into place instead of appearing at the
 	# cursor.
