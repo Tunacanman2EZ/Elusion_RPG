@@ -312,6 +312,7 @@ func _run_all() -> void:
 	await _test_parties()
 	await _test_names_open_the_player_menu()
 	await _test_party_voice()
+	await _test_voice_settings()
 	_test_every_class_answers_its_own_attack()
 	_test_presence_sends_attacks()
 	await _test_levers_are_shared()
@@ -10624,11 +10625,29 @@ class FakeVoiceBridge extends RefCounted:
 	var mic: bool = false
 	var vols: Dictionary = {}
 	var started_with: String = ""
+	# The settings (0.45.0), and the order the page was told things in.
+	var mic_volume: float = 1.0
+	var gate: float = 0.0
+	var processing: Array = [true, true]
+	var order: Array = []
 
 	func start(config_json: String) -> void:
 		started_with = config_json
 		st = "starting"
 		calls.append("start")
+		order.append("start")
+
+	func set_mic_volume(volume: float) -> void:
+		mic_volume = volume
+		order.append("mic_volume")
+
+	func set_gate(level: float) -> void:
+		gate = level
+		order.append("gate")
+
+	func set_processing(echo: bool, noise: bool) -> void:
+		processing = [echo, noise]
+		order.append("processing")
 
 	func stop() -> void:
 		st = "off"
@@ -10811,7 +10830,9 @@ func _test_party_voice() -> void:
 	# relay's route, test_presence.py P-11 who may pass a call's setup to whom.
 	var kept := {"name": Api.username, "bridge": Voice.bridge, "fetch": Voice.fetch, "path": Voice.path,
 		"mode": Voice.mode, "muted": Voice.muted, "volumes": Voice.volumes.duplicate(), "link": Voice.link_open,
-		"send": Presence.send_override, "id": Presence._my_id}
+		"send": Presence.send_override, "id": Presence._my_id, "voices": Voice.voices_volume,
+		"mic": Voice.mic_volume, "sensitivity": Voice.sensitivity, "echo": Voice.echo_cancel,
+		"noise": Voice.noise_suppress}
 	Api.username = "vme"
 	Party.forget()
 	Voice.stop()
@@ -10829,7 +10850,7 @@ func _test_party_voice() -> void:
 	var js: String = VoiceBridge.SOURCE
 	var missing: Array = []
 	for piece in ["V.start", "V.stop", "V.status", "V.reason", "V.dial", "V.hear", "V.hangup", "V.setMic",
-			"V.setVolume", "V.takeOutbox", "V.levels"]:
+			"V.setVolume", "V.takeOutbox", "V.levels", "V.setMicVolume", "V.setGate", "V.setProcessing"]:
 		if not js.contains(piece + " = function"):
 			missing.append(piece)
 	if not js.contains("window.elusionVoice = V;"):
@@ -10838,7 +10859,8 @@ func _test_party_voice() -> void:
 	check("  with no backslash in it (it sits inside a GDScript string)", not js.contains("\\"))
 	check("  every call through the relay unless the server says otherwise, and the browser's echo cancellation and noise suppression",
 		js.contains("iceTransportPolicy: V.cfg.policy === \"all\" ? \"all\" : \"relay\"")
-		and js.contains("echoCancellation: true") and js.contains("noiseSuppression: true"))
+		and js.contains("echoCancellation: V.ec, noiseSuppression: V.ns") and js.contains("ec: true,")
+		and js.contains("ns: true"))
 	check("  and none of its names is one GDScript's Object already has (call, connect, set, get, free)",
 		not js.contains("V.call = ") and not js.contains("V.connect = ") and not js.contains("V.set = ")
 		and not js.contains("V.get = ") and not js.contains("V.free = "))
@@ -10974,14 +10996,11 @@ func _test_party_voice() -> void:
 		panel.voice_box.visible and panel.voice_switch.button_pressed and panel.voice_switch.text == "Voice on"
 		and panel.voice_mode.selected == 1 and panel.voice_mode.get_item_text(1) == "Push to talk (V)"
 		and not panel.mute_button.disabled, [panel.voice_switch.text, panel.voice_mode.get_item_text(1)])
-	check("  each member in voice: a speaker that lights while they talk, and their own volume",
-		bob_mark != null and bob_volume != null and is_equal_approx(bob_volume.value, 40.0)
+	check("  each member in voice: a speaker that lights while they talk (their volume is in Voice settings since 0.45.0)",
+		bob_mark != null and bob_volume == null
 		and dan_row != null and dan_row.find_child("voice", true, false) == null, [bob_mark != null, bob_volume != null])
 	panel._process(0.1)
 	check("  lit now: VBob is talking", bob_mark != null and bool(bob_mark.get("lit")))
-	if bob_volume != null:
-		bob_volume.value = 70.0
-	check("  their slider sets their volume", is_equal_approx(Voice.volume_of("vbob"), 0.7))
 	check("  and under the switch, how to talk", PartyPanel.voice_line() == "Hold V to talk.", PartyPanel.voice_line())
 	panel.mute_button.button_pressed = true
 	check("Mute in the window mutes", Voice.muted and PartyPanel.voice_line() == "You are muted.")
@@ -11032,6 +11051,236 @@ func _test_party_voice() -> void:
 	Voice.mode = kept["mode"]
 	Voice.muted = kept["muted"]
 	Voice.volumes = kept["volumes"]
+	Voice.voices_volume = kept["voices"]
+	Voice.mic_volume = kept["mic"]
+	Voice.sensitivity = kept["sensitivity"]
+	Voice.echo_cancel = kept["echo"]
+	Voice.noise_suppress = kept["noise"]
+	Voice.note = ""
+	Voice.link_open = kept["link"]
+	Presence.send_override = kept["send"]
+	Presence._my_id = kept["id"]
+	Api.username = kept["name"]
+
+
+func _test_voice_settings() -> void:
+	section("VOICE SETTINGS - voices, each player, the microphone and its level, open-mic sensitivity, noise and echo (0.45.0)")
+	# The owner: "add a settings for it in that menu so players can adjust
+	# voice volume". The browser's side - the gain, the call to itself that
+	# keeps a boosted voice inside echo cancellation, the gate, a microphone
+	# swapped mid-call - was run for real in Chromium (CLAUDE.md, "Voice
+	# settings"); here, the game's.
+	var kept := {"name": Api.username, "bridge": Voice.bridge, "fetch": Voice.fetch, "path": Voice.path,
+		"mode": Voice.mode, "muted": Voice.muted, "volumes": Voice.volumes.duplicate(), "link": Voice.link_open,
+		"send": Presence.send_override, "id": Presence._my_id, "voices": Voice.voices_volume,
+		"mic": Voice.mic_volume, "sensitivity": Voice.sensitivity, "echo": Voice.echo_cancel,
+		"noise": Voice.noise_suppress}
+	Api.username = "sme"
+	Party.forget()
+	Voice.stop()
+	Voice.path = "user://test_voice_settings2.cfg"
+	DirAccess.remove_absolute(Voice.path)
+	Voice.mode = Voice.MODE_OPEN
+	Voice.muted = false
+	Voice.volumes = {}
+	Voice.voices_volume = 1.0
+	Voice.mic_volume = 1.0
+	Voice.sensitivity = 0.0
+	Voice.echo_cancel = true
+	Voice.noise_suppress = true
+	Presence.send_override = func(_message: Dictionary) -> void: pass
+	Voice.link_open = func() -> bool: return true
+	Presence._my_id = 50
+	var fake := FakeVoiceBridge.new()
+	Voice.bridge = fake
+	Voice.fetch = func(_route: String) -> Dictionary:
+		return {"ok": true, "status": 200, "data": {"policy": "relay", "ice_servers": []}}
+	Party.apply({"id": 6, "leader": "sme", "members": ["sme", "SBob", "sdan"]})
+
+	# ---- set before voice is on, used from the first word ----
+	Voice.set_voices_volume(1.5)
+	Voice.set_mic_volume(1.8)
+	Voice.set_sensitivity(0.4)
+	Voice.set_processing(false, true)
+	fake.order.clear()
+	await Voice.switch(true)
+	var start_at: int = fake.order.find("start")
+	check("set before voice is on, the settings reach the page before the microphone opens",
+		start_at > 0 and fake.order.slice(0, start_at).has("mic_volume") and fake.order.slice(0, start_at).has("gate")
+		and fake.order.slice(0, start_at).has("processing")
+		and is_equal_approx(fake.mic_volume, 1.8) and is_equal_approx(fake.gate, 0.4 * Voice.GATE_TOP)
+		and fake.processing == [false, true], [fake.order, fake.mic_volume, fake.gate, fake.processing])
+	fake.st = "live"
+	Voice._process(0.2)
+	Voice.hear({"t": "vs", "in": [{"id": 60, "name": "SBob"}]})
+	check("everyone's voices times each one's own: SBob, at his own 100%, plays at 150%",
+		is_equal_approx(float(fake.vols.get(60, -1.0)), 1.5), fake.vols)
+	Voice.set_volume("SBob", 2.0)
+	check("  his own turned to 200% plays at the most there is, 200%",
+		is_equal_approx(float(fake.vols.get(60, -1.0)), 2.0) and is_equal_approx(Voice.volume_of("sbob"), 2.0), fake.vols)
+	Voice.set_voices_volume(0.5)
+	check("  everyone's at 50% halves him at once: 100%", is_equal_approx(float(fake.vols.get(60, -1.0)), 1.0), fake.vols)
+	Voice.set_volume("SBob", 0.0)
+	check("  and his own at 0 silences him, whatever everyone's is", is_equal_approx(float(fake.vols.get(60, -1.0)), 0.0))
+	Voice.set_volume("SBob", 1.0)
+
+	# ---- the microphone ----
+	Voice.set_mic_volume(5.0)
+	check("the microphone's volume goes to the page, at most 200%", is_equal_approx(fake.mic_volume, 2.0)
+		and is_equal_approx(Voice.mic_volume, 2.0))
+	Voice.set_mode(Voice.MODE_PUSH)
+	var push_gate: float = fake.gate
+	Voice.set_mode(Voice.MODE_OPEN)
+	check("open-mic sensitivity is the open mic's: push to talk turns the gate off, open mic puts it back",
+		push_gate == 0.0 and is_equal_approx(fake.gate, 0.4 * Voice.GATE_TOP), [push_gate, fake.gate])
+	Voice.set_sensitivity(0.0)
+	check("  and at 0 it is off: everything goes out", fake.gate == 0.0)
+	Voice.set_sensitivity(0.4)
+	fake.lv = {"st": "live", "mic": 0.15, "me": 0.0, "gate": false, "peers": {}}
+	Voice._process(0.2)
+	check("the page's level reaches the bar while nothing goes out (quiet, under the line)",
+		is_equal_approx(Voice.mic_level, 0.15) and not Voice.gate_open and is_equal_approx(Voice.meter_share(), 0.5)
+		and not Voice.speaking("sme"), [Voice.mic_level, Voice.gate_open, Voice.meter_share()])
+	fake.lv = {"st": "live", "mic": 0.2, "me": 0.2, "gate": true, "peers": {}}
+	Voice._process(0.2)
+	check("  over it, out it goes - and you light up as talking", Voice.gate_open and Voice.speaking("sme"))
+	Voice.set_processing(true, false)
+	check("noise suppression and echo cancellation go to the page as they are switched",
+		fake.processing == [true, false] and Voice.echo_cancel and not Voice.noise_suppress)
+
+	# ---- kept ----
+	Voice.voices_volume = 1.0
+	Voice.mic_volume = 1.0
+	Voice.sensitivity = 0.0
+	Voice.echo_cancel = false
+	Voice.noise_suppress = true
+	Voice.volumes = {}
+	Voice.load_settings()
+	check("all of it kept on this machine, and read back after a restart",
+		is_equal_approx(Voice.voices_volume, 0.5) and is_equal_approx(Voice.mic_volume, 2.0)
+		and is_equal_approx(Voice.sensitivity, 0.4) and Voice.echo_cancel and not Voice.noise_suppress
+		and is_equal_approx(Voice.volume_of("sbob"), 1.0),
+		[Voice.voices_volume, Voice.mic_volume, Voice.sensitivity, Voice.echo_cancel, Voice.noise_suppress])
+	var junk := ConfigFile.new()
+	junk.set_value(Voice.SECTION, "voices_volume", "loud")
+	junk.set_value(Voice.SECTION, "mic_volume", 9)
+	junk.set_value(Voice.SECTION, "sensitivity", -3.0)
+	junk.set_value(Voice.SECTION, "echo_cancel", "x")
+	junk.set_value(Voice.SECTION, "volumes", {"sbob": 7.0, "sdan": "quiet"})
+	junk.save(Voice.path)
+	Voice.load_settings()
+	check("  a damaged file reads as sense: words as the default, numbers held to their range, echo cancellation on",
+		is_equal_approx(Voice.voices_volume, 1.0) and is_equal_approx(Voice.mic_volume, 2.0)
+		and Voice.sensitivity == 0.0 and Voice.echo_cancel and is_equal_approx(Voice.volume_of("sbob"), 2.0)
+		and is_equal_approx(Voice.volume_of("sdan"), 1.0),
+		[Voice.voices_volume, Voice.mic_volume, Voice.sensitivity, Voice.echo_cancel, Voice.volumes])
+	Voice.set_voices_volume(0.5)
+	Voice.set_mic_volume(2.0)
+	Voice.set_sensitivity(0.4)
+	Voice.set_processing(true, false)
+	Voice.set_volume("SBob", 1.0)
+
+	# ---- the Party window ----
+	var panel: PartyPanel = (load("res://scene/ui/party/partypanel.tscn") as PackedScene).instantiate() as PartyPanel
+	add_child(panel)
+	var party_answer: Dictionary = {"ok": true, "data": {"capacity": 4, "invites": [], "party": {
+		"id": 6, "leader": "sme", "size": 3, "capacity": 4, "members": [
+			{"username": "sme", "leader": true, "online": true, "class_id": "healer", "level": 8, "area": "field", "hp": 50, "max_hp": 100},
+			{"username": "SBob", "leader": false, "online": true, "class_id": "warrior", "level": 5, "area": "field", "hp": 30, "max_hp": 120},
+			{"username": "sdan", "leader": false, "online": false, "class_id": "tank", "level": 9, "area": "town", "hp": 200, "max_hp": 200}]}}}
+	panel.fetch = func(_path: String) -> Dictionary: return party_answer
+	panel.send = func(_path: String, _body: Dictionary) -> Dictionary: return party_answer
+	await panel.open()
+	check("the Party window has Voice settings under the switch, and the member list until it is pressed",
+		panel.settings_button != null and panel.settings_button.is_visible_in_tree()
+		and panel.settings_button.text == "Voice settings" and panel.list_scroll.visible and not panel.settings_scroll.visible)
+	panel.settings_button.button_pressed = true
+	check("  pressed: the settings take the list's place, and the button goes back",
+		panel.settings_scroll.visible and not panel.list_scroll.visible and panel.settings_button.text == "Back to the party")
+	check("  showing what is set: voices 50%, microphone 200%, sensitivity 40%, noise off, echo on",
+		is_equal_approx(panel.voices_slider.value, 50.0) and panel.voices_value.text == "50%"
+		and is_equal_approx(panel.mic_slider.value, 200.0) and panel.mic_value.text == "200%"
+		and is_equal_approx(panel.sensitivity_slider.value, 40.0) and panel.sensitivity_value.text == "40%"
+		and not panel.noise_box.button_pressed and panel.echo_box.button_pressed,
+		[panel.voices_value.text, panel.mic_value.text, panel.sensitivity_value.text])
+	panel.voices_slider.value = 120.0
+	panel.mic_slider.value = 80.0
+	panel.sensitivity_slider.value = 25.0
+	check("  each slider sets Voice, and says its value",
+		is_equal_approx(Voice.voices_volume, 1.2) and panel.voices_value.text == "120%"
+		and is_equal_approx(Voice.mic_volume, 0.8) and is_equal_approx(fake.mic_volume, 0.8)
+		and is_equal_approx(Voice.sensitivity, 0.25) and panel.sensitivity_value.text == "25%",
+		[Voice.voices_volume, Voice.mic_volume, Voice.sensitivity])
+	panel.noise_box.button_pressed = true
+	panel.echo_box.button_pressed = false
+	check("  the two switches set the browser's cleaning", fake.processing == [false, true]
+		and Voice.noise_suppress and not Voice.echo_cancel, fake.processing)
+	var players: Node = panel.each_box.get_node_or_null(^"players")
+	var bob_volume: HSlider = players.get_node_or_null(^"volume_SBob") as HSlider if players else null
+	var dan_volume: HSlider = players.get_node_or_null(^"volume_sdan") as HSlider if players else null
+	check("each other member has a volume - in voice or not yet, online or not - and you have none",
+		bob_volume != null and dan_volume != null and players.get_node_or_null(^"volume_sme") == null)
+	if dan_volume != null:
+		dan_volume.value = 150.0
+	check("  set before they come: sdan will play at 150% of everyone's", is_equal_approx(Voice.volume_of("sdan"), 1.5))
+	if bob_volume != null:
+		bob_volume.value = 30.0
+	check("  set while in voice: SBob's call plays at once at his times everyone's (30% x 120%)",
+		is_equal_approx(float(fake.vols.get(60, -1.0)), 0.36), fake.vols)
+
+	# ---- the bar ----
+	var meter: PartyPanel.MicMeter = panel.mic_meter
+	fake.lv = {"st": "live", "mic": 0.05, "me": 0.0, "gate": false, "peers": {}}
+	Voice._process(0.2)
+	panel._process(0.1)
+	check("the level bar: quiet under the line is grey, and says nothing is going out",
+		meter != null and not meter.sending() and panel.meter_note.text == "Quiet: nothing is going out.",
+		panel.meter_note.text)
+	fake.lv = {"st": "live", "mic": 0.2, "me": 0.2, "gate": true, "peers": {}}
+	Voice._process(0.2)
+	panel._process(0.1)
+	check("  over it, green and no words", meter != null and meter.sending() and not panel.meter_note.visible)
+	Voice.set_mode(Voice.MODE_PUSH)
+	panel.render()
+	check("push to talk: the sensitivity is set aside, and the key named",
+		not panel.sensitivity_slider.editable and panel.sensitivity_note.text.begins_with("Push to talk: holding V"),
+		panel.sensitivity_note.text)
+	Voice.set_mode(Voice.MODE_OPEN)
+	Voice.set_sensitivity(0.0)
+	panel.render()
+	check("  open mic with the sensitivity at 0: Off, and it says everything goes out",
+		panel.sensitivity_value.text == "Off" and panel.sensitivity_note.text.contains("sends everything"))
+	Voice.stop()
+	panel.render()
+	panel._process(0.1)
+	check("with voice off the settings can still be set, and the bar says how to see it",
+		panel.settings_scroll.visible and panel.meter_note.text.begins_with("Switch voice on"), panel.meter_note.text)
+	panel.settings_button.button_pressed = false
+	check("Back to the party: the member list again", panel.list_scroll.visible and not panel.settings_scroll.visible
+		and panel.settings_button.text == "Voice settings")
+	panel.settings_button.button_pressed = true
+	party_answer["data"]["party"] = {}
+	Party.apply({"id": 0, "leader": "", "members": []})
+	panel.take(party_answer["data"])
+	check("  out of the party (no voice to set), the window goes back to the list by itself",
+		panel.list_scroll.visible and not panel.settings_scroll.visible)
+
+	panel.queue_free()
+	await get_tree().process_frame
+	Voice.stop()
+	Party.forget()
+	DirAccess.remove_absolute(Voice.path)
+	Voice.path = kept["path"]
+	Voice.bridge = kept["bridge"]
+	Voice.fetch = kept["fetch"]
+	Voice.mode = kept["mode"]
+	Voice.muted = kept["muted"]
+	Voice.volumes = kept["volumes"]
+	Voice.voices_volume = kept["voices"]
+	Voice.mic_volume = kept["mic"]
+	Voice.sensitivity = kept["sensitivity"]
+	Voice.echo_cancel = kept["echo"]
+	Voice.noise_suppress = kept["noise"]
 	Voice.note = ""
 	Voice.link_open = kept["link"]
 	Presence.send_override = kept["send"]

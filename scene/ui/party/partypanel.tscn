@@ -12,9 +12,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -210.0
-offset_top = -230.0
+offset_top = -255.0
 offset_right = 210.0
-offset_bottom = 230.0
+offset_bottom = 255.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -78,12 +78,26 @@ autowrap_mode = 3
 
 [node name="listscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 200)
+custom_minimum_size = Vector2(0, 170)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
 [node name="list" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/listscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="settingsscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 170)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="voicesettings" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/settingsscroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -114,6 +128,61 @@ layout_mode = 2
 focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Invite"
+
+[node name="voicebox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="voicerow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/voicebox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="voiceswitch" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/voicebox/voicerow"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+tooltip_text = "Talk with your party. Your browser asks for the microphone the first time."
+theme_override_font_sizes/font_size = 14
+text = "Voice"
+
+[node name="voicemode" type="OptionButton" parent="mainpanel/margincontainer/vboxcontainer/voicebox/voicerow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+tooltip_text = "Open mic sends whenever you talk; push to talk only while you hold the key."
+theme_override_font_sizes/font_size = 13
+
+[node name="mutebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/voicebox/voicerow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(72, 28)
+layout_mode = 2
+focus_mode = 0
+toggle_mode = true
+theme_override_font_sizes/font_size = 13
+text = "Mute"
+
+[node name="voicenote" type="Label" parent="mainpanel/margincontainer/vboxcontainer/voicebox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.68, 0.62, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="settingsbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/voicebox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 26)
+layout_mode = 2
+size_flags_horizontal = 4
+focus_mode = 0
+tooltip_text = "Voices, your microphone, open-mic sensitivity, noise and echo."
+toggle_mode = true
+theme_override_font_sizes/font_size = 13
+text = "Voice settings"
 
 [node name="leavebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer"]
 unique_name_in_owner = true

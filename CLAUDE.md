@@ -6079,10 +6079,10 @@ how voice should be built, he chose "Browser voice + Cloudflare TURN".
   the server says so (`"off"`), or the browser refuses the microphone; the
   window losing focus lets go of push-to-talk.
 - **The Party window**: Voice switch, Open mic / Push to talk (with its key),
-  Mute, a line saying why voice is off or how to talk; for each member in
-  voice a speaker that lights while they talk and their own volume slider
-  (the list is not rebuilt while one is dragged). **Over their heads**, a lit
-  speaker beside the name while they talk (remoteplayer.gd `TalkMark`).
+  Mute, a line saying why voice is off or how to talk, and Voice settings
+  (below); for each member in voice a speaker that lights while they talk.
+  **Over their heads**, a lit speaker beside the name while they talk
+  (remoteplayer.gd `TalkMark`).
 - **A name, clicked** (src/ui/players/playermenu.gd, `PlayerMenu`): the name
   over a player in the world is a button now (the plate takes the click, so it
   never swings) and opens the HUD's player menu (group `player_menu_host`,
@@ -6099,6 +6099,52 @@ how voice should be built, he chose "Browser voice + Cloudflare TURN".
   run for real: two exported game clients in Chromium with fake microphones,
   logged in, in one party - both in voice, the call connected, sound both
   ways, the mute key silencing one, and the party ending turning voice off.
+
+### Voice settings (0.45.0)
+
+The owner, on the Party window: "add a settings for it in that menu so players
+can adjust voice volume". He chose all four: voice volume, microphone volume
+with a level bar, open-mic sensitivity, and the noise and echo switches.
+
+- **Where.** Voice settings, under the switch, swaps the member list for the
+  settings (`show_settings()`, `settingsscroll`) and Back to the party swaps it
+  back; out of a party it goes back by itself. Everything can be set with voice
+  off. Each member's volume moved here from their row, so a member's volume can
+  be set before they join voice (`volume_<name>` sliders under EACH PLAYER).
+- **Voice's numbers** (voice.gd, all in `voice.cfg`): `voices_volume` and each
+  `volume_of()` to `MOST_VOLUME` (200%); a call plays at `heard_volume()`, the
+  two multiplied and held to 200%. `mic_volume` to 200%. `sensitivity` 0..1 of
+  `GATE_TOP` (0.3 loudness), which is also the level bar's width, so the line
+  on the bar IS the slider; `gate_level()` is 0 for push to talk. `echo_cancel`
+  and `noise_suppress`, on unless the file says false. A file with junk in it
+  reads as the defaults (`_number()`, `_switched_on()`).
+- **Given to the page before `start()`**, so the first word is already at the
+  right volume, through the right gate, with the right cleaning.
+- **The page** (VoiceBridge.SOURCE, version "2"): the microphone goes through
+  the page's own audio - its gain, then the gate - into a track every call
+  sends (`buildMic()`); the noise and echo switches open a new microphone and
+  put it in at the start of that chain, so no call is renegotiated. A voice at
+  or under 100% is the call itself, at that volume; **over 100% it is made
+  louder in the page, through a limiter, and played through a call to itself**
+  (`loopback()`), because Chrome's echo cancellation only hears audio a call
+  plays (issue 687574) - boosted straight to the speakers, a voice would come
+  back to its owner as an echo. Each call also plays into a muted element
+  (`sink`): Chrome gives the page's audio nothing from a call no element is
+  playing, and the speaking light and the boost read it. The gate looks every
+  20 ms, stays open 350 ms after the last loud moment, and opens fully while
+  the page is hidden (timers slow down there). `levels()` adds `mic` (the
+  level whether or not it goes out), `gate`, and what the browser actually
+  gave for `ec` and `ns`.
+- **Run for real in Chromium**: two pages, a speech-like test tone as the
+  microphone, the code taken straight from voicebridge.gd: the call connects
+  through the chain; mic at 0 is silence and at 200% louder; a sensitivity
+  over the voice sends nothing and under it everything; 50% plays the call at
+  half, 150% through the call to itself and louder (limited), and back under
+  100% the call to itself is closed; noise and echo off gives a microphone
+  without them and the call carries on; mute still mutes; a boosted call hung
+  up leaves no element behind. 19 of 19, and again under the normal autoplay
+  rules (after a click, as the Voice switch is).
+- `_test_voice_settings` (28 checks), and `_test_party_voice` updated.
 
 ### Token lifecycle: which copy of the game, the password again (0.44.0)
 
