@@ -157,6 +157,8 @@ const HEALTH_BAR_HEIGHT := 2.0
 const AIM_FOLLOW_RATE := 14.0
 var aim_degrees: int = -1
 var health_percent: int = -1
+# The Party.revision the plate was last painted for.
+var _party_painted: int = -1
 var _aim_ring: AimRing = null
 var _aim_shown: Vector2 = Vector2.ZERO
 var _health_bar: Node2D = null
@@ -428,6 +430,8 @@ func _process(delta: float) -> void:
 	_play_back()
 	_fire_due_attacks()
 	_follow_aim(delta)
+	if _party_painted != Party.revision:
+		_paint_plate()
 	if _plate != null and absf(_camera_zoom() - _plate_zoom) > 0.001:
 		_place_plate()
 	_follow_with_pet(delta)
@@ -769,7 +773,9 @@ func _paint_plate() -> void:
 		text = "%s\n%s" % [tag, text]
 	_plate.text = text
 	_plate.visible = text != ""
-	_plate.add_theme_color_override("font_color", NameTag.colour(hue))
+	# YOUR PARTY'S NAMES IN THE PARTY'S COLOUR (0.42.0, party.gd).
+	_party_painted = Party.revision
+	_plate.add_theme_color_override("font_color", Party.COLOUR if Party.is_member(display_name) else NameTag.colour(hue))
 	if _crown != null:
 		_crown.visible = text != "" and NameTag.wears_crown(role)
 	if _badge != null:

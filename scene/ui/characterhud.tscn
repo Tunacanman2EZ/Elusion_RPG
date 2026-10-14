@@ -285,6 +285,15 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 14
 text = "Guild"
 
+[node name="partybutton" type="Button" parent="socialmenu/socialitems" unique_id=1733059311]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 30)
+layout_mode = 2
+tooltip_text = "Who you are playing with, and asking somebody to join"
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+text = "Party"
+
 [node name="tradebutton" type="Button" parent="socialmenu/socialitems" unique_id=478330591]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 30)

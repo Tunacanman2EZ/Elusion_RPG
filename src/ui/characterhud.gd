@@ -86,6 +86,7 @@ const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
 const FRIENDS_PANEL_SCENE := preload("res://scene/ui/friends/friendspanel.tscn")
 const PLAYERS_PANEL_SCENE := preload("res://scene/ui/players/playerspanel.tscn")
 const GUILD_PANEL_SCENE := preload("res://scene/ui/guild/guildpanel.tscn")
+const PARTY_PANEL_SCENE := preload("res://scene/ui/party/partypanel.tscn")
 const CONTROLS_SCENE := preload("res://scene/ui/controls/controlspanel.tscn")
 
 
@@ -147,6 +148,7 @@ var chat_panel:       Control         = null
 var friends_panel:    Control         = null
 var players_panel:    Control         = null
 var guild_panel:      Control         = null
+var party_panel:      PartyPanel      = null
 
 # The server's announcements, and the cursor into them. 0 means "I just got
 # here" and the server answers with the recent tail rather than the whole
@@ -695,6 +697,7 @@ func _wire_nav_buttons() -> void:
 		"shopbutton":              "_on_shop_pressed",
 		"kingdombutton":           "_on_kingdom_pressed",
 		"killsbutton":             "_on_kills_pressed",
+		"partybutton":             "_on_party_pressed",
 		"tradebutton":             "_on_trade_pressed",
 		"mapbutton":               "_on_map_pressed",
 		"optionsbutton":           "_on_options_pressed",
@@ -753,7 +756,7 @@ func _paint_nav_key_hints() -> void:
 const NAV_BUTTON_NAMES := [
 	"inventorybutton", "equipmentbutton", "statsbutton", "shopbutton", "mapbutton",
 	"chatbutton", "socialbutton", "menubutton",
-	"friendsbutton", "playersbutton", "guildbutton", "tradebutton", "kingdombutton", "killsbutton",
+	"friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton", "kingdombutton", "killsbutton",
 	"controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton",
 ]
 
@@ -1755,6 +1758,7 @@ func _apply_broadcast(data: Dictionary) -> void:
 
 	_read_pvp(data)
 	_read_guild(data)
+	_read_party(data.get("party"))
 	_read_trade(data.get("trade"))
 	_read_trade_resync(data.get("trade_resync"))
 	_read_chat_news(data.get("chat_news"))
@@ -1872,7 +1876,7 @@ const WHISPER_CATCH_UP_SECONDS := 600
 # forgotten when a different account is playing.
 #
 # The newest id seen of each, -1 until the first poll has set where "new" starts.
-static var _chat_seen: Dictionary = {"whisper": -1, "guild": -1, "friends": -1}
+static var _chat_seen: Dictionary = {"whisper": -1, "guild": -1, "friends": -1, "party": -1}
 static var _chat_seen_by: String = ""
 static var _last_whisper_from: String = ""
 # A whisper not yet looked at: the chat window opens on it, in any area.
@@ -1881,7 +1885,7 @@ static var _chat_dot: bool = false
 
 
 static func _forget_chat_news() -> void:
-	_chat_seen = {"whisper": -1, "guild": -1, "friends": -1}
+	_chat_seen = {"whisper": -1, "guild": -1, "friends": -1, "party": -1}
 	_chat_seen_by = ""
 	_last_whisper_from = ""
 	_whisper_waiting = false
@@ -1903,7 +1907,7 @@ func _read_chat_news(news: Variant) -> void:
 		if whisper_id > 0 and (not first or recent):
 			_whisper_from(str(whisper.get("from", "?")), str(whisper.get("body", "")))
 		_chat_seen["whisper"] = whisper_id
-	for room in ["guild", "friends"]:
+	for room in ["guild", "friends", "party"]:
 		var newest: int = int(news.get(room, 0))
 		if newest > int(_chat_seen[room]):
 			if not first:
@@ -1962,14 +1966,14 @@ func _mark_chat_button(lit: bool) -> void:
 const ASK_COLOUR := Color(1.0, 0.82, 0.42)
 
 # The newest request's time already said, of each kind.
-static var _asks_said: Dictionary = {"friends": 0, "guild": 0}
+static var _asks_said: Dictionary = {"friends": 0, "guild": 0, "party": 0}
 static var _asks_said_by: String = ""
 # The last answer, so a new area's HUD can light its buttons before its first poll.
 static var _asks_last: Dictionary = {}
 
 
 static func _forget_asks() -> void:
-	_asks_said = {"friends": 0, "guild": 0}
+	_asks_said = {"friends": 0, "guild": 0, "party": 0}
 	_asks_said_by = ""
 	_asks_last = {}
 
@@ -1979,6 +1983,8 @@ static func ask_text(kind: String, newest: String, count: int) -> String:
 	var more: String = " and %d more" % (count - 1) if count > 1 else ""
 	if kind == "guild":
 		return "%s%s invited you to join. Open Guild to answer." % [newest, more]
+	if kind == "party":
+		return "%s%s invited you to their party. Open Party to answer." % [newest, more]
 	return "%s%s asked to be your friend. Open Friends to answer." % [newest, more]
 
 
@@ -1990,7 +1996,7 @@ func _read_asks(asks: Variant) -> void:
 		_asks_said_by = Api.username
 	_asks_last = asks.duplicate(true)
 	_paint_ask_buttons()
-	for kind in ["friends", "guild"]:
+	for kind in ["friends", "guild", "party"]:
 		var one: Variant = asks.get(kind)
 		if not (one is Dictionary):
 			continue
@@ -2004,7 +2010,7 @@ func _read_asks(asks: Variant) -> void:
 
 
 func _paint_ask_buttons() -> void:
-	for kind in ["friends", "guild"]:
+	for kind in ["friends", "guild", "party"]:
 		var button: Button = _nav_button("%sbutton" % kind)
 		if button == null:
 			continue
@@ -3333,6 +3339,7 @@ func _build_players_panel() -> Control:
 	panel.whisper_asked.connect(whisper_player)
 	panel.friend_asked.connect(ask_to_be_friends)
 	panel.trade_asked.connect(trade_with)
+	panel.party_asked.connect(invite_to_party)
 	return panel
 
 
@@ -3360,6 +3367,37 @@ func trade_with(who: String) -> void:
 	set_world_status("trade", "")
 	_mark_trade_button(false)
 	await trade_panel.offer_to(active_character, who)
+
+
+func toggle_party() -> void:
+	"""Social > Party (0.42.0, partypanel.gd). Built on first use; it reads
+	the party while open."""
+	if party_panel == null:
+		party_panel = PARTY_PANEL_SCENE.instantiate() as PartyPanel
+		add_child(party_panel)
+	await party_panel.toggle()
+
+
+func _on_party_pressed() -> void:
+	await toggle_party()
+
+
+func invite_to_party(who: String) -> void:
+	"""The Party window, open, with an invitation to `who` sent from it."""
+	if party_panel == null:
+		party_panel = PARTY_PANEL_SCENE.instantiate() as PartyPanel
+		add_child(party_panel)
+	await party_panel.invite_player(who)
+
+
+func _read_party(data: Variant) -> void:
+	"""The party you are in, from the poll (app.py _own_party()): names
+	coloured and drawn on the map from Party, and an open Party window read
+	again when it changed."""
+	if not (data is Dictionary):
+		return
+	if Party.apply(data) and party_panel != null and party_panel.visible:
+		party_panel.load_party(true)
 
 
 func toggle_guild() -> void:
@@ -3443,6 +3481,7 @@ func _escape_windows() -> Array:
 		[friends_panel, "close"],
 		[players_panel, "close"],
 		[guild_panel, "close"],
+		[party_panel, "close"],
 		[staff_panel, "close_panel"],
 		[owner_panel, "close"],
 		[item_spawner, "close"],

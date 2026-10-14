@@ -277,9 +277,90 @@ func _draw_markers() -> void:
 	# would if the three were one function.
 	if markers == null or _area == "" or not WorldMap.has_map(_area):
 		return
+	_draw_monsters()
 	_draw_landmarks()
+	_draw_party()
 	_draw_arrow()
 	_draw_hover_label()
+
+
+# =============================================================================
+# MONSTERS AND YOUR PARTY (0.42.0)
+# =============================================================================
+# The owner, of what a party should do: "Party on the map", and "monsters on
+# map also by element color". Both are read live from this area's scene each
+# frame the map is open: every monster still alive on ground you have explored
+# as a dot in its element's colour (Element.colour_for, the colour its own
+# attacks are tinted), a boss a bigger one; and everyone in your party standing in this area as a ring in
+# the party's colour (party.gd) with their name. Only this area: the presence
+# server tells a game about the people in its own area, and the Party window
+# says where the rest are.
+
+const MONSTER_RADIUS := 2.5
+const BOSS_RADIUS := 4.5
+const MONSTER_EDGE := Color(0.05, 0.04, 0.06, 0.9)
+const PARTY_RADIUS := 4.0
+
+
+func _on_map(world: Vector2) -> Variant:
+	"""Where `world` is drawn on the marker layer, or null off the map."""
+	var at: Vector2 = WorldMap.pixel_for(world, _area) * float(_scale)
+	var bounds: Vector2 = markers.size
+	if at.x < 0.0 or at.y < 0.0 or at.x > bounds.x or at.y > bounds.y:
+		return null
+	return at
+
+
+static func monster_colour(enemy: Node) -> Color:
+	"""A monster's dot: its element's colour - physical's steel for none."""
+	var element: int = int(enemy.call("current_element")) if enemy.has_method("current_element") else Element.Type.NONE
+	return Element.colour_for(element)
+
+
+static func shows_monster(enemy: Node) -> bool:
+	"""Alive and in the world - not a picture going away."""
+	if not (enemy is BaseEnemy) or enemy.is_queued_for_deletion():
+		return false
+	return not (enemy as BaseEnemy)._death_resolved
+
+
+func _draw_monsters() -> void:
+	if not is_inside_tree():
+		return
+	for enemy in get_tree().get_nodes_in_group(&"enemies"):
+		if not shows_monster(enemy):
+			continue
+		# NOT THROUGH THE FOG: a monster on ground you have not explored would
+		# draw the map you have not found yet, one cluster at a time.
+		var where: Vector2 = (enemy as Node2D).global_position
+		if not WorldMap.is_seen(_area, WorldMap.tile_at(_area, where)):
+			continue
+		var at: Variant = _on_map(where)
+		if at == null:
+			continue
+		var radius: float = BOSS_RADIUS if enemy is BossEnemy else MONSTER_RADIUS
+		markers.draw_circle(at, radius + 1.0, MONSTER_EDGE)
+		markers.draw_circle(at, radius, monster_colour(enemy))
+
+
+func _draw_party() -> void:
+	if not Party.in_one() or not is_inside_tree():
+		return
+	var font: Font = get_theme_default_font()
+	for picture in get_tree().get_nodes_in_group(&"remoteplayers"):
+		var who: String = str(picture.get("display_name"))
+		if not Party.is_member(who) or not (picture is Node2D):
+			continue
+		var at: Variant = _on_map((picture as Node2D).global_position)
+		if at == null:
+			continue
+		markers.draw_circle(at, PARTY_RADIUS + 1.5, MONSTER_EDGE)
+		markers.draw_arc(at, PARTY_RADIUS, 0.0, TAU, 20, Party.COLOUR, 2.0, true)
+		if font != null:
+			var words: Vector2 = font.get_string_size(who, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
+			var spot: Vector2 = (at as Vector2) + Vector2(-words.x / 2.0, -PARTY_RADIUS - 4.0)
+			markers.draw_string_outline(font, spot, who, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 3, MONSTER_EDGE)
+			markers.draw_string(font, spot, who, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Party.COLOUR)
 
 
 func _draw_arrow() -> void:

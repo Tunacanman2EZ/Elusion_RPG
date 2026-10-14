@@ -50,11 +50,14 @@ var _loading: bool = false
 signal whisper_asked(who: String)
 signal friend_asked(who: String)
 signal trade_asked(who: String)
+# And, since 0.42.0, Invite to party (partypanel.gd).
+signal party_asked(who: String)
 
 const MENU_WHISPER := 1
 const MENU_FRIEND := 2
 const MENU_TRADE := 3
-const ROW_HINT := "Right-click to whisper, add as a friend or trade"
+const MENU_PARTY := 4
+const ROW_HINT := "Right-click to whisper, add as a friend, trade or invite to your party"
 
 var row_menu: PopupMenu = null
 var _menu_who: String = ""
@@ -305,6 +308,7 @@ func open_row_menu(who: String) -> void:
 	menu.add_item("Whisper", MENU_WHISPER)
 	menu.add_item("Add friend", MENU_FRIEND)
 	menu.add_item("Trade", MENU_TRADE)
+	menu.add_item("Invite to party", MENU_PARTY)
 	menu.reset_size()
 	if is_inside_tree():
 		menu.position = Vector2i(get_viewport().get_mouse_position())
@@ -322,6 +326,8 @@ func _on_row_menu_id(id: int) -> void:
 			friend_asked.emit(who)
 		MENU_TRADE:
 			trade_asked.emit(who)
+		MENU_PARTY:
+			party_asked.emit(who)
 
 
 func _boxed(line: Control, mine: bool) -> Control:

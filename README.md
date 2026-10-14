@@ -36,7 +36,9 @@ Those are the keys as the game comes; Change keys moves any of them but Esc and 
 
 The version is in the login screen's corner and at the foot of **Menu** — MAJOR.MINOR.PATCH, 0.x until launch.
 
-The bar along the bottom holds the windows a player opens all the time; Friends, Players, Guild, Trade, the Kingdom board and **Kills** are under **Social**, and Controls, Options and logging out under **Menu**.
+The bar along the bottom holds the windows a player opens all the time; Friends, Players, Guild, **Party**, Trade, the Kingdom board and **Kills** are under **Social**, and Controls, Options and logging out under **Menu**.
+
+**Party** puts up to four players together: invite somebody by name or from the Players list, and the party is made when they accept. The window shows each member's class, level, area and health, the leader can hand the party on or remove somebody, and the party has its own chat tab. On the **Map** your party in the same area is drawn in the party's colour with their names, beside every monster on the ground you have explored, each in its element's colour.
 
 **Kills** (or **K**) is the kill record: every monster in the game with its picture, how many of each your character has killed and when the last one fell, and — on the Everyone tab — every player's kills added up, with who has killed the most of each. The server counts them; the pictures are cut from each monster's own art.
 
@@ -313,6 +315,7 @@ test_pacing.py         114 checks    the pace of the game: what the server pays,
 test_chatsafety.py     100 checks    ignore, report and mute; a card per reported player
 test_combatbook.py     106 checks    the server's books on every monster: every hit, spawn and death judged
 test_friends.py         76 checks    asking, answering and ending a friendship
+test_parties.py         50 checks    parties: asked, joined, led, left, and their own chat room
 test_chardelete.py      72 checks    deleting a character, and only the character
 test_chat.py            67 checks    world chat, end to end, one line as typed
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
@@ -345,14 +348,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					4,980 checks, 0 failures
+					5,030 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-second, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **3,991 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 158 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **4,015 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 160 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `3925 passed, 0 failed, 27 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-six are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `3949 passed, 0 failed, 27 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-six are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 **Both suites run on GitHub for every push and every pull request** (`.github/workflows/tests.yml`, here and in the API repo). The game's run is a clone — no art pack — so a new check that needs the art and does not say so fails there before it reaches anybody who clones this. The API's runs `run_tests.ps1` itself, so a green tick means what a green run on the PC means.
 

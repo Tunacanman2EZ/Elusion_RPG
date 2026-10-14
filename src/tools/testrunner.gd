@@ -309,6 +309,7 @@ func _run_all() -> void:
 	await _test_other_players_attacks_switch()
 	await _test_attacks_aim_with_no_cursor()
 	await _test_other_players_aim_and_health()
+	await _test_parties()
 	_test_every_class_answers_its_own_attack()
 	_test_presence_sends_attacks()
 	await _test_levers_are_shared()
@@ -3584,6 +3585,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/owner/ownerpanel.gd", "res://scene/ui/owner/ownerpanel.tscn", "owner"],
 	["res://src/ui/owner/itemspawner.gd", "res://scene/ui/owner/itemspawner.tscn", "itemspawner"],
 	["res://src/ui/owner/savehistory.gd", "res://scene/ui/owner/savehistory.tscn", "savehistory"],
+	["res://src/ui/party/partypanel.gd", "res://scene/ui/party/partypanel.tscn", "party"],
 	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
 	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
 	["res://src/ui/staff/staffpanel.gd", "res://scene/ui/staff/staffpanel.tscn", "staff"],
@@ -4034,7 +4036,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("twenty-two panels are windows - the Credits window is the twenty-second", keys_seen.size() == 22, keys_seen.size())
+	check("twenty-three panels are windows - the Party window (0.42.0) is the twenty-third", keys_seen.size() == 23, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -10445,6 +10447,160 @@ func _test_other_players_move_evenly() -> void:
 # but they could see mine". The attacker's game sends a picture of each one and
 # this game spawns it from the class's own scene, with `cosmetic` set
 # (remoteattacks.gd): drawn exactly as theirs, touching nothing.
+func _test_parties() -> void:
+	section("PARTIES - a Party window, party chat, and your party and the monsters on the map (0.42.0)")
+	# The owner: "we need to be able to start parties so we need a tab for
+	# parties", then "Party tab + members", "Party chat", "Party on the map" and
+	# "monsters on map also by element color". test_parties.py holds the server.
+	var kept_name: String = Api.username
+	Api.username = "pme"
+	Party.forget()
+
+	# ---- the state ----
+	var before: int = Party.revision
+	var changed: bool = Party.apply({"id": 7, "leader": "pme", "members": ["pme", "PBob", "pcat"]})
+	check("the poll's party is kept: who is in it, who leads, and the revision moves",
+		changed and Party.in_one() and Party.is_leader() and Party.is_member("pbob") and Party.is_member("PCAT")
+		and not Party.is_member("stranger") and Party.revision == before + 1)
+	check("  the same answer again changes nothing",
+		not Party.apply({"id": 7, "leader": "pme", "members": ["pme", "PBob", "pcat"]}) and Party.revision == before + 1)
+	Api.username = "somebodyelse"
+	var other_login: bool = Party.in_one() or Party.is_member("pbob")
+	Api.username = "pme"
+	Party.apply({"id": 0, "leader": "", "members": []})
+	check("  another login sees none of it, and no party is nobody",
+		not other_login and not Party.in_one() and not Party.is_member("pbob"))
+
+	# ---- the window ----
+	var panel: PartyPanel = (load("res://scene/ui/party/partypanel.tscn") as PackedScene).instantiate() as PartyPanel
+	add_child(panel)
+	var sent: Array = []
+	var answers: Array = [{"ok": true, "data": {"party": null, "invites": [{"from": "pamy", "at": 100}],
+		"capacity": 4, "invite_seconds": 120}}]
+	panel.fetch = func(_path: String) -> Dictionary: return answers[0]
+	panel.send = func(path: String, body: Dictionary) -> Dictionary:
+		sent.append([path, body])
+		return answers[0]
+	await panel.open()
+	var invite_row: Node = panel.invites_box.get_node_or_null(^"invite_pamy")
+	check("no party: it says how to start one, with the invitation waiting - Join and No",
+		panel.visible and panel.summary_label.text.contains("no party") and invite_row != null
+		and invite_row.get_child_count() == 3 and panel.invite_row.visible and not panel.leave_button.visible,
+		panel.summary_label.text)
+	var party_answer: Dictionary = {"ok": true, "data": {"capacity": 4, "invites": [], "party": {
+		"id": 9, "leader": "pme", "size": 3, "capacity": 4, "members": [
+			{"username": "pme", "leader": true, "online": true, "class_id": "warrior", "level": 12, "area": "field", "hp": 50, "max_hp": 100},
+			{"username": "pbob", "leader": false, "online": true, "class_id": "mage", "level": 5, "area": "field", "hp": 30, "max_hp": 120},
+			{"username": "pcat", "leader": false, "online": false, "class_id": "tank", "level": 9, "area": "town", "hp": 200, "max_hp": 200}]}}}
+	answers[0] = party_answer
+	await panel.load_party()
+	var bob_row: Node = panel.list.get_node_or_null(^"member_pbob")
+	var cat_row: Node = panel.list.get_node_or_null(^"member_pcat")
+	var bob_buttons: Array = bob_row.find_children("*", "Button", true, false).map(func(b: Node) -> String: return (b as Button).text) if bob_row else []
+	var bob_detail: String = (bob_row.find_child("detail", true, false) as Label).text if bob_row else ""
+	var cat_detail: String = (cat_row.find_child("detail", true, false) as Label).text if cat_row else ""
+	var bob_health: Control = bob_row.find_child("health", true, false) as Control if bob_row else null
+	check("a party: each member's class, level and area - away for somebody not on - and the leader marked",
+		panel.list.get_child_count() == 3 and bob_detail == "Lv 5 Mage - %s" % AreaRegistry.display_name("field")
+		and cat_detail.ends_with("away") and panel.list.get_node(^"member_pme").find_child("leader", true, false) != null
+		and panel.summary_label.text == "3 of 4 - led by pme", [bob_detail, cat_detail, panel.summary_label.text])
+	check("  their health as a bar - from the save when they are not in sight",
+		bob_health != null and is_equal_approx(float(bob_health.get("share")), 0.25), str(bob_health.get("share")) if bob_health else "no bar")
+	check("  the leader may hand it on or remove somebody, may ask a fourth, and may leave",
+		bob_buttons == ["Lead", "Remove"] and panel.invite_row.visible and panel.leave_button.visible, bob_buttons)
+	check("  and Party knows it at once, without waiting for the poll",
+		Party.in_one() and Party.is_member("pcat") and Party.leader == "pme")
+	(party_answer["data"]["party"] as Dictionary)["leader"] = "pbob"
+	((party_answer["data"]["party"] as Dictionary)["members"][0] as Dictionary)["leader"] = false
+	await panel.load_party()
+	bob_row = panel.list.get_node_or_null(^"member_pbob")
+	check("not the leader: no Lead or Remove, and nobody to ask",
+		bob_row != null and bob_row.find_children("*", "Button", true, false).is_empty() and not panel.invite_row.visible)
+	sent.clear()
+	await panel.invite_player("pdan")
+	await panel.act("/api/party/kick", {"username": "pcat"})
+	await panel.act("/api/party/leave", {})
+	check("asking, removing and leaving are posted to the server, and its answer is drawn",
+		sent == [["/api/party/invite", {"username": "pdan"}], ["/api/party/kick", {"username": "pcat"}],
+			["/api/party/leave", {}]], sent)
+	answers[0] = {"ok": false, "status": 400, "error": "pdan is already in a party"}
+	await panel.act("/api/party/invite", {"username": "pdan"})
+	check("  and a refusal is said as the server says it",
+		panel.notice_label.visible and panel.notice_label.text == "pdan is already in a party", panel.notice_label.text)
+	panel.close()
+	check("  closing it stops its reading", not panel.visible and panel._timer.is_stopped())
+	panel.queue_free()
+
+	# ---- the HUD: the poll, the asks, the chat room ----
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	hud._apply_broadcast({"party": {"id": 11, "leader": "pamy", "members": ["pamy", "pme"]}})
+	check("the broadcast poll's party reaches Party", Party.id == 11 and Party.is_member("pamy") and not Party.is_leader())
+	hud._read_asks({"party": {"count": 1, "newest": "pamy", "at": 5000}, "friends": {"count": 0}, "guild": {"count": 0}})
+	var party_button: Button = hud.get_node_or_null("%partybutton") as Button
+	check("an invitation lights Social > Party, and says who asked",
+		party_button != null and party_button.text == "Party •"
+		and hud.ask_text("party", "pamy", 1) == "pamy invited you to their party. Open Party to answer.",
+		party_button.text if party_button else "no button")
+	hud.party_panel = (load("res://scene/ui/party/partypanel.tscn") as PackedScene).instantiate() as PartyPanel
+	hud.add_child(hud.party_panel)
+	var built: PartyPanel = hud.party_panel
+	check("  and Party opens its window, which Escape closes",
+		hud._escape_windows().any(func(pair: Array) -> bool: return pair[0] == built and pair[1] is String and pair[1] == "close")
+		and _func_body(_code_src("res://src/ui/characterhud.gd"), "func toggle_party(").contains("PARTY_PANEL_SCENE.instantiate()")
+		and _func_body(_code_src("res://src/ui/characterhud.gd"), "func _apply_broadcast(").contains("_read_party(data.get(\"party\"))"))
+	var chat_src: String = _code_src("res://src/ui/characterhud.gd")
+	check("party chat lights the Chat button like guild chat does",
+		_func_body(chat_src, "func _read_chat_news(").contains("for room in [\"guild\", \"friends\", \"party\"]"))
+	hud.queue_free()
+
+	# ---- their names in the party's colour ----
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var them: Node2D = Remote.new()
+	them.user_id = 661
+	add_child(them)
+	them.set_identity({"id": 661, "name": "pamy", "cls": "healer", "lvl": 8, "v": 2})
+	var stranger: Node2D = Remote.new()
+	stranger.user_id = 662
+	add_child(stranger)
+	stranger.set_identity({"id": 662, "name": "pzed", "cls": "mage", "lvl": 8, "v": 2})
+	var plate_colour := func(body: Node) -> Color:
+		return (body.call("plate") as Label).get_theme_color("font_color")
+	var ours: Color = plate_colour.call(them)
+	var theirs: Color = plate_colour.call(stranger)
+	Party.apply({"id": 0})
+	them.call("_process", 0.016)
+	var after_leaving: Color = plate_colour.call(them)
+	check("your party's names are drawn in the party's colour - and go back when the party does",
+		ours == Party.COLOUR and theirs != Party.COLOUR and after_leaving != Party.COLOUR, [ours, theirs, after_leaving])
+	them.queue_free()
+	stranger.queue_free()
+
+	# ---- the map ----
+	var map_src: String = _code_src("res://src/ui/menus/mapscreen.gd")
+	var fire: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate() as BaseEnemy
+	var MapScript := preload("res://src/ui/menus/mapscreen.gd")
+	var dead: bool = fire._death_resolved
+	check("the map draws every monster alive on explored ground as a dot in its element's colour, and your party in this area with their names",
+		MapScript.monster_colour(fire) == Element.colour_for(fire.current_element()) and MapScript.shows_monster(fire)
+		and not dead and _func_body(map_src, "func _draw_markers(").contains("_draw_monsters()")
+		and _func_body(map_src, "func _draw_monsters(").contains("WorldMap.is_seen(_area, WorldMap.tile_at(_area, where))")
+		and _func_body(map_src, "func _draw_markers(").contains("_draw_party()")
+		and _func_body(map_src, "func _draw_party(").contains("Party.is_member(who)"))
+	fire._death_resolved = true
+	check("  not one that has died", not MapScript.shows_monster(fire))
+	fire.free()
+
+	# ---- the chat tab ----
+	var ChatScript := preload("res://src/ui/chat/chatpanel.gd")
+	check("the chat window has a Party tab", ChatScript.CHANNELS.has("party") and ChatScript.CHANNEL_LABELS.get("party") == "Party")
+
+	Party.forget()
+	Api.username = kept_name
+	await get_tree().process_frame
+
+
 func _test_other_players_aim_and_health() -> void:
 	section("OTHER PLAYERS - their aim ring and their health, as they see their own (0.41.0)")
 	# The owner: "i need to be able to see other players directional bar etc ...
@@ -14800,6 +14956,7 @@ func _test_players_right_click_menu() -> void:
 	panel.whisper_asked.connect(func(who: String) -> void: heard.append("whisper " + who))
 	panel.friend_asked.connect(func(who: String) -> void: heard.append("friend " + who))
 	panel.trade_asked.connect(func(who: String) -> void: heard.append("trade " + who))
+	panel.party_asked.connect(func(who: String) -> void: heard.append("party " + who))
 
 	var left := InputEventMouseButton.new()
 	left.button_index = MOUSE_BUTTON_LEFT
@@ -14819,13 +14976,13 @@ func _test_players_right_click_menu() -> void:
 				title = menu.get_item_text(i)
 			else:
 				items.append(menu.get_item_text(i))
-	check("a right click opens their menu: Whisper, Add friend, Trade",
-		menu != null and title == "rowdy" and items == ["Whisper", "Add friend", "Trade"], [title, items])
+	check("a right click opens their menu: Whisper, Add friend, Trade, Invite to party",
+		menu != null and title == "rowdy" and items == ["Whisper", "Add friend", "Trade", "Invite to party"], [title, items])
 	if menu != null:
-		for id in [panel.MENU_WHISPER, panel.MENU_FRIEND, panel.MENU_TRADE]:
+		for id in [panel.MENU_WHISPER, panel.MENU_FRIEND, panel.MENU_TRADE, panel.MENU_PARTY]:
 			menu.id_pressed.emit(id)
 	check("  and each asks for that, for them",
-		heard == ["whisper rowdy", "friend rowdy", "trade rowdy"], heard)
+		heard == ["whisper rowdy", "friend rowdy", "trade rowdy", "party rowdy"], heard)
 	panel._menu_who = ""
 	panel.open_row_menu("ME_MYSELF")
 	check("  there is no menu for yourself, however it is typed", panel._menu_who == "")
@@ -15169,8 +15326,8 @@ func _test_the_first_five_minutes() -> void:
 		for b in hud.get_node("%" + menu_name).find_children("*", "Button", true, false):
 			out.append(str(b.name))
 		return out
-	check("  Social holds Friends, Players, Guild, Trade, Kingdom and Kills",
-		held.call("socialmenu") == ["friendsbutton", "playersbutton", "guildbutton", "tradebutton", "kingdombutton", "killsbutton"],
+	check("  Social holds Friends, Players, Guild, Party, Trade, Kingdom and Kills",
+		held.call("socialmenu") == ["friendsbutton", "playersbutton", "guildbutton", "partybutton", "tradebutton", "kingdombutton", "killsbutton"],
 		held.call("socialmenu"))
 	check("  Menu holds Controls, Options, Switch character and Log out",
 		held.call("systemmenu") == ["controlsbutton", "optionsbutton", "switchcharacterbutton", "logoutbutton"],
@@ -15581,7 +15738,7 @@ func _test_staff_panel() -> void:
 	check("ordinary text is left alone", chat._escape("hello there") == "hello there")
 
 	# ---- four channels, and the client agrees with the server about them ----
-	check("the client knows four channels", chat.CHANNELS.size() == 4, chat.CHANNELS)
+	check("the client knows five channels - party since 0.42.0", chat.CHANNELS.size() == 5 and chat.CHANNELS.has("party"), chat.CHANNELS)
 	var unlabelled: Array = []
 	for room in chat.CHANNELS:
 		if not chat.CHANNEL_LABELS.has(room):
@@ -19498,6 +19655,7 @@ func _test_escape_closes_every_window() -> void:
 		"controls_panel": "res://scene/ui/controls/controlspanel.tscn",
 		"kills_panel": "res://scene/ui/kills/killrecord.tscn",
 		"credits_panel": "res://scene/ui/menus/creditsscreen.tscn",
+		"party_panel": "res://scene/ui/party/partypanel.tscn",
 	}
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	check("with nothing open, Escape has nothing to close (and opens the options instead)",

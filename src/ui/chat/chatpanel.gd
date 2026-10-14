@@ -68,12 +68,14 @@ const LINES_KEPT := 100
 
 # The channels, in the order the tabs sit in. Mirrors CHAT_CHANNELS in app.py -
 # a name here that the server does not know is a tab that answers 400.
-const CHANNELS := ["world", "friends", "private", "guild"]
+const CHANNELS := ["world", "friends", "private", "guild", "party"]
 const CHANNEL_LABELS := {
 	"world": "World",
 	"friends": "Friends",
 	"private": "Whisper",
 	"guild": "Guild",
+	# The party's own room (0.42.0, app.py PARTIES).
+	"party": "Party",
 }
 
 # HOW BIG A PICTURE IS DRAWN IN THE LOG - both ways.
@@ -453,6 +455,8 @@ func _tab_hint(channel: String) -> String:
 		"guild":
 			# It said "Waiting on guilds" long after guild chat went live.
 			return "Your guild, and only its members"
+		"party":
+			return "Your party, and only the people in it"
 	return ""
 
 

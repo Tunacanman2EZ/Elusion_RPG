@@ -5993,6 +5993,51 @@ want players to see everything i see and everything i see players also see".
   area draw the same.
 - `_test_other_players_aim_and_health`.
 
+### Parties: a Party window, party chat, and the map (0.42.0)
+
+The owner: "we need to be able to start parties so we need a tab for parties",
+and of what a party should do, "Party tab + members", "Party chat", "Party on
+the map" - and "monsters on map also by element color". (Shared XP was offered
+and not chosen.)
+
+- **The server keeps the party** (app.py, PARTIES; test_parties.py). Two to
+  `MAX_PARTY_MEMBERS` (4). Anybody with no party may ask somebody; the party
+  is made when they accept, the one who asked leading it. The leader asks,
+  removes and hands it on; anybody leaves; a leader leaving hands it to the
+  longest there; down to one, it is gone. An invitation waits
+  `PARTY_INVITE_SECONDS` (120) and is asked, never imposed. Routes:
+  `GET /api/party`, `POST /api/party/invite`, `respond`, `leave`, `kick`,
+  `lead` - each answers with the whole party again.
+- **Party** (src/systems/party.gd, class_name): the party you are in - id,
+  leader, members - from the broadcast poll's `party` (`_own_party()`) and from
+  every Party window answer. Static and per login (`kept_for`): a new login
+  never sees the last account's party. `revision` moves on each change, so a
+  name drawn from it knows to repaint.
+- **The Party window** (Social > Party; partypanel.gd, a PanelWindow): each
+  member's class, level and area (or "away"), a LEADER mark, and a health bar -
+  yours from your own character, a member in your area from their picture
+  (0.41.0's health in the state), anybody else from their last save - read
+  again every `REFRESH_SECONDS` (3) while open. Join and No for an invitation;
+  Lead and Remove for the leader; an invite box while there is room and you
+  may ask; Leave. **Invite to party** is on the players list's right-click
+  too. An invitation lights Social > Party with "pamy invited you to their
+  party. Open Party to answer." (`_read_asks`, kind "party").
+- **Party chat**: the chat window's Party tab. The server's `party` channel is
+  stamped with the party's id like guild chat, so a line said in one party
+  never shows in another, nor to somebody who left; the poll's `chat_news`
+  lights the Chat button for it.
+- **Their names in the party's colour** (`Party.COLOUR`), over their heads
+  (remoteplayer.gd `_paint_plate()`, repainted on `Party.revision`).
+- **The map** (mapscreen.gd, MONSTERS AND YOUR PARTY): every monster still
+  alive on ground you have explored, as a dot in its element's colour
+  (`Element.colour_for`; a boss bigger) - not through the fog, which would
+  draw the map you have not found - and everyone in your party standing in
+  this area as a ring in the party's colour with their name. Only this area:
+  the presence server tells a game about its own area, and the Party window
+  says where the rest are.
+- `_test_parties`, and the window lists that hold every window, the Social
+  dropdown, the players menu and the chat channels.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —
