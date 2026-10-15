@@ -298,6 +298,7 @@ func _ready() -> void:
 		_paint_ask_buttons()
 	_build_status_strip()
 	_build_world_chip()
+	_build_event_chip()
 	_start_broadcast_poll()
 	_wire_hotbar()
 
@@ -585,11 +586,12 @@ func _process(_delta: float) -> void:
 	# no character is loaded must still fade, or it sits there until one is.
 	_age_messages(Time.get_ticks_msec())
 
-	# THE STIRRING LANDS' COUNTDOWN, once a second.
+	# THE STIRRING LANDS' COUNTDOWN, and the events', once a second.
 	_world_chip_clock += _delta
 	if _world_chip_clock >= 1.0:
 		_world_chip_clock = 0.0
 		_paint_world_chip()
+		_paint_event_chip()
 
 	if active_character == null:
 		return
@@ -1797,6 +1799,9 @@ func _apply_broadcast(data: Dictionary) -> void:
 	# poll gets its banner below.
 	var was_land: int = Lands.stirring()
 	var stirred: bool = _read_world(data.get("world"))
+	# THE WORLD'S EVENTS (0.48.0): what is on and what is next, under the
+	# land's line - and the ones that began since the last poll, for a banner.
+	var began: Array[Dictionary] = _read_events(data.get("events"))
 	# AND ONE THAT ENDS BECAUSE THE OWNER SWITCHED THE LANDS OFF says so too:
 	# the owner turned them off and "nothing happened but the clock stopped".
 	# Not a stir that only ran out (the next one's banner says that), and not
@@ -1831,6 +1836,13 @@ func _apply_broadcast(data: Dictionary) -> void:
 	elif stilled and _broadcast_cursor > 0:
 		show_mythic_banner("THE LANDS GROW STILL", "The %s lands are calm again." % Element.name_for(was_land).capitalize(),
 			false, Element.colour_for(was_land).lightened(0.35))
+	elif _broadcast_cursor > 0:
+		# AN EVENT THAT BEGAN - double XP, more loot - across the screen too.
+		# A stir event's banner is its land's, above; only one at a time.
+		for event in began:
+			if str(event["kind"]) != "stir":
+				show_mythic_banner(str(event["name"]).to_upper(), str(event["description"]), false, EVENT_COLOUR)
+				break
 
 	var newest: int = int(data.get("latest_id", _broadcast_cursor))
 	if newest > _broadcast_cursor:
@@ -2206,6 +2218,8 @@ func _read_broadcast_messages(messages: Variant, announce: bool = true) -> void:
 		var colour: Color = Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94)
 		if kind == WORLD_BROADCAST_KIND:
 			colour = land_colour()
+		elif kind == EVENT_BROADCAST_KIND:
+			colour = EVENT_COLOUR
 		var bannered: bool = false
 		if kind == MYTHIC_BROADCAST_KIND:
 			colour = GameConstants.rarity_colour(GameConstants.MYTHIC_TIER)
@@ -2390,6 +2404,84 @@ func _place_world_chip() -> void:
 	var top: float = 50.0 if status_strip != null and status_strip.visible else 10.0
 	world_chip.offset_top = top
 	world_chip.offset_bottom = top + 26.0
+	_place_event_chip()
+
+
+# =============================================================================
+# THE WORLD'S EVENTS (0.48.0)
+# =============================================================================
+# Double XP, more loot, a land made to stir - set by the owner on the GM
+# panel's Events tab, held and paid by the server, and read here from the
+# broadcast poll into WorldEvents (worldevents.gd). On screen: a line per
+# event on now with its time left, and the next one to come, just under the
+# stirring land's line; a banner when one begins; and the server's own
+# sentences in chat, in the events' green.
+const EVENT_BROADCAST_KIND := "event"
+const EVENT_COLOUR := Color(0.56, 0.93, 0.62)
+var event_chip: PanelContainer = null
+var event_label: Label = null
+
+
+func _read_events(data: Variant) -> Array[Dictionary]:
+	"""The poll's "events" into WorldEvents. Hands back the ones that began."""
+	var began: Array[Dictionary] = WorldEvents.apply(data)
+	_paint_event_chip()
+	return began
+
+
+func _build_event_chip() -> void:
+	var frame := PanelContainer.new()
+	frame.name = "eventchip"
+	frame.anchor_left = 0.5
+	frame.anchor_right = 0.5
+	frame.offset_left = -170.0
+	frame.offset_right = 170.0
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.06, 0.09, 0.78)
+	style.border_width_bottom = 2
+	style.border_color = EVENT_COLOUR
+	style.corner_radius_bottom_left = 4
+	style.corner_radius_bottom_right = 4
+	style.content_margin_left = 10.0
+	style.content_margin_right = 10.0
+	style.content_margin_top = 3.0
+	style.content_margin_bottom = 3.0
+	frame.add_theme_stylebox_override("panel", style)
+	var label := Label.new()
+	label.name = "lines"
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 13)
+	label.add_theme_color_override("font_color", EVENT_COLOUR)
+	frame.add_child(label)
+	add_child(frame)
+	event_chip = frame
+	event_label = label
+	_place_event_chip()
+
+
+func _paint_event_chip() -> void:
+	if event_chip == null or event_label == null:
+		return
+	var text: String = "\n".join(WorldEvents.lines())
+	event_chip.visible = text != ""
+	if text != "" and event_label.text != text:
+		event_label.text = text
+	_place_event_chip()
+
+
+func _place_event_chip() -> void:
+	"""Under the stirring land's line when it is up, else where it would be.
+	Its height is its lines'."""
+	if event_chip == null:
+		return
+	var top: float = 50.0 if status_strip != null and status_strip.visible else 10.0
+	if world_chip != null and world_chip.visible:
+		top = world_chip.offset_bottom + 4.0
+	event_chip.offset_top = top
+	event_chip.offset_bottom = top + 26.0
 
 
 func _read_teleport(order) -> void:

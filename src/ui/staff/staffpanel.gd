@@ -127,7 +127,7 @@ const KIND_LABELS: Dictionary = {
 	"guild_rename": "Guild renames", "guild_disband": "Guild disbands",
 	"maintenance": "Maintenance", "minbuild": "Minimum build", "pvp": "PvP switch",
 	"trade": "Trade switch", "level": "Level sets", "skill": "Skill sets",
-	"world": "Stirring lands",
+	"world": "Stirring lands", "event": "Events",
 }
 
 # Which kinds name an ACCOUNT as their target, so a log line can take you to
@@ -454,6 +454,11 @@ static func describe_entry(entry: Dictionary) -> String:
 			line = "%s disbanded the guild %s" % [by, target]
 		"maintenance", "minbuild", "pvp", "trade":
 			line = "%s changed %s" % [by, str(KIND_LABELS.get(kind, kind)).to_lower()]
+		"event":
+			# The server's detail is the whole sentence: "scheduled #3 Double
+			# XP (xp 2.0, land 0) for 3 hours", "called off #3 Double XP".
+			line = "%s %s" % [by, detail if detail != "" else "changed an event"]
+			detail = ""
 		_:
 			# A kind this build does not know yet still says who did what to
 			# whom, in the server's own words.

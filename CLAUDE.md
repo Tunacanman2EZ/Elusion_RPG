@@ -6309,6 +6309,42 @@ is why new players leave, from rows the server already keeps (the API's
   the rest; the suite's window lists have it (twenty-four windows now).
 - `_test_player_stats_window`; `test_stats.py` on the server.
 
+### World events (0.48.0)
+
+The owner: "Treat events (double XP, double loot, forced stir, etc.) as their
+own feature area with a clean public contract, not just 'some extra flags in
+config.'" The server holds and pays them (the API's `events/` package and its
+CLAUDE.md, "The world's events"); the game shows them and lets the owner set
+them, with no build.
+
+- **WorldEvents** (src/systems/worldevents.gd, an autoload beside Lands):
+  the poll's `"events"` - `{events: on now, next: coming, now}` - read
+  through `read_event()`, which drops anything that is not an event and
+  holds what is to what the server allows (3x at most, a name of 40, a land
+  of 7). `apply()` hands back the events that began since the last poll;
+  `lines()` is the HUD's: "Double XP - 2h 14m left", "Next: Double Loot in
+  1d 2h", by the server's clock, so an event is off the screen at its end
+  before the next poll says so. **The multipliers are words**: XP and loot
+  are paid by the server at `/api/combat/kill`, whatever this game believes.
+- **The HUD** (`_read_events()`, called from `_apply_broadcast()` right
+  after `_read_world()`): an `eventchip` under the stirring land's line (or
+  where it would be), in `EVENT_COLOUR`; a banner for an xp or loot event
+  that begins - not on the first poll, and not for a stir event, whose
+  banner is its land's; broadcast kind `"event"` in chat in the same green.
+- **The GM panel's Events tab** (`EventsTab`, src/ui/owner/eventstab.gd,
+  added in `_ready()` like the World tab, read on every open): what (more
+  XP, more loot, a land stirs), how much, whose monsters, when (Now, or a
+  day and an hour and minute on this computer's clock - `start_time()`),
+  how many hours, a name; the list of what is on and coming and the last
+  that ended; Call off. Reports to Results with `[EVENTS]`. **Picker values
+  are item metadata, not ids**: an OptionButton reads an id of -1 as "use
+  the index", so the stirring land's -1 came back as 1, the dark lands. The
+  day picker is one width all year (`DAY_WIDTH`, every weekday and month
+  measured by the suite) and the hour and minute boxes hold two digits, so
+  the tab fits the panel's 370.
+- **Staff log**: kind `event`, the server's detail as the sentence.
+- `_test_world_events`; `test_events.py` on the server.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

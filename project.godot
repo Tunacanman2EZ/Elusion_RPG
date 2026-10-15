@@ -37,6 +37,7 @@ AreaRegistry="*res://src/systems/arearegistry.gd"
 Presence="*res://src/systems/presence.gd"
 Voice="*res://src/systems/voice.gd"
 Lands="*res://src/systems/lands.gd"
+WorldEvents="*res://src/systems/worldevents.gd"
 
 [display]
 

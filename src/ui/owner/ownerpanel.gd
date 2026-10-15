@@ -54,7 +54,7 @@ extends Control
 
 # The tab titles. Written here rather than taken from the node names, which are
 # lowercase like every other node in the project.
-const TAB_TITLES := ["Account", "Testing", "Server", "World"]
+const TAB_TITLES := ["Account", "Testing", "Server", "World", "Events"]
 
 # What each kind of result looks like in the box. Four, because there are four
 # answers: it worked, it did not, it needs you to do something first, and the
@@ -74,6 +74,9 @@ var _window: PanelWindow
 # THE WORLD TAB (0.46.0): the stirring lands' switches (worldtab.gd), added
 # in _ready().
 var world_tab: WorldTab = null
+# THE EVENTS TAB (0.48.0): the world's events - double XP, more loot, a land
+# made to stir - scheduled and called off (eventstab.gd), added in _ready().
+var events_tab: EventsTab = null
 # PLAYER STATS (0.47.0): the button at the top of the Server tab that opens
 # the owner's Player stats window (statswindow.gd, through the HUD). The
 # owner: "add it in my gm menu as a button somewhere".
@@ -225,6 +228,12 @@ func _ready() -> void:
 		# What the World tab's buttons did goes in Results too, as every other
 		# tab's does.
 		world_tab.report = _say
+		if tabs.get_node_or_null(^"events") == null:
+			events_tab = EventsTab.new()
+			tabs.add_child(events_tab)
+		else:
+			events_tab = tabs.get_node(^"events") as EventsTab
+		events_tab.report = _say
 		var server_page: Node = tabs.get_node_or_null(^"server")
 		if server_page != null:
 			stats_button = server_page.get_node_or_null(^"statsbutton") as Button
@@ -671,6 +680,8 @@ func _on_visibility_changed() -> void:
 		await refresh_online()
 		if world_tab != null and is_instance_valid(world_tab) and Api.is_owner:
 			await world_tab.refresh()
+		if events_tab != null and is_instance_valid(events_tab) and Api.is_owner:
+			await events_tab.refresh()
 	else:
 		_disarm()
 

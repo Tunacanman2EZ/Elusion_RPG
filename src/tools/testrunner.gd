@@ -304,6 +304,7 @@ func _run_all() -> void:
 	await _test_armour_resistance()
 	await _test_stirring_lands()
 	await _test_player_stats_window()
+	await _test_world_events()
 	await _test_the_boss_gates_lever()
 	await _test_other_players_are_drawn()
 	_test_other_players_move_evenly()
@@ -9899,6 +9900,278 @@ func _test_player_stats_window() -> void:
 	print("  player stats: the report in words, read on opening, owner only, a button on the Server tab")
 
 
+func _test_world_events() -> void:
+	section("THE WORLD'S EVENTS - double XP, more loot, a land made to stir: on the HUD, set from the GM panel (0.48.0)")
+	# The owner: "Treat events (double XP, double loot, forced stir, etc.) as
+	# their own feature area with a clean public contract". test_events.py
+	# holds the server - the rules, the routes, what a kill is paid; this holds
+	# what the game shows and how the owner sets them.
+	WorldEvents.clear()
+	Lands.clear()
+	var now: int = int(Time.get_unix_time_from_system())
+	var double_xp: Dictionary = {"id": 7, "name": "Double XP", "kind": "xp", "description": "2x XP from every monster.",
+		"starts_at": now - 600, "ends_at": now + 2 * 3600 + 30, "land": 0, "multipliers": {"xp": 2.0}}
+	var double_loot: Dictionary = {"id": 8, "name": "Double Loot", "kind": "loot",
+		"description": "Loot bags drop 2x as often from every monster.", "starts_at": now + 26 * 3600 + 30,
+		"ends_at": now + 29 * 3600 + 30, "land": 0, "multipliers": {"loot": 2.0}}
+
+	# ---- what the poll says ------------------------------------------------------
+	var read: Dictionary = WorldEvents.read_event(double_xp)
+	check("an event from the poll, as the contract has it",
+		read.get("id") == 7 and read.get("kind") == "xp" and read.get("name") == "Double XP"
+		and is_equal_approx(float(read["multipliers"].get("xp", 0.0)), 2.0) and read.get("land") == 0, read)
+	var loud: Dictionary = double_xp.duplicate(true)
+	loud["multipliers"] = {"xp": 50.0, "gold": 9.0}
+	loud["name"] = "x".repeat(300)
+	loud["land"] = 99
+	var held: Dictionary = WorldEvents.read_event(loud)
+	check("  a number past what the server allows is not believed: 3x at most, a name of 40, a land of 7",
+		is_equal_approx(float(held["multipliers"].get("xp", 0.0)), 3.0) and not held["multipliers"].has("gold")
+		and str(held["name"]).length() == 40 and held["land"] == Element.Type.WATER, held)
+	var bad_kind: Dictionary = double_xp.duplicate()
+	bad_kind["kind"] = "gold"
+	var backwards: Dictionary = double_xp.duplicate()
+	backwards["ends_at"] = backwards["starts_at"]
+	var no_id: Dictionary = double_xp.duplicate()
+	no_id.erase("id")
+	check("  and what is not an event is nothing: a kind it does not know, an end before its start, no id, not a dictionary",
+		WorldEvents.read_event(bad_kind).is_empty() and WorldEvents.read_event(backwards).is_empty()
+		and WorldEvents.read_event(no_id).is_empty() and WorldEvents.read_event("Double XP").is_empty())
+	var heard: Array = []
+	var on_change := func() -> void: heard.append(true)
+	WorldEvents.changed.connect(on_change)
+	var began: Array[Dictionary] = WorldEvents.apply({"events": [double_xp], "next": [double_loot], "now": now})
+	check("Double XP on, Double Loot next: that is news, and the lines say so with their times",
+		began.size() == 1 and int(began[0]["id"]) == 7 and heard.size() == 1
+		and WorldEvents.lines() == ["Double XP - 2h 00m left", "Next: Double Loot in 1d 2h"], WorldEvents.lines())
+	began = WorldEvents.apply({"events": [double_xp], "next": [double_loot], "now": now})
+	check("  asked again, the same: nothing began, nothing changed", began.is_empty() and heard.size() == 1)
+	WorldEvents._clock_offset += 2 * 3600 + 60
+	check("  past its end by the server's clock, it is off the screen before the next poll says so",
+		WorldEvents.lines() == ["Next: Double Loot in 23h 59m"], WorldEvents.lines())
+	WorldEvents._clock_offset -= 2 * 3600 + 60
+	WorldEvents.apply(null)
+	check("  and a server from before events says none", WorldEvents.lines().is_empty() and heard.size() == 2)
+	WorldEvents.changed.disconnect(on_change)
+	check("time in words: under a minute, minutes, hours and minutes, days and hours",
+		WorldEvents.span_text(30) == "under a minute" and WorldEvents.span_text(600) == "10m"
+		and WorldEvents.span_text(7260) == "2h 01m" and WorldEvents.span_text(93600) == "1d 2h")
+
+	# ---- the HUD ---------------------------------------------------------------------
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	var green: Color = hud.get_script().get_script_constant_map().get("EVENT_COLOUR", Color.BLACK)
+	var kept_cursor: int = hud._broadcast_cursor
+	hud._broadcast_cursor = 0
+	hud._apply_broadcast({"messages": [], "latest_id": 5, "events": {"events": [double_xp], "next": [double_loot], "now": now}})
+	var chip: PanelContainer = hud.event_chip
+	check("logging in during Double XP: its line and the next one's under the top of the screen, in the events' green, no banner",
+		chip != null and chip.visible and hud.event_label.text == "Double XP - 2h 00m left\nNext: Double Loot in 1d 2h"
+		and hud.event_label.get_theme_color("font_color").is_equal_approx(green)
+		and (hud.mythic_banner == null or not is_instance_valid(hud.mythic_banner)), hud.event_label.text if hud.event_label else "")
+	var loot_on: Dictionary = double_loot.duplicate(true)
+	loot_on["starts_at"] = now - 5
+	loot_on["ends_at"] = now + 3 * 3600 + 30
+	hud._apply_broadcast({"messages": [{"id": 6, "kind": "event", "body": "Double Loot has begun, for 3 hours.", "at": now}],
+		"latest_id": 6, "events": {"events": [double_xp, loot_on], "next": [], "now": now}})
+	var banner: Node = hud.mythic_banner
+	var title: Label = banner.find_child("title", true, false) as Label if banner != null and is_instance_valid(banner) else null
+	check("one that begins while playing: a banner across the top in the events' green, saying what it does",
+		title != null and title.text == "DOUBLE LOOT" and title.get_theme_color("font_color").is_equal_approx(green)
+		and (banner.find_child("line", true, false) as Label).text == "Loot bags drop 2x as often from every monster.",
+		title.text if title else "no banner")
+	var last_line: Dictionary = hud._unlogged_lines.back() if not hud._unlogged_lines.is_empty() else {}
+	check("  and the server's sentence is in chat in the same green",
+		str(last_line.get("text", "")) == "Double Loot has begun, for 3 hours."
+		and Color(last_line.get("color", Color.BLACK)).is_equal_approx(green), last_line)
+	check("  both on the line, one under the other", hud.event_label.text.begins_with("Double XP - ")
+		and hud.event_label.text.contains("\nDouble Loot - 3h 00m left"), hud.event_label.text)
+	if banner != null and is_instance_valid(banner):
+		banner.free()
+	hud.mythic_banner = null
+	var stir_event: Dictionary = {"id": 9, "name": "The Fire Lands Stir", "kind": "stir",
+		"description": "The fire lands stir for the whole event.", "starts_at": now - 5, "ends_at": now + 3600 + 30,
+		"land": Element.Type.FIRE, "multipliers": {}}
+	hud._apply_broadcast({"messages": [], "latest_id": 6,
+		"events": {"events": [double_xp, loot_on, stir_event], "next": [], "now": now}})
+	check("  a stir event gets no banner of its own: the land's stir is the banner", hud.mythic_banner == null)
+	hud._apply_broadcast({"messages": [], "latest_id": 6, "world": {"on": true, "tick": 3, "element": Element.Type.FIRE,
+		"name": "fire", "started_at": now - 5, "ends_at": now + 3600, "now": now},
+		"events": {"events": [double_xp], "next": [], "now": now}})
+	if hud.mythic_banner != null and is_instance_valid(hud.mythic_banner):
+		hud.mythic_banner.free()
+	hud.mythic_banner = null
+	check("with a land stirring, the events' line sits under the land's",
+		hud.world_chip.visible and is_equal_approx(chip.offset_top, hud.world_chip.offset_bottom + 4.0), chip.offset_top)
+	hud._apply_broadcast({"messages": [], "latest_id": 6, "world": {"on": false, "tick": 0, "element": 0}})
+	if hud.mythic_banner != null and is_instance_valid(hud.mythic_banner):
+		hud.mythic_banner.free()
+	hud.mythic_banner = null
+	check("  and with none, where the land's would be - and a server from before events shows no line",
+		not hud.world_chip.visible and not chip.visible and is_equal_approx(chip.offset_top, 10.0))
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	check("the events are read from every poll (the reader is called from _apply_broadcast)",
+		_func_body(hud_src, "func _apply_broadcast(").contains("_read_events(data.get(\"events\"))"))
+	hud._broadcast_cursor = kept_cursor
+	hud.queue_free()
+	await get_tree().process_frame
+	WorldEvents.clear()
+	Lands.clear()
+	const StaffScript := preload("res://src/ui/staff/staffpanel.gd")
+	check("the staff log says what the owner did, in the server's words",
+		StaffScript.describe_entry({"by": "Tunacan", "action": "event", "target": "server",
+			"detail": "scheduled #3 Double XP (xp 2.0, land 0) for 3 hours"}) == "Tunacan scheduled #3 Double XP (xp 2.0, land 0) for 3 hours"
+		and StaffScript.KIND_LABELS.get("event") == "Events")
+
+	# ---- the GM panel's Events tab ---------------------------------------------------
+	LocalTime._bias_minutes = -300
+	LocalTime._bias_known = true
+	LocalTime._bias_read_at = Time.get_ticks_msec()
+	var fixed_now: int = 1800000000
+	check("a day and a time on this computer's clock, five hours behind: tomorrow 14:30 and today 00:00",
+		EventsTab.start_time(1, 14, 30, fixed_now) == 1800127800 and EventsTab.start_time(0, 0, 0, fixed_now) == 1799989200,
+		[EventsTab.start_time(1, 14, 30, fixed_now), EventsTab.start_time(0, 0, 0, fixed_now)])
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var tabs: TabContainer = gm.get_node_or_null("%ownertabs") as TabContainer
+	var tab: EventsTab = gm.get("events_tab") as EventsTab
+	check("the GM panel has an Events tab, after World",
+		tabs != null and tab != null and tab.get_parent() == tabs and tabs.get_tab_title(tab.get_index()) == "Events"
+		and tabs.get_tab_title(tab.get_index() - 1) == "World")
+	tab.fill_days(fixed_now)
+	check("  the days: Now, Today, Tomorrow, then each by its name - three weeks of them",
+		tab.day_pick.item_count == 22 and tab.day_pick.get_item_text(0) == "Now" and tab.day_pick.get_item_text(1) == "Today"
+		and tab.day_pick.get_item_text(2) == "Tomorrow" and tab.day_pick.get_item_text(3) == "Sun Jan 17",
+		tab.day_pick.get_item_text(3))
+	LocalTime._bias_known = false
+	if tabs != null and tab != null:
+		tabs.current_tab = tab.get_index()
+		await get_tree().process_frame
+	# EVERY DAY'S NAME FITS ITS PICKER, in any month: the picker is one width
+	# all year, so the widest weekday with the widest month must fit it.
+	var day_font: Font = tab.day_pick.get_theme_font("font")
+	var day_size: int = tab.day_pick.get_theme_font_size("font_size")
+	var day_box: StyleBox = tab.day_pick.get_theme_stylebox("normal")
+	var arrow: Texture2D = tab.day_pick.get_theme_icon("arrow")
+	var day_room: float = tab.day_pick.size.x - day_box.get_margin(SIDE_LEFT) - day_box.get_margin(SIDE_RIGHT) \
+		- (arrow.get_width() if arrow != null else 0) - tab.day_pick.get_theme_constant("arrow_margin")
+	var widest: float = 0.0
+	for weekday in LocalTime.WEEKDAYS:
+		for month in LocalTime.MONTHS.slice(1):
+			widest = maxf(widest, day_font.get_string_size("%s %s 30" % [weekday, month], HORIZONTAL_ALIGNMENT_LEFT, -1, day_size).x)
+	check("  every day's name fits its picker in any month - it is one width all year (%d of %d)" % [widest, day_room],
+		widest <= day_room, [widest, day_room])
+	var wide: float = PanelWindow.content_minimum(gm).x
+	check("  and it fits the panel's drawn width (370) (%d)" % wide, wide <= 370.0, wide)
+	var asked: Array = []
+	var sent: Array = []
+	var view: Variant = JSON.parse_string(JSON.stringify({"events": [
+		{"id": 8, "name": "Double Loot", "kind": "loot", "description": "", "starts_at": now + 86400, "ends_at": now + 86400 + 3 * 3600,
+			"land": 0, "multipliers": {"loot": 2.0}, "created_by": "Tunacan", "cancelled": false, "cancelled_by": "", "state": "coming"},
+		{"id": 7, "name": "Double XP", "kind": "xp", "description": "", "starts_at": now - 600, "ends_at": now + 3000,
+			"land": 0, "multipliers": {"xp": 2.0}, "created_by": "Tunacan", "cancelled": false, "cancelled_by": "", "state": "on"},
+		{"id": 5, "name": "Triple Loot", "kind": "loot", "description": "", "starts_at": now - 9 * 3600, "ends_at": now - 6 * 3600,
+			"land": 0, "multipliers": {"loot": 3.0}, "created_by": "Tunacan", "cancelled": false, "cancelled_by": "", "state": "over"},
+		{"id": 4, "name": "1.5x XP", "kind": "xp", "description": "", "starts_at": now - 20 * 3600, "ends_at": now - 18 * 3600,
+			"land": 0, "multipliers": {"xp": 1.5}, "created_by": "Tunacan", "cancelled": true, "cancelled_by": "Tunacan", "state": "cancelled"}],
+		"now": now, "limits": {"amount": [1.25, 3.0], "hours": [1, 72], "days_ahead": 60, "waiting": 20}}))
+	tab.fetch = func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": view}
+	tab.send = func(path: String, said: Dictionary) -> Dictionary:
+		sent.append([path, said])
+		return {"ok": true, "status": 201, "data": {"event": {"id": 9, "name": "Double XP", "kind": "xp",
+			"description": "2x XP from every monster.", "starts_at": now, "ends_at": now + 3 * 3600}, "now": now}}
+	check("before the server is read, Schedule waits", tab.schedule_button.disabled and tab.cancel_button.disabled)
+	await tab.schedule()
+	check("  and sends nothing", sent.is_empty(), sent)
+	await tab.refresh()
+	check("opened, it reads the server: what is on, what is coming, and the last that ended",
+		asked == ["/api/world/events/schedule"] and tab.status_label.text == "1 on now, 1 coming."
+		and tab.list_label.text.begins_with("Double XP - on, 50m left\nDouble Loot - ")
+		and tab.list_label.text.ends_with("\nLast: Triple Loot (over), 1.5x XP (called off)"), tab.list_label.text)
+	check("  read every time the panel opens, like the World tab - the owner may have set one from another machine",
+		_func_body(_code_src("res://src/ui/owner/ownerpanel.gd"), "func _on_visibility_changed(").contains("await events_tab.refresh()"))
+	check("  and either of the two can be called off, soonest first",
+		tab.cancel_pick.item_count == 2 and tab.cancel_pick.get_item_id(0) == 7 and tab.cancel_pick.get_item_id(1) == 8
+		and not tab.cancel_button.disabled and not tab.schedule_button.disabled)
+	var results: RichTextLabel = gm.get("results") as RichTextLabel
+	check("  opening reads quietly; Refresh says what it read in the GM panel's Results",
+		results != null and tab.report.is_valid() and not results.get_parsed_text().contains("Read from the server. 1 on now"))
+	tab.refresh_button.pressed.emit()
+	await get_tree().process_frame
+	check("  Refresh: \"Read from the server. 1 on now, 1 coming.\"",
+		results.get_parsed_text().contains("Read from the server. 1 on now, 1 coming."), results.get_parsed_text())
+	tab.kind_pick.select(0)
+	tab.kind_pick.item_selected.emit(0)
+	tab.amount_box.value = 2.0
+	tab.land_pick.select(tab.land_index(EventsTab.LAND_ANY))
+	tab.day_pick.select(0)
+	tab.day_pick.item_selected.emit(0)
+	tab.hours_box.value = 3.0
+	tab.name_edit.text = ""
+	check("Now has no hour or minute of its own", not tab.hour_box.editable and not tab.minute_box.editable)
+	await tab.schedule()
+	var first: Dictionary = sent[0][1] if not sent.is_empty() else {}
+	check("Schedule, double XP for every monster, now, for 3 hours: sent as the server's contract asks",
+		sent.size() == 1 and sent[0][0] == "/api/world/events" and first.get("kind") == "xp"
+		and is_equal_approx(float(first.get("amount", 0.0)), 2.0) and first.get("land") == 0 and first.get("hours") == 3
+		and absi(int(first.get("starts_at", 0)) - now) <= 5 and not first.has("name"), first)
+	check("  and Results says it was scheduled, what it does, and that everyone is told - then reads the list again",
+		results.get_parsed_text().contains("Scheduled: Double XP, now, for 3 h - 2x XP from every monster. Everyone online is told.")
+		and asked.size() == 3, results.get_parsed_text())
+	sent.clear()
+	tab.kind_pick.select(2)
+	tab.kind_pick.item_selected.emit(2)
+	check("a stir: no amount, and only a land - not every monster or the stirring land's",
+		not tab.amount_box.editable and tab.land_pick.is_item_disabled(tab.land_index(EventsTab.LAND_ANY))
+		and tab.land_pick.is_item_disabled(tab.land_index(EventsTab.LAND_STIRRING))
+		and tab.land() == Element.Type.FIRE)
+	tab.day_pick.select(tab.day_index(1))
+	tab.day_pick.item_selected.emit(tab.day_pick.selected)
+	tab.hour_box.value = 14.0
+	tab.minute_box.value = 30.0
+	tab.hours_box.value = 6.0
+	tab.name_edit.text = "  Fire Night "
+	check("  a day picked: its hour and minute are the owner's", tab.hour_box.editable and tab.minute_box.editable)
+	await tab.schedule()
+	var second: Dictionary = sent[0][1] if not sent.is_empty() else {}
+	check("  tomorrow at 14:30 on this computer's clock, for 6 hours, named: sent so",
+		second == {"kind": "stir", "starts_at": EventsTab.start_time(1, 14, 30, int(Time.get_unix_time_from_system())),
+			"hours": 6, "land": Element.Type.FIRE, "name": "Fire Night"}, second)
+	tab.send = func(_path: String, _said: Dictionary) -> Dictionary:
+		return {"ok": false, "status": 400, "error": "amount is a number from 1.25 to 3"}
+	await tab.schedule()
+	check("refused: the server's reason, on the tab and in Results",
+		tab.say_label.text == "The server refused (400): amount is a number from 1.25 to 3"
+		and results.get_parsed_text().contains("The server refused (400): amount is a number from 1.25 to 3"))
+	sent.clear()
+	tab.send = func(path: String, said: Dictionary) -> Dictionary:
+		sent.append([path, said])
+		return {"ok": true, "status": 200, "data": {"cancelled": said.get("id"), "now": now}}
+	tab.cancel_pick.select(1)
+	await tab.cancel()
+	check("Call off: the one picked, by its id - and it says so",
+		sent == [["/api/world/events/cancel", {"id": 8}]] and tab.say_label.text.begins_with("Called off: Double Loot ("), sent)
+	sent.clear()
+	tab.fetch = func(_path: String) -> Dictionary: return {"ok": false, "status": 404, "error": ""}
+	await tab.refresh()
+	check("a server without events: says to update it, and Schedule and Call off wait again",
+		tab.say_label.text.contains("Update the server") and tab.schedule_button.disabled and tab.cancel_button.disabled
+		and results.get_parsed_text().contains("This server does not have events yet (404)"), tab.say_label.text)
+	await tab.schedule()
+	await tab.cancel()
+	check("  and neither sends anything", sent.is_empty(), sent)
+	gm.queue_free()
+	await get_tree().process_frame
+	Api.is_owner = was_owner
+	print("  world events: read from the poll and held to what the server allows, on the HUD, set from the GM panel")
+
+
 func _test_armour_resistance() -> void:
 	section("ARMOUR RESISTS AN ELEMENT - rolled in the id, added up, taken off a hit")
 
@@ -19452,8 +19725,9 @@ func _test_the_gm_panel_is_a_window() -> void:
 	var titles: Array[String] = []
 	for i in tabs.get_tab_count():
 		titles.append(tabs.get_tab_title(i))
-	# AND WORLD (0.46.0): the stirring lands' switches (worldtab.gd).
-	check("Account, Testing, Server and World", titles == ["Account", "Testing", "Server", "World"], titles)
+	# AND WORLD (0.46.0): the stirring lands' switches (worldtab.gd); AND
+	# EVENTS (0.48.0), the world's events (eventstab.gd).
+	check("Account, Testing, Server, World and Events", titles == ["Account", "Testing", "Server", "World", "Events"], titles)
 	check("sized to the tallest tab, so switching never resizes the window",
 		tabs.use_hidden_tabs_for_min_size)
 	# OWNED ONLY: an OptionButton's popup carries a ScrollContainer of its own,
