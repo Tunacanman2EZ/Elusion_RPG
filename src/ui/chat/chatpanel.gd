@@ -1748,6 +1748,14 @@ func _clickable_name(line: Dictionary, name_bbcode: String) -> String:
 func _wire_name_click(label: RichTextLabel, line: Dictionary) -> void:
 	label.meta_underlined = false
 	label.meta_clicked.connect(func(_meta: Variant) -> void: open_line_menu(line))
+	# HOVERED, THE NAME SAYS IT IS ONE (0.43.0): underlined, under a pointing
+	# hand. A click opens what you can do with them.
+	label.meta_hover_started.connect(func(_meta: Variant) -> void:
+		label.meta_underlined = true
+		label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND)
+	label.meta_hover_ended.connect(func(_meta: Variant) -> void:
+		label.meta_underlined = false
+		label.mouse_default_cursor_shape = Control.CURSOR_ARROW)
 
 
 func _ensure_line_menu() -> PopupMenu:
@@ -1780,6 +1788,10 @@ func open_line_menu(line: Dictionary) -> void:
 		var at: int = menu.get_item_index(MENU_IGNORE)
 		menu.set_item_disabled(at, true)
 		menu.set_item_tooltip(at, "Staff cannot be ignored. Report the message instead.")
+	# WHAT A NAME ANYWHERE OFFERS (playermenu.gd, 0.43.0) - the owner: "same
+	# thing in chat if i hover over some ones name". Reporting here stays the
+	# line's own, below: the line is the evidence.
+	PlayerMenu.fill(menu, who, false, false)
 	if int(line.get("id", 0)) > 0:
 		menu.add_separator("Report this message")
 		for i in REPORT_CHOICES.size():
@@ -1814,6 +1826,9 @@ func _on_line_menu_id(id: int) -> void:
 			"Said: \"%s\"" % one_line(str(line.get("body", ""))).left(120))
 	elif id == MENU_UNMUTE:
 		await unmute_player(who)
+	elif PlayerMenu.is_ours(id) and is_inside_tree():
+		var chosen: Array = PlayerMenu.action_of(id)
+		get_tree().call_group(&"player_menu_host", &"player_action", chosen[0], who, chosen[1])
 
 
 func ignore_player(who: String) -> void:

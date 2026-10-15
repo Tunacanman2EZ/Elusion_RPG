@@ -72,6 +72,9 @@ signal world_received(data: Dictionary)
 signal hits_received(from_id: int, hits: Array)
 # (Leader only.) The server asks for everything to be sent to this game.
 signal world_needed(for_id: int)
+# PARTY VOICE (0.43.0): who is in the party's voice ("vs") and a call's setup
+# from another game ("vc"), for the Voice autoload (voice.gd).
+signal voice_message(message: Dictionary)
 
 const RemotePlayer := preload("res://src/characters/remoteplayer.gd")
 
@@ -538,6 +541,21 @@ func handle_message(message: Dictionary) -> void:
 			for pulled in message.get("p", []):
 				if pulled is Array and pulled.size() == 2 and typeof(pulled[1]) == TYPE_BOOL:
 					_pull_lever(str(pulled[0]), bool(pulled[1]))
+		"vs", "vc":
+			voice_message.emit(message)
+
+
+func is_open() -> bool:
+	"""Whether the link is up and said hello - what PARTY VOICE waits for."""
+	return _phase == "open"
+
+
+func send_voice(message: Dictionary) -> bool:
+	"""A PARTY VOICE message ("vs" or "vc", voice.gd) - sent if the link is up."""
+	if _phase != "open" and not send_override.is_valid():
+		return false
+	_send(message)
+	return true
 
 
 # =============================================================================

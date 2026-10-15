@@ -17,6 +17,10 @@
 # the gem), from the middle of the mage's picture. It moves a few pixels as the
 # staff is raised; the burst is gone before that matters.
 #
+# THE HEALER'S, SMALLER (0.36.0). muzzle() is a handful of green motes where
+# each orb leaves the healer - ten a second, so five motes and no streak, not
+# the mage's burst.
+#
 # ON THE MAGE AND ON ITS PICTURE. mage.gd throws one on every cast; a picture of
 # somebody else's mage (remoteattacks.gd) throws one when their stalagmite or
 # meteor is drawn, facing the way their picture faces.
@@ -33,7 +37,9 @@ const GEM := {
 }
 const FROST := &"frost"
 const EMBER := &"ember"
+const HEAL := &"heal"
 const BURST := 14
+const MUZZLE := 5
 const STREAK := 7
 const LIFETIME := 0.5
 
@@ -65,10 +71,27 @@ static func burst(body: Node2D, facing: String, toward: Vector2, palette: String
 	return spark
 
 
+static func muzzle(body: Node2D, at: Vector2, toward: Vector2, palette: StringName = HEAL) -> CastSparkle:
+	"""A few motes where a shot leaves `body` - `at` from its origin - thrown
+	loosely toward `toward`. Frees itself."""
+	var spark := CastSparkle.new()
+	spark.name = "muzzle"
+	spark._set_up(MUZZLE, 40.0, Vector2(15.0, 40.0), -6.0, palette)
+	body.add_child(spark)
+	spark.position = at
+	var along: Vector2 = toward - spark.global_position
+	spark.direction = along.normalized() if along.length() > 1.0 else Vector2.UP
+	spark.emitting = true
+	spark.finished.connect(spark.queue_free)
+	return spark
+
+
 static func colours(palette: StringName) -> Gradient:
 	var ramp := Gradient.new()
 	ramp.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
-	if palette == EMBER:
+	if palette == HEAL:
+		ramp.colors = PackedColorArray([Color(1.0, 1.0, 0.92), Color(0.65, 1.0, 0.55), Color(0.25, 0.75, 0.3, 0.0)])
+	elif palette == EMBER:
 		ramp.colors = PackedColorArray([Color(1.0, 0.97, 0.75), Color(1.0, 0.62, 0.2), Color(0.8, 0.2, 0.05, 0.0)])
 	else:
 		ramp.colors = PackedColorArray([Color(1.0, 1.0, 1.0), Color(0.62, 0.92, 1.0), Color(0.25, 0.5, 0.95, 0.0)])

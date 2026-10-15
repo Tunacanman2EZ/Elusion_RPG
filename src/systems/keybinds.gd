@@ -49,14 +49,19 @@ const ACTIONS := [
 	["minimap_toggle", "Map"],
 	["kills_toggle", "Kills"],
 	["help_toggle", "Controls (this card)"],
+	["voice_talk", "Push to talk (party voice)"],
+	["voice_mute", "Mute my microphone"],
 ]
 
 # ACTIONS MADE HERE rather than in project.godot, with the key each starts on:
-# the ten hotbar keys (below) and the Kills window (0.9.0). project.godot is
-# rewritten by the editor, and an action added to it from outside is lost the
-# next time the editor saves its own copy.
+# the ten hotbar keys (below), the Kills window (0.9.0) and party voice's two
+# (0.43.0). project.godot is rewritten by the editor, and an action added to
+# it from outside is lost the next time the editor saves its own copy.
 const MADE_HERE := {
 	"kills_toggle": KEY_K,
+	# PARTY VOICE (0.43.0, voice.gd).
+	"voice_talk": KEY_V,
+	"voice_mute": KEY_B,
 }
 
 # Two keys an action: a first and a second.

@@ -157,6 +157,10 @@ const HEALTH_BAR_HEIGHT := 2.0
 const AIM_FOLLOW_RATE := 14.0
 var aim_degrees: int = -1
 var health_percent: int = -1
+# PARTY VOICE (0.43.0): the speaker beside the name while they talk.
+const PLATE_HOVER := Color(1.25, 1.25, 1.25)
+var _talk_mark: Node2D = null
+
 # The Party.revision the plate was last painted for.
 var _party_painted: int = -1
 var _aim_ring: AimRing = null
@@ -432,6 +436,7 @@ func _process(delta: float) -> void:
 	_follow_aim(delta)
 	if _party_painted != Party.revision:
 		_paint_plate()
+	_show_talking(Voice.speaking(display_name))
 	if _plate != null and absf(_camera_zoom() - _plate_zoom) > 0.001:
 		_place_plate()
 	_follow_with_pet(delta)
@@ -729,7 +734,15 @@ func _build_plate() -> void:
 	_plate = Label.new()
 	_plate.name = "nameplate"
 	_plate.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# THE NAME IS A BUTTON (0.43.0). The owner: "clicking over a person should
+	# have add friend inv to guild or party and report". A click on it is the
+	# plate's - it never reaches the attack (player.gd takes only clicks no
+	# control took) - and opens the player menu (characterhud.gd).
+	_plate.mouse_filter = Control.MOUSE_FILTER_STOP
+	_plate.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_plate.gui_input.connect(_on_plate_input)
+	_plate.mouse_entered.connect(func() -> void: _plate.modulate = PLATE_HOVER)
+	_plate.mouse_exited.connect(func() -> void: _plate.modulate = Color.WHITE)
 	_plate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_plate.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_plate.z_index = z
@@ -764,6 +777,17 @@ func _build_plate() -> void:
 	add_child(_badge)
 
 
+func _on_plate_input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click == null or not click.pressed:
+		return
+	if click.button_index != MOUSE_BUTTON_LEFT and click.button_index != MOUSE_BUTTON_RIGHT:
+		return
+	_plate.accept_event()
+	if display_name != "" and is_inside_tree():
+		get_tree().call_group(&"player_menu_host", &"open_player_menu", display_name)
+
+
 func _paint_plate() -> void:
 	if _plate == null:
 		return
@@ -785,6 +809,35 @@ func _paint_plate() -> void:
 		if word != "":
 			_badge.add_theme_color_override("font_color", NameTag.badge_colour(role))
 	_place_plate()
+
+
+func _show_talking(on: bool) -> void:
+	"""The speaker beside the name, while they talk in the party's voice."""
+	if not on and _talk_mark == null:
+		return
+	if _talk_mark == null:
+		_talk_mark = TalkMark.new()
+		_talk_mark.name = "talkmark"
+		_talk_mark.z_index = int(plate_constant("NAMEPLATE_Z", 60))
+		add_child(_talk_mark)
+	_talk_mark.visible = on and _plate != null and _plate.visible
+	if _talk_mark.visible:
+		var plate_scale: Vector2 = _plate.scale
+		_talk_mark.scale = plate_scale
+		_talk_mark.position = _plate.position + Vector2(-8.0 * plate_scale.x,
+			_plate.size.y * plate_scale.y * 0.5)
+
+
+class TalkMark extends Node2D:
+	"""A small lit speaker with two waves."""
+	const COLOUR := Color(0.55, 1.0, 0.6)
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2(-6, -2), Vector2(3, 4)), COLOUR)
+		draw_colored_polygon(PackedVector2Array([Vector2(-3, -2), Vector2(1, -5), Vector2(1, 5),
+			Vector2(-3, 2)]), COLOUR)
+		draw_arc(Vector2(1, 0), 4.0, -0.9, 0.9, 6, COLOUR, 1.0)
+		draw_arc(Vector2(1, 0), 7.0, -0.9, 0.9, 8, COLOUR, 1.0)
 
 
 func _camera_zoom() -> float:

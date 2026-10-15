@@ -52,11 +52,16 @@ signal friend_asked(who: String)
 signal trade_asked(who: String)
 # And, since 0.42.0, Invite to party (partypanel.gd).
 signal party_asked(who: String)
+# 0.43.0 (playermenu.gd): the guild's invite, and a report to staff.
+signal guild_asked(who: String)
+signal report_asked(who: String, reason: String)
 
-const MENU_WHISPER := 1
-const MENU_FRIEND := 2
-const MENU_TRADE := 3
-const MENU_PARTY := 4
+# The menu's ids are PlayerMenu's (0.43.0): one menu for a name wherever it is.
+const MENU_WHISPER := PlayerMenu.WHISPER
+const MENU_FRIEND := PlayerMenu.FRIEND
+const MENU_TRADE := PlayerMenu.TRADE
+const MENU_PARTY := PlayerMenu.PARTY
+const MENU_GUILD := PlayerMenu.GUILD
 const ROW_HINT := "Right-click to whisper, add as a friend, trade or invite to your party"
 
 var row_menu: PopupMenu = null
@@ -305,10 +310,8 @@ func open_row_menu(who: String) -> void:
 	menu.clear()
 	_menu_who = who
 	menu.add_separator(who)
-	menu.add_item("Whisper", MENU_WHISPER)
-	menu.add_item("Add friend", MENU_FRIEND)
-	menu.add_item("Trade", MENU_TRADE)
-	menu.add_item("Invite to party", MENU_PARTY)
+	# THE SAME ITEMS AS EVERY OTHER NAME (playermenu.gd, 0.43.0).
+	PlayerMenu.fill(menu, who)
 	menu.reset_size()
 	if is_inside_tree():
 		menu.position = Vector2i(get_viewport().get_mouse_position())
@@ -319,15 +322,20 @@ func _on_row_menu_id(id: int) -> void:
 	var who: String = _menu_who
 	if who == "":
 		return
-	match id:
-		MENU_WHISPER:
+	var chosen: Array = PlayerMenu.action_of(id)
+	match chosen[0]:
+		"whisper":
 			whisper_asked.emit(who)
-		MENU_FRIEND:
+		"friend":
 			friend_asked.emit(who)
-		MENU_TRADE:
+		"trade":
 			trade_asked.emit(who)
-		MENU_PARTY:
+		"party":
 			party_asked.emit(who)
+		"guild":
+			guild_asked.emit(who)
+		"report":
+			report_asked.emit(who, str(chosen[1]))
 
 
 func _boxed(line: Control, mine: bool) -> Control:
