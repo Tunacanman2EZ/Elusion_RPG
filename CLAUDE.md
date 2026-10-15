@@ -6281,6 +6281,34 @@ not moving and the ball is wobbling means there is a tiny issue". It was:
 - `_test_aim_holds_still_while_walking` makes the drawn frame lag on purpose
   and checks the cursor still lands on one point.
 
+### Player stats on the GM panel (0.47.0)
+
+The owner, after "they log in noone is here it is pretty discouraging": "build
+this and add it in my gm menu as a button somewhere". The question it answers
+is why new players leave, from rows the server already keeps (the API's
+`playerstats/` package and its CLAUDE.md, "Player stats").
+
+- **The way in**: a **Player stats** button at the top of the GM panel's
+  Server tab (`OwnerPanel.stats_button`, made in `_ready()` like the World
+  tab), which asks the HUD (`open_player_stats()`) - the save history's
+  route. Out of the game it says so in Results.
+- **The window** (`StatsWindow`, src/ui/owner/statswindow.gd and
+  scene/ui/owner/statswindow.tscn): read on opening and by Refresh, with a
+  picker for how far back a player signed up to count as new (7, 30, 90
+  days). It sends `offset` from `LocalTime.bias_minutes_at()`, so the owner's
+  days start at their midnight.
+- **In words** (`report_lines()`, static, what the suite reads): the
+  players, the new players' road (signed up, made a character, killed a
+  monster, level 5, level 10, came back, still around a week later, minutes
+  to the first kill), **the biggest drop** worked out here - the step that
+  lost the most new players, the one to look at first - where the ones who
+  stopped stopped (how long, how far, which area), day by day, the monsters
+  most and least hunted, and the classes. add_text only: an area's name is
+  the server's word.
+- **A window the HUD owns**, so it is on `_escape_windows()` and freed with
+  the rest; the suite's window lists have it (twenty-four windows now).
+- `_test_player_stats_window`; `test_stats.py` on the server.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

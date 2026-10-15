@@ -74,6 +74,10 @@ var _window: PanelWindow
 # THE WORLD TAB (0.46.0): the stirring lands' switches (worldtab.gd), added
 # in _ready().
 var world_tab: WorldTab = null
+# PLAYER STATS (0.47.0): the button at the top of the Server tab that opens
+# the owner's Player stats window (statswindow.gd, through the HUD). The
+# owner: "add it in my gm menu as a button somewhere".
+var stats_button: Button = null
 
 # Matches the "[GM] " / "[OWNER] " / "[SERVER] " tag the console lines carry.
 # On screen it is noise - the whole panel is the GM's.
@@ -221,6 +225,19 @@ func _ready() -> void:
 		# What the World tab's buttons did goes in Results too, as every other
 		# tab's does.
 		world_tab.report = _say
+		var server_page: Node = tabs.get_node_or_null(^"server")
+		if server_page != null:
+			stats_button = server_page.get_node_or_null(^"statsbutton") as Button
+			if stats_button == null:
+				stats_button = Button.new()
+				stats_button.name = "statsbutton"
+				stats_button.text = "Player stats"
+				stats_button.tooltip_text = "Who signs up, who comes back, where players stop and what gets played - players only, not staff."
+				stats_button.focus_mode = Control.FOCUS_NONE
+				server_page.add_child(stats_button)
+				server_page.move_child(stats_button, 0)
+			if not stats_button.pressed.is_connected(_on_stats_pressed):
+				stats_button.pressed.connect(_on_stats_pressed)
 		for i in range(mini(tabs.get_tab_count(), TAB_TITLES.size())):
 			tabs.set_tab_title(i, TAB_TITLES[i])
 	if view_button != null and not view_button.pressed.is_connected(_on_view_pressed):
@@ -363,6 +380,13 @@ func _on_history_pressed() -> void:
 		return
 	if not open_window.call("open_save_history", who):
 		_say("[GM] the save history opens from inside the game.", SAY_WARN)
+
+
+func _on_stats_pressed() -> void:
+	if not Api.is_owner:
+		return
+	if not open_window.call("open_player_stats", ""):
+		_say("[GM] the player stats open from inside the game.", SAY_WARN)
 
 
 func _open_hud_window(method: String, who: String) -> bool:

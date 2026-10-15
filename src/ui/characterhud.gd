@@ -80,6 +80,8 @@ const ChatPanelScript     := preload("res://src/ui/chat/chatpanel.gd")
 const OWNER_PANEL_SCENE   := preload("res://scene/ui/owner/ownerpanel.tscn")
 const ITEM_SPAWNER_SCENE  := preload("res://scene/ui/owner/itemspawner.tscn")
 const SAVE_HISTORY_SCENE  := preload("res://scene/ui/owner/savehistory.tscn")
+# The owner's Player stats (statswindow.gd, 0.47.0), from the GM panel's Server tab.
+const STATS_WINDOW_SCENE  := preload("res://scene/ui/owner/statswindow.tscn")
 const STAFF_PANEL_SCENE   := preload("res://scene/ui/staff/staffpanel.tscn")
 const STAFF_THEME         := preload("res://assets/themes/staff_ui_theme.tres")
 const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
@@ -143,6 +145,7 @@ var trade_panel:      Control         = null
 var owner_panel:      Control         = null
 var item_spawner:     Control         = null
 var save_history:     Control         = null
+var stats_window:     Control         = null
 var staff_panel:      Control         = null
 var chat_panel:       Control         = null
 var friends_panel:    Control         = null
@@ -553,6 +556,19 @@ func open_save_history(username: String) -> void:
 		save_history.visible = false
 		add_child(save_history)
 	save_history.open_for(username)
+
+
+func open_player_stats(_who: String = "") -> void:
+	# The GM panel's Player stats (statswindow.gd): who signs up, who comes
+	# back, where players stop. Owner-gated here as a courtesy, like the rest;
+	# the server is the gate (require_owner).
+	if not Api.is_owner:
+		return
+	if stats_window == null:
+		stats_window = STATS_WINDOW_SCENE.instantiate()
+		stats_window.visible = false
+		add_child(stats_window)
+	stats_window.open()
 
 
 func _process(_delta: float) -> void:
@@ -3008,6 +3024,7 @@ func _on_logout_pressed() -> void:
 	if owner_panel:      owner_panel.queue_free()
 	if item_spawner:     item_spawner.queue_free()
 	if save_history:     save_history.queue_free()
+	if stats_window:     stats_window.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -3022,6 +3039,7 @@ func _on_logout_pressed() -> void:
 	owner_panel      = null
 	item_spawner     = null
 	save_history     = null
+	stats_window     = null
 	staff_panel      = null
 
 	# NEW (E-2): send any training XP (defense/agility/magic) that has not hit
@@ -3114,6 +3132,7 @@ func _on_switch_character_pressed() -> void:
 	if owner_panel:      owner_panel.queue_free()
 	if item_spawner:     item_spawner.queue_free()
 	if save_history:     save_history.queue_free()
+	if stats_window:     stats_window.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -3128,6 +3147,7 @@ func _on_switch_character_pressed() -> void:
 	owner_panel      = null
 	item_spawner     = null
 	save_history     = null
+	stats_window     = null
 	staff_panel      = null
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
@@ -3725,6 +3745,7 @@ func _escape_windows() -> Array:
 		[owner_panel, "close"],
 		[item_spawner, "close"],
 		[save_history, "close"],
+		[stats_window, "close"],
 		[options_screen, "close"],
 		[credits_panel, "close"],
 		[map_screen, "close"],

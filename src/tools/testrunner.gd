@@ -303,6 +303,7 @@ func _run_all() -> void:
 	await _test_quality_rolls()
 	await _test_armour_resistance()
 	await _test_stirring_lands()
+	await _test_player_stats_window()
 	await _test_the_boss_gates_lever()
 	await _test_other_players_are_drawn()
 	_test_other_players_move_evenly()
@@ -3596,6 +3597,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/owner/ownerpanel.gd", "res://scene/ui/owner/ownerpanel.tscn", "owner"],
 	["res://src/ui/owner/itemspawner.gd", "res://scene/ui/owner/itemspawner.tscn", "itemspawner"],
 	["res://src/ui/owner/savehistory.gd", "res://scene/ui/owner/savehistory.tscn", "savehistory"],
+	["res://src/ui/owner/statswindow.gd", "res://scene/ui/owner/statswindow.tscn", "statswindow"],
 	["res://src/ui/party/partypanel.gd", "res://scene/ui/party/partypanel.tscn", "party"],
 	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
 	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
@@ -4047,7 +4049,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("twenty-three panels are windows - the Party window (0.42.0) is the twenty-third", keys_seen.size() == 23, keys_seen.size())
+	check("twenty-four panels are windows - the owner's Player stats (0.47.0) is the twenty-fourth", keys_seen.size() == 24, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -9780,6 +9782,121 @@ func _test_stirring_lands() -> void:
 	Api.is_owner = was_owner
 	Lands.clear()
 	print("  lands: one stir at a time, applied to the hit and the resistance, on the HUD and the GM panel")
+
+
+func _test_player_stats_window() -> void:
+	section("PLAYER STATS - who signs up, who comes back, where players stop, from the GM panel (0.47.0)")
+	# The owner: "build this and add it in my gm menu as a button somewhere".
+	# test_stats.py holds the server's arithmetic; this holds the words and the
+	# way in.
+	const Stats := preload("res://src/ui/owner/statswindow.gd")
+	var sample: Dictionary = JSON.parse_string(JSON.stringify({
+		"now": 1800000000, "offset": -300,
+		"players": {"total": 6, "staff_left_out": 1, "new_today": 1, "new_7d": 3, "new_30d": 5,
+			"seen_today": 2, "seen_7d": 4, "seen_30d": 5},
+		"road": {"days": 30, "signed_up": 5, "made_character": 4, "first_kill": 3, "level_5": 2, "level_10": 1,
+			"came_back": 2, "came_back_of": 4, "stayed_week": 1, "stayed_week_of": 2, "minutes_to_first_kill": 6.0},
+		"quit": {"quiet_days": 3, "players": 3, "never_killed": 1,
+			"stayed": [{"label": "under 10 minutes", "players": 1}, {"label": "10 to 60 minutes", "players": 1},
+				{"label": "1 to 24 hours", "players": 0}, {"label": "over a week", "players": 1}],
+			"levels": [{"label": "level 1", "players": 1}, {"label": "levels 2-4", "players": 1}, {"label": "level 20+", "players": 1}],
+			"areas": [{"area": "elusion", "players": 2}, {"area": "field", "players": 1}]},
+		"daily": [{"day": "2027-01-15", "new": 1, "played": 2}, {"day": "2027-01-14", "new": 0, "played": 0}],
+		"monsters": {"days": 14, "kills": 10, "never": 1, "kinds": 3,
+			"most": [{"enemy": "slime", "name": "Slime", "kills": 9, "players": 2}],
+			"least": [{"enemy": "boss", "name": "The Crowned", "kills": 0, "players": 0}]},
+		"classes": [{"class": "warrior", "characters": 4, "top_level": 12}, {"class": "tank", "characters": 1, "top_level": 22}]}))
+	var texts: Array = Stats.report_lines(sample).map(func(line: Array) -> String: return str(line[0]))
+	check("the report in words: the players, and the staff left out",
+		texts.has("6 players (1 staff left out).") and texts.has("New: 1 today, 3 this week, 5 this month.")
+		and texts.has("Seen: 2 today, 4 this week, 5 this month."), texts.slice(0, 4))
+	check("  the new players' road, each step with its share, and who came back",
+		texts.has("Made a character: 4 (80%)") and texts.has("Killed a monster: 3 (60%)")
+		and texts.has("Came back a day or more later: 2 of 4 (50%)") and texts.has("Still around a week later: 1 of 2 (50%)")
+		and texts.has("First kill: 6.0 minutes after signing up (the middle player)"), texts)
+	check("  and the biggest drop, named: where the most new players stopped",
+		texts.has("The biggest drop: 1 of 5 who signed up never made a character."), texts)
+	check("  where the ones who stopped stopped - how long, how far, where (areas by name), and never killing",
+		texts.has("How long they played: under 10 minutes 1, 10 to 60 minutes 1, over a week 1")
+		and texts.has("How far they got: level 1 1, levels 2-4 1, level 20+ 1")
+		and texts.has("Where they were last: Elusion 2, Field 1") and texts.has("Never killed anything: 1"), texts)
+	check("  day by day in your days, and the monsters and classes",
+		texts.has("Jan 15   new 1   played 2") and texts.has("Most hunted: Slime 9 (2 players)")
+		and texts.has("Least hunted: The Crowned 0") and texts.has("Never killed: 1 of 3 kinds")
+		and texts.has("Warrior 4 (top level 12), Tank 1 (top level 22)"), texts)
+	check("the biggest drop is the step that lost the most, and nothing when nobody came",
+		Stats.biggest_drop({"signed_up": 10, "made_character": 9, "first_kill": 3, "level_5": 2}) == "The biggest drop: 6 of 9 who made a character never killed a monster."
+		and Stats.biggest_drop({"signed_up": 0}) == "" and Stats.share(1, 0) == "" and Stats.day_text("bad") == "bad")
+	var quiet: Array = Stats.report_lines({}).map(func(line: Array) -> String: return str(line[0]))
+	check("  an empty report says so, rather than erroring", quiet.has("0 players.") and quiet.has("Nobody new in these days."), quiet)
+
+	# ---- the window -------------------------------------------------------------
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var window: StatsWindow = (load("res://scene/ui/owner/statswindow.tscn") as PackedScene).instantiate() as StatsWindow
+	window.visible = false
+	add_child(window)
+	await get_tree().process_frame
+	var asked: Array = []
+	window.get_request = func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": sample}
+	# THIS COMPUTER FIVE HOURS BEHIND UTC, whatever the machine running the
+	# suite is: the offset sent has to be the computer's, not 0.
+	LocalTime._bias_minutes = -300
+	LocalTime._bias_known = true
+	LocalTime._bias_read_at = Time.get_ticks_msec()
+	await window.open()
+	LocalTime._bias_known = false
+	var shown: String = window.report_box.get_parsed_text()
+	check("opened, it reads the server - 30 days, in this computer's day - and shows the report",
+		window.visible and asked == ["/api/server/stats?days=30&offset=-300"]
+		and shown.contains("PLAYERS") and shown.contains("The biggest drop"), [asked, shown.left(60)])
+	window.days_pick.select(window.days_pick.get_item_index(7))
+	window.days_pick.item_selected.emit(window.days_pick.selected)
+	await get_tree().process_frame
+	check("  picking 7 days reads the last week's new players", asked.size() == 2 and asked[1].contains("days=7"), asked)
+	window.get_request = func(_path: String) -> Dictionary: return {"ok": false, "status": 404, "error": ""}
+	await window.refresh()
+	check("  a server without them says to update it", window.status.text.contains("Update the server"), window.status.text)
+	Api.is_owner = false
+	var asked_before: int = asked.size()
+	window.get_request = func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": sample}
+	await window.refresh()
+	check("  and it never asks for anybody but the owner", asked.size() == asked_before
+		and window.status.text == "The player stats are the owner's.")
+	Api.is_owner = true
+	window.close()
+	check("  its x closes it", not window.visible)
+	window.queue_free()
+
+	# ---- the way in: a button on the GM panel's Server tab ------------------------
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var opened: Array = []
+	gm.set("open_window", func(method: String, _who: String) -> bool:
+		opened.append(method)
+		return true)
+	var button: Button = gm.get("stats_button") as Button
+	var server_page: Node = gm.get_node_or_null("%ownertabs").get_node_or_null(^"server") if gm.get_node_or_null("%ownertabs") else null
+	check("the GM panel's Server tab starts with a Player stats button",
+		button != null and server_page != null and button.get_parent() == server_page and button.get_index() == 0
+		and button.text == "Player stats")
+	if button != null:
+		button.pressed.emit()
+	check("  pressing it opens the Player stats through the HUD", opened == ["open_player_stats"], opened)
+	gm.set("open_window", func(_method: String, _who: String) -> bool: return false)
+	if button != null:
+		button.pressed.emit()
+	check("  and out of the game it says so in Results",
+		(gm.get("results") as RichTextLabel).get_parsed_text().contains("the player stats open from inside the game"))
+	gm.queue_free()
+	await get_tree().process_frame
+	Api.is_owner = was_owner
+	print("  player stats: the report in words, read on opening, owner only, a button on the Server tab")
 
 
 func _test_armour_resistance() -> void:
@@ -21039,6 +21156,7 @@ func _test_escape_closes_every_window() -> void:
 		"owner_panel": "res://scene/ui/owner/ownerpanel.tscn",
 		"item_spawner": "res://scene/ui/owner/itemspawner.tscn",
 		"save_history": "res://scene/ui/owner/savehistory.tscn",
+		"stats_window": "res://scene/ui/owner/statswindow.tscn",
 		"options_screen": "res://scene/ui/menus/optionsscreen.tscn",
 		"map_screen": "res://scene/ui/menus/mapscreen.tscn",
 		"controls_panel": "res://scene/ui/controls/controlspanel.tscn",
