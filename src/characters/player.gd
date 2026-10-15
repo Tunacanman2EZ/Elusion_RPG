@@ -753,9 +753,44 @@ func aim_point() -> Vector2:
 	one on the game, or KEYBOARD_AIM_REACH ahead the way the character faces
 	(THE CURSOR, WHEN THERE IS ONE)."""
 	if pointer_on_game:
-		return get_global_mouse_position()
+		return steady_mouse_position()
 	var facing: Vector2 = last_direction if last_direction.length_squared() > 0.0001 else Vector2.DOWN
 	return global_position + facing.normalized() * KEYBOARD_AIM_REACH
+
+
+func steady_mouse_position() -> Vector2:
+	"""THE CURSOR IN THE WORLD AS IT IS THIS TICK - not as the last drawn frame
+	had it.
+
+	The owner: "when moving left and right that ball wobbles ... if my mouse is
+	not moving and the ball is wobbling means there is a tiny issue". It was.
+	get_global_mouse_position() maps the cursor through the canvas transform
+	the last DRAWN frame used, and with physics interpolation on that is the
+	camera part-way between two ticks; the aim is worked out on a tick, from
+	this tick's global_position. Walking, the two are apart by a share of a
+	step that changes every frame - 60 frames to 80 ticks is a four-tick beat -
+	so the direction to a cursor that never moved swung back and forth: 0.44
+	degrees with the cursor across the screen, several with it beside you.
+
+	So the cursor's place on the screen is kept, and the screen is put where
+	the camera is THIS tick: the camera's own node, which rides this body
+	(Camera2D.get_screen_center_position() will not do - it answers with the
+	drawn, in-between centre too, measured on 4.6.1), held to its limits as
+	the camera holds itself. Standing still, or with no camera of ours, it is
+	the plain mouse position."""
+	var raw: Vector2 = get_global_mouse_position()
+	var camera: Camera2D = get_node_or_null("camera2d") as Camera2D
+	if camera == null or not camera.is_inside_tree() or not camera.is_current():
+		return raw
+	var view: Rect2 = get_viewport().get_visible_rect()
+	var drawn_centre: Vector2 = get_canvas_transform().affine_inverse() * view.get_center()
+	var centre: Vector2 = camera.global_position + camera.offset
+	var half: Vector2 = view.size / camera.zoom / 2.0
+	if camera.limit_right - camera.limit_left > half.x * 2.0:
+		centre.x = clampf(centre.x, camera.limit_left + half.x, camera.limit_right - half.x)
+	if camera.limit_bottom - camera.limit_top > half.y * 2.0:
+		centre.y = clampf(centre.y, camera.limit_top + half.y, camera.limit_bottom - half.y)
+	return raw + (centre - drawn_centre)
 
 
 func _stamp_input() -> void:

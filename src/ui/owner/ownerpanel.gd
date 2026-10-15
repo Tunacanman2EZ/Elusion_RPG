@@ -218,6 +218,9 @@ func _ready() -> void:
 			tabs.add_child(world_tab)
 		else:
 			world_tab = tabs.get_node(^"world") as WorldTab
+		# What the World tab's buttons did goes in Results too, as every other
+		# tab's does.
+		world_tab.report = _say
 		for i in range(mini(tabs.get_tab_count(), TAB_TITLES.size())):
 			tabs.set_tab_title(i, TAB_TITLES[i])
 	if view_button != null and not view_button.pressed.is_connected(_on_view_pressed):

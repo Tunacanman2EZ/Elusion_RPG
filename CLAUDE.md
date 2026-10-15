@@ -6247,13 +6247,39 @@ The server's side is in the API's CLAUDE.md, "The stirring lands".
   effects' switch and amount (one to a row: two to a row needed amount boxes
   too narrow to show "1.75 x"), Save, a land and "Stir it now", what stirs now, the last stirs
   (and who stirred one by hand), and each land's hunting. Saving and stirring
-  ask for the password again (step-up). **Save and Stir it now wait until
+  ask for the password again (step-up). **What each button did goes in the
+  panel's Results box too** (`report`, set to `OwnerPanel._say`; 0.46.1, the
+  owner: "i want refresh to say it in the results"): Refresh writes what
+  stirs now and every setting (`settings_text()`), Save the settings the
+  server now holds, and every refusal; "Saving..." stays on the tab
+  (`_say_here()`), and opening the panel reads quietly. **Save and Stir it now wait until
   the server has been read**, and again after a read fails: unread, the
   controls hold their lowest values, and Save would send those. A 404 there
   means the server is from before 0.46.0, and it says so. Built narrow: the GM panel draws 370
   wide, and a wrapping label with no width set measures one word per line,
   which once made the panel 720 tall.
-- `_test_stirring_lands` (51 checks); `test_world.py` (67) on the server.
+- `_test_stirring_lands` (54 checks); `test_world.py` (67) on the server.
+
+### The aim held still while walking (0.46.1)
+
+The owner: "when moving left and right that ball wobbles ... if my mouse is
+not moving and the ball is wobbling means there is a tiny issue". It was:
+
+- **Two clocks.** `get_global_mouse_position()` maps the cursor through the
+  canvas transform of the last DRAWN frame - with physics interpolation on,
+  the camera part-way between two ticks - and every aim is worked out on a
+  tick, from this tick's `global_position`. 60 frames to 80 ticks is a
+  four-tick beat: walking right with the cursor still, the ball's angle went
+  -135.58, -135.47, -135.36, -135.69 and round again.
+- **`Player.steady_mouse_position()`** keeps the cursor's place on the screen
+  and puts the screen where the camera is THIS tick: the camera node's own
+  `global_position` (it rides the player), held to its limits. Measured
+  after: -135.0 every tick. `aim_point()` reads it, so every class's attack,
+  aim ring and aura agree with it.
+- **Not `Camera2D.get_screen_center_position()`**: on 4.6.1 it answers with
+  the drawn, in-between centre too. Measured, not guessed.
+- `_test_aim_holds_still_while_walking` makes the drawn frame lag on purpose
+  and checks the cursor still lands on one point.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

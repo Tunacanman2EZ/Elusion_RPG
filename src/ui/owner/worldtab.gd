@@ -13,6 +13,9 @@
 #     been today (the least hunted is the next to stir)
 #
 # Read from GET /api/server/world when the panel opens or Refresh is pressed;
+# what each button did is said on the tab AND in the panel's Results box
+# (`report`, OwnerPanel._say) - the owner: "i want refresh to say it in the
+# results". Opening the panel reads quietly; only a failure is reported then.
 # Save sends every setting at once to POST /api/server/world, and Stir it now
 # POST /api/server/world/stir. Both are owner-only and ask for the password
 # again on a hardened login (STEP-UP, the HUD's prompt). The server checks
@@ -51,6 +54,9 @@ const EFFECTS := [
 # Where requests go; seams for the suite.
 var fetch: Callable = Callable(Api, "get_json")
 var send: Callable = Callable(Api, "post")
+# Where results also go: the GM panel's Results box, set by the panel
+# (OwnerPanel._say). Unset, they show on the tab alone.
+var report: Callable = Callable()
 # The last answer from the server.
 var answer: Dictionary = {}
 
@@ -128,7 +134,7 @@ func _build() -> void:
 	buttons.add_child(save_button)
 	refresh_button = _button("Refresh", "Read them again from the server.")
 	refresh_button.name = "refresh"
-	refresh_button.pressed.connect(refresh)
+	refresh_button.pressed.connect(refresh.bind(true))
 	buttons.add_child(refresh_button)
 
 	var stir_row := HBoxContainer.new()
@@ -190,9 +196,50 @@ func _button(text: String, hint: String) -> Button:
 	return button
 
 
-func _say(line: String, colour: Color = SAY_NOTE) -> void:
+func _say(line: String, colour: Color = SAY_NOTE, results: String = "") -> void:
+	"""On the tab, and in the Results box: `results` there when given (a
+	fuller line), else the same words. A line still in progress ("Saving...")
+	is the tab's alone - say it with _say_here()."""
+	_say_here(line, colour)
+	if report.is_valid():
+		report.call("[WORLD] " + (results if results != "" else line), colour)
+
+
+func _say_here(line: String, colour: Color = SAY_NOTE) -> void:
 	say_label.text = line
 	say_label.add_theme_color_override("font_color", colour)
+
+
+static func settings_text(settings: Dictionary) -> String:
+	"""The settings in a line: 'Each stir lasts 3 h. On: hit harder 25%, more
+	health 50%, ... Off: more XP.' - or 'Switched off.'"""
+	if not bool(settings.get("on", false)):
+		return "Switched off: nothing stirs."
+	var on: Array[String] = []
+	var off: Array[String] = []
+	for effect in EFFECTS:
+		var amount: float = float(settings.get(effect[1], effect[4]))
+		var shown: String = ("%d%%" % roundi(amount)) if str(effect[3]) == "%" else (_times_text(amount) + "x")
+		# "More XP" reads "more XP": only the first letter comes down.
+		var words: String = str(effect[2]).left(1).to_lower() + str(effect[2]).substr(1)
+		if bool(settings.get(effect[0], false)):
+			on.append("%s %s" % [words, shown])
+		else:
+			off.append(words)
+	var text: String = "Each stir lasts %d h." % int(settings.get("hours", 3))
+	if not on.is_empty():
+		text += " On: " + ", ".join(on) + "."
+	if not off.is_empty():
+		text += " Off: " + ", ".join(off) + "."
+	return text
+
+
+static func _times_text(value: float) -> String:
+	"""1.5 -> '1.5', 2.0 -> '2', 1.25 -> '1.25'."""
+	var text: String = "%.2f" % value
+	while text.ends_with("0"):
+		text = text.substr(0, text.length() - 1)
+	return text.trim_suffix(".")
 
 
 static func refusal(res: Dictionary) -> String:
@@ -210,8 +257,9 @@ static func refusal(res: Dictionary) -> String:
 # THE SERVER
 # =============================================================================
 
-func refresh() -> void:
-	"""Read the settings and the world again."""
+func refresh(by_hand: bool = false) -> void:
+	"""Read the settings and the world again. By hand (Refresh), what was read
+	goes in the Results box; opening the panel reads quietly."""
 	if _busy:
 		return
 	_busy = true
@@ -229,6 +277,12 @@ func refresh() -> void:
 		_say(refusal(res), SAY_BAD)
 		return
 	show_answer(res.get("data"))
+	if by_hand:
+		var data: Dictionary = res.get("data")
+		var settings: Dictionary = data.get("settings", {}) if data.get("settings") is Dictionary else {}
+		_say("Read from the server.", SAY_GOOD,
+			"Read from the server. %s %s" % [status_text(data), settings_text(settings)]
+			if bool(settings.get("on", false)) else "Read from the server. " + settings_text(settings))
 
 
 func settings_from_controls() -> Dictionary:
@@ -248,7 +302,7 @@ func save() -> void:
 	if _busy or answer.is_empty():
 		return
 	_busy = true
-	_say("Saving...")
+	_say_here("Saving...")
 	var res: Dictionary = await send.call(PATH, settings_from_controls())
 	_busy = false
 	if not is_instance_valid(self):
@@ -256,8 +310,11 @@ func save() -> void:
 	if not res.get("ok", false):
 		_say(refusal(res), SAY_BAD)
 		return
-	show_answer(res.get("data", {}) if res.get("data") is Dictionary else {})
-	_say("Saved. The game hears it within one poll.", SAY_GOOD)
+	var saved: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	show_answer(saved)
+	var now_set: Dictionary = saved.get("settings", {}) if saved.get("settings") is Dictionary else {}
+	_say("Saved. The game hears it within one poll.", SAY_GOOD,
+		"Saved - the game hears it within one poll. " + settings_text(now_set))
 
 
 func stir() -> void:
@@ -265,7 +322,7 @@ func stir() -> void:
 		return
 	var element: int = land_pick.get_item_id(land_pick.selected)
 	_busy = true
-	_say("Stirring the %s lands..." % Element.name_for(element))
+	_say_here("Stirring the %s lands..." % Element.name_for(element))
 	var res: Dictionary = await send.call(STIR_PATH, {"element": element})
 	_busy = false
 	if not is_instance_valid(self):

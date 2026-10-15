@@ -309,6 +309,7 @@ func _run_all() -> void:
 	await _test_other_players_attacks_are_pictures()
 	await _test_other_players_attacks_switch()
 	await _test_attacks_aim_with_no_cursor()
+	await _test_aim_holds_still_while_walking()
 	await _test_other_players_aim_and_health()
 	await _test_parties()
 	await _test_names_open_the_player_menu()
@@ -9722,6 +9723,17 @@ func _test_stirring_lands() -> void:
 		tab.status_label.text == "The Fire lands are stirring - 1h 00m left (stir 12)."
 		and tab.recent_label.text == "Last stirs: 12 Fire, 11 Ice (by Tunacan)." and tab.lands_label.text.contains("dark 4, fire 0"),
 		[tab.status_label.text, tab.recent_label.text])
+	# THE RESULTS BOX. The owner: "i want refresh to say it in the results".
+	var results: RichTextLabel = gm.get("results") as RichTextLabel
+	check("  opening the panel reads quietly - nothing in Results; the tab reports to the panel's",
+		results != null and tab.report.is_valid() and not results.get_parsed_text().contains("Read from the server"))
+	tab.refresh_button.pressed.emit()
+	await get_tree().process_frame
+	var said_after_refresh: String = results.get_parsed_text() if results != null else ""
+	check("Refresh says what it read in the GM panel's Results: what stirs now and every setting",
+		said_after_refresh.contains("Read from the server. The Fire lands are stirring - 1h 00m left (stir 12). "
+			+ "Each stir lasts 3 h. On: hit harder 25%, more health 50%, faster 15%, more loot 1.5x, resistance 1.5x. Off: more XP.")
+		and tab.say_label.text == "Read from the server." and asked.size() == 2, said_after_refresh)
 	(tab.effect_switches["xp_on"] as CheckBox).button_pressed = true
 	(tab.effect_amounts["xp_percent"] as SpinBox).value = 40.0
 	(tab.effect_amounts["resist_times"] as SpinBox).value = 1.75
@@ -9734,6 +9746,9 @@ func _test_stirring_lands() -> void:
 			"hit_on": true, "hit_percent": 25, "health_on": true, "health_percent": 100, "speed_on": false,
 			"speed_percent": 15, "bags_on": true, "bags_times": 1.5, "resist_on": true,
 			"resist_times": 1.75, "xp_on": true, "xp_percent": 40}, sent)
+	check("  and Results says it was saved, with the settings the server now holds - not the \"Saving...\" on the way",
+		results.get_parsed_text().contains("Saved - the game hears it within one poll. Each stir lasts 3 h.")
+		and not results.get_parsed_text().contains("Saving..."), results.get_parsed_text())
 	sent.clear()
 	tab.land_pick.select(tab.land_pick.get_item_index(Element.Type.EARTH))
 	await tab.stir()
@@ -9753,8 +9768,9 @@ func _test_stirring_lands() -> void:
 		return {"ok": true, "status": 200, "data": view}
 	tab.fetch = func(_path: String) -> Dictionary: return {"ok": false, "status": 404, "error": ""}
 	await tab.refresh()
-	check("a server without them: says to update it, and Save and Stir it now wait again",
-		tab.say_label.text.contains("Update the server") and tab.save_button.disabled and tab.stir_button.disabled,
+	check("a server without them: says to update it - in Results too - and Save and Stir it now wait again",
+		tab.say_label.text.contains("Update the server") and tab.save_button.disabled and tab.stir_button.disabled
+		and results.get_parsed_text().contains("This server does not have the stirring lands yet (404)"),
 		tab.say_label.text)
 	await tab.save()
 	await tab.stir()
@@ -11732,8 +11748,8 @@ func _test_attacks_aim_with_no_cursor() -> void:
 	check("no cursor on the game - the mouse off the page, a keyboard player: an attack aims the way they face, never at the screen's corner",
 		faced == [true, true, true, true, true], faced)
 	PlayerScript.pointer_on_game = true
-	check("  a cursor on the game: at the cursor, as ever",
-		warrior.aim_point() == warrior.get_global_mouse_position())
+	check("  a cursor on the game: at the cursor, as ever (where it is this tick - steady_mouse_position())",
+		warrior.aim_point() == warrior.steady_mouse_position())
 	PlayerScript.pointer_on_game = false
 	warrior.set("_pointer_was", warrior.get_viewport().get_mouse_position() + Vector2(3, 0))
 	warrior.call("_watch_pointer")
@@ -11759,6 +11775,53 @@ func _test_attacks_aim_with_no_cursor() -> void:
 			read_directly.append(cls)
 	check("every class aims its attacks, its aim ring and its aura through aim_point() - none reads the cursor itself",
 		read_directly.is_empty(), read_directly)
+	PlayerScript.pointer_on_game = kept
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+func _test_aim_holds_still_while_walking() -> void:
+	section("THE AIM HOLDS STILL WHILE YOU WALK - the cursor read where the camera is this tick, not where the last frame drew it (0.46.1)")
+	# The owner: "when moving left and right that ball wobbles ... if my mouse
+	# is not moving and the ball is wobbling means there is a tiny issue". The
+	# cursor was mapped through the canvas transform of the last DRAWN frame -
+	# the camera part-way between two physics ticks (interpolation; 60 frames
+	# to 80 ticks) - and the aim worked out from this tick's position. Measured
+	# walking right with the cursor still, before: the ball's angle went
+	# -135.58, -135.47, -135.36, -135.69 and round again; after: -135.0 every
+	# tick. Here the drawn frame is made to lag on purpose.
+	const PlayerScript := preload("res://src/characters/player.gd")
+	var kept: bool = PlayerScript.pointer_on_game
+	var arena := Node2D.new()
+	add_child(arena)
+	var warrior: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior.set_physics_process(false)
+	warrior.set_process(false)
+	arena.add_child(warrior)
+	warrior.global_position = Vector2(-75000, -75000)
+	var camera: Camera2D = warrior.get_node_or_null(^"camera2d") as Camera2D
+	PlayerScript.pointer_on_game = true
+	var viewport: Viewport = warrior.get_viewport()
+	var kept_canvas: Transform2D = viewport.canvas_transform
+	var view: Rect2 = viewport.get_visible_rect()
+	var mouse: Vector2 = viewport.get_mouse_position()
+	var wanted: Vector2 = Vector2.ZERO
+	var off_by: Array = []
+	if camera != null:
+		camera.make_current()
+		for lag in [Vector2(-2.5, 0.0), Vector2(-0.7, 0.0), Vector2(0.0, 1.6), Vector2(1.9, -1.2)]:
+			# The frame as drawn: centred `lag` away from where the camera is.
+			var drawn_at: Vector2 = camera.global_position + (lag as Vector2)
+			viewport.canvas_transform = Transform2D(0.0, camera.zoom, 0.0, view.get_center() - drawn_at * camera.zoom)
+			wanted = camera.global_position + (mouse - view.get_center()) / camera.zoom
+			off_by.append(snappedf(warrior.steady_mouse_position().distance_to(wanted), 0.001))
+		viewport.canvas_transform = kept_canvas
+	check("the cursor is read where the camera is this tick, however far the drawn frame lags: the same point every time (%s)" % str(off_by),
+		camera != null and off_by.size() == 4 and off_by.all(func(d): return d < 0.01), off_by)
+	check("  and every class aims through it: aim_point() is steady_mouse_position() while the cursor is on the game",
+		_func_body(_code_src("res://src/characters/player.gd"), "func aim_point(").contains("return steady_mouse_position()"))
+	check("  read off the camera's own node - get_screen_center_position() answers with the drawn, in-between centre too",
+		not _func_body(_code_src("res://src/characters/player.gd"), "func steady_mouse_position(").contains("camera.get_screen_center_position()"))
 	PlayerScript.pointer_on_game = kept
 	arena.queue_free()
 	await get_tree().process_frame
