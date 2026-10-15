@@ -82,6 +82,7 @@ const ITEM_SPAWNER_SCENE  := preload("res://scene/ui/owner/itemspawner.tscn")
 const SAVE_HISTORY_SCENE  := preload("res://scene/ui/owner/savehistory.tscn")
 # The owner's Player stats (statswindow.gd, 0.47.0), from the GM panel's Server tab.
 const STATS_WINDOW_SCENE  := preload("res://scene/ui/owner/statswindow.tscn")
+const EVENT_REPORT_SCENE  := preload("res://scene/ui/owner/eventreport.tscn")
 const STAFF_PANEL_SCENE   := preload("res://scene/ui/staff/staffpanel.tscn")
 const STAFF_THEME         := preload("res://assets/themes/staff_ui_theme.tres")
 const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
@@ -146,6 +147,7 @@ var owner_panel:      Control         = null
 var item_spawner:     Control         = null
 var save_history:     Control         = null
 var stats_window:     Control         = null
+var event_report:     Control         = null
 var staff_panel:      Control         = null
 var chat_panel:       Control         = null
 var friends_panel:    Control         = null
@@ -570,6 +572,19 @@ func open_player_stats(_who: String = "") -> void:
 		stats_window.visible = false
 		add_child(stats_window)
 	stats_window.open()
+
+
+func open_event_report(_who: String = "") -> void:
+	# The GM panel's Event report (eventreport.gd, 0.49.0): each event's
+	# before, during and after, and who was online. Owner-gated here as a
+	# courtesy; the server is the gate (require_owner).
+	if not Api.is_owner:
+		return
+	if event_report == null:
+		event_report = EVENT_REPORT_SCENE.instantiate()
+		event_report.visible = false
+		add_child(event_report)
+	event_report.open()
 
 
 func _process(_delta: float) -> void:
@@ -3117,6 +3132,7 @@ func _on_logout_pressed() -> void:
 	if item_spawner:     item_spawner.queue_free()
 	if save_history:     save_history.queue_free()
 	if stats_window:     stats_window.queue_free()
+	if event_report:     event_report.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -3132,6 +3148,7 @@ func _on_logout_pressed() -> void:
 	item_spawner     = null
 	save_history     = null
 	stats_window     = null
+	event_report     = null
 	staff_panel      = null
 
 	# NEW (E-2): send any training XP (defense/agility/magic) that has not hit
@@ -3225,6 +3242,7 @@ func _on_switch_character_pressed() -> void:
 	if item_spawner:     item_spawner.queue_free()
 	if save_history:     save_history.queue_free()
 	if stats_window:     stats_window.queue_free()
+	if event_report:     event_report.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -3240,6 +3258,7 @@ func _on_switch_character_pressed() -> void:
 	item_spawner     = null
 	save_history     = null
 	stats_window     = null
+	event_report     = null
 	staff_panel      = null
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
@@ -3838,6 +3857,7 @@ func _escape_windows() -> Array:
 		[item_spawner, "close"],
 		[save_history, "close"],
 		[stats_window, "close"],
+		[event_report, "close"],
 		[options_screen, "close"],
 		[credits_panel, "close"],
 		[map_screen, "close"],

@@ -19,6 +19,16 @@
 # every value and says why it refused; the controls only offer what it allows.
 # What each button did is said on the tab and in the panel's Results box
 # (`report`, OwnerPanel._say), like the World tab's.
+#
+# AND BEFORE IT IS SET, AND AFTER (0.49.0). The owner's: "a dry-run page that
+# shows: if 20 players join during this event, expected XP/gold output range
+# is X-Y", and "dashboards that show, for each event: XP/hour and gold/hour
+# before/during/after; player count online vs time". Dry run sends what the
+# controls hold to POST /api/world/events/preview and says in Results whether
+# the server would allow it (its guardrails: never too much at once), the most
+# any land's monsters would pay, and what 20 players might earn, from the last
+# two weeks' play. Report opens the Event report window (eventreport.gd)
+# through the HUD.
 extends VBoxContainer
 class_name EventsTab
 
@@ -26,6 +36,9 @@ class_name EventsTab
 const PATH := "/api/world/events/schedule"
 const SCHEDULE_PATH := "/api/world/events"
 const CANCEL_PATH := "/api/world/events/cancel"
+const PREVIEW_PATH := "/api/world/events/preview"
+# Who the dry run forecasts for: the owner's "if 20 players join".
+const DRY_RUN_PLAYERS := 20
 const SAY_GOOD := Color(0.55, 0.86, 0.6)
 const SAY_BAD := Color(0.95, 0.55, 0.5)
 const SAY_NOTE := Color(0.78, 0.82, 0.87)
@@ -54,6 +67,9 @@ var fetch: Callable = Callable(Api, "get_json")
 var send: Callable = Callable(Api, "post")
 # Where results also go: the GM panel's Results box, set by the panel.
 var report: Callable = Callable()
+# Opens the Event report window, set by the panel (through the HUD); answers
+# false out of the game.
+var open_report: Callable = Callable()
 # The last answer from the server.
 var answer: Dictionary = {}
 
@@ -67,6 +83,8 @@ var minute_box: SpinBox
 var hours_box: SpinBox
 var name_edit: LineEdit
 var schedule_button: Button
+var dry_run_button: Button
+var report_button: Button
 var refresh_button: Button
 var list_label: Label
 var cancel_pick: OptionButton
@@ -84,9 +102,17 @@ func _init() -> void:
 func _build() -> void:
 	# NARROW AND SHORT, like the World tab: the GM panel is 370 wide and holds
 	# its tallest tab at its drawn size (the suite measures both).
-	status_label = _label("Events: not read yet.", HEAD)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 6)
+	add_child(top)
+	status_label = _label("Events: not read yet.", HEAD, false)
 	status_label.name = "status"
-	add_child(status_label)
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(status_label)
+	report_button = _button("Report", "Each event's before, during and after - XP and gold an hour, who played, who was online - and a chart of who was online this week.")
+	report_button.name = "report"
+	report_button.pressed.connect(_on_report_pressed)
+	top.add_child(report_button)
 
 	var what := HBoxContainer.new()
 	what.add_theme_constant_override("separation", 6)
@@ -175,6 +201,11 @@ func _build() -> void:
 	# answer 404, and the list would say nothing of what is already set.
 	schedule_button.disabled = true
 	buttons.add_child(schedule_button)
+	dry_run_button = _button("Dry run", "What it would do, without setting it: allowed or not, the most it pays, what %d players might earn." % DRY_RUN_PLAYERS)
+	dry_run_button.name = "dryrun"
+	dry_run_button.pressed.connect(dry_run)
+	dry_run_button.disabled = true
+	buttons.add_child(dry_run_button)
 	refresh_button = _button("Refresh", "Read the events again from the server.")
 	refresh_button.name = "refresh"
 	refresh_button.pressed.connect(refresh.bind(true))
@@ -384,6 +415,7 @@ func refresh(by_hand: bool = false) -> void:
 	if not res.get("ok", false) or not (res.get("data") is Dictionary):
 		answer = {}
 		schedule_button.disabled = true
+		dry_run_button.disabled = true
 		cancel_button.disabled = true
 		status_label.text = "Events: not read."
 		_say(refusal(res), SAY_BAD)
@@ -413,8 +445,129 @@ func schedule() -> void:
 	_say("Scheduled: %s, %s." % [str(made.get("name", "the event")), begins], SAY_GOOD,
 		"Scheduled: %s, %s, for %d h - %s Everyone online is told." % [str(made.get("name", "the event")), begins,
 			int(event.get("hours", 0)), str(made.get("description", ""))])
+	var warned: Variant = data.get("warnings", [])
+	if warned is Array and report.is_valid():
+		for line in warned:
+			report.call("[EVENTS]   " + str(line), SAY_BAD)
 	name_edit.text = ""
 	await refresh()
+
+
+func dry_run() -> void:
+	"""What the controls hold, asked of the server without setting it - into
+	Results, line by line."""
+	if _busy or answer.is_empty():
+		return
+	var event: Dictionary = event_from_controls(server_now())
+	event["players"] = DRY_RUN_PLAYERS
+	_busy = true
+	_say_here("Asking...")
+	var res: Dictionary = await send.call(PREVIEW_PATH, event)
+	_busy = false
+	if not is_instance_valid(self):
+		return
+	if not res.get("ok", false) or not (res.get("data") is Dictionary):
+		_say("This server has no dry run yet (404). Update the server." if int(res.get("status", 0)) == 404
+			else refusal(res), SAY_BAD)
+		return
+	var data: Dictionary = res.get("data")
+	var allowed: bool = bool(data.get("allowed", false))
+	_say_here("Dry run: %s - see Results." % ("allowed" if allowed else "not allowed"), SAY_GOOD if allowed else SAY_BAD)
+	if report.is_valid():
+		var lines: Array[String] = dry_run_lines(data)
+		for i in lines.size():
+			report.call("[EVENTS] " + ("" if i == 0 else "  ") + lines[i], (SAY_GOOD if allowed else SAY_BAD) if i == 0 else SAY_NOTE)
+
+
+static func _times_text(value: float) -> String:
+	var text: String = "%.2f" % value
+	while text.ends_with("0"):
+		text = text.substr(0, text.length() - 1)
+	return text.trim_suffix(".")
+
+
+static func _span(pair: Variant) -> String:
+	"""[24000, 54000] -> '24K-54K'."""
+	if not (pair is Array) or (pair as Array).size() < 2:
+		return "?"
+	var low: String = GameConstants.short_number(int(pair[0]))
+	var high: String = GameConstants.short_number(int(pair[1]))
+	return low if low == high else "%s-%s" % [low, high]
+
+
+static func worst_text(worst: Variant) -> String:
+	"""'2x XP and 3x loot (6x together) for every monster' - the most any
+	land's monsters would be paid, from the dry run's rows."""
+	if not (worst is Array) or (worst as Array).is_empty():
+		return ""
+	var rows: Array = (worst as Array).filter(func(row: Variant) -> bool: return row is Dictionary)
+	if rows.is_empty():
+		return ""
+	var top: Dictionary = rows[0]
+	var same: bool = true
+	for row in rows:
+		if float(row.get("together", 1.0)) > float(top.get("together", 1.0)):
+			top = row
+	for row in rows:
+		if not is_equal_approx(float(row.get("xp", 1.0)), float(top.get("xp", 1.0))) \
+				or not is_equal_approx(float(row.get("loot", 1.0)), float(top.get("loot", 1.0))):
+			same = false
+	var xp: float = float(top.get("xp", 1.0))
+	var loot: float = float(top.get("loot", 1.0))
+	var parts: Array[String] = []
+	if xp > 1.0001:
+		parts.append("%sx XP" % _times_text(xp))
+	if loot > 1.0001:
+		parts.append("%sx loot" % _times_text(loot))
+	if parts.is_empty():
+		return "nothing more than usual for any monster"
+	var paid: String = " and ".join(parts)
+	if parts.size() == 2:
+		paid += " (%sx together)" % _times_text(float(top.get("together", xp * loot)))
+	return "%s for %s" % [paid, "every monster" if same else "the %s lands' monsters" % str(top.get("name", "?"))]
+
+
+static func dry_run_lines(data: Dictionary) -> Array[String]:
+	"""The dry run in sentences: allowed or why not, the most at once, any
+	warnings, and the forecast."""
+	var out: Array[String] = []
+	var event: Dictionary = data.get("event", {}) if data.get("event") is Dictionary else {}
+	var now: int = int(data.get("now", 0))
+	var starts: int = int(event.get("starts_at", now))
+	@warning_ignore("integer_division")
+	var hours: int = (int(event.get("ends_at", starts)) - starts) / 3600
+	var when: String = "now" if starts <= now + 60 else LocalTime.stamp(starts, now)
+	var allowed: bool = bool(data.get("allowed", false))
+	out.append("Dry run - %s, %s, for %d h: %s" % [str(event.get("name", "the event")), when, hours,
+		"allowed." if allowed else "not allowed."])
+	if not allowed and str(data.get("why", "")) != "":
+		out.append(str(data.get("why")))
+	var most: String = worst_text(data.get("worst"))
+	if most != "":
+		var limits: Dictionary = data.get("limits", {}) if data.get("limits") is Dictionary else {}
+		out.append("The most at once: %s. The ceilings: %sx XP, %sx loot, %sx together." % [most,
+			_times_text(float(limits.get("xp", 3.0))), _times_text(float(limits.get("loot", 3.0))),
+			_times_text(float(limits.get("together", 6.0)))])
+	var warned: Variant = data.get("warnings", [])
+	if warned is Array:
+		for line in warned:
+			out.append(str(line))
+	var cast: Dictionary = data.get("forecast", {}) if data.get("forecast") is Dictionary else {}
+	if not cast.is_empty():
+		var xp: Dictionary = cast.get("xp", {}) if cast.get("xp") is Dictionary else {}
+		var gold: Dictionary = cast.get("gold", {}) if cast.get("gold") is Dictionary else {}
+		out.append("If %d players play all %d h: %s XP as usual, %s with it; %s gold as usual, %s with it." % [
+			int(cast.get("players", 0)), hours, _span(xp.get("usual")), _span(xp.get("with")),
+			_span(gold.get("usual")), _span(gold.get("with"))])
+		out.append("From %d player-hours of play in the last two weeks%s. The most players online at once then: %d." % [
+			int(cast.get("player_hours", 0)), "" if bool(cast.get("enough", false)) else " - too few to be more than a guess",
+			int(data.get("peak_online", 0))])
+	return out
+
+
+func _on_report_pressed() -> void:
+	if not open_report.is_valid() or not bool(open_report.call()):
+		_say("The event report opens from inside the game.", SAY_BAD)
 
 
 func cancel() -> void:
@@ -454,6 +607,7 @@ func show_answer(data: Dictionary) -> void:
 		cancel_pick.add_item("Nothing to call off", 0)
 		cancel_pick.set_item_disabled(0, true)
 	schedule_button.disabled = false
+	dry_run_button.disabled = false
 	fill_days(int(Time.get_unix_time_from_system()))
 
 

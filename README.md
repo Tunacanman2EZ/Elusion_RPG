@@ -46,7 +46,7 @@ The bar along the bottom holds the windows a player opens all the time; Friends,
 
 **The stirring lands**: every three hours one of the seven lands — dark, light, ice, wind, earth, fire or water — stirs, and the whole server is told. While it does, that land's monsters glow in its colour, hit 25% harder, have 50% more health, move 15% faster and drop loot half again as often, and armour's resistance to its element counts half again as much (still capped at 50%). The server picks the land — the one hunted least in the last day, never the same one twice running — and a line at the top of the screen counts down to the next. The owner sets all of it on the GM panel's World tab: on or off, how long a stir lasts, each effect's switch and amount (there is a more-XP one, off as shipped), and a land to stir by hand.
 
-**World events**: double XP, more loot (1.25x to 3x, for every monster, one land's or the stirring land's) or a land made to stir for the whole event, from an hour to three days, set up to two months ahead on the GM panel's **Events** tab - no new build. Everyone online is told when one is coming and again when it begins, with a banner; a line at the top of the screen counts down the ones on now and names the next. The server holds them and pays them at every kill (the API's `events/` package, `GET /api/world/events/active`); two of a kind at once give the bigger, never both, and an event that cannot be read is no event rather than a kill unpaid.
+**World events**: double XP, more loot (1.25x to 3x, for every monster, one land's or the stirring land's) or a land made to stir for the whole event, from an hour to three days, set up to two months ahead on the GM panel's **Events** tab - no new build. Everyone online is told when one is coming and again when it begins, with a banner; a line at the top of the screen counts down the ones on now and names the next. The server holds them and pays them at every kill (the API's `events/` package, `GET /api/world/events/active`); two of a kind at once give the bigger, never both, and an event that cannot be read is no event rather than a kill unpaid. **Never too much at once**: no kill is paid more than 3x XP, 3x loot or 6x the two together, the stirring land's own counted in, and an event that could pass that with whatever else is on is refused when it is set, saying why. **Dry run** says what an event would do before it is set - allowed or not, the most any land's monsters would pay, and what 20 players might earn as usual and with it, from the last two weeks of real play. The **Event report** charts who was online this week with the events on it, and for each event shows the players online, XP and gold an hour, who played and who signed up in the window before it, during it and after it - and, across them, which kind of event brings players.
 
 **Kills** (or **K**) is the kill record: every monster in the game with its picture, how many of each your character has killed and when the last one fell, and — on the Everyone tab — every player's kills added up, with who has killed the most of each. The server counts them; the pictures are cut from each monster's own art.
 
@@ -293,9 +293,9 @@ Calling the virtualenv's interpreter directly is deliberate: it skips having to 
 
 To see other players and share monsters with them, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before: it draws nobody else and fights its own monsters.
 
-That serves a hundred and thirty-two endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger, the stirring lands, world events, player stats and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred and thirty-four endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger, the stirring lands, world events, player stats and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-A hundred and twenty-seven of the hundred and thirty-two require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+A hundred and twenty-nine of the hundred and thirty-four require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
 The backend has fifty-seven test suites, run together with one command:
 
@@ -316,8 +316,8 @@ test_moderation.py     156 checks    the moderation record, a log that opens on 
 test_ownership.py      150 checks    no route hands over a row that is not yours
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
-test_security_doc.py   169 checks    SECURITY.md is checked, not trusted
-test_refusals.py       148 checks    401, 403, and the 404 that is really a 403
+test_security_doc.py   176 checks    SECURITY.md is checked, not trusted
+test_refusals.py       154 checks    401, 403, and the 404 that is really a 403
 test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
 test_presence.py       150 checks    players seeing each other, whose game runs each area's monsters, every attack and lever, party voice's calls
 test_quality.py        113 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
@@ -331,7 +331,7 @@ test_chardelete.py      72 checks    deleting a character, and only the characte
 test_chat.py            67 checks    world chat, end to end, one line as typed
 test_world.py           67 checks    the stirring lands: one land at a time, picked and paid by the server, the owner's switches
 test_stats.py           36 checks    the owner's player stats: each layer of the first feature package on its own, read only, names nobody
-test_events.py          39 checks    world events: each layer of the events/ package, the owner's routes, what a kill is paid, a stir forced and called off
+test_events.py          76 checks    world events: each layer of the events/ package, what a kill is paid, the guardrails, the dry run, the event report
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
 test_deploy.py          61 checks    what the first live deploy found: .env read first, one-file backups
 test_staffcode.py       60 checks    a staff password alone opens nothing, once per computer
@@ -363,14 +363,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					5,336 checks, 0 failures
+					5,386 checks, 0 failures
 ```
 
 Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-eighth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **4,250 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 170 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **4,280 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 172 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `4184 passed, 0 failed, 27 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-six are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `4214 passed, 0 failed, 27 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-six are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 **Both suites run on GitHub for every push and every pull request** (`.github/workflows/tests.yml`, here and in the API repo). The game's run is a clone — no art pack — so a new check that needs the art and does not say so fails there before it reaches anybody who clones this. The API's runs `run_tests.ps1` itself, so a green tick means what a green run on the PC means.
 

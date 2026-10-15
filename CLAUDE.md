@@ -6306,7 +6306,7 @@ is why new players leave, from rows the server already keeps (the API's
   most and least hunted, and the classes. add_text only: an area's name is
   the server's word.
 - **A window the HUD owns**, so it is on `_escape_windows()` and freed with
-  the rest; the suite's window lists have it (twenty-four windows now).
+  the rest; the suite's window lists have it (twenty-four windows then).
 - `_test_player_stats_window`; `test_stats.py` on the server.
 
 ### World events (0.48.0)
@@ -6344,6 +6344,50 @@ them, with no build.
   the tab fits the panel's 370.
 - **Staff log**: kind `event`, the server's detail as the sentence.
 - `_test_world_events`; `test_events.py` on the server.
+
+### Events measured, and guarded (0.49.0)
+
+The owner's two asks on top of world events: "dashboards that show, for each
+event: XP/hour and gold/hour before/during/after; player count online vs time;
+which events actually move the needle on 'empty world'", and "guardrails on
+your event DSL ... or a dry-run page". The server holds all of it (the API's
+CLAUDE.md, "Guardrails, the dry run and the event report"); the game asks and
+shows.
+
+- **The guardrails are the server's.** No kill is paid past 3x XP, 3x loot or
+  6x the two together, events and the stirring land's own counted in, and an
+  event that could pass them is refused when set - a 409 whose message the
+  Events tab shows as it is. Nothing here works it out.
+- **Dry run** (Events tab, beside Schedule; `EventsTab.dry_run()`): what the
+  controls hold, plus `players` 20, to POST /api/world/events/preview. The
+  tab says "Dry run: allowed - see Results"; Results gets the sentences
+  (`dry_run_lines()`, static): allowed or why not, the most at once
+  (`worst_text()` - "for every monster" when every land is the same, else the
+  worst land's), warnings, and what 20 players might earn as usual and with
+  it, from how many player-hours, and the most online at once in two weeks.
+  Numbers short (`GameConstants.short_number()`). A schedule's `warnings` go
+  to Results too.
+- **Report** (beside the tab's status line): opens the **Event report**
+  window through the HUD (`open_event_report()`, owner only; on
+  `_escape_windows()` and freed with the rest - twenty-five windows now):
+  `EventReportWindow`, src/ui/owner/eventreport.gd and
+  scene/ui/owner/eventreport.tscn, read on opening and by Refresh.
+  `report_lines()` (static) is the words: what moves the needle (each kind's
+  average lift, finished events only), then each event - its verdict, and
+  online, XP and gold an hour, who played and who signed up before, during
+  and after. "-" is not known (before the counting began, or past the
+  14-day kill log), never 0; "not yet after" for one still on.
+- **The chart** (`OnlineChart`, src/ui/owner/onlinechart.gd, drawn in
+  `_draw()`): players and everyone over the last 7 days from the report's
+  `online` rows (`fill()`: a five minutes with no row is 0), events as pale
+  bands, whole-number ticks (`ticks()`), the days at this computer's
+  midnights, a legend, an end dot and number per line (`value_at()` - the
+  number the line ends at), and a hover that snaps to the bucket the line is
+  drawn at (`bucket_under()`) and says the time, both counts and the events on.
+  Drawn the data-viz skill's way: one axis, hairline grid, 2px lines, text in
+  text colours; blue #3987e5 and orange #d95926 checked for colour-blind
+  separation and contrast on the #12161d surface.
+- `_test_event_report`; `test_events.py` E-5 to E-7 on the server.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

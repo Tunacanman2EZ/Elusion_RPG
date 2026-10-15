@@ -305,6 +305,7 @@ func _run_all() -> void:
 	await _test_stirring_lands()
 	await _test_player_stats_window()
 	await _test_world_events()
+	await _test_event_report()
 	await _test_the_boss_gates_lever()
 	await _test_other_players_are_drawn()
 	_test_other_players_move_evenly()
@@ -3599,6 +3600,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/owner/itemspawner.gd", "res://scene/ui/owner/itemspawner.tscn", "itemspawner"],
 	["res://src/ui/owner/savehistory.gd", "res://scene/ui/owner/savehistory.tscn", "savehistory"],
 	["res://src/ui/owner/statswindow.gd", "res://scene/ui/owner/statswindow.tscn", "statswindow"],
+	["res://src/ui/owner/eventreport.gd", "res://scene/ui/owner/eventreport.tscn", "eventreport"],
 	["res://src/ui/party/partypanel.gd", "res://scene/ui/party/partypanel.tscn", "party"],
 	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
 	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
@@ -4050,7 +4052,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("twenty-four panels are windows - the owner's Player stats (0.47.0) is the twenty-fourth", keys_seen.size() == 24, keys_seen.size())
+	check("twenty-five panels are windows - the owner's Event report (0.49.0) is the twenty-fifth", keys_seen.size() == 25, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -10170,6 +10172,241 @@ func _test_world_events() -> void:
 	await get_tree().process_frame
 	Api.is_owner = was_owner
 	print("  world events: read from the poll and held to what the server allows, on the HUD, set from the GM panel")
+
+
+func _test_event_report() -> void:
+	section("THE EVENT REPORT AND THE DRY RUN - what each event did, and what one would do (0.49.0)")
+	# The owner's: "dashboards that show, for each event: XP/hour and gold/hour
+	# before/during/after; player count online vs time; which events actually
+	# move the needle", and "a dry-run page". test_events.py holds the server's
+	# arithmetic and its guardrails; this holds the words, the chart and the
+	# ways in.
+	var now: int = int(Time.get_unix_time_from_system())
+	var hour: int = 3600
+
+	# ---- the chart's numbers ---------------------------------------------------------
+	var filled: Dictionary = OnlineChart.fill([{"at": 1000, "players": 2, "everyone": 3}, {"at": 1600, "players": 1, "everyone": 1},
+		{"at": 99999, "players": 9, "everyone": 9}, {"at": 0, "players": -4, "everyone": 2}, "junk"], 0, 1800, 300)
+	check("the chart's rows into five-minute buckets: a bucket with no row is nobody, one outside is not drawn",
+		filled["players"] == [0, 0, 0, 2, 0, 1] and filled["everyone"] == [2, 0, 0, 3, 0, 1], filled)
+	check("  whole-number ticks: every one up to 5, then about four steps",
+		OnlineChart.ticks(0) == [0, 1] and OnlineChart.ticks(3) == [0, 1, 2, 3] and OnlineChart.ticks(5) == [0, 1, 2, 3, 4, 5]
+		and OnlineChart.ticks(10) == [0, 3, 6, 9, 12],
+		[OnlineChart.ticks(0), OnlineChart.ticks(10)])
+
+	# ---- the report in words ---------------------------------------------------------
+	var starts: int = now - 30 * hour
+	var sample: Dictionary = JSON.parse_string(JSON.stringify({
+		"now": now, "chart_from": now - 7 * 86400, "sample_seconds": 300, "sampling_since": now - 40 * hour, "kills_kept_days": 14,
+		"kinds": [{"kind": "xp", "events": 2, "counted": 1, "lift": 1.0}, {"kind": "loot", "events": 2, "counted": 0, "lift": null},
+			{"kind": "stir", "events": 1, "counted": 1, "lift": 0.0}],
+		"events": [
+			{"id": 4, "name": "On Now", "kind": "xp", "starts_at": now - 1800, "ends_at": now + 5400, "ended_at": now + 5400,
+				"state": "on", "lift": 0.5, "verdict": "Brought players: 0.5 more online on average (0 before, 0.5 during).",
+				"windows": {"before": {"online": {"players": 0.0, "peak": 0, "everyone": 0.0}, "xp_per_hour": 0, "gold_per_hour": 0,
+					"played": 0, "new_players": 0}, "during": {"online": {"players": 0.5, "peak": 1, "everyone": 1.0}, "xp_per_hour": 1500,
+					"gold_per_hour": 20000, "played": 1, "new_players": 0}, "after": null}},
+			{"id": 3, "name": "Double XP", "kind": "xp", "starts_at": starts, "ends_at": starts + 2 * hour, "ended_at": starts + 2 * hour,
+				"state": "over", "lift": 1.0, "verdict": "Brought players: 1 more online on average (0 before, 1 during).",
+				"windows": {"before": {"online": {"players": 0.0, "peak": 0, "everyone": 0.0}, "xp_per_hour": 50, "gold_per_hour": 0,
+					"played": 1, "new_players": 0}, "during": {"online": {"players": 1.0, "peak": 2, "everyone": 1.5}, "xp_per_hour": 500,
+					"gold_per_hour": 150, "played": 1, "new_players": 1}, "after": {"online": {"players": 1.0, "peak": 1, "everyone": 1.0},
+					"xp_per_hour": 0, "gold_per_hour": 0, "played": 0, "new_players": 0}}},
+			{"id": 2, "name": "Old Loot", "kind": "loot", "starts_at": now - 20 * 86400, "ends_at": now - 20 * 86400 + hour,
+				"ended_at": now - 20 * 86400 + hour, "state": "over", "lift": null, "verdict": "Online not counted for it - the counting began later.",
+				"windows": {"before": {"online": null, "xp_per_hour": null, "gold_per_hour": 0, "played": null, "new_players": 0},
+					"during": {"online": null, "xp_per_hour": null, "gold_per_hour": 0, "played": null, "new_players": 0},
+					"after": {"online": null, "xp_per_hour": null, "gold_per_hour": 0, "played": null, "new_players": 0}}}],
+		"online": [{"at": starts, "players": 2, "everyone": 3}, {"at": starts + 300, "players": 1, "everyone": 1}]}))
+	var lines: Array = EventReportWindow.report_lines(sample)
+	var texts: Array = lines.map(func(line: Array) -> String: return str(line[0]))
+	check("which kind moves the needle, in words: +1 for XP events, loot not counted yet, the stir no change",
+		texts.has("More XP: +1 player online on average, across 1 event counted.")
+		and texts.has("More loot: not counted yet (2 events).")
+		and texts.has("A land stirs: no change in who was online, across 1 event counted."), texts.slice(0, 6))
+	check("  each event: its name, when and how long, and whether it brought players",
+		texts.has("Double XP - %s, 2h 00m (over)" % LocalTime.stamp(starts, now))
+		and texts.has("  Brought players: 1 more online on average (0 before, 1 during)."), texts)
+	check("  before, during and after: online, XP and gold an hour, who played and who signed up",
+		texts.has("  Online: 0 before, 1 during, 1 after") and texts.has("  XP an hour: 50 before, 500 during, 0 after")
+		and texts.has("  Gold an hour: 0 before, 150 during, 0 after")
+		and texts.has("  Played: 1 before, 1 during, 0 after; new players: 0 before, 1 during, 0 after"), texts)
+	check("  one on now has no after yet; one past the kill log has no XP - a dash, not a zero; big numbers short",
+		texts.has("  Online: 0 before, 0.5 during, not yet after") and texts.has("  Gold an hour: 0 before, 20K during, not yet after")
+		and texts.has("  XP an hour: - before, - during, - after"), texts)
+	var quiet: Array = EventReportWindow.report_lines({"now": now}).map(func(line: Array) -> String: return str(line[0]))
+	check("  an empty report says so, and that the counting has not begun",
+		quiet.has("No events in the last 30 days. Set one on the Events tab.")
+		and quiet.has("Who is online has not been counted yet - it is counted while anybody plays."), quiet)
+
+	# ---- the window ------------------------------------------------------------------
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var window: EventReportWindow = (load("res://scene/ui/owner/eventreport.tscn") as PackedScene).instantiate() as EventReportWindow
+	window.visible = false
+	add_child(window)
+	await get_tree().process_frame
+	var asked: Array = []
+	window.get_request = func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": sample}
+	await window.open()
+	await get_tree().process_frame
+	var shown: String = window.report_box.get_parsed_text()
+	var chart: OnlineChart = window.chart
+	check("opened, it reads the server and shows the report",
+		window.visible and asked == ["/api/world/events/report"] and shown.contains("WHAT MOVES THE NEEDLE")
+		and shown.contains("Double XP - "), [asked, shown.left(40)])
+	@warning_ignore("integer_division")
+	var at_double: int = (starts - (now - 7 * 86400)) / 300
+	check("  the chart: seven days of five minutes, the counts in their buckets, the events as bands",
+		chart.players.size() == 2016 and chart.players[at_double] == 2 and chart.everyone[at_double] == 3
+		and chart.bands.size() == 2 and str(chart.bands[1]["name"]) == "Double XP", [chart.players.size(), chart.bands.size()])
+	check("  its hover says the time, both counts and the event on then",
+		chart.tooltip_lines(at_double) == [LocalTime.stamp(chart.from_at + at_double * 300, chart.from_at + 2016 * 300),
+			"Players 2 - everyone 3", "Double XP"], chart.tooltip_lines(at_double))
+	chart.size = Vector2(560, 190)
+	var motion := InputEventMouseMotion.new()
+	motion.position = Vector2(OnlineChart.PAD_LEFT + 10.0, 100.0)
+	chart._gui_input(motion)
+	await get_tree().process_frame
+	var hovered: int = chart.hover
+	# THE HOVER SITS ON THE LINE: a column two pixels wide holds several
+	# buckets, the line is drawn at the most of them, and the hover picks that
+	# one - so a short visit can be found under the mouse.
+	var probe := OnlineChart.new()
+	probe.size = Vector2(560, 190)
+	probe.players.resize(2016)
+	probe.players.fill(0)
+	probe.everyone.resize(2016)
+	probe.everyone.fill(0)
+	var plot: Rect2 = probe._plot()
+	var columns: int = int(plot.size.x / 2.0)
+	var first_in: int = int(10.0 / columns * 2016)
+	var last_in: int = int(11.0 / columns * 2016) - 1
+	probe.players[last_in] = 4
+	probe.everyone[last_in] = 4
+	var picked: int = probe.bucket_under(plot.position.x + (10.5 / columns) * plot.size.x, plot)
+	check("  under the mouse, the bucket the line is drawn at - the most in its column - and the line's end said as drawn",
+		last_in > first_in and picked == last_in and probe.value_at(probe._y_of(2.0, 3, plot), 3, plot) == 2,
+		[first_in, last_in, picked])
+	probe.free()
+	chart.mouse_exited.emit()
+	check("a mouse over it picks the bucket under it, and leaving clears it", hovered >= 0 and hovered < 2016
+		and chart.hover == -1, hovered)
+	window.get_request = func(_path: String) -> Dictionary: return {"ok": false, "status": 404, "error": ""}
+	await window.refresh()
+	check("a server without it says to update it", window.status.text.contains("Update the server"), window.status.text)
+	Api.is_owner = false
+	var asked_before: int = asked.size()
+	window.get_request = func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": sample}
+	await window.refresh()
+	check("  and it never asks for anybody but the owner", asked.size() == asked_before
+		and window.status.text == "The event report is the owner's.")
+	Api.is_owner = true
+	window.close()
+	check("  its x closes it", not window.visible)
+	window.queue_free()
+	await get_tree().process_frame
+
+	# ---- the Events tab: Dry run and Report -------------------------------------------
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var tab: EventsTab = gm.get("events_tab") as EventsTab
+	var tabs: TabContainer = gm.get_node_or_null("%ownertabs") as TabContainer
+	if tabs != null and tab != null:
+		tabs.current_tab = tab.get_index()
+		await get_tree().process_frame
+	check("the Events tab has Report beside its status, and Dry run beside Schedule - and still fits 370 (%d)"
+		% PanelWindow.content_minimum(gm).x,
+		tab.report_button.get_parent() == tab.status_label.get_parent()
+		and tab.dry_run_button.get_parent() == tab.schedule_button.get_parent() and PanelWindow.content_minimum(gm).x <= 370.0)
+	var sent: Array = []
+	var preview: Dictionary = JSON.parse_string(JSON.stringify({
+		"allowed": true, "why": "", "warnings": [], "now": now, "peak_online": 3,
+		"event": {"id": null, "name": "Double XP", "kind": "xp", "starts_at": now, "ends_at": now + 3 * hour, "land": 0},
+		"worst": [{"land": 1, "name": "dark", "xp": 2.0, "loot": 1.5, "together": 3.0}, {"land": 6, "name": "fire", "xp": 2.0, "loot": 1.5, "together": 3.0}],
+		"limits": {"xp": 3.0, "loot": 3.0, "together": 6.0},
+		"forecast": {"players": 20, "player_hours": 12, "enough": true, "xp": {"usual": [24000, 54000], "with": [48000, 108000]},
+			"gold": {"usual": [2400, 5400], "with": [2400, 5400]}}}))
+	var schedule_view: Variant = JSON.parse_string(JSON.stringify({"events": [], "now": now, "limits": {}}))
+	tab.fetch = func(_path: String) -> Dictionary: return {"ok": true, "status": 200, "data": schedule_view}
+	tab.send = func(path: String, said: Dictionary) -> Dictionary:
+		sent.append([path, said])
+		return {"ok": true, "status": 200, "data": preview}
+	check("before the server is read, Dry run waits", tab.dry_run_button.disabled)
+	await tab.dry_run()
+	check("  and sends nothing", sent.is_empty(), sent)
+	await tab.refresh()
+	tab.kind_pick.select(0)
+	tab.kind_pick.item_selected.emit(0)
+	tab.amount_box.value = 2.0
+	tab.land_pick.select(tab.land_index(EventsTab.LAND_ANY))
+	tab.day_pick.select(0)
+	tab.day_pick.item_selected.emit(0)
+	tab.hours_box.value = 3.0
+	await tab.dry_run()
+	var asked_for: Dictionary = sent[0][1] if not sent.is_empty() else {}
+	check("Dry run sends what the controls hold, for 20 players, to the dry run - not to Schedule",
+		sent.size() == 1 and sent[0][0] == "/api/world/events/preview" and asked_for.get("players") == 20
+		and asked_for.get("kind") == "xp" and asked_for.get("hours") == 3, sent)
+	var results: RichTextLabel = gm.get("results") as RichTextLabel
+	var said_text: String = results.get_parsed_text() if results != null else ""
+	check("  and Results says it: allowed, the most at once, and what 20 players might earn",
+		tab.say_label.text == "Dry run: allowed - see Results."
+		and said_text.contains("Dry run - Double XP, now, for 3 h: allowed.")
+		and said_text.contains("The most at once: 2x XP and 1.5x loot (3x together) for every monster. The ceilings: 3x XP, 3x loot, 6x together.")
+		and said_text.contains("If 20 players play all 3 h: 24K-54K XP as usual, 48K-108K with it; 2,400-5,400 gold as usual, 2,400-5,400 with it.")
+		and said_text.contains("From 12 player-hours of play in the last two weeks. The most players online at once then: 3."), said_text)
+	var refused: Dictionary = preview.duplicate(true)
+	refused["allowed"] = false
+	refused["why"] = "Too much at once for every monster: 3x XP and 2x loot (6x together)."
+	refused["worst"] = [{"land": 6, "name": "fire", "xp": 3.0, "loot": 3.0, "together": 9.0}, {"land": 1, "name": "dark", "xp": 3.0, "loot": 1.0, "together": 3.0}]
+	refused["forecast"]["enough"] = false
+	var refused_lines: Array[String] = EventsTab.dry_run_lines(refused)
+	check("  not allowed: why, the land that would be paid too much, and a forecast from too little play said to be a guess",
+		refused_lines[0].ends_with(": not allowed.") and refused_lines[1].begins_with("Too much at once")
+		and refused_lines[2].begins_with("The most at once: 3x XP and 3x loot (9x together) for the fire lands' monsters.")
+		and refused_lines[refused_lines.size() - 1].contains("too few to be more than a guess"), refused_lines)
+	tab.send = func(_path: String, _said: Dictionary) -> Dictionary: return {"ok": false, "status": 404, "error": ""}
+	await tab.dry_run()
+	check("  a server without the dry run says to update it", tab.say_label.text == "This server has no dry run yet (404). Update the server.",
+		tab.say_label.text)
+	tab.send = func(_path: String, _said: Dictionary) -> Dictionary:
+		return {"ok": true, "status": 201, "data": {"event": {"id": 9, "name": "The Ice Lands Stir", "starts_at": now + hour,
+			"ends_at": now + 2 * hour, "description": "The ice lands stir for the whole event."}, "now": now,
+			"warnings": ["The stirring lands are switched off, so this will stir nothing until they are on (World tab)."]}}
+	tab.day_pick.select(tab.day_index(1))
+	tab.day_pick.item_selected.emit(tab.day_pick.selected)
+	await tab.schedule()
+	check("Scheduled with a warning: the warning is in Results too",
+		results.get_parsed_text().contains("The stirring lands are switched off, so this will stir nothing until they are on (World tab)."))
+	var opened: Array = []
+	gm.set("open_window", func(method: String, _who: String) -> bool:
+		opened.append(method)
+		return true)
+	tab.report_button.pressed.emit()
+	check("Report opens the Event report through the HUD", opened == ["open_event_report"], opened)
+	gm.set("open_window", func(_method: String, _who: String) -> bool: return false)
+	tab.report_button.pressed.emit()
+	check("  and out of the game it says so", tab.say_label.text == "The event report opens from inside the game.")
+	gm.queue_free()
+	await get_tree().process_frame
+
+	# ---- the HUD builds it for the owner only ------------------------------------------
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	Api.is_owner = false
+	hud.open_event_report()
+	check("the HUD builds the Event report for nobody but the owner", hud.event_report == null)
+	Api.is_owner = was_owner
+	hud.queue_free()
+	await get_tree().process_frame
+	print("  event report: the needle in words, each event's three windows, the chart and its hover; the dry run in Results")
 
 
 func _test_armour_resistance() -> void:
@@ -21431,6 +21668,7 @@ func _test_escape_closes_every_window() -> void:
 		"item_spawner": "res://scene/ui/owner/itemspawner.tscn",
 		"save_history": "res://scene/ui/owner/savehistory.tscn",
 		"stats_window": "res://scene/ui/owner/statswindow.tscn",
+		"event_report": "res://scene/ui/owner/eventreport.tscn",
 		"options_screen": "res://scene/ui/menus/optionsscreen.tscn",
 		"map_screen": "res://scene/ui/menus/mapscreen.tscn",
 		"controls_panel": "res://scene/ui/controls/controlspanel.tscn",

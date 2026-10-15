@@ -234,6 +234,7 @@ func _ready() -> void:
 		else:
 			events_tab = tabs.get_node(^"events") as EventsTab
 		events_tab.report = _say
+		events_tab.open_report = func() -> bool: return Api.is_owner and bool(open_window.call("open_event_report", ""))
 		var server_page: Node = tabs.get_node_or_null(^"server")
 		if server_page != null:
 			stats_button = server_page.get_node_or_null(^"statsbutton") as Button
