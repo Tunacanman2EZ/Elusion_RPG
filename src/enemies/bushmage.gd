@@ -242,7 +242,7 @@ func _press_to(slot_target: Vector2) -> void:
 	# the player should see is a mage bearing down on them the whole time.
 	var pos_before: Vector2 = global_position
 	var step: String = _steered_direction_to(slot_target)
-	velocity = _vec_from_dir(step) * get_move_speed()
+	velocity = _vec_from_dir(step) * get_move_speed() * stir_speed()
 	move_and_slide()
 	_walk_facing = Facing.from_vec_stable(player.global_position - global_position, _walk_facing)
 	play_walk_animation(_walk_facing)

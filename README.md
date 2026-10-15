@@ -44,6 +44,8 @@ The bar along the bottom holds the windows a player opens all the time; Friends,
 
 **Click a name** - over a player's head, in the Players list or in chat - to whisper, add them as a friend, trade, invite them to your party or guild, or report them to staff.
 
+**The stirring lands**: every three hours one of the seven lands — dark, light, ice, wind, earth, fire or water — stirs, and the whole server is told. While it does, that land's monsters glow in its colour, hit 25% harder, have 50% more health, move 15% faster and drop loot half again as often, and armour's resistance to its element counts half again as much (still capped at 50%). The server picks the land — the one hunted least in the last day, never the same one twice running — and a line at the top of the screen counts down to the next. The owner sets all of it on the GM panel's World tab: on or off, how long a stir lasts, each effect's switch and amount (there is a more-XP one, off as shipped), and a land to stir by hand.
+
 **Kills** (or **K**) is the kill record: every monster in the game with its picture, how many of each your character has killed and when the last one fell, and — on the Everyone tab — every player's kills added up, with who has killed the most of each. The server counts them; the pictures are cut from each monster's own art.
 
 ## Who makes it
@@ -287,11 +289,11 @@ Calling the virtualenv's interpreter directly is deliberate: it skips having to 
 
 To see other players and share monsters with them, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before: it draws nobody else and fights its own monsters.
 
-That serves a hundred and twenty-four endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred and twenty-seven endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger, the stirring lands and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-A hundred and nineteen of the hundred and twenty-four require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+A hundred and twenty-two of the hundred and twenty-seven require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has fifty-four test suites, run together with one command:
+The backend has fifty-five test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -310,8 +312,8 @@ test_moderation.py     156 checks    the moderation record, a log that opens on 
 test_ownership.py      150 checks    no route hands over a row that is not yours
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
-test_security_doc.py   146 checks    SECURITY.md is checked, not trusted
-test_refusals.py       127 checks    401, 403, and the 404 that is really a 403
+test_security_doc.py   154 checks    SECURITY.md is checked, not trusted
+test_refusals.py       136 checks    401, 403, and the 404 that is really a 403
 test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
 test_presence.py       150 checks    players seeing each other, whose game runs each area's monsters, every attack and lever, party voice's calls
 test_quality.py        113 checks    rolled gear from drops and the shop, carried whole by every path; armour's resistance
@@ -323,6 +325,7 @@ test_parties.py         50 checks    parties: asked, joined, led, left, and thei
 test_voice.py           46 checks    party voice's relay (only a party's, only through it), and reporting a player
 test_chardelete.py      72 checks    deleting a character, and only the character
 test_chat.py            67 checks    world chat, end to end, one line as typed
+test_world.py           67 checks    the stirring lands: one land at a time, picked and paid by the server, the owner's switches
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
 test_deploy.py          61 checks    what the first live deploy found: .env read first, one-file backups
 test_staffcode.py       60 checks    a staff password alone opens nothing, once per computer
@@ -354,14 +357,14 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					5,150 checks, 0 failures
+					5,234 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-fifth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The fifty-sixth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
-The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **4,135 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 164 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
+The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **4,186 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 167 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
-**If you cloned this repo, it will report `4069 passed, 0 failed, 27 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-six are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
+**If you cloned this repo, it will report `4120 passed, 0 failed, 27 skipped` and exit 0.** That is correct. One of those skips is the empty sound registry, which is the same on any machine; the other twenty-six are worth explaining because they are the one place this repository is deliberately incomplete — see [the note below](#a-clone-is-missing-the-item-art-on-purpose).
 
 **Both suites run on GitHub for every push and every pull request** (`.github/workflows/tests.yml`, here and in the API repo). The game's run is a clone — no art pack — so a new check that needs the art and does not say so fails there before it reaches anybody who clones this. The API's runs `run_tests.ps1` itself, so a green tick means what a green run on the PC means.
 
@@ -369,7 +372,7 @@ Some of the suite is there to catch things the engine will not tell you about:
 
 - **A texture deleted while a TileSet still paints from it.** Godot does not warn. It silently rewrites the reference into an embedded pointer at its own import cache, which keeps drawing until that cache is cleaned and then stops. `_test_no_import_cache_references()` fails on any scene naming a path under `res://.godot/`.
 - **Configuring a node after `add_child()`.** `_ready()` has already run, so an element profile multiplies the scene's defaults and your assignment flattens the result — the thing wears its element's art and none of its behaviour. A text check, because the failure has no runtime symptom.
-- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 2,659 signatures.
+- **An unused parameter.** GDScript warns in the editor and not through a headless load, so that class of regression is invisible to CI. `_test_no_unused_parameters()` applies Godot's own rule across 3,041 signatures.
 - **Art nobody has classified.** Every top-level folder under `art/`, `assets/` and `audio/` maps to a named owner, and a new one fails the suite until somebody says whose it is. Adding art is a licensing decision; this is what makes it one in practice.
 
 `src/tools/atlasaudit.gd` (run `.\atlasaudit.ps1`) is a separate read-only tool answering the two questions a filename search gets wrong. **Painted cell counts per texture** — because tile *definitions* in an atlas are not placements, one texture can back several atlas sources, and source ids are per-TileSet. And **reachability**, walking `ResourceLoader.get_dependencies()` from every scene and resource, which is the list you can actually delete from. It found two byte-identical art files a filename sweep had cleared as used, because their twins in other folders are.

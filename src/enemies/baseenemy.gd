@@ -405,6 +405,11 @@ signal died
 var hp: int
 # The red ring round the feet (threatring.gd), made in _ready().
 var _threat_ring: ThreatRing = null
+# THE STIRRING LANDS (0.46.0): the glow under the feet while this monster's
+# land stirs (stirglow.gd), and whether the stir has raised its health yet -
+# once, and never lowered: see raise_for_stir().
+var _stir_glow: StirGlow = null
+var stir_raised: bool = false
 # WHO THIS MONSTER IS AFTER. A Node2D, not a CharacterBody2D, since 0.7.0: on
 # the game that runs an area's shared monsters it may be another player's
 # RemotePlayer picture (see targets.gd), which is drawn, not simulated. Anything
@@ -445,6 +450,11 @@ func _ready() -> void:
 	# line would otherwise fill the health pool from BaseEnemy's default of 50
 	# rather than this enemy's real maximum.
 	_apply_enemy_data()
+	# BORN WHILE ITS LAND STIRS: more health from the start (lands.gd).
+	var stirred_max: int = Lands.raised_max_hp(max_hp, current_element())
+	if stirred_max > max_hp:
+		max_hp = stirred_max
+		stir_raised = true
 
 	hp = max_hp
 	add_to_group("enemies")
@@ -480,6 +490,10 @@ func _ready() -> void:
 	# THE THREAT RING (0.28.0, threatring.gd): a red dot round the feet that
 	# points at whoever this monster is after.
 	_threat_ring = ThreatRing.on(self)
+	# And under it, the stirring land's glow - hidden until its land stirs.
+	_stir_glow = StirGlow.on(self)
+	# A stir that begins while this monster stands raises its health then.
+	Lands.changed.connect(raise_for_stir)
 
 	play_idle_animation("down")
 
@@ -1482,7 +1496,7 @@ func _record_nav_movement_result(pos_before: Vector2) -> void:
 	# What a clear, unobstructed frame of movement looks like for THIS enemy at
 	# THIS tick rate. Comparing against a fraction of it is what makes the test
 	# survive a change to either.
-	var expected_distance: float = get_move_speed() * delta
+	var expected_distance: float = get_move_speed() * stir_speed() * delta
 
 	if moved_distance < expected_distance * STUCK_MOVE_FRACTION:
 		_stuck_time += delta
@@ -1901,7 +1915,7 @@ func _handle_combat(dist_to_player: float) -> void:
 		# STEERED, so a retreating archer goes around whatever is behind it
 		# instead of reversing into its own back line and stopping dead.
 		var flee_dir: String = _steered_direction_to(flee_target)
-		velocity = _vec_from_dir(flee_dir) * get_flee_speed()
+		velocity = _vec_from_dir(flee_dir) * get_flee_speed() * stir_speed()
 		move_and_slide()
 		_walk_facing = Facing.from_vec_stable(flee_target - global_position, _walk_facing)
 		play_walk_animation(_walk_facing)
@@ -1973,7 +1987,7 @@ func _chase_slot() -> void:
 	# standing in the way - see LOCAL AVOIDANCE. With nobody near it returns the
 	# identical heading, so an enemy chasing alone behaves exactly as before.
 	var to_player: String = _steered_direction_to(slot_target)
-	velocity = _vec_from_dir(to_player) * get_move_speed()
+	velocity = _vec_from_dir(to_player) * get_move_speed() * stir_speed()
 	move_and_slide()
 	# MOVE by the nav heading, FACE toward the target. The nav heading flips axis
 	# frame to frame on a diagonal (that is the "flipping"); the vector to the
@@ -2052,7 +2066,7 @@ func _handle_return_home() -> void:
 		# tested routing that falls back to a direct line when the way is clear;
 		# there was never a reason for the walk home to have its own worse copy.
 		var return_dir: String = _get_direction_to_point_via_navigation(spawn_position)
-		velocity = _vec_from_dir(return_dir) * get_move_speed()
+		velocity = _vec_from_dir(return_dir) * get_move_speed() * stir_speed()
 		move_and_slide()
 		_walk_facing = Facing.from_vec_stable(spawn_position - global_position, _walk_facing)
 		play_walk_animation(_walk_facing)
@@ -2092,6 +2106,33 @@ func _trigger_attack() -> void:
 
 func get_move_speed() -> float:
 	return 80.0
+
+
+func stir_speed() -> float:
+	"""THE STIRRING LANDS: how many times as fast this monster moves - 1 + the
+	stir's speed while its land stirs, else 1 (Lands.speed_scale()). Every
+	place that turns a speed into a velocity multiplies by it, so the
+	get_move_speed() overrides stay what each monster is."""
+	return Lands.speed_scale(current_element())
+
+
+func raise_for_stir() -> void:
+	"""A STIR THAT BEGINS WHILE THIS MONSTER STANDS: the extra health its land
+	gives, added to its maximum and to what it has left, once.
+
+	NEVER TAKEN BACK when the stir ends. The combat books (combatbook.py)
+	count a death at the health the leader's game says a monster has; one
+	lowered under them would die before they agreed it could. A monster the
+	stir made tougher stays that way until it dies."""
+	if stir_raised or _death_resolved or hp <= 0:
+		return
+	var stirred_max: int = Lands.raised_max_hp(max_hp, current_element())
+	if stirred_max <= max_hp:
+		return
+	hp += stirred_max - max_hp
+	max_hp = stirred_max
+	stir_raised = true
+	_refresh_health_display()
 
 
 func get_flee_speed() -> float:
@@ -2975,6 +3016,10 @@ func net_apply_state(at: Vector2, anim: String, new_hp: int, snap: bool = false)
 		# you landed them; a drop you did not cause flashes now.
 		if new_hp < hp and not _net_flashed_recently():
 			play_hit_flash()
+		# MORE THAN THIS COPY KNEW IT COULD HAVE: the leader's game heard of a
+		# stir first and raised it (raise_for_stir()). Its word is the copy's.
+		if new_hp > max_hp:
+			max_hp = new_hp
 		hp = clampi(new_hp, 0, maxi(max_hp, 1))
 		_refresh_health_display()
 

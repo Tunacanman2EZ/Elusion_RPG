@@ -127,6 +127,7 @@ const KIND_LABELS: Dictionary = {
 	"guild_rename": "Guild renames", "guild_disband": "Guild disbands",
 	"maintenance": "Maintenance", "minbuild": "Minimum build", "pvp": "PvP switch",
 	"trade": "Trade switch", "level": "Level sets", "skill": "Skill sets",
+	"world": "Stirring lands",
 }
 
 # Which kinds name an ACCOUNT as their target, so a log line can take you to
@@ -1884,16 +1885,27 @@ static func describe_player_report(card: Dictionary, server_now: int) -> String:
 	return " · ".join(bits)
 
 
+static func quoted(body: String, channel: String) -> String:
+	"""A reported line as it was said, in quotes - or, for a report about the
+	player (0.43.0), where they were reported, which nobody said."""
+	if channel == "player":
+		return body if body != "" else "Reported"
+	return "\"%s\"" % body if body != "" else "(a picture)"
+
+
 static func describe_card_line(line: Dictionary, server_now: int) -> String:
 	# "×2 · world · 3 min ago" - the small print beside one reported line.
 	var bits: PackedStringArray = []
 	var times: int = int(line.get("reports", 1))
 	if times > 1:
 		bits.append("×%d" % times)
-	bits.append(str(line.get("channel", "?")))
+	# A REPORT ABOUT THE PLAYER, not a line (0.43.0, app.py report_player()):
+	# there was never a line in chat to be gone from.
+	var about_player: bool = str(line.get("channel", "")) == "player"
+	bits.append("the player" if about_player else str(line.get("channel", "?")))
 	if server_now > 0:
 		bits.append(LocalTime.ago(int(line.get("said_at", 0)), server_now))
-	if not bool(line.get("line_exists", true)):
+	if not about_player and not bool(line.get("line_exists", true)):
 		bits.append("gone from chat")
 	return " · ".join(bits)
 
@@ -1984,7 +1996,7 @@ func _make_card_line(line: Dictionary, who: String, actionable: bool) -> Control
 	row.add_theme_constant_override("separation", 6)
 	var said := Label.new()
 	var text: String = str(line.get("body", ""))
-	said.text = "\"%s\"" % text if text != "" else "(a picture)"
+	said.text = quoted(text, str(line.get("channel", "")))
 	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	said.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	said.custom_minimum_size = Vector2(1, 0)
@@ -2051,7 +2063,7 @@ func _make_report_row(report: Dictionary) -> Control:
 	box.add_child(head)
 	var said := Label.new()
 	var body: String = str(report.get("body", ""))
-	said.text = "\"%s\"" % body if body != "" else "(a picture)"
+	said.text = quoted(body, str(report.get("channel", "")))
 	said.add_theme_color_override("font_color", COLOUR_ENTRY)
 	said.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(said)

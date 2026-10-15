@@ -294,6 +294,7 @@ func _ready() -> void:
 	if _asks_said_by == Api.username:
 		_paint_ask_buttons()
 	_build_status_strip()
+	_build_world_chip()
 	_start_broadcast_poll()
 	_wire_hotbar()
 
@@ -567,6 +568,12 @@ func _process(_delta: float) -> void:
 	# ALSO BEFORE THE GUARD, for the same reason: a notice that arrives while
 	# no character is loaded must still fade, or it sits there until one is.
 	_age_messages(Time.get_ticks_msec())
+
+	# THE STIRRING LANDS' COUNTDOWN, once a second.
+	_world_chip_clock += _delta
+	if _world_chip_clock >= 1.0:
+		_world_chip_clock = 0.0
+		_paint_world_chip()
 
 	if active_character == null:
 		return
@@ -1415,6 +1422,7 @@ func set_world_status(key: String, text: String, colour: Color = Color(0.95, 0.4
 	else:
 		_status_states[key] = {"text": text, "colour": colour}
 	_paint_status_strip()
+	_place_world_chip()
 
 
 func _paint_status_strip() -> void:
@@ -1768,6 +1776,18 @@ func _apply_broadcast(data: Dictionary) -> void:
 	_read_teleport(data.get("teleport"))
 
 	_read_pvp(data)
+	# THE STIRRING LANDS (0.46.0), before the messages: their announcement
+	# is written in the land's colour, and a stir that began since the last
+	# poll gets its banner below.
+	var was_land: int = Lands.stirring()
+	var stirred: bool = _read_world(data.get("world"))
+	# AND ONE THAT ENDS BECAUSE THE OWNER SWITCHED THE LANDS OFF says so too:
+	# the owner turned them off and "nothing happened but the clock stopped".
+	# Not a stir that only ran out (the next one's banner says that), and not
+	# a server that went quiet (that is no news, and "on" is not false).
+	var world_said: Dictionary = data.get("world") if data.get("world") is Dictionary else {}
+	var stilled: bool = was_land != 0 and Lands.stirring() == 0 \
+		and world_said.get("on") is bool and not bool(world_said.get("on"))
 	_read_guild(data)
 	_read_party(data.get("party"))
 	_read_trade(data.get("trade"))
@@ -1787,6 +1807,14 @@ func _apply_broadcast(data: Dictionary) -> void:
 	# maintenance, pvp - is on the status strip, which is where a player who
 	# just arrived needs it.
 	_read_broadcast_messages(data.get("messages", []), _broadcast_cursor > 0)
+	# A NEW STIR IS AN EVENT, said across the screen in its land's colour -
+	# but, like a mythic, not on the first poll, which is history.
+	if stirred and _broadcast_cursor > 0:
+		show_mythic_banner("THE %s LANDS STIR" % Lands.land_name().to_upper(), Lands.effects_line(),
+			false, land_colour())
+	elif stilled and _broadcast_cursor > 0:
+		show_mythic_banner("THE LANDS GROW STILL", "The %s lands are calm again." % Element.name_for(was_land).capitalize(),
+			false, Element.colour_for(was_land).lightened(0.35))
 
 	var newest: int = int(data.get("latest_id", _broadcast_cursor))
 	if newest > _broadcast_cursor:
@@ -2160,6 +2188,8 @@ func _read_broadcast_messages(messages: Variant, announce: bool = true) -> void:
 		var kind: String = str(entry.get("kind", "system"))
 		var body: String = str(entry.get("body", ""))
 		var colour: Color = Color(1.0, 0.82, 0.42) if kind == "system" else Color(0.85, 0.89, 0.94)
+		if kind == WORLD_BROADCAST_KIND:
+			colour = land_colour()
 		var bannered: bool = false
 		if kind == MYTHIC_BROADCAST_KIND:
 			colour = GameConstants.rarity_colour(GameConstants.MYTHIC_TIER)
@@ -2189,10 +2219,13 @@ const MYTHIC_BANNER_SECONDS := 5.0
 var mythic_banner: Control = null
 
 
-func show_mythic_banner(title: String, subtitle: String, flash: bool = false) -> void:
+func show_mythic_banner(title: String, subtitle: String, flash: bool = false,
+		colour: Color = Color(0, 0, 0, 0)) -> void:
+	"""The banner across the top. `colour` is the title's - the mythic red
+	unless one is given (a stirring land's, 0.46.0)."""
 	if mythic_banner != null and is_instance_valid(mythic_banner):
 		mythic_banner.queue_free()
-	var red: Color = GameConstants.rarity_colour(GameConstants.MYTHIC_TIER)
+	var red: Color = colour if colour.a > 0.0 else GameConstants.rarity_colour(GameConstants.MYTHIC_TIER)
 
 	var root := Control.new()
 	root.name = "mythicbanner"
@@ -2254,6 +2287,93 @@ func _mythic_banner_label(label_name: String, text: String, size: int, colour: C
 	label.add_theme_color_override("font_outline_color", Color(0.12, 0.0, 0.02))
 	label.add_theme_constant_override("outline_size", 6 if size >= 24 else 4)
 	return label
+
+
+# =============================================================================
+# THE STIRRING LANDS (0.46.0)
+# =============================================================================
+# Which land is stirring, from the broadcast poll, into Lands (lands.gd) - and
+# on the screen: a small line under the top of the screen, in the land's
+# colour, counting down ("The Fire lands stir - 2h 14m left"), and a banner
+# when a new stir begins. A STATE, so it is on screen for as long as it is
+# true - but not on the status strip, which is for things that are wrong; it
+# sits just under it, and moves down when the strip is up.
+const WORLD_BROADCAST_KIND := "world"
+var world_chip: PanelContainer = null
+var world_label: Label = null
+var _world_chip_clock: float = 0.0
+
+
+func _read_world(data: Variant) -> bool:
+	"""The poll's "world" into Lands. True if a new stir began."""
+	var began: bool = Lands.apply(data)
+	_paint_world_chip()
+	return began
+
+
+func land_colour() -> Color:
+	"""The stirring land's colour, lightened to read on the dark HUD; the
+	notices' gold when nothing stirs."""
+	if Lands.stirring() == 0:
+		return Color(1.0, 0.82, 0.42)
+	return Element.colour_for(Lands.stirring()).lightened(0.35)
+
+
+func _build_world_chip() -> void:
+	var frame := PanelContainer.new()
+	frame.name = "worldchip"
+	frame.anchor_left = 0.5
+	frame.anchor_right = 0.5
+	frame.offset_left = -170.0
+	frame.offset_right = 170.0
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.06, 0.09, 0.78)
+	style.border_width_bottom = 2
+	style.corner_radius_bottom_left = 4
+	style.corner_radius_bottom_right = 4
+	style.content_margin_left = 10.0
+	style.content_margin_right = 10.0
+	style.content_margin_top = 3.0
+	style.content_margin_bottom = 3.0
+	frame.add_theme_stylebox_override("panel", style)
+	var label := Label.new()
+	label.name = "line"
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 13)
+	frame.add_child(label)
+	add_child(frame)
+	world_chip = frame
+	world_label = label
+	_place_world_chip()
+
+
+func _paint_world_chip() -> void:
+	if world_chip == null or world_label == null:
+		return
+	var text: String = Lands.line()
+	world_chip.visible = text != ""
+	if text == "":
+		return
+	if world_label.text != text:
+		world_label.text = text
+	var colour: Color = land_colour()
+	world_label.add_theme_color_override("font_color", colour)
+	var style: StyleBoxFlat = world_chip.get_theme_stylebox("panel") as StyleBoxFlat
+	if style != null:
+		style.border_color = colour
+	_place_world_chip()
+
+
+func _place_world_chip() -> void:
+	"""Under the status strip when it is up, else where it would be."""
+	if world_chip == null:
+		return
+	var top: float = 50.0 if status_strip != null and status_strip.visible else 10.0
+	world_chip.offset_top = top
+	world_chip.offset_bottom = top + 26.0
 
 
 func _read_teleport(order) -> void:

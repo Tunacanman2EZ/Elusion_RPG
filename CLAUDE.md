@@ -6197,6 +6197,64 @@ CLAUDE.md and `test_tokens.py`); this is the game's half, held by
   the Server tab, a build-5 game plays as before. At 6, every login made
   before is ended once (everyone types the password again).
 
+### The stirring lands (0.46.0)
+
+The owner: "lets build it in my game if you think it will elavate it" - a
+world that changes on its own - and of its effects, "just make those switches
+in my gm panel under a new tab that can be adjusted". Every 3 hours (the
+owner's setting) one of the seven lands, an element from DARK to WATER, stirs.
+The server's side is in the API's CLAUDE.md, "The stirring lands".
+
+- **Who does what.** The server picks the land, announces it (broadcast kind
+  `world`) and pays the more-loot and more-XP itself at the kill. The game
+  applies the rest: a hit of the stirring land lands harder, and resistance
+  to it counts for more - in `Player.damage_taken()`, still held to
+  `RESIST_CAP`; its monsters have more health and move faster (BaseEnemy).
+  Defense XP is still trained on the hit as sent. Players' own damage never
+  changes.
+- **It has to be felt.** The owner's first try: "i did not notice dps change
+  on enemies or anything" - only one land's monsters in seven change, and
+  +25% on a hit of 12 is 15. So the stirring land's monsters stand in a
+  pulsing glow of its colour (`StirGlow`, src/enemies/stirglow.gd, the
+  monster's first child), have +50% health and move +15% faster, a hit they
+  made harder is drawn 1.4x bigger (`Player.STIRRED_NUMBER_SCALE`), and
+  switching the lands off gets its own banner ("THE LANDS GROW STILL").
+- **Health: raised once, never lowered.** A monster born while its land
+  stirs is born with it (`BaseEnemy._ready()`, `Lands.raised_max_hp()`); one
+  already standing when the stir begins gets the extra added to its maximum
+  and to what it has left (`raise_for_stir()`, on `Lands.changed`). Never
+  taken back: the combat books count a death at the health the leader's game
+  sent, and a monster lowered under that would die before they agreed. A
+  follower's copy told of more health than it knew takes the leader's word
+  (`net_apply_state()`).
+- **Speed** is `stir_speed()`, multiplied into every velocity BaseEnemy and
+  BushMage set from `get_move_speed()` or `get_flee_speed()` - the overrides
+  stay what each monster is.
+- **`Lands`** (src/systems/lands.gd, an autoload) holds what the broadcast
+  poll's `"world"` said (`characterhud.gd`, `_read_world()`), every number held
+  to its range, and answers `hit_scale()` and `resist_scale()` - 1.0 for every
+  other element, and for everything when nothing stirs. **A stir 60 seconds
+  past its end is over** (`STALE_SECONDS`), whatever was last heard: a server
+  that cannot be reached never makes the game harder. The countdown runs on
+  the server's clock (`now` in the payload).
+- **On the HUD**: a line under the top of the screen ("The Fire lands stir -
+  2h 14m left") in the land's colour, under the status strip when that is up;
+  a new stir while playing gets the mythic banner in that colour, saying what
+  it does - but not on the first poll, which is history. The world is read
+  before the poll's messages so its announcement is coloured too.
+- **The GM panel's World tab** (`WorldTab`, src/ui/owner/worldtab.gd; owner
+  only, after Server): the master switch, hours per stir, each of the six
+  effects' switch and amount (one to a row: two to a row needed amount boxes
+  too narrow to show "1.75 x"), Save, a land and "Stir it now", what stirs now, the last stirs
+  (and who stirred one by hand), and each land's hunting. Saving and stirring
+  ask for the password again (step-up). **Save and Stir it now wait until
+  the server has been read**, and again after a read fails: unread, the
+  controls hold their lowest values, and Save would send those. A 404 there
+  means the server is from before 0.46.0, and it says so. Built narrow: the GM panel draws 370
+  wide, and a wrapping label with no width set measures one word per line,
+  which once made the panel 720 tall.
+- `_test_stirring_lands` (51 checks); `test_world.py` (67) on the server.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

@@ -1194,6 +1194,10 @@ func _on_moved_for_map(at: Vector2, _direction: String) -> void:
 	WorldMap.reveal_around(at, area)
 
 
+# How much bigger the number of a hit the stirring lands made harder is drawn.
+const STIRRED_NUMBER_SCALE := 1.4
+
+
 func _spawn_floating_label(amount: int, type: int, element: int = Element.Type.NONE) -> void:
 	# DAMAGE NUMBERS ONLY, and only the damage ones.
 	#
@@ -1225,7 +1229,11 @@ func _spawn_floating_label(amount: int, type: int, element: int = Element.Type.N
 		(lbl as CanvasItem).modulate = Element.colour_for(element)
 
 	if lbl.has_method("show_number"):
-		lbl.show_number(amount, type)
+		# A HIT THE STIRRING LANDS MADE HARDER is drawn bigger, in the land's
+		# colour it already wears: the owner could not tell a stirred hit from
+		# any other (0.46.0).
+		var stirred: bool = type == FloatingLabel.Type.DAMAGE and Lands.hit_scale(element) > 1.0
+		lbl.show_number(amount, type, STIRRED_NUMBER_SCALE if stirred else 1.0)
 
 
 # de-duplication state for show_notice(). Kept next to its only user rather
@@ -2930,10 +2938,18 @@ func damage_taken(amount: int, element: int = Element.Type.NONE) -> int:
 	# a physical hit) - a fire sprite's shot against fire-resistant plate.
 	# Multiplied, never added, so nothing reaches zero; maxi(1, ...) is the
 	# floor under all three.
+	#
+	# THE STIRRING LANDS (0.46.0, lands.gd): a hit of the land that is stirring
+	# lands harder, and resistance to it counts for more - still held to
+	# RESIST_CAP. Both 1 for every other element, and for every hit when
+	# nothing stirs.
 	var reduction: float = _get_defense_tier()["reduction"]
 	var armour: float = PlayerStats.armour_reduction(equipped_armor_value())
-	var resisted: float = float(equipped_resistance(element)) / 100.0
-	return maxi(1, int(amount * (1.0 - reduction) * (1.0 - armour) * (1.0 - resisted)))
+	var resist_percent: float = minf(float(equipped_resistance(element)) * Lands.resist_scale(element),
+		float(GameConstants.RESIST_CAP))
+	var resisted: float = resist_percent / 100.0
+	var landing: float = float(amount) * Lands.hit_scale(element)
+	return maxi(1, int(landing * (1.0 - reduction) * (1.0 - armour) * (1.0 - resisted)))
 
 
 func equipped_resistance(element: int) -> int:

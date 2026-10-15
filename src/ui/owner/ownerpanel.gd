@@ -54,7 +54,7 @@ extends Control
 
 # The tab titles. Written here rather than taken from the node names, which are
 # lowercase like every other node in the project.
-const TAB_TITLES := ["Account", "Testing", "Server"]
+const TAB_TITLES := ["Account", "Testing", "Server", "World"]
 
 # What each kind of result looks like in the box. Four, because there are four
 # answers: it worked, it did not, it needs you to do something first, and the
@@ -71,6 +71,9 @@ const SAY_STATUS := Color(0.95, 0.85, 0.62)
 # Held, not discarded: PanelWindow is a RefCounted carrying the drag state, and
 # letting it go frees it and the panel quietly stops being draggable.
 var _window: PanelWindow
+# THE WORLD TAB (0.46.0): the stirring lands' switches (worldtab.gd), added
+# in _ready().
+var world_tab: WorldTab = null
 
 # Matches the "[GM] " / "[OWNER] " / "[SERVER] " tag the console lines carry.
 # On screen it is noise - the whole panel is the GM's.
@@ -210,6 +213,11 @@ func _ready() -> void:
 			and not results_clear.pressed.is_connected(results.clear):
 		results_clear.pressed.connect(results.clear)
 	if tabs != null:
+		if tabs.get_node_or_null(^"world") == null:
+			world_tab = WorldTab.new()
+			tabs.add_child(world_tab)
+		else:
+			world_tab = tabs.get_node(^"world") as WorldTab
 		for i in range(mini(tabs.get_tab_count(), TAB_TITLES.size())):
 			tabs.set_tab_title(i, TAB_TITLES[i])
 	if view_button != null and not view_button.pressed.is_connected(_on_view_pressed):
@@ -634,6 +642,8 @@ func _on_visibility_changed() -> void:
 		await _refresh_minbuild()
 		await refresh_coowners()
 		await refresh_online()
+		if world_tab != null and is_instance_valid(world_tab) and Api.is_owner:
+			await world_tab.refresh()
 	else:
 		_disarm()
 

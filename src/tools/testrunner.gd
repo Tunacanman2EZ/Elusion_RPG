@@ -302,6 +302,7 @@ func _run_all() -> void:
 	await _test_the_shop_buys()
 	await _test_quality_rolls()
 	await _test_armour_resistance()
+	await _test_stirring_lands()
 	await _test_the_boss_gates_lever()
 	await _test_other_players_are_drawn()
 	_test_other_players_move_evenly()
@@ -9453,6 +9454,318 @@ func _test_the_boss_gates_lever() -> void:
 # the last part of its rolled id ("r605": fire, 5%); matching pieces add up to
 # RESIST_CAP and take that share off a hit of their element. No weapon ever
 # resists, and nothing about a player's own damage changes.
+func _test_stirring_lands() -> void:
+	section("THE STIRRING LANDS - one land stirs at a time: its monsters hit harder, resistance to it counts more (0.46.0)")
+	# The owner: "lets build it in my game if you think it will elavate it",
+	# and of the effects, "just make those switches in my gm panel under a new
+	# tab that can be adjusted". test_world.py holds the server: the ticks, the
+	# pick, the loot and XP it pays, the owner's routes.
+	Lands.clear()
+	var now: int = int(Time.get_unix_time_from_system())
+	var fire: Dictionary = {"on": true, "tick": 12, "element": Element.Type.FIRE, "name": "fire",
+		"started_at": now - 600, "ends_at": now + 2 * 3600 + 14 * 60 + 30, "hit": 0.25, "resist": 1.5,
+		"bags": 1.5, "xp": 0.0, "health": 0.5, "speed": 0.15, "now": now}
+
+	# ---- what the poll says ------------------------------------------------------
+	var began: bool = Lands.apply(fire)
+	check("the poll's world: fire stirs, stir 12, with its numbers - and that is a new stir",
+		began and Lands.stirring() == Element.Type.FIRE and Lands.tick == 12 and is_equal_approx(Lands.hit, 0.25)
+		and is_equal_approx(Lands.resist, 1.5) and is_equal_approx(Lands.bags, 1.5) and Lands.xp == 0.0
+		and is_equal_approx(Lands.health, 0.5) and is_equal_approx(Lands.speed, 0.15))
+	check("  the same stir heard again is not new", not Lands.apply(fire))
+	var next_tick: Dictionary = fire.duplicate()
+	next_tick["tick"] = 13
+	check("  the same land as a new stir is", Lands.apply(next_tick))
+	check("the line on the HUD counts down on the server's clock",
+		Lands.line() == "The Fire lands stir - 2h 14m left", Lands.line())
+	check("  and what it does, in words, from the numbers sent",
+		Lands.effects_line() == "Fire monsters hit 25% harder, have 50% more health, move 15% faster and drop loot 1.5x as often; fire resistance counts 1.5x.",
+		Lands.effects_line())
+	check("time left reads as people say it",
+		Lands.time_text(30) == "under a minute" and Lands.time_text(14 * 60) == "14m"
+		and Lands.time_text(3 * 3600 + 5 * 60) == "3h 05m")
+	var wild: Dictionary = fire.duplicate()
+	wild["hit"] = 9.0
+	wild["resist"] = 0.1
+	wild["bags"] = "lots"
+	wild["health"] = 9.0
+	wild["speed"] = "fast"
+	Lands.apply(wild)
+	check("numbers out of their range are held to it; one of the wrong kind is the plain default",
+		is_equal_approx(Lands.hit, 1.0) and is_equal_approx(Lands.resist, 1.0) and is_equal_approx(Lands.bags, 1.0)
+		and is_equal_approx(Lands.health, 2.0) and Lands.speed == 0.0)
+	for junk in [null, "fire", {}, {"element": 8}, {"element": 0}, {"element": "6"}, {"element": 99}]:
+		Lands.apply(fire)
+		Lands.apply(junk)
+		check("  %s: nothing stirs" % JSON.stringify(junk), Lands.stirring() == 0 and Lands.line() == "")
+	var stale: Dictionary = fire.duplicate()
+	stale["ends_at"] = now - Lands.STALE_SECONDS - 5
+	Lands.apply(stale)
+	check("a stir past its end with no word from the server is over: a world that cannot be heard never makes it harder",
+		Lands.stirring() == 0 and is_equal_approx(Lands.hit_scale(Element.Type.FIRE), 1.0))
+
+	# ---- the hit ---------------------------------------------------------------------
+	var made: Array = []
+	var chest: ItemData = _menu_item("ltest_chest", ItemData.Type.ARMOR, ItemData.EquipSlot.CHEST)
+	chest.tier = 5
+	chest.armor_value = 4
+	made.append(chest)
+	var helm: ItemData = _menu_item("ltest_helm", ItemData.Type.ARMOR, ItemData.EquipSlot.HELM)
+	helm.tier = 5
+	helm.armor_value = 2
+	made.append(helm)
+	for item in made:
+		ItemRegistry._items[item.item_id] = item
+	var body: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	body._set_stat_curve()
+	body.level = 10
+	body.equipped = {"chest": "ltest_chest~a100r610"}
+	Lands.clear()
+	var calm_fire: int = body.damage_taken(1000, Element.Type.FIRE)
+	var calm_water: int = body.damage_taken(1000, Element.Type.WATER)
+	var reduction: float = body._get_defense_tier()["reduction"]
+	var armour: float = PlayerStats.armour_reduction(body.equipped_armor_value())
+	Lands.apply(fire)
+	var stirred_fire: int = body.damage_taken(1000, Element.Type.FIRE)
+	check("fire stirring: a fire hit lands 25%% harder, and 10%% fire resistance counts as 15%% (%d, calm %d)" % [stirred_fire, calm_fire],
+		stirred_fire == maxi(1, int(1250.0 * (1.0 - reduction) * (1.0 - armour) * 0.85))
+		and calm_fire == maxi(1, int(1000.0 * (1.0 - reduction) * (1.0 - armour) * 0.90)), [stirred_fire, calm_fire])
+	check("  a water hit is as it was - only the stirring land's", body.damage_taken(1000, Element.Type.WATER) == calm_water)
+	check("  and a physical hit too", is_equal_approx(Lands.hit_scale(Element.Type.NONE), 1.0)
+		and is_equal_approx(Lands.resist_scale(Element.Type.NONE), 1.0))
+	var capped: Dictionary = fire.duplicate()
+	capped["resist"] = 2.0
+	Lands.apply(capped)
+	body.equipped = {"chest": "ltest_chest~a100r613", "helm": "ltest_helm~a100r613"}
+	check("resistance counting double is still held to the 50%% cap: 26%% twice is 50%%, not 52%% (%d)" % body.equipped_resistance(Element.Type.FIRE),
+		body.equipped_resistance(Element.Type.FIRE) == 26
+		and body.damage_taken(1000, Element.Type.FIRE) == maxi(1, int(1250.0 * (1.0 - reduction)
+			* (1.0 - PlayerStats.armour_reduction(body.equipped_armor_value())) * 0.5)))
+	var src: String = _code_src("res://src/characters/player.gd")
+	check("  and take_damage() still trains defense on the hit as sent, not the stirred one",
+		_func_body(src, "func take_damage(").contains("gain_defense_xp(maxi(1, amount / 2))"))
+	body.free()
+	for item in made:
+		ItemRegistry._items.erase(item.item_id)
+
+	# ---- the monsters: tougher, faster, and glowing ------------------------------------
+	# The owner: "i did not notice dps change on enemies or anything".
+	Lands.apply(fire)
+	check("a fire monster of 100 health is born with 150 while fire stirs; a water one, and any while nothing stirs, as it was",
+		Lands.raised_max_hp(100, Element.Type.FIRE) == 150 and Lands.raised_max_hp(100, Element.Type.WATER) == 100
+		and Lands.raised_max_hp(100, Element.Type.NONE) == 100
+		and is_equal_approx(Lands.speed_scale(Element.Type.FIRE), 1.15) and is_equal_approx(Lands.speed_scale(Element.Type.WATER), 1.0))
+	var arena := Node2D.new()
+	add_child(arena)
+	var monster_at := func(scene: String, offset: Vector2) -> BaseEnemy:
+		var e: BaseEnemy = (load(scene) as PackedScene).instantiate()
+		e.position = Vector2(-81000, -81000) + offset
+		arena.add_child(e)
+		e.set_physics_process(false)
+		return e
+	Lands.clear()
+	var standing: BaseEnemy = monster_at.call("res://scene/enemy/firesprite.tscn", Vector2(120, 0))
+	var calm_max: int = standing.max_hp
+	var stirred_max: int = calm_max + roundi(calm_max * 0.5)
+	standing.hp = calm_max - 10
+	Lands.apply(fire)
+	check("a stir that begins while a fire sprite stands raises it then: half again its maximum, added to what it had left (%d of %d)" % [standing.hp, standing.max_hp],
+		standing.max_hp == stirred_max and standing.hp == stirred_max - 10 and standing.stir_raised, [standing.hp, standing.max_hp])
+	Lands.apply(next_tick)
+	check("  once - the same land stirring again adds nothing more", standing.max_hp == stirred_max)
+	var born_fire: BaseEnemy = monster_at.call("res://scene/enemy/firesprite.tscn", Vector2.ZERO)
+	var born_water: BaseEnemy = monster_at.call("res://scene/enemy/watersprite.tscn", Vector2(60, 0))
+	var water_alone: BaseEnemy = (load("res://scene/enemy/watersprite.tscn") as PackedScene).instantiate()
+	var water_data_max: int = (water_alone.get("enemy_data") as EnemyData).max_hp if water_alone.get("enemy_data") != null else -1
+	water_alone.free()
+	check("born while fire stirs: a fire sprite has half again its health, full; a water sprite as it was",
+		born_fire.max_hp == stirred_max and born_fire.hp == stirred_max and born_fire.stir_raised
+		and born_water.max_hp == water_data_max and not born_water.stir_raised, [born_fire.max_hp, born_water.max_hp, water_data_max])
+	check("  and the books are sent that health (\"mh\"), which they take for a stirring land's monster (combatbook.py)",
+		_func_body(_code_src("res://src/world/monstersync.gd"), "func record_of(").contains("\"mh\": e.max_hp"))
+	check("  it moves 15% faster (stir_speed()), and every velocity in BaseEnemy and BushMage is multiplied by it",
+		is_equal_approx(born_fire.stir_speed(), 1.15) and is_equal_approx(born_water.stir_speed(), 1.0)
+		and _code_src("res://src/enemies/baseenemy.gd").count("* stir_speed()") == 4
+		and _code_src("res://src/enemies/bushmage.gd").contains("get_move_speed() * stir_speed()"))
+	await get_tree().process_frame
+	var glow: StirGlow = born_fire.get_node_or_null(^"stirglow") as StirGlow
+	var water_glow: StirGlow = born_water.get_node_or_null(^"stirglow") as StirGlow
+	check("it glows in fire's colour, under everything it draws; the water sprite does not",
+		glow != null and glow.visible and glow.get_index() == 0 and glow.colour.is_equal_approx(Element.colour_for(Element.Type.FIRE).lightened(0.25))
+		and water_glow != null and not water_glow.visible, [glow != null and glow.visible, water_glow != null and water_glow.visible])
+	Lands.apply({"on": false, "tick": 0, "element": 0})
+	await get_tree().process_frame
+	check("the stir over: never lowered (the books count a death at the health they were told), no faster, no glow",
+		standing.max_hp == stirred_max and born_fire.max_hp == stirred_max and is_equal_approx(standing.stir_speed(), 1.0)
+		and not glow.visible)
+	var copy: BaseEnemy = monster_at.call("res://scene/enemy/firesprite.tscn", Vector2(180, 0))
+	copy.net_apply_state(copy.global_position, "", calm_max + 40)
+	check("a follower's copy told of more health than it knew takes the leader's word for its maximum",
+		copy.max_hp == calm_max + 40 and copy.hp == calm_max + 40, [copy.hp, copy.max_hp])
+	arena.queue_free()
+	await get_tree().process_frame
+	var PlayerScript := preload("res://src/characters/player.gd")
+	var player_src: String = _code_src("res://src/characters/player.gd")
+	check("a hit the stir made harder is drawn bigger on the player (%sx)" % str(PlayerScript.STIRRED_NUMBER_SCALE),
+		PlayerScript.STIRRED_NUMBER_SCALE > 1.0
+		and _func_body(player_src, "func _spawn_floating_label(").contains("Lands.hit_scale(element) > 1.0")
+		and _func_body(player_src, "func _spawn_floating_label(").contains("STIRRED_NUMBER_SCALE if stirred else 1.0"))
+
+	# ---- the HUD ---------------------------------------------------------------------
+	Lands.clear()
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	var kept_cursor: int = hud._broadcast_cursor
+	hud._broadcast_cursor = 0
+	hud._apply_broadcast({"messages": [{"id": 5, "kind": "world", "body": "The fire lands stir for 3 hours.", "at": now}],
+		"latest_id": 5, "world": fire})
+	var chip: PanelContainer = hud.world_chip
+	check("logging in during a stir: the line under the top of the screen, in fire's colour, and no banner",
+		chip != null and chip.visible and hud.world_label.text == "The Fire lands stir - 2h 14m left"
+		and hud.world_label.get_theme_color("font_color").is_equal_approx(Element.colour_for(Element.Type.FIRE).lightened(0.35))
+		and (hud.mythic_banner == null or not is_instance_valid(hud.mythic_banner)), hud.world_label.text if hud.world_label else "")
+	var water: Dictionary = fire.duplicate()
+	water["tick"] = 14
+	water["element"] = Element.Type.WATER
+	water["name"] = "water"
+	hud._apply_broadcast({"messages": [{"id": 6, "kind": "world", "body": "The water lands stir for 3 hours.", "at": now}],
+		"latest_id": 6, "world": water})
+	var banner: Node = hud.mythic_banner
+	var title: Label = banner.find_child("title", true, false) as Label if banner != null and is_instance_valid(banner) else null
+	check("a new stir while playing: a banner across the top in water's colour, saying what it does",
+		title != null and title.text == "THE WATER LANDS STIR"
+		and title.get_theme_color("font_color").is_equal_approx(Element.colour_for(Element.Type.WATER).lightened(0.35))
+		and (banner.find_child("line", true, false) as Label).text.begins_with("Water monsters hit 25% harder"),
+		title.text if title else "no banner")
+	check("  and the line follows it", hud.world_label.text.begins_with("The Water lands stir"))
+	hud.set_world_status("pvp", "PvP is ON")
+	check("with the status strip up, the line sits under it",
+		hud.status_strip.visible and is_equal_approx(chip.offset_top, 50.0))
+	hud.set_world_status("pvp", "")
+	check("  and goes back up when it is gone", is_equal_approx(chip.offset_top, 10.0))
+	hud._apply_broadcast({"messages": [], "latest_id": 6, "world": {"on": false, "tick": 0, "element": 0}})
+	var still_banner: Node = hud.mythic_banner
+	var still_title: Label = still_banner.find_child("title", true, false) as Label \
+		if still_banner != null and is_instance_valid(still_banner) else null
+	check("the lands switched off: the line is gone, and a banner says so in the colour of the land that was stirring",
+		not chip.visible and Lands.stirring() == 0 and still_title != null and still_title.text == "THE LANDS GROW STILL"
+		and still_title.get_theme_color("font_color").is_equal_approx(Element.colour_for(Element.Type.WATER).lightened(0.35))
+		and (still_banner.find_child("line", true, false) as Label).text == "The Water lands are calm again.",
+		still_title.text if still_title else "no banner")
+	if still_banner != null and is_instance_valid(still_banner):
+		still_banner.free()
+	hud.mythic_banner = null
+	hud._apply_broadcast({"messages": [], "latest_id": 6, "world": water})
+	hud.mythic_banner.free()
+	hud.mythic_banner = null
+	hud._apply_broadcast({"messages": [], "latest_id": 6})
+	check("  but a server that goes quiet ends it with no banner - that is not news",
+		Lands.stirring() == 0 and hud.mythic_banner == null)
+	hud._apply_broadcast({"messages": [], "latest_id": 6})
+	check("  and a server from before them says nothing, and nothing stirs", not chip.visible and Lands.stirring() == 0)
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	check("the world is read from the poll before its messages (so they are in the land's colour)",
+		_func_body(hud_src, "func _apply_broadcast(").find("_read_world(") != -1
+		and _func_body(hud_src, "func _apply_broadcast(").find("_read_world(")
+			< _func_body(hud_src, "func _apply_broadcast(").find("_read_broadcast_messages("))
+	hud._broadcast_cursor = kept_cursor
+	hud.queue_free()
+	await get_tree().process_frame
+
+	# ---- the GM panel's World tab -----------------------------------------------------
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var tabs: TabContainer = gm.get_node_or_null("%ownertabs") as TabContainer
+	var tab: WorldTab = gm.get("world_tab") as WorldTab
+	check("the GM panel has a World tab, after Server",
+		tabs != null and tab != null and tab.get_parent() == tabs and tabs.get_tab_title(tab.get_index()) == "World"
+		and tabs.get_tab_title(tab.get_index() - 1) == "Server")
+	if tabs != null and tab != null:
+		tabs.current_tab = tab.get_index()
+		await get_tree().process_frame
+	var wide: float = PanelWindow.content_minimum(gm).x
+	check("  and it fits the panel's drawn width (370) - the GM panel is narrow (%d)" % wide, wide <= 370.0, wide)
+	var asked: Array = []
+	var sent: Array = []
+	var view: Variant = JSON.parse_string(JSON.stringify({
+		"settings": {"on": true, "hours": 3, "hit_on": true, "hit_percent": 25, "health_on": true, "health_percent": 50,
+			"speed_on": true, "speed_percent": 15, "bags_on": true, "bags_times": 1.5,
+			"resist_on": true, "resist_times": 1.5, "xp_on": false, "xp_percent": 25},
+		"state": {"on": true, "tick": 12, "element": 6, "name": "fire", "started_at": now - 600, "ends_at": now + 3600,
+			"hit": 0.25, "resist": 1.5, "bags": 1.5, "xp": 0.0, "now": now},
+		"recent": [{"tick": 12, "element": 6, "name": "fire", "started_at": now - 600, "ends_at": now + 3600, "chosen_by": ""},
+			{"tick": 11, "element": 3, "name": "ice", "started_at": now - 11400, "ends_at": now - 600, "chosen_by": "Tunacan"}],
+		"lands": [{"element": 1, "name": "dark", "kills": 4}, {"element": 6, "name": "fire", "kills": 0}],
+		"limits": {"hours": [1, 24]}, "now": now}))
+	tab.fetch = func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": view}
+	tab.send = func(path: String, said: Dictionary) -> Dictionary:
+		sent.append([path, said])
+		return {"ok": true, "status": 200, "data": view}
+	check("before the server is read, Save and Stir it now wait - the controls are not its settings yet",
+		tab.save_button.disabled and tab.stir_button.disabled)
+	await tab.save()
+	check("  and Save sends nothing yet", sent.is_empty(), sent)
+	await tab.refresh()
+	check("opened, it reads the server: the switches and amounts as set",
+		asked == ["/api/server/world"] and tab.on_switch.button_pressed and is_equal_approx(tab.hours_box.value, 3.0)
+		and (tab.effect_switches["hit_on"] as CheckBox).button_pressed and is_equal_approx((tab.effect_amounts["hit_percent"] as SpinBox).value, 25.0)
+		and not (tab.effect_switches["xp_on"] as CheckBox).button_pressed and is_equal_approx((tab.effect_amounts["bags_times"] as SpinBox).value, 1.5)
+		and (tab.effect_switches["health_on"] as CheckBox).button_pressed and is_equal_approx((tab.effect_amounts["health_percent"] as SpinBox).value, 50.0)
+		and is_equal_approx((tab.effect_amounts["speed_percent"] as SpinBox).value, 15.0))
+	check("  what stirs now, the last stirs (and who stirred them by hand), and each land's hunting",
+		tab.status_label.text == "The Fire lands are stirring - 1h 00m left (stir 12)."
+		and tab.recent_label.text == "Last stirs: 12 Fire, 11 Ice (by Tunacan)." and tab.lands_label.text.contains("dark 4, fire 0"),
+		[tab.status_label.text, tab.recent_label.text])
+	(tab.effect_switches["xp_on"] as CheckBox).button_pressed = true
+	(tab.effect_amounts["xp_percent"] as SpinBox).value = 40.0
+	(tab.effect_amounts["resist_times"] as SpinBox).value = 1.75
+	(tab.effect_amounts["health_percent"] as SpinBox).value = 100.0
+	(tab.effect_switches["speed_on"] as CheckBox).button_pressed = false
+	tab.hours_box.value = 6.0
+	await tab.save()
+	check("Save sends every setting at once, as the controls have them",
+		sent.size() == 1 and sent[0][0] == "/api/server/world" and sent[0][1] == {"on": true, "hours": 6,
+			"hit_on": true, "hit_percent": 25, "health_on": true, "health_percent": 100, "speed_on": false,
+			"speed_percent": 15, "bags_on": true, "bags_times": 1.5, "resist_on": true,
+			"resist_times": 1.75, "xp_on": true, "xp_percent": 40}, sent)
+	sent.clear()
+	tab.land_pick.select(tab.land_pick.get_item_index(Element.Type.EARTH))
+	await tab.stir()
+	check("Stir it now: the land picked, to the stir route", sent == [["/api/server/world/stir", {"element": Element.Type.EARTH}]], sent)
+	tab.send = func(_path: String, _body: Dictionary) -> Dictionary:
+		return {"ok": false, "status": 409, "error": "Conflict"}
+	await tab.stir()
+	check("  refused because the lands are off: it says to switch them on", tab.say_label.text.begins_with("Switch the stirring lands on"))
+	var off_view: Dictionary = view.duplicate(true)
+	off_view["settings"]["on"] = false
+	tab.show_answer(off_view)
+	check("switched off: says so, and Stir it now waits", tab.status_label.text == "Switched off: nothing stirs."
+		and tab.stir_button.disabled)
+	sent.clear()
+	tab.send = func(path: String, said: Dictionary) -> Dictionary:
+		sent.append([path, said])
+		return {"ok": true, "status": 200, "data": view}
+	tab.fetch = func(_path: String) -> Dictionary: return {"ok": false, "status": 404, "error": ""}
+	await tab.refresh()
+	check("a server without them: says to update it, and Save and Stir it now wait again",
+		tab.say_label.text.contains("Update the server") and tab.save_button.disabled and tab.stir_button.disabled,
+		tab.say_label.text)
+	await tab.save()
+	await tab.stir()
+	check("  and neither Save nor Stir it now sends anything", sent.is_empty(), sent)
+	gm.queue_free()
+	await get_tree().process_frame
+	Api.is_owner = was_owner
+	Lands.clear()
+	print("  lands: one stir at a time, applied to the hit and the resistance, on the HUD and the GM panel")
+
+
 func _test_armour_resistance() -> void:
 	section("ARMOUR RESISTS AN ELEMENT - rolled in the id, added up, taken off a hit")
 
@@ -18959,7 +19272,8 @@ func _test_the_gm_panel_is_a_window() -> void:
 	var titles: Array[String] = []
 	for i in tabs.get_tab_count():
 		titles.append(tabs.get_tab_title(i))
-	check("Account, Testing and Server", titles == ["Account", "Testing", "Server"], titles)
+	# AND WORLD (0.46.0): the stirring lands' switches (worldtab.gd).
+	check("Account, Testing, Server and World", titles == ["Account", "Testing", "Server", "World"], titles)
 	check("sized to the tallest tab, so switching never resizes the window",
 		tabs.use_hidden_tabs_for_min_size)
 	# OWNED ONLY: an OptionButton's popup carries a ScrollContainer of its own,
