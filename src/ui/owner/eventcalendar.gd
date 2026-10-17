@@ -60,6 +60,13 @@ const DAY := 86400
 const FIRST_YEAR := 1970
 const LAST_YEAR := 2199
 
+# THE CALENDAR BUTTON'S PICTURE (0.54.2). It was a calendar drawn in code;
+# the owner: "we need to use my art only", and of the pack's pictures, the book
+# with the red bookmark (the Magic stat icon) - nothing in his art or the pack
+# is a calendar, and the book reads as a planner. Loaded, never preloaded: a
+# clone has no pack, and a preload of a missing file stops the script compiling.
+const ICON_PATH := "res://art/pack/icons/magiciconcharacterstats.png"
+const ICON_WORD := "Cal"
 static var _icon: Texture2D = null
 static var _sockets: Dictionary = {}
 
@@ -266,28 +273,11 @@ static func reach_words(days: int) -> String:
 
 
 static func icon() -> Texture2D:
-	"""The calendar button's picture, 16 px, drawn here: a page with two
-	rings, a red band and six days."""
-	if _icon != null:
-		return _icon
-	var image := Image.create(16, 16, false, Image.FORMAT_RGBA8)
-	image.fill(Color(0, 0, 0, 0))
-	var edge := Color(0.84, 0.88, 0.93)
-	var band := Color(0.86, 0.36, 0.3)
-	for x in range(1, 15):
-		for y in range(3, 15):
-			if x == 1 or x == 14 or y == 3 or y == 14:
-				image.set_pixel(x, y, edge)
-			elif y <= 5:
-				image.set_pixel(x, y, band)
-	for x in [4, 11]:
-		for y in range(1, 4):
-			image.set_pixel(x, y, edge)
-	for y in [8, 11]:
-		for x in [4, 7, 10]:
-			image.set_pixel(x, y, edge)
-			image.set_pixel(x + 1, y, edge)
-	_icon = ImageTexture.create_from_image(image)
+	"""The calendar button's picture: the Clockwork pack's book with the red
+	bookmark (ICON_PATH) - or null where a clone has no pack, and the button
+	says ICON_WORD instead."""
+	if _icon == null and ResourceLoader.exists(ICON_PATH):
+		_icon = load(ICON_PATH) as Texture2D
 	return _icon
 
 

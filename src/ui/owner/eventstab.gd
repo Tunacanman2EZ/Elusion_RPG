@@ -189,6 +189,9 @@ func _build() -> void:
 	calendar_button = _button("", "Calendar: pick the day from a month, and see which days already have events.")
 	calendar_button.name = "calendarbutton"
 	calendar_button.icon = EventCalendar.icon()
+	if calendar_button.icon == null:
+		# A clone has no pack: the button says what it is.
+		calendar_button.text = EventCalendar.ICON_WORD
 	calendar_button.pressed.connect(open_calendar)
 	when.add_child(calendar_button)
 	# A POPUP, so opening it changes nothing about the GM panel's size.

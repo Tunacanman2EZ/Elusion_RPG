@@ -10182,10 +10182,22 @@ func _test_world_events() -> void:
 		EventsTab.far_name(300, fixed_now) == "Nov 11 2027" and EventCalendar.reach_words(366) == "a year"
 		and EventCalendar.reach_words(60) == "60 days", EventsTab.far_name(300, fixed_now))
 	LocalTime._bias_known = false
-	check("the calendar button sits beside the minute, a picture of a calendar, not a word",
-		tab.calendar_button.get_parent() == tab.minute_box.get_parent() and tab.calendar_button.icon != null
-		and tab.calendar_button.text == "" and tab.calendar_button.tooltip_text.begins_with("Calendar")
+	check("the calendar button sits beside the minute and opens the month",
+		tab.calendar_button.get_parent() == tab.minute_box.get_parent()
+		and tab.calendar_button.tooltip_text.begins_with("Calendar")
 		and tab.calendar_popup is PopupPanel and tab.calendar.get_parent() == tab.calendar_popup)
+	# ONLY THE GAME'S OWN ART (0.54.2): the owner's art or the Clockwork pack's.
+	var calendar_code: String = _code_src("res://src/ui/owner/eventcalendar.gd")
+	check("  its picture is the pack's book with the red bookmark - none drawn in code, none preloaded",
+		EventCalendar.ICON_PATH.begins_with("res://art/pack/") and not calendar_code.contains("Image.create")
+		and not calendar_code.contains("set_pixel")
+		and not FileAccess.get_file_as_string("res://src/ui/owner/eventcalendar.gd").contains("preload(\"res://art/pack"))
+	check_needs_pack("  and it is there: a picture, not a word", tab.calendar_button.icon != null
+		and tab.calendar_button.icon.resource_path == EventCalendar.ICON_PATH and tab.calendar_button.text == "",
+		tab.calendar_button.text)
+	check("  where a clone has no pack, the button says \"%s\" instead" % EventCalendar.ICON_WORD,
+		(tab.calendar_button.icon != null and tab.calendar_button.text == "")
+		or (tab.calendar_button.icon == null and tab.calendar_button.text == EventCalendar.ICON_WORD))
 	LocalTime._bias_known = false
 	if tabs != null and tab != null:
 		tabs.current_tab = tab.get_index()

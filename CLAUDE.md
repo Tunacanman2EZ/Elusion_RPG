@@ -6476,9 +6476,12 @@ day picker offered three weeks.
   `DAYS_AHEAD` = 60 until it is read), and each day is counted from today's
   date (`EventCalendar.date_of()`), not in 86400s from now - a clock change
   in the weeks ahead used to be able to move a name onto the wrong day.
-- **The calendar button** sits after the minute: a 16 px calendar drawn in
-  code (`EventCalendar.icon()`), because the word would have made the GM
-  panel wider than 370 - that row is the tab's widest. It opens a
+- **The calendar button** sits after the minute: a picture, because the word
+  would have made the GM panel wider than 370 - that row is the tab's widest.
+  Since 0.54.2 the picture is the Clockwork pack's book with the red bookmark
+  (`EventCalendar.ICON_PATH`, the Magic stat icon) - it was a calendar drawn
+  in code, and the owner wants his art only. Loaded, never preloaded; a clone
+  with no pack shows "Cal" (`ICON_WORD`), which still fits. It opens a
   **PopupPanel** under itself (so the panel keeps its size, and Escape or a
   click outside closes it) holding `EventCalendar`
   (src/ui/owner/eventcalendar.gd): one month, Sunday first (`month_cells()`,
