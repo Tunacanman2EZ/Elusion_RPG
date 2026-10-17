@@ -62,6 +62,12 @@ uniform float source_hue_band : hint_range(0.0, 0.5) = 0.5;
 // survive.
 uniform float grey_tint : hint_range(0.0, 1.0) = 0.0;
 
+// PROJECTILE BRIGHTNESS (0.55.0). This shader writes COLOR without the
+// modulate a node is given, so a dimmed projectile cannot be dimmed by one:
+// settings.gd sets this on the materials projectiles are drawn with. 1.0 -
+// everything else drawn with this shader - changes nothing.
+uniform float brightness : hint_range(0.0, 1.0) = 1.0;
+
 
 vec3 rgb_to_hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -123,4 +129,5 @@ void fragment() {
 			COLOR = vec4(mix(src.rgb, rgb, amount), src.a);
 		}
 	}
+	COLOR.rgb *= brightness;
 }

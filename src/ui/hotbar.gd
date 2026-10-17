@@ -13,7 +13,8 @@
 # - hands them to the backpack container, which makes them its cells past the
 #   grid (set_inventory_container -> attach_remote_slots)
 # - its keys (1-9 and 0 unless the player chose others), and a right-click on
-#   a key, use what is on it
+#   a key, use what is on it - and on a touch screen a tap, with the bar drawn
+#   bigger while the touch screen is in use (fit_to_thumbs())
 #
 # usage:
 # - the HUD calls set_inventory_container(container) once the inventory screen
@@ -51,6 +52,25 @@ const SLOT_KEYS: Array[Key] = [
 	KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0,
 ]
 
+# BIGGER UNDER A THUMB (0.55.0). The owner, on a phone: "hotbar icons are a
+# bit small". The keys are 42 units in a 1280-unit game, and a phone held
+# sideways shows a unit at about half a CSS pixel, so a key came out 23 CSS
+# pixels across with a 15-pixel icon in it. While the touch screen is in use
+# the bar is drawn at the pad's scale (touchpad.gd's thumb_scale(): game units
+# to a CSS pixel), so a key is the size it is on a laptop. It grows up and to
+# the left from its bottom right corner, where it is pinned, and the pad's
+# buttons over it move up with its top.
+#
+# NEVER PAST TOUCH_MOST_SCALE: the widest it can be before its left end
+# reaches the stick's part of the screen, (1280 - 4 - 1280 * 0.42) / 396.
+const TOUCH_MOST_SCALE := 1.85
+const PadScript := preload("res://src/ui/touchpad.gd")
+
+# The suite's stand-in for a phone's pixels to a CSS pixel; 0 asks the screen.
+# A headless run's window is the game's own size at one pixel to one, where
+# the bar would never grow at all.
+static var pixel_ratio_for_test: float = 0.0
+
 
 # =============================================================================
 # STATE
@@ -78,6 +98,36 @@ func _ready() -> void:
 		var keys: Keybinds = settings.get("keys")
 		if not keys.changed.is_connected(refresh_key_labels):
 			keys.changed.connect(refresh_key_labels)
+	TouchControls.changed.connect(_on_touch_changed)
+	get_viewport().size_changed.connect(fit_to_thumbs)
+	resized.connect(fit_to_thumbs)
+	fit_to_thumbs()
+
+
+# =============================================================================
+# SIZE ON A TOUCH SCREEN
+# =============================================================================
+
+static func touch_scale(window_pixels: Vector2, drawn_at: Vector2, pixel_ratio: float) -> float:
+	"""How much bigger the bar is drawn while the touch screen is in use: the
+	pad's scale, held to TOUCH_MOST_SCALE."""
+	return minf(PadScript.thumb_scale(window_pixels, drawn_at, pixel_ratio), TOUCH_MOST_SCALE)
+
+
+func _on_touch_changed(_on: bool) -> void:
+	fit_to_thumbs()
+
+
+func fit_to_thumbs() -> void:
+	var grow: float = 1.0
+	var window: Window = get_window() if is_inside_tree() else null
+	if TouchControls.active and window != null:
+		var view: Vector2 = get_viewport_rect().size
+		var drawn_at: Vector2 = Vector2(window.content_scale_size) if window.content_scale_size != Vector2i.ZERO else view
+		var ratio: float = pixel_ratio_for_test if pixel_ratio_for_test > 0.0 else DisplayServer.screen_get_scale()
+		grow = touch_scale(Vector2(window.size), drawn_at, ratio)
+	pivot_offset = size
+	scale = Vector2(grow, grow)
 
 
 func _unhandled_input(event: InputEvent) -> void:

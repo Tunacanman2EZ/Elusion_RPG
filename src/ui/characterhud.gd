@@ -3027,6 +3027,13 @@ func open_credits() -> void:
 	credits_panel.move_to_front()
 
 
+func open_options() -> void:
+	"""Options, opened rather than toggled: what the welcome's button asks for."""
+	_ensure_options_screen()
+	if options_screen != null and not options_screen.visible:
+		options_screen.open()
+
+
 func _on_options_pressed() -> void:
 	# WHAT THIS USED TO BE, in full:
 	#
@@ -3054,6 +3061,8 @@ func _ensure_controls_panel() -> void:
 	controls_panel = CONTROLS_SCENE.instantiate() as ControlsPanel
 	add_child(controls_panel)
 	controls_panel.visible = false
+	# The welcome's Open Options (0.55.0).
+	controls_panel.options_requested.connect(open_options)
 
 
 func toggle_controls() -> void:

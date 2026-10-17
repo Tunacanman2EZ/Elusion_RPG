@@ -295,16 +295,22 @@ body {
 	background: transparent;
 	border-color: transparent;
 }
-/* THE WHOLE SCREEN, where the browser has one to give. */
+/* THE WHOLE SCREEN, where the browser has one to give. A SQUARE, NOT WORDS
+   (0.55.0): with "Full screen" written on it, it was wide enough to sit over
+   the game's right edge, and so over the close button of the Bag and every
+   window pinned there. The four corners are the sign every video player
+   uses; it says its words to a screen reader and on a long press. */
 #fullscreen {
 	position: fixed;
-	top: max(8px, env(safe-area-inset-top));
-	right: max(8px, env(safe-area-inset-right));
+	top: max(6px, env(safe-area-inset-top));
+	right: max(6px, env(safe-area-inset-right));
 	z-index: 2;
 	display: flex;
 	align-items: center;
-	gap: 6px;
-	padding: 6px 10px;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	padding: 0;
 	font-size: 12px;
 	background: rgba(51, 41, 31, 0.86);
 	-webkit-tap-highlight-color: transparent;
@@ -342,9 +348,8 @@ $GODOT_HEAD_INCLUDE
 	</div>
 </div>
 
-<button id="fullscreen" type="button" hidden>
-	<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-	Full screen
+<button id="fullscreen" type="button" aria-label="Full screen" title="Full screen" hidden>
+	<svg width="18" height="18" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
 </button>
 
 <div id="update" role="status" aria-live="polite" hidden>

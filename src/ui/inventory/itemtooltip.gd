@@ -266,8 +266,10 @@ func _populate_labels(stack: ItemStack, unrevealed: bool = false) -> void:
 		# by a right-click and nothing said so outside Options > Controls, so a
 		# left click - which only selects - read as the pet not spawning (the
 		# owner, 0.11.7: "issues with pet spawning when clicked on from
-		# inventory").
-		var how: String = use_line(stack.data)
+		# inventory"). On a touch screen it says hold, which is the right-click
+		# there (inventoryslot.gd, 0.55.0).
+		var touch: Node = get_node_or_null(^"/root/TouchControls")
+		var how: String = use_line(stack.data, touch != null and bool(touch.get("active")))
 		if how != "":
 			if desc != "":
 				desc += "\n"
@@ -505,13 +507,15 @@ static func _requirement_lines(data: ItemData, unrevealed: bool = false) -> Stri
 
 
 const PET_USE_LINE := "Right-click in your bag to summon it, and again to put it away"
+const PET_USE_LINE_TOUCH := "Hold it in your bag to summon it, and again to put it away"
 
-static func use_line(data: ItemData) -> String:
+static func use_line(data: ItemData, touch: bool = false) -> String:
 	"""The one line saying how an item is used, for the items whose use is not
 	obvious from what they are. A pet only, for now: inventoryscreen.gd's
-	_use_pet() is what a right-click does with one, summon or dismiss."""
+	_use_pet() is what a right-click does with one, summon or dismiss - and
+	what a finger held on it does on a touch screen."""
 	if data != null and int(data.type) == int(ItemData.Type.PET):
-		return PET_USE_LINE
+		return PET_USE_LINE_TOUCH if touch else PET_USE_LINE
 	return ""
 
 

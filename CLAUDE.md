@@ -6644,6 +6644,72 @@ sure the game runs smooth on any phone".
 - `_test_a_phone_saves_its_battery()`, the pad's own-art checks in
   `_test_a_touch_screen_plays_the_game()`.
 
+### A finger held is the right-click; a phone kept cool (0.55.0)
+
+The owner, on a phone: "looted a mage pet but is not deploying", "hotbar
+icons are a bit small", and "major things i want to avoid phone over heating
+and a image burned on the screen we need a slider for bullet projectile
+brightness and make the game super user friendly on the tutorial screen i
+think we should mention to players it would be a good idea to adjust
+options".
+
+- **Everything in a bag was used by a right-click, which a phone cannot
+  make.** A pet, a potion, a sword, a piece taken off the doll - none of it
+  worked on a touch screen. Now **a finger held still on a cell for
+  `HOLD_SEC` (0.45) is that click** (inventoryslot.gd `_watch_hold()`): a
+  tap is still the tooltip, a finger that slides past `HOLD_SLIDE` is still
+  the drag, and a drag that began anyway (`gui_is_dragging()`) wins. In a
+  loot bag or the bank, where the mouse takes an item with a double-click,
+  the hold is the double-click. **Not on a hotbar key** - a tap uses one
+  already (`holds_to_use = false` in hotbarslot.gd), and held it would be
+  used twice. The pet's tooltip says "Hold it in your bag" on a touch screen
+  (`ItemTooltip.use_line(data, touch)`), and the Controls card's touch rows
+  say hold for the bag, Gear and a loot bag.
+- **The hotbar is drawn at the pad's scale while the touch screen is in
+  use** (hotbar.gd `fit_to_thumbs()`, `touch_scale()`): a key is the size it
+  is on a laptop, grown up and left from its pinned bottom-right corner,
+  never past `TOUCH_MOST_SCALE` (1.85 - its left end then still clears the
+  stick's 42% of the screen). The pad lays out against the grown top the
+  frame it appears (touchpad.gd `_process()`).
+- **Projectile brightness** (Options, `projectile_brightness`, 30-100%).
+  Every projectile is drawn unshaded, so in the dark they are the brightest
+  things on the screen. A projectile is anything a script in
+  `res://src/projectiles/` drives, and the large slime's lob
+  (`Settings.is_projectile()`). Settings dims one **after its `_ready()`**
+  (`_dim_projectile()`, deferred from `_on_node_added()`, so a remote
+  player's orb is tinted first): its own modulate, which plain sprites under
+  it take. **element_recolour and hearth_warm write COLOR without the
+  modulate** - measured, a 0.3 modulate drew them at full - so each has a
+  `brightness` uniform, set on the materials under a projectile and 1.0 for
+  everything else drawn with them. The bullet field sets its own
+  (bulletfield.gd `_shading`). Moving the slider redraws everything in the
+  air (`_apply_projectile_brightness()`). At 100% and never moved, nothing is
+  touched at all.
+- **Screen rest** (`screen_rest`, on by default): after `REST_AFTER` (120 s)
+  with no key, click, touch, mouse movement or stick, the veil drops to
+  `REST_DIM` (0.82) and the game draws `BACKGROUND_FPS`; the next input wakes
+  it at once (`Settings._input()` -> `note_input()`). The game goes on
+  underneath - it dims, never pauses. The words on it move every
+  `REST_WORDS_MOVE` seconds so they cannot burn in. A gap of more than 5 s
+  between two of the one-second checks is the browser stopping the game, not
+  a person idle. **The suite stops the rest watch** in its `_ready()`.
+  Measured on the phone build: the water read 72 awake and 13 resting.
+- **A phone's defaults come in steps** (`PHONE_STEPS`): 0.54.0's drawing,
+  then 0.55.0's **Battery saver on**. `[device] phone_tuned` counts the steps
+  taken (0.54.0's `true` is one), so a phone from 0.54 gets only the saver.
+- **The welcome says to visit Options first**, with an **Open Options**
+  button beside Got it (controlspanel.gd `options_requested`, the HUD's
+  `open_options()`). Its lines are broken by hand like the directions: the
+  card is as wide as its longest line.
+- **Options is 713 tall**: Rest the screen in the right column, Projectile
+  brightness in the left. With the password form open the left column is 614
+  of the 616 a 720-high window leaves it - there is no room left in either
+  column at this width.
+- **The page's Full screen button is a square** (web/shell.html): with its
+  words it reached over the Bag's close button.
+- `_test_a_finger_held_uses_an_item()`, `_test_the_hotbar_grows_for_thumbs()`,
+  `_test_a_phone_stays_cool_and_unburnt()`.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

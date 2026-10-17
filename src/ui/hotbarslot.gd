@@ -36,4 +36,6 @@ const HOTBAR_SLOT_TYPE := "hotbar"
 func _ready() -> void:
 	slot_type = HOTBAR_SLOT_TYPE
 	custom_minimum_size = SLOT_SIZE
+	# A tap uses a key already (hotbar.gd); held, it would be used twice.
+	holds_to_use = false
 	super._ready()

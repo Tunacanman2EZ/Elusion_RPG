@@ -159,9 +159,14 @@ func _notification(what: int) -> void:
 
 
 func _process(delta: float) -> void:
+	var was_shown: bool = visible
 	visible = TouchControls.active
 	if not visible:
 		return
+	# Looked at at once on the frame it appears: the hotbar has just grown
+	# for the thumbs (hotbar.gd, 0.55.0), and Attack sits on its top.
+	if not was_shown:
+		_look_left = 0.0
 	run.lit = TouchControls.sprint_on
 	_look_left -= delta
 	if _look_left <= 0.0:

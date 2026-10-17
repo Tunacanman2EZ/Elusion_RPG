@@ -25,6 +25,8 @@ class_name ControlsPanel
 
 
 signal closed()
+# The welcome's Open Options (0.55.0): the HUD opens Options.
+signal options_requested()
 
 
 const CONTROLS_TITLE := "CONTROLS"
@@ -49,6 +51,20 @@ const WELCOME_LINES := [
 ]
 
 const WELCOME_FOOTER := "Press %s any time to see these keys again."
+
+# OPTIONS, FIRST (0.55.0). The owner: "make the game super user friendly on
+# the tutorial screen i think we should mention to players it would be a good
+# idea to adjust options". After the directions, before the keys, with a
+# button under it that opens Options there and then. Esc opens it from a
+# keyboard; on a touch screen it is in Menu.
+# BROKEN BY HAND, like WELCOME_LINES: the card is as wide as its longest line.
+const WELCOME_OPTIONS_LINES := [
+	"Before you set off, take a minute in Options. Brightness, text size,",
+	"how bright attacks are, and the battery saver and screen rest that keep",
+	"a phone cool are all there: the button below, or %s.",
+]
+const WELCOME_OPTIONS_KEYS := "Esc"
+const WELCOME_OPTIONS_TOUCH := "Menu, then Options"
 
 # [what it does, how]. "How" is a word this card knows (move, hotbar), an
 # action in the input map, or the words to show as they are.
@@ -81,6 +97,10 @@ const TOUCH_ROWS := [
 	["Use the shop, bank, fire or fishing spot", "Use"],
 	["Use the item on a hotbar key", "Tap the key"],
 	["Put an item on a hotbar key", "Drag it from your bag"],
+	# A HOLD IS THE RIGHT-CLICK (0.55.0) - see inventoryslot.gd.
+	["Use, equip or summon an item", "Hold it in your bag"],
+	["Take off a piece of gear", "Hold it in Gear"],
+	["Take one thing from a loot bag", "Hold it, or tap Take all"],
 	["Bag, gear, stats, map and the rest", "The buttons along the bottom"],
 	["This card", "Menu, then Controls"],
 ]
@@ -100,6 +120,7 @@ static var seen_path: String = "user://seen.cfg"
 @onready var key_grid: GridContainer = get_node_or_null("%keygrid")
 @onready var footer_label: Label = get_node_or_null("%footerlabel")
 @onready var got_it_button: Button = get_node_or_null("%gotitbutton")
+@onready var options_button: Button = get_node_or_null("%optionsbutton")
 @onready var key_scroll: ScrollContainer = get_node_or_null("%keyscroll")
 @onready var key_note: Label = get_node_or_null("%keynote")
 @onready var keys_row: Control = get_node_or_null("%keysrow")
@@ -124,8 +145,10 @@ func _ready() -> void:
 		close_button.pressed.connect(close)
 	if got_it_button != null:
 		got_it_button.pressed.connect(close)
+	if options_button != null:
+		options_button.pressed.connect(_on_options_pressed)
 	if welcome_text != null:
-		welcome_text.text = "\n".join(WELCOME_LINES)
+		welcome_text.text = welcome_words(false)
 	if change_keys_button != null:
 		change_keys_button.pressed.connect(_on_change_keys_pressed)
 	if reset_keys_button != null:
@@ -176,6 +199,17 @@ func close() -> void:
 	closed.emit()
 
 
+static func welcome_words(touch: bool) -> String:
+	"""The welcome: the way to the Field, then a word about Options."""
+	var options: String = "\n".join(WELCOME_OPTIONS_LINES) % (WELCOME_OPTIONS_TOUCH if touch else WELCOME_OPTIONS_KEYS)
+	return "\n".join(WELCOME_LINES) + "\n\n" + options
+
+
+func _on_options_pressed() -> void:
+	close()
+	options_requested.emit()
+
+
 func is_welcome() -> bool:
 	return welcome_box != null and welcome_box.visible
 
@@ -191,6 +225,10 @@ func _show(welcome: bool) -> void:
 		footer_label.text = TOUCH_FOOTER if on_touch_screen() else WELCOME_FOOTER % key_text("help_toggle")
 	if got_it_button != null:
 		got_it_button.visible = welcome
+	if options_button != null:
+		options_button.visible = welcome
+	if welcome_text != null and welcome:
+		welcome_text.text = welcome_words(on_touch_screen())
 	# THE WELCOME IS NOT WHERE KEYS ARE CHANGED: it is a new player's first
 	# minute, and "Change keys" under directions to the Field is a distraction.
 	if keys_row != null:

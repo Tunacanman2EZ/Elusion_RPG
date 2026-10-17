@@ -141,6 +141,11 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_say("")
 	_watch_script_errors()
+	# NO SCREEN REST IN A RUN (0.55.0). Nobody touches a suite, and two minutes
+	# in its veil and its frame cap would be what a dozen checks measured.
+	var rest_watch: Timer = Settings.get("_rest_timer") as Timer
+	if rest_watch != null:
+		rest_watch.stop()
 	await _run_all()
 	_report()
 
@@ -316,6 +321,9 @@ func _run_all() -> void:
 	await _test_aim_holds_still_while_walking()
 	await _test_a_touch_screen_plays_the_game()
 	await _test_a_phone_saves_its_battery()
+	await _test_a_finger_held_uses_an_item()
+	await _test_the_hotbar_grows_for_thumbs()
+	await _test_a_phone_stays_cool_and_unburnt()
 	await _test_other_players_aim_and_health()
 	await _test_parties()
 	await _test_names_open_the_player_menu()
@@ -6280,6 +6288,8 @@ func _test_settings() -> void:
 		"background_fps_limit": "backgroundlimit",
 		# 0.54.0: for a phone's battery.
 		"battery_saver": "batterysaver",   "brightness": "brightness",
+		# 0.55.0: projectiles as bright as asked, and a screen left alone rests.
+		"projectile_brightness": "projectilebrightness", "screen_rest": "screenrest",
 		# BOTH OF THESE WERE MISSING FROM THE TABLE, not from the game.
 		# optionsscreen.gd wires the camera zoom slider and the name hue
 		# slider, and the scene carries both controls with their swatch and
@@ -8460,8 +8470,11 @@ func _test_text_size_and_font() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	# 681 since 0.54.0: Brightness and the Battery saver in its right column.
+	# 713 since 0.55.0: Rest the screen there too, and Projectile brightness
+	# in the left - which, with the password form open, is 614 of the 616 a
+	# 720-high window leaves it.
 	check("Options opens at the size it was drawn at - a hidden window is not measured",
-		screen.size.y == 681.0 and columns_scroll.custom_minimum_size.y + 0.5
+		screen.size.y == 713.0 and columns_scroll.custom_minimum_size.y + 0.5
 		>= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y, screen.size)
 	var before: float = columns_scroll.custom_minimum_size.y
 	screen._show_account_form(screen.account_password_form)
@@ -13410,14 +13423,20 @@ func _test_a_phone_saves_its_battery() -> void:
 	await get_tree().process_frame
 
 	# ---- a phone's own defaults, once ------------------------------------------------
-	var first: Dictionary = SettingsScript.phone_changes(true, false)
+	var first: Dictionary = SettingsScript.phone_changes(true, 0)
 	check("a phone's first launch draws at the game's own size and lifts the dark rather than lighting every candle",
 		first.get("render_resolution") == "low" and first.get("lighting") == "simple", first)
-	check("  once: a phone tuned before, or a laptop, is left as it is - a player who sets either back keeps it",
-		SettingsScript.phone_changes(true, true).is_empty() and SettingsScript.phone_changes(false, false).is_empty())
-	check("  and the file remembers it was done, beside the settings (save_settings())",
-		_func_body(_code_src("res://src/systems/settings.gd"), "func save_settings(").contains("PHONE_TUNED_KEY")
-		and _func_body(_code_src("res://src/systems/settings.gd"), "func load_settings(").contains("phone_changes(on_phone(), _phone_tuned)"))
+	check("  and since 0.55.0 turns the battery saver on - half the frames, half the heat",
+		first.get("battery_saver") == true and first == SettingsScript.PHONE_DEFAULTS, first)
+	check("  a step at a time: a phone tuned by 0.54.0 (which wrote true) is given only the battery saver",
+		SettingsScript.phone_changes(true, SettingsScript.phone_steps_stored(true)) == {"battery_saver": true}
+		and SettingsScript.phone_steps_stored(false) == 0 and SettingsScript.phone_steps_stored(2) == 2,
+		SettingsScript.phone_changes(true, 1))
+	check("  once: a phone that has taken every step, or a laptop, is left as it is - a player who sets one back keeps it",
+		SettingsScript.phone_changes(true, SettingsScript.PHONE_STEPS.size()).is_empty() and SettingsScript.phone_changes(false, 0).is_empty())
+	check("  and the file remembers how many it took, beside the settings (save_settings())",
+		_func_body(_code_src("res://src/systems/settings.gd"), "func save_settings(").contains("PHONE_TUNED_KEY, _phone_steps")
+		and _func_body(_code_src("res://src/systems/settings.gd"), "func load_settings(").contains("phone_changes(on_phone(), _phone_steps)"))
 	check("  a phone is the browser on Android or iOS (Godot's web_android and web_ios)",
 		_func_body(_code_src("res://src/systems/settings.gd"), "static func on_phone(").contains("web_android")
 		and _func_body(_code_src("res://src/systems/settings.gd"), "static func on_phone(").contains("web_ios"))
@@ -13426,6 +13445,446 @@ func _test_a_phone_saves_its_battery() -> void:
 	check("the page draws a phone at most two pixels to a CSS pixel, set before the engine loads",
 		capped_at > 0 and capped_at < shell.find("<script src=\"$GODOT_URL\"></script>") and shell.contains("const MOST = 2;")
 		and shell.contains("'(pointer: coarse)'"))
+
+
+# =============================================================================
+# A FINGER HELD ON AN ITEM, AND A HOTBAR FOR THUMBS (0.55.0)
+# =============================================================================
+# The owner, on a phone: "looted a mage pet but is not deploying", and
+# "hotbar icons are a bit small". Everything in a bag was used with the right
+# button, which a phone does not have, so a finger held still on a cell is that
+# click now (inventoryslot.gd). And while the touch screen is in use the bar is
+# drawn at the pad's scale (hotbar.gd fit_to_thumbs()).
+
+func _finger_on(target: Control, at: Vector2, down: bool, index: int = 0) -> void:
+	var touch := InputEventScreenTouch.new()
+	touch.index = index
+	touch.position = at
+	touch.pressed = down
+	target.call("_gui_input", touch)
+
+
+func _test_a_finger_held_uses_an_item() -> void:
+	section("A FINGER HELD ON AN ITEM - the right-click a phone does not have (0.55.0)")
+	var pet: ItemData = ItemRegistry.get_item("petmage")
+	check("the mage pet the owner looted is in the game, and it summons a scene",
+		pet != null and int(pet.type) == int(ItemData.Type.PET) and PetController.pet_scene_for("petmage") != null)
+	if pet == null:
+		return
+	var long_enough: float = InventorySlot.HOLD_SEC + 0.15
+	var spot := Vector2(10, 10)
+
+	# ---- one cell ---------------------------------------------------------------------
+	var slot: InventorySlot = (load("res://scene/ui/inventory/inventoryslot.tscn") as PackedScene).instantiate()
+	add_child(slot)
+	await get_tree().process_frame
+	slot.set_stack(ItemStack.new(pet, 1))
+	var used: Array = []
+	var taken: Array = []
+	slot.slot_right_clicked.connect(func(s: InventorySlot): used.append(s))
+	slot.slot_double_clicked.connect(func(s: InventorySlot): taken.append(s))
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(long_enough).timeout
+	var while_down: int = used.size()
+	_finger_on(slot, spot, false)
+	check("a finger held still on a cell is a right-click on it: once, while the finger is still down",
+		while_down == 1 and used.size() == 1 and taken.is_empty(), [while_down, used.size(), taken.size()])
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(0.1).timeout
+	_finger_on(slot, spot, false)
+	await get_tree().create_timer(long_enough).timeout
+	check("  a tap is not - that is still the tooltip", used.size() == 1, used.size())
+	_finger_on(slot, spot, true)
+	var slide := InputEventScreenDrag.new()
+	slide.index = 0
+	slide.position = spot + Vector2(InventorySlot.HOLD_SLIDE + 6.0, 0)
+	slot.call("_gui_input", slide)
+	await get_tree().create_timer(long_enough).timeout
+	_finger_on(slot, slide.position, false)
+	check("  nor a finger that slides - that is the drag that moves the item", used.size() == 1, used.size())
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(InventorySlot.HOLD_SEC * 0.6).timeout
+	_finger_on(slot, spot, false)
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(InventorySlot.HOLD_SEC * 0.6).timeout
+	var too_soon: int = used.size()
+	await get_tree().create_timer(long_enough).timeout
+	_finger_on(slot, spot, false)
+	check("  lifted and put down again, only the second hold counts, timed from when it began",
+		too_soon == 1 and used.size() == 2, [too_soon, used.size()])
+	slot.clear_stack()
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(long_enough).timeout
+	_finger_on(slot, spot, false)
+	check("  an empty cell does nothing", used.size() == 2, used.size())
+	slot.set_stack(ItemStack.new(pet, 1))
+	slot.slot_type = InventorySlot.LOOT_SLOT_TYPE
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(long_enough).timeout
+	_finger_on(slot, spot, false)
+	slot.slot_type = InventorySlot.BANK_SLOT_TYPE
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(long_enough).timeout
+	_finger_on(slot, spot, false)
+	check("  in a loot bag or the bank it is the double-click that takes the item, as the mouse does there",
+		taken.size() == 2 and used.size() == 2, [taken.size(), used.size()])
+	slot.queue_free()
+
+	# ---- a hotbar key and a piece of gear ------------------------------------------------
+	var bar: Hotbar = (load("res://scene/ui/hotbar.tscn") as PackedScene).instantiate() as Hotbar
+	add_child(bar)
+	await get_tree().process_frame
+	var key: HotbarSlot = bar.slots[0]
+	key.set_stack(ItemStack.new(pet, 1))
+	var key_used: Array = []
+	key.slot_right_clicked.connect(func(s: InventorySlot): key_used.append(s))
+	_finger_on(key, spot, true)
+	await get_tree().create_timer(long_enough).timeout
+	_finger_on(key, spot, false)
+	check("  not on a hotbar key, which a tap uses already - held, it would be used twice",
+		not key.holds_to_use and key_used.is_empty(), key_used.size())
+	bar.queue_free()
+	var panel: Control = (load("res://scene/ui/equipment/equipmentpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(panel)
+	# Open, as it is when a finger is on it: a hold on a hidden window is nothing.
+	panel.visible = true
+	await get_tree().process_frame
+	var pieces: Array = []
+	_collect_by_script(panel, "res://src/ui/equipment/equipmentslot.gd", pieces)
+	var off: Array = []
+	if not pieces.is_empty():
+		var piece: InventorySlot = pieces[0]
+		piece.set_stack(ItemStack.new(pet, 1))
+		piece.slot_right_clicked.connect(func(s: InventorySlot): off.append(s))
+		_finger_on(piece, spot, true)
+		await get_tree().create_timer(long_enough).timeout
+		_finger_on(piece, spot, false)
+	check("  and on the gear doll it is the right-click that takes a piece off", off.size() == 1, [pieces.size(), off.size()])
+	panel.queue_free()
+
+	# ---- the owner's pet, from the bag --------------------------------------------------------
+	var screen: Control = (load("res://scene/ui/inventory/inventory.tscn") as PackedScene).instantiate()
+	add_child(screen)
+	await get_tree().process_frame
+	var stand_script := GDScript.new()
+	stand_script.source_code = "extends Node2D\nvar level: int = 1\nvar active_pet_id: String = \"\"\nvar asked: Array = []\n" \
+		+ "func summon_pet(id: String) -> bool:\n\tasked.append(id)\n\tactive_pet_id = id\n\treturn true\n" \
+		+ "func dismiss_pet() -> void:\n\tasked.append(\"away\")\n\tactive_pet_id = \"\"\n"
+	stand_script.reload()
+	var stand := Node2D.new()
+	stand.set_script(stand_script)
+	add_child(stand)
+	screen.set_player(stand)
+	var cell: InventorySlot = screen.get_node("%inventorycontainer").get_slot_at(0)
+	cell.set_stack(ItemStack.new(pet, 1))
+	for _i in 2:
+		_finger_on(cell, spot, true)
+		await get_tree().create_timer(long_enough).timeout
+		_finger_on(cell, spot, false)
+	check("in the bag, a hold on the mage pet brings it out and a second puts it away",
+		stand.get("asked") == ["petmage", "away"], stand.get("asked"))
+	screen.queue_free()
+	stand.queue_free()
+
+	# ---- and it says so --------------------------------------------------------------------
+	check("the pet's tooltip says hold on a touch screen, and right-click with a mouse",
+		ItemTooltip.use_line(pet, true) == ItemTooltip.PET_USE_LINE_TOUCH and ItemTooltip.PET_USE_LINE_TOUCH.begins_with("Hold")
+		and ItemTooltip.use_line(pet) == ItemTooltip.PET_USE_LINE)
+	var tip: Control = (load("res://scene/ui/inventory/itemtooltip.tscn") as PackedScene).instantiate()
+	add_child(tip)
+	await get_tree().process_frame
+	TouchControls.set_active(true)
+	tip.show_for_stack(ItemStack.new(pet, 1), null)
+	var touch_words: String = tip.description_label.text
+	TouchControls.set_active(false)
+	tip.show_for_stack(ItemStack.new(pet, 1), null)
+	var mouse_words: String = tip.description_label.text
+	check("  and the tooltip over it is the one for the screen in use",
+		touch_words.contains(ItemTooltip.PET_USE_LINE_TOUCH) and mouse_words.contains(ItemTooltip.PET_USE_LINE),
+		[touch_words, mouse_words])
+	tip.queue_free()
+	var hows: Array = ControlsPanel.TOUCH_ROWS.map(func(row: Array) -> String: return row[1])
+	check("  as does the Controls card on a touch screen: hold it in the bag, in Gear, in a loot bag",
+		hows.has("Hold it in your bag") and hows.has("Hold it in Gear") and hows.has("Hold it, or tap Take all"), hows)
+	await get_tree().process_frame
+
+
+func _test_the_hotbar_grows_for_thumbs() -> void:
+	section("THE HOTBAR FOR THUMBS - drawn at the pad's scale on a touch screen (0.55.0)")
+	const PadScript := preload("res://src/ui/touchpad.gd")
+	check("as big under a thumb as on a laptop: one on a laptop, the pad's 1.85 on a phone held sideways, never past %.2f" % Hotbar.TOUCH_MOST_SCALE,
+		is_equal_approx(Hotbar.touch_scale(Vector2(1280, 720), Vector2(1280, 720), 1.0), 1.0)
+		and absf(Hotbar.touch_scale(Vector2(2532, 1170), Vector2(1280, 720), 3.0) - 1.846) < 0.01
+		and is_equal_approx(Hotbar.touch_scale(Vector2(600, 300), Vector2(1280, 720), 3.0), Hotbar.TOUCH_MOST_SCALE),
+		Hotbar.touch_scale(Vector2(2532, 1170), Vector2(1280, 720), 3.0))
+	var hud_path := "res://scene/ui/characterhud.tscn"
+	var right: float = 1280.0 + float(_node_prop_in_scene(hud_path, "hotbar", "offset_right"))
+	var width: float = float(_node_prop_in_scene(hud_path, "hotbar", "offset_right")) - float(_node_prop_in_scene(hud_path, "hotbar", "offset_left"))
+	var bottom: float = 720.0 + float(_node_prop_in_scene(hud_path, "hotbar", "offset_bottom"))
+	var height: float = float(_node_prop_in_scene(hud_path, "hotbar", "offset_bottom")) - float(_node_prop_in_scene(hud_path, "hotbar", "offset_top"))
+	var left_end: float = right - width * Hotbar.TOUCH_MOST_SCALE
+	check("  at its biggest its left end is still clear of the stick's part of the screen",
+		width > 0.0 and left_end >= 1280.0 * PadScript.STICK_ZONE_WIDTH, [left_end, 1280.0 * PadScript.STICK_ZONE_WIDTH])
+	var over: Array = []
+	for f in [1.0, 1.4, 1.85, 2.4]:
+		var top: float = bottom - height * minf(f, Hotbar.TOUCH_MOST_SCALE)
+		var at: Dictionary = PadScript.layout(Vector2(1280, 720), f, top, 672.0, true)
+		for id in ["attack", "use", "run", "skill"]:
+			var socket: Rect2 = at[id]
+			var reach: Rect2 = socket.grow(socket.size.x * (PadScript.REACH - 1.0) / 2.0)
+			if reach.end.y > top or reach.position.y < 0.0:
+				over.append([f, id, reach, top])
+	check("  and the pad's buttons stand on the grown bar at every size, still on the screen", over.is_empty(), over)
+
+	var hud := Control.new()
+	hud.size = Vector2(1280, 720)
+	add_child(hud)
+	var bar: Hotbar = (load("res://scene/ui/hotbar.tscn") as PackedScene).instantiate() as Hotbar
+	hud.add_child(bar)
+	bar.position = Vector2(right - width, bottom - height)
+	bar.size = Vector2(width, height)
+	TouchControls.set_active(false)
+	# AS A PHONE: two pixels to a CSS pixel. A headless window is the game's
+	# own size at one to one, where the bar would not grow at all.
+	Hotbar.pixel_ratio_for_test = 2.0
+	# Laid out with a mouse in use, against the bar at its own size.
+	var pad: Control = TouchControls.attach(hud)
+	await get_tree().process_frame
+	var resting: Rect2 = bar.get_global_rect()
+	# As if it had looked a moment ago: its next look is half a second off.
+	pad.set("_look_left", 0.5)
+	TouchControls.set_active(true)
+	var window: Window = get_window()
+	var drawn_at: Vector2 = Vector2(window.content_scale_size) if window.content_scale_size != Vector2i.ZERO else get_viewport().get_visible_rect().size
+	var want: float = Hotbar.touch_scale(Vector2(window.size), drawn_at, 2.0)
+	var grown: Rect2 = bar.get_global_rect()
+	check("  while the touch screen is in use the bar is that size, grown up and left from its bottom right corner",
+		want > 1.2 and is_equal_approx(bar.scale.x, want) and is_equal_approx(bar.scale.y, want) and grown.end.is_equal_approx(resting.end)
+		and grown.size.is_equal_approx(resting.size * want), [want, bar.scale, resting, grown])
+	pad._process(0.0)
+	var attack_rect: Rect2 = (pad.get("attack") as Control).get_global_rect()
+	check("  and the pad lays out over it the frame it appears - Attack stands on its top",
+		attack_rect.end.y <= grown.position.y + 0.5, [attack_rect, grown])
+	TouchControls.set_active(false)
+	Hotbar.pixel_ratio_for_test = 0.0
+	check("  back to its own size with a mouse or the keys",
+		bar.scale == Vector2.ONE and bar.get_global_rect().is_equal_approx(resting), [bar.scale, bar.get_global_rect()])
+	hud.queue_free()
+	await get_tree().process_frame
+	var shell: String = FileAccess.get_file_as_string("res://web/shell.html")
+	var button_at: int = shell.find("<button id=\"fullscreen\"")
+	var button_html: String = shell.substr(button_at, shell.find("</button>", button_at) - button_at)
+	check("the page's Full screen button is a square in the corner - no words to reach over the Bag's close button",
+		button_at > 0 and button_html.contains("aria-label=\"Full screen\"") and not button_html.contains("\tFull screen")
+		and shell.contains("width: 34px;"), button_html)
+
+
+# =============================================================================
+# A PHONE KEPT COOL, A SCREEN KEPT UNBURNT, AND PROJECTILES AS BRIGHT AS ASKED (0.55.0)
+# =============================================================================
+# The owner: "major things i want to avoid phone over heating and a image
+# burned on the screen we need a slider for bullet projectile brightness and
+# make the game super user friendly on the tutorial screen i think we should
+# mention to players it would be a good idea to adjust options".
+
+func _test_a_phone_stays_cool_and_unburnt() -> void:
+	section("SCREEN REST, PROJECTILE BRIGHTNESS, AND OPTIONS ON THE WELCOME (0.55.0)")
+	const SettingsScript := preload("res://src/systems/settings.gd")
+
+	# ---- the screen rests -------------------------------------------------------------
+	var key := InputEventKey.new()
+	key.keycode = KEY_A
+	key.pressed = true
+	var finger := InputEventScreenTouch.new()
+	finger.pressed = true
+	var slid := InputEventScreenDrag.new()
+	var still_mouse := InputEventMouseMotion.new()
+	var moved_mouse := InputEventMouseMotion.new()
+	moved_mouse.relative = Vector2(3, 0)
+	var resting_stick := InputEventJoypadMotion.new()
+	resting_stick.axis_value = 0.1
+	check("a person is a key, a touch, a slide or a mouse that moved - not a mouse that did not, nor a stick at rest",
+		SettingsScript.is_a_person(key) and SettingsScript.is_a_person(finger) and SettingsScript.is_a_person(slid)
+		and SettingsScript.is_a_person(moved_mouse) and not SettingsScript.is_a_person(still_mouse)
+		and not SettingsScript.is_a_person(resting_stick))
+	check("  the screen rests after %d seconds with nobody, and never with it switched off" % roundi(SettingsScript.REST_AFTER),
+		not SettingsScript.rest_due(SettingsScript.REST_AFTER - 1.0, true) and SettingsScript.rest_due(SettingsScript.REST_AFTER, true)
+		and not SettingsScript.rest_due(SettingsScript.REST_AFTER * 5.0, false) and Settings.DEFAULTS.get("screen_rest") == true)
+	check("  resting, it draws what a window in the background does: %d a second, or less if capped lower" % SettingsScript.BACKGROUND_FPS,
+		SettingsScript.fps_cap_for(0, true, true, 0.0, false, false, true) == SettingsScript.BACKGROUND_FPS
+		and SettingsScript.fps_cap_for(0, true, true, 0.0, true, true, true) == SettingsScript.BACKGROUND_FPS
+		and SettingsScript.fps_cap_for(10, true, false, 0.0, false, false, true) == 10
+		and SettingsScript.fps_cap_for(0, true, true, 0.0, false, true, false) == SettingsScript.PHONE_FPS)
+	check("  and the veil is REST_DIM dark, or darker if the brightness asked for it",
+		is_equal_approx(SettingsScript.veil_alpha(1.0, true), SettingsScript.REST_DIM)
+		and is_equal_approx(SettingsScript.veil_alpha(0.5, false), 0.5)
+		and is_equal_approx(SettingsScript.veil_alpha(1.0, false), 0.0) and SettingsScript.REST_DIM >= 0.7)
+	var kept_rest: bool = bool(Settings.get_value("screen_rest"))
+	Settings.set_value("screen_rest", true)
+	var now: int = Time.get_ticks_msec()
+	Settings.set("_last_input_msec", now - int(SettingsScript.REST_AFTER * 1000.0) - 1000)
+	Settings.set("_last_rest_check_msec", now - 1000)
+	Settings.check_rest()
+	var rested: bool = Settings.is_resting()
+	var rest_fps: int = Engine.max_fps
+	var veil: ColorRect = Settings.get("_dimmer") as ColorRect
+	var words: Label = Settings.get("_rest_words") as Label
+	var veil_up: bool = veil != null and (veil.get_parent() as CanvasLayer).visible
+	var words_up: bool = words != null and words.visible and words.text == SettingsScript.REST_WORDS
+	var room: Rect2 = Rect2(Vector2.ZERO, get_viewport().get_visible_rect().size)
+	var words_on_screen: bool = words != null and room.encloses(Rect2(words.position, words.size))
+	var first_spot: Vector2 = words.position if words != null else Vector2.ZERO
+	Settings.set("_rest_moved_msec", now - int(SettingsScript.REST_WORDS_MOVE * 1000.0) - 1000)
+	Settings.set("_last_rest_check_msec", Time.get_ticks_msec() - 1000)
+	Settings.check_rest()
+	var moved_at: int = int(Settings.get("_rest_moved_msec"))
+	check("left %d seconds, the screen rests: the veil comes down, the frames drop, and it says how to wake it" % roundi(SettingsScript.REST_AFTER),
+		rested and rest_fps == SettingsScript.BACKGROUND_FPS and veil_up and words_up and words_on_screen,
+		[rested, rest_fps, veil_up, words_up, words_on_screen])
+	check("  its words move every %d seconds - words that never move are the one thing that could burn in" % roundi(SettingsScript.REST_WORDS_MOVE),
+		moved_at > now - 500, [first_spot, moved_at, now])
+	Settings._input(finger)
+	var woke: bool = not Settings.is_resting()
+	var veil_gone: bool = veil != null and (is_equal_approx(float(Settings.get_value("brightness")), 1.0) == not (veil.get_parent() as CanvasLayer).visible)
+	var words_gone: bool = words != null and not words.visible
+	check("  one touch wakes it at once: the veil gone, the words gone, the frames back",
+		woke and veil_gone and words_gone and Engine.max_fps != SettingsScript.BACKGROUND_FPS,
+		[woke, veil_gone, words_gone, Engine.max_fps])
+	Settings.set("_last_input_msec", Time.get_ticks_msec() - int(SettingsScript.REST_AFTER * 4000.0))
+	Settings.set("_last_rest_check_msec", Time.get_ticks_msec() - int(SettingsScript.REST_AFTER * 4000.0))
+	Settings.check_rest()
+	check("  a phone coming back from another app is not idle - the game was stopped, not left",
+		not Settings.is_resting())
+	Settings.set_value("screen_rest", false)
+	Settings.set("_last_input_msec", Time.get_ticks_msec() - int(SettingsScript.REST_AFTER * 2000.0))
+	Settings.set("_last_rest_check_msec", Time.get_ticks_msec() - 1000)
+	Settings.check_rest()
+	check("  and switched off in Options, it never rests", not Settings.is_resting())
+	Settings.set_value("screen_rest", kept_rest)
+	Settings.note_input()
+
+	# ---- projectiles as bright as asked ------------------------------------------------
+	var kept_glow: float = float(Settings.get_value("projectile_brightness"))
+	Settings.set_value("projectile_brightness", 0.05)
+	check("projectile brightness is 100%% as drawn, down to %d%%" % roundi(SettingsScript.PROJECTILE_MIN * 100.0),
+		Settings.DEFAULTS.get("projectile_brightness") == 1.0
+		and is_equal_approx(float(Settings.get_value("projectile_brightness")), SettingsScript.PROJECTILE_MIN))
+	var plain_arrow: Node2D = (load("res://scene/projectiles/arrow.tscn") as PackedScene).instantiate() as Node2D
+	var ice_arrow: Node2D = (load("res://scene/projectiles/icearrow.tscn") as PackedScene).instantiate() as Node2D
+	var not_one := Sprite2D.new()
+	var lob := Node2D.new()
+	lob.set_script(load("res://src/world/bulletlob.gd"))
+	check("  a projectile is anything the game's projectile scripts drive, and the large slime's lob - not any sprite",
+		SettingsScript.is_projectile(plain_arrow) and SettingsScript.is_projectile(ice_arrow)
+		and SettingsScript.is_projectile(lob) and not SettingsScript.is_projectile(not_one))
+	not_one.free()
+	lob.free()
+	Settings.set_value("projectile_brightness", 0.5)
+	var at := Node2D.new()
+	at.position = Vector2(-5000, -5000)
+	add_child(at)
+	at.add_child(plain_arrow)
+	at.add_child(ice_arrow)
+	await get_tree().process_frame
+	var ice_sprite: CanvasItem = ice_arrow.get_node_or_null("sprite2d") as CanvasItem
+	var ice_mat: ShaderMaterial = ice_sprite.material as ShaderMaterial if ice_sprite != null else null
+	# Never set is the shader's own 1.0.
+	var glow_of := func(mat: ShaderMaterial) -> float:
+		var set_to: Variant = mat.get_shader_parameter("brightness") if mat != null else null
+		return 1.0 if set_to == null else float(set_to)
+	var half_arrow: bool = is_equal_approx(plain_arrow.modulate.r, 0.5) and is_equal_approx(plain_arrow.modulate.a, 1.0)
+	var half_ice: bool = ice_mat != null and is_equal_approx(glow_of.call(ice_mat), 0.5)
+	check("a shot fired at 50% is drawn at half: its own modulate, which every plain sprite under it takes",
+		half_arrow, plain_arrow.modulate)
+	check("  and a shot drawn with the element shader, which no modulate reaches, has the shader's own brightness",
+		half_ice, glow_of.call(ice_mat))
+	Settings.set_value("projectile_brightness", 0.8)
+	var followed: bool = (is_equal_approx(plain_arrow.modulate.r, 0.8)
+		and ice_mat != null and is_equal_approx(glow_of.call(ice_mat), 0.8))
+	Settings.set_value("projectile_brightness", 1.0)
+	var restored: bool = (is_equal_approx(plain_arrow.modulate.r, 1.0)
+		and ice_mat != null and is_equal_approx(glow_of.call(ice_mat), 1.0))
+	check("  the slider moved, every shot in the air follows it - and at 100% it is as drawn again", followed and restored,
+		[plain_arrow.modulate, glow_of.call(ice_mat)])
+	at.queue_free()
+	var field := BulletField.new()
+	field.capacity = 16
+	Settings.set_value("projectile_brightness", 0.6)
+	add_child(field)
+	var field_mat: ShaderMaterial = field.get("_shading") as ShaderMaterial
+	var field_at_start: bool = field_mat != null and is_equal_approx(glow_of.call(field_mat), 0.6)
+	Settings.set_value("projectile_brightness", 0.9)
+	var field_follows: bool = field_mat != null and is_equal_approx(glow_of.call(field_mat), 0.9)
+	field.queue_free()
+	check("  the bullet field's bullets too, made at it and following it", field_at_start and field_follows,
+		[field_at_start, field_follows])
+	var shaders_obey: Array = []
+	for path in ["res://src/shared/element_recolour.gdshader", "res://src/shared/hearth_warm.gdshader"]:
+		var code: String = FileAccess.get_file_as_string(path)
+		if not (code.contains("uniform float brightness : hint_range(0.0, 1.0) = 1.0;") and code.contains("COLOR.rgb *= brightness;")):
+			shaders_obey.append(path)
+	check("  each shader a projectile is drawn with has the brightness, at 1.0 for everything else drawn with it",
+		shaders_obey.is_empty() and BulletField.SHADER_CODE.contains("* brightness"), shaders_obey)
+	Settings.set_value("projectile_brightness", kept_glow)
+	await get_tree().process_frame
+
+	# ---- in Options ------------------------------------------------------------------------
+	var options: Node = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate()
+	add_child(options)
+	await get_tree().process_frame
+	options.refresh()
+	var glow_slider: HSlider = options.get_node_or_null("%projectilebrightness") as HSlider
+	var rest_switch: CheckButton = options.get_node_or_null("%screenrest") as CheckButton
+	var power_words: Label = options.get_node_or_null("%batteryhint") as Label
+	check("Options has a Projectile brightness slider over the setting's range, and a Rest the screen switch that says what it does",
+		glow_slider != null and is_equal_approx(glow_slider.min_value, SettingsScript.PROJECTILE_MIN)
+		and is_equal_approx(glow_slider.max_value, 1.0) and rest_switch != null
+		and rest_switch.button_pressed == bool(Settings.get_value("screen_rest"))
+		and power_words != null and power_words.text == SettingsScript.power_hint() and power_words.text.contains("2 minutes"),
+		[glow_slider, rest_switch, power_words.text if power_words != null else ""])
+	options.queue_free()
+	await get_tree().process_frame
+
+	# ---- the welcome says try Options -----------------------------------------------------------
+	check("the welcome says to take a minute in Options first - brightness, attacks, the battery saver and the rest",
+		ControlsPanel.welcome_words(false).contains("the button below, or Esc.") and ControlsPanel.welcome_words(true).contains("or Menu, then Options.")
+		and ControlsPanel.welcome_words(false).contains("battery saver") and ControlsPanel.welcome_words(false).contains("how bright attacks are")
+		and ControlsPanel.welcome_words(false).contains("Field"))
+	var was_seen_path: String = ControlsPanel.seen_path
+	ControlsPanel.seen_path = "user://_suite_seen_options.cfg"
+	var card: ControlsPanel = (load("res://scene/ui/controls/controlspanel.tscn") as PackedScene).instantiate() as ControlsPanel
+	add_child(card)
+	await get_tree().process_frame
+	var asked: Array = []
+	card.options_requested.connect(func(): asked.append(true))
+	TouchControls.set_active(true)
+	card.open_welcome()
+	await get_tree().process_frame
+	var touch_card: Vector2 = card.size
+	TouchControls.set_active(false)
+	card.open_welcome()
+	await get_tree().process_frame
+	var mouse_card: Vector2 = card.size
+	var screen: Vector2 = Vector2(1280, 720)
+	check("  and the card still fits the screen, with a keyboard or a touch screen - its lines are broken by hand",
+		mouse_card.x <= screen.x and mouse_card.y <= screen.y and touch_card.x <= screen.x and touch_card.y <= screen.y
+		and Array(ControlsPanel.welcome_words(true).split("\n")).all(func(line: String) -> bool: return line.length() <= 76),
+		[mouse_card, touch_card])
+	var both_buttons: bool = card.options_button != null and card.options_button.visible and card.got_it_button.visible
+	card.options_button.pressed.emit()
+	check("  with an Open Options button beside Got it, which closes the card and asks for Options",
+		both_buttons and not card.visible and asked.size() == 1, [both_buttons, card.visible, asked.size()])
+	card.open_controls()
+	check("  and neither button on the plain Controls card", not card.options_button.visible and not card.got_it_button.visible)
+	card.queue_free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(ControlsPanel.seen_path))
+	ControlsPanel.seen_path = was_seen_path
+	var hud_code: String = _code_src("res://src/ui/characterhud.gd")
+	check("  the HUD opens Options for it - opened, not toggled shut",
+		_func_body(hud_code, "func _ensure_controls_panel(").contains("options_requested.connect(open_options)")
+		and _func_body(hud_code, "func open_options(").contains("not options_screen.visible"))
+	await get_tree().process_frame
+
 
 func _test_other_players_attacks_switch() -> void:
 	section("OTHER PLAYERS - drawn as their own scene sorts, and a switch for their attacks (0.40.1)")

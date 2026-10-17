@@ -63,12 +63,14 @@ shader_type canvas_item;
 render_mode unshaded;
 // r = white-hot core, g = brightness of the body, a = coverage.
 varying vec4 tint;
+// Options' Projectile brightness (0.55.0), set from Settings.
+uniform float brightness = 1.0;
 void vertex() {
 	tint = COLOR;
 }
 void fragment() {
 	vec4 orb = texture(TEXTURE, UV);
-	COLOR = vec4(mix(tint.rgb * orb.g, vec3(1.0), orb.r), orb.a * tint.a);
+	COLOR = vec4(mix(tint.rgb * orb.g, vec3(1.0), orb.r) * brightness, orb.a * tint.a);
 }
 """
 
@@ -122,6 +124,8 @@ var _sway_phase: PackedFloat32Array = PackedFloat32Array()
 var _brake: PackedFloat32Array = PackedFloat32Array()
 var _alpha: PackedFloat32Array = PackedFloat32Array()
 var _buffer: PackedFloat32Array = PackedFloat32Array()
+# The bullets' material: Options' Projectile brightness is set on it.
+var _shading: ShaderMaterial = null
 var _multimesh: MultiMesh = null
 
 # THE WALLS, as a grid of cells: 1 is solid. A bullet whose centre enters a
@@ -164,6 +168,13 @@ func _ready() -> void:
 	shader.code = SHADER_CODE
 	var shading: ShaderMaterial = ShaderMaterial.new()
 	shading.shader = shader
+	# PROJECTILE BRIGHTNESS (0.55.0): the bullets are drawn unshaded, as the
+	# top of this file says, so this is the only thing that dims them.
+	_shading = shading
+	var settings: Node = get_node_or_null(^"/root/Settings")
+	if settings != null:
+		shading.set_shader_parameter("brightness", float(settings.call("get_value", "projectile_brightness")))
+		settings.connect("changed", _on_setting_changed)
 
 	_fit_culling()
 
@@ -485,3 +496,8 @@ static func orb_texture() -> ImageTexture:
 				pixel = Color(0.0, 0.55, 0.0, 1.0)
 			image.set_pixel(x, y, pixel)
 	return ImageTexture.create_from_image(image)
+
+
+func _on_setting_changed(key: String, value: Variant) -> void:
+	if key == "projectile_brightness" and _shading != null:
+		_shading.set_shader_parameter("brightness", float(value))

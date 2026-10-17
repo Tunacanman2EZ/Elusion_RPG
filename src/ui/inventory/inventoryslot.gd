@@ -1,6 +1,7 @@
 # inventoryslot.gd — a single inventory slot. displays one ItemStack (icon +
 # quantity), handles hover highlighting, tooltips, right-click use, double-click
-# quick-transfer, and drag-and-drop between slots.
+# quick-transfer, a finger held on a touch screen for either of those, and
+# drag-and-drop between slots.
 #
 # slot_type distinguishes contexts ("inventory", "hotbar", "bank", "lootbag")
 # so behavior and drag rules can vary. drag-and-drop is container-agnostic:
@@ -268,6 +269,7 @@ func refresh_display() -> void:
 # =============================================================================
 
 func _gui_input(event: InputEvent) -> void:
+	_watch_hold(event)
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.double_click and not is_empty():
@@ -288,6 +290,68 @@ func _gui_input(event: InputEvent) -> void:
 			GameState.ui_absorbed_right_click = true
 			slot_right_clicked.emit(self)
 			accept_event()
+
+
+# =============================================================================
+# INPUT — A FINGER HELD ON A CELL (0.55.0)
+# =============================================================================
+# A TOUCH SCREEN HAS NO RIGHT BUTTON, and the right button is how everything
+# in a bag is used: a pet summoned, a potion drunk, a sword put on, a piece
+# taken off the doll. A phone could do none of it - the owner, 0.54.2: "looted
+# a mage pet but is not deploying". So a finger held still on a cell for
+# HOLD_SEC is that click. A tap is still what it was (the tooltip), and a
+# finger that slides is still the drag that moves the item.
+#
+# A LOOT BAG'S OR THE BANK'S CELL has nothing on the right button. There the
+# mouse takes an item with a double-click, which a phone has no way to make
+# either, so a hold there is the double-click.
+#
+# NOT ON A HOTBAR KEY. A tap uses a key (hotbar.gd, 0.53.0), so a key held
+# would be used twice. HotbarSlot turns this off.
+const HOLD_SEC := 0.45
+const HOLD_SLIDE := 14.0
+
+var holds_to_use: bool = true
+var _hold_finger: int = -1
+var _hold_from: Vector2 = Vector2.ZERO
+# Which hold a timer belongs to: a finger lifted and put down again inside
+# HOLD_SEC starts a new hold, and the first one's timer must not fire it.
+var _hold_ticket: int = 0
+
+
+func _watch_hold(event: InputEvent) -> void:
+	var touch := event as InputEventScreenTouch
+	if touch != null:
+		if touch.pressed and _hold_finger < 0 and holds_to_use and not is_empty():
+			_hold_finger = touch.index
+			_hold_from = touch.position
+			_hold_ticket += 1
+			get_tree().create_timer(HOLD_SEC).timeout.connect(_hold_done.bind(_hold_ticket))
+		elif not touch.pressed and touch.index == _hold_finger:
+			_hold_finger = -1
+		return
+	var slide := event as InputEventScreenDrag
+	if slide != null and slide.index == _hold_finger and slide.position.distance_to(_hold_from) > HOLD_SLIDE:
+		_hold_finger = -1
+
+
+func _hold_done(ticket: int) -> void:
+	if ticket != _hold_ticket or _hold_finger < 0:
+		return
+	_hold_finger = -1
+	if is_empty() or not is_visible_in_tree():
+		return
+	# A drag that began under the threshold above is still a drag.
+	var viewport: Viewport = get_viewport()
+	if viewport != null and viewport.gui_is_dragging():
+		return
+	# A short buzz, where the phone has one: the finger is over the item, so
+	# the thumb cannot see the cell to know the hold has done its work.
+	Input.vibrate_handheld(30)
+	if slot_type == LOOT_SLOT_TYPE or slot_type == BANK_SLOT_TYPE:
+		slot_double_clicked.emit(self)
+	else:
+		slot_right_clicked.emit(self)
 
 
 # =============================================================================

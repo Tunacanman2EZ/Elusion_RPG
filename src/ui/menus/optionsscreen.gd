@@ -101,6 +101,13 @@ signal credits_requested
 @onready var battery_saver:     CheckButton  = get_node_or_null("%batterysaver")
 @onready var brightness:        HSlider      = get_node_or_null("%brightness")
 @onready var brightness_value:  Label        = get_node_or_null("%brightnessvalue")
+# 0.55.0: the owner's "a slider for bullet projectile brightness", and a rest
+# for a screen left untouched - against a phone heating and a HUD burning in.
+@onready var projectile_brightness:       HSlider     = get_node_or_null("%projectilebrightness")
+@onready var projectile_brightness_value: Label       = get_node_or_null("%projectilebrightnessvalue")
+@onready var screen_rest:                 CheckButton = get_node_or_null("%screenrest")
+# Says what the Battery saver and Rest the screen do, in Settings' numbers.
+@onready var battery_hint:                Label       = get_node_or_null("%batteryhint")
 @onready var renderer:          OptionButton = get_node_or_null("%renderer")
 @onready var renderer_note:     Label        = get_node_or_null("%renderernote")
 
@@ -348,6 +355,15 @@ func _connect_controls() -> void:
 		brightness.max_value = Settings.BRIGHTNESS_MAX
 		brightness.step = Settings.BRIGHTNESS_STEP
 		brightness.value_changed.connect(_on_brightness_changed)
+	if projectile_brightness != null:
+		projectile_brightness.min_value = Settings.PROJECTILE_MIN
+		projectile_brightness.max_value = 1.0
+		projectile_brightness.step = Settings.PROJECTILE_STEP
+		projectile_brightness.value_changed.connect(_on_projectile_brightness_changed)
+	if screen_rest != null:
+		screen_rest.toggled.connect(_on_screen_rest_toggled)
+	if battery_hint != null:
+		battery_hint.text = SettingsScript.power_hint()
 	if renderer != null:
 		renderer.clear()
 		for method in Settings.RENDERERS:
@@ -444,6 +460,11 @@ func refresh() -> void:
 	if brightness != null:
 		brightness.value = float(Settings.get_value("brightness"))
 	_update_brightness_label()
+	if projectile_brightness != null:
+		projectile_brightness.value = float(Settings.get_value("projectile_brightness"))
+	_update_projectile_brightness_label()
+	if screen_rest != null:
+		screen_rest.button_pressed = bool(Settings.get_value("screen_rest"))
 	if renderer != null:
 		renderer.selected = Settings.RENDERERS.find(Settings.renderer_requested())
 	_update_renderer_note()
@@ -1001,6 +1022,27 @@ func _update_brightness_label() -> void:
 	if brightness_value == null or brightness == null:
 		return
 	brightness_value.text = "%d%%" % roundi(brightness.value * 100.0)
+
+
+func _on_projectile_brightness_changed(value: float) -> void:
+	_update_projectile_brightness_label()
+	if _refreshing:
+		return
+	# The next shot fired is drawn at it - and every one already flying is
+	# redrawn (Settings._apply_projectile_brightness()).
+	Settings.set_value("projectile_brightness", value)
+
+
+func _update_projectile_brightness_label() -> void:
+	if projectile_brightness_value == null or projectile_brightness == null:
+		return
+	projectile_brightness_value.text = "%d%%" % roundi(projectile_brightness.value * 100.0)
+
+
+func _on_screen_rest_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("screen_rest", pressed)
 
 
 func _on_renderer_selected(index: int) -> void:

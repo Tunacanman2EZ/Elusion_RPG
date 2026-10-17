@@ -42,6 +42,12 @@ uniform float lift : hint_range(0.0, 1.0) = 0.30;
 // measured bands above before moving this.
 uniform float stone_threshold : hint_range(0.0, 1.0) = 0.35;
 
+// PROJECTILE BRIGHTNESS (0.55.0). This shader writes COLOR without the
+// modulate a node is given, so a dimmed projectile cannot be dimmed by one:
+// settings.gd sets this on the materials projectiles are drawn with. 1.0 -
+// everything else drawn with this shader - changes nothing.
+uniform float brightness : hint_range(0.0, 1.0) = 1.0;
+
 
 void fragment() {
 	vec4 src = texture(TEXTURE, UV);
@@ -61,4 +67,5 @@ void fragment() {
 			COLOR = vec4(mix(src.rgb, clamp(lit, 0.0, 1.0), warmth), src.a);
 		}
 	}
+	COLOR.rgb *= brightness;
 }

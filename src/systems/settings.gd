@@ -163,6 +163,17 @@ const DEFAULTS := {
 	# screen it is easier on the eyes in the dark.
 	"brightness": 1.0,
 
+	# PROJECTILE BRIGHTNESS (0.55.0). The owner: "we need a slider for bullet
+	# projectile brightness". Every arrow, orb, spike and bullet is drawn
+	# unshaded - white-hot whatever the room's darkness, so a bullet in the
+	# crypt can always be seen (bulletfield.gd says why) - and so they are the
+	# brightest things on the screen. 1.0 is as drawn, down to PROJECTILE_MIN.
+	"projectile_brightness": 1.0,
+
+	# SCREEN REST (0.55.0). The owner: "major things i want to avoid phone over
+	# heating and a image burned on the screen". On by default - see REST_AFTER.
+	"screen_rest": true,
+
 	# --- game ---
 	# The numbers that fly off things when they are hit. On by default, because
 	# they are how the game tells you what a weapon is doing — and optional,
@@ -341,8 +352,23 @@ var _values: Dictionary = {}
 var _focused: bool = true
 # The brightness veil (_apply_brightness()), once there is one.
 var _dimmer: ColorRect = null
-# A phone's own defaults have been given (PHONE_DEFAULTS), and are not again.
-var _phone_tuned: bool = false
+# How many of PHONE_STEPS this device has taken: each is given once.
+var _phone_steps: int = 0
+
+# SCREEN REST (REST_AFTER): when a person last touched anything, whether the
+# screen is resting now, and the words shown while it is.
+var _last_input_msec: int = 0
+var _last_rest_check_msec: int = 0
+var _resting: bool = false
+var _rest_timer: Timer = null
+var _rest_words: Label = null
+var _rest_moved_msec: int = 0
+var _veil_tween: Tween = null
+
+# PROJECTILE BRIGHTNESS: whether anything has ever been dimmed, so at the
+# default nothing is touched at all; and every material set, to reset them.
+var _projectiles_touched: bool = false
+var _projectile_materials: Dictionary = {}
 
 # True while load() is applying the file, so the whole startup does not emit
 # eight `changed` signals at anything that happens to be listening.
@@ -380,6 +406,7 @@ func _ready() -> void:
 	# spot is on the right screen. Then the watch, which notices drags.
 	_place_window_at_launch()
 	_start_window_watch()
+	_start_rest_watch()
 	# THE KEYBOARD GOES ELSEWHERE (0.19.1, below).
 	if OS.has_feature("web"):
 		native_menu_on_shift_click = Keybinds.opens_its_own_menu(
@@ -396,6 +423,8 @@ func _notification(what: int) -> void:
 			Keybinds.let_go(true)
 		NOTIFICATION_APPLICATION_FOCUS_IN:
 			_focused = true
+			# Back from another app: a person, and the time away was not idle.
+			note_input()
 			_apply_fps_cap()
 		NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 			Keybinds.let_go(true)
@@ -418,6 +447,8 @@ func _notification(what: int) -> void:
 #     (the player's poll runs after the first physics_frame signal of a step).
 
 func _input(event: InputEvent) -> void:
+	if is_a_person(event):
+		note_input()
 	var click := event as InputEventMouseButton
 	if click == null or not click.pressed or click.button_index != MOUSE_BUTTON_RIGHT:
 		return
@@ -975,9 +1006,58 @@ const SAVER_FPS := 30
 # a second drawn as a laptop draws it, 6.6 at "low" with web/shell.html's two
 # pixels to one (the town has no lights to lift). A player who sets either
 # back keeps their choice.
-const PHONE_DEFAULTS := {"render_resolution": "low", "lighting": "simple"}
+#
+# IN STEPS, ONE PER BUILD THAT GAVE A PHONE A NEW DEFAULT, and a phone takes
+# each step once (PHONE_TUNED_KEY counts them; 0.54.0 wrote `true`, which is
+# one). The second is 0.55.0's: the battery saver, on. The owner: "major
+# things i want to avoid phone over heating" - half the frames is half the
+# heat, and a phone tuned by 0.54.0 gets only this step. A player who turns
+# either back keeps it. PHONE_DEFAULTS is every step, for Reset.
+const PHONE_STEPS := [
+	{"render_resolution": "low", "lighting": "simple"},
+	{"battery_saver": true},
+]
+const PHONE_DEFAULTS := {"render_resolution": "low", "lighting": "simple", "battery_saver": true}
 const PHONE_TUNED_SECTION := "device"
 const PHONE_TUNED_KEY := "phone_tuned"
+
+# PROJECTILE BRIGHTNESS's range. 30% still reads against the crypt's dark.
+const PROJECTILE_MIN := 0.3
+const PROJECTILE_STEP := 0.05
+# What counts as a projectile: every script in this folder (the bullets, the
+# arrows, the boss's spikes, the pets' shots, the players' own and each
+# other's) and the large slime's lob. The bullet field draws its own and reads
+# the setting itself (bulletfield.gd).
+const PROJECTILE_SCRIPTS := "res://src/projectiles/"
+const PROJECTILE_ALSO := ["res://src/world/bulletlob.gd"]
+# The shaders projectiles are drawn with. Each writes COLOR without the
+# modulate a node is given, so a modulate does nothing to them - each has a
+# `brightness` uniform instead, 1.0 unless this sets it.
+const PROJECTILE_SHADERS := [
+	preload("res://src/shared/element_recolour.gdshader"),
+	preload("res://src/shared/hearth_warm.gdshader"),
+]
+const PROJECTILE_GROUP := &"_settings_dimmed_projectiles"
+const _META_PROJECTILE := &"_settings_projectile_brightness"
+
+# SCREEN REST (0.55.0). A phone left on a table with the game open draws the
+# same HUD at full brightness sixty times a second for as long as it is left:
+# the frames are the heat, and the bars and buttons that never move are what
+# an OLED screen burns in. After REST_AFTER seconds with no key, click, touch
+# or stick, the screen dims to REST_DIM and the game draws BACKGROUND_FPS
+# frames a second; the next input of any kind wakes it at once. The game goes
+# on underneath - a resting player can still be hit, as an idle one always
+# could, which is why it dims rather than pauses.
+const REST_AFTER := 120.0
+const REST_DIM := 0.82
+const REST_FADE := 2.0
+# The words while resting move every REST_WORDS_MOVE seconds: words that
+# never move are the one thing on a dark screen that could burn in.
+const REST_WORDS_MOVE := 20.0
+const REST_WORDS := "Resting the screen. Touch it or press a key."
+# A gap this long between two checks a second apart is the app put away (a
+# phone's browser in the background stops the game), not a person idle.
+const REST_ASLEEP_GAP_MSEC := 5000
 
 # The brightness slider's range. 40% is as dark as the game stays readable.
 const BRIGHTNESS_MIN := 0.4
@@ -1009,7 +1089,7 @@ static func content_scale_mode_for(render_resolution: String) -> Window.ContentS
 
 
 static func fps_cap_for(frame_cap: int, focused: bool, background_limit: bool,
-		screen_hz: float = 0.0, saver: bool = false, phone: bool = false) -> int:
+		screen_hz: float = 0.0, saver: bool = false, phone: bool = false, resting: bool = false) -> int:
 	# THE ONE PLACE THE CAP IS WORKED OUT. The player's cap in the foreground;
 	# in the background, BACKGROUND_FPS or the player's cap, whichever is lower
 	# - a player who capped at 10 does not get raised to 15 by alt-tabbing.
@@ -1024,15 +1104,28 @@ static func fps_cap_for(frame_cap: int, focused: bool, background_limit: bool,
 		cap = PHONE_FPS
 	if saver:
 		cap = SAVER_FPS if cap == 0 else mini(cap, SAVER_FPS)
-	if focused or not background_limit:
+	# A resting screen (REST_AFTER) draws what a window in the background does.
+	if not resting and (focused or not background_limit):
 		return cap
 	return BACKGROUND_FPS if cap == 0 else mini(cap, BACKGROUND_FPS)
 
 
-static func phone_changes(phone: bool, already_tuned: bool) -> Dictionary:
-	"""What a phone's first launch of this build changes (PHONE_DEFAULTS), or
-	nothing: not a phone, or tuned once already."""
-	return PHONE_DEFAULTS.duplicate() if phone and not already_tuned else {}
+static func phone_changes(phone: bool, steps_taken: int) -> Dictionary:
+	"""What a phone that has taken `steps_taken` of PHONE_STEPS changes now:
+	every step it has not taken, or nothing on a laptop."""
+	var out: Dictionary = {}
+	if not phone:
+		return out
+	for i in range(clampi(steps_taken, 0, PHONE_STEPS.size()), PHONE_STEPS.size()):
+		out.merge(PHONE_STEPS[i], true)
+	return out
+
+
+static func phone_steps_stored(value: Variant) -> int:
+	"""PHONE_TUNED_KEY as a count of steps: 0.54.0 wrote `true`, its one."""
+	if value is bool:
+		return 1 if value else 0
+	return maxi(0, int(value)) if value is int or value is float else 0
 
 
 static func on_phone() -> bool:
@@ -1046,10 +1139,21 @@ static func dimmer_alpha(brightness: float) -> float:
 	return clampf(1.0 - brightness, 0.0, 1.0 - BRIGHTNESS_MIN)
 
 
-func _apply_brightness(brightness: float) -> void:
-	"""BRIGHTNESS: a black veil over everything, as dark as asked. Built the
-	first time it is needed, and hidden at full so it costs nothing."""
-	var alpha: float = dimmer_alpha(brightness)
+static func veil_alpha(brightness: float, resting: bool) -> float:
+	"""How dark the veil is: the brightness asked for, or REST_DIM while the
+	screen rests if that is darker."""
+	return maxf(dimmer_alpha(brightness), REST_DIM if resting else 0.0)
+
+
+func _apply_brightness(_brightness: float = 1.0) -> void:
+	"""BRIGHTNESS: a black veil over everything, as dark as asked - and darker
+	while the screen rests. Built the first time it is needed, and hidden at
+	full so it costs nothing."""
+	_paint_veil(false)
+
+
+func _paint_veil(fade: bool) -> void:
+	var alpha: float = veil_alpha(float(get_value("brightness")), _resting)
 	if _dimmer == null:
 		if alpha <= 0.0:
 			return
@@ -1060,11 +1164,175 @@ func _apply_brightness(brightness: float) -> void:
 		veil.name = "veil"
 		veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+		veil.color = Color(0, 0, 0, 0)
 		layer.add_child(veil)
+		var words := Label.new()
+		words.name = "restwords"
+		words.text = REST_WORDS
+		words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		words.add_theme_color_override("font_color", Color(0.55, 0.55, 0.6, 1))
+		words.add_theme_font_size_override("font_size", 14)
+		words.visible = false
+		layer.add_child(words)
 		add_child(layer)
 		_dimmer = veil
-	_dimmer.color = Color(0, 0, 0, alpha)
-	(_dimmer.get_parent() as CanvasLayer).visible = alpha > 0.0
+		_rest_words = words
+	if _veil_tween != null and _veil_tween.is_valid():
+		_veil_tween.kill()
+	var layer_of: CanvasLayer = _dimmer.get_parent() as CanvasLayer
+	if alpha > 0.0:
+		layer_of.visible = true
+	if fade and is_inside_tree():
+		_veil_tween = create_tween()
+		_veil_tween.tween_property(_dimmer, "color:a", alpha, REST_FADE)
+	else:
+		_dimmer.color = Color(0, 0, 0, alpha)
+		layer_of.visible = alpha > 0.0
+	if _rest_words != null:
+		_rest_words.visible = _resting
+		if _resting:
+			_move_rest_words()
+
+
+# =============================================================================
+# SCREEN REST (0.55.0) - see REST_AFTER
+# =============================================================================
+
+static func is_a_person(event: InputEvent) -> bool:
+	"""A key, a button, a touch, a mouse that moved or a stick pushed: anything
+	only a person makes. Not an event with nothing in it."""
+	if event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton:
+		return true
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		return true
+	if event is InputEventMouseMotion:
+		return (event as InputEventMouseMotion).relative != Vector2.ZERO
+	if event is InputEventJoypadMotion:
+		return absf((event as InputEventJoypadMotion).axis_value) > 0.3
+	return false
+
+
+static func rest_due(idle_seconds: float, on: bool) -> bool:
+	return on and idle_seconds >= REST_AFTER
+
+
+static func power_hint() -> String:
+	"""Under the Battery saver and Rest the screen in Options: what each does."""
+	return "Battery saver draws %d frames a second. Rest the screen dims it after %d minutes untouched." \
+		% [SAVER_FPS, roundi(REST_AFTER / 60.0)]
+
+
+func is_resting() -> bool:
+	return _resting
+
+
+func note_input() -> void:
+	"""A person is here: the idle clock starts again, and a resting screen wakes."""
+	_last_input_msec = Time.get_ticks_msec()
+	if _resting:
+		_set_resting(false)
+
+
+func _start_rest_watch() -> void:
+	_last_input_msec = Time.get_ticks_msec()
+	_last_rest_check_msec = _last_input_msec
+	_rest_timer = Timer.new()
+	_rest_timer.name = "restwatch"
+	_rest_timer.wait_time = 1.0
+	add_child(_rest_timer)
+	_rest_timer.timeout.connect(check_rest)
+	_rest_timer.start()
+
+
+func check_rest() -> void:
+	var now: int = Time.get_ticks_msec()
+	if now - _last_rest_check_msec > REST_ASLEEP_GAP_MSEC:
+		_last_input_msec = now
+	_last_rest_check_msec = now
+	if _resting:
+		if float(now - _rest_moved_msec) / 1000.0 >= REST_WORDS_MOVE:
+			_move_rest_words()
+		return
+	if rest_due(float(now - _last_input_msec) / 1000.0, bool(get_value("screen_rest"))):
+		_set_resting(true)
+
+
+func _set_resting(on: bool) -> void:
+	_resting = on
+	_apply_fps_cap()
+	_paint_veil(on)
+
+
+func _move_rest_words() -> void:
+	if _rest_words == null:
+		return
+	_rest_moved_msec = Time.get_ticks_msec()
+	var room: Vector2 = get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1280, 720)
+	var need: Vector2 = _rest_words.get_combined_minimum_size()
+	_rest_words.size = need
+	_rest_words.position = Vector2(randf_range(16.0, maxf(16.0, room.x - need.x - 16.0)),
+		randf_range(16.0, maxf(16.0, room.y - need.y - 16.0))).floor()
+
+
+# =============================================================================
+# PROJECTILE BRIGHTNESS (0.55.0) - see "projectile_brightness" in DEFAULTS
+# =============================================================================
+
+static func is_projectile(node: Node) -> bool:
+	var script: Script = node.get_script() as Script
+	if script == null:
+		return false
+	var path: String = script.resource_path
+	return path.begins_with(PROJECTILE_SCRIPTS) or path in PROJECTILE_ALSO
+
+
+func _dim_projectile(node: Node) -> void:
+	"""One projectile at the setting: its own modulate, which every plain
+	sprite under it inherits, and the brightness of any material under it
+	drawn with one of PROJECTILE_SHADERS. DEFERRED from _on_node_added(), so
+	it comes after the projectile's _ready() and after whatever its spawner
+	set on it once it was in - a remote player's orb is tinted then."""
+	var item := node as CanvasItem
+	if item == null or not is_instance_valid(item) or not item.is_inside_tree():
+		return
+	var want: float = float(get_value("projectile_brightness"))
+	var had: float = float(item.get_meta(_META_PROJECTILE, 1.0))
+	if not is_equal_approx(had, want):
+		var k: float = want / maxf(had, 0.001)
+		var c: Color = item.modulate
+		item.modulate = Color(c.r * k, c.g * k, c.b * k, c.a)
+		item.set_meta(_META_PROJECTILE, want)
+	if not item.is_in_group(PROJECTILE_GROUP):
+		item.add_to_group(PROJECTILE_GROUP)
+	_dim_materials_under(item, want)
+
+
+func _dim_materials_under(node: Node, want: float) -> void:
+	var item := node as CanvasItem
+	if item != null:
+		var mat := item.material as ShaderMaterial
+		if mat != null and mat.shader in PROJECTILE_SHADERS:
+			var now: Variant = mat.get_shader_parameter("brightness")
+			if now == null or not is_equal_approx(float(now), want):
+				mat.set_shader_parameter("brightness", want)
+			_projectile_materials[mat.get_instance_id()] = mat
+	for child in node.get_children():
+		_dim_materials_under(child, want)
+
+
+func _apply_projectile_brightness(want: float) -> void:
+	"""The slider moved: every projectile flying now, and every material one
+	has been drawn with, at the new brightness."""
+	if want < 1.0:
+		_projectiles_touched = true
+	if not _projectiles_touched or not is_inside_tree():
+		return
+	for node in get_tree().get_nodes_in_group(PROJECTILE_GROUP):
+		_dim_projectile(node)
+	for id in _projectile_materials:
+		var mat: ShaderMaterial = _projectile_materials[id]
+		if mat != null:
+			mat.set_shader_parameter("brightness", want)
 
 
 static func simple_ambient(authored: Color) -> Color:
@@ -1077,7 +1345,7 @@ func _apply_fps_cap() -> void:
 	# THE ONLY PLACE max_fps IS WRITTEN - see "frame_cap" in _apply().
 	var want: int = fps_cap_for(int(get_value("frame_cap")), _focused,
 		bool(get_value("background_fps_limit")), current_screen_hz(),
-		bool(get_value("battery_saver")), on_phone())
+		bool(get_value("battery_saver")), on_phone(), _resting)
 	if Engine.max_fps != want:
 		Engine.max_fps = want
 
@@ -1337,6 +1605,12 @@ func _on_node_added(node: Node) -> void:
 		_scale_text_of(node, text_factor())
 	elif node is Light2D or node is CanvasModulate:
 		_apply_lighting_to(node, str(get_value("lighting")))
+	elif node is Node2D and (_projectiles_touched or float(get_value("projectile_brightness")) < 1.0) \
+			and is_projectile(node):
+		# A PROJECTILE, dimmed once it is ready (_dim_projectile()). Nothing
+		# at all happens here until the slider has been moved.
+		_projectiles_touched = true
+		_dim_projectile.call_deferred(node)
 	elif node is Camera2D:
 		# A CAMERA THAT ARRIVES AFTER THE SETTING DID. Every scene change
 		# builds a new player with a new camera carrying the 3.0 its .tscn was
@@ -1632,6 +1906,8 @@ func _normalise(key: String, typed: Variant) -> Variant:
 			return normalise_choice(typed, LIGHTING_MODES, "full")
 		"brightness":
 			return clampf(float(typed), BRIGHTNESS_MIN, BRIGHTNESS_MAX)
+		"projectile_brightness":
+			return clampf(float(typed), PROJECTILE_MIN, 1.0)
 		"camera_zoom":
 			# CLAMPED, NOT REFUSED. options.cfg is a text file a player can
 			# edit, and a 40 in it should become the ceiling rather than a
@@ -1683,11 +1959,12 @@ func load_settings() -> void:
 	# the first time this build runs on a phone - an options.cfg from before
 	# 0.54.0 holds "screen", written as everybody's default - and never again,
 	# so a phone player who sets it back keeps it.
-	_phone_tuned = bool(config.get_value(PHONE_TUNED_SECTION, PHONE_TUNED_KEY, false))
-	var tuning: Dictionary = phone_changes(on_phone(), _phone_tuned)
+	_phone_steps = phone_steps_stored(config.get_value(PHONE_TUNED_SECTION, PHONE_TUNED_KEY, 0))
+	var tuning: Dictionary = phone_changes(on_phone(), _phone_steps)
 	for key in tuning:
 		set_value(key, tuning[key])
-	_phone_tuned = _phone_tuned or not tuning.is_empty()
+	if on_phone():
+		_phone_steps = PHONE_STEPS.size()
 
 	_loading = false
 
@@ -1713,8 +1990,8 @@ func save_settings() -> void:
 	var config := ConfigFile.new()
 	for key in _values:
 		config.set_value(SECTION, key, _values[key])
-	if _phone_tuned:
-		config.set_value(PHONE_TUNED_SECTION, PHONE_TUNED_KEY, true)
+	if _phone_steps > 0:
+		config.set_value(PHONE_TUNED_SECTION, PHONE_TUNED_KEY, _phone_steps)
 
 	var err: int = config.save(CONFIG_PATH)
 	if err != OK:
@@ -1771,6 +2048,12 @@ func _apply(key: String, value: Variant) -> void:
 			_apply_fps_cap()
 		"brightness":
 			_apply_brightness(float(value))
+		"projectile_brightness":
+			_apply_projectile_brightness(float(value))
+		"screen_rest":
+			# Switched off while resting, it wakes; either way the clock
+			# starts again from now.
+			note_input()
 		"render_resolution":
 			var want_scale: Window.ContentScaleMode = content_scale_mode_for(str(value))
 			if get_tree().root.content_scale_mode != want_scale:
