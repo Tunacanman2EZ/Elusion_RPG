@@ -315,6 +315,7 @@ func _run_all() -> void:
 	await _test_attacks_aim_with_no_cursor()
 	await _test_aim_holds_still_while_walking()
 	await _test_a_touch_screen_plays_the_game()
+	await _test_a_phone_saves_its_battery()
 	await _test_other_players_aim_and_health()
 	await _test_parties()
 	await _test_names_open_the_player_menu()
@@ -6277,6 +6278,8 @@ func _test_settings() -> void:
 		"others_attacks": "othersattacks",
 		"render_resolution": "renderresolution", "lighting": "lighting",
 		"background_fps_limit": "backgroundlimit",
+		# 0.54.0: for a phone's battery.
+		"battery_saver": "batterysaver",   "brightness": "brightness",
 		# BOTH OF THESE WERE MISSING FROM THE TABLE, not from the game.
 		# optionsscreen.gd wires the camera zoom slider and the name hue
 		# slider, and the scene carries both controls with their swatch and
@@ -8456,8 +8459,9 @@ func _test_text_size_and_font() -> void:
 	screen.open()
 	await get_tree().process_frame
 	await get_tree().process_frame
+	# 681 since 0.54.0: Brightness and the Battery saver in its right column.
 	check("Options opens at the size it was drawn at - a hidden window is not measured",
-		screen.size.y == 600.0 and columns_scroll.custom_minimum_size.y + 0.5
+		screen.size.y == 681.0 and columns_scroll.custom_minimum_size.y + 0.5
 		>= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y, screen.size)
 	var before: float = columns_scroll.custom_minimum_size.y
 	screen._show_account_form(screen.account_password_form)
@@ -8469,7 +8473,12 @@ func _test_text_size_and_font() -> void:
 		[before, columns_scroll.custom_minimum_size.y])
 	screen._show_account_form(null)
 	await get_tree().process_frame
-	var hint: Label = columns_scroll.find_child("camerahint", true, false) as Label
+	# A HINT IN THE TALLER COLUMN: a line growing in the shorter one fits
+	# beside the other and needs no room (the right one since 0.54.0).
+	var left_col: Control = columns_scroll.find_child("leftcol", true, false) as Control
+	var right_col: Control = columns_scroll.find_child("rightcol", true, false) as Control
+	var taller_left: bool = left_col.get_combined_minimum_size().y >= right_col.get_combined_minimum_size().y
+	var hint: Label = columns_scroll.find_child("camerahint" if taller_left else "batteryhint", true, false) as Label
 	var hint_text: String = hint.text
 	before = columns_scroll.custom_minimum_size.y
 	hint.text = hint_text + "\n\n\n\n"
@@ -13177,24 +13186,49 @@ func _test_a_touch_screen_plays_the_game() -> void:
 	for f in [1.0, 1.4, 1.85, 2.4]:
 		for has_skill in [false, true]:
 			var at: Dictionary = PadScript.layout(Vector2(1280, 720), f, 557.0, 672.0, has_skill)
-			var circles: Array = []
+			# Each socket as far as it answers a touch, and a small one's word.
+			var parts: Array = []
 			for id in ["attack", "use", "run", "skill"]:
 				if at.has(id):
-					circles.append([id, at[id][0], at[id][1] * PadScript.REACH])
+					var socket: Rect2 = at[id]
+					parts.append([id, socket.grow(socket.size.x * (PadScript.REACH - 1.0) / 2.0)])
+					if id != "attack":
+						parts.append([id + " word", PadScript.caption_box(socket, at["words"])])
 			var zone: Rect2 = at["zone"]
-			for c in circles:
-				var box := Rect2(c[1] - Vector2(c[2], c[2]), Vector2(c[2], c[2]) * 2.0)
+			for part in parts:
+				var box: Rect2 = part[1]
 				if not Rect2(0, 0, 1280, 720).encloses(box) or box.end.y > 557.0 or box.intersects(zone):
-					clashes.append([f, c[0], "off the screen, on the hotbar or on the stick"])
-				for d in circles:
-					if c[0] < d[0] and (c[1] as Vector2).distance_to(d[1]) < c[2] + d[2]:
-						clashes.append([f, c[0], d[0]])
+					clashes.append([f, part[0], "off the screen, on the hotbar or on the stick"])
+				for other in parts:
+					if String(part[0]) < String(other[0]) and not String(other[0]).begins_with(String(part[0]).get_slice(" ", 0) + " ") \
+							and not String(part[0]).begins_with(String(other[0]).get_slice(" ", 0) + " ") and box.intersects(other[1]):
+						clashes.append([f, part[0], other[0]])
 			var rest: Vector2 = at["stick_rest"]
 			var r: float = at["stick_radius"]
 			if not zone.encloses(Rect2(rest - Vector2(r, r), Vector2(r, r) * 2.0)) or zone.end.y > 672.0:
 				clashes.append([f, "stick", "outside its zone, or on the menu bar"])
-	check("laid out at every size, with and without a skill: on the screen, off the hotbar and the menu bar, no button on another or on the stick",
+	check("laid out at every size, with and without a skill: on the screen, off the hotbar and the menu bar, no socket or its word on another or on the stick",
 		clashes.is_empty(), clashes)
+	var too_big: Array = []
+	for icon in PadScript.ICONS:
+		var picture: Texture2D = PadScript.Art.icon_texture(icon)
+		var room: int = (PadScript.ATTACK_ART if icon == "sword" else PadScript.SMALL_ART) - 6
+		if picture.get_width() > room or picture.get_height() > room:
+			too_big.append([icon, picture.get_size(), room])
+	check("DRAWN IN THE GAME'S OWN ART: each button is the hotbar's socket with its pixel icon inside the frame (0.54.0)",
+		too_big.is_empty() and PadScript.SOCKET.resource_path == "res://art/images/hotbarslot.png"
+		and PadScript.ICONS.has("sword") and PadScript.ICONS.has("hand") and PadScript.ICONS.has("boot") and PadScript.ICONS.has("heart"),
+		too_big)
+	check("  no flat circles left: the stick is a pixel ring and a gold knob",
+		not _code_src("res://src/ui/touchpad.gd").contains("draw_circle(")
+		and PadScript.Art.ring_texture(PadScript.STICK_ART).get_width() == PadScript.STICK_ART
+		and PadScript.Art.knob_texture(PadScript.KNOB_ART).get_width() == PadScript.KNOB_ART)
+	var whole: Array = []
+	for per_unit in [1.0, 1.3125, 1.625, 2.17]:
+		var px: float = PadScript.art_pixel(170.0, PadScript.ATTACK_ART, per_unit)
+		if absf(px * per_unit - roundf(px * per_unit)) > 0.001:
+			whole.append([per_unit, px])
+	check("  an art pixel is whole screen pixels at every screen scale, so its edges are as crisp as the hotbar's", whole.is_empty(), whole)
 	var hud := Control.new()
 	hud.size = Vector2(1280, 720)
 	var hotbar := Control.new()
@@ -13288,6 +13322,80 @@ func _test_a_touch_screen_plays_the_game() -> void:
 	check("  and keeps the browser's own gestures - pull to refresh, the long-press menu - off the game",
 		shell.contains("overscroll-behavior: none") and shell.contains("-webkit-touch-callout: none"))
 	PlayerScript.pointer_on_game = kept_pointer
+
+func _test_a_phone_saves_its_battery() -> void:
+	section("A PHONE'S BATTERY - brightness, the battery saver, and a phone drawn at what it needs (0.54.0)")
+	# The owner: "i also need to add a brightness setting in options to reduce
+	# charge on battery also need to make sure the game runs smooth on any
+	# phone".
+	const SettingsScript := preload("res://src/systems/settings.gd")
+	# ---- the frame cap --------------------------------------------------------------
+	var caps: Array = [
+		SettingsScript.fps_cap_for(0, true, true, 0.0, false, true),
+		SettingsScript.fps_cap_for(0, true, true, 0.0, true, false),
+		SettingsScript.fps_cap_for(144, true, true, 0.0, true, false),
+		SettingsScript.fps_cap_for(20, true, true, 0.0, true, false),
+		SettingsScript.fps_cap_for(0, true, true, 0.0, true, true),
+		SettingsScript.fps_cap_for(0, false, true, 0.0, false, true),
+		SettingsScript.fps_cap_for(0, true, true, 0.0, false, false),
+	]
+	check("a phone with no cap draws %d a second - a 120 Hz phone does not draw every frame twice" % SettingsScript.PHONE_FPS,
+		caps[0] == SettingsScript.PHONE_FPS, caps)
+	check("  the battery saver: %d, below any cap above it and never raising one below it, phone or not" % SettingsScript.SAVER_FPS,
+		caps[1] == SettingsScript.SAVER_FPS and caps[2] == SettingsScript.SAVER_FPS and caps[3] == 20
+		and caps[4] == SettingsScript.SAVER_FPS, caps)
+	check("  in the background still the background's, and a laptop's no cap is still none",
+		caps[5] == SettingsScript.BACKGROUND_FPS and caps[6] == 0, caps)
+	check("  and the cap the engine gets is asked with both (_apply_fps_cap())",
+		_func_body(_code_src("res://src/systems/settings.gd"), "func _apply_fps_cap(").contains("bool(get_value(\"battery_saver\")), on_phone()")
+		and Settings.DEFAULTS.get("battery_saver") == false)
+
+	# ---- brightness ---------------------------------------------------------------
+	var kept_brightness: float = float(Settings.get_value("brightness"))
+	Settings.set_value("brightness", 0.5)
+	var veil: ColorRect = Settings.get("_dimmer") as ColorRect
+	var dimmed: bool = (veil != null and is_equal_approx(veil.color.a, 0.5) and veil.color.r == 0.0
+		and (veil.get_parent() as CanvasLayer).visible and (veil.get_parent() as CanvasLayer).layer == SettingsScript.DIMMER_LAYER)
+	var lets_through: bool = veil != null and veil.mouse_filter == Control.MOUSE_FILTER_IGNORE
+	Settings.set_value("brightness", 0.1)
+	var floor_held: bool = is_equal_approx(float(Settings.get_value("brightness")), SettingsScript.BRIGHTNESS_MIN)
+	Settings.set_value("brightness", 1.0)
+	var gone_at_full: bool = veil != null and not (veil.get_parent() as CanvasLayer).visible
+	Settings.set_value("brightness", kept_brightness)
+	check("brightness lays a dark veil over everything the game draws - half dark at 50%, over the scene fades too",
+		dimmed and SettingsScript.DIMMER_LAYER > 100 and SettingsScript.DIMMER_LAYER < 128, [dimmed, veil])
+	check("  it never takes a touch or a click", lets_through)
+	check("  no darker than %d%%, and at full it is gone - nothing drawn, nothing paid" % roundi(SettingsScript.BRIGHTNESS_MIN * 100.0),
+		floor_held and gone_at_full and Settings.DEFAULTS.get("brightness") == 1.0, [floor_held, gone_at_full])
+	var options: Node = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate()
+	add_child(options)
+	var slider: HSlider = options.get_node_or_null("%brightness") as HSlider
+	var saver: CheckButton = options.get_node_or_null("%batterysaver") as CheckButton
+	check("  Options has both: a Brightness slider over the setting's own range, and a Battery saver switch",
+		slider != null and saver != null and is_equal_approx(slider.min_value, SettingsScript.BRIGHTNESS_MIN)
+		and is_equal_approx(slider.max_value, SettingsScript.BRIGHTNESS_MAX)
+		and _func_body(_code_src("res://src/ui/menus/optionsscreen.gd"), "func _connect_controls(").contains("brightness.min_value = Settings.BRIGHTNESS_MIN"),
+		[slider, saver])
+	options.queue_free()
+	await get_tree().process_frame
+
+	# ---- a phone's own defaults, once ------------------------------------------------
+	var first: Dictionary = SettingsScript.phone_changes(true, false)
+	check("a phone's first launch draws at the game's own size and lifts the dark rather than lighting every candle",
+		first.get("render_resolution") == "low" and first.get("lighting") == "simple", first)
+	check("  once: a phone tuned before, or a laptop, is left as it is - a player who sets either back keeps it",
+		SettingsScript.phone_changes(true, true).is_empty() and SettingsScript.phone_changes(false, false).is_empty())
+	check("  and the file remembers it was done, beside the settings (save_settings())",
+		_func_body(_code_src("res://src/systems/settings.gd"), "func save_settings(").contains("PHONE_TUNED_KEY")
+		and _func_body(_code_src("res://src/systems/settings.gd"), "func load_settings(").contains("phone_changes(on_phone(), _phone_tuned)"))
+	check("  a phone is the browser on Android or iOS (Godot's web_android and web_ios)",
+		_func_body(_code_src("res://src/systems/settings.gd"), "static func on_phone(").contains("web_android")
+		and _func_body(_code_src("res://src/systems/settings.gd"), "static func on_phone(").contains("web_ios"))
+	var shell: String = FileAccess.get_file_as_string("res://web/shell.html")
+	var capped_at: int = shell.find("Object.defineProperty(window, 'devicePixelRatio'")
+	check("the page draws a phone at most two pixels to a CSS pixel, set before the engine loads",
+		capped_at > 0 and capped_at < shell.find("<script src=\"$GODOT_URL\"></script>") and shell.contains("const MOST = 2;")
+		and shell.contains("'(pointer: coarse)'"))
 
 func _test_other_players_attacks_switch() -> void:
 	section("OTHER PLAYERS - drawn as their own scene sorts, and a switch for their attacks (0.40.1)")

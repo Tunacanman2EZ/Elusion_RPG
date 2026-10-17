@@ -136,9 +136,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -370.0
-offset_top = -300.0
+offset_top = -340.5
 offset_right = 370.0
-offset_bottom = 300.0
+offset_bottom = 340.5
 grow_horizontal = 2
 grow_vertical = 2
 theme = SubResource("Theme_options")
@@ -761,6 +761,61 @@ vertical_alignment = 1
 [node name="backgroundlimit" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/backgroundrow"]
 unique_name_in_owner = true
 layout_mode = 2
+
+[node name="batteryrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/batteryrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Battery saver"
+vertical_alignment = 1
+
+[node name="batterysaver" type="CheckButton" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/batteryrow"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="brightnessrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/brightnessrow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_font_sizes/font_size = 12
+text = "Brightness"
+vertical_alignment = 1
+
+[node name="brightness" type="HSlider" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/brightnessrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 20)
+layout_mode = 2
+size_flags_vertical = 4
+min_value = 0.4
+max_value = 1.0
+step = 0.05
+value = 1.0
+
+[node name="brightnessvalue" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/brightnessrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(42, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.92941, 0.72941, 0.30196, 1)
+theme_override_font_sizes/font_size = 12
+text = "100%"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="batteryhint" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.6, 0.66, 1)
+theme_override_font_sizes/font_size = 10
+text = "Battery saver draws 30 frames a second; a lower Brightness saves more on most phones."
+autowrap_mode = 3
 
 [node name="rendererrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
 layout_mode = 2

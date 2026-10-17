@@ -150,6 +150,19 @@ const DEFAULTS := {
 	# second monitor running a video should not pay for them.
 	"background_fps_limit": true,
 
+	# BATTERY SAVER (0.54.0). The owner: "reduce charge on battery". Off by
+	# default; on, the game draws at most SAVER_FPS frames a second - half of
+	# what a phone draws - which is half the work for the processor and the
+	# graphics both. Movement is a little less smooth; nothing else changes.
+	"battery_saver": false,
+
+	# BRIGHTNESS (0.54.0), 1.0 the game as drawn, down to BRIGHTNESS_MIN. A
+	# web page cannot turn the phone's own backlight down, so this lays a
+	# dark veil over everything the game draws (_apply_brightness()). On an
+	# OLED screen - most phones now - darker pixels draw less power; on any
+	# screen it is easier on the eyes in the dark.
+	"brightness": 1.0,
+
 	# --- game ---
 	# The numbers that fly off things when they are hit. On by default, because
 	# they are how the game tells you what a weapon is doing — and optional,
@@ -326,6 +339,10 @@ var _values: Dictionary = {}
 # Whether the game window has focus. Starts true: a game that just launched is
 # the thing the player is looking at, and the first FOCUS_OUT says otherwise.
 var _focused: bool = true
+# The brightness veil (_apply_brightness()), once there is one.
+var _dimmer: ColorRect = null
+# A phone's own defaults have been given (PHONE_DEFAULTS), and are not again.
+var _phone_tuned: bool = false
 
 # True while load() is applying the file, so the whole startup does not emit
 # eight `changed` signals at anything that happens to be listening.
@@ -942,6 +959,34 @@ const LIGHTING_MODES := ["full", "simple"]
 # high enough that nothing time-driven stutters when you look back.
 const BACKGROUND_FPS := 15
 
+# ON A PHONE (0.54.0). The owner: "make sure the game runs smooth on any
+# phone". A phone's browser paces the game by its screen, and a 90 or 120 Hz
+# phone draws every frame twice as often as one is needed - so "no cap" is
+# PHONE_FPS there. Battery saver is SAVER_FPS anywhere.
+const PHONE_FPS := 60
+const SAVER_FPS := 30
+# WHAT A PHONE STARTS WITH, once (load_settings(), PHONE_TUNED_KEY): the two
+# measured above, on a phone. Its screen packs 2-3 pixels into each one a
+# laptop has, and "screen" resolution draws them all - for 3x-zoomed pixel
+# art on a six-inch screen; "low" draws the game's own 1280x720 and lets the
+# screen scale it. And the candles and lanterns double what any lit area
+# costs to draw; "simple" lifts the dark instead. Measured in Chromium as a
+# phone (844x390 at 3x), in town, on the same software graphics: 3.1 frames
+# a second drawn as a laptop draws it, 6.6 at "low" with web/shell.html's two
+# pixels to one (the town has no lights to lift). A player who sets either
+# back keeps their choice.
+const PHONE_DEFAULTS := {"render_resolution": "low", "lighting": "simple"}
+const PHONE_TUNED_SECTION := "device"
+const PHONE_TUNED_KEY := "phone_tuned"
+
+# The brightness slider's range. 40% is as dark as the game stays readable.
+const BRIGHTNESS_MIN := 0.4
+const BRIGHTNESS_MAX := 1.0
+const BRIGHTNESS_STEP := 0.05
+# Over every other layer the game draws, the scene fades (100) included; the
+# owner's performance readout (128) stays readable over it.
+const DIMMER_LAYER := 120
+
 # How far "simple" lighting lifts a CanvasModulate toward white. The crypt's
 # darkness is Color(0.28, 0.3, 0.4) and is only playable because candles
 # light it; with the candles off, this is what keeps it readable.
@@ -964,18 +1009,62 @@ static func content_scale_mode_for(render_resolution: String) -> Window.ContentS
 
 
 static func fps_cap_for(frame_cap: int, focused: bool, background_limit: bool,
-		screen_hz: float = 0.0) -> int:
+		screen_hz: float = 0.0, saver: bool = false, phone: bool = false) -> int:
 	# THE ONE PLACE THE CAP IS WORKED OUT. The player's cap in the foreground;
 	# in the background, BACKGROUND_FPS or the player's cap, whichever is lower
 	# - a player who capped at 10 does not get raised to 15 by alt-tabbing.
 	# Match screen is the window's screen's rate, rounded; a screen that cannot
 	# say its rate (headless, a browser) gets no cap rather than a guess.
+	# On a phone no cap is PHONE_FPS; with the battery saver, never past
+	# SAVER_FPS (ON A PHONE, above).
 	var cap: int = maxi(0, frame_cap)
 	if frame_cap == FRAME_CAP_MATCH:
 		cap = roundi(screen_hz) if screen_hz > 0.0 else 0
+	if phone and cap == 0:
+		cap = PHONE_FPS
+	if saver:
+		cap = SAVER_FPS if cap == 0 else mini(cap, SAVER_FPS)
 	if focused or not background_limit:
 		return cap
 	return BACKGROUND_FPS if cap == 0 else mini(cap, BACKGROUND_FPS)
+
+
+static func phone_changes(phone: bool, already_tuned: bool) -> Dictionary:
+	"""What a phone's first launch of this build changes (PHONE_DEFAULTS), or
+	nothing: not a phone, or tuned once already."""
+	return PHONE_DEFAULTS.duplicate() if phone and not already_tuned else {}
+
+
+static func on_phone() -> bool:
+	"""A phone or a tablet: the browser build on Android or iOS (Godot's
+	web_android and web_ios), or a mobile build."""
+	return OS.has_feature("web_android") or OS.has_feature("web_ios") or OS.has_feature("mobile")
+
+
+static func dimmer_alpha(brightness: float) -> float:
+	"""How dark the veil over the game is at `brightness`: none at full."""
+	return clampf(1.0 - brightness, 0.0, 1.0 - BRIGHTNESS_MIN)
+
+
+func _apply_brightness(brightness: float) -> void:
+	"""BRIGHTNESS: a black veil over everything, as dark as asked. Built the
+	first time it is needed, and hidden at full so it costs nothing."""
+	var alpha: float = dimmer_alpha(brightness)
+	if _dimmer == null:
+		if alpha <= 0.0:
+			return
+		var layer := CanvasLayer.new()
+		layer.name = "brightness"
+		layer.layer = DIMMER_LAYER
+		var veil := ColorRect.new()
+		veil.name = "veil"
+		veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+		layer.add_child(veil)
+		add_child(layer)
+		_dimmer = veil
+	_dimmer.color = Color(0, 0, 0, alpha)
+	(_dimmer.get_parent() as CanvasLayer).visible = alpha > 0.0
 
 
 static func simple_ambient(authored: Color) -> Color:
@@ -987,7 +1076,8 @@ static func simple_ambient(authored: Color) -> Color:
 func _apply_fps_cap() -> void:
 	# THE ONLY PLACE max_fps IS WRITTEN - see "frame_cap" in _apply().
 	var want: int = fps_cap_for(int(get_value("frame_cap")), _focused,
-		bool(get_value("background_fps_limit")), current_screen_hz())
+		bool(get_value("background_fps_limit")), current_screen_hz(),
+		bool(get_value("battery_saver")), on_phone())
 	if Engine.max_fps != want:
 		Engine.max_fps = want
 
@@ -1505,8 +1595,10 @@ func reset() -> void:
 	# Back to DEFAULTS, applied and saved. Every key, not just the ones that
 	# have been touched — a file half-written by an older version should come
 	# out of this completely current.
+	# A phone's own defaults are its defaults (PHONE_DEFAULTS).
+	var phone: bool = on_phone()
 	for key in DEFAULTS:
-		set_value(key, DEFAULTS[key])
+		set_value(key, PHONE_DEFAULTS.get(key, DEFAULTS[key]) if phone else DEFAULTS[key])
 
 
 func _coerce(value: Variant, like: Variant) -> Variant:
@@ -1538,6 +1630,8 @@ func _normalise(key: String, typed: Variant) -> Variant:
 			return normalise_choice(typed, RENDER_RESOLUTIONS, "screen")
 		"lighting":
 			return normalise_choice(typed, LIGHTING_MODES, "full")
+		"brightness":
+			return clampf(float(typed), BRIGHTNESS_MIN, BRIGHTNESS_MAX)
 		"camera_zoom":
 			# CLAMPED, NOT REFUSED. options.cfg is a text file a player can
 			# edit, and a 40 in it should become the ceiling rather than a
@@ -1585,6 +1679,16 @@ func load_settings() -> void:
 	for key in DEFAULTS:
 		set_value(key, stored_value(config, key))
 
+	# A PHONE'S OWN DEFAULTS, ONCE (PHONE_DEFAULTS): over what the file says
+	# the first time this build runs on a phone - an options.cfg from before
+	# 0.54.0 holds "screen", written as everybody's default - and never again,
+	# so a phone player who sets it back keeps it.
+	_phone_tuned = bool(config.get_value(PHONE_TUNED_SECTION, PHONE_TUNED_KEY, false))
+	var tuning: Dictionary = phone_changes(on_phone(), _phone_tuned)
+	for key in tuning:
+		set_value(key, tuning[key])
+	_phone_tuned = _phone_tuned or not tuning.is_empty()
+
 	_loading = false
 
 	# Written back once at the end rather than on every key above, so a first
@@ -1609,6 +1713,8 @@ func save_settings() -> void:
 	var config := ConfigFile.new()
 	for key in _values:
 		config.set_value(SECTION, key, _values[key])
+	if _phone_tuned:
+		config.set_value(PHONE_TUNED_SECTION, PHONE_TUNED_KEY, true)
 
 	var err: int = config.save(CONFIG_PATH)
 	if err != OK:
@@ -1661,8 +1767,10 @@ func _apply(key: String, value: Variant) -> void:
 			# is the player's number or nothing - or, in the background, the
 			# background limit. fps_cap_for() works out which.
 			_apply_fps_cap()
-		"background_fps_limit":
+		"background_fps_limit", "battery_saver":
 			_apply_fps_cap()
+		"brightness":
+			_apply_brightness(float(value))
 		"render_resolution":
 			var want_scale: Window.ContentScaleMode = content_scale_mode_for(str(value))
 			if get_tree().root.content_scale_mode != want_scale:

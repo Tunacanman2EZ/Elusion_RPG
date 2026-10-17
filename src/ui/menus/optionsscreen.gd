@@ -97,6 +97,10 @@ signal credits_requested
 @onready var render_resolution: OptionButton = get_node_or_null("%renderresolution")
 @onready var lighting:          OptionButton = get_node_or_null("%lighting")
 @onready var background_limit:  CheckButton  = get_node_or_null("%backgroundlimit")
+# 0.54.0: for a phone's battery.
+@onready var battery_saver:     CheckButton  = get_node_or_null("%batterysaver")
+@onready var brightness:        HSlider      = get_node_or_null("%brightness")
+@onready var brightness_value:  Label        = get_node_or_null("%brightnessvalue")
 @onready var renderer:          OptionButton = get_node_or_null("%renderer")
 @onready var renderer_note:     Label        = get_node_or_null("%renderernote")
 
@@ -336,6 +340,14 @@ func _connect_controls() -> void:
 		lighting.item_selected.connect(_on_lighting_selected)
 	if background_limit != null:
 		background_limit.toggled.connect(_on_background_limit_toggled)
+	if battery_saver != null:
+		battery_saver.toggled.connect(_on_battery_saver_toggled)
+	if brightness != null:
+		# The range from Settings, as the camera's is.
+		brightness.min_value = Settings.BRIGHTNESS_MIN
+		brightness.max_value = Settings.BRIGHTNESS_MAX
+		brightness.step = Settings.BRIGHTNESS_STEP
+		brightness.value_changed.connect(_on_brightness_changed)
 	if renderer != null:
 		renderer.clear()
 		for method in Settings.RENDERERS:
@@ -427,6 +439,11 @@ func refresh() -> void:
 		lighting.selected = Settings.LIGHTING_MODES.find(str(Settings.get_value("lighting")))
 	if background_limit != null:
 		background_limit.button_pressed = bool(Settings.get_value("background_fps_limit"))
+	if battery_saver != null:
+		battery_saver.button_pressed = bool(Settings.get_value("battery_saver"))
+	if brightness != null:
+		brightness.value = float(Settings.get_value("brightness"))
+	_update_brightness_label()
 	if renderer != null:
 		renderer.selected = Settings.RENDERERS.find(Settings.renderer_requested())
 	_update_renderer_note()
@@ -963,6 +980,27 @@ func _on_background_limit_toggled(pressed: bool) -> void:
 	if _refreshing:
 		return
 	Settings.set_value("background_fps_limit", pressed)
+
+
+func _on_battery_saver_toggled(pressed: bool) -> void:
+	if _refreshing:
+		return
+	Settings.set_value("battery_saver", pressed)
+
+
+func _on_brightness_changed(value: float) -> void:
+	_update_brightness_label()
+	if _refreshing:
+		return
+	# Applied while the hand is on the slider, like the camera: the screen
+	# behind this window darkens as you drag.
+	Settings.set_value("brightness", value)
+
+
+func _update_brightness_label() -> void:
+	if brightness_value == null or brightness == null:
+		return
+	brightness_value.text = "%d%%" % roundi(brightness.value * 100.0)
 
 
 func _on_renderer_selected(index: int) -> void:

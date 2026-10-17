@@ -6589,6 +6589,53 @@ text sized for a phone are the next two.
   against a real export: login typed on the phone's keyboard, the stick,
   Run, Attack held, a finger on the world, Aura, the Controls card.
 
+### The pad in the game's own art; a phone's battery (0.54.0)
+
+The owner, of the first pad: "i do not like the circles how can we elavte
+those controls to be visually appealing", and "i also need to add a
+brightness setting in options to reduce charge on battery also need to make
+sure the game runs smooth on any phone".
+
+- **The pad is drawn in the HUD's own art** (touchpad.gd). Each button is the
+  hotbar's socket - art/images/hotbarslot.png nine-sliced at 7, as
+  rpg_ui_theme.tres slices it, drawn 4 past the box for its clear rim -
+  tinted with the theme's own ButtonSocket pressed and hover colours, with a
+  pixel icon drawn in code (`ICONS`, a character a pixel: a sword, a hand, a
+  boot, a heart; nothing from the purchased pack) and, under a small one,
+  its word. Squares in a block: Attack over the hotbar, Use to its left, Run
+  over Use, the skill over Attack (`layout()`, Rect2s now). The stick is a
+  pixel ring in the socket's cream and gold with a gold knob
+  (`Art.ring_texture()`, `Art.knob_texture()`). **One pixel size for the whole
+  pad, held to whole screen pixels** (`art_pixel()`), so the edges are as
+  crisp as the hotbar's. The art builders are an inner class (`Art`) because
+  an inner class reaches the script's constants but not its functions.
+- **Brightness** (Options, `brightness`, 40-100%): a web page cannot turn a
+  phone's backlight down, so Settings lays a black veil over everything
+  (`_apply_brightness()`, layer 120: over the scene fades, under the owner's
+  performance readout; it never takes a touch). On an OLED screen darker
+  pixels draw less power. Gone at 100%.
+- **Battery saver** (`battery_saver`): at most `SAVER_FPS` (30) a second -
+  half the work. And **on a phone, no cap is `PHONE_FPS` (60)** - a 90 or
+  120 Hz phone does not draw every frame twice. Both are `fps_cap_for()`'s
+  (`saver`, `phone`). `Engine.max_fps` was measured working in a web build:
+  60 holds 59.7-59.9 on a 60 Hz browser, 30 and 20 hold.
+- **A phone's own defaults, once** (`PHONE_DEFAULTS`, `phone_changes()`): the
+  first launch of this build on a phone sets Render resolution to 1280x720
+  and Lighting to Simple - the two the PERFORMANCE section measured - and
+  writes `[device] phone_tuned` beside the settings so it never does again;
+  a player who sets either back keeps it. A phone is Godot's `web_android`
+  or `web_ios` (`on_phone()`).
+- **web/shell.html draws a phone at most two pixels to a CSS pixel**: before
+  the engine loads, on a touch-first device, `devicePixelRatio` reads at most
+  2 (`window.elusionPixels` says both). A phone's is 3 or more. Measured in
+  Chromium as a phone (844x390 at 3x), in town, on software graphics: 3.1
+  frames a second drawn as a laptop draws it, 6.6 at 1280x720 with the cap.
+  Software graphics are far slower than a phone's; the ratio is the point.
+- **Options grew to 681 tall**: Brightness and the Battery saver sit in the
+  right column, which is the taller one on a computer.
+- `_test_a_phone_saves_its_battery()`, the pad's art checks in
+  `_test_a_touch_screen_plays_the_game()`.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

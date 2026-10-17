@@ -23,6 +23,9 @@
 	It also tells an open tab when a new build is up (#update, 0.50.1):
 	see watchForNewBuild() below.
 
+	A PHONE DRAWS AT MOST TWO PIXELS TO A CSS PIXEL (0.54.0): see the first
+	script below.
+
 	ON A PHONE (0.53.0): held upright, #turn asks for it sideways - the game is
 	drawn wide - with a way past it for a tablet; #fullscreen offers the whole
 	screen where the browser allows one (not an iPhone's: there, Add to Home
@@ -352,6 +355,35 @@ $GODOT_HEAD_INCLUDE
 	</div>
 </div>
 
+<script>
+// A PHONE DRAWS AT MOST TWO PIXELS TO A CSS PIXEL (0.54.0). The owner: "make
+// sure the game runs smooth on any phone". The engine sizes its canvas by
+// devicePixelRatio, and a phone's is 3 or more - nine pixels drawn for every
+// one a laptop draws, for pixel art on a six-inch screen. Two is still past
+// what the eye sorts out at arm's length, and draws less than half as many.
+// Before the engine loads, so its first canvas is already this size; only a
+// touch-first device (a laptop's mouse keeps the screen's own).
+(function () {
+	const MOST = 2;
+	if (!window.matchMedia || !window.matchMedia('(pointer: coarse)').matches) {
+		return;
+	}
+	const own = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio')
+		|| Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), 'devicePixelRatio')
+		|| Object.getOwnPropertyDescriptor(Window.prototype, 'devicePixelRatio');
+	const real = own && own.get ? function () { return own.get.call(window); }
+		: (function (at) { return function () { return at; }; }(window.devicePixelRatio || 1));
+	try {
+		Object.defineProperty(window, 'devicePixelRatio', {
+			configurable: true,
+			get: function () { return Math.min(real(), MOST); },
+		});
+	} catch (e) {
+		// A browser that will not have it: the screen's own, as before.
+	}
+	window.elusionPixels = { screen: real(), drawn: window.devicePixelRatio };
+}());
+</script>
 <script src="$GODOT_URL"></script>
 <script>
 const GODOT_CONFIG = $GODOT_CONFIG;
