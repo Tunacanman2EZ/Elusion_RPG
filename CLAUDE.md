@@ -6589,26 +6589,31 @@ text sized for a phone are the next two.
   against a real export: login typed on the phone's keyboard, the stick,
   Run, Attack held, a finger on the world, Aura, the Controls card.
 
-### The pad in the game's own art; a phone's battery (0.54.0)
+### The pad in the game's own art; a phone's battery (0.54.0, 0.54.1)
 
 The owner, of the first pad: "i do not like the circles how can we elavte
 those controls to be visually appealing", and "i also need to add a
 brightness setting in options to reduce charge on battery also need to make
 sure the game runs smooth on any phone".
 
-- **The pad is drawn in the HUD's own art** (touchpad.gd). Each button is the
-  hotbar's socket - art/images/hotbarslot.png nine-sliced at 7, as
-  rpg_ui_theme.tres slices it, drawn 4 past the box for its clear rim -
-  tinted with the theme's own ButtonSocket pressed and hover colours, with a
-  pixel icon drawn in code (`ICONS`, a character a pixel: a sword, a hand, a
-  boot, a heart; nothing from the purchased pack) and, under a small one,
-  its word. Squares in a block: Attack over the hotbar, Use to its left, Run
-  over Use, the skill over Attack (`layout()`, Rect2s now). The stick is a
-  pixel ring in the socket's cream and gold with a gold knob
-  (`Art.ring_texture()`, `Art.knob_texture()`). **One pixel size for the whole
-  pad, held to whole screen pixels** (`art_pixel()`), so the edges are as
-  crisp as the hotbar's. The art builders are an inner class (`Art`) because
-  an inner class reaches the script's constants but not its functions.
+- **The pad is the game's own art and the Clockwork pack's, nothing drawn in
+  code** (touchpad.gd, 0.54.1). 0.54.0 shipped pixel icons and a stick ring
+  drawn in code here; the owner: "i would prefer we do not use your art
+  specifically we need to use my art only there is no shortcuts we can look
+  at potential stuff from clockwork". So: each button is the hotbar's socket
+  - art/images/hotbarslot.png nine-sliced at 7, as rpg_ui_theme.tres slices
+  it, drawn 4 past the box for its clear rim - tinted with the theme's own
+  ButtonSocket pressed and hover colours; the icons are the pack's stat icons
+  (`ICON_PATHS`: attackiconcharacterstats, agility for Run, hp for Aura,
+  inventorygold for Use); the stick is the same socket, as big as the stick,
+  with the pack's gold coin for the knob (`KNOB_PATH`). **No art is made in
+  this file** - the suite looks for Image.create, set_pixel and the draw_*
+  shapes in it. **The pack is loaded, never preloaded** (`Art.picture()`): a
+  clone has none, and a button there says its word in its socket. Squares in
+  a block: Attack over the hotbar, Use to its left, Run over Use, the skill
+  over Attack (`layout()`). **Whole screen pixels**: a socket's pixel
+  (`art_pixel()`) and an icon's (`Art.texel_size()`) are each a whole number
+  of screen pixels, so the edges stay as crisp as the hotbar's.
 - **Brightness** (Options, `brightness`, 40-100%): a web page cannot turn a
   phone's backlight down, so Settings lays a black veil over everything
   (`_apply_brightness()`, layer 120: over the scene fades, under the owner's
@@ -6633,7 +6638,7 @@ sure the game runs smooth on any phone".
   Software graphics are far slower than a phone's; the ratio is the point.
 - **Options grew to 681 tall**: Brightness and the Battery saver sit in the
   right column, which is the taller one on a computer.
-- `_test_a_phone_saves_its_battery()`, the pad's art checks in
+- `_test_a_phone_saves_its_battery()`, the pad's own-art checks in
   `_test_a_touch_screen_plays_the_game()`.
 
 ### Mixed tabs and spaces inside one indent is a parse error

@@ -13209,26 +13209,36 @@ func _test_a_touch_screen_plays_the_game() -> void:
 				clashes.append([f, "stick", "outside its zone, or on the menu bar"])
 	check("laid out at every size, with and without a skill: on the screen, off the hotbar and the menu bar, no socket or its word on another or on the stick",
 		clashes.is_empty(), clashes)
-	var too_big: Array = []
-	for icon in PadScript.ICONS:
-		var picture: Texture2D = PadScript.Art.icon_texture(icon)
-		var room: int = (PadScript.ATTACK_ART if icon == "sword" else PadScript.SMALL_ART) - 6
-		if picture.get_width() > room or picture.get_height() > room:
-			too_big.append([icon, picture.get_size(), room])
-	check("DRAWN IN THE GAME'S OWN ART: each button is the hotbar's socket with its pixel icon inside the frame (0.54.0)",
-		too_big.is_empty() and PadScript.SOCKET.resource_path == "res://art/images/hotbarslot.png"
-		and PadScript.ICONS.has("sword") and PadScript.ICONS.has("hand") and PadScript.ICONS.has("boot") and PadScript.ICONS.has("heart"),
-		too_big)
-	check("  no flat circles left: the stick is a pixel ring and a gold knob",
-		not _code_src("res://src/ui/touchpad.gd").contains("draw_circle(")
-		and PadScript.Art.ring_texture(PadScript.STICK_ART).get_width() == PadScript.STICK_ART
-		and PadScript.Art.knob_texture(PadScript.KNOB_ART).get_width() == PadScript.KNOB_ART)
+	# ONLY THE GAME'S OWN ART (0.54.0). The owner: "we need to use my art only
+	# there is no shortcuts we can look at potential stuff from clockwork".
+	var pad_code: String = _code_src("res://src/ui/touchpad.gd")
+	var drawn_here: Array = []
+	for making in ["Image.create", "set_pixel", "draw_circle(", "draw_arc(", "draw_rect(", "draw_polygon(", "draw_line("]:
+		if pad_code.contains(making):
+			drawn_here.append(making)
+	check("ONLY THE GAME'S OWN ART: the pad draws no picture of its own - the sockets are the hotbar's slot, every icon and the knob the Clockwork pack's (0.54.0)",
+		drawn_here.is_empty() and PadScript.SOCKET.resource_path == "res://art/images/hotbarslot.png"
+		and PadScript.ICON_PATHS.values().all(func(path: String) -> bool: return path.begins_with("res://art/pack/"))
+		and String(PadScript.KNOB_PATH).begins_with("res://art/pack/")
+		and PadScript.ICON_PATHS.has("attack") and PadScript.ICON_PATHS.has("use")
+		and PadScript.ICON_PATHS.has("run") and PadScript.ICON_PATHS.has("skill"), drawn_here)
+	check("  and none of the pack is preloaded - a clone has no pack, and a preload of a missing file stops the script compiling",
+		not FileAccess.get_file_as_string("res://src/ui/touchpad.gd").contains("preload(\"res://art/pack"))
+	var missing_art: Array = []
+	for path in PadScript.ICON_PATHS.values() + [PadScript.KNOB_PATH]:
+		if PadScript.Art.picture(path) == null:
+			missing_art.append(path)
+	check_needs_pack("  every one of them is in the pack and loads", missing_art.is_empty(), missing_art)
+	check("  where it is not, nothing breaks: no picture, and the button says its word in its socket",
+		PadScript.Art.picture("res://art/pack/icons/no_such_icon.png") == null
+		and _func_body(pad_code, "	func _draw(").contains("if picture == null:"))
 	var whole: Array = []
 	for per_unit in [1.0, 1.3125, 1.625, 2.17]:
 		var px: float = PadScript.art_pixel(170.0, PadScript.ATTACK_ART, per_unit)
-		if absf(px * per_unit - roundf(px * per_unit)) > 0.001:
-			whole.append([per_unit, px])
-	check("  an art pixel is whole screen pixels at every screen scale, so its edges are as crisp as the hotbar's", whole.is_empty(), whole)
+		var texel: float = PadScript.Art.texel_size(130.0, 16, per_unit)
+		if absf(px * per_unit - roundf(px * per_unit)) > 0.001 or absf(texel * per_unit - roundf(texel * per_unit)) > 0.001:
+			whole.append([per_unit, px, texel])
+	check("  a socket's pixel and an icon's are whole screen pixels at every screen scale, as crisp as the hotbar's", whole.is_empty(), whole)
 	var hud := Control.new()
 	hud.size = Vector2(1280, 720)
 	var hotbar := Control.new()
@@ -13248,6 +13258,14 @@ func _test_a_touch_screen_plays_the_game() -> void:
 	check("the pad goes on the HUD as its first child - every bar, button and window there is over it and takes a touch first",
 		first and _func_body(_code_src("res://src/ui/characterhud.gd"), "func _ready(").contains("TouchControls.attach(self)"))
 	check("  shown while the touch screen is in use, and not otherwise", hidden_off and shown_on, [hidden_off, shown_on])
+	var outside: Array = []
+	for id in ["attack", "use", "run"]:
+		var socket_button: Control = pad.get(id)
+		var inside: Rect2 = (socket_button.get("box") as Rect2).grow(-float(socket_button.get("pixel")) * PadScript.SOCKET_FRAME)
+		var drawn_at: Rect2 = socket_button.call("icon_rect")
+		if socket_button.get("picture") != null and not inside.encloses(drawn_at):
+			outside.append([id, drawn_at, inside])
+	check_needs_pack("  each icon sits inside its socket's frame", outside.is_empty(), outside)
 	var attack_button: Control = pad.get("attack")
 	var thumb := InputEventScreenTouch.new()
 	thumb.index = 1

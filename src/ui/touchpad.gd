@@ -21,12 +21,25 @@
 # phone held sideways. The pad is sized in CSS pixels instead (thumb_scale()):
 # the sizes below are what a thumb gets on every screen.
 #
-# DRAWN IN THE GAME'S OWN ART (0.54.0). The owner, of the first pad's flat
-# circles: "i do not like the circles". The buttons are the hotbar's own
-# socket (art/images/hotbarslot.png, nine-sliced as the theme slices it), each
-# with a pixel icon drawn here (ICONS: a sword, a hand, a boot, a heart); the
-# stick is a pixel ring in the socket's gold with a gold knob. Every one is
-# drawn at whole screen pixels to an art pixel (art_pixel()), so the edges
+# ONLY THE GAME'S OWN ART (0.54.0). The owner, of the first pad's flat
+# circles: "i do not like the circles" - and of icons drawn for it in code: "we
+# need to use my art only there is no shortcuts we can look at potential stuff
+# from clockwork". Nothing here is drawn by this script:
+#   the sockets   the hotbar's own slot, art/images/hotbarslot.png (Elusion
+#                 Studios'), nine-sliced as rpg_ui_theme.tres slices it and
+#                 tinted with that theme's own pressed and hover colours
+#   the icons     the Clockwork Raven pack's stat icons (art/pack/icons):
+#                 Attack's sword, Run's boot (agility), Aura's heart (health),
+#                 and Use's chest (the bag's gold)
+#   the stick     the same slot, as big as the stick, with the pack's gold
+#                 coin (art/pack/currency/goldcoin.png) for the knob
+# THE PACK IS PRIVATE, so a clone of the repository has none of it: every pack
+# picture is loaded when it is there and nothing breaks when it is not - a
+# button shows its word, the knob is a small slot (ICON_PATHS, KNOB_PATH). Not
+# preloaded: a preload of a missing file stops the script compiling at all.
+#
+# WHOLE SCREEN PIXELS. A socket's pixel and an icon's are each drawn a whole
+# number of screen pixels wide (art_pixel(), Art.texel_size()), so their edges
 # stay as crisp as the hotbar's.
 extends Control
 
@@ -55,119 +68,34 @@ const REACH := 1.1
 # one pixel size.
 const SMALL_ART := 22
 const ATTACK_ART := 34
-const STICK_ART := 44
-const KNOB_ART := 18
+# How much of a socket's inside its icon fills, at most.
+const ICON_FILL := 0.82
 
 const SOCKET := preload("res://art/images/hotbarslot.png")
 # The slot's frame is 3 pixels inside 4 of clear rim: nine-sliced at 7, as
 # rpg_ui_theme.tres slices it, and drawn 4 past the box so the frame is the box.
 const SOCKET_SLICE := 7
 const SOCKET_RIM := 4
+# The frame's width, in the slot's pixels: an icon goes inside it.
+const SOCKET_FRAME := 3
+
+# THE PACK'S PICTURES (Clockwork Raven, art/pack/ - see assetlicense.md).
+const ICON_PATHS := {
+	"attack": "res://art/pack/icons/attackiconcharacterstats.png",
+	"use": "res://art/pack/icons/inventorygold.png",
+	"run": "res://art/pack/icons/agilityiconcharacterstats.png",
+	"skill": "res://art/pack/icons/hpiconcharacterstats.png",
+}
+const KNOB_PATH := "res://art/pack/currency/goldcoin.png"
 
 # The theme's own tints for a socket button (ButtonSocket): pressed is its
 # pressed, lit is its hover.
 const TINT_IDLE := Color(1.0, 1.0, 1.0, 0.86)
 const TINT_PRESSED := Color(0.75, 0.7, 0.62, 1.0)
 const TINT_LIT := Color(1.35, 1.25, 1.05, 1.0)
-const LIT_GLOW := Color(0.95, 0.62, 0.16, 0.42)
 const WORDS := Color(0.99, 0.93, 0.74, 1.0)
 const WORDS_LIT := Color(1.0, 0.82, 0.3, 1.0)
 const WORDS_OUTLINE := Color(0.1, 0.07, 0.07, 0.95)
-
-# The socket's own colours, for the stick drawn to match it.
-const INK := Color(37 / 255.0, 28 / 255.0, 35 / 255.0)
-const CREAM := Color(253 / 255.0, 228 / 255.0, 143 / 255.0)
-const GOLD := Color(244 / 255.0, 193 / 255.0, 21 / 255.0)
-const GOLD_DARK := Color(176 / 255.0, 120 / 255.0, 20 / 255.0)
-const SHINE := Color(255 / 255.0, 254 / 255.0, 253 / 255.0)
-const HOLLOW := Color(27 / 255.0, 22 / 255.0, 18 / 255.0, 150 / 255.0)
-
-# THE ICONS, a character a pixel ("." is clear). Drawn for this pad; nothing
-# here is from the purchased pack.
-const PALETTE := {
-	"o": Color(37 / 255.0, 28 / 255.0, 35 / 255.0), "w": Color(255 / 255.0, 254 / 255.0, 253 / 255.0), "c": Color(253 / 255.0, 228 / 255.0, 143 / 255.0),
-	"g": Color(244 / 255.0, 193 / 255.0, 21 / 255.0), "G": Color(176 / 255.0, 120 / 255.0, 20 / 255.0), "s": Color(214 / 255.0, 222 / 255.0, 232 / 255.0),
-	"S": Color(128 / 255.0, 140 / 255.0, 160 / 255.0), "b": Color(122 / 255.0, 74 / 255.0, 42 / 255.0), "B": Color(84 / 255.0, 48 / 255.0, 28 / 255.0),
-	"r": Color(226 / 255.0, 72 / 255.0, 72 / 255.0), "R": Color(150 / 255.0, 36 / 255.0, 48 / 255.0), "p": Color(255 / 255.0, 160 / 255.0, 160 / 255.0),
-	"k": Color(200 / 255.0, 150 / 255.0, 110 / 255.0), "K": Color(150 / 255.0, 100 / 255.0, 70 / 255.0),
-}
-const ICONS := {
-	"sword": [
-		"........................o.",
-		".......................owo",
-		"......................owso",
-		".....................owsSo",
-		"....................owsSo.",
-		"...................owsSo..",
-		"..................owsSo...",
-		".................owsSo....",
-		"................owsSo.....",
-		"...............owsSo......",
-		".....oo.......owsSo.......",
-		"....oGgo.....owsSo........",
-		".....oggo...owsSo.........",
-		"......oggo.owsSo..........",
-		".......oggowsSo...........",
-		"........ogGsSo............",
-		"........oogGo.............",
-		".......oboogGo............",
-		"......obBo.ogGo...........",
-		".....obBo...oGGo..........",
-		"...oobBo.....oo...........",
-		"..ocgBo...................",
-		"..ogGo....................",
-		"...oo.....................",
-	],
-	"hand": [
-		".....oo.......",
-		"....okko.oo...",
-		"..oookkookko..",
-		".okkokkookko..",
-		".okkokkokkko..",
-		".okkokkokkooo.",
-		".okkokkokkokko",
-		".okkkkkkkkkkko",
-		".okkkkkkkkkko.",
-		".okkkkkkkkkko.",
-		"..okkkkkkkko..",
-		"..okkkkkkkko..",
-		"...okkkkkKo...",
-		"...oKKKKKKo...",
-		"....oooooo....",
-	],
-	"boot": [
-		"................",
-		".....oooooo.....",
-		".....occcco.....",
-		".....obbbbo.....",
-		".cc..obbbbo.....",
-		".....obbbbo.....",
-		"cccc.obbbbo.....",
-		".....obbbbboo...",
-		".cc..obbbbbbbo..",
-		".....obbbbbbbbo.",
-		"....obbbbbbbbbo.",
-		"....oBBBBBBBBBo.",
-		"....ooooooooooo.",
-		"................",
-	],
-	"heart": [
-		"..............",
-		"..ooo...ooo...",
-		".orrro.orrro..",
-		"orpprrorrrrro.",
-		"orpwrrrrrrrro.",
-		"orprrrwwrrrro.",
-		"orrrrrwwrrrRo.",
-		".orrwwwwwwrRo.",
-		".orrwwwwwwRo..",
-		"..orrrwwrRo...",
-		"...orrwwRo....",
-		"....orrRo.....",
-		".....oRo......",
-		"......o.......",
-	],
-}
 
 var stick: Stick = null
 var attack: PadButton = null
@@ -187,10 +115,10 @@ func _init() -> void:
 	stick = Stick.new()
 	stick.name = "stick"
 	add_child(stick)
-	attack = _button("attack", "sword", "")
-	use = _button("use", "hand", "Use")
-	run = _button("run", "boot", "Run")
-	skill = _button("skill", "heart", "")
+	attack = _button("attack", "Attack", false)
+	use = _button("use", "Use", true)
+	run = _button("run", "Run", true)
+	skill = _button("skill", "", true)
 	attack.went_down.connect(TouchControls.press_attack)
 	attack.went_up.connect(TouchControls.release_attack)
 	attack.dragged.connect(func(drag: Vector2): TouchControls.attack_drag = drag)
@@ -202,11 +130,12 @@ func _init() -> void:
 	skill.dragged.connect(func(drag: Vector2): TouchControls.skill_drag = drag)
 
 
-func _button(id: String, icon: String, words: String) -> PadButton:
+func _button(id: String, words: String, captioned: bool) -> PadButton:
 	var button := PadButton.new()
 	button.name = id
-	button.icon = icon
+	button.picture = Art.picture(ICON_PATHS.get(id, ""))
 	button.words = words
+	button.captioned = captioned
 	add_child(button)
 	return button
 
@@ -306,7 +235,9 @@ static func art_pixel(side: float, art: int, screen_per_unit: float) -> float:
 	`art` pixels across, held to WHOLE SCREEN PIXELS - a pixel art edge that
 	falls between two screen pixels draws one wide and the next narrow."""
 	var want: float = side / float(maxi(art, 1))
-	if screen_per_unit <= 0.0:
+	# A window with fewer pixels than the game has units (a headless one) has
+	# no whole pixel worth holding to.
+	if screen_per_unit < 1.0:
 		return want
 	return maxf(1.0, round(want * screen_per_unit)) / screen_per_unit
 
@@ -337,12 +268,12 @@ func lay_out() -> void:
 	var px: float = art_pixel((at["attack"] as Rect2).size.x, ATTACK_ART, per_unit)
 	# ONE PIXEL SIZE FOR THE WHOLE PAD, Attack's: the stick and the sockets
 	# read as one set.
-	stick.place(at["zone"], at["stick_rest"] - (at["zone"] as Rect2).position, at["stick_radius"], at["knob_radius"], px)
+	stick.place(at["zone"], at["stick_rest"] - (at["zone"] as Rect2).position, at["stick_radius"], at["knob_radius"], px, per_unit)
 	for id in ["attack", "use", "run", "skill"]:
 		var button: PadButton = get(id)
 		button.visible = at.has(id)
 		if at.has(id):
-			button.place(at[id], ATTACK_ART if id == "attack" else SMALL_ART, px, LABEL_SIZE * scale_now, float(at["words"]))
+			button.place(at[id], ATTACK_ART if id == "attack" else SMALL_ART, px, LABEL_SIZE * scale_now, float(at["words"]), per_unit)
 
 
 # =============================================================================
@@ -352,11 +283,8 @@ func lay_out() -> void:
 # the script's constants but not its functions.
 
 class Art:
-	# Built once, the first time each is asked for.
-	static var _icon_cache: Dictionary = {}
-	static var _ring_cache: Dictionary = {}
 	static var _socket_box: StyleBoxTexture = null
-
+	static var _pictures: Dictionary = {}
 
 	static func socket_box() -> StyleBoxTexture:
 		"""The hotbar slot, nine-sliced as the theme slices it."""
@@ -369,108 +297,53 @@ class Art:
 			_socket_box.texture_margin_bottom = SOCKET_SLICE
 		return _socket_box
 
+	static func picture(path: String) -> Texture2D:
+		"""A picture from the pack, or null where a clone has none."""
+		if path == "":
+			return null
+		if not _pictures.has(path):
+			_pictures[path] = load(path) as Texture2D if ResourceLoader.exists(path) else null
+		return _pictures[path]
 
-	static func icon_texture(name: String) -> Texture2D:
-		"""ICONS[name] as a texture, one texel an art pixel."""
-		if _icon_cache.has(name):
-			return _icon_cache[name]
-		var rows: Array = ICONS.get(name, [])
-		var w: int = 0
-		for row in rows:
-			w = maxi(w, String(row).length())
-		var image := Image.create(maxi(w, 1), maxi(rows.size(), 1), false, Image.FORMAT_RGBA8)
-		for y in rows.size():
-			var row: String = rows[y]
-			for x in row.length():
-				var key: String = row[x]
-				if PALETTE.has(key):
-					image.set_pixel(x, y, PALETTE[key])
-		var texture := ImageTexture.create_from_image(image)
-		_icon_cache[name] = texture
-		return texture
+	static func texel_size(room: float, texels: int, screen_per_unit: float) -> float:
+		"""Game units to one of a picture's pixels: as big as fits `room`
+		units, held to whole screen pixels."""
+		if texels <= 0:
+			return 0.0
+		if screen_per_unit < 1.0:
+			return room / texels
+		return maxf(1.0, floor(room * screen_per_unit / texels)) / screen_per_unit
 
+	static func draw_socket(on: CanvasItem, box: Rect2, pixel: float, tint: Color) -> void:
+		"""The slot drawn as `box`, its frame `pixel` units to one of its pixels."""
+		var art := Vector2(box.size.x / pixel, box.size.y / pixel)
+		on.draw_set_transform(box.position, 0.0, Vector2(pixel, pixel))
+		var socket: StyleBoxTexture = socket_box()
+		socket.modulate_color = tint
+		on.draw_style_box(socket, Rect2(-Vector2(SOCKET_RIM, SOCKET_RIM), art + Vector2(SOCKET_RIM, SOCKET_RIM) * 2.0))
+		on.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	static func ring_texture(art: int) -> Texture2D:
-		"""The stick's ring, `art` pixels across: the socket's ink outline, its
-		cream lit from the top left and gold below, a dark hollow the world shows
-		through, and an arrow at each of the four ways."""
-		var key: String = "ring%d" % art
-		if _ring_cache.has(key):
-			return _ring_cache[key]
-		var image := Image.create(art, art, false, Image.FORMAT_RGBA8)
-		var r: float = art / 2.0
-		for y in art:
-			for x in art:
-				var dx: float = x + 0.5 - r
-				var dy: float = y + 0.5 - r
-				var d: float = sqrt(dx * dx + dy * dy)
-				if d > r:
-					continue
-				if d > r - 1.0 or (d > r - 4.0 and d <= r - 3.0):
-					image.set_pixel(x, y, INK)
-				elif d > r - 3.0:
-					image.set_pixel(x, y, CREAM if dx + dy < 0.0 else GOLD)
-				else:
-					image.set_pixel(x, y, HOLLOW)
-		var mid: int = int(art / 2.0)
-		var out: int = int(r) - 7
-		for i in 3:
-			for j in range(-i, i + 1):
-				image.set_pixel(mid + j, mid - out + i, CREAM)
-				image.set_pixel(mid + j, mid + out - 1 - i, CREAM)
-				image.set_pixel(mid - out + i, mid + j, CREAM)
-				image.set_pixel(mid + out - 1 - i, mid + j, CREAM)
-		var texture := ImageTexture.create_from_image(image)
-		_ring_cache[key] = texture
-		return texture
-
-
-	static func knob_texture(art: int) -> Texture2D:
-		"""The stick's knob: a gold orb, cream where the light catches it."""
-		var key: String = "knob%d" % art
-		if _ring_cache.has(key):
-			return _ring_cache[key]
-		var image := Image.create(art, art, false, Image.FORMAT_RGBA8)
-		var r: float = art / 2.0
-		for y in art:
-			for x in art:
-				var dx: float = x + 0.5 - r
-				var dy: float = y + 0.5 - r
-				var d: float = sqrt(dx * dx + dy * dy)
-				if d > r:
-					continue
-				var t: float = (dx + dy) / (2.0 * r)
-				var colour: Color = INK if d > r - 1.0 else (CREAM if t < -0.25 else (GOLD if t < 0.3 else GOLD_DARK))
-				image.set_pixel(x, y, colour)
-		var shine := Vector2i(int(r * 0.6), int(r * 0.5))
-		for spot in [Vector2i.ZERO, Vector2i(1, 0), Vector2i(0, 1)]:
-			image.set_pixelv(shine + spot, SHINE)
-		var texture := ImageTexture.create_from_image(image)
-		_ring_cache[key] = texture
-		return texture
-
-
-# =============================================================================
-# THE PARTS
-# =============================================================================
 
 class PadButton extends Control:
-	"""A hotbar socket for a thumb, with its icon and, for a small one, its
-	word under it. It answers touches by finger - two thumbs on two buttons
-	are two presses - and the first finger's copied mouse clicks, which it
-	keeps from the world."""
+	"""A hotbar socket for a thumb, with the pack's icon in it and, for a
+	small one, its word under it - or, where a clone has no pack, its word in
+	it. It answers touches by finger - two thumbs on two buttons are two
+	presses - and the first finger's copied mouse clicks, which it keeps from
+	the world."""
 	signal went_down
 	signal went_up
 	signal dragged(share: Vector2)
 
-	var icon: String = "":
+	var picture: Texture2D = null:
 		set(value):
-			icon = value
+			picture = value
 			queue_redraw()
 	var words: String = "":
 		set(value):
 			words = value
 			queue_redraw()
+	# A small socket's word goes under it; Attack's only where it has no icon.
+	var captioned: bool = true
 	var lit: bool = false:
 		set(value):
 			if value != lit:
@@ -480,6 +353,7 @@ class PadButton extends Control:
 	var box: Rect2 = Rect2(0, 0, 60, 60)
 	var art: int = 22
 	var pixel: float = 2.0
+	var per_unit: float = 1.0
 	var label_size: float = 12.0
 	var caption_height: float = 15.0
 	var finger: int = -1
@@ -489,9 +363,11 @@ class PadButton extends Control:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		focus_mode = Control.FOCUS_NONE
 
-	func place(socket: Rect2, art_pixels: int, art_pixel_size: float, words_size: float, words_height: float) -> void:
+	func place(socket: Rect2, art_pixels: int, art_pixel_size: float, words_size: float, words_height: float,
+			screen_per_unit: float = 1.0) -> void:
 		art = art_pixels
 		pixel = art_pixel_size
+		per_unit = screen_per_unit
 		label_size = words_size
 		caption_height = words_height
 		var reach: float = socket.size.x * (REACH - 1.0) / 2.0
@@ -503,6 +379,19 @@ class PadButton extends Control:
 
 	func radius() -> float:
 		return box.size.x / 2.0
+
+	func icon_rect() -> Rect2:
+		"""Where the icon is drawn: as big as fits inside the slot's frame, a
+		whole number of screen pixels to each of its own."""
+		if picture == null:
+			return Rect2()
+		var room: float = (art - SOCKET_FRAME * 2) * pixel * ICON_FILL
+		var texels: int = maxi(picture.get_width(), picture.get_height())
+		var side: float = Art.texel_size(room, texels, per_unit) * texels
+		var at: Vector2 = box.position + (box.size - Vector2(side, side)) / 2.0
+		if finger >= 0:
+			at.y += pixel
+		return Rect2((at * per_unit).round() / per_unit, Vector2(side, side))
 
 	func _gui_input(event: InputEvent) -> void:
 		var touch := event as InputEventScreenTouch
@@ -534,52 +423,53 @@ class PadButton extends Control:
 
 	func _draw() -> void:
 		var down: bool = finger >= 0
-		# IN ART PIXELS from here: one unit is one pixel of the socket.
-		draw_set_transform(box.position, 0.0, Vector2(pixel, pixel))
-		var socket: StyleBoxTexture = Art.socket_box()
-		socket.modulate_color = TINT_PRESSED if down else (TINT_LIT if lit else TINT_IDLE)
-		draw_style_box(socket, Rect2(-SOCKET_RIM, -SOCKET_RIM, art + SOCKET_RIM * 2, art + SOCKET_RIM * 2))
-		if lit:
-			draw_rect(Rect2(3, 3, art - 6, art - 6), LIT_GLOW)
-		var picture: Texture2D = Art.icon_texture(icon)
-		var at: Vector2 = ((Vector2(art, art) - picture.get_size()) / 2.0).floor()
-		if down:
-			at.y += 1.0
-		draw_texture(picture, at, Color(1, 1, 1, 1.0 if down or lit else 0.95))
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		if words != "":
-			var font: Font = get_theme_default_font()
-			var px: int = int(round(label_size))
-			var strip := Rect2(box.position.x, box.end.y, box.size.x, caption_height)
-			var base_y: float = strip.position.y + (strip.size.y - font.get_height(px)) / 2.0 + font.get_ascent(px) + pixel
-			var colour: Color = WORDS_LIT if lit else WORDS
-			draw_string_outline(font, Vector2(strip.position.x, base_y), words, HORIZONTAL_ALIGNMENT_CENTER,
-				strip.size.x, px, maxi(2, int(round(px / 4.0))), WORDS_OUTLINE)
-			draw_string(font, Vector2(strip.position.x, base_y), words, HORIZONTAL_ALIGNMENT_CENTER, strip.size.x, px, colour)
+		Art.draw_socket(self, box, pixel, TINT_PRESSED if down else (TINT_LIT if lit else TINT_IDLE))
+		if picture != null:
+			draw_texture_rect(picture, icon_rect(), false, Color(1, 1, 1, 1.0 if down or lit else 0.95))
+		if words == "":
+			return
+		var font: Font = get_theme_default_font()
+		var px: int = int(round(label_size))
+		var colour: Color = WORDS_LIT if lit else WORDS
+		# Under a small socket; inside one with no icon (a clone has no pack).
+		var strip := Rect2(box.position.x, box.end.y, box.size.x, caption_height)
+		if picture == null:
+			strip = Rect2(box.position.x, box.position.y + (box.size.y - caption_height) / 2.0, box.size.x, caption_height)
+		elif not captioned:
+			return
+		var base_y: float = strip.position.y + (strip.size.y - font.get_height(px)) / 2.0 + font.get_ascent(px) + (pixel if picture != null else 0.0)
+		draw_string_outline(font, Vector2(strip.position.x, base_y), words, HORIZONTAL_ALIGNMENT_CENTER,
+			strip.size.x, px, maxi(2, int(round(px / 4.0))), WORDS_OUTLINE)
+		draw_string(font, Vector2(strip.position.x, base_y), words, HORIZONTAL_ALIGNMENT_CENTER, strip.size.x, px, colour)
 
 
 class Stick extends Control:
 	"""The move stick: wherever the thumb lands in its zone, following the
-	thumb past its rim, at rest in the corner when nothing holds it. A pixel
-	ring in the socket's gold, with a gold knob."""
+	thumb past its rim, at rest in the corner when nothing holds it. The
+	hotbar's slot as big as the stick, with the pack's gold coin for a knob."""
 	var radius: float = 62.0
 	var knob_radius: float = 26.0
 	var pixel: float = 2.0
+	var per_unit: float = 1.0
 	var rest: Vector2 = Vector2.ZERO
 	var base: Vector2 = Vector2.ZERO
 	var knob: Vector2 = Vector2.ZERO
 	var finger: int = -1
+	var coin: Texture2D = null
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		focus_mode = Control.FOCUS_NONE
+		coin = Art.picture(KNOB_PATH)
 
-	func place(zone: Rect2, resting: Vector2, r: float, knob_r: float, art_pixel_size: float = 0.0) -> void:
+	func place(zone: Rect2, resting: Vector2, r: float, knob_r: float, art_pixel_size: float = 0.0,
+			screen_per_unit: float = 1.0) -> void:
 		position = zone.position
 		size = zone.size
 		radius = r
 		knob_radius = knob_r
-		pixel = art_pixel_size if art_pixel_size > 0.0 else r * 2.0 / STICK_ART
+		pixel = art_pixel_size if art_pixel_size > 0.0 else 2.0
+		per_unit = screen_per_unit
 		rest = resting
 		if finger < 0:
 			base = rest
@@ -626,13 +516,25 @@ class Stick extends Control:
 		TouchControls.stick_held = finger >= 0
 		queue_redraw()
 
+	func knob_rect() -> Rect2:
+		"""Where the knob is drawn: the coin, a whole number of screen pixels to
+		each of its own - or a small slot where a clone has no pack."""
+		var at: Vector2 = base + knob.limit_length(radius)
+		var side: float = knob_radius * 2.0
+		if coin != null:
+			var texels: int = maxi(coin.get_width(), coin.get_height())
+			side = Art.texel_size(knob_radius * 2.0, texels, per_unit) * texels
+		var corner: Vector2 = ((at - Vector2(side, side) / 2.0) * per_unit).round() / per_unit
+		return Rect2(corner, Vector2(side, side))
+
 	func _draw() -> void:
 		var held: bool = finger >= 0
-		var fade := Color(1, 1, 1, 0.92 if held else 0.5)
-		var ring: Texture2D = Art.ring_texture(STICK_ART)
-		var ring_side: float = pixel * STICK_ART
-		draw_texture_rect(ring, Rect2((base - Vector2(ring_side, ring_side) / 2.0).round(), Vector2(ring_side, ring_side)), false, fade)
-		var gem: Texture2D = Art.knob_texture(KNOB_ART)
-		var gem_side: float = pixel * KNOB_ART
-		var at: Vector2 = base + knob.limit_length(radius)
-		draw_texture_rect(gem, Rect2((at - Vector2(gem_side, gem_side) / 2.0).round(), Vector2(gem_side, gem_side)), false, fade)
+		var tint := Color(1, 1, 1, 0.92 if held else 0.5)
+		var side: float = float(int(radius * 2.0 / pixel)) * pixel
+		var corner: Vector2 = ((base - Vector2(side, side) / 2.0) * per_unit).round() / per_unit
+		Art.draw_socket(self, Rect2(corner, Vector2(side, side)), pixel, tint)
+		var spot: Rect2 = knob_rect()
+		if coin != null:
+			draw_texture_rect(coin, spot, false, tint)
+		else:
+			Art.draw_socket(self, spot, pixel, TINT_LIT if held else tint)
