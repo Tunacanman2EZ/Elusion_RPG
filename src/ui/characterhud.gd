@@ -83,6 +83,7 @@ const SAVE_HISTORY_SCENE  := preload("res://scene/ui/owner/savehistory.tscn")
 # The owner's Player stats (statswindow.gd, 0.47.0), from the GM panel's Server tab.
 const STATS_WINDOW_SCENE  := preload("res://scene/ui/owner/statswindow.tscn")
 const EVENT_REPORT_SCENE  := preload("res://scene/ui/owner/eventreport.tscn")
+const LAND_REPORT_SCENE   := preload("res://scene/ui/owner/landreport.tscn")
 const STAFF_PANEL_SCENE   := preload("res://scene/ui/staff/staffpanel.tscn")
 const STAFF_THEME         := preload("res://assets/themes/staff_ui_theme.tres")
 const CHAT_PANEL_SCENE    := preload("res://scene/ui/chat/chatpanel.tscn")
@@ -148,6 +149,7 @@ var item_spawner:     Control         = null
 var save_history:     Control         = null
 var stats_window:     Control         = null
 var event_report:     Control         = null
+var land_report:      Control         = null
 var staff_panel:      Control         = null
 var chat_panel:       Control         = null
 var friends_panel:    Control         = null
@@ -585,6 +587,19 @@ func open_event_report(_who: String = "") -> void:
 		event_report.visible = false
 		add_child(event_report)
 	event_report.open()
+
+
+func open_land_report(_who: String = "") -> void:
+	# The World tab's Lands window (landreport.gd, 0.50.0): every land's
+	# numbers, the next stir and why, when players are on. Owner-gated here
+	# as a courtesy; the server is the gate (require_owner).
+	if not Api.is_owner:
+		return
+	if land_report == null:
+		land_report = LAND_REPORT_SCENE.instantiate()
+		land_report.visible = false
+		add_child(land_report)
+	land_report.open()
 
 
 func _process(_delta: float) -> void:
@@ -3133,6 +3148,7 @@ func _on_logout_pressed() -> void:
 	if save_history:     save_history.queue_free()
 	if stats_window:     stats_window.queue_free()
 	if event_report:     event_report.queue_free()
+	if land_report:      land_report.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -3149,6 +3165,7 @@ func _on_logout_pressed() -> void:
 	save_history     = null
 	stats_window     = null
 	event_report     = null
+	land_report      = null
 	staff_panel      = null
 
 	# NEW (E-2): send any training XP (defense/agility/magic) that has not hit
@@ -3243,6 +3260,7 @@ func _on_switch_character_pressed() -> void:
 	if save_history:     save_history.queue_free()
 	if stats_window:     stats_window.queue_free()
 	if event_report:     event_report.queue_free()
+	if land_report:      land_report.queue_free()
 	if staff_panel:      staff_panel.queue_free()
 
 	inventory_screen = null
@@ -3259,6 +3277,7 @@ func _on_switch_character_pressed() -> void:
 	save_history     = null
 	stats_window     = null
 	event_report     = null
+	land_report      = null
 	staff_panel      = null
 
 	get_tree().change_scene_to_file(CHARACTER_SELECT_PATH)
@@ -3858,6 +3877,7 @@ func _escape_windows() -> Array:
 		[save_history, "close"],
 		[stats_window, "close"],
 		[event_report, "close"],
+		[land_report, "close"],
 		[options_screen, "close"],
 		[credits_panel, "close"],
 		[map_screen, "close"],

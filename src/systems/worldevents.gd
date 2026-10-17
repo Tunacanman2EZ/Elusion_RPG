@@ -10,6 +10,7 @@
 #   lines()       "Double XP - 2h 14m left", and "Next: Double Loot in 2d 4h"
 #   apply()       hands back the events that began since the last poll, for
 #                 the banner
+#   shown()       the events on now that pay: one Double XP, not two (0.50.1)
 #
 # NOTHING HERE CHANGES WHAT A KILL PAYS. The multipliers are words on the
 # screen; the XP and loot come from the server's own table, whatever this
@@ -46,9 +47,19 @@ func apply(data: Variant) -> Array[Dictionary]:
 	coming = _read_list(said.get("next"), MOST_NEXT)
 	if _number(said.get("now")):
 		_clock_offset = int(said.get("now")) - int(Time.get_unix_time_from_system())
+	# ONLY ONE THAT PAYS IS NEWS: two Double XPs set together begin together,
+	# and the second is not news; nor is one that only runs a Double XP on
+	# past its end.
 	var began: Array[Dictionary] = []
-	for event in on_now:
-		if not had.has(int(event["id"])):
+	for event in shown():
+		if had.has(int(event["id"])):
+			continue
+		var already: bool = false
+		for prior in on_now:
+			if had.has(int(prior["id"])) and pays_as_much(prior, event):
+				already = true
+				break
+		if not already:
 			began.append(event)
 	if [on_now, coming] != was:
 		changed.emit()
@@ -132,6 +143,71 @@ func active() -> Array[Dictionary]:
 	return out
 
 
+func shown() -> Array[Dictionary]:
+	"""The events on now that change what a kill pays: active() less any that
+	another of its kind outdoes (outdoes()).
+
+	TWO DOUBLE XPS ARE NOT 4x. The server pays the bigger of each kind, never
+	the product (events/services.py, kill_scales()), and while two stir events
+	overlap the one that began last stirs (forced_stir()). Two lines both
+	saying "Double XP - 2h 59m left" told every player otherwise. So the
+	screen shows the one that pays, and one it hid comes up if it outlasts
+	it."""
+	var on: Array[Dictionary] = active()
+	var out: Array[Dictionary] = []
+	for event in on:
+		var beaten: bool = false
+		for other in on:
+			if outdoes(other, event):
+				beaten = true
+				break
+		if not beaten:
+			out.append(event)
+	return out
+
+
+func outdoes(a: Dictionary, b: Dictionary) -> bool:
+	"""Whether `a`, on at the same time as `b`, leaves `b` nothing to add.
+
+	XP or loot: `a` covers every monster `b` does (every monster, or the same
+	land) and pays more; or pays the same and covers more; or the same of
+	both and ends later (its time left is the true one); or ends together
+	and was set first. A stir: `a` began later, as the server has it. Never
+	both ways round, so of any two the same, one is always shown."""
+	if str(a["kind"]) != str(b["kind"]) or int(a["id"]) == int(b["id"]):
+		return false
+	if str(a["kind"]) == "stir":
+		return int(a["starts_at"]) > int(b["starts_at"]) \
+			or (int(a["starts_at"]) == int(b["starts_at"]) and int(a["id"]) > int(b["id"]))
+	var a_land: int = int(a["land"])
+	var b_land: int = int(b["land"])
+	if a_land != 0 and a_land != b_land:
+		return false
+	var kind: String = str(a["kind"])
+	var a_times: float = float((a["multipliers"] as Dictionary).get(kind, 1.0))
+	var b_times: float = float((b["multipliers"] as Dictionary).get(kind, 1.0))
+	if not is_equal_approx(a_times, b_times):
+		return a_times > b_times
+	if a_land != b_land:
+		return true
+	if int(a["ends_at"]) != int(b["ends_at"]):
+		return int(a["ends_at"]) > int(b["ends_at"])
+	return int(a["id"]) < int(b["id"])
+
+
+func pays_as_much(a: Dictionary, b: Dictionary) -> bool:
+	"""Whether xp or loot event `a` covers every monster `b` does and pays at
+	least as much - so `b` beginning while `a` is on changes nothing."""
+	if str(a["kind"]) != str(b["kind"]) or str(a["kind"]) == "stir":
+		return false
+	if int(a["land"]) != 0 and int(a["land"]) != int(b["land"]):
+		return false
+	var kind: String = str(a["kind"])
+	var a_times: float = float((a["multipliers"] as Dictionary).get(kind, 1.0))
+	var b_times: float = float((b["multipliers"] as Dictionary).get(kind, 1.0))
+	return a_times > b_times or is_equal_approx(a_times, b_times)
+
+
 func next_up() -> Dictionary:
 	"""The nearest event still to come, or {}."""
 	var at: int = now()
@@ -159,11 +235,11 @@ func span_text(seconds: int) -> String:
 
 
 func lines() -> Array[String]:
-	"""The HUD's lines: each event on now with its time left, then the next
-	one to come. Empty when there is nothing to say."""
+	"""The HUD's lines: each event on now that pays (shown()) with its time
+	left, then the next one to come. Empty when there is nothing to say."""
 	var out: Array[String] = []
 	var at: int = now()
-	for event in active():
+	for event in shown():
 		out.append("%s - %s left" % [str(event["name"]), span_text(int(event["ends_at"]) - at)])
 	var next: Dictionary = next_up()
 	if not next.is_empty():

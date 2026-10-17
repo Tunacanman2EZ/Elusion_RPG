@@ -6341,7 +6341,7 @@ them, with no build.
   the index", so the stirring land's -1 came back as 1, the dark lands. The
   day picker is one width all year (`DAY_WIDTH`, every weekday and month
   measured by the suite) and the hour and minute boxes hold two digits, so
-  the tab fits the panel's 370.
+  the tab fits the panel's 370. A calendar beside them since 0.51.0 (below).
 - **Staff log**: kind `event`, the server's detail as the sentence.
 - `_test_world_events`; `test_events.py` on the server.
 
@@ -6388,6 +6388,146 @@ shows.
   text colours; blue #3987e5 and orange #d95926 checked for colour-blind
   separation and contrast on the #12161d surface.
 - `_test_event_report`; `test_events.py` E-5 to E-7 on the server.
+
+### The Lands window, and the next stir offered (0.50.0)
+
+From a "Behavior Insights" idea the owner brought: per land, players, kills,
+time since its last event, whether it is overfarmed, ignored or healthy; a
+suggested next stir with a reason, weighing new players against veterans and
+when lands are busy; accept or override on the GM panel. The server holds it
+(the API's insights/ package and its CLAUDE.md, "The land insights").
+
+- **The world's own pick changed on the server**: still the least hunted
+  land, never the one that just stirred - but never one where a player under
+  level 10 has a kill in the last two hours, while another will do. Nothing
+  in the game decides it.
+- **The World tab** says the next stir and why where the land's kills were
+  (`WorldTab.next_text()`, from the world answer's `next`), and selects that
+  land in "Stir it now": pressing it is accepting now, picking another is
+  overriding. From a server before 0.50.0, the kills line as before.
+  A **Lands** button beside Refresh opens the Lands window
+  (`open_lands`, set by the panel, through the HUD).
+- **The Lands window** (`LandReportWindow`, src/ui/owner/landreport.gd and
+  scene/ui/owner/landreport.tscn; owner only, on `_escape_windows()` -
+  twenty-six windows now): reads GET /api/server/insights on opening and by
+  Refresh. NEXT TO STIR (`next_lines()`); EVERY LAND, THIS WEEK as a
+  RichTextLabel table (`row_cells()`: today, week, players, new now, stirred,
+  event - `ago()` - busiest hour in this computer's clock, status - busy,
+  healthy, quiet, ignored); the notes (`note_lines()`, a rough read under 30
+  kills); and the hours.
+- **The hours** (`HoursChart`, src/ui/owner/hourschart.gd): players online by
+  hour of the day, turned from UTC to this computer's hours (`to_local()`,
+  `local_hour()` - half-hour zones too), as 24 bars with a hover, the axis
+  topped at a whole player (`top_of()`), the busiest three said
+  (`busiest()`, `LandReportWindow.hours_text()`), and "still counting" under
+  three days. The data-viz way, like the online chart.
+- `_test_land_report`; `test_insights.py` on the server.
+
+### One event line for what pays, and an open tab told of a new build (0.50.1)
+
+The owner's screenshot: "Double XP - 2h 59m left" twice on the HUD, two
+events set in the same minute - "only 1 should display otherwise breaks the
+logic". And after a web deploy: "can we build something to avoid the ctrl
+f5".
+
+- **The HUD shows the event that pays** (`WorldEvents.shown()`, which
+  `lines()` and `apply()` use). The server pays the bigger of each kind, never
+  the product (`kill_scales()`), so an event another of its kind outdoes is
+  not shown (`outdoes()`): the other covers every monster it does (every
+  monster, or the same land) and pays more; or the same and covers more; or
+  the same of both and ends later; or ends together and was set first. Two
+  stir events: the one that began last, as `forced_stir()` stirs it. One it
+  hid comes up if it outlasts the one that hid it. A new event that only
+  matches one already on (`pays_as_much()`) is no news - no banner for an
+  event made to run on. The GM panel's Events tab still lists every one, to
+  call off.
+- **The server says so when one is set** (`warnings()`, on the 201 and in
+  the dry run): "It overlaps Double XP: while both are on, a kill gets the
+  bigger XP, never both, and the game shows only that one." Said, not
+  refused - a second, longer one is how an event is run on.
+- **Ctrl+F5 was never needed**: Caddy sends every file of the web build with
+  `Cache-Control: no-cache` (checked on the live site, 16 Oct), so a refresh
+  or a new visit asks about each file and gets the new build. What a deploy
+  did not reach is a tab left open. **web/shell.html now tells it**
+  (`watchForNewBuild()`): it notes the Last-Modified of index.pck and
+  index.wasm as the engine starts fetching them, asks again (HEAD,
+  `cache: 'no-store'`) every five minutes and when the tab comes back into
+  view or back from the browser's back-forward cache, and when they differ
+  shows `#update` - "A new version of Elusion is out." - with Reload and
+  Later (quiet for half an hour). The date, not the ETag: Caddy puts the
+  encoding in the ETag. A reload unloads the page, which is the leave-save's
+  cue (`WebPage.watch_leaving()`), so it is as safe as closing the tab.
+  `window.elusionCheckForUpdate()` asks at once. Nothing in GDScript is
+  involved, and a build from before 0.50.1 has no watcher: its tab needs
+  the one refresh.
+- `_test_world_events` and the loader checks in the export suite;
+  `test_events.py` on the server. Tried in Chromium against a real export
+  served the way Caddy serves it.
+
+### The Events tab's calendar (0.51.0)
+
+The owner: "i want to set a calendar in schedule that i can use to set
+events for specific days". Nothing changed on the server: it already took
+an event up to 60 days ahead (`FURTHEST`, `limits.days_ahead`), and the
+day picker offered three weeks.
+
+- **The day picker runs as far as the server takes one**
+  (`EventsTab.days_ahead()`: the answer's `limits.days_ahead`,
+  `DAYS_AHEAD` = 60 until it is read), and each day is counted from today's
+  date (`EventCalendar.date_of()`), not in 86400s from now - a clock change
+  in the weeks ahead used to be able to move a name onto the wrong day.
+- **The calendar button** sits after the minute: a 16 px calendar drawn in
+  code (`EventCalendar.icon()`), because the word would have made the GM
+  panel wider than 370 - that row is the tab's widest. It opens a
+  **PopupPanel** under itself (so the panel keeps its size, and Escape or a
+  click outside closes it) holding `EventCalendar`
+  (src/ui/owner/eventcalendar.gd): one month, Sunday first (`month_cells()`,
+  `days_in_month()` - 2000 and 2028 leap, 2100 not), < and > from this
+  month to the one with the last day offered; days before today or past
+  the last disabled; **today a warm fill, a day with an event a green edge
+  and green letters**, its tooltip each event with its hours that day
+  (`marks()`: "Double XP 14:00-17:00", 00:00 and 24:00 across midnight,
+  "all day"). Pressing a day picks it in the day picker
+  (`_on_calendar_picked()`), closes, and says "Day picked: ..."; the hour
+  and minute are still the owner's. Reopened, it shows the picked day's
+  month with that day pressed in.
+- **Style a cell once it is in the grid** (`_edge()`): before that,
+  `get_theme_stylebox()` answers with the engine's default button - no
+  border - not the GM panel's, and the copy drew a cell with no edge at all.
+- In `_test_world_events`, the Events tab part.
+
+### The whole calendar, a year ahead, days in hotbar boxes (0.52.0)
+
+The owner, of the first one: "can we make it a real calendar that updates
+with the years etc?" - it went from this month to the one holding the
+sixtieth day, and never reached a new year - and "also i want to use
+hotbar boxs for the outline on those days".
+
+- **Any month of any year** (`EventCalendar.month_after()`, held to 1970 and
+  2199): << and >> a year, < and > a month, **Today** back to this month
+  (disabled on it). The month and year come from the date, so December
+  2026 is followed by January 2027. Past months are there to read, none of
+  their days offered.
+- **A year ahead, on the server** (`FURTHEST` = 366 days, so the same date
+  next year is always in; `limits.days_ahead` says so and the game follows
+  it, `DAYS_AHEAD` = 366 until it is read). `MOST_WAITING` is still 20 on
+  or coming at once.
+- **The day picker still lists sixty days** (`DAYS_LISTED`); a day pressed
+  on the calendar past them joins it as one more item with its year,
+  "Nov 11 2027" (`far_name()`, `far_day`, kept through every refill) -
+  measured, like the weekday names, to fit the picker's one width.
+- **Events marked are the schedule answer's** (`EventsTab.on_calendar()`):
+  on, coming, and over in the last 30 days - "(over)" in the tooltip, the
+  box dimmed on a past day - never one called off.
+- **Hotbar boxes**: a day with an event is drawn in the theme's
+  `ButtonSocket` (the hotbar's art/images/hotbarslot.png, nine-sliced at
+  7 px, lit on hover, darker pressed, dim disabled; `socket_style()`), its
+  content margins brought in for a number and drawn 4 px past the cell at
+  the sides and 2 at the top and bottom - the art's clear rim, which the
+  hotbar hides by overlapping its slots - so the box is the cell's size.
+  The GM panel's theme (staff_ui_theme) has no ButtonSocket, so the styles
+  are taken from rpg_ui_theme.tres itself. Event days have green numbers;
+  **today's number is gold** whatever is on, on a warm fill when nothing is.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

@@ -228,6 +228,7 @@ func _ready() -> void:
 		# What the World tab's buttons did goes in Results too, as every other
 		# tab's does.
 		world_tab.report = _say
+		world_tab.open_lands = func() -> bool: return Api.is_owner and bool(open_window.call("open_land_report", ""))
 		if tabs.get_node_or_null(^"events") == null:
 			events_tab = EventsTab.new()
 			tabs.add_child(events_tab)

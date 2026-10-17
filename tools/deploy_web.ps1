@@ -55,10 +55,24 @@ foreach ($tool in @("ssh", "scp")) {
 
 function Say([string]$text, [string]$colour = "Gray") { Write-Host $text -ForegroundColor $colour }
 
-function Run([string]$what, [string]$exe, [string[]]$arguments) {
+# WAIT FOR IT, AND READ ITS OWN EXIT CODE. Godot_v4.6.1-stable_win64.exe with
+# no _console twin is a windowed program, and PowerShell does not wait for one
+# run bare: it started the export and went straight on, read the exit code the
+# last program left behind - the 1 from a deploy refused a minute before - and
+# stopped with "The export failed (exit 1)" while the export ran on, finished
+# and printed behind the prompt. So: the old code is cleared first ($global:,
+# or a local copy would hide the real one), and -Windowed pipes the program,
+# which makes PowerShell wait for either kind. ssh and scp run bare, so scp
+# keeps its progress bar.
+function Run([string]$what, [string]$exe, [string[]]$arguments, [switch]$Windowed) {
     Say ("  > {0} {1}" -f $exe, ($arguments -join " ")) "DarkGray"
     if ($DryRun) { return }
-    & $exe @arguments
+    $global:LASTEXITCODE = 0
+    if ($Windowed) {
+        & $exe @arguments | Out-Host
+    } else {
+        & $exe @arguments
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "$what failed (exit $LASTEXITCODE). Nothing after it was run."
     }
@@ -118,7 +132,7 @@ if ($Export) {
     # The editor rewrites export_presets.cfg when it exports; the command line
     # does not. Either way, export with the editor CLOSED or reopened since the
     # last export, so it does not save its stale copy over the file later.
-    Run "The export" $Godot @("--headless", "--path", $root, "--export-release", "Web", "builds/web/index.html")
+    Run "The export" $Godot @("--headless", "--path", $root, "--export-release", "Web", "builds/web/index.html") -Windowed
 }
 
 # --- 2. IS THE EXPORT THERE, AND NEWER THAN THE CODE -------------------------

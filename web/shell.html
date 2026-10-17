@@ -15,6 +15,9 @@
 	The loader stays over the game until the login screen has drawn once
 	(window.elusionReady, called from loginmenu.gd), so the page goes from this
 	straight to that screen with nothing in between.
+
+	It also tells an open tab when a new build is up (#update, 0.50.1):
+	see watchForNewBuild() below.
 -->
 <style>
 :root {
@@ -144,6 +147,68 @@ body {
 		padding-right: 0;
 	}
 }
+/* A NEW BUILD IS UP: a strip at the top, over the game and the loader alike. */
+#update {
+	position: fixed;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 2;
+	box-sizing: border-box;
+	width: max-content;
+	max-width: calc(100vw - 32px);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 10px 14px;
+	padding: 10px 12px 10px 16px;
+	background: var(--panel);
+	border: 2px solid var(--edge);
+	border-radius: 3px;
+	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+	font-size: 14px;
+	line-height: 1.35;
+	color: var(--parchment);
+}
+#update[hidden] {
+	display: none;
+}
+#update small {
+	display: block;
+	font-size: 12px;
+	color: var(--muted);
+}
+#update .actions {
+	display: flex;
+	gap: 8px;
+}
+#update button {
+	padding: 6px 16px;
+	font: inherit;
+	font-weight: 600;
+	color: var(--gold);
+	background: var(--title-bg);
+	border: 2px solid var(--edge);
+	border-radius: 3px;
+	cursor: pointer;
+}
+#update button:hover,
+#update button:focus-visible {
+	border-color: var(--gold);
+	outline: none;
+}
+#update button.quiet {
+	font-weight: 400;
+	color: var(--muted);
+	background: transparent;
+	border-color: transparent;
+}
+#update button.quiet:hover,
+#update button.quiet:focus-visible {
+	color: var(--parchment);
+	border-color: var(--edge);
+}
 </style>
 $GODOT_HEAD_INCLUDE
 </head>
@@ -158,6 +223,14 @@ $GODOT_HEAD_INCLUDE
 		<div class="bar waiting" id="bar"><div id="fill"></div></div>
 		<div id="amount">&nbsp;</div>
 		<button id="retry" type="button">Try again</button>
+	</div>
+</div>
+
+<div id="update" role="status" aria-live="polite" hidden>
+	<div>A new version of Elusion is out.<small>Your progress is saved as the page reloads.</small></div>
+	<div class="actions">
+		<button id="update-reload" type="button">Reload</button>
+		<button id="update-later" type="button" class="quiet">Later</button>
 	</div>
 </div>
 
@@ -209,6 +282,86 @@ const engine = new Engine(GODOT_CONFIG);
 	}
 	retry.addEventListener('click', function () { window.location.reload(); });
 
+	// A NEW BUILD WHILE THE TAB IS OPEN (0.50.1). Refresh already means update:
+	// every file goes out with Cache-Control: no-cache, so a reload asks the
+	// server about each one. But a tab left open keeps running the build it
+	// loaded, for hours, and a player has no way to know there is a newer one.
+	//
+	// So the page notes WHEN THE GAME FILES IT LOADED WERE PUT ON THE SERVER
+	// (their Last-Modified, read as the engine starts fetching them), asks
+	// again every few minutes and whenever the tab comes back into view, and
+	// when they differ shows #update with a Reload button. A rollback is a
+	// different build too, and says so the same way.
+	//
+	// Last-Modified, not the ETag: Caddy adds the encoding to the ETag (-zstd),
+	// and the date is the same whichever way the file was sent. deploy_web.ps1
+	// keeps an unchanged file's date, so only a file that changed moves. The
+	// pck is the game; the wasm is the engine, for an upgrade that changes it
+	// alone.
+	//
+	// RELOAD IS SAFE: a reload unloads the page, which is what characterdata.gd's
+	// leave-save listens for (WebPage.watch_leaving()), the same as closing the
+	// tab.
+	function watchForNewBuild() {
+		const files = [GODOT_CONFIG.mainPack || GODOT_CONFIG.executable + '.pck',
+			GODOT_CONFIG.executable + '.wasm'];
+		const EVERY = 5 * 60 * 1000;
+		const SOONEST = 60 * 1000;
+		const LATER = 30 * 60 * 1000;
+		const notice = document.getElementById('update');
+		let loaded = null;
+		let lastAsked = 0;
+		let quietUntil = 0;
+
+		function liveStamp() {
+			return Promise.all(files.map(function (name) {
+				return fetch(name, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+					if (!r.ok) {
+						throw new Error(name + ': ' + r.status);
+					}
+					return name + ' ' + (r.headers.get('Last-Modified') || r.headers.get('ETag') || '');
+				});
+			})).then(function (parts) { return parts.join(', '); });
+		}
+
+		// A failed ask is no news: offline for a moment, or caught mid-swap.
+		function check(now) {
+			if (document.hidden || (!now && Date.now() - lastAsked < SOONEST)) {
+				return Promise.resolve(false);
+			}
+			lastAsked = Date.now();
+			return liveStamp().then(function (live) {
+				if (loaded === null) {
+					loaded = live;
+				} else if (live !== loaded && Date.now() >= quietUntil) {
+					notice.hidden = false;
+				}
+				return !notice.hidden;
+			}, function () { return false; });
+		}
+
+		document.getElementById('update-reload').addEventListener('click', function () {
+			window.location.reload();
+		});
+		document.getElementById('update-later').addEventListener('click', function () {
+			notice.hidden = true;
+			quietUntil = Date.now() + LATER;
+			document.getElementById('canvas').focus();
+		});
+		check(true);
+		setInterval(check, EVERY);
+		document.addEventListener('visibilitychange', function () { check(false); });
+		// Back to a page the browser kept whole (the back button): it may be
+		// hours old.
+		window.addEventListener('pageshow', function (e) {
+			if (e.persisted) {
+				check(true);
+			}
+		});
+		// For a test, or a future "check now": resolves true when it shows.
+		window.elusionCheckForUpdate = function () { return check(true); };
+	}
+
 	const missing = Engine.getMissingFeatures({ threads: GODOT_THREADS_ENABLED });
 	if (missing.length !== 0) {
 		// In the words a player can act on. The list is still there for a
@@ -220,6 +373,7 @@ const engine = new Engine(GODOT_CONFIG);
 		return;
 	}
 
+	watchForNewBuild();
 	status.textContent = 'Downloading the game...';
 	engine.startGame({
 		'onProgress': function (current, total) {

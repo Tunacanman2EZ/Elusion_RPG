@@ -46,7 +46,7 @@ The bar along the bottom holds the windows a player opens all the time; Friends,
 
 **The stirring lands**: every three hours one of the seven lands — dark, light, ice, wind, earth, fire or water — stirs, and the whole server is told. While it does, that land's monsters glow in its colour, hit 25% harder, have 50% more health, move 15% faster and drop loot half again as often, and armour's resistance to its element counts half again as much (still capped at 50%). The server picks the land — the one hunted least in the last day, never the same one twice running — and a line at the top of the screen counts down to the next. The owner sets all of it on the GM panel's World tab: on or off, how long a stir lasts, each effect's switch and amount (there is a more-XP one, off as shipped), and a land to stir by hand. **The world never stirs a land where a new player is learning** - under level 10, with a kill there in the last two hours - while another land will do: a stir makes monsters tougher, and that is for players ready for it. The World tab says which land stirs next and why, offers it for Stir it now (or pick another), and its **Lands** window shows every land's week - kills, players, new players there now, when it last stirred or had an event, its busiest hour, and whether it is busy, quiet or ignored - with a chart of when players are usually on, in your own hours.
 
-**World events**: double XP, more loot (1.25x to 3x, for every monster, one land's or the stirring land's) or a land made to stir for the whole event, from an hour to three days, set up to two months ahead on the GM panel's **Events** tab - no new build. Everyone online is told when one is coming and again when it begins, with a banner; a line at the top of the screen counts down the ones on now and names the next. The server holds them and pays them at every kill (the API's `events/` package, `GET /api/world/events/active`); two of a kind at once give the bigger, never both, and an event that cannot be read is no event rather than a kill unpaid. **Never too much at once**: no kill is paid more than 3x XP, 3x loot or 6x the two together, the stirring land's own counted in, and an event that could pass that with whatever else is on is refused when it is set, saying why. **Dry run** says what an event would do before it is set - allowed or not, the most any land's monsters would pay, and what 20 players might earn as usual and with it, from the last two weeks of real play. The **Event report** charts who was online this week with the events on it, and for each event shows the players online, XP and gold an hour, who played and who signed up in the window before it, during it and after it - and, across them, which kind of event brings players.
+**World events**: double XP, more loot (1.25x to 3x, for every monster, one land's or the stirring land's) or a land made to stir for the whole event, from an hour to three days, set up to a year ahead on the GM panel's **Events** tab - from the day list or a calendar of any month and year, the days already taken in hotbar boxes - no new build. Everyone online is told when one is coming and again when it begins, with a banner; a line at the top of the screen counts down the ones on now and names the next. The server holds them and pays them at every kill (the API's `events/` package, `GET /api/world/events/active`); two of a kind at once give the bigger, never both, and an event that cannot be read is no event rather than a kill unpaid. **Never too much at once**: no kill is paid more than 3x XP, 3x loot or 6x the two together, the stirring land's own counted in, and an event that could pass that with whatever else is on is refused when it is set, saying why. **Dry run** says what an event would do before it is set - allowed or not, the most any land's monsters would pay, and what 20 players might earn as usual and with it, from the last two weeks of real play. The **Event report** charts who was online this week with the events on it, and for each event shows the players online, XP and gold an hour, who played and who signed up in the window before it, during it and after it - and, across them, which kind of event brings players.
 
 **Kills** (or **K**) is the kill record: every monster in the game with its picture, how many of each your character has killed and when the last one fell, and — on the Everyone tab — every player's kills added up, with who has killed the most of each. The server counts them; the pictures are cut from each monster's own art.
 
@@ -221,7 +221,7 @@ Since 0.10.0 every note of every fight passes the server on its way somewhere, s
 
 ### Plays in a browser, from the API's own address — `export_presets.cfg`, `web/shell.html`, `src/systems/webpage.gd`
 
-The Web preset builds without threads. That makes it run on any current browser, and its host needs no special headers. The page is a loader in the game's own art. It stays in front of the canvas until the login screen has drawn, so the player goes from one straight to the other.
+The Web preset builds without threads. That makes it run on any current browser, and its host needs no special headers. The page is a loader in the game's own art. It stays in front of the canvas until the login screen has drawn, so the player goes from one straight to the other. Every file is served `no-cache`, so a refresh always gets the newest build; a tab left open asks every few minutes whether the game files have changed, and says "A new version of Elusion is out" with a Reload button when they have.
 
 The build calls the API at the address it was loaded from, because a browser refuses calls to any other one. `web/serve.py` stands in for the real site locally, and `DEPLOY.md` in the API repo has the Caddy and nginx blocks, both tested against a real export in headless Chromium.
 
@@ -293,11 +293,11 @@ Calling the virtualenv's interpreter directly is deliberate: it skips having to 
 
 To see other players and share monsters with them, start `presence.py` the same way in a second window (`.\venv\Scripts\python.exe presence.py`). Without it the game plays exactly as before: it draws nobody else and fights its own monsters.
 
-That serves a hundred and thirty-five endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger, the stirring lands, world events, land insights, player stats and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
+That serves a hundred and thirty-six endpoints — accounts and sessions, character saves, the shared bank, combat kills, loot, the vendor, fishing and cooking, item use, reviving, player trading, guilds, chat, friends, the kingdom ledger, the stirring lands, world events, land insights, player stats and staff tools — plus interactive Swagger docs (via flasgger) at `http://127.0.0.1:5000/apidocs`, which is the quickest way to see the whole surface at once.
 
-A hundred and thirty of the hundred and thirty-five require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
+A hundred and thirty-one of the hundred and thirty-six require a bearer token. The five that do not are `register`, `login`, `status`, and the two halves of account recovery (`recover` sends a code to the verified email, `reset` spends it), and that is the whole public surface.
 
-The backend has fifty-nine test suites, run together with one command:
+The backend has sixty test suites, run together with one command:
 
 ```bat
 cd <your-path>\game\api
@@ -316,7 +316,7 @@ test_moderation.py     156 checks    the moderation record, a log that opens on 
 test_ownership.py      150 checks    no route hands over a row that is not yours
 test_chatrooms.py      142 checks    chat channels, whispers, pictures posted by link
 test_trades.py         136 checks    a trade reaches the right person and means what they saw
-test_security_doc.py   181 checks    SECURITY.md is checked, not trusted
+test_security_doc.py   184 checks    SECURITY.md is checked, not trusted
 test_refusals.py       157 checks    401, 403, and the 404 that is really a 403
 test_rollback.py       126 checks    the save history: snapshots, the owner's rollback, giving a player an item
 test_presence.py       150 checks    players seeing each other, whose game runs each area's monsters, every attack and lever, party voice's calls
@@ -331,9 +331,10 @@ test_chardelete.py      72 checks    deleting a character, and only the characte
 test_chat.py            67 checks    world chat, end to end, one line as typed
 test_world.py           67 checks    the stirring lands: one land at a time, picked and paid by the server, the owner's switches
 test_stats.py           36 checks    the owner's player stats: each layer of the first feature package on its own, read only, names nobody
-test_packages.py        14 checks    the feature packages run on a bare Flask app, without app.py, two apps each their own
+test_packages.py        26 checks    the feature packages run on a bare Flask app, without app.py, two apps each their own
+test_routes.py           5 checks    the route table pinned: every path, endpoint, login and rank as routes.lock has it
 test_insights.py        32 checks    the land insights: each layer, the world's pick passing over new players, the next stir and why
-test_events.py          76 checks    world events: each layer of the events/ package, what a kill is paid, the guardrails, the dry run, the event report
+test_events.py          80 checks    world events: each layer of the events/ package, what a kill is paid, the guardrails, the dry run, the event report
 test_throttle.py        62 checks    login lockout, per-IP spray, token rotation
 test_deploy.py          61 checks    what the first live deploy found: .env read first, one-file backups
 test_staffcode.py       60 checks    a staff password alone opens nothing, once per computer
@@ -365,10 +366,10 @@ test_catalogue.py       13 checks    the shipped catalogue arms every protection
 test_attackxp.py        12 checks    attack XP is banked at the kill
 test_skill_train.py     10 checks    skills train only as fast as time allows
 					─────
-					5,440 checks, 0 failures
+					5,464 checks, 0 failures
 ```
 
-Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The sixtieth, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
+Each suite points `ELUSION_DB` at a throwaway file before importing `app.py`, so running them never touches the real database. The sixty-first, `test_mail.py`, sends a real email to prove the mail settings work, so it needs the SMTP settings in the API's `.env` and is not in the count.
 
 The game has its own in-engine suite as well — `src/tools/testrunner.gd`, run headless by `run_tests.ps1` — **4,306 checks, 0 failures and one skip** — the skip is the sound registry, which is filled one recording at a time (the teleport is the first); see [docs/audio.md](docs/audio.md). It runs inside a real Godot instance with the autoloads up, so it can compare the `.tres` data files against the constants the code actually uses. The first thing it does is load all 174 scripts under `src/` and name any that will not compile, because a build error that surfaces as eight unrelated failures costs an hour to trace.
 
@@ -390,6 +391,8 @@ Some of the suite is there to catch things the engine will not tell you about:
 Without the service running, the login screen will tell you it can't reach the server — the game does not fall back to local accounts by design.
 
 **In a browser:** export the **Web** preset (Project → Export), which writes `builds/web/`, then run `python web/serve.py` and open `http://localhost:8060`. It serves the export and passes `/api/` through to the service, as the real site does.
+
+**Shipping, in one command:** `.\tools\ship.ps1` commits and pushes the API, updates the server, commits and pushes the game, deploys the web build and commits and pushes the website - in that order, asking before each, with each commit message waiting in the commit folder as `SHIP_api.txt`, `SHIP_game.txt` and `SHIP_site.txt`. `.\tools\ship.ps1 -Status` says what is still waiting and changes nothing; `-DryRun` prints every step. It will not commit a database, a `.env`, a key, an `.exe` or `.pck`, or any file over 50 MB, whatever the answer.
 
 **On the live server:** `.\tools\deploy_web.ps1 -Export` exports the Web preset, uploads it under a new name and swaps it in, keeping the build it replaced; `-Rollback` puts that one back, and `-DryRun` prints every command without running any. Files whose bytes did not change keep their dates, so a returning player downloads only what changed. The API repo's `DEPLOY.md` has the rest.
 

@@ -306,6 +306,7 @@ func _run_all() -> void:
 	await _test_player_stats_window()
 	await _test_world_events()
 	await _test_event_report()
+	await _test_land_report()
 	await _test_the_boss_gates_lever()
 	await _test_other_players_are_drawn()
 	_test_other_players_move_evenly()
@@ -3601,6 +3602,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/owner/savehistory.gd", "res://scene/ui/owner/savehistory.tscn", "savehistory"],
 	["res://src/ui/owner/statswindow.gd", "res://scene/ui/owner/statswindow.tscn", "statswindow"],
 	["res://src/ui/owner/eventreport.gd", "res://scene/ui/owner/eventreport.tscn", "eventreport"],
+	["res://src/ui/owner/landreport.gd", "res://scene/ui/owner/landreport.tscn", "landreport"],
 	["res://src/ui/party/partypanel.gd", "res://scene/ui/party/partypanel.tscn", "party"],
 	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
 	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
@@ -4052,7 +4054,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("twenty-five panels are windows - the owner's Event report (0.49.0) is the twenty-fifth", keys_seen.size() == 25, keys_seen.size())
+	check("twenty-six panels are windows - the owner's Lands window (0.50.0) is the twenty-sixth", keys_seen.size() == 26, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -9959,6 +9961,75 @@ func _test_world_events() -> void:
 		WorldEvents.span_text(30) == "under a minute" and WorldEvents.span_text(600) == "10m"
 		and WorldEvents.span_text(7260) == "2h 01m" and WorldEvents.span_text(93600) == "1d 2h")
 
+	# ---- one line for what pays (0.50.1) ---------------------------------------------
+	# The owner set Double XP twice in a minute, and every player saw "Double
+	# XP - 2h 59m left" twice. The server pays the bigger of each kind, never
+	# both (kill_scales()); the screen says what a kill gets.
+	var twin: Dictionary = double_xp.duplicate(true)
+	twin["id"] = 11
+	twin["ends_at"] = int(double_xp["ends_at"]) + 1800
+	began = WorldEvents.apply({"events": [double_xp, twin], "next": [], "now": now})
+	check("two Double XPs at once: one line - the one that lasts longer - and one event's news, not two",
+		WorldEvents.lines() == ["Double XP - 2h 30m left"] and began.size() == 1 and int(began[0]["id"]) == 11,
+		[WorldEvents.lines(), began.size()])
+	WorldEvents.apply({"events": [double_xp], "next": [], "now": now})
+	began = WorldEvents.apply({"events": [double_xp, twin], "next": [], "now": now})
+	check("  and one set to run Double XP on past its end is no news while it is on: no banner for it",
+		began.is_empty() and WorldEvents.lines() == ["Double XP - 2h 30m left"], [began.size(), WorldEvents.lines()])
+	var triple_xp: Dictionary = double_xp.duplicate(true)
+	triple_xp["id"] = 12
+	triple_xp["name"] = "Triple XP"
+	triple_xp["multipliers"] = {"xp": 3.0}
+	triple_xp["ends_at"] = now + 3600 + 30
+	began = WorldEvents.apply({"events": [double_xp, triple_xp], "next": [], "now": now})
+	var while_triple: Array[String] = WorldEvents.lines()
+	WorldEvents._clock_offset += 3600 + 60
+	var after_triple: Array[String] = WorldEvents.lines()
+	WorldEvents._clock_offset -= 3600 + 60
+	check("  a bigger one over it: the bigger alone, and news; the smaller comes back when it ends, as it outlasts it",
+		while_triple == ["Triple XP - 1h 00m left"] and began.size() == 1 and int(began[0]["id"]) == 12
+		and after_triple == ["Double XP - 59m left"], [while_triple, after_triple])
+	var fire_double: Dictionary = double_xp.duplicate(true)
+	fire_double["id"] = 13
+	fire_double["name"] = "Double XP (fire)"
+	fire_double["land"] = Element.Type.FIRE
+	fire_double["ends_at"] = int(double_xp["ends_at"]) + 600
+	var fire_triple: Dictionary = fire_double.duplicate(true)
+	fire_triple["ends_at"] = double_xp["ends_at"]
+	fire_triple["id"] = 14
+	fire_triple["name"] = "Triple XP (fire)"
+	fire_triple["multipliers"] = {"xp": 3.0}
+	var double_loot_on: Dictionary = double_loot.duplicate(true)
+	double_loot_on["starts_at"] = now - 5
+	double_loot_on["ends_at"] = now + 3600 + 30
+	WorldEvents.apply({"events": [double_xp, fire_double], "next": [], "now": now})
+	var lands_same: Array[String] = WorldEvents.lines()
+	WorldEvents.apply({"events": [double_xp, fire_triple, double_loot_on], "next": [], "now": now})
+	var lands_more: Array[String] = WorldEvents.lines()
+	check("  every monster's 2x hides one land's 2x, even one that runs on longer; one land's 3x shows beside it, "
+		+ "and loot is never XP's",
+		lands_same == ["Double XP - 2h 00m left"]
+		and lands_more == ["Double XP - 2h 00m left", "Triple XP (fire) - 2h 00m left", "Double Loot - 1h 00m left"],
+		[lands_same, lands_more])
+	var stir_old: Dictionary = {"id": 15, "name": "The Fire Lands Stir", "kind": "stir", "description": "",
+		"starts_at": now - 900, "ends_at": now + 3600 + 30, "land": Element.Type.FIRE, "multipliers": {}}
+	var stir_new: Dictionary = stir_old.duplicate(true)
+	stir_new["id"] = 16
+	stir_new["name"] = "The Ice Lands Stir"
+	stir_new["starts_at"] = now - 60
+	WorldEvents.apply({"events": [stir_old, stir_new], "next": [], "now": now})
+	check("  two stir events: the one that began last, as the server stirs it",
+		WorldEvents.lines() == ["The Ice Lands Stir - 1h 00m left"], WorldEvents.lines())
+	var never_both: bool = true
+	for pair in [[double_xp, twin], [double_xp, fire_double], [stir_old, stir_new], [double_xp, double_xp]]:
+		if WorldEvents.outdoes(pair[0], pair[1]) and WorldEvents.outdoes(pair[1], pair[0]):
+			never_both = false
+	var same_end: Dictionary = double_xp.duplicate(true)
+	same_end["id"] = 17
+	check("  never both ways round, so one of any two is always on the screen; alike to the second, the first set stands in",
+		never_both and WorldEvents.outdoes(double_xp, same_end) and not WorldEvents.outdoes(same_end, double_xp))
+	WorldEvents.clear()
+
 	# ---- the HUD ---------------------------------------------------------------------
 	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
 	add_child(hud)
@@ -10012,6 +10083,17 @@ func _test_world_events() -> void:
 	hud.mythic_banner = null
 	check("  and with none, where the land's would be - and a server from before events shows no line",
 		not hud.world_chip.visible and not chip.visible and is_equal_approx(chip.offset_top, 10.0))
+	hud._apply_broadcast({"messages": [], "latest_id": 6, "events": {"events": [double_xp, twin], "next": [], "now": now}})
+	var twin_banner: Node = hud.mythic_banner
+	var twin_title: Label = twin_banner.find_child("title", true, false) as Label \
+		if twin_banner != null and is_instance_valid(twin_banner) else null
+	check("Double XP set twice, as the owner's screenshot had it: one line on the HUD and one banner (0.50.1)",
+		chip.visible and hud.event_label.text == "Double XP - 2h 30m left"
+		and twin_title != null and twin_title.text == "DOUBLE XP", hud.event_label.text)
+	if twin_banner != null and is_instance_valid(twin_banner):
+		twin_banner.free()
+	hud.mythic_banner = null
+	hud._apply_broadcast({"messages": [], "latest_id": 6})
 	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
 	check("the events are read from every poll (the reader is called from _apply_broadcast)",
 		_func_body(hud_src, "func _apply_broadcast(").contains("_read_events(data.get(\"events\"))"))
@@ -10045,10 +10127,55 @@ func _test_world_events() -> void:
 		tabs != null and tab != null and tab.get_parent() == tabs and tabs.get_tab_title(tab.get_index()) == "Events"
 		and tabs.get_tab_title(tab.get_index() - 1) == "World")
 	tab.fill_days(fixed_now)
-	check("  the days: Now, Today, Tomorrow, then each by its name - three weeks of them",
-		tab.day_pick.item_count == 22 and tab.day_pick.get_item_text(0) == "Now" and tab.day_pick.get_item_text(1) == "Today"
-		and tab.day_pick.get_item_text(2) == "Tomorrow" and tab.day_pick.get_item_text(3) == "Sun Jan 17",
-		tab.day_pick.get_item_text(3))
+	check("  the days: Now, Today, Tomorrow, then each by its name - sixty of them; further on is the calendar's (0.52.0)",
+		tab.day_pick.item_count == 61 and tab.day_pick.get_item_text(0) == "Now" and tab.day_pick.get_item_text(1) == "Today"
+		and tab.day_pick.get_item_text(2) == "Tomorrow" and tab.day_pick.get_item_text(3) == "Sun Jan 17"
+		and tab.day_pick.get_item_text(60) == "Mon Mar 15", [tab.day_pick.item_count, tab.day_pick.get_item_text(60)])
+
+	# ---- the calendar (0.51.0) -------------------------------------------------------
+	# The owner: "i want to set a calendar in schedule that i can use to set
+	# events for specific days".
+	var october: Array[int] = EventCalendar.month_cells(2026, 10)
+	check("the calendar's months, Sunday first: October 2026 begins on a Thursday and has 31 days; "
+		+ "February has 29 in 2028 and 2000, 28 in 2100",
+		october.size() == 35 and october[0] == 0 and october[3] == 0 and october[4] == 1 and october[34] == 31
+		and EventCalendar.days_in_month(2028, 2) == 29 and EventCalendar.days_in_month(2000, 2) == 29
+		and EventCalendar.days_in_month(2100, 2) == 28 and EventCalendar.days_in_month(2027, 4) == 30, october)
+	LocalTime._bias_known = true
+	LocalTime._bias_read_at = Time.get_ticks_msec()
+	var hour_s: int = 3600
+	check("  a day is counted from today's date on this computer's clock (five hours behind): 23:59 tonight is today, "
+		+ "00:00 is tomorrow, and the 59th day is Mon Mar 15",
+		EventCalendar.days_on_of(fixed_now + 20 * hour_s + 59 * 60, fixed_now) == 0
+		and EventCalendar.days_on_of(fixed_now + 21 * hour_s, fixed_now) == 1
+		and EventCalendar.date_of(59, fixed_now).get("month") == 3 and EventCalendar.date_of(59, fixed_now).get("day") == 15
+		and EventCalendar.date_of(59, fixed_now).get("weekday") == 1)
+	var calendar_marks: Dictionary = EventCalendar.marks([
+		{"name": "Late XP", "starts_at": fixed_now + 19 * hour_s, "ends_at": fixed_now + 23 * hour_s},
+		{"name": "Day Loot", "starts_at": fixed_now + 45 * hour_s, "ends_at": fixed_now + 69 * hour_s, "state": "coming"},
+		{"name": "Old XP", "starts_at": fixed_now - 30 * hour_s, "ends_at": fixed_now - 27 * hour_s, "state": "over"},
+		{"name": "Off XP", "starts_at": fixed_now + 70 * hour_s, "ends_at": fixed_now + 72 * hour_s, "state": "cancelled"},
+		"not an event"], fixed_now)
+	check("  each day an event touches, with its hours that day: across midnight it is on both, all day says so, "
+		+ "one gone by says it is over, and one called off is not marked",
+		calendar_marks == {0: ["Late XP 22:00-24:00"], 1: ["Late XP 00:00-02:00"], 2: ["Day Loot all day"],
+			-2: ["Old XP 21:00-24:00 (over)"]}, calendar_marks)
+	# A REAL CALENDAR (0.52.0): "can we make it a real calendar that updates
+	# with the years etc?" - any month of any year, the year turning over.
+	check("the year turns over: a month on from December 2026 is January 2027, a month back from January is the "
+		+ "December before, twelve on is the same month next year - and it stops at 1970 and 2199",
+		EventCalendar.month_after(2026, 12, 1) == [2027, 1] and EventCalendar.month_after(2027, 1, -1) == [2026, 12]
+		and EventCalendar.month_after(2026, 10, 12) == [2027, 10] and EventCalendar.month_after(2026, 10, -24) == [2024, 10]
+		and EventCalendar.month_after(1970, 1, -1) == [1970, 1] and EventCalendar.month_after(2199, 12, 1) == [2199, 12],
+		[EventCalendar.month_after(2026, 12, 1), EventCalendar.month_after(2027, 1, -1)])
+	check("  a day past the sixty listed is named with its year: 300 days on is Nov 11 2027; how far, in words",
+		EventsTab.far_name(300, fixed_now) == "Nov 11 2027" and EventCalendar.reach_words(366) == "a year"
+		and EventCalendar.reach_words(60) == "60 days", EventsTab.far_name(300, fixed_now))
+	LocalTime._bias_known = false
+	check("the calendar button sits beside the minute, a picture of a calendar, not a word",
+		tab.calendar_button.get_parent() == tab.minute_box.get_parent() and tab.calendar_button.icon != null
+		and tab.calendar_button.text == "" and tab.calendar_button.tooltip_text.begins_with("Calendar")
+		and tab.calendar_popup is PopupPanel and tab.calendar.get_parent() == tab.calendar_popup)
 	LocalTime._bias_known = false
 	if tabs != null and tab != null:
 		tabs.current_tab = tab.get_index()
@@ -10067,6 +10194,11 @@ func _test_world_events() -> void:
 			widest = maxf(widest, day_font.get_string_size("%s %s 30" % [weekday, month], HORIZONTAL_ALIGNMENT_LEFT, -1, day_size).x)
 	check("  every day's name fits its picker in any month - it is one width all year (%d of %d)" % [widest, day_room],
 		widest <= day_room, [widest, day_room])
+	var widest_far: float = 0.0
+	for month in LocalTime.MONTHS.slice(1):
+		widest_far = maxf(widest_far, day_font.get_string_size("%s 30 2027" % month, HORIZONTAL_ALIGNMENT_LEFT, -1, day_size).x)
+	check("  and so does a far one's, with its year (%d of %d)" % [widest_far, day_room], widest_far <= day_room,
+		[widest_far, day_room])
 	var wide: float = PanelWindow.content_minimum(gm).x
 	check("  and it fits the panel's drawn width (370) (%d)" % wide, wide <= 370.0, wide)
 	var asked: Array = []
@@ -10080,7 +10212,7 @@ func _test_world_events() -> void:
 			"land": 0, "multipliers": {"loot": 3.0}, "created_by": "Tunacan", "cancelled": false, "cancelled_by": "", "state": "over"},
 		{"id": 4, "name": "1.5x XP", "kind": "xp", "description": "", "starts_at": now - 20 * 3600, "ends_at": now - 18 * 3600,
 			"land": 0, "multipliers": {"xp": 1.5}, "created_by": "Tunacan", "cancelled": true, "cancelled_by": "Tunacan", "state": "cancelled"}],
-		"now": now, "limits": {"amount": [1.25, 3.0], "hours": [1, 72], "days_ahead": 60, "waiting": 20}}))
+		"now": now, "limits": {"amount": [1.25, 3.0], "hours": [1, 72], "days_ahead": 366, "waiting": 20}}))
 	tab.fetch = func(path: String) -> Dictionary:
 		asked.append(path)
 		return {"ok": true, "status": 200, "data": view}
@@ -10088,6 +10220,8 @@ func _test_world_events() -> void:
 		sent.append([path, said])
 		return {"ok": true, "status": 201, "data": {"event": {"id": 9, "name": "Double XP", "kind": "xp",
 			"description": "2x XP from every monster.", "starts_at": now, "ends_at": now + 3 * 3600}, "now": now}}
+	check("before the server is read, an event may be set a year ahead, as FURTHEST in the API's events/services.py "
+		+ "has it (0.52.0)", tab.days_ahead() == 366, tab.days_ahead())
 	check("before the server is read, Schedule waits", tab.schedule_button.disabled and tab.cancel_button.disabled)
 	await tab.schedule()
 	check("  and sends nothing", sent.is_empty(), sent)
@@ -10108,6 +10242,126 @@ func _test_world_events() -> void:
 	await get_tree().process_frame
 	check("  Refresh: \"Read from the server. 1 on now, 1 coming.\"",
 		results.get_parsed_text().contains("Read from the server. 1 on now, 1 coming."), results.get_parsed_text())
+	tab.day_pick.select(0)
+	tab.day_pick.item_selected.emit(0)
+	tab.open_calendar()
+	await get_tree().process_frame
+	var cal: EventCalendar = tab.calendar
+	var real_now: int = int(Time.get_unix_time_from_system())
+	var today_date: Dictionary = EventCalendar.date_of(0, real_now)
+	var today_cell: Button = cal.cell_for(int(today_date.get("day", 1)))
+	check("the calendar button opens it: this month, today offered, its number in gold, saying Double XP is on",
+		tab.calendar_popup.visible and cal.shown_month == int(today_date.get("month", 0))
+		and cal.shown_year == int(today_date.get("year", 0))
+		and today_cell != null and not today_cell.disabled and today_cell.tooltip_text.begins_with("Today\nDouble XP ")
+		and today_cell.get_theme_color("font_color").is_equal_approx(EventCalendar.TODAY),
+		today_cell.tooltip_text if today_cell else "no cell")
+	check("  tomorrow marked for the Double Loot coming", cal.marked.has(1) and (cal.marked[1] as Array).size() == 1
+		and str(cal.marked[1][0]).begins_with("Double Loot "), cal.marked)
+	var marked_words: String = str(cal.marked.values())
+	check("  Triple Loot, over this morning, marked as over; 1.5x XP, called off, not at all",
+		marked_words.contains("Triple Loot ") and marked_words.contains(" (over)") and not marked_words.contains("1.5x XP"),
+		marked_words)
+	# HOTBAR BOXES (0.52.0): "also i want to use hotbar boxs for the outline on
+	# those days".
+	var today_socket: StyleBoxTexture = today_cell.get_theme_stylebox("normal") as StyleBoxTexture \
+		if today_cell != null else null
+	var socket_hover: StyleBoxTexture = today_cell.get_theme_stylebox("hover") as StyleBoxTexture \
+		if today_cell != null else null
+	check("  a day with an event is in a hotbar box - the hotbar's own slot art, drawn out over its clear rim to the "
+		+ "cell's size - lit under the pointer",
+		today_socket != null and today_socket.texture != null
+		and today_socket.texture.resource_path == "res://art/images/hotbarslot.png"
+		and socket_hover != null and socket_hover.modulate_color.v > today_socket.modulate_color.v
+		and today_socket.get_expand_margin(SIDE_LEFT) > 0.0,
+		today_socket)
+	cal.show_days(real_now, 366, -1, [])
+	today_cell = cal.cell_for(int(today_date.get("day", 1)))
+	var today_box: StyleBoxFlat = today_cell.get_theme_stylebox("normal") as StyleBoxFlat if today_cell != null else null
+	var plain_cell_box: StyleBoxFlat = null
+	for child in cal.grid.get_children():
+		if child is Button and not (child as Button).has_theme_stylebox_override("normal"):
+			plain_cell_box = (child as Button).get_theme_stylebox("normal") as StyleBoxFlat
+			break
+	check("  today with nothing on: a warm fill and a gold edge, in the GM panel's own button style, not the engine's",
+		today_box != null and plain_cell_box != null and today_box.bg_color.is_equal_approx(EventCalendar.TODAY_FILL)
+		and today_box.border_color.is_equal_approx(EventCalendar.TODAY)
+		and today_box.border_width_left == plain_cell_box.border_width_left
+		and is_equal_approx(today_box.content_margin_left, plain_cell_box.content_margin_left),
+		[today_box.border_color, today_box.content_margin_left] if today_box else ["no box"])
+	tab.open_calendar()
+	await get_tree().process_frame
+	var offered_right: bool = true
+	var cells_seen: int = 0
+	for child in cal.grid.get_children():
+		if child is Button:
+			cells_seen += 1
+			var on_day: int = int(child.get_meta("days_on"))
+			if (child as Button).disabled != (on_day < 0 or on_day >= 366):
+				offered_right = false
+	check("  this month: every day before today not offered, the rest are", offered_right and cells_seen >= 28, cells_seen)
+	check("  and on this month, Today has nowhere to go", cal.today_button.disabled)
+	cal.turn(-1)
+	var all_gone: bool = true
+	for child in cal.grid.get_children():
+		if child is Button and not (child as Button).disabled:
+			all_gone = false
+	check("a REAL calendar (0.52.0): < goes back to last month, there to read, none of its days offered; "
+		+ "Today comes back",
+		not cal.earlier_button.disabled and all_gone and not cal.today_button.disabled
+		and cal.month_label.text.ends_with(str(EventCalendar.month_after(int(today_date.get("year", 0)),
+			int(today_date.get("month", 0)), -1)[0])))
+	cal.show_today()
+	cal.turn(12)
+	check("  >> is the same month next year, and the label says so",
+		cal.shown_year == int(today_date.get("year", 0)) + 1 and cal.shown_month == int(today_date.get("month", 0))
+		and cal.month_label.text == "%s %d" % [EventCalendar.MONTH_NAMES[cal.shown_month], cal.shown_year],
+		cal.month_label.text)
+	var last_date: Dictionary = EventCalendar.date_of(365, real_now)
+	cal.show_month(int(last_date.get("year", 0)), int(last_date.get("month", 0)))
+	var last_cell: Button = cal.cell_for(int(last_date.get("day", 1)))
+	var past_cell: Button = cal.cell_for(int(last_date.get("day", 1)) + 1)
+	check("  a year on, the last day the server takes is offered and the day after it is not - "
+		+ "though the months after can still be read",
+		last_cell != null and not last_cell.disabled and (past_cell == null or past_cell.disabled)
+		and not cal.later_button.disabled and past_cell != null and past_cell.tooltip_text.contains("a year"),
+		[last_date, past_cell.tooltip_text if past_cell else ""])
+	var far_date: Dictionary = EventCalendar.date_of(200, real_now)
+	cal.show_month(int(far_date.get("year", 0)), int(far_date.get("month", 0)))
+	var far_cell: Button = cal.cell_for(int(far_date.get("day", 1)))
+	if far_cell != null:
+		far_cell.pressed.emit()
+	await get_tree().process_frame
+	var far_index: int = tab.day_index(200)
+	check("a day pressed 200 days on, past the sixty listed: it joins the day picker with its year, picked, "
+		+ "and the calendar closes",
+		far_cell != null and tab.day() == 200 and far_index == 61 and tab.day_pick.selected == far_index
+		and tab.day_pick.get_item_text(far_index) == EventsTab.far_name(200, real_now) and not tab.calendar_popup.visible
+		and tab.hour_box.editable and tab.say_label.text == "Day picked: %s." % EventsTab.far_name(200, real_now),
+		[tab.day(), far_index, tab.say_label.text])
+	tab.hour_box.value = 20.0
+	tab.minute_box.value = 0.0
+	check("  and Schedule would start it then: 20:00 that day on this computer's clock",
+		int(tab.event_from_controls(now).get("starts_at", 0)) == EventsTab.start_time(200, 20, 0, int(Time.get_unix_time_from_system())))
+	tab.fill_days(int(Time.get_unix_time_from_system()))
+	check("  and it stays in the picker when the days are filled again (each read of the server)",
+		tab.day() == 200 and tab.day_index(200) == 61)
+	tab.open_calendar()
+	await get_tree().process_frame
+	var again_cell: Button = cal.cell_for(int(far_date.get("day", 1)))
+	check("  opened again, it shows that day's month and year with the day pressed in",
+		cal.shown_month == int(far_date.get("month", 0)) and cal.shown_year == int(far_date.get("year", 0))
+		and again_cell != null and again_cell.button_pressed)
+	var day_thirty: Dictionary = EventCalendar.date_of(30, real_now)
+	cal.show_month(int(day_thirty.get("year", 0)), int(day_thirty.get("month", 0)))
+	var thirty_cell: Button = cal.cell_for(int(day_thirty.get("day", 1)))
+	if thirty_cell != null:
+		thirty_cell.pressed.emit()
+	await get_tree().process_frame
+	check("a day within the sixty: the day picker's own item for it, no year needed",
+		thirty_cell != null and tab.day() == 30 and tab.day_index(30) == 31 and not tab.calendar_popup.visible
+		and tab.say_label.text == "Day picked: %s." % tab.day_pick.get_item_text(31), tab.say_label.text)
+	tab.calendar_popup.hide()
 	tab.kind_pick.select(0)
 	tab.kind_pick.item_selected.emit(0)
 	tab.amount_box.value = 2.0
@@ -10407,6 +10661,161 @@ func _test_event_report() -> void:
 	hud.queue_free()
 	await get_tree().process_frame
 	print("  event report: the needle in words, each event's three windows, the chart and its hover; the dry run in Results")
+
+
+func _test_land_report() -> void:
+	section("THE LANDS WINDOW AND THE NEXT STIR - every land's numbers, the world's choice and why (0.50.0)")
+	# The owner, from a "Behavior Insights" idea: per land, players, kills, time
+	# since its last event, whether it is overfarmed, ignored or healthy; a
+	# suggested next stir with a reason; accept or override on the GM panel.
+	# test_insights.py holds the server's rules; this holds the words, the
+	# hours chart and the ways in.
+	var now: int = int(Time.get_unix_time_from_system())
+
+	# ---- the hours, this computer's ----------------------------------------------------
+	var utc: Array = []
+	utc.resize(24)
+	utc.fill(0.0)
+	utc[1] = 1.4
+	utc[2] = 1.2
+	utc[0] = 0.8
+	var local: Array[float] = HoursChart.to_local(utc, -300)
+	check("players online by UTC hour into this computer's hours: five hours behind, 01:00 UTC is 20:00",
+		is_equal_approx(local[20], 1.4) and is_equal_approx(local[21], 1.2) and is_equal_approx(local[19], 0.8)
+		and is_equal_approx(local[1], 0.0), local)
+	check("  an hour of the day in this computer's clock, half-hour zones too",
+		HoursChart.local_hour(1, -300) == "20:00" and HoursChart.local_hour(0, 330) == "05:30"
+		and HoursChart.local_hour(23, 60) == "00:00")
+	check("  the axis tops at the most, rounded up to a whole player - 1 at least - so halfway is clean too",
+		is_equal_approx(HoursChart.top_of([0.4, 1.3] as Array[float]), 2.0) and is_equal_approx(HoursChart.top_of([0.4] as Array[float]), 1.0))
+	var chart := HoursChart.new()
+	chart.players = local
+	check("  the busiest three, most first; the hover says the hour and the average",
+		chart.busiest() == [20, 21, 19] and chart.tooltip(20) == "20:00-21:00: 1.4 players on average", chart.busiest())
+	chart.players[3] = 1.0
+	check("  one player is one player", chart.tooltip(3) == "03:00-04:00: 1 player on average", chart.tooltip(3))
+	chart.free()
+	check("busiest hours in words - and, before three days are counted, that it is still counting",
+		LandReportWindow.hours_text([20, 21, 19] as Array[int], local, 14.0)
+			== "Busiest hours, your time: 20:00 (1.4 on average), 21:00 (1.2), 19:00 (0.8) - over 14 days."
+		and LandReportWindow.hours_text([] as Array[int], local, 1.0).begins_with("Players online by hour, your time - counting began 1 days ago"),
+		LandReportWindow.hours_text([20, 21, 19] as Array[int], local, 14.0))
+
+	# ---- every land, in words -------------------------------------------------------
+	check("how long ago: never, now, minutes, hours, days",
+		LandReportWindow.ago(null, now) == "never" and LandReportWindow.ago(now - 30, now) == "now"
+		and LandReportWindow.ago(now - 2700, now) == "45m ago" and LandReportWindow.ago(now - 3 * 3600, now) == "3h ago"
+		and LandReportWindow.ago(now - 3 * 86400, now) == "3d ago")
+	var fire_row: Dictionary = {"element": 6, "name": "fire", "kills_day": 12, "kills_week": 13, "players_week": 1,
+		"newcomers_now": 0, "last_stirred_at": now - 5 * 3600, "last_event_at": null, "busiest_hour": 1, "status": "busy"}
+	var ice_row: Dictionary = {"element": 3, "name": "ice", "kills_day": 1, "kills_week": 2, "players_week": 1,
+		"newcomers_now": 1, "last_stirred_at": null, "last_event_at": now - 2 * 86400, "busiest_hour": null, "status": "quiet"}
+	check("a land's row: kills today and this week, players, new players now, last stir and event, busiest hour (yours), status",
+		LandReportWindow.row_cells(fire_row, now, -300) == ["Fire", "12", "13", "1", "-", "5h ago", "never", "20:00", "busy"]
+		and LandReportWindow.row_cells(ice_row, now, -300) == ["Ice", "1", "2", "1", "1", "never", "2d ago", "-", "quiet"],
+		LandReportWindow.row_cells(fire_row, now, -300))
+	var reason: String = "Wind: the least hunted in the last day (2 kills) without new players in it - passing over Ice (1 new player), where they are learning."
+	var sample: Dictionary = JSON.parse_string(JSON.stringify({"now": now, "few": true, "total_week": 18, "new_player_level": 10,
+		"next": {"element": 4, "name": "wind", "at": now + 3600, "reason": reason},
+		"lands": [fire_row, ice_row], "hours": {"players": utc, "days": 14.0}}))
+	var nexts: Array = LandReportWindow.next_lines(sample, now).map(func(line: Array) -> String: return str(line[0]))
+	check("the next stir: when, which and why - and where to take it or pick another",
+		nexts == ["NEXT TO STIR", "At %s: %s" % [LocalTime.stamp(now + 3600, now), reason],
+			"To take it now or pick another, use Stir it now on the World tab."], nexts)
+	check("  the lands switched off: nothing, and why",
+		LandReportWindow.next_lines({"next": null}, now)[1][0] == "Nothing - the stirring lands are switched off (World tab).")
+	check("  a week of few kills is said to be a rough read",
+		LandReportWindow.note_lines(sample)[0][0] == "Only 18 kills this week - a rough read.")
+
+	# ---- the window -------------------------------------------------------------------
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var window: LandReportWindow = (load("res://scene/ui/owner/landreport.tscn") as PackedScene).instantiate() as LandReportWindow
+	window.visible = false
+	add_child(window)
+	await get_tree().process_frame
+	var asked: Array = []
+	window.get_request = func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": sample}
+	LocalTime._bias_minutes = -300
+	LocalTime._bias_known = true
+	LocalTime._bias_read_at = Time.get_ticks_msec()
+	await window.open()
+	LocalTime._bias_known = false
+	await get_tree().process_frame
+	var shown: String = window.report_box.get_parsed_text()
+	check("opened, it reads the server: the next stir, the table of every land, the notes",
+		window.visible and asked == ["/api/server/insights"] and shown.contains("NEXT TO STIR") and shown.contains(reason)
+		and shown.contains("EVERY LAND, THIS WEEK") and shown.contains("Fire") and shown.contains("5h ago")
+		and shown.contains("rough read"), [asked, shown.left(80)])
+	check("  and the hours, in this computer's hours, with the busiest said",
+		is_equal_approx(window.hours_chart.players[20], 1.4)
+		and window.hours_label.text.begins_with("Busiest hours, your time: 20:00 (1.4 on average)"), window.hours_label.text)
+	window.get_request = func(_path: String) -> Dictionary: return {"ok": false, "status": 404, "error": ""}
+	await window.refresh()
+	check("a server without it says to update it", window.status.text.contains("Update the server"), window.status.text)
+	Api.is_owner = false
+	var asked_before: int = asked.size()
+	window.get_request = func(path: String) -> Dictionary:
+		asked.append(path)
+		return {"ok": true, "status": 200, "data": sample}
+	await window.refresh()
+	check("  and it never asks for anybody but the owner", asked.size() == asked_before
+		and window.status.text == "The land report is the owner's.")
+	Api.is_owner = true
+	window.close()
+	check("  its x closes it", not window.visible)
+	window.queue_free()
+	await get_tree().process_frame
+
+	# ---- the World tab: the next stir, offered; Lands -----------------------------------
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var tab: WorldTab = gm.get("world_tab") as WorldTab
+	var tabs: TabContainer = gm.get_node_or_null("%ownertabs") as TabContainer
+	if tabs != null and tab != null:
+		tabs.current_tab = tab.get_index()
+		await get_tree().process_frame
+	check("the World tab has a Lands button beside Refresh, and still fits 370 (%d)" % PanelWindow.content_minimum(gm).x,
+		tab.lands_button.get_parent() == tab.refresh_button.get_parent() and PanelWindow.content_minimum(gm).x <= 370.0)
+	var view: Variant = JSON.parse_string(JSON.stringify({
+		"settings": {"on": true, "hours": 3}, "state": {"on": true, "tick": 12, "element": 6, "ends_at": now + 3600, "now": now},
+		"recent": [], "lands": [{"element": 6, "name": "fire", "kills": 3}], "now": now,
+		"next": {"element": 4, "name": "wind", "at": now + 3600, "reason": reason}}))
+	tab.fetch = func(_path: String) -> Dictionary: return {"ok": true, "status": 200, "data": view}
+	await tab.refresh()
+	check("the next stir and why, where the land's kills were - and it is the land offered for Stir it now",
+		tab.lands_label.text == "Next to stir (%s): %s" % [LocalTime.stamp(now + 3600, now), reason]
+		and tab.land_pick.get_item_id(tab.land_pick.selected) == Element.Type.WIND, tab.lands_label.text)
+	var old_view: Dictionary = (view as Dictionary).duplicate(true)
+	old_view.erase("next")
+	tab.show_answer(old_view)
+	check("  a server from before it: the kills, as before", tab.lands_label.text.begins_with("Kills in the last day: fire 3"),
+		tab.lands_label.text)
+	var opened: Array = []
+	gm.set("open_window", func(method: String, _who: String) -> bool:
+		opened.append(method)
+		return true)
+	tab.lands_button.pressed.emit()
+	check("Lands opens the Lands window through the HUD", opened == ["open_land_report"], opened)
+	gm.set("open_window", func(_method: String, _who: String) -> bool: return false)
+	tab.lands_button.pressed.emit()
+	check("  and out of the game it says so", tab.say_label.text == "The Lands window opens from inside the game.")
+	gm.queue_free()
+	await get_tree().process_frame
+
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	Api.is_owner = false
+	hud.open_land_report()
+	check("the HUD builds the Lands window for nobody but the owner", hud.land_report == null)
+	Api.is_owner = was_owner
+	hud.queue_free()
+	await get_tree().process_frame
+	print("  lands: every land in a table, the next stir and why, the hours in yours; offered on the World tab")
 
 
 func _test_armour_resistance() -> void:
@@ -21669,6 +22078,7 @@ func _test_escape_closes_every_window() -> void:
 		"save_history": "res://scene/ui/owner/savehistory.tscn",
 		"stats_window": "res://scene/ui/owner/statswindow.tscn",
 		"event_report": "res://scene/ui/owner/eventreport.tscn",
+		"land_report": "res://scene/ui/owner/landreport.tscn",
 		"options_screen": "res://scene/ui/menus/optionsscreen.tscn",
 		"map_screen": "res://scene/ui/menus/mapscreen.tscn",
 		"controls_panel": "res://scene/ui/controls/controlspanel.tscn",
@@ -25723,6 +26133,12 @@ func _test_the_browser_build() -> void:
 		page.contains("window.elusionReady = "))
 	check("  and gives the tab back its name then - the engine renames it after the project",
 		page.contains("const pageTitle = document.title;") and page.contains("document.title = pageTitle;"))
+	check("  and tells a tab left open that a new build is up (0.50.1): the game files' dates, noted as they load "
+		+ "and asked again past the cache, and a Reload button",
+		page.contains("function watchForNewBuild()") and page.contains("cache: 'no-store'")
+		and page.contains("'Last-Modified'") and page.contains("<div id=\"update\" role=\"status\"")
+		and page.contains("id=\"update-reload\"") and page.contains("window.elusionCheckForUpdate = ")
+		and page.contains("\twatchForNewBuild();\n\tstatus.textContent = 'Downloading the game...';"))
 	var art_at: int = page.find("data:image/png;base64,")
 	var art_end: int = page.find("\"", art_at)
 	var embedded: PackedByteArray = Marshalls.base64_to_raw(

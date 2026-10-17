@@ -7,8 +7,9 @@
 #
 #   - schedule one: what (more XP, more loot, a land stirs), how much (1.25x
 #     to 3x), whose monsters (every monster, the stirring land's, or one
-#     land's), when (now, or a day and a time on THIS computer's clock), for
-#     how many hours (1-72), and a name if it wants one
+#     land's), when (now, or a day and a time on THIS computer's clock - the
+#     day from the picker or, 0.51.0, from a month on the calendar button,
+#     eventcalendar.gd), for how many hours (1-72), and a name if it wants one
 #   - what is on and what is coming, and the last few that ended
 #   - call one off
 #
@@ -55,9 +56,14 @@ const LAND_ANY := 0
 const LAND_STIRRING := -1
 const LANDS := [Element.Type.DARK, Element.Type.LIGHT, Element.Type.ICE, Element.Type.WIND,
 	Element.Type.EARTH, Element.Type.FIRE, Element.Type.WATER]
-# The day picker: Now, then today and the next DAYS_SHOWN - 1 days.
+# The day picker: Now, then today and the DAYS_LISTED - 1 days after it, and
+# a day picked on the calendar further on than that (0.52.0) - "Dec 25 2027".
+# An event may be set as far ahead as the server takes one: its
+# limits.days_ahead, DAYS_AHEAD until it is read (FURTHEST in the API's
+# events/services.py - a year since 0.52.0, 60 days before).
 const DAY_NOW := -1
-const DAYS_SHOWN := 21
+const DAYS_AHEAD := 366
+const DAYS_LISTED := 60
 const DAY_WIDTH := 132.0
 # How many events the list shows before "and N more".
 const LISTED := 4
@@ -80,6 +86,12 @@ var land_pick: OptionButton
 var day_pick: OptionButton
 var hour_box: SpinBox
 var minute_box: SpinBox
+var calendar_button: Button
+var calendar_popup: PopupPanel
+var calendar: EventCalendar
+# A day picked on the calendar past the listed ones, kept in the picker as one
+# more item: days after today, or -1 for none.
+var far_day: int = -1
 var hours_box: SpinBox
 var name_edit: LineEdit
 var schedule_button: Button
@@ -172,6 +184,27 @@ func _build() -> void:
 	_two_digits(minute_box)
 	minute_box.tooltip_text = "The minute it starts."
 	when.add_child(minute_box)
+	# THE CALENDAR (0.51.0): a picture, not a word - the row is the tab's
+	# widest, and "Calendar" would make the GM panel wider than 370.
+	calendar_button = _button("", "Calendar: pick the day from a month, and see which days already have events.")
+	calendar_button.name = "calendarbutton"
+	calendar_button.icon = EventCalendar.icon()
+	calendar_button.pressed.connect(open_calendar)
+	when.add_child(calendar_button)
+	# A POPUP, so opening it changes nothing about the GM panel's size.
+	calendar_popup = PopupPanel.new()
+	calendar_popup.name = "calendarpopup"
+	var frame := StyleBoxFlat.new()
+	frame.bg_color = Color(0.07, 0.06, 0.09, 0.97)
+	frame.border_color = Color(0.55, 0.45, 0.3)
+	frame.set_border_width_all(2)
+	frame.set_corner_radius_all(3)
+	frame.set_content_margin_all(8.0)
+	calendar_popup.add_theme_stylebox_override("panel", frame)
+	calendar = EventCalendar.new()
+	calendar.picked.connect(_on_calendar_picked)
+	calendar_popup.add_child(calendar)
+	add_child(calendar_popup)
 	fill_days(int(Time.get_unix_time_from_system()))
 
 	var length := HBoxContainer.new()
@@ -337,19 +370,72 @@ func _on_day_selected(_index: int) -> void:
 	minute_box.editable = not now_picked
 
 
+func open_calendar() -> void:
+	"""The calendar under its button, on the picked day's month, with the
+	days that have an event on or coming marked."""
+	var now_unix: int = int(Time.get_unix_time_from_system())
+	calendar.show_days(now_unix, days_ahead(), day(), on_calendar(answer))
+	calendar_popup.reset_size()
+	# Its right edge under the button's, kept on the screen.
+	var at: Vector2 = calendar_button.get_screen_position() + Vector2(calendar_button.size.x - calendar_popup.size.x,
+		calendar_button.size.y + 2.0)
+	var room: Vector2 = get_viewport().get_visible_rect().size
+	at.x = clampf(at.x, 0.0, maxf(0.0, room.x - calendar_popup.size.x))
+	at.y = clampf(at.y, 0.0, maxf(0.0, room.y - calendar_popup.size.y))
+	calendar_popup.popup(Rect2i(Vector2i(at), calendar_popup.size))
+
+
+func _on_calendar_picked(days_on: int) -> void:
+	"""A day pressed on the calendar is that day in the picker - one past
+	the listed days added to it as one more."""
+	calendar_popup.hide()
+	if day_index(days_on) < 0 and days_on >= 0 and days_on < days_ahead():
+		far_day = days_on
+		fill_days(int(Time.get_unix_time_from_system()))
+	var index: int = day_index(days_on)
+	if index < 0:
+		return
+	day_pick.select(index)
+	_on_day_selected(index)
+	_say_here("Day picked: %s." % day_pick.get_item_text(index))
+
+
+func days_ahead() -> int:
+	"""How many days may be picked, today the first: the server's
+	limits.days_ahead once it has been read."""
+	var limits: Variant = answer.get("limits")
+	if limits is Dictionary and ((limits as Dictionary).get("days_ahead") is int
+			or (limits as Dictionary).get("days_ahead") is float):
+		return clampi(int((limits as Dictionary).get("days_ahead")), 1, 3660)
+	return DAYS_AHEAD
+
+
+static func far_name(days_on: int, now_unix: int) -> String:
+	"""A day past the listed ones, with its year: 'Dec 25 2027'."""
+	var at: Dictionary = EventCalendar.date_of(days_on, now_unix)
+	return "%s %d %d" % [LocalTime.MONTHS[clampi(int(at.get("month", 1)), 1, 12)], int(at.get("day", 1)),
+		int(at.get("year", 1970))]
+
+
 func fill_days(now_unix: int) -> void:
-	"""Now, Today, Tomorrow, then 'Sat Oct 17' - on this computer's calendar."""
+	"""Now, Today, Tomorrow, then 'Sat Oct 17' - on this computer's calendar,
+	counted from today's date (EventCalendar.date_of()), so a clock change in
+	the weeks ahead moves no day."""
 	var kept: int = day()
 	day_pick.clear()
 	day_pick.add_item("Now")
 	day_pick.set_item_metadata(0, DAY_NOW)
-	for ahead in DAYS_SHOWN:
-		var at: Dictionary = LocalTime.parts(now_unix + ahead * 86400)
+	var listed: int = mini(DAYS_LISTED, days_ahead())
+	for ahead in listed:
+		var at: Dictionary = EventCalendar.date_of(ahead, now_unix)
 		var words: String = "Today" if ahead == 0 else ("Tomorrow" if ahead == 1 else "%s %s %d" % [
 			LocalTime.WEEKDAYS[int(at.get("weekday", 0)) % 7], LocalTime.MONTHS[clampi(int(at.get("month", 1)), 1, 12)],
 			int(at.get("day", 1))])
 		day_pick.add_item(words)
 		day_pick.set_item_metadata(day_pick.item_count - 1, ahead)
+	if far_day >= listed and far_day < days_ahead():
+		day_pick.add_item(far_name(far_day, now_unix))
+		day_pick.set_item_metadata(day_pick.item_count - 1, far_day)
 	var index: int = day_index(kept)
 	day_pick.select(index if index >= 0 else 0)
 
@@ -609,6 +695,20 @@ func show_answer(data: Dictionary) -> void:
 	schedule_button.disabled = false
 	dry_run_button.disabled = false
 	fill_days(int(Time.get_unix_time_from_system()))
+	if calendar_popup.visible:
+		open_calendar()
+
+
+static func on_calendar(data: Dictionary) -> Array[Dictionary]:
+	"""What the calendar marks: every event in the answer that is on, coming
+	or over - the answer holds the last 30 days - and not one called off."""
+	var out: Array[Dictionary] = []
+	var events: Variant = data.get("events", [])
+	if events is Array:
+		for event in events:
+			if event is Dictionary and str(event.get("state", "")) in ["on", "coming", "over"]:
+				out.append(event)
+	return out
 
 
 static func waiting(data: Dictionary) -> Array[Dictionary]:

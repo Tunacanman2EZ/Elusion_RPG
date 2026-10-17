@@ -20,6 +20,13 @@
 # POST /api/server/world/stir. Both are owner-only and ask for the password
 # again on a hardened login (STEP-UP, the HUD's prompt). The server checks
 # every value; the controls only offer the ranges it allows.
+#
+# THE NEXT STIR AND WHY (0.50.0). The server says which land it would stir
+# when the stir on now ends, and why ("next", the API's insights/ package) -
+# it passes over a land where a new player is learning. The tab says it, and
+# offers that land for "Stir it now": taking it now is accepting, picking
+# another is overriding. "Lands" opens the Lands window (landreport.gd):
+# every land's numbers and when players are on.
 extends VBoxContainer
 class_name WorldTab
 
@@ -57,6 +64,9 @@ var send: Callable = Callable(Api, "post")
 # Where results also go: the GM panel's Results box, set by the panel
 # (OwnerPanel._say). Unset, they show on the tab alone.
 var report: Callable = Callable()
+# Opens the Lands window, set by the panel (through the HUD); false out of
+# the game.
+var open_lands: Callable = Callable()
 # The last answer from the server.
 var answer: Dictionary = {}
 
@@ -67,6 +77,7 @@ var effect_switches: Dictionary = {}
 var effect_amounts: Dictionary = {}
 var save_button: Button
 var refresh_button: Button
+var lands_button: Button
 var land_pick: OptionButton
 var stir_button: Button
 var lands_label: Label
@@ -136,6 +147,10 @@ func _build() -> void:
 	refresh_button.name = "refresh"
 	refresh_button.pressed.connect(refresh.bind(true))
 	buttons.add_child(refresh_button)
+	lands_button = _button("Lands", "Every land this week - kills, players, new players there now, busy or ignored - the next stir and why, and when players are on.")
+	lands_button.name = "lands"
+	lands_button.pressed.connect(_on_lands_pressed)
+	buttons.add_child(lands_button)
 
 	var stir_row := HBoxContainer.new()
 	stir_row.add_theme_constant_override("separation", 8)
@@ -352,7 +367,13 @@ func show_answer(data: Dictionary) -> void:
 	var land: int = int(state.get("element", 0))
 	status_label.add_theme_color_override("font_color",
 		Element.colour_for(land).lightened(0.35) if land != 0 else HEAD)
-	lands_label.text = lands_text(data.get("lands", []))
+	lands_label.text = next_text(data) if data.get("next") is Dictionary else lands_text(data.get("lands", []))
+	# THE WORLD'S CHOICE, OFFERED: "Stir it now" takes it now; picking
+	# another land overrides it.
+	if data.get("next") is Dictionary:
+		var index: int = land_pick.get_item_index(int((data.get("next") as Dictionary).get("element", 0)))
+		if index >= 0:
+			land_pick.select(index)
 	recent_label.text = recent_text(data.get("recent", []))
 	save_button.disabled = false
 	stir_button.disabled = not bool(settings.get("on", false))
@@ -369,6 +390,20 @@ static func status_text(data: Dictionary) -> String:
 	var left: int = maxi(0, int(state.get("ends_at", 0)) - int(data.get("now", state.get("now", 0))))
 	return "The %s lands are stirring - %s left (stir %d)." % [Element.name_for(land).capitalize(),
 		Lands.time_text(left), int(state.get("tick", 0))]
+
+
+static func next_text(data: Dictionary) -> String:
+	"""'Next to stir (15:00): Wind: the least hunted in the last day (2 kills)
+	without new players in it - passing over Ice (1 new player), where they
+	are learning.'"""
+	var upcoming: Dictionary = data.get("next", {}) if data.get("next") is Dictionary else {}
+	var now: int = int(data.get("now", 0))
+	return "Next to stir (%s): %s" % [LocalTime.stamp(int(upcoming.get("at", now)), now), str(upcoming.get("reason", ""))]
+
+
+func _on_lands_pressed() -> void:
+	if not open_lands.is_valid() or not bool(open_lands.call()):
+		_say("The Lands window opens from inside the game.", SAY_BAD)
 
 
 static func lands_text(lands: Variant) -> String:
