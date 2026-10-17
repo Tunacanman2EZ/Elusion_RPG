@@ -2587,6 +2587,14 @@ func can_be_pulled() -> bool:
 	return not net_mirror and not _dying and not _death_resolved and not gated
 
 
+func can_be_aimed_at() -> bool:
+	"""Whether a touch screen's auto-aim may turn an attack on this monster
+	(touchcontrols.gd): any that can still be hit - a mirror of another game's
+	monster too, since a hit on it counts - but not a corpse playing out its
+	death, and not one behind a boss gate."""
+	return not _dying and not _death_resolved and not gated
+
+
 func pull_toward(point: Vector2, step: float) -> void:
 	"""Moves this monster up to step world pixels toward point, sliding along
 	whatever it meets. Does nothing to one that cannot be pulled."""

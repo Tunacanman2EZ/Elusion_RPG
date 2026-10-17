@@ -190,6 +190,19 @@ func attack_period() -> float:
 	return hasten(spell_cooldown)
 
 
+func touch_attack_repeats() -> bool:
+	"""THE TOUCH PAD'S ATTACK, HELD (touchcontrols.gd): cast after cast."""
+	return true
+
+
+func touch_attack_ready() -> bool:
+	"""The next cast when this one is over and there is the mana for it. Not
+	pressed while the mana is short: every press is a frame the mage does not
+	walk, and a held button would halve its pace. The tap that started the
+	hold still says "Not enough mana"."""
+	return not is_casting and mana >= spell_mana_cost
+
+
 func attack_action() -> void:
 	# OVERRIDE: mage's spacebar attack IS the stalagmite drop spell.
 	# parent's _physics_process calls this when player presses attack action.

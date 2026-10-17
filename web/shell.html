@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#0b0a0f">
 <title>Elusion RPG</title>
 <!--
 	Elusion's loader: the page a player sees while the game downloads.
@@ -18,6 +22,12 @@
 
 	It also tells an open tab when a new build is up (#update, 0.50.1):
 	see watchForNewBuild() below.
+
+	ON A PHONE (0.53.0): held upright, #turn asks for it sideways - the game is
+	drawn wide - with a way past it for a tablet; #fullscreen offers the whole
+	screen where the browser allows one (not an iPhone's: there, Add to Home
+	Screen does it, and #turn says so). The thumbs' controls are the game's own
+	(touchcontrols.gd); the page keeps the browser's gestures off the game.
 -->
 <style>
 :root {
@@ -37,6 +47,9 @@ html, body, #canvas {
 	padding: 0;
 	border: 0;
 }
+html, body {
+	overscroll-behavior: none;
+}
 body {
 	background: var(--night);
 	color: var(--parchment);
@@ -46,6 +59,12 @@ body {
 }
 #canvas {
 	display: block;
+	/* A thumb held on the stick is not a long press asking to select, copy or
+	   look something up. */
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+	-webkit-tap-highlight-color: transparent;
 }
 #canvas:focus {
 	outline: none;
@@ -209,6 +228,87 @@ body {
 	color: var(--parchment);
 	border-color: var(--edge);
 }
+/* HELD UPRIGHT: the game is drawn wide. Only on a touch screen, and only
+   while it is upright. */
+#turn {
+	display: none;
+	position: fixed;
+	inset: 0;
+	z-index: 3;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: var(--night);
+	text-align: center;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+	#turn:not(.dismissed) {
+		display: flex;
+	}
+}
+#turn .panel {
+	width: min(320px, calc(100vw - 48px));
+}
+#turn svg {
+	display: block;
+	margin: 4px auto 16px;
+	animation: tip 2.4s ease-in-out infinite;
+}
+@keyframes tip {
+	0%, 30% { transform: rotate(0deg); }
+	55%, 100% { transform: rotate(-90deg); }
+}
+#turn p {
+	margin: 0 0 8px;
+	font-size: 15px;
+	line-height: 1.45;
+}
+#turn small {
+	display: block;
+	margin-top: 10px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--muted);
+}
+#turn small[hidden] {
+	display: none;
+}
+#turn button,
+#fullscreen {
+	font: inherit;
+	font-weight: 600;
+	color: var(--gold);
+	background: var(--title-bg);
+	border: 2px solid var(--edge);
+	border-radius: 3px;
+	cursor: pointer;
+}
+#turn button {
+	margin-top: 14px;
+	padding: 7px 16px;
+	font-size: 13px;
+	font-weight: 400;
+	color: var(--muted);
+	background: transparent;
+	border-color: transparent;
+}
+/* THE WHOLE SCREEN, where the browser has one to give. */
+#fullscreen {
+	position: fixed;
+	top: max(8px, env(safe-area-inset-top));
+	right: max(8px, env(safe-area-inset-right));
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	font-size: 12px;
+	background: rgba(51, 41, 31, 0.86);
+	-webkit-tap-highlight-color: transparent;
+}
+#fullscreen[hidden] {
+	display: none;
+}
 </style>
 $GODOT_HEAD_INCLUDE
 </head>
@@ -225,6 +325,24 @@ $GODOT_HEAD_INCLUDE
 		<button id="retry" type="button">Try again</button>
 	</div>
 </div>
+
+<div id="turn" role="dialog" aria-label="Turn your phone sideways">
+	<div class="panel">
+		<svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+			<rect x="20" y="6" width="24" height="52" rx="4" fill="none" stroke="#d9b86b" stroke-width="3"/>
+			<line x1="28" y1="51" x2="36" y2="51" stroke="#d9b86b" stroke-width="3" stroke-linecap="round"/>
+		</svg>
+		<p>Turn your phone sideways to play.</p>
+		<small>Elusion is played with the screen wide: a stick for your left thumb, attacks for your right.</small>
+		<small id="turn-ios" hidden>On an iPhone, Share then Add to Home Screen plays it on the whole screen.</small>
+		<button id="turn-anyway" type="button">Play this way</button>
+	</div>
+</div>
+
+<button id="fullscreen" type="button" hidden>
+	<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+	Full screen
+</button>
 
 <div id="update" role="status" aria-live="polite" hidden>
 	<div>A new version of Elusion is out.<small>Your progress is saved as the page reloads.</small></div>
@@ -361,6 +479,52 @@ const engine = new Engine(GODOT_CONFIG);
 		// For a test, or a future "check now": resolves true when it shows.
 		window.elusionCheckForUpdate = function () { return check(true); };
 	}
+
+	// ON A PHONE (0.53.0). Upright, #turn asks for it sideways (the CSS shows
+	// it; this is the way past it, and the iPhone's line). The whole screen is
+	// offered where the browser has one to give - Chrome on Android, a tablet
+	// - and, once in it, the screen is held sideways where that is allowed.
+	function phoneHelpers() {
+		const coarse = window.matchMedia('(pointer: coarse)').matches;
+		const turn = document.getElementById('turn');
+		const iOS = /iPhone|iPod/.test(navigator.userAgent);
+		const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+		document.getElementById('turn-ios').hidden = !(iOS && !standalone);
+		document.getElementById('turn-anyway').addEventListener('click', function () {
+			turn.classList.add('dismissed');
+			document.getElementById('canvas').focus();
+		});
+
+		const button = document.getElementById('fullscreen');
+		const root = document.documentElement;
+		const enter = root.requestFullscreen || root.webkitRequestFullscreen;
+		const can = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+		function inFull() {
+			return !!(document.fullscreenElement || document.webkitFullscreenElement);
+		}
+		function show() {
+			button.hidden = !(coarse && can && enter && !standalone && !inFull());
+		}
+		button.addEventListener('click', function () {
+			let asked;
+			try {
+				asked = enter.call(root, { navigationUI: 'hide' });
+			} catch (e) {
+				asked = null;
+			}
+			Promise.resolve(asked).then(function () {
+				if (screen.orientation && screen.orientation.lock) {
+					screen.orientation.lock('landscape').catch(function () {});
+				}
+			}, function () {}).then(function () {
+				document.getElementById('canvas').focus();
+			});
+		});
+		document.addEventListener('fullscreenchange', show);
+		document.addEventListener('webkitfullscreenchange', show);
+		show();
+	}
+	phoneHelpers();
 
 	const missing = Engine.getMissingFeatures({ threads: GODOT_THREADS_ENABLED });
 	if (missing.length !== 0) {

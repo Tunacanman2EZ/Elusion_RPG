@@ -735,11 +735,16 @@ func _physics_process(_delta):
 # typed in. Each step lives here once, and both loops call it.
 
 func _watch_pointer() -> void:
-	"""THE CURSOR, WHEN THERE IS ONE: it is on the game once it moves there."""
+	"""THE CURSOR, WHEN THERE IS ONE: it is on the game once it moves there.
+	Not on a touch screen: the cursor there is the first finger, copied, and
+	stays where it last lifted (touchcontrols.gd) - so a key pressed after it
+	aims the way the character faces until a real mouse moves."""
 	if not is_inside_tree():
 		return
 	var now: Vector2 = get_viewport().get_mouse_position()
-	if _pointer_was.x >= 0.0 and now != _pointer_was:
+	if TouchControls.active:
+		pointer_on_game = false
+	elif _pointer_was.x >= 0.0 and now != _pointer_was:
 		pointer_on_game = true
 	_pointer_was = now
 
@@ -751,8 +756,14 @@ func _on_pointer_left_window() -> void:
 func aim_point() -> Vector2:
 	"""Where an attack made now aims, in the world: the cursor while there is
 	one on the game, or KEYBOARD_AIM_REACH ahead the way the character faces
-	(THE CURSOR, WHEN THERE IS ONE)."""
-	if pointer_on_game:
+	(THE CURSOR, WHEN THERE IS ONE). On a touch screen, a finger on the world,
+	a dragged button or the nearest monster first (touchcontrols.gd, THE
+	AIM), and the facing when there is none of those."""
+	if TouchControls.active:
+		var touched: Variant = TouchControls.aim_for(self)
+		if touched != null:
+			return touched
+	elif pointer_on_game:
 		return steady_mouse_position()
 	var facing: Vector2 = last_direction if last_direction.length_squared() > 0.0001 else Vector2.DOWN
 	return global_position + facing.normalized() * KEYBOARD_AIM_REACH
@@ -778,7 +789,18 @@ func steady_mouse_position() -> Vector2:
 	drawn, in-between centre too, measured on 4.6.1), held to its limits as
 	the camera holds itself. Standing still, or with no camera of ours, it is
 	the plain mouse position."""
-	var raw: Vector2 = get_global_mouse_position()
+	return _as_this_tick(get_global_mouse_position())
+
+
+func world_point_at(screen: Vector2) -> Vector2:
+	"""A point on the screen - a finger's, on a touch screen - in the world as
+	it is this tick, by steady_mouse_position()'s rule."""
+	return _as_this_tick(get_canvas_transform().affine_inverse() * screen)
+
+
+func _as_this_tick(raw: Vector2) -> Vector2:
+	"""A point mapped through the last drawn frame's canvas, moved to where the
+	camera is this tick (steady_mouse_position())."""
 	var camera: Camera2D = get_node_or_null("camera2d") as Camera2D
 	if camera == null or not camera.is_inside_tree() or not camera.is_current():
 		return raw
@@ -1569,6 +1591,12 @@ func _aim_ring_fired() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	# A click reaches here only when no window took it (see ATTACK INPUT).
 	var click := event as InputEventMouseButton
+	# NOT ONE COPIED FROM A FINGER. On a touch screen the first finger is also
+	# a mouse, so that it can press the HUD's buttons - and a copy of a thumb
+	# on the move stick would swing from here. A finger on the world is an
+	# attack in touchcontrols.gd instead, whichever finger it is.
+	if click != null and click.device == InputEvent.DEVICE_ID_EMULATION:
+		return
 	if click != null and click.pressed:
 		# A click is a cursor on the game (THE CURSOR, WHEN THERE IS ONE).
 		pointer_on_game = true
@@ -1576,6 +1604,36 @@ func _unhandled_input(event: InputEvent) -> void:
 			_left_click_down = true
 		elif click.button_index == MOUSE_BUTTON_RIGHT:
 			_right_click_down = true
+
+
+# =============================================================================
+# ON A TOUCH SCREEN (touchcontrols.gd, 0.53.0)
+# =============================================================================
+# What the touch pad asks a class. Each answers for itself where the answer is
+# not the one below.
+
+func touch_attack_repeats() -> bool:
+	"""Whether the Attack button held keeps attacking: only where a second
+	press means another of the same. Not the tank's (attack switches its aura
+	off again) and not the healer's (attack held already streams)."""
+	return false
+
+
+func touch_attack_ready() -> bool:
+	"""Whether a held Attack button should press again now: when the last one
+	is over, so a held thumb costs no more frames of walking than clicking."""
+	return not is_attacking
+
+
+func touch_skill_name() -> String:
+	"""The word on the touch pad's skill button, or "" for a class with no skill
+	there - the healer's aura is right-click on a mouse."""
+	return ""
+
+
+func touch_skill_reach() -> float:
+	"""How far from the feet the skill can be dragged."""
+	return 0.0
 
 
 func left_click_attack_held() -> bool:

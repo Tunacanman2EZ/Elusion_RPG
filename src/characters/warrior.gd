@@ -588,6 +588,12 @@ func attack_action() -> void:
 	_release_attack_lock_after(_swing_lock_duration(anim), this_swing_id)
 
 
+func touch_attack_repeats() -> bool:
+	"""THE TOUCH PAD'S ATTACK, HELD (touchcontrols.gd): swing after swing - but
+	not with the Double Axe out, where the next press calls it home."""
+	return equipped_weapon_attack() != ItemData.WeaponAttack.SPINNING_AXE
+
+
 func aim_direction_to(point: Vector2) -> Vector2:
 	"""The way a swing at `point` goes - the cursor, for a real one - from the
 	warrior's origin, which is the middle of its picture (its sprite is drawn

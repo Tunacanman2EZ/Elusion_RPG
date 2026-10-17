@@ -214,7 +214,11 @@ func _physics_process(delta: float) -> void:
 		_shot_timer -= delta
 
 	_point_aim_ring(_get_direction_to_cursor())
-	_aura_click(delta, right_click_held(), aim_point())
+	# THE TOUCH PAD'S AURA BUTTON (touchcontrols.gd): let go, it is a click for
+	# the one frame, at the feet or where it was dragged to.
+	var touched: bool = TouchControls.skill_fired
+	_aura_click(delta, right_click_held() or touched,
+		TouchControls.skill_point(self, TouchControls.skill_fired_drag) if touched else aim_point())
 
 	if _can_fire():
 		_fire_projectile()
@@ -253,6 +257,14 @@ func _is_attack_input_held() -> bool:
 # =============================================================================
 # THE AURA (0.40.0) - see the constants
 # =============================================================================
+
+func touch_skill_name() -> String:
+	return "Aura"
+
+
+func touch_skill_reach() -> float:
+	return AURA_RANGE
+
 
 func aura_point(cursor: Vector2) -> Vector2:
 	"""Where an aura dropped now would go: the cursor, no further than

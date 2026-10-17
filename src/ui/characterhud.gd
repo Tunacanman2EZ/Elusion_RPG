@@ -305,6 +305,9 @@ func _ready() -> void:
 	_build_event_chip()
 	_start_broadcast_poll()
 	_wire_hotbar()
+	# ON A TOUCH SCREEN, A PAD FOR THE THUMBS (0.53.0): the stick and the
+	# buttons, under everything else here (touchcontrols.gd, touchpad.gd).
+	TouchControls.attach(self)
 
 
 # The keys that play the game. project.godot puts WASD and the arrows in

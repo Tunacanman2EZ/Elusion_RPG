@@ -70,6 +70,22 @@ const ROWS := [
 	["This card", "help_toggle"],
 ]
 
+# ON A TOUCH SCREEN (0.53.0) the card says what the thumbs do instead - the pad
+# on the HUD (touchpad.gd) - not keys a phone does not have. Words as they are.
+const TOUCH_ROWS := [
+	["Move", "The stick: a thumb anywhere on the left"],
+	["Sprint", "Run, then move - lifting the thumb stops it"],
+	["Attack", "Attack: at the nearest enemy; hold to keep on"],
+	["Aim an attack", "Drag from Attack, or tap where to strike"],
+	["Healer: drop a healing aura", "Aura: a tap at your feet, a drag to place it"],
+	["Use the shop, bank, fire or fishing spot", "Use"],
+	["Use the item on a hotbar key", "Tap the key"],
+	["Put an item on a hotbar key", "Drag it from your bag"],
+	["Bag, gear, stats, map and the rest", "The buttons along the bottom"],
+	["This card", "Menu, then Controls"],
+]
+const TOUCH_FOOTER := "Menu, then Controls, shows this card again."
+
 # WHERE "SEEN" IS KEPT. Its own file, not options.cfg: every key in Settings'
 # DEFAULTS has a control in the Options window, and a flag nobody should set by
 # hand is not a setting. A static var so the suite can point it at a scratch
@@ -172,13 +188,13 @@ func _show(welcome: bool) -> void:
 		welcome_box.visible = welcome
 	if footer_label != null:
 		footer_label.visible = welcome
-		footer_label.text = WELCOME_FOOTER % key_text("help_toggle")
+		footer_label.text = TOUCH_FOOTER if on_touch_screen() else WELCOME_FOOTER % key_text("help_toggle")
 	if got_it_button != null:
 		got_it_button.visible = welcome
 	# THE WELCOME IS NOT WHERE KEYS ARE CHANGED: it is a new player's first
 	# minute, and "Change keys" under directions to the Field is a distraction.
 	if keys_row != null:
-		keys_row.visible = not welcome and keys != null
+		keys_row.visible = not welcome and keys != null and not on_touch_screen()
 	if change_keys_button != null:
 		change_keys_button.text = "Done" if _editing else "Change keys"
 	if reset_keys_button != null:
@@ -220,15 +236,22 @@ func build_rows() -> void:
 		_build_key_buttons()
 		return
 	key_grid.columns = 2
-	for row in ROWS:
+	var touch: bool = on_touch_screen()
+	for row in (TOUCH_ROWS if touch else ROWS):
 		var what := Label.new()
 		what.text = String(row[0])
 		what.add_theme_color_override("font_color", WHAT_COLOR)
 		var how := Label.new()
-		how.text = key_text(String(row[1]))
+		how.text = String(row[1]) if touch else key_text(String(row[1]))
 		how.add_theme_color_override("font_color", KEY_COLOR)
 		key_grid.add_child(what)
 		key_grid.add_child(how)
+
+
+func on_touch_screen() -> bool:
+	"""The pad is in use (touchcontrols.gd): the card tells the thumbs."""
+	var touch: Node = get_node_or_null("/root/TouchControls")
+	return touch != null and bool(touch.get("active"))
 
 
 func _build_key_buttons() -> void:

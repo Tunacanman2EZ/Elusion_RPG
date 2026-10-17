@@ -6529,6 +6529,66 @@ hotbar boxs for the outline on those days".
   are taken from rpg_ui_theme.tres itself. Event days have green numbers;
   **today's number is gold** whatever is on, on a warm fill when nothing is.
 
+### On a phone: the touch pad (0.53.0)
+
+The owner: "make the game mobile", and of the ways to, "Phone browsers
+(Recommended)". Phase 1 is "playable on a phone"; the windows by touch and
+text sized for a phone are the next two.
+
+- **Everything is played through input actions** (move_*, sprint, attack,
+  interact), so a phone presses the same ones. **TouchControls**
+  (src/systems/touchcontrols.gd, an autoload) holds what the thumbs are doing
+  and, once a physics frame and before any other node's
+  (`process_physics_priority` -1000), turns it into `Input.action_press()` /
+  `action_release()`. The player, the shops, the bank, the fire, the fishing
+  spot, loot bags and levers read the actions and cannot tell.
+- **On at the first finger, off at a key** (`_input`): a key typed into a
+  text box does not count (a phone's own keyboard sends keys), nor does the
+  first finger's copied click (`InputEvent.DEVICE_ID_EMULATION`); a click
+  from a real mouse does. Off lets go of every action it pressed.
+- **The pad** (src/ui/touchpad.gd) goes on every HUD as its **first child**
+  (`TouchControls.attach()` from `characterhud._ready()`), so every bar,
+  button and window there is over it and takes a touch first. A floating
+  move stick in the left 42% of the screen (it lands exactly where the
+  thumb does and follows it past its rim; eight ways, `move_way()`), and
+  round Attack above the hotbar: Use, Run (on for this run - ends as the
+  thumb leaves the stick) and the healer's Aura (`touch_skill_name()`).
+  Buttons answer by finger, so two thumbs are two presses. **Thumb-sized**:
+  the sizes are CSS pixels (`thumb_scale()`: devicePixelRatio over the
+  stretch, 1 on a laptop, about 1.85 on a phone held sideways, at most 2.4).
+- **The first finger is a mouse too** (Godot's emulate_mouse_from_touch):
+  that is what presses the HUD's buttons. The player takes no copied click
+  (`_unhandled_input`), so a thumb on the stick is not a swing; **a finger on
+  the world** - on nothing else - is an attack in TouchControls instead,
+  whichever finger, aimed where it touched (`world_point_at()`, the cursor's
+  rule), and a tap quicker than a frame still lands once and aims there.
+- **The aim** (`aim_for()`, asked first by `aim_point()` while the pad is
+  on): a finger on the world; the Aura or Attack button dragged; the nearest
+  monster within AUTO_AIM_RANGE that can be hit (`BaseEnemy.can_be_aimed_at()`,
+  its "bodyshape"); else the facing. The aim ring shows it.
+- **Held, Attack keeps attacking** only where a second press is another of
+  the same (`touch_attack_repeats()`: the warrior, but not with the Double
+  Axe out; the mage), pressed again when the class is ready
+  (`touch_attack_ready()`), so a held thumb walks no slower than clicking.
+  The tank's (its aura's switch) is held like a key, and the healer streams.
+- **Aura** drops as the thumb lets go: a tap at the healer's feet, a drag
+  the way and as far as it went (`skill_point()`, `touch_skill_reach()`);
+  the healer takes `skill_fired` as a right-click for that one frame.
+- **A tap on a hotbar key uses it** (hotbar.gd, `_on_slot_touched()`: down
+  and up on the key without the slide that drags it). **The Controls card**
+  says what the thumbs do while the pad is on (`TOUCH_ROWS`).
+- **The page** (web/shell.html): `#turn` asks for the phone sideways while
+  it is upright (CSS, `(orientation: portrait) and (pointer: coarse)`), with
+  "Play this way" for a tablet and, on an iPhone, Add to Home Screen;
+  `#fullscreen` where the browser has a full screen to give, locking it
+  sideways there; pull-to-refresh and the long-press menu kept off the game.
+  `html/experimental_virtual_keyboard=true`: the phone's keyboard comes up
+  for the login and the chat.
+- `_test_a_touch_screen_plays_the_game()`, and the hotbar's and the
+  healer's sections. Tried in Chromium as a phone (844x390 at 3x, touch)
+  against a real export: login typed on the phone's keyboard, the stick,
+  Run, Attack held, a finger on the world, Aura, the Controls card.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

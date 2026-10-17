@@ -70,6 +70,8 @@ func _ready() -> void:
 	for slot in slots:
 		if slot != null and not slot.slot_right_clicked.is_connected(_on_slot_right_clicked):
 			slot.slot_right_clicked.connect(_on_slot_right_clicked)
+		if slot != null and not slot.gui_input.is_connected(_on_slot_touched):
+			slot.gui_input.connect(_on_slot_touched.bind(slot))
 	refresh_key_labels()
 	var settings: Node = get_node_or_null("/root/Settings")
 	if settings != null and settings.get("keys") is Keybinds:
@@ -195,6 +197,32 @@ func _on_slot_right_clicked(slot: InventorySlot) -> void:
 	if key == null or key.is_empty():
 		return
 	slot_used.emit(key)
+
+
+# A FINGER ON A KEY (0.53.0). A touch screen has no right button and no number
+# keys, so a tap on a key uses it: down and up again on the key, quickly and
+# without the slide that drags it - a finger slid off it is still the drag it
+# always was.
+const TAP_SLIDE := 14.0
+const TAP_MSEC := 600
+# finger -> [the key it went down on, where, when]
+var _taps: Dictionary = {}
+
+
+func _on_slot_touched(event: InputEvent, slot: HotbarSlot) -> void:
+	var touch := event as InputEventScreenTouch
+	if touch == null:
+		return
+	if touch.pressed:
+		_taps[touch.index] = [slot, touch.position, Time.get_ticks_msec()]
+		return
+	var began: Array = _taps.get(touch.index, [])
+	_taps.erase(touch.index)
+	if began.is_empty() or began[0] != slot or touch.canceled:
+		return
+	if touch.position.distance_to(began[1]) > TAP_SLIDE or Time.get_ticks_msec() - int(began[2]) > TAP_MSEC:
+		return
+	_on_slot_right_clicked(slot)
 
 
 func _use_slot(slot_index: int) -> void:

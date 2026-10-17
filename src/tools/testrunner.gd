@@ -314,6 +314,7 @@ func _run_all() -> void:
 	await _test_other_players_attacks_switch()
 	await _test_attacks_aim_with_no_cursor()
 	await _test_aim_holds_still_while_walking()
+	await _test_a_touch_screen_plays_the_game()
 	await _test_other_players_aim_and_health()
 	await _test_parties()
 	await _test_names_open_the_player_menu()
@@ -12857,11 +12858,436 @@ func _test_aim_holds_still_while_walking() -> void:
 	check("  and every class aims through it: aim_point() is steady_mouse_position() while the cursor is on the game",
 		_func_body(_code_src("res://src/characters/player.gd"), "func aim_point(").contains("return steady_mouse_position()"))
 	check("  read off the camera's own node - get_screen_center_position() answers with the drawn, in-between centre too",
-		not _func_body(_code_src("res://src/characters/player.gd"), "func steady_mouse_position(").contains("camera.get_screen_center_position()"))
+		not _func_body(_code_src("res://src/characters/player.gd"), "func _as_this_tick(").contains("camera.get_screen_center_position()")
+		and _func_body(_code_src("res://src/characters/player.gd"), "func _as_this_tick(").contains("camera.global_position + camera.offset")
+		and _func_body(_code_src("res://src/characters/player.gd"), "func steady_mouse_position(").contains("_as_this_tick(get_global_mouse_position())"))
 	PlayerScript.pointer_on_game = kept
 	arena.queue_free()
 	await get_tree().process_frame
 
+
+func _test_a_touch_screen_plays_the_game() -> void:
+	section("ON A TOUCH SCREEN - a pad for the thumbs, pressing the actions the keys press (0.53.0)")
+	# The owner: "make the game mobile", and which way: "Phone browsers
+	# (Recommended)". The game is played through input actions, so a phone is
+	# played the same way: touchpad.gd on the HUD says what the thumbs do, and
+	# touchcontrols.gd presses move_*, sprint, attack and interact for them.
+	const PlayerScript := preload("res://src/characters/player.gd")
+	const PadScript := preload("res://src/ui/touchpad.gd")
+	const TouchScript := preload("res://src/systems/touchcontrols.gd")
+	var kept_pointer: bool = PlayerScript.pointer_on_game
+	TouchControls.set_active(false)
+
+	# ---- on at a finger, off at a key or a real mouse --------------------------
+	var finger := InputEventScreenTouch.new()
+	finger.pressed = true
+	finger.index = 0
+	finger.position = Vector2(100, 100)
+	TouchControls._input(finger)
+	var on_at_touch: bool = TouchControls.active
+	var key := InputEventKey.new()
+	key.pressed = true
+	key.keycode = KEY_W
+	TouchControls._input(key)
+	var off_at_key: bool = not TouchControls.active
+	TouchControls._input(finger)
+	var copied := InputEventMouseButton.new()
+	copied.pressed = true
+	copied.button_index = MOUSE_BUTTON_LEFT
+	copied.device = InputEvent.DEVICE_ID_EMULATION
+	TouchControls._input(copied)
+	var on_past_copy: bool = TouchControls.active
+	var real := InputEventMouseButton.new()
+	real.pressed = true
+	real.button_index = MOUSE_BUTTON_LEFT
+	TouchControls._input(real)
+	var off_at_mouse: bool = not TouchControls.active
+	check("the pad comes on at a finger on the screen and goes at a key, or a click from a real mouse",
+		on_at_touch and off_at_key and off_at_mouse, [on_at_touch, off_at_key, off_at_mouse])
+	check("  but not at the first finger's own copied click (emulate_mouse_from_touch)", on_past_copy)
+	var line := LineEdit.new()
+	add_child(line)
+	line.grab_focus()
+	TouchControls._input(finger)
+	TouchControls._input(key)
+	var kept_typing: bool = TouchControls.active
+	line.queue_free()
+	await get_tree().process_frame
+	check("  nor at a key typed into a text box - a phone's own keyboard sends keys", kept_typing)
+
+	# ---- the stick is the move keys, eight ways --------------------------------
+	TouchControls.set_active(true)
+	var eight: Array = []
+	var wanted: Array = []
+	for step in 8:
+		var angle: float = -TAU * step / 8.0
+		TouchControls.stick = Vector2(cos(angle), sin(angle))
+		TouchControls.stick_held = true
+		TouchControls._physics_process(0.0)
+		eight.append([int(Input.is_action_pressed("move_right")) - int(Input.is_action_pressed("move_left")),
+			int(Input.is_action_pressed("move_down")) - int(Input.is_action_pressed("move_up"))])
+		wanted.append([int(round(cos(angle) * 1.3)) if absf(cos(angle)) > 0.5 else 0, int(round(sin(angle) * 1.3)) if absf(sin(angle)) > 0.5 else 0])
+	check("the stick presses the move keys eight ways: right, up-right, up, up-left, left and round", eight == wanted, [eight, wanted])
+	TouchControls.stick = Vector2(0.1, -0.05)
+	TouchControls._physics_process(0.0)
+	var dead: bool = not Input.is_action_pressed("move_right") and not Input.is_action_pressed("move_up")
+	TouchControls.stick = Vector2(0.9, 0.3)
+	TouchControls._physics_process(0.0)
+	var slice: bool = Input.is_action_pressed("move_right") and not Input.is_action_pressed("move_down")
+	check("  a thumb barely off the middle is no way at all, and one a little below right is right", dead and slice, [dead, slice])
+	check("  move_way() is that rule: each of x and y -1, 0 or 1",
+		TouchScript.move_way(Vector2(0.7, 0.7)) == Vector2(1, 1) and TouchScript.move_way(Vector2(-0.95, 0.2)) == Vector2(-1, 0)
+		and TouchScript.move_way(Vector2(0.05, 0.0)) == Vector2.ZERO)
+
+	# ---- Run: on for this run --------------------------------------------------
+	TouchControls.stick = Vector2(1, 0)
+	TouchControls.toggle_sprint()
+	TouchControls._physics_process(0.0)
+	var running: bool = Input.is_action_pressed("sprint")
+	TouchControls.stick_held = false
+	TouchControls.stick = Vector2.ZERO
+	TouchControls._physics_process(0.0)
+	var ran_out: bool = not Input.is_action_pressed("sprint") and not TouchControls.sprint_on
+	TouchControls.toggle_sprint()
+	TouchControls._physics_process(0.0)
+	var waits: bool = TouchControls.sprint_on and not Input.is_action_pressed("sprint")
+	TouchControls.sprint_on = false
+	check("Run sprints while the stick moves, and ends as the thumb leaves the stick", running and ran_out, [running, ran_out])
+	check("  tapped before moving, it waits for the stick rather than switching itself off", waits)
+
+	# ---- Attack and Use: the keys they stand for --------------------------------
+	# Latched for no class in particular: held like a key (the tank's, the
+	# healer's). The class's own say comes below.
+	TouchControls.press_attack()
+	TouchControls._latch_attack(null)
+	var down: bool = Input.is_action_pressed("attack")
+	TouchControls._latch_attack(null)
+	var held: bool = Input.is_action_pressed("attack")
+	TouchControls.release_attack()
+	TouchControls._latch_attack(null)
+	var up: bool = not Input.is_action_pressed("attack")
+	TouchControls.press_attack()
+	TouchControls.release_attack()
+	TouchControls._latch_attack(null)
+	var tapped: bool = Input.is_action_pressed("attack")
+	TouchControls._latch_attack(null)
+	var tap_over: bool = not Input.is_action_pressed("attack")
+	check("Attack is the attack key: down while the thumb is", down and held and up, [down, held, up])
+	check("  and a tap quicker than a frame is still one press, for one frame", tapped and tap_over, [tapped, tap_over])
+	TouchControls.press_use()
+	TouchControls.release_use()
+	TouchControls._physics_process(0.0)
+	var used: bool = Input.is_action_pressed("interact")
+	TouchControls._physics_process(0.0)
+	check("Use is the interact key - the shop, the bank, the fire and the fishing spot ask for it, and a tap is one press",
+		used and not Input.is_action_pressed("interact"))
+	var asking: Array = []
+	for path in ["res://src/world/vendor.gd", "res://src/world/bankchest.gd", "res://src/world/firepit.gd",
+			"res://src/world/fishingspot.gd", "res://src/world/lootbag.gd", "res://src/world/lever.gd"]:
+		if _code_src(path).contains("Input.is_action_just_pressed(\"interact\")"):
+			asking.append(path.get_file())
+	check("  every one of them still asks the action, so Use reaches all six", asking.size() == 6, asking)
+
+	# ---- held, Attack keeps attacking where a second press is another swing ---
+	var arena := Node2D.new()
+	add_child(arena)
+	var warrior: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	warrior.set_physics_process(false)
+	warrior.set_process(false)
+	arena.add_child(warrior)
+	warrior.global_position = Vector2(-73000, -73000)
+	var beats: Array = []
+	TouchControls.press_attack()
+	for frame in 6:
+		if frame == 2:
+			warrior.set("is_attacking", true)
+		if frame == 4:
+			warrior.set("is_attacking", false)
+		TouchControls._latch_attack(warrior)
+		beats.append(int(Input.is_action_pressed("attack")))
+	TouchControls.release_attack()
+	TouchControls._latch_attack(warrior)
+	check("held, the warrior's Attack presses again each time the last swing is over - never mid-swing, so it walks no slower than clicking (%s)" % str(beats),
+		beats == [1, 0, 0, 0, 1, 0], beats)
+	check("  the warrior and the mage repeat; the tank (attack is its aura's switch) and the Double Axe (the next press calls it home) do not",
+		warrior.call("touch_attack_repeats") == true
+		and _func_body(_code_src("res://src/characters/warrior.gd"), "func touch_attack_repeats(").contains("SPINNING_AXE")
+		and _code_src("res://src/characters/mage.gd").contains("func touch_attack_repeats(")
+		and not _code_src("res://src/characters/tank.gd").contains("func touch_attack_repeats(")
+		and not _code_src("res://src/characters/healer.gd").contains("func touch_attack_repeats("))
+	check("  a mage presses again only with the mana for it: a refused press is still a frame it does not walk",
+		_func_body(_code_src("res://src/characters/mage.gd"), "func touch_attack_ready(").contains("mana >= spell_mana_cost"))
+
+	# ---- the aim: a finger on the world, a drag, the nearest monster, the facing
+	warrior.set("last_direction", Vector2.RIGHT)
+	TouchControls._aim_frame = -1
+	var faced: Vector2 = warrior.aim_point()
+	check("on a touch screen with no monster near, an attack aims the way the character faces, as a keyboard's",
+		TouchControls.aim_for(warrior) == null
+		and faced.is_equal_approx(warrior.global_position + Vector2.RIGHT * PlayerScript.KEYBOARD_AIM_REACH), faced)
+	var near := Node2D.new()
+	near.add_to_group("enemies")
+	arena.add_child(near)
+	near.global_position = warrior.global_position + Vector2(0, 120)
+	var far := Node2D.new()
+	far.add_to_group("enemies")
+	arena.add_child(far)
+	far.global_position = warrior.global_position + Vector2(TouchScript.AUTO_AIM_RANGE + 40.0, 0)
+	var corpse_script := GDScript.new()
+	corpse_script.source_code = "extends Node2D\nfunc can_be_aimed_at() -> bool:\n\treturn false\n"
+	corpse_script.reload()
+	var corpse: Node2D = corpse_script.new()
+	corpse.add_to_group("enemies")
+	arena.add_child(corpse)
+	corpse.global_position = warrior.global_position + Vector2(-30, 0)
+	near.remove_from_group("enemies")
+	TouchControls._aim_frame = -1
+	var only_far: Variant = TouchControls.aim_for(warrior)
+	near.add_to_group("enemies")
+	check("  a monster further off than AUTO_AIM_RANGE is not aimed at: the facing, still", only_far == null, only_far)
+	TouchControls._aim_frame = -1
+	check("  a monster in reach and it aims at that one - the nearest that can still be hit, not a corpse closer by",
+		warrior.aim_point().is_equal_approx(near.global_position), warrior.aim_point())
+	check("  a monster's body, not its origin: its \"bodyshape\", where it has one",
+		_func_body(_code_src("res://src/systems/touchcontrols.gd"), "static func target_point(").contains("bodyshape"))
+	check("  and a monster dying, or behind a boss gate, is never picked (BaseEnemy.can_be_aimed_at())",
+		_func_body(_code_src("res://src/enemies/baseenemy.gd"), "func can_be_aimed_at(").contains("not _dying")
+		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func can_be_aimed_at(").contains("not gated"))
+	TouchControls.press_attack()
+	TouchControls.attack_drag = Vector2(0, -1)
+	var dragged: Vector2 = warrior.aim_point()
+	TouchControls.attack_drag = Vector2(0, -0.1)
+	var barely: Vector2 = warrior.aim_point()
+	TouchControls.release_attack()
+	check("  Attack dragged aims the way it is dragged - up, past the monster below - all the way at DRAG_REACH",
+		dragged.is_equal_approx(warrior.global_position + Vector2.UP * TouchScript.DRAG_REACH), dragged)
+	check("  and a thumb that hardly moved has not dragged: the monster still", barely.is_equal_approx(near.global_position), barely)
+	var on_world := InputEventScreenTouch.new()
+	on_world.pressed = true
+	on_world.index = 2
+	on_world.position = Vector2(900, 200)
+	TouchControls._unhandled_input(on_world)
+	var finger_aim: Vector2 = warrior.aim_point()
+	var as_world: Vector2 = warrior.world_point_at(Vector2(900, 200))
+	TouchControls._physics_process(0.0)
+	var world_attacks: bool = Input.is_action_pressed("attack")
+	on_world.pressed = false
+	TouchControls._unhandled_input(on_world)
+	var still_there: Vector2 = warrior.aim_point()
+	TouchControls._physics_process(0.0)
+	TouchControls._physics_process(0.0)
+	TouchControls._aim_frame = -1
+	var after: Vector2 = warrior.aim_point()
+	check("a finger on the world - on no button or window - is an attack, aimed where it touched, as a click is",
+		world_attacks and finger_aim.is_equal_approx(as_world), [world_attacks, finger_aim, as_world])
+	check("  lifted quicker than a frame, it still aims there for the frame its press lands on; after, the monster again",
+		still_there.is_equal_approx(as_world) and after.is_equal_approx(near.global_position), [still_there, after])
+	var quick := InputEventScreenTouch.new()
+	quick.pressed = true
+	quick.index = 4
+	quick.position = Vector2(1000, 150)
+	TouchControls._unhandled_input(quick)
+	quick.pressed = false
+	TouchControls._unhandled_input(quick)
+	TouchControls._latch_attack(null)
+	var quick_struck: bool = Input.is_action_pressed("attack")
+	TouchControls._latch_attack(null)
+	check("  a tap on the world quicker than a frame is still an attack, once",
+		quick_struck and not Input.is_action_pressed("attack"), quick_struck)
+	TouchControls._physics_process(0.0)
+	TouchControls._physics_process(0.0)
+	check("  where it touched in the world as it is this tick - the cursor's rule (world_point_at() and steady_mouse_position() agree)",
+		warrior.world_point_at(warrior.get_viewport().get_mouse_position()).is_equal_approx(warrior.steady_mouse_position()))
+
+	# ---- the first finger's copied clicks never swing --------------------------
+	PlayerScript.pointer_on_game = false
+	warrior.set("_left_click_down", false)
+	warrior.call("_unhandled_input", copied)
+	var copy_swung: bool = bool(warrior.get("_left_click_down")) or PlayerScript.pointer_on_game
+	var mouse := InputEventMouseButton.new()
+	mouse.pressed = true
+	mouse.button_index = MOUSE_BUTTON_LEFT
+	warrior.call("_unhandled_input", mouse)
+	var mouse_swung: bool = bool(warrior.get("_left_click_down"))
+	warrior.set("_left_click_down", false)
+	PlayerScript.pointer_on_game = true
+	warrior.call("_watch_pointer")
+	var no_cursor: bool = not PlayerScript.pointer_on_game
+	check("the player takes no click copied from a finger - a thumb on the stick is not a swing - and still every real one",
+		not copy_swung and mouse_swung, [copy_swung, mouse_swung])
+	check("  and on a touch screen there is no cursor on the game: the copied one stays where the finger last lifted",
+		no_cursor)
+
+	# ---- the healer's Aura button -----------------------------------------------
+	var healer: Node2D = (load("res://scene/characters/healer.tscn") as PackedScene).instantiate()
+	healer.set_physics_process(false)
+	healer.set_process(false)
+	arena.add_child(healer)
+	healer.global_position = Vector2(-72000, -72000)
+	var reach: float = float(healer.call("touch_skill_reach"))
+	var at_feet: Vector2 = TouchControls.skill_point(healer, Vector2.ZERO)
+	var nudged: Vector2 = TouchControls.skill_point(healer, Vector2(0.1, 0.0))
+	var full: Vector2 = TouchControls.skill_point(healer, Vector2(1, 0))
+	var half: Vector2 = TouchControls.skill_point(healer, Vector2(0, 0.6))
+	check("the Aura button: a tap drops it at the healer's feet, a drag the way and as far as it went, up to its reach",
+		at_feet == healer.global_position and nudged == healer.global_position and full.is_equal_approx(healer.global_position + Vector2(reach, 0))
+		and half.y > healer.global_position.y + TouchScript.SKILL_NEAREST and half.y < healer.global_position.y + reach
+		and healer.call("touch_skill_name") == "Aura", [at_feet, full, half])
+	check("  only the healer has one: every other class says no skill", warrior.call("touch_skill_name") == "")
+	TouchControls.press_skill()
+	TouchControls._physics_process(0.0)
+	var not_yet: bool = not TouchControls.skill_fired
+	TouchControls.skill_drag = Vector2(1, 0)
+	TouchControls.release_skill()
+	TouchControls._physics_process(0.0)
+	var fired: bool = TouchControls.skill_fired and TouchControls.skill_fired_drag == Vector2(1, 0)
+	TouchControls._physics_process(0.0)
+	check("  it drops as the thumb lets go - where it was dragged - for the one frame", not_yet and fired and not TouchControls.skill_fired,
+		[not_yet, fired])
+	check("  and the healer takes it as a right-click, at that point",
+		_func_body(_code_src("res://src/characters/healer.gd"), "func _physics_process(").contains("right_click_held() or touched")
+		and _func_body(_code_src("res://src/characters/healer.gd"), "func _physics_process(").contains("TouchControls.skill_point(self, TouchControls.skill_fired_drag)"))
+
+	# ---- off: every key it pressed is let go -------------------------------------
+	TouchControls.stick = Vector2(1, 0)
+	TouchControls.stick_held = true
+	TouchControls.press_attack()
+	TouchControls.press_use()
+	TouchControls._physics_process(0.0)
+	TouchControls.set_active(false)
+	var any_left: Array = []
+	for action in [&"move_right", &"attack", &"interact", &"sprint"]:
+		if Input.is_action_pressed(action):
+			any_left.append(action)
+	check("switched off - a key pressed - and every action it held is let go", any_left.is_empty() and not TouchControls.attack_held, any_left)
+	check("  and it presses them before any other node reads them: first in the physics frame, an autoload",
+		TouchControls.process_physics_priority < 0 and warrior.process_physics_priority == 0
+		and FileAccess.get_file_as_string("res://project.godot").contains("TouchControls=\"*res://src/systems/touchcontrols.gd\""))
+	arena.queue_free()
+	await get_tree().process_frame
+
+	# ---- the pad: on the HUD, under it, thumb-sized ------------------------------
+	check("thumb-sized: one game unit to a CSS pixel on a laptop, near two on a phone held sideways, never past %.1f" % PadScript.MOST_SCALE,
+		is_equal_approx(PadScript.thumb_scale(Vector2(1280, 720), Vector2(1280, 720), 1.0), 1.0)
+		and is_equal_approx(PadScript.thumb_scale(Vector2(2560, 1440), Vector2(1280, 720), 1.0), 1.0)
+		and absf(PadScript.thumb_scale(Vector2(2532, 1170), Vector2(1280, 720), 3.0) - 1.846) < 0.01
+		and is_equal_approx(PadScript.thumb_scale(Vector2(600, 300), Vector2(1280, 720), 3.0), PadScript.MOST_SCALE),
+		[PadScript.thumb_scale(Vector2(2532, 1170), Vector2(1280, 720), 3.0)])
+	var clashes: Array = []
+	for f in [1.0, 1.4, 1.85, 2.4]:
+		for has_skill in [false, true]:
+			var at: Dictionary = PadScript.layout(Vector2(1280, 720), f, 557.0, 672.0, has_skill)
+			var circles: Array = []
+			for id in ["attack", "use", "run", "skill"]:
+				if at.has(id):
+					circles.append([id, at[id][0], at[id][1] * PadScript.REACH])
+			var zone: Rect2 = at["zone"]
+			for c in circles:
+				var box := Rect2(c[1] - Vector2(c[2], c[2]), Vector2(c[2], c[2]) * 2.0)
+				if not Rect2(0, 0, 1280, 720).encloses(box) or box.end.y > 557.0 or box.intersects(zone):
+					clashes.append([f, c[0], "off the screen, on the hotbar or on the stick"])
+				for d in circles:
+					if c[0] < d[0] and (c[1] as Vector2).distance_to(d[1]) < c[2] + d[2]:
+						clashes.append([f, c[0], d[0]])
+			var rest: Vector2 = at["stick_rest"]
+			var r: float = at["stick_radius"]
+			if not zone.encloses(Rect2(rest - Vector2(r, r), Vector2(r, r) * 2.0)) or zone.end.y > 672.0:
+				clashes.append([f, "stick", "outside its zone, or on the menu bar"])
+	check("laid out at every size, with and without a skill: on the screen, off the hotbar and the menu bar, no button on another or on the stick",
+		clashes.is_empty(), clashes)
+	var hud := Control.new()
+	hud.size = Vector2(1280, 720)
+	var hotbar := Control.new()
+	hotbar.name = "hotbar"
+	hotbar.position = Vector2(880, 557)
+	hotbar.size = Vector2(396, 52)
+	hud.add_child(hotbar)
+	add_child(hud)
+	var pad: Control = TouchControls.attach(hud)
+	var first: bool = hud.get_child(0) == pad
+	TouchControls.set_active(false)
+	pad._process(0.0)
+	var hidden_off: bool = not pad.visible
+	TouchControls.set_active(true)
+	pad._process(0.0)
+	var shown_on: bool = pad.visible
+	check("the pad goes on the HUD as its first child - every bar, button and window there is over it and takes a touch first",
+		first and _func_body(_code_src("res://src/ui/characterhud.gd"), "func _ready(").contains("TouchControls.attach(self)"))
+	check("  shown while the touch screen is in use, and not otherwise", hidden_off and shown_on, [hidden_off, shown_on])
+	var attack_button: Control = pad.get("attack")
+	var thumb := InputEventScreenTouch.new()
+	thumb.index = 1
+	thumb.pressed = true
+	thumb.position = attack_button.size / 2.0
+	attack_button.call("_gui_input", thumb)
+	var stick_part: Control = pad.get("stick")
+	var left_thumb := InputEventScreenTouch.new()
+	left_thumb.index = 0
+	left_thumb.pressed = true
+	left_thumb.position = Vector2(200, 300)
+	stick_part.call("_gui_input", left_thumb)
+	var landed_still: bool = (TouchControls.stick_held and TouchControls.stick == Vector2.ZERO
+		and (stick_part.get("base") as Vector2) == Vector2(200, 300))
+	var slide := InputEventScreenDrag.new()
+	slide.index = 0
+	slide.position = Vector2(200 + float(stick_part.get("radius")) * 3.0, 300)
+	stick_part.call("_gui_input", slide)
+	var both: bool = TouchControls.attack_held and TouchControls.stick_held and TouchControls.stick.is_equal_approx(Vector2(1, 0))
+	var followed: bool = (stick_part.get("base") as Vector2).x > 200.0
+	var other_finger := InputEventScreenTouch.new()
+	other_finger.index = 5
+	other_finger.pressed = false
+	attack_button.call("_gui_input", other_finger)
+	var still_held: bool = TouchControls.attack_held
+	thumb.pressed = false
+	attack_button.call("_gui_input", thumb)
+	left_thumb.pressed = false
+	stick_part.call("_gui_input", left_thumb)
+	check("two thumbs are two presses: the stick held right while Attack is down, each by its own finger",
+		both and still_held, [TouchControls.attack_held, TouchControls.stick_held, TouchControls.stick])
+	check("  the stick comes to exactly where the thumb lands - a touch alone walks nowhere", landed_still)
+	check("  the stick follows a thumb that slides past its rim", followed)
+	check("  and lifting each lets go of each", not TouchControls.attack_held and not TouchControls.stick_held
+		and TouchControls.stick == Vector2.ZERO)
+	check("  the first finger's copied mouse is the pad's too, kept from the world (accept_event())",
+		_func_body(_code_src("res://src/ui/touchpad.gd"), "func _gui_input(").contains("event is InputEventMouseButton or event is InputEventMouseMotion"))
+	TouchControls.press_attack()
+	hud.queue_free()
+	await get_tree().process_frame
+	check("  the pad gone with its HUD, every thumb is up", not TouchControls.attack_held)
+	TouchControls.set_active(false)
+
+	# ---- the Controls card tells the thumbs ---------------------------------------
+	TouchControls.set_active(true)
+	var card: ControlsPanel = (load("res://scene/ui/controls/controlspanel.tscn") as PackedScene).instantiate() as ControlsPanel
+	add_child(card)
+	card.open_controls()
+	var touch_rows: int = int(card.key_grid.get_child_count() / 2.0)
+	var first_how: String = (card.key_grid.get_child(1) as Label).text
+	var touch_footer: String = card.footer_label.text if card.footer_label != null else ""
+	var no_rebinding: bool = card.keys_row == null or not card.keys_row.visible
+	TouchControls.set_active(false)
+	card.open_controls()
+	var key_rows: int = int(card.key_grid.get_child_count() / 2.0)
+	check("on a touch screen the Controls card says what the thumbs do - the stick, Run, Attack, Use, a tap on a key - not keys",
+		touch_rows == ControlsPanel.TOUCH_ROWS.size() and first_how == ControlsPanel.TOUCH_ROWS[0][1]
+		and touch_footer == ControlsPanel.TOUCH_FOOTER and no_rebinding, [touch_rows, first_how, touch_footer])
+	check("  and with the keyboard, the keys again", key_rows == ControlsPanel.ROWS.size(), key_rows)
+	card.queue_free()
+	await get_tree().process_frame
+
+	# ---- the page -------------------------------------------------------------------
+	var presets: String = FileAccess.get_file_as_string("res://export_presets.cfg")
+	var shell: String = FileAccess.get_file_as_string("res://web/shell.html")
+	check("a phone's own keyboard comes up for the login and the chat (html/experimental_virtual_keyboard)",
+		presets.contains("html/experimental_virtual_keyboard=true"))
+	check("  the page asks for the phone sideways while it is upright, with a way past it for a tablet",
+		shell.contains("id=\"turn\"") and shell.contains("(orientation: portrait) and (pointer: coarse)") and shell.contains("id=\"turn-anyway\""))
+	check("  and offers the whole screen where the browser has one to give, holding it sideways there",
+		shell.contains("id=\"fullscreen\"") and shell.contains("requestFullscreen") and shell.contains("screen.orientation.lock('landscape')"))
+	check("  and keeps the browser's own gestures - pull to refresh, the long-press menu - off the game",
+		shell.contains("overscroll-behavior: none") and shell.contains("-webkit-touch-callout: none"))
+	PlayerScript.pointer_on_game = kept_pointer
 
 func _test_other_players_attacks_switch() -> void:
 	section("OTHER PLAYERS - drawn as their own scene sorts, and a switch for their attacks (0.40.1)")
@@ -16283,7 +16709,8 @@ func _test_the_healer_aura() -> void:
 		[cooling, why_cooling, why_mana])
 	var healer_src: String = _code_src("res://src/characters/healer.gd")
 	check("  the right button read every frame - a click no window took - and the area told (\"heal\")",
-		_func_body(healer_src, "func _physics_process(").contains("_aura_click(delta, right_click_held(), aim_point())")
+		_func_body(healer_src, "func _physics_process(").contains("_aura_click(delta, right_click_held() or touched,")
+		and _func_body(healer_src, "func _physics_process(").contains("if touched else aim_point())")
 		and _func_body(healer_src, "func drop_aura(").contains("Presence.tell_attack(\"heal\", global_position, at)"))
 
 	# ---- every class attacks on the left button --------------------------------------------------
@@ -20932,6 +21359,24 @@ func _test_the_hotbar_holds_items() -> void:
 		used.size() == 1 and used[0] == key[2], used.size())
 	check("and is not ALSO relayed as a bag right-click, which would use it twice",
 		relayed[0] == 0, relayed[0])
+	used.clear()
+	var finger_down := InputEventScreenTouch.new()
+	finger_down.index = 3
+	finger_down.pressed = true
+	finger_down.position = Vector2(20, 20)
+	key[2].gui_input.emit(finger_down)
+	var finger_up := InputEventScreenTouch.new()
+	finger_up.index = 3
+	finger_up.position = Vector2(22, 21)
+	key[2].gui_input.emit(finger_up)
+	var tapped_once: bool = used.size() == 1 and used[0] == key[2]
+	used.clear()
+	key[2].gui_input.emit(finger_down)
+	finger_up.position = Vector2(80, 20)
+	key[2].gui_input.emit(finger_up)
+	check("on a touch screen a tap on a key uses it, as a right-click does - and a finger slid off it is the drag, not a use (0.53.0)",
+		tapped_once and used.is_empty() and relayed[0] == 0, [tapped_once, used.size()])
+	used.clear()
 	bar.slot_used.disconnect(on_used)
 	bag.slot_right_clicked.disconnect(on_relay)
 
