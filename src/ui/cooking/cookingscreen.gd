@@ -982,10 +982,17 @@ func _cook_one(item_id: String) -> String:
 	# Re-collapse: valid a moment ago is not valid now.
 	player = player if is_instance_valid(player) else null
 
-	# The panel may have been re-pointed at a different firepit while this was
-	# in flight. The fish is cooked on the server either way, but this screen
-	# must not narrate it over whatever it is showing now.
+	# The panel may have been re-pointed at a different firepit, or shut, while
+	# this was in flight. The fish is cooked on the server either way, and this
+	# screen must not narrate it over whatever it is showing now - BUT THE BAG
+	# AND THE SKILL STILL TAKE THE ANSWER (0.56.0). Thrown away, the bag went on
+	# showing the raw fish and no cooked one until something else redrew it.
 	if _firepit != firepit:
+		if res.get("ok", false) and res.get("data", {}) is Dictionary:
+			var quiet: Dictionary = res["data"]
+			if _apply_inventory(quiet) and player != null:
+				CharacterData.save_character_state(player)
+			_apply_skill(quiet)
 		return "refused"
 
 	if not res.get("ok", false):

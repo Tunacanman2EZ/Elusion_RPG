@@ -72,6 +72,7 @@ func change_scene(scene: PackedScene) -> void:
 		return
 
 	_is_transitioning = true
+	_capture_player()
 	await _fade_out()
 
 	get_tree().change_scene_to_packed(scene)
@@ -85,6 +86,19 @@ func change_scene(scene: PackedScene) -> void:
 
 	await _fade_in()
 	_is_transitioning = false
+
+
+func _capture_player() -> void:
+	"""THE PLAYER AS THEY STAND GOES INTO THE SAVE BEFORE THE SCENE DOES
+	(0.56.0). The next area's player loads from the save slot, and nothing
+	about a door had written it: a pet summoned, HP regenerated or fog walked
+	since the last XP gain, hit or step was undone on the far side. Every door,
+	ladder, portal and teleport comes through here."""
+	if CharacterData.storage == null:
+		return
+	var player: Node = get_tree().get_first_node_in_group("player")
+	if player != null:
+		CharacterData.save_character_state(player)
 
 
 # =============================================================================

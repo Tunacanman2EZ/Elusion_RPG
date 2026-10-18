@@ -170,6 +170,17 @@ func _on_delete_confirmed() -> void:
 	# The item the dialog named is passed along: a cell that holds something
 	# else by the time Destroy is pressed (a loot take landed while the dialog
 	# was open) is left alone rather than binned in its place.
+	# THE QUANTITY THE DIALOG NAMED (0.56.0). The server destroys the cell as
+	# it stands, and a cell can grow while the dialog is up - a catch landing
+	# on the same stack while fishing - so "Destroy Raw Shrimp x3" binned four.
+	# A cell that changed is asked about again, at what it holds now.
+	if changed_since_asked(_pending_source_slot, _pending_stack):
+		_pending_stack = _pending_source_slot.stack.duplicate_stack() \
+			if _pending_source_slot.stack.has_method("duplicate_stack") \
+			else ItemStack.new(_pending_source_slot.stack.data, _pending_source_slot.stack.quantity)
+		_show_confirmation()
+		return
+
 	var container: Node = _pending_source_slot.home_container \
 		if _pending_source_slot.home_container != null else _pending_source_slot.get_parent()
 	var named: String = _pending_stack.data.item_id if _pending_stack != null and _pending_stack.data != null else ""
@@ -180,6 +191,14 @@ func _on_delete_confirmed() -> void:
 
 	_pending_source_slot = null
 	_pending_stack = null
+
+
+static func changed_since_asked(cell: InventorySlot, asked: ItemStack) -> bool:
+	"""The cell holds more of the same than the dialog said (a different item is
+	request_discard()'s to refuse)."""
+	if cell == null or cell.is_empty() or asked == null or asked.data == null:
+		return false
+	return cell.stack.data == asked.data and cell.stack.quantity != asked.quantity
 
 
 func _on_delete_canceled() -> void:

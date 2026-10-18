@@ -212,6 +212,10 @@ var _trail: CPUParticles2D = null
 # LIFECYCLE
 # =============================================================================
 
+# The nearest enemy is looked for on the first physics frame; see _ready().
+var _seek_pending: bool = false
+
+
 func _ready() -> void:
 	# WE OWN HITS OURSELVES (see header). Kill every physics-engine path so it can
 	# neither despawn this orb early nor fight our per-frame check: no mask means
@@ -240,11 +244,18 @@ func _ready() -> void:
 		homing_turn_rate = 0.0
 		weave_amplitude_deg = 0.0
 	else:
-		_homing_target = _find_nearest_enemy()
+		# ON THE FIRST FRAME, NOT HERE (0.56.0). _ready() runs inside the
+		# spawner's add_child(), before it sets the orb's position - so the
+		# nearest enemy was looked for from the world's origin, and an orb
+		# could swing off toward a monster nowhere near the healer.
+		_seek_pending = true
 	_dress(sprite)
 
 
 func _physics_process(delta: float) -> void:
+	if _seek_pending:
+		_seek_pending = false
+		_homing_target = _find_nearest_enemy()
 	_time += delta
 
 	# STEER FIRST, THEN MOVE — same order as petfireprojectile.gd. turning after
@@ -315,6 +326,10 @@ func _enemy_in_reach() -> Node2D:
 		if enemy.is_in_group(owner_group):
 			continue
 		if not enemy.has_method("take_damage"):
+			continue
+		# A CAGED BOSS OR A CORPSE IS NOT IN REACH (0.56.0): its take_damage()
+		# refuses, and the orb was spent on it.
+		if enemy.has_method("can_be_aimed_at") and not enemy.call("can_be_aimed_at"):
 			continue
 		var reach: float = _enemy_radius(enemy) + hit_pad
 		if global_position.distance_squared_to(_enemy_hit_point(enemy)) <= reach * reach:

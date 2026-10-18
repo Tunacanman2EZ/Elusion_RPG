@@ -1468,6 +1468,8 @@ func _on_animatedsprite2d_animation_finished() -> void:
 # Left-click: down from a click no window took, and as it was last physics
 # frame, for edge detection. Right-click: down from a click no window took.
 var _left_click_down: bool = false
+# A left press seen since the last physics frame asked (_poll_attack_pressed()).
+var _left_click_came: bool = false
 var _left_click_was_held: bool = false
 var _right_click_down: bool = false
 
@@ -1602,6 +1604,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		pointer_on_game = true
 		if click.button_index == MOUSE_BUTTON_LEFT:
 			_left_click_down = true
+			_left_click_came = true
 		elif click.button_index == MOUSE_BUTTON_RIGHT:
 			_right_click_down = true
 
@@ -1672,7 +1675,12 @@ func _poll_attack_pressed() -> bool:
 	# fires once rather than every frame. MUST be called exactly once per
 	# physics frame, unconditionally — see the call site in _physics_process.
 	var left_now: bool = left_click_attack_held()
-	var left_edge: bool = left_now and not _left_click_was_held
+	# A CLICK DOWN AND UP INSIDE ONE FRAME IS STILL A CLICK (0.56.0): the button
+	# was up again by the time this asked, so it never attacked - every tap of
+	# a trackpad, and any click at 30 frames a second with the battery saver,
+	# or 15 while the screen rests.
+	var left_edge: bool = (left_now and not _left_click_was_held) or _left_click_came
+	_left_click_came = false
 	_left_click_was_held = left_now
 	return Input.is_action_just_pressed("attack") or left_edge
 
@@ -1884,6 +1892,10 @@ func _start_death_sequence() -> void:
 	if has_node("animatedsprite2d"):
 		var sprite: AnimatedSprite2D = $animatedsprite2d
 		if sprite.sprite_frames.has_animation(death_anim):
+			# AT ITS OWN SPEED (0.56.0): a warrior killed mid-swing kept the
+			# swing's speed - 3.5x, or 0 in a hit-stop - and died in half a
+			# second, or not at all.
+			sprite.speed_scale = 1.0
 			sprite.play(death_anim)
 			return
 
@@ -2711,6 +2723,11 @@ func summon_pet(item_id: String) -> bool:
 	# trusts this string to name a pet that resolves, and CharacterData persists
 	# it, so a bad value here would follow the save around.
 	active_pet_id = item_id
+	# SAVED NOW (0.56.0). It rode along with whatever saved next - an XP gain,
+	# a hit, a walk - so a pet summoned and then a door, or a closed tab, came
+	# back without it. The owner, on a phone: "looted a mage pet but is not
+	# deploying".
+	CharacterData.save_character_state(self)
 
 	# Success path only. A summon sound for a pet that never appeared is worse
 	# than silence.
@@ -2728,6 +2745,7 @@ func dismiss_pet() -> void:
 	# or the pet reappears on the next scene load.
 	PetController.despawn_all(get_tree())
 	active_pet_id = ""
+	CharacterData.save_character_state(self)
 
 
 # =============================================================================

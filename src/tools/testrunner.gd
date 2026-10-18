@@ -324,6 +324,10 @@ func _run_all() -> void:
 	await _test_a_finger_held_uses_an_item()
 	await _test_the_hotbar_grows_for_thumbs()
 	await _test_a_phone_stays_cool_and_unburnt()
+	await _test_what_you_do_is_saved_before_you_leave()
+	await _test_a_phone_can_do_what_a_mouse_can()
+	await _test_items_agree_with_the_server()
+	_test_fights_hit_what_they_aim_at()
 	await _test_other_players_aim_and_health()
 	await _test_parties()
 	await _test_names_open_the_player_menu()
@@ -10291,8 +10295,10 @@ func _test_world_events() -> void:
 		and today_cell != null and not today_cell.disabled and today_cell.tooltip_text.begins_with("Today\nDouble XP ")
 		and today_cell.get_theme_color("font_color").is_equal_approx(EventCalendar.TODAY),
 		today_cell.tooltip_text if today_cell else "no cell")
-	check("  tomorrow marked for the Double Loot coming", cal.marked.has(1) and (cal.marked[1] as Array).size() == 1
-		and str(cal.marked[1][0]).begins_with("Double Loot "), cal.marked)
+	# ANY OF TOMORROW'S LINES (0.56.0): run near midnight, the Double XP on now
+	# runs past it and marks tomorrow too, and "exactly one line" failed.
+	check("  tomorrow marked for the Double Loot coming", cal.marked.has(1)
+		and (cal.marked[1] as Array).any(func(line: Variant) -> bool: return str(line).begins_with("Double Loot ")), cal.marked)
 	var marked_words: String = str(cal.marked.values())
 	check("  Triple Loot, over this morning, marked as over; 1.5x XP, called off, not at all",
 		marked_words.contains("Triple Loot ") and marked_words.contains(" (over)") and not marked_words.contains("1.5x XP"),
@@ -13884,6 +13890,447 @@ func _test_a_phone_stays_cool_and_unburnt() -> void:
 		_func_body(hud_code, "func _ensure_controls_panel(").contains("options_requested.connect(open_options)")
 		and _func_body(hud_code, "func open_options(").contains("not options_screen.visible"))
 	await get_tree().process_frame
+
+
+# =============================================================================
+# SAVED BEFORE YOU LEAVE (0.56.0)
+# =============================================================================
+# Found looking for why the owner's mage pet was not out a session later: a
+# summon saved nothing, a door loaded the next area's player from a slot nobody
+# had written, a closed tab compared that same stale slot, and the server's "you
+# do not hold that pet" was thrown away. A failed or slow save could also land
+# on the next account, and skill XP on the next character.
+
+func _test_what_you_do_is_saved_before_you_leave() -> void:
+	section("SAVED BEFORE YOU LEAVE - a summon, a door, a closed tab, a pet you no longer hold (0.56.0)")
+	var player_code := _code_src("res://src/characters/player.gd")
+	check("summoning a pet, or putting it away, saves it there and then",
+		_func_body(player_code, "func summon_pet(").contains("CharacterData.save_character_state(self)")
+		and _func_body(player_code, "func dismiss_pet(").contains("CharacterData.save_character_state(self)"))
+	var door_code := _code_src("res://src/systems/scenetransition.gd")
+	var door: String = _func_body(door_code, "func change_scene(")
+	check("  every door captures the player before the scene goes (SceneTransition.change_scene())",
+		door.find("_capture_player()") != -1 and door.find("_capture_player()") < door.find("await _fade_out()"))
+
+	var store_script := GDScript.new()
+	store_script.source_code = "extends SaveStorage\nvar saves: int = 0\n" \
+		+ "func save(_payload: Dictionary) -> bool:\n\tsaves += 1\n\treturn true\n" \
+		+ "func requests_before_leaving(_payload: Dictionary) -> Array:\n\treturn []\n"
+	store_script.reload()
+	var was_storage = CharacterData.storage
+	var was_pending: bool = CharacterData._save_pending
+	var was_failed: bool = CharacterData.load_failed
+	var was_index: int = CharacterData.active_character_index
+	var was_slots: Array = CharacterData.character_slots.duplicate()
+	var was_account: Dictionary = CharacterData.account_data.duplicate(true)
+	CharacterData.storage = store_script.new()
+	CharacterData.load_failed = false
+	CharacterData.active_character_index = 0
+	CharacterData.character_slots = [{"name": "Stand-in", "character": "warrior", "active_pet_id": ""}, null, null, null]
+	var stand_script := GDScript.new()
+	stand_script.source_code = "extends Node2D\nvar active_pet_id: String = \"petmage\"\nvar inventory_data: Array = []\nvar put_away: int = 0\n" \
+		+ "func dismiss_pet() -> void:\n\tput_away += 1\n\tactive_pet_id = \"\"\n"
+	stand_script.reload()
+	var others: Array = get_tree().get_nodes_in_group("player")
+	var stand := Node2D.new()
+	stand.set_script(stand_script)
+	stand.add_to_group("player")
+	add_child(stand)
+	SceneTransition._capture_player()
+	var at_door: String = str(CharacterData.character_slots[0].get("active_pet_id", ""))
+	stand.set("active_pet_id", "petsniper")
+	CharacterData._on_page_leaving()
+	var at_close: String = str(CharacterData.character_slots[0].get("active_pet_id", ""))
+	check("a pet summoned a moment ago is in the save at a door, and when the tab closes",
+		others.is_empty() and at_door == "petmage" and at_close == "petsniper", [others.size(), at_door, at_close])
+
+	check("the server naming the pet in `ignored` is it refusing a pet this character does not hold",
+		ServerStorage.pet_refused({"ignored": ["active_pet_id"]}) and not ServerStorage.pet_refused({"ignored": ["equipment"]})
+		and not ServerStorage.pet_refused({}) and not ServerStorage.pet_refused(null))
+	CharacterData.pet_not_held(0)
+	check("  and the pet goes: off the slot, and put away in the world - it came back at every door",
+		str(CharacterData.character_slots[0].get("active_pet_id", "x")) == "" and int(stand.get("put_away")) == 1
+		and str(stand.get("active_pet_id")) == "", [CharacterData.character_slots[0].get("active_pet_id"), stand.get("put_away")])
+	var ss_code := _code_src("res://src/systems/serverstorage.gd")
+	check("  the save's answer is read for it now (_put_if_changed() -> heard_save())",
+		_func_body(ss_code, "func _put_if_changed(").contains("heard_save(body, res.get(\"data\", {}))"))
+
+	# ---- a true death takes the pet with the bag, unless the bank holds it ----
+	var Gameover: Script = load("res://src/ui/menus/gameover.gd")
+	var over: Control = Gameover.new()
+	CharacterData.character_slots = [{"name": "Stand-in", "character": "warrior", "active_pet_id": "petmage",
+		"inventory": [{"item_id": "petmage", "quantity": 1}], "gold": 5}, null, null, null]
+	CharacterData.account_data["bank_inventory"] = []
+	over._clear_carry_on_death("warrior")
+	var gone_with_bag: String = str(CharacterData.character_slots[0].get("active_pet_id", "x"))
+	CharacterData.character_slots = [{"name": "Stand-in", "character": "warrior", "active_pet_id": "petmage",
+		"inventory": [], "gold": 5}, null, null, null]
+	CharacterData.account_data["bank_inventory"] = [{"item_id": "petmage", "quantity": 1}]
+	over._clear_carry_on_death("warrior")
+	var kept_in_bank: String = str(CharacterData.character_slots[0].get("active_pet_id", ""))
+	over.free()
+	check("a true death takes the pet with the bag - and keeps it out when the bank holds it, as the server does",
+		gone_with_bag == "" and kept_in_bank == "petmage", [gone_with_bag, kept_in_bank])
+
+	stand.queue_free()
+	CharacterData.storage = was_storage
+	CharacterData._save_pending = was_pending
+	CharacterData.load_failed = was_failed
+	CharacterData.active_character_index = was_index
+	CharacterData.character_slots = was_slots
+	CharacterData.account_data = was_account
+
+	# ---- a push belongs to its session ------------------------------------------------
+	var push_store := ServerStorage.new()
+	var kept_token: String = str(Api.token)
+	Api.token = "first_session"
+	push_store._pushing = true
+	push_store._push_token = "first_session"
+	var same: bool = not push_store.session_moved()
+	Api.token = "next_account"
+	var moved: bool = push_store.session_moved()
+	push_store._pushing = false
+	Api.token = kept_token
+	check("a save still being sent after a logout stops at the next account's token - it wrote the old character into their slot",
+		same and moved and _func_body(ss_code, "func _put_if_changed(").contains("if session_moved():")
+		and _func_body(ss_code, "func _push(").contains("_push_token = str(Api.token)"))
+	await get_tree().process_frame
+
+
+# =============================================================================
+# A PHONE CAN DO WHAT A MOUSE CAN (0.56.0)
+# =============================================================================
+# Found in a sweep of everything a touch screen cannot give: chat opened froze
+# the character with no way to give the keyboard back; the stick covered the
+# names of everybody on the left of the screen; the Players list opened its
+# menu on a right-click only; a swipe selected chat text instead of scrolling;
+# and Push to talk asked a phone to hold V.
+
+func _test_a_phone_can_do_what_a_mouse_can() -> void:
+	section("A PHONE CAN DO WHAT A MOUSE CAN - the keyboard given back, names, chat, voice (0.56.0)")
+	const TouchScript := preload("res://src/systems/touchcontrols.gd")
+	var kept_active: bool = TouchControls.active
+	TouchControls.set_active(true)
+
+	# ---- a thumb on the game gives the keyboard back ----------------------------------
+	var box := LineEdit.new()
+	add_child(box)
+	box.grab_focus()
+	var typing_before: bool = TouchControls.typing()
+	var heard: Array = []
+	var on_played := func() -> void: heard.append(true)
+	TouchControls.played.connect(on_played)
+	TouchControls.played_now()
+	TouchControls.played.disconnect(on_played)
+	check("a thumb on the game takes the keyboard from a text box, which froze the character",
+		typing_before and not TouchControls.typing() and get_viewport().gui_get_focus_owner() == null and heard.size() == 1,
+		[typing_before, TouchControls.typing(), heard.size()])
+	box.queue_free()
+	var tc_code := _code_src("res://src/systems/touchcontrols.gd")
+	var pad_code := _code_src("res://src/ui/touchpad.gd")
+	var all_played: bool = true
+	for fn in ["func press_attack(", "func press_use(", "func press_skill(", "func toggle_sprint(", "func _unhandled_input("]:
+		all_played = all_played and _func_body(tc_code, fn).contains("played_now()")
+	check("  every one: Attack, Use, the skill, Run, a tap on the world, and the stick",
+		all_played and _func_body(pad_code, "	func _gui_input(").contains("TouchControls.played_now()"))
+
+	# ---- a name under the stick ------------------------------------------------------------
+	var host_script := GDScript.new()
+	host_script.source_code = "extends Node\nvar opened: Array = []\nfunc open_player_menu(who: String) -> void:\n\topened.append(who)\n"
+	host_script.reload()
+	var host := Node.new()
+	host.set_script(host_script)
+	host.add_to_group(&"player_menu_host")
+	add_child(host)
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node2D\nvar display_name: String = \"Gary\"\nvar _plate: Label = null\nfunc plate() -> Label:\n\treturn _plate\n"
+	body_script.reload()
+	var hud := Control.new()
+	hud.size = Vector2(1280, 720)
+	add_child(hud)
+	var pad: Control = TouchControls.attach(hud)
+	await get_tree().process_frame
+	var stick: Control = pad.get("stick")
+	var spot_local := Vector2(120, 200)
+	var spot: Vector2 = stick.get_global_transform_with_canvas() * spot_local
+	var gary := Node2D.new()
+	gary.set_script(body_script)
+	gary.add_to_group(&"remoteplayers")
+	var plate := Label.new()
+	plate.text = "Gary"
+	plate.size = Vector2(60, 16)
+	gary.add_child(plate)
+	gary.set("_plate", plate)
+	add_child(gary)
+	plate.global_position = spot - Vector2(30, 8)
+	check("a name over a player is where it is drawn (TouchScript.plate_box())",
+		TouchScript.plate_box(plate).has_point(spot) and not TouchScript.plate_box(plate).has_point(spot + Vector2(200, 0)))
+	var press := InputEventScreenTouch.new()
+	press.index = 0
+	press.position = spot_local
+	press.pressed = true
+	stick.call("_gui_input", press)
+	var lift := InputEventScreenTouch.new()
+	lift.index = 0
+	lift.position = spot_local
+	lift.pressed = false
+	stick.call("_gui_input", lift)
+	var opened_by_tap: Array = (host.get("opened") as Array).duplicate()
+	stick.call("_gui_input", press)
+	var slid := InputEventScreenDrag.new()
+	slid.index = 0
+	slid.position = spot_local + Vector2(40, 0)
+	stick.call("_gui_input", slid)
+	lift.position = slid.position
+	stick.call("_gui_input", lift)
+	check("  a quick tap on the stick's half of the screen, on a name, opens their menu - the stick took every touch there",
+		opened_by_tap == ["Gary"], opened_by_tap)
+	check("  and a slide from it is still the stick, not a tap", (host.get("opened") as Array).size() == 1, host.get("opened"))
+	gary.queue_free()
+	host.queue_free()
+	hud.queue_free()
+
+	# ---- chat on a touch screen ------------------------------------------------------------
+	var chat: Control = (load("res://scene/ui/chat/chatpanel.tscn") as PackedScene).instantiate()
+	add_child(chat)
+	var poll: Node = chat.get_node_or_null(^"ChatPoll")
+	if poll is Timer:
+		(poll as Timer).stop()
+	chat.open()
+	var awake_open: bool = chat.is_awake()
+	var no_keyboard: bool = not chat.is_typing()
+	var entry_box: Control = chat.get("entry") as Control
+	TouchControls.played_now()
+	var quiet: bool = not chat.is_awake() and chat.is_passing()
+	var lets_through: bool = entry_box != null and entry_box.mouse_filter == Control.MOUSE_FILTER_IGNORE
+	chat.toggle()
+	var woken: bool = chat.visible and chat.is_awake() and not chat.is_passing()
+	var restored: bool = entry_box != null and entry_box.mouse_filter != Control.MOUSE_FILTER_IGNORE
+	chat.toggle()
+	var shut: bool = not chat.visible
+	check("on a touch screen chat opens awake but without the keyboard - a tap on the box types",
+		awake_open and no_keyboard, [awake_open, no_keyboard])
+	check("  a thumb back on the game quiets it, and quiet it lets touches through to the stick and the world",
+		quiet and lets_through, [quiet, lets_through])
+	check("  Chat on the bar wakes a quiet window rather than shutting it, and shuts an awake one",
+		woken and restored and shut, [woken, restored, shut])
+	var line := RichTextLabel.new()
+	chat._suit_touch(line, true)
+	var swipeable: bool = not line.selection_enabled and line.mouse_filter == Control.MOUSE_FILTER_PASS
+	chat._suit_touch(line, false)
+	var selectable: bool = line.selection_enabled and line.mouse_filter == Control.MOUSE_FILTER_STOP
+	line.free()
+	check("  a swipe scrolls the log: on a touch screen a line selects nothing and lets the drag through",
+		swipeable and selectable and _func_body(_code_src("res://src/ui/chat/chatpanel.gd"), "func _node_for(").contains("_suit_touch(label, _on_touch())"))
+	chat.queue_free()
+
+	# ---- the Players list, Friends, voice ------------------------------------------------------
+	check("the Players and Friends rows let a swipe through to their scroll (PASS, not a PanelContainer's STOP)",
+		_func_body(_code_src("res://src/ui/players/playerspanel.gd"), "func _boxed(").contains("box.mouse_filter = Control.MOUSE_FILTER_PASS")
+		and _func_body(_code_src("res://src/ui/friends/friendspanel.gd"), "func _add_row(").contains("frame.mouse_filter = Control.MOUSE_FILTER_PASS"))
+	var panel: PartyPanel = (load("res://scene/ui/party/partypanel.tscn") as PackedScene).instantiate() as PartyPanel
+	add_child(panel)
+	var kept_mode: String = Voice.mode
+	Voice.set_mode(Voice.MODE_PUSH)
+	panel.render_voice()
+	var back_to_open: bool = Voice.mode == Voice.MODE_OPEN
+	var not_offered: bool = panel.voice_mode == null or (panel.voice_mode.is_item_disabled(1)
+		and panel.voice_mode.get_item_text(1) == PartyPanel.PUSH_ON_TOUCH)
+	TouchControls.set_active(false)
+	panel.render_voice()
+	var offered_again: bool = panel.voice_mode == null or not panel.voice_mode.is_item_disabled(1)
+	Voice.set_mode(kept_mode)
+	panel.queue_free()
+	check("Push to talk is not offered on a touch screen, which has no key to hold - and a phone in it is put on Open mic",
+		back_to_open and not_offered and offered_again, [back_to_open, not_offered, offered_again])
+
+	# ---- what a mouse would hover ---------------------------------------------------------------
+	check("a finger held still and lifted asks for the tooltip under it - a tap, or a slide, does not",
+		TouchScript.shows_tip(TouchControls.TIP_HOLD_MSEC, 0.0) and not TouchScript.shows_tip(120, 0.0)
+		and not TouchScript.shows_tip(900, TouchControls.TIP_SLIDE + 5.0))
+	var holder := PanelContainer.new()
+	holder.tooltip_text = "0 / 1,250 XP"
+	var inner := Label.new()
+	inner.text = "0 / 1,250"
+	holder.add_child(inner)
+	add_child(holder)
+	var said: String = TouchScript.tip_of(inner, inner.get_global_transform_with_canvas() * Vector2(2, 2))
+	holder.queue_free()
+	check("  the tooltip is the control's own, or the nearest parent's that has one - the exact XP, a traded item's stats",
+		said == "0 / 1,250 XP" and _func_body(_code_src("res://src/systems/touchcontrols.gd"), "func _input(").contains("_watch_for_tip(event)"), said)
+	check("  and the Controls card says so", ControlsPanel.TOUCH_ROWS.any(func(row: Array) -> bool: return row[1] == "Hold it, then let go"))
+
+	TouchControls.set_active(kept_active)
+	await get_tree().process_frame
+
+
+# =============================================================================
+# THE CLIENT AND THE SERVER AGREE ABOUT ITEMS, AND FIGHTS HIT WHAT THEY AIM AT (0.56.0)
+# =============================================================================
+# From the same sweep: a trade edit dropped while a poll was out, a timeout read
+# as "nothing happened", a potion spent with no heal, a cook's answer thrown
+# away, gear dropped straight from the bank, a bin that destroyed more than it
+# said; and pets, healer orbs and auto-aim spent on caged bosses and corpses.
+
+func _test_items_agree_with_the_server() -> void:
+	section("ITEMS AGREE WITH THE SERVER - no dropped edits, no silent timeouts (0.56.0)")
+	const DataScript := preload("res://src/systems/characterdata.gd")
+	check("a request with no answer is told apart from a refusal",
+		DataScript.got_no_answer({"ok": false, "status": 0}) and not DataScript.got_no_answer({"ok": false, "status": 409})
+		and not DataScript.got_no_answer({"ok": true, "status": 200}))
+
+	# ---- the bag, purse and bank asked for again ---------------------------------------
+	var store_script := GDScript.new()
+	store_script.source_code = "extends SaveStorage\nfunc save(_payload: Dictionary) -> bool:\n\treturn true\n"
+	store_script.reload()
+	var was_storage = CharacterData.storage
+	var was_index: int = CharacterData.active_character_index
+	var was_slots: Array = CharacterData.character_slots.duplicate()
+	var was_account: Dictionary = CharacterData.account_data.duplicate(true)
+	CharacterData.storage = store_script.new()
+	CharacterData.active_character_index = 0
+	CharacterData.character_slots = [{"name": "Stand-in", "character": "warrior", "gold": 5, "inventory": []}, null, null, null]
+	var cells: Array = [{"item_id": "petmage", "quantity": 1}]
+	for i in 29:
+		cells.append(null)
+	var bank_cells: Array = [{"item_id": "petsniper", "quantity": 1}]
+	for i in 39:
+		bank_cells.append(null)
+	var asked: Array = []
+	CharacterData.resync_request = func(path: String) -> Dictionary:
+		asked.append(path)
+		if path.begins_with("/api/character"):
+			return {"ok": true, "status": 200, "data": {"slot": 0, "inventory": cells, "status": {"gold": 77}}}
+		return {"ok": true, "status": 200, "data": {"bank_gold": 500, "bank_inventory": bank_cells}}
+	var landed: bool = await CharacterData.resync_carry()
+	var slot: Dictionary = CharacterData.character_slots[0]
+	var resynced: bool = (landed and int(slot.get("gold", -1)) == 77
+		and str((slot.get("inventory", []) as Array)[0].get("item_id", "")) == "petmage"
+		and CharacterData.get_bank_gold() == 500 and CharacterData.bank_holds("petsniper"))
+	CharacterData.resync_request = Callable()
+	CharacterData.storage = was_storage
+	CharacterData.active_character_index = was_index
+	CharacterData.character_slots = was_slots
+	CharacterData.account_data = was_account
+	check("after a request that got no answer, the bag, the purse and the bank are asked for again, and drawn",
+		resynced and asked == ["/api/character?slot=0", "/api/account"], [landed, asked, slot.get("gold")])
+	var shop_code := _code_src("res://src/ui/shop/shopinventory.gd")
+	var bank_code := _code_src("res://src/ui/bank/bankinventory.gd")
+	var cd_code := _code_src("res://src/systems/characterdata.gd")
+	var inv_code := _code_src("res://src/ui/inventory/inventoryscreen.gd")
+	check("  a buy, a bank move, banked gold and a potion each do it - a second press was a second purchase",
+		_func_body(shop_code, "func _on_buy_pressed(").contains("CharacterData.resync_carry()")
+		and _func_body(bank_code, "func _handle_transfer_refusal(").contains("_resync_after_silence()")
+		and _func_body(cd_code, "func _move_bank_gold(").contains("await resync_carry()")
+		and _func_body(inv_code, "func _use_consumable(").contains("_container.refetch()"))
+
+	# ---- a potion the server spent heals ------------------------------------------------
+	var screen: Control = (load("res://scene/ui/inventory/inventory.tscn") as PackedScene).instantiate()
+	add_child(screen)
+	await get_tree().process_frame
+	var healer_script := GDScript.new()
+	healer_script.source_code = "extends Node2D\nvar level: int = 1\nvar healed: int = 0\nfunc heal(amount: int) -> void:\n\thealed += amount\n"
+	healer_script.reload()
+	var drinker := Node2D.new()
+	drinker.set_script(healer_script)
+	add_child(drinker)
+	screen.set_player(drinker)
+	var potion := ItemData.new()
+	potion.item_id = "suite_potion"
+	potion.type = ItemData.Type.CONSUMABLE
+	potion.restore_target = ItemData.RestoreTarget.HP
+	potion.restore_amount = 25
+	screen._restore_from(potion)
+	check("a potion the server spent heals even when its stack was dragged off the key mid-request",
+		int(drinker.get("healed")) == 25 and _func_body(inv_code, "func _use_consumable(").contains("_restore_from(data)"),
+		drinker.get("healed"))
+	screen.queue_free()
+	drinker.queue_free()
+
+	# ---- cooking, gear, the bin, trade -------------------------------------------------------
+	var cook_code := _code_src("res://src/ui/cooking/cookingscreen.gd")
+	var cook: String = _func_body(cook_code, "func _cook_one(")
+	check("a cook's answer still reaches the bag and the skill when the panel shut mid-cook",
+		cook.contains("if _firepit != firepit:") and cook.contains("_apply_inventory(quiet)") and cook.contains("_apply_skill(quiet)"))
+	var bank_cell: InventorySlot = (load("res://scene/ui/inventory/inventoryslot.tscn") as PackedScene).instantiate()
+	bank_cell.slot_type = InventorySlot.BANK_SLOT_TYPE
+	var bag_cell: InventorySlot = (load("res://scene/ui/inventory/inventoryslot.tscn") as PackedScene).instantiate()
+	check("gear goes on from the bag or a key - not straight from the bank or a loot bag, whose cell numbers mean nothing to the carry",
+		not EquipmentSlot.is_carried(bank_cell) and EquipmentSlot.is_carried(bag_cell) and EquipmentSlot.is_carried(null))
+	var shrimp := ItemData.new()
+	shrimp.item_id = "suite_shrimp"
+	var other := ItemData.new()
+	other.item_id = "suite_other"
+	bag_cell.stack = ItemStack.new(shrimp, 4)
+	check("the bin asks again when the stack grew while its question was up - x3 named, four destroyed",
+		TrashSlot.changed_since_asked(bag_cell, ItemStack.new(shrimp, 3))
+		and not TrashSlot.changed_since_asked(bag_cell, ItemStack.new(shrimp, 4))
+		and not TrashSlot.changed_since_asked(bag_cell, ItemStack.new(other, 3)))
+	bank_cell.free()
+	bag_cell.free()
+	var Trade: Script = load("res://src/ui/trade/tradepanel.gd") as Script
+	var trade: Control = Trade.new()
+	trade.set("_busy", true)
+	trade._push_offer()
+	var kept_edit: bool = bool(trade.get("_offer_dirty"))
+	trade.free()
+	var trade_code := _code_src("res://src/ui/trade/tradepanel.gd")
+	check("a trade edit made while the window was busy is kept and sent, not dropped - Accept traded the old offer",
+		kept_edit and _func_body(trade_code, "func _poll(").contains("if _offer_dirty:")
+		and _func_body(trade_code, "func _on_confirm_pressed(").contains("await _push_offer()"))
+	await get_tree().process_frame
+
+
+func _test_fights_hit_what_they_aim_at() -> void:
+	section("FIGHTS HIT WHAT THEY AIM AT - pets, orbs, the aura, a quick click (0.56.0)")
+	var aim_script := GDScript.new()
+	aim_script.source_code = "extends Node2D\nvar ok: bool = true\nfunc can_be_aimed_at() -> bool:\n\treturn ok\n"
+	aim_script.reload()
+	var caged := Node2D.new()
+	caged.set_script(aim_script)
+	caged.set("ok", false)
+	var open := Node2D.new()
+	open.set_script(aim_script)
+	var plain := Node2D.new()
+	check("a pet shoots at nothing caged or dying - it spent a whole arena fight on a gated boss",
+		not Pet.can_shoot_at(caged) and Pet.can_shoot_at(open) and Pet.can_shoot_at(plain)
+		and _func_body(_code_src("res://src/pets/pet.gd"), "func _find_nearest_enemy(").contains("not can_shoot_at(enemy)"))
+	caged.free()
+	open.free()
+	plain.free()
+	var slime: Node = (load("res://scene/enemy/poisonslime.tscn") as PackedScene).instantiate()
+	var aimable_alive: bool = slime.can_be_aimed_at()
+	slime.set("_is_resolving", true)
+	var aimable_dying: bool = slime.can_be_aimed_at()
+	slime.free()
+	check("  a slime dying or splitting is not aimed at either - its shapes are already off",
+		aimable_alive and not aimable_dying, [aimable_alive, aimable_dying])
+	var orb_code := _code_src("res://src/projectiles/turretprojectile.gd")
+	check("a healer's orb looks for its enemy from where it is, on its first frame - from the world's origin it could swing off",
+		not _func_body(orb_code, "func _ready(").contains("_homing_target = _find_nearest_enemy()")
+		and _func_body(orb_code, "func _physics_process(").contains("_homing_target = _find_nearest_enemy()")
+		and _func_body(orb_code, "func _enemy_in_reach(").contains("can_be_aimed_at"))
+	var tank_code := _func_body(_code_src("res://src/characters/tank.gd"), "func _activate_aura(")
+	check("the tank's aura pays its first tick on the way in - switching it off and on burned for free",
+		tank_code.contains("if mana < mana_drain_cost:") and tank_code.contains("mana = clamp(mana - mana_drain_cost, 0, max_mana)"))
+	var held_late: bool = true
+	for path in ["res://src/projectiles/petelectricprojectile.gd", "res://src/projectiles/petfireprojectile.gd"]:
+		var body: String = _func_body(_code_src(path), "func _enable_hitting_after(")
+		held_late = held_late and body.contains("get_overlapping_bodies()") and body.contains("get_overlapping_areas()")
+	check("a pet's orb hits what it entered in its first moments, when it could not hit yet", held_late)
+	var player_code := _code_src("res://src/characters/player.gd")
+	check("a click down and up inside one frame still attacks - a trackpad tap, or any click at 30 or 15 frames a second",
+		_func_body(player_code, "func _unhandled_input(").contains("_left_click_came = true")
+		and _func_body(player_code, "func _poll_attack_pressed(").contains("or _left_click_came"))
+	var orb: Node = (load("res://scene/projectiles/magicprojectile.tscn") as PackedScene).instantiate()
+	var has_life: bool = "lifetime" in orb and float(orb.get("lifetime")) > 0.0
+	orb.free()
+	check("an electric orb ends after its lifetime, like every other shot - aimed off the screen it flew forever",
+		has_life and _func_body(_code_src("res://src/projectiles/magicprojectile.gd"), "func _ready(").contains("create_timer(lifetime)"))
+	check("a death plays at its own speed, not the swing's", _func_body(player_code, "func die(").contains("sprite.speed_scale = 1.0")
+		or player_code.contains("sprite.speed_scale = 1.0\n\t\t\tsprite.play(death_anim)"))
+	check("a kill answered after a portal drops its bag at the player's feet in the new area, not at the old coordinates",
+		_code_src("res://src/systems/combat.gd").contains("get_tree().current_scene != killed_in"))
 
 
 func _test_other_players_attacks_switch() -> void:
@@ -18407,6 +18854,14 @@ func _test_players_right_click_menu() -> void:
 	left.pressed = true
 	stranger.gui_input.emit(left)
 	check("a left click opens nothing", panel.row_menu == null)
+	# A TAP DOES (0.56.0): on a touch screen there is no right button.
+	TouchControls.set_active(true)
+	stranger.gui_input.emit(left)
+	TouchControls.set_active(false)
+	var tapped_open: bool = panel.row_menu != null
+	check("  but on a touch screen a tap does - a phone has no right button", tapped_open)
+	if panel.row_menu != null:
+		panel.row_menu.hide()
 	var right := InputEventMouseButton.new()
 	right.button_index = MOUSE_BUTTON_RIGHT
 	right.pressed = true
@@ -27500,6 +27955,9 @@ func _test_skill_xp_rounds_like_the_server() -> void:
 	section("SKILL XP — the bar rounds a batch the way the server grants it")
 
 	var trainer: Node = (load("res://src/systems/skilltrainer.gd") as Script).new()
+	# Earned on slot 0, whatever this run was left playing.
+	var kept_slot: int = CharacterData.active_character_index
+	CharacterData.active_character_index = 0
 	var shown := 0
 	var steps: Array = []
 	for i in 10:
@@ -27522,11 +27980,27 @@ func _test_skill_xp_rounds_like_the_server() -> void:
 	check("  and the raw amounts are what waits for the server",
 		int(trainer._pending["defense"]) == 10 and int(trainer._pending["magic"]) == 21
 		and int(trainer._pending["agility"]) == 35, trainer._pending)
+	# WHOSE IT IS (0.56.0): the slot it was earned on, and the account.
+	var earned_on: int = int(trainer._pending_slot)
+	CharacterData.active_character_index = earned_on + 1
+	trainer.report("defense", 4)
+	var aside: Array = trainer._set_aside
+	check("XP earned before Switch character goes with the slot it was earned on, not the one picked next",
+		aside.size() == 1 and int(aside[0][0]) == earned_on and int(aside[0][1]["defense"]) == 10
+		and int(trainer._pending["defense"]) == 4 and int(trainer._pending_slot) == earned_on + 1, [aside, trainer._pending])
+	CharacterData.active_character_index = kept_slot
+	trainer._pending_user = "somebody_else_entirely"
+	trainer.report("magic", 2)
+	check("  and another account's XP is forgotten, never sent as the one signed in now",
+		trainer._set_aside.is_empty() and int(trainer._pending["defense"]) == 0 and int(trainer._pending["magic"]) == 2,
+		[trainer._set_aside, trainer._pending])
 	trainer.free()
 
 	var flush := _func_body(_code_src("res://src/systems/skilltrainer.gd"), "func flush(")
-	check("a flushed batch starts the rounding again, as the server does per batch",
-		flush.find("_shown = {") != -1 and flush.find("_shown = {") < flush.find("await Api.post("))
+	var send := _func_body(_code_src("res://src/systems/skilltrainer.gd"), "func _send(")
+	check("a flushed batch starts the rounding again, as the server does per batch - and each slot's goes as that slot",
+		flush.find("_shown = _empty()") != -1 and flush.find("_shown = _empty()") < flush.find("await _send(")
+		and send.contains("var body: Dictionary = {\"slot\": slot}") and send.contains("await Api.post("))
 	var player_code := _code_src("res://src/characters/player.gd")
 	var defense := _func_body(player_code, "func gain_defense_xp(")
 	var magic_body := _func_body(player_code, "func gain_magic_xp(")

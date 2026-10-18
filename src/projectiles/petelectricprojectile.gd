@@ -113,7 +113,21 @@ func _ready() -> void:
 
 func _enable_hitting_after(seconds: float) -> void:
 	await get_tree().create_timer(seconds).timeout
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
 	_can_hit = true
+	# WHAT IT ENTERED WHILE IT COULD NOT HIT (0.56.0). An enemy whose shape the
+	# orb came into in its first moments was never hit at all: entered is said
+	# once, and nothing looked again - so a monster crowding the pet took no
+	# damage from it.
+	for body in get_overlapping_bodies():
+		_on_body_entered(body)
+		if _spent:
+			return
+	for area in get_overlapping_areas():
+		_on_area_entered(area)
+		if _spent:
+			return
 
 
 func _physics_process(delta: float) -> void:

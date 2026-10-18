@@ -478,7 +478,10 @@ func attack_action() -> void:
 
 
 func _activate_aura() -> void:
-	if mana <= 0:
+	# A TICK'S MANA, AND IT IS PAID NOW (0.56.0). The drain clock started again
+	# at every switch and charged nothing on the way in, so switching off and on
+	# every 0.45 s burned enemies for nothing - with 1 mana left.
+	if mana < mana_drain_cost:
 		# show_notice() comes from player.gd, which this class extends —
 		# no reference to look up, and the de-duplication there means
 		# mashing the aura key with an empty bar shows one label, not forty.
@@ -493,6 +496,7 @@ func _activate_aura() -> void:
 	# itself. There is no matching id for switching it off; if that turns out
 	# to want one, it is a new entry in audio.gd rather than a change here.
 	Audio.play("aura_on")
+	mana = clamp(mana - mana_drain_cost, 0, max_mana)
 
 	aura_active      = true
 	ring_by_dynamite = false

@@ -42,6 +42,9 @@
 extends Node
 
 signal changed(on: bool)
+# A THUMB ON THE GAME (0.56.0): the pad or the world - the player going back to
+# playing. See played_now().
+signal played()
 
 # Loaded when a HUD asks, not preloaded: the pad's script names this autoload,
 # and a preload each way is a cycle for the compiler.
@@ -124,7 +127,120 @@ func set_active(on: bool) -> void:
 	changed.emit(on)
 
 
+# A FINGER HELD STILL SHOWS WHAT A MOUSE WOULD HOVER (0.56.0). Godot's tooltips
+# come from a mouse resting over a control, which a touch screen never has - so
+# the exact XP, a traded item's stats, the resistances past the first two and
+# the kingdom's totals could not be read on a phone at all. (A mouse move made
+# up in code is not enough: measured in the web build, the tooltip never came.)
+# So a first finger held still for TIP_HOLD_MSEC and lifted shows the tooltip
+# of the control under it in a box of its own, until the next touch.
+const TIP_HOLD_MSEC := 450
+const TIP_SLIDE := 12.0
+const TIP_LAYER := 115
+const TIP_SECONDS := 5.0
+var _tip_from: Vector2 = Vector2.ZERO
+var _tip_down_msec: int = -1
+var _tip_box: PanelContainer = null
+var _tip_words: Label = null
+
+
+static func shows_tip(held_msec: int, slid: float) -> bool:
+	"""Whether a first finger held this long and slid this far, then lifted,
+	asks for the tooltip under it."""
+	return held_msec >= TIP_HOLD_MSEC and slid <= TIP_SLIDE
+
+
+func _watch_for_tip(event: InputEvent) -> void:
+	var touch := event as InputEventScreenTouch
+	if touch != null and touch.index == 0:
+		if touch.pressed:
+			hide_tip()
+			_tip_from = touch.position
+			_tip_down_msec = Time.get_ticks_msec()
+		else:
+			if _tip_down_msec >= 0 and shows_tip(Time.get_ticks_msec() - _tip_down_msec, touch.position.distance_to(_tip_from)):
+				show_tip_at.call_deferred(touch.position)
+			_tip_down_msec = -1
+		return
+	var drag := event as InputEventScreenDrag
+	if drag != null and drag.index == 0 and drag.position.distance_to(_tip_from) > TIP_SLIDE:
+		_tip_down_msec = -1
+
+
+static func tip_of(control: Control, point: Vector2) -> String:
+	"""The tooltip a mouse at `point` (screen) would get from `control` or the
+	nearest of its parents that has one."""
+	var node: Node = control
+	while node is Control:
+		var at: Control = node as Control
+		var local: Vector2 = at.get_global_transform_with_canvas().affine_inverse() * point
+		var words: String = at.get_tooltip(local)
+		if words != "":
+			return words
+		node = at.get_parent()
+	return ""
+
+
+func show_tip_at(point: Vector2) -> bool:
+	"""The tooltip of whatever is under `point`, in a box by it. True if there
+	was one."""
+	var viewport: Viewport = get_viewport()
+	var over: Control = viewport.gui_get_hovered_control() if viewport != null else null
+	var words: String = tip_of(over, point) if over != null else ""
+	if words == "":
+		return false
+	_build_tip()
+	_tip_words.text = words
+	_tip_box.visible = true
+	_tip_box.reset_size()
+	var room: Vector2 = viewport.get_visible_rect().size
+	var size: Vector2 = _tip_box.get_combined_minimum_size()
+	var at: Vector2 = point + Vector2(-size.x * 0.5, -size.y - 28.0)
+	if at.y < 4.0:
+		at.y = point.y + 28.0
+	_tip_box.position = Vector2(clampf(at.x, 4.0, maxf(4.0, room.x - size.x - 4.0)),
+		clampf(at.y, 4.0, maxf(4.0, room.y - size.y - 4.0))).floor()
+	get_tree().create_timer(TIP_SECONDS).timeout.connect(hide_tip)
+	return true
+
+
+func hide_tip() -> void:
+	if _tip_box != null:
+		_tip_box.visible = false
+
+
+func tip_showing() -> String:
+	return _tip_words.text if _tip_box != null and _tip_box.visible else ""
+
+
+func _build_tip() -> void:
+	if _tip_box != null:
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "touchtip"
+	layer.layer = TIP_LAYER
+	add_child(layer)
+	_tip_box = PanelContainer.new()
+	_tip_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The hotbar's own frame (scene/ui/hotbar.tscn): a dark box, a gold rim.
+	var frame := StyleBoxFlat.new()
+	frame.bg_color = Color(0.11, 0.09, 0.07, 0.94)
+	frame.border_color = Color(0.48, 0.39, 0.26, 1)
+	frame.set_border_width_all(2)
+	frame.set_corner_radius_all(4)
+	frame.set_content_margin_all(8)
+	_tip_box.add_theme_stylebox_override("panel", frame)
+	_tip_words = Label.new()
+	_tip_words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip_words.add_theme_color_override("font_color", Color(0.95, 0.92, 0.84, 1))
+	_tip_words.add_theme_font_size_override("font_size", 13)
+	_tip_box.add_child(_tip_words)
+	layer.add_child(_tip_box)
+	_tip_box.visible = false
+
+
 func _input(event: InputEvent) -> void:
+	_watch_for_tip(event)
 	if event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
 		set_active(true)
 		return
@@ -137,6 +253,47 @@ func _input(event: InputEvent) -> void:
 	var click := event as InputEventMouseButton
 	if click != null and click.pressed and click.device != InputEvent.DEVICE_ID_EMULATION:
 		set_active(false)
+
+
+func played_now() -> void:
+	"""A thumb on the pad or the world. A text box holding the keyboard lets go:
+	a focused box stops walking and attacks (player.gd _typing_in_ui()), and a
+	phone has no Esc and no click-away to give it back - chat opened, a word
+	typed and not sent, and the character stood frozen. Listeners (the chat)
+	go quiet too."""
+	if typing():
+		var viewport: Viewport = get_viewport()
+		if viewport != null:
+			viewport.gui_release_focus()
+	played.emit()
+
+
+# A QUICK TAP ON THE STICK'S PART OF THE SCREEN that lands on another player's
+# name opens their menu, as a tap on a name anywhere else does - the stick sits
+# over the world there and took every touch (0.56.0).
+const NAME_TAP_MSEC := 300
+const NAME_TAP_SLIDE := 12.0
+
+
+static func plate_box(plate: Control) -> Rect2:
+	"""Where a name over a player is on the screen."""
+	var xform: Transform2D = plate.get_global_transform_with_canvas()
+	return Rect2(xform.origin, plate.size * xform.get_scale())
+
+
+func tap_name_at(point: Vector2) -> bool:
+	"""Opens the menu of the player whose name is at `point` (screen), if any."""
+	if not is_inside_tree():
+		return false
+	for body in get_tree().get_nodes_in_group(&"remoteplayers"):
+		var plate: Control = body.call("plate") as Control if body.has_method("plate") else null
+		if plate == null or not plate.is_visible_in_tree() or not plate_box(plate).has_point(point):
+			continue
+		var who: String = str(body.get("display_name"))
+		if who != "":
+			get_tree().call_group(&"player_menu_host", &"open_player_menu", who)
+			return true
+	return false
 
 
 func typing() -> bool:
@@ -194,6 +351,7 @@ func attach(hud: Node) -> Control:
 
 
 func press_attack() -> void:
+	played_now()
 	attack_held = true
 	attack_drag = Vector2.ZERO
 	_attack_tap = true
@@ -206,6 +364,7 @@ func release_attack() -> void:
 
 
 func press_use() -> void:
+	played_now()
 	use_held = true
 	_use_tap = true
 
@@ -215,6 +374,7 @@ func release_use() -> void:
 
 
 func press_skill() -> void:
+	played_now()
 	skill_held = true
 	skill_drag = Vector2.ZERO
 
@@ -228,6 +388,7 @@ func release_skill() -> void:
 
 
 func toggle_sprint() -> void:
+	played_now()
 	sprint_on = not sprint_on
 
 
@@ -243,6 +404,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if touch != null:
 		if touch.pressed:
 			if _world_finger < 0 and player() != null:
+				played_now()
 				_world_finger = touch.index
 				_world_screen = touch.position
 				_attack_tap = true

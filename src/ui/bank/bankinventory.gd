@@ -262,6 +262,13 @@ func _center_window() -> void:
 # BANK INVENTORY PERSISTENCE
 # =============================================================================
 
+func _resync_after_silence() -> void:
+	"""The bag, the purse and the bank as the server holds them, redrawn."""
+	await CharacterData.resync_carry()
+	if is_instance_valid(self) and is_inside_tree() and visible:
+		_load_bank_contents()
+
+
 func _load_bank_contents() -> void:
 	# pull bank data from CharacterData and populate the grid.
 	# always reads fresh so changes from other characters are picked up.
@@ -324,6 +331,8 @@ func _on_bank_changed() -> void:
 # last place the client asserted a container's contents.
 
 const TRANSFER_TIMEOUT := 4.0
+# Its static got_no_answer() is asked of the script, not the autoload.
+const DataScript := preload("res://src/systems/characterdata.gd")
 
 var _transferring: bool = false
 
@@ -432,11 +441,14 @@ func _apply_grids(data: Dictionary) -> void:
 
 
 func _handle_transfer_refusal(res: Dictionary, captured_player: Node) -> void:
-	# NOTHING MOVED ON EITHER SIDE. The endpoint removes from the source, adds
-	# to the destination, and rolls back if the add does not fit - so a refusal
-	# always leaves the item exactly where it started, and the grids are already
-	# correct. There is nothing to repair here, only something to say.
+	# A REFUSAL MOVED NOTHING ON EITHER SIDE. The endpoint removes from the
+	# source, adds to the destination, and rolls back if the add does not fit -
+	# so a refusal leaves the item exactly where it started, and the grids are
+	# already correct. NO ANSWER IS NOT A REFUSAL (0.56.0): a request that timed
+	# out may have moved it, so both grids are asked for again.
 	var code: int = int(res.get("status", 0))
+	if DataScript.got_no_answer(res):
+		_resync_after_silence()
 
 	match code:
 		400:

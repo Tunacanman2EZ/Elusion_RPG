@@ -651,6 +651,12 @@ func _adopt_answer(res: Dictionary) -> void:
 	await _refetch()
 
 
+func refetch() -> void:
+	"""The grid as the server has it now, asked for (a request that got no
+	answer may have changed it)."""
+	await _refetch()
+
+
 func _refetch() -> void:
 	if send_override.is_valid():
 		return

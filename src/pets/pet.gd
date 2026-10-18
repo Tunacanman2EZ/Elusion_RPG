@@ -389,7 +389,7 @@ func _find_nearest_enemy() -> Node:
 	# The cost is that the pet will not abandon its target for a closer one that
 	# wanders past. That is a deliberate trade — committing to a kill is what a
 	# lock-on IS, and the alternative is the flapping above.
-	if is_instance_valid(_current_target) and _current_target is Node2D:
+	if is_instance_valid(_current_target) and _current_target is Node2D and can_shoot_at(_current_target):
 		var held: float = global_position.distance_to(_current_target.global_position)
 		if held <= aggro_range * TARGET_KEEP_SLACK:
 			return _current_target
@@ -398,7 +398,7 @@ func _find_nearest_enemy() -> Node:
 	var nearest_dist: float = aggro_range
 
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if not is_instance_valid(enemy):
+		if not is_instance_valid(enemy) or not can_shoot_at(enemy):
 			continue
 		var d: float = global_position.distance_to(enemy.global_position)
 		if d <= nearest_dist:
@@ -406,6 +406,14 @@ func _find_nearest_enemy() -> Node:
 			nearest_dist = d
 
 	return nearest
+
+
+static func can_shoot_at(enemy: Node) -> bool:
+	"""NOT A CAGED BOSS, NOT A CORPSE (0.56.0). A pet locked onto a boss still
+	behind its gate in the arena - six of them stand within its reach - and
+	shot it for the whole fight, every hit refused; or onto a monster playing
+	out its death. The same test a touch screen's auto-aim makes."""
+	return not enemy.has_method("can_be_aimed_at") or bool(enemy.call("can_be_aimed_at"))
 
 
 # =============================================================================

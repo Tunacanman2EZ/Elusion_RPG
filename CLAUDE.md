@@ -6710,6 +6710,109 @@ options".
 - `_test_a_finger_held_uses_an_item()`, `_test_the_hotbar_grows_for_thumbs()`,
   `_test_a_phone_stays_cool_and_unburnt()`.
 
+### What you did is saved, a phone can do what a mouse can (0.56.0)
+
+A bug hunt through saves, the touch screen, items and fights. The owner's
+"looted a mage pet but is not deploying" was the start of it: 0.55.0 let a
+finger summon the pet, and the summon was never saved.
+
+- **A summon or a dismiss saves at once** (player.gd `summon_pet()` and
+  `dismiss_pet()`). Before this, the pet was only saved along with the next XP
+  gain, hit or step, so a pet summoned and then a door, or a closed tab, came
+  back without it.
+- **Every door saves the player as they stand** (scenetransition.gd
+  `_capture_player()`, before the fade). The next area loads its player from
+  the save slot, so HP regenerated, fog walked or a pet summoned since the
+  last save was undone on the far side. **A closed tab does the same**
+  (characterdata.gd `_on_page_leaving()` captures the live player first, as
+  the desktop's close already did).
+- **A pet the server refuses is put away** (serverstorage.gd `heard_save()`,
+  `pet_refused()`, then `CharacterData.pet_not_held()`). The server clears a
+  pet whose item is gone (sold, binned, traded, or lost with the bag) and
+  names it in `ignored`. That answer used to be thrown away, so the pet stayed
+  out until the next login. **A true death takes the pet with the bag** unless
+  the bank holds its item (gameover.gd, `CharacterData.bank_holds()`).
+- **A save belongs to the account that made it** (serverstorage.gd
+  `_push_token`, `session_moved()`). A slow push still going when the next
+  account signed in wrote the old character into the new account's slot.
+- **Skill XP goes to the slot it was earned on** (skilltrainer.gd
+  `_pending_user`, `_pending_slot`, `_set_aside`, `_claim()`). It was sent
+  with whichever slot was playing at flush time, so the last twenty seconds of
+  a warrior's defense went to the mage picked after Switch character. A batch
+  that failed before a logout was sent by whoever signed in next; now another
+  account's XP is forgotten.
+- **No answer is not a refusal** (`CharacterData.got_no_answer()`,
+  `resync_carry()`). A request that timed out may have gone through all the
+  same: a purchase charged, gold banked, an item moved. The client showed the
+  state from before it, so the player pressed again and bought twice. The bag,
+  the shop, the bank and the bank's gold now ask the server again when a
+  request gets no answer.
+- **Items:**
+  - Gear goes on from the bag only (equipmentslot.gd `is_carried()`). A sword
+    dragged straight from the bank sent the bank's cell number.
+  - The trash asks again when a stack grew while its dialog was up
+    (trashslot.gd `changed_since_asked()`). A catch landing on the stack
+    turned "Destroy x3" into four binned.
+  - A trade box edited while a poll was out is sent when the window is free
+    (tradepanel.gd `_offer_dirty`). Before, the box said 1, the server had 9,
+    and Accept traded 9.
+  - Cooking at a firepit you walked away from still updates the bag and the
+    skill.
+  - A potion dragged off its key while it was being drunk still heals.
+- **A phone:**
+  - **A thumb on the game gives the keyboard back** (touchcontrols.gd `played`
+    and `played_now()`). The pad, the stick and a tap on the world end typing,
+    so the phone's keyboard goes away.
+  - **A quick tap on a player's name opens their menu** (`tap_name_at()`, from
+    the stick's touchpad.gd as well). The Players list opens a row's menu with
+    a tap on a touch screen.
+  - **A finger held still and lifted shows the tooltip** of what is under it
+    (`show_tip_at()`) in a box of its own, until the next touch or
+    `TIP_SECONDS`. Godot's tooltips need a mouse resting on a control. A mouse
+    move made in code is not enough: measured in the web build, the tooltip
+    never came.
+  - **Chat on a phone opens without the keyboard.** It stays awake until a
+    thumb goes back to the game, then goes quiet. **Quiet, it passes touches
+    through** (chatpanel.gd `_pass_touches()`), so the stick under it works.
+    Chat on the bar wakes a quiet window, and a swipe scrolls the log (lines
+    are PASS with selection off, `_suit_touch()`). The Friends and Players
+    rows are PASS too, so a swipe scrolls those lists.
+  - **Push to talk needs a key**, so a touch screen uses open mic
+    (partypanel.gd `PUSH_ON_TOUCH`).
+  - The Controls card's touch rows gained "See what something is: Hold it,
+    then let go".
+- **Fights:**
+  - **A click down and up inside one frame is still a click** (player.gd
+    `_left_click_came`). Every tap of a trackpad was missed, and so was any
+    quick click at the battery saver's 30 frames a second.
+  - **Pets and the healer's orbs skip what cannot be hit** (pet.gd
+    `can_shoot_at()`, turretprojectile.gd `_enemy_in_reach()`): a boss still
+    behind its gate, a slime splitting or dying (poisonslime.gd
+    `can_be_aimed_at()`). A pet shot a caged boss for the whole fight.
+  - **The healer's orb looks for its target on its first frame**
+    (turretprojectile.gd `_seek_pending`). `_ready()` runs before the spawner
+    sets the position, so the search started from the world's origin.
+  - **The tank's aura charges a tick's mana when it goes on** (tank.gd
+    `_activate_aura()`) and refuses with less. Toggling it every 0.45 s burned
+    enemies for nothing.
+  - **Pet orbs hit what they are already touching** when they start hitting
+    (petelectricprojectile.gd, petfireprojectile.gd
+    `_enable_hitting_after()`).
+  - **The mage's shot has a lifetime** (magicprojectile.gd `lifetime`, 10 s).
+    A shot aimed off screen flew until a wall stopped it.
+  - **A loot bag from a kill answered in another area drops at your feet**
+    (combat.gd `killed_in`), not at the old area's coordinates inside a wall.
+  - A warrior killed mid-swing died at normal speed.
+- `_test_what_you_do_is_saved_before_you_leave()`,
+  `_test_a_phone_can_do_what_a_mouse_can()`,
+  `_test_items_agree_with_the_server()`,
+  `_test_fights_hit_what_they_aim_at()`, and the SkillTrainer and Players menu
+  tests.
+- **Not fixed yet:** holding a bag cell at the bank uses the item rather than
+  depositing it (a drag deposits). Close buttons and window grips are small
+  under a thumb. The server does not clear `active_pet_id` on a respawn (the
+  client does).
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

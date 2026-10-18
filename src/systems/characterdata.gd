@@ -928,6 +928,12 @@ func _on_page_leaving() -> void:
 	# already there is.
 	if storage == null or not storage.has_method("requests_before_leaving"):
 		return
+	# THE LIVE CHARACTER FIRST (0.56.0), as the desktop's close does
+	# (_quit_after_saving()): the slot holds only what last asked to be saved,
+	# so a pet summoned a moment ago was compared, found unchanged and never sent.
+	var player: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if player != null:
+		save_character_state(player)
 	for request in storage.requests_before_leaving(_save_payload()):
 		Api.send_before_leaving(request["method"], request["path"], request["body"])
 	flush_save()
@@ -1256,6 +1262,30 @@ func delete_character(slot_idx: int, confirm: String) -> Dictionary:
 # =============================================================================
 # CHARACTER STATE (PLAYER ↔ SAVE)
 # =============================================================================
+
+func bank_holds(item_id: String) -> bool:
+	"""Whether the account's bank, as last heard, holds `item_id`."""
+	_ensure_account_data()
+	for entry in account_data.get("bank_inventory", []):
+		if entry is Dictionary and str(entry.get("item_id", "")) == item_id:
+			return true
+	return false
+
+
+func pet_not_held(slot: int) -> void:
+	"""The server will not keep a pet out that `slot` does not hold
+	(ServerStorage.heard_save()): the slot forgets it, and so does the character
+	in the world if it is that slot's."""
+	_ensure_slot_array()
+	if slot < 0 or slot >= character_slots.size() or not (character_slots[slot] is Dictionary):
+		return
+	character_slots[slot]["active_pet_id"] = ""
+	if slot != active_character_index or not is_inside_tree():
+		return
+	var player: Node = get_tree().get_first_node_in_group("player")
+	if player != null and str(player.get("active_pet_id")) != "" and player.has_method("dismiss_pet"):
+		player.dismiss_pet()
+
 
 func save_character_state(player: Node) -> void:
 	# saves player stats AND inventory to the active slot.
@@ -1880,6 +1910,50 @@ func withdraw_gold_from_bank(amount: int, player: Node) -> bool:
 	return await _move_bank_gold("withdraw", amount, player)
 
 
+# NO ANSWER IS NOT "NOTHING HAPPENED" (0.56.0). A request that timed out may
+# have been done all the same - a purchase charged, gold banked, an item
+# moved - and the client went on showing the state from before it, so the
+# player pressed again: bought twice, or was told "You don't have that many."
+# for gold the bank already held. Whatever got no answer asks again.
+var resync_request: Callable = Callable()
+
+
+static func got_no_answer(res: Dictionary) -> bool:
+	"""A request the server may or may not have done: it never said."""
+	return not res.get("ok", false) and int(res.get("status", 0)) == 0
+
+
+func resync_carry() -> bool:
+	"""The bag, the purse and the bank's gold as the server holds them now.
+	COROUTINE."""
+	var index: int = active_character_index
+	if index < 0:
+		return false
+	var res: Dictionary = await _ask_again("/api/character?slot=%d" % index)
+	var data: Variant = res.get("data", {})
+	if not res.get("ok", false) or not (data is Dictionary):
+		return false
+	var status: Variant = (data as Dictionary).get("status", {})
+	var gold: int = int((status as Dictionary).get("gold", -1)) if status is Dictionary else -1
+	var landed: bool = _apply_server_carry({"slot": index, "inventory": (data as Dictionary).get("inventory", []), "gold": gold}, null)
+	var account: Dictionary = await _ask_again("/api/account")
+	if account.get("ok", false) and account.get("data") is Dictionary:
+		var held: Dictionary = account["data"]
+		if held.has("bank_gold"):
+			set_bank_gold(int(held["bank_gold"]))
+		# AN EMPTY ARRAY IS NOT AN EMPTY BANK - every cell comes, nulls included.
+		if held.get("bank_inventory") is Array and not (held["bank_inventory"] as Array).is_empty():
+			_ensure_account_data()
+			account_data["bank_inventory"] = _normalise_item_array(held["bank_inventory"])
+	return landed
+
+
+func _ask_again(path: String) -> Dictionary:
+	if resync_request.is_valid():
+		return await resync_request.call(path)
+	return await Api.get_json(path)
+
+
 func _move_bank_gold(op: String, amount: int, player: Node) -> bool:
 	if amount <= 0 or player == null:
 		return false
@@ -1897,6 +1971,8 @@ func _move_bank_gold(op: String, amount: int, player: Node) -> bool:
 		var message: String = str(res.get("error", "")).strip_edges()
 		if target != null and target.has_method("show_notice"):
 			target.show_notice(message if message != "" else "The bank could not move that gold.")
+		if got_no_answer(res):
+			await resync_carry()
 		return false
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 	set_bank_gold(int(data.get("bank_gold", get_bank_gold())))

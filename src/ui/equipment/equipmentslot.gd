@@ -95,6 +95,14 @@ func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
 	if incoming == null or not incoming.is_valid():
 		return false
 
+	# FROM THE BAG ONLY (0.56.0). Gear is put on from a carried cell; the
+	# server reads `position` as one of the 30 carried cells. A sword dragged
+	# straight from the bank lit this square up, then sent the BANK's cell
+	# number - refused as no such cell, or, for a bank cell under 30, putting
+	# on whatever the bag held there.
+	if not is_carried(data.get("source_slot")):
+		return false
+
 	# THIS SQUARE, not any square. A helm dropped on the chest is refused here
 	# rather than silently redirected: the cursor going dead over the wrong
 	# slot is how a player learns where a piece goes, and moving it for them
@@ -127,9 +135,20 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 	# here as well would be a second source of truth that is right until the
 	# save is refused.
 	var source: Variant = data.get("source_slot")
+	if not is_carried(source):
+		return
 	var from_cell: int = source.slot_index \
 		if source is InventorySlot and is_instance_valid(source) else -1
 	equip_requested.emit(equip_slot_name, incoming.data.item_id, from_cell)
+
+
+static func is_carried(source: Variant) -> bool:
+	"""A drag from somewhere gear can be put on from: the bag or a hotbar key
+	(or nothing named, which the panel resolves from the bag itself)."""
+	if not (source is InventorySlot) or not is_instance_valid(source):
+		return true
+	var kind: String = str((source as InventorySlot).slot_type)
+	return kind != InventorySlot.BANK_SLOT_TYPE and kind != InventorySlot.LOOT_SLOT_TYPE
 
 
 # =============================================================================

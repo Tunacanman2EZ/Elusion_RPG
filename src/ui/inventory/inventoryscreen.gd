@@ -447,12 +447,21 @@ func _use_consumable(slot: InventorySlot) -> void:
 		# server's own refusals ("You need level 22.") are worth showing
 		# verbatim - they say the thing the player needs to hear.
 		_notify(str(res.get("error", "That cannot be used.")))
+		# NO ANSWER IS NOT A REFUSAL (0.56.0). A request that timed out may have
+		# been spent all the same, and the bag went on showing a potion the
+		# server no longer had - every later use of it a 404. The bag is asked
+		# for again.
+		if int(res.get("status", 0)) == 0 and _container != null and _container.has_method("refetch"):
+			_container.refetch()
 		return
 
 	# The slot can have changed under us across the await - a drag, a sync, a
 	# different item in that cell. Re-read rather than trusting the capture.
 	# The server's bag is drawn either way: the potion is gone from it.
 	if slot == null or slot.is_empty() or slot.stack.data != data:
+		# AND IT WAS DRUNK (0.56.0): the server spent it, so it heals - it used
+		# to be gone and heal nobody, the stack having been dragged off the key.
+		_restore_from(data)
 		_adopt_carry(res.get("data", {}) if res.get("data") is Dictionary else {})
 		return
 
@@ -730,6 +739,28 @@ func _consume_one_from_stack(slot: InventorySlot, stack: ItemStack) -> void:
 func _emit_container_changed() -> void:
 	if _container != null and _container.has_signal("inventory_changed"):
 		_container.inventory_changed.emit()
+
+
+func _restore_from(data: ItemData) -> void:
+	"""What a potion the server has spent does, whichever cell it came from."""
+	if data == null or player == null:
+		return
+	var amount: int = _calculate_potion_restore(int(data.restore_amount))
+	if amount <= 0:
+		return
+	Audio.play("potion")
+	match data.restore_target:
+		ItemData.RestoreTarget.HP:
+			if player.has_method("heal"):
+				player.heal(amount)
+		ItemData.RestoreTarget.MANA:
+			if player.has_method("restore_mana"):
+				player.restore_mana(amount)
+			elif "mana" in player and "max_mana" in player:
+				player.mana = clamp(player.mana + amount, 0, player.max_mana)
+		ItemData.RestoreTarget.STAMINA:
+			if "stamina" in player and "max_stamina" in player:
+				player.stamina = clamp(player.stamina + amount, 0, player.max_stamina)
 
 
 func _calculate_potion_restore(base: int) -> int:

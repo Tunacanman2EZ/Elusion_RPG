@@ -76,6 +76,17 @@ var _shown: Dictionary = {"agility": 0, "defense": 0, "magic": 0}
 # The specialty each skill was last reported with, for a batch that comes back.
 var _factor: Dictionary = {"agility": 1.0, "defense": 1.0, "magic": 1.0}
 
+# WHOSE XP IT IS (0.56.0). It was sent with the slot playing AT FLUSH TIME, so
+# a warrior's last twenty seconds of defense went to the mage picked after
+# Switch character - with the mage's specialty on it - and a batch that failed
+# before a logout was sent by whoever signed in next. Now `_pending` belongs to
+# the account and slot it was earned on: a switch sets it aside to go with its
+# own slot (`_set_aside`), and another account forgets it (`_claim()`).
+var _pending_user: String = ""
+var _pending_slot: int = -1
+# [[slot, {skill: raw}], ...] - earned on another slot of the same account.
+var _set_aside: Array = []
+
 
 func _ready() -> void:
 	var timer := Timer.new()
@@ -99,6 +110,7 @@ func report(skill: String, raw_amount: int, factor: float = 1.0) -> int:
 	already, so the bar and the record agree to the point."""
 	if not _pending.has(skill) or raw_amount <= 0:
 		return 0
+	_claim(CharacterData.active_character_index)
 	_factor[skill] = factor
 	_pending[skill] = mini(int(_pending[skill]) + raw_amount, PENDING_CAP)
 	var due: int = int(float(_pending[skill]) * factor)
@@ -109,6 +121,36 @@ func report(skill: String, raw_amount: int, factor: float = 1.0) -> int:
 
 func _on_flush_timer() -> void:
 	await flush()
+
+
+static func _empty() -> Dictionary:
+	return {"agility": 0, "defense": 0, "magic": 0}
+
+
+static func _total(batch: Dictionary) -> int:
+	var total: int = 0
+	for skill in TRAINABLE:
+		total += int(batch.get(skill, 0))
+	return total
+
+
+func _claim(slot: int) -> void:
+	"""The buffer, for `slot` of the account signed in now: another account's
+	is forgotten (it cannot be sent as theirs), and another slot's is set aside
+	to be sent as that slot's."""
+	if str(Api.username) != _pending_user:
+		_pending = _empty()
+		_shown = _empty()
+		_set_aside.clear()
+		_pending_user = str(Api.username)
+		_pending_slot = slot
+		return
+	if slot != _pending_slot:
+		if _pending_slot >= 0 and _total(_pending) > 0:
+			_set_aside.append([_pending_slot, _pending])
+		_pending = _empty()
+		_shown = _empty()
+		_pending_slot = slot
 
 
 # Posts whatever has accumulated and clears it. Public so a logout or a clean
@@ -123,10 +165,11 @@ func flush() -> void:
 	if Api.is_known_offline():
 		return
 
-	# Nothing worth a request.
-	var total: int = 0
-	for skill in TRAINABLE:
-		total += int(_pending.get(skill, 0))
+	# Nothing worth a request - and nothing of another account's.
+	_claim(_pending_slot)
+	var total: int = _total(_pending)
+	for held in _set_aside:
+		total += _total(held[1])
 	if total <= 0:
 		return
 
@@ -134,23 +177,33 @@ func flush() -> void:
 	# flight belongs to the NEXT batch — zeroing after the await would silently
 	# drop it. If the post fails in a way a retry could fix, the snapshot is
 	# added back below.
-	var batch: Dictionary = {
-		"agility": int(_pending["agility"]),
-		"defense": int(_pending["defense"]),
-		"magic":   int(_pending["magic"]),
-	}
-	_pending = {"agility": 0, "defense": 0, "magic": 0}
+	# Each slot's own batch, the one playing now last.
+	var batches: Array = _set_aside.duplicate()
+	_set_aside.clear()
+	if _total(_pending) > 0:
+		batches.append([_pending_slot, _pending])
+	_pending = _empty()
 	# A new batch: the server rounds this one on its own, and so does report().
-	_shown = {"agility": 0, "defense": 0, "magic": 0}
+	_shown = _empty()
 
 	_flushing = true
+	var sent_as: String = _pending_user
+	for entry in batches:
+		await _send(int(entry[0]), entry[1], sent_as)
+	_flushing = false
 
-	var body: Dictionary = {"slot": CharacterData.active_character_index}
+
+func _send(slot: int, held: Dictionary, sent_as: String) -> void:
+	var batch: Dictionary = {
+		"agility": int(held.get("agility", 0)),
+		"defense": int(held.get("defense", 0)),
+		"magic":   int(held.get("magic", 0)),
+	}
+	var body: Dictionary = {"slot": slot}
 	for skill in TRAINABLE:
 		body[skill] = batch[skill]
 
 	var res: Dictionary = await Api.post("/api/skill/train", body, TRAIN_TIMEOUT)
-	_flushing = false
 
 	if not res.get("ok", false):
 		var status: int = int(res.get("status", 0))
@@ -160,7 +213,11 @@ func flush() -> void:
 		# round trip. A 4xx means the server rejected the request itself — bad
 		# slot, expired token, malformed body — and re-sending the identical body
 		# would only 4xx again forever, so it is dropped.
-		if status == 0 or status == 429 or status >= 500:
+		# Back to the slot it was earned on, and only for the same account.
+		if (status == 0 or status == 429 or status >= 500) and str(Api.username) == sent_as:
+			if slot != _pending_slot:
+				_set_aside.append([slot, batch])
+				return
 			for skill in TRAINABLE:
 				_pending[skill] = mini(int(_pending[skill]) + batch[skill], PENDING_CAP)
 				# All of it was shown already, as its own batch.

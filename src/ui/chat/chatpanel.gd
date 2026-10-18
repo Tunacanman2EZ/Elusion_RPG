@@ -56,6 +56,16 @@ const IDLE_FRAME_ALPHA := 0.0
 const IDLE_CHROME_ALPHA := 0.0
 const IDLE_LOG_ALPHA := 0.8
 
+# ON A TOUCH SCREEN (0.56.0) there is no mouse to hover with, and the window is
+# over the stick's half of the screen. So the window is awake from when it is
+# opened until a thumb goes back to the game - the stick, a pad button, the
+# world (TouchControls.played) - and then quiet. Quiet on a touch screen, it is
+# see-through to touches as well as to the eye: the stick and the world under
+# it work. Chat, on the bar, wakes a quiet window and shuts an awake one.
+const _META_FILTER := &"_chat_authored_filter"
+var _touch_awake: bool = false
+var _passing: bool = false
+
 # Matches MAX_CHAT_LENGTH in app.py. Enforced here as well as there so an
 # over-long line is stopped at the keyboard rather than silently cut by the
 # server after it has been sent.
@@ -294,6 +304,12 @@ func _ready() -> void:
 	_build_new_below()
 	if not Settings.changed.is_connected(_on_setting_changed):
 		Settings.changed.connect(_on_setting_changed)
+	var touch: Node = get_node_or_null(^"/root/TouchControls")
+	if touch != null:
+		if not touch.played.is_connected(rest_for_touch):
+			touch.played.connect(rest_for_touch)
+		if not touch.changed.is_connected(_on_touch_changed):
+			touch.changed.connect(_on_touch_changed)
 	_show_channel("world")
 
 	var timer := Timer.new()
@@ -318,6 +334,11 @@ func _ready() -> void:
 # =============================================================================
 
 func toggle() -> void:
+	# QUIET ON A TOUCH SCREEN, Chat on the bar wakes it rather than shutting
+	# it: it is the one way back to a window that lets touches through.
+	if visible and _on_touch() and not is_awake():
+		wake_for_touch()
+		return
 	if visible:
 		close()
 	else:
@@ -344,7 +365,12 @@ func open() -> void:
 		_render()
 		_poll()
 
-	if entry != null:
+	if _on_touch():
+		# NOT ON A TOUCH SCREEN (0.56.0): the phone's keyboard would come up
+		# over half the screen to read a line, and the character would stand
+		# frozen until it was sent. A tap on the box types.
+		wake_for_touch()
+	elif entry != null:
 		# FOCUS GOES TO THE BOX, because opening chat is something you do in
 		# order to type. player.gd's _typing_in_ui() sees the focused LineEdit
 		# and stops polling movement and attack, so the keyboard belongs to
@@ -399,8 +425,75 @@ func hand_back_keyboard() -> void:
 
 func is_awake() -> bool:
 	"""Whether the window is drawn solid: while typing, or with the mouse over
-	it. Otherwise it is the see-through HUD box."""
-	return is_typing() or _hovered
+	it - or, on a touch screen, from opening until a thumb goes back to the
+	game. Otherwise it is the see-through HUD box."""
+	if is_typing():
+		return true
+	if _on_touch():
+		return _touch_awake
+	return _hovered
+
+
+func _on_touch() -> bool:
+	var touch: Node = get_node_or_null(^"/root/TouchControls") if is_inside_tree() else null
+	return touch != null and bool(touch.get("active"))
+
+
+func wake_for_touch() -> void:
+	"""Awake, until a thumb goes back to the game."""
+	_touch_awake = true
+	_refresh_look()
+
+
+func rest_for_touch() -> void:
+	"""A thumb went back to the game: quiet now."""
+	_touch_awake = false
+	_refresh_look()
+
+
+func _on_touch_changed(on: bool) -> void:
+	for label in lines_box.find_children("*", "RichTextLabel", true, false) if lines_box != null else []:
+		_suit_touch(label as RichTextLabel, on)
+	_refresh_look()
+
+
+func _suit_touch(label: RichTextLabel, touch: bool) -> void:
+	"""A SWIPE SCROLLS THE LOG ON A TOUCH SCREEN (0.56.0). Each line selected the
+	text a finger dragged over and stopped the drag there, so the log could not
+	be swiped at all. On a touch screen a line selects nothing and lets the drag
+	through to the scroll; a tap on a name in it still opens their menu."""
+	label.selection_enabled = not touch
+	var wanted: Control.MouseFilter = Control.MOUSE_FILTER_PASS if touch else Control.MOUSE_FILTER_STOP
+	if label.has_meta(_META_FILTER):
+		label.set_meta(_META_FILTER, wanted)
+	else:
+		label.mouse_filter = wanted
+
+
+func is_passing() -> bool:
+	"""Quiet on a touch screen: touches go through to the stick and the world."""
+	return _passing
+
+
+func _pass_touches(on: bool) -> void:
+	if on == _passing:
+		return
+	_passing = on
+	_set_filters(self, on)
+
+
+func _set_filters(node: Node, through: bool) -> void:
+	var control := node as Control
+	if control != null:
+		if through:
+			if not control.has_meta(_META_FILTER):
+				control.set_meta(_META_FILTER, control.mouse_filter)
+			control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		elif control.has_meta(_META_FILTER):
+			control.mouse_filter = int(control.get_meta(_META_FILTER)) as Control.MouseFilter
+			control.remove_meta(_META_FILTER)
+	for child in node.get_children():
+		_set_filters(child, through)
 
 
 func mouse_at(point: Vector2) -> void:
@@ -424,6 +517,7 @@ func _refresh_look() -> void:
 			get_node_or_null("frame/margin/rows/entryrow")]:
 		if part != null:
 			(part as CanvasItem).modulate.a = 1.0 if awake else IDLE_CHROME_ALPHA
+	_pass_touches(visible and not awake and _on_touch())
 
 
 # =============================================================================
@@ -812,6 +906,8 @@ func _render(keep_place: bool = false) -> void:
 		var node: Control = _node_for(line)
 		if node != null:
 			lines_box.add_child(_with_staff_controls(line, node))
+			if _passing:
+				_set_filters(lines_box.get_child(lines_box.get_child_count() - 1), true)
 
 	set_process(visible and not _playing.is_empty())
 
@@ -928,6 +1024,7 @@ func _node_for(line: Dictionary) -> Control:
 	label.scroll_active = false
 	label.selection_enabled = true
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_suit_touch(label, _on_touch())
 	label.add_theme_font_size_override("normal_font_size", 13)
 	# THE EMOJI FONT RIDES ALONG HERE. The entry box gets it from the scene;
 	# these labels are built in code, so they are handed the same one. Without

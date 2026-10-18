@@ -285,8 +285,14 @@ func _row(entry: Dictionary) -> Control:
 # =============================================================================
 
 func _on_row_input(event: InputEvent, who: String, box: Control) -> void:
+	# A TAP TOO, ON A TOUCH SCREEN (0.56.0): a phone has no right button, and the
+	# list was the one place it could not open somebody's menu. A mouse's left
+	# click still opens nothing, as it never has.
 	var click := event as InputEventMouseButton
-	if click == null or click.button_index != MOUSE_BUTTON_RIGHT or not click.pressed:
+	if click == null or not click.pressed:
+		return
+	var tapped: bool = click.button_index == MOUSE_BUTTON_LEFT and TouchControls.active
+	if click.button_index != MOUSE_BUTTON_RIGHT and not tapped:
 		return
 	box.accept_event()
 	open_row_menu(who)
@@ -347,6 +353,10 @@ func _boxed(line: Control, mine: bool) -> Control:
 	PvP banner - and padding written into the style would follow them there.
 	Padding is this list's business; the fill and the border are the theme's."""
 	var box := PanelContainer.new()
+	# PASS, not the PanelContainer's STOP (0.56.0): the row still hears its own
+	# clicks, and a swipe over it reaches the scroll - on a phone the list could
+	# not be swiped where there were rows.
+	box.mouse_filter = Control.MOUSE_FILTER_PASS
 	box.theme_type_variation = OWN_ROW_BOX if mine else ROW_BOX
 
 	var pad := MarginContainer.new()

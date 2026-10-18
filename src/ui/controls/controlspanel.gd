@@ -101,6 +101,8 @@ const TOUCH_ROWS := [
 	["Use, equip or summon an item", "Hold it in your bag"],
 	["Take off a piece of gear", "Hold it in Gear"],
 	["Take one thing from a loot bag", "Hold it, or tap Take all"],
+	# 0.56.0: what a mouse would show by hovering (TouchControls.show_tip_at()).
+	["See what something is", "Hold it, then let go"],
 	["Bag, gear, stats, map and the rest", "The buttons along the bottom"],
 	["This card", "Menu, then Controls"],
 ]

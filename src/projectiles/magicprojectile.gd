@@ -65,6 +65,9 @@ var direction: Vector2 = Vector2.ZERO
 # single boolean is enough.
 var _spent: bool = false
 
+# How long a shot flies before it is gone, hit or not - the fire sprite's 10.
+@export var lifetime: float = 10.0
+
 
 func _ready() -> void:
 	# THE ORB NEVER MOVED. This asked for "animatedsprite2d" and played
@@ -86,6 +89,11 @@ func _ready() -> void:
 		body_entered.connect(_on_body_entered)
 	if not area_entered.is_connected(_on_area_entered):
 		area_entered.connect(_on_area_entered)
+
+	# A LIFETIME, LIKE EVERY OTHER SHOT (0.56.0). This one ended only on a hit or
+	# on leaving the screen - and a shot aimed at somebody off this screen was
+	# never on it, so it flew until a wall or a body stopped it.
+	get_tree().create_timer(lifetime).timeout.connect(destroy_projectile)
 
 	# catch bodies already overlapping on spawn — see notes in arrow.gd
 	# for the "circle enemy, stop close, get shot at" bug. waits one

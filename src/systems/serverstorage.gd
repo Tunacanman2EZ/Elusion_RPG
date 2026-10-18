@@ -321,6 +321,11 @@ func _push(payload: Dictionary) -> void:
 	# during the final await of one push would otherwise start a nested coroutine
 	# frame, and a steady stream of them would nest without bound.
 	_pushing = true
+	# WHOSE PUSH THIS IS (0.56.0). It outlives a logout - finish_saving() waits
+	# at most three seconds - and each PUT took whatever token was current when
+	# it left, so a slow push still going when the next account signed in
+	# wrote the old character into the new account's slot.
+	_push_token = str(Api.token)
 	var current: Dictionary = payload
 
 	while true:
@@ -565,6 +570,15 @@ func requests_before_leaving(payload: Dictionary) -> Array:
 # CHANGE DETECTION
 # =============================================================================
 
+# The session a push began in; see _push().
+var _push_token: String = ""
+
+
+func session_moved() -> bool:
+	"""A push is running for a session that has ended."""
+	return _pushing and str(Api.token) != _push_token
+
+
 func _put_if_changed(key: String, path: String, body: Dictionary,
 		compare: Dictionary = {}) -> void:
 	# Takes the PATH and the BODY, not a started request — so an unchanged
@@ -579,6 +593,8 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 	# changes constantly is swapped for one that does not — see
 	# _save_fingerprint(). Empty means "compare the body itself", which is what
 	# every other section wants.
+	if session_moved():
+		return
 	var fingerprint: String = JSON.stringify(body if compare.is_empty() else compare)
 	if _last_pushed.get(key, "") == fingerprint:
 		# The server already holds exactly this, so a failure recorded for a
@@ -588,12 +604,31 @@ func _put_if_changed(key: String, path: String, body: Dictionary,
 
 	var res: Dictionary = await Api.put(path, body)
 	_record_push(key, res.get("ok", false), fingerprint)
+	if res.get("ok", false) and path == "/api/save":
+		heard_save(body, res.get("data", {}))
 	if not res.get("ok", false):
 		# NOT recorded as pushed. A rejected section stays dirty, so the next
 		# save retries it rather than deciding it is already up to date — which
 		# is exactly how a failed write becomes silent data loss.
 		push_warning("ServerStorage: %s rejected — %s" % [key, res.get("error", "")])
 		return
+
+
+static func pet_refused(answer: Variant) -> bool:
+	"""The save's answer says the pet sent is not one this character holds."""
+	if not (answer is Dictionary):
+		return false
+	var ignored: Variant = (answer as Dictionary).get("ignored", [])
+	return ignored is Array and (ignored as Array).has("active_pet_id")
+
+
+func heard_save(body: Dictionary, answer: Variant) -> void:
+	"""WHAT THE SERVER SAID BACK TO A SAVE (0.56.0). A pet whose item is gone -
+	sold, binned, traded, lost with the bag on a true death - is cleared by the
+	server and named in `ignored`, and that answer was thrown away: the pet
+	stayed out, and came back at every door, until the next login."""
+	if pet_refused(answer):
+		CharacterData.pet_not_held(int(body.get("slot", -1)))
 
 
 func forget_slot(index: int) -> void:

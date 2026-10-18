@@ -848,3 +848,10 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	slime.call_deferred("set", "spawn_position", safe_position)
 
 	slime.call_deferred("reset_physics_interpolation")
+
+
+func can_be_aimed_at() -> bool:
+	"""NOR ONE DYING OR SPLITTING (0.56.0): both set _is_resolving with their
+	shapes already off, and _dying is never set here - so auto-aim and pets
+	shot straight through a body that could no longer be hit."""
+	return super() and not _is_resolving

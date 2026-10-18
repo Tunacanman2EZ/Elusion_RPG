@@ -478,6 +478,14 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# weapons included; only a paid revive keeps it.
 	slot_data["equipment"] = {}
 
+	# THE PET GOES WITH THE BAG (0.56.0), unless the bank holds it - the same
+	# rule the server keeps a pet out by (_owns_item() in app.py). It stayed
+	# out after a true death: summoned again at every door, with no item in
+	# the bag to put it away with.
+	var pet: String = str(slot_data.get("active_pet_id", ""))
+	if pet != "" and not CharacterData.bank_holds(pet):
+		slot_data["active_pet_id"] = ""
+
 	# HP IS NOT SET HERE ANY MORE, and that line is the bug this whole path was
 	# rewritten for. It wrote full health into the slot on the client's own
 	# authority; the server saw the next sync as an unexplained heal from zero

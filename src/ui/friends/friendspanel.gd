@@ -244,6 +244,8 @@ func _add_row(person: Dictionary, now: int, kind: String) -> void:
 
 	var frame := PanelContainer.new()
 	frame.theme_type_variation = &"PanelSlot"
+	# PASS (0.56.0): a swipe over a row scrolls the list on a phone.
+	frame.mouse_filter = Control.MOUSE_FILTER_PASS
 	rows.add_child(frame)
 
 	var margin := MarginContainer.new()

@@ -229,6 +229,9 @@ func _poll(render_our_side: bool = false) -> void:
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
 	_busy = false
+	# AN EDIT MADE DURING THE POLL GOES NOW (see _push_offer()).
+	if _offer_dirty:
+		_push_offer.call_deferred()
 
 	if not res.get("ok", false):
 		_set_notice(_refusal_text(res, "Could not read the trade."), true)
@@ -881,10 +884,18 @@ func _on_offer_edited(_value: float) -> void:
 	await _push_offer()
 
 
+# AN EDIT THAT COULD NOT GO YET (0.56.0). A box changed while a poll or the
+# last push was out was dropped - the box said 1, the server still had 9, and
+# Accept traded 9. It is sent the moment the window is free instead.
+var _offer_dirty: bool = false
+
+
 func _push_offer() -> void:
 	if _busy:
+		_offer_dirty = true
 		return
 	_busy = true
+	_offer_dirty = false
 	var res: Dictionary = await Api.post("/api/trade/update", {
 		"items": _collect_offer(),
 		"gold": int(gold_spin.value),
@@ -893,8 +904,13 @@ func _push_offer() -> void:
 		return
 	_busy = false
 
+	if _offer_dirty:
+		await _push_offer()
+		return
 	if not res.get("ok", false):
 		_set_notice(_refusal_text(res, "The kingdom would not record that offer."), true)
+		# THE BOXES SAY WHAT THE SERVER HOLDS, not the value it refused (0.56.0).
+		_poll.call_deferred(true)
 		return
 
 	# CHANGING AN OFFER WITHDRAWS BOTH ACCEPTANCES - the server does that, not
@@ -974,8 +990,18 @@ func _confirm_body() -> Dictionary:
 
 
 func _on_confirm_pressed() -> void:
-	if _busy:
+	# ACCEPT MEANS WHAT YOU SAW, YOUR SIDE INCLUDED (0.56.0): an edit still
+	# waiting to go is sent first, and the window waits for a poll in flight
+	# rather than dropping the press.
+	var until: int = Time.get_ticks_msec() + int(REQUEST_TIMEOUT * 1000.0) + 500
+	while _busy and is_inside_tree() and Time.get_ticks_msec() < until:
+		await get_tree().process_frame
+	if not is_instance_valid(self) or not is_inside_tree() or _busy:
 		return
+	if _offer_dirty:
+		await _push_offer()
+		if not is_instance_valid(self) or not is_inside_tree() or _busy:
+			return
 	_busy = true
 	var acting: Node = _player if is_instance_valid(_player) else null
 	var res: Dictionary = await Api.post("/api/trade/confirm", _confirm_body(), REQUEST_TIMEOUT)

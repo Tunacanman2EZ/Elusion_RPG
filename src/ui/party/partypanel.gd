@@ -374,9 +374,17 @@ func render_voice() -> void:
 	if voice_switch != null:
 		voice_switch.button_pressed = Voice.wanted()
 		voice_switch.text = "Voice on" if Voice.is_on() else ("Voice..." if Voice.wanted() else "Voice")
+	# PUSH TO TALK NEEDS A KEY (0.56.0). On a touch screen there is none to hold,
+	# so it is not offered there - picked, the microphone never opened and the
+	# window said "Hold V to talk" to a phone. A touch screen in that mode is
+	# put back on Open mic.
+	var touch: bool = TouchControls.active
+	if touch and Voice.mode == Voice.MODE_PUSH:
+		Voice.set_mode(Voice.MODE_OPEN)
 	if voice_mode != null:
 		voice_mode.select(1 if Voice.mode == Voice.MODE_PUSH else 0)
-		voice_mode.set_item_text(1, "Push to talk (%s)" % talk_key())
+		voice_mode.set_item_text(1, PUSH_ON_TOUCH if touch else "Push to talk (%s)" % talk_key())
+		voice_mode.set_item_disabled(1, touch)
 	if mute_button != null:
 		mute_button.button_pressed = Voice.muted
 		mute_button.text = "Unmute" if Voice.muted else "Mute"
@@ -389,6 +397,9 @@ func render_voice() -> void:
 	if not voice_box.visible and settings_open():
 		show_settings(false)
 	render_settings()
+
+
+const PUSH_ON_TOUCH := "Push to talk (needs a keyboard)"
 
 
 static func talk_key() -> String:

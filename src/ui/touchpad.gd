@@ -462,6 +462,10 @@ class Stick extends Control:
 	var finger: int = -1
 	var coin: Texture2D = null
 
+	# Where and when the thumb came down, for a tap on a name.
+	var _landed_at: Vector2 = Vector2.ZERO
+	var _landed_msec: int = 0
+
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		focus_mode = Control.FOCUS_NONE
@@ -485,11 +489,18 @@ class Stick extends Control:
 			if touch.pressed and finger < 0:
 				# WHERE THE THUMB LANDS, exactly: a touch alone is no way at
 				# all, and only a slide from it walks.
+				TouchControls.played_now()
 				finger = touch.index
 				base = touch.position
 				knob = Vector2.ZERO
+				_landed_at = touch.position
+				_landed_msec = Time.get_ticks_msec()
 				_say()
 			elif not touch.pressed and touch.index == finger:
+				# A QUICK TAP THAT WENT NOWHERE may be on a name (0.56.0).
+				if Time.get_ticks_msec() - _landed_msec <= TouchControls.NAME_TAP_MSEC \
+						and touch.position.distance_to(_landed_at) <= TouchControls.NAME_TAP_SLIDE:
+					TouchControls.tap_name_at(get_global_transform_with_canvas() * touch.position)
 				let_go()
 			accept_event()
 			return

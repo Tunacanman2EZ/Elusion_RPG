@@ -19,6 +19,8 @@ extends Control
 # normally deserves because the alternative — a purchase that timed out on the
 # client but landed on the server — is the one outcome a shop must not produce.
 const REQUEST_TIMEOUT := 6.0
+# Its static got_no_answer() is asked of the script, not the autoload.
+const DataScript := preload("res://src/systems/characterdata.gd")
 
 # Icon size in a stock row. Matches the inventory slot art so the same item
 # looks the same in both places.
@@ -483,6 +485,12 @@ func _on_buy_pressed(item_id: String, price: int) -> void:
 
 	if not res.get("ok", false):
 		_set_notice(_refusal_text(res, "The vendor refused the sale."), true)
+		# A BUY THAT GOT NO ANSWER MAY HAVE GONE THROUGH (0.56.0): the purse and
+		# the bag are asked for again, so a second press is not a second buy.
+		if DataScript.got_no_answer(res):
+			await CharacterData.resync_carry()
+			if is_instance_valid(self) and is_inside_tree():
+				_refresh_gold()
 		return
 
 	var data: Dictionary = res.get("data", {})

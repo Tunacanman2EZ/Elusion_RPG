@@ -119,6 +119,8 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 		return
 
 	var slot: int = CharacterData.active_character_index
+	# WHERE THE KILL WAS (0.56.0): see the bag below.
+	var killed_in: Node = get_tree().current_scene if is_inside_tree() else null
 
 	var res: Dictionary = await Api.post("/api/combat/kill", {
 		"slot": slot,
@@ -155,7 +157,17 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
 
 	_apply_xp(target, data)
-	_spawn_loot_bag(data, target, at_position)
+	# AT YOUR FEET IN ANOTHER AREA (0.56.0). A portal taken before the answer
+	# came put the field's bag in town at the field's coordinates - inside a
+	# wall, or off the map. The server holds the bag and nothing finds it again
+	# later, so it is dropped where the player now stands rather than lost.
+	var drop_at: Vector2 = at_position
+	if is_inside_tree() and get_tree().current_scene != killed_in:
+		var here: Node2D = get_tree().get_first_node_in_group("player") as Node2D
+		if here == null:
+			return
+		drop_at = here.global_position
+	_spawn_loot_bag(data, target, drop_at)
 
 	if OS.is_debug_build():
 		print("[KILL] %s — %d xp, %d item(s)%s" % [
