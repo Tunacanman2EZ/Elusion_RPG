@@ -12,7 +12,8 @@
 # the two paths, and BOTH OF THEM ARE SERVER CALLS NOW:
 # - revive: POST /api/character/revive  — takes the price, refills the pools
 # - return: POST /api/character/respawn — burns the carry gold through the
-#           ledger, empties the carry bag, refills the pools
+#           ledger, empties the carry bag, puts the pet away unless the bank
+#           holds one, refills the pools
 #
 # The return path was local until it produced a character on 52 hp. The rule
 # both halves now follow is the one in CLAUDE.md: the client sends what it DID,
@@ -442,16 +443,16 @@ func _on_return_pressed() -> void:
 	# The server has destroyed the gold, emptied the carry bag and refilled the
 	# three pools. Bring the local copies into line rather than recomputing
 	# them, so the client never disagrees with the row it was just handed.
-	_clear_carry_on_death(char_name)
-	_apply_restored_status(char_name, res.get("data", {}).get("status", {})
-		if res.get("data", {}) is Dictionary else {})
+	var answer: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+	_clear_carry_on_death(char_name, answer)
+	_apply_restored_status(char_name, answer.get("status", {}) if answer.get("status", {}) is Dictionary else {})
 
 	# clear the death state and head back to character select
 	GameState.death_state = {}
 	get_tree().change_scene_to_file(character_select_path)
 
 
-func _clear_carry_on_death(char_name: String) -> void:
+func _clear_carry_on_death(char_name: String, answer: Dictionary = {}) -> void:
 	# zero out the dying character's carry gold and clear their inventory.
 	# writes directly to the save slot since the player node is no longer alive.
 	#
@@ -482,8 +483,14 @@ func _clear_carry_on_death(char_name: String) -> void:
 	# rule the server keeps a pet out by (_owns_item() in app.py). It stayed
 	# out after a true death: summoned again at every door, with no item in
 	# the bag to put it away with.
+	#
+	# THE SERVER'S WORD SINCE 0.56.2: the respawn puts the pet away on its own
+	# row and answers `active_pet_id`, and that is what is taken. A server from
+	# before says nothing, and the rule is kept here for it.
 	var pet: String = str(slot_data.get("active_pet_id", ""))
-	if pet != "" and not CharacterData.bank_holds(pet):
+	if answer.has("active_pet_id"):
+		slot_data["active_pet_id"] = str(answer["active_pet_id"])
+	elif pet != "" and not CharacterData.bank_holds(pet):
 		slot_data["active_pet_id"] = ""
 
 	# HP IS NOT SET HERE ANY MORE, and that line is the bug this whole path was

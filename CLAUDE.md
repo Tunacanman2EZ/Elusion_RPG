@@ -6812,7 +6812,7 @@ finger summon the pet, and the summon was never saved.
 - **Not fixed yet:** holding a bag cell at the bank uses the item rather than
   depositing it (a drag deposits). Close buttons and window grips are small
   under a thumb. The server does not clear `active_pet_id` on a respawn (the
-  client does).
+  client does). (All three fixed in 0.56.2, below.)
 
 ### The suite passes on the PC as it does here (0.56.1)
 
@@ -6848,6 +6848,38 @@ fault.
   the bank's "HTTP 0 no answer" and `attach_remote_slots()`'s missing entry
   are each a check provoking it on purpose and reading the answer. The
   leaked RIDs at exit are the ObjectDB line below.
+
+### The three left over from 0.56.0 (0.56.2)
+
+The "not fixed yet" list above, fixed.
+
+- **A finger held on the bag deposits while the bank is open**
+  (`InventoryContainer.held_is_double_click`, set by bankinventory.gd
+  `_wire_carry_container()` for exactly as long as the bank's own
+  double-click is wired). A double-click there is the deposit, a phone cannot
+  make one, and the hold was the right-click - the potion was drunk on its way
+  into the bank. With the bank shut a hold is the right-click again.
+- **A window's × and edges answer a thumb** while the touch screen is in use
+  (panelwindow.gd, UNDER A THUMB). A × was 14 CSS pixels on a phone held
+  sideways and a grip 3. The × answers an invisible `THUMB_CLOSE` (40) CSS
+  pixel square over it (`close_pad_rect()`): never below the header, never over
+  another header button, reaching above and right of the window for what it
+  cannot have there. The left, right and bottom grips and the bottom corners
+  reach `THUMB_GRIP` (16) CSS pixels out past the edge and no further in; the
+  top keeps a mouse's, and the right edge starts below the header. A mouse's
+  sizes come back at the first key or real click. The × is found by name
+  (`find_close_in()`: a button in the header whose name says close), and every
+  window in `WINDOW_PANELS` is checked to have one. A window whose root clips
+  (the chat's) keeps only the inside half of each.
+- **The server's respawn puts the pet away** unless the bank holds one
+  (death/routes.py, with carry/'s `owns_item()` handed in), in the same
+  transaction as the bag, and answers `pet_lost` and the `active_pet_id` left.
+  gameover.gd takes that answer; a server from before says nothing, and the
+  game's own rule is kept for it. Before, a game closed before its next save
+  came back with the pet out and no item to put it away with.
+- `_test_a_finger_held_uses_an_item()`, `_test_windows_fit_a_thumb()`,
+  `_test_what_you_do_is_saved_before_you_leave()`; on the API, test_packages
+  and test_economy.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

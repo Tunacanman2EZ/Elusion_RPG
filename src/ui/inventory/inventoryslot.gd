@@ -304,7 +304,9 @@ func _gui_input(event: InputEvent) -> void:
 #
 # A LOOT BAG'S OR THE BANK'S CELL has nothing on the right button. There the
 # mouse takes an item with a double-click, which a phone has no way to make
-# either, so a hold there is the double-click.
+# either, so a hold there is the double-click. SO IS THE BAG'S, WHILE THE BANK
+# IS OPEN (0.56.2): a double-click there is the deposit, and the hold used the
+# item instead (InventoryContainer.held_is_double_click).
 #
 # NOT ON A HOTBAR KEY. A tap uses a key (hotbar.gd, 0.53.0), so a key held
 # would be used twice. HotbarSlot turns this off.
@@ -348,10 +350,17 @@ func _hold_done(ticket: int) -> void:
 	# A short buzz, where the phone has one: the finger is over the item, so
 	# the thumb cannot see the cell to know the hold has done its work.
 	Input.vibrate_handheld(30)
-	if slot_type == LOOT_SLOT_TYPE or slot_type == BANK_SLOT_TYPE:
+	if slot_type == LOOT_SLOT_TYPE or slot_type == BANK_SLOT_TYPE or _home_takes_holds():
 		slot_double_clicked.emit(self)
 	else:
 		slot_right_clicked.emit(self)
+
+
+func _home_takes_holds() -> bool:
+	"""Whether the grid this cell is in hears a hold as the double-click - the
+	bag, while the bank is open."""
+	return home_container != null and is_instance_valid(home_container) \
+		and home_container.get("held_is_double_click") == true
 
 
 # =============================================================================

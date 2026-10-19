@@ -40,6 +40,9 @@
 class_name PanelWindow
 extends RefCounted
 
+# The pad's sizes in CSS pixels (thumb_scale()), for UNDER A THUMB below.
+const PadScript := preload("res://src/ui/touchpad.gd")
+
 
 # WHERE THE HEADER LIVES, and there are only three shapes across every panel in
 # the project. Written out rather than searched for, so a new panel that does
@@ -167,6 +170,7 @@ static func attach(panel: Control, layout_key: String,
 	made.key = layout_key
 	made._take_control()
 	made._build_grips()
+	made._find_close()
 	made._wire()
 	made._restore()
 	return made
@@ -220,6 +224,14 @@ func _wire() -> void:
 	if view != null and not view.size_changed.is_connected(_on_viewport_resized):
 		view.size_changed.connect(_on_viewport_resized)
 
+	# A THUMB OR A MOUSE, and the window is sized for whichever is in use
+	# (UNDER A THUMB, below): told when it changes, and looked at again each
+	# time the window opens, when its header has been laid out.
+	if not TouchControls.changed.is_connected(_on_touch_changed):
+		TouchControls.changed.connect(_on_touch_changed)
+	if not window.visibility_changed.is_connected(_on_shown_for_thumbs):
+		window.visibility_changed.connect(_on_shown_for_thumbs)
+
 	# AND WHEN WHAT IT HOLDS GROWS (0.8.0): a bigger text size or a wider font
 	# makes the content need more room than the window has, and a full-rect
 	# panel cannot be smaller than its contents - it would draw past the grips.
@@ -260,6 +272,8 @@ func _on_viewport_resized() -> void:
 	if is_instance_valid(window):
 		refit_scrolls()
 		_fit()
+		if window.is_visible_in_tree():
+			fit_to_thumbs()
 
 
 # =============================================================================
@@ -404,6 +418,192 @@ func _add_grip(grip_name: String, edges: int, cursor: Control.CursorShape,
 	grip.offset_right = offset_end.x
 	grip.offset_bottom = offset_end.y
 	grip.gui_input.connect(_on_grip_input.bind(edges))
+
+
+# =============================================================================
+# UNDER A THUMB (0.56.2)
+# =============================================================================
+# The owner's list at 0.56.0: "close buttons and window grips are small under
+# a thumb". A × is 24 to 28 game units and a grip 5, and a phone held sideways
+# shows about two game units to a CSS pixel (touchpad.gd thumb_scale()) - a ×
+# of 14 CSS pixels and a grip of 3, where a fingertip is 40 or more. So while
+# the touch screen is in use (TouchControls.active):
+#
+# - THE × ANSWERS A THUMB-SIZED SQUARE around it, THUMB_CLOSE CSS pixels: an
+#   invisible pad over it that presses it. NEVER BELOW THE HEADER, so it takes
+#   nothing from what the window holds, and never over another button in the
+#   header (the Players window's Refresh). What it cannot have there it takes
+#   above the window and to its right, where there is nothing of the window's.
+# - THE GRIPS REACH OUT PAST THE EDGE by THUMB_GRIP CSS pixels and no further
+#   in: inside, the five pixels a mouse has, so a finger meant for the content
+#   is never taken. Not the top edge or its corners - that is where the ×
+#   reaches out, and the header moves the window - and the right edge starts
+#   below the header for the same reason.
+#
+# BACK TO A MOUSE'S SIZES when a key or a mouse is used again. A window whose
+# own root clips what it draws (the chat's) keeps only the inside half of each.
+const THUMB_CLOSE := 40.0
+const THUMB_GRIP := 16.0
+
+# As a phone, for the suite: the CSS pixel ratio, 0 for the screen's own.
+static var pixel_ratio_for_test: float = 0.0
+
+var close_button: BaseButton = null
+var _close_pad: Control = null
+var _close_armed: bool = false
+
+
+func _find_close() -> void:
+	"""The header's ×: the button in it whose name says close - every window
+	has one, and the suite checks that each was found."""
+	close_button = find_close_in(header)
+
+
+static func find_close_in(where: Node) -> BaseButton:
+	if where == null:
+		return null
+	for child in where.get_children():
+		var button := child as BaseButton
+		if button != null and button.name.to_lower().contains("close"):
+			return button
+		var deeper: BaseButton = find_close_in(child)
+		if deeper != null:
+			return deeper
+	return null
+
+
+func thumb_units() -> float:
+	"""Game units to a CSS pixel where this window is drawn: 1 on a laptop,
+	near 2 on a phone held sideways (touchpad.gd thumb_scale())."""
+	if not is_instance_valid(window) or not window.is_inside_tree():
+		return 1.0
+	var win: Window = window.get_window()
+	if win == null:
+		return 1.0
+	var view: Vector2 = window.get_viewport_rect().size
+	var drawn_at: Vector2 = Vector2(win.content_scale_size) if win.content_scale_size != Vector2i.ZERO else view
+	var ratio: float = pixel_ratio_for_test if pixel_ratio_for_test > 0.0 else DisplayServer.screen_get_scale()
+	return PadScript.thumb_scale(Vector2(win.size), drawn_at, ratio)
+
+
+func _on_touch_changed(on: bool) -> void:
+	# A MOUSE'S SIZES AT ONCE, open or shut - they need no layout. A thumb's
+	# wait for the window to be showing, when its header has a size.
+	if is_instance_valid(window) and (window.is_visible_in_tree() or not on):
+		fit_to_thumbs()
+
+
+func _on_shown_for_thumbs() -> void:
+	# A FRAME AFTER IT APPEARS, when the header has its size.
+	if not is_instance_valid(window) or not window.is_visible_in_tree():
+		return
+	await window.get_tree().process_frame
+	if is_instance_valid(window) and window.is_visible_in_tree():
+		fit_to_thumbs()
+
+
+func fit_to_thumbs() -> void:
+	"""The ×'s pad and the grips, at a thumb's sizes or a mouse's."""
+	if not is_instance_valid(window):
+		return
+	var units: float = thumb_units() if TouchControls.active else 0.0
+	_place_grips(units * THUMB_GRIP)
+	_place_close_pad(units * THUMB_CLOSE)
+
+
+func _place_grips(out: float) -> void:
+	# The right edge starts below the header while it reaches out, so it is
+	# never in front of the ×'s pad.
+	var below_header: float = CORNER
+	if out > 0.0 and is_instance_valid(header):
+		below_header = maxf(CORNER, header.get_global_rect().end.y - window.global_position.y)
+	_set_grip("gripleft", Vector4(-out, CORNER, GRIP, -CORNER))
+	_set_grip("gripright", Vector4(-GRIP, below_header, out, -CORNER))
+	_set_grip("gripbottom", Vector4(CORNER, -GRIP, -CORNER, out))
+	_set_grip("gripbottomleft", Vector4(-out, -CORNER, CORNER, out))
+	_set_grip("gripbottomright", Vector4(-CORNER, -CORNER, out, out))
+
+
+func _set_grip(grip_name: String, offsets: Vector4) -> void:
+	var grip: Control = window.get_node_or_null(NodePath(grip_name)) as Control
+	if grip == null:
+		return
+	grip.offset_left = offsets.x
+	grip.offset_top = offsets.y
+	grip.offset_right = offsets.z
+	grip.offset_bottom = offsets.w
+
+
+static func close_pad_rect(button: Rect2, header_bottom: float, left_wall: float, side: float) -> Rect2:
+	"""Where a thumb presses the ×: a square of `side` (or the button, if that
+	is bigger) centred on `button` - moved up to stay above `header_bottom`,
+	and right to stay right of `left_wall`, another button in the header.
+	Static and pure, so the suite can ask it directly."""
+	var size := Vector2(maxf(side, button.size.x), maxf(side, button.size.y))
+	var at: Vector2 = button.get_center() - size * 0.5
+	if at.x < left_wall:
+		at.x = left_wall
+	if at.y + size.y > header_bottom:
+		at.y = header_bottom - size.y
+	return Rect2(at, size)
+
+
+func _place_close_pad(side: float) -> void:
+	if close_button == null or not is_instance_valid(close_button):
+		return
+	if side <= 0.0:
+		if _close_pad != null:
+			_close_pad.visible = false
+		return
+	if _close_pad == null:
+		_close_pad = Control.new()
+		_close_pad.name = "thumbclose"
+		_close_pad.mouse_filter = Control.MOUSE_FILTER_STOP
+		close_button.add_child(_close_pad)
+		_close_pad.gui_input.connect(_on_close_pad_input)
+	var button: Rect2 = close_button.get_global_rect()
+	var left_wall: float = -INF
+	for other in _header_buttons():
+		if other != close_button and other.is_visible_in_tree():
+			var at: Rect2 = other.get_global_rect()
+			if at.end.x <= button.position.x:
+				left_wall = maxf(left_wall, at.end.x + 2.0)
+	var pad: Rect2 = close_pad_rect(button, header.get_global_rect().end.y, left_wall, side)
+	_close_pad.position = pad.position - button.position
+	_close_pad.size = pad.size
+	_close_pad.visible = true
+
+
+func _header_buttons() -> Array[BaseButton]:
+	var found: Array[BaseButton] = []
+	var walk: Array[Node] = [header]
+	while not walk.is_empty():
+		var node: Node = walk.pop_back()
+		if node is BaseButton:
+			found.append(node as BaseButton)
+		walk.append_array(node.get_children())
+	return found
+
+
+func close_pad() -> Control:
+	"""The ×'s thumb pad, or null before a touch screen was used."""
+	return _close_pad
+
+
+func _on_close_pad_input(event: InputEvent) -> void:
+	# PRESSED AND LET GO ON IT, as a button is.
+	var click := event as InputEventMouseButton
+	if click == null or click.button_index != MOUSE_BUTTON_LEFT:
+		return
+	_close_pad.accept_event()
+	if click.pressed:
+		_close_armed = true
+		return
+	var on_it: bool = Rect2(Vector2.ZERO, _close_pad.size).has_point(click.position)
+	if _close_armed and on_it and is_instance_valid(close_button) and not close_button.disabled:
+		_close_armed = false
+		close_button.pressed.emit()
+	_close_armed = false
 
 
 # =============================================================================

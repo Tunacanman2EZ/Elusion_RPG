@@ -323,6 +323,7 @@ func _run_all() -> void:
 	await _test_a_phone_saves_its_battery()
 	await _test_a_finger_held_uses_an_item()
 	await _test_the_hotbar_grows_for_thumbs()
+	await _test_windows_fit_a_thumb()
 	await _test_a_phone_stays_cool_and_unburnt()
 	await _test_what_you_do_is_saved_before_you_leave()
 	await _test_a_phone_can_do_what_a_mouse_can()
@@ -13579,6 +13580,29 @@ func _test_a_finger_held_uses_an_item() -> void:
 	_finger_on(slot, spot, false)
 	check("  in a loot bag or the bank it is the double-click that takes the item, as the mouse does there",
 		taken.size() == 2 and used.size() == 2, [taken.size(), used.size()])
+	# THE BAG BESIDE AN OPEN BANK (0.56.2): there the double-click is the
+	# deposit, and the hold drank the potion instead.
+	var bag_grid := InventoryContainer.new()
+	add_child(bag_grid)
+	slot.slot_type = "inventory"
+	slot.home_container = bag_grid
+	bag_grid.held_is_double_click = true
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(long_enough).timeout
+	_finger_on(slot, spot, false)
+	var deposited: bool = taken.size() == 3 and used.size() == 2
+	bag_grid.held_is_double_click = false
+	_finger_on(slot, spot, true)
+	await get_tree().create_timer(long_enough).timeout
+	_finger_on(slot, spot, false)
+	check("  in the bag while the bank is open it is the double-click that deposits, and the right-click again once it shuts",
+		deposited and taken.size() == 3 and used.size() == 3, [taken.size(), used.size()])
+	var wiring: String = _func_body(_code_src("res://src/ui/bank/bankinventory.gd"), "func _wire_carry_container(")
+	check("    the bank turns that on as it opens and off as it shuts, with the deposit's own double-click",
+		wiring.contains("carry.set(\"held_is_double_click\", connected)")
+		and wiring.find("held_is_double_click") < wiring.find("if connected:"))
+	slot.home_container = null
+	bag_grid.queue_free()
 	slot.queue_free()
 
 	# ---- a hotbar key and a piece of gear ------------------------------------------------
@@ -13737,6 +13761,103 @@ func _test_the_hotbar_grows_for_thumbs() -> void:
 # burned on the screen we need a slider for bullet projectile brightness and
 # make the game super user friendly on the tutorial screen i think we should
 # mention to players it would be a good idea to adjust options".
+
+func _test_windows_fit_a_thumb() -> void:
+	section("A WINDOW UNDER A THUMB - its × and its edges a finger can hit (0.56.2)")
+	# ---- where the ×'s pad goes -------------------------------------------------------
+	var button := Rect2(100, 10, 28, 28)
+	var free: Rect2 = PanelWindow.close_pad_rect(button, 60.0, -INF, 80.0)
+	check("the × answers a thumb-sized square around it, moved up so it stops at the header's bottom",
+		free == Rect2(74, -20, 80, 80) and free.encloses(button), free)
+	var walled: Rect2 = PanelWindow.close_pad_rect(button, 60.0, 90.0, 80.0)
+	check("  and right, clear of another button in the header",
+		walled == Rect2(90, -20, 80, 80) and walled.encloses(button), walled)
+	check("  never smaller than the × itself",
+		PanelWindow.close_pad_rect(button, 60.0, -INF, 10.0) == button)
+
+	# ---- every window has a × to find, by its scene -----------------------------------------
+	var without: Array = []
+	for entry in WINDOW_PANELS:
+		var text: String = FileAccess.get_file_as_string(entry[1])
+		var found := false
+		for header_path in PanelWindow.HEADER_PATHS:
+			var rule := RegEx.create_from_string(
+				"\\[node name=\"[^\"]*close[^\"]*\" type=\"Button\" parent=\"" + header_path)
+			if rule.search(text) != null:
+				found = true
+		if not found:
+			without.append(entry[2])
+	check("every window has a × in its header for the pad to press", without.is_empty(), without)
+
+	# ---- a window, as a phone draws it ---------------------------------------------------------
+	TouchControls.set_active(false)
+	PanelWindow.pixel_ratio_for_test = 2.0
+	var options: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(options)
+	await get_tree().process_frame
+	var dressed: PanelWindow = options.get("_window") as PanelWindow
+	options.open()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	options.global_position = Vector2(200, 100)
+	var grip_right: Control = options.get_node("gripright") as Control
+	var grip_left: Control = options.get_node("gripleft") as Control
+	var grip_bottom: Control = options.get_node("gripbottom") as Control
+	var grip_corner: Control = options.get_node("gripbottomright") as Control
+	var grip_top: Control = options.get_node("griptop") as Control
+	var mouse_grips: Array = [grip_left.offset_left, grip_right.offset_right, grip_bottom.offset_bottom,
+		grip_corner.offset_right, grip_top.offset_top]
+	check("with a mouse, the × has no pad and the grips sit on the edge",
+		dressed != null and dressed.close_pad() == null and mouse_grips == [0.0, 0.0, 0.0, 0.0, 0.0], mouse_grips)
+	TouchControls.set_active(true)
+	await get_tree().process_frame
+	var units: float = dressed.thumb_units() if dressed != null else 0.0
+	var pad: Control = dressed.close_pad() if dressed != null else null
+	var close_at: Rect2 = dressed.close_button.get_global_rect() if dressed != null else Rect2()
+	var header_at: Rect2 = dressed.header.get_global_rect() if dressed != null else Rect2()
+	var side: float = PanelWindow.THUMB_CLOSE * units
+	check("on a touch screen the × answers a square THUMB_CLOSE CSS pixels across, over the × and no lower than the header",
+		units > 1.2 and pad != null and pad.visible and pad.get_global_rect().size.is_equal_approx(Vector2(side, side))
+		and pad.get_global_rect().encloses(close_at) and pad.get_global_rect().end.y <= header_at.end.y + 0.01,
+		[units, pad.get_global_rect() if pad != null else null, close_at, header_at])
+	var reach: float = PanelWindow.THUMB_GRIP * units
+	check("  and the grips reach THUMB_GRIP CSS pixels out past the edge, and no further in",
+		is_equal_approx(grip_left.offset_left, -reach) and is_equal_approx(grip_right.offset_right, reach)
+		and is_equal_approx(grip_bottom.offset_bottom, reach) and is_equal_approx(grip_corner.offset_right, reach)
+		and is_equal_approx(grip_corner.offset_bottom, reach)
+		and grip_left.offset_right == PanelWindow.GRIP and grip_right.offset_left == -PanelWindow.GRIP
+		and grip_bottom.offset_top == -PanelWindow.GRIP, [reach, grip_left.offset_left, grip_right.offset_right])
+	check("  not the top, where the × reaches out, and the right edge only below the header",
+		grip_top.offset_top == 0.0 and grip_right.offset_top >= header_at.end.y - options.global_position.y - 0.01,
+		[grip_top.offset_top, grip_right.offset_top])
+	# A PRESS AND A LET-GO ABOVE THE WINDOW, inside the pad: pushed into the
+	# viewport, so the engine's own hit test is what finds the pad - and marked
+	# as the copy Godot makes of a finger (DEVICE_ID_EMULATION), or TouchControls
+	# hears a real mouse and puts the window back to a mouse's sizes first.
+	var viewport: Viewport = get_viewport()
+	var above: Vector2 = Vector2(close_at.get_center().x, options.global_position.y - 4.0)
+	var on_screen: Transform2D = options.get_global_transform_with_canvas() * options.get_global_transform().affine_inverse()
+	for down in [true, false]:
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = down
+		click.device = InputEvent.DEVICE_ID_EMULATION
+		click.position = on_screen * above
+		click.global_position = click.position
+		viewport.push_input(click, true)
+		await get_tree().process_frame
+	check("  a thumb just above the window's edge, over the ×, closes it",
+		above.y < options.global_position.y and not options.visible, [above, options.visible])
+	TouchControls.set_active(false)
+	await get_tree().process_frame
+	var back: Array = [grip_left.offset_left, grip_right.offset_right, grip_bottom.offset_bottom,
+		grip_corner.offset_right, grip_right.offset_top]
+	check("  and with a mouse again, a mouse's sizes",
+		back == [0.0, 0.0, 0.0, 0.0, PanelWindow.CORNER] and (pad == null or not pad.visible), back)
+	PanelWindow.pixel_ratio_for_test = 0.0
+	options.queue_free()
+	await get_tree().process_frame
+
 
 func _test_a_phone_stays_cool_and_unburnt() -> void:
 	section("SCREEN REST, PROJECTILE BRIGHTNESS, AND OPTIONS ON THE WELCOME (0.55.0)")
@@ -14027,9 +14148,19 @@ func _test_what_you_do_is_saved_before_you_leave() -> void:
 	CharacterData.account_data["bank_inventory"] = [{"item_id": "petmage", "quantity": 1}]
 	over._clear_carry_on_death("warrior")
 	var kept_in_bank: String = str(CharacterData.character_slots[0].get("active_pet_id", ""))
+	# THE SERVER'S ANSWER WINS (0.56.2): its respawn names the pet it left out.
+	over._clear_carry_on_death("warrior", {"active_pet_id": "", "pet_lost": true})
+	var server_put_away: String = str(CharacterData.character_slots[0].get("active_pet_id", "x"))
+	CharacterData.character_slots = [{"name": "Stand-in", "character": "warrior", "active_pet_id": "petmage",
+		"inventory": [], "gold": 5}, null, null, null]
+	CharacterData.account_data["bank_inventory"] = []
+	over._clear_carry_on_death("warrior", {"active_pet_id": "petmage", "pet_lost": false})
+	var server_kept: String = str(CharacterData.character_slots[0].get("active_pet_id", ""))
 	over.free()
 	check("a true death takes the pet with the bag - and keeps it out when the bank holds it, as the server does",
 		gone_with_bag == "" and kept_in_bank == "petmage", [gone_with_bag, kept_in_bank])
+	check("  and what the server's respawn answers is what is kept, either way",
+		server_put_away == "" and server_kept == "petmage", [server_put_away, server_kept])
 
 	stand.queue_free()
 	CharacterData.storage = was_storage

@@ -162,6 +162,9 @@ func _wire_carry_container(connected: bool) -> void:
 		push_warning("BankInventory: carry grid has no transfer signals — drag and double-click will not reach the server")
 		return
 
+	# A FINGER HELD ON THE BAG IS THAT DOUBLE-CLICK, for exactly as long (0.56.2):
+	# a phone has no other way to make one, and the hold used the item instead.
+	carry.set("held_is_double_click", connected)
 	if connected:
 		if not carry.transfer_requested.is_connected(_on_transfer_requested):
 			carry.transfer_requested.connect(_on_transfer_requested)

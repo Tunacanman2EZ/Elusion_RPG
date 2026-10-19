@@ -74,6 +74,13 @@ var is_carry: bool = false
 # server route a drag or the bin in this grid becomes - see THE SERVER DOES IT.
 var is_bank: bool = false
 
+# A CELL HELD IS THE DOUBLE-CLICK WHILE THIS IS ON (0.56.2). The bank turns it
+# on for the bag beside it while it is open: there a double-click is the
+# deposit, and a phone has no way to make one, so a held cell was the
+# right-click instead - a potion drunk on its way into the bank. Off, a held
+# cell is the right-click it always was (inventoryslot.gd _hold_done()).
+var held_is_double_click: bool = false
+
 var capacity: int:
 	get: return grid_width * grid_height
 
