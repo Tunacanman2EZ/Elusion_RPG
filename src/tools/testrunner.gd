@@ -101,6 +101,107 @@ class EngineErrorCounter extends Logger:
 		pass
 
 
+# THE SUITE PLAYS IN A WORLD OF ITS OWN (game 0.57.1).
+#
+# It runs in the same user:// folder as the game, so on the owner's PC it read
+# HIS options: with a bigger text size and the Pixelify font in options.cfg,
+# nine of the GM panel's layout checks failed for no reason in the code. And
+# it wrote them - every value came back, but nothing proved it would.
+#
+# So before the first section the suite points every file of the player's it
+# could touch at one of its own - the options, the voice settings, the keys,
+# the window layout, the welcome card's "seen" - and starts each from its
+# defaults, the way ELUSION_DB points the API's suites at a throwaway
+# database. Then _check_the_players_files_untouched() at the end holds it to
+# that: every file in user:// that is not the suite's own is as it was.
+const SUITE_FILE_PREFIXES := ["_suite", "suite_", "test_"]
+var _players_files: Dictionary = {}
+
+
+func _play_in_a_world_of_its_own() -> void:
+	_players_files = _user_files()
+	Settings.path = "user://_suite_options.cfg"
+	Voice.path = "user://_suite_voice.cfg"
+	Keybinds.path = "user://_suite_keys.cfg"
+	PanelWindow.layout_path = "user://_suite_panels.cfg"
+	ControlsPanel.seen_path = "user://_suite_seen.cfg"
+	# The game copy's login files: a remembered session, the devices it was
+	# told of, and its install id - which every login on the owner's PC is
+	# bound to, so a run that lost it would end them all.
+	Api.SESSION_PATH = "user://_suite_session.cfg"
+	Api.DEVICES_PATH = "user://_suite_devices.cfg"
+	Api.INSTALL_PATH = "user://_suite_install.cfg"
+	Api._install_id = ""
+	_login_menu_script().set("remembered_path", "user://_suite_remembered.cfg")
+	# AND WHAT THE GAME READ FROM THEM AT BOOT, before the suite began. A
+	# remembered login is the owner's real token, and the login screen's
+	# checks open the screen, which resumes it; a server.cfg sends every
+	# request somewhere else. The suite starts signed out, at the default
+	# address, as it does on a machine that never ran the game.
+	Api.token = ""
+	Api.keep_signed_in = false
+	Api.staff_unprotected = false
+	Api._set_identity("", "player", false)
+	Api.BASE_URL = Api.DEFAULT_BASE_URL
+	for own in ["_suite_options.cfg", "_suite_voice.cfg", "_suite_keys.cfg", "_suite_panels.cfg", "_suite_seen.cfg",
+			"_suite_session.cfg", "_suite_devices.cfg", "_suite_install.cfg", "_suite_remembered.cfg"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://" + own))
+	# FROM THE DEFAULTS, whatever the player chose.
+	Settings.reset()
+	Voice.load_settings()
+	Settings.keys.reset_all()
+
+
+static func _login_menu_script() -> Script:
+	return load("res://src/ui/menus/loginmenu.gd") as Script
+
+
+static func _is_suite_file(file_name: String) -> bool:
+	for prefix in SUITE_FILE_PREFIXES:
+		if file_name.begins_with(prefix):
+			return true
+	return false
+
+
+func _user_files() -> Dictionary:
+	"""Every file in user:// that is not the suite's own, by name, with its
+	MD5 - leaving out the logs folder, which the engine writes while it runs."""
+	var out: Dictionary = {}
+	var walk: Array[String] = ["user://"]
+	while not walk.is_empty():
+		var dir_path: String = walk.pop_back()
+		for sub in DirAccess.get_directories_at(dir_path):
+			if dir_path == "user://" and sub == "logs":
+				continue
+			walk.append(dir_path.path_join(sub))
+		for file_name in DirAccess.get_files_at(dir_path):
+			if _is_suite_file(file_name):
+				continue
+			var full: String = dir_path.path_join(file_name)
+			out[full] = FileAccess.get_md5(full)
+	return out
+
+
+func _check_the_players_files_untouched() -> void:
+	section("THE PLAYER'S FILES - a run leaves them as it found them")
+	var now: Dictionary = _user_files()
+	var changed: Array = []
+	for file_path in _players_files:
+		if not now.has(file_path):
+			changed.append("%s removed" % str(file_path).get_file())
+		elif now[file_path] != _players_files[file_path]:
+			changed.append("%s changed" % str(file_path).get_file())
+	for file_path in now:
+		if not _players_files.has(file_path):
+			changed.append("%s made" % str(file_path).get_file())
+	check("every file in user:// that is not the suite's own is as it was before the run",
+		changed.is_empty(), changed)
+	var own_paths: Array = [Settings.path, Voice.path, Keybinds.path, PanelWindow.layout_path, ControlsPanel.seen_path,
+		Api.SESSION_PATH, Api.DEVICES_PATH, Api.INSTALL_PATH, str(_login_menu_script().get("remembered_path"))]
+	check("  and the suite kept to its own: the options, voice, keys, layout, welcome and login files are its",
+		own_paths.all(func(p: String) -> bool: return p.get_file().begins_with("_suite")), own_paths)
+
+
 # Started before the first section and read by _report(), so a SCRIPT ERROR
 # anywhere in the run is a failed check rather than a missing one.
 func _watch_script_errors() -> void:
@@ -141,6 +242,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_say("")
 	_watch_script_errors()
+	_play_in_a_world_of_its_own()
 	# NO SCREEN REST IN A RUN (0.55.0). Nobody touches a suite, and two minutes
 	# in its veil and its frame cap would be what a dozen checks measured.
 	var rest_watch: Timer = Settings.get("_rest_timer") as Timer
@@ -5029,6 +5131,7 @@ func _environment() -> void:
 
 func _report() -> void:
 	_check_no_script_errors()
+	_check_the_players_files_untouched()
 	_say("")
 	_say("=".repeat(60))
 	if skipped > 0:

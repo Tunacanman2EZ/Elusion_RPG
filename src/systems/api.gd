@@ -104,7 +104,7 @@ const BUILD := 7
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.57.0"
+const DISPLAY_VERSION := "0.57.1"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,
@@ -317,7 +317,9 @@ const TIMEOUT := 10.0
 const PROBE_TIMEOUT := 3.0
 
 # where the session token is cached between launches
-const SESSION_PATH := "user://session.cfg"
+# A var, not a const (0.57.1), so the suite keeps a file of its own
+# (testrunner.gd, THE SUITE PLAYS IN A WORLD OF ITS OWN).
+static var SESSION_PATH: String = "user://session.cfg"
 
 # HOW OFTEN THE GAME TELLS THE SERVER IT IS STILL HERE, while a character is in
 # the world. characterhud.gd owns the timer; this is the one statement of the
@@ -1098,7 +1100,9 @@ func login(user: String, password: String, code: String = "") -> Dictionary:
 # who never ticks Remember me would otherwise be asked every single time -
 # which is the complaint this exists to answer. It is no password: the server
 # checks it only after the password and the ban.
-const DEVICES_PATH := "user://devices.cfg"
+# A var, not a const (0.57.1), so the suite keeps a file of its own
+# (testrunner.gd, THE SUITE PLAYS IN A WORLD OF ITS OWN).
+static var DEVICES_PATH: String = "user://devices.cfg"
 
 
 func device_token_for(user: String) -> String:
@@ -1128,7 +1132,9 @@ func _remember_device(user: String, device: String) -> void:
 # it anywhere. ITS OWN FILE, like devices.cfg: it belongs to the computer, so
 # logging out or unticking Remember me must not throw it away, or logging out
 # would be all it took to get a fresh one.
-const INSTALL_PATH := "user://install.cfg"
+# A var, not a const (0.57.1), so the suite keeps a file of its own
+# (testrunner.gd, THE SUITE PLAYS IN A WORLD OF ITS OWN).
+static var INSTALL_PATH: String = "user://install.cfg"
 
 var _install_id: String = ""
 

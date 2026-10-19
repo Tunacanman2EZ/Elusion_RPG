@@ -6913,6 +6913,44 @@ it pays a kill only when its own count agrees the monster died.
 - **Seams**: `Combat.kill_post` (Api.post in the game) and
   `Combat.receipt_wait_seconds`. `_test_a_kill_waits_for_the_servers_receipt()`.
 
+### The suite plays in a world of its own (0.57.1)
+
+19 Oct, from the owner's lesson on test configuration: tests run in their
+own world. The suite ran in the game's own user:// folder, so on the owner's
+PC it read his options - with the text size at 1.3 and the Pixelify font in
+options.cfg, nine of the GM panel's layout checks failed for nothing in the
+code. And it wrote to those files; every value came back, but nothing proved
+it would.
+
+- **Before the first section the suite moves every file of the player's it
+  could touch to one of its own** (testrunner.gd
+  `_play_in_a_world_of_its_own()`): `Settings.path`, `Voice.path`,
+  `Keybinds.path`, `PanelWindow.layout_path`, `ControlsPanel.seen_path`, and
+  the login files `Api.SESSION_PATH`, `Api.DEVICES_PATH`,
+  `Api.INSTALL_PATH` and the login screen's `remembered_path` (loginmenu.gd
+  has no class_name, so it is set through the script). Each becomes
+  `user://_suite_*.cfg`, is removed, and starts from the defaults. They
+  were fixed names; they are `static var`s now, and nothing in the game
+  changes them. The install id matters most: every login on the PC is
+  bound to it, and a run that lost it would end them all.
+- **What the game read at boot is put back too.** The autoloads start
+  before the suite does, so a remembered login was already in memory - the
+  owner's real token, which the login screen resumes when its checks open
+  it - and a `server.cfg` could already have moved the address. The suite
+  starts signed out (`Api.token`, `keep_signed_in`, the identity) at
+  `DEFAULT_BASE_URL`, as on a machine that never ran the game.
+- **And it is checked, not trusted** (`_check_the_players_files_untouched()`,
+  the last section). The MD5 of every file in user:// that is not the
+  suite's own (`_suite*`, `suite_*`, `test_*`; the logs folder left out) is
+  taken at the start and compared at the end, and a file changed, removed
+  or made fails the run by name. Its first run caught `install.cfg made` -
+  the login files were not moved yet.
+- **A new file in user://** needs a path the suite can move (a `static
+  var`) and a line in `_play_in_a_world_of_its_own()`; the last section
+  names it otherwise.
+- The same rule as the API's suites and `ELUSION_DB` (test_isolation.py
+  there checks every suite sets it first).
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —
@@ -7277,6 +7315,16 @@ growing an answer in a hurry beside the thing that needed one.
 
 ## Decided, not built: PvP and the world boss
 
+**Where this stands, 19 Oct.** This was written before presence, and two of
+the four steps below are done since. Players see each other: presence (0.7.0)
+draws every body, name, attack and pet in an area, and the area's monsters
+are shared. And where everyone stands is recorded: presence.py writes a sample
+of each character every 15 seconds it moved (`position_samples`, api/CLAUDE.md
+"WHERE EVERYONE STANDS"), its own table, not a column on `saves`, and nothing
+reads it yet. What is left is step 3, damage the server decides - server-owned
+hp and server-run monsters, E3_SCOPE.md's step 3 - and then the switch. The
+rest of this section is as it was written, for the reasoning.
+
 **The goal:** the owner flips a switch, becomes a world boss, and players can hit
 him. It is a good goal. It is also **not a switch**, and the reason is worth
 writing down before anybody tries.
@@ -7295,7 +7343,8 @@ button on it.
 
 **The ladder, in the order it has to happen:**
 
-1. **Positions on the server — there are none at all.** Not stale ones: none.
+1. **Positions on the server** *(done 19 Oct, as presence's samples - see the
+   top of this section)*. When written: there were none at all. Not stale ones: none.
    `saves` holds `class_id`, `name`, `level`, `area` and the vitals, and **no
    coordinates**. This was got wrong here once already: a pass added `x, y` to
    the `SELECT` in `/api/staff/user` so the owner panel could stand beside
@@ -7310,7 +7359,7 @@ button on it.
    beside somebody since 0.7.4 without it: the presence link draws everyone in
    your area where they stand, so the position is your own game's, not the
    server's (`Presence.meet()`).
-2. **Remote players rendered.** A body, a nameplate, interpolation between
+2. **Remote players rendered** *(done: presence, 0.7.0)*. A body, a nameplate, interpolation between
    updates, and a decision about how many are drawn before it stops being
    affordable. `/api/players/nearby` is the seam and its own comment says so:
    *"the query gains a distance test and the response gains a position, and the

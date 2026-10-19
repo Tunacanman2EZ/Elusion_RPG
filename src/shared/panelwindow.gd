@@ -113,6 +113,9 @@ const MIN_SIZE := Vector2(220.0, 140.0)
 # writes it, so anything else stored in options.cfg is erased the next time any
 # setting changes. A second file cannot be caught by that.
 const LAYOUT_PATH := "user://panels.cfg"
+# LAYOUT_PATH, except under the suite, which keeps a file of its own
+# (testrunner.gd, THE SUITE PLAYS IN A WORLD OF ITS OWN).
+static var layout_path: String = LAYOUT_PATH
 
 # Which edges a grip drags. Combined for corners.
 const EDGE_LEFT := 1
@@ -838,19 +841,19 @@ func _remember() -> void:
 	# READ THEN WRITE, because this file holds every panel and a fresh
 	# ConfigFile written straight out would take the other fifteen with it.
 	# That is the exact behaviour that keeps this out of options.cfg.
-	cfg.load(LAYOUT_PATH)
+	cfg.load(layout_path)
 	cfg.set_value(key, "x", window.position.x)
 	cfg.set_value(key, "y", window.position.y)
 	cfg.set_value(key, "w", window.size.x)
 	cfg.set_value(key, "h", window.size.y)
-	cfg.save(LAYOUT_PATH)
+	cfg.save(layout_path)
 
 
 func _restore() -> void:
 	if key == "":
 		return
 	var cfg := ConfigFile.new()
-	if cfg.load(LAYOUT_PATH) != OK:
+	if cfg.load(layout_path) != OK:
 		return
 	if not cfg.has_section(key):
 		return
@@ -875,4 +878,4 @@ func _restore() -> void:
 static func forget_all() -> void:
 	"""Throw every saved rectangle away. Panels return to where they were
 	authored on the next open."""
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(LAYOUT_PATH))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(layout_path))

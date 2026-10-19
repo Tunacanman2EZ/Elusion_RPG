@@ -48,6 +48,11 @@ signal changed(key: String, value: Variant)
 
 const CONFIG_PATH := "user://options.cfg"
 const SECTION := "options"
+# WHERE THEY ARE KEPT: CONFIG_PATH, except under the suite, which points this
+# at a file of its own before it begins (testrunner.gd, THE SUITE PLAYS IN A
+# WORLD OF ITS OWN) - a player's options must never be a test's input, and a
+# run must never write them.
+static var path: String = CONFIG_PATH
 
 # =============================================================================
 # THE TWO BUSES THE VOLUME SLIDERS MOVE — AND WHY THEY DID NOT EXIST
@@ -1957,14 +1962,14 @@ func load_settings() -> void:
 	_loading = true
 
 	var config := ConfigFile.new()
-	var err: int = config.load(CONFIG_PATH)
+	var err: int = config.load(path)
 
 	# ERR_FILE_NOT_FOUND IS THE NORMAL CASE, not a failure: it is every first
 	# launch. Anything else is a file that exists and could not be read, which
 	# is worth a line in the log — the player is about to silently lose their
 	# preferences and would otherwise have no idea why.
 	if err != OK and err != ERR_FILE_NOT_FOUND:
-		push_warning("Settings: could not read %s (error %d) — using defaults." % [CONFIG_PATH, err])
+		push_warning("Settings: could not read %s (error %d) — using defaults." % [path, err])
 
 	for key in DEFAULTS:
 		set_value(key, stored_value(config, key))
@@ -2007,9 +2012,9 @@ func save_settings() -> void:
 	if _phone_steps > 0:
 		config.set_value(PHONE_TUNED_SECTION, PHONE_TUNED_KEY, _phone_steps)
 
-	var err: int = config.save(CONFIG_PATH)
+	var err: int = config.save(path)
 	if err != OK:
-		push_warning("Settings: could not write %s (error %d)." % [CONFIG_PATH, err])
+		push_warning("Settings: could not write %s (error %d)." % [path, err])
 
 
 # =============================================================================

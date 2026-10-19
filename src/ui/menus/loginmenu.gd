@@ -1304,15 +1304,21 @@ func is_valid_username(input_str: String) -> bool:
 # REMEMBER ME (username only — see class comment re: why not password too)
 # =============================================================================
 
+# A var, not a fixed name (0.57.1), so the suite keeps a file of its own
+# (testrunner.gd, THE SUITE PLAYS IN A WORLD OF ITS OWN). This script has no
+# class_name, so the suite sets it through the script itself.
+static var remembered_path: String = "user://remembered_user.cfg"
+
+
 func save_remembered_user(username: String) -> void:
 	var config := ConfigFile.new()
 	config.set_value("login", "remembered_username", username)
-	config.save("user://remembered_user.cfg")
+	config.save(remembered_path)
 
 
 func load_remembered_user() -> void:
 	var config := ConfigFile.new()
-	var err := config.load("user://remembered_user.cfg")
+	var err := config.load(remembered_path)
 	if err == OK:
 		var remembered_user: String = config.get_value("login", "remembered_username", "")
 		%usernamelineedit.text = remembered_user
