@@ -6676,12 +6676,12 @@ options".
   things on the screen. A projectile is anything a script in
   `res://src/projectiles/` drives, and the large slime's lob
   (`Settings.is_projectile()`). Settings dims one **after its `_ready()`**
-  (`_dim_projectile()`, deferred from `_on_node_added()`, so a remote
-  player's orb is tinted first): its own modulate, which plain sprites under
-  it take. **element_recolour and hearth_warm write COLOR without the
-  modulate** - measured, a 0.3 modulate drew them at full - so each has a
-  `brightness` uniform, set on the materials under a projectile and 1.0 for
-  everything else drawn with them. The bullet field sets its own
+  (`_dim_projectile()`, deferred from `_on_node_added()` by the shot's id,
+  so a remote player's orb is tinted first): its own modulate, which plain
+  sprites under it take. **element_recolour and hearth_warm write COLOR
+  without the modulate** - measured, a 0.3 modulate drew them at full - so
+  each has a `brightness` uniform, set on the materials under a projectile
+  and 1.0 for everything else drawn with them. The bullet field sets its own
   (bulletfield.gd `_shading`). Moving the slider redraws everything in the
   air (`_apply_projectile_brightness()`). At 100% and never moved, nothing is
   touched at all.
@@ -6704,7 +6704,8 @@ options".
 - **Options is 713 tall**: Rest the screen in the right column, Projectile
   brightness in the left. With the password form open the left column is 614
   of the 616 a 720-high window leaves it - there is no room left in either
-  column at this width.
+  column at this width. (Measured without Windows' Graphics API row: 702
+  since 0.56.1, below.)
 - **The page's Full screen button is a square** (web/shell.html): with its
   words it reached over the Bag's close button.
 - `_test_a_finger_held_uses_an_item()`, `_test_the_hotbar_grows_for_thumbs()`,
@@ -6812,6 +6813,41 @@ finger summon the pet, and the summon was never saved.
   depositing it (a drag deposits). Close buttons and window grips are small
   under a thumb. The server does not clear `active_pet_id` on a respawn (the
   client does).
+
+### The suite passes on the PC as it does here (0.56.1)
+
+19 Oct: the owner's run on Windows failed four checks that a Linux run
+passed. Each was the PC being measured differently, and each hid a real
+fault.
+
+- **Options fits a 720-high window on Windows.** The Graphics API row is
+  Windows' alone (`rows_hidden_on()`), so the 713 measured on Linux was 746
+  on the PC - past the 720, and Options scrolled at Normal. Both columns
+  are 4 apart now, not 6, and Options is drawn 702 tall: the right column
+  598 of the 616, the password form beside it, and the email form growing
+  the window to 709. **The suite measures it with the API row shown**,
+  whatever system runs it. A desk with more than one screen adds the
+  Monitor row (628, a 12-pixel scroll at 720 high); a driver hint adds
+  more. Both are past what two columns at this width can hold.
+- **A presence socket that never opens is given up on** after
+  `CONNECT_SECONDS` (presence.gd, 10 s), then tried again after
+  `RETRY_SECONDS` like any failure. Nothing gave up before: Linux refuses a
+  closed port at once, Windows knocks again for about two seconds, and a
+  server that takes the knock and never speaks kept the game "connecting"
+  for ever. The check uses exactly that - a `TCPServer` that listens and is
+  never read - so it waits the same on every system.
+- **A shot freed before its dimming came logs nothing** (settings.gd
+  `_dim_projectile_by_id()`). The dimming is deferred, and a shot that hit on
+  the frame it was made was handed over freed: "Cannot convert argument 1
+  from Object to Object", 19 times in a Linux run. The id is looked up when
+  the call comes, and `instance_from_id()` is null for one already gone.
+- `_test_text_size_and_font()`, `_test_other_players_are_drawn()`,
+  `_test_a_phone_stays_cool_and_unburnt()`.
+- **The other lines in a run's log are the suite's own.** The unknown items
+  (`nosuchthing`), the refused server overrides, `save_data()` with no user,
+  the bank's "HTTP 0 no answer" and `attach_remote_slots()`'s missing entry
+  are each a check provoking it on purpose and reading the answer. The
+  leaked RIDs at exit are the ObjectDB line below.
 
 ### Mixed tabs and spaces inside one indent is a parse error
 

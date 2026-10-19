@@ -1286,12 +1286,26 @@ static func is_projectile(node: Node) -> bool:
 	return path.begins_with(PROJECTILE_SCRIPTS) or path in PROJECTILE_ALSO
 
 
+func _dim_projectile_by_id(id: int) -> void:
+	"""_dim_projectile(), DEFERRED from _on_node_added() so it comes after the
+	projectile's _ready() and after whatever its spawner set on it once it was
+	in - a remote player's orb is tinted then.
+
+	BY ITS ID, NOT THE NODE (0.56.1). A shot that hits on the frame it was
+	made is freed before a deferred call comes, and a freed node handed to a
+	Node argument is no null: the call never runs, and the engine logs
+	"Cannot convert argument 1 from Object to Object" for every one. An id
+	asks again when the call comes, and instance_from_id() is null for a
+	shot already gone."""
+	var node := instance_from_id(id) as Node
+	if node != null:
+		_dim_projectile(node)
+
+
 func _dim_projectile(node: Node) -> void:
 	"""One projectile at the setting: its own modulate, which every plain
 	sprite under it inherits, and the brightness of any material under it
-	drawn with one of PROJECTILE_SHADERS. DEFERRED from _on_node_added(), so
-	it comes after the projectile's _ready() and after whatever its spawner
-	set on it once it was in - a remote player's orb is tinted then."""
+	drawn with one of PROJECTILE_SHADERS."""
 	var item := node as CanvasItem
 	if item == null or not is_instance_valid(item) or not item.is_inside_tree():
 		return
@@ -1610,7 +1624,7 @@ func _on_node_added(node: Node) -> void:
 		# A PROJECTILE, dimmed once it is ready (_dim_projectile()). Nothing
 		# at all happens here until the slider has been moved.
 		_projectiles_touched = true
-		_dim_projectile.call_deferred(node)
+		_dim_projectile_by_id.call_deferred(node.get_instance_id())
 	elif node is Camera2D:
 		# A CAMERA THAT ARRIVES AFTER THE SETTING DID. Every scene change
 		# builds a new player with a new camera carrying the 3.0 its .tscn was

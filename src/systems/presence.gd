@@ -85,6 +85,14 @@ const SEND_SECONDS := 0.1
 const RENEW_SECONDS := 60.0
 # After a failure, wait this long before trying again, then longer.
 const RETRY_SECONDS: Array = [2.0, 5.0, 10.0, 30.0]
+# A LINK THAT NEVER OPENS IS GIVEN UP ON after this long (0.56.1), and tried
+# again after RETRY_SECONDS like any other failure. Nothing gave up before:
+# a refused knock closes the socket at once on Linux, but Windows knocks on
+# a closed port again for about two seconds, and a server behind a firewall
+# that drops the knock never answers at all - the socket said "connecting"
+# for as long as the system's own TCP timeout, twenty seconds and more, or
+# for ever to a server that took the knock and never spoke.
+const CONNECT_SECONDS := 10.0
 # What a body may be said to be doing: the player scenes' own animation names,
 # and the server's rule (presence.py ANIM_PATTERN).
 const ANIM_PATTERN := "^(idle|walk|attack|death|hitflash)(up|down|left|right)$"
@@ -115,6 +123,8 @@ var _my_id: int = -1
 var _send_clock: float = 0.0
 var _renew_clock: float = 0.0
 var _retry_clock: float = 0.0
+# How long the socket has been connecting (CONNECT_SECONDS).
+var _connect_clock: float = 0.0
 var _failures: int = 0
 var _last_state: Dictionary = {}
 var _world: Node = null
@@ -339,6 +349,7 @@ func _begin() -> void:
 		_socket = null
 		_wait()
 		return
+	_connect_clock = 0.0
 	_phase = "connecting"
 
 
@@ -360,6 +371,15 @@ func _pump(delta: float, player: Node) -> void:
 		_lose_lead()
 		return
 	if socket_state != WebSocketPeer.STATE_OPEN:
+		if _phase == "connecting" and socket_state == WebSocketPeer.STATE_CONNECTING:
+			_connect_clock += delta
+			if _connect_clock >= CONNECT_SECONDS:
+				if OS.is_debug_build():
+					print("[PRESENCE] no answer in %d s - trying again later" % int(CONNECT_SECONDS))
+				_socket.close()
+				_clear_remotes()
+				_wait()
+				_lose_lead()
 		return
 	if _phase == "connecting":
 		_phase = "open"

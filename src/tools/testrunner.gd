@@ -8468,26 +8468,42 @@ func _test_text_size_and_font() -> void:
 	# SOMETHING IN THE SCROLL GROWING ON ITS OWN - the account form opening -
 	# grows the window too; nothing outside the scroll changed to say so.
 	var columns_scroll: ScrollContainer = screen.get_node("%columnsscroll") as ScrollContainer
+	# AS WINDOWS DRAWS IT, WHATEVER RUNS THE SUITE (0.56.1). The Graphics API
+	# row is Windows' alone (rows_hidden_on()), so a Linux run measured a
+	# window one row shorter than a player's: 713 there was 746 on the PC,
+	# past the 720 a 720-high window has, and Options scrolled. The suite
+	# measures the taller one, the one players get.
+	screen.api_row.visible = true
 	# The game window changing size while Options is shut measures it too.
 	screen._window._on_viewport_resized()
 	screen.open()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	# 681 since 0.54.0: Brightness and the Battery saver in its right column.
-	# 713 since 0.55.0: Rest the screen there too, and Projectile brightness
-	# in the left - which, with the password form open, is 614 of the 616 a
-	# 720-high window leaves it.
+	# 713 since 0.55.0 - measured without the Windows row. 702 since 0.56.1,
+	# with it: both columns 4 apart, not 6, and the right one 598 of the 616
+	# a 720-high window leaves it.
 	check("Options opens at the size it was drawn at - a hidden window is not measured",
-		screen.size.y == 713.0 and columns_scroll.custom_minimum_size.y + 0.5
+		screen.size.y == 702.0 and columns_scroll.custom_minimum_size.y + 0.5
 		>= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y, screen.size)
 	var before: float = columns_scroll.custom_minimum_size.y
 	screen._show_account_form(screen.account_password_form)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	check("the password form opening makes room for itself rather than scrolling",
-		columns_scroll.custom_minimum_size.y > before
-		and columns_scroll.custom_minimum_size.y + 0.5 >= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y,
-		[before, columns_scroll.custom_minimum_size.y])
+	check("the password form opens beside the taller column, and nothing scrolls",
+		screen.account_password_form.visible
+		and columns_scroll.custom_minimum_size.y + 0.5 >= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y
+		and screen.size.y <= 720.0,
+		[before, columns_scroll.custom_minimum_size.y, screen.size.y])
+	# The email form is the taller of the two: it has to grow the window.
+	screen._show_account_form(screen.account_email_form)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("the email form opening makes room for itself rather than scrolling",
+		screen.account_email_form.visible and columns_scroll.custom_minimum_size.y > before
+		and columns_scroll.custom_minimum_size.y + 0.5 >= PanelWindow.scroll_content(columns_scroll).get_combined_minimum_size().y
+		and screen.size.y <= 720.0,
+		[before, columns_scroll.custom_minimum_size.y, screen.size.y])
 	screen._show_account_form(null)
 	await get_tree().process_frame
 	# A HINT IN THE TALLER COLUMN: a line growing in the shorter one fits
@@ -11655,19 +11671,48 @@ func _test_other_players_are_drawn() -> void:
 		and asked[0][1].get("slot") == CharacterData.active_character_index, asked)
 	await Presence._begin()
 	check("  and waits longer each time it fails", is_equal_approx(Presence._retry_clock, 5.0), Presence._retry_clock)
+	# A SERVER THAT TAKES THE KNOCK AND NEVER SPEAKS (0.56.1): a port that
+	# listens and is never read, so the handshake waits on every system alike.
+	# Before, this was port 9 with nobody on it, and only Linux refuses that
+	# at once - Windows knocks again for two seconds, a headless run's 300
+	# frames were over sooner, and the check passed or failed by the PC.
+	var silent := TCPServer.new()
+	silent.listen(0, "127.0.0.1")
+	var silent_url: String = "ws://127.0.0.1:%d/ws/presence" % silent.get_local_port()
+	Presence._failures = 0
+	Presence.request_ticket = func(_path: String, _request: Dictionary) -> Dictionary:
+		return {"ok": true, "data": {"ticket": "t", "socket_url": silent_url}}
+	await Presence._begin()
+	var connecting: String = Presence.phase()
+	var knocked: float = 0.0
+	var gave_up_at: float = -1.0
+	while knocked < Presence.CONNECT_SECONDS + 1.0:
+		Presence._pump(1.0 / 60.0, stand_in)
+		knocked += 1.0 / 60.0
+		if Presence.phase() != "connecting":
+			gave_up_at = knocked
+			break
+		if roundi(knocked * 60.0) % 30 == 0:
+			await get_tree().process_frame
+	check("a socket that never answers is given up on, and tried again later",
+		silent.is_listening() and connecting == "connecting" and Presence.phase() == "waiting"
+		and Presence.remotes().is_empty() and is_equal_approx(Presence._retry_clock, 2.0),
+		[connecting, Presence.phase(), Presence._retry_clock])
+	check("  after CONNECT_SECONDS of knocking, not before",
+		gave_up_at >= Presence.CONNECT_SECONDS - 0.001 and gave_up_at < Presence.CONNECT_SECONDS + 0.05, gave_up_at)
+	silent.stop()
+	# A port nobody listens on: refused at once, or given up on in time.
 	Presence._failures = 0
 	Presence.request_ticket = func(_path: String, _request: Dictionary) -> Dictionary:
 		return {"ok": true, "data": {"ticket": "t", "socket_url": "ws://127.0.0.1:9/ws/presence"}}
 	await Presence._begin()
-	var connecting: String = Presence.phase()
-	for _i in 300:
-		if Presence.phase() != "connecting":
-			break
+	knocked = 0.0
+	while Presence.phase() == "connecting" and knocked < Presence.CONNECT_SECONDS + 1.0:
 		Presence._pump(1.0 / 60.0, stand_in)
-		await get_tree().process_frame
-	check("a socket that never answers is given up on, and tried again later",
-		connecting == "connecting" and Presence.phase() == "waiting" and Presence.remotes().is_empty(),
-		[connecting, Presence.phase()])
+		knocked += 1.0 / 60.0
+		if roundi(knocked * 60.0) % 30 == 0:
+			await get_tree().process_frame
+	check("  and so is a port nobody is on, refused or not", Presence.phase() == "waiting", Presence.phase())
 
 	# ---- with nobody to draw for --------------------------------------------------------
 	Presence.handle_message({"t": "welcome", "id": 7})
@@ -13824,6 +13869,20 @@ func _test_a_phone_stays_cool_and_unburnt() -> void:
 	field.queue_free()
 	check("  the bullet field's bullets too, made at it and following it", field_at_start and field_follows,
 		[field_at_start, field_follows])
+	# A SHOT GONE BEFORE ITS DIMMING CAME (0.56.1): one that hit on the frame
+	# it was made. The dimming is deferred to after its _ready(), and a freed
+	# node handed to it was an engine error for every one - 19 in a run.
+	var brief_errors := EngineErrorCounter.new()
+	OS.add_logger(brief_errors)
+	var brief: Node2D = (load("res://scene/projectiles/arrow.tscn") as PackedScene).instantiate() as Node2D
+	brief.position = Vector2(-5000, -5000)
+	add_child(brief)
+	brief.free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	OS.remove_logger(brief_errors)
+	check("  a shot gone before its dimming came is passed over, with no engine error",
+		brief_errors.count == 0, "%d: %s" % [brief_errors.count, "; ".join(brief_errors.where)])
 	var shaders_obey: Array = []
 	for path in ["res://src/shared/element_recolour.gdshader", "res://src/shared/hearth_warm.gdshader"]:
 		var code: String = FileAccess.get_file_as_string(path)
