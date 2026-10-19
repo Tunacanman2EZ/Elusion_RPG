@@ -233,6 +233,7 @@ func _run_all() -> void:
 	await _test_the_guild_panel_reads_well()
 	await _test_trades_reach_the_right_people()
 	await _test_the_trade_switch_reaches_the_game()
+	await _test_a_kill_waits_for_the_servers_receipt()
 	await _test_old_versions_must_update()
 	await _test_no_debug_keys_the_panel_does_it()
 	await _test_escape_closes_every_window()
@@ -24195,6 +24196,157 @@ func _test_old_versions_must_update() -> void:
 	Api.is_owner = was_owner
 	gm.queue_free()
 	await get_tree().process_frame
+
+func _test_a_kill_waits_for_the_servers_receipt() -> void:
+	section("KILL RECEIPTS - a kill waits for the server's own count of the fight (0.57.0)")
+	# SECURITY_NOTES E-3, step 2. With the owner's switch on the server pays a
+	# kill only when its books agree the monster died, and answers 202 - "not
+	# yet" - until they have written it down. The server's half is
+	# test_receipts.py; this is the game asking again, and giving up in time.
+	check("the game is build 7, the first that waits for a receipt",
+		Api.BUILD == 7 and Combat.RECEIPT_BUILD == 7, [Api.BUILD, Combat.RECEIPT_BUILD])
+	var pending := {"ok": true, "status": 202, "data": {"pending": true, "retry_after_ms": 100,
+		"message": "The server has not finished counting that fight yet."}}
+	check("a 202 that says pending is the server's \"not yet\" - nothing else is",
+		Combat._receipt_pending(pending)
+		and not Combat._receipt_pending({"ok": true, "status": 200, "data": {"pending": true}})
+		and not Combat._receipt_pending({"ok": true, "status": 202, "data": {}})
+		and not Combat._receipt_pending({"ok": false, "status": 409, "data": {"pending": true}}))
+	var pause_of := func(asked: Variant) -> int:
+		return Combat.receipt_pause_ms({"ok": true, "status": 202, "data": {"pending": true, "retry_after_ms": asked}})
+	check("  asked again after the pause the server names, held to 100..2000 ms",
+		pause_of.call(400) == 400 and pause_of.call(5) == Combat.RECEIPT_RETRY_LEAST_MS
+		and pause_of.call(99999) == Combat.RECEIPT_RETRY_MOST_MS and pause_of.call("soon") == 400
+		and pause_of.call(650.0) == 650, [pause_of.call(5), pause_of.call(99999), pause_of.call("soon")])
+	check("  and when it gives up, it says why it most likely was",
+		Combat.receipt_gave_up_text("off").contains("No live link")
+		and Combat.receipt_gave_up_text("waiting").contains("No live link")
+		and Combat.receipt_gave_up_text("open").contains("did not see that fight"))
+	check("  every kill is posted through the seam, so these checks drive the real loop",
+		not _func_body(_code_src("res://src/systems/combat.gd"), "func report_kill(").contains("Api.post("))
+
+	# ---- the loop, driven ---------------------------------------------------------------
+	var stand_script := GDScript.new()
+	stand_script.source_code = "extends Node2D\nvar xp: int = 0\nvar notices: Array = []\n" \
+		+ "func gain_xp(n: int) -> void:\n\txp += n\n" \
+		+ "func show_notice(message: String) -> void:\n\tnotices.append(message)\n"
+	stand_script.reload()
+	var killer: Node2D = Node2D.new()
+	killer.set_script(stand_script)
+	killer.add_to_group("player")
+	add_child(killer)
+	var kept_post: Callable = Combat.kill_post
+	var kept_wait: float = Combat.receipt_wait_seconds
+	var kept_token: String = Api.token
+	var kept_known: bool = Api.reachability_known
+	var kept_online: bool = Api.server_online
+	Api.token = "test-not-a-real-token"
+	# AS IF THE SERVER HAD ANSWERED: a request the suite makes elsewhere, to no
+	# server, can mark it known offline while these wait - so before each kill.
+	var reachable := func() -> void:
+		Api.reachability_known = true
+		Api.server_online = true
+	var posts: Array = []
+	var answers: Array = []
+	Combat.kill_post = func(path: String, body: Dictionary, _timeout: float) -> Dictionary:
+		posts.append([path, body.duplicate()])
+		await get_tree().process_frame
+		return answers.pop_front() if answers.size() > 1 else answers[0]
+	var paid := {"ok": true, "status": 200, "data": {"enemy_id": "bushmage", "xp_gained": 7, "contents": []}}
+
+	# FILLED IN PLACE, never reassigned: the stand-in post holds this array.
+	answers.append_array([pending, pending, paid])
+	reachable.call()
+	await Combat.report_kill("bushmage", Vector2.ZERO, killer)
+	var bodies_alike: bool = posts.size() == 3
+	for entry in posts:
+		bodies_alike = bodies_alike and entry[0] == "/api/combat/kill" and entry[1] == posts[0][1] \
+			and entry[1].get("enemy_id") == "bushmage"
+	check("pending twice and then paid: three posts of the same kill, paid once",
+		bodies_alike and int(killer.get("xp")) == 7 and (killer.get("notices") as Array).is_empty(),
+		[posts, killer.get("xp"), killer.get("notices")])
+
+	posts.clear()
+	answers.clear()
+	answers.append(pending)
+	Combat.receipt_wait_seconds = 0.35
+	var kept_xp: int = int(killer.get("xp"))
+	reachable.call()
+	await Combat.report_kill("bushmage", Vector2.ZERO, killer)
+	var asked: int = posts.size()
+	await get_tree().create_timer(0.3).timeout
+	var said: Array = killer.get("notices") as Array
+	check("pending past the wait: it gives up, says so, and pays nothing",
+		asked >= 2 and asked <= 6 and int(killer.get("xp")) == kept_xp and said.size() == 1
+		and str(said[0]) == Combat.receipt_gave_up_text(Presence.phase()), [asked, killer.get("xp"), said])
+	check("  and it stops asking", posts.size() == asked, [asked, posts.size()])
+
+	posts.clear()
+	answers.clear()
+	answers.append(paid)
+	Combat.receipt_wait_seconds = kept_wait
+	reachable.call()
+	await Combat.report_kill("bushmage", Vector2.ZERO, killer)
+	check("with the switch off a kill is one post and one answer, as it always was",
+		posts.size() == 1 and int(killer.get("xp")) == kept_xp + 7, [posts.size(), killer.get("xp")])
+
+	Combat.kill_post = kept_post
+	Combat.receipt_wait_seconds = kept_wait
+	Api.token = kept_token
+	Api.reachability_known = kept_known
+	Api.server_online = kept_online
+	killer.queue_free()
+
+	# ---- the GM panel's switch ----------------------------------------------------------
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var button: CheckButton = gm.get_node_or_null("%receiptsbutton") as CheckButton
+	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
+	check("the GM panel has the receipts switch, on the Testing tab with the other world switches",
+		button != null and testing_tab != null and testing_tab.is_ancestor_of(button))
+	if button == null:
+		gm.queue_free()
+		return
+	var status: Array = [{"ok": true, "data": {"kill_receipts": true}}]
+	gm.status_request = func(_path: String) -> Dictionary:
+		await get_tree().process_frame
+		return status[0]
+	var gm_posted: Array = []
+	var gm_answer: Array = [{"ok": true, "data": {"kill_receipts": true, "min_client_build": 0}}]
+	gm.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		gm_posted.append([path, body])
+		await get_tree().process_frame
+		return gm_answer[0]
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	button.set_pressed_no_signal(false)
+	await gm._refresh_receipts()
+	check("  it shows what the server holds, without posting it back",
+		button.button_pressed and gm_posted.is_empty() and not button.disabled)
+	status[0] = {"ok": true, "data": {}}
+	await gm._refresh_receipts()
+	check("  a server that says nothing about receipts reads as off - kills paid on the game's word",
+		not button.button_pressed)
+	await gm._on_receipts_toggled(true)
+	check("switching it on asks the owner's route", gm_posted.size() == 1
+		and gm_posted[0][0] == "/api/server/receipts" and gm_posted[0][1] == {"on": true}, gm_posted)
+	check("  and says the minimum build has to follow, while it is below 7",
+		gm.results.get_parsed_text().contains("Set Old versions must update to 7"), gm.results.get_parsed_text())
+	gm_answer[0] = {"ok": false, "status": 404, "error": "Not found."}
+	status[0] = {"ok": true, "data": {"kill_receipts": false}}
+	button.set_pressed_no_signal(true)
+	await gm._on_receipts_toggled(true)
+	check("a refusal puts the switch back to the server's state and says so",
+		not button.button_pressed and gm.results.get_parsed_text().contains("refused"))
+	Api.is_owner = false
+	var asked_before: int = gm_posted.size()
+	await gm._on_receipts_toggled(true)
+	check("anyone but the owner asks nothing", gm_posted.size() == asked_before)
+	Api.is_owner = was_owner
+	gm.queue_free()
+	await get_tree().process_frame
+
 
 func _test_the_trade_switch_reaches_the_game() -> void:
 	section("TRADE SWITCH - the owner can stop new trades, and the game says so")

@@ -574,6 +574,24 @@ simultaneous kills, and a minimum gap can never allow a burst no matter how it
 is tuned. A player should essentially never see this; if they do, the bucket is
 mis-sized, not the player.
 
+**`202` when the server's count has not caught up yet (0.57.0).** With the
+owner's receipts switch on (`POST /api/server/receipts`, below), a kill is paid
+only when the server's books have an AGREED death for this account, character
+and monster. The books write a death about 1.3 s after it happens, so the first
+report often arrives first:
+
+```json
+{ "pending": true, "retry_after_ms": 400,
+  "message": "The server has not finished counting that fight yet." }
+```
+
+Nothing is paid and nothing changes. The game posts the same body again after
+`retry_after_ms` (held to 100..2000) until a real answer comes or 8 s have gone
+(`combat.gd`, `RECEIPT_WAIT_SECONDS`), then tells the player the server did not
+see that fight. A game older than build 7 is refused (**`409`**) instead, since
+it would read a 202 as a kill that paid nothing. With the switch off a 202
+never comes.
+
 ### The kill record: `GET /api/kills?slot=0` and `GET /api/kills/everyone`
 
 Every paid kill is also counted on the kill record (`kill_tally`, one row per
@@ -821,6 +839,16 @@ A trade already open can still finish." and `"trade": false`. An open trade can
 still be updated, accepted and cancelled. `GET /api/status` carries `"trade"`
 (true when absent, for an older server).
 
+## Kill receipts
+
+**`POST /api/server/receipts`** (owner; 404 to everyone else; asks the password
+again, like PvP and trade): `{"on": bool}` -> `{"kill_receipts",
+"min_client_build"}`. On, `POST /api/combat/kill` pays only with an AGREED row
+in the server's books and answers `202` until one is there (see that route).
+Not announced in chat. `GET /api/status` carries `"kill_receipts"` (false when
+absent). Switch it on together with Old versions must update at 7: a build-6
+game is refused every kill the books have not backed yet.
+
 **A fresh mythic or Perfect waits 48 hours.** Taken from a loot bag or bought
 from the shop, it cannot be offered: `/api/trade/update` answers 400 with a
 sentence naming the piece and when it can be traded, and execution refuses the
@@ -942,6 +970,10 @@ No auth, deliberately. The login screen needs to ask "are you there?" before
 anyone has logged in, and a 401 is not an answer to that question. It is what
 lets the client tell "your internet is down" apart from "the host's server is
 down".
+
+It also says how the owner's switches stand: `maintenance` (with `message`,
+`back_at`, `seconds_left`), `pvp`, `trade`, `kill_receipts` (0.57.0),
+`min_client_build` and `current_client_build`.
 
 ---
 

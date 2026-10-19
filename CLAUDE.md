@@ -6881,6 +6881,38 @@ The "not fixed yet" list above, fixed.
   `_test_what_you_do_is_saved_before_you_leave()`; on the API, test_packages
   and test_economy.
 
+### A kill waits for the server's receipt (0.57.0)
+
+SECURITY_NOTES E-3, step 2 (E3_SCOPE.md option C). The server has counted
+every fight itself since 0.10.0 - its books (presence.py, combatbook.py) -
+and still paid every kill on the game's word. With the owner's new switch on,
+it pays a kill only when its own count agrees the monster died.
+
+- **A 202 is "not yet", not "no"** (combat.gd `report_kill()`). The books
+  hold a death a second for late hits and write it a quarter of a second
+  later, about 1.3 s, and the game reports the kill the instant the monster
+  falls. So `/api/combat/kill` answers 202 `{"pending": true,
+  "retry_after_ms": 400}` until the receipt is there, and the game posts the
+  same body again after that pause (`receipt_pause_ms()`, held to 100..2000
+  ms) until a real answer or `RECEIPT_WAIT_SECONDS` (8) have gone. Then the
+  player is told: "No live link to the server" when Presence is not open,
+  otherwise "The server did not see that fight" (`receipt_gave_up_text()`).
+  With the switch off the server never answers 202 and nothing changed.
+- **Build 7** (`Api.BUILD`, `Combat.RECEIPT_BUILD`). A build-6 game reads a
+  202 as a kill that paid nothing, so the server refuses it a kill the count
+  has not backed (409) instead. Switch the receipts on together with Old
+  versions must update at 7.
+- **The switch is on the GM panel's Testing tab**, "Kills need the server's
+  count" (ownerpanel.gd `_refresh_receipts()`, `_on_receipts_toggled()`):
+  POST /api/server/receipts, owner only, the password asked again, not
+  announced; `/api/status` says `kill_receipts`. Switching it on says to raise
+  the minimum build while it is below 7.
+- **Read the numbers first.** killwatch.py's receipts line says how many of
+  the paid kills of the last days the books backed. If honest play is not
+  nearly all of them, the switch stays off.
+- **Seams**: `Combat.kill_post` (Api.post in the game) and
+  `Combat.receipt_wait_seconds`. `_test_a_kill_waits_for_the_servers_receipt()`.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

@@ -151,6 +151,8 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var god_mode_button: CheckButton = get_node_or_null("%godmodebutton")
 @onready var pvp_button: CheckButton = get_node_or_null("%pvpbutton")
 @onready var trade_button: CheckButton = get_node_or_null("%tradebutton")
+# THE KILL RECEIPTS (0.57.0): kills paid only on the server's own count.
+@onready var receipts_button: CheckButton = get_node_or_null("%receiptsbutton")
 # The Server tab's minimum build (0.11.8): old versions must update.
 @onready var minbuild_button: CheckButton = get_node_or_null("%minbuildbutton")
 @onready var minbuild_status: Label = get_node_or_null("%minbuildstatus")
@@ -321,6 +323,8 @@ func _ready() -> void:
 		pvp_button.toggled.connect(_on_pvp_toggled)
 	if trade_button != null and not trade_button.toggled.is_connected(_on_trade_toggled):
 		trade_button.toggled.connect(_on_trade_toggled)
+	if receipts_button != null and not receipts_button.toggled.is_connected(_on_receipts_toggled):
+		receipts_button.toggled.connect(_on_receipts_toggled)
 	if minbuild_button != null and not minbuild_button.toggled.is_connected(_on_minbuild_toggled):
 		minbuild_button.toggled.connect(_on_minbuild_toggled)
 	if coowner_button != null and not coowner_button.toggled.is_connected(_on_coowner_toggled):
@@ -677,6 +681,7 @@ func _on_visibility_changed() -> void:
 		# another machine.
 		await _refresh_pvp()
 		await _refresh_trade()
+		await _refresh_receipts()
 		await _refresh_minbuild()
 		await refresh_coowners()
 		await refresh_online()
@@ -1188,6 +1193,51 @@ func _on_trade_toggled(pressed: bool) -> void:
 			"No trade was open." if still_open == 0
 			else "%d open trade%s may still finish." % [still_open, "" if still_open == 1 else "s"]),
 			SAY_WARN)
+
+
+# =============================================================================
+# KILLS NEED THE SERVER'S COUNT - the kill receipts (0.57.0)
+# =============================================================================
+# SECURITY_NOTES E-3, step 2. The server has counted every fight itself since
+# 0.10.0 and paid kills on the game's word anyway; on, it pays a kill only when
+# its own count agrees the monster died. POST /api/server/receipts, owner only,
+# the password asked again; /api/status says where it is. A game older than
+# build 7 cannot wait for the count and is refused, which is why the answer is
+# read for the minimum build - turning one on without the other strands them.
+func _refresh_receipts() -> void:
+	if receipts_button == null:
+		return
+	var res: Dictionary = await status_request.call("/api/status")
+	if not is_instance_valid(self) or not is_inside_tree() or not res.get("ok", false):
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	# NO SIGNAL, like trading. An older server says nothing, and pays on the
+	# game's word: off.
+	receipts_button.set_pressed_no_signal(bool(data.get("kill_receipts", false)))
+	receipts_button.disabled = not Api.is_owner
+
+
+func _on_receipts_toggled(pressed: bool) -> void:
+	if not Api.is_owner:
+		await _refresh_receipts()
+		_say("The kill receipts are the owner's switch.", SAY_BAD)
+		return
+	var res: Dictionary = await post_request.call("/api/server/receipts", {"on": pressed})
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if not res.get("ok", false):
+		# PUT BACK: the switch shows what the server holds.
+		await _refresh_receipts()
+		_say("The server refused that: %s" % str(res.get("error", "")), SAY_BAD)
+		return
+	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if pressed:
+		var minimum: int = int(data.get("min_client_build", 0))
+		_say("Kills are paid only when the server's count of the fight agrees. "
+			+ "Set Old versions must update to %d as well." % Combat.RECEIPT_BUILD,
+			SAY_WARN if minimum < Combat.RECEIPT_BUILD else SAY_GOOD)
+	else:
+		_say("Kills are paid on the game's word again.", SAY_WARN)
 
 
 # =============================================================================

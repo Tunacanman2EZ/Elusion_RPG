@@ -91,13 +91,20 @@ const WebPage := preload("res://src/systems/webpage.gd")
 # off the page swings every attack at the screen's corner - Gary's "only attack
 # left". The first build worth making the minimum since 4: every game in an
 # area then sees the same things.
+# 6 (0.44.0): every request says which copy of the game sent it
+# (X-Elusion-Install), and a login from it is bound to that copy.
+# 7 (0.57.0): a kill waits for the server's receipt - a 202 from
+# /api/combat/kill is "not yet", and the same kill is asked again until the
+# server's count of the fight agrees (combat.gd, RECEIPT_WAIT_SECONDS). A
+# build-6 game is refused a kill the count has not backed yet, so the minimum
+# goes to 7 when the owner switches the receipts on.
 # Matches CURRENT_CLIENT_BUILD in app.py.
-const BUILD := 6
+const BUILD := 7
 # MAJOR.MINOR.PATCH: 0.x until launch, the middle number for a new chunk of
 # the game, the last for fixes. Shown on the login screen and under Menu
 # (GameConstants.version_text()), and the Windows export's file version is it
 # with .0 after. CLAUDE.md, "The version", says when each number moves.
-const DISPLAY_VERSION := "0.56.2"
+const DISPLAY_VERSION := "0.57.0"
 
 # The header the build rides on. Matches CLIENT_BUILD_HEADER in app.py, and
 # that is a contract: renaming one without the other disables the gate silently,

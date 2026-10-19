@@ -74,6 +74,37 @@ const LOOTBAG_SCENE := preload("res://scene/interactables/lootbag.tscn")
 # open for the duration.
 const KILL_TIMEOUT := 4.0
 
+# A KILL WAITS FOR THE SERVER'S RECEIPT (0.57.0, SECURITY_NOTES E-3 step 2).
+#
+# THE SERVER COUNTS EVERY FIGHT ITSELF since 0.10.0 - its books (presence.py,
+# combatbook.py) hold every monster's health from the leader's world and every
+# hit any game sends - and with the owner's receipts switch on it PAYS A KILL
+# ONLY WHEN ITS OWN COUNT AGREES the monster died. Until then a kill was paid
+# on this game's word, which is the whole of E-3.
+#
+# THE COUNT LANDS A MOMENT AFTER THE DEATH. The books hold a death a second
+# for late hits and write it down a quarter of a second after that - about
+# 1.3 s - and this game reports the kill the instant the monster falls. So the
+# first answer is often a 202: "not yet", NOT "no". The same body is posted
+# again after the server's retry_after_ms (held to RECEIPT_RETRY_LEAST_MS ..
+# RECEIPT_RETRY_MOST_MS, so a bad number can neither hammer the server nor stall
+# the bag), until a real answer comes - paid, or refused - or RECEIPT_WAIT_SECONDS
+# have gone, when the player is told the server did not see that fight.
+#
+# NOTHING CHANGES WITH THE SWITCH OFF: the server never answers 202 then, and
+# one post is one answer, as it always was.
+const RECEIPT_WAIT_SECONDS := 8.0
+# The first build that waits for a receipt (Api.BUILD 7): what the minimum has
+# to be, at least, while the switch is on.
+const RECEIPT_BUILD := 7
+const RECEIPT_RETRY_LEAST_MS := 100
+const RECEIPT_RETRY_MOST_MS := 2000
+
+# SEAMS FOR THE SUITE, like Presence.request_ticket: where a kill is posted, and
+# how long a receipt is waited for. In the game: Api.post, and the constant.
+var kill_post: Callable = Callable(Api, "post")
+var receipt_wait_seconds: float = RECEIPT_WAIT_SECONDS
+
 # THE FINDER'S MOMENT, when the kill answer names a mythic. A harder shake than
 # any weapon's, and long enough to feel through the banner.
 const MYTHIC_SHAKE_STRENGTH := 5.0
@@ -122,10 +153,17 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 	# WHERE THE KILL WAS (0.56.0): see the bag below.
 	var killed_in: Node = get_tree().current_scene if is_inside_tree() else null
 
-	var res: Dictionary = await Api.post("/api/combat/kill", {
-		"slot": slot,
-		"enemy_id": enemy_id,
-	}, KILL_TIMEOUT)
+	var body: Dictionary = {"slot": slot, "enemy_id": enemy_id}
+	var res: Dictionary = await kill_post.call("/api/combat/kill", body, KILL_TIMEOUT)
+
+	# NOT YET IS NOT NO - see RECEIPT_WAIT_SECONDS. The same body again, after
+	# the pause the server asked for, until a real answer or the wait runs out.
+	var waited_ms: int = 0
+	while _receipt_pending(res) and waited_ms < int(receipt_wait_seconds * 1000.0):
+		var pause_ms: int = receipt_pause_ms(res)
+		await get_tree().create_timer(pause_ms / 1000.0).timeout
+		waited_ms += pause_ms
+		res = await kill_post.call("/api/combat/kill", body.duplicate(), KILL_TIMEOUT)
 
 	# THE PLAYER MAY HAVE BEEN FREED WHILE WE WAITED, and a freed object cannot
 	# be passed to a typed Node parameter — not even to a function whose first
@@ -143,6 +181,15 @@ func report_kill(enemy_id: String, at_position: Vector2, killer: Node) -> void:
 	# here because a failed request waits out the full timeout, and ten seconds
 	# is long enough to die, teleport, or return to character select.
 	var target: Node = _reward_target(killer)
+
+	if _receipt_pending(res):
+		# THE SERVER NEVER SAW THE FIGHT, or not in time: nothing was paid, and
+		# the player is told which it most likely was.
+		_notify(target, receipt_gave_up_text(Presence.phase()))
+		if OS.is_debug_build():
+			print("[KILL] %s unpaid - no receipt from the server's count in %.1f s"
+				% [enemy_id, receipt_wait_seconds])
+		return
 
 	if not res.get("ok", false):
 		# NO FALLBACK ROLL. Rolling locally when the server cannot be reached
@@ -341,6 +388,31 @@ func _resolve_loot_container() -> Node:
 # =============================================================================
 # HELPERS
 # =============================================================================
+
+static func _receipt_pending(res: Dictionary) -> bool:
+	"""A 202 that says the server's count has not caught up with this kill."""
+	if not res.get("ok", false) or int(res.get("status", 200)) != 202:
+		return false
+	var data: Variant = res.get("data", {})
+	return data is Dictionary and bool((data as Dictionary).get("pending", false))
+
+
+static func receipt_pause_ms(res: Dictionary) -> int:
+	"""How long to wait before asking again: what the server said, held to
+	RECEIPT_RETRY_LEAST_MS .. RECEIPT_RETRY_MOST_MS."""
+	var data: Variant = res.get("data", {})
+	var asked: Variant = (data as Dictionary).get("retry_after_ms", 400) if data is Dictionary else 400
+	var ms: int = int(asked) if typeof(asked) == TYPE_INT or typeof(asked) == TYPE_FLOAT else 400
+	return clampi(ms, RECEIPT_RETRY_LEAST_MS, RECEIPT_RETRY_MOST_MS)
+
+
+static func receipt_gave_up_text(presence_phase: String) -> String:
+	"""What the player is told when no receipt came: the live link is what the
+	server counts fights through, so with it down that is the likely reason."""
+	if presence_phase != "open":
+		return "No live link to the server — kills are not paid without it."
+	return "The server did not see that fight — no reward."
+
 
 func _refusal_text(res: Dictionary) -> String:
 	# A 429 is the kill rate limit, which an honest player can hit on a lag
