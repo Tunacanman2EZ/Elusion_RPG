@@ -398,6 +398,7 @@ func _run_all() -> void:
 	_test_the_road_through_the_game()
 	await _test_the_arrival_portal_closes_behind_you()
 	await _test_monsters_go_out_in_a_burst()
+	await _test_a_hit_flashes_the_artists_white()
 	await _test_far_enemies_sleep()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
@@ -7115,6 +7116,173 @@ func _test_monsters_go_out_in_a_burst() -> void:
 		_func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _die(").contains("elif _bursts_on_death():")
 		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func net_vanish(").contains("elif _bursts_on_death():")
 		and not _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func net_remove(").contains("DeathBurst"))
+	world.free()
+
+
+# =============================================================================
+# THE HIT FLASH IS THE ARTIST'S WHITE (0.58.0)
+# =============================================================================
+# The owner: "every enemy and player has hitflash made for the animations why
+# did we not use them?" - and of the fix, "im hoping will not cause issue with
+# the frames". Played as animations they cut off whatever was running (the
+# boss froze mid-cast), so the flash doubled the sprite's colour instead. Now
+# hitflash.gd draws the frame on screen as a solid white shape ON TOP of the
+# sprite. These hold it to the owner's worry first: the sprite's animation,
+# frame, speed, tint and material are what they were, a cast keyed to its
+# frames runs to its end, and the white keeps up with every frame it shows.
+
+func _test_a_hit_flashes_the_artists_white() -> void:
+	section("THE HIT FLASH - the artist's white over the frame on screen, the frames untouched")
+	var HitFlashScript := preload("res://src/shared/hitflash.gd")
+	var white_shader: Shader = preload("res://src/shared/hitflash.gdshader")
+	var world := Node2D.new()
+	add_child(world)
+	var at := Vector2(-63000, -63000)
+	var flashes_on := func(sprite: AnimatedSprite2D) -> Array:
+		return sprite.get_children().filter(func(c: Node) -> bool:
+			return c is Sprite2D and str(c.name).begins_with("hitflash") and not c.is_queued_for_deletion())
+
+	# ---- a monster, hit mid-swing ------------------------------------------------
+	var foe: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	foe.position = at
+	world.add_child(foe)
+	foe.set_physics_process(false)
+	foe.set_process(false)
+	await get_tree().process_frame
+	var sprite: AnimatedSprite2D = foe.get_node("animatedsprite2d")
+	sprite.play(&"attackdown")
+	sprite.frame = 2
+	var tint_before: Color = sprite.modulate
+	var material_before: Material = sprite.material
+	var speed_before: float = sprite.speed_scale
+	foe.play_hit_flash()
+	var white: Sprite2D = HitFlashScript.on(sprite)
+	check("a hit puts a white copy on top of the monster's sprite, inside it",
+		white != null and white.get_parent() == sprite and not white.show_behind_parent and white.z_index == 0, white)
+	if white == null:
+		world.free()
+		return
+	white.set_process(false)
+	check("  of the frame on screen, placed as the sprite places it",
+		white.texture == sprite.sprite_frames.get_frame_texture(&"attackdown", 2) and white.offset == sprite.offset
+		and white.centered == sprite.centered and white.flip_h == sprite.flip_h, [white.texture, white.offset])
+	var shape: ShaderMaterial = white.material as ShaderMaterial
+	check("  drawn as a solid white shape - the artist's flash - with the sprite's own fade",
+		shape != null and shape.shader == white_shader
+		and white_shader.code.contains("COLOR = vec4(1.0, 1.0, 1.0, COLOR.a);"), shape)
+	check("  and the sprite is just as it was: the same swing, the same frame, still playing, its tint, its material, its speed",
+		str(sprite.animation) == "attackdown" and sprite.frame == 2 and sprite.is_playing()
+		and sprite.modulate == tint_before and sprite.material == material_before and sprite.speed_scale == speed_before,
+		[str(sprite.animation), sprite.frame, sprite.is_playing(), sprite.modulate])
+	sprite.frame = 3
+	check("  the white shows the next frame the moment the sprite does",
+		white.texture == sprite.sprite_frames.get_frame_texture(&"attackdown", 3))
+	sprite.play(&"walkdown")
+	check("  and a new animation", white.texture == sprite.sprite_frames.get_frame_texture(&"walkdown", sprite.frame)
+		and str(sprite.animation) == "walkdown")
+	sprite.flip_h = not sprite.flip_h
+	white.call("advance", 0.0)
+	check("  and a turn", white.flip_h == sprite.flip_h)
+	sprite.flip_h = not sprite.flip_h
+	white.call("advance", foe.hit_flash_duration * 0.5)
+	foe.play_hit_flash()
+	check("a second hit restarts the flash: one white on the sprite, not two, with its full time",
+		flashes_on.call(sprite).size() == 1 and HitFlashScript.on(sprite) == white
+		and is_equal_approx(float(white.get("seconds_left")), foe.hit_flash_duration),
+		[flashes_on.call(sprite).size(), white.get("seconds_left")])
+	white.call("advance", foe.hit_flash_duration + 0.01)
+	check("  gone when its time is up, nothing of it left: not on the sprite, not listening to it",
+		HitFlashScript.on(sprite) == null and white.is_queued_for_deletion() and not white.visible
+		and not sprite.frame_changed.is_connected(Callable(white, "follow")) and sprite.modulate == tint_before
+		and sprite.material == material_before)
+	foe.play_hit_flash()
+	check("  and the next hit flashes afresh", HitFlashScript.on(sprite) != null and HitFlashScript.on(sprite) != white)
+
+	# ---- the boss's cast, the one the frames used to freeze ----------------------
+	var boss: BaseEnemy = (load("res://scene/enemy/bossenemy.tscn") as PackedScene).instantiate()
+	boss.position = at + Vector2(400, 0)
+	world.add_child(boss)
+	boss.set_physics_process(false)
+	boss.set_process(false)
+	await get_tree().process_frame
+	var cast: AnimatedSprite2D = boss.get_node("animatedsprite2d")
+	var last_frame: int = cast.sprite_frames.get_frame_count(&"castdown") - 1
+	var finished: Array = [false]
+	cast.animation_finished.connect(func() -> void: finished[0] = true, CONNECT_ONE_SHOT)
+	cast.play(&"castdown")
+	var shown: Array = []
+	var mismatched: Array = []
+	var flashed: int = 0
+	var waited: float = 0.0
+	while not finished[0] and waited < 5.0:
+		if cast.frame != (shown[-1] if not shown.is_empty() else -1):
+			shown.append(cast.frame)
+			# A hit on every frame of the cast: the worst case for the old flash.
+			boss.play_hit_flash()
+			flashed += 1
+		var on_it: Sprite2D = HitFlashScript.on(cast)
+		if on_it != null and on_it.texture != cast.sprite_frames.get_frame_texture(cast.animation, cast.frame):
+			mismatched.append(cast.frame)
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	check("the boss hit on every frame of its cast still casts to its end (it froze, when the flash was frames)",
+		finished[0] and str(cast.animation) == "castdown" and cast.frame == last_frame and shown.size() >= 3,
+		[finished[0], str(cast.animation), cast.frame, last_frame, shown])
+	check("  and the white was the frame on screen on every one of them",
+		mismatched.is_empty() and flashed == shown.size(), [mismatched, flashed, shown.size()])
+
+	# ---- the four classes -----------------------------------------------------------
+	var classes_ok: Array = []
+	for class_name_id in ["warrior", "mage", "healer", "tank"]:
+		var hero: Node2D = (load("res://scene/characters/%s.tscn" % class_name_id) as PackedScene).instantiate()
+		hero.position = at + Vector2(800, 0)
+		world.add_child(hero)
+		hero.set_physics_process(false)
+		hero.set_process(false)
+		await get_tree().process_frame
+		var body: AnimatedSprite2D = hero.get_node("animatedsprite2d")
+		var playing: StringName = body.animation
+		var frame_was: int = body.frame
+		var tint_was: Color = body.modulate
+		hero.call("_play_hit_flash")
+		var hero_white: Sprite2D = HitFlashScript.on(body)
+		var defended: float = maxf(0.05, float(hero.get("hit_flash_duration"))
+			* (1.0 - float((hero.call("_get_defense_tier") as Dictionary)["reduction"])))
+		if hero_white == null or body.animation != playing or body.frame != frame_was or body.modulate != tint_was \
+				or hero_white.texture != body.sprite_frames.get_frame_texture(body.animation, body.frame) \
+				or not is_equal_approx(float(hero_white.get("seconds_left")), defended):
+			classes_ok.append([class_name_id, hero_white, str(playing), str(body.animation), body.modulate])
+		hero.free()
+	check("every class flashes the artist's white over its frame, for as long as its defence says, its own animation untouched",
+		classes_ok.is_empty(), classes_ok)
+	var swaps: Array = []
+	for script_path in _all_files_under("res://src", ".gd"):
+		if script_path.ends_with("testrunner.gd") or script_path.ends_with("poisonslime.gd"):
+			continue
+		var code: String = FileAccess.get_file_as_string(script_path)
+		if code.contains("play(\"hitflash") or code.contains("_set_animation(\"hitflash"):
+			swaps.append(script_path)
+	check("  and nothing plays a hitflash animation over what a body is doing (the large poison slime's split is its own)",
+		swaps.is_empty(), swaps)
+
+	# ---- somebody else, seen here -----------------------------------------------------
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var other: Node2D = Remote.new()
+	world.add_child(other)
+	other.call("set_identity", {"id": 4321, "name": "flashed", "cls": "warrior"})
+	var other_body: AnimatedSprite2D = other.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	other.call("set_bearing", -1, 80)
+	check("another player seen here does not flash while their health holds",
+		other_body != null and HitFlashScript.on(other_body) == null)
+	other.call("set_bearing", -1, 60)
+	var other_white: Sprite2D = HitFlashScript.on(other_body) if other_body != null else null
+	check("  and flashes the same white when it drops - every class, where only the tank's ever showed",
+		other_white != null and other_white.texture == other_body.sprite_frames.get_frame_texture(other_body.animation, other_body.frame)
+		and is_equal_approx(float(other_white.get("seconds_left")), float(Remote.HIT_FLASH_SECONDS)), other_white)
+	if other_white != null:
+		other_white.call("advance", 1.0)
+	other.call("set_bearing", -1, 90)
+	check("  but not when it rises", other_body != null and HitFlashScript.on(other_body) == null)
 	world.free()
 
 

@@ -31,6 +31,8 @@ const PLAYER_LIGHT_SCENE := preload("res://scene/characters/playerlight.tscn")
 # How a name and its rank mark are drawn - the colour from a hue, the badge from
 # a rank. Preloaded rather than a class_name; nametag.gd says why.
 const NameTag := preload("res://src/shared/nametag.gd")
+# A hit's flash: the frame on screen, drawn pure white over itself (0.58.0).
+const HitFlash := preload("res://src/shared/hitflash.gd")
 var _carried_light: PointLight2D = null
 
 # The name that floats over this character's head. Built in code for the same
@@ -357,7 +359,6 @@ var _regen_stamina_accumulator: float = 0.0
 var is_dying: bool = false
 
 @export var hit_flash_duration: float = 0.15
-var _default_modulate: Color = Color.WHITE
 
 
 # =============================================================================
@@ -1800,17 +1801,21 @@ func _play_hit_flash() -> void:
 	var sprite: AnimatedSprite2D = $animatedsprite2d
 	# NEW: flash duration scales down with the same reduction percentage
 	# already driving damage tiers (PlayerStats.DEFENSE_TIERS) — a Novice takes
-	# the full flash, an Unbreakable character's is noticeably brighter,
-	# briefer. this is what "poise" actually became once real knockback
-	# turned out to need new art this project doesn't have: not a
-	# gameplay-affecting resistance, just defense having a real, felt
-	# difference in how a hit LOOKS, using assets that already exist.
+	# the full flash, an Unbreakable character's is noticeably briefer. this is
+	# what "poise" actually became once real knockback turned out to need new
+	# art this project doesn't have: not a gameplay-affecting resistance, just
+	# defense having a real, felt difference in how a hit LOOKS.
 	# maxf floor keeps it from ever going imperceptibly short.
+	#
+	# THE ARTIST'S WHITE (0.58.0): the frame on screen as a solid white shape,
+	# on top of the sprite and following it - every class was drawn with that
+	# flash, and playing it as an animation would cut off whatever the body was
+	# doing. It never writes the sprite (hitflash.gd), so a swing keeps
+	# swinging and nothing is left half white. It used to double the sprite's
+	# colour, which left the outline and every dark pixel dark.
 	var reduction: float = _get_defense_tier()["reduction"]
 	var scaled_duration: float = maxf(0.05, hit_flash_duration * (1.0 - reduction))
-	var tween := create_tween()
-	tween.tween_property(sprite, "modulate", Color(2.0, 2.0, 2.0, 1.0), 0.0)
-	tween.tween_property(sprite, "modulate", _default_modulate, scaled_duration)
+	HitFlash.flash(sprite, scaled_duration)
 
 
 func heal(amount: int) -> void:

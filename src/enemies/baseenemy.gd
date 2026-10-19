@@ -52,6 +52,8 @@ class_name BaseEnemy
 
 # Who a monster may chase: you, and anybody sharing the area's monsters.
 const Targets := preload("res://src/shared/targets.gd")
+# A hit's flash: the frame on screen, drawn pure white over itself (0.58.0).
+const HitFlash := preload("res://src/shared/hitflash.gd")
 
 
 # =============================================================================
@@ -475,11 +477,6 @@ func _ready() -> void:
 	_wire_attack_timer()
 	_wire_healthbar()
 	_wire_animated_sprite()
-
-	# AFTER the sprite is wired, so the tint a placed instance was authored with
-	# is what a hit flash restores to. See _default_modulate.
-	if has_node("animatedsprite2d"):
-		_default_modulate = ($animatedsprite2d as AnimatedSprite2D).modulate
 
 	_setup_navigation()
 	# AFTER the mask is set above, not before - the separation query reads the
@@ -2468,6 +2465,15 @@ func _facing_for_animation() -> String:
 # property with a known resting value, every flash ends by tweening back to it,
 # and with no material attached the sprite renders exactly as authored.
 #
+# AND THEN THE ARTIST'S WHITE, AFTER ALL (0.58.0). Doubling the colour leaves
+# the outline and every dark pixel dark, so the flash was weaker than the one
+# drawn on the sheets. hitflash.gd draws the drawn one - the frame on screen
+# as a solid white shape - as a child Sprite2D on top, following the frame,
+# freed when it is done. Nothing above comes back: it is not an animation
+# (the pose and every frame-keyed attack are untouched), not a material on the
+# sprite (the recolour stays the only one, and nothing can stick), and not the
+# sprite's modulate (a placed tint is never written, so never lost).
+#
 # HOW FAST, AND WHY THIS NUMBER. The player's flash is
 # maxf(0.05, hit_flash_duration * (1.0 - reduction)), so a character actually
 # flashes somewhere between 0.150s undefended and 0.075s at the defence cap.
@@ -2477,36 +2483,18 @@ func _facing_for_animation() -> String:
 # is what the player spends most of the game being.
 @export var hit_flash_duration: float = 0.08
 
-# Brighter than white, so it overexposes rather than merely whitening. Exactly
-# the value player.gd flashes to.
+# Brighter than white, so it overexposes rather than merely whitening. The
+# old hit flash's value, and still the first beat of a death (DeathBurst).
 const HIT_FLASH_COLOR := Color(2.0, 2.0, 2.0, 1.0)
-
-# CAPTURED AT READY RATHER THAN ASSUMED WHITE. bushmage3 in field.tscn is placed
-# with a red modulate, and there will be more tinted variants - restoring to a
-# hardcoded white would strip a variant's colour the first time it was hit and
-# never give it back.
-var _default_modulate: Color = Color.WHITE
-
-# Held so a second hit can cancel the tween still running from the first.
-# Without this the older tween keeps writing modulate on its own schedule and
-# drags the new flash back toward default early.
-var _hit_flash_tween: Tween = null
 
 
 func play_hit_flash() -> void:
 	if _dying or not has_node("animatedsprite2d"):
 		return
 	_net_last_flash_msec = Time.get_ticks_msec()
-	var sprite: AnimatedSprite2D = $animatedsprite2d
-
-	if _hit_flash_tween != null and _hit_flash_tween.is_valid():
-		_hit_flash_tween.kill()
-
-	# Snap ON, ease OFF - that shape is what reads as an impact rather than a
-	# pulse. Same two-step tween as player.gd::_play_hit_flash().
-	_hit_flash_tween = create_tween()
-	_hit_flash_tween.tween_property(sprite, "modulate", HIT_FLASH_COLOR, 0.0)
-	_hit_flash_tween.tween_property(sprite, "modulate", _default_modulate, hit_flash_duration)
+	# The frame on screen, pure white, for hit_flash_duration - on top of the
+	# sprite, never in it (hitflash.gd). A second hit restarts it.
+	HitFlash.flash($animatedsprite2d as AnimatedSprite2D, hit_flash_duration)
 
 
 func _stop_acting() -> void:

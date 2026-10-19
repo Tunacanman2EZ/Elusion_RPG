@@ -711,28 +711,21 @@ func attack_period() -> float:
 	return hasten(aura_tick)
 
 
-func _get_dir_string() -> String:
-	# The cardinal matching last_direction, for hitflash animation lookup
-	# (hitflashleft / right / up / down).
-	return Facing.from_vec_total(last_direction)
-
-
 # =============================================================================
 # DAMAGE HANDLING OVERRIDE
 # =============================================================================
 
 func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	# wraps player.take_damage with tank-specific behavior:
-	# - plays a directional hitflash animation if still alive
 	# - deactivates the aura if the hit killed the tank
+	#
+	# THE TANK USED TO PLAY ITS hitflash ANIMATION HERE, the one class that did,
+	# which swapped out whatever it was showing - a ring cast cut short. Since
+	# 0.58.0 every class flashes the same way, the artist's white drawn over the
+	# frame on screen (player.gd _play_hit_flash(), hitflash.gd), and the tank's
+	# hitflash frames stay on the sheet for older games that relay them.
 	var was_alive: bool = hp > 0
 	super.take_damage(amount, element)
-
-	# play tank-specific hitflash ONLY if still alive after the hit.
-	# without this guard, hitflash would overwrite the death animation
-	# that parent's _start_death_sequence just started playing.
-	if _sprite != null and hp > 0 and not is_dying:
-		_sprite.play("hitflash" + _get_dir_string())
 
 	# deactivate aura if tank just died so it doesn't keep ticking damage
 	# during the death animation

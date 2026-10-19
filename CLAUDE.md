@@ -6951,6 +6951,48 @@ it would.
 - The same rule as the API's suites and `ELUSION_DB` (test_isolation.py
   there checks every suite sets it first).
 
+### Every hit flashes the artist's white (0.58.0)
+
+The owner: "every enemy and player has hitflash made for the animations why
+did we not use them?" - and of the fix, "im hoping will not cause issue with
+the frames". The four classes, the boss and the poison slime were drawn with a
+hitflash: the pose, the same pose as a solid white shape (93-99% the pose's
+own outline for the classes, measured), the pose again. Played as an
+animation it REPLACED whatever was running - the boss's cast cut off and the
+boss frozen for good - so since then the game doubled the sprite's colour
+instead, which leaves the outline and every dark pixel dark. Only the tank
+still played its frames, cutting short whatever it was showing.
+
+- **`src/shared/hitflash.gd` draws the artist's white on top of the frame on
+  screen**: a Sprite2D child of the AnimatedSprite2D, its texture the
+  sprite's current frame, drawn by `hitflash.gdshader` (every opaque pixel
+  white; the alpha the frame's times the sprite's fade). It follows the
+  sprite's `frame_changed`, `animation_changed` and every frame's
+  `_process`, so mid-swing it is the swing, white. `HitFlash.flash(sprite,
+  seconds)` starts or restarts it - one per sprite - and it frees itself,
+  renamed out of the way first.
+- **It never writes the sprite**: not its animation, frame, speed, modulate
+  or material. So nothing keyed to a frame or to `animation_finished` moves,
+  a placed tint is never lost, and nothing can be left half white.
+- **Who flashes**: every monster (`BaseEnemy.play_hit_flash()`,
+  `hit_flash_duration` 0.08), every class (`player.gd _play_hit_flash()`,
+  0.15 scaled down by defence as before), and other players seen here when
+  their health drops (`remoteplayer.gd set_bearing()`, 0.15) - every class,
+  where only the tank's ever showed, as a body animation. The tank no longer
+  plays its frames. The large poison slime's hitflash is its split, not a
+  hit, and stays. `HIT_FLASH_COLOR` stays as the first beat of a death
+  (DeathBurst).
+- **The sheets**: only the classes, the boss and the poison slime have
+  hitflash rows in the project. The bush archer, bush mage, fire sprite and
+  electric sprite sheets have none (every row is idle, walk, attack or a
+  projectile); they flash the same white, drawn from their own frames.
+- `_test_a_hit_flashes_the_artists_white()`: the sprite untouched through a
+  hit, the white following frame, animation and turn, one flash per sprite,
+  gone after; the boss hit on every frame of its cast still casts to its end;
+  all four classes; nothing plays a hitflash animation over a body; and
+  others seen here. Rendered once under a real renderer: standing, the white
+  matches the artist's own white frame.
+
 ### Mixed tabs and spaces inside one indent is a parse error
 
 Godot's parser rejects a line indented with tabs and then padded with spaces —

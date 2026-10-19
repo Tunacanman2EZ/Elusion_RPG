@@ -43,6 +43,13 @@ extends Node2D
 
 # Preloaded rather than a class_name, as player.gd does; nametag.gd says why.
 const NameTag := preload("res://src/shared/nametag.gd")
+# A HIT THEY TOOK, SEEN HERE (0.58.0). Their health arrives with every state,
+# so when it goes down their body flashes the artist's white, as their own game
+# drew it (hitflash.gd) - every class, where only the tank's ever showed, and
+# only as a body animation. As long as the player's own, undefended
+# (player.gd hit_flash_duration).
+const HitFlash := preload("res://src/shared/hitflash.gd")
+const HIT_FLASH_SECONDS := 0.15
 
 
 # PLAYED BACK (see the top): how far behind their newest step the body is
@@ -487,7 +494,10 @@ func set_bearing(aim: Variant, health: Variant) -> void:
 	var new_aim: int = int(aim) if aim is int or aim is float else -1
 	var new_health: int = int(health) if health is int or health is float else -1
 	aim_degrees = new_aim if new_aim >= 0 and new_aim < 360 else -1
+	var was: int = health_percent
 	health_percent = clampi(new_health, 0, 100) if new_health >= 0 else -1
+	if was >= 0 and health_percent >= 0 and health_percent < was and _body != null:
+		HitFlash.flash(_body, HIT_FLASH_SECONDS)
 	if aim_degrees >= 0 and _aim_shown == Vector2.ZERO:
 		_aim_shown = aim_vector()
 	_paint_health()
