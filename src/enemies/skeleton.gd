@@ -1,13 +1,12 @@
 # skeleton.gd - the crypt's skeleton: it walks at you and swings its sword
-# (0.60.0).
+# (0.60.0; the crypt's two kinds since 0.63.0).
 #
-# THE OWNER, 19 Oct: "lets add skeletons" - Ahvassa's sheet - in "the 5 elite
-# alcoves", fighting by "chase and sword swing". The first monster in the game
-# that fights up close apart from the boss, so it swings the boss's way
-# (bossenemy.gd, _land_swing()): the blow is checked ON THE FRAME THE BLADE
-# LANDS, against wherever the player is then, so stepping out of reach during
-# the wind-up works. A skeleton that has started swinging at you is a warning,
-# not a hit.
+# THE OWNER, 19 Oct: "lets add skeletons" - Ahvassa's sheet - fighting by
+# "chase and sword swing". The first monster in the game that fights up close
+# apart from the boss, so it swings the boss's way (bossenemy.gd,
+# _land_swing()): the blow is checked ON THE FRAME THE BLADE LANDS, against
+# wherever the player is then, so stepping out of reach during the wind-up
+# works. A skeleton that has started swinging at you is a warning, not a hit.
 #
 # THE SHEET (art/enemy/skeleton.png, Ahvassa): 64 px frames, four direction
 # groups top to bottom - facing right, left, down, up - each an idle of 8, a
@@ -19,16 +18,18 @@
 # monster without a death of its own does (deathburst.gd), and flashes the
 # artist's white over its own frame like every other (hitflash.gd).
 #
-# FIVE OF THEM, ONE PER ALCOVE. scene/enemy/skeleton.tscn is the body; each of
-# skeletonguard, -warden, -knight, -champion and -lord.tscn is it with its
-# band's profile (data/enemies/), the way the element variants are built - a
-# respawn rebuilds a monster from its scene file, so the profile has to live
-# there, not on the placed instance.
+# TWO KINDS, ONE TIER EACH, NO RECOLOURS (the owner, 20 Oct: "skeletons need a
+# solid tier we wont recolor skeletons but we should make them elites and
+# expand their size a little bit"). scene/enemy/skeleton.tscn is the body;
+# skeletonsoldier.tscn is it with the Soldier's profile (tier 3), and
+# skeletonelite.tscn with the Elite's (tier 4) at 1.25x, its reach grown with
+# it. The profile lives in the scene file, not on the placed instance: a
+# respawn rebuilds a monster from its scene file.
 extends BaseEnemy
 
 
-# The first band's, for a skeleton placed without a variant scene.
-const ENEMY_DATA := preload("res://data/enemies/skeletonguard.tres")
+# The Soldier's, for a skeleton placed without a variant scene.
+const ENEMY_DATA := preload("res://data/enemies/skeletonsoldier.tres")
 
 # The frame the blade lands on, 0-based: the wide arc of the attack row. At
 # ATTACK_FPS that is 0.6 s after the swing starts - the time a player has to

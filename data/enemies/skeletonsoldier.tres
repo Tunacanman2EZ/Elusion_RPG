@@ -4,17 +4,14 @@
 
 [resource]
 script = ExtResource("1_enemydata")
-enemy_id = "skeletonknight"
-display_name = "Skeleton Knight"
-projectile_damage = 42
-max_hp = 1620
-xp_reward = 597
-attack_xp_reward = 132
-bag_drop_chance = 1.0
+enemy_id = "skeletonsoldier"
+display_name = "Skeleton Soldier"
+projectile_damage = 30
+max_hp = 700
+xp_reward = 260
+attack_xp_reward = 56
 max_loot_tier = 3
 max_item_slots = 1
-slot_fill_chance = 1.0
-bonus_potion_chance = 0.5
+slot_fill_chance = 0.3
 drops_no_pet = true
-respawn_seconds = 180.0
 metadata/_custom_type_script = "uid://bbmcaokoqjh1i"

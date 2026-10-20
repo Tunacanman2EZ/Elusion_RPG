@@ -338,6 +338,7 @@ func _run_all() -> void:
 	await _test_a_kill_waits_for_the_servers_receipt()
 	await _test_old_versions_must_update()
 	await _test_no_debug_keys_the_panel_does_it()
+	await _test_the_readout_counts_a_crowd()
 	await _test_escape_closes_every_window()
 	await _test_move_players_from_the_list()
 	await _test_give_and_save_history()
@@ -393,6 +394,7 @@ func _run_all() -> void:
 	await _test_every_area_can_be_walked()
 	await _test_the_big_field()
 	_test_the_big_field_is_dressed()
+	await _test_the_crypt_doors()
 	await _test_the_bullet_zone()
 	await _test_the_bullet_zone_is_shared()
 	await _test_the_field_volleys()
@@ -400,7 +402,7 @@ func _run_all() -> void:
 	await _test_the_arrival_portal_closes_behind_you()
 	await _test_monsters_go_out_in_a_burst()
 	await _test_a_hit_flashes_the_artists_white()
-	await _test_the_skeletons_guard_the_alcoves()
+	await _test_the_crypt_skeletons()
 	await _test_far_enemies_sleep()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
@@ -6935,10 +6937,14 @@ const DOOR_SCRIPTS := ["res://src/world/ladder.gd", "res://src/world/leavetown.g
 # holds the walls and the doors, because bigfield is in AreaRegistry.AREAS.
 const BIG_FIELD := "res://scene/bigfield.tscn"
 const BIG_FIELD_BANDS := {"light": 1, "wind": 1, "water": 2, "ice": 2, "earth": 3,
-	"electric": 3, "poison": 3, "bushmage": 3, "bushsniper": 3, "fire": 4, "dark": 5,
-	# The alcove skeletons, one a band (0.60.0).
-	"skeletonguard": 1, "skeletonwarden": 2, "skeletonknight": 3,
-	"skeletonchampion": 4, "skeletonlord": 5}
+	"electric": 3, "poison": 3, "bushmage": 3, "bushsniper": 3, "fire": 4, "dark": 5}
+# The fields' monsters since 0.63.0 ("lets double the enemies in big field"),
+# and the crypt's skeletons, which are in no band: one solid tier each.
+const BIG_FIELD_MONSTERS := 256
+const BIG_FIELD_SOLDIERS := 80
+const BIG_FIELD_ELITES := 30
+# Six in each chamber: "more elites in there also", twice.
+const ELITES_A_CHAMBER := 6
 
 # =============================================================================
 # THE BIG FIELD, DRESSED (0.61.0)
@@ -6946,19 +6952,18 @@ const BIG_FIELD_BANDS := {"light": 1, "wind": 1, "water": 2, "ice": 2, "earth": 
 # The owner, 20 Oct: "go ahead and place because i cannot get the right sizes
 # for them to do it" - the walls and props of floorwalls.png, in "the alcoves
 # and edges", the walls and big pieces solid - and then "i need walls around
-# the whole map": every edge of the floor walled (0.62.0). The sheet is loose pieces of
+# the whole map": every edge of the floor walled (0.62.0) - and the crypt and its
+# doors (0.63.0, _test_the_crypt_doors). The sheet is loose pieces of
 # every size, not a grid, so a TileSet cannot cut it; scene/crypt/ already
 # has each piece at its size, standing on its own feet, and those are what is
 # placed (ysortworld/props/crypt, one group an area). These hold the placing
 # to what the owner asked and to the fights it must not get in the way of.
 
-const DRESSED_ALCOVE_DOORS := [Vector2(448, 192), Vector2(992, 1856), Vector2(1536, 192),
-	Vector2(2080, 1856), Vector2(2656, 192)]
 const DRESSED_LIGHT_BUDGET := 40
 
 
 func _test_the_big_field_is_dressed() -> void:
-	section("THE BIG FIELD, DRESSED - walled all round in the crypt's own pieces, its alcoves furnished (0.61.0, 0.62.0)")
+	section("THE BIG FIELD, DRESSED - walled all round in the crypt's own pieces, its crypt furnished and doored (0.61.0-0.63.0)")
 	var area: Node = (load(BIG_FIELD) as PackedScene).instantiate()
 	var ground: TileMapLayer = area.get_node("ground") as TileMapLayer
 	var crypt: Node2D = area.get_node_or_null("ysortworld/props/crypt") as Node2D
@@ -6997,7 +7002,8 @@ func _test_the_big_field_is_dressed() -> void:
 				var size: Vector2 = (cs.shape as RectangleShape2D).size
 				var centre: Vector2 = at + (body as Node2D).position + cs.position
 				solids.append({"rect": Rect2(centre - size / 2.0, size), "name": "%s/%s" % [prop.get_parent().name, prop.name],
-					"layer": (body as StaticBody2D).collision_layer})
+					"layer": (body as StaticBody2D).collision_layer,
+					"door": str(prop.scene_file_path) == "res://scene/crypt/door.tscn"})
 	var off_layer: Array = solids.filter(func(s): return int(s.layer) != 1).map(func(s): return s.name)
 	check("the walls, cages, crates, pots and pillars are solid, on the walls' own layer: %d blockers" % solids.size(),
 		solids.size() >= 150 and off_layer.is_empty(), off_layer.slice(0, 4))
@@ -7021,7 +7027,7 @@ func _test_the_big_field_is_dressed() -> void:
 	var crowded: Array = []
 	for enemy in area.get_node("ysortworld/enemies").get_children():
 		var feet: Vector2 = (enemy as Node2D).position + Vector2(0, -3)
-		var clear: float = 18.0 if str(enemy.name).begins_with("alcove") else 14.0
+		var clear: float = 18.0 if str(enemy.scene_file_path).ends_with("skeletonelite.tscn") else 14.0
 		for s in solids:
 			var r: Rect2 = s.rect
 			var nearest := Vector2(clampf(feet.x, r.position.x, r.end.x), clampf(feet.y, r.position.y, r.end.y))
@@ -7029,66 +7035,74 @@ func _test_the_big_field_is_dressed() -> void:
 				crowded.append("%s by %s" % [enemy.name, s.name])
 	check("nothing solid stands on a monster's spawn: every one has room to come back", crowded.is_empty(), crowded.slice(0, 4))
 
-	var shut: Array = []
-	for i in DRESSED_ALCOVE_DOORS.size():
-		var door: Vector2 = DRESSED_ALCOVE_DOORS[i]
-		# The way in: 48 px wide, from 40 px out in the field to the skeleton.
-		var marker: Node2D = area.get_node("ysortworld/interactables/elitealcoves/band%d" % [[1, 2, 3, 4, 5][i]]) as Node2D
-		var top: float = minf(door.y + (40.0 if door.y < 1000 else -40.0), marker.position.y)
-		var bottom: float = maxf(door.y + (40.0 if door.y < 1000 else -40.0), marker.position.y)
-		var lane := Rect2(Vector2(door.x - 24.0, top + (12.0 if door.y > 1000 else 0.0)),
-			Vector2(48.0, bottom - top - 12.0))
-		for s in solids:
-			if (s.rect as Rect2).intersects(lane):
-				shut.append("band%d by %s" % [i + 1, s.name])
-	check("  and each alcove's doorway is open: a 48 px way from the field to its skeleton", shut.is_empty(), shut.slice(0, 4))
-
 	# A player's feet, walked over the floor on an 8 px grid with every blocker
-	# grown by 6 px: from where players arrive, every monster can be reached.
+	# grown by 6 px, from where players arrive: once with the doors shut, once
+	# with them open. Shut, the crypt and the south wing are closed off and the
+	# fields are not; open, every monster can be reached.
 	var cols: int = 196 * 2
-	var rows: int = 128 * 2
-	var blocked := PackedByteArray()
-	blocked.resize(cols * rows)
-	for s in solids:
-		var r: Rect2 = (s.rect as Rect2).grow(6.0)
-		for gx in range(maxi(0, int(r.position.x / 8.0)), mini(cols, int(r.end.x / 8.0) + 1)):
-			for gy in range(maxi(0, int(r.position.y / 8.0)), mini(rows, int(r.end.y / 8.0) + 1)):
-				var p := Vector2(gx * 8 + 4, gy * 8 + 4)
-				if r.has_point(p):
-					blocked[gy * cols + gx] = 1
-	var open := func(gx: int, gy: int) -> bool:
-		if gx < 0 or gy < 0 or gx >= cols or gy >= rows or blocked[gy * cols + gx] == 1:
-			return false
-		var atlas: Vector2i = ground.get_cell_atlas_coords(Vector2i(gx / 2, gy / 2))
-		return atlas.x >= 1 and atlas.x <= 4 and atlas.y >= 1 and atlas.y <= 3
-	var arrive: Vector2 = Vector2(120, 1036)
-	var start := Vector2i(int(arrive.x / 8.0), int(arrive.y / 8.0))
-	var seen := PackedByteArray()
-	seen.resize(cols * rows)
-	var queue: Array[Vector2i] = [start]
-	seen[start.y * cols + start.x] = 1
-	var head: int = 0
-	while head < queue.size():
-		var at: Vector2i = queue[head]
-		head += 1
-		for step in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var n: Vector2i = at + step
-			if open.call(n.x, n.y) and seen[n.y * cols + n.x] == 0:
-				seen[n.y * cols + n.x] = 1
+	var top_row: int = -32 * 2               # the crypt reaches north of y 0
+	var rows: int = 168 * 2
+	var walk := func(with_doors: bool) -> PackedByteArray:
+		var blocked := PackedByteArray()
+		blocked.resize(cols * rows)
+		for s in solids:
+			if s.door and not with_doors:
+				continue
+			var r: Rect2 = (s.rect as Rect2).grow(6.0)
+			for gx in range(maxi(0, int(r.position.x / 8.0)), mini(cols, int(r.end.x / 8.0) + 1)):
+				for gy in range(maxi(top_row, int(floor(r.position.y / 8.0))), mini(top_row + rows, int(r.end.y / 8.0) + 1)):
+					if r.has_point(Vector2(gx * 8 + 4, gy * 8 + 4)):
+						blocked[(gy - top_row) * cols + gx] = 1
+		var seen := PackedByteArray()
+		seen.resize(cols * rows)
+		var start := Vector2i(int(120 / 8.0), int(1036 / 8.0))
+		var queue: Array[Vector2i] = [start]
+		seen[(start.y - top_row) * cols + start.x] = 1
+		var head: int = 0
+		while head < queue.size():
+			var at: Vector2i = queue[head]
+			head += 1
+			for step in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: Vector2i = at + step
+				if n.x < 0 or n.x >= cols or n.y < top_row or n.y >= top_row + rows:
+					continue
+				var k: int = (n.y - top_row) * cols + n.x
+				if seen[k] == 1 or blocked[k] == 1:
+					continue
+				var atl: Vector2i = ground.get_cell_atlas_coords(Vector2i(floori(n.x / 2.0), floori(n.y / 2.0)))
+				if atl.x < 1 or atl.x > 4 or atl.y < 1 or atl.y > 3:
+					continue
+				seen[k] = 1
 				queue.append(n)
-	var stranded: Array = []
-	for enemy in area.get_node("ysortworld/enemies").get_children():
-		var p: Vector2 = (enemy as Node2D).position
-		var reached := false
+		return seen
+	var reached := func(seen: PackedByteArray, p: Vector2) -> bool:
 		for dx in [-8, 0, 8]:
 			for dy in [-8, 0, 8]:
-				var g := Vector2i(int((p.x + dx) / 8.0), int((p.y + dy) / 8.0))
-				if g.x >= 0 and g.y >= 0 and g.x < cols and g.y < rows and seen[g.y * cols + g.x] == 1:
-					reached = true
-		if not reached:
+				var gx: int = floori((p.x + dx) / 8.0)
+				var gy: int = floori((p.y + dy) / 8.0)
+				if gx >= 0 and gx < cols and gy >= top_row and gy < top_row + rows and seen[(gy - top_row) * cols + gx] == 1:
+					return true
+		return false
+	var doors: Array = props.filter(func(prop): return str(prop.scene_file_path) == "res://scene/crypt/door.tscn")
+	var open_walk: PackedByteArray = walk.call(false)
+	var shut_walk: PackedByteArray = walk.call(true)
+	var stranded: Array = []
+	var leaked: Array = []
+	var shut_out: Array = []
+	for enemy in area.get_node("ysortworld/enemies").get_children():
+		var p: Vector2 = (enemy as Node2D).position
+		var in_crypt: bool = str(enemy.scene_file_path).get_file().begins_with("skeleton")
+		if not reached.call(open_walk, p):
 			stranded.append(enemy.name)
-	check("  and a player can still walk from where they arrive to every monster, the five skeletons too (%d floor points)" % queue.size(),
-		stranded.is_empty() and queue.size() > 20000, stranded.slice(0, 4))
+		if in_crypt and reached.call(shut_walk, p):
+			leaked.append(enemy.name)
+		if not in_crypt and not reached.call(shut_walk, p):
+			shut_out.append(enemy.name)
+	check("%d doors - a hall's, a chamber's and the south wing's for each field - and with them shut nothing in the crypt can be reached"
+		% doors.size(), doors.size() == 15 and leaked.is_empty(), leaked.slice(0, 4))
+	check("  while every field monster still can", shut_out.is_empty(), shut_out.slice(0, 4))
+	check("  and with them open, a player can walk from where they arrive to every monster, the crypt's too",
+		stranded.is_empty(), stranded.slice(0, 4))
 
 	# ---- walls round the whole map --------------------------------------------------
 	# Every wall piece's picture, and every edge of the floor: a cell with the
@@ -7128,8 +7142,8 @@ func _test_the_big_field_is_dressed() -> void:
 	check("walls round the whole map: every one of the floor's %d edge tiles has its wall, %d pieces" % [edges, walls.size()],
 		edges > 1000 and open_edges.is_empty(), open_edges.slice(0, 4))
 	var rooms: Array = []
-	for band in [1, 2, 3, 4, 5]:
-		var g: Node = crypt.get_node_or_null("alcove%d" % band)
+	for group in ["hall1", "hall2", "hall3", "hall4", "hall5", "chamber1", "chamber2", "chamber3", "chamber4", "chamber5"]:
+		var g: Node = crypt.get_node_or_null(group)
 		var kinds: Dictionary = {}
 		if g != null:
 			for prop in g.get_children():
@@ -7137,8 +7151,8 @@ func _test_the_big_field_is_dressed() -> void:
 				kinds[kind] = int(kinds.get(kind, 0)) + 1
 		if int(kinds.get("candelabra", 0)) != 2 or int(kinds.get("skullpile", 0)) != 1 \
 				or int(kinds.get("cage", 0)) + int(kinds.get("cageoccupied", 0)) != 2:
-			rooms.append("alcove%d %s" % [band, kinds])
-	check("  and each alcove, walled with the rest, is a crypt room round its skeleton: two candelabras, two cages, a skull pile",
+			rooms.append("%s %s" % [group, kinds])
+	check("  and every crypt hall and chamber, walled with the rest, is furnished: two candelabras, two cages, a skull pile",
 		rooms.is_empty(), rooms)
 
 	var dark: CanvasModulate = null
@@ -7158,6 +7172,162 @@ func _test_the_big_field_is_dressed() -> void:
 		sources == [1], sources)
 	area.free()
 	print("  %d props, %d of them solid, %d lights" % [props.size(), solids.size(), lights])
+
+
+# =============================================================================
+# THE CRYPT'S DOORS (0.63.0)
+# =============================================================================
+# The owner, 20 Oct: "for now just interacting with door is enough", the door
+# "bigger too". His door (art/floordecoration/cryptdoor.png) at 2x in the
+# crypt's walls: shut it stops everybody, the interact key opens and shuts it,
+# monsters cannot, and every game in the area sees the same door.
+
+func _test_the_crypt_doors() -> void:
+	section("THE CRYPT'S DOORS - the owner's door at 2x, worked with the interact key (0.63.0)")
+	var world := Node2D.new()
+	world.position = Vector2(-58000, -58000)
+	add_child(world)
+	var door: Node2D = (load("res://scene/crypt/door.tscn") as PackedScene).instantiate()
+	world.add_child(door)
+	var planks: Sprite2D = door.get_node("planks") as Sprite2D
+	var shut_shape: CollisionShape2D = door.get_node("body/shut") as CollisionShape2D
+	var width: float = 0.0
+	for part in ["left", "planks", "right"]:
+		var spr: Sprite2D = door.get_node(part) as Sprite2D
+		width += (spr.texture as AtlasTexture).region.size.x * spr.scale.x
+	var tall: float = (planks.texture as AtlasTexture).region.size.y * planks.scale.y
+	check("the owner's door, drawn at twice its size: %d x %d px, the planks between two stone sides" % [int(width), int(tall)],
+		is_equal_approx(width, 78.0) and is_equal_approx(tall, 56.0)
+		and ((planks.texture as AtlasTexture).atlas as Texture2D).resource_path == "res://art/floordecoration/cryptdoor.png",
+		[width, tall])
+	await get_tree().physics_frame
+	check("it starts shut: the planks showing, the gap between the sides blocked, on the walls' own layer",
+		not door.call("is_open") and not shut_shape.disabled and is_equal_approx(planks.modulate.a, 1.0)
+		and (door.get_node("body") as StaticBody2D).collision_layer == 1, [shut_shape.disabled, planks.modulate.a])
+	check("  and it is a lever to presence.gd, so every game in the area sees it the same",
+		door.is_in_group(&"levers") and door.has_method("follow_pull")
+		and _func_body(_code_src("res://src/world/cryptdoor.gd"), "func work(").contains("Presence.tell_lever(self, _open)"))
+
+	# A body pushed through the gap: stopped shut, through open.
+	var walker := CharacterBody2D.new()
+	walker.collision_layer = 4
+	walker.collision_mask = 1
+	var feet := CollisionShape2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = 6.0
+	feet.shape = circle
+	walker.add_child(feet)
+	walker.position = Vector2(0, 30)
+	world.add_child(walker)
+	walker.add_to_group(&"player")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var through := Vector2(0, -70)
+	check("shut, nobody walks through it", walker.test_move(walker.global_transform, through))
+
+	# The interact key, pressed by a player in reach.
+	check("  a player beside it is in its reach", door.get("_player_nearby") == walker, door.get("_player_nearby"))
+	await _press_interact_a_frame()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("the interact key opens it: the gap clears", door.call("is_open") and shut_shape.disabled, shut_shape.disabled)
+	check("  and a player walks through", not walker.test_move(walker.global_transform, through))
+	await get_tree().create_timer(0.45).timeout
+	check("  the planks lifted out of sight, the stone sides standing",
+		is_zero_approx(planks.modulate.a) and (door.get_node("left") as Sprite2D).visible and (door.get_node("right") as Sprite2D).visible,
+		planks.modulate.a)
+	await _press_interact_a_frame()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("  and pressed again, it shuts", not door.call("is_open") and not shut_shape.disabled
+		and walker.test_move(walker.global_transform, through))
+
+	# It shuts itself behind a player who walks away - the owner, 20 Oct: "need
+	# a door to close after player leaves proximity" - but not while they are
+	# back, and never on anybody standing in the gap.
+	var consts: Dictionary = (door.get_script() as GDScript).get_script_constant_map()
+	var close_after: float = float(consts["CLOSE_AFTER"])
+	await _press_interact_a_frame()
+	walker.position = Vector2(0, 400)
+	await _door_sees(door, walker, false)
+	check("opened, and the player walks out of its reach: open a moment longer",
+		door.call("is_open") and door.get("_player_nearby") == null and close_after > 0.0 and close_after <= 1.0, close_after)
+	await get_tree().create_timer(close_after + 0.5).timeout
+	check("  then it shuts itself behind them: the gap blocked, the planks back (%.1f s)" % close_after,
+		not door.call("is_open") and not shut_shape.disabled and is_equal_approx(planks.modulate.a, 1.0)
+		and walker.test_move(Transform2D(0.0, door.global_position + Vector2(0, 30)), through),
+		[door.call("is_open"), shut_shape.disabled, planks.modulate.a])
+	check("  and that shut is told to the area like one made with the key",
+		_func_body(_code_src("res://src/world/cryptdoor.gd"), "func _close_now(").contains("Presence.tell_lever(self, false)"))
+	walker.position = Vector2(0, 30)
+	await _door_sees(door, walker, true)
+	await _press_interact_a_frame()
+	walker.position = Vector2(0, 400)
+	await _door_sees(door, walker, false)
+	walker.position = Vector2(0, 30)
+	await _door_sees(door, walker, true)
+	await get_tree().create_timer(close_after + 0.4).timeout
+	check("  a player who steps back into reach before it shuts finds it still open", door.call("is_open") and shut_shape.disabled)
+	var standing := CharacterBody2D.new()
+	standing.collision_layer = 8
+	standing.collision_mask = 0
+	var its_feet := CollisionShape2D.new()
+	var its_circle := CircleShape2D.new()
+	its_circle.radius = 6.0
+	its_feet.shape = its_circle
+	standing.add_child(its_feet)
+	standing.position = Vector2(0, -8)
+	world.add_child(standing)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var open_before: bool = door.call("is_open")
+	await _press_interact_a_frame()
+	check("  the key will not shut it on a monster standing in the gap",
+		open_before and door.call("is_open") and door.call("gap_taken"), [open_before, door.call("gap_taken")])
+	walker.position = Vector2(0, 400)
+	await _door_sees(door, walker, false)
+	await get_tree().create_timer(close_after + 0.5).timeout
+	check("  nor will it shut itself on them: it waits, open", door.call("is_open") and shut_shape.disabled)
+	standing.free()
+	await get_tree().physics_frame
+	await get_tree().create_timer(float(consts["RECHECK_SECONDS"]) * 2.0 + 0.4).timeout
+	check("  and shuts once the gap is clear", not door.call("is_open") and not shut_shape.disabled)
+
+	# Out of reach, the key does nothing; somebody else's pull moves it.
+	walker.position = Vector2(0, 400)
+	await _door_sees(door, walker, false)
+	await _press_interact_a_frame()
+	check("a player out of reach cannot work it", not door.call("is_open") and door.get("_player_nearby") == null)
+	door.call("follow_pull", true)
+	await get_tree().physics_frame
+	check("  but another player in the area opening it opens it here", door.call("is_open") and shut_shape.disabled)
+	check("a monster cannot work a door: nothing in the enemies' code opens one",
+		not _code_src("res://src/enemies/baseenemy.gd").contains("cryptdoor")
+		and not _code_src("res://src/enemies/skeleton.gd").contains("follow_pull"))
+	world.free()
+
+
+# A body moved by hand is seen by an Area2D a physics step or two later, and
+# not always the same number: wait (up to a quarter second) until the door's
+# reach has seen the walker arrive or go.
+func _door_sees(door: Node, walker: Node, near: bool) -> void:
+	for i in 20:
+		await get_tree().physics_frame
+		if (door.get("_player_nearby") == walker) == near:
+			return
+
+
+# The interact key as a player presses it: down at the start of a frame, so
+# the door's own _process sees it "just pressed" in that frame (pressed after
+# a timer, it would land after the frame's _process and never be "just"),
+# then up, and the physics caught up.
+func _press_interact_a_frame() -> void:
+	await get_tree().process_frame
+	Input.action_press("interact")
+	await get_tree().process_frame
+	Input.action_release("interact")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 
 
 # =============================================================================
@@ -7345,20 +7515,20 @@ func _test_monsters_go_out_in_a_burst() -> void:
 
 
 # =============================================================================
-# THE ALCOVE SKELETONS (0.60.0)
+# THE CRYPT'S SKELETONS (0.60.0, two kinds since 0.63.0)
 # =============================================================================
-# The owner, 19 Oct: "lets add skeletons" - Ahvassa's sheet - in "the 5 elite
-# alcoves", fighting by "chase and sword swing". One body and five profiles,
-# one skeleton an alcove; a blade that lands on the frame it is drawn landing,
-# against wherever the player is by then; and a bag worth the walk that is not
-# a farm. skeleton.gd says why each piece is the way it is.
+# The owner, 19 Oct: "lets add skeletons" - Ahvassa's sheet - fighting by
+# "chase and sword swing"; 20 Oct: "skeletons need a solid tier we wont
+# recolor skeletons but we should make them elites and expand their size a
+# little bit so normal skeletons and elite skeletons", "more elites in there".
+# One body, two profiles: the Soldier (tier 3) in the crypt halls, the Elite
+# (tier 4, 1.25x) three to a chamber; a blade that lands on the frame it is
+# drawn landing, against wherever the player is by then. skeleton.gd says why.
 
 const SKELETON_BODY := "res://scene/enemy/skeleton.tscn"
 const SKELETON_SHEET := "res://art/enemy/skeleton.png"
-const ALCOVE_SKELETONS := ["skeletonguard", "skeletonwarden", "skeletonknight",
-	"skeletonchampion", "skeletonlord"]
-# A monster of each skeleton's band, whose loot tier and odds it shares.
-const SKELETON_BAND_KIN := ["lightsprite", "watersprite", "earthsprite", "firesprite", "darksprite"]
+const SKELETON_SOLDIER := "res://scene/enemy/skeletonsoldier.tscn"
+const SKELETON_ELITE := "res://scene/enemy/skeletonelite.tscn"
 
 
 class SwingDummy extends CharacterBody2D:
@@ -7423,8 +7593,8 @@ func _opaque_count(img: Image) -> int:
 	return n
 
 
-func _test_the_skeletons_guard_the_alcoves() -> void:
-	section("THE ALCOVE SKELETONS - Ahvassa's skeleton, one an alcove, chasing and swinging (0.60.0)")
+func _test_the_crypt_skeletons() -> void:
+	section("THE CRYPT'S SKELETONS - Ahvassa's skeleton, Soldiers and Elites, chasing and swinging (0.60.0, 0.63.0)")
 	var Skeleton := preload("res://src/enemies/skeleton.gd")
 	var Targets := preload("res://src/shared/targets.gd")
 	var packed: PackedScene = load(SKELETON_BODY) as PackedScene
@@ -7504,80 +7674,58 @@ func _test_the_skeletons_guard_the_alcoves() -> void:
 		own_death.is_empty() and (probe as BaseEnemy)._bursts_on_death(), own_death)
 	probe.free()
 
-	# ---- five of them -------------------------------------------------------------
+	# ---- two of them: a Soldier and an Elite, one tier each -----------------------
 	var rules := preload("res://src/systems/gameconstants.gd")
-	var profiles: Array = []
-	var bad: Array = []
-	for id in ALCOVE_SKELETONS:
-		var variant: PackedScene = load("res://scene/enemy/%s.tscn" % id) as PackedScene
-		var data: EnemyData = load("res://data/enemies/%s.tres" % id) as EnemyData
-		if variant == null or data == null:
-			bad.append("%s does not load" % id)
-			continue
-		var base: PackedScene = variant.get_state().get_node_instance(0)
-		var one: Node = variant.instantiate()
-		var carried: EnemyData = one.get("enemy_data") as EnemyData
-		one.free()
-		if base == null or base.resource_path != SKELETON_BODY:
-			bad.append("%s is not the skeleton's body" % id)
-		if carried == null or carried.resource_path != data.resource_path or data.enemy_id != id:
-			bad.append("%s does not carry its own profile" % id)
-		profiles.append(data)
-	check("five skeletons, each the one body with its band's profile in its scene file - a respawn rebuilds from the file",
-		bad.is_empty() and profiles.size() == 5, bad)
-	if profiles.size() != 5:
+	var soldier: EnemyData = load("res://data/enemies/skeletonsoldier.tres") as EnemyData
+	var elite: EnemyData = load("res://data/enemies/skeletonelite.tres") as EnemyData
+	var bodies: Array = []
+	for path in [SKELETON_SOLDIER, SKELETON_ELITE]:
+		var variant: PackedScene = load(path) as PackedScene
+		var base: PackedScene = variant.get_state().get_node_instance(0) if variant != null else null
+		var one: Node = variant.instantiate() if variant != null else null
+		bodies.append([base.resource_path if base != null else "", one.get("enemy_data") if one != null else null,
+			(one as Node2D).scale if one != null else Vector2.ZERO, float(one.get("melee_range")) if one != null else 0.0])
+		if one != null:
+			one.free()
+	check("two skeletons: the Soldier and the Elite, each the one body with its profile in its scene file - a respawn rebuilds from the file",
+		soldier != null and elite != null and bodies[0][0] == SKELETON_BODY and bodies[1][0] == SKELETON_BODY
+		and bodies[0][1] == soldier and bodies[1][1] == elite, bodies)
+	if soldier == null or elite == null:
 		return
-	var weaker: Array = []
-	for i in range(1, 5):
-		var a: EnemyData = profiles[i - 1]
-		var b: EnemyData = profiles[i]
-		if not (b.max_hp > a.max_hp and b.projectile_damage > a.projectile_damage
-				and b.xp_reward > a.xp_reward and b.attack_xp_reward > a.attack_xp_reward):
-			weaker.append(b.enemy_id)
-	check("each band's is tougher, hits harder and is worth more than the band before's", weaker.is_empty(), weaker)
-	var tiers: Array = profiles.map(func(p): return (p as EnemyData).max_loot_tier)
-	check("  and drops its band's tier, 1 to 5", tiers == [1, 2, 3, 4, 5], tiers)
-	var thin_bags: Array = []
-	for p in profiles:
-		var d: EnemyData = p
-		if not (d.grants_rewards and is_equal_approx(d.bag_drop_chance, 1.0) and d.max_item_slots == 1
-				and is_equal_approx(d.slot_fill_chance, 1.0) and is_equal_approx(d.bonus_potion_chance, 0.5)):
-			thin_bags.append(d.enemy_id)
-	check("every one drops a bag, always, with a piece of its tier in it and a potion half the time",
-		thin_bags.is_empty(), thin_bags)
+	check("  one solid tier each, no recolours: every Soldier tier 3, every Elite tier 4",
+		soldier.max_loot_tier == 3 and elite.max_loot_tier == 4 and soldier.element == elite.element,
+		[soldier.max_loot_tier, elite.max_loot_tier])
+	check("  the Elite a size up - 1.25x - and its sword's reach with it",
+		bodies[0][2] == Vector2.ONE and bodies[1][2] == Vector2(1.25, 1.25)
+		and is_equal_approx(float(bodies[1][3]), float(bodies[0][3]) * 1.25), [bodies[0][2], bodies[1][2], bodies[0][3], bodies[1][3]])
+	check("  and tougher, harder hitting and worth more",
+		elite.max_hp > soldier.max_hp * 3 and elite.projectile_damage > soldier.projectile_damage
+		and elite.xp_reward > soldier.xp_reward * 3, [soldier.max_hp, elite.max_hp])
+	var kin3: EnemyData = load("res://data/enemies/earthbushsniper.tres") as EnemyData
+	var kin4: EnemyData = load("res://data/enemies/firebushmage.tres") as EnemyData
+	check("a Soldier drops like any tier-3 monster: a bag 30% of the time, its tier rolled as theirs",
+		is_equal_approx(soldier.bag_drop_chance, kin3.bag_drop_chance) and soldier.tier_odds == kin3.tier_odds
+		and soldier.max_item_slots == 1 and is_equal_approx(soldier.slot_fill_chance, 0.3)
+		and is_zero_approx(soldier.tier_up_chance), [soldier.bag_drop_chance, soldier.tier_odds])
+	check("an Elite always drops a bag - a piece of its tier, a potion half the time - its tier rolled as tier 4's, never a tier up",
+		elite.grants_rewards and is_equal_approx(elite.bag_drop_chance, 1.0) and elite.max_item_slots == 1
+		and is_equal_approx(elite.slot_fill_chance, 1.0) and is_equal_approx(elite.bonus_potion_chance, 0.5)
+		and elite.tier_odds == kin4.tier_odds and is_zero_approx(elite.tier_up_chance))
 	# THE SERVER TELLS A BOSS BY ITS BAG: one guaranteed piece of gear
 	# (killwatch.py is_boss(), the API's "seven bosses"). A gear-only slot would
-	# have made each skeleton a boss to the books - flagged at boss kill rates,
-	# rolling the boss's mythic table, "a boss never drops iron" broken by the
-	# Guard - so the slot rolls anything of the tier, which is gear 85% of the
-	# time anyway.
-	check("  and none is a boss to the server, which tells a boss by a gear-only bag",
-		profiles.all(func(p): return not p.slots_are_gear))
-	# A FIND, NOT A JACKPOT: the slot rolls its tier the way the band's own
-	# monsters do, and never a tier up. The first cut - 60% its own tier and a
-	# 35% tier-up - made the Lord a legendary every other kill, every three
-	# minutes, where a dark-band player finds one an hour (the API's
-	# test_rewards.py), and gave the fire band legendaries it never has.
-	var off_band: Array = []
-	for i in profiles.size():
-		var d: EnemyData = profiles[i]
-		var kin: EnemyData = load("res://data/enemies/%s.tres" % SKELETON_BAND_KIN[i]) as EnemyData
-		if kin == null or d.max_loot_tier != kin.max_loot_tier or d.tier_odds != kin.tier_odds \
-				or d.tier_up_chance > 0.0:
-			off_band.append(d.enemy_id)
-	check("  its slot rolls the band's tier the way the band's monsters do, never a tier up",
-		off_band.is_empty(), off_band)
+	# have made each Elite a boss to the books.
+	check("  and neither is a boss to the server, which tells a boss by a gear-only bag",
+		not soldier.slots_are_gear and not elite.slots_are_gear)
 	var odds: Array = []
-	for p in profiles:
-		var want: int = int(rules.MYTHIC_ODDS_BY_TIER.get((p as EnemyData).max_loot_tier, 0))
-		if want <= 0 or (p as EnemyData).mythic_odds() != want:
-			odds.append([p.enemy_id, (p as EnemyData).mythic_odds(), want])
-	check("  and its mythic chance is any monster's of its tier, from the table, not an override",
-		odds.is_empty() and profiles.all(func(p): return p.mythic_odds_override == 0), odds)
-	check("no skeleton pet has been drawn, so none rolls for one: each says it drops no pet",
-		profiles.all(func(p): return p.drops_no_pet and p.pet_drop_id == "" and p.rare_pet_drop_id == ""))
-	check("each comes back three minutes after it falls, not with the field around it",
-		profiles.all(func(p): return is_equal_approx(p.respawn_seconds, 180.0)))
+	for d in [soldier, elite]:
+		var want: int = int(rules.MYTHIC_ODDS_BY_TIER.get(d.max_loot_tier, 0))
+		if want <= 0 or d.mythic_odds() != want or d.mythic_odds_override != 0:
+			odds.append([d.enemy_id, d.mythic_odds(), want])
+	check("  their mythic chance is any monster's of their tier, from the table", odds.is_empty(), odds)
+	check("no skeleton pet has been drawn, so neither rolls for one: each says it drops no pet",
+		soldier.drops_no_pet and elite.drops_no_pet and soldier.pet_drop_id == "" and elite.pet_drop_id == "")
+	check("an Elite comes back three minutes after it falls; a Soldier with the area",
+		is_equal_approx(elite.respawn_seconds, 180.0) and is_zero_approx(soldier.respawn_seconds))
 
 	var exported: Dictionary = {}
 	var spawns: Dictionary = {}
@@ -7585,41 +7733,57 @@ func _test_the_skeletons_guard_the_alcoves() -> void:
 	if json is Dictionary:
 		for e in (json as Dictionary).get("enemies", []):
 			exported[str(e.get("enemy_id", ""))] = e
-		for s in (json as Dictionary).get("areas", {}).get("bigfield", {}).get("spawns", []):
-			spawns[str(s.get("e", ""))] = int(spawns.get(str(s.get("e", "")), 0)) + 1
+		for sp in (json as Dictionary).get("areas", {}).get("bigfield", {}).get("spawns", []):
+			spawns[str(sp.get("e", ""))] = int(spawns.get(str(sp.get("e", "")), 0)) + 1
 	var books: Array = []
-	for p in profiles:
-		var e: Dictionary = exported.get(p.enemy_id, {})
-		if e.is_empty() or int(e.get("pet_odds", -1)) != 0 or int(e.get("mythic_odds", 0)) != (p as EnemyData).mythic_odds() \
-				or int(e.get("max_hp", 0)) != p.max_hp or int(e.get("xp_reward", 0)) != p.xp_reward \
-				or int(spawns.get(p.enemy_id, 0)) != 1:
-			books.append(p.enemy_id)
-	check("the export carries all five for the server's books, each placed once in the Big Field, rolling no pet",
-		books.is_empty(), books)
+	for d in [soldier, elite]:
+		var e: Dictionary = exported.get(d.enemy_id, {})
+		if e.is_empty() or int(e.get("pet_odds", -1)) != 0 or int(e.get("mythic_odds", 0)) != d.mythic_odds() \
+				or int(e.get("max_hp", 0)) != d.max_hp or int(e.get("xp_reward", 0)) != d.xp_reward:
+			books.append(d.enemy_id)
+	var gone: Array = ["skeletonguard", "skeletonwarden", "skeletonknight", "skeletonchampion", "skeletonlord"].filter(
+		func(id): return exported.has(id) or ResourceLoader.exists("res://data/enemies/%s.tres" % id))
+	check("the export carries both for the server's books - %d Soldiers and %d Elites placed - and the five alcove skeletons are gone"
+		% [int(spawns.get("skeletonsoldier", 0)), int(spawns.get("skeletonelite", 0))],
+		books.is_empty() and gone.is_empty() and int(spawns.get("skeletonsoldier", 0)) >= 60
+		and int(spawns.get("skeletonelite", 0)) >= 10, [books, gone])
 
-	# ---- one an alcove ------------------------------------------------------------
+	# ---- the crypt: Soldiers in the halls, Elites three to a chamber -------------------
 	var field: Node = (load(BIG_FIELD) as PackedScene).instantiate()
-	var alcoves: Node = field.get_node_or_null("ysortworld/interactables/elitealcoves")
-	var placed: Dictionary = {}
+	var halls: Dictionary = {}
+	var chambers: Dictionary = {}
+	var astray: Array = []
 	for enemy in field.get_node("ysortworld/enemies").get_children():
 		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
-		if kind.begins_with("skeleton"):
-			placed[kind] = (placed.get(kind, []) as Array) + [(enemy as Node2D).position]
-	var guarded: Array = []
-	for band in 5:
-		var marker: Node2D = alcoves.get_node_or_null("band%d" % (band + 1)) as Node2D if alcoves else null
-		var there: Array = placed.get(ALCOVE_SKELETONS[band], [])
-		if marker == null or there.size() != 1 or (there[0] as Vector2).distance_to(marker.position) > 1.0:
-			guarded.append("band%d" % (band + 1))
-	check("each band's alcove has its band's skeleton standing in it, and no skeleton is anywhere else",
-		guarded.is_empty() and placed.size() == 5, [guarded, placed.keys()])
+		var at: Vector2 = (enemy as Node2D).position
+		# Which hall's columns it is under: the halls stand over the fields.
+		var band: int = 0
+		for h in 5:
+			if at.x >= [224, 768, 1312, 1856, 2400][h] and at.x <= [672, 1216, 1760, 2304, 2912][h]:
+				band = h + 1
+		if kind == "skeletonsoldier":
+			if at.y >= -128 and at.y <= 160:
+				halls[band] = int(halls.get(band, 0)) + 1
+			else:
+				astray.append(enemy.name)
+		elif kind == "skeletonelite":
+			if at.y >= -448 and at.y <= -176:
+				chambers[band] = int(chambers.get(band, 0)) + 1
+			else:
+				astray.append(enemy.name)
+		elif at.y < 192:
+			astray.append(enemy.name)
+	var crowded_halls: bool = [1, 2, 3, 4, 5].all(func(h): return int(halls.get(h, 0)) >= 12)
+	var six_each: bool = [1, 2, 3, 4, 5].all(func(h): return int(chambers.get(h, 0)) == ELITES_A_CHAMBER)
+	check("Soldiers fill all five crypt halls, %d Elites stand in each chamber, nothing else in the crypt" % ELITES_A_CHAMBER,
+		crowded_halls and six_each and astray.is_empty(), [halls, chambers, astray.slice(0, 4)])
 	field.free()
 
 	# ---- the fight ----------------------------------------------------------------
 	var world := Node2D.new()
 	add_child(world)
 	var at := Vector2(-61000, -61000)
-	var foe: BaseEnemy = (load("res://scene/enemy/skeletonguard.tscn") as PackedScene).instantiate()
+	var foe: BaseEnemy = (load(SKELETON_SOLDIER) as PackedScene).instantiate()
 	foe.position = at
 	world.add_child(foe)
 	foe.set_physics_process(false)
@@ -7782,7 +7946,7 @@ func _test_the_skeletons_guard_the_alcoves() -> void:
 	# ---- three minutes ------------------------------------------------------------
 	var arena := Node2D.new()
 	add_child(arena)
-	var bones: Node2D = (load("res://scene/enemy/skeletonknight.tscn") as PackedScene).instantiate()
+	var bones: Node2D = (load(SKELETON_ELITE) as PackedScene).instantiate()
 	bones.position = Vector2(-9000, -12000)
 	arena.add_child(bones)
 	var light: Node2D = (load("res://scene/enemy/lightsprite.tscn") as PackedScene).instantiate()
@@ -7798,7 +7962,7 @@ func _test_the_skeletons_guard_the_alcoves() -> void:
 	light.set_physics_process(false)
 	bones.emit_signal("died")
 	light.emit_signal("died")
-	check("a fallen skeleton is back in its profile's three minutes, the monsters round it in the area's %d s"
+	check("a fallen Elite is back in its profile's three minutes, the monsters round it in the area's %d s"
 		% int(clock.respawn_seconds), clock.asked == [180.0, clock.respawn_seconds], clock.asked)
 	clock.respawn_seconds = 600.0
 	check("  never sooner than its area's own time", is_equal_approx(clock.respawn_time_for(bones), 600.0)
@@ -7809,8 +7973,8 @@ func _test_the_skeletons_guard_the_alcoves() -> void:
 	check("  and a game taking the area over gives it its full three minutes too",
 		clock.asked.has(180.0) and clock.asked.has(30.0), clock.asked)
 	arena.free()
-	print("  five skeletons, %d to %d hp, a %d px sword landing on frame %d; back after %d s"
-		% [profiles[0].max_hp, profiles[4].max_hp, int(reach), Skeleton.SWING_FRAME, int(profiles[0].respawn_seconds)])
+	print("  Soldier %d hp, Elite %d hp; a %d px sword landing on frame %d; an Elite back after %d s"
+		% [soldier.max_hp, elite.max_hp, int(reach), Skeleton.SWING_FRAME, int(elite.respawn_seconds)])
 
 
 # =============================================================================
@@ -8115,9 +8279,17 @@ func _test_the_big_field() -> void:
 		ladder != null and str(ladder.get("destination_scene_path")) == "res://scene/field.tscn"
 		and str(ladder.get("target_spawn_id")) == "field_entrance")
 	check("a respawner brings the fields back", area.get_node_or_null("enemyrespawner") != null)
-	# The fields' 128, and since 0.60.0 a skeleton in each band's alcove.
-	check("133 enemies are placed: the fields' 128 and five alcove skeletons",
-		enemies.size() == 133, enemies.size())
+	# The fields' monsters, doubled in 0.63.0, and the crypt's skeletons.
+	var crypt_kinds: Dictionary = {}
+	for enemy in enemies:
+		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
+		if kind.begins_with("skeleton"):
+			crypt_kinds[kind] = int(crypt_kinds.get(kind, 0)) + 1
+	check("%d enemies are placed: the fields' %d, doubled, and the crypt's %d Soldiers and %d Elites"
+		% [enemies.size(), BIG_FIELD_MONSTERS, BIG_FIELD_SOLDIERS, BIG_FIELD_ELITES],
+		enemies.size() == BIG_FIELD_MONSTERS + BIG_FIELD_SOLDIERS + BIG_FIELD_ELITES
+		and int(crypt_kinds.get("skeletonsoldier", 0)) == BIG_FIELD_SOLDIERS
+		and int(crypt_kinds.get("skeletonelite", 0)) == BIG_FIELD_ELITES, [enemies.size(), crypt_kinds])
 
 	# Positions are read relative to the area root, as the scene file holds them.
 	var arrive_at: Vector2 = Vector2.ZERO
@@ -8138,6 +8310,8 @@ func _test_the_big_field() -> void:
 		if not is_equal_approx(float(enemy.get("leash_range")), 250.0):
 			chase.append(enemy.name)
 		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
+		if kind.begins_with("skeleton"):
+			continue                      # the crypt's: no band (_test_the_crypt_skeletons)
 		var band: int = 0
 		for prefix in BIG_FIELD_BANDS:
 			if kind.begins_with(prefix):
@@ -25094,6 +25268,64 @@ func _test_no_debug_keys_the_panel_does_it() -> void:
 	PerfOverlay.set_shown(shown_before)
 	gm.queue_free()
 	await get_tree().process_frame
+
+# =============================================================================
+# THE READOUT COUNTS A CROWD (0.63.0)
+# =============================================================================
+# The owner, stress testing the Big Field's 366 monsters: "i need to upgrade
+# the performance read out". The rows a crowd needs: hitches, the physics tick
+# and the scripts against their budgets, and the monsters awake and asleep.
+func _test_the_readout_counts_a_crowd() -> void:
+	section("THE READOUT COUNTS A CROWD - hitches, physics, scripts, monsters awake and asleep (0.63.0)")
+	var shown_before: bool = PerfOverlay.is_shown()
+	PerfOverlay.set_shown(false)
+	var before: Vector2i = PerfOverlay.monster_counts()
+	var crowd := Node2D.new()
+	add_child(crowd)
+	for i in 5:
+		var monster := Node2D.new()
+		monster.add_to_group(&"enemies")
+		if i < 2:
+			monster.set_meta(&"asleep", true)     # what enemysleeper.gd marks
+		crowd.add_child(monster)
+	PerfOverlay.set_shown(true)
+	check("switched on, its counts start from now",
+		PerfOverlay._frames == 0 and PerfOverlay._hitches == 0
+		and is_zero_approx(PerfOverlay._worst_physics_ms) and is_zero_approx(PerfOverlay._worst_process_ms))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var counts: Vector2i = PerfOverlay.monster_counts()
+	check("it counts the monsters here and the ones asleep",
+		counts == before + Vector2i(5, 2), [before, counts])
+	var text: String = PerfOverlay.readout()
+	var want: String = "%d here   %d awake   %d asleep" % [counts.x, counts.x - counts.y, counts.y]
+	check("  and says so: \"%s\"" % want, text.contains("monsters") and text.contains(want), text)
+	check("the physics tick against its own budget - 80 ticks a second is 12.50 ms",
+		text.contains("physics") and text.contains("ms a tick") and text.contains("budget %.2f" % (1000.0 / float(Engine.physics_ticks_per_second)))
+		and Engine.physics_ticks_per_second == 80, text)
+	check("  the scripts' time and its worst", text.contains("process") and text.contains("(worst "), text)
+	var frames: int = PerfOverlay._frames
+	var hitches: int = PerfOverlay._hitches
+	PerfOverlay._note_frame(0.040)
+	PerfOverlay._note_frame(0.017)
+	check("a 40 ms frame is a hitch; a 17 ms one on a 60 Hz screen is not",
+		PerfOverlay._frames == frames + 2 and PerfOverlay._hitches == hitches + 1,
+		[PerfOverlay._frames - frames, PerfOverlay._hitches - hitches])
+	PerfOverlay._accum = PerfOverlay.SAMPLE_INTERVAL
+	await get_tree().process_frame
+	await get_tree().process_frame
+	text = PerfOverlay.readout()
+	check("  and the hitches row counts them, over 25 ms", text.contains("hitches") and text.contains("frames over 25 ms"), text)
+	crowd.free()
+	PerfOverlay._accum = PerfOverlay.SAMPLE_INTERVAL
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if before.x == 0:
+		check("  with nobody about, it says none here", PerfOverlay.readout().contains("none here"), PerfOverlay.readout())
+	check("still drawn five times a second, not every frame - the readout must not cost what it measures",
+		is_equal_approx(PerfOverlay.SAMPLE_INTERVAL, 0.2))
+	PerfOverlay.set_shown(false)
+	PerfOverlay.set_shown(shown_before)
 
 # =============================================================================
 # OLD VERSIONS MUST UPDATE - the minimum build, from the GM panel (0.11.8)

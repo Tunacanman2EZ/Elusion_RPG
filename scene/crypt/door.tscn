@@ -1,0 +1,69 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/world/cryptdoor.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://art/floordecoration/cryptdoor.png" id="2_tex"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_left"]
+atlas = ExtResource("2_tex")
+region = Rect2(14, 19, 9, 28)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_planks"]
+atlas = ExtResource("2_tex")
+region = Rect2(23, 19, 21, 28)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_right"]
+atlas = ExtResource("2_tex")
+region = Rect2(44, 19, 9, 28)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_side"]
+size = Vector2(18, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_shut"]
+size = Vector2(42, 16)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_reach"]
+size = Vector2(110, 120)
+
+[node name="door" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="left" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(-30, -28)
+scale = Vector2(2, 2)
+texture = SubResource("AtlasTexture_left")
+
+[node name="planks" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(0, -28)
+scale = Vector2(2, 2)
+texture = SubResource("AtlasTexture_planks")
+
+[node name="right" type="Sprite2D" parent="."]
+texture_filter = 1
+position = Vector2(30, -28)
+scale = Vector2(2, 2)
+texture = SubResource("AtlasTexture_right")
+
+[node name="body" type="StaticBody2D" parent="."]
+
+[node name="sideleft" type="CollisionShape2D" parent="body"]
+position = Vector2(-30, -8)
+shape = SubResource("RectangleShape2D_side")
+
+[node name="sideright" type="CollisionShape2D" parent="body"]
+position = Vector2(30, -8)
+shape = SubResource("RectangleShape2D_side")
+
+[node name="shut" type="CollisionShape2D" parent="body"]
+position = Vector2(0, -8)
+shape = SubResource("RectangleShape2D_shut")
+
+[node name="reach" type="Area2D" parent="."]
+position = Vector2(0, -28)
+collision_layer = 0
+collision_mask = 4
+monitorable = false
+
+[node name="collision" type="CollisionShape2D" parent="reach"]
+shape = SubResource("RectangleShape2D_reach")

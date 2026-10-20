@@ -11,6 +11,12 @@
 # readout can be shown on the real exported game - which is the one whose
 # numbers matter. It grants nothing. It reads a few numbers and draws them.
 #
+# FOR STRESS TESTS TOO (0.63.0). The owner, filling the Big Field with 366
+# monsters: "i need to upgrade the performance read out". So it also says how
+# many frames hitched, what the physics tick and the scripts cost against
+# their own budgets, and how many monsters are in the area - awake, and asleep
+# (enemysleeper.gd) - which is what a crowd of monsters actually spends.
+#
 # BUILT IN CODE, NO .tscn. A scene for this would be one more file the editor
 # rewrites from its in-memory copy whenever it happens to be open, for a Label
 # and a CanvasLayer that are four lines to construct.
@@ -37,6 +43,11 @@ const LABEL_WIDTH := 9
 # Change it to 6.94 if you decide the game targets 144.
 const TARGET_FRAME_MS := 1000.0 / 60.0
 
+# A HITCH is a frame half as long again as the budget - 25 ms at 60 fps - the
+# stutter a player sees. Not "over budget": on a 60 Hz screen every frame
+# lands a hair either side of 16.67 ms, and counting those counts nothing.
+const HITCH_MS := TARGET_FRAME_MS * 1.5
+
 
 var _label: Label
 var _accum: float = 0.0
@@ -46,6 +57,13 @@ var _accum: float = 0.0
 # instant costs; the minimum tells you whether the fight ever became unplayable,
 # and that is the one the player felt. Reset by toggling off and on.
 var _worst_fps: float = 0.0
+
+# Since you turned it on, like the worst frame: every frame counted, the ones
+# that hitched, and the worst physics tick and script time.
+var _frames: int = 0
+var _hitches: int = 0
+var _worst_physics_ms: float = 0.0
+var _worst_process_ms: float = 0.0
 
 
 func _ready() -> void:
@@ -74,6 +92,10 @@ func set_shown(on: bool) -> void:
 	from the moment you asked rather than from whenever it was last open."""
 	if on and not visible:
 		_worst_fps = 0.0
+		_frames = 0
+		_hitches = 0
+		_worst_physics_ms = 0.0
+		_worst_process_ms = 0.0
 		_accum = SAMPLE_INTERVAL   # redraw on the very next frame, not in 0.2s
 	visible = on
 
@@ -92,6 +114,7 @@ func _process(delta: float) -> void:
 	var fps: float = Performance.get_monitor(Performance.TIME_FPS)
 	if fps > 0.0 and (_worst_fps <= 0.0 or fps < _worst_fps):
 		_worst_fps = fps
+	_note_frame(delta)
 
 	_accum += delta
 	if _accum < SAMPLE_INTERVAL:
@@ -115,6 +138,18 @@ func _process(delta: float) -> void:
 			1000.0 / maxf(_worst_fps, 0.001),
 			TARGET_FRAME_MS,
 		]),
+		_row("hitches", "%s of %s frames over %.0f ms   (%.1f%%)" % [
+			_thousands(_hitches), _thousands(_frames), HITCH_MS,
+			100.0 * float(_hitches) / float(maxi(_frames, 1))]),
+
+		# THE TWO HALVES OF A FRAME THAT A CROWD OF MONSTERS FILLS. Physics is
+		# every monster's brain - navigation, the formation ring, move_and_slide -
+		# at 80 ticks a second, so its budget is 12.5 ms, not the frame's.
+		# Process is every _process: animation, the HUD, names over heads.
+		_row("physics", "%.2f ms a tick   (worst %.2f)   budget %.2f" % [
+			_physics_ms(), _worst_physics_ms, 1000.0 / float(Engine.physics_ticks_per_second)]),
+		_row("process", "%.2f ms   (worst %.2f)" % [_process_ms(), _worst_process_ms]),
+		_row("monsters", _monsters_text()),
 		_row("nodes", _thousands(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))),
 		_row("bodies", "%s active" % _thousands(
 			int(Performance.get_monitor(Performance.PHYSICS_2D_ACTIVE_OBJECTS)))),
@@ -138,6 +173,49 @@ func _process(delta: float) -> void:
 		_row("net", "%.2f req/s   (%s total)" % [
 			Api.requests_per_second(), _thousands(Api.requests_total())]),
 	])
+
+
+func _note_frame(delta: float) -> void:
+	"""One frame into the since-switched-on counts: the frame, whether it
+	hitched, and the worst physics tick and script time."""
+	_frames += 1
+	if delta * 1000.0 > HITCH_MS:
+		_hitches += 1
+	_worst_physics_ms = maxf(_worst_physics_ms, _physics_ms())
+	_worst_process_ms = maxf(_worst_process_ms, _process_ms())
+
+
+func _physics_ms() -> float:
+	return Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+
+
+func _process_ms() -> float:
+	return Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+
+
+func monster_counts() -> Vector2i:
+	"""(in the area, asleep) - every node in the "enemies" group, and those the
+	enemy sleeper has put to sleep (it marks them with the "asleep" meta)."""
+	var here: int = 0
+	var asleep: int = 0
+	for node in get_tree().get_nodes_in_group("enemies"):
+		here += 1
+		if node.has_meta(&"asleep"):
+			asleep += 1
+	return Vector2i(here, asleep)
+
+
+func _monsters_text() -> String:
+	var counts: Vector2i = monster_counts()
+	if counts.x == 0:
+		return "none here"
+	return "%s here   %s awake   %s asleep" % [
+		_thousands(counts.x), _thousands(counts.x - counts.y), _thousands(counts.y)]
+
+
+func readout() -> String:
+	"""What the readout says right now, as drawn."""
+	return _label.text
 
 
 func _cap_note() -> String:
