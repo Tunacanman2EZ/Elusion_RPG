@@ -13,9 +13,10 @@
 #
 # FOR STRESS TESTS TOO (0.63.0). The owner, filling the Big Field with 366
 # monsters: "i need to upgrade the performance read out". So it also says how
-# many frames hitched, what the physics tick and the scripts cost against
-# their own budgets, and how many monsters are in the area - awake, and asleep
-# (enemysleeper.gd) - which is what a crowd of monsters actually spends.
+# many frames hitched, what the physics tick and the rest of the frame
+# (scripts and drawing) cost against their own budgets, and how many monsters
+# are in the area - awake, and asleep (enemysleeper.gd) - which is what a
+# crowd of monsters actually spends.
 #
 # BUILT IN CODE, NO .tscn. A scene for this would be one more file the editor
 # rewrites from its in-memory copy whenever it happens to be open, for a Label
@@ -145,10 +146,16 @@ func _process(delta: float) -> void:
 		# THE TWO HALVES OF A FRAME THAT A CROWD OF MONSTERS FILLS. Physics is
 		# every monster's brain - navigation, the formation ring, move_and_slide -
 		# at 80 ticks a second, so its budget is 12.5 ms, not the frame's.
-		# Process is every _process: animation, the HUD, names over heads.
+		#
+		# PROCESS IS THE REST OF THE FRAME, DRAWING INCLUDED - NOT THE SCRIPTS
+		# ALONE (0.63.1; 0.63.0 called it the scripts). Godot measures
+		# TIME_PROCESS round the whole idle step: every _process (animation, the
+		# HUD, names over heads) and handing the picture to the graphics card.
+		# The same Big Field read 2 ms with nothing drawn and 51 ms drawn on a
+		# machine with no graphics card. Its budget is the frame's, less physics.
 		_row("physics", "%.2f ms a tick   (worst %.2f)   budget %.2f" % [
 			_physics_ms(), _worst_physics_ms, 1000.0 / float(Engine.physics_ticks_per_second)]),
-		_row("process", "%.2f ms   (worst %.2f)" % [_process_ms(), _worst_process_ms]),
+		_row("process", "%.2f ms   (worst %.2f)   scripts + drawing" % [_process_ms(), _worst_process_ms]),
 		_row("monsters", _monsters_text()),
 		_row("nodes", _thousands(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))),
 		_row("bodies", "%s active" % _thousands(

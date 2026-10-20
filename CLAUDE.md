@@ -598,7 +598,9 @@ backslash"). All of it is on the owner panel (backquote) now:
   Field: "i need to upgrade the performance read out"): `hitches` - frames
   over 25 ms since it was switched on, out of how many; `physics` - the tick
   against its 12.5 ms budget (80 ticks a second), and its worst; `process` -
-  every script's `_process`, and its worst; `monsters` - how many are in the
+  the rest of the frame, **scripts and drawing** (Godot's TIME_PROCESS is
+  measured round the whole idle step, the draw included - 0.63.0 called it
+  the scripts alone, which was wrong), and its worst; `monsters` - how many are in the
   area, awake and asleep (enemysleeper.gd). Switching it on starts every
   worst and count again. `_test_the_readout_counts_a_crowd()` holds it.
 
@@ -7199,6 +7201,13 @@ chamber), and for a door to "close after player leaves proximity".
   stand, the fight, the Elite's respawn). The API's `test_rewards.py` holds
   the loot: a Soldier rolls as tier 3, an Elite as tier 4, neither a boss,
   an Elite never a legendary.
+- **The owner's stress test, 20 Oct** (two videos, the warrior through field
+  1, hall 1, chamber 1, hall 2 and chamber 2, 69 to 114 monsters awake):
+  with V-Sync on, locked at 60 fps and not one hitch in 1,261 frames; with
+  V-Sync off and no frame cap, 320 to 692 fps (its slowest second 3.13 ms a
+  frame, a fifth of the 16.67 budget), not one hitch in 10,133 frames,
+  physics at most 4.29 ms a tick of its 12.5, process at most 8.71 ms. The
+  366 monsters fit with room to spare on his machine.
 - **Still open**: the boss's swing counts a tank's `aura` (see the 0.60.0
   note above), and the south wing waits for its enemy.
 

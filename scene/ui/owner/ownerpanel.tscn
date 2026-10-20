@@ -610,7 +610,7 @@ text = "Kills need the server's count"
 [node name="perfbutton" type="CheckButton" parent="frame/margin/rows/tabsscroll/ownertabs/testing"]
 unique_name_in_owner = true
 layout_mode = 2
-tooltip_text = "Owner only. Draws what the game is costing in the top-left corner: frame rate and its worst moment since you switched it on, frame time against the 60 fps budget, how many frames hitched, the physics tick and the scripts against their budgets, the monsters here awake and asleep, nodes, physics, draw calls, memory and requests a second. Grants nothing. Works in the exported game too."
+tooltip_text = "Owner only. Draws what the game is costing in the top-left corner: frame rate and its worst moment since you switched it on, frame time against the 60 fps budget, how many frames hitched, the physics tick and the rest of the frame (scripts and drawing) against their budgets, the monsters here awake and asleep, nodes, physics, draw calls, memory and requests a second. Grants nothing. Works in the exported game too."
 focus_mode = 0
 theme_override_colors/font_pressed_color = Color(0.92941, 0.72941, 0.30196, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)

@@ -737,8 +737,8 @@ func _on_god_mode_toggled(pressed: bool) -> void:
 # THE PERFORMANCE READOUT
 # =============================================================================
 # PerfOverlay's numbers in the top-left: frame rate and its worst moment, frame
-# time against the 60 fps budget, hitches, the physics tick and the scripts
-# against their budgets, the monsters here awake and asleep (0.63.0), nodes,
+# time against the 60 fps budget, hitches, the physics tick and the rest of
+# the frame (scripts and drawing) against their budgets, the monsters here awake and asleep (0.63.0), nodes,
 # physics, draw calls, memory and requests a second. It was the backslash key, in debug builds only; the owner
 # asked for it here (6 Oct, "add to menu instead and remove backslash"), and
 # here it works on the exported game too, because the panel is the gate.

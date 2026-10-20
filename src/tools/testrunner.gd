@@ -25274,9 +25274,10 @@ func _test_no_debug_keys_the_panel_does_it() -> void:
 # =============================================================================
 # The owner, stress testing the Big Field's 366 monsters: "i need to upgrade
 # the performance read out". The rows a crowd needs: hitches, the physics tick
-# and the scripts against their budgets, and the monsters awake and asleep.
+# and the rest of the frame - scripts and drawing, which is what Godot's
+# TIME_PROCESS measures (0.63.1) - and the monsters awake and asleep.
 func _test_the_readout_counts_a_crowd() -> void:
-	section("THE READOUT COUNTS A CROWD - hitches, physics, scripts, monsters awake and asleep (0.63.0)")
+	section("THE READOUT COUNTS A CROWD - hitches, physics, scripts and drawing, monsters awake and asleep (0.63.0)")
 	var shown_before: bool = PerfOverlay.is_shown()
 	PerfOverlay.set_shown(false)
 	var before: Vector2i = PerfOverlay.monster_counts()
@@ -25303,7 +25304,8 @@ func _test_the_readout_counts_a_crowd() -> void:
 	check("the physics tick against its own budget - 80 ticks a second is 12.50 ms",
 		text.contains("physics") and text.contains("ms a tick") and text.contains("budget %.2f" % (1000.0 / float(Engine.physics_ticks_per_second)))
 		and Engine.physics_ticks_per_second == 80, text)
-	check("  the scripts' time and its worst", text.contains("process") and text.contains("(worst "), text)
+	check("  the rest of the frame and its worst, named for what it is: scripts + drawing, not scripts alone",
+		text.contains("process") and text.contains("(worst ") and text.contains("scripts + drawing"), text)
 	var frames: int = PerfOverlay._frames
 	var hitches: int = PerfOverlay._hitches
 	PerfOverlay._note_frame(0.040)
