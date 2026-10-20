@@ -152,6 +152,14 @@ class_name EnemyData
 # number is set so the ENCOUNTER lands where a single kill otherwise would.
 @export var pet_odds_override: int = 0
 
+# NO PET AT ALL, ON PURPOSE (0.60.0). The tier table gives every enemy pet
+# odds, and an enemy that names no pet then rolls for nothing - which the
+# suite fails on, because that is how a drawn pet goes unwired. This says
+# "nothing to wire": the export writes pet_odds 0, so nothing rolls. The alcove
+# skeletons set it - no skeleton pet has been drawn. Naming a pet as well is a
+# contradiction, and the exporter refuses it.
+@export var drops_no_pet: bool = false
+
 
 # =============================================================================
 # MYTHIC
@@ -167,6 +175,16 @@ class_name EnemyData
 # with pet_odds_override. The Crowned is the best mythic hunt in the game. A
 # small slime is a quarter of a ticket, because one large releases eight.
 @export var mythic_odds_override: int = 0
+
+# =============================================================================
+# RESPAWN (0.60.0)
+# =============================================================================
+# Seconds before this monster comes back once killed, in place of its area's
+# EnemyRespawner time. 0 - every ordinary monster - keeps the area's. The
+# alcove skeletons set it: an elite with a guaranteed gear bag that came back
+# in thirty seconds would be a farm, not a find. Only ever LONGER than the
+# area's: the server's books expect nothing back sooner than that.
+@export var respawn_seconds: float = 0.0
 
 const _RULES := preload("res://src/systems/gameconstants.gd")
 

@@ -399,6 +399,7 @@ func _run_all() -> void:
 	await _test_the_arrival_portal_closes_behind_you()
 	await _test_monsters_go_out_in_a_burst()
 	await _test_a_hit_flashes_the_artists_white()
+	await _test_the_skeletons_guard_the_alcoves()
 	await _test_far_enemies_sleep()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
@@ -6933,7 +6934,10 @@ const DOOR_SCRIPTS := ["res://src/world/ladder.gd", "res://src/world/leavetown.g
 # holds the walls and the doors, because bigfield is in AreaRegistry.AREAS.
 const BIG_FIELD := "res://scene/bigfield.tscn"
 const BIG_FIELD_BANDS := {"light": 1, "wind": 1, "water": 2, "ice": 2, "earth": 3,
-	"electric": 3, "poison": 3, "bushmage": 3, "bushsniper": 3, "fire": 4, "dark": 5}
+	"electric": 3, "poison": 3, "bushmage": 3, "bushsniper": 3, "fire": 4, "dark": 5,
+	# The alcove skeletons, one a band (0.60.0).
+	"skeletonguard": 1, "skeletonwarden": 2, "skeletonknight": 3,
+	"skeletonchampion": 4, "skeletonlord": 5}
 
 # =============================================================================
 # THE ROAD THROUGH THE GAME (0.15.0)
@@ -7117,6 +7121,475 @@ func _test_monsters_go_out_in_a_burst() -> void:
 		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func net_vanish(").contains("elif _bursts_on_death():")
 		and not _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func net_remove(").contains("DeathBurst"))
 	world.free()
+
+
+# =============================================================================
+# THE ALCOVE SKELETONS (0.60.0)
+# =============================================================================
+# The owner, 19 Oct: "lets add skeletons" - Ahvassa's sheet - in "the 5 elite
+# alcoves", fighting by "chase and sword swing". One body and five profiles,
+# one skeleton an alcove; a blade that lands on the frame it is drawn landing,
+# against wherever the player is by then; and a bag worth the walk that is not
+# a farm. skeleton.gd says why each piece is the way it is.
+
+const SKELETON_BODY := "res://scene/enemy/skeleton.tscn"
+const SKELETON_SHEET := "res://art/enemy/skeleton.png"
+const ALCOVE_SKELETONS := ["skeletonguard", "skeletonwarden", "skeletonknight",
+	"skeletonchampion", "skeletonlord"]
+# A monster of each skeleton's band, whose loot tier and odds it shares.
+const SKELETON_BAND_KIN := ["lightsprite", "watersprite", "earthsprite", "firesprite", "darksprite"]
+
+
+class SwingDummy extends CharacterBody2D:
+	# Stands in for a player in reach of a sword: on the players' layer, in
+	# their group, a body and a hurtbox like the warrior's - one player, two
+	# shapes - and a take_damage() that writes down what it was given.
+	var taken: Array = []
+
+	func _init() -> void:
+		collision_layer = 4
+		collision_mask = 0
+		var feet := CollisionShape2D.new()
+		feet.name = "bodyshape"
+		var feet_circle := CircleShape2D.new()
+		feet_circle.radius = 6.0
+		feet.shape = feet_circle
+		add_child(feet)
+		var hurtbox := Area2D.new()
+		hurtbox.name = "hurtbox"
+		hurtbox.collision_layer = 4
+		hurtbox.collision_mask = 0
+		var box := CollisionShape2D.new()
+		var box_circle := CircleShape2D.new()
+		box_circle.radius = 8.0
+		box.shape = box_circle
+		hurtbox.add_child(box)
+		add_child(hurtbox)
+		add_to_group(&"player")
+
+	func take_damage(amount: int, element: int = 0) -> void:
+		taken.append([amount, element])
+
+
+class SwingSync extends Node:
+	# Stands in for monstersync.gd as the leader: writes down what it is told.
+	var events: Array = []
+
+	func leader_event(_enemy: Node, event: Dictionary) -> void:
+		events.append(event)
+
+
+class RespawnClock extends "res://src/world/enemyrespawner.gd":
+	# The respawner with its clock read instead of run: what a death asked for.
+	var asked: Array = []
+
+	func _respawn_after(_entry: Dictionary, delay: float) -> void:
+		asked.append(delay)
+
+
+func _opaque_count(img: Image) -> int:
+	"""How many pixels of an image are drawn at all."""
+	if img == null:
+		return -1
+	var rgba: Image = img.duplicate() as Image
+	if rgba.get_format() != Image.FORMAT_RGBA8:
+		rgba.convert(Image.FORMAT_RGBA8)
+	var bytes: PackedByteArray = rgba.get_data()
+	var n: int = 0
+	for i in range(3, bytes.size(), 4):
+		if bytes[i] > 0:
+			n += 1
+	return n
+
+
+func _test_the_skeletons_guard_the_alcoves() -> void:
+	section("THE ALCOVE SKELETONS - Ahvassa's skeleton, one an alcove, chasing and swinging (0.60.0)")
+	var Skeleton := preload("res://src/enemies/skeleton.gd")
+	var Targets := preload("res://src/shared/targets.gd")
+	var packed: PackedScene = load(SKELETON_BODY) as PackedScene
+	check("the skeleton's body loads", packed != null)
+	if packed == null:
+		return
+
+	# ---- Ahvassa's sheet ----------------------------------------------------------
+	var probe: Node = packed.instantiate()
+	var like: Node = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	var sprite: AnimatedSprite2D = probe.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	var sf: SpriteFrames = sprite.sprite_frames if sprite != null else null
+	check("a monster of its own script, on every other monster's layers, with a hurtbox like theirs",
+		probe is BaseEnemy and (probe.get_script() as Script).resource_path == "res://src/enemies/skeleton.gd"
+		and (probe as CollisionObject2D).collision_layer == (like as CollisionObject2D).collision_layer
+		and (probe as CollisionObject2D).collision_mask == (like as CollisionObject2D).collision_mask
+		and probe.get_node_or_null("hurtbox") is Area2D
+		and (probe.get_node("hurtbox") as Area2D).collision_layer == (like.get_node("hurtbox") as Area2D).collision_layer,
+		[(probe as CollisionObject2D).collision_layer, (probe as CollisionObject2D).collision_mask])
+	like.free()
+	if sf == null:
+		check("it has its frames", false)
+		probe.free()
+		return
+	# Top to bottom: facing right, left, down, up - read off the skull, whose
+	# eyes are on the side it faces (the first group's are on the right).
+	var groups := ["right", "left", "down", "up"]
+	var rows := {"idle": [0, 8], "walk": [1, 6], "attack": [2, 8]}
+	var wrong: Array = []
+	var speeds := {}
+	for g in groups.size():
+		for kind in rows:
+			var anim := StringName(kind + groups[g])
+			if not sf.has_animation(anim):
+				wrong.append("%s missing" % anim)
+				continue
+			var count: int = sf.get_frame_count(anim)
+			if count != int(rows[kind][1]):
+				wrong.append("%s has %d frames" % [anim, count])
+			for i in count:
+				var tex: AtlasTexture = sf.get_frame_texture(anim, i) as AtlasTexture
+				var want := Rect2(i * 64, (g * 4 + int(rows[kind][0])) * 64, 64, 64)
+				if tex == null or tex.atlas == null or tex.atlas.resource_path != SKELETON_SHEET or tex.region != want:
+					wrong.append("%s frame %d" % [anim, i])
+			if not speeds.has(kind):
+				speeds[kind] = []
+			if not (speeds[kind] as Array).has(sf.get_animation_speed(anim)):
+				(speeds[kind] as Array).append(sf.get_animation_speed(anim))
+	check("Ahvassa's sheet, every frame where she drew it: right, left, down, up, each an idle of 8, a walk of 6, a swing of 8",
+		wrong.is_empty() and sf.get_animation_names().size() == 12, [wrong.slice(0, 6), sf.get_animation_names().size()])
+	check("  each at one speed whichever way it faces", speeds.size() == 3
+		and speeds.keys().all(func(k): return (speeds[k] as Array).size() == 1), speeds)
+	var loops_wrong: Array = []
+	for d in groups:
+		if sf.get_animation_loop(StringName("attack" + d)) or not sf.get_animation_loop(StringName("idle" + d)) \
+				or not sf.get_animation_loop(StringName("walk" + d)):
+			loops_wrong.append(d)
+	check("  the swing plays once, at the speed its timing is worked out at, and the idle and walk loop",
+		loops_wrong.is_empty() and is_equal_approx(sf.get_animation_speed(&"attackdown"), Skeleton.ATTACK_FPS),
+		[loops_wrong, sf.get_animation_speed(&"attackdown")])
+	var not_widest: Array = []
+	for d in groups:
+		var anim := StringName("attack" + d)
+		var widest: int = -1
+		var most: int = -1
+		for i in sf.get_frame_count(anim):
+			var drawn: int = _opaque_count(_frame_image(sf, anim, i))
+			if drawn > most:
+				most = drawn
+				widest = i
+		if widest != Skeleton.SWING_FRAME:
+			not_widest.append("%s: frame %d" % [anim, widest])
+	check("the blade lands on the frame she drew the sword widest, every way it faces (frame %d, %.1f s in)"
+		% [Skeleton.SWING_FRAME, Skeleton.SWING_FRAME / Skeleton.ATTACK_FPS], not_widest.is_empty(), not_widest)
+	var own_death: Array = Array(sf.get_animation_names()).filter(func(a): return str(a).begins_with("death") or str(a).begins_with("hitflash"))
+	check("  no death and no flash rows: it breaks up in a burst like any monster without one",
+		own_death.is_empty() and (probe as BaseEnemy)._bursts_on_death(), own_death)
+	probe.free()
+
+	# ---- five of them -------------------------------------------------------------
+	var rules := preload("res://src/systems/gameconstants.gd")
+	var profiles: Array = []
+	var bad: Array = []
+	for id in ALCOVE_SKELETONS:
+		var variant: PackedScene = load("res://scene/enemy/%s.tscn" % id) as PackedScene
+		var data: EnemyData = load("res://data/enemies/%s.tres" % id) as EnemyData
+		if variant == null or data == null:
+			bad.append("%s does not load" % id)
+			continue
+		var base: PackedScene = variant.get_state().get_node_instance(0)
+		var one: Node = variant.instantiate()
+		var carried: EnemyData = one.get("enemy_data") as EnemyData
+		one.free()
+		if base == null or base.resource_path != SKELETON_BODY:
+			bad.append("%s is not the skeleton's body" % id)
+		if carried == null or carried.resource_path != data.resource_path or data.enemy_id != id:
+			bad.append("%s does not carry its own profile" % id)
+		profiles.append(data)
+	check("five skeletons, each the one body with its band's profile in its scene file - a respawn rebuilds from the file",
+		bad.is_empty() and profiles.size() == 5, bad)
+	if profiles.size() != 5:
+		return
+	var weaker: Array = []
+	for i in range(1, 5):
+		var a: EnemyData = profiles[i - 1]
+		var b: EnemyData = profiles[i]
+		if not (b.max_hp > a.max_hp and b.projectile_damage > a.projectile_damage
+				and b.xp_reward > a.xp_reward and b.attack_xp_reward > a.attack_xp_reward):
+			weaker.append(b.enemy_id)
+	check("each band's is tougher, hits harder and is worth more than the band before's", weaker.is_empty(), weaker)
+	var tiers: Array = profiles.map(func(p): return (p as EnemyData).max_loot_tier)
+	check("  and drops its band's tier, 1 to 5", tiers == [1, 2, 3, 4, 5], tiers)
+	var thin_bags: Array = []
+	for p in profiles:
+		var d: EnemyData = p
+		if not (d.grants_rewards and is_equal_approx(d.bag_drop_chance, 1.0) and d.max_item_slots == 1
+				and is_equal_approx(d.slot_fill_chance, 1.0) and is_equal_approx(d.bonus_potion_chance, 0.5)):
+			thin_bags.append(d.enemy_id)
+	check("every one drops a bag, always, with a piece of its tier in it and a potion half the time",
+		thin_bags.is_empty(), thin_bags)
+	# THE SERVER TELLS A BOSS BY ITS BAG: one guaranteed piece of gear
+	# (killwatch.py is_boss(), the API's "seven bosses"). A gear-only slot would
+	# have made each skeleton a boss to the books - flagged at boss kill rates,
+	# rolling the boss's mythic table, "a boss never drops iron" broken by the
+	# Guard - so the slot rolls anything of the tier, which is gear 85% of the
+	# time anyway.
+	check("  and none is a boss to the server, which tells a boss by a gear-only bag",
+		profiles.all(func(p): return not p.slots_are_gear))
+	# A FIND, NOT A JACKPOT: the slot rolls its tier the way the band's own
+	# monsters do, and never a tier up. The first cut - 60% its own tier and a
+	# 35% tier-up - made the Lord a legendary every other kill, every three
+	# minutes, where a dark-band player finds one an hour (the API's
+	# test_rewards.py), and gave the fire band legendaries it never has.
+	var off_band: Array = []
+	for i in profiles.size():
+		var d: EnemyData = profiles[i]
+		var kin: EnemyData = load("res://data/enemies/%s.tres" % SKELETON_BAND_KIN[i]) as EnemyData
+		if kin == null or d.max_loot_tier != kin.max_loot_tier or d.tier_odds != kin.tier_odds \
+				or d.tier_up_chance > 0.0:
+			off_band.append(d.enemy_id)
+	check("  its slot rolls the band's tier the way the band's monsters do, never a tier up",
+		off_band.is_empty(), off_band)
+	var odds: Array = []
+	for p in profiles:
+		var want: int = int(rules.MYTHIC_ODDS_BY_TIER.get((p as EnemyData).max_loot_tier, 0))
+		if want <= 0 or (p as EnemyData).mythic_odds() != want:
+			odds.append([p.enemy_id, (p as EnemyData).mythic_odds(), want])
+	check("  and its mythic chance is any monster's of its tier, from the table, not an override",
+		odds.is_empty() and profiles.all(func(p): return p.mythic_odds_override == 0), odds)
+	check("no skeleton pet has been drawn, so none rolls for one: each says it drops no pet",
+		profiles.all(func(p): return p.drops_no_pet and p.pet_drop_id == "" and p.rare_pet_drop_id == ""))
+	check("each comes back three minutes after it falls, not with the field around it",
+		profiles.all(func(p): return is_equal_approx(p.respawn_seconds, 180.0)))
+
+	var exported: Dictionary = {}
+	var spawns: Dictionary = {}
+	var json: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/gamedata.json"))
+	if json is Dictionary:
+		for e in (json as Dictionary).get("enemies", []):
+			exported[str(e.get("enemy_id", ""))] = e
+		for s in (json as Dictionary).get("areas", {}).get("bigfield", {}).get("spawns", []):
+			spawns[str(s.get("e", ""))] = int(spawns.get(str(s.get("e", "")), 0)) + 1
+	var books: Array = []
+	for p in profiles:
+		var e: Dictionary = exported.get(p.enemy_id, {})
+		if e.is_empty() or int(e.get("pet_odds", -1)) != 0 or int(e.get("mythic_odds", 0)) != (p as EnemyData).mythic_odds() \
+				or int(e.get("max_hp", 0)) != p.max_hp or int(e.get("xp_reward", 0)) != p.xp_reward \
+				or int(spawns.get(p.enemy_id, 0)) != 1:
+			books.append(p.enemy_id)
+	check("the export carries all five for the server's books, each placed once in the Big Field, rolling no pet",
+		books.is_empty(), books)
+
+	# ---- one an alcove ------------------------------------------------------------
+	var field: Node = (load(BIG_FIELD) as PackedScene).instantiate()
+	var alcoves: Node = field.get_node_or_null("ysortworld/interactables/elitealcoves")
+	var placed: Dictionary = {}
+	for enemy in field.get_node("ysortworld/enemies").get_children():
+		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
+		if kind.begins_with("skeleton"):
+			placed[kind] = (placed.get(kind, []) as Array) + [(enemy as Node2D).position]
+	var guarded: Array = []
+	for band in 5:
+		var marker: Node2D = alcoves.get_node_or_null("band%d" % (band + 1)) as Node2D if alcoves else null
+		var there: Array = placed.get(ALCOVE_SKELETONS[band], [])
+		if marker == null or there.size() != 1 or (there[0] as Vector2).distance_to(marker.position) > 1.0:
+			guarded.append("band%d" % (band + 1))
+	check("each band's alcove has its band's skeleton standing in it, and no skeleton is anywhere else",
+		guarded.is_empty() and placed.size() == 5, [guarded, placed.keys()])
+	field.free()
+
+	# ---- the fight ----------------------------------------------------------------
+	var world := Node2D.new()
+	add_child(world)
+	var at := Vector2(-61000, -61000)
+	var foe: BaseEnemy = (load("res://scene/enemy/skeletonguard.tscn") as PackedScene).instantiate()
+	foe.position = at
+	world.add_child(foe)
+	foe.set_physics_process(false)
+	foe.set_process(false)
+	var reach: float = float(foe.get("melee_range"))
+	var stand: float = float(foe.call("fighting_distance"))
+	var near := SwingDummy.new()
+	near.position = at + Vector2(0, stand)
+	world.add_child(near)
+	var far := SwingDummy.new()
+	far.position = at + Vector2(reach + 30.0, 0)
+	world.add_child(far)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("it fights up close: it swings from inside its reach, and never backs off",
+		is_equal_approx(foe.attack_range, reach) and is_zero_approx(foe.flee_range) and stand < reach
+		and Formation.ring_radius(1) <= stand, [foe.attack_range, foe.flee_range, stand, reach])
+
+	# A pack holding the inner ring: the skeleton is handed an outer slot, past
+	# a sword, and comes in to fighting distance on that slot's bearing.
+	var owners: Dictionary = BaseEnemy._slot_owners
+	var owners_were: Dictionary = owners.duplicate()
+	owners.clear()
+	for i in Formation.slot_count():
+		if Formation.ring_of(i) == 1:
+			owners[i] = far
+	foe.player = near
+	var slot_at: Vector2 = foe.call("_get_slot_target_position")
+	var slot: int = int(foe.get("_claimed_slot"))
+	var raw: Vector2 = Formation.world_position(near.global_position, slot)
+	check("handed an outer slot while a pack holds the inner ring, it comes in to sword's reach on that slot's bearing",
+		Formation.ring_of(slot) > 1 and raw.distance_to(near.global_position) > reach
+		and absf(slot_at.distance_to(near.global_position) - stand) < 0.5
+		and absf((slot_at - near.global_position).angle_to(raw - near.global_position)) < 0.01,
+		[Formation.ring_of(slot), raw.distance_to(near.global_position), slot_at.distance_to(near.global_position)])
+	owners.clear()
+	owners.merge(owners_were)
+	foe.set("_claimed_slot", -1)
+	foe.player = null
+
+	var skel_sprite: AnimatedSprite2D = foe.get_node("animatedsprite2d")
+	foe.attack_direction = "down"
+	foe.call("_trigger_attack")
+	skel_sprite.pause()
+	var early: bool = near.taken.is_empty()
+	for f in range(1, Skeleton.SWING_FRAME):
+		skel_sprite.frame = f
+		if not near.taken.is_empty():
+			early = false
+	check("a swing begun is a warning, not a hit: nothing lands before the blade does",
+		str(skel_sprite.animation) == "attackdown" and early, [str(skel_sprite.animation), near.taken])
+	skel_sprite.frame = Skeleton.SWING_FRAME
+	var blow: int = int(foe.call("swing_damage"))
+	check("on the frame it lands, the player in reach takes the profile's blow, once - body and hurtbox are one player",
+		near.taken == [[foe.enemy_data.projectile_damage, foe.current_element()]] and blow == foe.enemy_data.projectile_damage,
+		near.taken)
+	check("  and a player out of reach takes nothing", far.taken.is_empty(), far.taken)
+	skel_sprite.frame = Skeleton.SWING_FRAME + 1
+	check("  one blow a swing: the frames after it land nothing more", near.taken.size() == 1, near.taken)
+
+	# The next swing, the way the game gets there: the swing ends, the idle
+	# plays, the cooldown runs out, it swings again. The player steps back
+	# during the wind-up.
+	skel_sprite.animation_finished.emit()
+	check("the swing ending frees it to move again", not foe.is_attacking and str(skel_sprite.animation) == "idledown",
+		[foe.is_attacking, str(skel_sprite.animation)])
+	foe.call("_trigger_attack")
+	skel_sprite.pause()
+	near.position = at + Vector2(0, reach + 30.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	skel_sprite.frame = Skeleton.SWING_FRAME
+	check("stepping out of reach during the wind-up works: the blade lands where the player was", near.taken.size() == 1,
+		near.taken)
+	near.position = at + Vector2(0, stand)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	# SHARED MONSTERS. The leader's blow tells the others; a mirror's swing is a
+	# picture, and its blow is the leader's, arriving as "m".
+	var sync := SwingSync.new()
+	world.add_child(sync)
+	foe.set("_net_sync", sync)
+	skel_sprite.animation_finished.emit()
+	foe.call("_trigger_attack")
+	skel_sprite.pause()
+	skel_sprite.frame = Skeleton.SWING_FRAME
+	check("a shared skeleton's blow is told to the other games, as the boss's is",
+		sync.events == [{"k": "m"}] and near.taken.size() == 2, [sync.events, near.taken.size()])
+	foe.set("_net_sync", null)
+	foe.net_mirror = true
+	skel_sprite.play(&"idledown")
+	skel_sprite.play(&"attackdown")
+	skel_sprite.pause()
+	skel_sprite.frame = Skeleton.SWING_FRAME
+	check("  a mirror's swing lands nothing of its own", near.taken.size() == 2, near.taken.size())
+	foe.call("_land_swing")
+	check("  and the leader's blow, arriving, lands on this game's player in reach of the mirror",
+		near.taken.size() == 3, near.taken.size())
+	check("  (monstersync.gd hands \"m\" to any monster with a swing, not only the boss)",
+		_func_body(_code_src("res://src/world/monstersync.gd"), "func _apply_event(").contains("mirror.has_method(\"_land_swing\")"))
+	foe.net_mirror = false
+
+	# ---- every class, from wherever it stands -----------------------------------------
+	var missed: Array = []
+	var from_afar: Array = []
+	var tank_swung: bool = false
+	var tank_stand: Array = [0, INF]
+	foe.position = at + Vector2(0, -3000)
+	for class_id in ["warrior", "mage", "healer", "tank"]:
+		var hero: Node2D = (load("res://scene/characters/%s.tscn" % class_id) as PackedScene).instantiate()
+		hero.position = at + Vector2(0, 3000)
+		world.add_child(hero)
+		hero.set_physics_process(false)
+		hero.set_process(false)
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+		var body: Vector2 = Targets.body_point(hero)
+		for k in 8:
+			var bearing := Vector2.RIGHT.rotated(TAU * k / 8.0)
+			foe.global_position = body + bearing * stand
+			if not (foe.call("players_in_reach") as Array).has(hero):
+				missed.append("%s from %d deg" % [class_id, k * 45])
+			foe.global_position = body + bearing * 100.0
+			if not (foe.call("players_in_reach") as Array).is_empty():
+				from_afar.append("%s from %d deg" % [class_id, k * 45])
+		if class_id == "tank":
+			# North of a tank, 50 px from where it stands and 34 from its body.
+			foe.global_position = hero.global_position + Vector2(0, -50)
+			foe.player = hero
+			foe.attack_ready = true
+			foe.is_attacking = false
+			foe.call("play_idle_animation", "down")
+			foe.call("_handle_combat", foe.global_position.distance_to(hero.global_position))
+			tank_swung = foe.is_attacking and str(skel_sprite.animation).begins_with("attack") \
+				and foe.global_position.distance_to(body) < reach
+			# South of it, its inner-ring slot is 24 px below the feet and 40
+			# from the body: brought in to fighting distance of the body.
+			var held: Dictionary = BaseEnemy._slot_owners.duplicate()
+			BaseEnemy._slot_owners.clear()
+			foe.set("_claimed_slot", -1)
+			foe.global_position = hero.global_position + Vector2(0, 60)
+			var south: Vector2 = foe.call("_get_slot_target_position")
+			tank_stand = [Formation.ring_of(int(foe.get("_claimed_slot"))), south.distance_to(body)]
+			BaseEnemy._slot_owners.clear()
+			BaseEnemy._slot_owners.merge(held)
+			foe.set("_claimed_slot", -1)
+			foe.player = null
+			foe.is_attacking = false
+		hero.free()
+	check("from fighting distance of the body, on any bearing, the blade reaches every class", missed.is_empty(), missed)
+	check("  and from 100 px off it reaches none - not even the tank, whose aura is on the players' layer, 150 px wide",
+		from_afar.is_empty(), from_afar)
+	check("  and it is in reach when the body is, not the origin: it swings at a tank whose feet are past its sword",
+		tank_swung)
+	check("  and stands to the body: south of a tank, its inner-ring slot is brought in to fighting distance",
+		int(tank_stand[0]) == 1 and float(tank_stand[1]) <= stand + 0.5, tank_stand)
+	world.free()
+
+	# ---- three minutes ------------------------------------------------------------
+	var arena := Node2D.new()
+	add_child(arena)
+	var bones: Node2D = (load("res://scene/enemy/skeletonknight.tscn") as PackedScene).instantiate()
+	bones.position = Vector2(-9000, -12000)
+	arena.add_child(bones)
+	var light: Node2D = (load("res://scene/enemy/lightsprite.tscn") as PackedScene).instantiate()
+	light.position = Vector2(-9300, -12000)
+	arena.add_child(light)
+	var clock := RespawnClock.new()
+	clock.spawn_scatter = 0.0
+	clock.respawn_jitter = 0.0
+	arena.add_child(clock)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	bones.set_physics_process(false)
+	light.set_physics_process(false)
+	bones.emit_signal("died")
+	light.emit_signal("died")
+	check("a fallen skeleton is back in its profile's three minutes, the monsters round it in the area's %d s"
+		% int(clock.respawn_seconds), clock.asked == [180.0, clock.respawn_seconds], clock.asked)
+	clock.respawn_seconds = 600.0
+	check("  never sooner than its area's own time", is_equal_approx(clock.respawn_time_for(bones), 600.0)
+		and is_equal_approx(clock.respawn_time_for(light), 600.0))
+	clock.asked.clear()
+	clock.respawn_seconds = 30.0
+	clock.resume_authority()
+	check("  and a game taking the area over gives it its full three minutes too",
+		clock.asked.has(180.0) and clock.asked.has(30.0), clock.asked)
+	arena.free()
+	print("  five skeletons, %d to %d hp, a %d px sword landing on frame %d; back after %d s"
+		% [profiles[0].max_hp, profiles[4].max_hp, int(reach), Skeleton.SWING_FRAME, int(profiles[0].respawn_seconds)])
 
 
 # =============================================================================
@@ -7421,7 +7894,9 @@ func _test_the_big_field() -> void:
 		ladder != null and str(ladder.get("destination_scene_path")) == "res://scene/field.tscn"
 		and str(ladder.get("target_spawn_id")) == "field_entrance")
 	check("a respawner brings the fields back", area.get_node_or_null("enemyrespawner") != null)
-	check("128 enemies are placed", enemies.size() == 128, enemies.size())
+	# The fields' 128, and since 0.60.0 a skeleton in each band's alcove.
+	check("133 enemies are placed: the fields' 128 and five alcove skeletons",
+		enemies.size() == 133, enemies.size())
 
 	# Positions are read relative to the area root, as the scene file holds them.
 	var arrive_at: Vector2 = Vector2.ZERO
@@ -7497,7 +7972,7 @@ func _test_the_big_field() -> void:
 	check("  while a mage nobody set still commits to the chase, as in the Field",
 		is_equal_approx(float(mage.get("leash_range")), 1500.0), mage.get("leash_range"))
 	holder.free()
-	print("  128 enemies, bands along the road at x %s" % [means.map(func(m): return int(m))])
+	print("  %d enemies, bands along the road at x %s" % [enemies.size(), means.map(func(m): return int(m))])
 
 
 # =============================================================================
@@ -30967,10 +31442,31 @@ func _test_the_mythic_weapons() -> void:
 		sticks[0].explosion_damage if sticks.size() == 1 else -1)
 	check("  and not again until the cooldown is over",
 		tank.throw_dynamite(tank.position + Vector2(50, 0)).is_empty() and tank.mana == 100 - tank.dynamite_mana_cost)
-	check("faster than a throw a second (0.14.0), and priced at the ring's own mana a second",
-		tank.dynamite_cooldown < 1.0
-		and is_equal_approx(tank.dynamite_mana_cost / tank.dynamite_cooldown, tank.mana_drain_cost / tank.mana_drain_tick),
-		[tank.dynamite_cooldown, tank.dynamite_mana_cost])
+	check("faster than a throw a second (0.14.0)", tank.dynamite_cooldown < 1.0, tank.dynamite_cooldown)
+
+	# DYNAMITE'S MANA, A SHARE OF THE BAR (0.59.0). The owner: "if players
+	# wanna spam they can waste magic potions", and of the throws a full bar
+	# gives, "much less then 10 ... if even 3 people have these weps could
+	# break the game". 3 a throw was 137 throws on a level-22 bar.
+	var bar_22: int = PlayerStats.max_for(tank.mana_base, tank.mana_per_lvl, 22)
+	check("a throw costs a fifth of the mana the tank has at its level - 82 at level 22, the Dynamite's own",
+		tank.DYNAMITE_THROWS_PER_BAR == 5 and bar_22 == 410 and tank.dynamite_mana_cost == 82,
+		[tank.dynamite_mana_cost, bar_22])
+	var per_level: Array = []
+	for lv in [1, 22, 32, 47, 99]:
+		var bar: int = PlayerStats.max_for(tank.mana_base, tank.mana_per_lvl, lv)
+		var cost: int = tank.dynamite_mana_cost_at(tank.mana_base, tank.mana_per_lvl, lv)
+		per_level.append([lv, bar, cost, floori(float(bar) / float(cost))])
+	check("  so a full bar is DYNAMITE_THROWS_PER_BAR throws at every level, the price climbing with it",
+		per_level.all(func(row: Array) -> bool: return row[3] == tank.DYNAMITE_THROWS_PER_BAR)
+		and per_level[1][2] < per_level[2][2] and per_level[2][2] < per_level[3][2], per_level)
+	var cost_before_gear: int = tank.dynamite_mana_cost
+	tank.max_mana += 80
+	check("  priced on the level's bar, not the gear's: mana gear is spare, never a dearer throw",
+		tank.dynamite_mana_cost == cost_before_gear, [tank.dynamite_mana_cost, cost_before_gear])
+	tank.max_mana -= 80
+	check("  and a throw the bar cannot pay for is refused at that price, spending nothing - a potion buys it back",
+		_func_body(_code_src("res://src/characters/tank.gd"), "func throw_dynamite(").contains("if mana < dynamite_mana_cost:"))
 
 	# THE RING (0.14.0). The owner: "use tank ring". A throw lights it; it
 	# burns no mana of its own, and goes out DYNAMITE_RING_LINGER after the
@@ -30981,6 +31477,7 @@ func _test_the_mythic_weapons() -> void:
 	check("  it burns no mana of its own - the throws pay for it",
 		tank.aura_active and tank.mana == mana_lit, tank.mana)
 	tank._dynamite_cooldown_left = 0.0
+	tank.mana = 100
 	tank.throw_dynamite(tank.position + Vector2(60, 0))
 	tank._tick_aura(tank.DYNAMITE_RING_LINGER * 0.75)
 	check("  each throw keeps it lit", tank.aura_active and tank.ring_by_dynamite)
@@ -31073,6 +31570,7 @@ func _test_the_mythic_weapons() -> void:
 	tank.refresh_gear_stats()
 	check("Dynamite put on while that ring burns puts it out - attack no longer reaches it", not tank.aura_active)
 	tank._dynamite_cooldown_left = 0.0
+	tank.mana = 100
 	tank.throw_dynamite(tank.position + Vector2(40, 0))
 	check("  the next throw lights it the Dynamite's way", tank.aura_active and tank.ring_by_dynamite)
 	tank.equipped = {}

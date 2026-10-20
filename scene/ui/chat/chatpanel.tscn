@@ -26,6 +26,7 @@ font_names = PackedStringArray("Segoe UI", "Noto Sans", "DejaVu Sans", "Sans-Ser
 subpixel_positioning = 0
 
 [node name="chatpanel" type="Control" unique_id=1710044201]
+texture_filter = 1
 clip_contents = true
 layout_mode = 3
 anchors_preset = 2

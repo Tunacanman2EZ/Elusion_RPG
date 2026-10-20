@@ -291,7 +291,10 @@ func _run() -> void:
 		# looks identical to a pet whose name happens to be off the end of the
 		# line. Say it.
 		var pet_label: String = String(enemy["pet_drop_id"])
-		if pet_label == "":
+		var pet_odds: int = int(enemy["pet_odds"])
+		if pet_odds <= 0:
+			pet_label = "(drops no pet)"
+		elif pet_label == "":
 			pet_label = "(no pet — odds unused)"
 		elif String(enemy["rare_pet_drop_id"]) != "":
 			pet_label += " / %s @ %.0f%%" % [
@@ -302,10 +305,11 @@ func _run() -> void:
 		var mythic: int = int(enemy.get("mythic_odds", 0))
 		var mythic_label: String = ("1/%d" % mythic) if mythic > 0 else "never"
 
-		print("    %-18s hp %-5d xp %-5d bag %.0f%%  tier %d  mythic %-9s pet 1/%-5d %s" % [
+		var pet_odds_label: String = ("1/%d" % pet_odds) if pet_odds > 0 else "never"
+		print("    %-18s hp %-5d xp %-5d bag %.0f%%  tier %d  mythic %-9s pet %-7s %s" % [
 			enemy["enemy_id"], enemy["max_hp"], enemy["xp_reward"],
 			enemy["bag_drop_chance"] * 100.0, enemy["max_loot_tier"],
-			mythic_label, enemy["pet_odds"], pet_label,
+			mythic_label, pet_odds_label, pet_label,
 		])
 
 	# Last, and after the write, because it is a headcount rather than a verdict
@@ -1418,6 +1422,11 @@ func _export_enemies(constants: Dictionary) -> Array:
 			continue
 		seen[enemy.enemy_id] = path
 
+		# "Drops no pet" and a named pet cannot both be meant: one of them is
+		# a leftover, and either reading would hide a decision.
+		if enemy.drops_no_pet and (enemy.pet_drop_id != "" or enemy.rare_pet_drop_id != ""):
+			_fail("enemy '%s' says drops_no_pet but names a pet in %s" % [enemy.enemy_id, path])
+
 		out.append({
 			"enemy_id":          enemy.enemy_id,
 			"display_name":      enemy.display_name,
@@ -1452,7 +1461,8 @@ func _export_enemies(constants: Dictionary) -> Array:
 			"rare_pet_drop_id":  enemy.rare_pet_drop_id,
 			"rare_pet_chance":   enemy.rare_pet_chance,
 			"pet_odds_override": enemy.pet_odds_override,
-			"pet_odds":          _resolve_pet_odds(enemy.pet_odds_override, enemy.max_loot_tier, constants),
+			# 0 for an enemy that drops no pet on purpose (EnemyData.drops_no_pet).
+			"pet_odds":          0 if enemy.drops_no_pet else _resolve_pet_odds(enemy.pet_odds_override, enemy.max_loot_tier, constants),
 			# THE MYTHIC ROLL, "one in N", 0 for never. Worked out by
 			# EnemyData.mythic_odds() from GameConstants' tables and the
 			# override, so the server reads one number and restates no rule.

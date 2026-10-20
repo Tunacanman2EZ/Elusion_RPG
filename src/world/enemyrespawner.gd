@@ -183,6 +183,7 @@ func _ready() -> void:
 			"position": enemy.global_position,
 			"parent": get_path_to(enemy.get_parent()),
 			"kept": kept_settings(enemy),
+			"respawn": respawn_time_for(enemy),
 			"key": _origin_key(enemy),
 			"live": enemy.get_instance_id(),
 			"pending": false,
@@ -221,7 +222,17 @@ func _on_enemy_died(entry: Dictionary) -> void:
 	# and the leader brings it back.
 	if not _has_authority():
 		return
-	_respawn_after(entry, respawn_seconds + randf() * maxf(respawn_jitter, 0.0))
+	_respawn_after(entry, float(entry.get("respawn", respawn_seconds)) + randf() * maxf(respawn_jitter, 0.0))
+
+
+func respawn_time_for(enemy: Node) -> float:
+	"""How long this monster stays dead: its profile's respawn_seconds when it
+	has one (EnemyData, RESPAWN - the alcove skeletons), never less than this
+	area's; otherwise the area's."""
+	var data: Variant = enemy.get("enemy_data") if enemy != null else null
+	if data is EnemyData and (data as EnemyData).respawn_seconds > 0.0:
+		return maxf((data as EnemyData).respawn_seconds, respawn_seconds)
+	return respawn_seconds
 
 
 func _respawn_after(entry: Dictionary, delay: float) -> void:
@@ -396,7 +407,7 @@ func resume_authority() -> void:
 	for entry in _census:
 		if entry.get("pending", false) or _entry_alive(entry):
 			continue
-		_respawn_after(entry, respawn_seconds)
+		_respawn_after(entry, float(entry.get("respawn", respawn_seconds)))
 
 
 func adopt(enemy: Node) -> void:

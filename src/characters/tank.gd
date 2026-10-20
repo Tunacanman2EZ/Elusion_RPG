@@ -86,7 +86,8 @@ const CLASS_SPEED := 160
 #                   - the throws pay for it (was: put out while Dynamite is
 #                   worn)
 #   the mana        3 a throw (was 4): at 0.75 s that is the ring's own 4 a
-#                   second, so Dynamite costs what the ring costs
+#                   second, so Dynamite costs what the ring costs - until
+#                   0.59.0, see DYNAMITE'S MANA below
 #   a stick         worth dynamite_stick_ticks ring ticks, 1.5 (was the
 #                   cooldown's worth, 4): smaller, because there are more of
 #                   them and the ring is burning too
@@ -143,7 +144,27 @@ const DYNAMITE_BARRAGE_SPREAD := 24.0
 # The ring a throw lights stays lit this long after the last throw.
 const DYNAMITE_RING_LINGER := 3.0
 
-@export var dynamite_mana_cost: int = 3
+# DYNAMITE'S MANA, A SHARE OF THE BAR (0.59.0). The owner, 19 Oct: "not
+# enough mana burn we need to account for level on equipping and what stats
+# are manageable at that level ... if players wanna spam they can waste magic
+# potions" - and of how many throws a full bar should give, "much less then 10
+# ... if even 3 people have these weps could break the game if it is too
+# easy". 3 mana a throw was 137 throws on a level-22 bar: about a hundred
+# seconds of throwing without a pause.
+#
+# So a throw costs 1/DYNAMITE_THROWS_PER_BAR of the mana the tank has AT ITS
+# LEVEL - the class's own curve, PlayerStats.max_for(), before gear - and the
+# same few throws empty the bar at every level: 82 a throw at level 22 (the
+# Dynamite's own), 102 at 32, 132 at 47. Mana gear is not charged for: what it
+# adds is spare, toward one more throw. Past that a mana potion buys throws
+# back (a Greater, 260, three at level 22), and a rest refills the bar as it
+# always has. The ring a throw lights still burns nothing of its own: the
+# throws pay for it.
+const DYNAMITE_THROWS_PER_BAR := 5
+
+var dynamite_mana_cost: int:
+	get:
+		return dynamite_mana_cost_at(mana_base, mana_per_lvl, level)
 @export var dynamite_cooldown: float = 0.75
 # What a stick is worth, in ring ticks. The exporter writes it for the
 # server's books (gamedata.combat_bounds()).
@@ -573,6 +594,13 @@ func dynamite_landing(aimed_at: Vector2) -> Vector2:
 	if reach.length() > DYNAMITE_MAX_THROW:
 		reach = reach.normalized() * DYNAMITE_MAX_THROW
 	return global_position + reach
+
+
+static func dynamite_mana_cost_at(class_mana_base: int, class_mana_per_level: int, at_level: int) -> int:
+	"""What one throw costs a tank of this class curve at this level: the
+	level's own bar over DYNAMITE_THROWS_PER_BAR, rounded up, never under 1."""
+	var bar: int = PlayerStats.max_for(class_mana_base, class_mana_per_level, maxi(at_level, 1))
+	return maxi(1, ceili(float(bar) / float(DYNAMITE_THROWS_PER_BAR)))
 
 
 static func sticks_for(roll: float, barrage_chance: float, bundle_chance: float) -> int:
