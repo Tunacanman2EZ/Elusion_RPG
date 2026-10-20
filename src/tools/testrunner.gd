@@ -392,6 +392,7 @@ func _run_all() -> void:
 	_test_character_select_has_a_way_out()
 	await _test_every_area_can_be_walked()
 	await _test_the_big_field()
+	_test_the_big_field_is_dressed()
 	await _test_the_bullet_zone()
 	await _test_the_bullet_zone_is_shared()
 	await _test_the_field_volleys()
@@ -6938,6 +6939,226 @@ const BIG_FIELD_BANDS := {"light": 1, "wind": 1, "water": 2, "ice": 2, "earth": 
 	# The alcove skeletons, one a band (0.60.0).
 	"skeletonguard": 1, "skeletonwarden": 2, "skeletonknight": 3,
 	"skeletonchampion": 4, "skeletonlord": 5}
+
+# =============================================================================
+# THE BIG FIELD, DRESSED (0.61.0)
+# =============================================================================
+# The owner, 20 Oct: "go ahead and place because i cannot get the right sizes
+# for them to do it" - the walls and props of floorwalls.png, in "the alcoves
+# and edges", the walls and big pieces solid - and then "i need walls around
+# the whole map": every edge of the floor walled (0.62.0). The sheet is loose pieces of
+# every size, not a grid, so a TileSet cannot cut it; scene/crypt/ already
+# has each piece at its size, standing on its own feet, and those are what is
+# placed (ysortworld/props/crypt, one group an area). These hold the placing
+# to what the owner asked and to the fights it must not get in the way of.
+
+const DRESSED_ALCOVE_DOORS := [Vector2(448, 192), Vector2(992, 1856), Vector2(1536, 192),
+	Vector2(2080, 1856), Vector2(2656, 192)]
+const DRESSED_LIGHT_BUDGET := 40
+
+
+func _test_the_big_field_is_dressed() -> void:
+	section("THE BIG FIELD, DRESSED - walled all round in the crypt's own pieces, its alcoves furnished (0.61.0, 0.62.0)")
+	var area: Node = (load(BIG_FIELD) as PackedScene).instantiate()
+	var ground: TileMapLayer = area.get_node("ground") as TileMapLayer
+	var crypt: Node2D = area.get_node_or_null("ysortworld/props/crypt") as Node2D
+	check("the props have a home of their own: ysortworld/props/crypt, a group an area", crypt != null)
+	if crypt == null:
+		area.free()
+		return
+
+	# ---- what is placed ----------------------------------------------------------
+	var props: Array = []
+	var foreign: Array = []
+	var unsorted: Array = []
+	for group in crypt.get_children():
+		if not (group as Node2D).y_sort_enabled:
+			unsorted.append(group.name)
+		for prop in group.get_children():
+			props.append(prop)
+			if not str(prop.scene_file_path).begins_with("res://scene/crypt/"):
+				foreign.append("%s/%s" % [group.name, prop.name])
+	check("%d props, every one a scene/crypt/ piece - the sheet's art at its own size" % props.size(),
+		props.size() >= 200 and foreign.is_empty(), foreign.slice(0, 4))
+	check("  y-sorted with the world, so a player walks behind a wall and in front of it",
+		crypt.y_sort_enabled and unsorted.is_empty(), unsorted)
+
+	# Every solid piece's blocking rectangles, in the area's own coordinates.
+	var solids: Array = []
+	for prop in props:
+		var at: Vector2 = _area_xform(prop, area).origin
+		for body in prop.get_children():
+			if not (body is StaticBody2D):
+				continue
+			for shape_node in body.get_children():
+				var cs: CollisionShape2D = shape_node as CollisionShape2D
+				if cs == null or not (cs.shape is RectangleShape2D):
+					continue
+				var size: Vector2 = (cs.shape as RectangleShape2D).size
+				var centre: Vector2 = at + (body as Node2D).position + cs.position
+				solids.append({"rect": Rect2(centre - size / 2.0, size), "name": "%s/%s" % [prop.get_parent().name, prop.name],
+					"layer": (body as StaticBody2D).collision_layer})
+	var off_layer: Array = solids.filter(func(s): return int(s.layer) != 1).map(func(s): return s.name)
+	check("the walls, cages, crates, pots and pillars are solid, on the walls' own layer: %d blockers" % solids.size(),
+		solids.size() >= 150 and off_layer.is_empty(), off_layer.slice(0, 4))
+	# A wall stands on the floor's edge and rises over the void behind it, so
+	# its foot is what must be on the ground; anything else, all of it.
+	var over_void: Array = []
+	for s in solids:
+		var r: Rect2 = s.rect
+		var piece: String = str(s.name).get_file()
+		var corners: Array = [Vector2(r.position.x + 0.5, r.end.y - 0.5), r.end - Vector2(0.5, 0.5)]
+		if not (piece.begins_with("wall") or piece.begins_with("pillar")):
+			corners += [r.position + Vector2(0.5, 0.5), Vector2(r.end.x - 0.5, r.position.y + 0.5)]
+		for corner in corners:
+			if ground.get_cell_source_id(ground.local_to_map(corner)) == -1:
+				over_void.append(s.name)
+				break
+	check("  and every one stands on the floor: a wall's foot on its edge, nothing out in the void",
+		over_void.is_empty(), over_void.slice(0, 4))
+
+	# ---- the fights it must not get in the way of -------------------------------
+	var crowded: Array = []
+	for enemy in area.get_node("ysortworld/enemies").get_children():
+		var feet: Vector2 = (enemy as Node2D).position + Vector2(0, -3)
+		var clear: float = 18.0 if str(enemy.name).begins_with("alcove") else 14.0
+		for s in solids:
+			var r: Rect2 = s.rect
+			var nearest := Vector2(clampf(feet.x, r.position.x, r.end.x), clampf(feet.y, r.position.y, r.end.y))
+			if nearest.distance_to(feet) < clear:
+				crowded.append("%s by %s" % [enemy.name, s.name])
+	check("nothing solid stands on a monster's spawn: every one has room to come back", crowded.is_empty(), crowded.slice(0, 4))
+
+	var shut: Array = []
+	for i in DRESSED_ALCOVE_DOORS.size():
+		var door: Vector2 = DRESSED_ALCOVE_DOORS[i]
+		# The way in: 48 px wide, from 40 px out in the field to the skeleton.
+		var marker: Node2D = area.get_node("ysortworld/interactables/elitealcoves/band%d" % [[1, 2, 3, 4, 5][i]]) as Node2D
+		var top: float = minf(door.y + (40.0 if door.y < 1000 else -40.0), marker.position.y)
+		var bottom: float = maxf(door.y + (40.0 if door.y < 1000 else -40.0), marker.position.y)
+		var lane := Rect2(Vector2(door.x - 24.0, top + (12.0 if door.y > 1000 else 0.0)),
+			Vector2(48.0, bottom - top - 12.0))
+		for s in solids:
+			if (s.rect as Rect2).intersects(lane):
+				shut.append("band%d by %s" % [i + 1, s.name])
+	check("  and each alcove's doorway is open: a 48 px way from the field to its skeleton", shut.is_empty(), shut.slice(0, 4))
+
+	# A player's feet, walked over the floor on an 8 px grid with every blocker
+	# grown by 6 px: from where players arrive, every monster can be reached.
+	var cols: int = 196 * 2
+	var rows: int = 128 * 2
+	var blocked := PackedByteArray()
+	blocked.resize(cols * rows)
+	for s in solids:
+		var r: Rect2 = (s.rect as Rect2).grow(6.0)
+		for gx in range(maxi(0, int(r.position.x / 8.0)), mini(cols, int(r.end.x / 8.0) + 1)):
+			for gy in range(maxi(0, int(r.position.y / 8.0)), mini(rows, int(r.end.y / 8.0) + 1)):
+				var p := Vector2(gx * 8 + 4, gy * 8 + 4)
+				if r.has_point(p):
+					blocked[gy * cols + gx] = 1
+	var open := func(gx: int, gy: int) -> bool:
+		if gx < 0 or gy < 0 or gx >= cols or gy >= rows or blocked[gy * cols + gx] == 1:
+			return false
+		var atlas: Vector2i = ground.get_cell_atlas_coords(Vector2i(gx / 2, gy / 2))
+		return atlas.x >= 1 and atlas.x <= 4 and atlas.y >= 1 and atlas.y <= 3
+	var arrive: Vector2 = Vector2(120, 1036)
+	var start := Vector2i(int(arrive.x / 8.0), int(arrive.y / 8.0))
+	var seen := PackedByteArray()
+	seen.resize(cols * rows)
+	var queue: Array[Vector2i] = [start]
+	seen[start.y * cols + start.x] = 1
+	var head: int = 0
+	while head < queue.size():
+		var at: Vector2i = queue[head]
+		head += 1
+		for step in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = at + step
+			if open.call(n.x, n.y) and seen[n.y * cols + n.x] == 0:
+				seen[n.y * cols + n.x] = 1
+				queue.append(n)
+	var stranded: Array = []
+	for enemy in area.get_node("ysortworld/enemies").get_children():
+		var p: Vector2 = (enemy as Node2D).position
+		var reached := false
+		for dx in [-8, 0, 8]:
+			for dy in [-8, 0, 8]:
+				var g := Vector2i(int((p.x + dx) / 8.0), int((p.y + dy) / 8.0))
+				if g.x >= 0 and g.y >= 0 and g.x < cols and g.y < rows and seen[g.y * cols + g.x] == 1:
+					reached = true
+		if not reached:
+			stranded.append(enemy.name)
+	check("  and a player can still walk from where they arrive to every monster, the five skeletons too (%d floor points)" % queue.size(),
+		stranded.is_empty() and queue.size() > 20000, stranded.slice(0, 4))
+
+	# ---- walls round the whole map --------------------------------------------------
+	# Every wall piece's picture, and every edge of the floor: a cell with the
+	# void above it, beside it, or a ledge below it. Each edge's own spot -
+	# where its wall stands - must be inside a wall.
+	var walls: Array = []
+	for prop in props:
+		var kind: String = str(prop.scene_file_path).get_file().get_basename()
+		if not (kind.begins_with("wall") or kind == "pillar"):
+			continue
+		var spr: Sprite2D = prop.get_node("sprite") as Sprite2D
+		var size: Vector2 = (spr.texture as AtlasTexture).region.size
+		var foot: Vector2 = _area_xform(prop, area).origin
+		walls.append(Rect2(foot + spr.offset - size / 2.0, size))
+	var edges: int = 0
+	var open_edges: Array = []
+	for c in ground.get_used_cells():
+		var atl: Vector2i = ground.get_cell_atlas_coords(c)
+		var probes: Array = []
+		if ground.get_cell_source_id(c + Vector2i(0, -1)) == -1:
+			probes.append(["north", Vector2(c.x * 16 + 8, c.y * 16 + 8)])
+		if atl.y == 4:
+			probes.append(["south", Vector2(c.x * 16 + 8, c.y * 16 + 18)])
+		if atl.y >= 1 and atl.y <= 3 and ground.get_cell_source_id(c + Vector2i(-1, 0)) == -1:
+			probes.append(["west", Vector2(c.x * 16 + 6.5, c.y * 16 + 8)])
+		if atl.y >= 1 and atl.y <= 3 and ground.get_cell_source_id(c + Vector2i(1, 0)) == -1:
+			probes.append(["east", Vector2(c.x * 16 + 9.5, c.y * 16 + 8)])
+		for probe in probes:
+			edges += 1
+			var walled := false
+			for r in walls:
+				if (r as Rect2).has_point(probe[1]):
+					walled = true
+					break
+			if not walled:
+				open_edges.append("%s edge at %s" % [probe[0], probe[1]])
+	check("walls round the whole map: every one of the floor's %d edge tiles has its wall, %d pieces" % [edges, walls.size()],
+		edges > 1000 and open_edges.is_empty(), open_edges.slice(0, 4))
+	var rooms: Array = []
+	for band in [1, 2, 3, 4, 5]:
+		var g: Node = crypt.get_node_or_null("alcove%d" % band)
+		var kinds: Dictionary = {}
+		if g != null:
+			for prop in g.get_children():
+				var kind: String = str(prop.scene_file_path).get_file().get_basename()
+				kinds[kind] = int(kinds.get(kind, 0)) + 1
+		if int(kinds.get("candelabra", 0)) != 2 or int(kinds.get("skullpile", 0)) != 1 \
+				or int(kinds.get("cage", 0)) + int(kinds.get("cageoccupied", 0)) != 2:
+			rooms.append("alcove%d %s" % [band, kinds])
+	check("  and each alcove, walled with the rest, is a crypt room round its skeleton: two candelabras, two cages, a skull pile",
+		rooms.is_empty(), rooms)
+
+	var dark: CanvasModulate = null
+	for n in area.find_children("*", "CanvasModulate", true, false):
+		dark = n
+	var field_dark: Node = (load("res://scene/crypt/cryptambience.tscn") as PackedScene).instantiate()
+	check("it is dark like the Field, so its candles and lanterns light it (and the player carries a light here)",
+		dark != null and dark.color == (field_dark as CanvasModulate).color, dark.color if dark else null)
+	field_dark.free()
+	var lights: int = area.find_children("*", "PointLight2D", true, false).size()
+	check("  %d lights - inside a budget of %d, for a browser's frame" % [lights, DRESSED_LIGHT_BUDGET],
+		lights >= 10 and lights <= DRESSED_LIGHT_BUDGET, lights)
+	var sources: Array = []
+	for i in ground.tile_set.get_source_count():
+		sources.append(ground.tile_set.get_source_id(i))
+	check("the wall sheet is placed as props, not painted as tiles: the floor's only tiles are the crypt atlas",
+		sources == [1], sources)
+	area.free()
+	print("  %d props, %d of them solid, %d lights" % [props.size(), solids.size(), lights])
+
 
 # =============================================================================
 # THE ROAD THROUGH THE GAME (0.15.0)

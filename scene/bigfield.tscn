@@ -1,7 +1,6 @@
 [gd_scene format=4 uid="uid://bqxmsa7i0m6th"]
 
 [ext_resource type="Script" uid="uid://hps7hjd7tu1i" path="res://src/world/field.gd" id="1_field"]
-[ext_resource type="Texture2D" uid="uid://7qrbst14610w" path="res://art/floordecoration/floorwalls.png" id="2_8v5dd"]
 [ext_resource type="Texture2D" uid="uid://clru34rpbm7dh" path="res://art/tiles/underground.png" id="2_tiles"]
 [ext_resource type="SpriteFrames" path="res://art/teleport/teleportframes.tres" id="3_tpfrm"]
 [ext_resource type="Script" uid="uid://blrs7e81o2jg4" path="res://src/world/fieldportal.gd" id="4_portal"]
@@ -50,236 +49,53 @@
 [ext_resource type="PackedScene" path="res://scene/enemy/skeletonknight.tscn" id="e_skeletonknight"]
 [ext_resource type="PackedScene" path="res://scene/enemy/skeletonchampion.tscn" id="e_skeletonchampion"]
 [ext_resource type="PackedScene" path="res://scene/enemy/skeletonlord.tscn" id="e_skeletonlord"]
-
-[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_375d2"]
-texture = ExtResource("2_8v5dd")
-0:0/0 = 0
-1:0/0 = 0
-2:0/0 = 0
-3:0/0 = 0
-4:0/0 = 0
-5:0/0 = 0
-6:0/0 = 0
-7:0/0 = 0
-8:0/0 = 0
-9:0/0 = 0
-10:0/0 = 0
-11:0/0 = 0
-12:0/0 = 0
-13:0/0 = 0
-14:0/0 = 0
-15:0/0 = 0
-16:0/0 = 0
-17:0/0 = 0
-0:1/0 = 0
-1:1/0 = 0
-2:1/0 = 0
-3:1/0 = 0
-4:1/0 = 0
-5:1/0 = 0
-6:1/0 = 0
-7:1/0 = 0
-8:1/0 = 0
-9:1/0 = 0
-10:1/0 = 0
-11:1/0 = 0
-12:1/0 = 0
-13:1/0 = 0
-14:1/0 = 0
-15:1/0 = 0
-16:1/0 = 0
-17:1/0 = 0
-18:1/0 = 0
-19:1/0 = 0
-2:2/0 = 0
-3:2/0 = 0
-4:2/0 = 0
-5:2/0 = 0
-6:2/0 = 0
-7:2/0 = 0
-8:2/0 = 0
-9:2/0 = 0
-10:2/0 = 0
-11:2/0 = 0
-12:2/0 = 0
-13:2/0 = 0
-14:2/0 = 0
-15:2/0 = 0
-16:2/0 = 0
-17:2/0 = 0
-18:2/0 = 0
-19:2/0 = 0
-20:2/0 = 0
-21:2/0 = 0
-22:2/0 = 0
-23:2/0 = 0
-2:3/0 = 0
-3:3/0 = 0
-5:3/0 = 0
-6:3/0 = 0
-20:3/0 = 0
-21:3/0 = 0
-22:3/0 = 0
-23:3/0 = 0
-2:4/0 = 0
-3:4/0 = 0
-4:4/0 = 0
-5:4/0 = 0
-6:4/0 = 0
-16:4/0 = 0
-17:4/0 = 0
-20:4/0 = 0
-21:4/0 = 0
-22:4/0 = 0
-2:5/0 = 0
-3:5/0 = 0
-4:5/0 = 0
-5:5/0 = 0
-6:5/0 = 0
-7:5/0 = 0
-8:5/0 = 0
-9:5/0 = 0
-10:5/0 = 0
-11:5/0 = 0
-12:5/0 = 0
-13:5/0 = 0
-14:5/0 = 0
-15:5/0 = 0
-16:5/0 = 0
-17:5/0 = 0
-18:5/0 = 0
-20:5/0 = 0
-21:5/0 = 0
-22:5/0 = 0
-2:6/0 = 0
-3:6/0 = 0
-4:6/0 = 0
-5:6/0 = 0
-6:6/0 = 0
-7:6/0 = 0
-8:6/0 = 0
-9:6/0 = 0
-10:6/0 = 0
-11:6/0 = 0
-12:6/0 = 0
-13:6/0 = 0
-14:6/0 = 0
-15:6/0 = 0
-16:6/0 = 0
-17:6/0 = 0
-18:6/0 = 0
-19:6/0 = 0
-20:6/0 = 0
-21:6/0 = 0
-22:6/0 = 0
-8:7/0 = 0
-10:7/0 = 0
-11:7/0 = 0
-13:7/0 = 0
-20:7/0 = 0
-21:7/0 = 0
-22:7/0 = 0
-2:8/0 = 0
-3:8/0 = 0
-4:8/0 = 0
-5:8/0 = 0
-6:8/0 = 0
-7:8/0 = 0
-8:8/0 = 0
-9:8/0 = 0
-10:8/0 = 0
-11:8/0 = 0
-12:8/0 = 0
-13:8/0 = 0
-14:8/0 = 0
-15:8/0 = 0
-16:8/0 = 0
-20:8/0 = 0
-21:8/0 = 0
-22:8/0 = 0
-5:9/0 = 0
-6:9/0 = 0
-10:9/0 = 0
-11:9/0 = 0
-13:9/0 = 0
-20:9/0 = 0
-21:9/0 = 0
-22:9/0 = 0
-23:9/0 = 0
-2:10/0 = 0
-3:10/0 = 0
-4:10/0 = 0
-5:10/0 = 0
-6:10/0 = 0
-7:10/0 = 0
-8:10/0 = 0
-10:10/0 = 0
-11:10/0 = 0
-12:10/0 = 0
-13:10/0 = 0
-20:10/0 = 0
-21:10/0 = 0
-22:10/0 = 0
-23:10/0 = 0
-2:11/0 = 0
-3:11/0 = 0
-4:11/0 = 0
-5:11/0 = 0
-6:11/0 = 0
-7:11/0 = 0
-8:11/0 = 0
-10:11/0 = 0
-11:11/0 = 0
-12:11/0 = 0
-13:11/0 = 0
-14:11/0 = 0
-22:11/0 = 0
-23:11/0 = 0
-4:12/0 = 0
-5:12/0 = 0
-8:12/0 = 0
-9:12/0 = 0
-10:12/0 = 0
-11:12/0 = 0
-22:12/0 = 0
-23:12/0 = 0
-2:13/0 = 0
-3:13/0 = 0
-4:13/0 = 0
-5:13/0 = 0
-6:13/0 = 0
-7:13/0 = 0
-8:13/0 = 0
-9:13/0 = 0
-10:13/0 = 0
-11:13/0 = 0
-12:13/0 = 0
-21:13/0 = 0
-22:13/0 = 0
-23:13/0 = 0
-8:14/0 = 0
-10:14/0 = 0
-11:14/0 = 0
-21:14/0 = 0
-22:14/0 = 0
-23:14/0 = 0
-2:15/0 = 0
-3:15/0 = 0
-4:15/0 = 0
-5:15/0 = 0
-6:15/0 = 0
-8:15/0 = 0
-9:15/0 = 0
-10:15/0 = 0
-11:15/0 = 0
-2:16/0 = 0
-3:16/0 = 0
-4:16/0 = 0
-5:16/0 = 0
-6:16/0 = 0
-8:16/0 = 0
-10:16/0 = 0
-11:16/0 = 0
+[ext_resource type="PackedScene" path="res://scene/crypt/bone.tscn" id="cp_bone"]
+[ext_resource type="PackedScene" path="res://scene/crypt/bonefragment.tscn" id="cp_bonefragment"]
+[ext_resource type="PackedScene" path="res://scene/crypt/bones.tscn" id="cp_bones"]
+[ext_resource type="PackedScene" path="res://scene/crypt/cage.tscn" id="cp_cage"]
+[ext_resource type="PackedScene" path="res://scene/crypt/cageoccupied.tscn" id="cp_cageoccupied"]
+[ext_resource type="PackedScene" path="res://scene/crypt/candelabra.tscn" id="cp_candelabra"]
+[ext_resource type="PackedScene" path="res://scene/crypt/candlecluster.tscn" id="cp_candlecluster"]
+[ext_resource type="PackedScene" path="res://scene/crypt/candlestub.tscn" id="cp_candlestub"]
+[ext_resource type="PackedScene" path="res://scene/crypt/crate.tscn" id="cp_crate"]
+[ext_resource type="PackedScene" path="res://scene/crypt/crateopen.tscn" id="cp_crateopen"]
+[ext_resource type="PackedScene" path="res://scene/crypt/cratestack.tscn" id="cp_cratestack"]
+[ext_resource type="PackedScene" path="res://scene/crypt/cryptambience.tscn" id="cp_cryptambience"]
+[ext_resource type="PackedScene" path="res://scene/crypt/dirtpile1.tscn" id="cp_dirtpile1"]
+[ext_resource type="PackedScene" path="res://scene/crypt/dirtpile2.tscn" id="cp_dirtpile2"]
+[ext_resource type="PackedScene" path="res://scene/crypt/dirtpile3.tscn" id="cp_dirtpile3"]
+[ext_resource type="PackedScene" path="res://scene/crypt/gravestone.tscn" id="cp_gravestone"]
+[ext_resource type="PackedScene" path="res://scene/crypt/lantern.tscn" id="cp_lantern"]
+[ext_resource type="PackedScene" path="res://scene/crypt/pillar.tscn" id="cp_pillar"]
+[ext_resource type="PackedScene" path="res://scene/crypt/planks.tscn" id="cp_planks"]
+[ext_resource type="PackedScene" path="res://scene/crypt/pot.tscn" id="cp_pot"]
+[ext_resource type="PackedScene" path="res://scene/crypt/potpair.tscn" id="cp_potpair"]
+[ext_resource type="PackedScene" path="res://scene/crypt/potsmall.tscn" id="cp_potsmall"]
+[ext_resource type="PackedScene" path="res://scene/crypt/ribcage.tscn" id="cp_ribcage"]
+[ext_resource type="PackedScene" path="res://scene/crypt/rockcluster1.tscn" id="cp_rockcluster1"]
+[ext_resource type="PackedScene" path="res://scene/crypt/rubble1.tscn" id="cp_rubble1"]
+[ext_resource type="PackedScene" path="res://scene/crypt/rubble2.tscn" id="cp_rubble2"]
+[ext_resource type="PackedScene" path="res://scene/crypt/rubble3.tscn" id="cp_rubble3"]
+[ext_resource type="PackedScene" path="res://scene/crypt/rubble4.tscn" id="cp_rubble4"]
+[ext_resource type="PackedScene" path="res://scene/crypt/rubble5.tscn" id="cp_rubble5"]
+[ext_resource type="PackedScene" path="res://scene/crypt/rubble6.tscn" id="cp_rubble6"]
+[ext_resource type="PackedScene" path="res://scene/crypt/skeleton.tscn" id="cp_skeleton"]
+[ext_resource type="PackedScene" path="res://scene/crypt/skullbones.tscn" id="cp_skullbones"]
+[ext_resource type="PackedScene" path="res://scene/crypt/skullcandles.tscn" id="cp_skullcandles"]
+[ext_resource type="PackedScene" path="res://scene/crypt/skullpile.tscn" id="cp_skullpile"]
+[ext_resource type="PackedScene" path="res://scene/crypt/skullpole.tscn" id="cp_skullpole"]
+[ext_resource type="PackedScene" path="res://scene/crypt/skullsmall.tscn" id="cp_skullsmall"]
+[ext_resource type="PackedScene" path="res://scene/crypt/urn.tscn" id="cp_urn"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallcornerbackleft.tscn" id="cp_wallcornerbackleft"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallcornerbackright.tscn" id="cp_wallcornerbackright"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallcornerfrontleft.tscn" id="cp_wallcornerfrontleft"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallcornerfrontright.tscn" id="cp_wallcornerfrontright"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallrun1.tscn" id="cp_wallrun1"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallrun2.tscn" id="cp_wallrun2"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallrun4.tscn" id="cp_wallrun4"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallsidea.tscn" id="cp_wallsidea"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallsideb.tscn" id="cp_wallsideb"]
+[ext_resource type="PackedScene" path="res://scene/crypt/wallsidetall.tscn" id="cp_wallsidetall"]
 
 [sub_resource type="TileSetAtlasSource" id="Atlas_crypt"]
 texture = ExtResource("2_tiles")
@@ -463,7 +279,6 @@ texture = ExtResource("2_tiles")
 [sub_resource type="TileSet" id="TileSet_field"]
 physics_layer_0/collision_layer = 1
 sources/1 = SubResource("Atlas_crypt")
-sources/0 = SubResource("TileSetAtlasSource_375d2")
 
 [sub_resource type="NavigationPolygon" id="NavigationPolygon_bigfield"]
 vertices = PackedVector2Array(384, 48, 512, 48, 512, 192, 384, 192, 1472, 48, 1600, 48, 1600, 192, 1472, 192, 2592, 48, 2720, 48, 2720, 192, 2592, 192, 368, 192, 384, 208, 368, 208, 512, 208, 528, 192, 528, 208, 1456, 192, 1472, 208, 1456, 208, 1600, 208, 1616, 192, 1616, 208, 2576, 192, 2592, 208, 2576, 208, 2720, 208, 2736, 192, 2736, 208, 240, 208, 336, 208, 336, 480, 240, 480, 352, 208, 352, 480, 368, 480, 384, 480, 512, 480, 528, 480, 544, 208, 544, 480, 560, 208, 560, 480, 656, 208, 656, 480, 784, 208, 880, 208, 880, 480, 784, 480, 896, 208, 896, 480, 912, 208, 912, 480, 928, 208, 928, 480, 1056, 208, 1056, 480, 1072, 208, 1072, 480, 1088, 208, 1088, 480, 1104, 208, 1104, 480, 1200, 208, 1200, 480, 1328, 208, 1424, 208, 1424, 480, 1328, 480, 1440, 208, 1440, 480, 1456, 480, 1472, 480, 1600, 480, 1616, 480, 1632, 208, 1632, 480, 1648, 208, 1648, 480, 1744, 208, 1744, 480, 1872, 208, 1968, 208, 1968, 480, 1872, 480, 1984, 208, 1984, 480, 2000, 208, 2000, 480, 2016, 208, 2016, 480, 2144, 208, 2144, 480, 2160, 208, 2160, 480, 2176, 208, 2176, 480, 2192, 208, 2192, 480, 2288, 208, 2288, 480, 2416, 208, 2544, 208, 2544, 480, 2416, 480, 2560, 208, 2560, 480, 2576, 480, 2592, 480, 2720, 480, 2736, 480, 2752, 208, 2752, 480, 2768, 208, 2768, 480, 2896, 208, 2896, 480, 336, 496, 240, 496, 352, 496, 368, 496, 384, 496, 512, 496, 528, 496, 544, 496, 560, 496, 656, 496, 672, 480, 672, 496, 768, 480, 784, 496, 768, 496, 880, 496, 896, 496, 912, 496, 928, 496, 1056, 496, 1072, 496, 1088, 496, 1104, 496, 1200, 496, 1216, 480, 1216, 496, 1312, 480, 1328, 496, 1312, 496, 1424, 496, 1440, 496, 1456, 496, 1472, 496, 1600, 496, 1616, 496, 1632, 496, 1648, 496, 1744, 496, 1760, 480, 1760, 496, 1856, 480, 1872, 496, 1856, 496, 1968, 496, 1984, 496, 2000, 496, 2016, 496, 2144, 496, 2160, 496, 2176, 496, 2192, 496, 2288, 496, 2304, 480, 2304, 496, 2400, 480, 2416, 496, 2400, 496, 2544, 496, 2560, 496, 2576, 496, 2592, 496, 2720, 496, 2736, 496, 2752, 496, 2768, 496, 2896, 496, 336, 608, 240, 608, 352, 608, 368, 608, 384, 608, 512, 608, 528, 608, 544, 608, 560, 608, 656, 608, 672, 608, 768, 608, 784, 608, 880, 608, 896, 608, 912, 608, 928, 608, 1056, 608, 1072, 608, 1088, 608, 1104, 608, 1200, 608, 1216, 608, 1312, 608, 1328, 608, 1424, 608, 1440, 608, 1456, 608, 1472, 608, 1600, 608, 1616, 608, 1632, 608, 1648, 608, 1744, 608, 1760, 608, 1856, 608, 1872, 608, 1968, 608, 1984, 608, 2000, 608, 2016, 608, 2144, 608, 2160, 608, 2176, 608, 2192, 608, 2288, 608, 2304, 608, 2400, 608, 2416, 608, 2544, 608, 2560, 608, 2576, 608, 2592, 608, 2720, 608, 2736, 608, 2752, 608, 2768, 608, 2896, 608, 352, 640, 336, 640, 368, 640, 384, 640, 512, 640, 528, 640, 544, 640, 560, 640, 896, 640, 880, 640, 912, 640, 928, 640, 1056, 640, 1072, 640, 1088, 640, 1104, 640, 1440, 640, 1424, 640, 1456, 640, 1472, 640, 1600, 640, 1616, 640, 1632, 640, 1648, 640, 1984, 640, 1968, 640, 2000, 640, 2016, 640, 2144, 640, 2160, 640, 2176, 640, 2192, 640, 2560, 640, 2544, 640, 2576, 640, 2592, 640, 2720, 640, 2736, 640, 2752, 640, 2768, 640, 368, 832, 352, 832, 384, 832, 512, 832, 528, 832, 544, 832, 912, 832, 896, 832, 928, 832, 1056, 832, 1072, 832, 1088, 832, 1456, 832, 1440, 832, 1472, 832, 1600, 832, 1616, 832, 1632, 832, 2000, 832, 1984, 832, 2016, 832, 2144, 832, 2160, 832, 2176, 832, 2576, 832, 2560, 832, 2592, 832, 2720, 832, 2736, 832, 2752, 832, 336, 832, 352, 848, 336, 848, 368, 848, 384, 848, 512, 848, 528, 848, 544, 848, 560, 832, 560, 848, 880, 832, 896, 848, 880, 848, 912, 848, 928, 848, 1056, 848, 1072, 848, 1088, 848, 1104, 832, 1104, 848, 1424, 832, 1440, 848, 1424, 848, 1456, 848, 1472, 848, 1600, 848, 1616, 848, 1632, 848, 1648, 832, 1648, 848, 1968, 832, 1984, 848, 1968, 848, 2000, 848, 2016, 848, 2144, 848, 2160, 848, 2176, 848, 2192, 832, 2192, 848, 2544, 832, 2560, 848, 2544, 848, 2576, 848, 2592, 848, 2720, 848, 2736, 848, 2752, 848, 2768, 832, 2768, 848, 240, 848, 336, 928, 240, 928, 352, 928, 368, 928, 384, 928, 512, 928, 528, 928, 544, 928, 560, 928, 656, 848, 656, 928, 672, 848, 672, 928, 768, 848, 768, 928, 784, 848, 784, 928, 880, 928, 896, 928, 912, 928, 928, 928, 1056, 928, 1072, 928, 1088, 928, 1104, 928, 1200, 848, 1200, 928, 1216, 848, 1216, 928, 1312, 848, 1312, 928, 1328, 848, 1328, 928, 1424, 928, 1440, 928, 1456, 928, 1472, 928, 1600, 928, 1616, 928, 1632, 928, 1648, 928, 1744, 848, 1744, 928, 1760, 848, 1760, 928, 1856, 848, 1856, 928, 1872, 848, 1872, 928, 1968, 928, 1984, 928, 2000, 928, 2016, 928, 2144, 928, 2160, 928, 2176, 928, 2192, 928, 2288, 848, 2288, 928, 2304, 848, 2304, 928, 2400, 848, 2400, 928, 2416, 848, 2416, 928, 2544, 928, 2560, 928, 2576, 928, 2592, 928, 2720, 928, 2736, 928, 2752, 928, 2768, 928, 2896, 848, 2896, 928, 224, 928, 240, 944, 224, 944, 336, 944, 352, 944, 368, 944, 384, 944, 512, 944, 528, 944, 544, 944, 560, 944, 656, 944, 672, 944, 768, 944, 784, 944, 880, 944, 896, 944, 912, 944, 928, 944, 1056, 944, 1072, 944, 1088, 944, 1104, 944, 1200, 944, 1216, 944, 1312, 944, 1328, 944, 1424, 944, 1440, 944, 1456, 944, 1472, 944, 1600, 944, 1616, 944, 1632, 944, 1648, 944, 1744, 944, 1760, 944, 1856, 944, 1872, 944, 1968, 944, 1984, 944, 2000, 944, 2016, 944, 2144, 944, 2160, 944, 2176, 944, 2192, 944, 2288, 944, 2304, 944, 2400, 944, 2416, 944, 2544, 944, 2560, 944, 2576, 944, 2592, 944, 2720, 944, 2736, 944, 2752, 944, 2768, 944, 2896, 944, 2912, 928, 2912, 944, 48, 944, 224, 1088, 48, 1088, 240, 1088, 336, 1088, 352, 1088, 368, 1088, 384, 1088, 512, 1088, 528, 1088, 544, 1088, 560, 1088, 656, 1088, 672, 1088, 768, 1088, 784, 1088, 880, 1088, 896, 1088, 912, 1088, 928, 1088, 1056, 1088, 1072, 1088, 1088, 1088, 1104, 1088, 1200, 1088, 1216, 1088, 1312, 1088, 1328, 1088, 1424, 1088, 1440, 1088, 1456, 1088, 1472, 1088, 1600, 1088, 1616, 1088, 1632, 1088, 1648, 1088, 1744, 1088, 1760, 1088, 1856, 1088, 1872, 1088, 1968, 1088, 1984, 1088, 2000, 1088, 2016, 1088, 2144, 1088, 2160, 1088, 2176, 1088, 2192, 1088, 2288, 1088, 2304, 1088, 2400, 1088, 2416, 1088, 2544, 1088, 2560, 1088, 2576, 1088, 2592, 1088, 2720, 1088, 2736, 1088, 2752, 1088, 2768, 1088, 2896, 1088, 2912, 1088, 3088, 944, 3088, 1088, 240, 1120, 224, 1120, 336, 1120, 352, 1120, 368, 1120, 384, 1120, 512, 1120, 528, 1120, 544, 1120, 560, 1120, 656, 1120, 672, 1120, 768, 1120, 784, 1120, 880, 1120, 896, 1120, 912, 1120, 928, 1120, 1056, 1120, 1072, 1120, 1088, 1120, 1104, 1120, 1200, 1120, 1216, 1120, 1312, 1120, 1328, 1120, 1424, 1120, 1440, 1120, 1456, 1120, 1472, 1120, 1600, 1120, 1616, 1120, 1632, 1120, 1648, 1120, 1744, 1120, 1760, 1120, 1856, 1120, 1872, 1120, 1968, 1120, 1984, 1120, 2000, 1120, 2016, 1120, 2144, 1120, 2160, 1120, 2176, 1120, 2192, 1120, 2288, 1120, 2304, 1120, 2400, 1120, 2416, 1120, 2544, 1120, 2560, 1120, 2576, 1120, 2592, 1120, 2720, 1120, 2736, 1120, 2752, 1120, 2768, 1120, 2896, 1120, 2912, 1120, 336, 1184, 240, 1184, 352, 1184, 368, 1184, 384, 1184, 512, 1184, 528, 1184, 544, 1184, 560, 1184, 656, 1184, 672, 1184, 768, 1184, 784, 1184, 880, 1184, 896, 1184, 912, 1184, 928, 1184, 1056, 1184, 1072, 1184, 1088, 1184, 1104, 1184, 1200, 1184, 1216, 1184, 1312, 1184, 1328, 1184, 1424, 1184, 1440, 1184, 1456, 1184, 1472, 1184, 1600, 1184, 1616, 1184, 1632, 1184, 1648, 1184, 1744, 1184, 1760, 1184, 1856, 1184, 1872, 1184, 1968, 1184, 1984, 1184, 2000, 1184, 2016, 1184, 2144, 1184, 2160, 1184, 2176, 1184, 2192, 1184, 2288, 1184, 2304, 1184, 2400, 1184, 2416, 1184, 2544, 1184, 2560, 1184, 2576, 1184, 2592, 1184, 2720, 1184, 2736, 1184, 2752, 1184, 2768, 1184, 2896, 1184, 352, 1216, 336, 1216, 368, 1216, 384, 1216, 512, 1216, 528, 1216, 544, 1216, 560, 1216, 896, 1216, 880, 1216, 912, 1216, 928, 1216, 1056, 1216, 1072, 1216, 1088, 1216, 1104, 1216, 1440, 1216, 1424, 1216, 1456, 1216, 1472, 1216, 1600, 1216, 1616, 1216, 1632, 1216, 1648, 1216, 1984, 1216, 1968, 1216, 2000, 1216, 2016, 1216, 2144, 1216, 2160, 1216, 2176, 1216, 2192, 1216, 2560, 1216, 2544, 1216, 2576, 1216, 2592, 1216, 2720, 1216, 2736, 1216, 2752, 1216, 2768, 1216, 368, 1408, 352, 1408, 384, 1408, 512, 1408, 528, 1408, 544, 1408, 912, 1408, 896, 1408, 928, 1408, 1056, 1408, 1072, 1408, 1088, 1408, 1456, 1408, 1440, 1408, 1472, 1408, 1600, 1408, 1616, 1408, 1632, 1408, 2000, 1408, 1984, 1408, 2016, 1408, 2144, 1408, 2160, 1408, 2176, 1408, 2576, 1408, 2560, 1408, 2592, 1408, 2720, 1408, 2736, 1408, 2752, 1408, 336, 1408, 352, 1424, 336, 1424, 368, 1424, 384, 1424, 512, 1424, 528, 1424, 544, 1424, 560, 1408, 560, 1424, 880, 1408, 896, 1424, 880, 1424, 912, 1424, 928, 1424, 1056, 1424, 1072, 1424, 1088, 1424, 1104, 1408, 1104, 1424, 1424, 1408, 1440, 1424, 1424, 1424, 1456, 1424, 1472, 1424, 1600, 1424, 1616, 1424, 1632, 1424, 1648, 1408, 1648, 1424, 1968, 1408, 1984, 1424, 1968, 1424, 2000, 1424, 2016, 1424, 2144, 1424, 2160, 1424, 2176, 1424, 2192, 1408, 2192, 1424, 2544, 1408, 2560, 1424, 2544, 1424, 2576, 1424, 2592, 1424, 2720, 1424, 2736, 1424, 2752, 1424, 2768, 1408, 2768, 1424, 240, 1424, 336, 1536, 240, 1536, 352, 1536, 368, 1536, 384, 1536, 512, 1536, 528, 1536, 544, 1536, 560, 1536, 656, 1424, 656, 1536, 672, 1424, 672, 1536, 768, 1424, 768, 1536, 784, 1424, 784, 1536, 880, 1536, 896, 1536, 912, 1536, 928, 1536, 1056, 1536, 1072, 1536, 1088, 1536, 1104, 1536, 1200, 1424, 1200, 1536, 1216, 1424, 1216, 1536, 1312, 1424, 1312, 1536, 1328, 1424, 1328, 1536, 1424, 1536, 1440, 1536, 1456, 1536, 1472, 1536, 1600, 1536, 1616, 1536, 1632, 1536, 1648, 1536, 1744, 1424, 1744, 1536, 1760, 1424, 1760, 1536, 1856, 1424, 1856, 1536, 1872, 1424, 1872, 1536, 1968, 1536, 1984, 1536, 2000, 1536, 2016, 1536, 2144, 1536, 2160, 1536, 2176, 1536, 2192, 1536, 2288, 1424, 2288, 1536, 2304, 1424, 2304, 1536, 2400, 1424, 2400, 1536, 2416, 1424, 2416, 1536, 2544, 1536, 2560, 1536, 2576, 1536, 2592, 1536, 2720, 1536, 2736, 1536, 2752, 1536, 2768, 1536, 2896, 1424, 2896, 1536, 336, 1568, 240, 1568, 352, 1568, 368, 1568, 384, 1568, 512, 1568, 528, 1568, 544, 1568, 560, 1568, 656, 1568, 672, 1568, 784, 1568, 768, 1568, 880, 1568, 896, 1568, 912, 1568, 928, 1568, 1056, 1568, 1072, 1568, 1088, 1568, 1104, 1568, 1200, 1568, 1216, 1568, 1328, 1568, 1312, 1568, 1424, 1568, 1440, 1568, 1456, 1568, 1472, 1568, 1600, 1568, 1616, 1568, 1632, 1568, 1648, 1568, 1744, 1568, 1760, 1568, 1872, 1568, 1856, 1568, 1968, 1568, 1984, 1568, 2000, 1568, 2016, 1568, 2144, 1568, 2160, 1568, 2176, 1568, 2192, 1568, 2288, 1568, 2304, 1568, 2416, 1568, 2400, 1568, 2544, 1568, 2560, 1568, 2576, 1568, 2592, 1568, 2720, 1568, 2736, 1568, 2752, 1568, 2768, 1568, 2896, 1568, 336, 1824, 240, 1824, 352, 1824, 368, 1824, 384, 1824, 512, 1824, 528, 1824, 544, 1824, 560, 1824, 656, 1824, 880, 1824, 784, 1824, 896, 1824, 912, 1824, 928, 1824, 1056, 1824, 1072, 1824, 1088, 1824, 1104, 1824, 1200, 1824, 1424, 1824, 1328, 1824, 1440, 1824, 1456, 1824, 1472, 1824, 1600, 1824, 1616, 1824, 1632, 1824, 1648, 1824, 1744, 1824, 1968, 1824, 1872, 1824, 1984, 1824, 2000, 1824, 2016, 1824, 2144, 1824, 2160, 1824, 2176, 1824, 2192, 1824, 2288, 1824, 2544, 1824, 2416, 1824, 2560, 1824, 2576, 1824, 2592, 1824, 2720, 1824, 2736, 1824, 2752, 1824, 2768, 1824, 2896, 1824, 928, 1856, 912, 1856, 1056, 1856, 1072, 1856, 2016, 1856, 2000, 1856, 2144, 1856, 2160, 1856, 1056, 1984, 928, 1984, 2144, 1984, 2016, 1984)
@@ -485,6 +300,8 @@ tile_set = SubResource("TileSet_field")
 [node name="navigationregion2d" type="NavigationRegion2D" parent="ground" unique_id=943589065]
 navigation_polygon = SubResource("NavigationPolygon_bigfield")
 
+[node name="cryptambience" parent="ground" instance=ExtResource("cp_cryptambience")]
+
 [node name="ysortworld" type="TileMapLayer" parent="." unique_id=2097278582]
 y_sort_enabled = true
 
@@ -497,6 +314,2127 @@ position = Vector2(120, 1024)
 scale = Vector2(1.5, 1.5)
 sprite_frames = ExtResource("3_tpfrm")
 autoplay = "default"
+
+[node name="crypt" type="Node2D" parent="ysortworld/props"]
+y_sort_enabled = true
+
+[node name="alcove1" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="skullpile" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_skullpile")]
+position = Vector2(448, 82)
+
+[node name="candelabra" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_candelabra")]
+position = Vector2(422, 82)
+
+[node name="candelabra2" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_candelabra")]
+position = Vector2(474, 82)
+
+[node name="cage" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_cage")]
+position = Vector2(408, 136)
+
+[node name="cageoccupied" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_cageoccupied")]
+position = Vector2(490, 136)
+
+[node name="skullcandles" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_skullcandles")]
+position = Vector2(496, 90)
+
+[node name="candlecluster" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_candlecluster")]
+position = Vector2(401, 90)
+
+[node name="bones" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_bones")]
+position = Vector2(436, 150)
+
+[node name="skullsmall" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_skullsmall")]
+position = Vector2(472, 158)
+
+[node name="ribcage" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_ribcage")]
+position = Vector2(424, 176)
+
+[node name="bonefragment" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_bonefragment")]
+position = Vector2(478, 182)
+
+[node name="skullpole" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_skullpole")]
+position = Vector2(354, 252)
+
+[node name="skullpole2" parent="ysortworld/props/crypt/alcove1" instance=ExtResource("cp_skullpole")]
+position = Vector2(542, 252)
+
+[node name="alcove2" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="candelabra" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_candelabra")]
+position = Vector2(968, 1972)
+
+[node name="candelabra2" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_candelabra")]
+position = Vector2(1032, 1972)
+
+[node name="cage" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_cage")]
+position = Vector2(952, 1920)
+
+[node name="cageoccupied" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_cageoccupied")]
+position = Vector2(1034, 1920)
+
+[node name="skullpile" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_skullpile")]
+position = Vector2(946, 1976)
+
+[node name="bones" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_bones")]
+position = Vector2(984, 1900)
+
+[node name="skullsmall" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_skullsmall")]
+position = Vector2(1018, 1912)
+
+[node name="ribcage" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_ribcage")]
+position = Vector2(994, 1880)
+
+[node name="skullpole" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_skullpole")]
+position = Vector2(898, 1824)
+
+[node name="skullpole2" parent="ysortworld/props/crypt/alcove2" instance=ExtResource("cp_skullpole")]
+position = Vector2(1086, 1824)
+
+[node name="alcove3" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="skullpile" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_skullpile")]
+position = Vector2(1536, 82)
+
+[node name="candelabra" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_candelabra")]
+position = Vector2(1510, 82)
+
+[node name="candelabra2" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_candelabra")]
+position = Vector2(1562, 82)
+
+[node name="cage" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_cage")]
+position = Vector2(1496, 136)
+
+[node name="cageoccupied" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_cageoccupied")]
+position = Vector2(1578, 136)
+
+[node name="skullcandles" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_skullcandles")]
+position = Vector2(1584, 90)
+
+[node name="candlecluster" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_candlecluster")]
+position = Vector2(1489, 90)
+
+[node name="bones" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_bones")]
+position = Vector2(1524, 150)
+
+[node name="skullsmall" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_skullsmall")]
+position = Vector2(1560, 158)
+
+[node name="ribcage" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_ribcage")]
+position = Vector2(1512, 176)
+
+[node name="bonefragment" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_bonefragment")]
+position = Vector2(1566, 182)
+
+[node name="skullpole" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_skullpole")]
+position = Vector2(1442, 252)
+
+[node name="skullpole2" parent="ysortworld/props/crypt/alcove3" instance=ExtResource("cp_skullpole")]
+position = Vector2(1630, 252)
+
+[node name="alcove4" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="candelabra" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_candelabra")]
+position = Vector2(2056, 1972)
+
+[node name="candelabra2" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_candelabra")]
+position = Vector2(2120, 1972)
+
+[node name="cage" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_cage")]
+position = Vector2(2040, 1920)
+
+[node name="cageoccupied" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_cageoccupied")]
+position = Vector2(2122, 1920)
+
+[node name="skullpile" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_skullpile")]
+position = Vector2(2034, 1976)
+
+[node name="bones" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_bones")]
+position = Vector2(2072, 1900)
+
+[node name="skullsmall" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_skullsmall")]
+position = Vector2(2106, 1912)
+
+[node name="ribcage" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_ribcage")]
+position = Vector2(2082, 1880)
+
+[node name="skullpole" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_skullpole")]
+position = Vector2(1986, 1824)
+
+[node name="skullpole2" parent="ysortworld/props/crypt/alcove4" instance=ExtResource("cp_skullpole")]
+position = Vector2(2174, 1824)
+
+[node name="alcove5" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="skullpile" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_skullpile")]
+position = Vector2(2656, 82)
+
+[node name="candelabra" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_candelabra")]
+position = Vector2(2630, 82)
+
+[node name="candelabra2" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_candelabra")]
+position = Vector2(2682, 82)
+
+[node name="cage" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_cage")]
+position = Vector2(2616, 136)
+
+[node name="cageoccupied" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_cageoccupied")]
+position = Vector2(2698, 136)
+
+[node name="skullcandles" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_skullcandles")]
+position = Vector2(2704, 90)
+
+[node name="candlecluster" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_candlecluster")]
+position = Vector2(2609, 90)
+
+[node name="bones" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_bones")]
+position = Vector2(2644, 150)
+
+[node name="skullsmall" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_skullsmall")]
+position = Vector2(2680, 158)
+
+[node name="ribcage" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_ribcage")]
+position = Vector2(2632, 176)
+
+[node name="bonefragment" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_bonefragment")]
+position = Vector2(2686, 182)
+
+[node name="skullpole" parent="ysortworld/props/crypt/alcove5" instance=ExtResource("cp_skullpole")]
+position = Vector2(2562, 252)
+
+[node name="field_bottom1" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="rockcluster1" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_rockcluster1")]
+position = Vector2(266, 1806)
+
+[node name="rubble5" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_rubble5")]
+position = Vector2(290, 1810)
+
+[node name="rubble3" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_rubble3")]
+position = Vector2(256, 1820)
+
+[node name="rubble1" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_rubble1")]
+position = Vector2(284, 1822)
+
+[node name="gravestone" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_gravestone")]
+position = Vector2(596, 1806)
+
+[node name="gravestone2" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_gravestone")]
+position = Vector2(618, 1808)
+
+[node name="skullbones" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_skullbones")]
+position = Vector2(606, 1824)
+
+[node name="candlestub" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_candlestub")]
+position = Vector2(630, 1812)
+
+[node name="rubble2" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_rubble2")]
+position = Vector2(380, 1821)
+
+[node name="skullsmall" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_skullsmall")]
+position = Vector2(447, 1821)
+
+[node name="rubble6" parent="ysortworld/props/crypt/field_bottom1" instance=ExtResource("cp_rubble6")]
+position = Vector2(541, 1823)
+
+[node name="field_bottom2" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="potpair" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_potpair")]
+position = Vector2(810, 1806)
+
+[node name="potsmall" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_potsmall")]
+position = Vector2(820, 1820)
+
+[node name="pot" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_pot")]
+position = Vector2(802, 1818)
+
+[node name="crate" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_crate")]
+position = Vector2(1166, 1808)
+
+[node name="crateopen" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_crateopen")]
+position = Vector2(1134, 1824)
+
+[node name="planks" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_planks")]
+position = Vector2(1170, 1826)
+
+[node name="rubble2" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_rubble2")]
+position = Vector2(913, 1822)
+
+[node name="bone" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_bone")]
+position = Vector2(1005, 1824)
+
+[node name="dirtpile2" parent="ysortworld/props/crypt/field_bottom2" instance=ExtResource("cp_dirtpile2")]
+position = Vector2(1080, 1820)
+
+[node name="field_bottom3" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="gravestone" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_gravestone")]
+position = Vector2(1354, 1806)
+
+[node name="gravestone2" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_gravestone")]
+position = Vector2(1376, 1808)
+
+[node name="skullbones" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_skullbones")]
+position = Vector2(1364, 1824)
+
+[node name="candlestub" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_candlestub")]
+position = Vector2(1388, 1812)
+
+[node name="skeleton" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_skeleton")]
+position = Vector2(1684, 1806)
+
+[node name="bones" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_bones")]
+position = Vector2(1706, 1812)
+
+[node name="skullsmall" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_skullsmall")]
+position = Vector2(1676, 1818)
+
+[node name="bone" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_bone")]
+position = Vector2(1698, 1822)
+
+[node name="bone2" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_bone")]
+position = Vector2(1463, 1822)
+
+[node name="dirtpile2" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_dirtpile2")]
+position = Vector2(1532, 1822)
+
+[node name="bone3" parent="ysortworld/props/crypt/field_bottom3" instance=ExtResource("cp_bone")]
+position = Vector2(1623, 1823)
+
+[node name="field_bottom4" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="cratestack" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_cratestack")]
+position = Vector2(1898, 1806)
+
+[node name="crateopen" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_crateopen")]
+position = Vector2(1892, 1824)
+
+[node name="planks" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_planks")]
+position = Vector2(1928, 1826)
+
+[node name="rockcluster1" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_rockcluster1")]
+position = Vector2(2228, 1806)
+
+[node name="rubble5" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_rubble5")]
+position = Vector2(2252, 1810)
+
+[node name="rubble3" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_rubble3")]
+position = Vector2(2218, 1820)
+
+[node name="rubble1" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_rubble1")]
+position = Vector2(2246, 1822)
+
+[node name="rubble2" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_rubble2")]
+position = Vector2(1994, 1821)
+
+[node name="rubble22" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_rubble2")]
+position = Vector2(2077, 1820)
+
+[node name="dirtpile2" parent="ysortworld/props/crypt/field_bottom4" instance=ExtResource("cp_dirtpile2")]
+position = Vector2(2184, 1820)
+
+[node name="field_bottom5" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="skeleton" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_skeleton")]
+position = Vector2(2442, 1806)
+
+[node name="bones" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_bones")]
+position = Vector2(2464, 1812)
+
+[node name="skullsmall" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_skullsmall")]
+position = Vector2(2434, 1818)
+
+[node name="bone" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_bone")]
+position = Vector2(2456, 1822)
+
+[node name="potpair" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_potpair")]
+position = Vector2(2836, 1806)
+
+[node name="potsmall" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_potsmall")]
+position = Vector2(2846, 1820)
+
+[node name="pot" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_pot")]
+position = Vector2(2828, 1818)
+
+[node name="skullsmall2" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_skullsmall")]
+position = Vector2(2549, 1823)
+
+[node name="rubble2" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_rubble2")]
+position = Vector2(2642, 1820)
+
+[node name="rubble22" parent="ysortworld/props/crypt/field_bottom5" instance=ExtResource("cp_rubble2")]
+position = Vector2(2710, 1821)
+
+[node name="field_top1" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="cratestack" parent="ysortworld/props/crypt/field_top1" instance=ExtResource("cp_cratestack")]
+position = Vector2(266, 246)
+
+[node name="crateopen" parent="ysortworld/props/crypt/field_top1" instance=ExtResource("cp_crateopen")]
+position = Vector2(260, 264)
+
+[node name="planks" parent="ysortworld/props/crypt/field_top1" instance=ExtResource("cp_planks")]
+position = Vector2(296, 266)
+
+[node name="urn" parent="ysortworld/props/crypt/field_top1" instance=ExtResource("cp_urn")]
+position = Vector2(618, 247)
+
+[node name="potsmall" parent="ysortworld/props/crypt/field_top1" instance=ExtResource("cp_potsmall")]
+position = Vector2(606, 260)
+
+[node name="dirtpile3" parent="ysortworld/props/crypt/field_top1" instance=ExtResource("cp_dirtpile3")]
+position = Vector2(351, 240)
+
+[node name="dirtpile1" parent="ysortworld/props/crypt/field_top1" instance=ExtResource("cp_dirtpile1")]
+position = Vector2(439, 240)
+
+[node name="rubble4" parent="ysortworld/props/crypt/field_top1" instance=ExtResource("cp_rubble4")]
+position = Vector2(529, 244)
+
+[node name="field_top2" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="gravestone" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_gravestone")]
+position = Vector2(810, 246)
+
+[node name="gravestone2" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_gravestone")]
+position = Vector2(832, 248)
+
+[node name="skullbones" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_skullbones")]
+position = Vector2(820, 264)
+
+[node name="candlestub" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_candlestub")]
+position = Vector2(844, 252)
+
+[node name="rockcluster1" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_rockcluster1")]
+position = Vector2(1140, 246)
+
+[node name="rubble5" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_rubble5")]
+position = Vector2(1164, 250)
+
+[node name="rubble3" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_rubble3")]
+position = Vector2(1130, 260)
+
+[node name="rubble1" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_rubble1")]
+position = Vector2(1158, 262)
+
+[node name="bonefragment" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_bonefragment")]
+position = Vector2(883, 239)
+
+[node name="rubble2" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_rubble2")]
+position = Vector2(979, 244)
+
+[node name="dirtpile1" parent="ysortworld/props/crypt/field_top2" instance=ExtResource("cp_dirtpile1")]
+position = Vector2(1078, 242)
+
+[node name="field_top3" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="potpair" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_potpair")]
+position = Vector2(1354, 246)
+
+[node name="potsmall" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_potsmall")]
+position = Vector2(1364, 260)
+
+[node name="pot" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_pot")]
+position = Vector2(1346, 258)
+
+[node name="cratestack" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_cratestack")]
+position = Vector2(1684, 246)
+
+[node name="crateopen" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_crateopen")]
+position = Vector2(1678, 264)
+
+[node name="planks" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_planks")]
+position = Vector2(1714, 266)
+
+[node name="dirtpile1" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_dirtpile1")]
+position = Vector2(1430, 243)
+
+[node name="dirtpile12" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_dirtpile1")]
+position = Vector2(1517, 238)
+
+[node name="dirtpile13" parent="ysortworld/props/crypt/field_top3" instance=ExtResource("cp_dirtpile1")]
+position = Vector2(1630, 240)
+
+[node name="field_top4" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="rockcluster1" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_rockcluster1")]
+position = Vector2(1898, 246)
+
+[node name="rubble5" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_rubble5")]
+position = Vector2(1922, 250)
+
+[node name="rubble3" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_rubble3")]
+position = Vector2(1888, 260)
+
+[node name="rubble1" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_rubble1")]
+position = Vector2(1916, 262)
+
+[node name="gravestone" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_gravestone")]
+position = Vector2(2228, 246)
+
+[node name="gravestone2" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_gravestone")]
+position = Vector2(2250, 248)
+
+[node name="skullbones" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_skullbones")]
+position = Vector2(2238, 264)
+
+[node name="candlestub" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_candlestub")]
+position = Vector2(2262, 252)
+
+[node name="rubble4" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_rubble4")]
+position = Vector2(1978, 238)
+
+[node name="rubble2" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_rubble2")]
+position = Vector2(2083, 241)
+
+[node name="dirtpile1" parent="ysortworld/props/crypt/field_top4" instance=ExtResource("cp_dirtpile1")]
+position = Vector2(2173, 244)
+
+[node name="field_top5" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="cratestack" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_cratestack")]
+position = Vector2(2442, 246)
+
+[node name="crateopen" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_crateopen")]
+position = Vector2(2436, 264)
+
+[node name="planks" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_planks")]
+position = Vector2(2472, 266)
+
+[node name="gravestone" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_gravestone")]
+position = Vector2(2836, 246)
+
+[node name="gravestone2" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_gravestone")]
+position = Vector2(2858, 248)
+
+[node name="skullbones" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_skullbones")]
+position = Vector2(2846, 264)
+
+[node name="candlestub" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_candlestub")]
+position = Vector2(2870, 252)
+
+[node name="rubble2" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_rubble2")]
+position = Vector2(2526, 240)
+
+[node name="rubble4" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_rubble4")]
+position = Vector2(2605, 241)
+
+[node name="bonefragment" parent="ysortworld/props/crypt/field_top5" instance=ExtResource("cp_bonefragment")]
+position = Vector2(2701, 238)
+
+[node name="road" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="lantern" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(288, 878)
+
+[node name="lantern2" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(288, 1186)
+
+[node name="lantern3" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(720, 878)
+
+[node name="lantern4" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(720, 1186)
+
+[node name="lantern5" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(1264, 878)
+
+[node name="lantern6" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(1264, 1186)
+
+[node name="lantern7" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(1808, 878)
+
+[node name="lantern8" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(1808, 1186)
+
+[node name="lantern9" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(2368, 878)
+
+[node name="lantern10" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(2368, 1186)
+
+[node name="lantern11" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(2832, 878)
+
+[node name="lantern12" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_lantern")]
+position = Vector2(2832, 1186)
+
+[node name="dirtpile1" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_dirtpile1")]
+position = Vector2(439, 896)
+
+[node name="rubble2" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_rubble2")]
+position = Vector2(711, 1166)
+
+[node name="bones" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_bones")]
+position = Vector2(1020, 1172)
+
+[node name="bones2" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_bones")]
+position = Vector2(1330, 1172)
+
+[node name="rubble3" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_rubble3")]
+position = Vector2(1601, 1166)
+
+[node name="bones3" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_bones")]
+position = Vector2(1896, 1166)
+
+[node name="bones4" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_bones")]
+position = Vector2(2240, 1172)
+
+[node name="bonefragment" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_bonefragment")]
+position = Vector2(2536, 1166)
+
+[node name="rubble32" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_rubble3")]
+position = Vector2(2854, 904)
+
+[node name="candelabra" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_candelabra")]
+position = Vector2(3000, 1004)
+
+[node name="candelabra2" parent="ysortworld/props/crypt/road" instance=ExtResource("cp_candelabra")]
+position = Vector2(3064, 1004)
+
+[node name="walls_alcoves_bottom" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="wallcornerfrontleft" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(927, 2016)
+
+[node name="wallcornerfrontright" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(1057, 2016)
+
+[node name="wallrun4" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallrun4")]
+position = Vector2(990.5, 2016)
+
+[node name="wallrun1" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1031, 2016)
+
+[node name="wallcornerfrontleft2" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(2015, 2016)
+
+[node name="wallcornerfrontright2" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(2145, 2016)
+
+[node name="wallrun42" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2078.5, 2016)
+
+[node name="wallrun12" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2119, 2016)
+
+[node name="wallsidetall" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(918.5, 1944)
+
+[node name="wallsideb" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallsideb")]
+position = Vector2(918.5, 1959)
+
+[node name="wallsidetall2" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2006.5, 1944)
+
+[node name="wallsideb2" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2006.5, 1959)
+
+[node name="wallsidetall3" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1065.5, 1944)
+
+[node name="wallsideb3" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1065.5, 1959)
+
+[node name="wallsidetall4" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2153.5, 1944)
+
+[node name="wallsideb4" parent="ysortworld/props/crypt/walls_alcoves_bottom" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2153.5, 1959)
+
+[node name="walls_alcoves_top" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="wallcornerbackleft" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(383, 56)
+
+[node name="wallcornerbackright" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(513.5, 56)
+
+[node name="wallrun4" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallrun4")]
+position = Vector2(446.5, 48)
+
+[node name="wallrun1" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallrun1")]
+position = Vector2(488, 48)
+
+[node name="wallcornerbackleft2" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(1471, 56)
+
+[node name="wallcornerbackright2" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(1601.5, 56)
+
+[node name="wallrun42" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1534.5, 48)
+
+[node name="wallrun12" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1576, 48)
+
+[node name="wallcornerbackleft3" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(2591, 56)
+
+[node name="wallcornerbackright3" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(2721.5, 56)
+
+[node name="wallrun43" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2654.5, 48)
+
+[node name="wallrun13" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2696, 48)
+
+[node name="wallsidetall" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(374.5, 114)
+
+[node name="wallsidetall2" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(374.5, 172)
+
+[node name="wallsidea" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidea")]
+position = Vector2(374.5, 208)
+
+[node name="wallsidetall3" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1462.5, 114)
+
+[node name="wallsidetall4" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1462.5, 172)
+
+[node name="wallsidea2" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidea")]
+position = Vector2(1462.5, 208)
+
+[node name="wallsidetall5" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2582.5, 114)
+
+[node name="wallsidetall6" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2582.5, 172)
+
+[node name="wallsidea3" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidea")]
+position = Vector2(2582.5, 208)
+
+[node name="wallsidetall7" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(521.5, 114)
+
+[node name="wallsidetall8" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(521.5, 172)
+
+[node name="wallsidea4" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidea")]
+position = Vector2(521.5, 208)
+
+[node name="wallsidetall9" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1609.5, 114)
+
+[node name="wallsidetall10" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1609.5, 172)
+
+[node name="wallsidea5" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidea")]
+position = Vector2(1609.5, 208)
+
+[node name="wallsidetall11" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2729.5, 114)
+
+[node name="wallsidetall12" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2729.5, 172)
+
+[node name="wallsidea6" parent="ysortworld/props/crypt/walls_alcoves_top" instance=ExtResource("cp_wallsidea")]
+position = Vector2(2729.5, 208)
+
+[node name="walls_north_corridors" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="wallcornerfrontleft" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(239, 640)
+
+[node name="wallrun2" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun2")]
+position = Vector2(277.5, 640)
+
+[node name="wallrun1" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(316, 640)
+
+[node name="wallrun12" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(325, 640)
+
+[node name="wallrun4" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(608.5, 640)
+
+[node name="wallrun42" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(709.5, 640)
+
+[node name="wallrun43" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(810.5, 640)
+
+[node name="wallrun13" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(869, 640)
+
+[node name="wallrun44" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1152.5, 640)
+
+[node name="wallrun45" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1253.5, 640)
+
+[node name="wallrun46" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1354.5, 640)
+
+[node name="wallrun14" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1413, 640)
+
+[node name="wallrun47" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1696.5, 640)
+
+[node name="wallrun48" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1797.5, 640)
+
+[node name="wallrun49" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1898.5, 640)
+
+[node name="wallrun15" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1957, 640)
+
+[node name="wallrun410" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2240.5, 640)
+
+[node name="wallrun411" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2341.5, 640)
+
+[node name="wallrun412" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2442.5, 640)
+
+[node name="wallrun22" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun2")]
+position = Vector2(2518.5, 640)
+
+[node name="wallrun16" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2533, 640)
+
+[node name="wallcornerfrontright" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(2897, 640)
+
+[node name="wallrun413" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2816.5, 640)
+
+[node name="wallrun17" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2871, 640)
+
+[node name="wallsidetall" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(342.5, 728)
+
+[node name="wallsidetall2" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(342.5, 786)
+
+[node name="wallsidetall3" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(342.5, 844)
+
+[node name="wallsidetall4" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(886.5, 728)
+
+[node name="wallsidetall5" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(886.5, 786)
+
+[node name="wallsidetall6" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(886.5, 844)
+
+[node name="wallsidetall7" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1430.5, 728)
+
+[node name="wallsidetall8" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1430.5, 786)
+
+[node name="wallsidetall9" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1430.5, 844)
+
+[node name="wallsidetall10" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1974.5, 728)
+
+[node name="wallsidetall11" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1974.5, 786)
+
+[node name="wallsidetall12" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1974.5, 844)
+
+[node name="wallsidetall13" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2550.5, 728)
+
+[node name="wallsidetall14" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2550.5, 786)
+
+[node name="wallsidetall15" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2550.5, 844)
+
+[node name="wallsidetall16" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(553.5, 728)
+
+[node name="wallsidetall17" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(553.5, 786)
+
+[node name="wallsidetall18" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(553.5, 844)
+
+[node name="wallsidetall19" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1097.5, 728)
+
+[node name="wallsidetall20" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1097.5, 786)
+
+[node name="wallsidetall21" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1097.5, 844)
+
+[node name="wallsidetall22" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1641.5, 728)
+
+[node name="wallsidetall23" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1641.5, 786)
+
+[node name="wallsidetall24" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1641.5, 844)
+
+[node name="wallsidetall25" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2185.5, 728)
+
+[node name="wallsidetall26" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2185.5, 786)
+
+[node name="wallsidetall27" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2185.5, 844)
+
+[node name="wallsidetall28" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2761.5, 728)
+
+[node name="wallsidetall29" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2761.5, 786)
+
+[node name="wallsidetall30" parent="ysortworld/props/crypt/walls_north_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2761.5, 844)
+
+[node name="walls_north_fields" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="wallcornerbackleft" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(239, 216)
+
+[node name="wallrun4" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(302.5, 208)
+
+[node name="wallrun1" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(357, 208)
+
+[node name="wallcornerbackright" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(657.5, 216)
+
+[node name="wallrun42" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(576.5, 208)
+
+[node name="wallrun12" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(632, 208)
+
+[node name="wallcornerbackleft2" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(783, 216)
+
+[node name="wallcornerbackright2" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(1201.5, 216)
+
+[node name="wallrun43" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(846.5, 208)
+
+[node name="wallrun44" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(947.5, 208)
+
+[node name="pillar" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_pillar")]
+position = Vector2(1006.5, 208)
+
+[node name="wallrun45" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1065.5, 208)
+
+[node name="wallrun2" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(1141.5, 208)
+
+[node name="wallrun13" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1176, 208)
+
+[node name="wallcornerbackleft3" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(1327, 216)
+
+[node name="wallrun46" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1390.5, 208)
+
+[node name="wallrun14" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1445, 208)
+
+[node name="wallcornerbackright3" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(1745.5, 216)
+
+[node name="wallrun47" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1664.5, 208)
+
+[node name="wallrun15" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1720, 208)
+
+[node name="wallcornerbackleft4" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(1871, 216)
+
+[node name="wallcornerbackright4" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(2289.5, 216)
+
+[node name="wallrun48" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1934.5, 208)
+
+[node name="wallrun49" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2035.5, 208)
+
+[node name="pillar2" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_pillar")]
+position = Vector2(2094.5, 208)
+
+[node name="wallrun410" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2153.5, 208)
+
+[node name="wallrun22" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(2229.5, 208)
+
+[node name="wallrun16" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2264, 208)
+
+[node name="wallcornerbackleft5" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(2415, 216)
+
+[node name="wallrun411" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2478.5, 208)
+
+[node name="wallrun17" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2542, 208)
+
+[node name="wallrun18" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2565, 208)
+
+[node name="wallcornerbackright5" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(2897.5, 216)
+
+[node name="wallrun412" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2784.5, 208)
+
+[node name="wallrun19" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2848, 208)
+
+[node name="wallrun110" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2872, 208)
+
+[node name="wallrun23" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(695.5, 496)
+
+[node name="wallrun111" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(734, 496)
+
+[node name="wallrun112" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(757, 496)
+
+[node name="wallrun24" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(1239.5, 496)
+
+[node name="wallrun113" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1278, 496)
+
+[node name="wallrun114" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1301, 496)
+
+[node name="wallrun25" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(1783.5, 496)
+
+[node name="wallrun115" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1822, 496)
+
+[node name="wallrun116" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1845, 496)
+
+[node name="wallrun26" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(2327.5, 496)
+
+[node name="wallrun117" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2366, 496)
+
+[node name="wallrun118" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2389, 496)
+
+[node name="wallsidetall" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 274)
+
+[node name="wallsidetall2" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 332)
+
+[node name="wallsidetall3" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 390)
+
+[node name="wallsidetall4" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 448)
+
+[node name="wallsidetall5" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 506)
+
+[node name="wallsidetall6" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 564)
+
+[node name="wallsideb" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(230.5, 583)
+
+[node name="wallsidetall7" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(342.5, 670)
+
+[node name="wallsidetall8" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(774.5, 274)
+
+[node name="wallsidetall9" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(774.5, 332)
+
+[node name="wallsidetall10" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(774.5, 390)
+
+[node name="wallsidetall11" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(774.5, 448)
+
+[node name="wallsidea" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidea")]
+position = Vector2(774.5, 484)
+
+[node name="wallsideb2" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(774.5, 496)
+
+[node name="wallsidetall12" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(886.5, 670)
+
+[node name="wallsidetall13" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1318.5, 274)
+
+[node name="wallsidetall14" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1318.5, 332)
+
+[node name="wallsidetall15" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1318.5, 390)
+
+[node name="wallsidetall16" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1318.5, 448)
+
+[node name="wallsidea2" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidea")]
+position = Vector2(1318.5, 484)
+
+[node name="wallsideb3" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1318.5, 496)
+
+[node name="wallsidetall17" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1430.5, 670)
+
+[node name="wallsidetall18" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1862.5, 274)
+
+[node name="wallsidetall19" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1862.5, 332)
+
+[node name="wallsidetall20" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1862.5, 390)
+
+[node name="wallsidetall21" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1862.5, 448)
+
+[node name="wallsidea3" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidea")]
+position = Vector2(1862.5, 484)
+
+[node name="wallsideb4" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1862.5, 496)
+
+[node name="wallsidetall22" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1974.5, 670)
+
+[node name="wallsidetall23" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2406.5, 274)
+
+[node name="wallsidetall24" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2406.5, 332)
+
+[node name="wallsidetall25" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2406.5, 390)
+
+[node name="wallsidetall26" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2406.5, 448)
+
+[node name="wallsidea4" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidea")]
+position = Vector2(2406.5, 484)
+
+[node name="wallsideb5" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2406.5, 496)
+
+[node name="wallsidetall27" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2550.5, 670)
+
+[node name="wallsidetall28" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(553.5, 670)
+
+[node name="wallsidetall29" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(665.5, 274)
+
+[node name="wallsidetall30" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(665.5, 332)
+
+[node name="wallsidetall31" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(665.5, 390)
+
+[node name="wallsidetall32" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(665.5, 448)
+
+[node name="wallsidea5" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidea")]
+position = Vector2(665.5, 484)
+
+[node name="wallsideb6" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(665.5, 496)
+
+[node name="wallsidetall33" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1097.5, 670)
+
+[node name="wallsidetall34" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1209.5, 274)
+
+[node name="wallsidetall35" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1209.5, 332)
+
+[node name="wallsidetall36" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1209.5, 390)
+
+[node name="wallsidetall37" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1209.5, 448)
+
+[node name="wallsidea6" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidea")]
+position = Vector2(1209.5, 484)
+
+[node name="wallsideb7" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1209.5, 496)
+
+[node name="wallsidetall38" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1641.5, 670)
+
+[node name="wallsidetall39" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1753.5, 274)
+
+[node name="wallsidetall40" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1753.5, 332)
+
+[node name="wallsidetall41" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1753.5, 390)
+
+[node name="wallsidetall42" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1753.5, 448)
+
+[node name="wallsidea7" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidea")]
+position = Vector2(1753.5, 484)
+
+[node name="wallsideb8" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1753.5, 496)
+
+[node name="wallsidetall43" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2185.5, 670)
+
+[node name="wallsidetall44" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2297.5, 274)
+
+[node name="wallsidetall45" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2297.5, 332)
+
+[node name="wallsidetall46" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2297.5, 390)
+
+[node name="wallsidetall47" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2297.5, 448)
+
+[node name="wallsidea8" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidea")]
+position = Vector2(2297.5, 484)
+
+[node name="wallsideb9" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2297.5, 496)
+
+[node name="wallsidetall48" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2761.5, 670)
+
+[node name="wallsidetall49" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 274)
+
+[node name="wallsidetall50" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 332)
+
+[node name="wallsidetall51" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 390)
+
+[node name="wallsidetall52" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 448)
+
+[node name="wallsidetall53" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 506)
+
+[node name="wallsidetall54" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 564)
+
+[node name="wallsideb10" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2905.5, 583)
+
+[node name="pillar3" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_pillar")]
+position = Vector2(363.5, 208)
+
+[node name="pillar4" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_pillar")]
+position = Vector2(532.5, 208)
+
+[node name="pillar5" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_pillar")]
+position = Vector2(1451.5, 208)
+
+[node name="pillar6" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_pillar")]
+position = Vector2(1620.5, 208)
+
+[node name="pillar7" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_pillar")]
+position = Vector2(2571.5, 208)
+
+[node name="pillar8" parent="ysortworld/props/crypt/walls_north_fields" instance=ExtResource("cp_pillar")]
+position = Vector2(2740.5, 208)
+
+[node name="walls_road" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="wallcornerbackleft" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(239, 856)
+
+[node name="wallrun2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun2")]
+position = Vector2(277.5, 848)
+
+[node name="wallrun1" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(316, 848)
+
+[node name="wallrun12" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(325, 848)
+
+[node name="wallrun4" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(608.5, 848)
+
+[node name="wallrun42" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(709.5, 848)
+
+[node name="pillar" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_pillar")]
+position = Vector2(768.5, 848)
+
+[node name="wallrun43" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(827.5, 848)
+
+[node name="wallrun13" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(869, 848)
+
+[node name="wallrun44" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1152.5, 848)
+
+[node name="wallrun45" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1253.5, 848)
+
+[node name="pillar2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_pillar")]
+position = Vector2(1312.5, 848)
+
+[node name="wallrun46" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1371.5, 848)
+
+[node name="wallrun14" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1413, 848)
+
+[node name="wallrun47" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1696.5, 848)
+
+[node name="wallrun48" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1797.5, 848)
+
+[node name="pillar3" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_pillar")]
+position = Vector2(1856.5, 848)
+
+[node name="wallrun49" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1915.5, 848)
+
+[node name="wallrun15" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1957, 848)
+
+[node name="wallrun410" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2240.5, 848)
+
+[node name="wallrun411" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2341.5, 848)
+
+[node name="pillar4" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_pillar")]
+position = Vector2(2400.5, 848)
+
+[node name="wallrun412" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2459.5, 848)
+
+[node name="wallrun16" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2523, 848)
+
+[node name="wallrun17" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2533, 848)
+
+[node name="wallcornerbackright" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(2897.5, 856)
+
+[node name="wallrun413" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2816.5, 848)
+
+[node name="wallrun18" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2872, 848)
+
+[node name="wallcornerbackleft2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(47, 952)
+
+[node name="wallrun414" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(110.5, 944)
+
+[node name="wallrun22" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun2")]
+position = Vector2(186.5, 944)
+
+[node name="wallrun19" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(213, 944)
+
+[node name="wallcornerbackright2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(3089.5, 952)
+
+[node name="wallrun415" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2960.5, 944)
+
+[node name="wallrun23" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun2")]
+position = Vector2(3036.5, 944)
+
+[node name="wallrun110" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(3064, 944)
+
+[node name="wallcornerfrontleft" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(47, 1120)
+
+[node name="wallrun416" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(110.5, 1120)
+
+[node name="wallrun24" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun2")]
+position = Vector2(186.5, 1120)
+
+[node name="wallrun111" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(213, 1120)
+
+[node name="wallcornerfrontright" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(3089, 1120)
+
+[node name="wallrun417" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2960.5, 1120)
+
+[node name="wallrun25" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun2")]
+position = Vector2(3036.5, 1120)
+
+[node name="wallrun112" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(3063, 1120)
+
+[node name="wallcornerfrontleft2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(239, 1216)
+
+[node name="wallrun26" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun2")]
+position = Vector2(277.5, 1216)
+
+[node name="wallrun113" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(316, 1216)
+
+[node name="wallrun114" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(325, 1216)
+
+[node name="wallrun418" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(608.5, 1216)
+
+[node name="wallrun419" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(709.5, 1216)
+
+[node name="wallrun420" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(810.5, 1216)
+
+[node name="wallrun115" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(869, 1216)
+
+[node name="wallrun421" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1152.5, 1216)
+
+[node name="wallrun422" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1253.5, 1216)
+
+[node name="wallrun423" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1354.5, 1216)
+
+[node name="wallrun116" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1413, 1216)
+
+[node name="wallrun424" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1696.5, 1216)
+
+[node name="wallrun425" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1797.5, 1216)
+
+[node name="wallrun426" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1898.5, 1216)
+
+[node name="wallrun117" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1957, 1216)
+
+[node name="wallrun427" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2240.5, 1216)
+
+[node name="wallrun428" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2341.5, 1216)
+
+[node name="wallrun429" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2442.5, 1216)
+
+[node name="wallrun27" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun2")]
+position = Vector2(2518.5, 1216)
+
+[node name="wallrun118" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2533, 1216)
+
+[node name="wallcornerfrontright2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(2897, 1216)
+
+[node name="wallrun430" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2816.5, 1216)
+
+[node name="wallrun119" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2871, 1216)
+
+[node name="wallsidetall" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(38.5, 1010)
+
+[node name="wallsidea" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidea")]
+position = Vector2(38.5, 1046)
+
+[node name="wallsideb" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(38.5, 1063)
+
+[node name="wallsidetall2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 914)
+
+[node name="wallsideb2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(230.5, 944)
+
+[node name="wallsidetall3" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 1150)
+
+[node name="wallsideb3" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(230.5, 1159)
+
+[node name="wallsideb4" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(342.5, 848)
+
+[node name="wallsidetall4" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(342.5, 1246)
+
+[node name="wallsideb5" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(886.5, 848)
+
+[node name="wallsidetall5" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(886.5, 1246)
+
+[node name="wallsideb6" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1430.5, 848)
+
+[node name="wallsidetall6" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1430.5, 1246)
+
+[node name="wallsideb7" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1974.5, 848)
+
+[node name="wallsidetall7" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1974.5, 1246)
+
+[node name="wallsideb8" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2550.5, 848)
+
+[node name="wallsidetall8" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2550.5, 1246)
+
+[node name="wallsideb9" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(553.5, 848)
+
+[node name="wallsidetall9" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(553.5, 1246)
+
+[node name="wallsideb10" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1097.5, 848)
+
+[node name="wallsidetall10" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1097.5, 1246)
+
+[node name="wallsideb11" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1641.5, 848)
+
+[node name="wallsidetall11" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1641.5, 1246)
+
+[node name="wallsideb12" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2185.5, 848)
+
+[node name="wallsidetall12" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2185.5, 1246)
+
+[node name="wallsideb13" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2761.5, 848)
+
+[node name="wallsidetall13" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2761.5, 1246)
+
+[node name="wallsidetall14" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 914)
+
+[node name="wallsideb14" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2905.5, 944)
+
+[node name="wallsidetall15" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 1150)
+
+[node name="wallsideb15" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2905.5, 1159)
+
+[node name="wallsidetall16" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(3097.5, 1010)
+
+[node name="wallsidea2" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsidea")]
+position = Vector2(3097.5, 1046)
+
+[node name="wallsideb16" parent="ysortworld/props/crypt/walls_road" instance=ExtResource("cp_wallsideb")]
+position = Vector2(3097.5, 1063)
+
+[node name="walls_south_corridors" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="wallcornerbackleft" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallcornerbackleft")]
+position = Vector2(239, 1432)
+
+[node name="wallrun2" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun2")]
+position = Vector2(277.5, 1424)
+
+[node name="wallrun1" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(316, 1424)
+
+[node name="wallrun12" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(325, 1424)
+
+[node name="wallrun4" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(608.5, 1424)
+
+[node name="wallrun42" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(709.5, 1424)
+
+[node name="pillar" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_pillar")]
+position = Vector2(768.5, 1424)
+
+[node name="wallrun43" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(827.5, 1424)
+
+[node name="wallrun13" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(869, 1424)
+
+[node name="wallrun44" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1152.5, 1424)
+
+[node name="wallrun45" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1253.5, 1424)
+
+[node name="pillar2" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_pillar")]
+position = Vector2(1312.5, 1424)
+
+[node name="wallrun46" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1371.5, 1424)
+
+[node name="wallrun14" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1413, 1424)
+
+[node name="wallrun47" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1696.5, 1424)
+
+[node name="wallrun48" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1797.5, 1424)
+
+[node name="pillar3" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_pillar")]
+position = Vector2(1856.5, 1424)
+
+[node name="wallrun49" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1915.5, 1424)
+
+[node name="wallrun15" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1957, 1424)
+
+[node name="wallrun410" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2240.5, 1424)
+
+[node name="wallrun411" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2341.5, 1424)
+
+[node name="pillar4" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_pillar")]
+position = Vector2(2400.5, 1424)
+
+[node name="wallrun412" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2459.5, 1424)
+
+[node name="wallrun16" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2523, 1424)
+
+[node name="wallrun17" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2533, 1424)
+
+[node name="wallcornerbackright" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallcornerbackright")]
+position = Vector2(2897.5, 1432)
+
+[node name="wallrun413" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2816.5, 1424)
+
+[node name="wallrun18" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2872, 1424)
+
+[node name="wallsidetall" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 1490)
+
+[node name="wallsidetall2" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(342.5, 1304)
+
+[node name="wallsidetall3" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(342.5, 1362)
+
+[node name="wallsidetall4" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(342.5, 1420)
+
+[node name="wallsideb" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(342.5, 1424)
+
+[node name="wallsidetall5" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(886.5, 1304)
+
+[node name="wallsidetall6" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(886.5, 1362)
+
+[node name="wallsidetall7" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(886.5, 1420)
+
+[node name="wallsideb2" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(886.5, 1424)
+
+[node name="wallsidetall8" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1430.5, 1304)
+
+[node name="wallsidetall9" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1430.5, 1362)
+
+[node name="wallsidetall10" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1430.5, 1420)
+
+[node name="wallsideb3" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1430.5, 1424)
+
+[node name="wallsidetall11" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1974.5, 1304)
+
+[node name="wallsidetall12" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1974.5, 1362)
+
+[node name="wallsidetall13" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1974.5, 1420)
+
+[node name="wallsideb4" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1974.5, 1424)
+
+[node name="wallsidetall14" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2550.5, 1304)
+
+[node name="wallsidetall15" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2550.5, 1362)
+
+[node name="wallsidetall16" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2550.5, 1420)
+
+[node name="wallsideb5" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2550.5, 1424)
+
+[node name="wallsidetall17" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(553.5, 1304)
+
+[node name="wallsidetall18" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(553.5, 1362)
+
+[node name="wallsidetall19" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(553.5, 1420)
+
+[node name="wallsideb6" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(553.5, 1424)
+
+[node name="wallsidetall20" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1097.5, 1304)
+
+[node name="wallsidetall21" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1097.5, 1362)
+
+[node name="wallsidetall22" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1097.5, 1420)
+
+[node name="wallsideb7" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1097.5, 1424)
+
+[node name="wallsidetall23" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1641.5, 1304)
+
+[node name="wallsidetall24" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1641.5, 1362)
+
+[node name="wallsidetall25" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1641.5, 1420)
+
+[node name="wallsideb8" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1641.5, 1424)
+
+[node name="wallsidetall26" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2185.5, 1304)
+
+[node name="wallsidetall27" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2185.5, 1362)
+
+[node name="wallsidetall28" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2185.5, 1420)
+
+[node name="wallsideb9" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2185.5, 1424)
+
+[node name="wallsidetall29" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2761.5, 1304)
+
+[node name="wallsidetall30" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2761.5, 1362)
+
+[node name="wallsidetall31" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2761.5, 1420)
+
+[node name="wallsideb10" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2761.5, 1424)
+
+[node name="wallsidetall32" parent="ysortworld/props/crypt/walls_south_corridors" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 1490)
+
+[node name="walls_south_fields" type="Node2D" parent="ysortworld/props/crypt"]
+y_sort_enabled = true
+
+[node name="wallrun2" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(695.5, 1568)
+
+[node name="wallrun1" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(734, 1568)
+
+[node name="wallrun12" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(757, 1568)
+
+[node name="wallrun22" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(1239.5, 1568)
+
+[node name="wallrun13" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1278, 1568)
+
+[node name="wallrun14" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1301, 1568)
+
+[node name="wallrun23" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(1783.5, 1568)
+
+[node name="wallrun15" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1822, 1568)
+
+[node name="wallrun16" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1845, 1568)
+
+[node name="wallrun24" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(2327.5, 1568)
+
+[node name="wallrun17" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2366, 1568)
+
+[node name="wallrun18" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2389, 1568)
+
+[node name="wallcornerfrontleft" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(239, 1856)
+
+[node name="wallcornerfrontright" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(657, 1856)
+
+[node name="wallrun4" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(302.5, 1856)
+
+[node name="wallrun42" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(403.5, 1856)
+
+[node name="wallrun43" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(504.5, 1856)
+
+[node name="wallrun25" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(580.5, 1856)
+
+[node name="wallrun19" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(619, 1856)
+
+[node name="wallrun110" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(631, 1856)
+
+[node name="wallcornerfrontleft2" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(783, 1856)
+
+[node name="wallrun44" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(846.5, 1856)
+
+[node name="wallrun111" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(901, 1856)
+
+[node name="wallcornerfrontright2" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(1201, 1856)
+
+[node name="wallrun45" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1120.5, 1856)
+
+[node name="wallrun112" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1175, 1856)
+
+[node name="wallcornerfrontleft3" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(1327, 1856)
+
+[node name="wallcornerfrontright3" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(1745, 1856)
+
+[node name="wallrun46" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1390.5, 1856)
+
+[node name="wallrun47" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1491.5, 1856)
+
+[node name="wallrun48" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1592.5, 1856)
+
+[node name="wallrun26" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(1668.5, 1856)
+
+[node name="wallrun113" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1707, 1856)
+
+[node name="wallrun114" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1719, 1856)
+
+[node name="wallcornerfrontleft4" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(1871, 1856)
+
+[node name="wallrun49" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(1934.5, 1856)
+
+[node name="wallrun115" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(1989, 1856)
+
+[node name="wallcornerfrontright4" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(2289, 1856)
+
+[node name="wallrun410" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2208.5, 1856)
+
+[node name="wallrun116" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2263, 1856)
+
+[node name="wallcornerfrontleft5" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontleft")]
+position = Vector2(2415, 1856)
+
+[node name="wallcornerfrontright5" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallcornerfrontright")]
+position = Vector2(2897, 1856)
+
+[node name="wallrun411" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2478.5, 1856)
+
+[node name="wallrun412" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2579.5, 1856)
+
+[node name="wallrun413" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2680.5, 1856)
+
+[node name="wallrun414" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun4")]
+position = Vector2(2781.5, 1856)
+
+[node name="wallrun27" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun2")]
+position = Vector2(2857.5, 1856)
+
+[node name="wallrun117" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallrun1")]
+position = Vector2(2871, 1856)
+
+[node name="wallsidetall" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 1548)
+
+[node name="wallsidetall2" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 1606)
+
+[node name="wallsidetall3" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 1664)
+
+[node name="wallsidetall4" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 1722)
+
+[node name="wallsidetall5" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(230.5, 1780)
+
+[node name="wallsideb" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(230.5, 1799)
+
+[node name="wallsidetall6" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(774.5, 1598)
+
+[node name="wallsidetall7" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(774.5, 1656)
+
+[node name="wallsidetall8" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(774.5, 1714)
+
+[node name="wallsidetall9" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(774.5, 1772)
+
+[node name="wallsideb2" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(774.5, 1799)
+
+[node name="wallsidetall10" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(918.5, 1886)
+
+[node name="wallsidetall11" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1318.5, 1598)
+
+[node name="wallsidetall12" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1318.5, 1656)
+
+[node name="wallsidetall13" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1318.5, 1714)
+
+[node name="wallsidetall14" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1318.5, 1772)
+
+[node name="wallsideb3" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1318.5, 1799)
+
+[node name="wallsidetall15" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1862.5, 1598)
+
+[node name="wallsidetall16" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1862.5, 1656)
+
+[node name="wallsidetall17" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1862.5, 1714)
+
+[node name="wallsidetall18" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1862.5, 1772)
+
+[node name="wallsideb4" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1862.5, 1799)
+
+[node name="wallsidetall19" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2006.5, 1886)
+
+[node name="wallsidetall20" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2406.5, 1598)
+
+[node name="wallsidetall21" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2406.5, 1656)
+
+[node name="wallsidetall22" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2406.5, 1714)
+
+[node name="wallsidetall23" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2406.5, 1772)
+
+[node name="wallsideb5" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2406.5, 1799)
+
+[node name="wallsidetall24" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(665.5, 1598)
+
+[node name="wallsidetall25" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(665.5, 1656)
+
+[node name="wallsidetall26" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(665.5, 1714)
+
+[node name="wallsidetall27" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(665.5, 1772)
+
+[node name="wallsideb6" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(665.5, 1799)
+
+[node name="wallsidetall28" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1065.5, 1886)
+
+[node name="wallsidetall29" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1209.5, 1598)
+
+[node name="wallsidetall30" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1209.5, 1656)
+
+[node name="wallsidetall31" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1209.5, 1714)
+
+[node name="wallsidetall32" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1209.5, 1772)
+
+[node name="wallsideb7" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1209.5, 1799)
+
+[node name="wallsidetall33" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1753.5, 1598)
+
+[node name="wallsidetall34" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1753.5, 1656)
+
+[node name="wallsidetall35" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1753.5, 1714)
+
+[node name="wallsidetall36" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(1753.5, 1772)
+
+[node name="wallsideb8" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(1753.5, 1799)
+
+[node name="wallsidetall37" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2153.5, 1886)
+
+[node name="wallsidetall38" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2297.5, 1598)
+
+[node name="wallsidetall39" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2297.5, 1656)
+
+[node name="wallsidetall40" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2297.5, 1714)
+
+[node name="wallsidetall41" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2297.5, 1772)
+
+[node name="wallsideb9" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2297.5, 1799)
+
+[node name="wallsidetall42" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 1548)
+
+[node name="wallsidetall43" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 1606)
+
+[node name="wallsidetall44" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 1664)
+
+[node name="wallsidetall45" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 1722)
+
+[node name="wallsidetall46" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsidetall")]
+position = Vector2(2905.5, 1780)
+
+[node name="wallsideb10" parent="ysortworld/props/crypt/walls_south_fields" instance=ExtResource("cp_wallsideb")]
+position = Vector2(2905.5, 1799)
 
 [node name="interactables" type="Node2D" parent="ysortworld" unique_id=1550714935]
 y_sort_enabled = true
