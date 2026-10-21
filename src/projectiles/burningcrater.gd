@@ -35,6 +35,10 @@
 class_name BurningCrater
 extends Area2D
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 
 # How long it burns, how often it bites, and how much of the meteor's hit a
 # bite is. Five bites of a fifth: a meteor's hit again, spread over the burn,
@@ -265,6 +269,9 @@ func _burn() -> void:
 	var bite: int = burn_damage()
 	for body in get_overlapping_bodies():
 		if not body.is_in_group("enemies") or not body.has_method("take_damage"):
+			continue
+		# Not past a wall from the middle of the fire (0.69.1, Targets).
+		if not Targets.can_reach(self, global_position, body):
 			continue
 		# ONE FIRE AT A TIME: see the top of the file.
 		var by: int = int(body.get_meta(owner_meta, 0))

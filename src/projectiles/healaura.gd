@@ -71,6 +71,10 @@
 class_name HealAura
 extends Node2D
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 
 const SHEET := "res://art/maincharacter/healaura.png"
 const FRAME_SIZE := 64
@@ -503,7 +507,9 @@ func tick() -> void:
 	if cosmetic or damage <= 0 or not is_inside_tree():
 		return
 	for monster in get_tree().get_nodes_in_group(&"enemies"):
-		if monster is Node2D and monster.has_method(&"take_damage") and inside(feet_of(monster as Node2D)):
+		if monster is Node2D and monster.has_method(&"take_damage") and inside(feet_of(monster as Node2D)) \
+				and Targets.can_reach(self, global_position, monster):
+			# Not past a wall from the ring's middle (0.69.1, Targets).
 			monster.call("take_damage", damage, element)
 
 

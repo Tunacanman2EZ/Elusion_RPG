@@ -252,9 +252,11 @@ func _cast_stalagmite_drop() -> void:
 		print("[MAGE] casting stalagmite (mana now %d)" % mana)
 
 	_play_cast_animation()
+	# NOT ON THE FAR SIDE OF A WALL (0.69.1): the spell lands where it was
+	# aimed, or this side of the first wall on the way (reach_short_of_wall()).
 	var meteor: bool = equipped_weapon_attack() == ItemData.WeaponAttack.METEOR
 	if meteor:
-		call_meteor(aim_point())
+		call_meteor(reach_short_of_wall(aim_point()))
 	else:
 		_spawn_stalagmite()
 	_aim_ring_fired()
@@ -310,7 +312,9 @@ func _spawn_stalagmite() -> void:
 	# animation and damages on impact frame (frame 4).
 	var spell: Node = target_circle_scene.instantiate()
 	get_tree().current_scene.add_child(spell)
-	spell.global_position = aim_point()
+	# This side of a wall aimed past (0.69.1) - a spike called down in the
+	# next room through a crypt door was the owner's "through doors/walls".
+	spell.global_position = reach_short_of_wall(aim_point())
 
 	# The target circle used to SLIDE into place instead of appearing at the
 	# cursor.
@@ -371,7 +375,8 @@ func call_meteor(target: Vector2) -> Array[Meteor]:
 	var dropped: Array[Meteor] = [_drop_meteor(target, 0.0)]
 	if rolls_double():
 		var away := Vector2.from_angle(randf() * TAU) * randf_range(METEOR_SPREAD_MIN, METEOR_SPREAD_MAX)
-		dropped.append(_drop_meteor(target + away, METEOR_SECOND_DELAY))
+		# Beside the first, and this side of any wall between them (0.69.1).
+		dropped.append(_drop_meteor(Targets.short_of_wall(self, target, target + away), METEOR_SECOND_DELAY))
 	return dropped
 
 

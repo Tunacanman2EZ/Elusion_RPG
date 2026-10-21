@@ -2289,6 +2289,25 @@ drop-only.
   day whether ember and the mythics should go on the shelf too, the owner
   kept them drops ("Only the potions"). The game's shop test and the API's
   `test_pacing.py` / `test_economy.py` hold all fifteen, at value.
+- **The mythic weapons are free (0.69.0).** The owner: "add mythic weapons to
+  the shop marked as free so new players can use free"; asked how, "Real ones,
+  free, any level". `ShopData.free` lists the Meteorite, the Double Axe and
+  Dynamite, and all three are worn from level 1 (`required_level` was 22).
+  The server's rules (`/api/shop/buy`, `gamedata.is_free()`):
+  - **One each per character**, counting what it carries and wears and what
+    its account's bank holds. The panel shows them first under "Free", priced
+    "Free", with Take instead of Buy.
+  - **The plain catalogue piece, never rolled.** A dropped mythic always rolls
+    (`meteorite~d104p96`), so the plain id is the free one: no vendor buys it,
+    no trade takes it, and the Sell list leaves it out (`free_ids` in the
+    catalogue answer). A drop still sells and trades as before. Throwing the
+    free one away and taking it again re-rolls nothing. An owner grant of the
+    plain id ("plain") is the free piece too.
+  - **Lost on a full death like any worn gear**; the shop gives another.
+  - The healer has no mythic, so there is none for it.
+  The exporter refuses an id that is both free and in `stock`.
+  `_test_the_shop_gives_the_mythics_away`; the API's `test_economy.py` holds
+  the server half.
 
 - **Anyone may buy any piece; it is worn at its level.** The row says "Lv 5"
   before you pay, and the server's equip check refuses it until then.
@@ -4493,8 +4512,10 @@ weakest farthest away, so a new level 1 character dies in about two seconds.
 
 Day 2. Ahvassa drew a meteor, a double axe and a lit stick of dynamite, and the
 owner made them weapons - "an upgraded version of weapons because they have
-their own attack animation". Tier 6 (Mythic), level 22, one per class; the
-healer's (a heal) is a later commission.
+their own attack animation". Tier 6 (Mythic), one per class, worn from level
+1 since 0.69.0 (it was 22), when the general store started giving them away
+("The mythic weapons are free", in the shop section); the healer's (a heal)
+is a later commission.
 
 | Item | Class | Attack while worn |
 |---|---|---|
@@ -7747,6 +7768,50 @@ twenty-five string literals that nothing checks until they run.
 
 `src/enemies/baseenemy.gd` and `src/systems/characterdata.gd` carry most of the
 complexity and are the best places to start reading.
+
+### Attacks stop at walls, and nothing flies out over the black (0.69.1)
+
+The owner, in the Big Field: "players can attack enemies through doors/walls"
+and "i saw a projectile floating in the black". Every way a player hurts a
+monster found it by overlap or by distance, and nothing asked whether a wall
+stood between. Monsters already asked (`_has_line_of_sight()`); now players'
+attacks ask the same question.
+
+- **The rule is `Targets.clear_between()`** (`src/shared/targets.gd`): a ray
+  on `BLOCKERS`, layer 1 (every TileMap, wall piece, crypt door and solid
+  prop, the layer monster sight masks) and layer 2 (boss-gate bars). Areas
+  never block. `can_reach()` asks it of a target's body; `short_of_wall()`
+  stops a point `WALL_MARGIN` this side of the first wall. On a player,
+  `can_hit()` and `reach_short_of_wall()` ask from `Targets.body_point()`,
+  never the origin.
+- **Why from the body.** The warrior's origin is 13 px above its feet, so a
+  warrior pressed against a crypt door has its origin inside the door, and
+  against a Big Field north wall (collision strips about 2 px thick) already
+  past it, over the black. A ray that starts inside or past a wall does not
+  see it. That is how a Double Axe thrown from there flew out into the black
+  and spun.
+- **What asks.** The sword (`_try_damage()`), the wave and the fan (not
+  thrown when their start is past a wall; a wave's box asks from its middle),
+  blade orbs, the spinning axe's every cut (thrown from this side of the wall
+  too), the stalagmite, the meteor and its crater, the tank's ring, dynamite
+  (landing, blast and chain), the healer's orb (a ray along each step; it
+  homes only on what it can see), its aura (dropped and ticking), pets
+  (nearest visible target; their shots stop at walls) and the touch screen's
+  auto-aim. A spell, throw or aura aimed past a wall lands this side of it.
+  The meteor's pull does not ask: it hurts nothing, and a monster behind a
+  wall slides along it as it would walking.
+- **Small solid props count.** A pot, crate or pillar between you and a
+  monster blocks a blow, as it already blocked the monster's shots at you.
+- **The bush mage had four always-on 108 px boxes on the monsters' layer**
+  (`attackbox*`, used by nothing). Any attack reading areas hit the mage
+  anywhere in a 150 px square round it, through walls. They are gone.
+- **Nothing is left over the black.** A slash wave lives `MAX_SECONDS` (3) at
+  most - one fired off this screen by another warrior never left it. An axe
+  taken off while out tells everyone else's copy to come home, and a recall
+  reaches a copy even with Options > "Other players' attacks" switched off.
+- `_test_attacks_stop_at_walls()` builds a crypt door, a 2 px Big Field wall
+  and boss-gate bars, and drives every class's attack on both sides; a code
+  check fails any of the attacks above that stops asking.
 
 ## The players menu, and a switch for combat that does not exist
 

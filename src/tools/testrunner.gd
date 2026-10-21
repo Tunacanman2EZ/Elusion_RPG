@@ -364,6 +364,7 @@ func _run_all() -> void:
 	await _test_shared_monsters_keep_the_books()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
+	await _test_attacks_stop_at_walls()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -426,6 +427,7 @@ func _run_all() -> void:
 	await _test_banked_gold_goes_through_the_server()
 	_test_the_store_sells_the_next_set()
 	await _test_the_shop_buys()
+	_test_the_shop_gives_the_mythics_away()
 	await _test_quality_rolls()
 	await _test_armour_resistance()
 	await _test_stirring_lands()
@@ -11348,6 +11350,113 @@ func _test_the_shop_buys() -> void:
 
 
 # =============================================================================
+# THE SHOP GIVES THE MYTHICS AWAY (0.69.0)
+# =============================================================================
+# The owner: "add mythic weapons to the shop marked as free so new players can
+# use free"; asked how, "Real ones, free, any level". The general store lists
+# each class's mythic under Free, worn from level 1. The rules are the
+# server's - one each, the plain catalogue piece, never sold or traded - and
+# the panel shows them first, says Free and Take, and leaves the free piece off
+# the Sell list while a rolled one (a drop) still sells.
+func _test_the_shop_gives_the_mythics_away() -> void:
+	section("SHOP - the mythic weapons are free: one each, from level 1, kept not sold")
+
+	var store: ShopData = load("res://data/shops/generalstore.tres") as ShopData
+	var free: Array = Array(store.free) if store != null else []
+	check("the general store gives away the Meteorite, the Double Axe and Dynamite",
+		free == ["meteorite", "doubleaxe", "dynamite"], free)
+	var both: Array = free.filter(func(id: String) -> bool: return Array(store.stock).has(id))
+	check("  and sells none of them for gold: one item, one price", both.is_empty(), both)
+
+	var exported_shop: Dictionary = {}
+	var exported_items: Dictionary = {}
+	for shop in _load_gamedata().get("shops", []):
+		if shop is Dictionary and str(shop.get("shop_id", "")) == "generalstore":
+			exported_shop = shop
+	for row in _load_gamedata().get("items", []):
+		if row is Dictionary:
+			exported_items[str(row.get("item_id", ""))] = row
+	check("  gamedata.json gives away the same (re-run the exporter if not)",
+		Array(exported_shop.get("free", [])) == free, exported_shop.get("free", "no free list"))
+	var classes: Array = []
+	var gated: Array = []
+	for id in free:
+		var row: Dictionary = exported_items.get(id, {})
+		classes.append_array(Array(row.get("required_classes", [])))
+		if int(row.get("required_level", 0)) != 1 or int(row.get("tier", 0)) != 6:
+			gated.append([id, row.get("required_level", -1), row.get("tier", -1)])
+	check("  each a mythic worn from level 1, in the server's catalogue too", gated.is_empty(), gated)
+	classes.sort()
+	check("  one for each class that has one - the healer has none yet",
+		classes == ["mage", "tank", "warrior"], classes)
+
+	# THE PANEL, drawn from an answer in the server's shape: what it gives away
+	# first, flagged free, at no price.
+	var panel: Node = (load("res://scene/ui/shop/shopinventory.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	var rows: Array = []
+	for id in free:
+		var item: Dictionary = exported_items.get(id, {})
+		rows.append({"item_id": id, "display_name": str(item.get("display_name", id)), "price": 0,
+			"free": true, "tier": 6, "type_name": "WEAPON", "required_level": 1,
+			"required_classes": Array(item.get("required_classes", []))})
+	rows.append({"item_id": "tinyhealthpotion", "display_name": "Tiny Health Potion", "price": 20,
+		"tier": 1, "type_name": "CONSUMABLE", "required_level": 1, "required_classes": []})
+	panel.show_catalogue({"display_name": "Kingdom Supplies", "stock": rows, "free_ids": free,
+		"sell_multiplier": 0.05, "sell_prices": {"meteorite": 1900, "zz_free_potion": 1}})
+	var order: Array = []
+	for child in panel.stock_list.get_children():
+		order.append(child.text if child is Label else str(child.name))
+	check("the free shelf comes first, headed with the rule, then the shop's own stock",
+		order == [panel.FREE_SHELF_TITLE, "free_meteorite", "free_doubleaxe", "free_dynamite",
+			"Potions and supplies", "stock_tinyhealthpotion"], order)
+	check("  and the heading says it cannot be sold or traded",
+		String(panel.FREE_SHELF_TITLE).contains("cannot be sold or traded"), panel.FREE_SHELF_TITLE)
+	var axe: Node = panel.stock_list.get_node_or_null("free_doubleaxe")
+	var potion_row: Node = panel.stock_list.get_node_or_null("stock_tinyhealthpotion")
+	check("  a free row is priced Free and taken with Take",
+		axe != null and (axe.get_node("price") as Label).text == "Free"
+		and (axe.get_node("buy") as Button).text == "Take",
+		[(axe.get_node("price") as Label).text, (axe.get_node("buy") as Button).text] if axe != null else [])
+	check("  and a row for gold is as it was",
+		potion_row != null and (potion_row.get_node("price") as Label).text == "20 g"
+		and (potion_row.get_node("buy") as Button).text == "Buy")
+
+	# THE SELL LIST: the plain piece is the shop's gift and stays; a rolled one
+	# is a drop and sells at the base piece's price, as before.
+	# A stand-in potion: the real ones' pictures are in the private pack, which
+	# a clone does not have. The mythics' are not.
+	var potion: ItemData = _menu_item("zz_free_potion", ItemData.Type.CONSUMABLE, 0, 20)
+	ItemRegistry._items[potion.item_id] = potion
+	var bag := InventoryContainer.new()
+	bag.is_carry = true
+	add_child(bag)
+	bag.load_save_array([{"item_id": "meteorite", "quantity": 1},
+		{"item_id": "meteorite~d104p96", "quantity": 1}, {"item_id": "zz_free_potion", "quantity": 3}])
+	panel.inventory_override = bag
+	panel.set_mode("sell")
+	var selling: Array = []
+	for child in panel.stock_list.get_children():
+		selling.append(str(child.name))
+	check("Sell leaves out the free Meteorite and lists the dropped one and the potions",
+		selling == ["sell_1", "sell_2"], selling)
+
+	var Shop: GDScript = load("res://src/ui/shop/shopinventory.gd") as GDScript
+	var meteorite: ItemData = ItemRegistry.get_item("meteorite")
+	check("taking one says it is free and what that means",
+		Shop.purchase_line(meteorite, "meteorite", 0)
+		== "You took a free Meteorite. It is yours to keep: it cannot be sold or traded.",
+		Shop.purchase_line(meteorite, "meteorite", 0))
+	check("  and buying for gold reads as it did",
+		Shop.purchase_line(potion, "zz_free_potion", 20).begins_with("Bought "))
+
+	panel.queue_free()
+	bag.queue_free()
+	ItemRegistry._items.erase(potion.item_id)
+	print("  the store gives each class its mythic, once, and the Sell list keeps it")
+
+
+# =============================================================================
 # THE BOSS GATES: a lever on each side, and on means open
 # =============================================================================
 # The owner, 5 Oct: "set up that lever to release the 3 gates by boss exit".
@@ -18593,7 +18702,7 @@ func _test_the_healer_aims_from_its_middle() -> void:
 		is_equal_approx(up_left.x, down_left.x) and is_equal_approx(up_left.y, -down_left.y), [up_left, down_left])
 	var spawn_body: String = _func_body(_code_src("res://src/characters/healer.gd"), "func _spawn_projectile(")
 	check("  the orb is placed there too, and the others' picture of it leaves from there",
-		spawn_body.contains("projectile.global_position = aim_origin()")
+		spawn_body.contains("projectile.global_position = reach_short_of_wall(aim_origin())")
 		and spawn_body.contains("Presence.tell_attack(\"orb\", aim_origin()"))
 
 	healer.call("_add_aim_ring")
@@ -28662,6 +28771,343 @@ func _test_shared_monsters_hold_the_leaders_numbers() -> void:
 # hits the wall first, and the whole pack stands around you holding fire. The
 # shots aimed at the origin too. Both use BaseEnemy.target_point() now - the
 # body, through Targets.body_point(), as the boss's _aim_point() always did.
+# =============================================================================
+# ATTACKS STOP AT WALLS (0.69.1)
+# =============================================================================
+# The owner, in the Big Field: "players can attack enemies through doors/
+# walls", and "i saw a projectile floating in the black". Every way a player
+# hurts a monster found it by overlap or by distance, with nothing asking
+# whether a wall stood between - and a warrior pressed against one of the Big
+# Field's 2 px north walls has its origin already past it, so a Double Axe
+# thrown from there flew out over the black and spun. Built here in an arena:
+# a 16 px wall (a crypt door's depth), a 2 px one (a Big Field north wall),
+# boss-gate bars on layer 2, and every class's attack on each side.
+
+func _attack_wall(parent: Node, centre: Vector2, size: Vector2, layer: int) -> StaticBody2D:
+	var wall := StaticBody2D.new()
+	wall.collision_layer = layer
+	wall.collision_mask = 0
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = size
+	shape.shape = rect
+	wall.add_child(shape)
+	parent.add_child(wall)
+	wall.global_position = centre
+	return wall
+
+
+func _hero_against(parent: Node, cls: String, wall_bottom: float, x: float) -> Node2D:
+	# A class's real scene, its body touching a wall from the south the way a
+	# walk into it leaves it. Its own brain is off: the test drives it.
+	var hero: Node2D = (load("res://scene/characters/%s.tscn" % cls) as PackedScene).instantiate()
+	parent.add_child(hero)
+	hero.set_physics_process(false)
+	var feet: CollisionShape2D = hero.get_node_or_null("bodyshape") as CollisionShape2D
+	var offset: Vector2 = feet.position if feet != null else Vector2.ZERO
+	var reach: float = 0.0
+	if feet != null and feet.shape is CircleShape2D:
+		reach = (feet.shape as CircleShape2D).radius
+	elif feet != null and feet.shape is CapsuleShape2D:
+		reach = (feet.shape as CapsuleShape2D).height * 0.5
+	hero.global_position = Vector2(x, wall_bottom + reach + 0.5 - offset.y)
+	return hero
+
+
+func _test_attacks_stop_at_walls() -> void:
+	section("WALLS - a player's attack stops at a wall, a closed door or a boss gate (0.69.1)")
+	const Targets := preload("res://src/shared/targets.gd")
+	var arena := Node2D.new()
+	add_child(arena)
+	var base := Vector2(-90000.0, 60000.0)
+	var door_x: float = base.x
+	var thin_x: float = base.x + 3000.0
+	_attack_wall(arena, base, Vector2(600, 16), 1)                           # a crypt door: y -8..8
+	_attack_wall(arena, Vector2(thin_x + 1000.0, base.y), Vector2(4000, 2), 1)  # a Big Field north wall: y -1..1
+	_attack_wall(arena, base + Vector2(8000, 0), Vector2(600, 16), 2)           # boss-gate bars
+	var sensor := Area2D.new()                                               # a trigger, not a wall
+	sensor.collision_layer = 1
+	var sensor_shape := CollisionShape2D.new()
+	var sensor_rect := RectangleShape2D.new()
+	sensor_rect.size = Vector2(600, 16)
+	sensor_shape.shape = sensor_rect
+	sensor.add_child(sensor_shape)
+	arena.add_child(sensor)
+	sensor.global_position = base + Vector2(11000, 0)
+	for i in 3:
+		await get_tree().physics_frame
+
+	# ---- the rule ---------------------------------------------------------------
+	var up := Vector2(0, -30)
+	var down := Vector2(0, 30)
+	check("a wall between two points blocks the line", not Targets.clear_between(arena, base + up, base + down))
+	check("  so does a 2 px one", not Targets.clear_between(arena, Vector2(thin_x, base.y) + up, Vector2(thin_x, base.y) + down))
+	check("  and a boss gate's bars, on layer 2",
+		not Targets.clear_between(arena, base + Vector2(8000, 0) + up, base + Vector2(8000, 0) + down))
+	check("  open ground does not, nor an Area2D on the walls' layer",
+		Targets.clear_between(arena, base + Vector2(1500, 0) + up, base + Vector2(1500, 0) + down)
+		and Targets.clear_between(arena, base + Vector2(11000, 0) + up, base + Vector2(11000, 0) + down))
+	var short: Vector2 = Targets.short_of_wall(arena, base + Vector2(0, 40), base + Vector2(0, -60))
+	check("short_of_wall() stops this side of the wall, a little short of it",
+		short.y > base.y + 8.0 and short.y <= base.y + 8.0 + Targets.WALL_MARGIN + 0.01 and is_equal_approx(short.x, base.x), short)
+	check("  and leaves a clear aim where it was",
+		Targets.short_of_wall(arena, base + Vector2(1500, 40), base + Vector2(1500, -60)) == base + Vector2(1500, -60))
+
+	# ---- the warrior: the swing, the wave, the fan and the axe ------------------
+	var warrior: Node2D = _hero_against(arena, "warrior", base.y + 8.0, door_x)
+	check("the case is real: a warrior pressed against the door has its origin inside it",
+		warrior.global_position.y < base.y + 8.0 and warrior.global_position.y > base.y - 8.0, warrior.global_position)
+	var past: CharacterBody2D = _weapon_dummy(arena, Vector2(door_x, base.y - 16.0))
+	var here: CharacterBody2D = _weapon_dummy(arena, Vector2(door_x + 12.0, base.y + 30.0))
+	await get_tree().physics_frame
+	check("the sword does not cut a monster on the far side of the door",
+		warrior.call("_try_damage", past) == 0 and past.get("taken").is_empty(), past.get("taken"))
+	check("  and cuts one on this side", warrior.call("_try_damage", here) == 1 and not here.get("taken").is_empty())
+	warrior.set("mana", 500)
+	warrior.set("_swing_aim_direction", Vector2.UP)
+	warrior.call("_spawn_slashwave")
+	check("a wave swung into the door is not thrown from its far side, and costs nothing",
+		int(warrior.get("mana")) == 500, warrior.get("mana"))
+	check("  nor the sword fan", (warrior.call("fling_sword_fan", arena) as Array).is_empty())
+	warrior.set("_swing_aim_direction", Vector2.DOWN)
+	warrior.call("_spawn_slashwave")
+	check("  swung away from it, the wave goes as ever", int(warrior.get("mana")) < 500, warrior.get("mana"))
+	var fan: Array = warrior.call("fling_sword_fan", arena)
+	check("  and the fan", not fan.is_empty())
+	for orb in fan:
+		(orb as Node).queue_free()
+
+	var wave: SlashWave = (load("res://scene/projectiles/slashwave.tscn") as PackedScene).instantiate()
+	arena.add_child(wave)
+	wave.global_position = Vector2(door_x, base.y + 20.0)
+	wave.damage = 10
+	wave.shoot_vector(Vector2.UP)
+	var near_past: CharacterBody2D = _weapon_dummy(arena, Vector2(door_x - 40.0, base.y - 12.0))
+	var near_here: CharacterBody2D = _weapon_dummy(arena, Vector2(door_x - 40.0, base.y + 40.0))
+	wave._try_hit(near_past)
+	wave._try_hit(near_here)
+	check("a wave at the door cuts the monster this side and not the one past it",
+		near_past.get("taken").is_empty() and not near_here.get("taken").is_empty(),
+		[near_past.get("taken"), near_here.get("taken")])
+	check("  and a wave that never meets a wall or the screen is gone after a while",
+		SlashWave.MAX_SECONDS > 0.0 and SlashWave.MAX_SECONDS * wave.speed < 1500.0, SlashWave.MAX_SECONDS)
+	wave.queue_free()
+	var orb_up: BladeOrb = BladeOrb.fire(arena, Vector2(door_x - 80.0, base.y + 20.0), Vector2.UP, 100.0, 80.0, 10, BladeOrb.STEEL)
+	var orb_past: CharacterBody2D = _weapon_dummy(arena, Vector2(door_x - 80.0, base.y - 12.0))
+	orb_up._try_hit(orb_past)
+	check("a blade orb at the door breaks there, and the monster past it is not cut",
+		orb_past.get("taken").is_empty() and orb_up._done, orb_past.get("taken"))
+
+	var axe: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+	axe.caster = warrior
+	axe.wounds = false
+	arena.add_child(axe)
+	axe.global_position = Vector2(door_x + 60.0, base.y + 14.0)
+	var axe_past: CharacterBody2D = _weapon_dummy(arena, Vector2(door_x + 60.0, base.y - 14.0))
+	var axe_here: CharacterBody2D = _weapon_dummy(arena, Vector2(door_x + 70.0, base.y + 30.0))
+	check("a spinning axe at the door does not cut through it",
+		not axe._cut(axe_past, 10, 10) and axe_past.get("taken").is_empty())
+	check("  and cuts what is this side", axe._cut(axe_here, 10, 10))
+	axe.queue_free()
+	var thrown: SpinningAxe = warrior.call("throw_axe", Vector2(door_x, base.y - 160.0))
+	for i in 30:
+		if thrown == null or not is_instance_valid(thrown):
+			break
+		thrown.advance(1.0 / 30.0)
+	check("thrown at the door from inside it, the axe stops this side and spins there - not out past it",
+		thrown != null and is_instance_valid(thrown) and thrown.state == SpinningAxe.State.SPINNING
+		and thrown.global_position.y > base.y + 8.0,
+		str(thrown.global_position) if thrown != null and is_instance_valid(thrown) else "no axe")
+	if thrown != null and is_instance_valid(thrown):
+		thrown.queue_free()
+	warrior.set("_axe", null)
+	warrior.queue_free()
+
+	# ---- the mage: the spike, the meteor and its fire --------------------------
+	var mage: Node2D = _hero_against(arena, "mage", base.y + 1.0, thin_x)
+	var aimed: Vector2 = mage.call("reach_short_of_wall", Vector2(thin_x, base.y - 120.0))
+	check("a spell aimed past a wall comes down this side of it", aimed.y > base.y + 1.0, aimed)
+	var spike_past: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x, base.y - 8.0))
+	var spike_here: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 8.0, base.y + 12.0))
+	var spell: Area2D = (mage.get("target_circle_scene") as PackedScene).instantiate()
+	spell.set("explosion_damage", 10)
+	arena.add_child(spell)
+	spell.global_position = Vector2(thin_x, base.y + 6.0)
+	var meteor: Meteor = (load("res://scene/projectiles/meteor.tscn") as PackedScene).instantiate()
+	meteor.explosion_damage = 10
+	arena.add_child(meteor)
+	meteor.global_position = Vector2(thin_x, base.y + 6.0)
+	var crater: BurningCrater = BurningCrater.spawn(arena, Vector2(thin_x, base.y + 6.0), 100, 44.0, null)
+	for i in 3:
+		await get_tree().physics_frame
+	check("the case is real: the spike's circle reaches the monster past the 2 px wall",
+		spell.get_overlapping_bodies().has(spike_past))
+	spell.call("_apply_area_damage")
+	check("  and its impact hurts the one this side only",
+		spike_past.get("taken").is_empty() and not spike_here.get("taken").is_empty(),
+		[spike_past.get("taken"), spike_here.get("taken")])
+	spike_here.get("taken").clear()
+	check("the meteor's reaches past it too", meteor.get_overlapping_bodies().has(spike_past))
+	meteor._apply_damage()
+	check("  and hits only this side", spike_past.get("taken").is_empty() and not spike_here.get("taken").is_empty())
+	spike_here.get("taken").clear()
+	crater._burn()
+	check("its crater burns only this side", spike_past.get("taken").is_empty() and not spike_here.get("taken").is_empty(),
+		[spike_past.get("taken"), spike_here.get("taken")])
+	spike_here.get("taken").clear()
+	spell.queue_free()
+	meteor.queue_free()
+	crater.queue_free()
+
+	# ---- auto-aim on a touch screen: the nearest monster it can see -------------
+	# The nearer one, past the wall: placed to be passed over.
+	var _aim_past: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 200.0, base.y - 6.0))
+	var aim_here: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 200.0, base.y + 60.0))
+	var looker: Node2D = _hero_against(arena, "mage", base.y + 1.0, thin_x + 200.0)
+	const Touch := preload("res://src/systems/touchcontrols.gd")
+	var aimed_at: Node2D = Touch.nearest_monster(get_tree(), looker.global_position, 260.0, looker)
+	check("touch auto-aim takes the nearest monster it can see, not one nearer behind a wall",
+		aimed_at == aim_here, aimed_at)
+	looker.queue_free()
+	mage.queue_free()
+
+	# ---- the tank: the ring and the dynamite ------------------------------------
+	var tank: Node2D = _hero_against(arena, "tank", base.y + 1.0, thin_x + 600.0)
+	var ring_past: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 600.0, base.y - 6.0))
+	var ring_here: CharacterBody2D = _weapon_dummy(arena, tank.global_position + Vector2(20.0, 0.0))
+	for i in 3:
+		await get_tree().physics_frame
+	var ring: Area2D = tank.get("_aura")
+	check("the case is real: the tank's ring reaches past the wall", ring != null and ring.get_overlapping_bodies().has(ring_past))
+	tank.call("_deal_aura_damage")
+	check("  and burns only this side", ring_past.get("taken").is_empty() and not ring_here.get("taken").is_empty(),
+		[ring_past.get("taken"), ring_here.get("taken")])
+	var landing: Vector2 = tank.call("dynamite_landing", Vector2(thin_x + 600.0, base.y - 120.0))
+	check("dynamite thrown at a wall comes down this side of it", landing.y > base.y + 1.0, landing)
+	ring_here.get("taken").clear()
+	var stick: Dynamite = (load("res://scene/projectiles/dynamite.tscn") as PackedScene).instantiate()
+	stick.explosion_damage = 10
+	stick.caster = tank
+	arena.add_child(stick)
+	stick.throw_from(Vector2(thin_x + 600.0, base.y + 6.0), Vector2(thin_x + 600.0, base.y + 6.0))
+	for i in 3:
+		await get_tree().physics_frame
+	check("a stick's blast reaches past the wall", stick.get_overlapping_bodies().has(ring_past))
+	stick.explode()
+	check("  and hurts only this side", ring_past.get("taken").is_empty() and not ring_here.get("taken").is_empty(),
+		[ring_past.get("taken"), ring_here.get("taken")])
+	tank.queue_free()
+
+	# ---- the healer's orb ---------------------------------------------------------
+	var healer: Node2D = _hero_against(arena, "healer", base.y + 1.0, thin_x + 1200.0)
+	var bolt: Area2D = (healer.get("projectile_scene") as PackedScene).instantiate()
+	bolt.set("fan", true)
+	bolt.set("direction", Vector2.UP)
+	bolt.set("speed", 200.0)
+	bolt.set("damage", 10)
+	bolt.set("owner_group", "player")
+	arena.add_child(bolt)
+	bolt.global_position = Vector2(thin_x + 1200.0, base.y + 20.0)
+	var bolt_past: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 1200.0, base.y - 40.0))
+	for i in 30:
+		await get_tree().physics_frame
+		if not is_instance_valid(bolt):
+			break
+	check("the healer's orb bursts on the wall and never reaches the monster past it",
+		not is_instance_valid(bolt) and bolt_past.get("taken").is_empty(), bolt_past.get("taken"))
+	var _seek_past: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 1300.0, base.y - 10.0))
+	var seek_here: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 1300.0, base.y + 80.0))
+	var seeker: Area2D = (healer.get("projectile_scene") as PackedScene).instantiate()
+	arena.add_child(seeker)
+	seeker.global_position = Vector2(thin_x + 1300.0, base.y + 20.0)
+	check("  and one homing picks the nearest monster it can see",
+		seeker.call("_find_nearest_enemy") == seek_here, seeker.call("_find_nearest_enemy"))
+	seeker.queue_free()
+	var dropped: Vector2 = healer.call("aura_point", Vector2(thin_x + 1200.0, base.y - 100.0))
+	check("  and its aura dropped past a wall lands this side", dropped.y > base.y + 1.0, dropped)
+	healer.queue_free()
+
+	# ---- a pet --------------------------------------------------------------------
+	var pet: Node2D = (load("res://scene/pets/petsniper.tscn") as PackedScene).instantiate()
+	arena.add_child(pet)
+	pet.set_physics_process(false)
+	pet.global_position = Vector2(thin_x + 1800.0, base.y + 20.0)
+	var _pet_past: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 1800.0, base.y - 10.0))
+	var pet_here: CharacterBody2D = _weapon_dummy(arena, Vector2(thin_x + 1800.0, base.y + 120.0))
+	await get_tree().physics_frame
+	check("a pet shoots the nearest monster it can see, not one nearer behind a wall",
+		pet.call("_find_nearest_enemy") == pet_here, pet.call("_find_nearest_enemy"))
+	pet.queue_free()
+
+	# ---- the bush mage's stray boxes ----------------------------------------------
+	var bush: Node = (load("res://scene/enemy/bushmage.tscn") as PackedScene).instantiate()
+	var strays: Array = []
+	for child in bush.get_children():
+		if child is Area2D and str(child.name) != "hurtbox" and ((child as Area2D).collision_layer & 8) != 0:
+			strays.append(str(child.name))
+	check("the bush mage carries no Area2D on the monsters' layer but its hurtbox - four 108 px boxes made it hittable a box away, through walls",
+		strays.is_empty(), strays)
+	bush.free()
+
+	# ---- another warrior's axe, called home with their attacks switched off -------
+	var Remote := preload("res://src/characters/remoteplayer.gd")
+	var kept: bool = bool(Settings.get_value("others_attacks"))
+	var them: Node2D = Remote.new()
+	them.user_id = 692
+	arena.add_child(them)
+	them.set_identity({"id": 692, "name": "Wes", "cls": "warrior", "lvl": 20, "v": 2})
+	them.set_process(false)
+	them.place(base + Vector2(0, 300))
+	Settings.set_value("others_attacks", true)
+	var copies: Array = RemoteAttacks.fire(them, ["axe", 0, base.x, base.y + 300.0, base.x + 60.0, base.y + 300.0, 0, 0])
+	var copy: SpinningAxe = copies[0] if not copies.is_empty() else null
+	if copy != null:
+		copy.set_physics_process(false)
+		for i in 30:
+			copy.advance(1.0 / 30.0)
+	Settings.set_value("others_attacks", false)
+	RemoteAttacks.fire(them, ["recall", 0, base.x, base.y + 300.0, base.x, base.y + 300.0, 0, 0])
+	check("their axe, thrown while their attacks were shown, still goes home once they are switched off",
+		copy != null and copy.state == SpinningAxe.State.RETURNING, str(copy.state) if copy != null else "no copy")
+	Settings.set_value("others_attacks", kept)
+	if copy != null and is_instance_valid(copy):
+		copy.queue_free()
+	check("  and an axe taken off while it is out is called home on everyone else's screen too",
+		_func_body(_code_src("res://src/characters/warrior.gd"), "func _on_gear_changed(").contains("tell_attack(\"recall\""))
+
+	# ---- every way a player hurts a monster asks ----------------------------------
+	var asks := {
+		"res://src/characters/warrior.gd": [["func _try_damage(", "can_hit("], ["func _spawn_slashwave(", "clear_between("],
+			["func fling_sword_fan(", "clear_between("], ["func throw_axe(", "reach_short_of_wall("]],
+		"res://src/characters/mage.gd": [["func _spawn_stalagmite(", "reach_short_of_wall("], ["func _cast_stalagmite_drop(", "reach_short_of_wall("]],
+		"res://src/characters/tank.gd": [["func _deal_aura_damage(", "can_hit("], ["func dynamite_landing(", "reach_short_of_wall("]],
+		"res://src/characters/healer.gd": [["func aura_point(", "reach_short_of_wall("], ["func _spawn_projectile(", "reach_short_of_wall("]],
+		"res://src/projectiles/slashwave.gd": [["func _try_hit(", "can_reach("]],
+		"res://src/projectiles/bladeorb.gd": [["func _try_hit(", "can_reach("]],
+		"res://src/projectiles/spinningaxe.gd": [["func _cut(", "can_reach("]],
+		"res://src/projectiles/spelltargetcircle.gd": [["func _apply_area_damage(", "can_reach("]],
+		"res://src/projectiles/meteor.gd": [["func _apply_damage(", "can_reach("]],
+		"res://src/projectiles/burningcrater.gd": [["func _burn(", "can_reach("]],
+		"res://src/projectiles/dynamite.gd": [["func explode(", "can_reach("]],
+		"res://src/projectiles/healaura.gd": [["func tick(", "can_reach("]],
+		"res://src/projectiles/turretprojectile.gd": [["func _physics_process(", "clear_between("], ["func _find_nearest_enemy(", "can_reach("]],
+		"res://src/projectiles/petarrow.gd": [["func _physics_process(", "clear_between("]],
+		"res://src/projectiles/petfireprojectile.gd": [["func _physics_process(", "clear_between("]],
+		"res://src/projectiles/petelectricprojectile.gd": [["func _physics_process(", "clear_between("]],
+		"res://src/pets/pet.gd": [["func _find_nearest_enemy(", "sees("]],
+		"res://src/systems/touchcontrols.gd": [["func nearest_monster(", "can_reach("]],
+	}
+	var deaf: Array = []
+	for path in asks:
+		var code: String = _code_src(path)
+		for pair in asks[path]:
+			if not _func_body(code, pair[0]).contains(pair[1]):
+				deaf.append("%s %s" % [path.get_file(), pair[0]])
+	check("every way a player hurts a monster asks whether a wall stands between", deaf.is_empty(), deaf)
+	arena.queue_free()
+	await get_tree().process_frame
+
+
 func _test_enemies_see_a_player_against_a_wall() -> void:
 	section("ENEMIES - a player pressed against a wall is seen and shot at")
 	const Targets := preload("res://src/shared/targets.gd")
@@ -32454,8 +32900,10 @@ func _test_the_mythic_weapons() -> void:
 		# Ember read from the export, not the registry: ember's icons are in
 		# the private pack, and a clone without it does not load those items.
 		var ember: Dictionary = exported.get(want["ember"], {})
-		check("  a tier 6 %s weapon at level 22, attack %d" % [want["class"], want["attack"]],
-			item.tier == 6 and item.required_level == 22 and item.type == ItemData.Type.WEAPON
+		# WORN FROM LEVEL 1 since 0.69.0 (it was 22): the general store gives
+		# each class its own - see _test_the_shop_gives_the_mythics_away().
+		check("  a tier 6 %s weapon from level 1, attack %d" % [want["class"], want["attack"]],
+			item.tier == 6 and item.required_level == 1 and item.type == ItemData.Type.WEAPON
 			and item.equip_slot == ItemData.EquipSlot.WEAPON and item.required_classes == [want["class"]]
 			and int(item.weapon_attack) == int(want["attack"]),
 			[item.tier, item.required_level, item.required_classes, item.weapon_attack])
@@ -32468,12 +32916,13 @@ func _test_the_mythic_weapons() -> void:
 		check("  its description says what attack does", item.description.contains("Your attack"), item.description)
 		var row: Dictionary = exported.get(id, {})
 		check("  and the server's catalogue agrees, so it can be worn",
-			int(row.get("tier", 0)) == 6 and int(row.get("required_level", 0)) == 22
+			int(row.get("tier", 0)) == 6 and int(row.get("required_level", 0)) == 1
 			and Array(row.get("required_classes", [])) == [want["class"]]
 			and str(row.get("equip_slot_name", "")) == "WEAPON", row)
 
-	# Not sold, and no enemy's tier ladder reaches them. A mythic is a roll of
-	# its own at every kill - see _test_mythic_drops().
+	# Not sold for gold, and no enemy's tier ladder reaches them. A mythic is a
+	# roll of its own at every kill - see _test_mythic_drops(). The general
+	# store GIVES them away (ShopData.free, 0.69.0), which is not the stock.
 	var sold: Array = []
 	var shops := DirAccess.open("res://data/shops")
 	for file in shops.get_files():
@@ -32482,7 +32931,7 @@ func _test_the_mythic_weapons() -> void:
 			for id in MYTHIC_WEAPONS:
 				if Array(shop.get("stock")).has(id):
 					sold.append("%s sells %s" % [file, id])
-	check("no shop sells them", sold.is_empty(), sold)
+	check("no shop sells them for gold", sold.is_empty(), sold)
 	var droppers: Array = []
 	var enemies_dir := DirAccess.open("res://data/enemies")
 	for file in enemies_dir.get_files():
@@ -33455,7 +33904,7 @@ func _test_the_item_menu() -> void:
 	var axe_cell: Button = menu.grid.get_node_or_null("doubleaxe") as Button
 	check("a cell shows the item's picture and says what it is",
 		axe_cell != null and axe_cell.icon != null and axe_cell.tooltip_text.contains("Double Axe")
-		and axe_cell.tooltip_text.contains("level 22") and axe_cell.tooltip_text.contains("id: doubleaxe"),
+		and axe_cell.tooltip_text.contains("Needs warrior") and axe_cell.tooltip_text.contains("id: doubleaxe"),
 		axe_cell.tooltip_text if axe_cell != null else "")
 	check("one click spawns it", axe_cell != null and axe_cell.pressed.get_connections().size() > 0)
 

@@ -661,18 +661,6 @@ animations = [{
 radius = 10.0
 height = 20.0
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_vvu6j"]
-size = Vector2(63.5, 108)
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_wldbk"]
-size = Vector2(60, 108)
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_nhtsg"]
-size = Vector2(108, 67)
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_3d2ue"]
-size = Vector2(108.25, 66.5)
-
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_wldbk"]
 radius = 4.0
 height = 8.0
@@ -708,41 +696,7 @@ value = 100.0
 texture_under = ExtResource("4_wldbk")
 texture_progress = ExtResource("5_nhtsg")
 
-[node name="attackboxright" type="Area2D" parent="." unique_id=1958429154]
-position = Vector2(-1, 17)
-collision_layer = 8
-collision_mask = 4
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="attackboxright" unique_id=1941689432]
-position = Vector2(43.25, -12)
-shape = SubResource("RectangleShape2D_vvu6j")
-
 [node name="attacktimer" type="Timer" parent="." unique_id=827030860]
-
-[node name="attackboxleft" type="Area2D" parent="." unique_id=1582994504]
-position = Vector2(-1, 17)
-collision_layer = 8
-collision_mask = 4
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="attackboxleft" unique_id=340199033]
-position = Vector2(-46, -12)
-shape = SubResource("RectangleShape2D_wldbk")
-
-[node name="attackboxup" type="Area2D" parent="." unique_id=593656052]
-collision_layer = 8
-collision_mask = 4
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="attackboxup" unique_id=55941429]
-position = Vector2(-2, -40)
-shape = SubResource("RectangleShape2D_nhtsg")
-
-[node name="attackboxdown" type="Area2D" parent="." unique_id=2142756400]
-collision_layer = 8
-collision_mask = 4
-
-[node name="collisionshape2d" type="CollisionShape2D" parent="attackboxdown" unique_id=1408769476]
-position = Vector2(-3, 44)
-shape = SubResource("RectangleShape2D_3d2ue")
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=711552136]
 position = Vector2(-2, -12)

@@ -272,7 +272,8 @@ func aura_point(cursor: Vector2) -> Vector2:
 	var reach: Vector2 = cursor - global_position
 	if reach.length() > AURA_RANGE:
 		reach = reach.normalized() * AURA_RANGE
-	return global_position + reach
+	# This side of a wall dropped past (0.69.1, reach_short_of_wall()).
+	return reach_short_of_wall(global_position + reach)
 
 
 func aura_ready() -> bool:
@@ -455,7 +456,10 @@ func _spawn_projectile(direction: Vector2, fanned: bool = false) -> void:
 		projectile.set("doubled", doubled)
 	get_tree().current_scene.add_child(projectile)
 
-	projectile.global_position = aim_origin()
+	# This side of the wall the healer is pressed against (0.69.1): the orb
+	# checks each step for a wall, and a ray that starts inside one does not
+	# see it.
+	projectile.global_position = reach_short_of_wall(aim_origin())
 
 	# THE ONLY SPAWNER IN THE PROJECT THAT WAS MISSING THIS. mage.gd, warrior.gd,
 	# pet.gd, petcontroller.gd, baseenemy.gd, bossenemy.gd, bushmage.gd,
@@ -536,7 +540,7 @@ func _spawn_fan(direction: Vector2, shot_damage: int) -> Array[Node]:
 		orb.set("owner_group", "player")
 		orb.set("caster", self)
 		get_tree().current_scene.add_child(orb)
-		orb.global_position = aim_origin()
+		orb.global_position = reach_short_of_wall(aim_origin())
 		orb.reset_physics_interpolation()
 		orb.modulate = projectile_tint
 		made.append(orb)

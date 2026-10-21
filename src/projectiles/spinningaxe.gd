@@ -94,6 +94,9 @@ const CATCH_DISTANCE := 10.0
 # it cuts them on the way - and stops only at something solid.
 const WALL_LAYERS := 0b11
 
+# Whether a wall stands between the axe and what it would cut (0.69.1).
+const Targets := preload("res://src/shared/targets.gd")
+
 const TICK_SECONDS := 0.25
 
 # SPIN UP: the most the rate climbs to, and how long it takes to get there.
@@ -491,9 +494,11 @@ func _cut_what_it_passes() -> void:
 		var id: int = enemy.get_instance_id()
 		if _passed.has(id):
 			continue
-		_passed[id] = true
 		var swing: int = _swing_damage()
-		_cut(enemy, swing, swing)
+		# Passed only once it is cut: a monster behind a wall the axe flew
+		# along can still be cut where the wall ends.
+		if _cut(enemy, swing, swing):
+			_passed[id] = true
 
 
 func _cut_everything_near() -> void:
@@ -506,15 +511,23 @@ func _cut_everything_near() -> void:
 		_cut(enemy, damage, swing)
 
 
-func _cut(enemy: Node, damage: int, swing: int) -> void:
+func _cut(enemy: Node, damage: int, swing: int) -> bool:
+	"""Cuts `enemy`, or not through a wall: true when it was cut."""
 	if not enemy.has_method("take_damage"):
-		return
+		return false
+	# NOT THROUGH A WALL (0.69.1). A spinning axe's circle grows to 32 px and
+	# more, and it spins 2 px short of the wall that stopped it - so it reached
+	# up to 30 px past a door into the next room. Coming home it flies through
+	# walls to its warrior, and cuts only what it can see as it goes.
+	if not Targets.can_reach(self, global_position, enemy):
+		return false
 	enemy.take_damage(damage)
 	hits_dealt += 1
 	# The wound is a share of a whole swing, whatever share of one this cut
 	# was (bleed.gd).
 	if wounds and swing > 0:
 		Bleed.open(enemy, swing, caster)
+	return true
 
 
 func _swing_damage() -> int:

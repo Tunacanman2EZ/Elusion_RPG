@@ -48,6 +48,8 @@ class_name SlashWave
 
 # The sparks (strikefx.gd, 0.38.0).
 const Strike := preload("res://src/shared/strikefx.gd")
+# Whether a wall stands between the wave and what it would cut (0.69.1).
+const Targets := preload("res://src/shared/targets.gd")
 
 
 # =============================================================================
@@ -199,6 +201,13 @@ var caster: Node = null
 # doing any more work while the sprite fades.
 var _is_dying: bool = false
 
+# THE LONGEST A WAVE FLIES (0.69.1). It went only when it met a wall or left
+# the screen, and a screen it never came onto - another warrior's, fired off
+# this one's view over the black past the map - it never left. At 350 px/s,
+# three seconds is about two screens' width.
+const MAX_SECONDS := 3.0
+var _age: float = 0.0
+
 # NEW: instance IDs of every enemy this wave has already damaged. See
 # _try_hit() for why this exists and why it stores IDs rather than nodes.
 var _hit_targets: Array[int] = []
@@ -298,6 +307,9 @@ func _physics_process(delta: float) -> void:
 	# straight-line motion at constant velocity. direction is pre-normalized
 	# in shoot() / shoot_vector() so no per-frame normalization needed.
 	position += direction * speed * delta
+	_age += delta
+	if _age >= MAX_SECONDS and not _is_dying:
+		destroy_wave(false)
 
 
 func _process(delta: float) -> void:
@@ -468,6 +480,13 @@ func _try_hit(target: Node) -> void:
 	var target_id: int = target.get_instance_id()
 	if target_id in _hit_targets:
 		return
+	# NOT THROUGH A WALL (0.69.1). The box touches a monster whose hurtbox
+	# stands taller than the wall its feet are behind, and can meet a door and
+	# what is past it on the same tick - which the door's signal does not
+	# always win. Asked from the box's own middle. Not recorded as hit, so the
+	# wave still cuts it if it comes round the end of the wall.
+	if not Targets.can_reach(self, hit_middle(), target):
+		return
 	_hit_targets.append(target_id)
 
 	if not cosmetic:
@@ -484,6 +503,18 @@ func _try_hit(target: Node) -> void:
 	# or leaves the screen.
 	if max_pierce > 0 and _hit_targets.size() >= max_pierce:
 		destroy_wave()
+
+
+func hit_middle() -> Vector2:
+	"""Where the wave's box is in the world: what a wall check asks from."""
+	var shape_node: Node2D = get_node_or_null("CollisionShape2D") as Node2D
+	return shape_node.global_position if shape_node != null else global_position + SPRITE_CENTRE
+
+
+static func box_start(at: Vector2, aim: Vector2) -> Vector2:
+	"""Where a wave thrown from `at` along `aim` has its box on its first
+	tick - what the warrior's body must be able to see for it to be thrown."""
+	return at + SPRITE_CENTRE + aim.normalized() * HITBOX_REACH
 
 
 func _play_hit_pulse() -> void:

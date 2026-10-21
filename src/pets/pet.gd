@@ -34,6 +34,10 @@
 extends CharacterBody2D
 class_name Pet
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 
 # =============================================================================
 # ATTACK TYPE
@@ -389,23 +393,34 @@ func _find_nearest_enemy() -> Node:
 	# The cost is that the pet will not abandon its target for a closer one that
 	# wanders past. That is a deliberate trade — committing to a kill is what a
 	# lock-on IS, and the alternative is the flapping above.
-	if is_instance_valid(_current_target) and _current_target is Node2D and can_shoot_at(_current_target):
+	if is_instance_valid(_current_target) and _current_target is Node2D and can_shoot_at(_current_target) \
+			and sees(_current_target):
 		var held: float = global_position.distance_to(_current_target.global_position)
 		if held <= aggro_range * TARGET_KEEP_SLACK:
 			return _current_target
 
-	var nearest: Node = null
-	var nearest_dist: float = aggro_range
-
+	# NEAREST FIRST, AND ONLY ONE IT CAN SEE (0.69.1). A pet shot whatever was
+	# nearest, through walls - into the next crypt room, through a door. The
+	# ones in range are put in order and the first with a clear line wins, so
+	# a crowd costs a ray or two a tick, not one each.
+	var in_range: Array = []
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy) or not can_shoot_at(enemy):
 			continue
 		var d: float = global_position.distance_to(enemy.global_position)
-		if d <= nearest_dist:
-			nearest = enemy
-			nearest_dist = d
+		if d <= aggro_range:
+			in_range.append([d, enemy])
+	in_range.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	for pair in in_range:
+		if sees(pair[1]):
+			return pair[1]
+	return null
 
-	return nearest
+
+func sees(enemy: Node) -> bool:
+	"""Whether a wall stands between this pet and `enemy` (Targets): a pet
+	shoots only what it could hit."""
+	return Targets.can_reach(self, Targets.body_point(self), enemy)
 
 
 static func can_shoot_at(enemy: Node) -> bool:

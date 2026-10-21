@@ -12,7 +12,6 @@ icon = ExtResource("1_icon")
 max_stack = 1
 value = 40000
 tier = 6
-required_level = 22
 type = 1
 equip_slot = 1
 required_classes = Array[String](["warrior"])

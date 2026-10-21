@@ -66,6 +66,12 @@ var mode: String = "buy"
 var _catalogue: Dictionary = {}
 var sell_prices: Dictionary = {}
 
+# THE IDS THE SHOP GIVES AWAY (0.69.0), from the same answer: the plain
+# catalogue piece of each, which no vendor buys and no trade takes. A dropped
+# one is rolled ("meteorite~d104p96"), a different id, and still sells.
+# item_id -> true.
+var free_ids: Dictionary = {}
+
 # Where a sale goes, as a Callable so the suite can stand in for the server
 # (the Items window's pattern).
 var post_request: Callable = Callable(Api, "post")
@@ -202,7 +208,8 @@ func _load_catalogue() -> void:
 # catalogue in the server's shape and read what the shelf shows.
 #
 # A HEADING PER SHELF. The store sells every gear tier below legendary, eighty
-# rows, and a flat list of them is a list nobody reads. Potions come first,
+# rows, and a flat list of them is a list nobody reads. What the shop gives
+# away comes first, under its own heading (0.69.0); then potions,
 # then the fishing rods and worms, then one shelf per tier, each headed with
 # the lands that drop it and the level it is worn from ("Jade  ·  the Water
 # and Ice lands  ·  level 5"), so a player saving for the next set can see what
@@ -216,6 +223,11 @@ func show_catalogue(data: Dictionary) -> void:
 	if offers is Dictionary:
 		for item_id in offers:
 			sell_prices[str(item_id)] = int(offers[item_id])
+	free_ids = {}
+	var given: Variant = data.get("free_ids", [])
+	if given is Array:
+		for item_id in given:
+			free_ids[str(item_id)] = true
 	_render()
 
 
@@ -245,9 +257,11 @@ const FISHING_BAIT_ID := "fishingworm"
 
 
 static func shelf_of(entry: Dictionary) -> String:
-	"""Which shelf a catalogue row sits on: "gear 3" for a tier-3 weapon or
-	piece of armour, "fishing" for a rod or the bait, "supplies" for everything
-	else."""
+	"""Which shelf a catalogue row sits on: "free" for what the shop gives away
+	(the server sends those first), "gear 3" for a tier-3 weapon or piece of
+	armour, "fishing" for a rod or the bait, "supplies" for everything else."""
+	if bool(entry.get("free", false)):
+		return "free"
 	var kind: String = str(entry.get("type_name", ""))
 	if kind == "WEAPON" or kind == "ARMOR":
 		return "gear %d" % int(entry.get("tier", 1))
@@ -259,7 +273,12 @@ static func shelf_of(entry: Dictionary) -> String:
 	return "supplies"
 
 
+const FREE_SHELF_TITLE := "Free  ·  one each  ·  yours to keep: it cannot be sold or traded"
+
+
 func shelf_title(entry: Dictionary) -> String:
+	if shelf_of(entry) == "free":
+		return FREE_SHELF_TITLE
 	if shelf_of(entry) == "supplies":
 		return "Potions and supplies"
 	if shelf_of(entry) == "fishing":
@@ -283,7 +302,8 @@ func _build_heading(entry: Dictionary) -> Label:
 	# The tier's own colour, the one its slot frames and tooltip use; supplies
 	# in the panel's parchment.
 	heading.add_theme_color_override("font_color",
-		GameConstants.rarity_colour(int(entry.get("tier", 1))) if shelf_of(entry).begins_with("gear")
+		GameConstants.rarity_colour(int(entry.get("tier", 1)))
+		if shelf_of(entry).begins_with("gear") or shelf_of(entry) == "free"
 		else Color(0.85, 0.78, 0.62))
 	return heading
 
@@ -291,8 +311,10 @@ func _build_heading(entry: Dictionary) -> Label:
 func _build_row(entry: Dictionary) -> Control:
 	var item_id: String = str(entry.get("item_id", ""))
 	var price: int = int(entry.get("price", 0))
+	var free: bool = bool(entry.get("free", false))
 
 	var row := HBoxContainer.new()
+	row.name = ("free_%s" % item_id) if free else ("stock_%s" % item_id)
 	row.add_theme_constant_override("separation", 8)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
@@ -337,7 +359,8 @@ func _build_row(entry: Dictionary) -> Control:
 	row.add_child(text_column)
 
 	var price_label := Label.new()
-	price_label.text = "%s g" % GameConstants.commas(price)
+	price_label.name = "price"
+	price_label.text = "Free" if free else "%s g" % GameConstants.commas(price)
 	price_label.add_theme_font_size_override("font_size", 13)
 	price_label.add_theme_color_override("font_color", Color(1, 0.9, 0.5))
 	price_label.custom_minimum_size = Vector2(56, 0)
@@ -345,7 +368,10 @@ func _build_row(entry: Dictionary) -> Control:
 	row.add_child(price_label)
 
 	var buy := Button.new()
-	buy.text = "Buy"
+	buy.name = "buy"
+	# "Take", not "Buy": nothing is paid. The request is the same one, and the
+	# server decides it is free from its own catalogue, not from this word.
+	buy.text = "Take" if free else "Buy"
 	buy.custom_minimum_size = Vector2(52, 26)
 	buy.add_theme_font_size_override("font_size", 12)
 	# bind() rather than a lambda capturing the loop variable: a lambda would
@@ -369,8 +395,9 @@ func _build_row(entry: Dictionary) -> Control:
 	if data != null:
 		row.mouse_filter = Control.MOUSE_FILTER_PASS
 		# ON THE SHELF: gear shows "?" for its stats, because what the shop
-		# hands over is rolled at the till.
-		row.mouse_entered.connect(_on_row_hovered.bind(row, data, true))
+		# hands over is rolled at the till. A free piece is not rolled - it is
+		# the catalogue piece, exactly - so its numbers are shown.
+		row.mouse_entered.connect(_on_row_hovered.bind(row, data, not free))
 		row.mouse_exited.connect(_on_row_unhovered.bind(row))
 
 	return row
@@ -528,7 +555,7 @@ func _apply_purchase(data: Dictionary, acting_player: Node) -> void:
 	# THE REVEAL. Gear is rolled at the till, so what you got is news, and the
 	# shop window is where you are looking: it says it there too.
 	var item: ItemData = ItemRegistry.get_item(bought)
-	if item != null and item.is_rolled():
+	if item != null and (item.is_rolled() or paid <= 0):
 		_set_notice(purchase_line(item, bought, paid), false)
 
 
@@ -536,6 +563,10 @@ static func purchase_line(item: ItemData, bought: String, paid: int) -> String:
 	# "Bought Iron Sword for 400 gold - quality 104%." for gear, which the shop
 	# rolls as it hands it over; a Perfect says so. Anything else, as before.
 	var label: String = item.display_name if item != null else bought
+	# FREE (0.69.0): the shop's gift, and the rule that comes with it, said
+	# once where the player is looking.
+	if paid <= 0:
+		return "You took a free %s. It is yours to keep: it cannot be sold or traded." % label
 	var line: String = "Bought %s for %s" % [label, GameConstants.gold_text(paid)]
 	if item == null or not item.is_rolled():
 		return line + "."
@@ -593,6 +624,11 @@ func show_sell_list() -> void:
 		# piece does, not what it is worth to a vendor).
 		var price: int = int(sell_prices.get(stack.data.catalogue_id(), 0))
 		if price <= 0:
+			continue
+		# NOT THE SHOP'S OWN GIFT (0.69.0). The plain piece it gives away is
+		# kept, not sold; a rolled one of the same item - a drop - still sells
+		# at the price above.
+		if free_ids.has(stack.data.item_id):
 			continue
 		stock_list.add_child(_build_sell_row(index, stack, price))
 		rows += 1

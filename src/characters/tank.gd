@@ -583,6 +583,8 @@ func throw_dynamite(aimed_at: Vector2) -> Array[Dynamite]:
 	var spread: float = DYNAMITE_BARRAGE_SPREAD if count == DYNAMITE_BARRAGE_STICKS else DYNAMITE_BUNDLE_SPREAD
 	for i in count:
 		var at: Vector2 = landing + along.rotated(TAU * i / count) * spread
+		# The ring of sticks round the aim stays this side of a wall too.
+		at = Targets.short_of_wall(self, landing, at)
 		thrown.append(_throw_stick(at, DYNAMITE_SECOND_DELAY * i))
 	return thrown
 
@@ -593,7 +595,9 @@ func dynamite_landing(aimed_at: Vector2) -> Vector2:
 	var reach: Vector2 = aimed_at - global_position
 	if reach.length() > DYNAMITE_MAX_THROW:
 		reach = reach.normalized() * DYNAMITE_MAX_THROW
-	return global_position + reach
+	# This side of a wall thrown at (0.69.1): a stick does not go through a
+	# crypt door into the next room (reach_short_of_wall()).
+	return reach_short_of_wall(global_position + reach)
 
 
 static func dynamite_mana_cost_at(class_mana_base: int, class_mana_per_level: int, at_level: int) -> int:
@@ -699,6 +703,12 @@ func _deal_aura_damage() -> void:
 		if not body.is_in_group("enemies"):
 			continue
 		if not body.has_method("take_damage"):
+			continue
+		# NOT THROUGH A WALL (0.69.1). The ring reaches 74 px either side and
+		# 42 up and down - through a crypt door, a pillar or the wall of the
+		# next room. The line from the tank's body to each monster's must be
+		# clear (can_hit()).
+		if not can_hit(body):
 			continue
 		body.take_damage(scaled_aura_damage)
 

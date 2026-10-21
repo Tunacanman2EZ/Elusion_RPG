@@ -90,8 +90,10 @@ static func fire(body: Node2D, attack: Array) -> Array:
 	if body == null or not body.is_inside_tree() or attack.size() < 8:
 		return []
 	var kind: String = str(attack[0])
-	# Switched off: nothing - but a heal, which still heals, unseen.
-	if not shown() and kind != "heal":
+	# Switched off: nothing - but a heal, which still heals, unseen, and an
+	# axe's recall (0.69.1): a picture thrown while they were shown and called
+	# home after they were switched off would otherwise spin for good.
+	if not shown() and kind != "heal" and kind != "recall":
 		return []
 	var origin := Vector2(float(attack[2]), float(attack[3]))
 	var target := Vector2(float(attack[4]), float(attack[5]))

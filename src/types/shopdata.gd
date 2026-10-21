@@ -47,6 +47,24 @@ extends Resource
 # receive, which is worse than the item simply not being listed.
 @export var stock: Array[String] = []
 
+# item_ids this vendor GIVES AWAY, shown above the stock (0.69.0, the owner:
+# "add mythic weapons to the shop marked as free so new players can use free").
+# The general store gives each character its class's mythic weapon.
+#
+# NOT A FAUCET, because what is free can never become gold. The rules are the
+# server's, in /api/shop/buy and gamedata.is_free():
+#   - one of each per character, counting what it carries and wears and what
+#     its account's bank holds, so claiming again does not fill a bag;
+#   - handed over as the PLAIN catalogue piece, never rolled. A dropped mythic
+#     always rolls ("meteorite~d104p96"), so the plain id is the free one:
+#     no vendor buys it and no trade takes it. A drop still sells and trades
+#     as before, so finding one is still worth something;
+#   - and the same piece every time, so throwing it away and claiming again
+#     re-rolls nothing.
+#
+# An id is here or in stock, never both: one item, one price.
+@export var free: Array[String] = []
+
 # Vendor markup over ItemData.value. 1.0 sells at the reference price.
 #
 # ABOVE 1.0 IS THE SAFE DIRECTION. The vendor is a gold SINK — every purchase

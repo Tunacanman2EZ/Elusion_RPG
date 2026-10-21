@@ -1831,13 +1831,33 @@ func _export_shops(items: Array) -> Array:
 				continue
 			stock.append(item_id)
 
-		if stock.is_empty():
+		# WHAT IT GIVES AWAY (0.69.0), held to the stock's rules and one more:
+		# an id both free and for sale has two prices, and the till would have
+		# to guess which one the owner meant.
+		var free: Array = []
+		for entry in shop.free:
+			var item_id: String = String(entry)
+			if item_id == "":
+				continue
+			if not known.has(item_id):
+				_fail("shop '%s' gives away '%s', which names no item." % [shop.shop_id, item_id])
+				continue
+			if stock.has(item_id):
+				_fail("shop '%s' both sells and gives away '%s' — pick one." % [shop.shop_id, item_id])
+				continue
+			if free.has(item_id):
+				_warn("shop '%s' gives away '%s' twice — kept once." % [shop.shop_id, item_id])
+				continue
+			free.append(item_id)
+
+		if stock.is_empty() and free.is_empty():
 			_warn("shop '%s' stocks nothing — it will open empty." % shop.shop_id)
 
 		out.append({
 			"shop_id":          shop.shop_id,
 			"display_name":     shop.display_name,
 			"stock":            stock,
+			"free":             free,
 			"price_multiplier": float(shop.price_multiplier),
 			"sell_multiplier":  float(shop.sell_multiplier),
 			"restock_seconds":  float(shop.restock_seconds),

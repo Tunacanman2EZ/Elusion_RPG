@@ -813,6 +813,13 @@ func _try_damage(target: Node) -> int:
 	if not target.has_method("take_damage"):
 		return 0
 
+	# NOT THROUGH A WALL (0.69.1). The swing's box reaches about 15 px past a
+	# door the warrior is pressed against, and a monster's hurtbox stands
+	# taller than the wall its feet are behind. Not marked as hit, so the
+	# same swing still lands if it clears the corner.
+	if not can_hit(target):
+		return 0
+
 	_hit_this_swing[target_id] = true
 	target.take_damage(_calculate_melee_damage())
 	if target is Node2D and is_inside_tree():
@@ -834,6 +841,9 @@ func fling_sword_fan(into: Node = null) -> Array[BladeOrb]:
 		return orbs
 	var each: int = maxi(1, int(_calculate_melee_damage() * SWORD_FAN_SHARE))
 	var from: Vector2 = global_position + _swing_aim_direction * SWORD_FAN_FROM
+	# Not from the far side of a wall either (_spawn_slashwave() says why).
+	if not Targets.clear_between(self, Targets.body_point(self), from):
+		return orbs
 	for way in BladeOrb.fan_ways(_swing_aim_direction, SWORD_FAN_ORBS, SWORD_FAN_SPREAD_DEGREES, false):
 		orbs.append(BladeOrb.fire(parent, from, way, SWORD_FAN_SPEED, SWORD_FAN_REACH, each,
 			BladeOrb.GOLD if _finisher else BladeOrb.STEEL))
@@ -928,10 +938,16 @@ func throw_axe(aimed_at: Vector2) -> SpinningAxe:
 	_axe.wide = common_forced() or SpinningAxe.rolls(randf(), axe_wide_chance)
 	_axe.bloody = rare_forced() or SpinningAxe.rolls(randf(), axe_blood_chance)
 	spawn_parent().add_child(_axe)
-	_axe.throw_to(global_position, aimed_at)
+	# FROM WHERE THE BODY CAN SEE (0.69.1). The throw starts at the warrior's
+	# origin, which is inside a door it is pressed against and already past
+	# the Big Field's thin north walls - so its first ray began beyond the wall
+	# and the axe flew out into the black, and spun there. Started this side
+	# of the wall, the ray meets it.
+	var start: Vector2 = reach_short_of_wall(global_position)
+	_axe.throw_to(start, aimed_at)
 	Audio.play("axe_throw")
 	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
-	Presence.tell_attack("axe", global_position, _axe.target, 0.0,
+	Presence.tell_attack("axe", start, _axe.target, 0.0,
 		RemoteAttacks.flags_for_axe(_axe.wide, _axe.bloody))
 	return _axe
 
@@ -948,6 +964,10 @@ func _on_gear_changed() -> void:
 	if axe_is_out() and equipped_weapon_attack() != ItemData.WeaponAttack.SPINNING_AXE:
 		_axe.queue_free()
 		_axe = null
+		# AND EVERYONE ELSE'S PICTURE OF IT GOES HOME (0.69.1). Without this
+		# the axe went from this screen and kept spinning on every other one,
+		# for as long as this warrior stood near it.
+		Presence.tell_attack("recall", global_position, global_position)
 	# The axe put on or taken off shows or hides the reach ring.
 	_fit_reach_ring()
 
@@ -1010,6 +1030,16 @@ func _spawn_slashwave() -> void:
 	if mana < slashwave_mana_cost:
 		return
 
+	# NOT FROM THE FAR SIDE OF A WALL (0.69.1). The wave starts in front of
+	# the warrior's ORIGIN, which is inside a door the warrior is pressed
+	# against - and in the Big Field's thin north walls, already past them - so
+	# its box could open on the far side and cut what was there. A wave the
+	# warrior's body cannot see the start of is not thrown, and costs nothing.
+	var start: Vector2 = global_position + _swing_aim_direction * wave_muzzle_offset
+	if not Targets.clear_between(self, Targets.body_point(self),
+			SlashWave.box_start(start, _swing_aim_direction)):
+		return
+
 	mana -= slashwave_mana_cost
 
 	var wave: SlashWave = SLASHWAVE_SCENE.instantiate()
@@ -1018,7 +1048,7 @@ func _spawn_slashwave() -> void:
 	# Spawn position comes from the aim vector — a small offset in front of the
 	# warrior, along the exact aimed direction. See wave_muzzle_offset for why
 	# this replaced four fixed Marker2D nodes.
-	wave.global_position = global_position + _swing_aim_direction * wave_muzzle_offset
+	wave.global_position = start
 
 	# The wave is added to the tree ABOVE and positioned on the line before
 	# this one. With common/physics_interpolation=true that ordering means its

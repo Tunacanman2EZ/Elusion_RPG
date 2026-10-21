@@ -95,6 +95,10 @@
 # and splash gold, the splash bigger - so a double hit is seen as it flies.
 extends Area2D
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -268,7 +272,18 @@ func _physics_process(delta: float) -> void:
 	# the path instead of drifting off it.
 	var wobble: float = sin(_time * weave_frequency) * deg_to_rad(weave_amplitude_deg)
 	var travel: Vector2 = direction.rotated(wobble)
+	var was: Vector2 = global_position
 	global_position += travel * speed * delta
+
+	# IT STOPS AT A WALL (0.69.1). With every physics path off (above), nothing
+	# ever stopped it: it homed on a monster in the next room through the
+	# masonry, and flew out over the black. A ray along this tick's step, the
+	# way the spinning axe flies, and it bursts where it met the wall.
+	if not Targets.clear_between(self, was, global_position):
+		splash(get_parent(), global_position, doubled)
+		_let_go_of_trail()
+		queue_free()
+		return
 
 	# THE HIT — per-frame distance to each enemy's live hurtbox (see header).
 	if not _spent:
@@ -371,9 +386,14 @@ func _find_nearest_enemy() -> Node2D:
 			continue
 		var enemy: Node2D = node as Node2D
 		var d: float = global_position.distance_squared_to(_enemy_hit_point(enemy))
-		if d < nearest_d:
-			nearest_d = d
-			nearest = enemy
+		if d >= nearest_d:
+			continue
+		# NOT ONE BEHIND A WALL, or asleep and unseen in another room (0.69.1):
+		# the orb would curve off into the masonry after it.
+		if not enemy.is_visible_in_tree() or not Targets.can_reach(self, global_position, enemy):
+			continue
+		nearest_d = d
+		nearest = enemy
 	return nearest
 
 

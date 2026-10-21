@@ -41,6 +41,10 @@
 # who fires for as long as attack is down, streams.
 extends Node
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 signal changed(on: bool)
 # A THUMB ON THE GAME (0.56.0): the pad or the world - the player going back to
 # playing. See played_now().
@@ -555,12 +559,14 @@ func aim_target(body: Node2D) -> Node2D:
 	var frame: int = Engine.get_physics_frames()
 	if frame != _aim_frame or not is_instance_valid(_aim_target):
 		_aim_frame = frame
-		_aim_target = nearest_monster(body.get_tree(), body.global_position, AUTO_AIM_RANGE)
+		_aim_target = nearest_monster(body.get_tree(), body.global_position, AUTO_AIM_RANGE, body)
 	return _aim_target if is_instance_valid(_aim_target) else null
 
 
-static func nearest_monster(tree: SceneTree, from: Vector2, reach: float) -> Node2D:
-	"""The closest monster within `reach` that can still be hit, or null."""
+static func nearest_monster(tree: SceneTree, from: Vector2, reach: float, looker: Node2D = null) -> Node2D:
+	"""The closest monster within `reach` that can still be hit, or null.
+	Given the `looker`, not one behind a wall from its body (0.69.1): the
+	attack would only be stopped by it (Targets)."""
 	if tree == null:
 		return null
 	var best: Node2D = null
@@ -572,9 +578,14 @@ static func nearest_monster(tree: SceneTree, from: Vector2, reach: float) -> Nod
 		if monster.has_method("can_be_aimed_at") and not monster.call("can_be_aimed_at"):
 			continue
 		var d: float = from.distance_squared_to(target_point(monster))
-		if d <= best_d:
-			best_d = d
-			best = monster
+		if d > best_d:
+			continue
+		# Asked only of one nearer than the best so far, so a crowd costs a
+		# few rays, not one each.
+		if looker != null and not Targets.can_reach(looker, Targets.body_point(looker), monster):
+			continue
+		best_d = d
+		best = monster
 	return best
 
 

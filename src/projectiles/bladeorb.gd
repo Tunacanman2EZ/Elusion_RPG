@@ -48,6 +48,8 @@ const HEAL_BODY := Color(0.55, 0.95, 0.42)
 const SIZE := 8
 # How near a monster counts as touching: the orb's body, not its rim.
 const RADIUS := 3.5
+# Whether a wall stands between the orb and what it touches (0.69.1).
+const Targets := preload("res://src/shared/targets.gd")
 const POP_SECONDS := 0.1
 
 var direction: Vector2 = Vector2.RIGHT
@@ -203,6 +205,12 @@ func _on_area_entered(area: Area2D) -> void:
 
 func _try_hit(target: Node) -> void:
 	if target.get_instance_id() == _ignore_id or not target.has_method(&"take_damage"):
+		return
+	# NOT THROUGH A WALL (0.69.1): a monster's hurtbox stands taller than the
+	# wall its feet are behind, and an orb touching that is at the wall - it
+	# breaks there, as on the wall itself.
+	if not Targets.can_reach(self, global_position, target):
+		pop()
 		return
 	if not cosmetic and damage > 0:
 		target.take_damage(damage, element)

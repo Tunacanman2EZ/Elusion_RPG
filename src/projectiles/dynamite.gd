@@ -48,6 +48,10 @@
 class_name Dynamite
 extends Area2D
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 
 enum State { FLYING, FUSE }
 
@@ -192,6 +196,9 @@ func explode() -> void:
 		for body in get_overlapping_bodies():
 			if not body.is_in_group("enemies") or not body.has_method("take_damage"):
 				continue
+			# Not past a wall from the stick (0.69.1, Targets).
+			if not Targets.can_reach(self, global_position, body):
+				continue
 			body.take_damage(damage)
 			hits_dealt += 1
 	# A chained blast's fireball is bigger; what it reaches is not.
@@ -218,7 +225,8 @@ func _set_off_the_rest() -> void:
 		var other: Dynamite = node
 		if other.cosmetic != cosmetic:
 			continue
-		if other.global_position.distance_to(global_position) <= CHAIN_RADIUS:
+		if other.global_position.distance_to(global_position) <= CHAIN_RADIUS \
+				and Targets.clear_between(self, global_position, other.global_position):
 			other.set_off()
 
 

@@ -10,6 +10,10 @@
 # structural twin of petelectricprojectile.gd — same logic, fire damage type.
 extends Area2D
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -123,7 +127,15 @@ func _physics_process(delta: float) -> void:
 	direction = _home(delta, direction)
 	if direction != Vector2.ZERO:
 		rotation = direction.angle()
+	var was: Vector2 = global_position
 	position += direction * speed * delta
+	# IT STOPS AT A WALL (0.69.1). It looked only at monsters (mask 8), so
+	# walls never stopped it: a pet's shot crossed the masonry to a monster
+	# in the next room. A ray along this tick's step, as the healer's orb.
+	if not _spent and not Targets.clear_between(self, was, global_position):
+		_spent = true
+		destroy_projectile()
+		return
 
 
 func _home(delta: float, heading: Vector2) -> Vector2:

@@ -33,6 +33,8 @@ const PLAYER_LIGHT_SCENE := preload("res://scene/characters/playerlight.tscn")
 const NameTag := preload("res://src/shared/nametag.gd")
 # A hit's flash: the frame on screen, drawn pure white over itself (0.58.0).
 const HitFlash := preload("res://src/shared/hitflash.gd")
+# Whether a wall stands between an attack and what it would hit (can_hit()).
+const Targets := preload("res://src/shared/targets.gd")
 var _carried_light: PointLight2D = null
 
 # The name that floats over this character's head. Built in code for the same
@@ -768,6 +770,32 @@ func aim_point() -> Vector2:
 		return steady_mouse_position()
 	var facing: Vector2 = last_direction if last_direction.length_squared() > 0.0001 else Vector2.DOWN
 	return global_position + facing.normalized() * KEYBOARD_AIM_REACH
+
+
+# =============================================================================
+# NOT THROUGH WALLS (0.69.1)
+# =============================================================================
+# The owner, in the Big Field: "players can attack enemies through doors/
+# walls". Every attack found what it hit by overlap or by distance, so a
+# swing's box, a spike, an aura or a blast reached through masonry and closed
+# crypt doors. Every one now asks can_hit() before it hurts anything, and a
+# spell or a throw aimed past a wall lands this side of it
+# (reach_short_of_wall()). Targets.clear_between() holds the rule.
+
+func can_hit(target: Node, from: Variant = null) -> bool:
+	"""May an attack of this character's touch `target`? Made from its body,
+	or from `from` - the middle of the spell, blast or blade doing the
+	hitting. The line to the target's body must be clear of walls, doors and
+	solid props. Never from the node origin, which can be inside the wall
+	this character is pressed against (Targets.body_point())."""
+	var start: Vector2 = Targets.body_point(self) if from == null else from
+	return Targets.can_reach(self, start, target)
+
+
+func reach_short_of_wall(point: Vector2) -> Vector2:
+	"""`point`, or as far toward it from this character's body as it can go
+	before a wall: where a spell or a throw aimed past one lands."""
+	return Targets.short_of_wall(self, Targets.body_point(self), point)
 
 
 func steady_mouse_position() -> Vector2:

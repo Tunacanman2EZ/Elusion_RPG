@@ -26,6 +26,10 @@
 # - CollisionShape2D — circular, matches circle_radius for AoE detection
 extends Area2D
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 
 # =============================================================================
 # CONSTANTS
@@ -269,6 +273,9 @@ func _apply_area_damage() -> void:
 		if not body.is_in_group("enemies"):
 			continue
 		if not body.has_method("take_damage"):
+			continue
+		# Not past a wall from where it landed (0.69.1, Targets).
+		if not Targets.can_reach(self, global_position, body):
 			continue
 		body.take_damage(explosion_damage)
 		_grant_caster_xp()

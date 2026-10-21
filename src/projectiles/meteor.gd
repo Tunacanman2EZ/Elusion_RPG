@@ -59,6 +59,10 @@
 class_name Meteor
 extends Area2D
 
+# Whether a wall stands between this and what it would hit (0.69.1,
+# src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 
 # How long the fall takes, from entering the screen to hitting the ground.
 const FALL_SECONDS := 0.55
@@ -338,7 +342,9 @@ func _pull(t: float, delta: float) -> void:
 		_pull_query.shape = reach
 		_pull_query.collision_mask = collision_mask
 		_pull_query.collide_with_bodies = true
-		# Not areas: bushmage carries attack boxes on the enemies layer.
+		# Not areas: the bodies are the monsters, one each. (The bush mage's
+		# stray attack boxes on the enemies layer, the reason this said so,
+		# are gone since 0.69.1.)
 		_pull_query.collide_with_areas = false
 	_pull_query.transform = Transform2D(0.0, global_position)
 	var step: float = PULL_SPEED * lerpf(PULL_START, 1.0, t) * owed
@@ -348,6 +354,9 @@ func _pull(t: float, delta: float) -> void:
 			continue
 		if not body.call("can_be_pulled"):
 			continue
+		# A WALL BETWEEN IS NOT ASKED ABOUT HERE (0.69.1): the pull hurts
+		# nothing, and a monster behind a wall slides along it as it would
+		# walking. Only the hit asks (_apply_damage(), Targets).
 		var far: float = (body as Node2D).global_position.distance_to(global_position)
 		if far <= PULL_STOP or far > PULL_RADIUS:
 			continue
@@ -401,6 +410,9 @@ func _apply_damage() -> int:
 	var hit := 0
 	for body in get_overlapping_bodies():
 		if not body.is_in_group("enemies") or not body.has_method("take_damage"):
+			continue
+		# Not past a wall from where it came down (0.69.1, Targets).
+		if not Targets.can_reach(self, global_position, body):
 			continue
 		body.take_damage(explosion_damage)
 		hit += 1
