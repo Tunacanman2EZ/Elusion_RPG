@@ -40,6 +40,16 @@
 #   after someone      leash_range, brighter: get past it and it lets you go
 #
 # In 0.29.0 both were the leash, 400 to 500 px - wider than the screen.
+#
+# CHEAP IN A CROWD (0.66.0). The owner's 4x stress test: every awake monster
+# worked its ring out again every frame, and 790 of them cost 5.7 of the 9 ms
+# the frame's scripts took. Now each looks again every REFRESH_SECONDS, each
+# at its own moment (so a crowd's rings do not all land on one frame) - 20
+# times a second is quicker than the eye follows a ball round a ring. And
+# both rings are drawn on the floor (z -1, under every picture and prop, as a
+# line on the ground should be), all of them with RangeRing's one material,
+# so a crowd's rings are drawn together instead of one draw call each. A
+# boss's stay at z 0 (see on()).
 class_name ThreatRing
 extends AimRing
 
@@ -66,6 +76,15 @@ var monster: BaseEnemy = null
 var in_reach: bool = false
 # The detection circle, the monster's child beside this ring.
 var sense: RangeRing = null
+# How often the ring looks again at who its monster is after, in seconds:
+# while it is after somebody (the ball follows them), and while it is not
+# (only its faint circle shows, and BaseEnemy says the moment it turns -
+# look_now()).
+const REFRESH_SECONDS := 0.05
+const IDLE_REFRESH_SECONDS := 0.25
+# On the floor: under the monster, every other picture and the props.
+const FLOOR_Z := -1
+var _refresh_in: float = 0.0
 
 
 static func on(enemy: BaseEnemy) -> ThreatRing:
@@ -81,6 +100,15 @@ static func on(enemy: BaseEnemy) -> ThreatRing:
 	ring.position = (footprint.position if footprint != null else Vector2.ZERO) + Vector2(0.0, BELOW_FOOTPRINT)
 	ring._tint(false)
 	ring.visible = false
+	# A BOSS'S STAYS IN THE WORLD, at z 0 as every ring was before. There is one
+	# boss in its room - nothing to draw together with - and the crypt arena lays
+	# its dais on "grounddecals" at z 0, which would cover a ring on the floor.
+	var floor_z: int = 0 if enemy.is_in_group(&"unpushable") else FLOOR_Z
+	ring.z_index = floor_z
+	# The ball stays where it was drawn, over the world (it was z 1 on a ring
+	# at 0): +2 on a ring at -1.
+	ring._ball.z_index = 1 - floor_z
+	ring._refresh_in = randf() * REFRESH_SECONDS
 	# The detection circle round the monster's middle, where BaseEnemy measures
 	# from. Added first, so the ring ends up the first child and it the second:
 	# both before the monster's own picture.
@@ -88,6 +116,7 @@ static func on(enemy: BaseEnemy) -> ThreatRing:
 	ring.sense.name = "detectionring"
 	ring.sense.colour = SENSE_IDLE
 	ring.sense.visible = false
+	ring.sense.z_index = floor_z
 	enemy.add_child(ring.sense)
 	enemy.move_child(ring.sense, 0)
 	enemy.add_child(ring)
@@ -111,7 +140,19 @@ static func _radius_of(node: Node) -> float:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	_refresh_in -= delta
+	if _refresh_in > 0.0:
+		return
+	# Kept in step, so each ring keeps its own moment in the crowd's cycle.
+	var every: float = REFRESH_SECONDS if monster != null and monster.engaged else IDLE_REFRESH_SECONDS
+	_refresh_in = maxf(_refresh_in + every, 0.0)
 	refresh()
+
+
+func look_now() -> void:
+	"""Its monster has just turned after somebody, or let them go: look again
+	this frame rather than at the next turn of the clock."""
+	_refresh_in = 0.0
 
 
 func target() -> Node2D:

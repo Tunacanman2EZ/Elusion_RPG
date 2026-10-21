@@ -31,6 +31,11 @@ const NameTag := preload("res://src/shared/nametag.gd")
 const Marks := preload("res://src/shared/marks.gd")
 const ApiForTests := preload("res://src/systems/api.gd")
 const PoolForTests := preload("res://src/systems/connectionpool.gd")
+# The autoloads' scripts, for their static functions: called through the
+# autoload itself, the 4.7 editor warns (STATIC_CALLED_ON_INSTANCE).
+const _SettingsCode := preload("res://src/systems/settings.gd")
+const _CombatCode := preload("res://src/systems/combat.gd")
+const _AreaRegistryCode := preload("res://src/systems/arearegistry.gd")
 
 
 # WHERE THE RESULTS GO
@@ -365,13 +370,13 @@ func _run_all() -> void:
 	await _test_the_world_loads_in_the_background()
 	await _test_rare_loot_reads_as_rare()
 	_test_a_loot_bag_is_reached_from_further()
-	await _test_amulets_carry_their_bonus()
+	_test_amulets_carry_their_bonus()
 	await _test_the_game_has_a_pace()
-	await _test_better_loot_carries_more()
+	_test_better_loot_carries_more()
 	_test_bosses_hit_for_their_band()
 	await _test_gear_bonuses_are_shown()
 	await _test_tooltips_say_it_once()
-	await _test_the_sweep_wiring()
+	_test_the_sweep_wiring()
 	_test_the_sweep_words()
 	_test_the_browser_build()
 	_test_the_windows_build()
@@ -407,6 +412,7 @@ func _run_all() -> void:
 	await _test_a_hit_flashes_the_artists_white()
 	await _test_the_crypt_skeletons()
 	await _test_far_enemies_sleep()
+	await _test_a_big_fight_is_cheap()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
 	_test_a_character_can_be_deleted()
@@ -4907,7 +4913,7 @@ func _test_frame_budget() -> void:
 		# measured. Every third player, so both branches are exercised.
 		rows.append({"username": "player%04d" % i, "contributed": 1_000_000 - i,
 			"lusions": i, "deaths": i % 50, "rank": i + 1,
-			"lost": (1_000_000 - i) / 2 if i % 3 == 0 else 0})
+			"lost": floori((1_000_000 - i) / 2.0) if i % 3 == 0 else 0})
 
 	# FIRST PAINT IS SPREAD ACROSS FRAMES on purpose - building two hundred
 	# rows in one go measured at 79ms, which is two and a half frames of
@@ -6268,7 +6274,7 @@ func _test_itemstack() -> void:
 	var floaty := ItemStack.from_dict({"item_id": item.item_id, "quantity": 3.0})
 	check("a float quantity rehydrates as an int 3",
 		floaty != null and floaty.quantity == 3 and typeof(floaty.quantity) == TYPE_INT,
-		"got %s" % (floaty.quantity if floaty != null else "null"))
+		"got %s" % (str(floaty.quantity) if floaty != null else "null"))
 
 	# An unknown id must never produce a stack CLAIMING to be that item.
 	#
@@ -6371,17 +6377,17 @@ func _test_settings() -> void:
 	check("Unlimited is the first cap the picker offers", Settings.FRAME_CAPS[0] == 0)
 
 	# --- migration --------------------------------------------------------
-	check("an old vsync=true means on", Settings.normalise_vsync(true) == "on")
-	check("an old vsync=false means off", Settings.normalise_vsync(false) == "off")
-	check("the string 'false' too", Settings.normalise_vsync("false") == "off")
-	check("case does not matter", Settings.normalise_vsync("Adaptive") == "adaptive")
-	check("nonsense becomes the default", Settings.normalise_vsync("banana") == "on")
-	check("a negative cap is no cap", Settings.normalise_frame_cap(-5) == 0)
+	check("an old vsync=true means on", _SettingsCode.normalise_vsync(true) == "on")
+	check("an old vsync=false means off", _SettingsCode.normalise_vsync(false) == "off")
+	check("the string 'false' too", _SettingsCode.normalise_vsync("false") == "off")
+	check("case does not matter", _SettingsCode.normalise_vsync("Adaptive") == "adaptive")
+	check("nonsense becomes the default", _SettingsCode.normalise_vsync("banana") == "on")
+	check("a negative cap is no cap", _SettingsCode.normalise_frame_cap(-5) == 0)
 
 	# --- the mode table round-trips ------------------------------------------
 	var lost: Array = []
 	for mode_name in Settings.VSYNC_MODES:
-		if Settings.vsync_name_for(Settings.vsync_mode_for(mode_name)) != mode_name:
+		if _SettingsCode.vsync_name_for(_SettingsCode.vsync_mode_for(mode_name)) != mode_name:
 			lost.append(mode_name)
 	check("every mode survives name -> engine constant -> name", lost.is_empty(), lost)
 
@@ -6454,13 +6460,13 @@ func _test_settings() -> void:
 	check("30 is offered, for the weakest machines", 30 in Settings.FRAME_CAPS)
 
 	check("an unknown resolution becomes the default",
-		Settings.normalise_choice("potato", Settings.RENDER_RESOLUTIONS, "screen") == "screen")
+		_SettingsCode.normalise_choice("potato", Settings.RENDER_RESOLUTIONS, "screen") == "screen")
 	check("case does not matter to lighting",
-		Settings.normalise_choice("Simple", Settings.LIGHTING_MODES, "full") == "simple")
+		_SettingsCode.normalise_choice("Simple", Settings.LIGHTING_MODES, "full") == "simple")
 	check("low resolution is viewport stretch",
-		Settings.content_scale_mode_for("low") == Window.CONTENT_SCALE_MODE_VIEWPORT)
+		_SettingsCode.content_scale_mode_for("low") == Window.CONTENT_SCALE_MODE_VIEWPORT)
 	check("screen resolution is the project's canvas_items",
-		Settings.content_scale_mode_for("screen") == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS)
+		_SettingsCode.content_scale_mode_for("screen") == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS)
 
 	# --- the background limit, as a table ------------------------------------
 	# (player's cap, focused, limit on) -> max_fps
@@ -6474,7 +6480,7 @@ func _test_settings() -> void:
 	]
 	var wrong: Array = []
 	for row in caps:
-		if Settings.fps_cap_for(row[0], row[1], row[2]) != row[3]:
+		if _SettingsCode.fps_cap_for(row[0], row[1], row[2]) != row[3]:
 			wrong.append(row)
 	check("the frame cap in and out of focus", wrong.is_empty(), wrong)
 
@@ -7163,7 +7169,7 @@ func _test_the_big_field_is_dressed() -> void:
 		dark = n
 	var field_dark: Node = (load("res://scene/crypt/cryptambience.tscn") as PackedScene).instantiate()
 	check("it is dark like the Field, so its candles and lanterns light it (and the player carries a light here)",
-		dark != null and dark.color == (field_dark as CanvasModulate).color, dark.color if dark else null)
+		dark != null and dark.color == (field_dark as CanvasModulate).color, str(dark.color) if dark else "no CanvasModulate")
 	field_dark.free()
 	var lights: int = area.find_children("*", "PointLight2D", true, false).size()
 	check("  %d lights - inside a budget of %d, for a browser's frame" % [lights, DRESSED_LIGHT_BUDGET],
@@ -7758,23 +7764,23 @@ func _test_the_crypt_skeletons() -> void:
 	var astray: Array = []
 	for enemy in field.get_node("ysortworld/enemies").get_children():
 		var kind: String = str(enemy.scene_file_path).get_file().get_basename()
-		var at: Vector2 = (enemy as Node2D).position
+		var spot_at: Vector2 = (enemy as Node2D).position
 		# Which hall's columns it is under: the halls stand over the fields.
 		var band: int = 0
 		for h in 5:
-			if at.x >= [224, 768, 1312, 1856, 2400][h] and at.x <= [672, 1216, 1760, 2304, 2912][h]:
+			if spot_at.x >= [224, 768, 1312, 1856, 2400][h] and spot_at.x <= [672, 1216, 1760, 2304, 2912][h]:
 				band = h + 1
 		if kind == "skeletonsoldier":
-			if at.y >= -128 and at.y <= 160:
+			if spot_at.y >= -128 and spot_at.y <= 160:
 				halls[band] = int(halls.get(band, 0)) + 1
 			else:
 				astray.append(enemy.name)
 		elif kind == "skeletonelite":
-			if at.y >= -448 and at.y <= -176:
+			if spot_at.y >= -448 and spot_at.y <= -176:
 				chambers[band] = int(chambers.get(band, 0)) + 1
 			else:
 				astray.append(enemy.name)
-		elif at.y < 192:
+		elif spot_at.y < 192:
 			astray.append(enemy.name)
 	var crowded_halls: bool = [1, 2, 3, 4, 5].all(func(h): return int(halls.get(h, 0)) >= 12)
 	var six_each: bool = [1, 2, 3, 4, 5].all(func(h): return int(chambers.get(h, 0)) == ELITES_A_CHAMBER)
@@ -7999,8 +8005,8 @@ func _test_a_hit_flashes_the_artists_white() -> void:
 	var world := Node2D.new()
 	add_child(world)
 	var at := Vector2(-63000, -63000)
-	var flashes_on := func(sprite: AnimatedSprite2D) -> Array:
-		return sprite.get_children().filter(func(c: Node) -> bool:
+	var flashes_on := func(on_sprite: AnimatedSprite2D) -> Array:
+		return on_sprite.get_children().filter(func(c: Node) -> bool:
 			return c is Sprite2D and str(c.name).begins_with("hitflash") and not c.is_queued_for_deletion())
 
 	# ---- a monster, hit mid-swing ------------------------------------------------
@@ -8223,7 +8229,7 @@ func _test_the_road_through_the_game() -> void:
 		_collect_portal_ids(to_scene, ids)
 		var lands: String = str(onward[0].get("target_spawn_id")) if onward.size() == 1 else "-"
 		check("%s leads on to %s" % [AreaRegistry.display_name(from_id), AreaRegistry.display_name(to_id)],
-			onward.size() == 1, "%d doors there, none to %s" % [doors.size(), to_id] if onward.is_empty() else onward.size())
+			onward.size() == 1, "%d doors there, none to %s" % [doors.size(), to_id] if onward.is_empty() else str(onward.size()))
 		check("  and lands where %s has an arrival for it" % AreaRegistry.display_name(to_id),
 			onward.size() == 1 and (lands == "" or ids.has(lands)), "wants '%s', has %s" % [lands, ids])
 		from_scene.free()
@@ -8332,7 +8338,7 @@ func _test_the_owner_stress_crowd() -> void:
 		grew_over_frames and Crowd.BUILD_MS > 0.0 and Crowd.BUILD_MS <= 5.0
 		and not _code_src("res://src/world/stresscrowd.gd").contains("const BATCH"), first_frames)
 	check("  each worth nothing: no kill to report, where %d of the monsters they copy have one" % paying_sources,
-		unpaid and paying_sources > copies.size() / 2, paying_sources)
+		unpaid and paying_sources * 2 > copies.size(), paying_sources)
 	check("  each the same monster - its scene and its leash", unlike.is_empty(), unlike.slice(0, 4))
 	check("  each on the floor, a few steps from it, and none near where players arrive", misplaced.is_empty(), misplaced.slice(0, 4))
 	var by_arrival: Variant = crowd.call("_spot_near", {"home": arrival + Vector2(40, 0), "map": map, "arrivals": [arrival]})
@@ -8378,7 +8384,7 @@ func _test_the_owner_stress_crowd() -> void:
 		elif far_off:
 			far_awake.append(node.name)
 	check("  copies built far from every player start asleep (%d), none far off awake" % born_asleep,
-		born_asleep > authored / 2 and far_awake.is_empty(), far_awake.slice(0, 4))
+		born_asleep * 2 > authored and far_awake.is_empty(), far_awake.slice(0, 4))
 	stand_in.free()
 	var at_three: int = int(crowd.call("copy_count"))
 	Crowd.set_multiplier(2, get_tree())
@@ -8661,6 +8667,264 @@ func _test_far_enemies_sleep() -> void:
 	print("  sleep beyond %d px, wake inside %d px, every %.2f s"
 		% [int(Sleeper.SLEEP_DISTANCE), int(Sleeper.WAKE_DISTANCE), Sleeper.CHECK_SECONDS])
 
+
+
+# =============================================================================
+# A BIG FIGHT IS CHEAP (0.66.0)
+# =============================================================================
+# The owner's 4x stress test, and then: "incredible lets refine so it runs
+# smooth as butter". 1,470 monsters in the Big Field, measured on the bench at
+# 4x round one player in the thick of it:
+#   - every awake monster's threat ring worked itself out again every frame:
+#     5.7 of the 9 ms the scripts took. Now 20 times a second, each ring at its
+#     own moment, and at once when its monster turns on somebody;
+#   - every ring, aim ring and recoloured monster had a material of its own,
+#     so nothing could be drawn together: 863 draw calls. Now one material for
+#     every ring, one per kind and element for the monsters, and the rings on
+#     the floor where they batch: 605;
+#   - every monster parked on its slot slid every frame: physics about 12 ms,
+#     against 9.6 with a parked one sliding five times a second;
+#   - a sleeper, never on anybody's screen, was still sorted by the renderer;
+#   - 700 awake monsters standing at home with nobody in reach still thought
+#     every tick: 2.7 ms. Now they doze between the sleeper's passes.
+func _test_a_big_fight_is_cheap() -> void:
+	section("A BIG FIGHT IS CHEAP - rings 20 a second, shared materials, parked monsters barely slide (0.66.0)")
+
+	# ---- one material for every ring ----------------------------------------------------------
+	var range_a := RangeRing.new()
+	var range_b := RangeRing.new()
+	var aim_ring := AimRing.new()
+	var shared: CanvasItemMaterial = RangeRing.unshaded()
+	check("every range ring and aim ring, and its ball, wears the one unshaded material",
+		range_a.material == shared and range_b.material == shared and aim_ring.material == shared
+		and (aim_ring.get("_ball") as CanvasItem).material == shared
+		and shared.light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED,
+		[range_a.material, aim_ring.material])
+	range_a.free()
+	range_b.free()
+	aim_ring.free()
+	check("  and an aim ring is drawn as line segments, the way a range ring is (so they batch)",
+		_func_body(_code_src("res://src/characters/aimring.gd"), "func _draw(").contains("draw_multiline(")
+		and not _func_body(_code_src("res://src/characters/aimring.gd"), "func _draw(").contains("draw_polyline(")
+		and _func_body(_code_src("res://src/shared/rangering.gd"), "func _draw(").contains("draw_multiline("))
+
+	# ---- the threat ring on the floor, its ball where it was ----------------------------------
+	var sniper: BaseEnemy = (load("res://scene/enemy/darkbushsniper.tscn") as PackedScene).instantiate()
+	var ring: ThreatRing = ThreatRing.on(sniper)
+	var ball: CanvasItem = ring.get("_ball") as CanvasItem
+	check("a monster's ring and detection circle lie on the floor (z %d) and share that material" % ThreatRing.FLOOR_Z,
+		ring.z_index == ThreatRing.FLOOR_Z and ring.z_as_relative and ring.sense.z_index == ThreatRing.FLOOR_Z
+		and ring.material == shared and ring.sense.material == shared, [ring.z_index, ring.sense.z_index])
+	check("  its ball still over the world, at z 1 as it always was",
+		ball.z_as_relative and ring.z_index + ball.z_index == 1, ball.z_index)
+	var lowest_world: int = 0
+	var highest_floor: int = -100
+	for area in AreaRegistry.AREAS:
+		var src: String = FileAccess.get_file_as_string(str(AreaRegistry.AREAS[area]))
+		for layer in ["ground", "water"]:
+			var z: Variant = _root_layer_z(src, layer)
+			if z != null:
+				highest_floor = maxi(highest_floor, int(z))
+	check("  which is over the ground in every area (its highest floor layer is z %d)" % highest_floor,
+		highest_floor < ThreatRing.FLOOR_Z and ThreatRing.FLOOR_Z < lowest_world)
+	var boss: BaseEnemy = (load("res://scene/enemy/bossenemy.tscn") as PackedScene).instantiate()
+	boss.add_to_group(&"unpushable")      # what BossEnemy._ready() does before the ring goes on
+	var boss_ring: ThreatRing = ThreatRing.on(boss)
+	check("  but a boss's stays in the world at z 0 - one ring, and the arena's dais would cover it",
+		boss_ring.z_index == 0 and boss_ring.sense.z_index == 0 and (boss_ring.get("_ball") as CanvasItem).z_index == 1,
+		[boss_ring.z_index, boss_ring.sense.z_index])
+	boss.free()
+
+	# ---- 20 looks a second, each at its own moment, at once on turning --------------------------
+	var starts: Array[float] = []
+	for k in 6:
+		starts.append(float(ThreatRing.on(sniper).get("_refresh_in")))
+	var spread: bool = starts.min() >= 0.0 and starts.max() <= ThreatRing.REFRESH_SECONDS \
+		and not is_equal_approx(float(starts.min()), float(starts.max()))
+	check("each ring first looks at its own moment within %.2f s, so a crowd's do not land on one frame"
+		% ThreatRing.REFRESH_SECONDS, spread, starts)
+	sniper.set_physics_process(true)
+	sniper.position = Vector2.ZERO
+	sniper.hp = sniper.max_hp
+	var dummy := ZoneDummy.new()
+	add_child(dummy)
+	sniper.player = dummy
+	dummy.position = Vector2(-120, 0)
+	# Its own ring, as BaseEnemy._ready() makes it (out of the tree, _ready never ran).
+	sniper.set("_threat_ring", ring)
+	ring.set("_refresh_in", 1.0)
+	sniper.keep_after(sniper.global_position.distance_to(dummy.global_position))
+	check("(set up) the monster is after the stand-in", sniper.engaged)
+	check("turning on somebody makes the ring look at once", is_zero_approx(float(ring.get("_refresh_in"))),
+		ring.get("_refresh_in"))
+	ring._process(0.001)
+	var first_aim: Vector2 = ring.aim
+	check("  it shows that frame, pointing at them, and then waits %.2f s" % ThreatRing.REFRESH_SECONDS,
+		ring.visible and first_aim.x < -0.9
+		and absf(float(ring.get("_refresh_in")) - ThreatRing.REFRESH_SECONDS) < 0.002, [ring.visible, first_aim, ring.get("_refresh_in")])
+	dummy.position = Vector2(0, -120)
+	ring._process(0.02)
+	var between: Vector2 = ring.aim
+	ring._process(0.04)
+	check("  the ball stays put between looks and follows at the next",
+		between.is_equal_approx(first_aim) and ring.aim.y < -0.9, [between, ring.aim])
+	sniper.engaged = false
+	ring._process(0.001)
+	check("  letting them go is looked at at once too, and then only %.2f s apart" % ThreatRing.IDLE_REFRESH_SECONDS,
+		not ring.visible and absf(float(ring.get("_refresh_in")) - ThreatRing.IDLE_REFRESH_SECONDS) < 0.002,
+		[ring.visible, ring.get("_refresh_in")])
+	dummy.free()
+	sniper.free()
+
+	# ---- one recolour per kind and element ------------------------------------------------------
+	var arena := Node2D.new()
+	add_child(arena)
+	var one: BaseEnemy = (load("res://scene/enemy/icefiresprite.tscn") as PackedScene).instantiate()
+	var two: BaseEnemy = (load("res://scene/enemy/icefiresprite.tscn") as PackedScene).instantiate()
+	one.position = Vector2(-9000, -9000)
+	two.position = Vector2(-9100, -9000)
+	arena.add_child(one)
+	arena.add_child(two)
+	await get_tree().process_frame
+	var worn_one: Material = (one.get_node("animatedsprite2d") as CanvasItem).material
+	var worn_two: Material = (two.get_node("animatedsprite2d") as CanvasItem).material
+	var data: EnemyData = one.enemy_data
+	var ice: ShaderMaterial = BaseEnemy.element_material(data, Element.Type.ICE)
+	var fire: ShaderMaterial = BaseEnemy.element_material(data, Element.Type.FIRE)
+	var ice_sprite: Node = (load("res://scene/enemy/icesprite.tscn") as PackedScene).instantiate()
+	var other_kind: EnemyData = ice_sprite.get("enemy_data") as EnemyData
+	ice_sprite.free()
+	check("two monsters of one kind and element wear the same recolour, not one each",
+		worn_one != null and worn_one == worn_two, [worn_one, worn_two])
+	check("  another element, or another kind, gets its own",
+		ice != fire and other_kind != null and other_kind != data
+		and BaseEnemy.element_material(other_kind, Element.Type.ICE) != ice)
+	check("  and it is the recolour it always was",
+		is_equal_approx(float(ice.get_shader_parameter("element_hue")), Element.hue_for(Element.Type.ICE))
+		and is_equal_approx(float(ice.get_shader_parameter("saturation_scale")), data.saturation_scale)
+		and is_equal_approx(float(ice.get_shader_parameter("grey_tint")), data.grey_tint))
+
+	# ---- a parked monster barely slides, and still eases out of another ------------------------
+	one.set_physics_process(false)
+	two.set_physics_process(false)
+	two.global_position = one.global_position + Vector2(3, 0)
+	await get_tree().physics_frame
+	var start_gap: float = one.global_position.distance_to(two.global_position)
+	var slides: int = 0
+	for frame in 60:
+		one.velocity = Vector2.ZERO
+		var was: float = float(one.get("_still_slide_in"))
+		one.call("_slide")
+		if float(one.get("_still_slide_in")) > was:
+			slides += 1
+		await get_tree().physics_frame
+	var end_gap: float = one.global_position.distance_to(two.global_position)
+	var ticks: int = Engine.physics_ticks_per_second
+	check("a monster standing still slides %d times a second, not %d" % [roundi(1.0 / BaseEnemy.STILL_SLIDE_SECONDS), ticks],
+		slides >= 2 and slides <= ceili(60.0 / (BaseEnemy.STILL_SLIDE_SECONDS * ticks)) + 1, [slides, ticks])
+	check("  and one put inside another still eases out of it", end_gap > start_gap + 2.0, [start_gap, end_gap])
+	one.velocity = Vector2(10, 0)
+	one.call("_slide")
+	check("  a moving one slides every frame, and the first still frame after settles it",
+		is_zero_approx(float(one.get("_still_slide_in"))))
+	var bare: Array = []
+	for path in ["res://src/enemies/baseenemy.gd", "res://src/enemies/bushmage.gd"]:
+		var lines: PackedStringArray = _code_src(path).split("\n")
+		for i in lines.size():
+			if lines[i].strip_edges() == "move_and_slide()" and not _func_body(_code_src(path), "func _slide(").contains(lines[i]):
+				bare.append("%s:%d" % [path.get_file(), i + 1])
+	check("  every monster move goes through _slide(), not move_and_slide() itself", bare.is_empty(), bare)
+	arena.free()
+
+	# ---- a sleeper is out of the picture -------------------------------------------------------
+	var Sleeper := preload("res://src/world/enemysleeper.gd")
+	var holder := Node2D.new()
+	add_child(holder)
+	var player := Node2D.new()
+	player.add_to_group("player")
+	holder.add_child(player)
+	var far := Node2D.new()
+	far.position = Vector2(1500, 0)
+	var hidden := Node2D.new()
+	hidden.position = Vector2(1500, 100)
+	hidden.visible = false
+	for e in [far, hidden]:
+		e.add_to_group("enemies")
+		holder.add_child(e)
+	var sleeper: Node = Sleeper.add_to(holder)
+	sleeper.check_now()
+	check("a sleeper is hidden as well as stopped", not far.visible and far.process_mode == Node.PROCESS_MODE_DISABLED)
+	player.position = Vector2(1400, 0)
+	sleeper.check_now()
+	check("  woken, it is shown again", far.visible and far.process_mode == Node.PROCESS_MODE_INHERIT
+		and not far.has_meta(&"asleep_shown"))
+	check("  and one something else had hidden stays hidden", not hidden.visible)
+	var view: Vector2 = Vector2(float(ProjectSettings.get_setting("display/window/size/viewport_width")),
+		float(ProjectSettings.get_setting("display/window/size/viewport_height"))) / _SettingsCode.CAMERA_ZOOM_MIN
+	check("  never on screen: the widest view is %d x %d, and its far corner is nearer the player than %d px"
+		% [int(view.x), int(view.y), int(Sleeper.WAKE_DISTANCE)],
+		view.length() < Sleeper.WAKE_DISTANCE
+		and str(ProjectSettings.get_setting("display/window/stretch/aspect", "keep")) == "keep", view)
+	player.position = Vector2(-1000, 0)
+	sleeper.check_now()
+	sleeper.set("_left", 10.0)
+	sleeper.call("player_jumped")
+	player.position = Vector2(-990, 0)
+	var walked: bool = sleeper.call("player_jumped")
+	player.position = Vector2(1450, 0)
+	sleeper._process(0.016)
+	check("a player put somewhere new is looked at that frame, not a quarter second later",
+		not walked and far.visible and far.process_mode == Node.PROCESS_MODE_INHERIT, [walked, far.visible])
+	holder.free()
+
+	# ---- awake but idle, with nobody in reach: it dozes ------------------------------------------
+	var nap_world := Node2D.new()
+	add_child(nap_world)
+	var napper: BaseEnemy = (load("res://scene/enemy/icefiresprite.tscn") as PackedScene).instantiate()
+	napper.position = Vector2(-9000, -9000)
+	nap_world.add_child(napper)
+	await get_tree().process_frame
+	napper.set_physics_process(false)        # its ticks are driven by hand below
+	var far_one := ZoneDummy.new()
+	nap_world.add_child(far_one)
+	far_one.global_position = napper.global_position + Vector2(2000, 0)
+	napper.player = far_one
+	napper.velocity = Vector2.ZERO
+	var reach: float = napper.notice_reach() + Sleeper.DOZE_MARGIN
+	Sleeper.doze_or_rouse(napper, reach + 10.0)
+	check("a monster at home with nobody within its notice reach + %d px dozes" % int(Sleeper.DOZE_MARGIN), napper.dozing)
+	napper.set("_retarget_left", 5.0)
+	napper._physics_process(0.0125)
+	check("  and its brain is skipped while it does", napper.dozing
+		and is_equal_approx(float(napper.get("_retarget_left")), 5.0), napper.get("_retarget_left"))
+	Sleeper.doze_or_rouse(napper, reach - 10.0)
+	check("  somebody within that and it is awake again", not napper.dozing)
+	napper.is_returning_home = true
+	Sleeper.doze_or_rouse(napper, reach + 10.0)
+	var walking_dozes: bool = napper.dozing
+	napper.is_returning_home = false
+	napper.engaged = true
+	Sleeper.doze_or_rouse(napper, reach + 10.0)
+	check("  one walking home or after somebody never dozes", not walking_dozes and not napper.dozing)
+	napper.engaged = false
+	Sleeper.doze_or_rouse(napper, reach + 10.0)
+	napper.engaged = true                    # what a hit does (take_damage())
+	napper._physics_process(0.0125)
+	check("  a hit rouses a dozing one, and it thinks that very tick", not napper.dozing
+		and float(napper.get("_retarget_left")) < 5.0, [napper.dozing, napper.get("_retarget_left")])
+	napper.engaged = false
+	napper.velocity = Vector2(30, 0)
+	napper.dozing = true
+	napper._physics_process(0.0125)
+	check("  and so does being on the move", not napper.dozing)
+	var doze_sleeper: Node = Sleeper.add_to(nap_world)
+	napper.dozing = true
+	doze_sleeper.enabled = false
+	check("  turning the sleeper off rouses everybody", not napper.dozing)
+	nap_world.free()
+	check("  and BushMage, whose brain is its own, dozes the same way",
+		_func_body(_code_src("res://src/enemies/bushmage.gd"), "func _physics_process(").contains("if _dozes():")
+		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _physics_process(").contains("if _dozes():"))
 
 func _test_every_area_can_be_walked() -> void:
 	section("AREAS - you arrive clear of the doors, the walls hold, every door can be walked to")
@@ -15153,7 +15417,7 @@ func _test_windows_fit_a_thumb() -> void:
 	check("on a touch screen the × answers a square THUMB_CLOSE CSS pixels across, over the × and no lower than the header",
 		units > 1.2 and pad != null and pad.visible and pad.get_global_rect().size.is_equal_approx(Vector2(side, side))
 		and pad.get_global_rect().encloses(close_at) and pad.get_global_rect().end.y <= header_at.end.y + 0.01,
-		[units, pad.get_global_rect() if pad != null else null, close_at, header_at])
+		[units, str(pad.get_global_rect()) if pad != null else "no pad", close_at, header_at])
 	var reach: float = PanelWindow.THUMB_GRIP * units
 	check("  and the grips reach THUMB_GRIP CSS pixels out past the edge, and no further in",
 		is_equal_approx(grip_left.offset_left, -reach) and is_equal_approx(grip_right.offset_right, reach)
@@ -21254,7 +21518,7 @@ func _test_staff_panel() -> void:
 	# belt. See SLOT_SIZE in hotbarslot.gd.
 	check("a slot is large enough for an item inside its frame",
 		one != null and one.custom_minimum_size.x >= 40.0,
-		one.custom_minimum_size if one else "no slot")
+		str(one.custom_minimum_size) if one else "no slot")
 	bar.free()
 
 	# ---- one statement of what a rank looks like ----
@@ -21402,7 +21666,7 @@ func _test_staff_panel() -> void:
 	check("whose range matches the setting's own",
 		slider != null and is_equal_approx(slider.min_value, Settings.CAMERA_ZOOM_MIN)
 			and is_equal_approx(slider.max_value, Settings.CAMERA_ZOOM_MAX),
-		"%s..%s" % [slider.min_value if slider else "?", slider.max_value if slider else "?"])
+		"%s..%s" % [str(slider.min_value) if slider else "?", str(slider.max_value) if slider else "?"])
 	var hue_slider: Range = opts.get_node_or_null("%namehue") as Range
 	check("whose range is the whole hue wheel",
 		hue_slider != null and is_equal_approx(hue_slider.min_value, Settings.NAME_HUE_MIN)
@@ -21510,7 +21774,7 @@ func _test_staff_panel() -> void:
 	check("and loads as a texture", crown_art != null)
 	check("at the size the chat tag and the plate both assume",
 		crown_art != null and crown_art.get_width() == 26 and crown_art.get_height() == 15,
-		crown_art.get_size() if crown_art else "none")
+		str(crown_art.get_size()) if crown_art else "none")
 	check("only the owner wears it", body.NAMEPLATE_CROWN_RANK == "owner",
 		body.NAMEPLATE_CROWN_RANK)
 	check("the nameplate and every list agree on the art and on who wears it",
@@ -21572,8 +21836,8 @@ func _test_staff_panel() -> void:
 		Api.name_hue_to_push())
 	Api.set("_synced_name_hue", was_synced)
 	var api_src: String = _code_only(FileAccess.get_file_as_string("res://src/systems/api.gd"))
-	var fn := func(name: String) -> Array:
-		var at: int = _first_code_index(api_src, "func %s(" % name, 0)
+	var fn := func(fn_name: String) -> Array:
+		var at: int = _first_code_index(api_src, "func %s(" % fn_name, 0)
 		return [at, _first_code_index(api_src, "\nfunc ", at + 1)]
 	var span: Array = fn.call("adopt_name_hue")
 	check("the server's colour wins at login: it is written into Settings",
@@ -23195,7 +23459,7 @@ func _test_slots_wear_the_hotbar_socket() -> void:
 	var hot_style: StyleBoxTexture = trash.get_theme_stylebox("panel") as StyleBoxTexture
 	check("the glow is really a different look, not the same socket",
 		hot_style != null and idle_style != hot_style and hot_style.modulate_color != Color.WHITE,
-		hot_style.modulate_color if hot_style != null else null)
+		str(hot_style.modulate_color) if hot_style != null else "no style")
 
 	trash.notification(Control.NOTIFICATION_DRAG_END)
 	check("and goes out when the drag ends", not trash.is_hot())
@@ -23697,7 +23961,7 @@ func _test_notices_fade_and_login_is_quiet() -> void:
 	hud._age_messages(shown + show_ms - 1)
 	check("it is fully there until its time is up",
 		rows.get_child_count() == 1 and is_equal_approx(line.modulate.a, 1.0) and box.visible)
-	hud._age_messages(shown + show_ms + fade_ms / 2)
+	hud._age_messages(shown + show_ms + floori(fade_ms / 2.0))
 	check("then it fades", line.modulate.a > 0.2 and line.modulate.a < 0.8, line.modulate.a)
 	hud._age_messages(shown + show_ms + fade_ms + 1)
 	check("THEN IT IS GONE", rows.get_child_count() == 0, rows.get_child_count())
@@ -25890,20 +26154,20 @@ func _test_a_kill_waits_for_the_servers_receipt() -> void:
 	var pending := {"ok": true, "status": 202, "data": {"pending": true, "retry_after_ms": 100,
 		"message": "The server has not finished counting that fight yet."}}
 	check("a 202 that says pending is the server's \"not yet\" - nothing else is",
-		Combat._receipt_pending(pending)
-		and not Combat._receipt_pending({"ok": true, "status": 200, "data": {"pending": true}})
-		and not Combat._receipt_pending({"ok": true, "status": 202, "data": {}})
-		and not Combat._receipt_pending({"ok": false, "status": 409, "data": {"pending": true}}))
-	var pause_of := func(asked: Variant) -> int:
-		return Combat.receipt_pause_ms({"ok": true, "status": 202, "data": {"pending": true, "retry_after_ms": asked}})
+		_CombatCode._receipt_pending(pending)
+		and not _CombatCode._receipt_pending({"ok": true, "status": 200, "data": {"pending": true}})
+		and not _CombatCode._receipt_pending({"ok": true, "status": 202, "data": {}})
+		and not _CombatCode._receipt_pending({"ok": false, "status": 409, "data": {"pending": true}}))
+	var pause_of := func(retry_ms: Variant) -> int:
+		return _CombatCode.receipt_pause_ms({"ok": true, "status": 202, "data": {"pending": true, "retry_after_ms": retry_ms}})
 	check("  asked again after the pause the server names, held to 100..2000 ms",
 		pause_of.call(400) == 400 and pause_of.call(5) == Combat.RECEIPT_RETRY_LEAST_MS
 		and pause_of.call(99999) == Combat.RECEIPT_RETRY_MOST_MS and pause_of.call("soon") == 400
 		and pause_of.call(650.0) == 650, [pause_of.call(5), pause_of.call(99999), pause_of.call("soon")])
 	check("  and when it gives up, it says why it most likely was",
-		Combat.receipt_gave_up_text("off").contains("No live link")
-		and Combat.receipt_gave_up_text("waiting").contains("No live link")
-		and Combat.receipt_gave_up_text("open").contains("did not see that fight"))
+		_CombatCode.receipt_gave_up_text("off").contains("No live link")
+		and _CombatCode.receipt_gave_up_text("waiting").contains("No live link")
+		and _CombatCode.receipt_gave_up_text("open").contains("did not see that fight"))
 	check("  every kill is posted through the seam, so these checks drive the real loop",
 		not _func_body(_code_src("res://src/systems/combat.gd"), "func report_kill(").contains("Api.post("))
 
@@ -25960,7 +26224,7 @@ func _test_a_kill_waits_for_the_servers_receipt() -> void:
 	var said: Array = killer.get("notices") as Array
 	check("pending past the wait: it gives up, says so, and pays nothing",
 		asked >= 2 and asked <= 6 and int(killer.get("xp")) == kept_xp and said.size() == 1
-		and str(said[0]) == Combat.receipt_gave_up_text(Presence.phase()), [asked, killer.get("xp"), said])
+		and str(said[0]) == _CombatCode.receipt_gave_up_text(Presence.phase()), [asked, killer.get("xp"), said])
 	check("  and it stops asking", posts.size() == asked, [asked, posts.size()])
 
 	posts.clear()
@@ -26168,11 +26432,11 @@ func _test_trades_reach_the_right_people() -> void:
 	check("who it is with: their character, in the colour they chose",
 		name_label != null and name_label.text == "Bram"
 		and name_label.get_theme_color("font_color") == NameTag.colour(200),
-		name_label.text if name_label else null)
+		name_label.text if name_label else "no label")
 	check("with their rank as a badge", panel.with_row.get_node_or_null("badge") != null)
 	var detail: Label = panel.with_row.get_node_or_null("detail") as Label
 	check("and their account and level", detail != null and detail.text == "(bob) · lv 7",
-		detail.text if detail else null)
+		detail.text if detail else "no detail")
 	var dot: TextureRect = panel.with_row.get_node_or_null("presence") as TextureRect
 	check("with a presence dot", dot != null and dot.get_meta("mark", "") == "online")
 	var their_row: Node = panel.them_list.get_node_or_null("item_ironsword")
@@ -26180,7 +26444,7 @@ func _test_trades_reach_the_right_people() -> void:
 		their_row != null and their_row.get_node_or_null("icon") != null
 		and (their_row.get_node("icon") as Control).custom_minimum_size == TradePanel.ICON_SIZE)
 	var qty: Label = their_row.get_node_or_null("quantity") as Label if their_row else null
-	check("and its quantity", qty != null and qty.text == "x2", qty.text if qty else null)
+	check("and its quantity", qty != null and qty.text == "x2", qty.text if qty else "no quantity")
 	check("and its tooltip says what it is", their_row != null
 		and str((their_row as Control).tooltip_text).length() > 0)
 	check("the Decline button is only for the asked; the opener gets Cancel trade",
@@ -27008,13 +27272,13 @@ func _test_the_world_loads_in_the_background() -> void:
 			if not file_name.ends_with(".gd") or file_name in ["testrunner.gd", "arearegistry.gd"]:
 				continue
 			var code: String = _code_only(FileAccess.get_file_as_string(dir_path + "/" + file_name))
-			for call in ["load(", "preload(", "change_scene_to_file(", "load_threaded_request("]:
-				var at: int = code.find(call)
+			for call_text in ["load(", "preload(", "change_scene_to_file(", "load_threaded_request("]:
+				var at: int = code.find(call_text)
 				while at != -1:
-					var arg: String = code.substr(at + call.length(), 48).split(")")[0].strip_edges()
+					var arg: String = code.substr(at + call_text.length(), 48).split(")")[0].strip_edges()
 					if arg in ["destination_scene_path", "world_scene_path"] or area_literals.has(arg):
-						offenders.append("%s: %s%s)" % [file_name, call, arg])
-					at = code.find(call, at + 1)
+						offenders.append("%s: %s%s)" % [file_name, call_text, arg])
+					at = code.find(call_text, at + 1)
 	check("no script loads an area by path behind the registry's back", offenders.is_empty(), offenders)
 	for door in ["res://src/world/ladder.gd", "res://src/world/victoryteleporter.gd",
 			"res://src/ui/menus/gameover.gd"]:
@@ -27046,7 +27310,7 @@ func _rarity_test_item(item_id: String, tier: int, type: int = ItemData.Type.ARM
 	d.item_id = item_id
 	d.display_name = "Test %s" % item_id
 	d.tier = tier
-	d.type = type
+	d.type = type as ItemData.Type
 	d.max_stack = 99
 	d.stackable = true
 	return d
@@ -29035,7 +29299,7 @@ func _test_bosses_hit_for_their_band() -> void:
 		check("  its stalker's trail drops %s pillars for %d" % [Element.name_for(boss.current_element()), trail_scaled],
 			pillar != null and int(pillar.damage) == trail_scaled
 			and int(pillar.element) == boss.current_element(),
-			[pillar.damage, pillar.element] if pillar != null else "no pillar")
+			str([pillar.damage, pillar.element]) if pillar != null else "no pillar")
 		if pillar != null:
 			pillar.free()
 		stalker.free()
@@ -29070,7 +29334,7 @@ func _gear_test_item(item_id: String, slot: int, fields: Dictionary) -> ItemData
 	var d := ItemData.new()
 	d.item_id = item_id
 	d.display_name = item_id.capitalize()
-	d.equip_slot = slot
+	d.equip_slot = slot as ItemData.EquipSlot
 	for f in fields:
 		d.set(f, fields[f])
 	return d
@@ -29376,7 +29640,7 @@ func _test_the_sweep_wiring() -> void:
 
 	# ---- passwords: one rule ------------------------------------------------
 	check("a password's surrounding spaces are not part of it",
-		Api.clean_password("  hunter2hunter2 ") == "hunter2hunter2")
+		ApiForTests.clean_password("  hunter2hunter2 ") == "hunter2hunter2")
 	var raw_fields: Array = []
 	for path in ["res://src/ui/menus/loginmenu.gd", "res://src/ui/menus/optionsscreen.gd"]:
 		for line in _code_src(path).split("\n"):
@@ -29433,11 +29697,11 @@ func _test_the_sweep_wiring() -> void:
 	var was_current: int = Api.server_current_build
 	Api.server_min_build = 0
 	Api.server_current_build = Api.BUILD
-	var current_note: String = Api.build_notice()
+	var current_note: String = ApiForTests.build_notice()
 	Api.server_current_build = Api.BUILD + 1
-	var newer_note: String = Api.build_notice()
+	var newer_note: String = ApiForTests.build_notice()
 	Api.server_min_build = Api.BUILD + 1
-	var refused_note: String = Api.build_notice()
+	var refused_note: String = ApiForTests.build_notice()
 	Api.server_min_build = was_min
 	Api.server_current_build = was_current
 	check("a current build says nothing", current_note == "", current_note)
@@ -29674,12 +29938,12 @@ func _test_the_browser_build() -> void:
 
 	# ---- one address -------------------------------------------------------------
 	check("a page's origin is the API's address",
-		Api.web_base_url("https://play.example.com") == "https://play.example.com"
-		and Api.web_base_url("http://localhost:8060/") == "http://localhost:8060",
-		Api.web_base_url("http://localhost:8060/"))
+		ApiForTests.web_base_url("https://play.example.com") == "https://play.example.com"
+		and ApiForTests.web_base_url("http://localhost:8060/") == "http://localhost:8060",
+		ApiForTests.web_base_url("http://localhost:8060/"))
 	check("  and a page from disk (origin \"null\") or no page at all is no address",
-		Api.web_base_url("null") == "" and Api.web_base_url("") == ""
-		and Api.web_base_url("file://") == "")
+		ApiForTests.web_base_url("null") == "" and ApiForTests.web_base_url("") == ""
+		and ApiForTests.web_base_url("file://") == "")
 	var api_code := _code_src("res://src/systems/api.gd")
 	var resolve := _func_body(api_code, "static func _resolve_base_url()")
 	check("  asked for first in a browser, before any override that cannot work there",
@@ -29815,7 +30079,7 @@ func _test_the_browser_build() -> void:
 
 	# ---- nothing loads ahead where it would be the wait itself -------------------
 	check("this build loads areas in the background (a desktop build has threads)",
-		AreaRegistry.loads_in_background())
+		_AreaRegistryCode.loads_in_background())
 	var ar_code := _code_src("res://src/systems/arearegistry.gd")
 	var prefetch_body := _func_body(ar_code, "func prefetch(")
 	check("  a build without threads asks for nothing ahead - there the request IS the load",
@@ -30096,7 +30360,7 @@ func _test_game_keys_are_not_menu_keys() -> void:
 	press.call(KEY_D)
 	check("without it, S walks the focus down the column, Space presses the button, D turns the slider",
 		moved_to == second and presses[0] == 1 and slider.value > 0.5,
-		[moved_to.name if moved_to else "nobody", presses[0], slider.value])
+		[str(moved_to.name) if moved_to else "nobody", presses[0], slider.value])
 
 	# ---- WITH IT ----
 	var watcher := Node.new()
@@ -30168,8 +30432,8 @@ func _test_staff_logins_take_a_code() -> void:
 	var logged_in := {"ok": true, "status": 200, "error": "", "data": {"token": "t", "username": "boss"}}
 	var wrong_password := {"ok": false, "status": 401, "error": "Incorrect username or password.", "data": {}}
 	check("the first step (202) and a wrong code (400) are the code step; a login and a 401 are not",
-		Api.needs_login_code(first_step) and Api.needs_login_code(wrong_code)
-		and not Api.needs_login_code(logged_in) and not Api.needs_login_code(wrong_password))
+		ApiForTests.needs_login_code(first_step) and ApiForTests.needs_login_code(wrong_code)
+		and not ApiForTests.needs_login_code(logged_in) and not ApiForTests.needs_login_code(wrong_password))
 	var api_login := _func_body(_code_src("res://src/systems/api.gd"), "func login(")
 	check("Api.login sends the code, and never adopts a 202 - a 2xx with no token",
 		api_login.contains("body[\"code\"] = code")
@@ -30543,8 +30807,11 @@ func _test_whispers_reach_you() -> void:
 	var rows: Control = hud.message_rows
 	var chat_button: Button = hud.get_node("%chatbutton") as Button
 	var news := func(whisper_id: int, who: String, body: String, at: int, guild: int) -> Dictionary:
+		var whisper: Variant = null
+		if whisper_id > 0:
+			whisper = {"id": whisper_id, "from": who, "body": body, "at": at}
 		return {"latest_id": 0, "messages": [], "chat_news": {
-			"whisper": {"id": whisper_id, "from": who, "body": body, "at": at} if whisper_id > 0 else null,
+			"whisper": whisper,
 			"guild": guild, "friends": 0}}
 
 	hud._apply_broadcast(news.call(7, "yesterday", "old news", now - 3600, 3))
@@ -30848,9 +31115,9 @@ func _test_one_game_per_account() -> void:
 		"data": {"error": "Unauthorized", "signed_in_elsewhere": true}}
 	var kicked := {"ok": false, "status": 401, "error": "", "data": {"error": "Unauthorized"}}
 	check("a 401 marked signed_in_elsewhere reads as another login, not a kick",
-		Api.signout_notice_for(elsewhere) == Api.SIGNED_IN_ELSEWHERE_NOTICE
-		and Api.signout_notice_for(kicked) == Api.SIGNED_OUT_NOTICE
-		and Api.signout_notice_for({}) == Api.SIGNED_OUT_NOTICE)
+		ApiForTests.signout_notice_for(elsewhere) == Api.SIGNED_IN_ELSEWHERE_NOTICE
+		and ApiForTests.signout_notice_for(kicked) == Api.SIGNED_OUT_NOTICE
+		and ApiForTests.signout_notice_for({}) == Api.SIGNED_OUT_NOTICE)
 
 	var api_src: String = _code_src("res://src/systems/api.gd")
 	var probe: String = _func_body(api_src, "func probe_and_resume(")
@@ -32318,10 +32585,10 @@ func _test_the_mythic_weapons() -> void:
 		d.advance(Dynamite.FLIGHT_SECONDS + 0.01)
 		return d
 	var first: Dynamite = lay.call(chain_at)
-	var second: Dynamite = lay.call(chain_at + Vector2(Dynamite.CHAIN_RADIUS - 2.0, 0))
+	var chained_stick: Dynamite = lay.call(chain_at + Vector2(Dynamite.CHAIN_RADIUS - 2.0, 0))
 	var far_one: Dynamite = lay.call(chain_at + Vector2(Dynamite.CHAIN_RADIUS * 2.0 + 10.0, 0))
 	var by_first: CharacterBody2D = _weapon_dummy(arena, chain_at + Vector2(-15, 0))
-	var by_second: CharacterBody2D = _weapon_dummy(arena, second.global_position + Vector2(15, 0))
+	var by_second: CharacterBody2D = _weapon_dummy(arena, chained_stick.global_position + Vector2(15, 0))
 	var by_far: CharacterBody2D = _weapon_dummy(arena, far_one.global_position + Vector2(15, 0))
 	var in_air: Dynamite = (load("res://scene/projectiles/dynamite.tscn") as PackedScene).instantiate()
 	in_air.explosion_damage = 40
@@ -32332,19 +32599,19 @@ func _test_the_mythic_weapons() -> void:
 	for i in 4:
 		await get_tree().physics_frame
 	check("three sticks lie lit, a fourth is in the air",
-		[first, second, far_one].all(func(d: Dynamite) -> bool: return d.state == Dynamite.State.FUSE)
+		[first, chained_stick, far_one].all(func(d: Dynamite) -> bool: return d.state == Dynamite.State.FUSE)
 		and in_air.state == Dynamite.State.FLYING)
 	first.explode()
 	check("one goes off and hits what it reaches, as ever", first.exploded and by_first.taken == [40], by_first.taken)
 	check("  and sets off the lit stick beside it - not at once, a beat later",
-		second.chained and not second.exploded and by_second.taken.is_empty())
+		chained_stick.chained and not chained_stick.exploded and by_second.taken.is_empty())
 	check("  but not the stick further away", not far_one.chained, far_one.global_position - chain_at)
 	check("  nor the one still in the air", not in_air.chained)
-	second.advance(Dynamite.CHAIN_DELAY + 0.01)
+	chained_stick.advance(Dynamite.CHAIN_DELAY + 0.01)
 	check("the chained stick goes off, CHAIN_BONUS harder",
-		second.exploded and by_second.taken == [roundi(40 * (1.0 + Dynamite.CHAIN_BONUS))], by_second.taken)
+		chained_stick.exploded and by_second.taken == [roundi(40 * (1.0 + Dynamite.CHAIN_BONUS))], by_second.taken)
 	check("  and what is beyond its reach is still untouched", not far_one.exploded and by_far.taken.is_empty(), by_far.taken)
-	second.set_off()
+	chained_stick.set_off()
 	check("a stick already gone cannot be set off again", by_second.taken.size() == 1)
 	var tank_scene: Node = (load("res://scene/characters/tank.tscn") as PackedScene).instantiate()
 	check("the fuse outlasts a throw, so the next stick at one spot lands while the last still burns",
@@ -32464,10 +32731,10 @@ func _test_the_mythic_weapons() -> void:
 	(bundle[0] as Dynamite).explode()
 	for d in bundle.slice(1):
 		(d as Dynamite).advance(Dynamite.CHAIN_DELAY + 0.01)
-	var want: Array = [bundle[0].explosion_damage,
+	var expected_bites: Array = [bundle[0].explosion_damage,
 		roundi(bundle[1].explosion_damage * (1.0 + Dynamite.CHAIN_BONUS)), roundi(bundle[2].explosion_damage * (1.0 + Dynamite.CHAIN_BONUS))]
 	check("  the first sets off the other two, and what stands in the middle is hit by all three, two of them chained",
-		middle.taken == want, [middle.taken, want])
+		middle.taken == expected_bites, [middle.taken, expected_bites])
 	middle.queue_free()
 
 	# THE BARRAGE: five, in a wider ring, still going up as one.
@@ -33617,7 +33884,7 @@ func _test_the_bullet_zone_is_shared() -> void:
 			lobs2.append(child)
 	check("a follower's large slime lobs the mortar where the leader's landed (0.25.0)",
 		lobs2.size() == 1 and (lobs2[0] as BulletLob).to.distance_to(Vector2(-20200, -19850)) < 0.5,
-		[lobs2.size(), (lobs2[0] as BulletLob).to if lobs2.size() > 0 else null])
+		[lobs2.size(), str((lobs2[0] as BulletLob).to) if lobs2.size() > 0 else "none"])
 	for l in lobs2:
 		l.free()
 	sync2.apply_world({"ev": [{"k": "b", "id": 9, "x": -20200.0, "y": -20000.0, "a": 0.0, "v": "mortar", "r": 99999.0}]})
@@ -33627,7 +33894,7 @@ func _test_the_bullet_zone_is_shared() -> void:
 			far_lob = child
 	check("  no further than its own range, whatever the reach says",
 		far_lob != null and is_equal_approx(far_lob.to.x - (-20200.0), float(slime.get("MORTAR_REACH_MAX"))),
-		far_lob.to if far_lob != null else null)
+		str(far_lob.to) if far_lob != null else "none")
 	if far_lob != null:
 		far_lob.free()
 	zone2.field.clear()

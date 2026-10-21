@@ -3025,7 +3025,7 @@
 				{
 					"e": "bushmage",
 					"gated": false,
-					"leash": 1500.0,
+					"leash": 400.0,
 					"o": "bushmage",
 					"x": 1403.0,
 					"y": 891.0
@@ -3041,7 +3041,7 @@
 				{
 					"e": "darkbushmage",
 					"gated": false,
-					"leash": 1500.0,
+					"leash": 400.0,
 					"o": "ysortworld/enemies/darkbushmage",
 					"x": 256.0,
 					"y": 847.0
@@ -3121,7 +3121,7 @@
 				{
 					"e": "firebushmage",
 					"gated": false,
-					"leash": 1500.0,
+					"leash": 400.0,
 					"o": "ysortworld/enemies/firebushmage",
 					"x": 1298.0,
 					"y": 63.0
@@ -3137,7 +3137,7 @@
 				{
 					"e": "icebushmage",
 					"gated": false,
-					"leash": 1500.0,
+					"leash": 400.0,
 					"o": "ysortworld/enemies/icebushmage",
 					"x": 1334.0,
 					"y": 153.0
@@ -3177,7 +3177,7 @@
 				{
 					"e": "lightbushmage",
 					"gated": false,
-					"leash": 1500.0,
+					"leash": 400.0,
 					"o": "ysortworld/enemies/lightbushmage",
 					"x": 300.0,
 					"y": 71.0
@@ -3225,7 +3225,7 @@
 				{
 					"e": "waterbushmage",
 					"gated": false,
-					"leash": 1500.0,
+					"leash": 400.0,
 					"o": "ysortworld/enemies/waterbushmage",
 					"x": 1307.0,
 					"y": 683.0
@@ -3265,7 +3265,7 @@
 				{
 					"e": "windbushmage",
 					"gated": false,
-					"leash": 1500.0,
+					"leash": 400.0,
 					"o": "ysortworld/enemies/windbushmage",
 					"x": 967.0,
 					"y": 870.0
@@ -5317,7 +5317,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1792536321,
+	"generated_at": 1792551695,
 	"items": [
 		{
 			"armor_value": 6,

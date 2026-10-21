@@ -229,8 +229,7 @@ func _build_copy(source: int, spots: Array[Vector2] = []) -> void:
 			far = false
 			break
 	if far:
-		enemy.process_mode = Node.PROCESS_MODE_DISABLED
-		enemy.set_meta(&"asleep", true)
+		EnemySleeperScript.put_to_sleep(enemy)
 	# Before add_child(): BaseEnemy._ready() reads its spot as home.
 	enemy.position = parent.to_local(spot)
 	parent.add_child(enemy)

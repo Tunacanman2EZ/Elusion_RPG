@@ -1452,7 +1452,13 @@ func show_resting_help() -> void:
 		if name_label == null:
 			continue
 		if not _name_colours.has(key):
-			_name_colours[key] = name_label.get_theme_color("font_color") if name_label.has_theme_color_override("font_color") else null
+			# null when the scene gave the name no colour of its own. An if, not
+			# a one-line `x if y else null`: a Color and a null are not one type,
+			# and the 4.7 editor warns on that (INCOMPATIBLE_TERNARY).
+			var drawn_in: Variant = null
+			if name_label.has_theme_color_override("font_color"):
+				drawn_in = name_label.get_theme_color("font_color")
+			_name_colours[key] = drawn_in
 		if marked.has(key):
 			name_label.add_theme_color_override("font_color", HELP_WARNING_COLOUR)
 		elif _name_colours[key] == null:

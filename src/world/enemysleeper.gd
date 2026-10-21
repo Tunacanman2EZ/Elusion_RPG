@@ -21,6 +21,29 @@
 #
 # TWO DISTANCES, so an enemy at the edge does not flick between asleep and
 # awake on every check as the player shuffles about.
+#
+# AND OUT OF THE PICTURE (0.66.0). A sleeper is 1,100 px or more from every
+# player, and the widest view the camera gives is 640 px across - it is never
+# on anybody's screen. Hidden, the renderer stops sorting and culling its five
+# or so pictures every frame, which in the Big Field at 4x is 1,100 monsters'
+# worth. Woken, it is shown again as it was (a monster something else had
+# hidden stays hidden).
+#
+# A JUMP IS LOOKED AT THE SAME FRAME. Four times a second is plenty for a
+# player walking, but a player put somewhere new (a door, a portal inside the
+# area) could arrive among hidden monsters and watch them pop in a quarter
+# second later. So when this game's player has moved more than JUMP_DISTANCE
+# since the last frame - further than any walk or dash covers in one - the
+# check runs at once, before that frame is drawn.
+#
+# AND THE NEAR ONES DOZE (0.66.0). Awake is not the same as busy: in the Big
+# Field at 4x, 700 of the 790 awake monsters round one player were standing
+# at home with nobody in reach, and their brains were still 2.7 ms of each
+# 9 ms physics tick. Each pass, a monster at home that is not after anybody
+# and has nobody within its notice_reach() + DOZE_MARGIN is set dozing
+# (BaseEnemy.dozing) and skips its brain until the next pass. A player can
+# not cover DOZE_MARGIN in a pass, so nothing is noticed any later than it
+# was; a hit, a walk home or any movement rouses it on the spot.
 extends Node
 
 const Targets := preload("res://src/shared/targets.gd")
@@ -28,6 +51,9 @@ const Targets := preload("res://src/shared/targets.gd")
 const SLEEP_DISTANCE := 1100.0
 const WAKE_DISTANCE := 900.0
 const CHECK_SECONDS := 0.25
+const JUMP_DISTANCE := 150.0
+# Further than any player walks or dashes between two passes.
+const DOZE_MARGIN := 150.0
 const NODE_NAME := "enemysleeper"
 
 # Off wakes everyone at once and leaves them awake. For measuring, and an
@@ -39,6 +65,8 @@ var enabled: bool = true:
 			_wake_all()
 
 var _left: float = 0.0
+var _seen_at: Vector2 = Vector2.ZERO
+var _seen: bool = false
 
 
 static func add_to(scene: Node) -> Node:
@@ -50,10 +78,24 @@ static func add_to(scene: Node) -> Node:
 
 func _process(delta: float) -> void:
 	_left -= delta
-	if _left > 0.0:
+	if _left > 0.0 and not player_jumped():
 		return
 	_left = CHECK_SECONDS
 	check_now()
+
+
+func player_jumped() -> bool:
+	"""True when this game's player is further than JUMP_DISTANCE from where it
+	stood the last time this asked - see A JUMP IS LOOKED AT THE SAME FRAME."""
+	var player := get_tree().get_first_node_in_group("player") as Node2D
+	if player == null:
+		_seen = false
+		return false
+	var at: Vector2 = player.global_position
+	var jumped: bool = _seen and at.distance_to(_seen_at) > JUMP_DISTANCE
+	_seen_at = at
+	_seen = true
+	return jumped
 
 
 func check_now() -> int:
@@ -84,13 +126,24 @@ func check_now() -> int:
 		var sleeping: bool = enemy.has_meta(&"asleep")
 		if sleeping and far <= WAKE_DISTANCE:
 			_wake(enemy)
+			sleeping = false
 		elif not sleeping and far > SLEEP_DISTANCE:
-			enemy.process_mode = Node.PROCESS_MODE_DISABLED
-			enemy.set_meta(&"asleep", true)
+			put_to_sleep(enemy)
+			sleeping = true
+		if sleeping:
 			asleep += 1
-		elif sleeping:
-			asleep += 1
+		else:
+			doze_or_rouse(enemy, far)
 	return asleep
+
+
+static func doze_or_rouse(enemy: Node, far: float) -> void:
+	"""AND THE NEAR ONES DOZE: `far` is how far the nearest player is."""
+	var monster := enemy as BaseEnemy
+	if monster == null:
+		return
+	monster.dozing = not monster.engaged and not monster.is_returning_home \
+		and far > monster.notice_reach() + DOZE_MARGIN
 
 
 static func _never_sleeps(enemy: Node) -> bool:
@@ -100,9 +153,24 @@ static func _never_sleeps(enemy: Node) -> bool:
 	return enemy.is_in_group("unpushable")
 
 
+static func put_to_sleep(enemy: Node) -> void:
+	"""Stops it thinking and takes it out of the picture - see AND OUT OF THE
+	PICTURE above. Remembers whether it was shown, for waking."""
+	enemy.process_mode = Node.PROCESS_MODE_DISABLED
+	enemy.set_meta(&"asleep", true)
+	var item := enemy as CanvasItem
+	if item != null:
+		enemy.set_meta(&"asleep_shown", item.visible)
+		item.visible = false
+
+
 func _wake(enemy: Node) -> void:
 	enemy.process_mode = Node.PROCESS_MODE_INHERIT
 	enemy.remove_meta(&"asleep")
+	var item := enemy as CanvasItem
+	if item != null and enemy.has_meta(&"asleep_shown"):
+		item.visible = bool(enemy.get_meta(&"asleep_shown"))
+		enemy.remove_meta(&"asleep_shown")
 
 
 func _wake_all() -> void:
@@ -111,3 +179,5 @@ func _wake_all() -> void:
 	for node in get_tree().get_nodes_in_group("enemies"):
 		if node.has_meta(&"asleep"):
 			_wake(node)
+		if node is BaseEnemy:
+			(node as BaseEnemy).dozing = false

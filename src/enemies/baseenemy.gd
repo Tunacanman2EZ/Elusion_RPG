@@ -431,9 +431,26 @@ var _walk_facing: String = "down"
 var spawn_position: Vector2 = Vector2.ZERO
 var is_returning_home: bool = false
 
+# DOZING (0.66.0). Set by enemysleeper.gd on a monster standing at home with
+# nobody within notice_reach() + DOZE_MARGIN of it: nobody it could notice
+# before the sleeper looks again, so it need not think until then. The owner's
+# 4x stress test had about 700 such monsters awake round one player, and their
+# brains were 2.7 ms of a 9 ms physics tick. Anything that would make it act -
+# being hit (engaged), walking home, moving at all - rouses it that tick; see
+# _dozes(). Its picture, animation, ring and collision are untouched.
+var dozing: bool = false
+
 # AFTER SOMEONE (0.30.0): set when its target comes within notice_reach() or it
 # is hit, cleared when the target is past leash_range. See keep_after().
-var engaged: bool = false
+# THE RING HEARS AT ONCE (0.66.0): a monster not after anybody looks at its
+# ring only a few times a second, so the moment it turns, it says so.
+var engaged: bool = false:
+	set(value):
+		if value == engaged:
+			return
+		engaged = value
+		if _threat_ring != null:
+			_threat_ring.look_now()
 
 # Latched while backing away, so the retreat runs to a real distance instead of
 # stopping the instant flee_range is crossed. See _handle_combat().
@@ -501,6 +518,8 @@ func _physics_process(_delta: float) -> void:
 	if net_mirror:
 		_net_follow(_delta)
 		return
+	if _dozes():
+		return
 
 	# HELD BEHIND A GATE: no chase, no attack, no drift. Before the player
 	# lookup, because a gated boss has no business resolving a target - it
@@ -527,7 +546,7 @@ func _physics_process(_delta: float) -> void:
 		# Frozen mid-attack, EXCEPT for easing out from under the player. The
 		# attack is not interrupted; see _standoff_velocity().
 		velocity = _standoff_velocity()
-		move_and_slide()
+		_slide()
 		return
 
 	var dist_to_player: float = global_position.distance_to(player.global_position)
@@ -552,6 +571,17 @@ func _physics_process(_delta: float) -> void:
 
 	is_returning_home = false
 	_handle_combat(dist_to_player)
+
+
+func _dozes() -> bool:
+	"""True while this monster dozes (see DOZING) and nothing has roused it.
+	First thing every tick, in BushMage's own brain too."""
+	if not dozing:
+		return false
+	if engaged or is_returning_home or is_attacking or velocity != Vector2.ZERO:
+		dozing = false
+		return false
+	return true
 
 
 func notice_reach() -> float:
@@ -827,6 +857,39 @@ const STANDOFF_SPEED := 40.0
 # whenever they are not actually overlapping, which is almost always - so every
 # "hold position" site below can use it unconditionally in place of
 # Vector2.ZERO and behave exactly as it did before when there is no overlap.
+# STANDING STILL IS NEARLY FREE (0.66.0). Every move in this file goes through
+# _slide(), not move_and_slide() itself. A monster with somewhere to go moves
+# exactly as before. One with no velocity - parked on its slot waiting for its
+# next swing, which in a big fight is most of them - still asks the physics
+# server for a slide, but only every STILL_SLIDE_SECONDS rather than every frame.
+#
+# Why that is safe: a slide with no velocity moves nothing. All it can do is
+# ease the body out of something it is already overlapping (another monster
+# spawned beside it, a split slime landing on it), and that still happens - a
+# few times a second instead of sixty. Bodies that walk INTO a parked monster
+# are stopped by their own slide, as they always were.
+#
+# Why it matters: four times the Big Field (0.65.0) is several hundred monsters
+# round one player, and the bench measured physics at about 12 ms a frame with
+# every one of them sliding and 9.6 ms with the parked ones skipping.
+const STILL_SLIDE_SECONDS := 0.2
+var _still_slide_in: float = 0.0
+
+
+func _slide() -> void:
+	if velocity != Vector2.ZERO:
+		# Moving: a slide every frame. Zeroed so the first still frame after
+		# it slides too, settling the body where it stopped.
+		_still_slide_in = 0.0
+		move_and_slide()
+		return
+	_still_slide_in -= get_physics_process_delta_time()
+	if _still_slide_in > 0.0:
+		return
+	_still_slide_in = STILL_SLIDE_SECONDS
+	move_and_slide()
+
+
 func _standoff_velocity() -> Vector2:
 	if not is_instance_valid(player):
 		return Vector2.ZERO
@@ -1913,7 +1976,7 @@ func _handle_combat(dist_to_player: float) -> void:
 		# instead of reversing into its own back line and stopping dead.
 		var flee_dir: String = _steered_direction_to(flee_target)
 		velocity = _vec_from_dir(flee_dir) * get_flee_speed() * stir_speed()
-		move_and_slide()
+		_slide()
 		_walk_facing = Facing.from_vec_stable(flee_target - global_position, _walk_facing)
 		play_walk_animation(_walk_facing)
 		_record_nav_movement_result(flee_pos_before)
@@ -1945,7 +2008,7 @@ func _handle_combat(dist_to_player: float) -> void:
 			_chase_slot()
 			return
 		velocity = _standoff_velocity()
-		move_and_slide()
+		_slide()
 		if attack_ready:
 			_trigger_attack()
 		else:
@@ -1975,7 +2038,7 @@ func _chase_slot() -> void:
 	# animation-flip jitter at close range.
 	if global_position.distance_to(slot_target) < SLOT_ARRIVAL_THRESHOLD:
 		velocity = _standoff_velocity()
-		move_and_slide()
+		_slide()
 		play_idle_animation(attack_direction)
 		return
 
@@ -1985,7 +2048,7 @@ func _chase_slot() -> void:
 	# identical heading, so an enemy chasing alone behaves exactly as before.
 	var to_player: String = _steered_direction_to(slot_target)
 	velocity = _vec_from_dir(to_player) * get_move_speed() * stir_speed()
-	move_and_slide()
+	_slide()
 	# MOVE by the nav heading, FACE toward the target. The nav heading flips axis
 	# frame to frame on a diagonal (that is the "flipping"); the vector to the
 	# slot is steady, and the hysteresis keeps even a slow pass through 45 degrees
@@ -2064,7 +2127,7 @@ func _handle_return_home() -> void:
 		# there was never a reason for the walk home to have its own worse copy.
 		var return_dir: String = _get_direction_to_point_via_navigation(spawn_position)
 		velocity = _vec_from_dir(return_dir) * get_move_speed() * stir_speed()
-		move_and_slide()
+		_slide()
 		_walk_facing = Facing.from_vec_stable(spawn_position - global_position, _walk_facing)
 		play_walk_animation(_walk_facing)
 	else:
@@ -2219,14 +2282,36 @@ func _apply_element_recolour() -> void:
 	sprite.material = element_material(enemy_data, current_element())
 
 
+# ONE MATERIAL PER KIND AND ELEMENT (0.66.0), not one per monster. Every
+# monster used to make its own, so no two monsters' pictures could be drawn in
+# one go - and the Big Field at 4x has 1,470 of them. A creature's recolour is
+# decided by its profile and its element alone, and nothing writes to it after
+# (the hit flash, the death burst and the projectile dimming all use materials
+# of their own), so every lightsprite of one element can wear the same one.
+# Keyed by the profile itself and the element.
+static var _element_materials: Dictionary = {}
+
+
 static func element_material(data: EnemyData, element: int) -> ShaderMaterial:
-	"""The recolour a creature of `data` wears for `element`. Static so the
-	Kills window can draw a creature's picture the colour it is in the world
-	without one being alive (EnemyPortraits)."""
-	# A FRESH MATERIAL PER ENEMY, for the same reason slashwave.gd builds a
-	# fresh shape: a Material is a Resource, and one shared between instances
-	# would mean the last slime to spawn decided the colour of every slime
-	# already on screen.
+	"""The recolour a creature of `data` wears for `element`, shared by every
+	creature of that profile and element. Static so the Kills window can draw a
+	creature's picture the colour it is in the world without one being alive
+	(EnemyPortraits)."""
+	var key: String = "%d:%d" % [data.get_instance_id() if data != null else 0, element]
+	var known: ShaderMaterial = _element_materials.get(key) as ShaderMaterial
+	if known != null:
+		return known
+	var mat := _new_element_material(data, element)
+	_element_materials[key] = mat
+	return mat
+
+
+static func _new_element_material(data: EnemyData, element: int) -> ShaderMaterial:
+	# What element_material() hands out, made once per profile and element. One
+	# material per profile and element is safe for the reason the old note gave
+	# against one shared by everything: the last slime to spawn decided the
+	# colour of every slime on screen - but only when they were different
+	# slimes, and these are the same.
 	var mat := ShaderMaterial.new()
 	mat.shader = ELEMENT_SHADER
 	mat.set_shader_parameter("element_hue", Element.hue_for(element))

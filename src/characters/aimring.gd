@@ -65,8 +65,8 @@ var _ball: Node2D = null
 
 
 func _init() -> void:
-	var lit := CanvasItemMaterial.new()
-	lit.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	# The one unshaded material every ring shares (RangeRing.unshaded(), 0.66.0).
+	var lit: CanvasItemMaterial = RangeRing.unshaded()
 	material = lit
 	_ball = Node2D.new()
 	_ball.name = "ball"
@@ -119,11 +119,16 @@ func _draw() -> void:
 	ring.a = lerpf(ring_colour.a, 0.6, lift)
 	# Points rather than a squashed circle, so the line is as thin across the
 	# top as down the sides.
+	# AS SEGMENTS, the way the range rings draw (0.66.0): one kind of line for
+	# every ring, so the renderer can draw a crowd's rings together. The same
+	# 40 sides as the polyline it was.
 	var points := PackedVector2Array()
-	for k in 41:
-		var a: float = TAU * k / 40.0
-		points.append(drawn_at + Vector2(cos(a) * radii.x, sin(a) * radii.y))
-	draw_polyline(points, ring, 1.0)
+	for k in 40:
+		var a0: float = TAU * k / 40.0
+		var a1: float = TAU * (k + 1) / 40.0
+		points.append(drawn_at + Vector2(cos(a0) * radii.x, sin(a0) * radii.y))
+		points.append(drawn_at + Vector2(cos(a1) * radii.x, sin(a1) * radii.y))
+	draw_multiline(points, ring, 1.0)
 
 
 func _draw_ball() -> void:

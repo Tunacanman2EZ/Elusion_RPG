@@ -52,13 +52,25 @@ var reach_down: float = 0.0
 var colour: Color = Color(1.0, 1.0, 1.0, 0.2)
 var _glow: float = 0.0
 
+# ONE MATERIAL FOR EVERY RING IN THE GAME (0.66.0). Each ring made its own,
+# and two rings with two materials can never be drawn in one go - the Big
+# Field at 4x drew about 340 of them, one draw call each. They are all the
+# same unshaded material, so they share this one, and the aim rings too.
+static var _shared_unshaded: CanvasItemMaterial = null
+
+
+static func unshaded() -> CanvasItemMaterial:
+	"""The one unshaded material every range and aim ring draws with."""
+	if _shared_unshaded == null:
+		_shared_unshaded = CanvasItemMaterial.new()
+		_shared_unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	return _shared_unshaded
+
 
 func _init() -> void:
 	# Unshaded, like the aim rings: the Field's CanvasModulate would otherwise
 	# take a faint line down to nothing.
-	var lit := CanvasItemMaterial.new()
-	lit.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
-	material = lit
+	material = unshaded()
 	set_process(false)
 
 

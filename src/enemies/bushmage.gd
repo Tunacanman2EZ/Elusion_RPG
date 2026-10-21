@@ -147,6 +147,8 @@ func _physics_process(_delta: float) -> void:
 	if net_mirror:
 		_net_follow(_delta)
 		return
+	if _dozes():
+		return
 	# is_instance_valid, not == null: the target may be another player's
 	# picture (shared monsters), freed the moment they leave the area.
 	if not is_instance_valid(player):
@@ -160,7 +162,7 @@ func _physics_process(_delta: float) -> void:
 	# See BaseEnemy._standoff_velocity().
 	if is_attacking:
 		velocity = _standoff_velocity()
-		move_and_slide()
+		_slide()
 		return
 
 	var dist: float = global_position.distance_to(player.global_position)
@@ -216,7 +218,7 @@ func _physics_process(_delta: float) -> void:
 	# replace.
 	if attack_ready and dist <= CAST_RANGE and _has_line_of_sight(target_point()):
 		velocity = _standoff_velocity()
-		move_and_slide()
+		_slide()
 		_trigger_attack()
 		return
 
@@ -243,7 +245,7 @@ func _press_to(slot_target: Vector2) -> void:
 	var pos_before: Vector2 = global_position
 	var step: String = _steered_direction_to(slot_target)
 	velocity = _vec_from_dir(step) * get_move_speed() * stir_speed()
-	move_and_slide()
+	_slide()
 	_walk_facing = Facing.from_vec_stable(player.global_position - global_position, _walk_facing)
 	play_walk_animation(_walk_facing)
 	_record_nav_movement_result(pos_before)
@@ -257,7 +259,7 @@ func _hold_and_attack() -> void:
 	# whenever there is no overlap, which is nearly always, so this is the same
 	# "hold still and cast" it has always been.
 	velocity = _standoff_velocity()
-	move_and_slide()
+	_slide()
 	if attack_ready:
 		_trigger_attack()
 	else:

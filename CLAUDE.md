@@ -3,7 +3,7 @@
 Read this before changing anything. Everything in it cost real hours to learn,
 most of it twice.
 
-Elusion RPG is a top-down 2.5D action RPG in Godot 4.6 / GDScript, backed by a
+Elusion RPG is a top-down 2.5D action RPG in Godot 4.7 / GDScript, backed by a
 Flask service that lives in a separate repository (`game/api`). The server owns
 level, XP, the derived stat maxima, every loot roll and the loot bags
 themselves. The client owns HP, mana, stamina, gold, the backpack, the bank and
@@ -624,6 +624,52 @@ backslash"). All of it is on the owner panel (backquote) now:
   brings its own back after its monster's wait), and a big slime's copy
   splits into copies. Survives walking between areas; off after a restart.
   `_test_the_owner_stress_crowd()` holds it.
+- **What the stress test found, and what was done (0.66.0)** - the owner,
+  after a 4x run: "incredible lets refine so it runs smooth as butter".
+  Measured in the container on a bench (the Big Field at 4x, 1,470 monsters,
+  about 790 awake round one god-mode warrior holding attack):
+  - **Threat rings worked themselves out every frame**: 5.7 of 9 ms of
+    scripts. Now `ThreatRing.REFRESH_SECONDS` (0.05) while the monster is
+    after somebody and `IDLE_REFRESH_SECONDS` (0.25) while not, each ring at
+    its own moment, and at once when `BaseEnemy.engaged` changes (its setter
+    calls `look_now()`). Scripts went to about 5.8 ms.
+  - **Nothing could be drawn together**: every ring, aim ring and recoloured
+    monster had a material of its own (863 draw calls at 4x). Now one
+    unshaded material for every ring (`RangeRing.unshaded()`), one recolour
+    per profile and element (`BaseEnemy.element_material()` caches them -
+    nothing writes to them after), aim rings drawn as `draw_multiline` like
+    range rings, and a monster's rings on the floor at `ThreatRing.FLOOR_Z`
+    (-1), its ball still at z 1. **A boss's rings stay at z 0** - the crypt
+    arena's dais is on `grounddecals` at z 0 and would cover them. 605 draws.
+  - **A parked monster slid every frame.** Every monster move goes through
+    `BaseEnemy._slide()`: with no velocity it slides every
+    `STILL_SLIDE_SECONDS` (0.2) instead - still enough to ease out of an
+    overlap. Physics about 12 ms -> 9.6.
+  - **Sleepers are hidden too** (enemysleeper.gd `put_to_sleep()`): at
+    1,100 px they are never on screen (the widest view is 640 x 360), and the
+    renderer stopped sorting 1,100 of them. Woken, shown as they were. When
+    the player jumps more than `JUMP_DISTANCE` (150 px) in a frame the
+    sleeper checks at once, so nobody walks out of a door into hidden
+    monsters.
+  - **Awake is not busy: the near ones doze.** Of 790 awake monsters at 4x,
+    about 700 stood at home with nobody in reach, and their brains were 2.7
+    ms of the 9 ms tick (measured by switching them off). Each sleeper pass
+    sets `BaseEnemy.dozing` on a monster at home, not after anybody, with
+    nobody within `notice_reach() + DOZE_MARGIN` (150 px - more than a
+    player covers between passes), and `_dozes()`, first thing in its brain
+    (BushMage's own too), skips the tick. Being hit, walking home or moving
+    at all rouses it that tick. Physics at 4x about 8.3 -> 6.9 ms.
+  - **What is left is the fight itself.** With every monster's brain
+    switched off, physics at 4x is 1.4 to 2.3 ms - the 5,600 collision
+    pairs are cheap. The rest is the brains of the monsters fighting:
+    steering, separation and sight queries (about 1 ms each; changing them
+    changes how a pack moves) and slides through a crowd. Left alone, as are
+    health bars (about 300 draws; batching them means drawing them over
+    walls, or showing fewer - the owner's call).
+  - **8x is still over budget** in the container: 2,944 monsters, 1,580
+    awake, physics 21 to 24 ms a tick against 12.5, so Godot runs several
+    ticks a frame to catch up. 4x is comfortably inside it.
+  `_test_a_big_fight_is_cheap()` holds all of it.
 
 `player.gd` reads no keys of its own any more (it has no `_unhandled_input()`),
 and `perfoverlay.gd` none either. **A new testing power goes on the panel, not
@@ -3389,8 +3435,18 @@ runs. There were 26 in game code on 1 October, found and cleared at once:
 
 The headless suite cannot see these (see "Godot's warnings don't reach the
 headless suite"), so the count was taken from Godot's own language server,
-which reports exactly what the editor shows. `testrunner.gd` still carries
-some of its own; they appear only when the suite is run from the editor.
+which reports exactly what the editor shows. `testrunner.gd` carried 73 of
+its own, which showed only when the suite was run from the editor; they were
+cleared in 0.66.0 the same ways (its static calls go through
+`_SettingsCode`, `_CombatCode`, `_AreaRegistryCode` and `ApiForTests`).
+
+**How to count them (container, 4.7):** copy the project, set every
+`gdscript/warnings/<name>` the project leaves at 1 to 2 in the copy's
+`project.godot` `[debug]` section (setting them from a script at run time
+does not take), and load every `.gd` under `res://src` and `res://scene`
+with `ResourceLoader.CACHE_MODE_IGNORE` from a `--script` SceneTree. Each
+warning is then a `Parse Error ... (Warning treated as error.)` with its file
+and line. 0 in game code and 0 in `testrunner.gd` as of 0.66.0.
 
 ### Escape closes every window, from one list
 

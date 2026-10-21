@@ -1,6 +1,6 @@
 # Elusion RPG
 
-A top-down 2.5D action RPG built in Godot 4.6 with GDScript, backed by a Flask account service. Four playable classes, six enemy families in forty-three elemental variants, collectable combat pets, fishing and cooking, player-to-player trading over a taxed economy, other players drawn live wherever you are and fighting the same monsters, and a complete run from town to final boss.
+A top-down 2.5D action RPG built in Godot 4.7 with GDScript, backed by a Flask account service. Four playable classes, six enemy families in forty-three elemental variants, collectable combat pets, fishing and cooking, player-to-player trading over a taxed economy, other players drawn live wherever you are and fighting the same monsters, and a complete run from town to final boss.
 
 ![The final boss: two independent attack tracks telegraphing and erupting](docs/boss.gif)
 
@@ -274,7 +274,7 @@ Three files carry most of the complexity and are the best places to start readin
 
 ## Running it
 
-The game: open the project in Godot 4.6 and press <kbd>F5</kbd>.
+The game: open the project in Godot 4.7 and press <kbd>F5</kbd>.
 
 The account service is a companion Flask app in its own repository. Start it before launching the game — the game expects it at `http://127.0.0.1:5000` (set in `src/systems/api.gd`).
 
