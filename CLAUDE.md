@@ -604,13 +604,19 @@ backslash"). All of it is on the owner panel (backquote) now:
   area, awake and asleep (enemysleeper.gd). Switching it on starts every
   worst and count again. `_test_the_readout_counts_a_crowd()` holds it.
 - **The stress test (0.65.0):** "Stress test: Big Field monsters" on the
-  Testing tab - Off, 2x, 3x, 4x (the owner, 21 Oct: "first we need to stress
-  test the game with 2x the enemies in big field"; he chose this over
-  putting them in the scene for everybody). `src/world/stresscrowd.gd`,
+  Testing tab - Off, 2x, 3x, 4x, and since 0.65.1 6x and 8x (the owner, 21
+  Oct: "first we need to stress test the game with 2x the enemies in big
+  field"; he chose this over putting them in the scene for everybody; after
+  4x, "we can add even more i think"). `src/world/stresscrowd.gd`,
   added to every area by AreaRegistry like the sleeper, acts only in the
   Big Field: beside each authored monster, (n - 1) copies of its own scene
   and leash, on the floor 20 to 56 px away, none within 400 px of the
-  arrival, built 24 a frame so the switch itself never freezes the game.
+  arrival. **Built by the clock** (0.65.1): each frame builds or frees
+  copies until `BUILD_MS` (3 ms) is spent - it was 24 a frame, and the
+  owner's 4x run opened with 111 hitches and a 66 ms frame from the building
+  alone. 8x takes several seconds to fill in. **Born asleep** when further
+  than the sleeper's SLEEP_DISTANCE from every player, so a thousand new
+  monsters are not all awake for the sleeper's first quarter second.
   **A copy is this game's alone and worth nothing**: `get_enemy_id()` is
   "" for it (no kill report - no XP, no bag, nothing for the kill ceilings
   or killwatch.py), monstersync.gd never numbers it (no other game and not
@@ -7281,6 +7287,19 @@ chamber), and for a door to "close after player leaves proximity".
   Twice the monsters is four to six times the physics - something in a
   crowd is paid per pair, not per monster, and the pairs are the clue.
   First thing to look at when speeding the game up.
+- **The owner's 4x run, 21 Oct** (1,464 monsters, about 340 to 430 awake,
+  the warrior through field 3, hall 3 and chamber 3, killed by 24 elites):
+  42 to 61 fps; in the biggest field fight 28 of about 150 frames hitched
+  (25 ms or more); physics 4 to 10 ms a tick, worst 13.3 (over its 12.5);
+  process (scripts + drawing) 8 to 20 ms, worst 20.3 - over the 16.67 frame
+  on its own, so **at 4x the drawing and scripts run out first, not the
+  physics**. Draw calls went from about 130 at rest to 1,118 in that
+  fight, with the screen covered in the monsters' dashed range circles:
+  every RangeRing (src/shared/rangering.gd) makes its own
+  CanvasItemMaterial in `_init()`, so none of them batch - the lead for
+  the speed-up. Nodes 30,900 (11,300 at 1x), memory 326 MB (199 at 1x).
+  Container, headless, 8x (2,931 monsters, 1,780 awake in a hall):
+  physics 17 to 36 ms a tick, process 23 to 32 ms.
 - **Still open**: the boss's swing counts a tank's `aura` (see the 0.60.0
   note above), and the south wing waits for its enemy.
 

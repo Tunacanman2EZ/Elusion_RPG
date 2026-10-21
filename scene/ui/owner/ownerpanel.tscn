@@ -633,7 +633,7 @@ text = "Stress test: Big Field monsters"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
-tooltip_text = "Owner only. More of every Big Field monster, beside it, in your game only: 2x is 366 more. They fight like the rest but give no XP or loot, other players never see them, and the server never hears of them - so its cheat checks are not tripped. Best alone in the area. Survives walking between areas; always off again after a restart."
+tooltip_text = "Owner only. More of every Big Field monster, beside it, in your game only: 2x is 366 more, 8x is 2,562 more (it takes a few seconds to fill in). They fight like the rest but give no XP or loot, other players never see them, and the server never hears of them - so its cheat checks are not tripped. Best alone in the area. Survives walking between areas; always off again after a restart."
 focus_mode = 0
 theme_override_font_sizes/font_size = 13
 

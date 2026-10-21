@@ -8282,6 +8282,13 @@ func _test_the_owner_stress_crowd() -> void:
 		and bool(crowd.call("applies")))
 
 	Crowd.set_multiplier(2, get_tree())
+	# Built by the clock: after the census, a frame builds only what fits in
+	# BUILD_MS - not the lot at once.
+	var first_frames: Array = []
+	for i in 12:
+		var t0: int = Time.get_ticks_usec()
+		await get_tree().process_frame
+		first_frames.append([int(crowd.call("copy_count")), Time.get_ticks_usec() - t0])
 	await _crowd_settles(crowd, authored)
 	var copies: Array = []
 	for node in get_tree().get_nodes_in_group("enemies"):
@@ -8316,6 +8323,14 @@ func _test_the_owner_stress_crowd() -> void:
 		if source == null or source.scene_file_path != copy.scene_file_path \
 				or not is_equal_approx(float(source.get("leash_range")), float(copy.get("leash_range"))):
 			unlike.append(copy.name)
+	var grew_over_frames: bool = false
+	var counts: Array = first_frames.map(func(f): return int(f[0]))
+	for i in range(1, counts.size()):
+		if counts[i] > counts[i - 1] and counts[i] < copies.size():
+			grew_over_frames = true
+	check("  built a few milliseconds a frame (%.0f ms), not all at once: %s" % [Crowd.BUILD_MS, str(counts)],
+		grew_over_frames and Crowd.BUILD_MS > 0.0 and Crowd.BUILD_MS <= 5.0
+		and not _code_src("res://src/world/stresscrowd.gd").contains("const BATCH"), first_frames)
 	check("  each worth nothing: no kill to report, where %d of the monsters they copy have one" % paying_sources,
 		unpaid and paying_sources > copies.size() / 2, paying_sources)
 	check("  each the same monster - its scene and its leash", unlike.is_empty(), unlike.slice(0, 4))
@@ -8344,14 +8359,33 @@ func _test_the_owner_stress_crowd() -> void:
 		after_kill == copies.size() - 1 and int(crowd.call("copy_count")) == copies.size(),
 		[copies.size(), after_kill, crowd.call("copy_count")])
 
+	# A player at the arrival: the copies built far from it start asleep, the
+	# way the sleeper would put them; any built near it start awake.
+	var stand_in := Node2D.new()
+	stand_in.add_to_group(&"player")
+	area.add_child(stand_in)
+	stand_in.global_position = arrival
 	Crowd.set_multiplier(3, get_tree())
 	await _crowd_settles(crowd, authored * 2)
+	var born_asleep: int = 0
+	var far_awake: Array = []
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if not Crowd.is_copy(node) or not area.is_ancestor_of(node) or copies.has(node):
+			continue
+		var far_off: bool = (node as Node2D).global_position.distance_to(arrival) > 1100.0
+		if node.has_meta(&"asleep") and node.process_mode == Node.PROCESS_MODE_DISABLED:
+			born_asleep += 1
+		elif far_off:
+			far_awake.append(node.name)
+	check("  copies built far from every player start asleep (%d), none far off awake" % born_asleep,
+		born_asleep > authored / 2 and far_awake.is_empty(), far_awake.slice(0, 4))
+	stand_in.free()
 	var at_three: int = int(crowd.call("copy_count"))
 	Crowd.set_multiplier(2, get_tree())
-	await get_tree().process_frame
+	await _crowd_settles_down(crowd, authored)
 	var back_to_two: int = int(crowd.call("copy_count"))
 	Crowd.set_multiplier(1, get_tree())
-	await get_tree().process_frame
+	await _crowd_settles_down(crowd, 0)
 	check("3x is two of each, back to 2x takes the extra away, and Off takes them all",
 		at_three >= int(authored * 2 * 0.99) and back_to_two <= authored and back_to_two >= int(authored * 0.99)
 		and int(crowd.call("copy_count")) == 0, [at_three, back_to_two, crowd.call("copy_count")])
@@ -8369,9 +8403,10 @@ func _test_the_owner_stress_crowd() -> void:
 	await get_tree().process_frame
 	var pick: OptionButton = gm.get_node_or_null("%stresspick") as OptionButton
 	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
-	check("the owner panel's Testing tab has it: Off, 2x, 3x, 4x",
-		pick != null and testing_tab != null and testing_tab.is_ancestor_of(pick) and pick.item_count == 4
-		and pick.get_item_text(0) == "Off" and pick.get_item_text(1) == "2x" and pick.selected == 0)
+	check("the owner panel's Testing tab has it: Off, 2x, 3x, 4x, 6x, 8x - \"we can add even more\"",
+		pick != null and testing_tab != null and testing_tab.is_ancestor_of(pick) and pick.item_count == 6
+		and pick.get_item_text(0) == "Off" and pick.get_item_text(1) == "2x" and pick.get_item_text(5) == "8x"
+		and pick.selected == 0)
 	if pick != null:
 		pick.select(1)
 		pick.item_selected.emit(1)
@@ -8386,6 +8421,14 @@ func _test_the_owner_stress_crowd() -> void:
 	Crowd.multiplier = kept_times
 	await get_tree().process_frame
 	await get_tree().process_frame
+
+
+func _crowd_settles_down(crowd: Node, want: int) -> void:
+	# Taken away by the clock too: wait until it is down to `want`.
+	for i in 400:
+		await get_tree().process_frame
+		if int(crowd.call("copy_count")) <= want:
+			return
 
 
 func _crowd_settles(crowd: Node, want: int) -> void:

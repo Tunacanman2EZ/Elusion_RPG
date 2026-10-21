@@ -21,9 +21,18 @@
 #   - not in the respawner's census. A copy that dies is brought back here,
 #     after the wait the monster it copies would take.
 #
-# ADDED A FEW A FRAME (BATCH): four times the Big Field is a thousand new
-# monsters, and building them in one frame is a second-long freeze - which is
-# exactly the thing a stress test must not cause itself.
+# BUILT BY THE CLOCK, A FEW MILLISECONDS A FRAME (0.65.1). Four times the Big
+# Field is a thousand new monsters, and building them in one frame is a
+# second-long freeze - exactly what a stress test must not cause itself. It
+# was 24 a frame; the owner's 4x run opened with 111 hitches and a 66 ms
+# frame from the building alone, because 24 skeletons is 40 ms on his
+# machine. Now each frame builds until BUILD_MS is spent, and taking them
+# away is spread the same way.
+#
+# BORN ASLEEP WHEN NOBODY IS NEAR: a copy built further than the sleeper's
+# SLEEP_DISTANCE from every player starts the way enemysleeper.gd would put
+# it within a quarter second - not thinking - so a thousand new monsters are
+# not all awake for that quarter second.
 #
 # Survives walking between areas (a static); always off after a restart.
 extends Node
@@ -33,17 +42,19 @@ const GROUP := &"stresscrowd"
 const META := &"stress_copy"
 const AREAS := ["res://scene/bigfield.tscn"]
 # What the owner panel offers. 1 is off.
-const MULTIPLIERS := [1, 2, 3, 4]
+const MULTIPLIERS := [1, 2, 3, 4, 6, 8]
 # How far from the monster it copies a copy stands, in px.
 const SPREAD_MIN := 20.0
 const SPREAD_MAX := 56.0
 # Nothing new within this of where players arrive - the Big Field's own rule.
 const ARRIVAL_CLEAR := 400.0
-# Copies built per frame.
-const BATCH := 24
+# How long a frame may spend building or taking away copies, in ms.
+const BUILD_MS := 3.0
 const RESPAWN_FALLBACK := 30.0
 
 const EnemyRespawnerScript := preload("res://src/world/enemyrespawner.gd")
+const EnemySleeperScript := preload("res://src/world/enemysleeper.gd")
+const Targets := preload("res://src/shared/targets.gd")
 
 static var multiplier: int = 1
 
@@ -110,7 +121,7 @@ func apply() -> void:
 	_generation += 1
 	var generation: int = _generation
 	if multiplier <= 1:
-		_remove_all()
+		await _remove_all(generation)
 		return
 	if _sources.is_empty():
 		await _take_census()
@@ -123,25 +134,28 @@ func apply() -> void:
 		have[int(entry["source"])] = int(have.get(int(entry["source"]), 0)) + 1
 	# Too many (4x down to 2x): the extra ones go.
 	var kept: Array = []
+	var going: Array = []
 	for entry in _copies:
 		var source: int = int(entry["source"])
 		if int(have.get(source, 0)) > want:
 			have[source] = int(have[source]) - 1
-			var node: Object = instance_from_id(int(entry["id"]))
-			if node != null and is_instance_valid(node):
-				(node as Node).queue_free()
+			going.append(entry)
 		else:
 			kept.append(entry)
 	_copies = kept
-	var built: int = 0
+	if not await _free_by_the_clock(going, generation):
+		return
+	var spots: Array[Vector2] = _player_spots()
+	var started: int = Time.get_ticks_usec()
 	for source in _sources.size():
 		for k in maxi(want - int(have.get(source, 0)), 0):
-			_build_copy(source)
-			built += 1
-			if built % BATCH == 0:
+			_build_copy(source, spots)
+			if Time.get_ticks_usec() - started >= int(BUILD_MS * 1000.0):
 				await get_tree().process_frame
 				if generation != _generation or not is_inside_tree():
 					return
+				spots = _player_spots()
+				started = Time.get_ticks_usec()
 
 
 func _take_census() -> void:
@@ -181,7 +195,17 @@ func _take_census() -> void:
 		})
 
 
-func _build_copy(source: int) -> void:
+func _player_spots() -> Array[Vector2]:
+	"""Where everybody the monsters may chase stands - the sleeper's own list."""
+	var spots: Array[Vector2] = []
+	if not is_inside_tree():
+		return spots
+	for body in Targets.all(get_tree()):
+		spots.append((body as Node2D).global_position)
+	return spots
+
+
+func _build_copy(source: int, spots: Array[Vector2] = []) -> void:
 	var entry: Dictionary = _sources[source]
 	var parent: Node2D = entry["parent"] as Node2D
 	if parent == null or not is_instance_valid(parent) or not parent.is_inside_tree():
@@ -197,6 +221,16 @@ func _build_copy(source: int) -> void:
 		enemy.set(property, kept[property])
 	enemy.set_meta(META, true)
 	enemy.name = "stress_%s_%d" % [entry["name"], _copies.size()]
+	# Asleep from the start when nobody is near (see BORN ASLEEP above). With
+	# nobody in the world at all the sleeper sleeps nobody, so neither does this.
+	var far: bool = not spots.is_empty()
+	for at in spots:
+		if (at as Vector2).distance_to(spot) <= EnemySleeperScript.SLEEP_DISTANCE:
+			far = false
+			break
+	if far:
+		enemy.process_mode = Node.PROCESS_MODE_DISABLED
+		enemy.set_meta(&"asleep", true)
 	# Before add_child(): BaseEnemy._ready() reads its spot as home.
 	enemy.position = parent.to_local(spot)
 	parent.add_child(enemy)
@@ -261,9 +295,23 @@ func _prune() -> void:
 	_copies = alive
 
 
-func _remove_all() -> void:
-	for entry in _copies:
+func _remove_all(generation: int) -> void:
+	var going: Array = _copies
+	_copies = []
+	await _free_by_the_clock(going, generation)
+
+
+func _free_by_the_clock(going: Array, generation: int) -> bool:
+	"""Take these copies away, BUILD_MS a frame. False when the switch moved
+	or the area went while it was at it."""
+	var started: int = Time.get_ticks_usec()
+	for entry in going:
 		var node: Object = instance_from_id(int(entry["id"]))
 		if node != null and is_instance_valid(node):
 			(node as Node).queue_free()
-	_copies.clear()
+		if Time.get_ticks_usec() - started >= int(BUILD_MS * 1000.0):
+			await get_tree().process_frame
+			if generation != _generation or not is_inside_tree():
+				return false
+			started = Time.get_ticks_usec()
+	return true
