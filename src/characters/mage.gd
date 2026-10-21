@@ -152,8 +152,9 @@ func _ready() -> void:
 func aim_ring_feet() -> Vector2:
 	# The aim ring (player.gd): the hem of the mage's robe is at its origin
 	# (0 facing down or up, 1 px above facing across), and the ring sits a pixel
-	# above it. The picture is placed 19 px up, so the ring is placed there and
-	# drawn down here (aimring.gd).
+	# above it. Since 0.68.1 the mage's body is not y-sorted (see mage.tscn and
+	# the CLAUDE.md note on it), so the ring is placed right here, as the first
+	# child, and drawn under the robe by tree order.
 	return Vector2(0.0, -1.0)
 
 

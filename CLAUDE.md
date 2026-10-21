@@ -4309,6 +4309,18 @@ Driven in the game against the real server.
 
   Measured after: 6% of the field walked, a logout at once, and 6% back on the
   next login. `_test_the_map_comes_back`.
+- **One character's map is not another's world (0.68.1).** The owner's log:
+  "the stored map for 'bigfield' would not decompress to the size it
+  claims". `WorldMap._terrain` outlives a character: after another character
+  walked the Big Field (or after dying and picking another), the area is built
+  at today's size, and `from_save()` kept the new character's bits - saved
+  before the crypt made the field bigger (0.63.0) - beside it. The next save
+  wrote today's width and height round the old bits. Now `from_save()` starts
+  a map again when it does not fit the area as built (the same rule as
+  `_build_terrain()`), replaces a stub left by another character's save, and
+  `to_save()` never writes bits that do not fit their size. A character
+  already saved broken shows the warning once more, then the map is right.
+  `_test_one_characters_map_is_not_anothers_world()`.
 - **Pets worked:** summoned from the bag, through a door, through a relog, and
   put away with a second use; the sniper followed and took 84 health off a dark
   sprite in eight seconds. The server stored whatever `active_pet_id` a save
@@ -5512,11 +5524,18 @@ with the circle around the character".
   ring". Both attack a POINT (the spell at the cursor; the stick where it
   lands, `tank.dynamite_landing()`, up to 150 px toward the cursor), so they
   point it with `_point_aim_ring_at(point)`: the ball on the line from the
-  middle of the ring to that point. Both bodies are y-sorted with the picture
-  placed well above the feet (mage 19 px), so a ring at the feet would draw
-  over the robe: `aim_ring_placed_at()` puts it a hair above the picture
-  (drawn first) and `AimRing.drawn_at` draws it down at the feet - mage
-  (0, -1). The tank already wears an orange ring at its feet (tank.tscn's
+  middle of the ring to that point. The tank's body is y-sorted with the
+  picture placed well above the feet, so a ring at the feet would draw over
+  it: `aim_ring_placed_at()` puts it a hair above the picture (drawn first)
+  and `AimRing.drawn_at` draws it down at the feet. **The mage's body is not
+  y-sorted since 0.68.1** - its picture sat 19 px above its feet, and a
+  y-sorted body sorts every picture by the picture's own height against the
+  whole world, so a mage walked up to a wall sorted 9 px behind the wall's
+  foot and the bricks were drawn over it (the owner's screenshot: "big error
+  on walls"). Unsorted, the mage sorts at its origin (its feet), and its ring
+  at (0, -1) is simply its first child, drawn under the robe by tree order.
+  `_test_every_class_stands_in_front_of_a_wall()` works out every class's
+  sort height walked up to a wall from its own scene. The tank already wears an orange ring at its feet (tank.tscn's
   `ring`, smalltankring.png - not the aura's fire ring), so its ball rides
   that one: `aim_ring_radii()` is its size, measured off the art
   (`OWN_RING_HALF` 31.5 x 16.5 frame px round `OWN_RING_FROM_FRAME_MIDDLE`,

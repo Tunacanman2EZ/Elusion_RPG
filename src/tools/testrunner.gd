@@ -415,6 +415,8 @@ func _run_all() -> void:
 	await _test_a_big_fight_is_cheap()
 	await _test_a_crowd_thinks_in_turns()
 	await _test_the_crypt_crowd_is_cheap()
+	_test_every_class_stands_in_front_of_a_wall()
+	_test_one_characters_map_is_not_anothers_world()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
 	_test_a_character_can_be_deleted()
@@ -9181,6 +9183,125 @@ func _test_the_crypt_crowd_is_cheap() -> void:
 	check("  the search uses it", _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _ensure_slot_claimed(").contains("_slot_in_wall(anchor"))
 	world.free()
 
+
+# =============================================================================
+# EVERY CLASS IS DRAWN IN FRONT OF A WALL IT STANDS AGAINST (0.68.1)
+# =============================================================================
+# The owner, 21 Oct, a screenshot of a mage at the crypt's north wall with only
+# the hem of its robe showing under the bricks: "big error on walls". A
+# y-sorted body sorts each of its pictures by that picture's own height, and
+# the mage's picture is placed 19 px above its feet - so walked up to a wall,
+# the picture sorted 9 px north of the wall's foot and the wall was drawn over
+# it. Worked out here for every class from its own scene: walked up to a wall
+# (the top of its body on the wall's foot), the height it sorts at must be
+# south of that foot. The warrior's picture sits at its feet, the healer is not
+# y-sorted, the tank's capsule keeps it 32 px off; the mage was the one wrong.
+func _test_every_class_stands_in_front_of_a_wall() -> void:
+	section("WALLS - every class walked up to a wall is drawn in front of it, not under it (0.68.1)")
+	var wrong: Array = []
+	var seen: Array = []
+	for cls in ["warrior", "mage", "healer", "tank"]:
+		var hero := (load("res://scene/characters/%s.tscn" % cls) as PackedScene).instantiate() as Node2D
+		var body := hero.get_node_or_null(^"bodyshape") as CollisionShape2D
+		var picture := hero.get_node_or_null(^"animatedsprite2d") as Node2D
+		var top: float = INF
+		if body != null and body.shape is CircleShape2D:
+			top = body.position.y - (body.shape as CircleShape2D).radius
+		elif body != null and body.shape is CapsuleShape2D:
+			top = body.position.y - (body.shape as CapsuleShape2D).height * 0.5
+		elif body != null and body.shape is RectangleShape2D:
+			top = body.position.y - (body.shape as RectangleShape2D).size.y * 0.5
+		if top == INF or picture == null or not is_zero_approx(body.rotation):
+			wrong.append("%s: no body this can measure" % cls)
+			hero.free()
+			continue
+		# Its origin, with the top of its body on a wall's foot at y = 0.
+		var at_wall: float = -top
+		var sorts_at: float = at_wall + (picture.position.y if hero.y_sort_enabled else 0.0)
+		seen.append("%s %+.1f" % [cls, sorts_at])
+		if sorts_at <= 0.0:
+			wrong.append("%s sorts %.1f px behind the wall it stands against" % [cls, -sorts_at])
+		hero.free()
+	check("every class stands in front of a wall it walks up to: its picture sorts south of the wall's foot",
+		wrong.is_empty(), [wrong, seen])
+	# The walls' side of it: a crypt wall piece sorts at its foot - its node
+	# origin is the bottom of its picture and of its body.
+	var off_foot: Array = []
+	for piece in ["wallrun1", "wallrun2", "wallrun4"]:
+		var wall := (load("res://scene/crypt/%s.tscn" % piece) as PackedScene).instantiate() as Node2D
+		var art := wall.get_node(^"sprite") as Sprite2D
+		var shape := wall.get_node(^"body/collisionbase") as CollisionShape2D
+		var art_foot: float = art.position.y + art.offset.y + art.texture.get_height() * 0.5
+		var body_foot: float = shape.position.y + (shape.shape as RectangleShape2D).size.y * 0.5
+		if not is_zero_approx(art_foot) or not is_zero_approx(body_foot):
+			off_foot.append([piece, art_foot, body_foot])
+		wall.free()
+	check("  and a crypt wall's picture and body both end at its origin, the line it sorts on", off_foot.is_empty(), off_foot)
+
+
+# =============================================================================
+# ONE CHARACTER'S MAP IS NOT ANOTHER'S WORLD (0.68.1)
+# =============================================================================
+# The owner's log, 21 Oct, logging in his tank: "WorldMap: the stored map for
+# 'bigfield' would not decompress to the size it claims." The area's terrain
+# outlives a character - another one had walked the Big Field that session, so
+# it was built at today's size - and the tank's bits, saved before the crypt
+# made the field bigger, were kept beside it. The next save wrote today's width
+# and height round the old bits, which no load could read back.
+func _test_one_characters_map_is_not_anothers_world() -> void:
+	section("WORLD MAP - a saved map that does not fit the world as built starts again, and none is written that cannot be read (0.68.1)")
+	var kept_seen: Dictionary = WorldMap._seen.duplicate(true)
+	var kept_terrain: Dictionary = WorldMap._terrain.duplicate(true)
+	var kept_cache: Dictionary = WorldMap._save_cache.duplicate(true)
+	var kept_dirty: bool = WorldMap._save_dirty
+	const AREA := "zz_maptest"
+	var blob := func(w: int, h: int) -> Dictionary:
+		var bits := PackedByteArray()
+		bits.resize((w * h + 7) >> 3)
+		bits.fill(255)
+		return {"w": w, "h": h, "ox": 0, "oy": 0,
+			"bits": Marshalls.raw_to_base64(bits.compress(FileAccess.COMPRESSION_DEFLATE))}
+	var readable := func(written: Dictionary) -> Array:
+		var bad: Array = []
+		for area in written:
+			var e: Dictionary = written[area]
+			var want: int = (int(e["w"]) * int(e["h"]) + 7) >> 3
+			var got: int = Marshalls.base64_to_raw(str(e["bits"])).decompress(want, FileAccess.COMPRESSION_DEFLATE).size()
+			if got != want:
+				bad.append([area, e["w"], e["h"], got, want])
+		return bad
+	# Another character walked it this session: built, 20 x 10 tiles now.
+	var built := Image.create_empty(20, 10, false, Image.FORMAT_RGBA8)
+	WorldMap._terrain[AREA] = {"image": built, "origin": Vector2i.ZERO, "size": Vector2i(20, 10), "tile": Vector2i(16, 16)}
+	# This character's save is from when it was 12 x 10.
+	WorldMap.from_save({AREA: blob.call(12, 10)})
+	var kept_bits = WorldMap._seen.get(AREA, null)
+	check("a map saved for an area of another size than it is built at is not kept beside it",
+		not (kept_bits is PackedByteArray) or (kept_bits as PackedByteArray).size() == (20 * 10 + 7) >> 3,
+		str((kept_bits as PackedByteArray).size()) if kept_bits is PackedByteArray else "none")
+	var bad_after: Array = readable.call(WorldMap.to_save())
+	check("  and every map written can be read back at the size it says", bad_after.is_empty(), bad_after)
+	# Not built this session, but stubbed from another character's save at 12 x 10:
+	# this one's, at 14 x 10, replaces the stub rather than being written round it.
+	WorldMap._terrain[AREA] = {"image": null, "origin": Vector2i.ZERO, "size": Vector2i(12, 10), "tile": Vector2i(16, 16)}
+	WorldMap.from_save({AREA: blob.call(14, 10)})
+	var saved: Dictionary = WorldMap.to_save()
+	check("  a stub from another character's save is replaced by this one's shape",
+		readable.call(saved).is_empty() and saved.has(AREA) and int((saved[AREA] as Dictionary)["w"]) == 14,
+		saved.get(AREA, {}).get("w"))
+	# And the writer's own guard: bits that do not fit are never written.
+	WorldMap._terrain[AREA] = {"image": built, "origin": Vector2i.ZERO, "size": Vector2i(20, 10), "tile": Vector2i(16, 16)}
+	var wrong := PackedByteArray()
+	wrong.resize(5)
+	WorldMap._seen[AREA] = wrong
+	WorldMap._save_dirty = true
+	check("  and bits that do not fit their area's size are left out of a save, not written broken",
+		not WorldMap.to_save().has(AREA))
+	WorldMap._seen = kept_seen
+	WorldMap._terrain = kept_terrain
+	WorldMap._save_cache = kept_cache
+	WorldMap._save_dirty = kept_dirty
+
 func _test_every_area_can_be_walked() -> void:
 	section("AREAS - you arrive clear of the doors, the walls hold, every door can be walked to")
 
@@ -16404,8 +16525,10 @@ func _test_other_players_attacks_switch() -> void:
 		tank_sorts and tanky.y_sort_enabled and body != null and fire != null and small != null
 		and fire.position.y < body.position.y and small.position.y < body.position.y,
 		[tanky.y_sort_enabled, str(fire.position.y) if fire else "no fire ring", str(body.position.y) if body else "no body"])
-	check("  every class as its own: the warrior, mage and tank sort, the healer does not",
-		Remote.class_sorted("warrior") and Remote.class_sorted("mage") and Remote.class_sorted("tank")
+	# The mage stopped sorting in 0.68.1 (its picture sorted behind walls it
+	# stood in front of - see _test_every_class_stands_in_front_of_a_wall()).
+	check("  every class as its own: the warrior and tank sort, the healer and (since 0.68.1) the mage do not",
+		Remote.class_sorted("warrior") and not Remote.class_sorted("mage") and Remote.class_sorted("tank")
 		and not Remote.class_sorted("healer") and not Remote.class_sorted(""))
 
 	# ---- the switch ----
@@ -18522,9 +18645,12 @@ func _test_the_healer_aims_from_its_middle() -> void:
 func _test_the_mage_and_tank_aim_rings() -> void:
 	# THE MAGE AND THE TANK (0.33.0) - the owner: "meant mage and tank just aim
 	# ring". Both attack a POINT, so the ball points at it from the middle of
-	# the ring. Both bodies are y-sorted with their pictures placed above their
-	# feet, so the ring is placed above the picture - drawn first - and drawn
-	# down at the feet.
+	# the ring. The tank's body is y-sorted with its picture placed above its
+	# feet, so its ring is placed above the picture - drawn first - and drawn
+	# down at the feet. The mage's was too until 0.68.1, which sorted its
+	# picture 19 px above its feet against the world - behind any wall it stood
+	# in front of (the owner: "big error on walls"); now it is not y-sorted,
+	# and its ring is simply its first child, at its feet.
 	var mage: Node2D = (load("res://scene/characters/mage.tscn") as PackedScene).instantiate()
 	mage.position = Vector2(300, 200)
 	mage.call("_add_aim_ring")
@@ -18534,9 +18660,9 @@ func _test_the_mage_and_tank_aim_rings() -> void:
 		mring != null and mage.get_child(0) == mring and mring.line
 		and (mring.position + mring.drawn_at).is_equal_approx(Vector2(0, -1)), mring)
 	if mring != null:
-		check("  placed just above its picture, where its y-sorted body draws it first - not over the robe",
-			mage.y_sort_enabled and mring.position.y < mage_picture.position.y
-			and mring.position.y > mage_picture.position.y - 1.0, [mring.position, mage_picture.position])
+		check("  drawn first - under the robe - by being its first child, at its feet (its body is not y-sorted)",
+			not mage.y_sort_enabled and mage.get_child(0) == mring and is_zero_approx(mring.drawn_at.y)
+			and mring.position.is_equal_approx(Vector2(0, -1)), [mring.position, mage_picture.position])
 		check("  and its middle, in the world, is where it is drawn",
 			mring.centre().is_equal_approx(Vector2(300, 199)), mring.centre())
 		mage.call("_point_aim_ring_at", Vector2(210, 199))

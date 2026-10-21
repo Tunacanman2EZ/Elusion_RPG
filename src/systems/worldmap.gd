@@ -621,6 +621,11 @@ func to_save() -> Dictionary:
 			continue
 		var size: Vector2i = info["size"]
 		var origin: Vector2i = info["origin"]
+		# NEVER WRITTEN ROUND BITS OF ANOTHER SIZE (0.68.1): a map whose bits
+		# do not fit its width and height cannot be read back, so it is not
+		# written - see ONE CHARACTER'S MAP IS NOT ANOTHER'S WORLD.
+		if (bits as PackedByteArray).size() != (size.x * size.y + 7) >> 3:
+			continue
 		out[area] = {
 			"w": size.x,
 			"h": size.y,
@@ -671,15 +676,34 @@ func from_save(data) -> void:
 				% str(area) + "to the size it claims. Starting it again.")
 			continue
 
+		# ONE CHARACTER'S MAP IS NOT ANOTHER'S WORLD (0.68.1). _terrain outlives
+		# a character: switch characters (or die and pick another) and the
+		# area another one walked this session is still built, at the size
+		# the world is NOW. Bits saved when the area was a different shape
+		# (the Big Field grew by its crypt in 0.63.0) were kept beside it, and
+		# the next save wrote today's width and height round yesterday's bits
+		# - a map that then "would not decompress to the size it claims" on
+		# every later login (the owner's log, 21 Oct). A map that does not fit
+		# the world as built is started again, as _build_terrain() does.
+		var origin := Vector2i(int(entry.get("ox", 0)), int(entry.get("oy", 0)))
+		var known = _terrain.get(str(area), null)
+		if known != null and known.get("image", null) != null \
+				and (known["size"] != Vector2i(w, h) or known["origin"] != origin):
+			push_warning("WorldMap: '%s' is %dx%d now and was %dx%d when this map was "
+				% [str(area), known["size"].x, known["size"].y, w, h]
+				+ "saved. Its exploration starts again.")
+			continue
+
 		_seen[str(area)] = bits
 
 		# Recorded so _ensure_seen() can compare against the world as it is now
 		# WITHOUT having to build the terrain for an area nobody has entered
-		# this session.
-		if not _terrain.has(str(area)):
+		# this session - and replaced if it was recorded from another
+		# character's save, whose shape this one's bits do not share.
+		if known == null or known.get("image", null) == null:
 			_terrain[str(area)] = {
 				"image": null,
-				"origin": Vector2i(int(entry.get("ox", 0)), int(entry.get("oy", 0))),
+				"origin": origin,
 				"size": Vector2i(w, h),
 				"tile": Vector2i(16, 16),
 			}
