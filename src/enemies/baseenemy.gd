@@ -438,7 +438,18 @@ var is_returning_home: bool = false
 # brains were 2.7 ms of a 9 ms physics tick. Anything that would make it act -
 # being hit (engaged), walking home, moving at all - rouses it that tick; see
 # _dozes(). Its picture, animation, ring and collision are untouched.
-var dozing: bool = false
+#
+# AND OFF SCREEN, IT STOPS (0.67.0). A dozer that is not on this game's screen
+# either is stopped the sleeper's way - PROCESS_MODE_DISABLED, but still drawn
+# - so nothing of it runs at all: no brain, no ring, no animation, and no body
+# in the physics world (enemysleeper.gd, HOW). At 8x that was 1,300 monsters
+# each called every tick only to say "not now". Waking it here (any of the
+# things that rouse it) starts it again at once.
+var dozing: bool = false:
+	set(value):
+		dozing = value
+		if not value and process_mode == Node.PROCESS_MODE_DISABLED and not has_meta(&"asleep"):
+			process_mode = Node.PROCESS_MODE_INHERIT
 
 # AFTER SOMEONE (0.30.0): set when its target comes within notice_reach() or it
 # is hit, cleared when the target is past leash_range. See keep_after().
@@ -449,6 +460,9 @@ var engaged: bool = false:
 		if value == engaged:
 			return
 		engaged = value
+		# Turning on somebody - being hit, mostly - rouses a dozer that moment.
+		if value and dozing:
+			dozing = false
 		if _threat_ring != null:
 			_threat_ring.look_now()
 
@@ -489,6 +503,12 @@ func _ready() -> void:
 	# redundant (and would fight against real collision the same way
 	# navigation and that force fought each other earlier).
 	set_collision_mask_value(4, true)
+	# TWO SLIDES A TICK, NOT GODOT'S FOUR (0.67.0). A slide that meets a body
+	# slides on along it; a third and fourth turn only happen wedged between
+	# two things in one tick - which in a crowd is every tick, and moved a
+	# monster a fraction of a pixel. At 8x the crowd's slides went from 4.7 to
+	# 3.4 ms a tick. The player keeps four.
+	max_slides = MAX_SLIDES
 
 	_resolve_player()
 	_wire_attack_timer()
@@ -873,6 +893,7 @@ const STANDOFF_SPEED := 40.0
 # round one player, and the bench measured physics at about 12 ms a frame with
 # every one of them sliding and 9.6 ms with the parked ones skipping.
 const STILL_SLIDE_SECONDS := 0.2
+const MAX_SLIDES := 2
 var _still_slide_in: float = 0.0
 
 
@@ -957,19 +978,72 @@ func _setup_separation() -> void:
 	_separation_query.exclude = ignore_self
 
 
+# STAGGERED, AND IN DISTANCE BANDS (0.67.0). The crowd work - who is standing
+# near me, and where my place in the ring is held back from the walls - was
+# done every physics tick by every monster fighting. In the 8x stress test
+# that was 200 monsters and about 3.5 ms a tick. Now each monster redoes it
+# every think_stride() ticks, on a tick of its own (_phase), and in between
+# works from what it found: the SAME neighbours, read where they stand now,
+# and the same correction off the walls. Its movement, its decisions and its
+# timers still run every tick. The stride is by how far it is from whoever it
+# is after:
+#   inside NEAR_BAND (80 px, the formation's rings and the scrum on them)
+#       every tick - where a pack's shoving and its places are decided;
+#   inside MID_BAND (200 px)  every 2nd tick;
+#   further out               every 4th (50 ms), still walking in.
+const NEAR_BAND := 80.0
+const MID_BAND := 200.0
+var _phase: int = randi() % 4
+var _neighbours: Array[Node2D] = []
+var _neighbours_tick: int = -1000
+
+
+func think_stride() -> int:
+	"""How many physics ticks this monster's crowd work is reused for - see
+	STAGGERED, AND IN DISTANCE BANDS."""
+	if not is_instance_valid(player):
+		return 1
+	var d_sq: float = global_position.distance_squared_to(player.global_position)
+	if d_sq <= NEAR_BAND * NEAR_BAND:
+		return 1
+	if d_sq <= MID_BAND * MID_BAND:
+		return 2
+	return 4
+
+
+func _due(last_tick: int, tick: int) -> bool:
+	"""Whether this tick redoes work last done at `last_tick`: on its own
+	phase of the stride, or once it is overdue."""
+	var stride: int = think_stride()
+	return stride <= 1 or tick - last_tick >= stride or (tick + _phase) % stride == 0
+
+
 # Where the nearby enemies are, as offsets FROM this enemy TO each of them.
-# Empty when alone, which is what every caller below keys off.
+# Empty when alone, which is what every caller below keys off. Who they are is
+# looked up on the stride above; where they are is read every time.
 func _nearby_enemy_offsets() -> Array[Vector2]:
+	var tick: int = Engine.get_physics_frames()
+	if _due(_neighbours_tick, tick):
+		_neighbours_tick = tick
+		_find_neighbours()
 	var offsets: Array[Vector2] = []
+	for other in _neighbours:
+		if is_instance_valid(other) and other.is_inside_tree():
+			offsets.append(other.global_position - global_position)
+	return offsets
+
+
+func _find_neighbours() -> void:
+	_neighbours.clear()
 	if _separation_query == null:
-		return offsets
+		return
 
 	_separation_query.transform = Transform2D(0.0, global_position)
 	var space_state := get_world_2d().direct_space_state
 	var hits: Array[Dictionary] = space_state.intersect_shape(
 		_separation_query, SEPARATION_MAX_NEIGHBOURS)
 	if hits.is_empty():
-		return offsets
+		return
 
 	# ONE ENTRY PER ENEMY, not one per collision shape. intersect_shape reports
 	# every overlapping SHAPE, and these bodies carry more than one on this
@@ -989,9 +1063,7 @@ func _nearby_enemy_offsets() -> Array[Vector2]:
 			continue
 		counted[id] = true
 
-		offsets.append((other as Node2D).global_position - global_position)
-
-	return offsets
+		_neighbours.append(other as Node2D)
 
 
 # The summed push away from nearby enemies. Length at most 1.0.
@@ -1292,6 +1364,11 @@ var _last_released_slot: int = -1
 # a thing you can do without changing how many enemies fit - the radius and the
 # count are the same fact stated two ways. A class that wants to stand further
 # back belongs on an outer ring, not on a stretched copy of the inner one.
+var _slot_fix: Vector2 = Vector2.ZERO
+var _slot_fix_for: int = -2
+var _slot_fix_tick: int = -1000
+
+
 func _get_slot_target_position() -> Vector2:
 	if not is_instance_valid(player):
 		return global_position
@@ -1307,7 +1384,15 @@ func _get_slot_target_position() -> Vector2:
 	# and half the formation ring lands INSIDE it - enemies then path toward a
 	# point that does not exist, grind into the wall, and pile up at the
 	# nearest corner because they are all failing in the same direction.
-	return clamp_to_navigation(raw)
+	#
+	# The correction off the walls is worked out on the stride (STAGGERED) and
+	# carried with the player in between - and at once for a new slot.
+	var tick: int = Engine.get_physics_frames()
+	if _claimed_slot != _slot_fix_for or _due(_slot_fix_tick, tick):
+		_slot_fix_for = _claimed_slot
+		_slot_fix_tick = tick
+		_slot_fix = clamp_to_navigation(raw) - raw
+	return raw + _slot_fix
 
 
 # How good a slot is for THIS enemy. Lower is better.
@@ -1522,13 +1607,48 @@ func target_point() -> Vector2:
 	return Targets.body_point(player)
 
 
+# SIGHT, ASKED LESS OFTEN (0.67.0). In the owner's 8x stress test the crowd
+# asked this 125 times a physics tick at 19 us each - a new query, a new
+# exclude array and a ray every time: 2.4 ms of a 22 ms tick. Nearly every ask
+# was the one it made a tick before, the same two ends give or take a pixel.
+# So one query object is kept and moved, and the last two answers are kept:
+# asked again within SIGHT_REUSE_TICKS (0.1 s), from within SIGHT_REUSE_PX of
+# where it asked, about a point within SIGHT_REUSE_PX of the one it asked
+# about, it is the same answer. Two, because a fighting monster asks about two
+# lines most ticks - to its target's body (can it shoot?) and to where it is
+# walking (does it need the navmesh?). Walls do not move; a door that shuts
+# between them is seen at most 0.1 s late.
+const SIGHT_REUSE_TICKS := 8
+const SIGHT_REUSE_PX := 4.0
+var _sight_query: PhysicsRayQueryParameters2D = null
+# Each [from, to, physics tick, clear], or empty before it has been asked.
+var _sight_seen: Array = [[], []]
+
+
 func _has_line_of_sight(target_pos: Vector2) -> bool:
-	var space_state := get_world_2d().direct_space_state
-	var query := PhysicsRayQueryParameters2D.create(global_position, target_pos)
-	query.exclude = [self]
-	query.collision_mask = 1
-	var result := space_state.intersect_ray(query)
-	return result.is_empty()
+	var from: Vector2 = global_position
+	var tick: int = Engine.get_physics_frames()
+	var near_sq: float = SIGHT_REUSE_PX * SIGHT_REUSE_PX
+	for seen in _sight_seen:
+		if not seen.is_empty() and tick - int(seen[2]) <= SIGHT_REUSE_TICKS \
+				and (seen[0] as Vector2).distance_squared_to(from) <= near_sq \
+				and (seen[1] as Vector2).distance_squared_to(target_pos) <= near_sq:
+			return bool(seen[3])
+	if _sight_query == null:
+		_sight_query = PhysicsRayQueryParameters2D.new()
+		_sight_query.collision_mask = 1
+		var ignore_self: Array[RID] = [get_rid()]
+		_sight_query.exclude = ignore_self
+	_sight_query.from = from
+	_sight_query.to = target_pos
+	var clear: bool = get_world_2d().direct_space_state.intersect_ray(_sight_query).is_empty()
+	# Into the older of the two (or the empty one).
+	var older: int = 0
+	if not (_sight_seen[0] as Array).is_empty() and ((_sight_seen[1] as Array).is_empty()
+			or int(_sight_seen[1][2]) < int(_sight_seen[0][2])):
+		older = 1
+	_sight_seen[older] = [from, target_pos, tick, clear]
+	return clear
 
 
 func _get_secondary_direction_from_vec(vec: Vector2) -> String:
@@ -2075,6 +2195,22 @@ const NAV_SNAP_MAX_DISTANCE: float = 240.0
 # sit outside the walkable world. Physics collision alone does not give you
 # that - a body can be PLACED inside a wall, and move_and_slide() will happily
 # keep it there. The navmesh is the authority on where the world actually is.
+# Asked once a physics tick per map, not once a call: map_get_regions() builds
+# a new array every time, and a crowd asks hundreds of times a tick (0.67.0).
+static var _regions_map: RID = RID()
+static var _regions_tick: int = -1
+static var _regions_any: bool = false
+
+
+static func _map_has_regions(map: RID) -> bool:
+	var tick: int = Engine.get_physics_frames()
+	if map != _regions_map or tick != _regions_tick:
+		_regions_map = map
+		_regions_tick = tick
+		_regions_any = not NavigationServer2D.map_get_regions(map).is_empty()
+	return _regions_any
+
+
 func clamp_to_navigation(pos: Vector2) -> Vector2:
 	var world: World2D = get_world_2d()
 	if world == null:
@@ -2099,7 +2235,7 @@ func clamp_to_navigation(pos: Vector2) -> Vector2:
 	#
 	# Asking whether the map has any regions is the question that was actually
 	# meant. No regions means nothing to clamp to, so nothing is clamped.
-	if NavigationServer2D.map_get_regions(map).is_empty():
+	if not _map_has_regions(map):
 		return pos
 
 	# named nav_point, not snapped — snapped() is a global GDScript function

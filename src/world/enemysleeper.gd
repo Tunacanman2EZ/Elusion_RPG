@@ -11,7 +11,10 @@
 # HOW. Four times a second, every enemy beyond SLEEP_DISTANCE of the player
 # is set to PROCESS_MODE_DISABLED and every sleeper within WAKE_DISTANCE is
 # put back. Disabled means no _process, no _physics_process, no animation and
-# no timers - a body standing still - while its collision stays where it is.
+# no timers - and no body in the physics world either: Godot takes a disabled
+# CollisionObject2D out of it (its disable_mode, DISABLE_MODE_REMOVE). Until
+# 0.67.0 this said its collision stayed where it was; measured, it does not -
+# nothing can hit or bump a sleeper, which a mile from everybody is the point.
 #
 # THE PROCESS MODE, NOT set_physics_process(), ON PURPOSE. field.gd freezes
 # every enemy with set_physics_process(false) while the welcome story plays,
@@ -44,6 +47,15 @@
 # (BaseEnemy.dozing) and skips its brain until the next pass. A player can
 # not cover DOZE_MARGIN in a pass, so nothing is noticed any later than it
 # was; a hit, a walk home or any movement rouses it on the spot.
+#
+# A DOZER OFF SCREEN STOPS (0.67.0). One that is also outside this game's view
+# (VIEW_MARGIN round it, more than the camera moves between passes) is set to
+# PROCESS_MODE_DISABLED like a sleeper, but left drawn - nothing of it runs,
+# not even the call that said "not now" - and like a sleeper it is out of the
+# physics world until it rouses (see HOW): it is off screen and further than
+# anybody can reach before the next pass, so nothing meets it there. At 8x
+# that took the collision pairs from 20,000 to 4,000. Never a shared monster
+# another game runs (it must keep following), never one asleep.
 extends Node
 
 const Targets := preload("res://src/shared/targets.gd")
@@ -54,6 +66,9 @@ const CHECK_SECONDS := 0.25
 const JUMP_DISTANCE := 150.0
 # Further than any player walks or dashes between two passes.
 const DOZE_MARGIN := 150.0
+# Round this game's view, for "off screen": more than the camera travels
+# between passes, and more than half the widest monster.
+const VIEW_MARGIN := 96.0
 const NODE_NAME := "enemysleeper"
 
 # Off wakes everyone at once and leaves them awake. For measuring, and an
@@ -116,6 +131,7 @@ func check_now() -> int:
 	if spots.is_empty():
 		spots.append(player.global_position)
 	var asleep: int = 0
+	var view: Rect2 = view_rect()
 	for node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := node as Node2D
 		if enemy == null or _never_sleeps(enemy):
@@ -133,17 +149,35 @@ func check_now() -> int:
 		if sleeping:
 			asleep += 1
 		else:
-			doze_or_rouse(enemy, far)
+			doze_or_rouse(enemy, far, view)
 	return asleep
 
 
-static func doze_or_rouse(enemy: Node, far: float) -> void:
-	"""AND THE NEAR ONES DOZE: `far` is how far the nearest player is."""
+func view_rect() -> Rect2:
+	"""What this game's screen shows of the world, VIEW_MARGIN wider all round."""
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return Rect2()
+	var to_world: Transform2D = viewport.get_canvas_transform().affine_inverse()
+	var size: Vector2 = viewport.get_visible_rect().size
+	var view := Rect2(to_world * Vector2.ZERO, Vector2.ZERO).expand(to_world * size)
+	return view.grow(VIEW_MARGIN)
+
+
+static func doze_or_rouse(enemy: Node, far: float, view: Rect2 = Rect2()) -> void:
+	"""AND THE NEAR ONES DOZE: `far` is how far the nearest player is, `view`
+	what this game's screen shows (an empty one: on screen everywhere)."""
 	var monster := enemy as BaseEnemy
 	if monster == null:
 		return
-	monster.dozing = not monster.engaged and not monster.is_returning_home \
+	var dozes: bool = not monster.engaged and not monster.is_returning_home \
 		and far > monster.notice_reach() + DOZE_MARGIN
+	monster.dozing = dozes
+	if monster.has_meta(&"asleep"):
+		return
+	var stop: bool = dozes and not monster.net_mirror and view.has_area() \
+		and not view.has_point(monster.global_position)
+	monster.process_mode = Node.PROCESS_MODE_DISABLED if stop else Node.PROCESS_MODE_INHERIT
 
 
 static func _never_sleeps(enemy: Node) -> bool:

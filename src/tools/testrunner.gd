@@ -413,6 +413,7 @@ func _run_all() -> void:
 	await _test_the_crypt_skeletons()
 	await _test_far_enemies_sleep()
 	await _test_a_big_fight_is_cheap()
+	await _test_a_crowd_thinks_in_turns()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
 	_test_a_character_can_be_deleted()
@@ -8925,6 +8926,151 @@ func _test_a_big_fight_is_cheap() -> void:
 	check("  and BushMage, whose brain is its own, dozes the same way",
 		_func_body(_code_src("res://src/enemies/bushmage.gd"), "func _physics_process(").contains("if _dozes():")
 		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _physics_process(").contains("if _dozes():"))
+
+
+# =============================================================================
+# A CROWD THINKS IN TURNS (0.67.0)
+# =============================================================================
+# The owner, after 0.66.0: "we can make it even faster but i need ideas it can
+# almost handle x8" - choosing the ones nobody can see, and "All of these try
+# to keep the feel first, before changing fight rules". Timed piece by piece
+# at 8x round one warrior: the 200 monsters fighting were 13 ms of a 22 ms
+# physics tick - sight checks 2.4, crowd work (who is near me, my place off
+# the walls) 3.5, slides 4.7 - and 1,300 dozers still cost a call each tick.
+func _test_a_crowd_thinks_in_turns() -> void:
+	section("A CROWD THINKS IN TURNS - sight remembered, crowd work on a stride, two slides, dozers off screen stop (0.67.0)")
+	var world := Node2D.new()
+	add_child(world)
+	var at := Vector2(-64000, -64000)
+	var seer: BaseEnemy = (load("res://scene/enemy/icefiresprite.tscn") as PackedScene).instantiate()
+	seer.position = at
+	world.add_child(seer)
+	await get_tree().physics_frame
+	seer.set_physics_process(false)        # driven by hand below
+
+	# ---- sight, remembered for 0.1 s ----------------------------------------------------------
+	var target: Vector2 = at + Vector2(200, 0)
+	var first: bool = seer._has_line_of_sight(target)
+	var query: Object = seer.get("_sight_query")
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	var wall_shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(16, 200)
+	wall_shape.shape = rect
+	wall.add_child(wall_shape)
+	wall.position = at + Vector2(100, 0)
+	world.add_child(wall)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var remembered: bool = seer._has_line_of_sight(target)
+	var moved_end: bool = seer._has_line_of_sight(target + Vector2(0, BaseEnemy.SIGHT_REUSE_PX + 2.0))
+	check("a clear line, asked again about the same two ends within %d ticks, is the answer it had"
+		% BaseEnemy.SIGHT_REUSE_TICKS, first and remembered, [first, remembered])
+	check("  one query object, moved, not one built every ask", query != null and seer.get("_sight_query") == query)
+	check("  a point further off than %d px is asked afresh - and the wall is seen" % int(BaseEnemy.SIGHT_REUSE_PX),
+		not moved_end)
+	for i in BaseEnemy.SIGHT_REUSE_TICKS + 1:
+		await get_tree().physics_frame
+	check("  and %d ticks on the old answer is gone: the wall is seen from where it stood too"
+		% (BaseEnemy.SIGHT_REUSE_TICKS + 1), not seer._has_line_of_sight(target))
+	wall.free()
+
+	# ---- the stride, by distance from whoever it is after -------------------------------------
+	var dummy := ZoneDummy.new()
+	world.add_child(dummy)
+	seer.player = dummy
+	var stride_at := func(d: float) -> int:
+		dummy.global_position = seer.global_position + Vector2(d, 0)
+		return seer.think_stride()
+	check("crowd work every tick within %d px of its target, every 2nd within %d, every 4th further out"
+		% [int(BaseEnemy.NEAR_BAND), int(BaseEnemy.MID_BAND)],
+		stride_at.call(40.0) == 1 and stride_at.call(BaseEnemy.NEAR_BAND) == 1
+		and stride_at.call(150.0) == 2 and stride_at.call(BaseEnemy.MID_BAND + 1.0) == 4,
+		[stride_at.call(40.0), stride_at.call(150.0), stride_at.call(500.0)])
+	var phase: int = int(seer.get("_phase"))
+	check("  each monster on a tick of its own (a phase 0..3), so a crowd's work is spread", phase >= 0 and phase < 4, phase)
+
+	# ---- neighbours: found on the stride, read where they stand every tick --------------------
+	var mate: BaseEnemy = (load("res://scene/enemy/icefiresprite.tscn") as PackedScene).instantiate()
+	mate.position = at + Vector2(20, 0)
+	world.add_child(mate)
+	await get_tree().physics_frame
+	mate.set_physics_process(false)
+	dummy.global_position = seer.global_position + Vector2(500, 0)      # far: every 4th tick
+	var tick: int = Engine.get_physics_frames()
+	seer.set("_phase", (5 - tick % 4) % 4)     # (tick + phase) % 4 == 1: three ticks to its turn
+	seer.set("_neighbours_tick", -1000)
+	var found: Array = seer._nearby_enemy_offsets()
+	mate.global_position += Vector2(0, 5)
+	var live: Array = seer._nearby_enemy_offsets()
+	check("a neighbour is found, and where it stands is read every tick, not remembered",
+		found.size() == 1 and (found[0] as Vector2).is_equal_approx(Vector2(20, 0))
+		and live.size() == 1 and (live[0] as Vector2).is_equal_approx(Vector2(20, 5)), [found, live])
+	var late: BaseEnemy = (load("res://scene/enemy/icefiresprite.tscn") as PackedScene).instantiate()
+	late.position = at + Vector2(-20, 0)
+	world.add_child(late)
+	await get_tree().physics_frame
+	late.set_physics_process(false)
+	var before_turn: int = seer._nearby_enemy_offsets().size()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var on_turn: int = seer._nearby_enemy_offsets().size()
+	check("  one who walks up is noticed on its next turn (at most 4 ticks), not before",
+		before_turn == 1 and on_turn == 2, [before_turn, on_turn])
+	check("  and its place off the walls is worked out on the stride and carried with the player",
+		_func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _get_slot_target_position(").contains("_due(_slot_fix_tick, tick)")
+		and _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func clamp_to_navigation(").contains("_map_has_regions(map)"))
+
+	# ---- two slides a tick ------------------------------------------------------------------------
+	check("a monster slides at most %d times a tick, not Godot's 4" % BaseEnemy.MAX_SLIDES,
+		seer.max_slides == BaseEnemy.MAX_SLIDES and mate.max_slides == BaseEnemy.MAX_SLIDES, seer.max_slides)
+
+	# ---- a dozer off screen stops; anything that rouses it starts it again ---------------------
+	var Sleeper := preload("res://src/world/enemysleeper.gd")
+	var reach: float = seer.notice_reach() + Sleeper.DOZE_MARGIN
+	var on_screen := Rect2(seer.global_position - Vector2(50, 50), Vector2(100, 100))
+	var elsewhere := Rect2(seer.global_position + Vector2(5000, 5000), Vector2(100, 100))
+	Sleeper.doze_or_rouse(seer, reach + 10.0, on_screen)
+	check("a dozer on this game's screen keeps running (its picture and ring live)",
+		seer.dozing and seer.process_mode == Node.PROCESS_MODE_INHERIT)
+	Sleeper.doze_or_rouse(seer, reach + 10.0, elsewhere)
+	check("  one off it stops altogether - and is still drawn",
+		seer.dozing and seer.process_mode == Node.PROCESS_MODE_DISABLED and seer.visible)
+	var bodies_at := func(spot: Vector2) -> Array:
+		var probe := PhysicsPointQueryParameters2D.new()
+		probe.position = spot
+		probe.collision_mask = 8                 # the enemies' layer
+		return (world.get_world_2d().direct_space_state.intersect_point(probe) as Array).map(
+			func(hit: Dictionary) -> Object: return hit.get("collider"))
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var stopped_in_world: bool = bodies_at.call(seer.global_position).has(seer)
+	seer.take_damage(1)
+	check("  a hit starts it again that moment", not seer.dozing and seer.process_mode == Node.PROCESS_MODE_INHERIT
+		and seer.engaged, [seer.dozing, seer.process_mode])
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check("  stopped, it is out of the physics world, as a sleeper is (Godot's disable_mode); roused, back in",
+		not stopped_in_world and bodies_at.call(seer.global_position).has(seer), stopped_in_world)
+	seer.engaged = false
+	Sleeper.doze_or_rouse(seer, reach + 10.0, elsewhere)
+	Sleeper.doze_or_rouse(seer, reach - 10.0, elsewhere)
+	check("  and so does somebody coming within its reach", not seer.dozing and seer.process_mode == Node.PROCESS_MODE_INHERIT)
+	Sleeper.doze_or_rouse(seer, reach + 10.0, elsewhere)
+	Sleeper.put_to_sleep(seer)
+	seer.dozing = false
+	check("  rousing never wakes one the sleeper has put to sleep", seer.process_mode == Node.PROCESS_MODE_DISABLED
+		and seer.has_meta(&"asleep"))
+	seer.remove_meta(&"asleep")
+	seer.process_mode = Node.PROCESS_MODE_INHERIT
+	mate.net_mirror = true
+	Sleeper.doze_or_rouse(mate, reach + 10.0, elsewhere)
+	check("  and a monster another game runs is never stopped - it must keep following",
+		mate.process_mode == Node.PROCESS_MODE_INHERIT)
+	mate.net_mirror = false
+	world.free()
 
 func _test_every_area_can_be_walked() -> void:
 	section("AREAS - you arrive clear of the doors, the walls hold, every door can be walked to")

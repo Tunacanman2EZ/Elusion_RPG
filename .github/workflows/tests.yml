@@ -27,11 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      GODOT_VERSION: "4.6.1"
-      # SHA-512 of Godot_v4.6.1-stable_linux.x86_64.zip, as the release's own
+      GODOT_VERSION: "4.7.2"
+      # SHA-512 of Godot_v4.7.2-stable_linux.x86_64.zip, as the release's own
       # SHA512-SUMS.txt gives it. A download that does not match is refused.
       # Changing GODOT_VERSION means changing this too.
-      GODOT_SHA512: a76fd0fe1d44a2dd6c065b6f7b434ad75f5593c07bda3d3017f8304f2d069acbcf0f39cb5d0976f0434b56e9ea852032ddbcbdb7e0ce1c75a47e1dacb6794bd7
+      GODOT_SHA512: 9aa00f7a605200940bce3027a567b782f49bd8e940dd06ae9e987bd65aee1b1467edd56ed84fcdcbdd44354bf613bdbb4e5d2913e925850368e150c59ed54c65
     steps:
       - uses: actions/checkout@v5
         with:

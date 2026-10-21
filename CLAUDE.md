@@ -670,6 +670,43 @@ backslash"). All of it is on the owner panel (backquote) now:
     awake, physics 21 to 24 ms a tick against 12.5, so Godot runs several
     ticks a frame to catch up. 4x is comfortably inside it.
   `_test_a_big_fight_is_cheap()` holds all of it.
+- **A crowd thinks in turns (0.67.0)** - the owner: "we can make it even
+  faster but i need ideas it can almost handle x8", choosing the changes
+  nobody can see, and "All of these try to keep the feel first, before
+  changing fight rules". Timed piece by piece at 8x, the ~200 monsters
+  fighting were 13 ms of the tick: slides 4.7, crowd work 3.5, sight 2.4.
+  - **Sight remembered** (`_has_line_of_sight()`): one query object, moved,
+    and the last two answers kept for `SIGHT_REUSE_TICKS` (8, 0.1 s) while
+    both ends stay within `SIGHT_REUSE_PX` (4). 2.4 -> 0.7 ms.
+  - **Crowd work on a stride, in distance bands** (`think_stride()`,
+    `_due()`): who is near (`_find_neighbours()`, the shape query) and a
+    slot's correction off the walls are redone every tick within
+    `NEAR_BAND` (80 px) of the target, every 2nd tick within `MID_BAND`
+    (200), every 4th further out, each monster on its own `_phase`. In
+    between it reads the same neighbours where they stand now. Movement,
+    decisions and timers still run every tick. At 8x most fighters stand
+    120 to 200 px out. `clamp_to_navigation()` asks the map for its regions
+    once a tick (`_map_has_regions()`), not once a call.
+  - **Two slides a tick** (`MAX_SLIDES`), not Godot's four: slides 4.7 ->
+    3.4 ms at 8x. The player keeps four.
+  - **A dozer off screen stops** (enemysleeper.gd `view_rect()`): outside
+    this game's view plus `VIEW_MARGIN` (96 px) it is `PROCESS_MODE_DISABLED`
+    but still drawn, so nothing of it runs. Anything that rouses it (a hit
+    through the `engaged` setter, somebody in reach, the sleeper switched
+    off) restores it at once; never a shared monster another game runs.
+  - **A disabled monster has no body in the physics world** - Godot's
+    `disable_mode` default is `DISABLE_MODE_REMOVE`. The sleeper's notes said
+    a sleeper kept its collision; measured in 0.67.0, it never did. Stopped
+    dozers are the same, which took the 8x collision pairs from 20,000 to
+    4,000.
+  - **Measured** (container, 3 runs each, holding attack, noisy +-3 ms):
+    8x physics 29.7 -> 21.1 ms a tick, frames 184 -> 125 ms, worst 254 ->
+    178 ms; 4x physics 11-13 -> 7-10 ms, worst 41-52 -> 18-29 ms, hitches
+    2-9 -> 0-1. **Thinking at 40 Hz** (fighters deciding every other tick,
+    sliding every tick), tried on the bench only: 21.1 -> 19.4 ms more.
+    **Attack turns are the next step only if 8x still needs it on the
+    owner's PC** - his numbers first.
+  `_test_a_crowd_thinks_in_turns()` holds it.
 
 `player.gd` reads no keys of its own any more (it has no `_unhandled_input()`),
 and `perfoverlay.gd` none either. **A new testing power goes on the panel, not
