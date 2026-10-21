@@ -812,6 +812,11 @@ func _spawn_slime(small: bool, at_position: Vector2) -> void:
 	# further than notice_range picked them off.
 	slime.engaged = engaged
 
+	# A STRESS COPY'S CHILDREN ARE COPIES TOO (stresscrowd.gd, 0.65.0): worth
+	# nothing to the server, as their parent was.
+	if has_meta(&"stress_copy"):
+		slime.set_meta(&"stress_copy", true)
+
 	var parent: Node = get_parent()
 	if parent == null:
 		parent = get_tree().current_scene

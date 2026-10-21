@@ -55,6 +55,7 @@ extends Control
 # The tab titles. Written here rather than taken from the node names, which are
 # lowercase like every other node in the project.
 const TAB_TITLES := ["Account", "Testing", "Server", "World", "Events"]
+const StressCrowd := preload("res://src/world/stresscrowd.gd")
 
 # What each kind of result looks like in the box. Four, because there are four
 # answers: it worked, it did not, it needs you to do something first, and the
@@ -161,6 +162,8 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var coowner_status: Label = get_node_or_null("%coownerstatus")
 # The performance readout (PerfOverlay). It was the backslash key until 0.7.1.
 @onready var perf_button: CheckButton = get_node_or_null("%perfbutton")
+# THE STRESS TEST (0.65.0): more of the Big Field's monsters, this game only.
+@onready var stress_pick: OptionButton = get_node_or_null("%stresspick")
 @onready var rare_button: CheckButton = get_node_or_null("%rarebutton")
 @onready var common_button: CheckButton = get_node_or_null("%commonbutton")
 
@@ -332,6 +335,12 @@ func _ready() -> void:
 	if perf_button != null and not perf_button.toggled.is_connected(_on_perf_toggled):
 		perf_button.toggled.connect(_on_perf_toggled)
 	_sync_perf_button()
+	if stress_pick != null and not stress_pick.item_selected.is_connected(_on_stress_selected):
+		stress_pick.clear()
+		for times in StressCrowd.MULTIPLIERS:
+			stress_pick.add_item("Off" if int(times) == 1 else "%dx" % int(times))
+		stress_pick.item_selected.connect(_on_stress_selected)
+	_sync_stress_pick()
 	if rare_button != null and not rare_button.toggled.is_connected(_on_rare_toggled):
 		rare_button.toggled.connect(_on_rare_toggled)
 	if common_button != null and not common_button.toggled.is_connected(_on_common_toggled):
@@ -675,6 +684,7 @@ func _on_visibility_changed() -> void:
 		# so they are re-read on every open rather than remembered.
 		_sync_god_mode_button()
 		_sync_perf_button()
+		_sync_stress_pick()
 		_sync_rare_button()
 		# SERVER STATE, so it is asked rather than remembered - the same rule
 		# the maintenance switch follows. The owner may have thrown it from
@@ -742,6 +752,27 @@ func _on_god_mode_toggled(pressed: bool) -> void:
 # physics, draw calls, memory and requests a second. It was the backslash key, in debug builds only; the owner
 # asked for it here (6 Oct, "add to menu instead and remove backslash"), and
 # here it works on the exported game too, because the panel is the gate.
+
+func _sync_stress_pick() -> void:
+	if stress_pick == null:
+		return
+	stress_pick.select(maxi(StressCrowd.MULTIPLIERS.find(StressCrowd.multiplier), 0))
+
+
+func _on_stress_selected(index: int) -> void:
+	# THE OWNER'S STRESS TEST (stresscrowd.gd): his game only, worth nothing.
+	var times: int = int(StressCrowd.MULTIPLIERS[clampi(index, 0, StressCrowd.MULTIPLIERS.size() - 1)])
+	StressCrowd.set_multiplier(times, get_tree())
+	if times <= 1:
+		_set_testing_status("Stress test off - the extra monsters are gone.")
+		return
+	var crowd: Node = get_tree().get_first_node_in_group(StressCrowd.GROUP)
+	var here: bool = crowd != null and bool(crowd.call("applies"))
+	if here:
+		_set_testing_status("Stress test %dx - the Big Field's monsters are coming in beside their own, in your game only. They give nothing." % times)
+	else:
+		_set_testing_status("Stress test %dx - it starts when you walk into the Big Field. Your game only; they give nothing." % times)
+
 
 func _sync_perf_button() -> void:
 	if perf_button == null:

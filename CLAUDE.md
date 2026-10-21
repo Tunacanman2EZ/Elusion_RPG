@@ -603,6 +603,21 @@ backslash"). All of it is on the owner panel (backquote) now:
   the scripts alone, which was wrong), and its worst; `monsters` - how many are in the
   area, awake and asleep (enemysleeper.gd). Switching it on starts every
   worst and count again. `_test_the_readout_counts_a_crowd()` holds it.
+- **The stress test (0.65.0):** "Stress test: Big Field monsters" on the
+  Testing tab - Off, 2x, 3x, 4x (the owner, 21 Oct: "first we need to stress
+  test the game with 2x the enemies in big field"; he chose this over
+  putting them in the scene for everybody). `src/world/stresscrowd.gd`,
+  added to every area by AreaRegistry like the sleeper, acts only in the
+  Big Field: beside each authored monster, (n - 1) copies of its own scene
+  and leash, on the floor 20 to 56 px away, none within 400 px of the
+  arrival, built 24 a frame so the switch itself never freezes the game.
+  **A copy is this game's alone and worth nothing**: `get_enemy_id()` is
+  "" for it (no kill report - no XP, no bag, nothing for the kill ceilings
+  or killwatch.py), monstersync.gd never numbers it (no other game and not
+  the server's books hear of it), the respawner's census skips it (it
+  brings its own back after its monster's wait), and a big slime's copy
+  splits into copies. Survives walking between areas; off after a restart.
+  `_test_the_owner_stress_crowd()` holds it.
 
 `player.gd` reads no keys of its own any more (it has no `_unhandled_input()`),
 and `perfoverlay.gd` none either. **A new testing power goes on the panel, not
@@ -7259,6 +7274,13 @@ chamber), and for a door to "close after player leaves proximity".
   frame, a fifth of the 16.67 budget), not one hitch in 10,133 frames,
   physics at most 4.29 ms a tick of its 12.5, process at most 8.71 ms. The
   366 monsters fit with room to spare on his machine.
+- **The crowd costs more than its size (measured 21 Oct, headless in the
+  container, the stress switch, a stand-in player in hall 3):** 1x, 220
+  awake, physics 1.3 to 1.5 ms a tick and 554 collision pairs; 2x, 435
+  awake, 5.7 to 9.2 ms and about 2,000 pairs; 4x, 870 awake, 14 to 40 ms.
+  Twice the monsters is four to six times the physics - something in a
+  crowd is paid per pair, not per monster, and the pairs are the clue.
+  First thing to look at when speeding the game up.
 - **Still open**: the boss's swing counts a tank's `aura` (see the 0.60.0
   note above), and the south wing waits for its enemy.
 

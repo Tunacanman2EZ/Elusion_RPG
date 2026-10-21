@@ -373,7 +373,11 @@ func _all_enemies() -> Array:
 	if not is_inside_tree():
 		return found
 	for node in get_tree().get_nodes_in_group("enemies"):
-		if is_instance_valid(node) and node is BaseEnemy and not node.is_queued_for_deletion():
+		# NOT THE OWNER'S STRESS COPIES (stresscrowd.gd): this game's alone -
+		# never numbered, so no other game and not the server's books hear of
+		# them.
+		if is_instance_valid(node) and node is BaseEnemy and not node.is_queued_for_deletion() \
+				and not node.has_meta(&"stress_copy"):
 			found.append(node)
 	return found
 

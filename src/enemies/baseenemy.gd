@@ -2632,6 +2632,11 @@ func get_enemy_id() -> String:
 		return ""
 	if not enemy_data.grants_rewards:
 		return ""
+	# THE OWNER'S STRESS TEST (stresscrowd.gd, 0.65.0): a copy is this game's
+	# alone and pays nothing - the server must never hear of a kill it could
+	# not have expected.
+	if has_meta(&"stress_copy"):
+		return ""
 	return enemy_data.enemy_id
 
 

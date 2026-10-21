@@ -395,6 +395,7 @@ func _run_all() -> void:
 	_test_character_select_has_a_way_out()
 	await _test_every_area_can_be_walked()
 	await _test_the_big_field()
+	await _test_the_owner_stress_crowd()
 	_test_the_big_field_is_dressed()
 	await _test_the_crypt_doors()
 	await _test_the_bullet_zone()
@@ -8254,6 +8255,152 @@ func _test_the_road_through_the_game() -> void:
 		exits.size() == 1 and (exits[0].get("destination_scene") as PackedScene).resource_path == str(AreaRegistry.AREAS["bigfield"])
 		and str(exits[0].get("target_spawn_id")) == "field_entrance", exits.size())
 	town.free()
+
+
+# =============================================================================
+# THE OWNER'S STRESS TEST (0.65.0)
+# =============================================================================
+# The owner, 21 Oct: "first we need to stress test the game with 2x the
+# enemies in big field" - a switch on the owner panel's Testing tab, his game
+# only (stresscrowd.gd). Copies fight like the rest and are worth nothing:
+# no kill report, never shared, never in the respawner's census.
+func _test_the_owner_stress_crowd() -> void:
+	section("THE OWNER'S STRESS TEST - more of the Big Field's monsters, his game only, worth nothing (0.65.0)")
+	const Crowd := preload("res://src/world/stresscrowd.gd")
+	var kept_times: int = Crowd.multiplier
+	Crowd.multiplier = 1
+	var world := Node2D.new()
+	add_child(world)
+	var area: Node2D = (load(BIG_FIELD) as PackedScene).instantiate() as Node2D
+	world.add_child(area)
+	var crowd: Node = Crowd.add_to(area)
+	crowd.set("refill_seconds_override", 0.3)
+	for i in 4:
+		await get_tree().process_frame
+	var authored: int = BIG_FIELD_MONSTERS + BIG_FIELD_SOLDIERS + BIG_FIELD_ELITES
+	check("off, it adds nothing - and it knows the Big Field is its area", int(crowd.call("copy_count")) == 0
+		and bool(crowd.call("applies")))
+
+	Crowd.set_multiplier(2, get_tree())
+	await _crowd_settles(crowd, authored)
+	var copies: Array = []
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if Crowd.is_copy(node) and area.is_ancestor_of(node):
+			copies.append(node)
+	check("2x: a copy beside each of the Big Field's %d monsters (%d built)" % [authored, copies.size()],
+		int(crowd.call("source_count")) == authored and copies.size() >= int(authored * 0.99) and copies.size() <= authored,
+		[crowd.call("source_count"), copies.size()])
+	var map: RID = area.get_world_2d().navigation_map
+	var arrival: Vector2 = (area.find_child("arrivalmarker", true, false) as Node2D).global_position
+	var unpaid: bool = true
+	var paying_sources: int = 0
+	var shared_or_census: Array = []
+	var misplaced: Array = []
+	var unlike: Array = []
+	for copy in copies:
+		var source_name: String = str(copy.name).trim_prefix("stress_").rsplit("_", true, 1)[0]
+		var source: Node2D = copy.get_parent().get_node_or_null(source_name) as Node2D
+		# A big slime pays nothing even as itself (it splits), so the
+		# check is that no copy pays - and that most of what they copy does.
+		if copy.call("get_enemy_id") != "" or source == null:
+			unpaid = false
+		elif source.call("get_enemy_id") != "":
+			paying_sources += 1
+		if copy.has_meta(&"net_origin") or int(copy.get("net_id")) >= 0:
+			shared_or_census.append(copy.name)
+		var spot: Vector2 = (copy as Node2D).global_position
+		if source == null or spot.distance_to(source.global_position) > Crowd.SPREAD_MAX + 1.0 \
+				or NavigationServer2D.map_get_closest_point(map, spot).distance_to(spot) > 1.5 \
+				or spot.distance_to(arrival) < Crowd.ARRIVAL_CLEAR:
+			misplaced.append(copy.name)
+		if source == null or source.scene_file_path != copy.scene_file_path \
+				or not is_equal_approx(float(source.get("leash_range")), float(copy.get("leash_range"))):
+			unlike.append(copy.name)
+	check("  each worth nothing: no kill to report, where %d of the monsters they copy have one" % paying_sources,
+		unpaid and paying_sources > copies.size() / 2, paying_sources)
+	check("  each the same monster - its scene and its leash", unlike.is_empty(), unlike.slice(0, 4))
+	check("  each on the floor, a few steps from it, and none near where players arrive", misplaced.is_empty(), misplaced.slice(0, 4))
+	var by_arrival: Variant = crowd.call("_spot_near", {"home": arrival + Vector2(40, 0), "map": map, "arrivals": [arrival]})
+	var in_field: Variant = crowd.call("_spot_near", {"home": (copies[0] as Node2D).global_position, "map": map, "arrivals": [arrival]})
+	check("  a monster standing by the arrival gets no copy at all - a copy elsewhere gets its spot",
+		by_arrival == null and in_field != null, [by_arrival, in_field])
+	check("  never numbered for other games or the server's books, and in no respawner's census",
+		shared_or_census.is_empty()
+		and _func_body(_code_src("res://src/world/monstersync.gd"), "func _all_enemies(").contains("has_meta(&\"stress_copy\")")
+		and _func_body(_code_src("res://src/world/enemyrespawner.gd"), "func _ready(").contains("has_meta(&\"stress_copy\")"),
+		shared_or_census.slice(0, 4))
+	check("  and a big slime's copy splits into copies, worth nothing either",
+		_func_body(_code_src("res://src/enemies/poisonslime.gd"), "func _spawn_slime(").contains("slime.set_meta(&\"stress_copy\", true)"))
+	check("  the kill report says nothing for a monster with no id", _func_body(_code_src("res://src/systems/combat.gd"), "func report_kill(")
+		.contains("if enemy_id == \"\":"))
+
+	var victim: Node = copies[0]
+	victim.call("_die")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var after_kill: int = int(crowd.call("copy_count"))
+	await get_tree().create_timer(0.6).timeout
+	check("a copy killed comes back, after the wait its monster would take",
+		after_kill == copies.size() - 1 and int(crowd.call("copy_count")) == copies.size(),
+		[copies.size(), after_kill, crowd.call("copy_count")])
+
+	Crowd.set_multiplier(3, get_tree())
+	await _crowd_settles(crowd, authored * 2)
+	var at_three: int = int(crowd.call("copy_count"))
+	Crowd.set_multiplier(2, get_tree())
+	await get_tree().process_frame
+	var back_to_two: int = int(crowd.call("copy_count"))
+	Crowd.set_multiplier(1, get_tree())
+	await get_tree().process_frame
+	check("3x is two of each, back to 2x takes the extra away, and Off takes them all",
+		at_three >= int(authored * 2 * 0.99) and back_to_two <= authored and back_to_two >= int(authored * 0.99)
+		and int(crowd.call("copy_count")) == 0, [at_three, back_to_two, crowd.call("copy_count")])
+	var elsewhere := Node2D.new()
+	world.add_child(elsewhere)
+	var other: Node = Crowd.add_to(elsewhere)
+	check("  only the Big Field: anywhere else it does nothing", not bool(other.call("applies")))
+	check("  and the switch is a setting of this run alone - a static, never saved",
+		not _code_src("res://src/world/stresscrowd.gd").contains("Settings.set_value")
+		and _code_src("res://src/world/stresscrowd.gd").contains("static var multiplier: int = 1"))
+
+	# The owner panel's switch.
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var pick: OptionButton = gm.get_node_or_null("%stresspick") as OptionButton
+	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
+	check("the owner panel's Testing tab has it: Off, 2x, 3x, 4x",
+		pick != null and testing_tab != null and testing_tab.is_ancestor_of(pick) and pick.item_count == 4
+		and pick.get_item_text(0) == "Off" and pick.get_item_text(1) == "2x" and pick.selected == 0)
+	if pick != null:
+		pick.select(1)
+		pick.item_selected.emit(1)
+		check("  picking 2x sets it, and says it is his game only and worth nothing",
+			Crowd.multiplier == 2 and gm.results.get_parsed_text().contains("your game only")
+			and gm.results.get_parsed_text().contains("give nothing"), gm.results.get_parsed_text())
+		pick.select(0)
+		pick.item_selected.emit(0)
+		check("  and Off turns it off", Crowd.multiplier == 1)
+	gm.queue_free()
+	world.queue_free()
+	Crowd.multiplier = kept_times
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+
+func _crowd_settles(crowd: Node, want: int) -> void:
+	# Built a batch a frame: wait until it has them all, or stops growing.
+	var last: int = -1
+	var still: int = 0
+	for i in 400:
+		await get_tree().process_frame
+		var now: int = int(crowd.call("copy_count"))
+		if now >= want:
+			return
+		still = still + 1 if now == last else 0
+		last = now
+		if still > 30 and now > 0:
+			return
 
 
 func _test_the_big_field() -> void:
