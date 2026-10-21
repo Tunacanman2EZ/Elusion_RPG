@@ -31,6 +31,9 @@
 class_name RemoteAttacks
 extends RefCounted
 
+# Whether a picture would start past a wall (0.70.0, src/shared/targets.gd).
+const Targets := preload("res://src/shared/targets.gd")
+
 # The kinds, as presence.py ATTACK_KINDS has them.
 const KINDS: Array = ["slash", "axe", "recall", "stalag", "meteor", "dyn", "orb", "heal"]
 # What `flags` carries.
@@ -127,6 +130,13 @@ static func fire(body: Node2D, attack: Array) -> Array:
 # =============================================================================
 
 static func _slash(body: Node2D, origin: Vector2, target: Vector2, flags: int = 0) -> Node:
+	# NOT A PICTURE THAT STARTS PAST A WALL (0.70.0). A game from before 0.69.1
+	# throws its wave from the warrior's origin, which against a Big Field
+	# north wall is already in the black; its picture here flew off out there.
+	# Their own game threw nothing that hit, so neither does this draw it.
+	var aim_now: Vector2 = _aim(origin, target)
+	if not Targets.clear_between(body, Targets.body_point(body), SlashWave.box_start(origin, aim_now)):
+		return null
 	var wave: SlashWave = _scene(SLASHWAVE_PATH).instantiate()
 	wave.cosmetic = true
 	wave.damage = 0
@@ -153,6 +163,9 @@ static func _slash(body: Node2D, origin: Vector2, target: Vector2, flags: int = 
 				0, palette, true)
 	if wave.finisher:
 		for pair in (load(WARRIOR_PATH) as GDScript).call("finisher_fan", origin, aim):
+			# Not from past a wall, as warrior.gd's own (0.70.0).
+			if not Targets.clear_between(body, Targets.body_point(body), pair[0]):
+				continue
 			BladeOrb.fire(parent, pair[0], pair[1], wave.speed, float(warrior["FINISHER_FAN_REACH"]),
 				0, palette, true)
 	return wave

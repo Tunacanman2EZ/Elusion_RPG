@@ -677,7 +677,15 @@ func burst(at: Vector2, cut: Node) -> bool:
 	if not finisher or burst_done or get_parent() == null:
 		return false
 	burst_done = true
-	_fire_burst.call_deferred(get_parent(), at, cut.get_instance_id() if cut != null else 0)
+	# FROM THIS SIDE OF THE WALL (0.70.0). The owner, in the Big Field:
+	# "warriors bullet projectile is spilling outside the map and is scattering
+	# in the black kind of like teleporting". The burst left from the middle
+	# of the monster's hurtbox, which stands taller than the wall its feet are
+	# behind - over a Big Field north wall (2 px of collision) it was already
+	# in the black, and the ring of orbs appeared out there and flew off. It
+	# leaves from as far toward that point as the wave can see.
+	var safe: Vector2 = Targets.short_of_wall(self, hit_middle(), at)
+	_fire_burst.call_deferred(get_parent(), safe, cut.get_instance_id() if cut != null else 0)
 	return true
 
 
@@ -686,6 +694,11 @@ func _fire_burst(parent: Node, at: Vector2, cut_id: int) -> void:
 		return
 	var first: Vector2 = _weave_line if _weave_line != Vector2.ZERO else Vector2.RIGHT
 	for way in BladeOrb.ring_ways(first, BURST_ORBS):
-		BladeOrb.fire(parent, at + way * BURST_FROM, way, BURST_SPEED, BURST_REACH,
+		var start: Vector2 = at + way * BURST_FROM
+		# An orb whose start is past a wall is not fired: it would begin in the
+		# black, where nothing stops it.
+		if parent is Node2D and not Targets.clear_between(parent as Node2D, at, start):
+			continue
+		BladeOrb.fire(parent, start, way, BURST_SPEED, BURST_REACH,
 			0 if cosmetic else burst_damage, BladeOrb.GOLD, cosmetic, cut_id)
 

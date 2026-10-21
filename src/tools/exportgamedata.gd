@@ -1548,7 +1548,10 @@ func _collect_spawns(root: Node, node: Node, spawns: Array, respawn: Dictionary)
 					_splitter_scene_to_enemy.get(child.scene_file_path, ""))),
 				"x": snappedf(at.x, 0.1),
 				"y": snappedf(at.y, 0.1),
-				"leash": float(child.get("leash_range")) if "leash_range" in child else 400.0,
+				# Through BaseEnemy.authored_leash(), not child.get(): this runs
+				# in the editor, on placeholders that never ran _init(), and a
+				# bush mage's 1,500 is set there (0.69.2).
+				"leash": BaseEnemy.authored_leash(child),
 				"gated": bool(child.get("gated")) if "gated" in child else false,
 			})
 			# An enemy scene's own children are its parts, not more monsters.

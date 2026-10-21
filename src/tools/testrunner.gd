@@ -365,6 +365,8 @@ func _run_all() -> void:
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
 	await _test_attacks_stop_at_walls()
+	_test_the_export_reads_a_mages_leash_in_the_editor()
+	await _test_the_mage_spike_finds_its_mark()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -17001,7 +17003,7 @@ func _test_presence_sends_attacks() -> void:
 	check("the warrior's thrown axe and slash wave, the mage's stalagmite and meteor, the tank's sticks and the healer's orbs are told",
 		said.call("res://src/characters/warrior.gd", "func throw_axe(", "axe")
 		and said.call("res://src/characters/warrior.gd", "func _spawn_slashwave(", "slash")
-		and said.call("res://src/characters/mage.gd", "func _spawn_stalagmite(", "stalag")
+		and said.call("res://src/characters/mage.gd", "func _drop_spike(", "stalag")
 		and said.call("res://src/characters/mage.gd", "func _drop_meteor(", "meteor")
 		and said.call("res://src/characters/tank.gd", "func _throw_stick(", "dyn")
 		and said.call("res://src/characters/healer.gd", "func _spawn_projectile(", "orb"))
@@ -26404,6 +26406,46 @@ func _test_the_readout_counts_a_crowd() -> void:
 	await get_tree().process_frame
 	text = PerfOverlay.readout()
 	check("  and the hitches row counts them, over 25 ms", text.contains("hitches") and text.contains("frames over 25 ms"), text)
+
+	# HELD (0.69.2). The owner's 8x screenshot: fps 15, frame 66.67 ms, 64% of
+	# frames hitching, physics 0.75 ms a tick and process 9.5 ms - the game was
+	# held at the background rate, and the readout did not say so.
+	check("  it says how busy each frame is, and what the graphics card took",
+		text.contains("busy") and text.contains("ms of each frame") and text.contains("gpu"), text)
+	var was_resting: bool = Settings._resting
+	var was_focused: bool = Settings._focused
+	Settings._resting = true
+	var note: String = PerfOverlay._cap_note()
+	check("held by a resting screen, the frame rate says so and how to wake it",
+		Settings.held_reason() == "resting" and note.contains("held at %d" % Settings.BACKGROUND_FPS)
+		and note.contains("resting") and note.contains("press a key"), note)
+	Settings._resting = false
+	Settings._focused = false
+	note = PerfOverlay._cap_note()
+	check("  held with the game in the background, it says that instead",
+		Settings.held_reason() == "background" and note.contains("held at %d" % Settings.BACKGROUND_FPS)
+		and note.contains("background"), note)
+	Settings._focused = was_focused
+	Settings._resting = was_resting
+	frames = PerfOverlay._frames
+	hitches = PerfOverlay._hitches
+	PerfOverlay._note_frame(1.0 / float(Settings.BACKGROUND_FPS), true)
+	check("  and a held frame is counted neither as a hitch nor at all",
+		PerfOverlay._frames == frames and PerfOverlay._hitches == hitches, [PerfOverlay._frames - frames, PerfOverlay._hitches - hitches])
+	var now_ms: int = Time.get_ticks_msec()
+	Settings._last_rest_check_msec = now_ms
+	Settings._last_input_msec = now_ms - int(Settings.REST_AFTER * 1000.0) - 5000
+	Settings.check_rest()
+	check("the screen does not rest while the readout is up - it is for watching, hands off",
+		not Settings.is_resting())
+	if bool(Settings.get_value("screen_rest")):
+		PerfOverlay.set_shown(false)
+		Settings._last_rest_check_msec = Time.get_ticks_msec()
+		Settings._last_input_msec = Time.get_ticks_msec() - int(Settings.REST_AFTER * 1000.0) - 5000
+		Settings.check_rest()
+		check("  and rests as ever once it is closed", Settings.is_resting())
+		Settings.note_input()
+		PerfOverlay.set_shown(true)
 	crowd.free()
 	PerfOverlay._accum = PerfOverlay.SAMPLE_INTERVAL
 	await get_tree().process_frame
@@ -28772,6 +28814,171 @@ func _test_shared_monsters_hold_the_leaders_numbers() -> void:
 # shots aimed at the origin too. Both use BaseEnemy.target_point() now - the
 # body, through Targets.body_point(), as the boss's _aim_point() always did.
 # =============================================================================
+# THE MAGE'S SPIKE FINDS ITS MARK, AND THE THIRD CAST DROPS THREE (0.70.0)
+# =============================================================================
+# The owner: "mage is the weakest of all my chars ... a single ice spike is
+# kinda lame". A spike lands a third of a second after the cast on an 18 px
+# circle, so a walking monster was out from under it. Now it takes the nearest
+# monster near the aim and follows it down; and every third cast drops three,
+# on three monsters - but one spike a monster a cast, so the server's bound on
+# a mage holds.
+func _test_the_mage_spike_finds_its_mark() -> void:
+	section("MAGE - the spike finds its mark and follows it down; every third cast drops three (0.70.0)")
+	const Targets := preload("res://src/shared/targets.gd")
+	const Mage := preload("res://src/characters/mage.gd")
+	var arena := Node2D.new()
+	add_child(arena)
+	var base := Vector2(-94000.0, 64000.0)
+	_attack_wall(arena, base + Vector2(0, -60), Vector2(600, 4), 1)
+	var mage: Node2D = _hero_against(arena, "mage", base.y + 200.0, base.x)
+	mage.global_position = base + Vector2(0, 120)
+	var aim := base
+	var near: CharacterBody2D = _weapon_dummy(arena, aim + Vector2(30, 0))
+	var _nearer_behind: CharacterBody2D = _weapon_dummy(arena, aim + Vector2(0, -70))   # past the wall, 70 off
+	var far: CharacterBody2D = _weapon_dummy(arena, aim + Vector2(-150, 0))
+	for i in 3:
+		await get_tree().physics_frame
+	var one: Array = mage.call("spike_marks", aim, 1)
+	check("a spike aimed near a monster takes it as its mark",
+		one.size() == 1 and one[0]["target"] == near and one[0]["at"] == Targets.body_point(near), one)
+	near.global_position = aim + Vector2(Mage.SPIKE_SEEK_RADIUS + 10.0, 0)
+	one = mage.call("spike_marks", aim, 1)
+	check("  one further than SPIKE_SEEK_RADIUS is not taken - the spike lands where it was aimed",
+		one.size() == 1 and one[0]["target"] == null and one[0]["at"] == aim, one)
+	near.global_position = aim + Vector2(30, 0)
+	var hidden_close: CharacterBody2D = _weapon_dummy(arena, aim + Vector2(0, -64))
+	await get_tree().physics_frame
+	one = mage.call("spike_marks", aim + Vector2(0, -40), 1)
+	check("  nor one behind a wall from the mage, however near", one[0]["target"] != hidden_close, one)
+
+	# THE THIRD CAST: three marks, three monsters, nearest first.
+	var second: CharacterBody2D = _weapon_dummy(arena, aim + Vector2(70, 10))
+	var third: CharacterBody2D = _weapon_dummy(arena, aim + Vector2(-60, 20))
+	await get_tree().physics_frame
+	var three: Array = mage.call("spike_marks", aim, Mage.TRIPLE_SPIKES)
+	var on: Array = three.map(func(m: Dictionary) -> Variant: return m["target"])
+	check("the third cast's three go on three monsters, the mark first and the next nearest after",
+		three.size() == 3 and on == [near, second, third], on)
+	second.global_position = aim + Vector2(400, 0)
+	third.global_position = aim + Vector2(-400, 0)
+	far.global_position = aim + Vector2(0, 400)
+	await get_tree().physics_frame
+	three = mage.call("spike_marks", aim, Mage.TRIPLE_SPIKES)
+	var spread_ok: bool = three.size() == 3 and three[0]["target"] == near
+	for k in range(1, three.size()):
+		spread_ok = spread_ok and three[k]["target"] == null and is_equal_approx(
+			(three[k]["at"] as Vector2).distance_to(three[0]["at"]), Mage.TRIPLE_SPREAD)
+	check("  with no others near, the two more land round the mark, TRIPLE_SPREAD out", spread_ok, three)
+
+	# The cast count: one, one, three.
+	mage.set("last_direction", Vector2.UP)
+	mage.set("pointer_on_game", false)
+	var counts: Array = []
+	for i in 3:
+		var made: Array = mage.call("_spawn_stalagmite")
+		counts.append(made.size())
+		for spell in made:
+			(spell as Node).queue_free()
+	check("every third cast drops three spikes, the others one", counts == [1, 1, 3], counts)
+
+	# FOLLOWING THE MARK DOWN, and one spike a monster a cast.
+	var scene: PackedScene = mage.get("target_circle_scene")
+	var spike: Area2D = scene.instantiate()
+	spike.set("target", near)
+	arena.add_child(spike)
+	spike.global_position = Targets.body_point(near)
+	near.global_position += Vector2(24, 0)
+	spike.call("follow")
+	check("the spike keeps over its mark's feet as it walks", spike.global_position == Targets.body_point(near),
+		[spike.global_position, Targets.body_point(near)])
+	(spike.get("anim") as AnimatedSprite2D).frame = 4
+	near.global_position += Vector2(24, 0)
+	spike.call("follow")
+	check("  and once it has struck it stays where it struck", spike.global_position != Targets.body_point(near)
+		and spike.get("target") == null)
+	spike.queue_free()
+	var struck: Dictionary = {}
+	var twins: Array = []
+	for i in 2:
+		var twin: Area2D = scene.instantiate()
+		twin.set("struck", struck)
+		twin.set("explosion_damage", 10)
+		arena.add_child(twin)
+		twin.global_position = Targets.body_point(near) + Vector2(4.0 * i, 0)
+		twins.append(twin)
+	for i in 3:
+		await get_tree().physics_frame
+	for twin in twins:
+		twin.call("_apply_area_damage")
+	check("two spikes of one cast on one monster hit it once", near.get("taken").size() == 1, near.get("taken"))
+	for twin in twins:
+		(twin as Node).queue_free()
+	check("  which is what the server's bound on a mage counts: one hit a cast",
+		_func_body(_code_src("res://src/projectiles/spelltargetcircle.gd"), "func _apply_area_damage(").contains("struck[id] = true"))
+	mage.queue_free()
+
+	# THE FINISHER'S BURST, FROM THIS SIDE OF A WALL. The owner: "warriors
+	# bullet projectile is spilling outside the map and is scattering in the
+	# black kind of like teleporting". The burst left from the middle of the
+	# monster's hurtbox - over a 2 px Big Field wall, already in the black.
+	var wall_y: float = base.y - 60.0
+	var wave: SlashWave = (load("res://scene/projectiles/slashwave.tscn") as PackedScene).instantiate()
+	wave.finisher = true
+	wave.burst_damage = 5
+	arena.add_child(wave)
+	wave.global_position = Vector2(base.x + 100.0, wall_y + 12.0)
+	wave.shoot_vector(Vector2.UP)
+	var before: int = arena.get_children().filter(func(n: Node) -> bool: return n is BladeOrb).size()
+	wave.burst(Vector2(base.x + 100.0, wall_y - 10.0), null)
+	await get_tree().process_frame
+	var orbs: Array = arena.get_children().filter(func(n: Node) -> bool: return n is BladeOrb)
+	var past: Array = orbs.filter(func(o: Node) -> bool: return (o as Node2D).global_position.y < wall_y)
+	check("a finisher's burst at a monster whose hurtbox stands over the wall starts this side of it",
+		orbs.size() > before and past.is_empty(), [orbs.size() - before, past.size()])
+	wave.queue_free()
+	for orb in orbs:
+		(orb as Node).queue_free()
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
+# THE EXPORT READS A MAGE'S LEASH IN THE EDITOR TOO (0.69.2)
+# =============================================================================
+# The exporter runs in the editor, on placeholders that never ran _init() - and
+# the bush mage's 1,500 leash is set in _init(), so an export from the editor
+# wrote the field mages' leash as the base 400, and one run in the game 1,500.
+# The server reads that number. BaseEnemy.authored_leash() asks the class.
+func _test_the_export_reads_a_mages_leash_in_the_editor() -> void:
+	section("THE EXPORT - a bush mage's leash is its class's, wherever the export runs (0.69.2)")
+	var mage := CharacterBody2D.new()
+	mage.set_script(load("res://src/enemies/bushmage.gd"))
+	check("a bush mage chases from its class's CHASE_LEASH, 1,500",
+		is_equal_approx(float(mage.get("leash_range")), 1500.0) and is_equal_approx(BushMage.CHASE_LEASH, 1500.0))
+	mage.set("leash_range", 400.0)        # what the editor's placeholder reads
+	check("  read as the editor reads it, the export still says 1,500",
+		is_equal_approx(BaseEnemy.authored_leash(mage), BushMage.CHASE_LEASH), BaseEnemy.authored_leash(mage))
+	mage.set("leash_range", 250.0)        # the Big Field's own mages
+	check("  and a placement that chose its own keeps it", is_equal_approx(BaseEnemy.authored_leash(mage), 250.0))
+	mage.free()
+	var sprite: Node = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	check("a monster with no CHASE_LEASH is what it says", is_equal_approx(BaseEnemy.authored_leash(sprite),
+		float(sprite.get("leash_range"))))
+	sprite.free()
+	check("  and the exporter asks authored_leash()",
+		_code_src("res://src/tools/exportgamedata.gd").contains("\"leash\": BaseEnemy.authored_leash(child)"))
+	var field_mages: Array = []
+	var areas: Variant = _load_gamedata().get("areas", {})
+	if areas is Dictionary and (areas as Dictionary).has("field"):
+		for spawn in (areas["field"] as Dictionary).get("spawns", []):
+			if str(spawn.get("e", "")).ends_with("bushmage"):
+				field_mages.append(float(spawn.get("leash", 0.0)))
+	check("the Field's mages are exported at 1,500 (re-run the exporter if not)",
+		not field_mages.is_empty() and field_mages.all(func(l: float) -> bool: return is_equal_approx(l, 1500.0)),
+		field_mages)
+
+
+# =============================================================================
 # ATTACKS STOP AT WALLS (0.69.1)
 # =============================================================================
 # The owner, in the Big Field: "players can attack enemies through doors/
@@ -29072,6 +29279,25 @@ func _test_attacks_stop_at_walls() -> void:
 	Settings.set_value("others_attacks", kept)
 	if copy != null and is_instance_valid(copy):
 		copy.queue_free()
+	# Another warrior pressed against the door, on a game from before 0.69.1,
+	# which throws its wave from its origin - inside the door (0.70.0).
+	var pressed: Node2D = Remote.new()
+	pressed.user_id = 693
+	arena.add_child(pressed)
+	pressed.set_identity({"id": 693, "name": "Ola", "cls": "warrior", "lvl": 20, "v": 2})
+	pressed.set_process(false)
+	var pressed_feet: Node2D = pressed.get_node_or_null(^"bodyshape") as Node2D
+	var feet_y: float = pressed_feet.position.y if pressed_feet != null else 13.0
+	pressed.place(Vector2(door_x - 150.0, base.y + 8.0 + 7.5 - feet_y))
+	var o2: Vector2 = pressed.global_position
+	Settings.set_value("others_attacks", true)
+	var into: Array = RemoteAttacks.fire(pressed, ["slash", 0, o2.x, o2.y, o2.x, o2.y - 100.0, 0, 0])
+	var away: Array = RemoteAttacks.fire(pressed, ["slash", 0, o2.x, o2.y, o2.x, o2.y + 100.0, 0, 0])
+	Settings.set_value("others_attacks", kept)
+	check("another warrior's wave thrown from inside a door is not drawn past it; thrown away from it, it is",
+		into.is_empty() and away.size() == 1, [into.size(), away.size()])
+	for made_wave in away:
+		(made_wave as Node).queue_free()
 	check("  and an axe taken off while it is out is called home on everyone else's screen too",
 		_func_body(_code_src("res://src/characters/warrior.gd"), "func _on_gear_changed(").contains("tell_attack(\"recall\""))
 

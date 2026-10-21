@@ -269,6 +269,11 @@ const PET_ODDS_FALLBACK := 1296
 
 @export var leash_range:      float = 400.0
 
+# A CLASS THAT CHASES FURTHER says so here, as `const CHASE_LEASH`, and sets
+# it in _init() (bushmage.gd) - so a placement can still choose its own.
+# authored_leash() reads it for the exporter, which the editor runs on
+# placeholders that never ran _init().
+
 # NOTICE, CHASE, LET GO (0.30.0). Until 0.30.0 one number did both jobs: a
 # monster chased anyone inside leash_range, so it noticed you from as far as it
 # would follow you - 400 to 500 px in the Field, wider than the screen at the
@@ -1958,6 +1963,27 @@ const HEALTH_READOUT_OUTLINE_MAX := 5
 # a real font is ever added to the theme, the readout picks it up with no edit
 # here.
 static var _readout_font_cache: FontVariation = null
+
+
+static func authored_leash(node: Node) -> float:
+	"""The leash a placed monster runs with, asked of a node that may be the
+	editor's PLACEHOLDER (exportgamedata.gd, 0.69.2). The editor never runs a
+	non-tool script's _init(), so a bush mage placed without a leash of its own
+	read the base 400 there and its true 1,500 in a running game: the server's
+	copy of the Big Field's field mages depended on where the export was run.
+	The placement's own number when it set one; otherwise the class's
+	CHASE_LEASH when it has one; otherwise what the node says."""
+	var value: float = float(node.get("leash_range")) if "leash_range" in node else 400.0
+	var script: Script = node.get_script() as Script
+	if script == null:
+		return value
+	var consts: Dictionary = script.get_script_constant_map()
+	if not consts.has("CHASE_LEASH"):
+		return value
+	var base: Variant = script.get_property_default_value(&"leash_range")
+	if base != null and is_equal_approx(value, float(base)):
+		return float(consts["CHASE_LEASH"])
+	return value
 
 
 static func _readout_font() -> FontVariation:

@@ -70,6 +70,27 @@ const METEOR_SPREAD_MAX := 40.0
 # ...and starts falling this much later, so the two land one after the other.
 const METEOR_SECOND_DELAY := 0.18
 
+# THE SPIKE FINDS ITS MARK (0.70.0). The owner: "mage is the weakest of all my
+# chars ... a single ice spike is kinda lame". The spike lands a third of a
+# second after the cast (IMPACT_FRAME at 12 frames a second), and its circle
+# is 18 px: a monster walking at 60 px/s was 20 px on by then, and most casts
+# at anything moving missed. Now a cast takes the nearest monster within
+# SPIKE_SEEK_RADIUS of where it was aimed - one the mage can see - and the
+# spike follows it down until it strikes (spelltargetcircle.gd's `target`).
+const SPIKE_SEEK_RADIUS := 48.0
+
+# THE THIRD CAST (0.70.0): every TRIPLE_EVERY-th stalagmite drops TRIPLE_SPIKES,
+# the first on the mark and the others on the next nearest monsters within
+# TRIPLE_REACH of it, or round it, TRIPLE_SPREAD out, when there are none.
+# A MONSTER TAKES ONE SPIKE A CAST, however many land on it - the three share
+# what they hit - so one monster takes no more than it did, and the server's
+# bound on a mage (one hit a cast, gamedata.combat_bounds()) still holds. The
+# third cast is for a crowd.
+const TRIPLE_EVERY := 3
+const TRIPLE_SPIKES := 3
+const TRIPLE_REACH := 110.0
+const TRIPLE_SPREAD := 44.0
+
 # mana drained per stalagmite cast
 @export var spell_mana_cost: int = 15
 
@@ -98,6 +119,9 @@ const METEOR_SECOND_DELAY := 0.18
 # true while a spell cast is in flight (within cooldown window).
 # independent from parent's is_attacking — blocks new casts until cooldown ends.
 var is_casting: bool = false
+
+# Stalagmites cast, for THE THIRD CAST.
+var stalagmite_casts: int = 0
 
 # the mouse attack's edge detection moved to Player — see its ATTACK INPUT
 # section (left-click since 0.40.0, right-click before).
@@ -305,16 +329,101 @@ func _play_cast_animation() -> void:
 		push_warning("Mage: animatedsprite2d has no animation named '%s'" % cast_anim)
 
 
-func _spawn_stalagmite() -> void:
-	# spawn the spell scene at cursor position. parented to the scene ROOT
-	# (not to mage) so the spell stays at cursor location if mage moves
-	# during the fall animation. spell.tscn plays its own 8-frame fall
-	# animation and damages on impact frame (frame 4).
-	var spell: Node = target_circle_scene.instantiate()
-	get_tree().current_scene.add_child(spell)
+func _spawn_stalagmite() -> Array[Node]:
+	"""This cast's spikes: one, or TRIPLE_SPIKES on every TRIPLE_EVERY-th
+	cast, each on its mark (spike_marks()). Returns them, for the tests."""
+	stalagmite_casts += 1
+	var count: int = TRIPLE_SPIKES if stalagmite_casts % TRIPLE_EVERY == 0 else 1
 	# This side of a wall aimed past (0.69.1) - a spike called down in the
 	# next room through a crypt door was the owner's "through doors/walls".
-	spell.global_position = reach_short_of_wall(aim_point())
+	var aimed: Vector2 = reach_short_of_wall(aim_point())
+	# damage_per_magic is a flat base damage value scaled by
+	# get_damage_multiplier(), the shared function every class's damage uses
+	# (see player.gd), which folds in magic AND attack.
+	#
+	# NEW: THE EQUIPPED STAFF, ADDED RATHER THAN SUBSTITUTED — the same rule
+	# all four classes now share; see player.gd's weapon_damage_roll(). Rolled
+	# once per CAST, so every enemy a cast catches - under one spike or three -
+	# takes the same number. roundi rather than int, because truncating toward
+	# zero cost a fraction of a point on every single cast.
+	var damage: int = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
+	# What this cast's spikes have hit between them: one spike a monster.
+	var struck: Dictionary = {}
+	var made: Array[Node] = []
+	for mark in spike_marks(aimed, count):
+		var spell: Node = _drop_spike(mark["at"], mark["target"], damage, struck)
+		if spell != null:
+			made.append(spell)
+	return made
+
+
+func spike_marks(aimed: Vector2, count: int) -> Array:
+	"""Where `count` spikes aimed at `aimed` go, as {at, target}: the first on
+	the nearest monster within SPIKE_SEEK_RADIUS of the aim (target null, and
+	the aim itself, when there is none); the rest on the next nearest others
+	within TRIPLE_REACH of the first, or round it when the monsters run out.
+	Only monsters the mage can see (can_hit()) and that can be aimed at."""
+	var candidates: Array = []
+	for node in get_tree().get_nodes_in_group(&"enemies"):
+		var monster := node as Node2D
+		if monster == null or not is_instance_valid(monster) or not monster.is_visible_in_tree():
+			continue
+		if monster.has_method("can_be_aimed_at") and not monster.call("can_be_aimed_at"):
+			continue
+		var feet: Vector2 = Targets.body_point(monster)
+		if feet.distance_to(aimed) > SPIKE_SEEK_RADIUS + TRIPLE_REACH:
+			continue
+		candidates.append([feet.distance_to(aimed), monster, feet])
+	candidates.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	var marks: Array = []
+	var taken: Dictionary = {}
+	for entry in candidates:
+		if float(entry[0]) > SPIKE_SEEK_RADIUS:
+			break
+		if can_hit(entry[1]):
+			marks.append({"at": entry[2], "target": entry[1]})
+			taken[(entry[1] as Node).get_instance_id()] = true
+			break
+	if marks.is_empty():
+		marks.append({"at": aimed, "target": null})
+	var first: Vector2 = marks[0]["at"]
+	if count > 1:
+		var others: Array = []
+		for entry in candidates:
+			var monster: Node2D = entry[1]
+			if taken.has(monster.get_instance_id()):
+				continue
+			var far: float = (entry[2] as Vector2).distance_to(first)
+			if far <= TRIPLE_REACH:
+				others.append([far, monster, entry[2]])
+		others.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+		for entry in others:
+			if marks.size() >= count:
+				break
+			if can_hit(entry[1]):
+				marks.append({"at": entry[2], "target": entry[1]})
+	# Round the first, evenly, for the rest - this side of any wall.
+	var spare: int = count - marks.size()
+	for k in spare:
+		var way := Vector2.from_angle(TAU * float(k) / float(maxi(spare, 1)) - PI / 2.0)
+		marks.append({"at": Targets.short_of_wall(self, first, first + way * TRIPLE_SPREAD), "target": null})
+	return marks
+
+
+func _drop_spike(at: Vector2, target: Node2D, damage: int, struck: Dictionary) -> Node:
+	# spawn the spell scene at its mark. parented to the scene ROOT (not to
+	# mage) so the spell stays where it was cast if the mage moves during the
+	# fall animation. spell.tscn plays its own 8-frame fall animation and
+	# damages on impact frame (frame 4).
+	var spell: Node = target_circle_scene.instantiate()
+	# Before add_child(): the mark it follows down, and what the cast's other
+	# spikes have hit.
+	if "target" in spell:
+		spell.set("target", target)
+	if "struck" in spell:
+		spell.set("struck", struck)
+	get_tree().current_scene.add_child(spell)
+	spell.global_position = at
 
 	# The target circle used to SLIDE into place instead of appearing at the
 	# cursor.
@@ -328,40 +437,18 @@ func _spawn_stalagmite() -> void:
 	# reset_physics_interpolation() collapses previous and current to the same
 	# value, leaving nothing to blend. It MUST come AFTER global_position is
 	# set, never before.
-	#
-	# WHY IT ONLY SHOWED UP WHEN IT DID: the slide lasts exactly one physics
-	# tick. At 180 ticks/second that was 5.6ms and invisible. At 80 it is
-	# 12.5ms, and 12.5ms of movement is something an eye catches.
 	spell.reset_physics_interpolation()
-	# damage_per_magic is a flat base damage value scaled by
-	# get_damage_multiplier(), the shared function every class's damage uses
-	# (see player.gd), which folds in magic AND attack. It was magic *
-	# damage_per_magic — magic-only, with damage_per_magic acting as a "per
-	# point" multiplier. Same export, same default (25), reinterpreted role.
 	# Guarded the same way `caster` is, two lines down. Assigning a property a
-	# scene may not have is a hard error, and the two assignments had no reason
-	# to disagree about how careful to be.
-	#
-	# NEW: THE EQUIPPED STAFF, ADDED RATHER THAN SUBSTITUTED — the same rule
-	# all four classes now share; see player.gd's weapon_damage_roll(). Rolled
-	# once per cast, so a stalagmite that lands well hits harder than one that
-	# does not, and every enemy caught in the same explosion takes the same
-	# number. roundi rather than int, because truncating toward zero cost a
-	# fraction of a point on every single cast.
+	# scene may not have is a hard error.
 	if "explosion_damage" in spell:
-		spell.explosion_damage = roundi(
-			(damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
+		spell.explosion_damage = damage
 	# Identifies the mage for spelltargetcircle.gd's XP-on-hit — same
-	# pattern as slashwave.gd's caster reference for warrior. this is what
-	# lets the spell grant attack XP (universal) AND magic XP (mage's
-	# boosted specialty) back to whoever cast it, on impact. the spell
-	# script itself still needs its own matching XP-grant call added —
-	# that part isn't done here, since it lives in target_circle_scene's
-	# script, not this one.
+	# pattern as slashwave.gd's caster reference for warrior.
 	if "caster" in spell:
 		spell.caster = self
 	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
-	Presence.tell_attack("stalag", global_position, spell.global_position)
+	Presence.tell_attack("stalag", global_position, at)
+	return spell
 
 
 # =============================================================================

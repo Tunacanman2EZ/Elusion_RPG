@@ -603,6 +603,16 @@ backslash"). All of it is on the owner panel (backquote) now:
   the scripts alone, which was wrong), and its worst; `monsters` - how many are in the
   area, awake and asleep (enemysleeper.gd). Switching it on starts every
   worst and count again. `_test_the_readout_counts_a_crowd()` holds it.
+  **Since 0.69.2 it says when the game is held** (the owner's 8x screenshot:
+  fps 15, frame 66.67 ms, 64% of frames hitching - and physics 0.75 ms a tick,
+  process 9.5 ms; the window was in the background or the screen resting, so
+  `Settings.BACKGROUND_FPS` held it). The fps row reads "held at 15: the game
+  is in the background - click it" or "the screen is resting - press a key"
+  (`Settings.held_reason()`); held frames count in no worst and no hitch;
+  `busy` is the frame's own work (process plus the physics ticks it ran)
+  and `gpu` the graphics card's (the viewport's measured render time, "not
+  measured" where the renderer cannot say), both true while held. And the
+  screen does not rest while the readout is up: it is for watching hands off.
 - **The stress test (0.65.0):** "Stress test: Big Field monsters" on the
   Testing tab - Off, 2x, 3x, 4x, and since 0.65.1 6x and 8x (the owner, 21
   Oct: "first we need to stress test the game with 2x the enemies in big
@@ -2350,6 +2360,11 @@ drop-only.
 - **`TIER_ELEMENTS` must agree with the enemies.** If an element moves band,
   its normals' `max_loot_tier` and this table change together; the suite reads
   every normal enemy and fails on a mismatch.
+- **A placed monster's leash is read through `BaseEnemy.authored_leash()`
+  (0.69.2).** The exporter runs in the editor on placeholders that never ran
+  `_init()`, and the bush mage's 1,500 is set there - so an editor export
+  wrote the field mages as 400 and a running one 1,500. A class that sets its
+  own leash names it `const CHASE_LEASH`; a placement's own number wins.
 - **The server sells from `gamedata.json`, not from the .tres.** After
   changing the stock, re-export, copy the file to the API and restart Flask.
   Until then the suite fails "data/gamedata.json carries the same stock".
@@ -5822,6 +5837,30 @@ offered for the ice stalagmite, all four.
   the cold flash, the shake, the frost and its melt, and the cache key. Each
   was broken on purpose to see it fail.
 
+### The mage's spike finds its mark, and the third cast drops three (0.70.0)
+
+The owner: "mage is the weakest of all my chars ... a single ice spike is
+kinda lame". The spike lands a third of a second after the cast
+(`IMPACT_FRAME` 4 at 12 frames a second) on an 18 px circle, so a monster
+walking at 60 px/s was 20 px on by then and most casts at anything moving
+missed - the class's designed dps (20/s against the warrior's 24/s) was a
+ceiling it rarely reached.
+
+- **The spike finds its mark.** `Mage.spike_marks()`: the nearest monster
+  within `SPIKE_SEEK_RADIUS` (48 px) of the aim that the mage can see
+  (`can_hit()`) and that can be aimed at. The spike starts on its feet and
+  follows them down (`spelltargetcircle.gd` `target`, `follow()`), letting
+  go at the strike, or when the mark dies, sleeps or goes behind a wall.
+  Nothing near the aim: it lands where it was aimed, as before.
+- **The third cast drops three** (`TRIPLE_EVERY` 3, `TRIPLE_SPIKES` 3): the
+  mark first, then the next nearest monsters within `TRIPLE_REACH` (110 px)
+  of it, or round it `TRIPLE_SPREAD` (44 px) out when there are none.
+- **One spike a monster a cast.** The spikes of a cast share `struck`, so a
+  monster under two of them takes one. One monster takes no more than it did,
+  and the server's bound on a mage (`gamedata.combat_bounds()`, a hit a cast)
+  still holds with no server change. The damage is rolled once a cast.
+- `_test_the_mage_spike_finds_its_mark()`.
+
 ### The healer's orbs, mixed with the crypt's (0.36.0)
 
 The owner, of the healer's attack: he paid for its orb, so keep it, "mixing
@@ -7805,6 +7844,14 @@ attacks ask the same question.
 - **The bush mage had four always-on 108 px boxes on the monsters' layer**
   (`attackbox*`, used by nothing). Any attack reading areas hit the mage
   anywhere in a 150 px square round it, through walls. They are gone.
+- **A finisher's burst and fan start this side of a wall (0.70.0).** The
+  owner: "warriors bullet projectile is spilling outside the map and is
+  scattering in the black kind of like teleporting". The burst left from the
+  middle of the monster's hurtbox, which stands taller than the wall its feet
+  are behind - over a Big Field north wall, already in the black. It leaves
+  from as far toward it as the wave can see, and an orb whose start is past a
+  wall is not fired; so for the finisher's fan, and for another warrior's
+  pictures, which a game from before 0.69.1 sent from its origin.
 - **Nothing is left over the black.** A slash wave lives `MAX_SECONDS` (3) at
   most - one fired off this screen by another warrior never left it. An axe
   taken off while out tells everyone else's copy to come home, and a recall

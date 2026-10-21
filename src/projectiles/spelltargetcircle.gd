@@ -77,6 +77,17 @@ var caster: Node = null
 # shape's radius changes in the scene, change this with it.
 var circle_radius: float = 18.0
 
+# THE MARK IT FOLLOWS DOWN (0.70.0, mage.gd's SPIKE_SEEK_RADIUS): set by the
+# mage before add_child(), or null for a spike aimed at the ground. Until it
+# strikes, the spike keeps over the mark's feet - so a monster walking away in
+# the third of a second it takes to fall is still under it. It lets go of a
+# mark that goes behind a wall, dies or is put to sleep.
+var target: Node2D = null
+
+# WHAT THIS CAST'S SPIKES HAVE HIT, shared by all of them (THE THIRD CAST,
+# mage.gd): instance id -> true. A monster takes one spike a cast.
+var struck: Dictionary = {}
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -207,6 +218,28 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 
+func _physics_process(_delta: float) -> void:
+	follow()
+
+
+func follow() -> void:
+	"""One tick of following the mark down, before the strike."""
+	if target == null:
+		return
+	if not is_instance_valid(target) or not target.is_inside_tree() or not target.is_visible_in_tree() \
+			or (anim != null and anim.frame >= IMPACT_FRAME):
+		target = null
+		return
+	if target.has_method("can_be_aimed_at") and not target.call("can_be_aimed_at"):
+		target = null
+		return
+	var feet: Vector2 = Targets.body_point(target)
+	if not Targets.clear_between(self, global_position, feet):
+		target = null
+		return
+	global_position = feet
+
+
 func _draw() -> void:
 	var fall: float = fall_progress()
 	var left: float = 1.0 - after_progress()
@@ -277,6 +310,11 @@ func _apply_area_damage() -> void:
 		# Not past a wall from where it landed (0.69.1, Targets).
 		if not Targets.can_reach(self, global_position, body):
 			continue
+		# One spike a cast for any monster (THE THIRD CAST, mage.gd).
+		var id: int = body.get_instance_id()
+		if struck.has(id):
+			continue
+		struck[id] = true
 		body.take_damage(explosion_damage)
 		_grant_caster_xp()
 

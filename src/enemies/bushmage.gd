@@ -29,6 +29,9 @@
 extends BaseEnemy
 class_name BushMage
 
+# How far a bush mage chases: the class's own leash, set in _init() (below).
+const CHASE_LEASH := 1500.0
+
 # This enemy's reward profile. See BaseEnemy.enemy_data — the hp, xp, loot tier
 # and pet that used to be assigned in _ready() below all live in this file now.
 const ENEMY_DATA := preload("res://data/enemies/bushmage.tres")
@@ -113,7 +116,9 @@ func _init() -> void:
 	# every placement - the Big Field's mages, set to 250 so one field does not
 	# pull the next, chased from 1,500 like any other. bushmage.tscn carries no
 	# leash_range for the same reason: a stored value would replace this one.
-	leash_range = 1500.0
+	# The number is CHASE_LEASH so the exporter can read it in the editor,
+	# where this never runs (BaseEnemy.authored_leash(), 0.69.2).
+	leash_range = CHASE_LEASH
 
 
 func _ready() -> void:

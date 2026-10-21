@@ -66,6 +66,24 @@ var _hitches: int = 0
 var _worst_physics_ms: float = 0.0
 var _worst_process_ms: float = 0.0
 
+# HOW BUSY A FRAME IS, AGAINST HOW LONG IT TAKES (0.69.2). The owner's
+# screenshot of the 8x Big Field: fps 15, frame 66.67 ms, 64% of frames
+# hitching - and physics 0.75 ms a tick, process 9.5 ms. The game was held at
+# Settings.BACKGROUND_FPS (its window in the background, or the screen
+# resting) and the rest of each 66 ms was waiting. A held frame is not a slow
+# one, so the frame row cannot say what the game costs while held; this does:
+# the process step plus every physics tick the frame ran, averaged over the
+# sample.
+var _busy_ms_sum: float = 0.0
+var _busy_frames: int = 0
+var _busy_ms: float = 0.0
+var _last_physics_frames: int = 0
+
+# THE GRAPHICS CARD'S SHARE (0.69.2): the viewport's measured render time,
+# which Godot only measures when asked. 0 where the renderer cannot say (the
+# browser's).
+var _measuring: bool = false
+
 
 func _ready() -> void:
 	# ALWAYS, so the readout keeps updating while the game is paused. Reading
@@ -97,8 +115,35 @@ func set_shown(on: bool) -> void:
 		_hitches = 0
 		_worst_physics_ms = 0.0
 		_worst_process_ms = 0.0
+		_busy_ms_sum = 0.0
+		_busy_frames = 0
+		_busy_ms = 0.0
+		_last_physics_frames = Engine.get_physics_frames()
 		_accum = SAMPLE_INTERVAL   # redraw on the very next frame, not in 0.2s
 	visible = on
+	_measure_render_time(on)
+
+
+func _measure_render_time(on: bool) -> void:
+	if on == _measuring or not is_inside_tree():
+		return
+	_measuring = on
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), on)
+
+
+func gpu_ms() -> float:
+	"""What the graphics card spent on the last frame, in ms, or 0 when this
+	renderer does not measure it."""
+	if not _measuring or not is_inside_tree():
+		return 0.0
+	return RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())
+
+
+func busy_ms() -> float:
+	"""The frame's own work, averaged over the last sample: process plus the
+	physics ticks it ran. Next to `frame`, the difference is waiting - for a
+	cap, V-Sync or the graphics card."""
+	return _busy_ms
 
 
 func is_shown() -> bool:
@@ -113,14 +158,24 @@ func _process(delta: float) -> void:
 	# minimum that only looks every 200ms will miss the frame that stuttered,
 	# which is the only frame anyone cares about.
 	var fps: float = Performance.get_monitor(Performance.TIME_FPS)
-	if fps > 0.0 and (_worst_fps <= 0.0 or fps < _worst_fps):
+	# A HELD FRAME IS NOT A RESULT (0.69.2): neither its rate nor its length
+	# says anything about the game, so it goes into no worst and no count.
+	var held: bool = Settings.held_reason() != ""
+	if not held and fps > 0.0 and (_worst_fps <= 0.0 or fps < _worst_fps):
 		_worst_fps = fps
-	_note_frame(delta)
+	_note_frame(delta, held)
+	var ticks: int = Engine.get_physics_frames() - _last_physics_frames
+	_last_physics_frames = Engine.get_physics_frames()
+	_busy_ms_sum += _process_ms() + _physics_ms() * float(maxi(ticks, 0))
+	_busy_frames += 1
 
 	_accum += delta
 	if _accum < SAMPLE_INTERVAL:
 		return
 	_accum = 0.0
+	_busy_ms = _busy_ms_sum / float(maxi(_busy_frames, 1))
+	_busy_ms_sum = 0.0
+	_busy_frames = 0
 
 	_label.text = "\n".join([
 		_row("fps", "%d   (worst %d)%s" % [int(fps), int(_worst_fps), _cap_note()]),
@@ -156,6 +211,10 @@ func _process(delta: float) -> void:
 		_row("physics", "%.2f ms a tick   (worst %.2f)   budget %.2f" % [
 			_physics_ms(), _worst_physics_ms, 1000.0 / float(Engine.physics_ticks_per_second)]),
 		_row("process", "%.2f ms   (worst %.2f)   scripts + drawing" % [_process_ms(), _worst_process_ms]),
+		# THE TWO ROWS THAT STAY TRUE WHILE THE FRAME RATE IS HELD (0.69.2).
+		_row("busy", "%.2f ms of each frame   (process + its physics ticks)" % busy_ms()),
+		_row("gpu", ("%.2f ms a frame   (the graphics card)" % gpu_ms()) if gpu_ms() > 0.0
+			else "not measured by this renderer"),
 		_row("monsters", _monsters_text()),
 		_row("nodes", _thousands(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))),
 		_row("bodies", "%s active" % _thousands(
@@ -182,9 +241,14 @@ func _process(delta: float) -> void:
 	])
 
 
-func _note_frame(delta: float) -> void:
+func _note_frame(delta: float, held: bool = false) -> void:
 	"""One frame into the since-switched-on counts: the frame, whether it
-	hitched, and the worst physics tick and script time."""
+	hitched, and the worst physics tick and script time. A frame drawn while
+	the game is HELD at the background rate (Settings.held_reason()) is not
+	counted: every one of those is 66 ms on purpose, and the owner's 8x
+	readout called 64% of its frames hitches for it (0.69.2)."""
+	if held:
+		return
 	_frames += 1
 	if delta * 1000.0 > HITCH_MS:
 		_hitches += 1
@@ -251,6 +315,14 @@ func _cap_note() -> String:
 	# which is a number vsync would never permit sitting next to the claim
 	# that vsync was producing it. Settings.pacing_report() compares the
 	# request with the result, and that comparison is the only honest source.
+	# HELD, AND WHY, FIRST (0.69.2). The owner read "[capped by vsync, cap 15 -
+	# not a limit]" over a 66 ms frame as the 8x crowd costing it: the cap was
+	# the game's own background rate, and the words did not say so.
+	match Settings.held_reason():
+		"resting":
+			return "   [held at %d: the screen is resting - press a key]" % Settings.BACKGROUND_FPS
+		"background":
+			return "   [held at %d: the game is in the background - click it]" % Settings.BACKGROUND_FPS
 	var r: Dictionary = Settings.pacing_report()
 	if bool(r["overridden"]):
 		return "   [vsync requested, driver ignoring it - this number is real]"

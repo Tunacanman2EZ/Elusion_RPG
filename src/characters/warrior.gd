@@ -1074,6 +1074,10 @@ func _spawn_slashwave() -> void:
 	# THE FINISHER's fan: gold orbs flying out beside its wave, as fast.
 	if _finisher:
 		for pair in finisher_fan(wave.global_position, _swing_aim_direction):
+			# Not from past a wall: the crescent's tips are 14 px out either side
+			# of its middle (0.70.0, the burst says why).
+			if not Targets.clear_between(self, Targets.body_point(self), pair[0]):
+				continue
 			BladeOrb.fire(wave.get_parent(), pair[0], pair[1], wave.speed,
 				FINISHER_FAN_REACH, wave.burst_damage, BladeOrb.GOLD)
 	Presence.tell_attack("slash", wave.global_position,

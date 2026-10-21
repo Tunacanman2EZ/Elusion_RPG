@@ -1231,6 +1231,25 @@ func is_resting() -> bool:
 	return _resting
 
 
+func held_reason() -> String:
+	"""Why the game is drawing only BACKGROUND_FPS frames a second, or "" when
+	it is not: "resting" (REST_AFTER untouched) or "background" (the window
+	is not the focused one, and the background limit is on). The performance
+	readout says so (0.69.2): the owner read 15 fps held this way as the
+	8x crowd costing a 66 ms frame."""
+	if _resting:
+		return "resting"
+	if not _focused and bool(get_value("background_fps_limit")):
+		return "background"
+	return ""
+
+
+func _readout_watching() -> bool:
+	"""Whether the owner's performance readout is on screen (PerfOverlay)."""
+	var readout: Node = get_node_or_null(^"/root/PerfOverlay") if is_inside_tree() else null
+	return readout != null and readout.has_method("is_shown") and bool(readout.call("is_shown"))
+
+
 func note_input() -> void:
 	"""A person is here: the idle clock starts again, and a resting screen wakes."""
 	_last_input_msec = Time.get_ticks_msec()
@@ -1257,6 +1276,13 @@ func check_rest() -> void:
 	if _resting:
 		if float(now - _rest_moved_msec) / 1000.0 >= REST_WORDS_MOVE:
 			_move_rest_words()
+		return
+	# NOT WHILE THE PERFORMANCE READOUT IS UP (0.69.2). It is for watching a
+	# stress test, hands off, for minutes - and two minutes in, the screen
+	# rested and held the game at BACKGROUND_FPS, which the readout then
+	# showed as the crowd's cost. Watching it is being here.
+	if _readout_watching():
+		_last_input_msec = now
 		return
 	if rest_due(float(now - _last_input_msec) / 1000.0, bool(get_value("screen_rest"))):
 		_set_resting(true)
