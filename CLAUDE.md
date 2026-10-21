@@ -736,6 +736,19 @@ scripts in ASCII, or save them as UTF-8 **with** a BOM.
 parameter `position` shadows it and Godot warns at parse time. In a grid, the
 word you want is `cell` — it is also more accurate.
 
+### Shadowing a member of the same script (0.64.0)
+
+The same warning one step closer: a local, `for` or parameter with the name
+of a `var`, `static var` or `const` the script itself declares. The owner's
+editor showed four at once - "The local function parameter "path" is
+shadowing an already-declared variable at line 55" - settings.gd's own
+`static var path` (where the options file is kept) hidden by locals called
+`path` in four functions. Renamed (`file_path`, `script_path`,
+`override_file`); the scan that found them found two more, a parameter in
+optionsscreen.gd hiding its `frame_cap` picker and a `var skipped` in the
+suite hiding its own count. Editor warnings never reach a headless run, so
+`_test_nothing_shadows_its_own_members()` scans for them.
+
 ### A Label that shares a row gives way
 
 A guild called "the first" was drawn as **"the"** in its own panel. The name
@@ -3605,6 +3618,44 @@ buttons on day 1 for being crowded.
 
 `_test_the_kill_record()` holds the window and the pictures; the server's half
 is test_killrecord.py.
+
+### Options explains itself: the help bubble (0.64.0)
+
+The owner, 20 Oct: "what if a player changes settings unknowingly maybe we
+need a hud explaining i really want to think about all playes some people
+may not even know what vulkan is", then "maybe a tool tip or something".
+
+- **A bubble beside the setting, not Godot's tooltip.** Point at a setting
+  - its control or its name beside it - tap it, or reach it with the
+  keyboard, and a bubble opens at once under its row (over it, near the
+  bottom, so it never covers the footer's buttons) saying in plain words
+  what it does, what most players want, and when to change it. A tooltip
+  shows only to a mouse, after a wait, and Godot's runs on in one line -
+  half the players are on a phone. The controls in Options carry no
+  tooltip of their own any more.
+- **It takes no room.** Options is laid out to fit a 720-high screen with
+  nothing scrolling ("Options opens at the size it was drawn at", 702 px);
+  a strip along the bottom, tried first, broke that, so the bubble floats
+  (`top_level`, ignores the mouse) and the title bar's line is clipped.
+- **The words are `HELP` in optionsscreen.gd**, keyed by each control's
+  unique name; `help_for()` fills in Settings' own numbers (15 pictures a
+  second in the background, 30 on Battery saver, 2 minutes to rest).
+  **A new setting needs its words there** - the suite fails on a picker,
+  slider or switch without them. Keep each under 240 characters.
+- **What is set oddly is marked** (`help_warnings()`): the master volume at
+  0%, V-Sync Off, a frame cap under the screen's rate (with V-Sync on),
+  Brightness under 70%. Each shows as a line in the title bar ("Heads up:
+  V-Sync is Off - the picture can tear.", or how many when there are more)
+  and that setting's name in orange; its bubble says why first, and that
+  "Reset to defaults" puts it back. Changing one updates the marks at once.
+  A mark taken off puts back the colour the scene drew the name in.
+- **Only those four settings move the marks**: the window watch writes the
+  window's place to Settings whenever it moves, and that must not shut a
+  bubble being read.
+- **Renderer and Graphics API are explained, not hidden**, and "Reset to
+  defaults" still leaves them alone (they need a restart) - the reset
+  button's own words say so.
+- `_test_options_explain_themselves()` holds all of it.
 
 ### The Credits: Options > Credits (0.11.1)
 

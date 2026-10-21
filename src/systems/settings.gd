@@ -793,14 +793,14 @@ func _write_display_override() -> void:
 		screen, Vector2i(int(get_value("window_x")), int(get_value("window_y"))), origin, count))
 
 
-static func write_display_override_to(path: String, want: Dictionary) -> void:
-	"""Write display_override()'s keys into the override.cfg at `path`: set
+static func write_display_override_to(file_path: String, want: Dictionary) -> void:
+	"""Write display_override()'s keys into the override.cfg at `file_path`: set
 	the ones with a value, erase the ones that are null, and leave every other
 	key in the file - the renderer, the graphics API - as it is. Nothing is
 	written when nothing would change. Static, with the path handed in, so the
 	suite can run it against a file of its own."""
 	var cfg := ConfigFile.new()
-	cfg.load(path)   # a missing file is fine; it starts empty
+	cfg.load(file_path)   # a missing file is fine; it starts empty
 	var changed_any: bool = false
 	for key in want:
 		var value: Variant = want[key]
@@ -817,9 +817,9 @@ static func write_display_override_to(path: String, want: Dictionary) -> void:
 			changed_any = true
 	if not changed_any:
 		return
-	var err: int = cfg.save(path)
+	var err: int = cfg.save(file_path)
 	if err != OK:
-		push_warning("Settings: could not write %s (error %d)." % [path, err])
+		push_warning("Settings: could not write %s (error %d)." % [file_path, err])
 
 
 func _apply_screen() -> void:
@@ -1287,8 +1287,8 @@ static func is_projectile(node: Node) -> bool:
 	var script: Script = node.get_script() as Script
 	if script == null:
 		return false
-	var path: String = script.resource_path
-	return path.begins_with(PROJECTILE_SCRIPTS) or path in PROJECTILE_ALSO
+	var script_path: String = script.resource_path
+	return script_path.begins_with(PROJECTILE_SCRIPTS) or script_path in PROJECTILE_ALSO
 
 
 func _dim_projectile_by_id(id: int) -> void:
@@ -1752,13 +1752,13 @@ func set_renderer(method: String) -> void:
 	if method not in RENDERERS:
 		push_error("Settings: unknown renderer '%s'" % method)
 		return
-	var path: String = _override_path()
+	var override_file: String = _override_path()
 	var cfg := ConfigFile.new()
-	cfg.load(path)   # a missing file is fine; it starts empty
+	cfg.load(override_file)   # a missing file is fine; it starts empty
 	cfg.set_value("rendering", "renderer/rendering_method", method)
-	var err: int = cfg.save(path)
+	var err: int = cfg.save(override_file)
 	if err != OK:
-		push_warning("Settings: could not write %s (error %d)." % [path, err])
+		push_warning("Settings: could not write %s (error %d)." % [override_file, err])
 
 
 # =============================================================================
@@ -1802,13 +1802,13 @@ func set_graphics_api(api: String) -> void:
 	if api not in GRAPHICS_APIS:
 		push_error("Settings: unknown graphics api '%s'" % api)
 		return
-	var path: String = _override_path()
+	var override_file: String = _override_path()
 	var cfg := ConfigFile.new()
-	cfg.load(path)   # a missing file is fine; it starts empty
+	cfg.load(override_file)   # a missing file is fine; it starts empty
 	cfg.set_value("rendering", "rendering_device/driver.windows", api)
-	var err: int = cfg.save(path)
+	var err: int = cfg.save(override_file)
 	if err != OK:
-		push_warning("Settings: could not write %s (error %d)." % [path, err])
+		push_warning("Settings: could not write %s (error %d)." % [override_file, err])
 
 
 func _override_path() -> String:

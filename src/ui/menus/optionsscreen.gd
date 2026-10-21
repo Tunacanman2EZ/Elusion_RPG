@@ -37,6 +37,116 @@ const SettingsScript := preload("res://src/systems/settings.gd")
 
 
 # =============================================================================
+# THE HELP BUBBLE (0.64.0) - WHAT EVERY SETTING DOES, IN PLAIN WORDS
+# =============================================================================
+# The owner, 20 Oct: "what if a player changes settings unknowingly maybe we
+# need a hud explaining i really want to think about all playes some people
+# may not even know what vulkan is", then "maybe a tool tip or something".
+#
+# A BUBBLE, NOT GODOT'S TOOLTIP. A tooltip shows only to a mouse, only after
+# a wait, and Godot's runs on in one long line; half the players here are on
+# a phone. So point at a setting - its name or its control - tap it, or reach
+# it with the keyboard, and a bubble beside it says at once what it does,
+# what most players want, and when to change it. The controls carry no
+# tooltip of their own any more - it would only say the same thing, late.
+#
+# IT TAKES NO ROOM. The window is laid out to fit a 720-high screen without
+# scrolling (see "Options opens at the size it was drawn at"); a strip along
+# the bottom, tried first, broke that. The bubble floats over the panel.
+#
+# WHAT IS SET ODDLY IS MARKED (help_warnings()): a player who turned V-Sync
+# off, or the volume to nothing, without meaning to sees a line in the title
+# bar the moment Options opens, and that setting's name in orange; pointing
+# at it says why, and "Reset to defaults" puts it back.
+#
+# Keyed by each control's unique name. _test_options_explain_themselves()
+# fails on any control in the panel that has no entry here.
+const HELP := {
+	"mastervolume": "How loud the whole game is - music and sound effects together. At 0% the game is silent.",
+	"musicvolume": "How loud the music is, on its own.",
+	"sfxvolume": "How loud everything else is: swings, spells, doors, monsters and the menus.",
+	"textsize": "Makes all the writing in the game bigger - for a big screen, or one across the room. Most players: Normal.",
+	"fontstyle": "The style of letters every window, button and name is written in. Chat keeps its own, for its emoji. Most players: Standard.",
+	"camerazoom": "How close the camera sits. Lower pulls it back so you see more of the world around you. 3.00x is how the game is drawn to be seen.",
+	"namehue": "The colour of your name over your head, to tell it apart from everyone else's in a crowd.",
+	"damagenumbers": "The numbers that fly up when something is hit - they show what your weapon is doing. Turn them off for a calmer screen. Most players: On.",
+	"chatfilter": "Hides rude words in chat. It changes only what you see, not what anyone types. Most players: On.",
+	"projectilebrightness": "How bright arrows, orbs, spikes and bullets are. They are the brightest things on the screen; lower this if a big fight is hard on your eyes.",
+	"accountemailbutton": "The email address that can get your account back if you forget your password.",
+	"accountpasswordbutton": "Change the password you sign in with. You will need your current one.",
+	"screenpick": "Which screen the game plays on, if you have more than one. It opens there next time too.",
+	"windowmode": "Windowed: a window you can move. Borderless fullscreen: fills the screen and lets you switch away instantly. Exclusive fullscreen: takes the screen over - usually the smoothest.",
+	"windowsize": "How big the window is when it is not fullscreen. The number in brackets is how many times the game's own 1280 x 720.",
+	"vsyncmode": "Keeps the game in step with your screen, so the picture never tears (looks split across) when you move. Most players: On. Off is for testing; Adaptive and Fast are for a graphics card that ignores On.",
+	"framecap": "The most pictures a second the game will draw. With V-Sync On, leave it Unlimited - your screen already sets the pace. To keep a laptop cool, Battery saver is the easy way.",
+	"renderresolution": "Full draws writing and windows as sharp as your screen allows. 1280 x 720 draws them smaller and stretches them: softer, but less work for a slow computer. The world looks the same either way.",
+	"lighting": "Full: candles, lanterns and the dark of the crypts. Simple: no lights and the dark lifted - the biggest saving on a slow computer. Most players: Full.",
+	# The three numbers are Settings' own, filled in by help_for().
+	"backgroundlimit": "While you are in another window, the game draws only %d pictures a second, so it does not slow your computer or drain its battery. Most players: On.",
+	"batterysaver": "Draws at most %d pictures a second - half the work, so a laptop or phone lasts longer and stays cooler. Movement is a little less smooth. Most players: Off, unless on battery.",
+	"screenrest": "Dims the screen after %d minutes with no key or touch, so a phone does not heat up and nothing burns into the screen. Any key or touch brings it back.",
+	"brightness": "Darkens everything the game draws - easier on the eyes at night, and less power on many phone screens. 100% is the game as drawn.",
+	"renderer": "How the game draws. Standard suits nearly every computer. Compatibility is for an old or unusual graphics card - try it if the game looks wrong. Takes effect when you restart the game.",
+	"graphicsapi": "How the game talks to your graphics card (Windows only). Vulkan suits most. Direct3D 12 is Windows' own - try it if the picture stutters or tears with V-Sync On. Takes effect when you restart the game.",
+	"aimrings": "The ring under you, with a ball where your attack goes - and the red one under each monster, with its dot on whoever it is after. Most players: On.",
+	"rangecircles": "The dashed circles: how close you can come to a monster before it notices you, how far it chases you once it has, and how far a mythic weapon reaches.",
+	"othersattacks": "Other players' waves, axes, spells, dynamite, orbs and auras. Off hides them all - a healer's aura still heals you. Most players: On.",
+	"optionscreditsbutton": "Who made the art and the sound, everyone who has supported the game, and the engine's licences.",
+	"optionskeysbutton": "Opens the Controls card, with every key as a button to change it.",
+	"optionsresetbutton": "Puts every setting here back the way the game first started - except Renderer and Graphics API, which wait for a restart and are changed only by hand.",
+	"optionsclosebutton": "Close Options. Everything you changed is already saved.",
+}
+const HELP_COLOUR := Color(0.86, 0.88, 0.93)
+# Orange, not the title's gold, so it reads as "look at this".
+const HELP_WARNING_COLOUR := Color(1.0, 0.62, 0.32)
+# Each warning's setting, and the control that sets it.
+const HELP_WARNED_CONTROL := {
+	"volume_master": "mastervolume", "vsync": "vsyncmode", "frame_cap": "framecap", "brightness": "brightness",
+}
+# The bubble's widest, in px; narrower on a narrow panel.
+const HELP_BUBBLE_WIDTH := 360.0
+# How long after the pointer leaves a setting its bubble goes, in seconds -
+# long enough to cross from a setting's name to its control without a flicker.
+const HELP_HIDE_SECONDS := 0.15
+# Below this, Brightness is worth a word - it is easy to drag down by mistake.
+const HELP_DIM_BRIGHTNESS := 0.7
+
+
+static func help_for(key: String) -> String:
+	"""HELP's words for a control, with Settings' own numbers in them."""
+	var text: String = str(HELP.get(key, ""))
+	match key:
+		"backgroundlimit":
+			return text % SettingsScript.BACKGROUND_FPS
+		"batterysaver":
+			return text % SettingsScript.SAVER_FPS
+		"screenrest":
+			return text % roundi(SettingsScript.REST_AFTER / 60.0)
+	return text
+
+
+static func help_warnings(volume_master: float, vsync: String, cap: int,
+		screen_hz: float, bright: float) -> Array:
+	"""What is set oddly, worst first, as [setting key, plain words, a few
+	words for the title bar]. Static so the suite can ask about any
+	combination without changing the player's settings."""
+	var out: Array = []
+	if volume_master <= 0.0:
+		out.append(["volume_master", "Master volume is at 0%, so the game is silent.",
+			"Master volume is at 0% - the game is silent"])
+	if vsync == "off":
+		out.append(["vsync", "V-Sync is Off, so the picture can tear (look split across) when you move. Most players want On.",
+			"V-Sync is Off - the picture can tear"])
+	elif cap > 0 and screen_hz > 0.0 and float(cap) < screen_hz - 1.0:
+		out.append(["frame_cap", "The frame cap (%d) is below your screen's %d Hz, which can stutter. Most players want Unlimited." % [cap, roundi(screen_hz)],
+			"The frame cap is below your screen's speed"])
+	if bright < HELP_DIM_BRIGHTNESS:
+		out.append(["brightness", "Brightness is at %d%%, so the whole game is darkened." % roundi(bright * 100.0),
+			"Brightness is at %d%%" % roundi(bright * 100.0)])
+	return out
+
+
+# =============================================================================
 # SIGNALS
 # =============================================================================
 
@@ -200,6 +310,7 @@ func _ready() -> void:
 	_populate_window_sizes()
 	_connect_controls()
 	_connect_account()
+	_build_help()
 
 	# Nothing here runs per frame; this is for the day the options panel is
 	# reachable from a paused state. A panel whose sliders stop responding
@@ -391,6 +502,7 @@ func open() -> void:
 	# how a UI starts lying.
 	refresh()
 	visible = true
+	show_resting_help()
 
 
 func close() -> void:
@@ -1137,3 +1249,248 @@ func _on_reset_pressed() -> void:
 	# track of what it was.
 	Settings.reset()
 	refresh()
+	show_resting_help()
+
+
+# =============================================================================
+# THE HELP BUBBLE - see HELP at the top
+# =============================================================================
+
+var help_bubble: PanelContainer = null
+var help_label: Label = null
+var help_warning_label: Label = null
+var help_header: Label = null
+var _help_key: String = ""
+var _help_token: int = 0
+# Each warned setting's name label, and the colour the scene drew it in - a
+# mark taken off puts that back, not the theme's plain white.
+var _name_colours: Dictionary = {}
+
+
+func _build_help() -> void:
+	"""The bubble and the title bar's line, built here so the scene keeps its
+	layout. Then every control in HELP - and the row it sits in, so pointing
+	at its name works too - shows its bubble when pointed at, tapped or
+	reached with the keyboard."""
+	help_bubble = PanelContainer.new()
+	help_bubble.name = "helpbubble"
+	help_bubble.top_level = true
+	help_bubble.z_index = 50
+	help_bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var look := StyleBoxFlat.new()
+	look.bg_color = Color(0.07, 0.08, 0.11, 1.0)
+	look.border_color = Color(0.45, 0.5, 0.62, 0.9)
+	look.set_border_width_all(1)
+	look.set_corner_radius_all(5)
+	look.content_margin_left = 10
+	look.content_margin_right = 10
+	look.content_margin_top = 6
+	look.content_margin_bottom = 7
+	help_bubble.add_theme_stylebox_override("panel", look)
+	var lines := VBoxContainer.new()
+	lines.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lines.add_theme_constant_override("separation", 4)
+	help_bubble.add_child(lines)
+	help_warning_label = _bubble_label("helpwarning", HELP_WARNING_COLOUR)
+	lines.add_child(help_warning_label)
+	help_label = _bubble_label("helptext", HELP_COLOUR)
+	lines.add_child(help_label)
+	help_bubble.visible = false
+	add_child(help_bubble)
+
+	# The title bar's line: clipped, so it never widens the window.
+	var header: Node = get_node_or_null("mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer")
+	if header != null:
+		help_header = Label.new()
+		help_header.name = "helpheader"
+		help_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		help_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		help_header.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		help_header.clip_text = true
+		help_header.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		help_header.add_theme_font_size_override("font_size", 13)
+		help_header.add_theme_color_override("font_color", HELP_WARNING_COLOUR)
+		help_header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		header.add_child(help_header)
+		var close_at: Node = header.get_node_or_null("optionsclosebutton")
+		if close_at != null:
+			header.move_child(help_header, close_at.get_index())
+
+	for key in HELP:
+		var control := get_node_or_null("%" + str(key)) as Control
+		if control == null:
+			continue
+		control.tooltip_text = ""
+		_point_help_at(control, str(key))
+		# The row it sits in, and the name written beside it - but not the
+		# footer, which is three buttons and no name.
+		var row := control.get_parent() as Control
+		if row is HBoxContainer and str(row.name).ends_with("row") and row.name != &"footerrow":
+			row.tooltip_text = ""
+			for part in row.get_children():
+				if part is Label:
+					(part as Label).tooltip_text = ""
+			_point_help_at(row, str(key))
+	Settings.changed.connect(_on_setting_changed_for_help)
+	show_resting_help()
+
+
+func _bubble_label(label_name: String, colour: Color) -> Label:
+	var label := Label.new()
+	label.name = label_name
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 13)
+	label.add_theme_color_override("font_color", colour)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return label
+
+
+func _point_help_at(control: Control, key: String) -> void:
+	control.mouse_entered.connect(show_help.bind(key))
+	control.focus_entered.connect(show_help.bind(key))
+	control.mouse_exited.connect(_hide_help_soon)
+	control.focus_exited.connect(_hide_help_soon)
+
+
+func show_help(key: String) -> void:
+	"""The bubble beside the setting under the pointer: what it does, and
+	first, in orange, why it is marked if it is."""
+	if help_bubble == null or not HELP.has(key):
+		return
+	_help_token += 1
+	_help_key = key
+	help_label.text = help_for(key)
+	var warned: String = ""
+	for warning in _current_warnings():
+		if str(HELP_WARNED_CONTROL.get(str(warning[0]), "")) == key:
+			warned = str(warning[1]) + " Reset to defaults puts it back."
+	help_warning_label.text = warned
+	help_warning_label.visible = warned != ""
+	_place_bubble(key)
+	# Again once the labels have wrapped to the width: only then is the
+	# bubble's height, and so whether it fits under the row, known.
+	_place_bubble.call_deferred(key)
+
+
+func help_text() -> String:
+	"""What the bubble says, warning first."""
+	if help_label == null or help_bubble == null or not help_bubble.visible:
+		return ""
+	if help_warning_label.visible:
+		return help_warning_label.text + "\n" + help_label.text
+	return help_label.text
+
+
+func header_text() -> String:
+	return help_header.text if help_header != null else ""
+
+
+func _place_bubble(key: String) -> void:
+	# Its width first, then where it fits: under the setting's row, or over
+	# it when under would run past the panel's bottom.
+	var control := get_node_or_null("%" + key) as Control
+	var panel := get_node_or_null("mainpanel") as Control
+	if control == null or panel == null or key != _help_key:
+		return
+	var anchor: Control = control
+	var row := control.get_parent() as Control
+	if row is HBoxContainer and str(row.name).ends_with("row") and row.name != &"footerrow":
+		anchor = row
+	var area: Rect2 = panel.get_global_rect()
+	var width: float = minf(HELP_BUBBLE_WIDTH, area.size.x - 16.0)
+	var inner: float = width - 20.0
+	help_label.custom_minimum_size = Vector2(inner, 0)
+	help_warning_label.custom_minimum_size = Vector2(inner, 0)
+	help_bubble.size = Vector2(width, 0)
+	help_bubble.reset_size()
+	var tall: float = help_bubble.get_combined_minimum_size().y
+	var at: Rect2 = anchor.get_global_rect()
+	# Under the row only while it stays over the settings - never over the
+	# footer's buttons, which a player may be about to press.
+	var floor_y: float = area.end.y - 8.0
+	var scroll := get_node_or_null("%columnsscroll") as Control
+	if scroll != null:
+		floor_y = scroll.get_global_rect().end.y
+	var y: float = at.end.y + 4.0
+	if y + tall > floor_y:
+		y = at.position.y - tall - 4.0
+	var x: float = clampf(at.position.x, area.position.x + 8.0, area.end.x - width - 8.0)
+	help_bubble.global_position = Vector2(x, maxf(y, area.position.y + 8.0))
+	help_bubble.visible = true
+
+
+func _hide_help_soon() -> void:
+	# Not at once: crossing from a setting's name to its control leaves one
+	# and enters the other, and the bubble should not blink in between.
+	if not is_inside_tree():
+		return
+	get_tree().create_timer(HELP_HIDE_SECONDS).timeout.connect(_hide_help_if_still.bind(_help_token))
+
+
+func _hide_help_if_still(token: int) -> void:
+	# Nothing else was pointed at since: the bubble goes.
+	if token == _help_token:
+		hide_help()
+
+
+func hide_help() -> void:
+	_help_key = ""
+	if help_bubble != null:
+		help_bubble.visible = false
+
+
+func show_resting_help() -> void:
+	"""Nothing pointed at: the bubble goes, and what is set oddly is marked -
+	a line in the title bar, and each such setting's name in orange."""
+	hide_help()
+	var warnings: Array = _current_warnings()
+	var marked: Dictionary = {}
+	for warning in warnings:
+		marked[str(HELP_WARNED_CONTROL.get(str(warning[0]), ""))] = true
+	for key in HELP_WARNED_CONTROL.values():
+		var name_label: Label = setting_name_label(str(key))
+		if name_label == null:
+			continue
+		if not _name_colours.has(key):
+			_name_colours[key] = name_label.get_theme_color("font_color") if name_label.has_theme_color_override("font_color") else null
+		if marked.has(key):
+			name_label.add_theme_color_override("font_color", HELP_WARNING_COLOUR)
+		elif _name_colours[key] == null:
+			name_label.remove_theme_color_override("font_color")
+		else:
+			name_label.add_theme_color_override("font_color", _name_colours[key])
+	if help_header == null:
+		return
+	if warnings.is_empty():
+		help_header.text = ""
+	elif warnings.size() == 1:
+		help_header.text = "Heads up: %s." % str(warnings[0][2])
+	else:
+		help_header.text = "Heads up: %d settings are set unusually - they are in orange." % warnings.size()
+
+
+func setting_name_label(key: String) -> Label:
+	"""The name written beside a setting's control, in its row."""
+	var control := get_node_or_null("%" + key) as Control
+	if control == null or control.get_parent() == null:
+		return null
+	return control.get_parent().get_node_or_null("label") as Label
+
+
+func _current_warnings() -> Array:
+	return help_warnings(float(Settings.get_value("volume_master")), str(Settings.get_value("vsync")),
+		int(Settings.get_value("frame_cap")), Settings.current_screen_hz(),
+		float(Settings.get_value("brightness")))
+
+
+func _on_setting_changed_for_help(key: String, _value: Variant) -> void:
+	# The marks follow the setting at once - and the bubble open on it says
+	# the new thing, so V-Sync turned Off says why where the player is looking.
+	# ONLY THE SETTINGS A WARNING READS: the window watch writes where the
+	# window is whenever it moves, and that must not shut a bubble being read.
+	if not visible or _refreshing or not HELP_WARNED_CONTROL.has(key):
+		return
+	var open_on: String = _help_key
+	show_resting_help()
+	if open_on != "":
+		show_help(open_on)

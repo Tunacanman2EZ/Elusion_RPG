@@ -314,6 +314,7 @@ func _run_all() -> void:
 	_test_no_black_underlay()
 	_test_only_levelling_up_refills()
 	_test_nothing_shadows_its_base_class()
+	_test_nothing_shadows_its_own_members()
 	_test_every_resource_reference_exists()
 	_test_panels_fill_their_window()
 	_test_slots_wear_the_hotbar_socket()
@@ -339,6 +340,7 @@ func _run_all() -> void:
 	await _test_old_versions_must_update()
 	await _test_no_debug_keys_the_panel_does_it()
 	await _test_the_readout_counts_a_crowd()
+	await _test_options_explain_themselves()
 	await _test_escape_closes_every_window()
 	await _test_move_players_from_the_list()
 	await _test_give_and_save_history()
@@ -8492,7 +8494,7 @@ func _test_every_area_can_be_walked() -> void:
 	warrior.free()
 
 	var walked: Array = []
-	var skipped: Array = []
+	var no_map: Array = []
 	for area_id in AreaRegistry.area_ids():
 		var packed: PackedScene = load(AreaRegistry.AREAS[area_id]) as PackedScene
 		if packed == null:
@@ -8502,7 +8504,7 @@ func _test_every_area_can_be_walked() -> void:
 		var report: Dictionary = await _walk_area(area, probe, feet_offset, feet.radius)
 		area.free()
 		if report.is_empty():
-			skipped.append(area_id)
+			no_map.append(area_id)
 			continue
 		walked.append(area_id)
 
@@ -8519,7 +8521,7 @@ func _test_every_area_can_be_walked() -> void:
 	check("the town, the field, the Big Field, the arena and the boss room were all walked",
 		walked.has("elusion") and walked.has("field") and walked.has("bigfield") and walked.has("bossarena")
 		and walked.has("boss"), walked)
-	print("  walked %s; no map to walk in %s" % [walked, skipped])
+	print("  walked %s; no map to walk in %s" % [walked, no_map])
 
 
 func _walk_area(area: Node, probe: CharacterBody2D, feet_offset: Vector2, radius: float) -> Dictionary:
@@ -22268,6 +22270,146 @@ func _test_nothing_shadows_its_base_class() -> void:
 		% [scanned[0], props.size()])
 
 
+# =============================================================================
+# NOTHING SHADOWS A MEMBER OF ITS OWN SCRIPT (0.64.0)
+# =============================================================================
+# The owner's editor, 20 Oct, four warnings: "The local function parameter
+# "path" is shadowing an already-declared variable at line 55 in the current
+# class", and three "local variable" ones - settings.gd's own `static var
+# path` hidden by locals called path. SHADOWED_VARIABLE is an editor warning,
+# like the base-class one above: a headless run never prints it, so it is
+# scanned for. The first scan found two more the editor would have said
+# next: a parameter in optionsscreen.gd hiding its `frame_cap` picker, and a
+# `var skipped` in this file hiding the suite's own count of skips.
+#
+# MEMBERS are what a script declares at its left edge - var, static var,
+# const, with any annotations before them. LOCALS are `var`, `const` and `for`
+# inside a function, and every function's parameters. An inner class's lines
+# are its own and are skipped, and so is anything between triple quotes.
+
+func _test_nothing_shadows_its_own_members() -> void:
+	section("SHADOWING - no local or parameter hides a member of its own script")
+	var offenders: Array[String] = []
+	var scanned: int = 0
+	for script_file in _all_gd_under("res://src"):
+		scanned += 1
+		offenders.append_array(_own_member_shadows(script_file, FileAccess.get_file_as_string(script_file)))
+	check("no local, loop or parameter hides a var or const of its own script (%d scripts)" % scanned,
+		offenders.is_empty() and scanned > 50, "\n         ".join(offenders))
+	var probe: String = "\n".join([
+		"static var path: String = \"x\"",
+		"@export_range(0, 1, 0.5) var level: float = 0.5",
+		"",
+		"func load_from(path: String,",
+		"\t\tlevel: float = 1.0) -> void:",
+		"\tvar path_too: int = 1",
+		"\tfor path in []:",
+		"\t\tpass",
+		"\t\"\"\"",
+		"\tvar level := 2",
+		"\t\"\"\"",
+		"",
+		"class Inner:",
+		"\tvar path: int = 2",
+	])
+	var found: Array[String] = _own_member_shadows("probe.gd", probe)
+	check("  the scan itself: a parameter over two lines, a member behind an annotation and a for loop are found; a longer name, a docstring and an inner class's own are not",
+		found.size() == 3 and "\n".join(found).contains("parameter 'path'") and "\n".join(found).contains("parameter 'level'")
+		and "\n".join(found).contains("probe.gd:7"),
+		found)
+
+
+func _own_member_shadows(file: String, text: String) -> Array[String]:
+	var lines: PackedStringArray = text.split("\n")
+	var member_re := RegEx.new()
+	member_re.compile("^(@\\w+(\\([^)]*\\))?\\s+)*(static\\s+var|var|const)\\s+([A-Za-z_]\\w*)")
+	var word_re := RegEx.new()
+	word_re.compile("^[A-Za-z_]\\w*")
+	var members: Dictionary = {}
+	var in_class: bool = false
+	var in_doc: bool = false
+	for i in lines.size():
+		var line: String = lines[i]
+		if line.count("\"\"\"") % 2 == 1:
+			in_doc = not in_doc
+			continue
+		if in_doc or line == "" or line.begins_with("#") or line.begins_with("\t") or line.begins_with(" "):
+			continue
+		in_class = line.begins_with("class ")
+		var hit: RegExMatch = member_re.search(line) if not in_class else null
+		if hit != null:
+			members[hit.get_string(4)] = i + 1
+	var out: Array[String] = []
+	in_class = false
+	in_doc = false
+	var at: int = 0
+	while at < lines.size():
+		var line: String = lines[at]
+		if line.count("\"\"\"") % 2 == 1:
+			in_doc = not in_doc
+			at += 1
+			continue
+		if in_doc:
+			at += 1
+			continue
+		if line != "" and not line.begins_with("\t") and not line.begins_with(" ") and not line.begins_with("#"):
+			in_class = line.begins_with("class ")
+		if in_class:
+			at += 1
+			continue
+		var trimmed: String = line.strip_edges()
+		if trimmed.begins_with("func ") or trimmed.begins_with("static func "):
+			var head: String = trimmed
+			var last: int = at
+			while head.count("(") > head.count(")") and last + 1 < lines.size():
+				last += 1
+				head += " " + lines[last].strip_edges()
+			for param in _param_names(head):
+				if members.has(param):
+					out.append("%s:%d  parameter '%s' hides the member at line %d" % [file.replace("res://", ""), at + 1, param, members[param]])
+			at = last + 1
+			continue
+		if line.begins_with("\t") or line.begins_with(" "):
+			for prefix in ["var ", "const ", "for "]:
+				if trimmed.begins_with(prefix):
+					var hit: RegExMatch = word_re.search(trimmed.substr(prefix.length()))
+					if hit != null and members.has(hit.get_string()):
+						out.append("%s:%d  %s'%s' hides the member at line %d" % [file.replace("res://", ""), at + 1, prefix, hit.get_string(), members[hit.get_string()]])
+		at += 1
+	return out
+
+
+func _param_names(head: String) -> Array[String]:
+	"""The names in a function's parameter list: what each comma-separated
+	piece at the outermost depth starts with."""
+	var names: Array[String] = []
+	var open_at: int = head.find("(")
+	if open_at == -1:
+		return names
+	var depth: int = 0
+	var piece: String = ""
+	for ch in head.substr(open_at + 1):
+		if ch in ["(", "[", "{"]:
+			depth += 1
+		elif ch in [")", "]", "}"]:
+			if depth == 0:
+				_add_param_name(names, piece)
+				break
+			depth -= 1
+		elif ch == "," and depth == 0:
+			_add_param_name(names, piece)
+			piece = ""
+			continue
+		piece += ch
+	return names
+
+
+func _add_param_name(names: Array[String], piece: String) -> void:
+	var param: String = piece.strip_edges().get_slice(":", 0).get_slice("=", 0).strip_edges()
+	if param != "":
+		names.append(param)
+
+
 func _scan_shadowing(dir_path: String, offenders: Array[String],
 		props: Dictionary, scanned: Array[int]) -> void:
 	var dir := DirAccess.open(dir_path)
@@ -25328,6 +25470,155 @@ func _test_the_readout_counts_a_crowd() -> void:
 		is_equal_approx(PerfOverlay.SAMPLE_INTERVAL, 0.2))
 	PerfOverlay.set_shown(false)
 	PerfOverlay.set_shown(shown_before)
+
+# =============================================================================
+# OPTIONS EXPLAIN THEMSELVES (0.64.0)
+# =============================================================================
+# The owner: "what if a player changes settings unknowingly maybe we need a
+# hud explaining ... some people may not even know what vulkan is", "maybe a
+# tool tip or something". A bubble beside whatever setting is pointed at or
+# tapped says what it does in plain words; what is set oddly is marked in the
+# title bar and in orange. A new setting with no words fails here.
+func _test_options_explain_themselves() -> void:
+	section("OPTIONS EXPLAIN THEMSELVES - a help bubble, for a mouse and a finger alike (0.64.0)")
+	const SettingsScript := preload("res://src/systems/settings.gd")
+	var opts_script: GDScript = load("res://src/ui/menus/optionsscreen.gd") as GDScript
+	var consts: Dictionary = opts_script.get_script_constant_map()
+	var help: Dictionary = consts["HELP"]
+	var kept := {}
+	for key in ["volume_master", "vsync", "frame_cap", "brightness"]:
+		kept[key] = Settings.get_value(key)
+	for key in kept:
+		Settings.set_value(key, SettingsScript.DEFAULTS[key])
+	var options: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(options)
+	await get_tree().process_frame
+	options.open()
+	await get_tree().process_frame
+
+	# ---- every setting has its words --------------------------------------------------
+	var unexplained: Array = []
+	var tooltips_left: Array = []
+	for node in options.find_children("*", "", true):
+		if not (node is OptionButton or node is Slider or node is CheckButton):
+			continue
+		if not help.has(str(node.name)):
+			unexplained.append(str(node.name))
+		elif (node as Control).tooltip_text != "":
+			tooltips_left.append(str(node.name))
+	for button_name in ["optionscreditsbutton", "optionskeysbutton", "optionsresetbutton", "optionsclosebutton"]:
+		if not help.has(button_name):
+			unexplained.append(button_name)
+	check("every picker, slider and switch in Options - and the buttons - has plain words in HELP (%d)" % help.size(),
+		unexplained.is_empty() and help.size() >= 30, unexplained)
+	var too_long: Array = []
+	for key in help:
+		var words: String = str(opts_script.call("help_for", str(key)))
+		if words.is_empty() or words.length() > 240 or not words.ends_with("."):
+			too_long.append("%s (%d)" % [key, words.length()])
+	check("  each one short enough to read in a glance - two lines, a full stop at the end", too_long.is_empty(), too_long)
+	check("  the numbers in them are Settings' own: %d pictures a second in the background, %d on Battery saver, %d minutes to rest"
+		% [SettingsScript.BACKGROUND_FPS, SettingsScript.SAVER_FPS, roundi(SettingsScript.REST_AFTER / 60.0)],
+		str(opts_script.call("help_for", "backgroundlimit")).contains("only %d pictures" % SettingsScript.BACKGROUND_FPS)
+		and str(opts_script.call("help_for", "batterysaver")).contains("at most %d pictures" % SettingsScript.SAVER_FPS)
+		and str(opts_script.call("help_for", "screenrest")).contains("after %d minutes" % roundi(SettingsScript.REST_AFTER / 60.0)))
+	check("  and Vulkan is said in words a player knows: how the game talks to the graphics card",
+		str(help.get("graphicsapi", "")).contains("talks to your graphics card") and str(help.get("renderer", "")).contains("restart"))
+	check("no setting keeps a tooltip of its own as well - the bubble says it, on a phone too", tooltips_left.is_empty(), tooltips_left)
+
+	# ---- pointing and tapping ---------------------------------------------------------------
+	var bubble: Control = options.get("help_bubble") as Control
+	var panel: Control = options.get_node("mainpanel") as Control
+	check("resting, with nothing set oddly: no bubble, and nothing in the title bar",
+		bubble != null and not bubble.visible and options.call("header_text") == "" and options.call("help_text") == "")
+	var vsync: Control = options.get_node("%vsyncmode") as Control
+	vsync.mouse_entered.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var row_rect: Rect2 = vsync.get_parent().get_global_rect()
+	var bubble_rect: Rect2 = bubble.get_global_rect()
+	check("pointing at V-Sync - or tapping it, which a touch screen sends as the same - opens a bubble saying what it does",
+		bubble.visible and options.call("help_text") == opts_script.call("help_for", "vsyncmode")
+		and str(options.call("help_text")).contains("Most players: On")
+		and bool(ProjectSettings.get_setting("input_devices/pointing/emulate_mouse_from_touch", true)), options.call("help_text"))
+	check("  beside the setting, not on it, and inside the panel",
+		(bubble_rect.position.y >= row_rect.end.y - 0.5 or bubble_rect.end.y <= row_rect.position.y + 0.5)
+		and panel.get_global_rect().grow(1.0).encloses(bubble_rect), [row_rect, bubble_rect, panel.get_global_rect()])
+	check("  floating over the panel - Options is no taller for it", options.size.y <= 720.0
+		and bubble.top_level and bubble.mouse_filter == Control.MOUSE_FILTER_IGNORE, options.size)
+	var last: Control = options.get_node("%othersattacks") as Control
+	last.mouse_entered.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  and over the bottom row, where under it would cover the footer's buttons, it opens above",
+		bubble.get_global_rect().end.y <= last.get_parent().get_global_rect().position.y + 0.5
+		and panel.get_global_rect().grow(1.0).encloses(bubble.get_global_rect()), [last.get_parent().get_global_rect(), bubble.get_global_rect()])
+	(options.get_node("%textsize") as Control).get_parent().mouse_entered.emit()
+	check("pointing at a setting's name, beside it, works too", options.call("help_text") == opts_script.call("help_for", "textsize"))
+	(options.get_node("%lighting") as Control).focus_entered.emit()
+	check("  and so does reaching it with the keyboard", options.call("help_text") == opts_script.call("help_for", "lighting"))
+	check("  the footer row itself says nothing - only its three buttons do",
+		(options.get_node("mainpanel/margincontainer/vboxcontainer/footerrow") as Control).mouse_entered.get_connections().is_empty())
+	(options.get_node("%lighting") as Control).focus_exited.emit()
+	await get_tree().create_timer(float(consts["HELP_HIDE_SECONDS"]) + 0.2).timeout
+	check("  moving off it, the bubble goes - after a moment, so crossing from a name to its control does not blink",
+		not bubble.visible and float(consts["HELP_HIDE_SECONDS"]) > 0.0 and float(consts["HELP_HIDE_SECONDS"]) <= 0.3)
+
+	# ---- what is set oddly ------------------------------------------------------------------------
+	var vsync_name: Label = vsync.get_parent().get_node("label") as Label
+	# The colours the scene file draws the two names in - read off a copy
+	# that never ran, so nothing of the panel's own has touched them.
+	var as_drawn: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	var vsync_colour: Color = (as_drawn.get_node("mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/vsyncrow/label") as Label).get_theme_color("font_color")
+	var master_colour: Color = (as_drawn.get_node("mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/masterrow/label") as Label).get_theme_color("font_color")
+	as_drawn.free()
+	check("each setting's name is drawn in the panel's own colour while nothing is odd",
+		vsync_name.get_theme_color("font_color") == vsync_colour, [vsync_name.get_theme_color("font_color"), vsync_colour])
+	vsync.mouse_entered.emit()
+	Settings.set_value("window_x", int(Settings.get_value("window_x")))
+	Settings.changed.emit("window_x", Settings.get_value("window_x"))
+	check("a setting no warning reads changing - the window moved - leaves an open bubble open", bubble.visible)
+	options.call("hide_help")
+	Settings.set_value("vsync", "off")
+	await get_tree().process_frame
+	check("turning V-Sync Off marks it at once: a line in the title bar, and its name in orange",
+		str(options.call("header_text")).begins_with("Heads up: V-Sync is Off")
+		and vsync_name.get_theme_color("font_color") == consts["HELP_WARNING_COLOUR"], options.call("header_text"))
+	vsync.mouse_entered.emit()
+	check("  pointing at it says why first, and the way back",
+		str(options.call("help_text")).begins_with("V-Sync is Off, so the picture can tear")
+		and str(options.call("help_text")).contains("Reset to defaults puts it back."), options.call("help_text"))
+	options.close()
+	options.open()
+	check("  and the next time Options opens, the title bar says so before anything is pointed at",
+		str(options.call("header_text")).begins_with("Heads up: V-Sync is Off") and options.call("help_text") == "",
+		options.call("header_text"))
+	Settings.set_value("volume_master", 0.0)
+	await get_tree().process_frame
+	var master_name: Label = (options.get_node("%mastervolume") as Control).get_parent().get_node("label") as Label
+	check("  two things odd: the title bar counts them, and both names are orange",
+		str(options.call("header_text")).contains("2 settings are set unusually")
+		and master_name.get_theme_color("font_color") == consts["HELP_WARNING_COLOUR"], options.call("header_text"))
+	check("  the title bar's line never widens the window", (options.get("help_header") as Label).clip_text and options.size.y <= 720.0)
+	options.call("_on_reset_pressed")
+	check("Reset to defaults clears them: the line goes, and the names are the colour the panel drew them in again",
+		options.call("header_text") == "" and str(Settings.get_value("vsync")) == "on"
+		and vsync_name.get_theme_color("font_color") == vsync_colour and master_name.get_theme_color("font_color") == master_colour
+		and vsync_colour != consts["HELP_WARNING_COLOUR"],
+		[options.call("header_text"), vsync_name.get_theme_color("font_color"), vsync_colour])
+	var none: Array = opts_script.call("help_warnings", 1.0, "on", 0, 60.0, 1.0)
+	var low_cap: Array = opts_script.call("help_warnings", 1.0, "on", 30, 60.0, 1.0)
+	var high_cap: Array = opts_script.call("help_warnings", 1.0, "on", 144, 60.0, 1.0)
+	var unknown_screen: Array = opts_script.call("help_warnings", 1.0, "on", 30, -1.0, 1.0)
+	var dim: Array = opts_script.call("help_warnings", 1.0, "on", 0, 60.0, 0.5)
+	check("a frame cap under the screen's rate is worth a word; over it, or a screen that cannot say, is not; a dim game is",
+		none.is_empty() and low_cap.size() == 1 and str(low_cap[0][0]) == "frame_cap" and high_cap.is_empty()
+		and unknown_screen.is_empty() and dim.size() == 1 and str(dim[0][1]).contains("50%"),
+		[none, low_cap, high_cap, unknown_screen, dim])
+	options.queue_free()
+	for key in kept:
+		Settings.set_value(key, kept[key])
+	await get_tree().process_frame
 
 # =============================================================================
 # OLD VERSIONS MUST UPDATE - the minimum build, from the GM panel (0.11.8)
