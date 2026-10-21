@@ -414,6 +414,7 @@ func _run_all() -> void:
 	await _test_far_enemies_sleep()
 	await _test_a_big_fight_is_cheap()
 	await _test_a_crowd_thinks_in_turns()
+	await _test_the_crypt_crowd_is_cheap()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
 	_test_a_character_can_be_deleted()
@@ -7935,6 +7936,9 @@ func _test_the_crypt_skeletons() -> void:
 			var held: Dictionary = BaseEnemy._slot_owners.duplicate()
 			BaseEnemy._slot_owners.clear()
 			foe.set("_claimed_slot", -1)
+			# Its turn to look for a place now (since 0.68.0 a monster with none
+			# looks every SLOT_RETRY_SECONDS, and the swings above had it looking).
+			foe.set("_slot_retry_time", 0.0)
 			foe.global_position = hero.global_position + Vector2(0, 60)
 			var south: Vector2 = foe.call("_get_slot_target_position")
 			tank_stand = [Formation.ring_of(int(foe.get("_claimed_slot"))), south.distance_to(body)]
@@ -9070,6 +9074,111 @@ func _test_a_crowd_thinks_in_turns() -> void:
 	check("  and a monster another game runs is never stopped - it must keep following",
 		mate.process_mode == Node.PROCESS_MODE_INHERIT)
 	mate.net_mirror = false
+	world.free()
+
+
+# =============================================================================
+# THE CRYPT CROWD IS CHEAP (0.68.0)
+# =============================================================================
+# The owner's 8x video (0.67.0): 60 fps in the open, and 8 fps among the
+# crypt's skeletons - physics 13 to 18 ms a tick on his PC against 12.5, so
+# Godot ran extra ticks to catch up and frames reached 125 ms. On the bench at
+# the hall door the tick was 71 ms, and two things in it were not the crowd at
+# all: the 160 skeletons without a place in the ring each searched all 40
+# places every tick (18.6 ms - in a corridor half the ring is wall, so those
+# places never fill and everyone kept asking the navmesh about them), and
+# every skeleton re-planned its route round the walls every tick, because
+# Godot plans afresh each time a target is SET (9 ms).
+func _test_the_crypt_crowd_is_cheap() -> void:
+	section("THE CRYPT CROWD IS CHEAP - a place sought every 0.1 s, walls asked once a tick, routes re-planned only on a move (0.68.0)")
+	var world := Node2D.new()
+	add_child(world)
+	var at := Vector2(-66000, -66000)
+	var foe: BaseEnemy = (load("res://scene/enemy/skeletonsoldier.tscn") as PackedScene).instantiate()
+	foe.position = at
+	world.add_child(foe)
+	await get_tree().physics_frame
+	foe.set_physics_process(false)
+	var dummy := ZoneDummy.new()
+	world.add_child(dummy)
+	dummy.global_position = at + Vector2(150, 0)
+	foe.player = dummy
+
+	# ---- a route re-planned only once its target has moved ------------------------------------
+	var wall := StaticBody2D.new()
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	var wall_shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(16, 200)
+	wall_shape.shape = rect
+	wall.add_child(wall_shape)
+	wall.position = at + Vector2(75, 0)
+	world.add_child(wall)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var goal: Vector2 = at + Vector2(150, 0)
+	foe._heading_vector_to(goal)
+	var first_route: Vector2 = foe.get("_route_to")
+	var agent_first: Vector2 = foe.nav_agent.target_position
+	foe._heading_vector_to(goal + Vector2(BaseEnemy.REROUTE_PX - 3.0, 0))
+	var kept: Vector2 = foe.get("_route_to")
+	var agent_kept: Vector2 = foe.nav_agent.target_position
+	foe._heading_vector_to(goal + Vector2(BaseEnemy.REROUTE_PX + 3.0, 0))
+	var moved: Vector2 = foe.get("_route_to")
+	check("behind a wall, the route is planned for where its target is",
+		first_route.is_equal_approx(goal) and agent_first.is_equal_approx(goal), [first_route, agent_first])
+	check("  a target moved less than %d px keeps the route it has (Godot re-plans on every set)" % int(BaseEnemy.REROUTE_PX),
+		kept.is_equal_approx(goal) and agent_kept.is_equal_approx(goal), [kept, agent_kept])
+	check("  and one moved further is planned afresh", moved.is_equal_approx(goal + Vector2(BaseEnemy.REROUTE_PX + 3.0, 0)), moved)
+	wall.free()
+
+	# ---- no place in the ring: it looks again every 0.1 s, not every tick ----------------------
+	var owners: Dictionary = BaseEnemy._slot_owners
+	var kept_owners: Dictionary = owners.duplicate()
+	owners.clear()
+	var holder := Node2D.new()
+	world.add_child(holder)
+	for i in Formation.slot_count():
+		owners[i] = holder                      # every place taken
+	foe.set("_claimed_slot", -1)
+	foe.set("_slot_retry_time", 0.0)
+	foe._ensure_slot_claimed()
+	var waiting: float = float(foe.get("_slot_retry_time"))
+	owners.erase(3)                            # a place comes free
+	foe._ensure_slot_claimed()
+	var still_none: int = int(foe.get("_claimed_slot"))
+	check("a monster that finds no place waits about %.2f s before it looks again" % BaseEnemy.SLOT_RETRY_SECONDS,
+		waiting >= BaseEnemy.SLOT_RETRY_SECONDS * 0.7 and waiting <= BaseEnemy.SLOT_RETRY_SECONDS * 1.3, waiting)
+	check("  and a place that comes free meanwhile is not taken before then", still_none == -1, still_none)
+	foe.set("_slot_retry_time", 0.0)
+	foe._ensure_slot_claimed()
+	check("  when it looks, it takes it", int(foe.get("_claimed_slot")) == 3 and owners.get(3) == foe,
+		foe.get("_claimed_slot"))
+	foe.set("_slot_retry_time", 1.0)
+	foe._release_slot()
+	check("  and one that gives a place up looks for another at once, not after the wait",
+		is_zero_approx(float(foe.get("_slot_retry_time"))))
+	owners.clear()
+	for k in kept_owners:
+		owners[k] = kept_owners[k]
+
+	# ---- which places are in a wall: asked once a tick, for everybody ---------------------------
+	var anchor: Vector2 = dummy.global_position
+	var slot_at: Vector2 = Formation.world_position(anchor, 0)
+	var walled: bool = foe._slot_in_wall(anchor, 0, slot_at)
+	var cache: Dictionary = BaseEnemy._walls
+	var asked_once: bool = cache.size() == 1 and (cache.values()[0] as PackedByteArray)[0] != 0
+	var same: bool = foe._slot_in_wall(anchor, 0, slot_at) == walled
+	check("whether a place is in a wall is asked of the navmesh once and read by everyone that tick",
+		asked_once and same and walled == (foe.clamp_to_navigation(slot_at).distance_to(slot_at) > Formation.BODY_RADIUS),
+		[cache.size(), walled])
+	await get_tree().physics_frame
+	foe._slot_in_wall(anchor + Vector2(1, 0), 0, slot_at)
+	check("  and asked afresh the next tick (the player has moved, the walls are where they were)",
+		BaseEnemy._walls.size() == 1 and not BaseEnemy._walls.has(Vector3i(roundi(anchor.x), roundi(anchor.y),
+			foe.get_world_2d().navigation_map.get_id() & 0x7fffffff)))
+	check("  the search uses it", _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _ensure_slot_claimed(").contains("_slot_in_wall(anchor"))
 	world.free()
 
 func _test_every_area_can_be_walked() -> void:

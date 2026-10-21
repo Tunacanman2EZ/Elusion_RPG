@@ -707,6 +707,30 @@ backslash"). All of it is on the owner panel (backquote) now:
     **Attack turns are the next step only if 8x still needs it on the
     owner's PC** - his numbers first.
   `_test_a_crowd_thinks_in_turns()` holds it.
+- **The crypt crowd (0.68.0)** - the owner's 8x video of 0.67.0: 60 fps in
+  the open, 8 fps among the crypt's skeletons. Physics 13 to 18 ms a tick
+  on his PC against 12.5, and once a tick runs over Godot runs extra ticks
+  to catch up (up to 8 a frame), so frames reached 125 ms. On the bench at
+  the hall door (1000, 180) the tick was 71 ms, and most of it was not the
+  crowd:
+  - **The place search** (`_ensure_slot_claimed()`): 160 skeletons without
+    a place in the 40-place ring searched every tick (18.6 ms). A monster
+    with no place now looks every `SLOT_RETRY_SECONDS` (0.1, jittered);
+    giving one up (`_release_slot()`) means looking again at once.
+  - **Places inside walls** - round a player in a corridor that is half the
+    ring, and those places never fill, so every searcher asked the navmesh
+    about them. `_slot_in_wall()` asks once a tick per place, per player
+    position (to the pixel) and navigation map, for everybody.
+  - **Routes** (`_heading_vector_to()`): `NavigationAgent2D` plans a whole
+    new path every time `target_position` is SET, even to the same point.
+    Behind walls every skeleton did that every tick (9 ms). Now only when
+    the target has moved more than `REROUTE_PX` (8, the agent's own arrival
+    distance).
+  - **Measured** (container, 3 runs each): the hall at 8x 63 -> 34 ms a
+    tick, frames 385 -> 210 ms; the open field unchanged (about 23 ms -
+    there the cost is the fighting itself). Tried and not worth it: hurtbox
+    monitoring off, monsters' physics interpolation off.
+  `_test_the_crypt_crowd_is_cheap()` holds it.
 
 `player.gd` reads no keys of its own any more (it has no `_unhandled_input()`),
 and `perfoverlay.gd` none either. **A new testing power goes on the panel, not

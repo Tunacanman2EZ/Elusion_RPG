@@ -1191,6 +1191,10 @@ func _pick_detour(blocked_dir: String, heading: Vector2, offsets: Array[Vector2]
 # Split out of _get_direction_to_point_via_navigation() so avoidance can bend
 # the heading while it is still a vector. Snapping first and steering after
 # would mean choosing between four answers, which cannot express "go around".
+const REROUTE_PX := 8.0
+var _route_to: Vector2 = Vector2(INF, INF)
+
+
 func _heading_vector_to(target_pos: Vector2) -> Vector2:
 	if _has_line_of_sight(target_pos):
 		_prefer_secondary_axis = false
@@ -1200,7 +1204,18 @@ func _heading_vector_to(target_pos: Vector2) -> Vector2:
 	if nav_agent == null:
 		return target_pos - global_position
 
-	nav_agent.target_position = target_pos
+	# A NEW ROUTE ONLY WHEN THE TARGET HAS MOVED (0.68.0). NavigationAgent2D
+	# plans a whole new path every time target_position is SET - even to the
+	# point it already had. Out in the open the straight line is clear and
+	# this is never reached; in the crypt the walls block it, and at 8x 200
+	# skeletons planned a fresh path every tick for a player who had moved a
+	# pixel: 9 ms of the owner's 71 ms tick on the bench. Now the agent gets
+	# a new target only once it is more than REROUTE_PX from the one it has -
+	# the same 8 px the agent counts as arrived (target_desired_distance) - and
+	# it still re-plans by itself when it is pushed off its path.
+	if _route_to.distance_squared_to(target_pos) > REROUTE_PX * REROUTE_PX:
+		_route_to = target_pos
+		nav_agent.target_position = target_pos
 	return nav_agent.get_next_path_position() - global_position
 
 
@@ -1338,6 +1353,8 @@ var _claimed_slot: int = -1
 # How often an enemy reconsiders which slot it holds. See _ensure_slot_claimed().
 const SLOT_REVIEW_SECONDS := 0.4
 var _slot_review_time: float = 0.0
+const SLOT_RETRY_SECONDS := 0.1
+var _slot_retry_time: float = 0.0
 
 # How much better a slot has to be before an enemy will abandon the one it has.
 #
@@ -1463,6 +1480,18 @@ func _ensure_slot_claimed() -> void:
 		_slot_review_time -= get_physics_process_delta_time()
 		if _slot_review_time > 0.0:
 			return
+	else:
+		# NO PLACE YET: IT LOOKS AGAIN EVERY SLOT_RETRY_SECONDS (0.68.0), not
+		# every tick. The ring holds 40; at 8x in the crypt 200 skeletons were
+		# after one player, and the 160 without a place each searched all 40
+		# every tick - 18.6 ms of the bench's 71 ms tick. A place that comes
+		# free (its holder died) is taken within a tenth of a second. Between
+		# looks it heads for the player, as one without a place always has.
+		_claimed_slot = -1
+		_slot_retry_time -= get_physics_process_delta_time()
+		if _slot_retry_time > 0.0:
+			return
+		_slot_retry_time = SLOT_RETRY_SECONDS * randf_range(0.75, 1.25)
 	_slot_review_time = SLOT_REVIEW_SECONDS
 
 	var anchor: Vector2 = player.global_position
@@ -1504,7 +1533,7 @@ func _ensure_slot_claimed() -> void:
 		# skip to the next best instead - which naturally spreads enemies onto
 		# the side of the player that is actually open.
 		var world: Vector2 = candidate["world"]
-		if clamp_to_navigation(world).distance_to(world) > Formation.BODY_RADIUS:
+		if _slot_in_wall(anchor, int(candidate["index"]), world):
 			continue
 
 		if holds and _slot_owners.get(_claimed_slot) == self:
@@ -1542,6 +1571,36 @@ func _release_slot() -> void:
 		_slot_owners.erase(_claimed_slot)
 	_last_released_slot = _claimed_slot
 	_claimed_slot = -1
+	# Giving one up means looking for another now, not after the retry wait.
+	_slot_retry_time = 0.0
+
+
+# WHICH PLACES ARE IN A WALL, WORKED OUT ONCE A TICK FOR EVERYBODY (0.68.0).
+# A place the navmesh has to drag further than a body is wide is inside a
+# wall (see _ensure_slot_claimed()). Round a player in a corridor that is half
+# the ring, and those places never fill - so every searcher asked the navmesh
+# about the same walled places, round the same player, on the same tick. Now
+# the first to ask about a place this tick asks the navmesh, and everyone
+# after it reads the answer. Keyed by where the player stands, to the pixel,
+# and which navigation map it is.
+static var _walls_tick: int = -1
+static var _walls: Dictionary = {}     # Vector3i -> PackedByteArray: 0 not asked, 1 open, 2 a wall
+
+
+func _slot_in_wall(anchor: Vector2, slot: int, world: Vector2) -> bool:
+	var tick: int = Engine.get_physics_frames()
+	if tick != _walls_tick:
+		_walls_tick = tick
+		_walls.clear()
+	var map_id: int = get_world_2d().navigation_map.get_id() & 0x7fffffff
+	var key := Vector3i(roundi(anchor.x), roundi(anchor.y), map_id)
+	var known: PackedByteArray = _walls.get(key, PackedByteArray())
+	if known.is_empty():
+		known.resize(Formation.slot_count())
+	if known[slot] == 0:
+		known[slot] = 2 if clamp_to_navigation(world).distance_to(world) > Formation.BODY_RADIUS else 1
+		_walls[key] = known
+	return known[slot] == 2
 
 
 
