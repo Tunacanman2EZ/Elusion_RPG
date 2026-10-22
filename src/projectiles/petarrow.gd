@@ -157,9 +157,13 @@ func _check_initial_overlaps() -> void:
 	if not is_inside_tree():
 		return
 
+	# EVERY BODY IT STARTED IN, until one is a monster (0.72.0). It looked at
+	# the first only and returned - so an arrow born inside a bush and a
+	# monster at once flew on through the monster.
 	for body in get_overlapping_bodies():
+		if _spent:
+			return
 		_on_body_entered(body)
-		return
 
 
 # =============================================================================

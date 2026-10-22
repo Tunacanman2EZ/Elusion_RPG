@@ -5895,16 +5895,63 @@ of a point of mana.
   class_name): as a spike strikes, `SHARDS` (6) ice blade orbs appear
   `ORBIT_PAD` (6 px) outside its frost ring, spin round it for
   `ORBIT_SECONDS` (0.5), then fly out `SHARD_REACH` (70 px) at
-  `SHARD_SPEED`, each for `SHARD_SHARE` (0.4) of the spike's hit. They break
-  on walls, none starts past one, a picture of somebody else's cuts nothing,
-  and the ring is gone by `MAX_SECONDS` (3).
-- **Still one hit a monster a cast.** The shards share the cast's `struck`
-  with its spikes (`BladeOrb.struck`), so they pass over what the spikes hit:
-  they are for the crowd. The server's bound only needed the crit:
-  `gamedata.combat_bounds()` takes every cast critical (`crit_chance` /
-  `crit_mult` are exported with the class). **Deploy the API with this
-  game**, or a critical spike is past the old bound.
+  `SHARD_SPEED`, each for `SHARD_SHARE` (0.2 since 0.71.1; 0.4 before) of
+  the spike's hit. They break on walls, none starts past one, a picture of
+  somebody else's cuts nothing, and the ring is gone by `MAX_SECONDS` (3).
+- **Every shard hits what it touches, and is spent on it (0.71.1).** The
+  owner: "the spinning balls are not hitting the enemies, really we need to
+  increase the amount of times a enemy can be damaged and make sure bullets
+  are absorbed by impacts". In 0.71.0 the shards shared the spike's "one hit
+  a monster a cast", so they spun through the spike's own mark untouched. Now
+  a shard hits any monster it touches and pops there; a monster takes
+  `SHARD_HITS_EACH` (2) shards a cast after the spike, counted across the
+  cast (`BladeOrb.cast_hits` / `cast_hits_each`, the spike's `shard_hits`),
+  and one past that is still absorbed, for nothing. A monster takes up to
+  three hits a cast, 1.4 spikes' worth.
+- **One caster's count.** `struck` and `shard_hits` are one mage's cast:
+  four players on one monster each land every hit (the owner: "if 4 people
+  are attacking 1 monster i do not want only 1 persons attack to register";
+  monstersync.gd sends each follower's hits to the leader, and each helper
+  reports their own kill).
+- **The server's bound** (`gamedata.combat_bounds()`) takes every cast
+  critical and every monster two shards: `crit_chance`, `crit_mult`,
+  `shard_hits_each` and `shard_share` are exported with the class. **Deploy
+  the API with the game**, or the bound is short.
 - `_test_the_mage_kit()`.
+
+### Bullets that fly true (0.72.0)
+
+The owner: "we need to upgrade bullets to be way more refined darza managed
+this ability nicely" (Darza's Dominion, a co-op bullet hell), and of what was
+offered: shape and flight, hitboxes and rules, and the monsters' bullets too.
+His own art only - nothing new is drawn; what flies is turned and drawn
+longer.
+
+- **They face where they fly.** The healer's orb streams its flame behind it,
+  the art's tip back along its path, turning with the weave and the homing
+  (`turretprojectile.gd` `_face_flight()`; it never turned before). Blade
+  orbs - the warrior's fans and burst, the mage's ice shards - are drawn
+  `BladeOrb.STRETCH` (1.25 x 0.85) along their flight and round when still
+  (`face()`; a carried shard along its ring, `stretched_still`). The Field's
+  bullets are drawn `STRETCH_LONG` x `STRETCH_SHORT` along their velocity,
+  curving ones turning with it (`BulletField._shape()`, `shape_of()`); one
+  slower than `STRETCH_SPEED` is round and square, because a round orb turned
+  a little is only its pixels made ragged. Arrows and the fire, electric and
+  acid orbs already turned to their heading.
+- **Hitboxes match the art.** Electric orbs (all seven and the pet's): the
+  circle was 60% of the 13-15 px orb, now its size (6.5 for the plain one,
+  every variant by its own scale). Arrows: the capsule is the 3 px shaft (it
+  was 2). The healer's orb: `hit_pad` 6, half its flame's drawn width (it was
+  14 - an orb passing 20 px from a slime hit it). The Field's bullets keep
+  `SMALL_RADIUS` / `BIG_RADIUS`, their bright body, as the blade orbs keep
+  `RADIUS`.
+- **Rules.** Every bullet is used up on what it hits (the survey found them
+  all so, the warrior's burst passing over the monster it bursts from on
+  purpose). The electric orb ends at `RANGE` (360 px) on every screen - it
+  ended where it left THIS player's camera, so one shot flew a different
+  distance on each. A pet's arrow born inside a bush and a monster at once
+  looked at the bush only and flew through the monster; it looks at all.
+- `_test_bullets_fly_true()`.
 
 ### The healer's orbs, mixed with the crypt's (0.36.0)
 

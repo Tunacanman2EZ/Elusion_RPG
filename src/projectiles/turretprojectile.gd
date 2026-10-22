@@ -55,8 +55,12 @@
 # CanvasModulate and lights cannot dim it — it always shows its own light-green
 # art at full brightness. one static material is shared by every orb.
 #
-# sprite orientation: the sprite NEVER rotates — a floating orb, not a thrown
-# arrow. the weave moves the orb's PATH, not its facing.
+# sprite orientation (0.72.0): THE FLAME STREAMS BEHIND IT. Until 0.72.0 the
+# sprite never rotated - its flame pointed up whichever way it flew. The owner:
+# "we need to upgrade bullets to be way more refined darza managed this ability
+# nicely" - bullets that face where they fly. The flame's tip (the art's top)
+# now points back along its path, a comet, turning with the weave and the
+# homing every frame (_face_flight()).
 #
 # friendly fire: owner_group identifies who fired ("player" for healer shots).
 # the orb never damages anything in its owner's group.
@@ -127,7 +131,11 @@ const Targets := preload("res://src/shared/targets.gd")
 # has to bury deeper into the body first. This plus the enemy's live hurtbox
 # radius is the whole hit test — see the header. Tune here if the orb feels like
 # it pops too early or grazes past.
-@export var hit_pad: float = 14.0
+#
+# THE ORB'S OWN SIZE (0.72.0), 6 - half its flame's width in the world (6 px of
+# art, drawn at 2x). It was 14: an orb passing a slime 20 px off hit it. The
+# owner chose bullets whose "hit area matches what you see".
+@export var hit_pad: float = 6.0
 
 
 # =============================================================================
@@ -254,6 +262,7 @@ func _ready() -> void:
 		# could swing off toward a monster nowhere near the healer.
 		_seek_pending = true
 	_dress(sprite)
+	_face_flight(direction)
 
 
 func _physics_process(delta: float) -> void:
@@ -274,6 +283,7 @@ func _physics_process(delta: float) -> void:
 	var travel: Vector2 = direction.rotated(wobble)
 	var was: Vector2 = global_position
 	global_position += travel * speed * delta
+	_face_flight(travel)
 
 	# IT STOPS AT A WALL (0.69.1). With every physics path off (above), nothing
 	# ever stopped it: it homed on a monster in the next room through the
@@ -419,6 +429,13 @@ func _grant_caster_xp() -> void:
 		return
 	if caster.has_method("gain_magic_xp"):
 		caster.gain_magic_xp(magic_xp_on_hit)
+
+
+func _face_flight(travel: Vector2) -> void:
+	"""The flame's tip - the art's top - back along `travel` (0.72.0)."""
+	var sprite: Node2D = get_node_or_null(^"animatedsprite2d") as Node2D
+	if sprite != null and travel != Vector2.ZERO:
+		sprite.rotation = travel.angle() - PI / 2.0
 
 
 # =============================================================================

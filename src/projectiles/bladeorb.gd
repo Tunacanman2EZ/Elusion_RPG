@@ -54,6 +54,12 @@ const RADIUS := 3.5
 # Whether a wall stands between the orb and what it touches (0.69.1).
 const Targets := preload("res://src/shared/targets.gd")
 const POP_SECONDS := 0.1
+# DRAWN ALONG ITS FLIGHT (0.72.0, the owner: "we need to upgrade bullets to be
+# way more refined darza managed this ability nicely" - bullets that face where
+# they fly). A flying orb is drawn STRETCH long and thin along `direction`, the
+# same picture turned and drawn longer; one standing still is round. The hit
+# circle stays RADIUS, the middle of the streak, as the art's bright body is.
+const STRETCH := Vector2(1.25, 0.85)
 
 var direction: Vector2 = Vector2.RIGHT
 var speed: float = 240.0
@@ -67,12 +73,17 @@ var flown: float = 0.0
 
 var _ignore_id: int = 0
 var _done: bool = false
+# Drawn stretched along `direction` even while held still - an ice shard
+# carried round its frost ring (frostring.gd) moves along it.
+var stretched_still: bool = false
 
-# WHAT A CAST HAS HIT BETWEEN ITS PIECES (0.71.0, frostring.gd): instance id ->
-# true, shared with the spikes it came from, or null for an orb on its own. An
-# orb passes over what is in it - one hit a monster a cast - and adds what it
-# cuts.
-var struck: Variant = null
+# HOW OFTEN A CAST'S ORBS HAVE HIT EACH MONSTER (0.71.1, frostring.gd's ice
+# shards): instance id -> hits, shared by every orb of the cast, or null for an
+# orb on its own. A monster that has had cast_hits_each takes no more from the
+# cast - but the orb is still spent on it, absorbed where it struck: a bullet
+# never passes through a body.
+var cast_hits: Variant = null
+var cast_hits_each: int = 1
 
 static var _textures: Dictionary = {}
 
@@ -176,6 +187,7 @@ func _init() -> void:
 
 func _ready() -> void:
 	(get_node(^"picture") as Sprite2D).texture = texture_for(palette)
+	face()
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
 	if cosmetic:
@@ -222,14 +234,30 @@ func _try_hit(target: Node) -> void:
 	if not Targets.can_reach(self, global_position, target):
 		pop()
 		return
-	if struck is Dictionary:
+	if cast_hits is Dictionary:
 		var id: int = target.get_instance_id()
-		if (struck as Dictionary).has(id):
+		var had: int = int((cast_hits as Dictionary).get(id, 0))
+		if had >= cast_hits_each:
+			pop()
 			return
-		(struck as Dictionary)[id] = true
+		(cast_hits as Dictionary)[id] = had + 1
 	if not cosmetic and damage > 0:
 		target.take_damage(damage, element)
 	pop()
+
+
+func face() -> void:
+	"""Draw it along `direction` if it flies (or is carried, stretched_still),
+	round if it stands. Again whenever its direction is changed."""
+	var picture: Sprite2D = get_node_or_null(^"picture") as Sprite2D
+	if picture == null:
+		return
+	if speed > 0.0 or stretched_still:
+		picture.rotation = direction.angle()
+		picture.scale = STRETCH
+	else:
+		picture.rotation = 0.0
+		picture.scale = Vector2.ONE
 
 
 func pop() -> void:

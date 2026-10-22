@@ -3376,6 +3376,8 @@
 				"crit_mult": 2.0,
 				"meteor_burn_every": 0.5,
 				"meteor_burn_share": 0.2,
+				"shard_hits_each": 2,
+				"shard_share": 0.2,
 				"speed": 165
 			},
 			"tank": {
@@ -5319,7 +5321,7 @@
 			"xp_reward": 84
 		}
 	],
-	"generated_at": 1792621088,
+	"generated_at": 1792627935,
 	"items": [
 		{
 			"armor_value": 6,

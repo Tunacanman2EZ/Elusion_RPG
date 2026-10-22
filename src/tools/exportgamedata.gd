@@ -1648,11 +1648,16 @@ func _export_combat(_items: Array) -> Dictionary:
 				row["base"] = int(node.get("damage_per_magic"))
 				row["cooldown"] = float(node.get("spell_cooldown"))
 				# THE CRITICAL SPIKE (mage.gd, 0.71.0): one cast in crit_chance
-				# hits crit_mult times as hard. Its ice shards and its three
-				# spikes are one hit a monster a cast, so they add nothing here.
+				# hits crit_mult times as hard. Its three spikes are one hit a
+				# monster a cast, so they add nothing here.
 				var mage_consts: Dictionary = script.get_script_constant_map() if script != null else {}
 				row["crit_chance"] = float(mage_consts.get("CRIT_CHANCE", 0.0))
 				row["crit_mult"] = float(mage_consts.get("CRIT_MULT", 1.0))
+				# THE ICE SHARDS (frostring.gd, 0.71.1): shard_hits_each of them
+				# a monster a cast after the spike, each shard_share of it.
+				var shard_consts: Dictionary = (load("res://src/projectiles/frostring.gd") as Script).get_script_constant_map()
+				row["shard_hits_each"] = int(shard_consts.get("SHARD_HITS_EACH", 0))
+				row["shard_share"] = float(shard_consts.get("SHARD_SHARE", 0.0))
 				# The Meteorite's crater burns a share of the hit every so often,
 				# one fire per enemy at a time (burningcrater.gd, 0.12.0).
 				var crater_script: Script = load("res://src/projectiles/burningcrater.gd") as Script

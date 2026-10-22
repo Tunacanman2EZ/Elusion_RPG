@@ -368,6 +368,7 @@ func _run_all() -> void:
 	_test_the_export_reads_a_mages_leash_in_the_editor()
 	await _test_the_mage_spike_finds_its_mark()
 	await _test_the_mage_kit()
+	await _test_bullets_fly_true()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -28657,11 +28658,15 @@ func _test_combat_bounds_match_the_game() -> void:
 		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_field_share", -1.0)), Dynamite.FIELD_SHARE)
 		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_field_every", -1.0)), Dynamite.FIELD_EVERY),
 		[classes.get("mage", {}), classes.get("tank", {})])
-	check("  and the mage's critical spike, so they allow for one every cast (0.71.0)",
+	var shard_consts: Dictionary = (load("res://src/projectiles/frostring.gd") as GDScript).get_script_constant_map()
+	check("  and the mage's critical spike and its ice shards, so they allow for them every cast (0.71.0, 0.71.1)",
 		is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("crit_chance", -1.0)),
 			float(_mage_const("CRIT_CHANCE")))
 		and is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("crit_mult", -1.0)),
-			float(_mage_const("CRIT_MULT"))), classes.get("mage", {}))
+			float(_mage_const("CRIT_MULT")))
+		and int((classes.get("mage", {}) as Dictionary).get("shard_hits_each", -1)) == int(shard_consts.get("SHARD_HITS_EACH", -2))
+		and is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("shard_share", -1.0)),
+			float(shard_consts.get("SHARD_SHARE", -2.0))), classes.get("mage", {}))
 	check("the Double Axe's top spin rate is the game's, so the books allow for it",
 		is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_spin_max_rate", -1.0)),
 			SpinningAxe.SPIN_MAX_RATE), classes.get("warrior", {}))
@@ -28950,6 +28955,160 @@ func _test_the_mage_spike_finds_its_mark() -> void:
 	await get_tree().process_frame
 
 
+func _opaque_size(texture: Texture2D) -> Vector2:
+	"""How big the art in `texture` is: its non-clear pixels' bounds."""
+	if texture == null:
+		return Vector2.ZERO
+	var image: Image = texture.get_image()
+	return Vector2(image.get_used_rect().size) if image != null else Vector2.ZERO
+
+
+# =============================================================================
+# BULLETS THAT FLY TRUE (0.72.0)
+# =============================================================================
+# The owner: "we need to upgrade bullets to be way more refined darza managed
+# this ability nicely", and of what was offered: shape and flight, hitboxes and
+# rules, and the monsters' bullets too.
+func _test_bullets_fly_true() -> void:
+	section("BULLETS - they face where they fly, hit where they are drawn, and end by their rules (0.72.0)")
+	const FrostRing := preload("res://src/projectiles/frostring.gd")
+	var arena := Node2D.new()
+	add_child(arena)
+	var base := Vector2(-102000.0, 72000.0)
+
+	# ---- SHAPE AND FLIGHT -------------------------------------------------------
+	var orb: Node2D = (load("res://scene/projectiles/turretprojectile.tscn") as PackedScene).instantiate()
+	orb.set("homing_turn_rate", 0.0)
+	orb.set("weave_amplitude_deg", 0.0)
+	orb.set("direction", Vector2.RIGHT)
+	orb.set("damage", 0)
+	arena.add_child(orb)
+	orb.global_position = base
+	for i in 2:
+		await get_tree().physics_frame
+	var flame: Node2D = orb.get_node(^"animatedsprite2d") as Node2D
+	var tip: Vector2 = Vector2.UP.rotated(flame.rotation)
+	orb.set("direction", Vector2.DOWN)
+	for i in 2:
+		await get_tree().physics_frame
+	var turned_tip: Vector2 = Vector2.UP.rotated(flame.rotation)
+	check("the healer's orb streams its flame behind it - the art's tip points back along its flight, as it turns",
+		tip.is_equal_approx(Vector2.LEFT) and turned_tip.is_equal_approx(Vector2.UP), [tip, turned_tip])
+	orb.queue_free()
+
+	var flying: BladeOrb = BladeOrb.fire(arena, base + Vector2(0, 100), Vector2(1, 1).normalized(), 200.0, 300.0, 0)
+	var still: BladeOrb = BladeOrb.fire(arena, base + Vector2(0, 160), Vector2(1, 1).normalized(), 0.0, 300.0, 0)
+	var flying_picture: Sprite2D = flying.get_node(^"picture") as Sprite2D
+	var still_picture: Sprite2D = still.get_node(^"picture") as Sprite2D
+	check("a flying orb is drawn long along its flight, one standing still round and square",
+		is_equal_approx(flying_picture.rotation, Vector2(1, 1).angle()) and flying_picture.scale.is_equal_approx(BladeOrb.STRETCH)
+		and BladeOrb.STRETCH.x > 1.0 and BladeOrb.STRETCH.y < 1.0
+		and is_zero_approx(still_picture.rotation) and still_picture.scale.is_equal_approx(Vector2.ONE),
+		[flying_picture.rotation, flying_picture.scale, still_picture.scale])
+	flying.queue_free()
+	still.queue_free()
+	var ring: Node2D = FrostRing.spin(arena, base + Vector2(200, 0), 18.0, 0, {})
+	var shard: BladeOrb = ring.get_child(1) as BladeOrb
+	var spoke: Vector2 = (shard.position).normalized()
+	var carried: float = (shard.get_node(^"picture") as Node2D).rotation
+	ring.call("advance", FrostRing.ORBIT_SECONDS + 0.01)
+	var thrown: float = (shard.get_node(^"picture") as Node2D).rotation
+	check("  an ice shard is drawn along its ring as it is carried round, then along its way out",
+		absf(Vector2.from_angle(carried).dot(spoke)) < 0.01
+		and Vector2.from_angle(thrown).is_equal_approx(shard.direction), [carried, thrown, spoke])
+	ring.queue_free()
+
+	var field := BulletField.new()
+	arena.add_child(field)
+	field.bounds = Rect2(base - Vector2(500, 500), Vector2(1000, 1000))
+	field.spawn(base, 0.5, 100.0, Color.WHITE)
+	var drawn: Transform2D = field.shape_of(0)
+	check("the Field's bullets are drawn long along their flight - the monsters' too",
+		absf(drawn.x.length() - BulletField.SMALL_SIZE * BulletField.STRETCH_LONG) < 0.01
+		and absf(drawn.y.length() - BulletField.SMALL_SIZE * BulletField.STRETCH_SHORT) < 0.01
+		and absf(drawn.x.angle() - 0.5) < 0.001, [drawn.x, drawn.y])
+	field.clear()
+	var curving := BulletField.new()
+	arena.add_child(curving)
+	curving.bounds = field.bounds
+	curving.spawn(base, 0.0, 100.0, Color.WHITE, true, 2.0)
+	for i in 10:
+		curving.step(1.0 / 60.0, Vector2.INF, 1.0, 0.0, true)
+	var turned: Transform2D = curving.shape_of(0)
+	check("  a curving one turns with its path, and a big one is drawn twice the size",
+		absf(turned.x.angle() - 2.0 * 10.0 / 60.0) < 0.01
+		and absf(turned.x.length() - BulletField.BIG_SIZE * BulletField.STRETCH_LONG) < 0.01, turned)
+	var mines := BulletField.new()
+	arena.add_child(mines)
+	mines.bounds = field.bounds
+	mines.spawn_settling(base, 1.0, 90.0, Color.WHITE, 26.0, 4.0)
+	for i in 60:
+		mines.step(1.0 / 60.0, Vector2.INF, 1.0, 0.0, true)
+	var lying: Transform2D = mines.shape_of(0)
+	check("  and one that has settled lies round and square, not a stretched orb turned",
+		lying.x.is_equal_approx(Vector2(BulletField.SMALL_SIZE, 0)) and lying.y.is_equal_approx(Vector2(0, BulletField.SMALL_SIZE)),
+		lying)
+	for f in [field, curving, mines]:
+		(f as Node).queue_free()
+
+	# ---- HITBOXES THAT MATCH THE ART -------------------------------------------
+	var off: Array = []
+	var electric: Array = ["res://scene/pets/petprojectiles/petmagicprojectile.tscn"]
+	for element in ["", "dark", "earth", "ice", "light", "water", "wind"]:
+		electric.append("res://scene/projectiles/%smagicprojectile.tscn" % element)
+	for path in electric:
+		var shot: Node = (load(path) as PackedScene).instantiate()
+		var sprite: AnimatedSprite2D = shot.get_node_or_null(^"AnimatedSprite2D") as AnimatedSprite2D
+		if sprite == null:
+			sprite = shot.get_node_or_null(^"animatedsprite2d") as AnimatedSprite2D
+		var shape: CollisionShape2D = shot.find_children("*", "CollisionShape2D", false, false)[0] as CollisionShape2D
+		var art: Vector2 = Vector2.ZERO
+		if sprite != null and sprite.sprite_frames != null:
+			var anim: StringName = sprite.sprite_frames.get_animation_names()[0]
+			art = _opaque_size(sprite.sprite_frames.get_frame_texture(anim, 0)) * sprite.scale.x
+		var across: float = (shape.shape as CircleShape2D).radius * 2.0 * shape.scale.x
+		if art == Vector2.ZERO or absf(across - minf(art.x, art.y)) > 1.5:
+			off.append([path.get_file(), across, art])
+		shot.free()
+	check("every electric orb's hit circle is as big as its art (it was 60% of it)", off.is_empty(), off)
+	off.clear()
+	for element in ["", "dark", "earth", "ice", "light", "water", "wind"]:
+		var path: String = "res://scene/projectiles/%sarrow.tscn" % element
+		var shot: Node = (load(path) as PackedScene).instantiate()
+		var sprite: Sprite2D = shot.get_node(^"sprite2d") as Sprite2D
+		var shape: CollisionShape2D = shot.get_node(^"attackrange") as CollisionShape2D
+		var art: Vector2 = _opaque_size(sprite.texture) * sprite.scale
+		var capsule: CapsuleShape2D = shape.shape as CapsuleShape2D
+		# The shaft is three pixels of the art's five (the head and fletching
+		# stand a pixel either side).
+		if absf(capsule.radius * 2.0 - 3.0 * sprite.scale.y) > 0.05 or absf(capsule.height - art.x) > 1.5 * sprite.scale.x:
+			off.append([path.get_file(), capsule.radius, capsule.height, art])
+		shot.free()
+	check("  and every arrow's is its shaft, three pixels thick (it was two)", off.is_empty(), off)
+	var probe: Node = (load("res://scene/projectiles/turretprojectile.tscn") as PackedScene).instantiate()
+	var healer_art: Vector2 = _opaque_size((probe.get_node(^"animatedsprite2d") as AnimatedSprite2D)
+		.sprite_frames.get_frame_texture(&"projectile", 0))
+	var healer_scale: float = (probe as Node2D).scale.x
+	check("  the healer's orb reaches as far as its own flame is wide - half of it, 6, where it reached 14",
+		is_equal_approx(float(probe.get("hit_pad")), healer_art.x * healer_scale / 2.0), [probe.get("hit_pad"), healer_art, healer_scale])
+	probe.free()
+
+	# ---- RULES -------------------------------------------------------------------
+	var zap: Node2D = (load("res://scene/projectiles/magicprojectile.tscn") as PackedScene).instantiate()
+	arena.add_child(zap)
+	zap.global_position = base + Vector2(0, 300)
+	zap.call("_on_visible_on_screen_notifier_2d_screen_exited")
+	check("an electric orb flies its RANGE on every screen - leaving one is not the end of it",
+		not zap.is_queued_for_deletion() and is_equal_approx(float(zap.get("lifetime")),
+			float(zap.get("RANGE")) / float(zap.get("speed"))), [zap.get("lifetime"), zap.get("speed")])
+	zap.queue_free()
+	var pet_src: String = _func_body(_code_src("res://src/projectiles/petarrow.gd"), "func _check_initial_overlaps(")
+	check("  a pet's arrow born inside a bush and a monster at once still hits the monster",
+		pet_src.contains("if _spent:") and not pet_src.contains("_on_body_entered(body)\n\t\treturn"))
+	arena.queue_free()
+	await get_tree().process_frame
+
+
 func _mage_const(constant: String) -> Variant:
 	return (load("res://src/characters/mage.gd") as GDScript).get_script_constant_map().get(constant)
 
@@ -28962,8 +29121,9 @@ func _mage_const(constant: String) -> Variant:
 # critical projectile also maybe some ice bullets that spin in a circle around
 # the ring". A level 1 mage's whole bar was 144 damage, short of one sprite.
 func _test_the_mage_kit() -> void:
-	section("THE MAGE'S KIT - a heavy spike, a critical one, and ice shards round the ring (0.71.0)")
+	section("THE MAGE'S KIT - a heavy spike, a critical one, and ice shards round the ring (0.71.0, 0.71.1)")
 	const FrostRing := preload("res://src/projectiles/frostring.gd")
+	const Targets := preload("res://src/shared/targets.gd")
 	var arena := Node2D.new()
 	add_child(arena)
 	var base := Vector2(-98000.0, 68000.0)
@@ -29122,17 +29282,17 @@ func _test_the_mage_kit() -> void:
 		ring.queue_free()
 
 	var centre: Vector2 = base + Vector2(1200, 0)
-	var struck: Dictionary = {}
+	var cast_hits: Dictionary = {}
 	var landed_on: CharacterBody2D = _weapon_dummy(arena, centre + Vector2(60, 60))
 	var crowd: CharacterBody2D = _weapon_dummy(arena, centre + Vector2(-60, 60))
-	struck[landed_on.get_instance_id()] = true
-	var spun: Node2D = FrostRing.spin(arena, centre, 18.0, 50, struck)
+	var spun: Node2D = FrostRing.spin(arena, centre, 18.0, 50, cast_hits)
 	var held: Array = spun.get_children()
 	var each_hit: int = roundi(50 * FrostRing.SHARD_SHARE)
-	var shared_ok: bool = held.size() == 6
+	var shared_ok: bool = held.size() == 6 and is_equal_approx(FrostRing.SHARD_SHARE, 0.2) and FrostRing.SHARD_HITS_EACH == 2
 	for o in held:
-		shared_ok = shared_ok and o.damage == each_hit and is_same(o.struck, struck) and o.palette == BladeOrb.ICE
-	check("each shard cuts for SHARD_SHARE of the spike's hit, sharing what the cast has struck - frost white on a plain spike",
+		shared_ok = shared_ok and o.damage == each_hit and is_same(o.cast_hits, cast_hits) \
+			and o.cast_hits_each == FrostRing.SHARD_HITS_EACH and o.palette == BladeOrb.ICE
+	check("each shard cuts for SHARD_SHARE (a fifth) of the spike's hit, counting the cast's hits together - frost white on a plain spike",
 		shared_ok, [held.size(), each_hit])
 	var start: Vector2 = (held[0] as Node2D).global_position
 	spun.call("advance", FrostRing.ORBIT_SECONDS * 0.5)
@@ -29155,18 +29315,69 @@ func _test_the_mage_kit() -> void:
 	check("  and away from the middle as they fly",
 		first.global_position.distance_to(centre) > was + 20.0, [was, first.global_position.distance_to(centre)])
 
+	# THE OWNER: "the spinning balls are not hitting the enemies, really we need
+	# to increase the amount of times a enemy can be damaged and make sure
+	# bullets are absorbed by impacts" (0.71.1).
 	var a: BladeOrb = held[1]
-	a._try_hit(landed_on)
-	check("a shard passes over the monster the cast already hit - one hit a monster a cast",
-		landed_on.get("taken").is_empty() and not a._done, landed_on.get("taken"))
-	a._try_hit(crowd)
 	var b: BladeOrb = held[2]
-	b._try_hit(crowd)
-	check("  cuts one the spike missed, once - a second shard passes over it",
-		crowd.get("taken") == [each_hit] and a._done and not b._done, crowd.get("taken"))
+	var c: BladeOrb = held[3]
+	a._try_hit(landed_on)
+	check("a shard hits the monster it touches - the spike's own mark too - and is spent on it",
+		landed_on.get("taken") == [each_hit] and a._done, landed_on.get("taken"))
+	b._try_hit(landed_on)
+	check("  a second shard hits it again: SHARD_HITS_EACH (2) a monster a cast, after the spike",
+		landed_on.get("taken") == [each_hit, each_hit] and b._done, landed_on.get("taken"))
+	c._try_hit(landed_on)
+	check("  a third is absorbed by it for nothing - never through it",
+		landed_on.get("taken") == [each_hit, each_hit] and c._done, landed_on.get("taken"))
+	(held[4] as BladeOrb)._try_hit(crowd)
+	check("  and the count is each monster's: another one still takes its two",
+		crowd.get("taken") == [each_hit] and int(cast_hits.get(crowd.get_instance_id(), 0)) == 1, crowd.get("taken"))
 	spun.call("advance", FrostRing.MAX_SECONDS)
 	check("  and the ring is gone by MAX_SECONDS, whatever is left",
 		spun.is_queued_for_deletion())
+
+	# IN THE GAME'S OWN PHYSICS: a monster on the ring is cut as the shards
+	# spin into it, and the shard that cut it is gone.
+	var swept_at: Vector2 = base + Vector2(1400, 0)
+	var on_ring: CharacterBody2D = _weapon_dummy(arena, swept_at + Vector2(0, 18.0 + FrostRing.ORBIT_PAD))
+	for i in 2:
+		await get_tree().physics_frame
+	var sweeping: Node2D = FrostRing.spin(arena, swept_at, 18.0, 50, {})
+	for i in 20:
+		await get_tree().physics_frame
+	var left_spinning: int = 0
+	if is_instance_valid(sweeping):
+		for o in sweeping.get_children():
+			if not (o as BladeOrb)._done:
+				left_spinning += 1
+	check("a monster on the ring is cut by the spinning shards themselves, and each that cuts it is spent",
+		on_ring.get("taken").size() >= 1 and on_ring.get("taken").size() <= FrostRing.SHARD_HITS_EACH
+		and left_spinning <= FrostRing.SHARDS - on_ring.get("taken").size(), [on_ring.get("taken"), left_spinning])
+	if is_instance_valid(sweeping):
+		sweeping.queue_free()
+
+	# FOUR PLAYERS ON ONE MONSTER: the owner, "i do not want only 1 persons
+	# attack to register". One spike a monster is one CAST's rule - each
+	# caster's cast has its own count.
+	var shared_target: CharacterBody2D = _weapon_dummy(arena, base + Vector2(1500, 200))
+	for i in 2:
+		await get_tree().physics_frame
+	var casters: Array = []
+	for i in 4:
+		var theirs: Area2D = (load("res://scene/projectiles/spelltargetcircle.tscn") as PackedScene).instantiate()
+		theirs.set("explosion_damage", 30)
+		arena.add_child(theirs)
+		theirs.global_position = Targets.body_point(shared_target) + Vector2(2.0 * i, 0)
+		casters.append(theirs)
+	for i in 3:
+		await get_tree().physics_frame
+	for theirs in casters:
+		theirs.call("_apply_area_damage")
+	check("four players' spikes on one monster all land - each cast has its own count",
+		shared_target.get("taken") == [30, 30, 30, 30], shared_target.get("taken"))
+	for theirs in casters:
+		(theirs as Node).queue_free()
 
 	# Not past a wall.
 	var walled: Vector2 = base + Vector2(1600, 0)
@@ -29178,9 +29389,10 @@ func _test_the_mage_kit() -> void:
 	check("no shard starts past a wall: against a 2 px wall the spoke beyond it is left out",
 		by_wall.get_child_count() == 5 and past.is_empty(), [by_wall.get_child_count(), past.size()])
 	by_wall.queue_free()
-	check("  and a spike's shards are spun as it strikes, with its own struck",
+	check("  and a spike's shards are spun as it strikes, counting with the cast's other shards",
 		_func_body(_code_src("res://src/projectiles/spelltargetcircle.gd"), "func _spin_shards(").contains(
-			"FrostRing.spin(parent, global_position, circle_radius, explosion_damage, struck, cosmetic,")
+			"FrostRing.spin(parent, global_position, circle_radius, explosion_damage, shard_hits, cosmetic,")
+		and _func_body(_code_src("res://src/characters/mage.gd"), "func _spawn_stalagmite(").contains("var shard_hits: Dictionary = {}")
 		and _func_body(_code_src("res://src/projectiles/spelltargetcircle.gd"), "func _on_frame_changed(").contains("_spin_shards()"))
 	arena.queue_free()
 	await get_tree().process_frame

@@ -68,6 +68,13 @@ var _spent: bool = false
 # How long a shot flies before it is gone, hit or not - the fire sprite's 10.
 @export var lifetime: float = 10.0
 
+# HOW FAR IT FLIES (0.72.0): RANGE px, whatever its speed - so its lifetime is
+# RANGE / speed at most. It used to end where it left THIS player's screen, so
+# the same shot flew a different distance on every screen, and one fired from
+# off-screen flew until something stopped it (0.56.0's 10 s). The owner chose
+# bullets with rules: every bullet ends at its range or on what it hits.
+const RANGE := 360.0
+
 
 func _ready() -> void:
 	# THE ORB NEVER MOVED. This asked for "animatedsprite2d" and played
@@ -93,6 +100,7 @@ func _ready() -> void:
 	# A LIFETIME, LIKE EVERY OTHER SHOT (0.56.0). This one ended only on a hit or
 	# on leaving the screen - and a shot aimed at somebody off this screen was
 	# never on it, so it flew until a wall or a body stopped it.
+	lifetime = minf(lifetime, RANGE / maxf(speed, 1.0))
 	get_tree().create_timer(lifetime).timeout.connect(destroy_projectile)
 
 	# catch bodies already overlapping on spawn — see notes in arrow.gd
@@ -166,7 +174,8 @@ func _on_area_entered(area: Area2D) -> void:
 
 
 func _on_visible_on_screen_notifier_2d_screen_exited() -> void:
-	destroy_projectile()
+	# Not the end of it any more (0.72.0): it flies its RANGE on every screen.
+	pass
 
 
 # =============================================================================

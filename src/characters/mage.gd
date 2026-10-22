@@ -83,9 +83,10 @@ const SPIKE_SEEK_RADIUS := 48.0
 # the first on the mark and the others on the next nearest monsters within
 # TRIPLE_REACH of it, or round it, TRIPLE_SPREAD out, when there are none.
 # A MONSTER TAKES ONE SPIKE A CAST, however many land on it - the three share
-# what they hit - so one monster takes no more than it did, and the server's
-# bound on a mage (one hit a cast, gamedata.combat_bounds()) still holds. The
-# third cast is for a crowd.
+# what they hit - so the third cast is for a crowd. (And up to two of the
+# cast's ice shards on top since 0.71.1, frostring.gd; the server's bound on a
+# mage, gamedata.combat_bounds(), counts both.) One mage's cast: four players
+# on one monster each land every hit they make.
 const TRIPLE_EVERY := 3
 const TRIPLE_SPIKES := 3
 const TRIPLE_REACH := 110.0
@@ -373,12 +374,14 @@ func _spawn_stalagmite() -> Array[Node]:
 	# zero cost a fraction of a point on every single cast.
 	var damage: int = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier()
 		* (CRIT_MULT if critical else 1.0))
-	# What this cast's spikes have hit between them - and their ice shards
-	# (frostring.gd): one hit a monster a cast.
+	# What this cast's spikes have hit between them - one spike a monster - and
+	# how often their ice shards have (frostring.gd: SHARD_HITS_EACH a monster).
+	# This mage's cast only: another player's hits are theirs.
 	var struck: Dictionary = {}
+	var shard_hits: Dictionary = {}
 	var made: Array[Node] = []
 	for mark in spike_marks(aimed, count):
-		var spell: Node = _drop_spike(mark["at"], mark["target"], damage, struck, critical)
+		var spell: Node = _drop_spike(mark["at"], mark["target"], damage, struck, critical, shard_hits)
 		if spell != null:
 			made.append(spell)
 	return made
@@ -443,7 +446,8 @@ func spike_marks(aimed: Vector2, count: int) -> Array:
 	return marks
 
 
-func _drop_spike(at: Vector2, target: Node2D, damage: int, struck: Dictionary, critical: bool = false) -> Node:
+func _drop_spike(at: Vector2, target: Node2D, damage: int, struck: Dictionary, critical: bool = false,
+		shard_hits: Dictionary = {}) -> Node:
 	# spawn the spell scene at its mark. parented to the scene ROOT (not to
 	# mage) so the spell stays where it was cast if the mage moves during the
 	# fall animation. spell.tscn plays its own 8-frame fall animation and
@@ -455,6 +459,8 @@ func _drop_spike(at: Vector2, target: Node2D, damage: int, struck: Dictionary, c
 		spell.set("target", target)
 	if "struck" in spell:
 		spell.set("struck", struck)
+	if "shard_hits" in spell:
+		spell.set("shard_hits", shard_hits)
 	if "critical" in spell:
 		spell.set("critical", critical)
 	get_tree().current_scene.add_child(spell)

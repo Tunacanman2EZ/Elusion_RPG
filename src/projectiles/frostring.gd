@@ -7,11 +7,24 @@
 # ORBIT_SECONDS, and then fly straight out, SHARD_REACH more, cutting what they
 # touch for SHARD_SHARE of the spike's hit.
 #
-# ONE HIT A MONSTER A CAST. The shards share the cast's `struck` with its spikes
-# (BladeOrb.struck), so they pass over the monster the spike landed on and over
-# anything another shard or spike of the cast has cut. They are for the crowd
-# round the mark, not a second hit on it - which is why the server's bound on a
-# mage (gamedata.combat_bounds(), a hit a cast) needs nothing for them.
+# EVERY SHARD HITS WHAT IT TOUCHES, AND IS SPENT ON IT (0.71.1). The owner: "the
+# spinning balls are not hitting the enemies, really we need to increase the
+# amount of times a enemy can be damaged and make sure bullets are absorbed by
+# impacts". In 0.71.0 the shards shared the spike's "one hit a monster a cast",
+# so a shard spinning through the very monster the spike had hit passed over it
+# untouched - and kept going, through it. Now:
+#   - a shard that touches a monster hits it - the spike's mark too - and is
+#     gone, absorbed where it struck (BladeOrb.pop());
+#   - a monster takes SHARD_HITS_EACH shards a cast at most, on top of the
+#     spike, counted across all the cast's spikes (`cast_hits`); one past that
+#     is still absorbed, for nothing - a bullet never passes through a body.
+# So a monster takes up to 1 + SHARD_HITS_EACH hits a cast, and SHARD_SHARE is
+# a fifth so that is at most 1.4 spikes' worth: the server's bound on a mage
+# (gamedata.combat_bounds()) counts every cast as that, critical, from the
+# shard_hits_each and shard_share the exporter writes.
+#
+# ONE CASTER'S COUNT. The counts are this cast's, of this mage's: four players
+# on one monster each land every hit they make (monstersync.gd sends each one).
 #
 # THE SHARDS ARE BladeOrbs (bladeorb.gd, ICE), the warrior's crypt orbs in frost
 # white - gold round a critical spike (GOLD, the warrior's finisher's). They
@@ -35,8 +48,11 @@ const ORBIT_SECONDS := 0.5
 const ORBIT_TURNS := 0.75
 const SHARD_SPEED := 220.0
 const SHARD_REACH := 70.0
-# Each shard's hit, as a share of the spike's.
-const SHARD_SHARE := 0.4
+# Each shard's hit, as a share of the spike's (0.4 in 0.71.0, when one monster
+# could take no shard at all after the spike).
+const SHARD_SHARE := 0.2
+# The most shards one monster takes from one cast, after the spike.
+const SHARD_HITS_EACH := 2
 # Gone by now whatever happened, so nothing is ever left spinning.
 const MAX_SECONDS := 3.0
 
@@ -45,10 +61,11 @@ var _age: float = 0.0
 
 
 static func spin(parent: Node, centre: Vector2, ring_radius: float, spike_damage: int,
-		shared: Dictionary, is_cosmetic: bool = false, palette: StringName = BladeOrb.ICE) -> Node2D:
+		cast_hits: Dictionary, is_cosmetic: bool = false, palette: StringName = BladeOrb.ICE) -> Node2D:
 	"""SHARDS ice shards round `centre`, on a circle ring_radius + ORBIT_PAD out,
-	each for SHARD_SHARE of `spike_damage`, passing over what is in `shared` -
-	frost white, or a critical spike's gold (BladeOrb.GOLD)."""
+	each for SHARD_SHARE of `spike_damage`, SHARD_HITS_EACH a monster at most
+	across the cast (`cast_hits`, shared by its spikes' shards) - frost white,
+	or a critical spike's gold (BladeOrb.GOLD)."""
 	var ring: Node2D = (load(PATH) as GDScript).new()
 	ring.name = "frostring"
 	parent.add_child(ring)
@@ -69,7 +86,11 @@ static func spin(parent: Node, centre: Vector2, ring_radius: float, spike_damage
 		# wall it turns into breaks it.
 		var shard: BladeOrb = BladeOrb.fire(ring, at, spoke.orthogonal(), 0.0,
 			SHARD_REACH, 0 if is_cosmetic else each, palette, is_cosmetic)
-		shard.struck = shared
+		shard.cast_hits = cast_hits
+		shard.cast_hits_each = SHARD_HITS_EACH
+		# Drawn along the ring while it is carried round it.
+		shard.stretched_still = true
+		shard.face()
 	return ring
 
 
@@ -103,3 +124,4 @@ func release() -> void:
 		shard.direction = shard.position.normalized() if shard.position != Vector2.ZERO else Vector2.RIGHT
 		shard.speed = SHARD_SPEED
 		shard.flown = 0.0
+		shard.face()

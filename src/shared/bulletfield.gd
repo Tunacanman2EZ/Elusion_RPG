@@ -50,6 +50,17 @@ const BIG_SIZE: float = 16.0
 const SMALL_RADIUS: float = 2.5
 const BIG_RADIUS: float = 5.5
 
+# DRAWN ALONG ITS FLIGHT (0.72.0). The owner: "we need to upgrade bullets to be
+# way more refined darza managed this ability nicely" - bullets that face where
+# they fly, for the monsters' too. A flying bullet is drawn STRETCH_LONG long
+# and STRETCH_SHORT wide along its velocity, the same orb turned and drawn
+# longer; one slower than STRETCH_SPEED px/s - a mine settling, or lying still
+# - is round and square to the screen, because a round orb turned a little is
+# only its pixels made ragged. The hit circle above is still its bright body.
+const STRETCH_LONG: float = 1.25
+const STRETCH_SHORT: float = 0.8
+const STRETCH_SPEED: float = 30.0
+
 # A settled bullet (spawn_settling) fades out over its last this-many seconds:
 # the ground it guards is about to be safe again. The same 0.75 s an acid
 # puddle takes (acidpuddle.gd's fade_duration), so the two read alike.
@@ -263,14 +274,11 @@ func spawn(origin: Vector2, angle: float, speed: float, colour: Color, big: bool
 
 	var size: float = BIG_SIZE if big else SMALL_SIZE
 	var o: int = i * STRIDE
-	_buffer[o] = size
-	_buffer[o + 1] = 0.0
 	_buffer[o + 2] = 0.0
 	_buffer[o + 3] = roundf(at.x)
-	_buffer[o + 4] = 0.0
-	_buffer[o + 5] = size
 	_buffer[o + 6] = 0.0
 	_buffer[o + 7] = roundf(at.y)
+	_shape(o, velocity, size)
 	_buffer[o + 8] = colour.r
 	_buffer[o + 9] = colour.g
 	_buffer[o + 10] = colour.b
@@ -309,6 +317,27 @@ func spawn_settling(origin: Vector2, angle: float, speed: float, colour: Color, 
 	spawn(origin, angle, speed, colour, big, 0.0, 0.0, moving + maxf(linger, 0.0), damage, element)
 	if speed > 0.0:
 		_brake[count - 1] = speed * speed / (2.0 * distance)
+
+
+func _shape(o: int, velocity: Vector2, size: float) -> void:
+	"""The bullet's drawn shape in the buffer at `o`: `size` across - stretched
+	along `velocity` while it flies, round once it is slow (STRETCH_* above)."""
+	var speed: float = velocity.length()
+	var flying: bool = speed >= STRETCH_SPEED
+	var along: float = size * (STRETCH_LONG if flying else 1.0)
+	var across: float = size * (STRETCH_SHORT if flying else 1.0)
+	var ahead: Vector2 = velocity / speed if flying else Vector2.RIGHT
+	_buffer[o] = ahead.x * along
+	_buffer[o + 4] = ahead.y * along
+	_buffer[o + 1] = -ahead.y * across
+	_buffer[o + 5] = ahead.x * across
+
+
+func shape_of(i: int) -> Transform2D:
+	"""How bullet `i` is drawn: its axes and where (for the tests)."""
+	var o: int = i * STRIDE
+	return Transform2D(Vector2(_buffer[o], _buffer[o + 4]), Vector2(_buffer[o + 1], _buffer[o + 5]),
+		Vector2(_buffer[o + 3], _buffer[o + 7]))
 
 
 func _drawn(i: int, point: Vector2, velocity: Vector2, age: float) -> Vector2:
@@ -383,6 +412,25 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		var o: int = i * STRIDE
 		_buffer[o + 3] = roundf(drawn.x)
 		_buffer[o + 7] = roundf(drawn.y)
+		# A curving bullet turns, a slowing one rounds off; a straight one
+		# keeps the shape it was given. _shape(), written out here: this runs
+		# for every curving bullet every frame, and a call costs more than the
+		# sums (the bench's stress test, 2,652 at once).
+		if turn != 0.0 or brake > 0.0:
+			var size: float = BIG_SIZE if _radius[i] > SMALL_RADIUS else SMALL_SIZE
+			var fast: float = velocity.length()
+			if fast >= STRETCH_SPEED:
+				var long: float = size * STRETCH_LONG / fast
+				var wide: float = size * STRETCH_SHORT / fast
+				_buffer[o] = velocity.x * long
+				_buffer[o + 4] = velocity.y * long
+				_buffer[o + 1] = -velocity.y * wide
+				_buffer[o + 5] = velocity.x * wide
+			else:
+				_buffer[o] = size
+				_buffer[o + 4] = 0.0
+				_buffer[o + 1] = 0.0
+				_buffer[o + 5] = size
 		if brake > 0.0:
 			_buffer[o + 11] = _alpha[i] * clampf((_life[i] - age) / FADE_SECONDS, 0.0, 1.0)
 		i += 1

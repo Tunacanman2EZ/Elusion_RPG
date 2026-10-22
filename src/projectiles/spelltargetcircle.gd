@@ -89,6 +89,9 @@ var target: Node2D = null
 # WHAT THIS CAST'S SPIKES HAVE HIT, shared by all of them (THE THIRD CAST,
 # mage.gd): instance id -> true. A monster takes one spike a cast.
 var struck: Dictionary = {}
+# How often this cast's ice shards have hit each monster, shared by all its
+# spikes' shards (frostring.gd, 0.71.1): instance id -> hits.
+var shard_hits: Dictionary = {}
 
 # THE CRITICAL SPIKE (0.71.0, mage.gd's CRIT_CHANCE): its hit is already
 # CRIT_MULT times as hard (the mage rolled it into explosion_damage); this
@@ -345,7 +348,7 @@ func _spin_shards() -> void:
 	var parent: Node = get_parent()
 	if parent == null:
 		return
-	FrostRing.spin(parent, global_position, circle_radius, explosion_damage, struck, cosmetic,
+	FrostRing.spin(parent, global_position, circle_radius, explosion_damage, shard_hits, cosmetic,
 		BladeOrb.GOLD if critical else BladeOrb.ICE)
 
 

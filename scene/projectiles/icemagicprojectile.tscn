@@ -41,7 +41,7 @@ animations = [{
 }]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_tlgt8"]
-radius = 5.1539
+radius = 8.125
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_eltint"]
 shader = ExtResource("9_elshader")

@@ -5,7 +5,7 @@
 [ext_resource type="Shader" path="res://src/shared/element_recolour.gdshader" id="9_elshader"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_yspra"]
-radius = 0.8
+radius = 1.2
 height = 12.8
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_eltint"]
