@@ -425,6 +425,7 @@ func _run_all() -> void:
 	await _test_a_crowd_waits_its_turn()
 	_test_every_class_stands_in_front_of_a_wall()
 	_test_one_characters_map_is_not_anothers_world()
+	_test_a_broken_map_is_mended_once()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
 	_test_a_character_can_be_deleted()
@@ -9461,6 +9462,82 @@ func _test_one_characters_map_is_not_anothers_world() -> void:
 	WorldMap._terrain = kept_terrain
 	WorldMap._save_cache = kept_cache
 	WorldMap._save_dirty = kept_dirty
+
+func _test_a_broken_map_is_mended_once() -> void:
+	section("WORLD MAP - a saved map that cannot be read is replaced in the save, so it warns once and not at every login (0.73.1)")
+	var kept_seen: Dictionary = WorldMap._seen.duplicate(true)
+	var kept_terrain: Dictionary = WorldMap._terrain.duplicate(true)
+	var kept_cache: Dictionary = WorldMap._save_cache.duplicate(true)
+	var kept_dirty: bool = WorldMap._save_dirty
+	var kept_pending: bool = WorldMap._revision_pending
+	var kept_dropped: PackedStringArray = WorldMap._dropped_on_load.duplicate()
+	const GOOD := "zz_mendgood"
+	const BROKEN := "zz_mendbroken"
+	var bits_of := func(count: int) -> String:
+		var raw := PackedByteArray()
+		raw.resize(count)
+		raw.fill(255)
+		return Marshalls.raw_to_base64(raw.compress(FileAccess.COMPRESSION_DEFLATE))
+	# 12 x 10 tiles is 15 bytes of bits. The broken map says 20 x 10 (25 bytes)
+	# round 15 bytes - what the saves written before 0.68.1 can hold.
+	var good := {"w": 12, "h": 10, "ox": 0, "oy": 0, "bits": bits_of.call(15)}
+	var broken := {"w": 20, "h": 10, "ox": 0, "oy": 0, "bits": bits_of.call(15)}
+	WorldMap._terrain.erase(GOOD)
+	WorldMap._terrain.erase(BROKEN)
+	WorldMap._revision_pending = false
+	WorldMap.from_save({GOOD: good})
+	check("a map that reads is dropped from nothing, and is no change to save",
+		WorldMap.dropped_on_load().is_empty() and not WorldMap._revision_pending,
+		[WorldMap.dropped_on_load(), WorldMap._revision_pending])
+	WorldMap.from_save({GOOD: good, BROKEN: broken})
+	check("  one that does not read is named as dropped, and is a change to save",
+		Array(WorldMap.dropped_on_load()) == [BROKEN] and WorldMap._revision_pending,
+		[WorldMap.dropped_on_load(), WorldMap._revision_pending])
+
+	# The loader mends the save, with a stand-in storage that only counts.
+	var store_script := GDScript.new()
+	store_script.source_code = "extends SaveStorage\nfunc save(_payload: Dictionary) -> bool:\n\treturn true\n" \
+		+ "func requests_before_leaving(_payload: Dictionary) -> Array:\n\treturn []\n"
+	store_script.reload()
+	var was_storage = CharacterData.storage
+	var was_pending: bool = CharacterData._save_pending
+	var was_failed: bool = CharacterData.load_failed
+	var was_index: int = CharacterData.active_character_index
+	var was_slots: Array = CharacterData.character_slots.duplicate()
+	CharacterData.storage = store_script.new()
+	CharacterData.load_failed = false
+	CharacterData._save_pending = false
+	CharacterData.active_character_index = 0
+	CharacterData.character_slots = [{"name": "Stand-in", "character": "warrior",
+		"explored": {GOOD: good, BROKEN: broken}}, null, null, null]
+	var fingerprints := ServerStorage.new()
+	var seeded: String = JSON.stringify(fingerprints._save_fingerprint(0, CharacterData.character_slots[0]))
+	var stand := Node2D.new()
+	CharacterData.load_character_state(stand)
+	var mended: Dictionary = CharacterData.character_slots[0]
+	var map: Dictionary = mended.get("explored", {})
+	check("  the loader puts the map as it now is into the slot: the broken one gone, the good one kept",
+		map.has(GOOD) and not map.has(BROKEN), map.keys())
+	var after: String = JSON.stringify(fingerprints._save_fingerprint(0, mended))
+	check("  and saves it - its revision moved, so the push differs from what the server holds",
+		CharacterData._save_pending and after != seeded, [CharacterData._save_pending, after == seeded])
+	CharacterData._save_pending = false
+	CharacterData.load_character_state(stand)
+	check("  so the next login reads it clean: nothing dropped, no warning, nothing new to save",
+		WorldMap.dropped_on_load().is_empty() and not CharacterData._save_pending,
+		[WorldMap.dropped_on_load(), CharacterData._save_pending])
+	stand.free()
+	CharacterData.storage = was_storage
+	CharacterData._save_pending = was_pending
+	CharacterData.load_failed = was_failed
+	CharacterData.active_character_index = was_index
+	CharacterData.character_slots = was_slots
+	WorldMap._seen = kept_seen
+	WorldMap._terrain = kept_terrain
+	WorldMap._save_cache = kept_cache
+	WorldMap._save_dirty = kept_dirty
+	WorldMap._revision_pending = kept_pending
+	WorldMap._dropped_on_load = kept_dropped
 
 func _test_every_area_can_be_walked() -> void:
 	section("AREAS - you arrive clear of the doors, the walls hold, every door can be walked to")

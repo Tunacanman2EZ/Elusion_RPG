@@ -4406,6 +4406,19 @@ Driven in the game against the real server.
   `to_save()` never writes bits that do not fit their size. A character
   already saved broken shows the warning once more, then the map is right.
   `_test_one_characters_map_is_not_anothers_world()`.
+- **...and the broken copy is replaced, not only skipped (0.73.1).** The
+  owner's log, 22 Oct, the same warning on a healer: "seems like a bug we ran
+  into a couple times already". "Once more, then right" above was only true
+  if a save went out after it: `from_save()` dropped the map from WorldMap,
+  but the slot and the server still held it, and the map rides a push only
+  when the revision moves (45 s of walking) or something else changes. Log
+  in, stand in town, log out - and the next login read the same broken map
+  and warned again. Now `from_save()` names what it left out
+  (`WorldMap.dropped_on_load()`) and counts it as a change, and
+  `load_character_state()` puts the map as it now is into the slot, moves
+  the revision and calls `save_data()` - so the first push replaces the
+  server's copy and the warning is seen once per character.
+  `_test_a_broken_map_is_mended_once()`.
 - **Pets worked:** summoned from the bag, through a door, through a relog, and
   put away with a second use; the sniper followed and took 84 health off a dark
   sprite in eight seconds. The server stored whatever `active_pet_id` a save

@@ -1441,6 +1441,16 @@ func load_character_state(player: Node) -> void:
 	# deferred call finds the bits already in place and does not reveal a
 	# starting position into a map it is about to overwrite.
 	WorldMap.from_save(slot.get("explored", {}))
+	# A MAP THAT COULD NOT BE READ IS REPLACED, NOT ONLY SKIPPED (0.73.1): the
+	# slot and the server still held it, and handed it back at every login. The
+	# map as it now is goes into the slot, its revision moves - that is what
+	# makes the save's fingerprint differ, see ServerStorage._save_fingerprint()
+	# - and it is saved.
+	if not WorldMap.dropped_on_load().is_empty():
+		WorldMap.flush_pending()
+		slot["explored"] = WorldMap.to_save()
+		slot["explored_rev"] = WorldMap.save_revision()
+		save_data()
 
 	if "equipped" in player:
 		var saved_equipment = slot.get("equipment", {})

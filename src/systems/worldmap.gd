@@ -162,6 +162,9 @@ var _revision: int = 0
 var _revision_pending: bool = false
 var _revision_at_ms: int = 0
 
+# THE AREAS THE LAST from_save() COULD NOT KEEP (0.73.1). See dropped_on_load().
+var _dropped_on_load: PackedStringArray = PackedStringArray()
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -644,16 +647,19 @@ func from_save(data) -> void:
 	_seen.clear()
 	_save_cache = {}
 	_save_dirty = true
+	_dropped_on_load = PackedStringArray()
 	if typeof(data) != TYPE_DICTIONARY:
 		return
 
 	for area in data:
 		var entry = data[area]
 		if typeof(entry) != TYPE_DICTIONARY:
+			_drop_on_load(area)
 			continue
 		var w: int = int(entry.get("w", 0))
 		var h: int = int(entry.get("h", 0))
 		if w <= 0 or h <= 0 or w * h > MAX_AREA_TILES:
+			_drop_on_load(area)
 			continue
 
 		# Same shift as _ensure_seen(), and for the same reason — these two
@@ -663,6 +669,7 @@ func from_save(data) -> void:
 		var expected: int = (w * h + 7) >> 3
 		var packed: PackedByteArray = Marshalls.base64_to_raw(str(entry.get("bits", "")))
 		if packed.is_empty():
+			_drop_on_load(area)
 			continue
 
 		# A SAVE IS NOT TRUSTED TO DECOMPRESS. decompress() with a wrong
@@ -674,6 +681,7 @@ func from_save(data) -> void:
 		if bits.size() != expected:
 			push_warning("WorldMap: the stored map for '%s' would not decompress "
 				% str(area) + "to the size it claims. Starting it again.")
+			_drop_on_load(area)
 			continue
 
 		# ONE CHARACTER'S MAP IS NOT ANOTHER'S WORLD (0.68.1). _terrain outlives
@@ -692,6 +700,7 @@ func from_save(data) -> void:
 			push_warning("WorldMap: '%s' is %dx%d now and was %dx%d when this map was "
 				% [str(area), known["size"].x, known["size"].y, w, h]
 				+ "saved. Its exploration starts again.")
+			_drop_on_load(area)
 			continue
 
 		_seen[str(area)] = bits
@@ -707,6 +716,28 @@ func from_save(data) -> void:
 				"size": Vector2i(w, h),
 				"tile": Vector2i(16, 16),
 			}
+
+
+func _drop_on_load(area) -> void:
+	# A map left out is a change worth saving: the copy it came from still
+	# holds it, and would hand it back - and the warning - at every login.
+	_dropped_on_load.append(str(area))
+	_revision_pending = true
+
+
+func dropped_on_load() -> PackedStringArray:
+	"""The areas the last from_save() left out, unreadable or the wrong shape.
+
+	THE WARNING CAME BACK AT EVERY LOGIN (the owner's log, 22 Oct: "seems like
+	a bug we ran into a couple times already"). from_save() drops a broken
+	map, but only from WorldMap - the server's copy, and the slot's, kept it,
+	and nothing sent the map again until 45 seconds of walking or some other
+	change made a save worth pushing. A character that logged in and out, or
+	sat in town, read the same broken map, and warned, every time.
+	CharacterData.load_character_state() asks this, and when anything was
+	dropped writes the map as it now is into the slot and saves it, so the
+	broken copy is replaced on the first push and the warning is seen once."""
+	return _dropped_on_load
 
 
 func forget_everything() -> void:
