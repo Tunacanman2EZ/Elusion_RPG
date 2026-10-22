@@ -91,25 +91,48 @@ const TRIPLE_SPIKES := 3
 const TRIPLE_REACH := 110.0
 const TRIPLE_SPREAD := 44.0
 
+# THE CRITICAL SPIKE (0.71.0): one cast in five (CRIT_CHANCE) hits CRIT_MULT
+# times as hard and drops the third cast's three spikes too. It comes down
+# gold, as every class's big roll is (the owner: "we need that critical to be
+# gold like the other chars"), with gold shards and big gold numbers, and it
+# shatters wider (spelltargetcircle.gd). Rolled once a cast. The owner panel's
+# "Always roll the 10%" switch makes every cast one (common_forced()). The
+# server's bound on a mage counts it (gamedata.combat_bounds(): crit_chance
+# and crit_mult are exported with the class).
+const CRIT_CHANCE := 0.2
+const CRIT_MULT := 2.0
+# This mage's chance, CRIT_CHANCE unless a test pins it (0 never, 1 always).
+var crit_chance: float = CRIT_CHANCE
+
 # mana drained per stalagmite cast
-@export var spell_mana_cost: int = 15
+#
+# THE HEAVY SPIKE (0.71.0). The owner: "consumes more mana deals more damage".
+# It was 15 mana for 9 damage every 0.45 s - a level 1 mage's whole bar of 250
+# was 144 damage, short of a single Wind Sprite (233), and the healer got five
+# times as much out of a point of mana. Now 20 mana for 30 damage, once a
+# second: a sprite is about eight casts, and a bar is two of them.
+@export var spell_mana_cost: int = 20
 
 # cooldown between casts (seconds). prevents spell spam beyond animation duration.
-@export var spell_cooldown: float = 0.45
+# One a second since 0.71.0: a heavy spell, not a machine gun.
+@export var spell_cooldown: float = 1.0
 
 # damage scales with magic skill: total = magic × damage_per_magic
 #
-# NINE, NOT TWENTY-FIVE. Base damage divided by attack period is a class's dps
-# floor before any weapon, and at 25 over a 0.45s cast that floor was 55.6/s
-# against the warrior's 24/s — so the mage out-damaged the melee class by
-# 2.3x at every single gear tier, identically, because the weapon ladder is
-# scaled to each class's own base and carried the imbalance forward instead
-# of correcting it.
+# THIRTY, ONCE A SECOND (0.71.0). It was NINE over 0.45 s, 20/s, set when the
+# warrior's swing was its only damage: 0.85x of 24/s. The warrior's swing has
+# since gained the wave (three quarters of the swing again) and the sword's
+# fan, so a warrior does about 48/s while its mana lasts, and the mage at 20
+# could not finish a level 1 sprite on a full bar. At 30 over 1.0 s it is
+# 30/s - a quarter above the swing alone, well under the warrior's whole - and
+# 36/s with the crit. Every staff is scaled to match (THE LADDER, the API's
+# test_equipment.py: a staff adds what the sword adds, times 30/24), so a
+# weapon lifts a mage by the same multiple as everyone else.
 #
-# The mage attacks from range and the stalagmite is an explosion, so its
-# single-target number should sit BELOW the warrior's, not above it: 0.85x is
-# the target, and 9 over 0.45s gives 20/s against 24/s.
-@export var damage_per_magic: int = 9
+# (Before the retune that set nine it was 25 over 0.45 s, 55.6/s - 2.3x the
+# warrior at every tier - which is why the ladder rule is about dps, not base
+# damage.)
+@export var damage_per_magic: int = 30
 
 
 # =============================================================================
@@ -295,12 +318,12 @@ func _cast_stalagmite_drop() -> void:
 	#
 	# WHICH MAKES THE GUARD BELOW LOAD-BEARING, not defensive decoration. The
 	# line after the await writes a member of `self`, and a mage who dies or
-	# leaves the scene inside those 0.45 seconds is freed while this timer keeps
+	# leaves the scene inside that second (spell_cooldown) is freed while this timer keeps
 	# running. Same await hazard, same guard, as warrior's attack lock and
 	# tank's activate_expand.
 	# hasten() applies agility. Read once, here, rather than after the await:
 	# the timer's length is decided when it is created, and re-reading a stat
-	# on the far side of a 0.45 second wait would be asking a different
+	# on the far side of a second's wait would be asking a different
 	# question than the one that set the timer.
 	await get_tree().create_timer(hasten(spell_cooldown)).timeout
 	if not is_instance_valid(self) or not is_inside_tree():
@@ -333,7 +356,9 @@ func _spawn_stalagmite() -> Array[Node]:
 	"""This cast's spikes: one, or TRIPLE_SPIKES on every TRIPLE_EVERY-th
 	cast, each on its mark (spike_marks()). Returns them, for the tests."""
 	stalagmite_casts += 1
-	var count: int = TRIPLE_SPIKES if stalagmite_casts % TRIPLE_EVERY == 0 else 1
+	# THE CRITICAL SPIKE: rolled once a cast, and it drops the three as well.
+	var critical: bool = rolls_critical()
+	var count: int = TRIPLE_SPIKES if critical or stalagmite_casts % TRIPLE_EVERY == 0 else 1
 	# This side of a wall aimed past (0.69.1) - a spike called down in the
 	# next room through a crypt door was the owner's "through doors/walls".
 	var aimed: Vector2 = reach_short_of_wall(aim_point())
@@ -346,15 +371,23 @@ func _spawn_stalagmite() -> Array[Node]:
 	# once per CAST, so every enemy a cast catches - under one spike or three -
 	# takes the same number. roundi rather than int, because truncating toward
 	# zero cost a fraction of a point on every single cast.
-	var damage: int = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier())
-	# What this cast's spikes have hit between them: one spike a monster.
+	var damage: int = roundi((damage_per_magic + weapon_damage_roll()) * get_damage_multiplier()
+		* (CRIT_MULT if critical else 1.0))
+	# What this cast's spikes have hit between them - and their ice shards
+	# (frostring.gd): one hit a monster a cast.
 	var struck: Dictionary = {}
 	var made: Array[Node] = []
 	for mark in spike_marks(aimed, count):
-		var spell: Node = _drop_spike(mark["at"], mark["target"], damage, struck)
+		var spell: Node = _drop_spike(mark["at"], mark["target"], damage, struck, critical)
 		if spell != null:
 			made.append(spell)
 	return made
+
+
+func rolls_critical() -> bool:
+	"""THE CRITICAL SPIKE's roll: CRIT_CHANCE, or always with the owner panel's
+	"Always roll the 10%" switch on."""
+	return common_forced() or randf() < crit_chance
 
 
 func spike_marks(aimed: Vector2, count: int) -> Array:
@@ -410,7 +443,7 @@ func spike_marks(aimed: Vector2, count: int) -> Array:
 	return marks
 
 
-func _drop_spike(at: Vector2, target: Node2D, damage: int, struck: Dictionary) -> Node:
+func _drop_spike(at: Vector2, target: Node2D, damage: int, struck: Dictionary, critical: bool = false) -> Node:
 	# spawn the spell scene at its mark. parented to the scene ROOT (not to
 	# mage) so the spell stays where it was cast if the mage moves during the
 	# fall animation. spell.tscn plays its own 8-frame fall animation and
@@ -422,6 +455,8 @@ func _drop_spike(at: Vector2, target: Node2D, damage: int, struck: Dictionary) -
 		spell.set("target", target)
 	if "struck" in spell:
 		spell.set("struck", struck)
+	if "critical" in spell:
+		spell.set("critical", critical)
 	get_tree().current_scene.add_child(spell)
 	spell.global_position = at
 
@@ -446,8 +481,10 @@ func _drop_spike(at: Vector2, target: Node2D, damage: int, struck: Dictionary) -
 	# pattern as slashwave.gd's caster reference for warrior.
 	if "caster" in spell:
 		spell.caster = self
-	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd).
-	Presence.tell_attack("stalag", global_position, at)
+	# A picture of it for everyone else in the area (0.19.0, remoteattacks.gd),
+	# and whether it was critical - their picture shatters as wide.
+	Presence.tell_attack("stalag", global_position, at, 0.0,
+		RemoteAttacks.FLAG_CRITICAL if critical else 0)
 	return spell
 
 

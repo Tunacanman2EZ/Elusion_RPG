@@ -62,6 +62,13 @@ uniform float source_hue_band : hint_range(0.0, 0.5) = 0.5;
 // survive.
 uniform float grey_tint : hint_range(0.0, 1.0) = 0.0;
 
+// LIFT THE SHADES (0.71.0, the mage's critical spike). Above 0, every coloured
+// pixel's brightness is raised this share of the way to full, so dark art
+// recoloured to a bright hue reads as that hue: the spike's ice blues, turned
+// gold at their own brightness, came out brown. Outlines and greys are not
+// coloured, so they keep their weight. 0 - every monster - changes nothing.
+uniform float value_lift : hint_range(0.0, 1.0) = 0.0;
+
 // PROJECTILE BRIGHTNESS (0.55.0). This shader writes COLOR without the
 // modulate a node is given, so a dimmed projectile cannot be dimmed by one:
 // settings.gd sets this on the materials projectiles are drawn with. 1.0 -
@@ -123,7 +130,7 @@ void fragment() {
 			vec3 shifted = vec3(
 				element_hue,
 				clamp(hsv.y * saturation_scale, 0.0, 1.0),
-				hsv.z
+				hsv.z + (1.0 - hsv.z) * value_lift
 			);
 			vec3 rgb = hsv_to_rgb(shifted);
 			COLOR = vec4(mix(src.rgb, rgb, amount), src.a);

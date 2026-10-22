@@ -367,6 +367,7 @@ func _run_all() -> void:
 	await _test_attacks_stop_at_walls()
 	_test_the_export_reads_a_mages_leash_in_the_editor()
 	await _test_the_mage_spike_finds_its_mark()
+	await _test_the_mage_kit()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -19148,7 +19149,7 @@ func _test_the_mage_spell_effects() -> void:
 		flash_middle = flash_image.get_pixel(flash_image.get_width() >> 1, flash_image.get_height() >> 1)
 	check("  the flash is cold: blue-white, where a dynamite's is yellow-white",
 		flash_middle.b > flash_middle.r - 0.01 and flash_middle.b > 0.95 and flash_middle.r < 0.95, flash_middle)
-	check("  and the camera shakes least of all the blasts - a mage casts every half second",
+	check("  and the camera shakes least of all the blasts - a mage casts every second",
 		Blast.SHAKE[&"stalagmite"].x < Blast.SHAKE[&"dynamite"].x and Blast.SHAKE[&"stalagmite"].x < Blast.SHAKE[&"meteor"].x)
 	var frost_image: Image = mark.texture.get_image() if mark != null else null
 	var pale: int = 0
@@ -28656,6 +28657,11 @@ func _test_combat_bounds_match_the_game() -> void:
 		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_field_share", -1.0)), Dynamite.FIELD_SHARE)
 		and is_equal_approx(float((classes.get("tank", {}) as Dictionary).get("dynamite_field_every", -1.0)), Dynamite.FIELD_EVERY),
 		[classes.get("mage", {}), classes.get("tank", {})])
+	check("  and the mage's critical spike, so they allow for one every cast (0.71.0)",
+		is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("crit_chance", -1.0)),
+			float(_mage_const("CRIT_CHANCE")))
+		and is_equal_approx(float((classes.get("mage", {}) as Dictionary).get("crit_mult", -1.0)),
+			float(_mage_const("CRIT_MULT"))), classes.get("mage", {}))
 	check("the Double Axe's top spin rate is the game's, so the books allow for it",
 		is_equal_approx(float((classes.get("warrior", {}) as Dictionary).get("axe_spin_max_rate", -1.0)),
 			SpinningAxe.SPIN_MAX_RATE), classes.get("warrior", {}))
@@ -28870,9 +28876,11 @@ func _test_the_mage_spike_finds_its_mark() -> void:
 			(three[k]["at"] as Vector2).distance_to(three[0]["at"]), Mage.TRIPLE_SPREAD)
 	check("  with no others near, the two more land round the mark, TRIPLE_SPREAD out", spread_ok, three)
 
-	# The cast count: one, one, three.
+	# The cast count: one, one, three - with no critical spike to drop three
+	# early (0.71.0; _test_the_mage_kit() rolls those).
 	mage.set("last_direction", Vector2.UP)
 	mage.set("pointer_on_game", false)
+	mage.set("crit_chance", 0.0)
 	var counts: Array = []
 	for i in 3:
 		var made: Array = mage.call("_spawn_stalagmite")
@@ -28938,6 +28946,242 @@ func _test_the_mage_spike_finds_its_mark() -> void:
 	wave.queue_free()
 	for orb in orbs:
 		(orb as Node).queue_free()
+	arena.queue_free()
+	await get_tree().process_frame
+
+
+func _mage_const(constant: String) -> Variant:
+	return (load("res://src/characters/mage.gd") as GDScript).get_script_constant_map().get(constant)
+
+
+# =============================================================================
+# THE MAGE'S KIT (0.71.0)
+# =============================================================================
+# The owner: "mage needs to be strong enough to kill enemies at level 1", and
+# "consumes more mana deals more damage i was thinking more projectiles maybe a
+# critical projectile also maybe some ice bullets that spin in a circle around
+# the ring". A level 1 mage's whole bar was 144 damage, short of one sprite.
+func _test_the_mage_kit() -> void:
+	section("THE MAGE'S KIT - a heavy spike, a critical one, and ice shards round the ring (0.71.0)")
+	const FrostRing := preload("res://src/projectiles/frostring.gd")
+	var arena := Node2D.new()
+	add_child(arena)
+	var base := Vector2(-98000.0, 68000.0)
+
+	# ---- THE HEAVY SPIKE ------------------------------------------------------
+	var mage: Node2D = (load("res://scene/characters/mage.tscn") as PackedScene).instantiate()
+	arena.add_child(mage)
+	mage.set_physics_process(false)
+	mage.global_position = base + Vector2(0, 150)
+	check("the spike costs 20 mana, hits for 30 and casts once a second",
+		int(mage.get("spell_mana_cost")) == 20 and int(mage.get("damage_per_magic")) == 30
+		and is_equal_approx(float(mage.get("spell_cooldown")), 1.0),
+		[mage.get("spell_mana_cost"), mage.get("damage_per_magic"), mage.get("spell_cooldown")])
+	var sprite_hp: int = 233
+	var bar: int = 250
+	var per_bar: int = floori(float(bar) / float(mage.get("spell_mana_cost"))) * int(mage.get("damage_per_magic"))
+	check("  so a level 1 mage's bar is more than a Wind Sprite - it was 144 of 233",
+		per_bar >= sprite_hp, per_bar)
+
+	# ---- THE CRITICAL SPIKE ---------------------------------------------------
+	var _under_aim: CharacterBody2D = _weapon_dummy(arena, base + Vector2(10, 0))
+	for i in 2:
+		await get_tree().physics_frame
+	mage.set("last_direction", Vector2.UP)
+	mage.set("pointer_on_game", false)
+	mage.set("crit_chance", 0.0)
+	mage.set("stalagmite_casts", 0)
+	var plain: Array = mage.call("_spawn_stalagmite")
+	var plain_hit: int = int(plain[0].get("explosion_damage")) if not plain.is_empty() else -1
+	var plain_crit: bool = plain.size() == 1 and plain[0].get("critical") == false
+	for spell in plain:
+		(spell as Node).queue_free()
+	mage.set("crit_chance", 1.0)
+	mage.set("stalagmite_casts", 0)
+	var crit: Array = mage.call("_spawn_stalagmite")
+	var crit_hit: int = int(crit[0].get("explosion_damage")) if not crit.is_empty() else -1
+	check("a critical spike hits twice as hard (CRIT_MULT), one cast in five (CRIT_CHANCE)",
+		plain_crit and absi(crit_hit - plain_hit * 2) <= 1 and is_equal_approx(float(_mage_const("CRIT_MULT")), 2.0)
+		and is_equal_approx(float(_mage_const("CRIT_CHANCE")), 0.2), [plain_hit, crit_hit])
+	var all_crit: bool = crit.size() == 3
+	for spell in crit:
+		all_crit = all_crit and spell.get("critical") == true and int(spell.get("explosion_damage")) == crit_hit
+	check("  and drops the third cast's three spikes on the first cast, every one critical",
+		all_crit, crit.size())
+	for spell in crit:
+		(spell as Node).queue_free()
+	check("  rolled from crit_chance, or every cast with the owner panel's switch on",
+		_func_body(_code_src("res://src/characters/mage.gd"), "func rolls_critical(").contains("common_forced() or randf() < crit_chance"))
+	check("  and told to the others in the area, whose picture shatters as wide",
+		_func_body(_code_src("res://src/characters/mage.gd"), "func _drop_spike(").contains("RemoteAttacks.FLAG_CRITICAL if critical else 0")
+		and _func_body(_code_src("res://src/characters/remoteattacks.gd"), "static func _stalagmite(").contains("flags & FLAG_CRITICAL != 0")
+		and RemoteAttacks.FLAG_CRITICAL == 128)
+	mage.queue_free()
+
+	# Its number: big and gold.
+	var labels := Node2D.new()
+	labels.add_to_group("floatinglabels")
+	arena.add_child(labels)
+	var sprite: BaseEnemy = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	sprite.position = base + Vector2(400, 0)
+	arena.add_child(sprite)
+	sprite.set_physics_process(false)
+	var was_on: Variant = Settings.get_value("damage_numbers")
+	Settings.set_value("damage_numbers", true)
+	var hp_before: int = sprite.hp
+	sprite.take_damage(10)
+	sprite.take_critical_damage(20)
+	Settings.set_value("damage_numbers", was_on)
+	var shown: Array = labels.get_children()
+	var small: Node2D = shown[0] if shown.size() == 2 else null
+	var big: Node2D = shown[1] if shown.size() == 2 else null
+	var gold: Color = big.get("critical_color") if big != null else Color.BLACK
+	check("a critical hit's number is bigger than a plain one's, and gold - the owner: \"we need that critical to be gold\"",
+		small != null and big != null and big.scale.x > small.scale.x * 1.5
+		and gold.is_equal_approx(Color(1.0, 0.82, 0.3)) and FloatingLabel.Type.CRITICAL == FloatingLabel.Type.size() - 1
+		and (big.get("label") as CanvasItem).modulate.is_equal_approx(gold)
+		and not (small.get("label") as CanvasItem).modulate.is_equal_approx(gold),
+		[shown.size(), str(big.scale) if big != null else "none"])
+	check("  the healer's double's gold, appended to the label types so no old number changes colour",
+		gold.is_equal_approx((load("res://src/projectiles/turretprojectile.gd") as GDScript).get_script_constant_map().get("GOLD", Color.BLACK))
+		and FloatingLabel.Type.NOTICE == 5)
+	check("  and the hit itself is a plain hit: the monster takes what it was given",
+		sprite.hp == hp_before - 30 and sprite.get("_critical_next") == false, [hp_before, sprite.hp])
+	sprite.queue_free()
+
+	# A critical spike shatters wider.
+	var spike: Node2D = (load("res://scene/projectiles/spelltargetcircle.tscn") as PackedScene).instantiate()
+	spike.set("cosmetic", true)
+	spike.set("critical", true)
+	arena.add_child(spike)
+	spike.global_position = base + Vector2(800, 0)
+	await get_tree().process_frame
+	var before: Array = arena.get_children()
+	var fall: AnimatedSprite2D = spike.get_node(^"stalagmiteprojectile") as AnimatedSprite2D
+	fall.pause()
+	fall.frame = 4
+	var made: Array = arena.get_children().filter(func(n: Node) -> bool: return not before.has(n))
+	var shatter: Blast = null
+	var ring: Node2D = null
+	for n in made:
+		if n is Blast:
+			shatter = n
+		elif n.name.begins_with("frostring"):
+			ring = n
+	check("a critical spike shatters CRIT_SHATTER wider",
+		shatter != null and is_equal_approx(shatter.radius, float(spike.get("circle_radius")) * float(spike.get("CRIT_SHATTER"))),
+		str(shatter.radius) if shatter != null else "none")
+
+	# ---- GOLD, as every class's big roll is - the owner: "well the spike gold" ----
+	var gold_mat := fall.material as ShaderMaterial
+	check("a critical spike comes down gold: its ice art turned to the healer's gold, shades lifted",
+		gold_mat != null and gold_mat.shader == preload("res://src/shared/element_recolour.gdshader")
+		and is_equal_approx(float(gold_mat.get_shader_parameter("element_hue")), float(spike.get("CRIT_HUE")))
+		and float(gold_mat.get_shader_parameter("value_lift")) > 0.0
+		and absf(float(spike.get("CRIT_HUE")) - Color(1.0, 0.82, 0.3).h) < 0.01,
+		gold_mat)
+	check("  its ring and glints gold, and its shatter",
+		(spike.call("ring_colour") as Color).is_equal_approx(spike.get("CRIT_RING"))
+		and (spike.get("CRIT_RING") as Color).r > (spike.get("CRIT_RING") as Color).b
+		and shatter != null and shatter.modulate.is_equal_approx(spike.get("CRIT_TINT")),
+		str(shatter.modulate) if shatter != null else "none")
+	var plain_spike: Node2D = (load("res://scene/projectiles/spelltargetcircle.tscn") as PackedScene).instantiate()
+	plain_spike.set("cosmetic", true)
+	arena.add_child(plain_spike)
+	check("  and a plain spike stays ice: no gold on its art, an ice ring",
+		(plain_spike.get_node(^"stalagmiteprojectile") as CanvasItem).material == null
+		and (plain_spike.call("ring_colour") as Color).is_equal_approx(plain_spike.get("RING_COLOUR")))
+	plain_spike.queue_free()
+	var them := Node2D.new()
+	arena.add_child(them)
+	them.global_position = base + Vector2(1000, 40)
+	var told: Array = RemoteAttacks.fire(them, ["stalag", 0, them.global_position.x, them.global_position.y,
+		them.global_position.x + 4.0, them.global_position.y - 40.0, 0, RemoteAttacks.FLAG_CRITICAL])
+	var their_spike: Node = told[0] if not told.is_empty() else null
+	check("  and somebody else's critical spike comes down gold on this screen too",
+		their_spike != null and their_spike.get("critical") == true and their_spike.get("cosmetic") == true
+		and (their_spike.get_node(^"stalagmiteprojectile") as CanvasItem).material is ShaderMaterial, told)
+	if their_spike != null:
+		their_spike.queue_free()
+	them.queue_free()
+	var shader_src: String = FileAccess.get_file_as_string("res://src/shared/element_recolour.gdshader")
+	check("  the monsters' recolour shader lifts nothing unless asked (value_lift 0)",
+		shader_src.contains("uniform float value_lift : hint_range(0.0, 1.0) = 0.0;")
+		and shader_src.contains("hsv.z + (1.0 - hsv.z) * value_lift"))
+
+	# ---- THE ICE SHARDS ---------------------------------------------------------
+	var shards: Array = ring.get_children() if ring != null else []
+	var ringed: bool = shards.size() == FrostRing.SHARDS and FrostRing.SHARDS == 6
+	for o in shards:
+		ringed = ringed and o is BladeOrb and o.palette == BladeOrb.GOLD and o.cosmetic and o.damage == 0 \
+			and absf((o as Node2D).position.length() - float(spike.get("circle_radius")) - FrostRing.ORBIT_PAD) < 0.1
+	check("as it lands, six shards ring it, just outside its frost ring - gold round a critical one, a picture's cutting nothing",
+		ringed, shards.size())
+	spike.queue_free()
+	if ring != null:
+		ring.queue_free()
+
+	var centre: Vector2 = base + Vector2(1200, 0)
+	var struck: Dictionary = {}
+	var landed_on: CharacterBody2D = _weapon_dummy(arena, centre + Vector2(60, 60))
+	var crowd: CharacterBody2D = _weapon_dummy(arena, centre + Vector2(-60, 60))
+	struck[landed_on.get_instance_id()] = true
+	var spun: Node2D = FrostRing.spin(arena, centre, 18.0, 50, struck)
+	var held: Array = spun.get_children()
+	var each_hit: int = roundi(50 * FrostRing.SHARD_SHARE)
+	var shared_ok: bool = held.size() == 6
+	for o in held:
+		shared_ok = shared_ok and o.damage == each_hit and is_same(o.struck, struck) and o.palette == BladeOrb.ICE
+	check("each shard cuts for SHARD_SHARE of the spike's hit, sharing what the cast has struck - frost white on a plain spike",
+		shared_ok, [held.size(), each_hit])
+	var start: Vector2 = (held[0] as Node2D).global_position
+	spun.call("advance", FrostRing.ORBIT_SECONDS * 0.5)
+	check("  they spin round the ring, held there, for ORBIT_SECONDS",
+		spun.get("released") == false and (held[0] as Node2D).global_position.distance_to(start) > 4.0
+		and absf((held[0] as Node2D).global_position.distance_to(centre) - start.distance_to(centre)) < 0.1
+		and held.all(func(o: Node) -> bool: return is_zero_approx(o.speed)))
+	spun.call("advance", FrostRing.ORBIT_SECONDS)
+	var outward: bool = spun.get("released") == true
+	for o in held:
+		var shard: BladeOrb = o
+		var out_way: Vector2 = (shard.global_position - centre).normalized()
+		outward = outward and shard.direction.is_equal_approx(shard.position.normalized()) \
+			and is_equal_approx(shard.speed, FrostRing.SHARD_SPEED) \
+			and out_way.dot(shard.global_transform.basis_xform(shard.direction).normalized()) > 0.99
+	check("  then fly straight out, each along its spoke", outward)
+	var first: BladeOrb = held[0]
+	var was: float = first.global_position.distance_to(centre)
+	first._physics_process(0.1)
+	check("  and away from the middle as they fly",
+		first.global_position.distance_to(centre) > was + 20.0, [was, first.global_position.distance_to(centre)])
+
+	var a: BladeOrb = held[1]
+	a._try_hit(landed_on)
+	check("a shard passes over the monster the cast already hit - one hit a monster a cast",
+		landed_on.get("taken").is_empty() and not a._done, landed_on.get("taken"))
+	a._try_hit(crowd)
+	var b: BladeOrb = held[2]
+	b._try_hit(crowd)
+	check("  cuts one the spike missed, once - a second shard passes over it",
+		crowd.get("taken") == [each_hit] and a._done and not b._done, crowd.get("taken"))
+	spun.call("advance", FrostRing.MAX_SECONDS)
+	check("  and the ring is gone by MAX_SECONDS, whatever is left",
+		spun.is_queued_for_deletion())
+
+	# Not past a wall.
+	var walled: Vector2 = base + Vector2(1600, 0)
+	_attack_wall(arena, walled + Vector2(21, 0), Vector2(2, 400), 1)
+	for i in 2:
+		await get_tree().physics_frame
+	var by_wall: Node2D = FrostRing.spin(arena, walled, 18.0, 50, {})
+	var past: Array = by_wall.get_children().filter(func(o: Node) -> bool: return (o as Node2D).global_position.x > walled.x + 21.0)
+	check("no shard starts past a wall: against a 2 px wall the spoke beyond it is left out",
+		by_wall.get_child_count() == 5 and past.is_empty(), [by_wall.get_child_count(), past.size()])
+	by_wall.queue_free()
+	check("  and a spike's shards are spun as it strikes, with its own struck",
+		_func_body(_code_src("res://src/projectiles/spelltargetcircle.gd"), "func _spin_shards(").contains(
+			"FrostRing.spin(parent, global_position, circle_radius, explosion_damage, struck, cosmetic,")
+		and _func_body(_code_src("res://src/projectiles/spelltargetcircle.gd"), "func _on_frame_changed(").contains("_spin_shards()"))
 	arena.queue_free()
 	await get_tree().process_frame
 

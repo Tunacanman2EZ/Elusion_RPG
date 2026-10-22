@@ -44,6 +44,7 @@ const FLAG_FAN := 8       # a healer's orb with its fan beside it (healer.gd, TH
 const FLAG_DOUBLE := 16   # a healer's orb that doubled - gold (healer.gd, THE DOUBLE)
 const FLAG_FINISHER := 32 # a warrior's third-swing wave - gold and bigger (warrior.gd, THE FINISHER)
 const FLAG_SWORD_FAN := 64 # a warrior's swing that flung its crypt orbs (warrior.gd, THE SWORD FAN, 0.39.0)
+const FLAG_CRITICAL := 128 # a mage's critical spike - it shatters wider (mage.gd, THE CRITICAL SPIKE, 0.71.0)
 # The scenes warrior.gd, mage.gd and tank.gd preload. Loaded when first needed
 # rather than preloaded: the projectile scripts call go_quiet() below, and a
 # preload here would make each scene part of the script that loads it.
@@ -113,7 +114,7 @@ static func fire(body: Node2D, attack: Array) -> Array:
 			if out is SpinningAxe and is_instance_valid(out):
 				(out as SpinningAxe).recall()
 		"stalag":
-			made = _stalagmite(body, origin, target)
+			made = _stalagmite(body, origin, target, flags)
 		"meteor":
 			made = _meteor(body, origin, target, delay, flags)
 		"dyn":
@@ -191,13 +192,15 @@ static func _axe(body: Node2D, origin: Vector2, target: Vector2, flags: int) -> 
 	return axe
 
 
-static func _stalagmite(body: Node2D, origin: Vector2, target: Vector2) -> Node:
+static func _stalagmite(body: Node2D, origin: Vector2, target: Vector2, flags: int = 0) -> Node:
 	var scene: PackedScene = class_setting("mage", "target_circle_scene") as PackedScene
 	if scene == null:
 		return null
 	var spell: Node2D = scene.instantiate() as Node2D
 	if "cosmetic" in spell:
 		spell.set("cosmetic", true)
+	if "critical" in spell:
+		spell.set("critical", flags & FLAG_CRITICAL != 0)
 	body.get_tree().current_scene.add_child(spell)
 	spell.global_position = target
 	spell.reset_physics_interpolation()

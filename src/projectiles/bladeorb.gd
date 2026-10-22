@@ -39,12 +39,15 @@ const STEEL := &"steel"
 const GOLD := &"gold"
 # The healer aura's blobs (healblob.gd, 0.40.0) are these orbs too, green.
 const HEAL := &"heal"
+# The mage's ice shards (frostring.gd, 0.71.0), frost white.
+const ICE := &"ice"
 # The bodies: a cold steel blue, the crypt's gold (BulletPattern.GOLD, the
 # Crowned Beholder's crown), and the healer's green (turretprojectile.gd's
 # ORB_GREEN).
 const STEEL_BODY := Color(0.62, 0.82, 1.0)
 const GOLD_BODY := Color(1.0, 0.83, 0.3)
 const HEAL_BODY := Color(0.55, 0.95, 0.42)
+const ICE_BODY := Color(0.78, 0.95, 1.0)
 const SIZE := 8
 # How near a monster counts as touching: the orb's body, not its rim.
 const RADIUS := 3.5
@@ -64,6 +67,12 @@ var flown: float = 0.0
 
 var _ignore_id: int = 0
 var _done: bool = false
+
+# WHAT A CAST HAS HIT BETWEEN ITS PIECES (0.71.0, frostring.gd): instance id ->
+# true, shared with the spikes it came from, or null for an orb on its own. An
+# orb passes over what is in it - one hit a monster a cast - and adds what it
+# cuts.
+var struck: Variant = null
 
 static var _textures: Dictionary = {}
 
@@ -123,7 +132,8 @@ static func texture_for(orb_palette: StringName) -> ImageTexture:
 	white-hot core, the body, a darker rim. SIZE x SIZE."""
 	if _textures.has(orb_palette):
 		return _textures[orb_palette]
-	var body: Color = GOLD_BODY if orb_palette == GOLD else (HEAL_BODY if orb_palette == HEAL else STEEL_BODY)
+	var body: Color = GOLD_BODY if orb_palette == GOLD else (HEAL_BODY if orb_palette == HEAL
+		else (ICE_BODY if orb_palette == ICE else STEEL_BODY))
 	var image := Image.create(SIZE, SIZE, false, Image.FORMAT_RGBA8)
 	var middle: float = float(SIZE) / 2.0 - 0.5
 	for y in SIZE:
@@ -212,6 +222,11 @@ func _try_hit(target: Node) -> void:
 	if not Targets.can_reach(self, global_position, target):
 		pop()
 		return
+	if struck is Dictionary:
+		var id: int = target.get_instance_id()
+		if (struck as Dictionary).has(id):
+			return
+		(struck as Dictionary)[id] = true
 	if not cosmetic and damage > 0:
 		target.take_damage(damage, element)
 	pop()

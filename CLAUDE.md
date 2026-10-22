@@ -4569,7 +4569,8 @@ is a later commission.
   and the Meteorite and Dynamite add the same share of their class's dps as it
   does - `test_equipment.py` holds it. Since 0.11.9 that sword is 140 (it was
   110, against ember's 100) and each adds 15% (was 9%): see "Mythic weapons
-  worth the wait" below. A meteor's hit is 22 px
+  worth the wait" below. Since 0.71.0 the Meteorite is 175, with every staff
+  (25 / 40 / 60 / 88 / 125), for the mage's heavy spike (below). A meteor's hit is 22 px
   across (the stalagmite's is 18); a stick's is 28.
 - **They drop from anything, on a roll of their own.** No `tier_odds` reaches
   tier 6. See "Mythic drops" below.
@@ -5860,6 +5861,50 @@ ceiling it rarely reached.
   and the server's bound on a mage (`gamedata.combat_bounds()`, a hit a cast)
   still holds with no server change. The damage is rolled once a cast.
 - `_test_the_mage_spike_finds_its_mark()`.
+
+### The mage's kit: a heavy spike, a critical one, and ice shards (0.71.0)
+
+The owner: "mage needs to be strong enough to kill enemies at level 1", and of
+how: "consumes more mana deals more damage i was thinking more projectiles
+maybe a critical projectile also maybe some ice bullets that spin in a circle
+around the ring". A level 1 mage's whole bar of 250 was 144 damage (15 mana
+for 9), short of one Wind Sprite (233); the healer got five times as much out
+of a point of mana.
+
+- **The heavy spike.** `spell_mana_cost` 20, `damage_per_magic` 30,
+  `spell_cooldown` 1.0 (it was 15, 9 and 0.45): a bar is 360 damage, a sprite
+  about eight casts. 30/s is a quarter above the warrior's swing alone and
+  under its swing and wave. Every staff and the Meteorite scale with it
+  (THE LADDER in the API's `test_equipment.py`: a staff adds what the sword
+  adds, times 30/24): 25 / 40 / 60 / 88 / 125, Meteorite 175.
+- **The critical spike** (`CRIT_CHANCE` 0.2, `CRIT_MULT` 2): one cast in five
+  hits twice as hard, drops the third cast's three spikes too and shatters
+  `CRIT_SHATTER` (1.6x) wider. Rolled once a cast (`rolls_critical()`); the
+  owner panel's "Always roll the 10%" makes every cast one. `crit_chance` on
+  the mage is the roll a test pins. Others see it too
+  (`RemoteAttacks.FLAG_CRITICAL`, 128).
+- **Gold, as every class's big roll is.** The owner: "we need that critical to
+  be gold like the other chars" - "well the spike gold". The spike's art is
+  turned gold by `element_recolour.gdshader` (hue `CRIT_HUE`, its shades
+  lifted by the shader's `value_lift`, 0 for every monster, so it is not
+  brown); its ring and glints are gold, its shatter tinted `CRIT_TINT`, its
+  shards the warrior's gold orbs (`BladeOrb.GOLD`), and its numbers big and
+  gold (`BaseEnemy.take_critical_damage()`, `FloatingLabel.Type.CRITICAL`,
+  appended, in the healer's double's gold, at 0.85 scale).
+- **The ice shards** (`src/projectiles/frostring.gd`, preloaded, no
+  class_name): as a spike strikes, `SHARDS` (6) ice blade orbs appear
+  `ORBIT_PAD` (6 px) outside its frost ring, spin round it for
+  `ORBIT_SECONDS` (0.5), then fly out `SHARD_REACH` (70 px) at
+  `SHARD_SPEED`, each for `SHARD_SHARE` (0.4) of the spike's hit. They break
+  on walls, none starts past one, a picture of somebody else's cuts nothing,
+  and the ring is gone by `MAX_SECONDS` (3).
+- **Still one hit a monster a cast.** The shards share the cast's `struck`
+  with its spikes (`BladeOrb.struck`), so they pass over what the spikes hit:
+  they are for the crowd. The server's bound only needed the crit:
+  `gamedata.combat_bounds()` takes every cast critical (`crit_chance` /
+  `crit_mult` are exported with the class). **Deploy the API with this
+  game**, or a critical spike is past the old bound.
+- `_test_the_mage_kit()`.
 
 ### The healer's orbs, mixed with the crypt's (0.36.0)
 

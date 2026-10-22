@@ -29,6 +29,8 @@ extends Area2D
 # Whether a wall stands between this and what it would hit (0.69.1,
 # src/shared/targets.gd).
 const Targets := preload("res://src/shared/targets.gd")
+# The ice shards a spike leaves spinning (0.71.0).
+const FrostRing := preload("res://src/projectiles/frostring.gd")
 
 
 # =============================================================================
@@ -88,6 +90,36 @@ var target: Node2D = null
 # mage.gd): instance id -> true. A monster takes one spike a cast.
 var struck: Dictionary = {}
 
+# THE CRITICAL SPIKE (0.71.0, mage.gd's CRIT_CHANCE): its hit is already
+# CRIT_MULT times as hard (the mage rolled it into explosion_damage); this
+# makes it gold, its numbers big and gold, and its shatter wider.
+#
+# GOLD, AS EVERY CLASS'S BIG ROLL IS. The owner: "we need that critical to be
+# gold like the other chars" - "well the spike gold". The healer's double flies
+# gold (turretprojectile.gd) and the warrior's finisher swings gold
+# (slashwave.gd); a critical spike comes down gold:
+#   the spike   the ice art, its hue turned to gold (element_recolour.gdshader,
+#               the palette-swap shader the monsters use - a modulate can only
+#               darken blue, never turn it gold), its shades lifted so it is
+#               gold and not brown, its whites warmed;
+#   the ring    and its glints, gold where they were ice;
+#   the shatter tinted gold (CRIT_TINT, over 1 so pale ice comes out gold);
+#   the shards  the warrior's gold orbs (BladeOrb.GOLD).
+# Set before add_child(), by the mage or by a picture of somebody else's.
+var critical: bool = false
+# How much wider a critical spike's shatter is.
+const CRIT_SHATTER := 1.6
+const CRIT_SHADER := preload("res://src/shared/element_recolour.gdshader")
+# The healer's double's gold (turretprojectile.gd's GOLD), as a hue.
+const CRIT_HUE := 0.12
+const CRIT_SATURATION := 1.35
+const CRIT_WARM_WHITES := 0.3
+# The ice's blues are dark; gold at their brightness is brown.
+const CRIT_LIFT := 0.45
+const CRIT_RING := Color(1.0, 0.82, 0.3, 0.9)
+const CRIT_GLINT := Color(1.0, 0.95, 0.7, 1.0)
+const CRIT_TINT := Color(1.4, 0.9, 0.3)
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -111,6 +143,8 @@ func _ready() -> void:
 		return
 
 	_layer_ring_on_the_ground()
+	if critical:
+		_dress_gold()
 	if cosmetic:
 		RemoteAttacks.go_quiet(self)
 
@@ -240,6 +274,25 @@ func follow() -> void:
 	global_position = feet
 
 
+func _dress_gold() -> void:
+	"""THE CRITICAL SPIKE, gold: the falling spike's art turned to gold."""
+	var gold := ShaderMaterial.new()
+	gold.shader = CRIT_SHADER
+	gold.set_shader_parameter("element_hue", CRIT_HUE)
+	gold.set_shader_parameter("saturation_scale", CRIT_SATURATION)
+	gold.set_shader_parameter("grey_tint", CRIT_WARM_WHITES)
+	gold.set_shader_parameter("value_lift", CRIT_LIFT)
+	anim.material = gold
+
+
+func ring_colour() -> Color:
+	return CRIT_RING if critical else RING_COLOUR
+
+
+func glint_colour() -> Color:
+	return CRIT_GLINT if critical else GLINT_COLOUR
+
+
 func _draw() -> void:
 	var fall: float = fall_progress()
 	var left: float = 1.0 - after_progress()
@@ -250,14 +303,14 @@ func _draw() -> void:
 	var shadow: Texture2D = Blast.shadow_texture(rx, maxi(1, int(rx / 2.0)))
 	draw_texture(shadow, -(shadow.get_size() / 2.0).floor(), Color(1, 1, 1, left))
 	# The ring, frosting in.
-	var ring: Color = RING_COLOUR
-	ring.a = RING_COLOUR.a * lerpf(0.35, 1.0, fall) * left
+	var ring: Color = ring_colour()
+	ring.a = ring_colour().a * lerpf(0.35, 1.0, fall) * left
 	draw_arc(Vector2.ZERO, circle_radius, 0.0, TAU, 48, ring, 1.0, false)
 	var band: Color = ring
 	band.a *= 0.35
 	draw_arc(Vector2.ZERO, circle_radius - 3.0, 0.0, TAU, 40, band, 1.0, false)
 	# The glints: a pixel and its four neighbours, turning as it falls.
-	var glint: Color = GLINT_COLOUR
+	var glint: Color = glint_colour()
 	glint.a = lerpf(0.4, 1.0, fall) * left
 	var arm: Color = glint
 	arm.a *= 0.5
@@ -283,6 +336,17 @@ func _on_frame_changed() -> void:
 		return
 	_apply_area_damage()
 	_shatter()
+	_spin_shards()
+
+
+func _spin_shards() -> void:
+	# THE ICE SHARDS (0.71.0): a ring of them round the frost ring, spinning,
+	# then out (frostring.gd) - sharing what this cast has hit.
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	FrostRing.spin(parent, global_position, circle_radius, explosion_damage, struck, cosmetic,
+		BladeOrb.GOLD if critical else BladeOrb.ICE)
 
 
 func _shatter() -> void:
@@ -293,7 +357,11 @@ func _shatter() -> void:
 	var parent: Node = get_parent()
 	if parent == null:
 		return
-	Blast.spawn(parent, global_position, &"stalagmite", circle_radius, not cosmetic)
+	var shatter: Blast = Blast.spawn(parent, global_position, &"stalagmite",
+		circle_radius * (CRIT_SHATTER if critical else 1.0), not cosmetic)
+	# A critical one shatters gold.
+	if critical:
+		shatter.modulate = CRIT_TINT
 
 
 func _apply_area_damage() -> void:
@@ -315,7 +383,11 @@ func _apply_area_damage() -> void:
 		if struck.has(id):
 			continue
 		struck[id] = true
-		body.take_damage(explosion_damage)
+		# A critical spike's number is big and gold (BaseEnemy).
+		if critical and body.has_method("take_critical_damage"):
+			body.take_critical_damage(explosion_damage)
+		else:
+			body.take_damage(explosion_damage)
 		_grant_caster_xp()
 
 

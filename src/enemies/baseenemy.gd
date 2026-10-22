@@ -2978,6 +2978,20 @@ func _apply_enemy_data() -> void:
 	pet_odds_override = enemy_data.pet_odds_override
 
 
+# THE NEXT NUMBER IS A CRITICAL ONE (0.71.0): set round take_damage() by
+# take_critical_damage(), read by _spawn_floating_label().
+var _critical_next: bool = false
+
+
+func take_critical_damage(amount: int, element: int = Element.Type.NONE) -> void:
+	"""A critical hit (the mage's critical spike, 0.71.0): take_damage(), with
+	its number drawn big and gold. Nothing else about the hit differs - the
+	amount is already the bigger one."""
+	_critical_next = true
+	take_damage(amount, element)
+	_critical_next = false
+
+
 func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 	# IMMUNE WHILE GATED. Checked before _dying, because a gated boss is not
 	# dying and the two states are unrelated - ordering them the other way
@@ -3432,6 +3446,9 @@ func _refresh_health_display() -> void:
 # UI / VISUAL EFFECTS
 # =============================================================================
 
+const CRITICAL_NUMBER_SCALE := 0.85
+
+
 func _spawn_floating_label(amount: int, type: int) -> void:
 	# TURNED OFF BY THE OPTIONS SCREEN, if the player asked. This is the side
 	# that produces most of them — one per hit per enemy, and a warrior
@@ -3451,4 +3468,10 @@ func _spawn_floating_label(amount: int, type: int) -> void:
 	# Damage numbers streak from the world origin without this — see
 	# spawn_projectile_node() for the mechanism.
 	lbl.reset_physics_interpolation()
+	# A CRITICAL HIT (take_critical_damage()): bigger, and gold - the gold
+	# every class's big roll wears (the owner: "we need that critical to be
+	# gold like the other chars").
+	if _critical_next and type == FloatingLabel.Type.DAMAGE:
+		lbl.show_number(amount, FloatingLabel.Type.CRITICAL, CRITICAL_NUMBER_SCALE)
+		return
 	lbl.show_number(amount, type, 0.5)

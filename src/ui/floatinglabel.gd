@@ -66,6 +66,7 @@ enum Type {
 	LEVELUP,
 	SKILLUP,
 	NOTICE,
+	CRITICAL,
 }
 
 
@@ -119,6 +120,11 @@ enum Type {
 # enough mana, inventory full. Deliberately NOT damage red, which in this game
 # means hp went down and would read as being hurt by your own potion.
 @export var notice_color:  Color = Color(1.0, 0.76, 0.28, 1.0)  # amber
+
+# CRITICAL (0.71.0) - a critical hit's number, in the gold every class's big
+# roll wears: the healer's double, the warrior's finisher, the mage's critical
+# spike (turretprojectile.gd's GOLD).
+@export var critical_color: Color = Color(1.0, 0.82, 0.3, 1.0)  # gold
 
 
 # =============================================================================
@@ -239,3 +245,4 @@ func _begin(text: String, type: Type, life: float) -> void:
 		Type.LEVELUP: label.modulate = levelup_color
 		Type.SKILLUP: label.modulate = skillup_color
 		Type.NOTICE:  label.modulate = notice_color
+		Type.CRITICAL: label.modulate = critical_color
