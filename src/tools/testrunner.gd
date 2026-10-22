@@ -34993,6 +34993,17 @@ func _test_the_browser_build() -> void:
 	check("  and lets that label draw before a load that holds the screen - two frames, the first is the click's own",
 		second_gate != -1 and drawn != -1 and drawn < takes
 		and enter.substr(second_gate, drawn - second_gate).contains("in 2:"), [first_gate, second_gate, drawn, takes])
+	# NOT FOR EVER (0.74.1, the owner: "it had froze" on this label). A
+	# background load that stalls in progress is waited for a few seconds,
+	# then taken by scene_for(), whose load_threaded_get() finishes it.
+	var poll := enter.find("while not AreaRegistry.is_ready(WORLD_AREA) and AreaRegistry.is_loading(WORLD_AREA):")
+	var bound := enter.find("BACKGROUND_WAIT_SECONDS * 1000.0", poll) if poll != -1 else -1
+	var leave := enter.find("break", bound) if bound != -1 else -1
+	var Select: Script = load("res://src/ui/menus/characterselect.gd") as Script
+	var wait_for: float = float(Select.get_script_constant_map().get("BACKGROUND_WAIT_SECONDS", 0.0))
+	check("  and waits for a load that has stalled a few seconds at most, then takes the town itself",
+		poll != -1 and bound != -1 and leave != -1 and leave < second_gate and second_gate < takes
+		and wait_for > 0.0 and wait_for <= 5.0, [poll, bound, leave, second_gate, takes, wait_for])
 
 	# ---- the bug an export had and the editor never showed ------------------------
 	var walkers: Array = []

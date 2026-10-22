@@ -30,6 +30,9 @@ const ApiScript := preload("res://src/systems/api.gd")
 # AreaRegistry.prefetch), so by the time a character is picked it is
 # normally already there.
 const WORLD_AREA := "elusion"
+# How long Play waits for the town's background load before it takes the town
+# itself - see _enter_world(). The town loads in about two seconds cold.
+const BACKGROUND_WAIT_SECONDS := 3.0
 
 # Set once a character has been picked, so a second click while the town
 # finishes loading cannot start a second trip.
@@ -280,14 +283,34 @@ func _enter_world(idx: int) -> void:
 
 	WAITS BY THE FRAME, NOT BY BLOCKING. If the player picked a character
 	faster than the town loaded, scene_for() would freeze the window until it
-	finished; waiting here keeps the screen drawing and says why."""
+	finished; waiting here keeps the screen drawing and says why - for
+	BACKGROUND_WAIT_SECONDS at most, then the town is taken (0.74.1)."""
 	if _entering:
 		return
 	_entering = true
 
 	if not AreaRegistry.is_ready(WORLD_AREA):
 		_show_loading(idx)
+		# NOT FOR EVER (0.74.1). The owner, on 0.74.0, a screenshot of this
+		# label: "it had froze" - his log stopped at the [CHAR] line, the town's
+		# background load never reported done, and this loop polled it for good.
+		# Godot has a known stall since 4.4 where a load_threaded_request() sits
+		# in progress until somebody asks for the resource with
+		# load_threaded_get() - which every door does (scene_for()), and no door
+		# ever froze. So the wait is bounded: past BACKGROUND_WAIT_SECONDS the
+		# town is taken now, through scene_for(), the one call that finishes a
+		# stalled load. A slow disk loses nothing; it only stops drawing frames
+		# for the rest of the load, under this label.
+		var waited_from: int = Time.get_ticks_msec()
 		while not AreaRegistry.is_ready(WORLD_AREA) and AreaRegistry.is_loading(WORLD_AREA):
+			if Time.get_ticks_msec() - waited_from >= int(BACKGROUND_WAIT_SECONDS * 1000.0):
+				# SAID IN THE LOG, with how far it got, so a stall that comes
+				# back is a line to read rather than a screenshot of a label.
+				var progress: Array = []
+				ResourceLoader.load_threaded_get_status(AreaRegistry.AREAS[WORLD_AREA], progress)
+				print("[WORLD] the town is still loading in the background after %.1f s (%d%%) - taking it now"
+					% [BACKGROUND_WAIT_SECONDS, int(round(float(progress[0]) * 100.0)) if not progress.is_empty() else -1])
+				break
 			await get_tree().process_frame
 			# PAST AN AWAIT. Logging out or closing the window frees this screen.
 			if not is_instance_valid(self) or not is_inside_tree():
@@ -304,7 +327,11 @@ func _enter_world(idx: int) -> void:
 				if not is_instance_valid(self) or not is_inside_tree():
 					return
 
+	var asked_at: int = Time.get_ticks_msec()
 	var world: PackedScene = AreaRegistry.scene_for(WORLD_AREA)
+	var took: int = Time.get_ticks_msec() - asked_at
+	if took >= 500:
+		print("[WORLD] the town took %d ms more to load after Play" % took)
 	if world == null:
 		# The error naming the file already came from AreaRegistry. Say it
 		# here too, where the player is looking, and let them try again.

@@ -7910,6 +7910,15 @@ floats where they sent ints, as from Flask.
 - The wall-clock checks (the board's refresh inside a frame, the death
   bursts) failed under five agents' load on two CPUs and passed alone. Rerun
   before suspecting the code.
+- **Play froze on "Loading the world..." (0.74.1).** The owner's log stopped at
+  the `[CHAR]` line: the town's background load (started at the login screen)
+  never left THREAD_LOAD_IN_PROGRESS, and character select polled it for ever.
+  Godot has a known stall since 4.4 where a threaded request sits in progress
+  until something calls `load_threaded_get()` - which every door does through
+  `scene_for()`, and no door ever froze. Play now waits
+  `BACKGROUND_WAIT_SECONDS` (3) at most, logs how far the load got, and takes
+  the town through `scene_for()`. If it ever freezes again, the last log line
+  says whether it was the wait or the take.
 - `art/pack` is a submodule: `tools\ship.ps1` now ships it (`SHIP_pack.txt`)
   BEFORE the game, putting a detached pack back on main when that loses
   nothing, so the game's commit records a pack commit GitHub already has.
