@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://c2d6r2p3w5b6w"]
+
+[ext_resource type="Texture2D" uid="uid://c232ganrvwx0l" path="res://art/pack/food/chanterellerisotto.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "chanterellerisotto"
+display_name = "Chanterelle Risotto"
+description = "Stirred until the cook's arm gave out."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 1200
+tier = 3
+required_level = 10
+type = 0
+droppable = false
+restore_amount = 48
+restore_target = 1
+buff_kind = 4
+buff_amount = 40
+buff_seconds = 900
+recipe_ingredients = {"chanterelle": 2, "rice": 1, "cheese": 1}
+recipe_level = 28
+recipe_xp = 86
+recipe_mastery_level = 54
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

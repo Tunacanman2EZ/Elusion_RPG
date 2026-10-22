@@ -97,6 +97,7 @@ const LANDMARK_STYLE := {
 	"cooking":  ["res://art/pack/icons/cookingiconcharacterselection.png",   Color(1.0, 0.56, 0.26)],
 	"fishing":  ["res://art/pack/icons/fishingiconcharacterstats.png",       Color(0.45, 0.76, 1.0)],
 	"bank":     ["", Color(0.95, 0.78, 0.38)],
+	"smith":    ["res://art/pack/smith/anvil.png",                     Color(0.78, 0.80, 0.86)],
 	"teleport": ["", Color(0.42, 0.95, 1.0)],
 	"exit":     ["", Color(0.92, 0.90, 0.84)],
 	"ladder":   ["", Color(0.82, 0.64, 0.42)],

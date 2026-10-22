@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://n4hle67txqp4"]
+
+[ext_resource type="Texture2D" uid="uid://bjea3v8fhj37b" path="res://art/pack/food/riverbeansoup.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "riverbeansoup"
+display_name = "Riverbean Soup"
+description = "Cold-country cooking. It sits in you like a coat."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 560
+tier = 2
+required_level = 5
+type = 0
+droppable = false
+restore_amount = 34
+restore_target = 1
+buff_kind = 2
+buff_amount = 3
+buff_seconds = 900
+recipe_ingredients = {"riverbean": 2, "frostleaf": 1, "salt": 1}
+recipe_level = 18
+recipe_xp = 55
+recipe_mastery_level = 40
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

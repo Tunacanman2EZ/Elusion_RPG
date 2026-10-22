@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://debrhi875vk4d"]
+
+[ext_resource type="Texture2D" uid="uid://cit3fjn0seay7" path="res://art/pack/food/salt.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "salt"
+display_name = "Salt"
+description = "A cooking staple from the general store."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 8
+tier = 1
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

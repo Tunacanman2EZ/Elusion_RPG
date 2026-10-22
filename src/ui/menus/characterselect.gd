@@ -265,6 +265,13 @@ func _select_character(idx: int) -> void:
 	CharacterData.active_character_index = idx
 	CharacterData.save_data()
 
+	# THE MEAL THIS CHARACTER IS STILL FULL OF (0.74.0), from the load - before
+	# the world, so the first _recompute_max_stats() in it already counts a
+	# VIGOUR meal and a buffed 230 of 230 is not clamped to 180 on arrival.
+	# Whoever was played before is forgotten here too: no slot's buff is
+	# another character's.
+	FoodBuff.adopt_for_character(idx)
+
 	_enter_world(idx)
 
 

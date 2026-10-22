@@ -483,6 +483,8 @@ static func _requirement_lines(data: ItemData, unrevealed: bool = false) -> Stri
 	if unrevealed:
 		lines.append("Stats are rolled when you buy it: %d-%d%% each, 1 in %d Perfect" % [
 			GameConstants.QUALITY_LOW, GameConstants.QUALITY_HIGH, GameConstants.QUALITY_PERFECT_ODDS])
+	# WHAT A MEAL ADDS AND IS MADE FROM, AND WHAT A MATERIAL IS FOR (0.74.0).
+	lines.append_array(larder_lines(data))
 
 	var needs := PackedStringArray()
 	if "required_level" in data and int(data.required_level) > 1:
@@ -504,6 +506,88 @@ static func _requirement_lines(data: ItemData, unrevealed: bool = false) -> Stri
 		lines.append("Needs %s" % ", ".join(needs))
 
 	return "\n".join(lines)
+
+
+# =============================================================================
+# THE LARDER (0.74.0)
+# =============================================================================
+# Meals that "heal more and give a short buff", and materials that say what they
+# are for. A meal's heal is the stats line above ("Restores 45 Health"); under
+# it go the buff in buff_text()'s words and what it is made from. Anything a
+# recipe takes says it is a cooking ingredient, anything the smith's tempers or
+# certificates take says so, and a bait says how many times it rolls a catch.
+#
+# ALL OF IT READ FROM THE DATA, never from a list typed here: an ingredient is
+# whatever some meal's recipe names, a smith material whatever a row of
+# GameConstants.TEMPER_COSTS or CERTIFICATIONS names. A fifth staple or a new
+# certificate says the right thing on the day it is added, and a material
+# nothing takes says nothing rather than promising a use it does not have.
+const COOKING_INGREDIENT := "Cooking ingredient"
+const USED_BY_THE_SMITH := "Used by the smith"
+
+
+static func larder_lines(data: ItemData) -> PackedStringArray:
+	var lines := PackedStringArray()
+	if data == null:
+		return lines
+	if data.is_meal():
+		var buff: String = data.buff_text()
+		if buff != "":
+			lines.append(buff)
+		lines.append(recipe_line(data))
+	if int(data.bait_rolls) > 0:
+		lines.append(bait_line(int(data.bait_rolls)))
+	if is_cooking_ingredient(str(data.item_id)):
+		lines.append(COOKING_INGREDIENT)
+	if is_smith_material(str(data.item_id)):
+		lines.append(USED_BY_THE_SMITH)
+	return lines
+
+
+static func recipe_line(meal: ItemData) -> String:
+	"""What a meal is made from and the cooking level it takes: "Made from Flour,
+	Sugar and Sunberry x2 - cooking level 8". A count only where it is more than
+	one, in the "x2" the notices already use for a stack."""
+	var parts := PackedStringArray()
+	for id in meal.recipe_ingredients:
+		var key: String = str(id)
+		var count: int = int(meal.recipe_ingredients[id])
+		var title: String = ItemRegistry.get_item(key).display_name if ItemRegistry.has_item(key) else key
+		parts.append("%s x%d" % [title, count] if count > 1 else title)
+	var listed: String = ", ".join(parts)
+	if parts.size() > 1:
+		listed = "%s and %s" % [", ".join(parts.slice(0, parts.size() - 1)), parts[parts.size() - 1]]
+	return "Made from %s - cooking level %d" % [listed, int(meal.recipe_level)]
+
+
+static func bait_line(rolls: int) -> String:
+	"""How hard a bait works: the server rolls the catch this many times and
+	keeps the best fish (/api/fishing/catch, 0.74.0)."""
+	if rolls <= 1:
+		return "Bait - each catch is rolled once"
+	return "Bait - each catch is rolled %d times, the best fish kept" % rolls
+
+
+static func is_cooking_ingredient(item_id: String) -> bool:
+	"""Whether any meal's recipe takes it - produce, staples, a fish, and a meal
+	that goes into another (a Bone Broth in a Shadowcap Soup)."""
+	if item_id == "":
+		return false
+	for meal in ItemRegistry.get_all_items():
+		if meal != null and meal.recipe_ingredients.has(item_id):
+			return true
+	return false
+
+
+static func is_smith_material(item_id: String) -> bool:
+	"""Whether a temper or a certificate takes it (GameConstants)."""
+	if item_id == "":
+		return false
+	for row in GameConstants.TEMPER_COSTS + GameConstants.CERTIFICATIONS:
+		for need in (row as Dictionary).get("materials", []):
+			if str((need as Dictionary).get("item_id", "")) == item_id:
+				return true
+	return false
 
 
 const PET_USE_LINE := "Right-click in your bag to summon it, and again to put it away"

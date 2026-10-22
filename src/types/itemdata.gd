@@ -420,6 +420,117 @@ enum WeaponAttack {
 
 
 # =============================================================================
+# MEALS: RECIPES AND FOOD BUFFS (0.74.0)
+# =============================================================================
+# The owner: "cooking grows past fish with meals that combine 2-3+
+# ingredients, heal more and give a short buff", and "i want to make recipes
+# people can make with the food also".
+#
+# THE RECIPE LIVES ON THE MEAL, which is the opposite way round from a fish,
+# and on purpose. A raw fish becomes exactly one thing, so its recipe sits on
+# the fish (cooks_into, above). A meal is made FROM several things, and Wild
+# Herb goes into four different meals - there is no single ingredient that
+# could own the recipe. So the meal names what it takes, and a meal with no
+# ingredients is simply not a meal: is_meal() below is that one sentence.
+#
+# THE SERVER READS THESE, via exportgamedata.gd, for the same reason it reads
+# cook_level: /api/cooking/recipe takes the ingredients, rolls the burn and
+# grants the XP, so every number here has to reach it as data. The level,
+# XP and mastery mean exactly what cook_level, cook_xp and cook_mastery_level
+# mean on a fish, and burn on the same curve.
+#
+# EVERY DEFAULT IS "NOT A MEAL, NO BUFF", so every item that existed before
+# these fields carries none of them in its .tres and means what it meant.
+
+# What eating it adds for a while, on top of the heal. One food buff at a
+# time: a new meal replaces the last one, server-side, so a stack of five
+# different dinners is not five buffs.
+#
+# APPEND ONLY. The .tres files store the integer, and the server reads the
+# NAME (buff_kind_name in gamedata.json) - a member inserted above another
+# would quietly re-point every meal below it on this side, which is exactly
+# the trap the same rule on WeaponAttack exists for.
+enum BuffKind {
+	NONE,    # no buff - every item that is not a meal
+	MIGHT,   # buff_amount is a percent: every hit is that much bigger
+	GUARD,   # buff_amount is armour, added to what the worn gear gives
+	VIGOUR,  # buff_amount is max health
+	WISDOM,  # buff_amount is max mana
+}
+
+@export var buff_kind: BuffKind = BuffKind.NONE
+@export var buff_amount: int = 0
+@export var buff_seconds: int = 0
+
+# item_id (String) -> how many (int). A Dictionary rather than two arrays
+# because an ingredient listed twice is a typo, and a Dictionary cannot hold
+# it. A meal may name another meal: Shadowcap Soup takes a Bone Broth. The
+# exporter refuses a recipe that names an item that does not exist, a count
+# below one, or a loop (a meal that, through its ingredients, needs itself).
+@export var recipe_ingredients: Dictionary = {}
+
+# Cooking level needed to attempt the recipe, the XP one success grants, and
+# the level at which it stops burning - cook_level, cook_xp and
+# cook_mastery_level for a meal.
+@export var recipe_level: int = 1
+@export var recipe_xp: int = 0
+@export var recipe_mastery_level: int = 1
+
+
+func is_meal() -> bool:
+	# A meal is something cooked from a recipe. Not "a CONSUMABLE that heals":
+	# a cooked fish heals too, and is not cooked from a recipe at the pot.
+	return not recipe_ingredients.is_empty()
+
+
+# What each buff kind is worth, in the words the tooltip already uses for the
+# same stat on gear ("+45 max health", "+2% damage bonus", "40 armour"), so a
+# meal and an amulet that add the same thing say it the same way.
+const BUFF_WORDS := {
+	BuffKind.MIGHT: "+%d%% damage",
+	BuffKind.GUARD: "+%d armour",
+	BuffKind.VIGOUR: "+%d max health",
+	BuffKind.WISDOM: "+%d max mana",
+}
+
+
+func buff_text() -> String:
+	# "+5% damage for 20 min", or "" for an item with no buff. "" rather than
+	# "No buff", so a caller can append it to a tooltip without asking first.
+	if buff_kind == BuffKind.NONE or buff_amount <= 0 or buff_seconds <= 0:
+		return ""
+	if not BUFF_WORDS.has(buff_kind):
+		return ""
+	return "%s for %s" % [String(BUFF_WORDS[buff_kind]) % buff_amount, duration_text(buff_seconds)]
+
+
+static func duration_text(seconds: int) -> String:
+	# "20 min", "90 s", "1 min 30 s". Every meal lasts whole minutes today; the
+	# other two shapes are here so a tuning change cannot print "1.5 min".
+	if seconds < 60:
+		return "%d s" % seconds
+	var minutes: int = floori(seconds / 60.0)
+	var rest: int = seconds - minutes * 60
+	if rest == 0:
+		return "%d min" % minutes
+	return "%d min %d s" % [minutes, rest]
+
+
+# =============================================================================
+# BAIT (0.74.0)
+# =============================================================================
+# How many times a cast with this on the hook rolls the catch, keeping the
+# best fish: the worm 1, the lugworm 2, the glowgrub 3. 0 means it is not
+# bait at all, which is every other item.
+#
+# A NUMBER, NOT A FLAG, because the server picks the best bait carried by it
+# (most rolls first) and rolls the catch that many times - the owner's "bait
+# and supplies from the shop" are a thing worth buying only if a better bait
+# does something a worm does not. Read by /api/fishing/catch via the export.
+@export var bait_rolls: int = 0
+
+
+# =============================================================================
 # FISHING (only meaningful when type == Type.FISH)
 # =============================================================================
 # Fishing XP awarded for landing one of these.

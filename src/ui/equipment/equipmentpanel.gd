@@ -137,7 +137,17 @@ func _ready() -> void:
 		# again if the panel is ever resized.
 		preview_box.resized.connect(_centre_preview)
 
+	# A MEAL MOVES TWO OF THE SUMMARY'S ROWS (0.74.0) - damage and armour -
+	# so its beginning and its end repaint them while the window is open.
+	if not FoodBuff.changed.is_connected(_on_food_buff_changed):
+		FoodBuff.changed.connect(_on_food_buff_changed)
+
 	visible = false
+
+
+func _on_food_buff_changed() -> void:
+	if visible and player != null:
+		_refresh_summary()
 
 
 func _collect_slots() -> void:
@@ -358,15 +368,24 @@ func _refresh_summary() -> void:
 		else:
 			speed_label.text = "-"
 
+	# THE ARMOUR A HIT MEETS, a GUARD meal's included while it lasts (0.74.0),
+	# the way the damage row above already includes a MIGHT meal's percent:
+	# both rows are what the character is getting now, not only what is worn.
+	var armour_now: int = 0
+	if player.has_method("armour_total"):
+		armour_now = int(player.armour_total())
+	elif player.has_method("equipped_armor_value"):
+		armour_now = int(player.equipped_armor_value())
+
 	if armour_label != null and player.has_method("equipped_armor_value"):
-		armour_label.text = str(player.equipped_armor_value())
+		armour_label.text = str(armour_now)
 
 	if soak_label != null and player.has_method("equipped_armor_value"):
 		# THE NUMBER THAT MEANS SOMETHING. "Armour 28" answers nothing on its
 		# own — it is only a position on a ladder nobody has seen. The
 		# percentage is what the player feels, and it is the one armour
 		# actually applies in take_damage().
-		var reduction: float = PlayerStats.armour_reduction(player.equipped_armor_value())
+		var reduction: float = PlayerStats.armour_reduction(armour_now)
 		soak_label.text = "%d%% less" % roundi(reduction * 100.0)
 		soak_label.add_theme_color_override("font_color",
 			COLOUR_GOOD if reduction > 0.0 else COLOUR_NEUTRAL)

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cqjwpcdefh6un"]
+
+[ext_resource type="Texture2D" uid="uid://bj4c4vxum65pd" path="res://art/pack/food/silverfinpie.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "silverfinpie"
+display_name = "Silverfin Pie"
+description = "The fish was fast. The pie is not going anywhere."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 1100
+tier = 3
+required_level = 10
+type = 0
+droppable = false
+restore_amount = 50
+restore_target = 1
+buff_kind = 2
+buff_amount = 5
+buff_seconds = 900
+recipe_ingredients = {"rawsilverfin": 1, "flour": 1, "cheese": 1, "carrot": 1}
+recipe_level = 25
+recipe_xp = 78
+recipe_mastery_level = 50
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

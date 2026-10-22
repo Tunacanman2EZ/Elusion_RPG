@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dhef5vha2bdhn"]
+
+[ext_resource type="Texture2D" uid="uid://xabd3mimja76" path="res://art/pack/materials/cobaltore.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "cobaltore"
+display_name = "Cobalt Ore"
+description = "Blue ore. The earth gives it up, and the crypt hoards it."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 210
+tier = 3
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

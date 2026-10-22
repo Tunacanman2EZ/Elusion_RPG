@@ -1,0 +1,279 @@
+[gd_scene format=3]
+
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="1_theme"]
+[ext_resource type="Script" path="res://src/ui/smith/smithscreen.gd" id="2_script"]
+[ext_resource type="Script" uid="uid://dfssy5oqbqqkh" path="res://src/ui/inventory/inventorycontainer.gd" id="3_invcontainer"]
+[ext_resource type="Texture2D" uid="uid://ed64pm1fk3v3" path="res://art/images/hotbarslot.png" id="4_socket"]
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_rankbadge"]
+content_margin_left = 6.0
+content_margin_top = 2.0
+content_margin_right = 6.0
+content_margin_bottom = 2.0
+texture = ExtResource("4_socket")
+texture_margin_left = 7.0
+texture_margin_top = 7.0
+texture_margin_right = 7.0
+texture_margin_bottom = 7.0
+
+[sub_resource type="ButtonGroup" id="ButtonGroup_tabs"]
+
+[node name="smithscreen" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme = ExtResource("1_theme")
+script = ExtResource("2_script")
+
+[node name="mainpanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="margincontainer" type="MarginContainer" parent="mainpanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="vboxcontainer" type="VBoxContainer" parent="mainpanel/margincontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="headerpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_type_variation = &"PanelHeader"
+
+[node name="hboxcontainer" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel"]
+layout_mode = 2
+
+[node name="rankbadge" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(52, 26)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxTexture_rankbadge")
+
+[node name="rankicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer/rankbadge"]
+unique_name_in_owner = true
+texture_filter = 1
+custom_minimum_size = Vector2(16, 16)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="headerlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 20
+text = "SMITH"
+horizontal_alignment = 1
+
+[node name="closebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/headerpanel/hboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(52, 28)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.7, 0.5, 1)
+theme_override_colors/font_hover_color = Color(1, 0.5, 0.4, 1)
+theme_override_font_sizes/font_size = 18
+text = "×"
+flat = true
+
+[node name="tabrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="tempertab" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tabrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+toggle_mode = true
+button_pressed = true
+button_group = SubResource("ButtonGroup_tabs")
+text = "Temper"
+
+[node name="certifytab" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tabrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+size_flags_horizontal = 3
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tabs")
+text = "Royal Certification"
+
+[node name="temperview" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(372, 0)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="gearcaption" type="Label" parent="mainpanel/margincontainer/vboxcontainer/temperview"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = "Your weapons and armour. Pick one to put on the anvil."
+horizontal_alignment = 1
+
+[node name="geargrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+columns = 6
+script = ExtResource("3_invcontainer")
+grid_width = 6
+grid_height = 1
+metadata/_custom_type_script = "uid://dfssy5oqbqqkh"
+
+[node name="piecepanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 236)
+layout_mode = 2
+theme_type_variation = &"PanelSub"
+
+[node name="piecemargin" type="MarginContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="piecebox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="piecehead" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="pieceicon" type="TextureRect" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox/piecehead"]
+unique_name_in_owner = true
+texture_filter = 1
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="piecenames" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox/piecehead"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="piecename" type="Label" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox/piecehead/piecenames"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
+theme_override_font_sizes/font_size = 15
+text = "Nothing on the anvil"
+text_overrun_behavior = 3
+
+[node name="piecequality" type="Label" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox/piecehead/piecenames"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = ""
+
+[node name="statgrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 2
+columns = 4
+
+[node name="costseparator" type="HSeparator" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="costgrid" type="GridContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 2
+columns = 3
+
+[node name="certline" type="Label" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = ""
+autowrap_mode = 2
+
+[node name="temperrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox"]
+layout_mode = 2
+size_flags_vertical = 10
+theme_override_constants/separation = 8
+
+[node name="tempernotice" type="Label" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox/temperrow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_colors/font_color = Color(0.75, 0.72, 0.66, 1)
+theme_override_font_sizes/font_size = 12
+text = ""
+autowrap_mode = 2
+
+[node name="temperbutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/temperview/piecepanel/piecemargin/piecebox/temperrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(112, 32)
+layout_mode = 2
+size_flags_vertical = 4
+focus_mode = 0
+theme_type_variation = &"ButtonSocket"
+theme_override_font_sizes/font_size = 15
+disabled = true
+text = "Temper"
+
+[node name="certifyview" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(372, 0)
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ranklabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/certifyview"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="rankrows" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/certifyview"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="noticelabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.72, 0.66, 1)
+theme_override_font_sizes/font_size = 12
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2

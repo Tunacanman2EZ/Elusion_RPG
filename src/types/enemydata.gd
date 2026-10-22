@@ -121,6 +121,28 @@ class_name EnemyData
 # slots, so a boss bag is the gear piece plus a potion half the time.
 @export_range(0.0, 1.0, 0.01) var bonus_potion_chance: float = 0.0
 
+# WHAT THIS MONSTER DROPS BESIDES ITS BAG (0.74.0): the materials that fit it.
+# The owner: "monsters drop materials that fit them and food" - a slime
+# swallows ore, a sprite leaves its element's essence, a bush grows produce,
+# a skeleton drops bone and a Beholder its eye.
+#
+# Each entry is {"item_id": String, "chance": float, "min": int, "max": int},
+# rolled on its own by the server (gamedata.roll_kill_rewards()): chance is
+# 0..1, and the quantity is uniform in min..max. Materials join the bag, or
+# make one of their own with nothing else in it - never with gold, because a
+# material must never be a reason for more gold to drop.
+#
+# A LIST HERE RATHER THAN THE GENERIC LOOT POOL, and that is why every material
+# is droppable = false. The pool picks by tier from everything droppable, so a
+# tier 6 Royal Gold in it would fall out of any boss bag at random; written
+# here, the Crowned drops its eye because it is the Crowned. The exporter
+# refuses an entry that names no item, a chance outside (0, 1] or a quantity
+# below one.
+#
+# Empty on every enemy that drops no materials, which is the default and means
+# exactly what the .tres meant before the field existed.
+@export var material_drops: Array[Dictionary] = []
+
 
 # =============================================================================
 # PETS

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://ccb5sestb1cv5"]
+
+[ext_resource type="Texture2D" uid="uid://brpjn24vumud4" path="res://art/pack/fishing/lugworm.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "lugworm"
+display_name = "Lugworm"
+description = "Fat bait. A cast with it rolls twice and keeps the better fish."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 90
+tier = 2
+type = 3
+droppable = false
+bait_rolls = 2
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

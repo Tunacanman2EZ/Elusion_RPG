@@ -1,0 +1,43 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/world/anvil.gd" id="1_anvil"]
+[ext_resource type="Texture2D" uid="uid://dwlfcyxavc2y" path="res://art/pack/smith/anvil.png" id="2_anvilart"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_anvil"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_anvilart")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_anvilreach"]
+radius = 26.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_anvilbody"]
+size = Vector2(13, 5)
+
+[node name="anvil" type="Area2D"]
+texture_filter = 1
+collision_layer = 16
+collision_mask = 4
+script = ExtResource("1_anvil")
+
+[node name="animatedsprite2d" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+position = Vector2(0, -6)
+sprite_frames = SubResource("SpriteFrames_anvil")
+animation = &"idle"
+
+[node name="collisionshape2d" type="CollisionShape2D" parent="."]
+position = Vector2(0, -4)
+shape = SubResource("CircleShape2D_anvilreach")
+
+[node name="body" type="StaticBody2D" parent="."]
+
+[node name="collision" type="CollisionShape2D" parent="body"]
+position = Vector2(-0.5, -2.5)
+shape = SubResource("RectangleShape2D_anvilbody")

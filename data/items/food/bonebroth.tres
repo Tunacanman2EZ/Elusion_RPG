@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bchkaxwo4rpc8"]
+
+[ext_resource type="Texture2D" uid="uid://cs8gi4ebj75r4" path="res://art/pack/food/bonebroth.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "bonebroth"
+display_name = "Bone Broth"
+description = "Simmered all night. The skeleton had no more use for them."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 900
+tier = 3
+required_level = 10
+type = 0
+droppable = false
+restore_amount = 45
+restore_target = 1
+buff_kind = 3
+buff_amount = 45
+buff_seconds = 900
+recipe_ingredients = {"oldbone": 2, "fieldonion": 1, "salt": 1}
+recipe_level = 22
+recipe_xp = 70
+recipe_mastery_level = 46
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

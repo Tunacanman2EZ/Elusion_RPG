@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cxampe1t0io6v"]
+
+[ext_resource type="Texture2D" uid="uid://46ksn4760vyr" path="res://art/pack/materials/cursedskull.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "cursedskull"
+display_name = "Cursed Skull"
+description = "An elite's skull. It hums near hot iron."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 400
+tier = 4
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

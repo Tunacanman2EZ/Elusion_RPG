@@ -418,6 +418,112 @@ const KINGDOM_TAX_MINIMUM: int = 1
 
 
 # =============================================================================
+# THE SMITH, THE CROWN'S CERTIFICATES AND THE PATRONS (0.74.0)
+# =============================================================================
+# The owner chose "Cooking + a smith", and for the economy "max power": things
+# players choose to spend gold on, and "upgrades that cost materials, plus a
+# 'Royal Certification' step to reach higher tiers". All three of the systems
+# below are GOLD SINKS - the gold they take is burned, like the kingdom tax,
+# not paid to anyone - and every number in them is a balance decision, so
+# they live here with the others and cross to the server through
+# gamedata.json. The server's economy rules (temper_gold_scale,
+# certification_gold_scale) scale the gold at run time; these are the base.
+#
+# THE SHAPES ARE THE CONTRACT. gamedata.json carries each of these exactly as
+# written here (temper_costs, certifications, patron_titles), and the API reads
+# those keys, so a renamed field is a refused temper rather than a typo.
+
+# TEMPERING raises every rolled stat of a piece by TEMPER_STEP percentage
+# points, up to TEMPER_CAP, for materials plus gold. A stat already at the cap
+# is left alone, and a Perfect piece is refused.
+#
+# THE CAP IS QUALITY_HIGH, NOT QUALITY_PERFECT, on purpose: tempering can make
+# any piece as good as the best ordinary roll, and never a Perfect. A Perfect
+# stays a thing that dropped. The exporter refuses a cap at or above
+# QUALITY_PERFECT for exactly that reason.
+const TEMPER_STEP: int = 3
+const TEMPER_CAP: int = 115
+
+# The gold one temper costs, as a share of the piece's value, rounded, at least
+# 1. A share rather than a figure so an ember sword costs more to temper than
+# an iron one without a table for it.
+const TEMPER_GOLD_RATE: float = 0.1
+
+# What a temper takes besides gold, per gear tier, and the certification rank
+# a smith needs to temper that tier at all. Iron and jade are anyone's; cobalt
+# up needs the crown's paper.
+const TEMPER_COSTS: Array = [
+	{"tier": 1, "materials": [{"item_id": "ironore", "quantity": 3}], "certification": 0},
+	{"tier": 2, "materials": [{"item_id": "jadeore", "quantity": 3}], "certification": 0},
+	{"tier": 3, "materials": [{"item_id": "cobaltore", "quantity": 3},
+		{"item_id": "oldbone", "quantity": 1}], "certification": 1},
+	{"tier": 4, "materials": [{"item_id": "amethystore", "quantity": 3},
+		{"item_id": "cursedskull", "quantity": 1}], "certification": 2},
+	{"tier": 5, "materials": [{"item_id": "emberore", "quantity": 3},
+		{"item_id": "cursedskull", "quantity": 1}], "certification": 3},
+	{"tier": 6, "materials": [{"item_id": "royalgold", "quantity": 2}], "certification": 4},
+]
+
+# ROYAL CERTIFICATION: four ranks, earned in order, each with a character
+# level, gold and materials. max_tier is the highest gear tier the rank lets a
+# smith temper - the same fact as the certification column above, read the
+# other way round, and the exporter refuses the two disagreeing. The last rank
+# asks for one eye of every Beholder, so it is a record of having beaten all
+# seven, not only of having the gold. EVERY ESSENCE IS ASKED FOR SOMEWHERE
+# (0.74.0, found at the merge): the first rank took only ice and water, so a
+# Light or Wind Essence said "the smith's certificates are paid in it" and no
+# certificate was. The first rank now takes the first four lands' essences.
+const CERTIFICATIONS: Array = [
+	{"rank": 1, "name": "Journeyman Smith", "max_tier": 3, "level": 10, "gold": 5000,
+		"materials": [{"item_id": "lightessence", "quantity": 3},
+			{"item_id": "windessence", "quantity": 3},
+			{"item_id": "iceessence", "quantity": 3},
+			{"item_id": "wateressence", "quantity": 3},
+			{"item_id": "jadeore", "quantity": 10}]},
+	{"rank": 2, "name": "Artisan Smith", "max_tier": 4, "level": 16, "gold": 25000,
+		"materials": [{"item_id": "earthessence", "quantity": 6},
+			{"item_id": "oldbone", "quantity": 6},
+			{"item_id": "cobaltore", "quantity": 10}]},
+	{"rank": 3, "name": "Master Smith", "max_tier": 5, "level": 22, "gold": 90000,
+		"materials": [{"item_id": "fireessence", "quantity": 6},
+			{"item_id": "cursedskull", "quantity": 4},
+			{"item_id": "amethystore", "quantity": 10}]},
+	{"rank": 4, "name": "Royal Smith", "max_tier": 6, "level": 25, "gold": 250000,
+		"materials": [{"item_id": "darkessence", "quantity": 6},
+			{"item_id": "emberore", "quantity": 10},
+			{"item_id": "lightbeholdereye", "quantity": 1},
+			{"item_id": "windbeholdereye", "quantity": 1},
+			{"item_id": "icebeholdereye", "quantity": 1},
+			{"item_id": "waterbeholdereye", "quantity": 1},
+			{"item_id": "earthbeholdereye", "quantity": 1},
+			{"item_id": "firebeholdereye", "quantity": 1},
+			{"item_id": "crownedbeholdereye", "quantity": 1}]},
+]
+
+# PATRONAGE: gold given to the crown outright, burned, for a title on the
+# kingdom board. Counted per ACCOUNT over its lifetime, so a title is a
+# player's and not one character's. Lowest first; below the first, no title.
+const PATRON_TITLES: Array = [
+	{"title": "Patron", "at": 10000},
+	{"title": "Benefactor", "at": 100000},
+	{"title": "Noble Patron", "at": 1000000},
+	{"title": "Royal Patron", "at": 10000000},
+]
+
+# The smallest gift the crown takes. Without a floor a title could be climbed
+# a gold coin at a time, which is a thousand ledger lines for one Patron.
+const DONATION_MINIMUM: int = 100
+
+# ItemData.BuffKind's members, by name, in the enum's order - what the server
+# calls the kinds ("MIGHT") in the food_buffs table and the consume answer.
+# KEPT AS ITS OWN LIST rather than read off the enum, for the reason
+# exportgamedata.gd keeps its own slot names: the exporter refuses the export
+# when the enum and this list disagree, and that check only works if they are
+# two things.
+const BUFF_KINDS: Array = ["NONE", "MIGHT", "GUARD", "VIGOUR", "WISDOM"]
+
+
+# =============================================================================
 # NUMBER FORMATTING
 # =============================================================================
 

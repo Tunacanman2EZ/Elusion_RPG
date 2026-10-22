@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bonigygj2pl63"]
+
+[ext_resource type="Texture2D" uid="uid://cxdp8e6n64qjk" path="res://art/pack/materials/oldbone.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "oldbone"
+display_name = "Old Bone"
+description = "A skeleton soldier's. Good for broth, and for the forge."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 150
+tier = 3
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

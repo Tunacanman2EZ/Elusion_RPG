@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cebmhrjylqj7w"]
+
+[ext_resource type="Texture2D" uid="uid://bnp5uir5hrqhc" path="res://art/pack/food/copperscalecurry.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "copperscalecurry"
+display_name = "Copperscale Curry"
+description = "Bright enough to see from the bank, and twice as hot."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 1500
+tier = 3
+required_level = 10
+type = 0
+droppable = false
+restore_amount = 55
+restore_target = 1
+buff_kind = 1
+buff_amount = 5
+buff_seconds = 1200
+recipe_ingredients = {"rawcopperscale": 1, "spicemix": 1, "rice": 1, "carrot": 1}
+recipe_level = 32
+recipe_xp = 98
+recipe_mastery_level = 58
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

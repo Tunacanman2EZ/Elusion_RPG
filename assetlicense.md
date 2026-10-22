@@ -50,8 +50,14 @@ Asset licensing enquiries: elusionrpg@gmail.com
 
 **`/art/pack/` is the authoritative location** for Clockwork Raven's art. It is a
 private submodule and it is where any file of Caio's belongs. Its subfolders are
-currently `amulets`, `armour`, `consumables`, `currency`, `fishing`, `icons`,
-`tiles` and `weapons`.
+currently `amulets`, `armour`, `consumables`, `currency`, `fishing`, `food`,
+`icons`, `materials`, `smith`, `tiles` and `weapons`.
+
+`food`, `materials` and `smith` arrived in 0.74.0 with the larder and the smith:
+the cooking ingredients and meals, the smith's ores, essences, bones and Beholder
+eyes, and the anvil, plus two baits in `fishing`. Every one is a whole 16x16 cell
+cut unchanged from the pack's `Full Spritesheet/16x16.png` - nothing drawn,
+recoloured or scaled - so they are Caio's under this section like the rest.
 
 **One known exception, in the other direction.**
 `/art/pack/icons/behemothcrown.png` is **not** Caio's. It was cut and edited from
@@ -88,7 +94,8 @@ it is 26x15 — the size both the chat tag and the nameplate assume. Change the
 path in two places out of three and the suite says so.
 
 One thing this did **not** fix, and it is the larger version of the same problem:
-the other 133 files the public code loads out of `art/pack/` are legitimately
+every other file the public code loads out of `art/pack/` (229 of them in
+0.74.0, by the reachability report `atlasaudit.ps1` prints) is legitimately
 Caio's and legitimately private, so a fresh public clone still cannot draw any
 item, weapon or piece of armour. That is a correct boundary rather than a bug, and
 the test suite says so: a check that needs the pack is reported as a skip, naming

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://d0iee6scnyg5v"]
+
+[ext_resource type="Texture2D" uid="uid://cdas36ywcm4fo" path="res://art/pack/food/azuretangsushi.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "azuretangsushi"
+display_name = "Azure Tang Sushi"
+description = "Deep water, no fire. The rice does the rest."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 9000
+tier = 5
+required_level = 22
+type = 0
+droppable = false
+restore_amount = 120
+restore_target = 1
+buff_kind = 1
+buff_amount = 9
+buff_seconds = 1500
+recipe_ingredients = {"rawazuretang": 1, "rice": 1, "lemon": 1}
+recipe_level = 60
+recipe_xp = 190
+recipe_mastery_level = 86
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

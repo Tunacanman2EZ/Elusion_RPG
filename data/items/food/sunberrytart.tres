@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://8xssf5ihrdir"]
+
+[ext_resource type="Texture2D" uid="uid://dc3f7g3qy18a2" path="res://art/pack/food/sunberrytart.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "sunberrytart"
+display_name = "Sunberry Tart"
+description = "Sweet enough to forget the walk back."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 220
+tier = 1
+required_level = 1
+type = 0
+droppable = false
+restore_amount = 20
+restore_target = 1
+buff_kind = 4
+buff_amount = 12
+buff_seconds = 600
+recipe_ingredients = {"flour": 1, "sugar": 1, "sunberry": 2}
+recipe_level = 8
+recipe_xp = 30
+recipe_mastery_level = 26
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

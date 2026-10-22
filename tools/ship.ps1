@@ -12,14 +12,19 @@
 #
 #   1. THE API      commit and push (C:\Users\Robert\Desktop\game\api)
 #   2. THE SERVER   update_server.sh --restart over ssh - it pulls what step 1 pushed
-#   3. THE GAME     commit and push (this repository)
-#   4. THE WEB      tools\deploy_web.ps1 -Export - Godot exports, then it goes live
-#   5. THE SITE     commit and push (C:\Users\Robert\Desktop\site) - Netlify builds it
+#   3. THE ART PACK commit and push (art\pack in this repository - the private
+#                   submodule of purchased Clockwork Raven art)
+#   4. THE GAME     commit and push (this repository)
+#   5. THE WEB      tools\deploy_web.ps1 -Export - Godot exports, then it goes live
+#   6. THE SITE     commit and push (C:\Users\Robert\Desktop\site) - Netlify builds it
 #
-# The API goes before the game so a new game never meets an old server.
+# The API goes before the game so a new game never meets an old server. The
+# art pack goes before the game because the game's commit records WHICH commit
+# of the pack it was built with: committed the other way round, the game would
+# point at a pack commit that does not exist on GitHub yet.
 #
 # THE MESSAGES. Each repository's commit message is a file in the commit folder:
-# SHIP_api.txt, SHIP_game.txt, SHIP_site.txt. They are written for you with
+# SHIP_api.txt, SHIP_pack.txt, SHIP_game.txt, SHIP_site.txt. They are written for you with
 # every batch. A repository with changes and no message file is not committed -
 # the script says so and goes on to the next. After a commit the file is renamed
 # SHIPPED_<date>_<repo>.txt, so the same message is never used twice.
@@ -120,9 +125,30 @@ function Ask([string]$question) {
 
 $Repos = @(
     [pscustomobject]@{ Name = "api";  Title = "THE API";  Path = $ApiRepo },
+    [pscustomobject]@{ Name = "pack"; Title = "THE ART PACK"; Path = (Join-Path $GameRepo "art\pack") },
     [pscustomobject]@{ Name = "game"; Title = "THE GAME"; Path = $GameRepo },
     [pscustomobject]@{ Name = "site"; Title = "THE SITE"; Path = $SiteRepo }
 )
+
+# A SUBMODULE IS OFTEN ON NO BRANCH AT ALL. `git submodule update` checks out
+# the commit the game recorded, "detached", and a commit made there belongs to
+# no branch and cannot be pushed. Before the pack is shipped it is put back on
+# main - but only when that loses nothing: HEAD must already contain
+# everything GitHub's main has. Anything else is said and left alone.
+function Attach([string]$repo) {
+    $branch = (RunGit $repo @("rev-parse", "--abbrev-ref", "HEAD")) | Select-Object -First 1
+    if ($branch -ne "HEAD") { return $branch }
+    $ErrorActionPreference = "Continue"
+    $global:LASTEXITCODE = 0
+    & git -C $repo fetch -q origin main 2>$null | Out-Null
+    $global:LASTEXITCODE = 0
+    & git -C $repo merge-base --is-ancestor origin/main HEAD 2>$null
+    if ($LASTEXITCODE -ne 0) { return "HEAD" }
+    RunGit $repo @("checkout", "-q", "-B", "main") | Out-Null
+    $global:LASTEXITCODE = 0
+    & git -C $repo branch -q --set-upstream-to=origin/main main 2>$null | Out-Null
+    return "main"
+}
 
 # --- WHAT IS WAITING ---------------------------------------------------------
 foreach ($tool in @("git", "ssh")) {
@@ -133,6 +159,7 @@ $plan = @()
 foreach ($r in $Repos) {
     if (-not (Test-Path (Join-Path $r.Path ".git"))) { Say ("  {0,-5} not found at {1}" -f $r.Name, $r.Path) "Yellow"; continue }
     $branch = (RunGit $r.Path @("rev-parse", "--abbrev-ref", "HEAD")) | Select-Object -First 1
+    if ($r.Name -eq "pack" -and $branch -eq "HEAD" -and -not $Status -and -not $DryRun) { $branch = Attach $r.Path }
     $paths = @(Waiting $r.Path)
     $ahead = Ahead $r.Path
     $message = Join-Path $MessageFolder ("SHIP_{0}.txt" -f $r.Name)

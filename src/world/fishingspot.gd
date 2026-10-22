@@ -277,6 +277,12 @@ var _catch_tint: Color = Color.WHITE
 var _catch_timer: float = 0.0
 var _catch_levelled: bool = false
 
+# THE BAIT THE SERVER SAYS THIS CATCH TOOK (0.74.0), for the notice the
+# `caught` signal draws, and cleared once it has been said. Not on the signal:
+# a quest listening for a catch wants the fish, and every emit already in the
+# game would have to grow a fourth argument for a word in a notice.
+var _caught_on: String = ""
+
 
 # =============================================================================
 # LIFECYCLE
@@ -417,11 +423,25 @@ func _begin_cast() -> void:
 # transaction that grants the fish, for the reason docs/inventoryauthority.md
 # gives: a client that removes its own bait is a client that can decline to.
 # This count only decides whether to refuse the cast early and say why.
+#
+# EVERY BAIT, NOT ONLY THE WORM (0.74.0). The store sells lugworms and
+# glowgrubs now, and the server takes the best bait carried (most bait_rolls),
+# so a bag with a glowgrub and no worm can fish - and refusing it here would
+# stop the cast before the server was ever asked. Anything with bait_rolls is
+# bait; this spot's own bait_item_id still counts, whatever its rolls say.
 func _bait_count() -> int:
 	var backpack: Node = _backpack()
 	if backpack == null or not backpack.has_method("get_quantity_of"):
 		return 0
-	return int(backpack.get_quantity_of(String(bait_item_id)))
+	if not backpack.has_method("get_all_stacks"):
+		return int(backpack.get_quantity_of(String(bait_item_id)))
+	var total: int = 0
+	for stack in backpack.get_all_stacks():
+		if stack == null or stack.data == null:
+			continue
+		if str(stack.data.item_id) == String(bait_item_id) or int(stack.data.bait_rolls) > 0:
+			total += int(stack.quantity)
+	return total
 
 
 # TELLING THE PLAYER, as well as announcing it.
@@ -478,6 +498,9 @@ func _land_catch() -> void:
 
 	var caught_id: String = str(data.get("item_id", ""))
 	var caught_qty: int = int(data.get("quantity", 0))
+	# WHICH BAIT IT TOOK (0.74.0): the server's choice, the best one carried.
+	# A server from before baits names none, and the notice says what it said.
+	_caught_on = str(data.get("bait", "")) if data.get("bait") is String else ""
 
 	# EVERYTHING THE PLAYER SEES HANGS OFF THIS LINE. The notice used to be
 	# written out here, below the emit, which meant the signal was decorative —
@@ -729,9 +752,30 @@ func _on_caught(item_id: String, quantity: int, levelled_up: bool) -> void:
 			shown = data.display_name
 
 	if shown != "":
-		_notify("Caught %s x%d" % [shown, quantity] if quantity > 1 else "Caught %s" % shown)
+		_notify(catch_text(shown, quantity, _bait_name(_caught_on)))
+	_caught_on = ""
 
 	Audio.play("skill_up" if levelled_up else "item_pickup")
+
+
+static func catch_text(fish_name: String, quantity: int, bait_name: String = "") -> String:
+	"""The catch notice: "Caught Raw Mudfish", "Caught Raw Mudfish x2", and with
+	the bait the server says it took (0.74.0), "Caught Raw Silverfin on a
+	Glowgrub" - so a player who bought better bait sees it being spent, and on
+	which fish."""
+	var text: String = "Caught %s x%d" % [fish_name, quantity] if quantity > 1 else "Caught %s" % fish_name
+	if bait_name == "":
+		return text
+	var article: String = "an" if "aeiou".contains(bait_name.left(1).to_lower()) else "a"
+	return "%s on %s %s" % [text, article, bait_name]
+
+
+func _bait_name(bait_id: String) -> String:
+	# Its name, never its id - "glowgrub" is a key. A bait this catalogue does not
+	# know is not named at all rather than named by its key.
+	if bait_id == "" or not ItemRegistry.has_item(bait_id):
+		return ""
+	return ItemRegistry.get_item(bait_id).display_name
 
 
 func _draw_catch() -> void:

@@ -465,6 +465,9 @@ func _validate(constants: Dictionary, items: Array, enemies: Array, classes: Arr
 			_fail("constants.%s = '%s' names no existing item. Loot bags would contain no gold." % [key, gold_id])
 
 	_validate_recipes(items, known)
+	_validate_meals(items, known)
+	_validate_material_drops(enemies, known)
+	_validate_smith(constants, items, known)
 	_validate_skill_curves(constants)
 	_validate_quality(constants)
 	_validate_equipment(items, classes)
@@ -616,6 +619,229 @@ func _validate_recipes(items: Array, known: Dictionary) -> void:
 
 		if is_fish and int(item.get("fishing_xp", 0)) <= 0:
 			_fail("FISH '%s' awards no fishing_xp. It can be caught but trains nothing." % item["item_id"])
+
+
+func _validate_meals(items: Array, known: Dictionary) -> void:
+	# THE MEALS (0.74.0), checked for the same reason the fish recipes above
+	# are: /api/cooking/recipe takes the ingredients by id, and an id that names
+	# nothing does not throw - it answers "You are missing <Name>" for an item
+	# nobody can ever carry, and the meal can never be cooked.
+
+	# THE BUFF NAMES AND THE ENUM, member by member. The server stores the
+	# NAME; a kind appended to ItemData.BuffKind and not to
+	# GameConstants.BUFF_KINDS would export as UNKNOWN_5.
+	var names: Array = _game_constant("BUFF_KINDS", [])
+	if names.size() != ItemData.BuffKind.size():
+		_fail("GameConstants.BUFF_KINDS has %d names for ItemData.BuffKind's %d members." % [names.size(), ItemData.BuffKind.size()])
+	for key in ItemData.BuffKind:
+		var index: int = int(ItemData.BuffKind[key])
+		if index < 0 or index >= names.size() or String(names[index]) != String(key):
+			_fail("ItemData.BuffKind.%s is %d, but GameConstants.BUFF_KINDS does not name it there." % [key, index])
+
+	var by_id: Dictionary = {}
+	for item in items:
+		by_id[String(item["item_id"])] = item
+
+	for item in items:
+		var item_id: String = String(item["item_id"])
+		var kind: int = int(item.get("buff_kind", 0))
+		var amount: int = int(item.get("buff_amount", 0))
+		var seconds: int = int(item.get("buff_seconds", 0))
+		var type_name: String = String(item.get("type_name", ""))
+
+		# A BUFF IS HALF-SET OR WHOLE. A kind with no amount or no time does
+		# nothing and says it does; an amount with no kind is a buff of nothing.
+		if kind != 0 and (amount <= 0 or seconds <= 0):
+			_fail("'%s' has buff %s but amount %d for %d s - eating it would buff nothing." % [item_id, item.get("buff_kind_name", "?"), amount, seconds])
+		if kind == 0 and (amount != 0 or seconds != 0):
+			_fail("'%s' has a buff amount or time but buff_kind NONE." % item_id)
+		if kind != 0 and type_name != "CONSUMABLE":
+			_fail("'%s' carries a buff but is %s - only something eaten can give one." % [item_id, type_name])
+
+		if int(item.get("bait_rolls", 0)) < 0:
+			_fail("'%s' has bait_rolls %d. 0 is not bait; a bait rolls at least once." % [item_id, int(item.get("bait_rolls", 0))])
+
+		var recipe: Dictionary = item.get("recipe", {})
+		if recipe.is_empty():
+			continue
+
+		# A MEAL IS FOOD, and the owner's whole ask was that it heals more.
+		if type_name != "CONSUMABLE":
+			_fail("meal '%s' is %s rather than CONSUMABLE - it could be cooked and never eaten." % [item_id, type_name])
+		if String(item.get("restore_target_name", "")) != "HP" or int(item.get("restore_amount", 0)) <= 0:
+			_fail("meal '%s' heals nothing (restore %s %d)." % [item_id, item.get("restore_target_name", "?"), int(item.get("restore_amount", 0))])
+		if bool(item.get("droppable", true)):
+			_warn("meal '%s' is still droppable - mobs would drop it, which undercuts cooking. Set droppable = false on it." % item_id)
+
+		var ingredients: Array = recipe.get("ingredients", [])
+		if ingredients.is_empty():
+			_fail("meal '%s' has a recipe with no ingredients." % item_id)
+		for row in ingredients:
+			var ingredient: String = String(row.get("item_id", ""))
+			if not known.has(ingredient):
+				_fail("meal '%s' needs '%s', but no item with that item_id exists. It can never be cooked." % [item_id, ingredient])
+			if int(row.get("quantity", 0)) < 1:
+				_fail("meal '%s' needs %d of '%s' - every ingredient is at least one." % [item_id, int(row.get("quantity", 0)), ingredient])
+
+		# THE SAME BURN CURVE AS A FISH, so the same inversion is the same bug:
+		# mastery below the level and the meal silently never burns.
+		var floor_level: int = int(recipe.get("level", 1))
+		if floor_level < 1:
+			_fail("meal '%s' has recipe level %d - cooking levels start at 1." % [item_id, floor_level])
+		if int(recipe.get("mastery_level", 1)) < floor_level:
+			_fail("meal '%s' has mastery level %d below its level %d. It would never burn." % [item_id, int(recipe.get("mastery_level", 1)), floor_level])
+		if int(recipe.get("xp", 0)) <= 0:
+			_fail("meal '%s' grants no cooking XP. It can be cooked but trains nothing." % item_id)
+
+	# NO RECIPE MAY NEED ITSELF, through any number of meals in between. A meal
+	# may take another (Shadowcap Soup takes Bone Broth), so the recipes are a
+	# graph, and a loop in it is a meal nobody can ever make first. Walked depth
+	# first; a meal met again while it is still on the path is the loop.
+	var state: Dictionary = {}   # item_id -> 1 on the current path, 2 finished
+	for item in items:
+		if not (item.get("recipe", {}) as Dictionary).is_empty():
+			_walk_recipe(String(item["item_id"]), by_id, state, [])
+
+
+func _walk_recipe(item_id: String, by_id: Dictionary, state: Dictionary, path: Array) -> void:
+	if int(state.get(item_id, 0)) == 2:
+		return
+	if int(state.get(item_id, 0)) == 1:
+		var loop: Array = path.slice(path.find(item_id)) + [item_id]
+		_fail("recipes go round in a circle: %s. None of them can ever be cooked first." % " -> ".join(PackedStringArray(loop)))
+		return
+	var row: Dictionary = by_id.get(item_id, {})
+	var recipe: Dictionary = row.get("recipe", {})
+	state[item_id] = 1
+	for ingredient in recipe.get("ingredients", []):
+		var next_id: String = String(ingredient.get("item_id", ""))
+		if by_id.has(next_id):
+			_walk_recipe(next_id, by_id, state, path + [item_id])
+	state[item_id] = 2
+
+
+func _validate_material_drops(enemies: Array, known: Dictionary) -> void:
+	# WHAT A MONSTER DROPS BESIDES ITS BAG (0.74.0). Every way one of these
+	# goes wrong is silent on the server: a typo'd id rolls and grants nothing,
+	# a chance of 0 never rolls, a chance above 1 is clamped and hides that it
+	# was meant to be something else, and a min above max is a quantity the
+	# roll cannot draw. So each one refuses the export.
+	for enemy in enemies:
+		var enemy_id: String = String(enemy.get("enemy_id", ""))
+		var seen: Dictionary = {}
+		var drops: Array = enemy.get("material_drops", [])
+		for row in drops:
+			var item_id: String = String(row.get("item_id", ""))
+			var chance: float = float(row.get("chance", 0.0))
+			var low: int = int(row.get("min", 0))
+			var high: int = int(row.get("max", 0))
+			if not known.has(item_id):
+				_fail("enemy '%s' drops '%s', but no item with that item_id exists." % [enemy_id, item_id])
+			if chance <= 0.0 or chance > 1.0:
+				_fail("enemy '%s' drops '%s' at chance %s - it must be above 0 and at most 1." % [enemy_id, item_id, chance])
+			if low < 1 or high < low:
+				_fail("enemy '%s' drops %d-%d of '%s' - it must be at least 1, and min no more than max." % [enemy_id, low, high, item_id])
+			# Two rows for one item are two independent rolls, which is a
+			# different chance from either number written down.
+			if seen.has(item_id):
+				_fail("enemy '%s' lists '%s' twice in material_drops - make it one row." % [enemy_id, item_id])
+			seen[item_id] = true
+		# An enemy that pays nothing is never claimed, so its drops never roll.
+		# REFUSED, NOT WARNED (0.74.0, at the merge): the six large slimes were
+		# given 60% ore as the plan was written, and the only sign it could
+		# never pay was a warning on every export. The ore is on the smalls
+		# they split into, which are the kills that pay.
+		if not drops.is_empty() and not bool(enemy.get("grants_rewards", true)):
+			_fail("enemy '%s' grants no rewards, so its material_drops can never roll - put them on what it splits into." % enemy_id)
+
+
+func _validate_smith(constants: Dictionary, items: Array, known: Dictionary) -> void:
+	# THE SMITH AND THE CROWN'S CERTIFICATES (0.74.0). The server takes these
+	# materials out of a bag by id, so an id that names nothing is a temper or
+	# a certificate nobody can ever pay for - refused here rather than found by
+	# the first player to save up for it.
+	if int(constants.get("temper_step", 0)) < 1:
+		_fail("constants.temper_step must be at least 1 - a temper that raises nothing still takes the gold.")
+	var cap: int = int(constants.get("temper_cap", 0))
+	var perfect: int = int(constants.get("quality_perfect", 0))
+	if cap <= 100 or cap >= perfect:
+		_fail("constants.temper_cap is %d - it must be above 100 and below quality_perfect (%d): tempering never makes a Perfect." % [cap, perfect])
+	if float(constants.get("temper_gold_rate", 0.0)) <= 0.0:
+		_fail("constants.temper_gold_rate must be above 0. A free temper is a gold sink switched off.")
+
+	var certs: Array = constants.get("certifications", [])
+	var last_max_tier: int = 0
+	for i in certs.size():
+		var cert: Dictionary = certs[i]
+		var rank: int = int(cert.get("rank", -1))
+		# EARNED IN ORDER, one rank after another, so the list is the ladder.
+		if rank != i + 1:
+			_fail("constants.certifications[%d] is rank %d - the ranks run 1, 2, 3... in order." % [i, rank])
+		if String(cert.get("name", "")) == "":
+			_fail("certification rank %d has no name." % rank)
+		if int(cert.get("level", 0)) < 1 or int(cert.get("gold", 0)) < 1:
+			_fail("certification rank %d needs level %d and %d gold - both must be at least 1." % [rank, int(cert.get("level", 0)), int(cert.get("gold", 0))])
+		if int(cert.get("max_tier", 0)) <= last_max_tier:
+			_fail("certification rank %d lets a smith temper up to tier %d, no higher than the rank below it." % [rank, int(cert.get("max_tier", 0))])
+		last_max_tier = int(cert.get("max_tier", 0))
+		_validate_material_list("certification rank %d" % rank, cert.get("materials", []), known)
+
+	var costs: Array = constants.get("temper_costs", [])
+	var tiers: Dictionary = {}
+	for cost in costs:
+		var tier: int = int(cost.get("tier", 0))
+		var needs: int = int(cost.get("certification", -1))
+		if tier < 1 or tiers.has(tier):
+			_fail("constants.temper_costs has tier %d %s." % [tier, "twice" if tiers.has(tier) else "- tiers start at 1"])
+		tiers[tier] = true
+		_validate_material_list("tempering tier %d" % tier, cost.get("materials", []), known)
+		if needs < 0 or needs > certs.size():
+			_fail("tempering tier %d needs certification %d, which is not a rank (0 to %d)." % [tier, needs, certs.size()])
+			continue
+		# THE TWO TABLES SAY ONE THING TWICE: the rank a tier needs, and the
+		# highest tier a rank allows. They must agree, or the status the smith
+		# shows ("Journeyman: up to cobalt") and the temper it refuses differ.
+		if needs > 0 and int(certs[needs - 1].get("max_tier", 0)) < tier:
+			_fail("tempering tier %d needs rank %d, but that rank only reaches tier %d." % [tier, needs, int(certs[needs - 1].get("max_tier", 0))])
+		if needs > 1 and int(certs[needs - 2].get("max_tier", 0)) >= tier:
+			_fail("tempering tier %d needs rank %d, but rank %d already reaches it." % [tier, needs, needs - 1])
+
+	# EVERY PIECE THAT ROLLS CAN BE TEMPERED: gear of a tier with no row would
+	# be refused with nothing to say why. A warning, because content can run
+	# ahead of the smith and still be worth exporting.
+	var untemperable: Dictionary = {}
+	for item in items:
+		var slot: String = String(item.get("equip_slot_name", "NONE"))
+		if slot != "NONE" and not tiers.has(int(item.get("tier", 0))):
+			untemperable[int(item.get("tier", 0))] = true
+	if not untemperable.is_empty():
+		_warn("gear of tier(s) %s has no row in constants.temper_costs, so the smith cannot temper it." % str(untemperable.keys()))
+
+	# THE PATRONS' TITLES, lowest first, each further than the last; the
+	# smallest gift no bigger than the first title, or a title could be had
+	# with one donation that is not allowed.
+	var titles: Array = constants.get("patron_titles", [])
+	if titles.is_empty():
+		_fail("constants.patron_titles is empty - donating would earn nothing to show.")
+	var last_at: int = 0
+	for row in titles:
+		if String(row.get("title", "")) == "" or int(row.get("at", 0)) <= last_at:
+			_fail("constants.patron_titles holds %s - each has a title and a threshold above the one before." % str(row))
+		last_at = int(row.get("at", 0))
+	var minimum: int = int(constants.get("donation_minimum", 0))
+	if minimum < 1 or (not titles.is_empty() and minimum > int(titles[0].get("at", 0))):
+		_fail("constants.donation_minimum is %d - it must be at least 1 and no more than the first title's threshold." % minimum)
+
+
+func _validate_material_list(what: String, materials: Array, known: Dictionary) -> void:
+	if materials.is_empty():
+		_fail("%s takes no materials." % what)
+	for row in materials:
+		var item_id: String = String(row.get("item_id", ""))
+		if not known.has(item_id):
+			_fail("%s takes '%s', but no item with that item_id exists." % [what, item_id])
+		if int(row.get("quantity", 0)) < 1:
+			_fail("%s takes %d of '%s' - every material is at least one." % [what, int(row.get("quantity", 0)), item_id])
 
 
 func _validate_skill_curves(constants: Dictionary) -> void:
@@ -1305,6 +1531,24 @@ func _export_items() -> Array:
 
 			# What landing this fish is worth, read by /api/fishing/catch.
 			"fishing_xp": item.fishing_xp,
+
+			# BAIT (0.74.0): how many times a cast with it rolls the catch,
+			# keeping the best fish. 0 is "not bait", which is every item but
+			# three; /api/fishing/catch picks the carried bait with the most.
+			"bait_rolls": item.bait_rolls,
+
+			# THE MEAL'S BUFF AND RECIPE (0.74.0), exported for every item like
+			# the cooking block above: kind 0 / "NONE" and an empty recipe on
+			# anything that is not a meal, so the Python side reads the fields
+			# without first asking what it is holding. The NAME beside the
+			# integer for the reason type_name is there: the server stores and
+			# compares the name, and an enum reordered here must not silently
+			# re-point every buff it has recorded.
+			"buff_kind": int(item.buff_kind),
+			"buff_kind_name": _buff_kind_name(int(item.buff_kind)),
+			"buff_amount": item.buff_amount,
+			"buff_seconds": item.buff_seconds,
+			"recipe": _recipe_row(item),
 		})
 
 	out.sort_custom(func(a, b): return a["item_id"] < b["item_id"])
@@ -1378,6 +1622,48 @@ func _restore_target_name(target_index: int) -> String:
 		_fail("ItemData.RestoreTarget value %d has no name in RESTORE_TARGET_NAMES — update this script." % target_index)
 		return "UNKNOWN_%d" % target_index
 	return RESTORE_TARGET_NAMES[target_index]
+
+
+func _buff_kind_name(kind_index: int) -> String:
+	# Named from GameConstants.BUFF_KINDS, the list that also travels in
+	# constants.buff_kinds. _validate_meals() holds that list to ItemData.BuffKind
+	# member by member, so a kind added to one and not the other refuses the
+	# export rather than reaching the server as a name it cannot match.
+	#
+	# Read off the script, not the GameConstants autoload, like every constant
+	# in _export_constants(): this runs from the editor, where a non-tool
+	# autoload is not there to ask.
+	var names: Array = _game_constant("BUFF_KINDS", [])
+	if kind_index < 0 or kind_index >= names.size():
+		_fail("ItemData.BuffKind value %d has no name in GameConstants.BUFF_KINDS - update that list." % kind_index)
+		return "UNKNOWN_%d" % kind_index
+	return String(names[kind_index])
+
+
+func _recipe_row(item: ItemData) -> Dictionary:
+	# {} for anything that is not a meal; otherwise its ingredients as a list
+	# sorted by item_id, so the file diffs cleanly and the server reads the same
+	# order every export, and the three numbers that mean what cook_level,
+	# cook_xp and cook_mastery_level mean on a fish.
+	#
+	# COPIED OUT ELEMENT BY ELEMENT, for the reason required_classes is: the
+	# Dictionary belongs to a Resource that stays loaded. The counts go through
+	# int() because a hand-edited .tres can say 2.0 and JSON would carry it.
+	if not item.is_meal():
+		return {}
+	var ingredients: Array = []
+	for ingredient_id in item.recipe_ingredients:
+		ingredients.append({
+			"item_id": String(ingredient_id),
+			"quantity": int(item.recipe_ingredients[ingredient_id]),
+		})
+	ingredients.sort_custom(func(a, b): return String(a["item_id"]) < String(b["item_id"]))
+	return {
+		"ingredients": ingredients,
+		"level": item.recipe_level,
+		"xp": item.recipe_xp,
+		"mastery_level": item.recipe_mastery_level,
+	}
 
 
 func _equip_slot_name(slot_index: int) -> String:
@@ -1472,10 +1758,31 @@ func _export_enemies(constants: Dictionary) -> Array:
 			# the smalls' kill ceiling arrives through their placed_count, below -
 			# but the pairing is checked in _validate() and the suites read it.
 			"split_into":        enemy.split_into.enemy_id if enemy.split_into != null else "",
+			# WHAT IT DROPS BESIDES ITS BAG (0.74.0), each rolled on its own by
+			# gamedata.roll_kill_rewards(). [] for an enemy with none, never
+			# missing, so the server reads the list without asking first.
+			"material_drops":    _material_drop_rows(enemy),
 		})
 
 	out.sort_custom(func(a, b): return a["enemy_id"] < b["enemy_id"])
 	return out
+
+
+func _material_drop_rows(enemy: EnemyData) -> Array:
+	# Copied into plain rows with plain types: the chance snapped like the other
+	# odds (a hand-typed 0.2 should not reach the server as 0.2000000003), the
+	# quantities as whole numbers. A row missing a key is exported with the
+	# missing value as "" or 0, which _validate_material_drops() then refuses -
+	# a drop with no chance is a typo, not a drop that never happens.
+	var rows: Array = []
+	for entry in enemy.material_drops:
+		rows.append({
+			"item_id": String(entry.get("item_id", "")),
+			"chance":  snappedf(float(entry.get("chance", 0.0)), 0.0001),
+			"min":     int(entry.get("min", 0)),
+			"max":     int(entry.get("max", 0)),
+		})
+	return rows
 
 
 func _split_yield(scene_path: String) -> int:
@@ -2061,12 +2368,39 @@ func _export_constants() -> Dictionary:
 		# longer than capacity, so a mismatch here is a refused save rather
 		# than a cosmetic difference.
 		"bank_capacity":        int(char_consts.get("BANK_MAX_SLOTS", 50)),
+
+		# THE SMITH, THE CROWN'S CERTIFICATES AND THE PATRONS (0.74.0). The
+		# server burns the gold and takes the materials, so it reads every
+		# number here rather than restating one. The shapes are the contract
+		# the API was written against: temper_costs and certifications as
+		# lists of rows with their materials as {item_id, quantity}, and the
+		# titles lowest first. _validate_smith() refuses a row naming an item
+		# that does not exist - a certificate nobody could ever pay for.
+		#
+		# DUPLICATED, because a const Array out of a script is read-only and
+		# this dictionary is the payload's own.
+		"temper_step":          int(game_consts.get("TEMPER_STEP", 0)),
+		"temper_cap":           int(game_consts.get("TEMPER_CAP", 0)),
+		"temper_gold_rate":     float(game_consts.get("TEMPER_GOLD_RATE", 0.0)),
+		"temper_costs":         (game_consts.get("TEMPER_COSTS", []) as Array).duplicate(true),
+		"certifications":       (game_consts.get("CERTIFICATIONS", []) as Array).duplicate(true),
+		"patron_titles":        (game_consts.get("PATRON_TITLES", []) as Array).duplicate(true),
+		"donation_minimum":     int(game_consts.get("DONATION_MINIMUM", 0)),
+		# What the server calls each ItemData.BuffKind, in the enum's order.
+		"buff_kinds":           (game_consts.get("BUFF_KINDS", []) as Array).duplicate(true),
 	}
 
 
 # =============================================================================
 # HELPERS
 # =============================================================================
+
+func _game_constant(key: String, fallback: Variant) -> Variant:
+	# One constant of gameconstants.gd, read off the script rather than the
+	# autoload - see _export_constants() for why.
+	var consts: Dictionary = (load("res://src/systems/gameconstants.gd") as GDScript).get_script_constant_map()
+	return consts.get(key, fallback)
+
 
 func _find_files(root: String, extension: String) -> Array:
 	# Recursive directory walk. Exported .pck builds do not ship .tres source

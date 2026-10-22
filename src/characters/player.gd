@@ -436,6 +436,11 @@ func _ready() -> void:
 	# is back (THE CURSOR, WHEN THERE IS ONE).
 	if not get_window().mouse_exited.is_connected(_on_pointer_left_window):
 		get_window().mouse_exited.connect(_on_pointer_left_window)
+	# A MEAL'S BUFF BEGINNING OR ENDING MOVES THE MAXIMA (0.74.0). FoodBuff is
+	# an autoload and outlives this node; the connection goes with the node
+	# when a door frees it.
+	if not FoodBuff.changed.is_connected(refresh_food_stats):
+		FoodBuff.changed.connect(refresh_food_stats)
 
 	_set_stat_curve()
 	_set_skill_proficiency()
@@ -1124,8 +1129,14 @@ func _recompute_max_stats() -> void:
 	# on the server is the same sum over the same fields; if the two ever
 	# disagree, the status route clamps this character's hp to the server's
 	# figure on its next save.
-	max_hp      = PlayerStats.max_for(hp_base,   hp_per_lvl,   level) + equipped_bonus("bonus_max_hp")
-	max_mana    = PlayerStats.max_for(mana_base, mana_per_lvl, level) + equipped_bonus("bonus_max_mana")
+	#
+	# AND WHAT A MEAL ADDS WHILE IT LASTS (0.74.0): a VIGOUR meal's max health,
+	# a WISDOM meal's max mana (FoodBuff, the server's copy of the buff in
+	# force). The server's bounds add the same buff - see foodbuff.gd.
+	max_hp      = PlayerStats.max_for(hp_base,   hp_per_lvl,   level) + equipped_bonus("bonus_max_hp") \
+		+ FoodBuff.max_hp()
+	max_mana    = PlayerStats.max_for(mana_base, mana_per_lvl, level) + equipped_bonus("bonus_max_mana") \
+		+ FoodBuff.max_mana()
 	max_stamina = PlayerStats.max_for(stam_base, stam_per_lvl, level)
 
 
@@ -1142,6 +1153,18 @@ func refresh_gear_stats() -> void:
 	hp = clampi(hp, 0, max_hp)
 	mana = clampi(mana, 0, max_mana)
 	_on_gear_changed()
+
+
+func refresh_food_stats() -> void:
+	# A MEAL'S BUFF BEGAN, CHANGED OR ENDED (0.74.0) - FoodBuff.changed. The
+	# same rule as a gear change: the maxima move, and the pools come down only
+	# if they now sit above them. Never up: a VIGOUR meal lifts the ceiling, and
+	# the meal's own heal (a separate number, restore_amount) is what fills it.
+	# And never to nothing: a buff ending at 230 of 230 leaves 180 of 180, and
+	# 40 of 230 stays 40. A character at 0 is dead already and stays so.
+	_recompute_max_stats()
+	hp = clampi(hp, 0, max_hp)
+	mana = clampi(mana, 0, max_mana)
 
 
 func _on_gear_changed() -> void:
@@ -2079,8 +2102,14 @@ func get_damage_multiplier() -> float:
 	# Skills, then whatever is worn. Every class's hit and the pet's shot come
 	# through here, so a Fury amulet reaches all of them without a line in any
 	# class file.
+	#
+	# THEN A MIGHT MEAL (0.74.0), multiplied in the same way and for the same
+	# reason as the amulet: "+5% damage" is a twentieth of whatever this
+	# character already hits for. The server raises its bound on the hit by the
+	# same percent (combat_bounds()), so a buffed kill is never refused.
 	return PlayerStats.damage_multiplier(attack, magic) \
-		* PlayerStats.gear_damage_factor(equipped_bonus("bonus_damage_percent"))
+		* PlayerStats.gear_damage_factor(equipped_bonus("bonus_damage_percent")) \
+		* FoodBuff.damage_factor()
 
 
 const AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL := PlayerStats.AGILITY_ATTACK_SPEED_PERCENT_PER_LEVEL
@@ -3088,7 +3117,7 @@ func damage_taken(amount: int, element: int = Element.Type.NONE) -> int:
 	# RESIST_CAP. Both 1 for every other element, and for every hit when
 	# nothing stirs.
 	var reduction: float = _get_defense_tier()["reduction"]
-	var armour: float = PlayerStats.armour_reduction(equipped_armor_value())
+	var armour: float = PlayerStats.armour_reduction(armour_total())
 	var resist_percent: float = minf(float(equipped_resistance(element)) * Lands.resist_scale(element),
 		float(GameConstants.RESIST_CAP))
 	var resisted: float = resist_percent / 100.0
@@ -3133,3 +3162,11 @@ func equipped_armor_value() -> int:
 		if data != null:
 			total += data.armor_value
 	return total
+
+
+func armour_total() -> int:
+	# THE ARMOUR A HIT MEETS: what is worn, and a GUARD meal's on top while it
+	# lasts (0.74.0, FoodBuff). Kept apart from equipped_armor_value(), which
+	# is what the gear adds and says so in its name; this is the one
+	# damage_taken() takes a share off by, and the Gear window's Armour row.
+	return equipped_armor_value() + FoodBuff.armour()

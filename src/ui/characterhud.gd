@@ -60,6 +60,8 @@ const MAPSCREEN_SCENE     := preload("res://scene/ui/menus/mapscreen.tscn")
 const BANK_SCENE          := preload("res://scene/ui/bank/bankinventory.tscn")
 const LOOTBAG_PANEL_SCENE := preload("res://scene/ui/lootbag/lootbaginventory.tscn")
 const COOKING_PANEL_SCENE := preload("res://scene/ui/cooking/cookingscreen.tscn")
+# The smith window the town's anvil opens (0.74.0). See smithscreen.gd.
+const SMITH_PANEL_SCENE   := preload("res://scene/ui/smith/smithscreen.tscn")
 const SHOP_PANEL_SCENE    := preload("res://scene/ui/shop/shopinventory.tscn")
 const KINGDOM_PANEL_SCENE := preload("res://scene/ui/kingdom/kingdomboard.tscn")
 # Every monster killed, yours and everybody's (0.9.0). See killrecord.gd.
@@ -139,6 +141,7 @@ var stats_screen:     Control         = null
 var bank_screen:      Control         = null
 var lootbag_panel:    Control         = null
 var cooking_panel:    Control         = null
+var smith_panel:      Control         = null
 var shop_panel:       Control         = null
 var kingdom_panel:    Control         = null
 var kills_panel:      KillRecord      = null
@@ -303,6 +306,7 @@ func _ready() -> void:
 	_build_status_strip()
 	_build_world_chip()
 	_build_event_chip()
+	_build_food_chip()
 	_start_broadcast_poll()
 	_wire_hotbar()
 	# ON A TOUCH SCREEN, A PAD FOR THE THUMBS (0.53.0): the stick and the
@@ -625,6 +629,8 @@ func _process(_delta: float) -> void:
 		_world_chip_clock = 0.0
 		_paint_world_chip()
 		_paint_event_chip()
+		# And the meal's minutes and seconds (0.74.0).
+		_paint_food_chip()
 
 	if active_character == null:
 		return
@@ -2517,6 +2523,121 @@ func _place_event_chip() -> void:
 	event_chip.offset_bottom = top + 26.0
 
 
+# =============================================================================
+# THE MEAL YOU ARE FULL OF (0.74.0)
+# =============================================================================
+# A meal with a buff - "heal more and give a short buff", the owner's words -
+# shows here while it lasts: the meal's own picture and the minutes and seconds
+# left, in a chip on the stamina bar's row, bordered in the buff's colour
+# (FoodBuff.colour_for(), the amulet family that adds the same stat). Hover
+# names it: "Bone Broth: +45 max health, 14:59 left". FoodBuff holds the buff,
+# from the server's answers; this only draws it, once a second and whenever it
+# changes - and a change moves a maximum, so the bars are redrawn with it.
+var food_chip: PanelContainer = null
+var food_icon: TextureRect = null
+var food_clock: Label = null
+
+# How far the chip sits from the stamina bar it is beside.
+const FOOD_CHIP_GAP := 6.0
+
+
+func _build_food_chip() -> void:
+	var frame := PanelContainer.new()
+	frame.name = "foodbuffchip"
+	# PASS, NOT IGNORE, or the tooltip never shows - and not STOP, so a click on
+	# it is still a click on whatever it sits over.
+	frame.mouse_filter = Control.MOUSE_FILTER_PASS
+	frame.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.06, 0.09, 0.78)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(4)
+	style.content_margin_left = 5.0
+	style.content_margin_right = 8.0
+	style.content_margin_top = 2.0
+	style.content_margin_bottom = 2.0
+	frame.add_theme_stylebox_override("panel", style)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 6)
+	frame.add_child(row)
+	var icon := TextureRect.new()
+	icon.name = "icon"
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(24, 24)
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(icon)
+	var clock := Label.new()
+	clock.name = "clock"
+	clock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clock.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	clock.add_theme_font_size_override("font_size", 14)
+	# The bars' own readout colours, so the chip reads as part of them.
+	clock.add_theme_color_override("font_color", Color(1, 0.96, 0.9, 1))
+	clock.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	clock.add_theme_constant_override("outline_size", 4)
+	row.add_child(clock)
+
+	# BESIDE THE STAMINA BAR, ON ITS ROW, in the bars' own container and on the
+	# stamina bar's own anchors, so wherever the bars are moved the chip goes with
+	# them. The stamina bar is the short one, and the space to its left is the
+	# only place by the bars nothing else uses: above the health bar is the
+	# hotbar's (the first try put the chip there, under it). It grows leftward
+	# from the bar, as tall as the bar is drawn.
+	var bars: Control = get_node_or_null("barcontainer") as Control
+	var beside: Control = staminabar
+	if bars != null and beside != null:
+		bars.add_child(frame)
+		frame.anchor_left = beside.anchor_left
+		frame.anchor_right = beside.anchor_left
+		frame.anchor_top = beside.anchor_top
+		frame.anchor_bottom = beside.anchor_top
+		frame.offset_right = beside.offset_left - FOOD_CHIP_GAP
+		frame.offset_left = frame.offset_right
+		frame.offset_top = beside.offset_top
+		frame.offset_bottom = beside.offset_top + (beside.offset_bottom - beside.offset_top) * beside.scale.y
+		frame.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	else:
+		add_child(frame)
+	food_chip = frame
+	food_icon = icon
+	food_clock = clock
+	if not FoodBuff.changed.is_connected(_on_food_buff_changed):
+		FoodBuff.changed.connect(_on_food_buff_changed)
+	_paint_food_chip()
+
+
+func _on_food_buff_changed() -> void:
+	_paint_food_chip()
+	# A VIGOUR or WISDOM meal moved a maximum: the bars' ranges follow now,
+	# not when the pool next changes. DEFERRED, because the player hears the
+	# same signal and moves its maxima in its own handler, and which of the two
+	# hears it first is the order they happened to connect in.
+	update_bars.call_deferred()
+
+
+func _paint_food_chip() -> void:
+	if food_chip == null:
+		return
+	var on: bool = FoodBuff.is_active()
+	food_chip.visible = on
+	if not on:
+		return
+	var meal: ItemData = FoodBuff.item()
+	if food_icon != null:
+		food_icon.texture = meal.icon if meal != null else null
+		food_icon.modulate = meal.icon_tint if meal != null else Color.WHITE
+	if food_clock != null:
+		food_clock.text = FoodBuff.clock_text(FoodBuff.seconds_left())
+	food_chip.tooltip_text = FoodBuff.describe()
+	var style: StyleBoxFlat = food_chip.get_theme_stylebox("panel") as StyleBoxFlat
+	if style != null:
+		style.border_color = FoodBuff.colour_for(FoodBuff.kind)
+
+
 func _read_teleport(order) -> void:
 	# SENT BY STAFF, CARRIED OUT HERE. The server decided the destination AND
 	# the exact spot - it spaces a group out on hex rings so nobody lands on
@@ -3151,6 +3272,7 @@ func _on_logout_pressed() -> void:
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
 	if cooking_panel:    cooking_panel.queue_free()
+	if smith_panel:      smith_panel.queue_free()
 	if shop_panel:       shop_panel.queue_free()
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if kills_panel:      kills_panel.queue_free()
@@ -3168,6 +3290,7 @@ func _on_logout_pressed() -> void:
 	bank_screen      = null
 	lootbag_panel    = null
 	cooking_panel    = null
+	smith_panel      = null
 	shop_panel       = null
 	kingdom_panel    = null
 	kills_panel      = null
@@ -3245,6 +3368,9 @@ func _on_switch_character_pressed() -> void:
 	if active_character != null:
 		CharacterData.save_character_state(active_character)
 	active_character = null
+	# THE MEAL STAYS WITH THE CHARACTER WHO ATE IT (0.74.0): saved on its slot
+	# (FoodBuff.adopt()), and picked up again if this character is picked again.
+	FoodBuff.clear()
 
 	# NULLED AS WELL AS FREED, and that is not tidiness.
 	#
@@ -3263,6 +3389,7 @@ func _on_switch_character_pressed() -> void:
 	if bank_screen:      bank_screen.queue_free()
 	if lootbag_panel:    lootbag_panel.queue_free()
 	if cooking_panel:    cooking_panel.queue_free()
+	if smith_panel:      smith_panel.queue_free()
 	if shop_panel:       shop_panel.queue_free()
 	if kingdom_panel:    kingdom_panel.queue_free()
 	if kills_panel:      kills_panel.queue_free()
@@ -3280,6 +3407,7 @@ func _on_switch_character_pressed() -> void:
 	bank_screen      = null
 	lootbag_panel    = null
 	cooking_panel    = null
+	smith_panel      = null
 	shop_panel       = null
 	kingdom_panel    = null
 	kills_panel      = null
@@ -3840,6 +3968,23 @@ func open_cooking(firepit: Node, player: Node) -> void:
 
 
 # =============================================================================
+# PANEL TOGGLES - THE SMITH
+# =============================================================================
+
+func open_smith(anvil: Node, player: Node) -> void:
+	# The cooking screen's shape exactly: built on first use and then kept,
+	# because an anvil is a thing most players walk past, and the window owns
+	# its own visibility - this only makes sure it exists and points it at the
+	# anvil the player is standing at.
+	if smith_panel == null:
+		smith_panel = SMITH_PANEL_SCENE.instantiate()
+		add_child(smith_panel)
+
+	if smith_panel.has_method("open_for_anvil"):
+		smith_panel.open_for_anvil(anvil, player)
+
+
+# =============================================================================
 # ESCAPE: EVERY WINDOW, ONE LIST
 # =============================================================================
 # The owner, 6 Oct: "every window needs to close with escape also".
@@ -3874,6 +4019,7 @@ func _escape_windows() -> Array:
 		[bank_screen, "close_bank"],
 		[lootbag_panel, "close_panel"],
 		[cooking_panel, "close_panel"],
+		[smith_panel, "close_panel"],
 		[shop_panel, "close_shop"],
 		[kingdom_panel, "close_board"],
 		[kills_panel, "close"],

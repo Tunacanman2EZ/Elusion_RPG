@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://26amr8asjwiv"]
+
+[ext_resource type="Texture2D" uid="uid://tt6hjmi6th6e" path="res://art/pack/materials/darkessence.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "darkessence"
+display_name = "Dark Essence"
+description = "What a sprite leaves behind. The smith's certificates are paid in it."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 1760
+tier = 5
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

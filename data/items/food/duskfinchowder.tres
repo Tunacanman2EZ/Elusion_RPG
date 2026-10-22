@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b2wr2pri8b0e1"]
+
+[ext_resource type="Texture2D" uid="uid://bpgrr0kvkdlqp" path="res://art/pack/food/duskfinchowder.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "duskfinchowder"
+display_name = "Duskfin Chowder"
+description = "Best eaten after dark, the way the fish was caught."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 2400
+tier = 4
+required_level = 16
+type = 0
+droppable = false
+restore_amount = 70
+restore_target = 1
+buff_kind = 2
+buff_amount = 7
+buff_seconds = 1200
+recipe_ingredients = {"rawduskfin": 1, "milk": 1, "potato": 1, "fieldonion": 1}
+recipe_level = 36
+recipe_xp = 110
+recipe_mastery_level = 62
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

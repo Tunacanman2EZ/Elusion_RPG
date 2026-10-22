@@ -40,6 +40,11 @@
 # through leaves the fish that were cooked cooked and the rest raw — rather than
 # one request that mints ninety-nine items and has to be all-or-nothing about
 # a thing the player watched happen one at a time.
+#
+#
+# AND, ON THE SECOND TAB, THE MEALS (0.74.0). See THE RECIPES VIEW near the
+# bottom: the same fire, the same run, the same one request a meal, against
+# /api/cooking/recipe.
 extends Control
 
 
@@ -165,6 +170,36 @@ const HEARTH_SHADER := preload("res://src/shared/hearth_warm.gdshader")
 const HEARTH_LIFT_IDLE := 0.30
 const HEARTH_LIFT_COOKING := 0.44
 
+# The two routes a cook can go to: a raw fish, or a meal from its recipe
+# (0.74.0). Each request names one of them and nothing else.
+const COOK_PATH := "/api/cooking/cook"
+const RECIPE_PATH := "/api/cooking/recipe"
+
+# A meal on the fire before it is done: its own picture, faded (_show_fish).
+const MEAL_COOKING_TINT := Color(1.0, 1.0, 1.0, 0.65)
+
+# HAVE AND NEED, in the tooltip's comparison colours: green for an ingredient
+# the bag holds enough of, red for one it is short of - the same two colours
+# that already mean "better" and "worse" over a piece of gear.
+const HAVE_ENOUGH := Color(0.55, 0.85, 0.5)
+const HAVE_SHORT := Color(0.9, 0.45, 0.4)
+
+# The cooking level a meal needs, in the header badge's gold - and greyed, the
+# theme's disabled grey, while yours is below it.
+const LEVEL_OPEN := Color(0.95, 0.85, 0.6)
+const LEVEL_LOCKED := Color(0.5, 0.45, 0.4)
+
+# A meal you cannot cook yet is drawn this much dimmer, so the rows you can
+# cook stand out of a list of nineteen without anything being hidden.
+const LOCKED_ROW := Color(0.62, 0.62, 0.62, 1.0)
+
+# How many meals the list shows before it scrolls. Nineteen rows laid out in
+# full would make a window taller than the screen; four whole ones keep it
+# inside a 720-high one with the fire above them. COUNTED IN ROWS, not pixels,
+# so a bigger text size (Options) shows four bigger rows rather than three and
+# a half - and never more than PanelWindow.scroll_height() lets it.
+const RECIPE_ROWS_SHOWN := 4
+
 
 # =============================================================================
 # NODE REFERENCES
@@ -202,6 +237,13 @@ const HEARTH_LIFT_COOKING := 0.44
 @onready var catch_label: Label = %catchlabel
 @onready var glow: TextureRect = %glow
 
+# THE TWO TABS AND THE MEALS (0.74.0). The tabs are the kill record's: two
+# toggle buttons in a row under the header, the one showing held down.
+@onready var fish_tab: Button = %fishtab
+@onready var recipes_tab: Button = %recipestab
+@onready var recipe_scroll: ScrollContainer = %recipescroll
+@onready var recipe_list: VBoxContainer = %recipelist
+
 
 # =============================================================================
 # STATE
@@ -210,8 +252,20 @@ const HEARTH_LIFT_COOKING := 0.44
 var _firepit: Node = null
 var _player: Node = null
 
-# The raw fish item_id currently selected, or "" for none.
+# The raw fish item_id currently selected, or "" for none. Or a meal's: see
+# _selected_recipe.
 var _selected: String = ""
+
+# TRUE WHEN _selected IS A MEAL (0.74.0), cooked from its recipe rather than a
+# fish off its stack. The run reads both before every cook, so a click on a
+# fish while a meal is on the fire is a switch like any other.
+var _selected_recipe: bool = false
+
+# How many more of the selected meal this run makes. A fish run counts nothing -
+# it cooks until the stack is gone - so this is read only when the selection is
+# a meal: one for Cook, as many as the bag holds the ingredients for, for Cook
+# all.
+var _recipe_left: int = 0
 
 # One request at a time, same guard as the loot panel's _taking. A second cook
 # starting while the first is out would be two claims against a backpack neither
@@ -242,6 +296,17 @@ var _fill_burnt: StyleBox = null
 # The end-of-run fade, so a new fish going on can stop it.
 var _fade: Tween = null
 
+# WHICH TAB IS SHOWING (0.74.0). Kept across closes on purpose: the panel is
+# built once and re-pointed at every fire, so this is "the tab you left it on".
+enum View { FISH, RECIPES }
+var _view: int = View.FISH
+
+# recipe id -> that row's moving parts, for _refresh_recipes(); and the ids in
+# the order the rows were built, so a catalogue whose meals have changed - the
+# suite adding its own - is noticed and the list built again.
+var _recipe_rows: Dictionary = {}
+var _recipe_order: Array = []
+
 
 # =============================================================================
 # LIFECYCLE
@@ -265,6 +330,11 @@ func _ready() -> void:
 	if fish_grid.has_signal("slot_clicked"):
 		if not fish_grid.slot_clicked.is_connected(_on_slot_clicked):
 			fish_grid.slot_clicked.connect(_on_slot_clicked)
+
+	if fish_tab != null and not fish_tab.pressed.is_connected(_set_view):
+		fish_tab.pressed.connect(_set_view.bind(View.FISH))
+	if recipes_tab != null and not recipes_tab.pressed.is_connected(_set_view):
+		recipes_tab.pressed.connect(_set_view.bind(View.RECIPES))
 
 	# THE FIRE IS A DROP TARGET, forwarded rather than scripted. firebox is a
 	# plain Panel, and giving it its own script only to answer two callbacks
@@ -310,6 +380,8 @@ func open_for_firepit(firepit: Node, player: Node) -> void:
 	_firepit = firepit
 	_player = player
 	_selected = ""
+	_selected_recipe = false
+	_recipe_left = 0
 	_running = false
 	_cooking = false
 	_run_id += 1
@@ -321,6 +393,11 @@ func open_for_firepit(firepit: Node, player: Node) -> void:
 	# slots are created at runtime by InventoryContainer.
 	if fish_grid.has_method("set_slot_type"):
 		fish_grid.set_slot_type("lootbag")
+
+	# The meals, and the tab that was showing when the window last closed: a
+	# player cooking stews goes on cooking stews at the next fire.
+	_build_recipe_rows()
+	_show_view(_view)
 
 	_refresh()
 
@@ -352,6 +429,9 @@ func _fit_and_centre() -> void:
 	position saved from the old zero-size window put it). A cooking window
 	belongs to the fire you are standing at, so it opens in front of you; it
 	can still be dragged anywhere while it is open."""
+	# The meals' list measured now it is showing, before the window is
+	# (0.74.0): a list sized while hidden would size the window with it.
+	_fit_recipe_scroll()
 	size = PanelWindow.content_minimum(self)
 	var screen: Vector2 = get_viewport_rect().size
 	position = ((screen - size) * 0.5).floor()
@@ -417,6 +497,8 @@ func _on_close_pressed() -> void:
 	_firepit = null
 	_player = null
 	_selected = ""
+	_selected_recipe = false
+	_recipe_left = 0
 
 
 func _disconnect_firepit_signal() -> void:
@@ -457,6 +539,11 @@ func _refresh() -> void:
 	# set_slot_type has to be re-applied after anything that rebuilds slots.
 	if fish_grid.has_method("set_slot_type"):
 		fish_grid.set_slot_type("lootbag")
+
+	# THE MEALS' COUNTS TOO, from the same backpack: a fish cooked can be the
+	# fish a Fish Skewer was short of, and a Bone Broth cooked is half a
+	# Shadowcap Soup.
+	_refresh_recipes()
 
 	_update_controls()
 
@@ -591,6 +678,11 @@ func _show_fish(item_id: String) -> void:
 		_fade.kill()
 	cook_icon.texture = data.icon
 	cook_icon.modulate = data.icon_tint
+	# A MEAL GOES ON AS ITSELF, FADED (0.74.0). A fish has a raw picture and a
+	# cooked one, and the change between them is the result; a meal has one
+	# picture, so it cooks as a ghost of itself and comes off solid.
+	if data.is_meal():
+		cook_icon.modulate = data.icon_tint * MEAL_COOKING_TINT
 	cook_icon.scale = Vector2.ONE
 	cook_icon.visible = true
 	risk_bar.modulate.a = 1.0
@@ -624,6 +716,9 @@ func _show_result(item_id: String, burnt: bool) -> void:
 		sparks.amount = 22
 	else:
 		var cooked: ItemData = ItemRegistry.get_item(str(raw.cooks_into)) if raw != null else null
+		# A meal comes off the fire as the meal it already was (0.74.0).
+		if raw != null and raw.is_meal():
+			cooked = raw
 		if cooked != null:
 			cook_icon.texture = cooked.icon
 			cook_icon.modulate = cooked.icon_tint
@@ -690,6 +785,7 @@ func _start_run(item_id: String) -> void:
 
 	var switching: bool = _looping and item_id != _selected
 	_selected = item_id
+	_selected_recipe = false
 	_running = true
 	if _looping:
 		# A RUN IS ALREADY ON THE FIRE. The fish on it finishes as it is, and the
@@ -850,12 +946,18 @@ func _burn_chance(data: ItemData, level: int) -> float:
 	# rolling. Both read GameConstants.COOK_BURN_MAX, which exportgamedata.gd
 	# ships to the server - so the label and the roll cannot drift, and editing
 	# the curve is one edit in one file.
-	if data.cook_mastery_level <= data.cook_level:
+	#
+	# A MEAL BURNS ON THE SAME CURVE (0.74.0), from its recipe's level and
+	# mastery: /api/cooking/recipe rolls it "exactly as burn_chance() does for
+	# fish", so this is the same arithmetic with the meal's two numbers.
+	var from: int = data.recipe_level if data.is_meal() else data.cook_level
+	var mastered: int = data.recipe_mastery_level if data.is_meal() else data.cook_mastery_level
+	if mastered <= from:
 		return 0.0
-	if level >= data.cook_mastery_level:
+	if level >= mastered:
 		return 0.0
-	var span: float = float(data.cook_mastery_level - data.cook_level)
-	var into: float = float(level - data.cook_level)
+	var span: float = float(mastered - from)
+	var into: float = float(level - from)
 	var worst: float = GameConstants.COOK_BURN_MAX
 	return clampf(worst * (1.0 - into / span), 0.0, worst)
 
@@ -878,6 +980,7 @@ func _cook_run() -> void:
 		# the fire showed the new one - the bar filling for a fish the server
 		# never saw.
 		var item_id: String = _selected
+		var recipe: bool = _selected_recipe
 		# RE-READ FROM THE BACKPACK EVERY ITERATION rather than counting down a
 		# number captured at the start. The backpack is the server's answer to
 		# the last cook, so it already knows how many are left — and a local
@@ -885,11 +988,17 @@ func _cook_run() -> void:
 		var backpack: Node = _player_backpack()
 		if item_id == "" or backpack == null or not backpack.has_method("get_quantity_of"):
 			break
-		if backpack.get_quantity_of(item_id) <= 0:
+		# A MEAL STOPS WHEN IT HAS MADE AS MANY AS IT WAS ASKED FOR, or when the
+		# bag can no longer make one - read off the bag again, like the fish,
+		# so the count is never a number this panel kept for itself.
+		if recipe:
+			if _recipe_left <= 0 or makeable(ItemRegistry.get_item(item_id), _bag_counts()) <= 0:
+				break
+		elif backpack.get_quantity_of(item_id) <= 0:
 			break
 
 		_show_fish(item_id)
-		var result: String = await _cook_one(item_id)
+		var result: String = await _cook_one(item_id, recipe)
 
 		# PAST AN AWAIT. Four seconds is long enough to close the panel, walk
 		# away, or die - and closing or reopening it makes this a past run.
@@ -904,6 +1013,11 @@ func _cook_run() -> void:
 			_:
 				# Anything else is a refusal that already told the player why.
 				break
+
+		# ONE OFF THE COUNT - unless a click put something else on the fire
+		# while this meal cooked, in which case the count is the new one's.
+		if recipe and _selected_recipe and _selected == item_id:
+			_recipe_left -= 1
 
 		_refresh()
 		_show_result(item_id, result == "burnt")
@@ -927,7 +1041,11 @@ func _cook_run() -> void:
 		else:
 			_flash("Cooked %d." % cooked)
 	_selected = ""
+	_selected_recipe = false
+	_recipe_left = 0
 	_update_badge()
+	# The Stop on a meal's row goes back to Cook all.
+	_refresh_recipes()
 	_end_fire()
 	run_ended.emit()
 
@@ -941,7 +1059,12 @@ func _update_badge() -> void:
 	skill_label.tooltip_text = "Your cooking level is %d" % level
 
 
-func _cook_one(item_id: String) -> String:
+func _cook_one(item_id: String, recipe: bool = false) -> String:
+	# A MEAL TAKES THIS SAME PATH (0.74.0), to its own route: the request names
+	# the recipe and nothing else, and the answer is /api/cooking/cook's - the
+	# bag, the skill, burnt or not - so everything below it is the fish's.
+	# One function rather than a copy beside it, because a copy is the one that
+	# misses the next fix (the 0.56.0 bag-and-skill one below, for instance).
 	if _cooking:
 		return "busy"
 	if not Api.is_logged_in():
@@ -965,10 +1088,10 @@ func _cook_one(item_id: String) -> String:
 	# bar at full instead of the panel sitting blank.
 	var bar: Tween = _run_cook_bar()
 
-	var res: Dictionary = await Api.post("/api/cooking/cook", {
-		"slot": CharacterData.active_character_index,
-		"item_id": item_id,
-	}, COOK_TIMEOUT)
+	var path: String = RECIPE_PATH if recipe else COOK_PATH
+	var body: Dictionary = {"slot": CharacterData.active_character_index}
+	body["recipe_id" if recipe else "item_id"] = item_id
+	var res: Dictionary = await Api.post(path, body, COOK_TIMEOUT)
 
 	# PAST AN AWAIT, and the tween may be dead because the node was freed.
 	if bar != null and is_instance_valid(bar) and bar.is_running():
@@ -1062,3 +1185,432 @@ func _refusal_text(res: Dictionary) -> String:
 		409: return "Your backpack is full."
 		429: return "Slow down."
 		_:   return "That didn't cook."
+
+
+# =============================================================================
+# THE RECIPES VIEW (0.74.0)
+# =============================================================================
+# The owner: cooking should grow past fish, with "meals that combine 2-3
+# ingredients, heal more and give a short buff", and "i want to make recipes
+# people can make with the food also". The second tab lists every meal the
+# catalogue has, by the cooking level it needs: what it takes, with how many of
+# each the bag holds against how many it needs, the level, what it heals and
+# what it adds while it lasts - and Cook, and Cook all.
+#
+# THE FIRE IS STILL THE INTERFACE. A meal goes on as a fish does (_show_fish),
+# comes off cooked or burnt the same way (_show_result), and is cooked by the
+# same loop (_cook_run), one request a meal. Two things differ: the route,
+# /api/cooking/recipe, and that a meal run counts down how many it was asked
+# for (_recipe_left) where a fish run cooks to the end of the stack.
+#
+# THE ROWS ARE A VIEW OF THE BAG, like the fish grid. Nothing moves into this
+# panel: the request names the meal, and the server takes the ingredients and
+# rolls the burn. The have/need counts are read off the backpack the server's
+# last answer drew, again after every meal - so a Bone Broth just cooked is
+# counted at once on the Shadowcap Soup that takes it.
+
+static func meals() -> Array[ItemData]:
+	"""Every meal in the catalogue - an item with a recipe (ItemData.is_meal())
+	- by the cooking level it needs, then by name."""
+	var out: Array[ItemData] = []
+	for data in ItemRegistry.get_all_items():
+		if data != null and data.is_meal():
+			out.append(data)
+	out.sort_custom(func(a: ItemData, b: ItemData) -> bool:
+		if a.recipe_level != b.recipe_level:
+			return a.recipe_level < b.recipe_level
+		return a.display_name < b.display_name)
+	return out
+
+
+static func makeable(meal: ItemData, held: Dictionary) -> int:
+	"""How many of this meal the bag holds the ingredients for: the fewest of any
+	one ingredient's have over need. 0 for a meal that lists none."""
+	if meal == null or meal.recipe_ingredients.is_empty():
+		return 0
+	var most: int = -1
+	for id in meal.recipe_ingredients:
+		var need: int = maxi(int(meal.recipe_ingredients[id]), 1)
+		@warning_ignore("integer_division")
+		var times: int = int(held.get(str(id), 0)) / need
+		most = times if most < 0 else mini(most, times)
+	return maxi(most, 0)
+
+
+static func first_short(meal: ItemData, held: Dictionary) -> String:
+	"""The first ingredient the bag holds too few of, or "" when none is."""
+	if meal == null:
+		return ""
+	for id in meal.recipe_ingredients:
+		if int(held.get(str(id), 0)) < maxi(int(meal.recipe_ingredients[id]), 1):
+			return str(id)
+	return ""
+
+
+static func heal_text(meal: ItemData) -> String:
+	"""What it restores, short: "Heals 45", or "" for a meal that restores
+	nothing."""
+	if meal == null or int(meal.restore_amount) <= 0:
+		return ""
+	match int(meal.restore_target):
+		ItemData.RestoreTarget.HP:
+			return "Heals %d" % int(meal.restore_amount)
+		ItemData.RestoreTarget.MANA:
+			return "Restores %d mana" % int(meal.restore_amount)
+		ItemData.RestoreTarget.STAMINA:
+			return "Restores %d stamina" % int(meal.restore_amount)
+	return ""
+
+
+static func item_name(item_id: String) -> String:
+	"""An ingredient's name, or its id for one this catalogue does not know -
+	asked with has_item(), because get_item() warns and hands back a stand-in."""
+	if ItemRegistry.has_item(item_id):
+		return ItemRegistry.get_item(item_id).display_name
+	return item_id
+
+
+func _bag_counts() -> Dictionary:
+	"""item_id -> how many the backpack holds, every cell of it added up - the
+	same count the server's carry check makes (keys included)."""
+	var out: Dictionary = {}
+	var backpack: Node = _player_backpack()
+	if backpack == null or not backpack.has_method("get_all_stacks"):
+		return out
+	for stack in backpack.get_all_stacks():
+		if stack == null or stack.data == null:
+			continue
+		var id: String = str(stack.data.item_id)
+		out[id] = int(out.get(id, 0)) + int(stack.quantity)
+	return out
+
+
+# ---- the tabs ----------------------------------------------------------------
+
+func _set_view(which: int) -> void:
+	"""A tab pressed: show it, and fit the window to it where it stands.
+
+	WHERE IT STANDS IS READ NOW, before anything moves. The list appearing makes
+	the window's content bigger, and PanelWindow grows a window to its content
+	from its left edge, a frame later - read after that, the middle would
+	already have slid right by half the new width."""
+	var middle: float = position.x + size.x * 0.5
+	var top: float = position.y
+	_show_view(which)
+	if visible:
+		_refit_in_place.call_deferred(middle, top)
+
+
+func _show_view(which: int) -> void:
+	_view = which
+	# BOTH SET EVERY TIME, because a toggle button pressed while already down
+	# would otherwise come up, and a row of tabs with none down says nothing.
+	if fish_tab != null:
+		fish_tab.set_pressed_no_signal(which == View.FISH)
+	if recipes_tab != null:
+		recipes_tab.set_pressed_no_signal(which == View.RECIPES)
+	(fish_grid as Control).visible = which == View.FISH
+	if recipe_scroll != null:
+		recipe_scroll.visible = which == View.RECIPES
+	if which == View.RECIPES:
+		_refresh_recipes()
+
+
+func _refit_in_place(middle: float, top: float) -> void:
+	"""The window as big as what it now holds, its top and its middle where they
+	were. A tab changes how wide the window is, and one that grew from its left
+	edge would walk across the screen a click at a time; one that grew from its
+	middle would move the tabs out from under the pointer that just clicked."""
+	if not is_instance_valid(self) or not visible:
+		return
+	_fit_recipe_scroll()
+	var want: Vector2 = PanelWindow.content_minimum(self)
+	var screen: Vector2 = get_viewport_rect().size
+	var fitted: Rect2 = PanelWindow.fit_to(Rect2(Vector2(floorf(middle - want.x * 0.5), top), want),
+		screen, want)
+	position = fitted.position
+	size = fitted.size
+
+
+func recipe_list_cap() -> float:
+	"""How tall RECIPE_ROWS_SHOWN rows of the list are, as they are drawn now."""
+	if recipe_list == null or recipe_list.get_child_count() == 0:
+		return 0.0
+	var row: float = (recipe_list.get_child(0) as Control).get_combined_minimum_size().y
+	var gap: float = float(recipe_list.get_theme_constant("separation"))
+	return row * RECIPE_ROWS_SHOWN + gap * (RECIPE_ROWS_SHOWN - 1)
+
+
+func _fit_recipe_scroll() -> void:
+	"""The list as tall as its rows, up to RECIPE_ROWS_SHOWN of them, past which
+	it scrolls - and never so tall the window would leave the screen."""
+	if recipe_scroll == null or recipe_list == null:
+		return
+	var height: float = minf(recipe_list.get_combined_minimum_size().y, recipe_list_cap())
+	if is_inside_tree() and recipe_scroll.visible:
+		# THE REST OF THE WINDOW, as PanelWindow.refit_scrolls() measures it:
+		# what the window needs less what the list adds.
+		var rest: float = PanelWindow.content_minimum(self).y - recipe_scroll.get_combined_minimum_size().y
+		height = PanelWindow.scroll_height(height, rest, get_viewport_rect().size.y)
+	if absf(recipe_scroll.custom_minimum_size.y - height) > 0.5:
+		recipe_scroll.custom_minimum_size.y = height
+
+
+# ---- the rows ----------------------------------------------------------------
+
+func _build_recipe_rows() -> void:
+	"""A row a meal, built again only when the catalogue's meals are not the
+	ones the list already shows."""
+	if recipe_list == null:
+		return
+	var list: Array[ItemData] = meals()
+	var ids: Array = []
+	for meal in list:
+		ids.append(meal.item_id)
+	if ids == _recipe_order:
+		return
+	for child in recipe_list.get_children():
+		recipe_list.remove_child(child)
+		child.queue_free()
+	_recipe_rows.clear()
+	_recipe_order = ids
+	for meal in list:
+		recipe_list.add_child(_make_recipe_row(meal))
+
+
+func _label(text: String, font_size: int, colour: Color) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", colour)
+	return label
+
+
+func _icon(texture: Texture2D, tint: Color, side: float) -> TextureRect:
+	var rect := TextureRect.new()
+	rect.texture = texture
+	rect.modulate = tint
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.custom_minimum_size = Vector2(side, side)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return rect
+
+
+func _make_recipe_row(meal: ItemData) -> Control:
+	"""One meal: its picture, its name, what it heals and adds, what it takes
+	with have/need under that, and on the right the level and the buttons.
+
+	BUILT IN CODE, not a scene of its own, for the reason the tooltip's rarity
+	line is: it is nineteen of one small shape, filled from data, and a scene
+	would be a second file to keep in step with the dictionary below."""
+	var row := PanelContainer.new()
+	row.name = "recipe_" + meal.item_id
+	row.theme_type_variation = &"PanelSub"
+	# PASS, so the wheel over a row still scrolls the list it is in.
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side in ["left", "right"]:
+		margin.add_theme_constant_override("margin_" + side, 8)
+	for side in ["top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 5)
+	row.add_child(margin)
+	var line := HBoxContainer.new()
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 10)
+	margin.add_child(line)
+
+	var picture: TextureRect = _icon(meal.icon, meal.icon_tint, 32.0)
+	picture.name = "icon"
+	picture.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_child(picture)
+
+	var middle := VBoxContainer.new()
+	middle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	middle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	middle.add_theme_constant_override("separation", 2)
+	line.add_child(middle)
+	var title: Label = _label(meal.display_name, 14, LEVEL_OPEN)
+	title.name = "name"
+	middle.add_child(title)
+
+	# WHAT IT DOES: the heal, then the buff in its own colour - the colour the
+	# HUD's chip wears while it lasts (FoodBuff.colour_for()).
+	var effects := HBoxContainer.new()
+	effects.name = "effects"
+	effects.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	effects.add_theme_constant_override("separation", 8)
+	middle.add_child(effects)
+	var heal: Label = _label(heal_text(meal), 12, Color(0.9, 0.85, 0.75))
+	heal.name = "heal"
+	effects.add_child(heal)
+	var buff: Label = _label(meal.buff_text(), 12, FoodBuff.colour_for(int(meal.buff_kind)))
+	buff.name = "buff"
+	effects.add_child(buff)
+
+	# WHAT IT TAKES, each ingredient's picture and have/need. A meal that is
+	# itself an ingredient (a Bone Broth in a Shadowcap Soup) is one like any
+	# other: its count is the bag's.
+	var takes := HBoxContainer.new()
+	takes.name = "ingredients"
+	takes.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	takes.add_theme_constant_override("separation", 10)
+	middle.add_child(takes)
+	var counts: Dictionary = {}
+	var cells: Dictionary = {}
+	for id in meal.recipe_ingredients:
+		var key: String = str(id)
+		var cell := HBoxContainer.new()
+		cell.name = "ing_" + key
+		# PASS, NOT IGNORE: the name of what it is is on hover.
+		cell.mouse_filter = Control.MOUSE_FILTER_PASS
+		cell.add_theme_constant_override("separation", 3)
+		var known: bool = ItemRegistry.has_item(key)
+		var part: ItemData = ItemRegistry.get_item(key) if known else null
+		var picture_of: TextureRect = _icon(part.icon if part != null else null,
+			part.icon_tint if part != null else Color.WHITE, 16.0)
+		picture_of.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		cell.add_child(picture_of)
+		var count: Label = _label("", 12, HAVE_SHORT)
+		count.name = "count"
+		cell.add_child(count)
+		takes.add_child(cell)
+		counts[key] = count
+		cells[key] = cell
+
+	var right := VBoxContainer.new()
+	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	right.alignment = BoxContainer.ALIGNMENT_CENTER
+	right.add_theme_constant_override("separation", 4)
+	line.add_child(right)
+	var level: Label = _label("Lv %d" % meal.recipe_level, 12, LEVEL_OPEN)
+	level.name = "level"
+	level.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	# Hover says it in words, so a grey "Lv 40" is never a riddle.
+	level.mouse_filter = Control.MOUSE_FILTER_PASS
+	level.tooltip_text = "Needs cooking level %d" % meal.recipe_level
+	right.add_child(level)
+	var buttons := HBoxContainer.new()
+	buttons.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	buttons.add_theme_constant_override("separation", 4)
+	right.add_child(buttons)
+	var one := Button.new()
+	one.name = "cook"
+	one.text = "Cook"
+	one.focus_mode = Control.FOCUS_NONE
+	one.custom_minimum_size = Vector2(52, 24)
+	one.add_theme_font_size_override("font_size", 12)
+	one.pressed.connect(_on_recipe_pressed.bind(meal.item_id, false))
+	buttons.add_child(one)
+	var every := Button.new()
+	every.name = "cookall"
+	every.text = "Cook all"
+	every.focus_mode = Control.FOCUS_NONE
+	every.custom_minimum_size = Vector2(92, 24)
+	every.add_theme_font_size_override("font_size", 12)
+	every.pressed.connect(_on_recipe_pressed.bind(meal.item_id, true))
+	buttons.add_child(every)
+
+	_recipe_rows[meal.item_id] = {
+		"meal": meal, "row": row, "icon": picture, "name": title, "level": level,
+		"counts": counts, "cells": cells, "cook": one, "cookall": every,
+	}
+	return row
+
+
+func _refresh_recipes() -> void:
+	"""Every row's counts, colours and buttons, from the bag and the level as
+	they are now."""
+	if recipe_list == null or _recipe_rows.is_empty():
+		_fit_recipe_scroll()
+		return
+	var held: Dictionary = _bag_counts()
+	var level: int = _cooking_level()
+	for id in _recipe_rows:
+		var parts: Dictionary = _recipe_rows[id]
+		var meal: ItemData = parts["meal"]
+		var open: bool = level >= meal.recipe_level
+		var can: int = makeable(meal, held)
+		var mine: bool = _running and _selected_recipe and _selected == str(id)
+
+		(parts["level"] as Label).add_theme_color_override("font_color", LEVEL_OPEN if open else LEVEL_LOCKED)
+		(parts["name"] as Label).add_theme_color_override("font_color", LEVEL_OPEN if open else LEVEL_LOCKED)
+		(parts["icon"] as TextureRect).modulate = meal.icon_tint if open else meal.icon_tint * LOCKED_ROW
+
+		for key in parts["counts"]:
+			var need: int = maxi(int(meal.recipe_ingredients[key]), 1)
+			var have: int = int(held.get(key, 0))
+			var count: Label = parts["counts"][key]
+			count.text = "%d/%d" % [have, need]
+			count.add_theme_color_override("font_color", HAVE_ENOUGH if have >= need else HAVE_SHORT)
+			(parts["cells"][key] as Control).tooltip_text = "%s: you have %d, it takes %d" % [item_name(key), have, need]
+
+		# WHY A BUTTON IS GREY, on the button: the level first, because no
+		# amount of shopping gets you past it, then what the bag is short of.
+		var why: String = ""
+		if not open:
+			why = "Needs cooking level %d" % meal.recipe_level
+		elif can <= 0:
+			why = "You are missing %s" % item_name(first_short(meal, held))
+		var cook: Button = parts["cook"]
+		var every: Button = parts["cookall"]
+		cook.disabled = why != "" or mine
+		cook.tooltip_text = why if why != "" else "Cook one %s" % meal.display_name
+		# THE BUTTON THAT STARTED A RUN STOPS IT, the way a second click on the
+		# fish on the fire takes it off.
+		every.disabled = why != "" and not mine
+		if mine:
+			every.text = "Stop"
+			every.tooltip_text = "Stop after the one on the fire"
+		else:
+			every.text = "Cook all (%d)" % can if can > 1 else "Cook all"
+			every.tooltip_text = why if why != "" else "Cook %s %d times, one after another" % [meal.display_name, can]
+	_fit_recipe_scroll()
+
+
+func _on_recipe_pressed(recipe_id: String, every: bool) -> void:
+	if every and _running and _selected_recipe and _selected == recipe_id:
+		_stop_run()
+		_refresh_recipes()
+		return
+	var meal: ItemData = ItemRegistry.get_item(recipe_id)
+	var count: int = makeable(meal, _bag_counts()) if every else 1
+	await _start_recipe(recipe_id, count)
+
+
+func _start_recipe(recipe_id: String, count: int) -> void:
+	"""Put a meal on the fire, `count` times over: _start_run() for a recipe."""
+	if not ItemRegistry.has_item(recipe_id):
+		return
+	var meal: ItemData = ItemRegistry.get_item(recipe_id)
+	if meal == null or not meal.is_meal():
+		return
+
+	# CHECKED HERE ONLY TO EXPLAIN THE REFUSAL, as the fish's level is: the
+	# server checks both again, and its answer is the one that counts.
+	if _cooking_level() < meal.recipe_level:
+		_flash("Needs cooking level %d." % meal.recipe_level)
+		return
+	var short: String = first_short(meal, _bag_counts())
+	if short != "":
+		_flash("You are missing %s." % item_name(short))
+		return
+
+	var switching: bool = _looping and recipe_id != _selected
+	_selected = recipe_id
+	_selected_recipe = true
+	_recipe_left = maxi(count, 1)
+	_running = true
+	if _looping:
+		# A RUN IS ALREADY ON THE FIRE: what is on it finishes, and this is
+		# next - the same as clicking another fish.
+		if switching:
+			_flash("Next: %s" % meal.display_name)
+		_refresh_recipes()
+		return
+
+	_refresh_recipes()
+	await _cook_run()

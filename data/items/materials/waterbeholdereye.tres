@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cl632i872rn73"]
+
+[ext_resource type="Texture2D" uid="uid://lbrwo1n1yk3x" path="res://art/pack/materials/waterbeholdereye.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "waterbeholdereye"
+display_name = "Water Beholder Eye"
+description = "Taken from a Beholder. The crown asks for all seven."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 5000
+tier = 5
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

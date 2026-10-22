@@ -17,4 +17,5 @@ slot_fill_chance = 1.0
 bonus_potion_chance = 0.5
 drops_no_pet = true
 respawn_seconds = 180.0
+material_drops = Array[Dictionary]([{"item_id": "cursedskull", "chance": 0.3, "min": 1, "max": 1}, {"item_id": "amethystore", "chance": 0.35, "min": 1, "max": 2}])
 metadata/_custom_type_script = "uid://bbmcaokoqjh1i"

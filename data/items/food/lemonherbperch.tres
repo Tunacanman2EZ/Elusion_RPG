@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bmru2yylcq574"]
+
+[ext_resource type="Texture2D" uid="uid://bq3rt2n1tsrdc" path="res://art/pack/food/lemonherbperch.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "lemonherbperch"
+display_name = "Lemon Herb Perch"
+description = "Worth more than most people's dinners."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 5200
+tier = 5
+required_level = 22
+type = 0
+droppable = false
+restore_amount = 95
+restore_target = 1
+buff_kind = 3
+buff_amount = 90
+buff_seconds = 1500
+recipe_ingredients = {"rawgoldenperch": 1, "lemon": 1, "wildherb": 1, "cookingoil": 1}
+recipe_level = 48
+recipe_xp = 150
+recipe_mastery_level = 75
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

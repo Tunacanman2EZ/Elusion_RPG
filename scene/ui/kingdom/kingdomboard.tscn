@@ -116,13 +116,65 @@ autowrap_mode = 2
 layout_mode = 2
 theme_type_variation = &"PanelSub"
 
-[node name="youlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/youpanel"]
+[node name="youbox" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/youpanel"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="youlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/youpanel/youbox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "—"
 horizontal_alignment = 1
 autowrap_mode = 2
+
+[node name="patronlabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer/youpanel/youbox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="patronbar" type="ProgressBar" parent="mainpanel/margincontainer/vboxcontainer/youpanel/youbox"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+mouse_filter = 1
+max_value = 1.0
+step = 0.0
+show_percentage = false
+
+[node name="donaterow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/youpanel/youbox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="donateinput" type="LineEdit" parent="mainpanel/margincontainer/vboxcontainer/youpanel/youbox/donaterow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+placeholder_text = "Gold to give"
+
+[node name="donateminimum" type="Label" parent="mainpanel/margincontainer/vboxcontainer/youpanel/youbox/donaterow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+theme_override_font_sizes/font_size = 11
+text = ""
+
+[node name="donatebutton" type="Button" parent="mainpanel/margincontainer/vboxcontainer/youpanel/youbox/donaterow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(92, 30)
+layout_mode = 2
+theme_type_variation = &"ButtonSocket"
+theme_override_font_sizes/font_size = 13
+text = "Donate"
 
 [node name="boardscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer"]
 custom_minimum_size = Vector2(0, 220)

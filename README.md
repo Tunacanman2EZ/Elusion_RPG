@@ -1,6 +1,6 @@
 # Elusion RPG
 
-A top-down 2.5D action RPG built in Godot 4.7 with GDScript, backed by a Flask account service. Four playable classes, six enemy families in forty-three elemental variants, collectable combat pets, fishing and cooking, player-to-player trading over a taxed economy, other players drawn live wherever you are and fighting the same monsters, and a complete run from town to final boss.
+A top-down 2.5D action RPG built in Godot 4.7 with GDScript, backed by a Flask account service. Four playable classes, six enemy families in forty-three elemental variants, collectable combat pets, fishing and cooking with recipes, a smith who tempers gear, player-to-player trading over a taxed economy, other players drawn live wherever you are and fighting the same monsters, and a complete run from town to final boss.
 
 ![The final boss: two independent attack tracks telegraphing and erupting](docs/boss.gif)
 
@@ -171,6 +171,10 @@ Projectiles are released on a specific animation frame rather than at the start 
 ### Gathering that the server owns outright — `src/world/fishingspot.gd`, `src/ui/cooking/cookingscreen.gd`
 
 Fishing and cooking were the first two skills the client cannot lie about, and the pattern they proved now covers all six. The rod and bait are checked, the catch is rolled and the XP granted by the server against items it consumed itself; `PUT /api/character/skills` then *drops every skill it accepts* from whatever the client sends, because a client's next routine sync would otherwise overwrite a grant the server just made. The fishing spot draws its own tell — ripples that fade in by proximity — in `_draw()` rather than using art.
+
+### Recipes, a smith, and an economy steered from the server — `src/ui/cooking/cookingscreen.gd`, `src/ui/smith/smithscreen.gd`, `economyrules/` (API repo)
+
+Monsters drop what fits them - slimes swallow ore, plant monsters drop produce, sprites leave essence, Beholders their eyes - and the server rolls those drops beside the bag, never in place of gear and never with extra gold. Nineteen recipes combine fish, produce and shop staples into meals that heal and give one timed buff, which the server records so that its own combat bounds allow for it. A smith at an anvil in town tempers gear for materials and gold, and the higher tiers need a Royal Certification earned in order, the last asking for an eye from every Beholder. Gold given to the crown buys a title on the kingdom board. The economy's key numbers - tax, shop prices, drop rates, smith costs - live in a server table the owner changes from the GM panel, beside a daily report of where gold comes from and goes, and an hourly ledger check that mails the owner when the books stop adding up.
 
 ### An audit I ran against my own API — `SECURITY_NOTES.md` (API repo)
 

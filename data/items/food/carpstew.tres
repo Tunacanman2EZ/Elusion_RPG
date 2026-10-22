@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://nst5kjn6fvwj"]
+
+[ext_resource type="Texture2D" uid="uid://ctirlw4yv7xf3" path="res://art/pack/food/carpstew.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "carpstew"
+display_name = "Marsh Carp Stew"
+description = "Thick enough to stand a spoon in."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 420
+tier = 2
+required_level = 5
+type = 0
+droppable = false
+restore_amount = 30
+restore_target = 1
+buff_kind = 3
+buff_amount = 25
+buff_seconds = 900
+recipe_ingredients = {"rawmarshcarp": 1, "potato": 1, "fieldonion": 1, "salt": 1}
+recipe_level = 12
+recipe_xp = 42
+recipe_mastery_level = 32
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

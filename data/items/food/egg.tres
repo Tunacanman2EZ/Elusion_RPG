@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://hx6fmcgy3oqs"]
+
+[ext_resource type="Texture2D" uid="uid://c6tedhdl4wc5q" path="res://art/pack/food/egg.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "egg"
+display_name = "Egg"
+description = "A cooking staple from the general store."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 15
+tier = 1
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

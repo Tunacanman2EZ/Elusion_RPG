@@ -54,7 +54,7 @@ extends Control
 
 # The tab titles. Written here rather than taken from the node names, which are
 # lowercase like every other node in the project.
-const TAB_TITLES := ["Account", "Testing", "Server", "World", "Events"]
+const TAB_TITLES := ["Account", "Testing", "Server", "World", "Events", "Economy"]
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
 
 # What each kind of result looks like in the box. Four, because there are four
@@ -78,6 +78,10 @@ var world_tab: WorldTab = null
 # THE EVENTS TAB (0.48.0): the world's events - double XP, more loot, a land
 # made to stir - scheduled and called off (eventstab.gd), added in _ready().
 var events_tab: EventsTab = null
+# THE ECONOMY TAB (0.74.0): where gold comes from and goes, the economy's
+# numbers the owner sets on the server, and the canary's hourly check
+# (economytab.gd), added in _ready().
+var economy_tab: EconomyTab = null
 # PLAYER STATS (0.47.0): the button at the top of the Server tab that opens
 # the owner's Player stats window (statswindow.gd, through the HUD). The
 # owner: "add it in my gm menu as a button somewhere".
@@ -241,6 +245,12 @@ func _ready() -> void:
 			events_tab = tabs.get_node(^"events") as EventsTab
 		events_tab.report = _say
 		events_tab.open_report = func() -> bool: return Api.is_owner and bool(open_window.call("open_event_report", ""))
+		if tabs.get_node_or_null(^"economy") == null:
+			economy_tab = EconomyTab.new()
+			tabs.add_child(economy_tab)
+		else:
+			economy_tab = tabs.get_node(^"economy") as EconomyTab
+		economy_tab.report = _say
 		var server_page: Node = tabs.get_node_or_null(^"server")
 		if server_page != null:
 			stats_button = server_page.get_node_or_null(^"statsbutton") as Button
@@ -699,6 +709,8 @@ func _on_visibility_changed() -> void:
 			await world_tab.refresh()
 		if events_tab != null and is_instance_valid(events_tab) and Api.is_owner:
 			await events_tab.refresh()
+		if economy_tab != null and is_instance_valid(economy_tab) and Api.is_owner:
+			await economy_tab.refresh()
 	else:
 		_disarm()
 

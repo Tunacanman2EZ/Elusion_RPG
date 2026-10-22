@@ -455,6 +455,17 @@ func _use_consumable(slot: InventorySlot) -> void:
 			_container.refetch()
 		return
 
+	# THE MEAL IN FORCE, BEFORE THE HEAL (0.74.0). The server says which buff is
+	# on now that this is eaten - this meal's, the one before it if this was a
+	# potion, or none (null) - and FoodBuff takes it whole. Before the heal on
+	# purpose: a VIGOUR meal lifts max health, and its heal fills the new room
+	# rather than stopping at the old ceiling. An answer from a server without
+	# buffs has no "food_buff" at all, and changes nothing.
+	var answer: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	if answer.has("food_buff"):
+		FoodBuff.adopt(answer.get("food_buff"))
+		_announce_buff(data)
+
 	# The slot can have changed under us across the await - a drag, a sync, a
 	# different item in that cell. Re-read rather than trusting the capture.
 	# The server's bag is drawn either way: the potion is gone from it.
@@ -500,6 +511,11 @@ func _consumable_blocked_reason(data: ItemData) -> String:
 		push_warning("InventoryScreen: %s has no restore_amount set" % data.item_id)
 		return "That does nothing."
 
+	# A MEAL WITH A BUFF IS EATEN FOR THE BUFF AS WELL (0.74.0), so a full bar
+	# is no reason not to: a Mushroom Omelette before a boss is the whole idea.
+	if eaten_for_its_buff(data):
+		return ""
+
 	# "Already full" is the common one, and it is worth answering here rather
 	# than spending a round trip and a potion to be told no.
 	match data.restore_target:
@@ -517,6 +533,20 @@ func _consumable_blocked_reason(data: ItemData) -> String:
 			return "That does nothing."
 
 	return ""
+
+
+static func eaten_for_its_buff(data: ItemData) -> bool:
+	"""A meal that gives a buff: worth eating with every bar full."""
+	return data != null and data.buff_text() != ""
+
+
+func _announce_buff(data: ItemData) -> void:
+	"""The buff a meal just started, said once: "Bone Broth: +45 max health for
+	15 min". Only when the server says the buff in force is this meal's - a
+	potion drunk under a buff starts nothing, and says nothing."""
+	if data == null or not FoodBuff.is_active() or FoodBuff.item_id != str(data.item_id):
+		return
+	_notify("%s: %s" % [data.display_name, data.buff_text()])
 
 
 func _use_currency_pile(slot: InventorySlot) -> void:
@@ -633,6 +663,12 @@ func _use_health_potion(slot: InventorySlot) -> void:
 
 	if "hp" in player and "max_hp" in player:
 		if player.hp >= player.max_hp:
+			# A MEAL EATEN AT FULL HEALTH FOR ITS BUFF (0.74.0): the server has
+			# spent it and started the buff, there is nothing to heal, and the
+			# one comes off the stack like any other use.
+			if eaten_for_its_buff(slot.stack.data):
+				_consume_one_from_stack(slot, slot.stack)
+				return
 			# routed to the player, not the console. These three refusals
 			# used to print, which from the player's side is no feedback at
 			# all — the click did nothing and said nothing. show_notice()

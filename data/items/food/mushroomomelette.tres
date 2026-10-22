@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cigpkjcmabssa"]
+
+[ext_resource type="Texture2D" uid="uid://qxn8ur16nrfy" path="res://art/pack/food/mushroomomelette.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "mushroomomelette"
+display_name = "Mushroom Omelette"
+description = "Snowcaps folded into egg. Better than it sounds."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 480
+tier = 2
+required_level = 5
+type = 0
+droppable = false
+restore_amount = 28
+restore_target = 1
+buff_kind = 1
+buff_amount = 3
+buff_seconds = 900
+recipe_ingredients = {"egg": 2, "snowcap": 1, "cheese": 1}
+recipe_level = 15
+recipe_xp = 48
+recipe_mastery_level = 36
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

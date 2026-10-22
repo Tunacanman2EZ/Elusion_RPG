@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b7j7gq5pfai3v"]
+
+[ext_resource type="Texture2D" uid="uid://eocjg1ytj7vd" path="res://art/pack/food/shadowcapsoup.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "shadowcapsoup"
+display_name = "Shadowcap Soup"
+description = "Dark, salty and faintly humming. Drink it anyway."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 7000
+tier = 5
+required_level = 22
+type = 0
+droppable = false
+restore_amount = 105
+restore_target = 1
+buff_kind = 2
+buff_amount = 10
+buff_seconds = 1500
+recipe_ingredients = {"shadowcap": 2, "bonebroth": 1, "salt": 1}
+recipe_level = 55
+recipe_xp = 175
+recipe_mastery_level = 82
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

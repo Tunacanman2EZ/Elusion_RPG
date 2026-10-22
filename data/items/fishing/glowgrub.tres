@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://ce3ga53hxo7rg"]
+
+[ext_resource type="Texture2D" uid="uid://ry8tdfo0yyte" path="res://art/pack/fishing/glowgrub.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "glowgrub"
+display_name = "Glowgrub"
+description = "Glowing bait. A cast with it rolls three times and keeps the best fish."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 300
+tier = 3
+type = 3
+droppable = false
+bait_rolls = 3
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

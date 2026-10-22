@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b5at88evvbvjm"]
+
+[ext_resource type="Texture2D" uid="uid://dltw7y3ke5343" path="res://art/pack/food/pumpkinpie.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "pumpkinpie"
+display_name = "Pumpkin Pie"
+description = "A whole pumpkin's worth of patience."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 3000
+tier = 4
+required_level = 16
+type = 0
+droppable = false
+restore_amount = 80
+restore_target = 1
+buff_kind = 4
+buff_amount = 70
+buff_seconds = 1200
+recipe_ingredients = {"pumpkin": 1, "flour": 1, "sugar": 1, "egg": 1}
+recipe_level = 44
+recipe_xp = 130
+recipe_mastery_level = 70
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

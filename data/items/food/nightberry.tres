@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://c3bxqdiupyh7h"]
+
+[ext_resource type="Texture2D" uid="uid://dk3lbbop412eh" path="res://art/pack/food/nightberry.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "nightberry"
+display_name = "Nightberry"
+description = "A cooking ingredient. Plant monsters drop it."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 880
+tier = 5
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

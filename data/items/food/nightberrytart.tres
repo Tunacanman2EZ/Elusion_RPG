@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://bd1cti5qy503k"]
+
+[ext_resource type="Texture2D" uid="uid://u26i4mu6p2tm" path="res://art/pack/food/nightberrytart.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "nightberrytart"
+display_name = "Nightberry Tart"
+description = "Best eaten where nobody can see the stain."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 9500
+tier = 5
+required_level = 22
+type = 0
+droppable = false
+restore_amount = 110
+restore_target = 1
+buff_kind = 4
+buff_amount = 110
+buff_seconds = 1800
+recipe_ingredients = {"nightberry": 2, "flour": 1, "sugar": 1, "honey": 1}
+recipe_level = 64
+recipe_xp = 200
+recipe_mastery_level = 90
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

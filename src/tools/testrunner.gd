@@ -333,6 +333,11 @@ func _run_all() -> void:
 	# is the "section that died halfway still reports 0 failed" trap wearing a
 	# different hat. Hence `await _run_all()` in _ready() as well.
 	await _test_the_shopkeeper_waves_once()
+	await _test_the_anvil_stands_by_the_shop()
+	await _test_the_anvil_opens_the_smith()
+	await _test_the_smith_tempers()
+	await _test_the_smith_certifies()
+	await _test_the_board_takes_gifts()
 	await _test_props_block_the_player()
 	await _test_a_lit_fire_opens_cooking()
 	await _test_the_hotbar_holds_items()
@@ -426,6 +431,10 @@ func _run_all() -> void:
 	_test_every_class_stands_in_front_of_a_wall()
 	_test_one_characters_map_is_not_anothers_world()
 	_test_a_broken_map_is_mended_once()
+	_test_the_larder_loads()
+	_test_monsters_drop_what_fits_them()
+	_test_the_store_sells_the_larder()
+	_test_the_export_carries_the_larder()
 	_test_the_welcome_plays_once_a_login()
 	await _test_the_credits()
 	_test_a_character_can_be_deleted()
@@ -471,6 +480,8 @@ func _run_all() -> void:
 	await _test_held_keys_are_let_go()
 	await _test_gifts_are_counted()
 	await _test_coowners_and_their_levels()
+	await _test_economy_rules_on_the_client()
+	await _test_the_gm_panel_economy_tab()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -490,6 +501,10 @@ func _run_all() -> void:
 	_test_the_stats_window_reads_cleanly()
 	await _test_bank_buttons_and_the_cooking_window()
 	await _test_the_fire_shows_the_fish_it_cooks()
+	await _test_the_cooking_window_cooks_meals()
+	await _test_a_meal_buff_works_while_it_lasts()
+	await _test_the_catch_names_its_bait()
+	await _test_a_tooltip_says_what_food_is_for()
 	_test_the_healer_aims_from_its_middle()
 	await _test_monsters_show_who_they_are_after()
 	_test_how_far_they_reach()
@@ -3324,6 +3339,18 @@ func _test_board_says_what_it_is_made_of() -> void:
 	check("and a reused row does not keep the last player's losses",
 		not gold_cell.tooltip_text.contains("400"), gold_cell.tooltip_text)
 
+	# THE GUILD TAG TAKES ITS OWN WIDTH (0.74.0): it clipped with no width of
+	# its own and was given one pixel, so "[ABCD]" drew as a sliver.
+	board._fill_row(built, 1, {"username": "someone", "contributed": 900,
+		"lusions": 0, "deaths": 0, "lost": 0, "guild_tag": "ABCD", "guild": "Test Guild"})
+	var tag_cell: Label = built.get_node("guild")
+	var tag_wide: float = tag_cell.get_theme_font("font").get_string_size(
+		tag_cell.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
+	check("a guild tag on the board asks for the width of its text, and the name is what clips",
+		tag_cell.text.contains("ABCD") and tag_cell.get_minimum_size().x >= tag_wide - 0.5
+		and (built.get_node("names/who") as Label).clip_text,
+		[tag_cell.text, tag_cell.get_minimum_size().x, tag_wide])
+
 	built.free()
 	board.free()
 
@@ -3752,6 +3779,7 @@ const WINDOW_PANELS := [
 	["res://src/ui/party/partypanel.gd", "res://scene/ui/party/partypanel.tscn", "party"],
 	["res://src/ui/players/playerspanel.gd", "res://scene/ui/players/playerspanel.tscn", "players"],
 	["res://src/ui/shop/shopinventory.gd", "res://scene/ui/shop/shopinventory.tscn", "shop"],
+	["res://src/ui/smith/smithscreen.gd", "res://scene/ui/smith/smithscreen.tscn", "smith"],
 	["res://src/ui/staff/staffpanel.gd", "res://scene/ui/staff/staffpanel.tscn", "staff"],
 	["res://src/ui/statsscreen.gd", "res://scene/ui/statsscreen.tscn", "charstats"],
 	["res://src/ui/trade/tradepanel.gd", "res://scene/ui/trade/tradepanel.tscn", "trade"],
@@ -4200,7 +4228,7 @@ func _test_panels_are_windows() -> void:
 			"padding %s, thinnest %s; grip %s, corner %s"
 				% [pad, thinnest, PanelWindow.GRIP, PanelWindow.CORNER])
 
-	check("twenty-six panels are windows - the owner's Lands window (0.50.0) is the twenty-sixth", keys_seen.size() == 26, keys_seen.size())
+	check("twenty-seven panels are windows - the smith's (0.74.0) is the twenty-seventh", keys_seen.size() == 27, keys_seen.size())
 
 	# AND THE TABLE ABOVE IS COMPLETE. It is typed by hand, and the GM panel
 	# became a window without being added to it - every check in this loop then
@@ -9463,6 +9491,528 @@ func _test_one_characters_map_is_not_anothers_world() -> void:
 	WorldMap._save_cache = kept_cache
 	WorldMap._save_dirty = kept_dirty
 
+# =============================================================================
+# THE LARDER AND THE SMITH'S MATERIALS (0.74.0)
+# =============================================================================
+# The owner: "we have a whole lot of materials and ways to expand cooking in
+# clockwork lets get those done", then "Cooking + a smith": monsters drop
+# materials that fit them, meals combine several ingredients, heal more and
+# give a short buff, and the store sells bait and the cooking staples.
+#
+# THE IDS ARE WRITTEN OUT HERE, not read off the folders, because the failure
+# worth catching is an item that is not there: a .tres with a copy-pasted
+# item_id or a bad header is skipped by ItemRegistry without a sound, and a
+# list derived from what loaded would shrink with it and still pass.
+const LARDER_SMITH := ["ironore", "jadeore", "cobaltore", "amethystore", "emberore",
+	"royalgold", "lightessence", "windessence", "iceessence", "wateressence",
+	"earthessence", "fireessence", "darkessence", "oldbone", "cursedskull",
+	"lightbeholdereye", "windbeholdereye", "icebeholdereye", "waterbeholdereye",
+	"earthbeholdereye", "firebeholdereye", "crownedbeholdereye"]
+const LARDER_PRODUCE := ["wildherb", "sunberry", "fieldonion", "potato", "frostleaf",
+	"snowcap", "riverbean", "lemon", "carrot", "chanterelle", "emberpepper", "pumpkin",
+	"shadowcap", "nightberry"]
+const LARDER_STAPLES := ["flour", "salt", "egg", "milk", "cheese", "cookingoil", "honey",
+	"sugar", "spicemix", "rice"]
+# Bait id -> the rolls it gives a cast. The worm is 1.
+const LARDER_BAITS := {"lugworm": 2, "glowgrub": 3}
+const LARDER_MEALS := ["herbbread", "fishskewer", "sunberrytart", "carpstew",
+	"mushroomomelette", "riverbeansoup", "bonebroth", "silverfinpie",
+	"chanterellerisotto", "copperscalecurry", "duskfinchowder", "emberroastpumpkin",
+	"pumpkinpie", "lemonherbperch", "shadowcapsoup", "azuretangsushi", "nightberrytart",
+	"reefclownplatter", "royalbanquet"]
+# Which Beholder drops which eye: the last certificate asks for all seven, so
+# each must fall from its own boss and from no other monster.
+const LARDER_EYES := {"lightboss": "lightbeholdereye", "windboss": "windbeholdereye",
+	"iceboss": "icebeholdereye", "waterboss": "waterbeholdereye",
+	"earthboss": "earthbeholdereye", "fireboss": "firebeholdereye",
+	"boss": "crownedbeholdereye"}
+
+
+func _larder_expected() -> Dictionary:
+	# item_id -> [its art/pack folder, its type, its max stack].
+	var expected: Dictionary = {}
+	for id in LARDER_SMITH:
+		expected[id] = ["materials", ItemData.Type.MATERIAL, 99]
+	for id in LARDER_PRODUCE + LARDER_STAPLES:
+		expected[id] = ["food", ItemData.Type.MATERIAL, 99]
+	for id in LARDER_BAITS:
+		expected[id] = ["fishing", ItemData.Type.MATERIAL, 99]
+	for id in LARDER_MEALS:
+		expected[id] = ["food", ItemData.Type.CONSUMABLE, 20]
+	return expected
+
+
+func _larder_recipe_loops(recipes: Dictionary) -> Array:
+	# Every recipe that needs itself through some chain of others: recipes is
+	# {meal id: {ingredient id: count}}. Depth first, a meal met again while it
+	# is still on the path is the loop. Written here rather than borrowed from
+	# the exporter, so the two are separate answers to the same question.
+	var loops: Array = []
+	var finished: Dictionary = {}
+	for start in recipes:
+		var path: Array = []
+		var on_path: Dictionary = {}
+		var stack: Array = [[start, 0]]
+		while not stack.is_empty():
+			var top: Array = stack[-1]
+			var meal_id: String = String(top[0])
+			if int(top[1]) == 0:
+				if finished.has(meal_id):
+					stack.pop_back()
+					continue
+				path.append(meal_id)
+				on_path[meal_id] = true
+			var needs: Array = (recipes.get(meal_id, {}) as Dictionary).keys()
+			if int(top[1]) < needs.size():
+				var next_id: String = String(needs[int(top[1])])
+				top[1] = int(top[1]) + 1
+				if on_path.has(next_id):
+					loops.append(" -> ".join(PackedStringArray(path.slice(path.find(next_id)) + [next_id])))
+				elif recipes.has(next_id) and not finished.has(next_id):
+					stack.append([next_id, 0])
+				continue
+			finished[meal_id] = true
+			on_path.erase(meal_id)
+			path.pop_back()
+			stack.pop_back()
+	return loops
+
+
+func _larder_canonical(value: Variant) -> String:
+	# One spelling for a value whatever route it took. JSON has no integer type,
+	# so a constant read back out of gamedata.json is all floats where the
+	# GameConstants original is ints, and a key order can differ; both sides go
+	# through the same parse and a sorted stringify before they are compared.
+	return JSON.stringify(JSON.parse_string(JSON.stringify(value)), "", true)
+
+
+func _test_the_larder_loads() -> void:
+	section("LARDER - the 67 new materials, staples, baits and meals load, each with a picture of its own (0.74.0)")
+
+	# THE REGISTRY'S OWN BOOT LINE, as a check. scanned N, loaded M is how a
+	# duplicate id or a bad header shows itself, and only if somebody reads it.
+	var all_items: Array[ItemData] = ItemRegistry.get_all_items()
+	check("the registry loaded every item resource it found",
+		ItemRegistry._item_files_seen == all_items.size(),
+		"scanned %d, loaded %d" % [ItemRegistry._item_files_seen, all_items.size()])
+
+	var expected: Dictionary = _larder_expected()
+	check("the larder is 67 items: 22 for the smith, 14 produce, 10 staples, 2 baits, 19 meals",
+		expected.size() == 67 and LARDER_SMITH.size() == 22 and LARDER_PRODUCE.size() == 14
+		and LARDER_STAPLES.size() == 10 and LARDER_BAITS.size() == 2 and LARDER_MEALS.size() == 19,
+		expected.size())
+
+	var absent: Array = []
+	var wrong_icon: Array = []
+	var wrong_kind: Array = []
+	for id in expected:
+		if not ItemRegistry.has_item(id):
+			absent.append(id)
+			continue
+		var item: ItemData = ItemRegistry.get_item(id)
+		var want: Array = expected[id]
+		var icon_path: String = "res://art/pack/%s/%s.png" % [want[0], id]
+		# THE PNG ITSELF, not only what loads: the import cache keeps serving a
+		# picture whose file is gone, on the one machine that has the cache.
+		if item.icon == null or item.icon.resource_path != icon_path \
+				or item.icon.get_size() != Vector2(16, 16) or not FileAccess.file_exists(icon_path):
+			wrong_icon.append("%s: %s" % [id, item.icon.resource_path if item.icon != null else "no icon"])
+		# Its own file, under its own id: the convention that makes a log line
+		# findable, and the one a copy-pasted .tres breaks first.
+		if item.item_id != id or item.resource_path.get_file() != "%s.tres" % id \
+				or int(item.type) != int(want[1]) or not item.stackable \
+				or item.max_stack != int(want[2]) or item.droppable or item.display_name == "" \
+				or item.description == "" or item.value <= 0:
+			wrong_kind.append(id)
+	check_needs_pack("every one of them is in the registry", absent.is_empty(), absent)
+	check_needs_pack("  each with its icon, 16 x 16, cut to art/pack/<materials|food|fishing>/<id>.png",
+		wrong_icon.is_empty(), wrong_icon)
+	check_needs_pack("  and its type, its stack, a name, a description, a price, and never generic loot",
+		wrong_kind.is_empty(), wrong_kind)
+
+	# NO TWO ITEMS SHARE A PICTURE. The owner's rule is one whole cell of the
+	# Raven Fantasy sheet per icon; two items on one cell is two things a player
+	# cannot tell apart in a bag. Compared by pixels, against every item in the
+	# game, so an old icon reused under a new name is caught as well.
+	var owner_of: Dictionary = {}
+	var shared: Array = []
+	for item in all_items:
+		if item.icon == null:
+			continue
+		var pixels: PackedByteArray = item.icon.get_image().get_data()
+		if owner_of.has(pixels):
+			if expected.has(item.item_id) or expected.has(String(owner_of[pixels])):
+				shared.append("%s and %s" % [owner_of[pixels], item.item_id])
+		else:
+			owner_of[pixels] = item.item_id
+	var anvil: Texture2D = load("res://art/pack/smith/anvil.png") as Texture2D \
+		if ResourceLoader.exists("res://art/pack/smith/anvil.png") \
+			and FileAccess.file_exists("res://art/pack/smith/anvil.png") else null
+	if anvil != null and owner_of.has(anvil.get_image().get_data()):
+		shared.append("the anvil and %s" % owner_of[anvil.get_image().get_data()])
+	check_needs_pack("no new icon is the same picture as any other item's", shared.is_empty(), shared)
+	check_needs_pack("  and the smith's anvil is cut too, 16 x 16 (art/pack/smith/anvil.png)",
+		anvil != null and anvil.get_size() == Vector2(16, 16))
+
+	# ---- the recipes ------------------------------------------------------------
+	var meals: Array[ItemData] = []
+	for id in LARDER_MEALS:
+		if ItemRegistry.has_item(id):
+			meals.append(ItemRegistry.get_item(id))
+	var bad_recipes: Array = []
+	var recipes: Dictionary = {}
+	for meal in meals:
+		recipes[meal.item_id] = meal.recipe_ingredients
+		# "meals that combine 2-3+ ingredients"
+		if not meal.is_meal() or meal.recipe_ingredients.size() < 2:
+			bad_recipes.append("%s takes %d ingredient(s)" % [meal.item_id, meal.recipe_ingredients.size()])
+		for ingredient in meal.recipe_ingredients:
+			var count: Variant = meal.recipe_ingredients[ingredient]
+			if not (ingredient is String) or not ItemRegistry.has_item(String(ingredient)):
+				bad_recipes.append("%s needs '%s', which is no item" % [meal.item_id, ingredient])
+			if typeof(count) != TYPE_INT or int(count) < 1:
+				bad_recipes.append("%s needs %s of %s" % [meal.item_id, str(count), ingredient])
+		if meal.recipe_level < 1 or meal.recipe_mastery_level < meal.recipe_level or meal.recipe_xp <= 0:
+			bad_recipes.append("%s: level %d, mastery %d, xp %d" % [meal.item_id,
+				meal.recipe_level, meal.recipe_mastery_level, meal.recipe_xp])
+	check_needs_pack("every recipe combines two or more real items, at least one of each, and trains cooking",
+		meals.size() == LARDER_MEALS.size() and bad_recipes.is_empty(), bad_recipes)
+	var loops: Array = _larder_recipe_loops(recipes)
+	check_needs_pack("  and no recipe needs itself, however many meals it goes through",
+		not recipes.is_empty() and loops.is_empty(), loops)
+	check("  (the loop finder finds one when it is there, two meals deep and through itself)",
+		_larder_recipe_loops({"a": {"b": 1}, "b": {"salt": 1, "a": 1}}).size() == 1
+		and _larder_recipe_loops({"a": {"a": 1}}).size() == 1
+		and _larder_recipe_loops({"soup": {"broth": 1}, "broth": {"bone": 2}}).is_empty())
+	check_needs_pack("  a meal can be made from another: Shadowcap Soup takes Bone Broth, the Royal Banquet a sushi and a tart",
+		recipes.get("shadowcapsoup", {}).has("bonebroth")
+		and recipes.get("royalbanquet", {}).has("azuretangsushi")
+		and recipes.get("royalbanquet", {}).has("nightberrytart"))
+
+	# ---- what eating one does -------------------------------------------------
+	var no_heal: Array = []
+	var no_buff: Array = []
+	var gated: Array = []
+	var not_more: Array = []
+	for meal in meals:
+		if meal.type != ItemData.Type.CONSUMABLE or meal.restore_target != ItemData.RestoreTarget.HP \
+				or meal.restore_amount <= 0:
+			no_heal.append(meal.item_id)
+		if meal.buff_kind == ItemData.BuffKind.NONE or meal.buff_amount <= 0 or meal.buff_seconds <= 0 \
+				or not meal.buff_text().begins_with("+") or not meal.buff_text().contains(" for "):
+			no_buff.append("%s: '%s'" % [meal.item_id, meal.buff_text()])
+		# ANYONE MAY EAT A MEAL - a cook can sell what they make. The fish keep
+		# their cooking gate; a meal's gate is the character level alone.
+		if meal.required_skill != "":
+			gated.append(meal.item_id)
+		# "heal more": a meal with a fish in it beats that fish cooked alone.
+		for ingredient in meal.recipe_ingredients:
+			var raw: ItemData = ItemRegistry.get_item(String(ingredient)) \
+				if ItemRegistry.has_item(String(ingredient)) else null
+			if raw == null or raw.cooks_into == "" or not ItemRegistry.has_item(raw.cooks_into):
+				continue
+			var cooked: ItemData = ItemRegistry.get_item(raw.cooks_into)
+			if meal.restore_amount <= cooked.restore_amount:
+				not_more.append("%s %d vs %s %d" % [meal.item_id, meal.restore_amount,
+					cooked.item_id, cooked.restore_amount])
+	check_needs_pack("every meal heals", meals.size() == LARDER_MEALS.size() and no_heal.is_empty(), no_heal)
+	check_needs_pack("  and gives a buff that says what it is and how long it lasts", no_buff.is_empty(), no_buff)
+	check_needs_pack("  and needs no cooking level to eat", gated.is_empty(), gated)
+	check_needs_pack("  and a meal with a fish in it heals more than the fish cooked on its own",
+		not_more.is_empty(), not_more)
+
+	# THE WORDS. The same as the tooltip's for the same stat on gear, so a meal
+	# and an amulet that add the same thing say it the same way.
+	var probe := ItemData.new()
+	check("an item with no buff and no recipe says nothing about either, and is not bait",
+		probe.buff_text() == "" and not probe.is_meal() and probe.bait_rolls == 0
+		and probe.buff_kind == ItemData.BuffKind.NONE)
+	var worded: Array = []
+	for row in [[ItemData.BuffKind.MIGHT, 5, 1200, "+5% damage for 20 min"],
+			[ItemData.BuffKind.GUARD, 3, 900, "+3 armour for 15 min"],
+			[ItemData.BuffKind.VIGOUR, 25, 600, "+25 max health for 10 min"],
+			[ItemData.BuffKind.WISDOM, 12, 90, "+12 max mana for 1 min 30 s"],
+			[ItemData.BuffKind.MIGHT, 2, 45, "+2% damage for 45 s"],
+			[ItemData.BuffKind.MIGHT, 0, 600, ""],
+			[ItemData.BuffKind.GUARD, 4, 0, ""]]:
+		var buffed := ItemData.new()
+		buffed.buff_kind = row[0]
+		buffed.buff_amount = int(row[1])
+		buffed.buff_seconds = int(row[2])
+		if buffed.buff_text() != String(row[3]):
+			worded.append("'%s' for '%s'" % [buffed.buff_text(), row[3]])
+	check("  buff_text() reads like the tooltip: \"+5% damage for 20 min\", and nothing for half a buff",
+		worded.is_empty(), worded)
+	var enum_names: Array = ItemData.BuffKind.keys().map(func(key: Variant) -> String: return String(key))
+	check("  and the buff kinds are named in the enum's own order, for the server",
+		GameConstants.BUFF_KINDS == enum_names, [GameConstants.BUFF_KINDS, enum_names])
+
+	# ---- bait ------------------------------------------------------------------
+	var worm: ItemData = ItemRegistry.get_item("fishingworm") if ItemRegistry.has_item("fishingworm") else null
+	var weak_bait: Array = []
+	for id in LARDER_BAITS:
+		var bait: ItemData = ItemRegistry.get_item(id) if ItemRegistry.has_item(id) else null
+		if bait == null or bait.bait_rolls != int(LARDER_BAITS[id]) or worm == null \
+				or bait.bait_rolls <= worm.bait_rolls:
+			weak_bait.append("%s: %s" % [id, str(bait.bait_rolls) if bait != null else "missing"])
+	check_needs_pack("the worm is bait that rolls once", worm != null and worm.bait_rolls == 1,
+		str(worm.bait_rolls) if worm != null else "no worm")
+	check_needs_pack("  and the lugworm and the glowgrub roll more than the worm: 2 and 3",
+		weak_bait.is_empty(), weak_bait)
+
+	# ---- and nothing older changed meaning -------------------------------------
+	# The new fields default to "not a meal, no buff, not bait", so every item
+	# that existed before them is exactly what it was. Only the worm gained one.
+	var changed: Array = []
+	for item in all_items:
+		if expected.has(item.item_id):
+			continue
+		if item.is_meal() or item.buff_kind != ItemData.BuffKind.NONE or item.buff_amount != 0 \
+				or item.buff_seconds != 0 or (item.bait_rolls != 0 and item.item_id != "fishingworm"):
+			changed.append(item.item_id)
+	check_needs_pack("no item from before the larder is a meal, carries a buff, or is bait but the worm",
+		all_items.size() > expected.size() and changed.is_empty(), changed)
+	check("  and a monster with no material_drops in its .tres drops none",
+		EnemyData.new().material_drops.is_empty())
+
+
+func _test_monsters_drop_what_fits_them() -> void:
+	section("LARDER - monsters drop materials that fit them, each a real item at a sane chance (0.74.0)")
+
+	# READ AGAINST THE EXPORT, which needs no art: a material drop is only an id
+	# and three numbers, and gamedata.json is what the server rolls them from.
+	var rows: Dictionary = {}
+	for row in _load_gamedata().get("items", []):
+		if row is Dictionary:
+			rows[String(row.get("item_id", ""))] = row
+	check("gamedata.json lists the items to check against", not rows.is_empty(),
+		"re-run src/tools/exportgamedata.gd")
+
+	var bad: Array = []
+	var loot: Array = []
+	var eyes_from: Dictionary = {}
+	var droppers: int = 0
+	var entries: int = 0
+	var dir := DirAccess.open("res://data/enemies")
+	for file in dir.get_files():
+		if not file.ends_with(".tres"):
+			continue
+		var enemy: EnemyData = load("res://data/enemies/" + file) as EnemyData
+		if enemy == null:
+			continue
+		if not enemy.material_drops.is_empty():
+			droppers += 1
+		for entry in enemy.material_drops:
+			entries += 1
+			var keys: Array = entry.keys()
+			keys.sort()
+			var item_id: String = String(entry.get("item_id", ""))
+			var chance: Variant = entry.get("chance", 0.0)
+			var low: Variant = entry.get("min", 0)
+			var high: Variant = entry.get("max", 0)
+			if keys != ["chance", "item_id", "max", "min"]:
+				bad.append("%s: keys %s" % [enemy.enemy_id, str(keys)])
+			if not rows.has(item_id):
+				bad.append("%s drops '%s', which is no item" % [enemy.enemy_id, item_id])
+			elif bool(rows[item_id].get("droppable", true)) \
+					or (ItemRegistry.has_item(item_id) and ItemRegistry.get_item(item_id).droppable):
+				loot.append(item_id)
+			if typeof(chance) != TYPE_FLOAT or float(chance) <= 0.0 or float(chance) > 1.0:
+				bad.append("%s drops %s at chance %s" % [enemy.enemy_id, item_id, str(chance)])
+			if typeof(low) != TYPE_INT or typeof(high) != TYPE_INT or int(low) < 1 or int(high) < int(low):
+				bad.append("%s drops %s-%s of %s" % [enemy.enemy_id, str(low), str(high), item_id])
+			if item_id.ends_with("beholdereye"):
+				var droppers_of_eye: Array = eyes_from.get(item_id, [])
+				droppers_of_eye.append([enemy.enemy_id, float(chance)])
+				eyes_from[item_id] = droppers_of_eye
+	check("monsters drop materials at all", droppers > 0 and entries > 0, "%d monsters, %d drops" % [droppers, entries])
+	check("  every drop names a real item, at a chance above 0 and at most 1, of at least one and min <= max",
+		bad.is_empty(), bad)
+	check("  and none of them is in the generic loot pool - it falls from the monster it fits, nowhere else",
+		loot.is_empty(), loot)
+	var eyes_wrong: Array = []
+	for boss_id in LARDER_EYES:
+		var eye: String = String(LARDER_EYES[boss_id])
+		var dropped_by: Array = eyes_from.get(eye, [])
+		if dropped_by.size() != 1 or String(dropped_by[0][0]) != String(boss_id) \
+				or not is_equal_approx(float(dropped_by[0][1]), 1.0):
+			eyes_wrong.append("%s: %s" % [eye, str(dropped_by)])
+	check("each Beholder drops its own eye every time, and no other monster drops one",
+		eyes_wrong.is_empty() and eyes_from.size() == LARDER_EYES.size(), eyes_wrong)
+
+
+func _test_the_store_sells_the_larder() -> void:
+	section("LARDER - the general store sells every staple and bait at its value, on shelves of their own (0.74.0)")
+	var store: ShopData = load("res://data/shops/generalstore.tres") as ShopData
+	check("generalstore.tres loads", store != null)
+	if store == null:
+		return
+	var stock: Array[String] = store.stock
+	var wanted: Array = LARDER_STAPLES + LARDER_BAITS.keys()
+	var unsold: Array = wanted.filter(func(id: String) -> bool: return not stock.has(id))
+	check("the store sells all ten staples and both baits", unsold.is_empty(), unsold)
+	# After the fishing items, so the shelves still run potions, fishing, then
+	# the gear by tier - the order _test_the_store_sells_the_next_set holds.
+	var last_rod: int = stock.find("amethystfishingrod")
+	var first_gear: int = stock.find("ironsword")
+	var misplaced: Array = wanted.filter(func(id: String) -> bool:
+		return stock.find(id) <= last_rod or stock.find(id) >= first_gear)
+	check("  placed after the fishing items and before the gear", last_rod >= 0 and misplaced.is_empty(), misplaced)
+
+	# AT ITS VALUE: the till charges value x price_multiplier (and the server's
+	# live multiplier on top), and the server reads the value from the export.
+	var rows: Dictionary = {}
+	for row in _load_gamedata().get("items", []):
+		if row is Dictionary:
+			rows[String(row.get("item_id", ""))] = row
+	var mispriced: Array = []
+	for id in wanted:
+		var row: Dictionary = rows.get(id, {})
+		var own: int = ItemRegistry.get_item(id).value if ItemRegistry.has_item(id) else -1
+		if int(row.get("value", -2)) != own or own <= 0:
+			mispriced.append("%s: .tres %d, export %s" % [id, own, str(row.get("value", "none"))])
+	check("  at its value", is_equal_approx(store.price_multiplier, 1.0), store.price_multiplier)
+	check_needs_pack("  and gamedata.json says the same value as each .tres", mispriced.is_empty(), mispriced)
+
+	# THE SHELVES: bait with the rods, staples on a cooking shelf of their own.
+	# Before that shelf existed the staples fell to "supplies" AFTER the fishing
+	# shelf and the panel opened a second "Potions and supplies" heading.
+	var panel_script: GDScript = load("res://src/ui/shop/shopinventory.gd") as GDScript
+	var shelved_wrong: Array = []
+	for id in LARDER_BAITS:
+		if panel_script.shelf_of(rows.get(id, {"item_id": id})) != "fishing":
+			shelved_wrong.append(id)
+	for id in LARDER_STAPLES:
+		if panel_script.shelf_of(rows.get(id, {"item_id": id})) != "cooking":
+			shelved_wrong.append(id)
+	check("  the baits sit on the fishing shelf and the staples on the cooking shelf", shelved_wrong.is_empty(),
+		shelved_wrong)
+	# The server's catalogue rows carry no bait_rolls; the registry answers.
+	var server_row: Dictionary = {"item_id": "glowgrub", "type_name": "MATERIAL", "tier": 3}
+	check_needs_pack("  and a bait is on the fishing shelf from the server's row too, which has no bait_rolls",
+		panel_script.shelf_of(server_row) == "fishing", panel_script.shelf_of(server_row))
+
+
+func _test_the_export_carries_the_larder() -> void:
+	section("LARDER - gamedata.json carries the recipes, buffs, bait, drops and the smith's numbers (0.74.0)")
+	var data: Dictionary = _load_gamedata()
+	check("data/gamedata.json still parses, at schema 1", not data.is_empty() and int(data.get("schema", 0)) == 1,
+		"re-run src/tools/exportgamedata.gd")
+	if data.is_empty():
+		return
+
+	# EVERY ROW HAS THE NEW FIELDS, a non-meal with its empty answers, so the
+	# server reads them without asking what it is holding first.
+	var rows: Dictionary = {}
+	var shapeless: Array = []
+	for row in data.get("items", []):
+		if not (row is Dictionary):
+			continue
+		var item_id: String = String(row.get("item_id", ""))
+		rows[item_id] = row
+		if typeof(row.get("bait_rolls")) != TYPE_FLOAT or typeof(row.get("buff_kind")) != TYPE_FLOAT \
+				or typeof(row.get("buff_kind_name")) != TYPE_STRING or typeof(row.get("buff_amount")) != TYPE_FLOAT \
+				or typeof(row.get("buff_seconds")) != TYPE_FLOAT or typeof(row.get("recipe")) != TYPE_DICTIONARY:
+			shapeless.append(item_id)
+	check("every item row carries bait_rolls, buff_kind, buff_kind_name, buff_amount, buff_seconds and recipe",
+		not rows.is_empty() and shapeless.is_empty(), shapeless.slice(0, 8))
+	var missing_rows: Array = _larder_expected().keys().filter(func(id: String) -> bool: return not rows.has(id))
+	check("  and all 67 larder items are in it", missing_rows.is_empty(), missing_rows)
+
+	# A MEAL'S ROW IS ITS .tres: the ingredients sorted by id, the three numbers,
+	# and the buff by number and by name.
+	var disagree: Array = []
+	for id in LARDER_MEALS:
+		if not ItemRegistry.has_item(id) or not rows.has(id):
+			continue
+		var meal: ItemData = ItemRegistry.get_item(id)
+		var want_ingredients: Array = []
+		var ingredient_ids: Array = meal.recipe_ingredients.keys()
+		ingredient_ids.sort()
+		for ingredient in ingredient_ids:
+			want_ingredients.append({"item_id": String(ingredient), "quantity": int(meal.recipe_ingredients[ingredient])})
+		var want: Dictionary = {"recipe": {"ingredients": want_ingredients, "level": meal.recipe_level,
+				"xp": meal.recipe_xp, "mastery_level": meal.recipe_mastery_level},
+			"buff_kind": int(meal.buff_kind), "buff_kind_name": GameConstants.BUFF_KINDS[int(meal.buff_kind)],
+			"buff_amount": meal.buff_amount, "buff_seconds": meal.buff_seconds, "bait_rolls": 0,
+			"restore_amount": meal.restore_amount}
+		for key in want:
+			if _larder_canonical(rows[id].get(key)) != _larder_canonical(want[key]):
+				disagree.append("%s.%s" % [id, key])
+	for id in ["fishingworm"] + LARDER_BAITS.keys():
+		if ItemRegistry.has_item(id) and int(rows.get(id, {}).get("bait_rolls", -1)) != ItemRegistry.get_item(id).bait_rolls:
+			disagree.append("%s.bait_rolls" % id)
+	check_needs_pack("  each meal's recipe and buff, and each bait's rolls, are its .tres's (re-run the exporter if not)",
+		disagree.is_empty(), disagree)
+
+	# THE DROPS, row for row against the .tres files.
+	var enemy_rows: Dictionary = {}
+	for row in data.get("enemies", []):
+		if row is Dictionary:
+			enemy_rows[String(row.get("enemy_id", ""))] = row
+	var stale_drops: Array = []
+	var dir := DirAccess.open("res://data/enemies")
+	for file in dir.get_files():
+		if not file.ends_with(".tres"):
+			continue
+		var enemy: EnemyData = load("res://data/enemies/" + file) as EnemyData
+		if enemy == null:
+			continue
+		var row: Dictionary = enemy_rows.get(enemy.enemy_id, {})
+		if not row.has("material_drops") or _larder_canonical(row["material_drops"]) != _larder_canonical(enemy.material_drops):
+			stale_drops.append(enemy.enemy_id)
+	check("  every enemy row carries its material_drops, [] for none, as its .tres has them",
+		not enemy_rows.is_empty() and stale_drops.is_empty(), stale_drops)
+
+	# THE SMITH'S NUMBERS, exactly as GameConstants has them.
+	var consts: Dictionary = data.get("constants", {})
+	var unlike: Array = []
+	for pair in [["temper_step", GameConstants.TEMPER_STEP], ["temper_cap", GameConstants.TEMPER_CAP],
+			["temper_gold_rate", GameConstants.TEMPER_GOLD_RATE], ["temper_costs", GameConstants.TEMPER_COSTS],
+			["certifications", GameConstants.CERTIFICATIONS], ["patron_titles", GameConstants.PATRON_TITLES],
+			["donation_minimum", GameConstants.DONATION_MINIMUM], ["buff_kinds", GameConstants.BUFF_KINDS]]:
+		if not consts.has(pair[0]) or _larder_canonical(consts[pair[0]]) != _larder_canonical(pair[1]):
+			unlike.append(pair[0])
+	check("  and constants carry the smith, the certificates, the patrons and the buff kinds as GameConstants has them",
+		unlike.is_empty(), unlike)
+	var exporter: String = FileAccess.get_file_as_string("res://src/tools/exportgamedata.gd")
+	var unwritten: Array = ["bait_rolls", "buff_kind", "buff_kind_name", "buff_amount", "buff_seconds", "recipe",
+		"material_drops", "temper_step", "temper_cap", "temper_gold_rate", "temper_costs", "certifications",
+		"patron_titles", "donation_minimum", "buff_kinds"].filter(
+			func(key: String) -> bool: return not exporter.contains("\"%s\":" % key))
+	check("  because the exporter writes every one of them", unwritten.is_empty(), unwritten)
+
+	# AND THE NUMBERS MAKE SENSE TOGETHER. Tempering stops short of a Perfect;
+	# every material a temper or a certificate takes is a real item; and the
+	# rank a tier needs is the lowest rank that reaches it.
+	check("tempering is capped below a Perfect, so a Perfect is only ever found",
+		GameConstants.TEMPER_STEP >= 1 and GameConstants.TEMPER_CAP > 100
+		and GameConstants.TEMPER_CAP < GameConstants.QUALITY_PERFECT, GameConstants.TEMPER_CAP)
+	var unknown: Array = []
+	var ladder: Array = []
+	for cost in GameConstants.TEMPER_COSTS:
+		for material in cost["materials"]:
+			if not rows.has(String(material["item_id"])):
+				unknown.append(material["item_id"])
+		var needs: int = int(cost["certification"])
+		var reaches: int = 2
+		if needs > 0:
+			reaches = int(GameConstants.CERTIFICATIONS[needs - 1]["max_tier"])
+		var below: int = 0 if needs <= 1 else int(GameConstants.CERTIFICATIONS[needs - 2]["max_tier"])
+		if int(cost["tier"]) > reaches or (needs > 0 and int(cost["tier"]) <= below):
+			ladder.append("tier %d needs rank %d" % [int(cost["tier"]), needs])
+	for cert in GameConstants.CERTIFICATIONS:
+		for material in cert["materials"]:
+			if not rows.has(String(material["item_id"])):
+				unknown.append(material["item_id"])
+	check("  every temper and certificate takes real items", unknown.is_empty(), unknown)
+	check("  and each tier needs the lowest rank that reaches it", ladder.is_empty(), ladder)
+	var royal: Array = (GameConstants.CERTIFICATIONS[-1]["materials"] as Array).map(
+		func(material: Dictionary) -> String: return String(material["item_id"]))
+	check("  the Royal Smith asks for one eye of every Beholder",
+		LARDER_EYES.values().all(func(eye: String) -> bool: return royal.has(eye)), royal)
+
+
 func _test_a_broken_map_is_mended_once() -> void:
 	section("WORLD MAP - a saved map that cannot be read is replaced in the save, so it warns once and not at every login (0.73.1)")
 	var kept_seen: Dictionary = WorldMap._seen.duplicate(true)
@@ -11341,8 +11891,9 @@ func _test_the_store_sells_the_next_set() -> void:
 		var shelf: String = panel_script.shelf_of(exported_items.get(id, {}))
 		if shelves.is_empty() or shelves[-1] != shelf:
 			shelves.append(shelf)
-	check("the stock runs potions, fishing, then iron, jade, cobalt, amethyst, each once",
-		shelves == ["supplies", "fishing", "gear 1", "gear 2", "gear 3", "gear 4"], shelves)
+	# The cooking staples (0.74.0) have a shelf of their own, after the fishing.
+	check("the stock runs potions, fishing, cooking, then iron, jade, cobalt, amethyst, each once",
+		shelves == ["supplies", "fishing", "cooking", "gear 1", "gear 2", "gear 3", "gear 4"], shelves)
 
 	# EVERY POTION, TINY TO GREATER (0.25.4). The owner: "need to unlock all of
 	# the potions we set up" - the large and greater ones were drops only.
@@ -11357,10 +11908,12 @@ func _test_the_store_sells_the_next_set() -> void:
 
 	# FISHING: the worm and every rod but ember, decided by the owner on day 1.
 	# Only the iron rod could be had before, and worms dropped one at a time.
+	# The better baits joined them in 0.74.0 ("bait and supplies from the shop").
 	var fishing: Array = stock.filter(func(id: String) -> bool:
 		return panel_script.shelf_of(exported_items.get(id, {"item_id": id})) == "fishing")
-	check("the fishing shelf has the worm and the iron to amethyst rods, and no ember rod",
-		fishing == ["fishingworm", "ironfishingrod", "jadefishingrod", "cobaltfishingrod", "amethystfishingrod"],
+	check("the fishing shelf has the worm, the iron to amethyst rods, the lugworm and the glowgrub, and no ember rod",
+		fishing == ["fishingworm", "ironfishingrod", "jadefishingrod", "cobaltfishingrod", "amethystfishingrod",
+			"lugworm", "glowgrub"],
 		fishing)
 	var pond: Node = (load("res://scene/interactables/fishingspot.tscn") as PackedScene).instantiate()
 	check("  the shelf's bait is the pond's", panel_script.FISHING_BAIT_ID == str(pond.bait_item_id),
@@ -17564,6 +18117,419 @@ func _test_gifts_are_counted() -> void:
 	print("  gifts: money in the give lines, older servers, What I've given, nothing yet, an old server")
 
 
+# THE ECONOMY'S NUMBERS ON THE CLIENT (0.74.0). The owner: "Economy numbers you
+# can change without shipping ... Today, changing the trade tax or a price
+# means a new version." The server holds them (the API's economyrules/,
+# test_economyrules.py); these hold the game's half: the EconomyRules autoload
+# reads them once a login, falls back to the catalogue's own, and the shop
+# window draws with them.
+func _test_economy_rules_on_the_client() -> void:
+	section("ECONOMY RULES - the server's numbers on the client, and the shop")
+	var rules_script: GDScript = load("res://src/systems/economyrules.gd") as GDScript
+	var store: ShopData = load("res://data/shops/generalstore.tres") as ShopData
+	var usual: Dictionary = rules_script.catalogue_numbers()
+	check("the catalogue's four: the general store's markup and buy-back, the kingdom's tax and floor",
+		usual == {"shop_price_multiplier": float(store.price_multiplier), "shop_sell_multiplier": float(store.sell_multiplier),
+			"trade_tax_rate": float(GameConstants.KINGDOM_TAX_RATE), "trade_tax_minimum": float(GameConstants.KINGDOM_TAX_MINIMUM)},
+		usual)
+	check("  what the server sends is believed only inside its bounds, and only as numbers",
+		rules_script.checked({"shop_price_multiplier": 1.5, "shop_sell_multiplier": 0.9, "trade_tax_rate": "0.1",
+			"trade_tax_minimum": 3, "gold_from_nowhere": 2.0}) == {"shop_price_multiplier": 1.5, "trade_tax_minimum": 3.0}
+		and rules_script.checked("not a dictionary") == {} and rules_script.checked({"trade_tax_rate": NAN}) == {})
+	check("the server's arithmetic: up for a price, at least 1, down for a payment, the float's dust off",
+		rules_script.price_for(100, 1.1) == 110 and rules_script.price_for(0, 1.0) == 1
+		and rules_script.pays_for(400, 0.05) == 20 and rules_script.pays_for(19, 0.05) == 0)
+	check("  and the tax: 5% rounded up, the floor under it, nothing on nothing",
+		rules_script.tax_for(1000, 0.05, 1) == 50 and rules_script.tax_for(10, 0.05, 1) == 1
+		and rules_script.tax_for(10, 0.05, 3) == 3 and rules_script.tax_for(0, 0.5, 9) == 0)
+	check("  a share in words: 5%, 150%, 12.5%", rules_script.percent_text(0.05) == "5%"
+		and rules_script.percent_text(1.5) == "150%" and rules_script.percent_text(0.125) == "12.5%")
+
+	# --- THE HOLDER ---------------------------------------------------------------
+	var kept_fetch: Callable = EconomyRules.fetch
+	var kept_token: String = Api.token
+	EconomyRules.forget()
+	check("nothing read: the catalogue's numbers, and none of them is the owner's",
+		is_equal_approx(EconomyRules.number("shop_price_multiplier"), float(store.price_multiplier))
+		and EconomyRules.buy_price(200) == rules_script.price_for(200, float(store.price_multiplier))
+		and EconomyRules.trade_tax(1000) == rules_script.tax_for(1000, GameConstants.KINGDOM_TAX_RATE, GameConstants.KINGDOM_TAX_MINIMUM)
+		and not EconomyRules.differs("shop_price_multiplier"))
+	var asked: Array = []
+	var answer: Array = [{"ok": true, "status": 200, "data": {"rules": {"shop_price_multiplier": 1.5,
+		"shop_sell_multiplier": 0.1, "trade_tax_rate": 0.2, "trade_tax_minimum": 5}}}]
+	EconomyRules.fetch = func(path: String) -> Dictionary:
+		asked.append(path)
+		return answer[0]
+	var heard: Array = []
+	var on_changed := func() -> void: heard.append(true)
+	EconomyRules.changed.connect(on_changed)
+	Api.token = "suite-economy-token"
+	EconomyRules.ensure()
+	await get_tree().process_frame
+	check("a login reads them once, from GET /api/economy/rules", asked == ["/api/economy/rules"], asked)
+	check("  and the game draws with them: 150% prices, 10% buy-back, 20% tax with a floor of 5",
+		EconomyRules.buy_price(200) == 300 and EconomyRules.sell_price(400) == 40 and EconomyRules.trade_tax(1000) == 200
+		and EconomyRules.trade_tax(10) == 5 and EconomyRules.differs("shop_price_multiplier"))
+	check("  said with `changed`, so a window can redraw", heard.size() == 1, heard.size())
+	EconomyRules.ensure()
+	await get_tree().process_frame
+	check("  asked again in the same login: not read again", asked.size() == 1, asked)
+	answer[0] = {"ok": false, "status": 0, "error": "unreachable"}
+	Api.token = "suite-economy-token-2"
+	await EconomyRules.refresh()
+	check("a server that cannot be reached leaves what was held", asked.size() == 2
+		and is_equal_approx(EconomyRules.number("shop_price_multiplier"), 1.5))
+	EconomyRules.forget()
+	answer[0] = {"ok": false, "status": 404, "error": "Not found."}
+	await EconomyRules.refresh()
+	check("  and a server from before them (404) is the catalogue's numbers - the game as it was",
+		is_equal_approx(EconomyRules.number("shop_price_multiplier"), float(store.price_multiplier))
+		and is_equal_approx(EconomyRules.number("trade_tax_rate"), GameConstants.KINGDOM_TAX_RATE))
+	EconomyRules.ensure()
+	await get_tree().process_frame
+	check("  and is not asked again for the same 404 this login", asked.size() == 3, asked)
+	answer[0] = {"ok": true, "status": 200, "data": {"rules": {"shop_price_multiplier": 99.0, "trade_tax_rate": 0.1}}}
+	Api.token = "suite-economy-token-3"
+	await EconomyRules.refresh()
+	check("a number outside the server's own bounds is not believed; the rest are",
+		is_equal_approx(EconomyRules.number("shop_price_multiplier"), float(store.price_multiplier))
+		and is_equal_approx(EconomyRules.number("trade_tax_rate"), 0.1))
+	EconomyRules._on_identity_changed("", "player")
+	check("signed out: back to the catalogue's numbers", EconomyRules.numbers.is_empty()
+		and is_equal_approx(EconomyRules.number("trade_tax_rate"), GameConstants.KINGDOM_TAX_RATE))
+	var api_src: String = _code_src("res://src/systems/economyrules.gd")
+	check("  and a login is heard from Api's identity, with a token", api_src.contains("Api.identity_changed.connect(")
+		and _func_body(api_src, "func _on_identity_changed(").contains("Api.token != \"\""))
+
+	# --- THE SHOP WINDOW -----------------------------------------------------------
+	var bag := InventoryContainer.new()
+	bag.is_carry = true
+	add_child(bag)
+	bag.load_save_array([{"item_id": "tinyhealthpotion", "quantity": 2}])
+	var panel: Node = (load("res://scene/ui/shop/shopinventory.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	panel.inventory_override = bag
+	panel.shop_id = "generalstore"
+	var potion: ItemData = ItemRegistry.get_item("tinyhealthpotion")
+	panel.show_catalogue({"shop_id": "generalstore", "display_name": "General Store", "price_multiplier": 1.5,
+		"sell_multiplier": 0.1, "stock": [
+			{"item_id": "tinyhealthpotion", "display_name": "Tiny Health Potion", "price": 333, "tier": 1,
+				"type_name": "CONSUMABLE"},
+			{"item_id": "tinymanapotion", "display_name": "Tiny Mana Potion", "tier": 1, "type_name": "CONSUMABLE"}],
+		"sell_prices": {"tinyhealthpotion": 20}})
+	var notice: String = panel.notice_label.text
+	check("the shelf says when the owner has the prices away from the usual",
+		notice == "Prices today: 150% of the usual.", notice)
+	check("  and the store's answer keeps the holder current: its two multipliers",
+		is_equal_approx(EconomyRules.number("shop_price_multiplier"), 1.5)
+		and is_equal_approx(EconomyRules.number("shop_sell_multiplier"), 0.1))
+	var shop_script: Variant = panel.get_script()
+	# 333, not the 300 its value at 150% would be: the till's own number wins.
+	check("a row's price is the server's own when it sent one",
+		shop_script.row_price({"item_id": "tinyhealthpotion", "price": 333}) == 333
+		and shop_script.row_price({"item_id": "tinyhealthpotion", "price": 333}, true) == 0)
+	var mana: ItemData = ItemRegistry.get_item("tinymanapotion")
+	# THE REAL POTIONS (0.74.0, found at the merge in a clone without the art
+	# pack): their .tres name pack icons, so without the pack ItemRegistry has
+	# no such items and these two are the pack's to judge.
+	check_needs_pack("  and for a row without one, its value at the markup in force, the server's way",
+		potion != null and mana != null and shop_script.row_price({"item_id": "tinymanapotion"})
+		== rules_script.price_for(mana.value if mana != null else 0, 1.5), shop_script.row_price({"item_id": "tinymanapotion"}))
+	var drawn: Array[String] = []
+	for row in panel.stock_list.get_children():
+		var label: Node = row.find_child("price", true, false)
+		if label is Label:
+			drawn.append((label as Label).text)
+	check_needs_pack("  and the shelf draws both", mana != null
+		and drawn == ["333 g", "%s g" % GameConstants.commas(rules_script.price_for(mana.value if mana != null else 0, 1.5))],
+		drawn)
+	panel.set_mode("sell")
+	await get_tree().process_frame
+	# The Sell list needs something in the bag the shop will buy - the real
+	# potion, which a clone without the art pack does not have.
+	check_needs_pack("the Sell list's share is the one in force, in words: 10%",
+		panel.notice_label.text == "The shop pays 10% of what things are worth.", panel.notice_label.text)
+	EconomyRules.adopt({"shop_sell_multiplier": 0.2})
+	panel.show_catalogue({"display_name": "General Store", "stock": [], "sell_prices": {"tinyhealthpotion": 40}})
+	check_needs_pack("  and for an answer without one, the holder's",
+		panel.notice_label.text == "The shop pays 20% of what things are worth.", panel.notice_label.text)
+	panel.set_mode("buy")
+	panel.show_catalogue({"shop_id": "generalstore", "display_name": "General Store", "price_multiplier": 1.0,
+		"sell_multiplier": 0.05, "stock": [{"item_id": "tinyhealthpotion", "display_name": "Tiny Health Potion",
+			"price": 200}]})
+	check("the usual prices: the shelf says nothing about them", panel.notice_label.text == "", panel.notice_label.text)
+	check("the shop reads the rules when it opens, if the login did not",
+		_func_body(_code_src("res://src/ui/shop/shopinventory.gd"), "func open_for_shop(").contains("EconomyRules.ensure()"))
+	panel.queue_free()
+	bag.queue_free()
+	EconomyRules.changed.disconnect(on_changed)
+	EconomyRules.forget()
+	EconomyRules.fetch = kept_fetch
+	Api.token = kept_token
+	await get_tree().process_frame
+
+
+# THE ECONOMY TAB (0.74.0). The owner's "max power" economy, on the GM panel:
+# "A daily report of where gold comes from and where it goes, by source", the
+# numbers "you could adjust ... in a minute", and the canary that "would tell
+# you the same day if gold or lusions appear or vanish without being
+# recorded". The server decides all three (test_goldflow.py,
+# test_economyrules.py, test_canary.py); these hold what the tab shows and
+# sends, against stand-in servers.
+func _test_the_gm_panel_economy_tab() -> void:
+	section("ECONOMY TAB - the gold flow, the economy's numbers and the canary on the GM panel")
+	var was_owner: bool = Api.is_owner
+	var was_role: String = Api.role
+	Api.is_owner = true
+	Api.role = "owner"
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var tabs: TabContainer = gm.get_node_or_null("%ownertabs") as TabContainer
+	var tab: EconomyTab = gm.get("economy_tab") as EconomyTab
+	check("the GM panel has an Economy tab, after Events",
+		tabs != null and tab != null and tab.get_parent() == tabs and tabs.get_tab_title(tab.get_index()) == "Economy"
+		and tabs.get_tab_title(tab.get_index() - 1) == "Events")
+	if tabs == null or tab == null:
+		gm.queue_free()
+		Api.is_owner = was_owner
+		Api.role = was_role
+		return
+	tabs.current_tab = tab.get_index()
+	var widest: float = 0.0
+	for which in ["flow", "rules", "canary"]:
+		tab.show_page(which)
+		await get_tree().process_frame
+		widest = maxf(widest, PanelWindow.content_minimum(gm).x)
+	check("  and every page of it fits the panel's drawn width (370) - the GM panel is narrow (%d)" % widest,
+		widest <= 370.0, widest)
+	check("  three pages, one at a time, and nothing in them scrolls (an OptionButton's own list aside)",
+		tab.find_children("*", "ScrollContainer", true, false).filter(func(n: Node) -> bool:
+			var up: Node = n.get_parent()
+			while up != null and up != tab:
+				if up is PopupMenu:
+					return false
+				up = up.get_parent()
+			return true).is_empty()
+		and tab.pages["canary"].visible and not tab.pages["flow"].visible and not tab.pages["rules"].visible
+		and tab.page_buttons["canary"].button_pressed and not tab.page_buttons["flow"].button_pressed,
+		[tab.pages["canary"].visible, tab.pages["flow"].visible, tab.page_buttons["canary"].button_pressed])
+	tab.show_page("flow")
+	check("the panel reads it when it opens, for the owner and a co-owner (is_owner)",
+		_func_body(_code_src("res://src/ui/owner/ownerpanel.gd"), "func _on_visibility_changed(").contains(
+			"economy_tab.refresh()"))
+
+	var now: int = int(Time.get_unix_time_from_system())
+	var today: int = now - now % 86400
+	var flow_days: Array = []
+	for i in 7:
+		var minted: int = [100, 0, 400, 200, 150, 350, 300][i]
+		var burned: int = [50, 0, 100, 150, 0, 200, 100][i]
+		flow_days.append({"day": Time.get_date_string_from_unix_time(today - (6 - i) * 86400), "start": today - (6 - i) * 86400,
+			"minted": minted, "burned": burned, "net": minted - burned, "reasons": {}})
+	var flow_view: Variant = JSON.parse_string(JSON.stringify({"days": 7, "from": today - 6 * 86400, "now": now,
+		"gold": {"days": flow_days, "minted": 1500, "burned": 600, "net": 900,
+			"reasons": [{"reason": "pile", "minted": 1200, "burned": 0, "net": 1200, "rows": 40},
+				{"reason": "kingdom_tax", "minted": 0, "burned": 400, "net": -400, "rows": 8},
+				{"reason": "shop_sell", "minted": 300, "burned": 0, "net": 300, "rows": 5},
+				{"reason": "shop_buy", "minted": 0, "burned": 200, "net": -200, "rows": 2}],
+			"in_world": {"carried": 100000, "banked": 23456, "total": 123456}},
+		"lusions": {"days": [], "minted": 30, "burned": 25, "net": 5, "reasons": [], "in_world": {"total": 1234}}}))
+	var rule_rows: Array = [
+		{"key": "trade_tax_rate", "value": 0.05, "default": 0.05, "min": 0.0, "max": 0.5, "whole": false,
+			"about": "Share of a trade's value burned as the kingdom tax.", "set": false, "updated_at": null, "updated_by": ""},
+		{"key": "trade_tax_minimum", "value": 1.0, "default": 1.0, "min": 1.0, "max": 10000.0, "whole": true,
+			"about": "The smallest kingdom tax a taxed trade pays, in gold.", "set": false, "updated_at": null, "updated_by": ""},
+		{"key": "shop_price_multiplier", "value": 1.25, "default": 1.0, "min": 0.25, "max": 4.0, "whole": false,
+			"about": "The general store's prices, times the item's value.", "set": true, "updated_at": now - 60,
+			"updated_by": "Tunacan"}]
+	var rules_view: Variant = JSON.parse_string(JSON.stringify({"rules": rule_rows, "can_change": true,
+		"cache_seconds": 15, "changes": [{"at": now - 60, "key": "shop_price_multiplier", "old_value": null,
+			"new_value": 1.25, "by": "Tunacan"}]}))
+	var canary_view: Variant = JSON.parse_string(JSON.stringify({"checked_at": now - 720, "ok": true, "failures": [],
+		"checks": [{"name": "gold conservation (ledger == held)", "ok": true, "detail": "recorded 5, held 5, drift 0"}],
+		"age_seconds": 720, "stale": false, "mail": "already told"}))
+	var asked: Array = []
+	var views: Dictionary = {"flow": {"ok": true, "status": 200, "data": flow_view},
+		"rules": {"ok": true, "status": 200, "data": rules_view}, "canary": {"ok": true, "status": 200, "data": canary_view}}
+	tab.fetch = func(path: String) -> Dictionary:
+		asked.append(path)
+		return views["flow" if path.begins_with(EconomyTab.FLOW_PATH) else ("rules" if path == EconomyTab.RULES_PATH else "canary")]
+	var sent: Array = []
+	var check_answer: Array = [{"ok": true, "status": 200, "data": {"checked_at": now, "ok": true, "failures": [],
+		"checks": []}}]
+	tab.send = func(path: String, body: Dictionary) -> Dictionary:
+		sent.append([path, body])
+		return check_answer[0]
+	var put: Array = []
+	var put_answer: Array = [{}]
+	tab.put_request = func(path: String, body: Dictionary) -> Dictionary:
+		put.append([path, body])
+		return put_answer[0]
+	await tab.refresh()
+	check("opened, it reads the flow (a week), the rules and the canary",
+		asked == ["/api/owner/economy/flow?days=7", "/api/owner/economy/rules", "/api/owner/economy/canary"], asked)
+	# FULL, NOT EMPTY: the panel's own layout test measures the tabs before
+	# anything is read; filled, every page must still fit the drawn window,
+	# 370 by 626, so reading the server never resizes it under the mouse.
+	for key in tab.pages:
+		(tab.pages[key] as Control).visible = false
+	await get_tree().process_frame
+	var without_it: float = tabs.get_combined_minimum_size().y
+	# THE BUSIEST FLOW THERE IS: every number in the millions and more
+	# sources and sinks than a line names, so every line wraps as far as it can.
+	var busy: Dictionary = (flow_view as Dictionary).duplicate(true)
+	busy["gold"]["in_world"] = {"carried": 41288012, "banked": 109341077, "total": 150629089}
+	busy["gold"]["minted"] = 29550123
+	busy["gold"]["burned"] = 27500456
+	busy["gold"]["net"] = 2049667
+	busy["gold"]["reasons"] = []
+	for reason in ["royal_certification", "smith_temper", "kingdom_tax", "shop_buy", "revive", "death"]:
+		busy["gold"]["reasons"].append({"reason": reason, "minted": 0, "burned": 1234567, "rows": 9})
+	for reason in ["shop_sell", "staff_gold", "pile", "opening_balance", "dupe_pet"]:
+		busy["gold"]["reasons"].append({"reason": reason, "minted": 2345678, "burned": 0, "rows": 9})
+	busy["lusions"] = {"minted": 123456, "burned": 234567, "in_world": {"total": 3456789}}
+	tab.show_flow(busy)
+	tab._say_here("This server does not have the canary's Check now yet (404). Update the server, then Refresh.")
+	var filled: Array = []
+	for which in ["flow", "rules", "canary"]:
+		tab.show_page(which)
+		await get_tree().process_frame
+		filled.append(Vector2(PanelWindow.content_minimum(gm).x, tabs.get_combined_minimum_size().y))
+	tab.show_page("flow")
+	tab.show_flow(flow_view)
+	tab._say_here("")
+	check("  and filled with the server's answers, every page still fits: 370 wide, no taller than the other tabs (%d)"
+		% without_it, filled.all(func(need: Vector2) -> bool: return need.x <= 370.0 and need.y <= without_it + 0.5),
+		filled)
+
+	# --- GOLD FLOW -----------------------------------------------------------------
+	check("the flow: each day drawn, minted against burned",
+		tab.chart.days.size() == 7 and int(tab.chart.days[2]["minted"]) == 400 and int(tab.chart.days[3]["net"]) == 50)
+	check("  the window's totals, and what the world holds now",
+		tab.totals_label.text == "Minted 1,500 - burned 600 - net +900."
+		and tab.world_label.text == "Held now: 123,456 (100,000 carried, 23,456 banked).",
+		[tab.totals_label.text, tab.world_label.text])
+	check("  where it came from and where it went, by source, the most first, in the owner's words",
+		tab.sources_label.text == "Came from: gold piles 1,200, sold to the shop 300."
+		and tab.sinks_label.text == "Went to: trade tax 400, bought from the shop 200.",
+		[tab.sources_label.text, tab.sinks_label.text])
+	check("  and lusions in a line", tab.lusions_label.text == "Lusions: 30 in, 25 out, 1,234 held.", tab.lusions_label.text)
+	var many: Array = []
+	for i in 6:
+		many.append({"reason": "reason_%d" % i, "minted": 10 * (6 - i), "burned": 0})
+	check("  more than three sources are three and a count", EconomyTab.reasons_text("Came from", many, "minted")
+		== "Came from: reason 0 60, reason 1 50, reason 2 40, and 3 more."
+		and EconomyTab.reasons_text("Went to", many, "burned") == "Went to: nothing.")
+	var last_day: Array[String] = tab.chart.tooltip_lines(6)
+	check("the chart's hover says the day and its three numbers",
+		last_day == [GoldFlowChart.short_day(str(flow_days[6]["day"])) + " (UTC)", "Minted 300", "Burned 100", "Net +200"],
+		last_day)
+	check("  its axis ends at clean numbers, zero between minted and burned",
+		tab.chart.scale() == Vector2i(500, 200) and GoldFlowChart.nice(0) == 0 and GoldFlowChart.nice(7) == 10
+		and GoldFlowChart.nice(1200) == 2000 and GoldFlowChart.nice(5000) == 5000, tab.chart.scale())
+	check("  its ticks are compact", GoldFlowChart.compact(900) == "900" and GoldFlowChart.compact(1200) == "1.2K"
+		and GoldFlowChart.compact(12000) == "12K" and GoldFlowChart.compact(-3400000) == "-3.4M")
+	check("  and a day as the owner reads it", GoldFlowChart.short_day("2026-10-22") == "Oct 22"
+		and GoldFlowChart.short_day("soon") == "soon")
+	tab.chart.size = Vector2(300, 94)
+	check("  the mouse finds the day under it, and nothing off the plot",
+		tab.chart.day_under(GoldFlowChart.PAD_LEFT + 1.0) == 0 and tab.chart.day_under(290.0) == 6
+		and tab.chart.day_under(2.0) == -1 and tab.chart.day_under(299.0) == -1,
+		[tab.chart.size, tab.chart.day_under(GoldFlowChart.PAD_LEFT + 1.0), tab.chart.day_under(290.0)])
+	tab.days_pick.select(tab.days_pick.get_item_index(30))
+	tab.days_pick.item_selected.emit(tab.days_pick.selected)
+	await get_tree().process_frame
+	check("picking 30 days asks for 30", asked.back() == "/api/owner/economy/flow?days=30", asked.back())
+
+	# --- RULES ---------------------------------------------------------------------
+	check("the rules: one row each, its number, its bounds beside it",
+		tab.rule_boxes.size() == 3 and is_equal_approx((tab.rule_boxes["shop_price_multiplier"] as SpinBox).value, 1.25)
+		and (tab.rule_bounds["trade_tax_rate"] as Label).text == "0-0.5"
+		and is_equal_approx((tab.rule_boxes["trade_tax_rate"] as SpinBox).max_value, 0.5)
+		and is_equal_approx((tab.rule_boxes["trade_tax_minimum"] as SpinBox).step, 1.0))
+	check("  the owner may edit; Usual only where the owner set one; the last change said",
+		(tab.rule_boxes["trade_tax_rate"] as SpinBox).editable and not (tab.rule_set_buttons["trade_tax_rate"] as Button).disabled
+		and (tab.rule_usual_buttons["trade_tax_rate"] as Button).disabled
+		and not (tab.rule_usual_buttons["shop_price_multiplier"] as Button).disabled
+		and tab.last_change_label.text == "Last change: Shop prices usual -> 1.25, by Tunacan.", tab.last_change_label.text)
+	check("  each row's hint: what it does, its bounds and the usual, and who set it",
+		EconomyTab.rule_hint(rule_rows[2]) == "The general store's prices, times the item's value.\nFrom 0.25 to 4. The usual: 1.\nSet by Tunacan.")
+	var after_set: Dictionary = (rules_view as Dictionary).duplicate(true)
+	after_set["rules"][0]["value"] = 0.1
+	after_set["rules"][0]["set"] = true
+	after_set["changed"] = true
+	put_answer[0] = {"ok": true, "status": 200, "data": after_set}
+	(tab.rule_boxes["trade_tax_rate"] as SpinBox).value = 0.1
+	var kept_rules: Dictionary = EconomyRules.numbers.duplicate()
+	await tab.set_rule("trade_tax_rate")
+	check("Set sends that one rule, by key, to the owner's PUT",
+		put == [["/api/owner/economy/rules", {"key": "trade_tax_rate", "value": 0.1}]], put)
+	check("  and says what it is now, here and in Results, and how soon every game hears it",
+		tab.say_label.text == "Trade tax is now 0.1."
+		and gm.results.get_parsed_text().contains("Trade tax is now 0.1 - every game within 15 seconds."),
+		[tab.say_label.text, gm.results.get_parsed_text()])
+	check("  and the owner's own game draws with it at once", is_equal_approx(EconomyRules.number("trade_tax_rate"), 0.1))
+	var back: Dictionary = (rules_view as Dictionary).duplicate(true)
+	back["changed"] = true
+	put_answer[0] = {"ok": true, "status": 200, "data": back}
+	await tab.usual_rule("trade_tax_rate")
+	check("Usual sends null - the game's own number back", put.back() == ["/api/owner/economy/rules",
+		{"key": "trade_tax_rate", "value": null}] and tab.say_label.text == "Trade tax is back to the usual, 0.05.",
+		[put.back(), tab.say_label.text])
+	put_answer[0] = {"ok": false, "status": 400, "error": "Bad Request",
+		"data": {"error": "Bad Request", "message": "trade_tax_rate must be from 0 to 0.5 (you sent 0.9)."}}
+	await tab.set_rule("trade_tax_rate")
+	check("  a refusal says the server's own words",
+		tab.say_label.text == "The server refused (400): trade_tax_rate must be from 0 to 0.5 (you sent 0.9).", tab.say_label.text)
+	var co_view: Dictionary = (rules_view as Dictionary).duplicate(true)
+	co_view["can_change"] = false
+	tab.show_rules(co_view)
+	var before_co: int = put.size()
+	await tab.set_rule("trade_tax_rate")
+	check("a co-owner reads them and cannot change them: nothing editable, nothing sent",
+		not (tab.rule_boxes["trade_tax_rate"] as SpinBox).editable and (tab.rule_set_buttons["trade_tax_rate"] as Button).disabled
+		and (tab.rule_usual_buttons["shop_price_multiplier"] as Button).disabled and put.size() == before_co
+		and tab.rules_status.text.contains("the owner changes them") and tab.say_label.text.begins_with("Only the owner"),
+		[put.size(), tab.say_label.text])
+	EconomyRules.numbers = kept_rules
+
+	# --- CANARY --------------------------------------------------------------------
+	check("the canary: the last hourly check, how long ago, and what it found",
+		tab.canary_status.text == "Every number adds up." and tab.canary_when.text.begins_with("Last hourly check: ")
+		and tab.canary_when.text.contains("12m ago") and tab.canary_checks.text.begins_with("hold  gold conservation"),
+		[tab.canary_status.text, tab.canary_when.text])
+	tab.show_canary({"checked_at": now - 3 * 3600, "ok": false, "age_seconds": 3 * 3600, "stale": true, "mail": "not configured",
+		"failures": [{"name": "gold conservation (ledger == held)", "detail": "recorded 0, held 5, drift 5"}], "checks": []})
+	check("  broken: what broke and by how much; a timer that looks stopped; no mail set up, said",
+		tab.canary_status.text == "BROKEN: gold conservation (ledger == held) (recorded 0, held 5, drift 5)."
+		and tab.canary_when.text.contains("the timer may have stopped") and tab.canary_when.text.contains("No mail is set up"),
+		[tab.canary_status.text, tab.canary_when.text])
+	tab.show_canary({"checked_at": null, "ok": null, "failures": [], "checks": []})
+	check("  never run: says the timer has not run, and where it is set up",
+		tab.canary_status.text.begins_with("Never checked") and tab.canary_when.text.contains("update_server.sh"))
+	await tab.check_now()
+	check("Check now: POSTs to the canary and says what it found",
+		sent == [["/api/owner/economy/canary", {}]] and tab.say_label.text == "Checked now: every number adds up.", sent)
+	check_answer[0] = {"ok": true, "status": 200, "data": {"checked_at": now, "ok": false, "checks": [],
+		"failures": [{"name": "lusion conservation (ledger == held)", "detail": "recorded 3, held 5, drift 2"}]}}
+	await tab.check_now()
+	check("  and when the books are broken, which and by how much - in Results too",
+		tab.say_label.text == "Checked now: 1 check broke - lusion conservation (ledger == held) (recorded 3, held 5, drift 2)."
+		and gm.results.get_parsed_text().contains("Checked now: 1 check broke - lusion conservation"), tab.say_label.text)
+
+	# --- AN OLDER SERVER ----------------------------------------------------------
+	views["flow"] = {"ok": false, "status": 404, "error": "Not found."}
+	await tab.refresh_flow()
+	check("a server from before the Economy tab: says to update it", tab.say_label.text
+		== "This server does not have the gold flow yet (404). Update the server, then Refresh."
+		and tab.chart.days.is_empty(), tab.say_label.text)
+	Api.is_owner = was_owner
+	Api.role = was_role
+	gm.queue_free()
+	await get_tree().process_frame
+
+
 # THE CO-OWNERS (0.21.0). The owner: "i would promote allmind to owner but
 # there can only be 1 however thats why i want to build another gate that
 # allows him to enter", "maybe a switch in my gm panel that gives him access as
@@ -21009,6 +21975,860 @@ class CookingCook extends Node:
 	var cooking_xp: int = 0
 
 
+# =============================================================================
+# THE LARDER, IN THE GAME: MEALS, BUFFS, BAIT, TOOLTIPS (0.74.0)
+# =============================================================================
+# The owner: cooking should grow past fish, with "meals that combine 2-3
+# ingredients, heal more and give a short buff", and "i want to make recipes
+# people can make with the food also". The server's half is the API's
+# test_larder.py; this is the client's - the cooking window's Recipes tab, the
+# FoodBuff autoload and what it moves, the catch naming its bait, and the
+# tooltips - against a stand-in server, with stand-in items so it runs in a
+# clone without the private art pack.
+
+class LarderServer extends Node:
+	# Answers the routes the larder's client talks to, as the server would.
+	# /api/cooking/recipe takes the meal's ingredients from the bag it is told
+	# about and adds the meal unless it burnt, burns in the order given;
+	# /api/character/consume and /api/fishing/catch answer what the test set.
+	# Every request is kept, path and body, in the order it came.
+	var server := TCPServer.new()
+	var port := 0
+	var asked: Array = []
+	var burns: Array = []
+	var bag: Node = null
+	var consume_answer: Dictionary = {}
+	var catch_answer: Dictionary = {}
+	var _peers: Array = []
+	var _recipes: int = 0
+
+	func start() -> bool:
+		for p in range(47300, 47400):
+			if server.listen(p, "127.0.0.1") == OK:
+				port = p
+				return true
+		return false
+
+	func recipes_asked() -> Array:
+		return asked.filter(func(a: Dictionary) -> bool: return a.path == "/api/cooking/recipe")
+
+	func _process(_delta: float) -> void:
+		while server.is_connection_available():
+			_peers.append({"peer": server.take_connection(), "buf": PackedByteArray()})
+		for c in _peers.duplicate():
+			var peer: StreamPeerTCP = c.peer
+			peer.poll()
+			if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+				_peers.erase(c)
+				continue
+			var waiting := peer.get_available_bytes()
+			if waiting > 0:
+				c.buf.append_array(peer.get_data(waiting)[1])
+			while true:
+				var text: String = c.buf.get_string_from_utf8()
+				var end := text.find("\r\n\r\n")
+				if end == -1:
+					break
+				var length := 0
+				var head: PackedStringArray = text.substr(0, end).split("\r\n")
+				for h in head:
+					if h.to_lower().begins_with("content-length:"):
+						length = int(h.get_slice(":", 1).strip_edges())
+				if c.buf.size() < end + 4 + length:
+					break
+				var path: String = head[0].get_slice(" ", 1)
+				var body: Variant = JSON.parse_string(c.buf.slice(end + 4, end + 4 + length).get_string_from_utf8())
+				c.buf = c.buf.slice(end + 4 + length)
+				var answer := JSON.stringify(_answer(path, body if body is Dictionary else {})).to_utf8_buffer()
+				var out := ("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n"
+					% answer.size()).to_ascii_buffer()
+				out.append_array(answer)
+				peer.put_data(out)
+
+	func _cells(counts: Dictionary) -> Array:
+		var cells: Array = []
+		for k in counts:
+			if int(counts[k]) > 0:
+				cells.append({"item_id": k, "quantity": int(counts[k])})
+		return cells
+
+	func _answer(path: String, body: Dictionary) -> Dictionary:
+		asked.append({"path": path, "body": body})
+		if path == "/api/cooking/recipe":
+			var id: String = str(body.get("recipe_id", ""))
+			var meal: ItemData = ItemRegistry.get_item(id) if ItemRegistry.has_item(id) else null
+			var counts: Dictionary = (bag.get("counts") as Dictionary).duplicate() if bag != null else {}
+			var burnt: bool = bool(burns[_recipes % burns.size()]) if not burns.is_empty() else false
+			_recipes += 1
+			var consumed: Array = []
+			if meal != null:
+				for need in meal.recipe_ingredients:
+					counts[need] = int(counts.get(need, 0)) - int(meal.recipe_ingredients[need])
+					consumed.append({"item_id": need, "quantity": int(meal.recipe_ingredients[need])})
+				if not burnt:
+					counts[id] = int(counts.get(id, 0)) + 1
+			return {"item_id": id, "burnt": burnt, "output": "" if burnt else id, "inventory": _cells(counts),
+				"skills": {}, "consumed": consumed}
+		if path == "/api/character/consume":
+			return consume_answer.duplicate(true)
+		if path == "/api/fishing/catch":
+			var caught: Dictionary = catch_answer.duplicate(true)
+			caught["inventory"] = _cells((bag.get("counts") as Dictionary).duplicate()) if bag != null else []
+			return caught
+		return {}
+
+
+func _larder_item(item_id: String, title: String, tint: Color) -> ItemData:
+	# A stand-in with a picture of its own, made here - the real larder's icons
+	# are in the private art pack.
+	var data := ItemData.new()
+	data.item_id = item_id
+	data.display_name = title
+	data.type = ItemData.Type.MATERIAL
+	data.stackable = true
+	data.icon_tint = tint
+	var picture := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+	picture.fill(tint)
+	data.icon = ImageTexture.create_from_image(picture)
+	return data
+
+
+func _larder_meal(item_id: String, title: String, tint: Color, ingredients: Dictionary, level: int,
+		mastery: int, heal: int, kind: ItemData.BuffKind, amount: int, seconds: int) -> ItemData:
+	var meal := _larder_item(item_id, title, tint)
+	meal.type = ItemData.Type.CONSUMABLE
+	meal.stackable = true
+	meal.max_stack = 20
+	meal.restore_target = ItemData.RestoreTarget.HP
+	meal.restore_amount = heal
+	meal.recipe_ingredients = ingredients
+	meal.recipe_level = level
+	meal.recipe_mastery_level = mastery
+	meal.recipe_xp = 10
+	meal.buff_kind = kind
+	meal.buff_amount = amount
+	meal.buff_seconds = seconds
+	return meal
+
+
+func _larder_serve(server: LarderServer) -> Array:
+	# Point Api at the stand-in, as the fire's test does. Hands back what to put
+	# back afterwards.
+	var kept: Array = [ApiForTests.BASE_URL, Api.token, Api.server_online, Api.reachability_known]
+	ApiForTests.BASE_URL = "http://127.0.0.1:%d" % server.port
+	Api.token = "suite"
+	return kept
+
+
+func _larder_unserve(kept: Array) -> void:
+	ApiForTests.BASE_URL = kept[0]
+	Api.token = kept[1]
+	Api.server_online = kept[2]
+	Api.reachability_known = kept[3]
+
+
+func _larder_wait(fn: Callable, seconds: float) -> void:
+	var waited := 0.0
+	while not bool(fn.call()) and waited < seconds:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+
+
+func _test_the_cooking_window_cooks_meals() -> void:
+	section("COOKING - the Recipes tab: every meal, have and need, Cook and Cook all on the fire (0.74.0)")
+	var herb := _larder_item("zz_larder_herb", "Test Herb", Color(0.6, 1, 0.6))
+	var flour := _larder_item("zz_larder_flour", "Test Flour", Color(1, 1, 0.9))
+	var salt := _larder_item("zz_larder_salt", "Test Salt", Color(0.9, 0.9, 1))
+	# A bread that never burns, a soup made FROM the bread that can, and a feast
+	# a level-20 cook cannot make yet.
+	var bread := _larder_meal("zz_larder_bread", "Test Bread", Color(1, 0.8, 0.5),
+		{"zz_larder_herb": 1, "zz_larder_flour": 2}, 1, 1, 14, ItemData.BuffKind.VIGOUR, 10, 600)
+	var soup := _larder_meal("zz_larder_soup", "Test Soup", Color(0.8, 0.6, 1),
+		{"zz_larder_bread": 1, "zz_larder_salt": 1}, 5, 30, 30, ItemData.BuffKind.GUARD, 3, 900)
+	var feast := _larder_meal("zz_larder_feast", "Test Feast", Color(1, 0.5, 0.5),
+		{"zz_larder_herb": 1}, 50, 60, 80, ItemData.BuffKind.MIGHT, 5, 600)
+	var made: Array[ItemData] = [herb, flour, salt, bread, soup, feast]
+	for data in made:
+		ItemRegistry._items[data.item_id] = data
+
+	var server := LarderServer.new()
+	add_child(server)
+	if not server.start():
+		check("a free local port for the suite's larder server", false)
+		server.queue_free()
+		for data in made:
+			ItemRegistry._items.erase(data.item_id)
+		return
+	var kept: Array = _larder_serve(server)
+	var huds: Array = get_tree().get_nodes_in_group(&"hud")
+	for h in huds:
+		h.remove_from_group(&"hud")
+	var hud := CookingHud.new()
+	hud.add_to_group(&"hud")
+	add_child(hud)
+	var screen_node := Node.new()
+	hud.add_child(screen_node)
+	hud.inventory_screen = screen_node
+	var bag := CookingBag.new()
+	bag.name = "inventorycontainer"
+	screen_node.add_child(bag)
+	bag.owner = screen_node
+	bag.unique_name_in_owner = true
+	bag.counts = {"zz_larder_herb": 3, "zz_larder_flour": 6}
+	server.bag = bag
+	server.burns = [false, true, false]
+	var cook := CookingCook.new()
+	add_child(cook)
+
+	var panel: Control = (load("res://scene/ui/cooking/cookingscreen.tscn") as PackedScene).instantiate()
+	add_child(panel)
+	panel.set("cook_duration", 0.1)
+	panel.set("cook_interval", 0.05)
+	panel.set("burnt_hold", 0.25)
+	panel.open_for_firepit(null, cook)
+	await get_tree().process_frame
+	var Cooking: Script = panel.get_script() as Script
+	var fish_tab: Button = panel.find_child("fishtab", true, false) as Button
+	var recipes_tab: Button = panel.find_child("recipestab", true, false) as Button
+	var grid: Control = panel.find_child("fishgrid", true, false) as Control
+	var scroll: ScrollContainer = panel.find_child("recipescroll", true, false) as ScrollContainer
+	var list: Control = panel.find_child("recipelist", true, false) as Control
+	check("the cooking window opens on its Fish tab, with the fish under the fire as before",
+		fish_tab != null and recipes_tab != null and fish_tab.button_pressed and not recipes_tab.button_pressed
+		and grid.visible and not scroll.visible)
+
+	var top: float = panel.position.y
+	var middle: float = panel.position.x + panel.size.x * 0.5
+	recipes_tab.pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("the Recipes tab shows the meals in the fish's place, and is the tab held down",
+		scroll.visible and not grid.visible and recipes_tab.button_pressed and not fish_tab.button_pressed)
+	# THE TOP STAYS unless the taller window would then hang off the bottom of
+	# the screen, when it is pushed up just far enough (PanelWindow.fit_to()).
+	var room: float = panel.get_viewport_rect().size.y - panel.size.y
+	check("  the window fits what it now holds, its middle where it was and its top too, unless the screen says no",
+		panel.size == PanelWindow.content_minimum(panel) and is_equal_approx(panel.position.y, minf(top, room))
+		and absf(panel.position.x + panel.size.x * 0.5 - middle) <= 1.0,
+		[panel.size, PanelWindow.content_minimum(panel), panel.position, top, middle])
+	var first_row: float = (list.get_child(0) as Control).get_combined_minimum_size().y if list.get_child_count() > 0 else 0.0
+	var four: float = first_row * Cooking.RECIPE_ROWS_SHOWN \
+		+ float(list.get_theme_constant("separation")) * (Cooking.RECIPE_ROWS_SHOWN - 1)
+	# MORE MEALS THAN FOUR ROWS needs the real catalogue: a clone without the
+	# art pack loads none of its meals (their icons are the pack's), and the
+	# stand-ins alone are a list too short to scroll (0.74.0, at the merge).
+	if list.get_child_count() > Cooking.RECIPE_ROWS_SHOWN:
+		check("  and the list shows four whole meals and scrolls the rest, rather than growing off the screen",
+			Cooking.RECIPE_ROWS_SHOWN == 4 and first_row > 0.0 and list.get_combined_minimum_size().y > four
+			and is_equal_approx(scroll.custom_minimum_size.y, four)
+			and panel.position.y >= 0.0 and panel.position.y + panel.size.y <= panel.get_viewport_rect().size.y,
+			[scroll.custom_minimum_size, four, list.get_combined_minimum_size()])
+	else:
+		check_needs_pack("  and the list shows four whole meals and scrolls the rest, rather than growing off the screen",
+			false, "fewer meals than four rows - the real catalogue's are missing")
+		check("  and a list shorter than four rows shows every meal whole, with nothing to scroll",
+			first_row > 0.0 and is_equal_approx(scroll.custom_minimum_size.y, list.get_combined_minimum_size().y),
+			[scroll.custom_minimum_size, list.get_combined_minimum_size()])
+
+	var meals: Array = Cooking.meals()
+	var every_meal: int = 0
+	for data in ItemRegistry.get_all_items():
+		if data != null and data.is_meal():
+			every_meal += 1
+	var by_level: bool = true
+	for i in range(1, meals.size()):
+		if (meals[i] as ItemData).recipe_level < (meals[i - 1] as ItemData).recipe_level:
+			by_level = false
+	var row_names: Array = list.get_children().map(func(n: Node) -> String: return str(n.name))
+	check("every meal in the catalogue has a row, by the cooking level it needs",
+		meals.size() == every_meal and by_level and meals.size() >= 3
+		and row_names == meals.map(func(m: ItemData) -> String: return "recipe_" + m.item_id),
+		[meals.size(), every_meal, row_names.size()])
+
+	var rows: Dictionary = panel.get("_recipe_rows")
+	var count_of := func(meal_id: String, part: String) -> Label:
+		return (rows[meal_id]["counts"] as Dictionary)[part]
+	var bread_row: Dictionary = rows.get("zz_larder_bread", {})
+	var soup_row: Dictionary = rows.get("zz_larder_soup", {})
+	var feast_row: Dictionary = rows.get("zz_larder_feast", {})
+	var herb_count: Label = count_of.call("zz_larder_bread", "zz_larder_herb")
+	var flour_count: Label = count_of.call("zz_larder_bread", "zz_larder_flour")
+	check("each ingredient shows have/need from the bag, green when there is enough",
+		herb_count.text == "3/1" and flour_count.text == "6/2"
+		and herb_count.get_theme_color("font_color").is_equal_approx(Cooking.HAVE_ENOUGH)
+		and flour_count.get_theme_color("font_color").is_equal_approx(Cooking.HAVE_ENOUGH),
+		[herb_count.text, flour_count.text])
+	var soup_bread: Label = count_of.call("zz_larder_soup", "zz_larder_bread")
+	var soup_salt: Label = count_of.call("zz_larder_soup", "zz_larder_salt")
+	check("  red when it is short - and a meal can be an ingredient: the soup counts the breads in the bag",
+		soup_bread.text == "0/1" and soup_salt.text == "0/1"
+		and soup_bread.get_theme_color("font_color").is_equal_approx(Cooking.HAVE_SHORT)
+		and soup_salt.get_theme_color("font_color").is_equal_approx(Cooking.HAVE_SHORT),
+		[soup_bread.text, soup_salt.text])
+	var bread_effects: Control = (bread_row["row"] as Node).find_child("effects", true, false) as Control
+	var heal_label: Label = bread_effects.get_node("heal") as Label
+	var buff_label: Label = bread_effects.get_node("buff") as Label
+	check("a row says what the meal heals and the buff it gives, in the buff's colour",
+		heal_label.text == "Heals 14" and buff_label.text == bread.buff_text() and bread.buff_text() != ""
+		and buff_label.get_theme_color("font_color").is_equal_approx(FoodBuff.colour_for(ItemData.BuffKind.VIGOUR)),
+		[heal_label.text, buff_label.text])
+	var bread_cook: Button = bread_row["cook"]
+	var bread_all: Button = bread_row["cookall"]
+	check("  and the level it needs, in gold when yours is enough; Cook and Cook all (3) are there to press",
+		(bread_row["level"] as Label).text == "Lv 1"
+		and (bread_row["level"] as Label).get_theme_color("font_color").is_equal_approx(Cooking.LEVEL_OPEN)
+		and not bread_cook.disabled and not bread_all.disabled and bread_all.text == "Cook all (3)",
+		[(bread_row["level"] as Label).text, bread_cook.disabled, bread_all.text])
+	check("a meal the bag cannot make is greyed out of its buttons, and says what is missing",
+		(soup_row["cook"] as Button).disabled and (soup_row["cookall"] as Button).disabled
+		and (soup_row["cook"] as Button).tooltip_text == "You are missing Test Bread",
+		(soup_row["cook"] as Button).tooltip_text)
+	var feast_level: Label = feast_row["level"]
+	check("a meal above your cooking level is locked: its level greyed, its buttons off, the level on them",
+		feast_level.text == "Lv 50" and feast_level.get_theme_color("font_color").is_equal_approx(Cooking.LEVEL_LOCKED)
+		and (feast_row["cook"] as Button).disabled and (feast_row["cookall"] as Button).disabled
+		and (feast_row["cook"] as Button).tooltip_text == "Needs cooking level 50",
+		[feast_level.text, (feast_row["cook"] as Button).tooltip_text])
+	var flash: Label = panel.find_child("flash", true, false) as Label
+	panel.call("_start_recipe", "zz_larder_feast", 1)
+	check("  and asked anyway, it says why and asks the server nothing",
+		flash.text == "Needs cooking level 50." and server.asked.is_empty(), [flash.text, server.asked])
+
+	# ---- Cook: one meal, on the fire like a fish ----
+	var icon: TextureRect = panel.find_child("cookicon", true, false) as TextureRect
+	var bar: ProgressBar = panel.find_child("riskbar", true, false) as ProgressBar
+	var words: Label = panel.find_child("catchlabel", true, false) as Label
+	var events: Array = []
+	panel.connect(&"fish_started", func(id: String) -> void:
+		var stop_text: String = ""
+		if rows.has(id):
+			stop_text = (rows[id]["cookall"] as Button).text
+		events.append({"k": "on", "id": id, "tint": icon.modulate, "icon": icon.texture, "words": words.text,
+			"all": stop_text, "herbs": herb_count.text}))
+	panel.connect(&"fish_done", func(id: String, burnt: bool) -> void:
+		var fill: StyleBoxFlat = bar.get_theme_stylebox("fill") as StyleBoxFlat
+		events.append({"k": "done", "id": id, "burnt": burnt, "tint": icon.modulate, "icon": icon.texture,
+			"words": words.text, "bar": bar.value, "fill": fill.bg_color if fill != null else Color.BLACK}))
+	panel.connect(&"run_ended", func() -> void: events.append({"k": "end", "flash": flash.text}))
+	var ended := func(n: int) -> bool:
+		return events.filter(func(e: Dictionary) -> bool: return e.k == "end").size() >= n
+
+	bread_cook.pressed.emit()
+	await _larder_wait(ended.bind(1), 5.0)
+	var first: Dictionary = server.asked[0] if not server.asked.is_empty() else {}
+	check("Cook asks /api/cooking/recipe for one of that meal, by its recipe id and nothing else",
+		server.asked.size() == 1 and str(first.get("path", "")) == "/api/cooking/recipe"
+		and (first.get("body", {}) as Dictionary).get("recipe_id") == "zz_larder_bread"
+		and not (first.get("body", {}) as Dictionary).has("item_id")
+		and (first.get("body", {}) as Dictionary).has("slot"), server.asked)
+	var ons: Array = events.filter(func(e: Dictionary) -> bool: return e.k == "on")
+	var dones: Array = events.filter(func(e: Dictionary) -> bool: return e.k == "done")
+	check("  the meal goes on the fire as itself, faded, its name under it (a bread that cannot burn says no chance)",
+		ons.size() == 1 and ons[0].icon == bread.icon
+		and (ons[0].tint as Color).is_equal_approx(bread.icon_tint * Cooking.MEAL_COOKING_TINT)
+		and str(ons[0].words) == "Test Bread", ons)
+	check("  and comes off solid, its bar full and gold",
+		dones.size() == 1 and not dones[0].burnt and dones[0].icon == bread.icon
+		and (dones[0].tint as Color).is_equal_approx(bread.icon_tint) and str(dones[0].words) == "Test Bread"
+		and is_equal_approx(float(dones[0].bar), 100.0) and (dones[0].fill as Color).is_equal_approx(Cooking.COOK_FILL),
+		dones)
+	check("the server's bag is the one drawn: the ingredients gone, the meal in",
+		bag.get_quantity_of("zz_larder_herb") == 2 and bag.get_quantity_of("zz_larder_flour") == 4
+		and bag.get_quantity_of("zz_larder_bread") == 1, bag.counts)
+	check("  and the rows count again from it: the soup now has its bread",
+		herb_count.text == "2/1" and flour_count.text == "4/2" and soup_bread.text == "1/1"
+		and soup_bread.get_theme_color("font_color").is_equal_approx(Cooking.HAVE_ENOUGH),
+		[herb_count.text, flour_count.text, soup_bread.text])
+
+	# ---- Cook all: as many as the bag makes, one request at a time ----
+	bread_all.pressed.emit()
+	await _larder_wait(ended.bind(2), 6.0)
+	ons = events.filter(func(e: Dictionary) -> bool: return e.k == "on")
+	dones = events.filter(func(e: Dictionary) -> bool: return e.k == "done")
+	var ends: Array = events.filter(func(e: Dictionary) -> bool: return e.k == "end")
+	check("Cook all cooks as many as the bag holds the ingredients for - two more - one request each",
+		server.recipes_asked().size() == 3 and dones.size() == 3, [server.recipes_asked().size(), dones.size()])
+	check("  the rows count again after every meal of a run, not only when it ends",
+		ons.size() == 3 and str(ons[1].herbs) == "2/1" and str(ons[2].herbs) == "1/1",
+		ons.map(func(e: Dictionary) -> String: return str(e.herbs)))
+	check("  its button reads Stop while its meals are on the fire",
+		ons.size() == 3 and str(ons[1].all) == "Stop" and str(ons[2].all) == "Stop", ons.map(func(e: Dictionary) -> String: return str(e.all)))
+	check("a burnt meal stays on the fire charred, \"Burnt!\" under it and its bar ash",
+		dones.size() == 3 and dones[1].burnt and (dones[1].tint as Color).is_equal_approx(Cooking.BURNT_TINT)
+		and str(dones[1].words) == "Burnt!" and (dones[1].fill as Color).is_equal_approx(Cooking.BURNT_FILL),
+		dones[1] if dones.size() > 1 else null)
+	check("  and its ingredients are gone all the same: two cooked of three, the bag empty of herbs and flour",
+		bag.get_quantity_of("zz_larder_bread") == 2 and bag.get_quantity_of("zz_larder_herb") == 0
+		and bag.get_quantity_of("zz_larder_flour") == 0, bag.counts)
+	check("the run ends with its tally, and the button is Cook all again - off, with nothing left to cook",
+		ends.size() == 2 and str(ends[1].flash) == "Cooked 1, burnt 1." and bread_all.text == "Cook all"
+		and bread_all.disabled and bread_cook.disabled and bread_cook.tooltip_text == "You are missing Test Herb",
+		[ends, bread_all.text, bread_cook.tooltip_text])
+
+	# ---- a meal made from a meal ----
+	bag.counts["zz_larder_salt"] = 1
+	panel.call("_refresh")
+	var soup_cook: Button = soup_row["cook"]
+	check("with salt in the bag the soup can be cooked from the bread", not soup_cook.disabled
+		and soup_salt.text == "1/1", [soup_cook.disabled, soup_salt.text])
+	soup_cook.pressed.emit()
+	await _larder_wait(ended.bind(3), 5.0)
+	ons = events.filter(func(e: Dictionary) -> bool: return e.k == "on")
+	var burn: float = float(panel.call("_burn_chance", soup, 20))
+	check("  it burns on the fish's curve from its own level and mastery, and says so under it",
+		ons.size() == 4 and burn > 0.0 and str(ons[3].words) == str(Cooking.risk_text("Test Soup", burn))
+		and str(ons[3].words).ends_with("% burn"), [burn, ons[3].words if ons.size() > 3 else ""])
+	check("  and a bread goes into it: one bread and the salt taken, a soup made",
+		bag.get_quantity_of("zz_larder_bread") == 1 and bag.get_quantity_of("zz_larder_salt") == 0
+		and bag.get_quantity_of("zz_larder_soup") == 1
+		and str((server.asked[-1].body as Dictionary).get("recipe_id", "")) == "zz_larder_soup", bag.counts)
+
+	# ---- Stop ----
+	bag.counts = {"zz_larder_herb": 3, "zz_larder_flour": 6}
+	panel.call("_refresh")
+	var before_stop: int = server.recipes_asked().size()
+	var stopped := [false]
+	var stop_it := func(_id: String) -> void:
+		if not stopped[0]:
+			stopped[0] = true
+			bread_all.pressed.emit()
+	panel.connect(&"fish_started", stop_it)
+	bread_all.pressed.emit()
+	await _larder_wait(ended.bind(4), 5.0)
+	panel.disconnect(&"fish_started", stop_it)
+	check("Stop lets the meal on the fire finish and starts no other",
+		stopped[0] and server.recipes_asked().size() == before_stop + 1, server.recipes_asked().size() - before_stop)
+
+	fish_tab.pressed.emit()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("the Fish tab brings the fish back, and the window back to their size",
+		grid.visible and not scroll.visible and fish_tab.button_pressed
+		and panel.size == PanelWindow.content_minimum(panel), [panel.size, PanelWindow.content_minimum(panel)])
+
+	panel.queue_free()
+	hud.queue_free()
+	cook.queue_free()
+	server.queue_free()
+	for data in made:
+		ItemRegistry._items.erase(data.item_id)
+	for h in huds:
+		if is_instance_valid(h):
+			h.add_to_group(&"hud")
+	_larder_unserve(kept)
+	await get_tree().process_frame
+
+
+func _test_a_meal_buff_works_while_it_lasts() -> void:
+	section("FOOD BUFFS - one meal at a time, on the numbers it moves, gone on time (0.74.0)")
+	# adopt() writes the meal onto the active slot: the suite's own slots, put
+	# back at the end, so nothing here is left on anybody else's.
+	var kept_slots: Array = CharacterData.character_slots
+	var kept_index: int = CharacterData.active_character_index
+	CharacterData.character_slots = [null, null, null, null]
+	CharacterData.active_character_index = 0
+	FoodBuff.clear()
+	var now: int = FoodBuff.now()
+	var read := func(said: Variant) -> Dictionary: return FoodBuff.read_buff(said, now)
+	check("a buff is read off the wire: its kind by name, its amount and its end, numbers as JSON sends them",
+		read.call({"item_id": "zz_buff_x", "kind": "VIGOUR", "amount": 25.0, "ends_at": float(now + 600)})
+			== {"item_id": "zz_buff_x", "kind": ItemData.BuffKind.VIGOUR, "amount": 25, "ends_at": now + 600},
+		read.call({"item_id": "zz_buff_x", "kind": "VIGOUR", "amount": 25.0, "ends_at": float(now + 600)}))
+	check("  and null, an unknown kind, NONE, nothing to add, or one already over is no buff",
+		read.call(null).is_empty()
+		and read.call({"item_id": "x", "kind": "HASTE", "amount": 5, "ends_at": now + 60}).is_empty()
+		and read.call({"item_id": "x", "kind": "NONE", "amount": 5, "ends_at": now + 60}).is_empty()
+		and read.call({"item_id": "x", "kind": "MIGHT", "amount": 0, "ends_at": now + 60}).is_empty()
+		and read.call({"item_id": "x", "kind": "MIGHT", "amount": 5, "ends_at": now}).is_empty())
+	check("FoodBuff is an autoload, so a meal eaten in town is still working in the Field",
+		get_node_or_null("/root/FoodBuff") != null
+		and FileAccess.get_file_as_string("res://project.godot").contains("FoodBuff=\"*res://src/systems/foodbuff.gd\""))
+	# THE BOOKS ARE TOLD AT ONCE (0.74.0, found at the merge): presence.py
+	# bounds every hit by the ticket, and a ticket is renewed once a minute, so
+	# a new meal asks for one now, as an equip does.
+	var kept_phase: String = Presence._phase
+	var kept_clock: float = Presence._renew_clock
+	Presence._phase = "open"
+	Presence._renew_clock = 0.0
+	FoodBuff._take(read.call({"item_id": "zz_buff_renew", "kind": "MIGHT", "amount": 5, "ends_at": now + 600}))
+	var renewed_on_new: bool = is_equal_approx(Presence._renew_clock, Presence.RENEW_SECONDS)
+	Presence._renew_clock = 0.0
+	FoodBuff._take(read.call({"item_id": "zz_buff_renew", "kind": "MIGHT", "amount": 5, "ends_at": now + 600}))
+	var renewed_on_same: bool = Presence._renew_clock > 0.0
+	FoodBuff.clear()
+	Presence._phase = kept_phase
+	Presence._renew_clock = kept_clock
+	check("a new meal renews the presence ticket at once, and the same meal read again does not",
+		renewed_on_new and not renewed_on_same, [renewed_on_new, renewed_on_same])
+
+	# THE BODY WITHOUT THE WORLD, as the amulets' test builds it.
+	var body: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	body._set_stat_curve()
+	body.equipped = {}
+	body.level = 10
+	var refresh := Callable(body, "refresh_food_stats")
+	FoodBuff.changed.connect(refresh)
+	var bare_hp: int = body.max_hp
+	var bare_mana: int = body.max_mana
+	var bare_mult: float = body.get_damage_multiplier()
+	var bare_armour: int = body.armour_total()
+	var bare_hit: int = body.damage_taken(200)
+
+	FoodBuff.adopt({"item_id": "zz_buff_omelette", "kind": "MIGHT", "amount": 10, "ends_at": now + 600})
+	check("a MIGHT meal multiplies every hit by its percent",
+		is_equal_approx(body.get_damage_multiplier(), bare_mult * 1.10), [body.get_damage_multiplier(), bare_mult])
+	check("  and moves nothing else",
+		body.max_hp == bare_hp and body.max_mana == bare_mana and body.armour_total() == bare_armour)
+	FoodBuff.adopt({"item_id": "zz_buff_soup", "kind": "GUARD", "amount": 40, "ends_at": now + 600})
+	check("a new meal replaces the last: GUARD's armour on, MIGHT's percent gone",
+		body.armour_total() == bare_armour + 40 and body.equipped_armor_value() == bare_armour
+		and is_equal_approx(body.get_damage_multiplier(), bare_mult), [body.armour_total(), bare_armour])
+	check("  and a hit lands lighter for it", body.damage_taken(200) < bare_hit, [body.damage_taken(200), bare_hit])
+	body.hp = bare_hp
+	FoodBuff.adopt({"item_id": "zz_buff_broth", "kind": "VIGOUR", "amount": 50, "ends_at": now + 600})
+	check("a VIGOUR meal raises max health by its amount", body.max_hp == bare_hp + 50, [body.max_hp, bare_hp])
+	check("  but not health - the ceiling moves, and the meal's own heal is what fills it", body.hp == bare_hp, body.hp)
+	body.hp = body.max_hp
+	body.mana = bare_mana
+	FoodBuff.adopt({"item_id": "zz_buff_tart", "kind": "WISDOM", "amount": 30, "ends_at": now + 600})
+	check("a WISDOM meal raises max mana by its amount, and the VIGOUR it replaced comes off",
+		body.max_mana == bare_mana + 30 and body.max_hp == bare_hp, [body.max_mana, body.max_hp])
+	check("  a full bar comes down to the new full - clamped, never emptied", body.hp == bare_hp, body.hp)
+
+	# ON TIME. The end is the server's second; past it the meal adds nothing
+	# at once, and the next tick says it is over.
+	body.mana = body.max_mana
+	body.hp = 40
+	var heard: Array = []
+	var listen := func() -> void: heard.append(FoodBuff.kind)
+	FoodBuff.changed.connect(listen)
+	FoodBuff.ends_at = now
+	check("a buff past its end adds nothing, before anything has noticed",
+		not FoodBuff.is_active() and FoodBuff.max_mana() == 0 and FoodBuff.seconds_left() == 0)
+	FoodBuff._process(FoodBuff.TICK * 0.5)
+	var waited: bool = FoodBuff.kind == ItemData.BuffKind.WISDOM and heard.is_empty()
+	FoodBuff._process(FoodBuff.TICK * 0.6)
+	check("  on its tick it is over, and said so once",
+		waited and FoodBuff.kind == ItemData.BuffKind.NONE and heard == [ItemData.BuffKind.NONE], [waited, heard])
+	check("  max mana back down and the full mana with it; a wounded character exactly as wounded",
+		body.max_mana == bare_mana and body.mana == bare_mana and body.hp == 40, [body.max_mana, body.mana, body.hp])
+	FoodBuff.adopt({"item_id": "zz_buff_tart", "kind": "WISDOM", "amount": 30, "ends_at": now + 600})
+	FoodBuff._process(FoodBuff.TICK * 1.5)
+	check("a buff still running is left running by the tick", FoodBuff.is_active() and heard.size() == 2, heard)
+	FoodBuff.changed.disconnect(listen)
+	FoodBuff.changed.disconnect(refresh)
+	body.free()
+	FoodBuff.clear()
+
+	# ---- at login, and across Switch Character ----
+	CharacterData.character_slots = [{"character": "mage"}, {"character": "warrior", "food_buff":
+		{"item_id": "zz_buff_omelette", "kind": "MIGHT", "amount": 7, "ends_at": now + 300}}, null, null]
+	CharacterData.active_character_index = 1
+	check("picking a character takes up the meal its load says it is still full of",
+		FoodBuff.adopt_for_character(1) and FoodBuff.damage_percent() == 7 and FoodBuff.item_id == "zz_buff_omelette")
+	FoodBuff.adopt({"item_id": "zz_buff_broth", "kind": "VIGOUR", "amount": 45, "ends_at": now + 900})
+	check("a meal eaten is written onto the character's slot",
+		(CharacterData.character_slots[1] as Dictionary).get("food_buff", {}).get("item_id") == "zz_buff_broth")
+	FoodBuff.clear()
+	check("so Switch Character and back brings the meal eaten, not the one logged in with",
+		FoodBuff.adopt_for_character(1) and FoodBuff.max_hp() == 45 and FoodBuff.damage_percent() == 0)
+	check("  and a character with none has none, whoever was played before",
+		not FoodBuff.adopt_for_character(0) and not FoodBuff.is_active())
+	CharacterData.character_slots = [null, null, null, null]
+	CharacterData.active_character_index = 0
+
+	var storage := ServerStorage.new()
+	var wire := {"item_id": "zz_buff_omelette", "kind": "MIGHT", "amount": 3, "ends_at": now + 900}
+	var loaded: Dictionary = storage._slot_from_server({"class_id": "warrior", "food_buff": wire})
+	check("the character the game loads keeps its food_buff on the slot, as sent",
+		loaded.get("food_buff") is Dictionary and (loaded["food_buff"] as Dictionary).get("kind") == "MIGHT",
+		loaded.get("food_buff"))
+	check("  null when there is none, and from the listing when the character route has none",
+		storage._slot_from_server({"class_id": "warrior", "food_buff": null}).get("food_buff") == null
+		and ServerStorage.with_listing({"class_id": "warrior"}, {"food_buff": wire}).get("food_buff") == wire)
+	var select_src: String = _code_src("res://src/ui/menus/characterselect.gd")
+	var select_body: String = _func_body(select_src, "func _select_character(")
+	check("Play takes it up from the slot before the world loads",
+		select_body.contains("FoodBuff.adopt_for_character(idx)")
+		and select_body.find("FoodBuff.adopt_for_character(idx)") < select_body.find("_enter_world(idx)"))
+	check("  logout and Switch Character forget it",
+		_func_body(_code_src("res://src/systems/characterdata.gd"), "func clear_current_user(").contains("FoodBuff.clear()")
+		and _func_body(_code_src("res://src/ui/characterhud.gd"), "func _on_switch_character_pressed(").contains("FoodBuff.clear()"))
+	check("  and every player in the world listens for it",
+		_func_body(_code_src("res://src/characters/player.gd"), "func _ready(").contains("FoodBuff.changed.connect(refresh_food_stats)"))
+
+	# ---- eating one: the consume answer's food_buff ----
+	var bread := _larder_meal("zz_buff_bread", "Test Bread", Color(1, 0.8, 0.5),
+		{"zz_larder_herb": 1}, 1, 1, 14, ItemData.BuffKind.VIGOUR, 10, 600)
+	var potion := _larder_item("zz_buff_potion", "Test Potion", Color(1, 0.4, 0.4))
+	potion.type = ItemData.Type.CONSUMABLE
+	potion.restore_target = ItemData.RestoreTarget.HP
+	potion.restore_amount = 20
+	ItemRegistry._items[bread.item_id] = bread
+	ItemRegistry._items[potion.item_id] = potion
+	var server := LarderServer.new()
+	add_child(server)
+	if not server.start():
+		check("a free local port for the suite's larder server", false)
+	else:
+		var kept: Array = _larder_serve(server)
+		var screen: Control = (load("res://scene/ui/inventory/inventory.tscn") as PackedScene).instantiate()
+		add_child(screen)
+		await get_tree().process_frame
+		var eater_script := GDScript.new()
+		eater_script.source_code = "extends Node2D\nvar level: int = 1\nvar hp: int = 100\nvar max_hp: int = 100\n" \
+			+ "var healed: int = 0\nvar healed_under_buff: bool = false\nvar said: Array = []\n" \
+			+ "func heal(amount: int) -> void:\n\thealed += amount\n\thealed_under_buff = FoodBuff.is_active()\n" \
+			+ "func show_notice(message: String) -> void:\n\tsaid.append(message)\n"
+		eater_script.reload()
+		var eater := Node2D.new()
+		eater.set_script(eater_script)
+		add_child(eater)
+		screen.set_player(eater)
+		var container: Node = screen.get("_container")
+		container.load_server_array([{"item_id": "zz_buff_bread", "quantity": 3}])
+		var buff_wire := {"item_id": "zz_buff_bread", "kind": "VIGOUR", "amount": 10, "ends_at": now + 600}
+		server.consume_answer = {"slot": 0, "item_id": "zz_buff_bread", "consumed": 1, "remaining": 2,
+			"restores": {"target": "HP", "amount": 14}, "inventory": [{"item_id": "zz_buff_bread", "quantity": 2}],
+			"food_buff": buff_wire}
+		await screen.use_item(container.get("slots")[0])
+		check("a meal with a buff is eaten at full health - the buff is the reason to - and the buff is the server's",
+			server.asked.size() == 1 and str(server.asked[0].path) == "/api/character/consume"
+			and FoodBuff.is_active() and FoodBuff.max_hp() == 10 and FoodBuff.item_id == "zz_buff_bread"
+			and not eater.get("said").has("Health already full"), [server.asked, eater.get("said")])
+		check("  it says the buff it started, and the bag is the server's after",
+			eater.get("said").has("Test Bread: +10 max health for 10 min")
+			and container.get_quantity_of("zz_buff_bread") == 2, [eater.get("said"), container.get_quantity_of("zz_buff_bread")])
+		FoodBuff.clear()
+		eater.set("hp", 50)
+		server.consume_answer["inventory"] = [{"item_id": "zz_buff_bread", "quantity": 1}]
+		await screen.use_item(container.get("slots")[0])
+		check("  wounded, the buff is taken before the heal, so a VIGOUR meal's heal fills the room it made",
+			int(eater.get("healed")) == 14 and bool(eater.get("healed_under_buff")), [eater.get("healed"), eater.get("healed_under_buff")])
+		container.load_server_array([{"item_id": "zz_buff_potion", "quantity": 2}])
+		server.consume_answer = {"slot": 0, "item_id": "zz_buff_potion", "consumed": 1, "remaining": 1,
+			"restores": {"target": "HP", "amount": 20}, "inventory": [{"item_id": "zz_buff_potion", "quantity": 1}]}
+		await screen.use_item(container.get("slots")[0])
+		check("a potion from a server that sends no food_buff leaves the meal alone",
+			FoodBuff.is_active() and FoodBuff.item_id == "zz_buff_bread")
+		server.consume_answer["food_buff"] = null
+		await screen.use_item(container.get("slots")[0])
+		check("  and when the server says nothing is in force, nothing is", not FoodBuff.is_active())
+		screen.queue_free()
+		eater.queue_free()
+		_larder_unserve(kept)
+	server.queue_free()
+
+	# ---- the HUD ----
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	hud._resolve_bar_references()
+	hud._build_food_chip()
+	var chip: PanelContainer = hud.get("food_chip")
+	check("with no meal in force the HUD shows no meal", chip != null and not chip.visible)
+	# A STAND-IN PLAYER THAT HEARS THE SIGNAL AFTER THE HUD DOES, the order a
+	# HUD built before the player connects in: the bar must still follow.
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node\nvar hp: int = 100\nvar max_hp: int = 100\nvar mana: int = 10\n" \
+		+ "var max_mana: int = 10\nvar stamina: int = 100\nvar max_stamina: int = 100\n" \
+		+ "func grow() -> void:\n\tmax_hp = 100 + FoodBuff.max_hp()\n"
+	body_script.reload()
+	var stand := Node.new()
+	stand.set_script(body_script)
+	hud.set("active_character", stand)
+	var grow := Callable(stand, "grow")
+	FoodBuff.changed.connect(grow)
+	FoodBuff.adopt({"item_id": "zz_buff_bread", "kind": "VIGOUR", "amount": 45, "ends_at": now + 754})
+	await get_tree().process_frame
+	var health: Range = hud.get("healthbar")
+	check("  a VIGOUR meal's new maximum reaches the health bar, whoever heard of it first",
+		health != null and is_equal_approx(health.max_value, 145.0), health.max_value if health != null else -1.0)
+	FoodBuff.changed.disconnect(grow)
+	hud.set("active_character", null)
+	stand.free()
+	var clock: Label = hud.get("food_clock")
+	var face: TextureRect = hud.get("food_icon")
+	var left: String = FoodBuff.clock_text(FoodBuff.seconds_left())
+	check("a meal in force shows on the HUD: its own picture, and the minutes and seconds left",
+		chip.visible and face.texture == bread.icon and clock.text == left
+		and RegEx.create_from_string("^1[12]:[0-9][0-9]$").search(clock.text) != null, [chip.visible, clock.text])
+	check("  hover names it", chip.tooltip_text == "Test Bread: +45 max health, %s left" % left, chip.tooltip_text)
+	var bar: Control = hud.get("staminabar")
+	var style: StyleBoxFlat = chip.get_theme_stylebox("panel") as StyleBoxFlat
+	check("  beside the stamina bar on its row, clear of the hotbar over the health bar, in the buff's colour",
+		chip.get_parent() == bar.get_parent() and chip.offset_right <= bar.offset_left
+		and is_equal_approx(chip.offset_top, bar.offset_top) and is_equal_approx(chip.anchor_top, bar.anchor_top)
+		and chip.grow_horizontal == Control.GROW_DIRECTION_BEGIN
+		and style != null and style.border_color.is_equal_approx(FoodBuff.colour_for(ItemData.BuffKind.VIGOUR)),
+		[chip.offset_right, chip.offset_top, bar.offset_left, bar.offset_top])
+	check("the clock reads minutes:seconds",
+		FoodBuff.clock_text(754) == "12:34" and FoodBuff.clock_text(7) == "0:07" and FoodBuff.clock_text(-3) == "0:00")
+	FoodBuff.clear()
+	check("and when the meal is over the chip goes", not chip.visible)
+	hud.free()
+	ItemRegistry._items.erase(bread.item_id)
+	ItemRegistry._items.erase(potion.item_id)
+	FoodBuff.clear()
+	CharacterData.character_slots = kept_slots
+	CharacterData.active_character_index = kept_index
+	await get_tree().process_frame
+
+
+func _test_the_catch_names_its_bait() -> void:
+	section("BAIT - any bait casts, and the catch says which one it took (0.74.0)")
+	var FishingSpot: Script = load("res://src/world/fishingspot.gd") as Script
+	check("the catch notice names the bait the server says it took",
+		FishingSpot.catch_text("Raw Mudfish", 1, "Lugworm") == "Caught Raw Mudfish on a Lugworm"
+		and FishingSpot.catch_text("Raw Carp", 2, "Glowgrub") == "Caught Raw Carp x2 on a Glowgrub"
+		and FishingSpot.catch_text("Raw Carp", 1, "Eel Bait") == "Caught Raw Carp on an Eel Bait",
+		FishingSpot.catch_text("Raw Mudfish", 1, "Lugworm"))
+	check("  and with none named it is the notice it always was",
+		FishingSpot.catch_text("Raw Mudfish", 1) == "Caught Raw Mudfish"
+		and FishingSpot.catch_text("Raw Mudfish", 3, "") == "Caught Raw Mudfish x3")
+
+	var grub := _larder_item("zz_bait_grub", "Test Glowgrub", Color(0.7, 1, 0.4))
+	grub.bait_rolls = 3
+	var perch := _larder_item("zz_bait_perch", "Raw Test Perch", Color(0.6, 0.8, 1))
+	ItemRegistry._items[grub.item_id] = grub
+	ItemRegistry._items[perch.item_id] = perch
+	var server := LarderServer.new()
+	add_child(server)
+	if not server.start():
+		check("a free local port for the suite's larder server", false)
+		server.queue_free()
+		ItemRegistry._items.erase(grub.item_id)
+		ItemRegistry._items.erase(perch.item_id)
+		return
+	var kept: Array = _larder_serve(server)
+	var huds: Array = get_tree().get_nodes_in_group(&"hud")
+	for h in huds:
+		h.remove_from_group(&"hud")
+	var hud := CookingHud.new()
+	hud.add_to_group(&"hud")
+	add_child(hud)
+	var screen_node := Node.new()
+	hud.add_child(screen_node)
+	hud.inventory_screen = screen_node
+	var bag := CookingBag.new()
+	bag.name = "inventorycontainer"
+	screen_node.add_child(bag)
+	bag.owner = screen_node
+	bag.unique_name_in_owner = true
+	bag.counts = {"zz_bait_grub": 2}
+	server.bag = bag
+
+	var listener_script := GDScript.new()
+	listener_script.source_code = "extends Node\nvar said: Array = []\nfunc show_notice(message: String) -> void:\n\tsaid.append(message)\n"
+	listener_script.reload()
+	var angler := Node.new()
+	angler.set_script(listener_script)
+	add_child(angler)
+	var spot: Node = (load("res://scene/interactables/fishingspot.tscn") as PackedScene).instantiate()
+	add_child(spot)
+	spot.set("player_in_range", angler)
+	check("a bag with a better bait and no worm has bait - the cast is not refused before the server is asked",
+		int(spot.call("_bait_count")) == 2, spot.call("_bait_count"))
+	server.catch_answer = {"item_id": "zz_bait_perch", "quantity": 1, "levelled_up": false, "bait": "zz_bait_grub"}
+	await spot._land_catch()
+	check("a catch the server says took a glowgrub says so: \"Caught Raw Test Perch on a Test Glowgrub\"",
+		angler.get("said") == ["Caught Raw Test Perch on a Test Glowgrub"], angler.get("said"))
+	server.catch_answer = {"item_id": "zz_bait_perch", "quantity": 1, "levelled_up": false}
+	await spot._land_catch()
+	check("  and one whose answer names no bait says only the fish, not the last one's bait",
+		(angler.get("said") as Array).size() == 2 and str(angler.get("said")[1]) == "Caught Raw Test Perch",
+		angler.get("said"))
+
+	spot.queue_free()
+	angler.queue_free()
+	hud.queue_free()
+	server.queue_free()
+	for h in huds:
+		if is_instance_valid(h):
+			h.add_to_group(&"hud")
+	ItemRegistry._items.erase(grub.item_id)
+	ItemRegistry._items.erase(perch.item_id)
+	_larder_unserve(kept)
+	await get_tree().process_frame
+
+
+func _test_a_tooltip_says_what_food_is_for() -> void:
+	section("TOOLTIPS - a meal's heal, buff and makings; what a material is for; how a bait works (0.74.0)")
+	var herb := _larder_item("zz_tip_herb", "Test Herb", Color(0.6, 1, 0.6))
+	var salt := _larder_item("zz_tip_salt", "Test Salt", Color(0.9, 0.9, 1))
+	var stew := _larder_meal("zz_tip_stew", "Test Stew", Color(1, 0.7, 0.5),
+		{"zz_tip_herb": 2, "zz_tip_salt": 1}, 12, 32, 30, ItemData.BuffKind.VIGOUR, 25, 900)
+	stew.required_level = 5
+	var pie := _larder_meal("zz_tip_pie", "Test Pie", Color(1, 0.9, 0.6),
+		{"zz_tip_stew": 1}, 20, 40, 60, ItemData.BuffKind.NONE, 0, 0)
+	var made: Array[ItemData] = [herb, salt, stew, pie]
+	for data in made:
+		ItemRegistry._items[data.item_id] = data
+	var lines: String = ItemTooltip._requirement_lines(stew)
+	var said: PackedStringArray = lines.split("\n")
+	check("a meal's tooltip says what it heals", said.has("Restores 30 Health"), lines)
+	check("  the buff it gives, in buff_text()'s words", said.has("+25 max health for 15 min"), lines)
+	check("  and what it is made from, and at what cooking level",
+		said.has("Made from Test Herb x2 and Test Salt - cooking level 12"), lines)
+	check("  with who may eat it still last", said[said.size() - 1] == "Needs Lv 5", lines)
+	check("a meal that goes into another says it is a cooking ingredient as well",
+		said.has(ItemTooltip.COOKING_INGREDIENT), lines)
+	check("a meal with no buff says none, and lists its one ingredient plainly",
+		not ItemTooltip._requirement_lines(pie).contains(" for ")
+		and ItemTooltip._requirement_lines(pie).contains("Made from Test Stew - cooking level 20"),
+		ItemTooltip._requirement_lines(pie))
+	check("an ingredient says it is one, and nothing else",
+		ItemTooltip._requirement_lines(salt) == "Cooking ingredient", ItemTooltip._requirement_lines(salt))
+	var ore := _larder_item("ironore", "Test Ore", Color(0.7, 0.7, 0.7))
+	check("a material the smith takes says so",
+		ItemTooltip._requirement_lines(ore) == "Used by the smith", ItemTooltip._requirement_lines(ore))
+	var smith_ids: Array = []
+	for row in GameConstants.TEMPER_COSTS + GameConstants.CERTIFICATIONS:
+		for need in (row as Dictionary).get("materials", []):
+			if not smith_ids.has(str(need["item_id"])):
+				smith_ids.append(str(need["item_id"]))
+	check("  read off the smith's own costs: every material a temper or certificate takes, nothing else",
+		smith_ids.size() >= 10 and smith_ids.all(func(id: String) -> bool: return ItemTooltip.is_smith_material(id))
+		and not ItemTooltip.is_smith_material("zz_tip_salt") and not ItemTooltip.is_smith_material(""), smith_ids)
+	var grub := _larder_item("zz_tip_grub", "Test Grub", Color(0.7, 1, 0.4))
+	grub.bait_rolls = 3
+	var worm := _larder_item("zz_tip_worm", "Test Worm", Color(1, 0.6, 0.6))
+	worm.bait_rolls = 1
+	check("a bait says how many rolls a catch gets",
+		ItemTooltip._requirement_lines(grub) == "Bait - each catch is rolled 3 times, the best fish kept"
+		and ItemTooltip._requirement_lines(worm) == "Bait - each catch is rolled once",
+		[ItemTooltip._requirement_lines(grub), ItemTooltip._requirement_lines(worm)])
+	var potion := ItemData.new()
+	potion.item_id = "zz_tip_potion"
+	potion.restore_amount = 260
+	potion.restore_target = ItemData.RestoreTarget.HP
+	check("and a potion, which is none of these, says what it always said",
+		ItemTooltip._requirement_lines(potion) == "Restores 260 Health", ItemTooltip._requirement_lines(potion))
+
+	var tip: Control = (load("res://scene/ui/inventory/itemtooltip.tscn") as PackedScene).instantiate()
+	add_child(tip)
+	await get_tree().process_frame
+	tip.show_for_stack(ItemStack.new(stew, 2), null)
+	var shown: String = (tip.find_child("tooltipdescription", true, false) as Label).text
+	check("the tooltip itself shows all of it over the bag", shown.contains("+25 max health for 15 min")
+		and shown.contains("Made from Test Herb x2 and Test Salt") and shown.contains("Restores 30 Health"), shown)
+	tip.queue_free()
+	for data in made:
+		ItemRegistry._items.erase(data.item_id)
+
+	# THE REAL LARDER, where the pack is here to load it.
+	var real: Dictionary = {}
+	for id in ["salt", "wildherb", "ironore", "lugworm", "fishingworm", "bonebroth"]:
+		real[id] = ItemTooltip._requirement_lines(ItemRegistry.get_item(id)) if ItemRegistry.has_item(id) else "missing"
+	check_needs_pack("the real ones: salt and wild herb cook, iron ore is the smith's, a lugworm rolls twice and the worm once",
+		str(real["salt"]).contains("Cooking ingredient") and str(real["wildherb"]).contains("Cooking ingredient")
+		and str(real["ironore"]).contains("Used by the smith")
+		and str(real["lugworm"]).contains("rolled 2 times") and str(real["fishingworm"]).contains("rolled once"), real)
+	check_needs_pack("  and Bone Broth heals, buffs, is made from bone, onion and salt, and goes into a soup",
+		str(real["bonebroth"]).contains("Restores 45 Health") and str(real["bonebroth"]).contains("+45 max health for 15 min")
+		and str(real["bonebroth"]).contains("Made from Old Bone x2") and str(real["bonebroth"]).contains("Cooking ingredient"),
+		real["bonebroth"])
+	await get_tree().process_frame
+
+
 func _test_the_fire_shows_the_fish_it_cooks() -> void:
 	section("COOKING - the fire shows the fish it is cooking, and how each came out (0.25.2)")
 	# The owner: "cooking meter was not matching up and burned fish vanished to
@@ -22981,6 +24801,1156 @@ func _test_only_levelling_up_refills() -> void:
 
 
 # =============================================================================
+# THE SMITH: AN ANVIL IN TOWN, TEMPERING, THE ROYAL CERTIFICATION (0.74.0)
+# =============================================================================
+# The owner: "a new smith spends materials plus gold to upgrade gear", and
+# "Upgrades that cost materials instead of only gold, plus a 'Royal
+# Certification' step to reach higher tiers ... the certification fits the
+# kingdom theme".
+#
+# Four sections. The anvil as a thing in the world - placed by the shop, solid,
+# reachable from where players arrive, clear of every door - and as a station
+# that opens the smith window on one press, at the nearest anvil only. The
+# window's Temper tab against a stand-in server that keeps the SPEC's rules,
+# and its Royal Certification tab the same way. And patronage on the kingdom
+# board: the Donate control, and the titles it buys.
+#
+# STAND-IN GEAR AND MATERIALS, and a stand-in price list handed to the stand-in
+# server, so these run in a clone without the private art pack (every real ore
+# and essence draws its icon from it, and without the pack they do not load) -
+# the cooking section's reason for its stand-in fish.
+
+const SMITH_FIELD := ["zz_smith_blade", "zz_smith_plate", "zz_smith_ore", "zz_smith_bone", "zz_smith_essence"]
+
+
+func _smith_stand_ins() -> void:
+	var blade := ItemData.new()
+	blade.item_id = "zz_smith_blade"
+	blade.display_name = "Test Blade"
+	blade.type = ItemData.Type.WEAPON
+	blade.equip_slot = ItemData.EquipSlot.WEAPON
+	blade.tier = 1
+	blade.value = 500
+	blade.damage = 100
+	var plate := ItemData.new()
+	plate.item_id = "zz_smith_plate"
+	plate.display_name = "Test Plate"
+	plate.type = ItemData.Type.ARMOR
+	plate.equip_slot = ItemData.EquipSlot.CHEST
+	plate.tier = 3
+	plate.value = 2000
+	plate.armor_value = 40
+	plate.bonus_max_hp = 20
+	var made: Array[ItemData] = [blade, plate]
+	for spec in [["zz_smith_ore", "Test Ore"], ["zz_smith_bone", "Test Bone"], ["zz_smith_essence", "Test Essence"]]:
+		var stuff := ItemData.new()
+		stuff.item_id = spec[0]
+		stuff.display_name = spec[1]
+		stuff.type = ItemData.Type.MATERIAL
+		stuff.stackable = true
+		stuff.max_stack = 99
+		stuff.value = 30
+		stuff.tier = 1
+		made.append(stuff)
+	for item in made:
+		var picture := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		picture.fill(Color(0.7, 0.7, 0.75))
+		item.icon = ImageTexture.create_from_image(picture)
+		ItemRegistry._items[item.item_id] = item
+
+
+func _smith_forget_stand_ins() -> void:
+	for id in SMITH_FIELD:
+		ItemRegistry._items.erase(id)
+	for rolled in ItemRegistry._rolled.keys():
+		if str(rolled).begins_with("zz_smith_"):
+			ItemRegistry._rolled.erase(rolled)
+
+
+# The stand-in's price list: the SPEC's shapes, the stand-in's materials. Tier
+# 1 is anybody's; tier 3 needs the first rank.
+const SMITH_TEST_COSTS := [
+	{"tier": 1, "materials": [{"item_id": "zz_smith_ore", "quantity": 3}], "certification": 0},
+	{"tier": 3, "materials": [{"item_id": "zz_smith_ore", "quantity": 2},
+		{"item_id": "zz_smith_bone", "quantity": 1}], "certification": 1},
+]
+const SMITH_TEST_CERTS := [
+	{"rank": 1, "name": "Journeyman Smith", "max_tier": 3, "level": 10, "gold": 5000,
+		"materials": [{"item_id": "zz_smith_essence", "quantity": 4}]},
+	{"rank": 2, "name": "Artisan Smith", "max_tier": 4, "level": 16, "gold": 25000,
+		"materials": [{"item_id": "zz_smith_bone", "quantity": 6}]},
+]
+
+
+class SmithServer extends Node:
+	# Answers the smith's four routes and the kingdom's gift as SPEC.md (0.74.0)
+	# says the server does, against a bag and a purse of its own: tempering
+	# raises every rolled stat by TEMPER_STEP to TEMPER_CAP for the tier's
+	# materials and value x TEMPER_GOLD_RATE gold, refuses a Perfect piece, a
+	# fully tempered one and a tier above the rank; a certification is the next
+	# rank only; a gift burns gold and names a title. Every answer goes out as
+	# JSON over a real socket, so the window reads floats where it sent ints,
+	# exactly as it does from Flask. `asked` keeps each request as
+	# "METHOD /path" and `bodies` what it carried.
+	var server := TCPServer.new()
+	var port := 0
+	var asked: Array = []
+	var bodies: Array = []
+	var bag: Array = []
+	var purse: int = 0
+	var rank: int = 0
+	var level: int = 30
+	var donated: int = 0
+	var certify_carries_bag: bool = true
+	# The price list: the game's own unless a section hands over its own.
+	var costs: Array = GameConstants.TEMPER_COSTS
+	var certs: Array = GameConstants.CERTIFICATIONS
+	var board_rows: Array = []
+	var _peers: Array = []
+
+	func start() -> bool:
+		for p in range(47300, 47400):
+			if server.listen(p, "127.0.0.1") == OK:
+				port = p
+				return true
+		return false
+
+	func clear() -> void:
+		asked.clear()
+		bodies.clear()
+
+	func stop() -> void:
+		server.stop()
+		for c in _peers:
+			(c.peer as StreamPeerTCP).disconnect_from_host()
+		_peers.clear()
+
+	func _process(_delta: float) -> void:
+		while server.is_connection_available():
+			_peers.append({"peer": server.take_connection(), "buf": PackedByteArray()})
+		for c in _peers.duplicate():
+			var peer: StreamPeerTCP = c.peer
+			peer.poll()
+			if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+				_peers.erase(c)
+				continue
+			var waiting := peer.get_available_bytes()
+			if waiting > 0:
+				c.buf.append_array(peer.get_data(waiting)[1])
+			var text: String = c.buf.get_string_from_ascii()
+			var end := text.find("\r\n\r\n")
+			if end == -1:
+				continue
+			var head := text.substr(0, end)
+			var length := 0
+			for h in head.split("\r\n"):
+				if h.to_lower().begins_with("content-length:"):
+					length = int(h.get_slice(":", 1).strip_edges())
+			if c.buf.size() < end + 4 + length:
+				continue
+			var sent: String = c.buf.slice(end + 4, end + 4 + length).get_string_from_utf8()
+			c.buf = c.buf.slice(end + 4 + length)
+			var first := head.get_slice("\r\n", 0)
+			var method := first.get_slice(" ", 0)
+			var path := first.get_slice(" ", 1)
+			var body: Variant = JSON.parse_string(sent) if sent != "" else {}
+			asked.append("%s %s" % [method, path.get_slice("?", 0)])
+			bodies.append(body if body is Dictionary else {})
+			var answer: Array = _route(method, path, body if body is Dictionary else {})
+			var out_body := JSON.stringify(answer[1]).to_utf8_buffer()
+			var out := ("HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n"
+				% [answer[0], out_body.size()]).to_ascii_buffer()
+			out.append_array(out_body)
+			peer.put_data(out)
+
+	func _route(method: String, path: String, body: Dictionary) -> Array:
+		var bare: String = path.get_slice("?", 0)
+		if method == "GET" and bare == "/api/smith/status":
+			return ["200 OK", status()]
+		if method == "POST" and (bare == "/api/smith/quote" or bare == "/api/smith/temper"):
+			# A CELL THAT DOES NOT HOLD WHAT THE GAME SAW is the game's picture of
+			# the bag being out of date: refused, with the bag as it is.
+			var cell: int = int(body.get("position", -1))
+			var held: Variant = bag[cell] if cell >= 0 and cell < bag.size() else null
+			if not (held is Dictionary) or str(held["item_id"]) != str(body.get("item_id", "")):
+				return ["409 CONFLICT", {"error": "Conflict",
+					"message": "Your backpack changed on the server. It has been reloaded.",
+					"resync": {"slot": int(body.get("slot", 0)), "gold": purse, "inventory": bag}}]
+			if bare == "/api/smith/quote":
+				return ["200 OK", quote(cell, str(body.get("item_id", "")))]
+			return temper(cell, str(body.get("item_id", "")))
+		if method == "POST" and bare == "/api/smith/certify":
+			return certify(int(body.get("rank", 0)))
+		if method == "POST" and bare == "/api/kingdom/donate":
+			return donate(int(body.get("amount", 0)))
+		if method == "GET" and bare == "/api/economy/kingdom":
+			return ["200 OK", kingdom()]
+		if method == "GET" and bare == "/api/character":
+			return ["200 OK", {"inventory": bag}]
+		return ["404 NOT FOUND", {"error": "Not Found", "message": "No such route."}]
+
+	func refuse(code: String, message: String) -> Array:
+		return [code, {"error": code.get_slice(" ", 1), "message": message}]
+
+	func have(item_id: String) -> int:
+		var total := 0
+		for cell in bag:
+			if cell is Dictionary and str(cell["item_id"]) == item_id:
+				total += int(cell["quantity"])
+		return total
+
+	func take(item_id: String, count: int) -> void:
+		for i in bag.size():
+			if count <= 0:
+				return
+			var cell: Variant = bag[i]
+			if cell is Dictionary and str(cell["item_id"]) == item_id:
+				var used: int = mini(count, int(cell["quantity"]))
+				cell["quantity"] = int(cell["quantity"]) - used
+				count -= used
+				if int(cell["quantity"]) <= 0:
+					bag[i] = null
+
+	func status() -> Dictionary:
+		var ranks: Array = []
+		for cert in certs:
+			var row: Dictionary = (cert as Dictionary).duplicate(true)
+			row["earned"] = int(row["rank"]) <= rank
+			ranks.append(row)
+		var named := ""
+		for cert in certs:
+			if int(cert["rank"]) == rank:
+				named = str(cert["name"])
+		var listed: Array = []
+		for cost in costs:
+			var row: Dictionary = (cost as Dictionary).duplicate(true)
+			row["gold_rate"] = GameConstants.TEMPER_GOLD_RATE
+			listed.append(row)
+		return {"rank": rank, "rank_name": named, "ranks": ranks, "temper_costs": listed,
+			"temper_step": GameConstants.TEMPER_STEP, "temper_cap": GameConstants.TEMPER_CAP}
+
+	func tempered_id(item_id: String) -> String:
+		var parts: Dictionary = ItemRegistry.split_roll(item_id)
+		var base: ItemData = ItemRegistry.get_item(str(parts["base"]))
+		var out: String = str(parts["base"]) + GameConstants.QUALITY_MARK
+		for pair in ItemRegistry.rolled_fields(base):
+			var was: int = int((parts["rolls"] as Dictionary)[pair[1]])
+			var now: int = was if was >= GameConstants.TEMPER_CAP \
+				else mini(was + GameConstants.TEMPER_STEP, GameConstants.TEMPER_CAP)
+			out += "%s%d" % [pair[0], now]
+		var resist: Dictionary = parts.get("resist", {})
+		if not resist.is_empty():
+			out += "%s%d%02d" % [GameConstants.RESIST_LETTER, int(resist["element"]), int(resist["percent"])]
+		return out
+
+	func quote(cell: int, item_id: String) -> Dictionary:
+		var held: Variant = bag[cell] if cell >= 0 and cell < bag.size() else null
+		if not (held is Dictionary) or str(held["item_id"]) != item_id:
+			return {"item_id": item_id, "can": false, "reason": "that piece is not in that cell"}
+		var data: ItemData = ItemRegistry.get_item(item_id)
+		var parts: Dictionary = ItemRegistry.split_roll(item_id)
+		var cost: Dictionary = {}
+		for row in costs:
+			if int(row["tier"]) == int(data.tier):
+				cost = row
+		var base: ItemData = ItemRegistry.get_item(str(parts.get("base", item_id)))
+		var gold: int = maxi(1, roundi(float(base.value) * GameConstants.TEMPER_GOLD_RATE))
+		var mats: Array = []
+		for need in cost.get("materials", []):
+			mats.append({"item_id": need["item_id"], "quantity": need["quantity"], "have": have(str(need["item_id"]))})
+		var new_id: String = tempered_id(item_id) if not (parts.get("rolls", {}) as Dictionary).is_empty() else item_id
+		var answer := {"item_id": item_id, "new_item_id": new_id,
+			"before": parts.get("rolls", {}), "after": ItemRegistry.split_roll(new_id).get("rolls", {}),
+			"gold": gold, "materials": mats, "certification": int(cost.get("certification", 0)),
+			"can": true, "reason": ""}
+		var why := ""
+		if data.is_perfect():
+			why = "already perfect"
+		elif new_id == item_id:
+			why = "fully tempered"
+		elif rank < int(cost.get("certification", 0)):
+			why = "you need to be certified for tier %d" % int(data.tier)
+		else:
+			for m in mats:
+				if int(m["have"]) < int(m["quantity"]):
+					why = "you are missing %s" % ItemRegistry.get_item(str(m["item_id"])).display_name
+					break
+			if why == "" and purse < gold:
+				why = "you need %d gold" % gold
+		if why != "":
+			answer["can"] = false
+			answer["reason"] = why
+		return answer
+
+	func temper(cell: int, item_id: String) -> Array:
+		var q: Dictionary = quote(cell, item_id)
+		if not bool(q.get("can", false)):
+			return refuse("403 FORBIDDEN", str(q.get("reason", "no")))
+		for m in q["materials"]:
+			take(str(m["item_id"]), int(m["quantity"]))
+		purse -= int(q["gold"])
+		bag[cell] = {"item_id": q["new_item_id"], "quantity": 1}
+		return ["200 OK", {"item_id": q["new_item_id"], "position": cell, "gold": purse,
+			"status": status(), "inventory": bag, "consumed": q["materials"]}]
+
+	func certify(wanted: int) -> Array:
+		if wanted != rank + 1:
+			return refuse("409 CONFLICT", "Earn the ranks in order.")
+		var cert: Dictionary = {}
+		for row in certs:
+			if int(row["rank"]) == wanted:
+				cert = row
+		if cert.is_empty():
+			return refuse("404 NOT FOUND", "There is no such rank.")
+		if level < int(cert["level"]):
+			return refuse("403 FORBIDDEN", "You need to be level %d." % int(cert["level"]))
+		for m in cert["materials"]:
+			if have(str(m["item_id"])) < int(m["quantity"]):
+				return refuse("404 NOT FOUND", "You are missing %s." % ItemRegistry.get_item(str(m["item_id"])).display_name)
+		if purse < int(cert["gold"]):
+			return refuse("403 FORBIDDEN", "You need %d gold." % int(cert["gold"]))
+		for m in cert["materials"]:
+			take(str(m["item_id"]), int(m["quantity"]))
+		purse -= int(cert["gold"])
+		rank = wanted
+		var answer: Dictionary = status()
+		if certify_carries_bag:
+			answer["gold"] = purse
+			answer["inventory"] = bag
+		return ["200 OK", answer]
+
+	func title_for(total: int) -> Array:
+		var title := ""
+		var next_title := ""
+		var next_at := 0
+		for row in GameConstants.PATRON_TITLES:
+			if total >= int(row["at"]):
+				title = str(row["title"])
+			elif next_title == "":
+				next_title = str(row["title"])
+				next_at = int(row["at"])
+		return [title, next_title, next_at]
+
+	func donate(amount: int) -> Array:
+		if amount < GameConstants.DONATION_MINIMUM:
+			return refuse("400 BAD REQUEST", "The Crown takes gifts of at least %d gold." % GameConstants.DONATION_MINIMUM)
+		if amount > purse:
+			return refuse("403 FORBIDDEN", "You do not carry that much.")
+		purse -= amount
+		donated += amount
+		var t: Array = title_for(donated)
+		return ["200 OK", {"donated": donated, "title": t[0], "next_title": t[1], "next_at": t[2], "gold": purse}]
+
+	func kingdom() -> Dictionary:
+		var t: Array = title_for(donated)
+		var top: Array = board_rows.duplicate(true)
+		var mine: Dictionary = {"username": "suite", "contributed": donated, "lusions": 0, "deaths": 0,
+			"lost": 0, "rank": 1, "donated": donated, "title": t[0], "next_title": t[1], "next_at": t[2]}
+		var found := false
+		for row in top:
+			if str(row.get("username", "")) == "suite":
+				row["contributed"] = donated
+				row["title"] = t[0]
+				found = true
+		if not found and donated > 0:
+			top.push_front({"username": "suite", "contributed": donated, "lusions": 0, "deaths": 0,
+				"lost": 0, "rank": 1, "title": t[0]})
+		return {"total": 1000000 + donated, "total_taxed": 0, "total_deaths": 3, "total_lost": 0,
+			"by_reason": {"shop_buy": 1000000, "donation": donated}, "contributors": top.size(),
+			"top": top, "you": mine}
+
+
+class SmithHud extends Node:
+	# What the smith window and the anvil ask the HUD for: the bag, through the
+	# inventory screen, and open_smith(), which this only counts.
+	var inventory_screen: Node = null
+	var opened: Array = []
+
+	func open_smith(anvil: Node, who: Node) -> void:
+		opened.append([anvil, who])
+
+
+class SmithPlayer extends Node2D:
+	# The purse and the level the window reads, and set_gold() as Player has it.
+	var gold: int = 0
+	var level: int = 12
+
+	func set_gold(total: int) -> void:
+		gold = total
+
+
+func _test_the_anvil_stands_by_the_shop() -> void:
+	section("THE ANVIL - by the shop, solid, at 1x, reached from where players arrive, clear of every door (0.74.0)")
+	var packed: PackedScene = load("res://scene/interactables/anvil.tscn") as PackedScene
+	check("anvil.tscn loads", packed != null and packed.can_instantiate())
+	if packed == null or not packed.can_instantiate():
+		return
+	var anvil: Area2D = packed.instantiate() as Area2D
+	check("its root is the anvil script on an Area2D",
+		anvil != null and anvil.get_script() != null
+		and (anvil.get_script() as Script).resource_path == "res://src/world/anvil.gd")
+	var sprite: AnimatedSprite2D = anvil.get_node_or_null("animatedsprite2d") as AnimatedSprite2D
+	var art: Texture2D = sprite.sprite_frames.get_frame_texture(sprite.animation, 0) \
+		if sprite != null and sprite.sprite_frames != null else null
+	check_needs_pack("its picture is the pack's anvil, art/pack/smith/anvil.png",
+		art != null and art.resource_path == "res://art/pack/smith/anvil.png", art.resource_path if art != null else "")
+	check_needs_pack("  a 16 px cell drawn at 1x - the world's own tile size",
+		art != null and art.get_size() == Vector2(16, 16) and sprite.scale == Vector2.ONE
+		and anvil.scale == Vector2.ONE, [art.get_size() if art != null else Vector2.ZERO, sprite.scale if sprite != null else Vector2.ZERO])
+	check("  drawn nearest-neighbour, like every pixel in the world",
+		sprite != null and sprite.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST)
+
+	# THE STATION'S REACH: an interact ring on the root, as the firepit has.
+	var reach: CollisionShape2D = anvil.get_node_or_null("collisionshape2d") as CollisionShape2D
+	check("it has a reach to stand in, on the root", reach != null and reach.shape is CircleShape2D)
+	check("  and it notices the player and nothing else",
+		(anvil.collision_mask & LAYER_PLAYER) != 0 and anvil.collision_mask == LAYER_PLAYER, anvil.collision_mask)
+
+	# SOLID, the firepit's rules (see SOLID PROPS above): a body on a layer the
+	# player collides with, which the anvil's own reach cannot see, unscaled,
+	# covering where the art meets the ground, and actually stopping a walker.
+	var player_layer: int = int(_scene_root_prop("res://scene/characters/warrior.tscn", "collision_layer", 0))
+	var player_mask: int = int(_scene_root_prop("res://scene/characters/warrior.tscn", "collision_mask", 0))
+	var body: StaticBody2D = anvil.get_node_or_null("body") as StaticBody2D
+	var foot: CollisionShape2D = body.get_node_or_null("collision") as CollisionShape2D if body != null else null
+	check("it has a solid body with a shape", foot != null and foot.shape is RectangleShape2D)
+	if foot == null:
+		anvil.free()
+		return
+	check("  on a layer the player collides with", (body.collision_layer & player_mask) != 0,
+		[body.collision_layer, player_mask])
+	check("  that its own reach cannot see", (body.collision_layer & anvil.collision_mask) == 0)
+	check("  sized, not scaled", body.scale == Vector2.ONE and foot.scale == Vector2.ONE)
+	var aim: float = _art_ground_y(anvil)
+	check_needs_pack("  its footprint covers where its art meets the ground", _shape_covers(foot, aim),
+		"art ground at y=%.1f, shape at y=%.1f" % [aim, foot.position.y])
+	# DRIVEN AT THE ART, NOT AT THE SHAPE - the SOLID PROPS section's lesson: a
+	# walker aimed at the shape finds it wherever it has been moved to. Without
+	# the pack there is no art to read, and the shape is all there is to aim at.
+	var drive_y: float = aim if art != null else foot.position.y
+	var blocked: float = await _walk_into(anvil, player_layer, player_mask, drive_y)
+	foot.disabled = true
+	var through: float = await _walk_into(anvil, player_layer, player_mask, drive_y)
+	foot.disabled = false
+	check("  it stops a body walking into it, which goes straight through with the shape off",
+		blocked < 0.0 and through > 20.0, [blocked, through])
+	check("the map pins it as the smith, and the map can draw that pin",
+		str(anvil.map_landmark().get("kind", "")) == "smith"
+		and (load("res://src/ui/menus/mapscreen.gd") as Script).get_script_constant_map()["LANDMARK_STYLE"].has("smith"))
+	anvil.free()
+
+	# ---- IN THE TOWN ------------------------------------------------------------------
+	var town: Node = (load("res://scene/elusion.tscn") as PackedScene).instantiate()
+	var found: Array = []
+	_collect_by_script(town, "res://src/world/anvil.gd", found)
+	check("the town has one anvil", found.size() == 1, found.size())
+	if found.size() != 1:
+		town.free()
+		return
+	var placed: Node2D = found[0]
+	var at: Vector2 = _area_xform(placed, town).origin
+	var shop: Node = town.get_node_or_null("ysortworld/interactables/shophouse")
+	var shop_door: Node = shop.get_node_or_null("shopexterior/door") if shop != null else null
+	var door_at: Vector2 = _area_xform(shop_door, town).origin if shop_door is Node2D else Vector2.INF
+	check("  by the shop - within twelve tiles of its door", at.distance_to(door_at) < 192.0,
+		"%s from the door at %s" % [at, door_at])
+	# THE SHOP'S ROOF LIFTS FOR ANYBODY INSIDE ITS TRIGGER, which reaches well
+	# past the walls. Standing at the anvil - anywhere its reach can see your
+	# feet - must not show the shop's insides.
+	var roof: Node = shop.get_node_or_null("trigger") if shop != null else null
+	var roof_rects: Array = _door_rects(roof, town) if roof != null else []
+	var reach_node: CollisionShape2D = placed.get_node("collisionshape2d") as CollisionShape2D
+	var reach_rect: Rect2 = (_area_xform(reach_node, town) * reach_node.shape.get_rect()).grow(7.0)
+	check("  and using it never lifts the shop's roof", not roof_rects.is_empty()
+		and roof_rects.filter(func(r: Rect2) -> bool: return r.intersects(reach_rect)).is_empty(), [reach_rect, roof_rects])
+	var door_rects: Array = []
+	for script_path in DOOR_SCRIPTS:
+		var doors: Array = []
+		_collect_by_script(town, script_path, doors)
+		for door in doors:
+			door_rects.append_array(_door_rects(door, town))
+	var body_rect: Rect2 = _area_xform(placed.get_node("body/collision"), town) \
+		* (placed.get_node("body/collision") as CollisionShape2D).shape.get_rect()
+	var in_a_door: Array = door_rects.filter(func(r: Rect2) -> bool: return r.grow(16.0).intersects(body_rect))
+	check("  and a tile clear of the shop's door and every way out of town", in_a_door.is_empty(), in_a_door)
+	var spawn: Node = town.get_node_or_null("playerspawn")
+	check("  nowhere near where players arrive",
+		spawn is Node2D and at.distance_to(_area_xform(spawn, town).origin) > 96.0, at)
+
+	# REACHED FROM WHERE PLAYERS ARRIVE. The doors walk (AREAS) floods the town
+	# from every arrival with the warrior's own feet; a stand-in door laid over
+	# the anvil's reach asks that same flood whether a player can get there. A
+	# ladder with somewhere to go is a door to it - and nothing here enters the
+	# tree, so the stand-in never runs.
+	var stand_in := Area2D.new()
+	stand_in.name = "anvilreach"
+	stand_in.set_script(load("res://src/world/ladder.gd"))
+	stand_in.set("destination_scene_path", "res://scene/elusion.tscn")
+	var ring := CollisionShape2D.new()
+	var square := RectangleShape2D.new()
+	square.size = Vector2(44, 40)
+	ring.shape = square
+	ring.position = Vector2(0, -4)
+	stand_in.add_child(ring)
+	placed.add_child(stand_in)
+	var warrior: Node = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	var feet_node: CollisionShape2D = warrior.get_node("bodyshape") as CollisionShape2D
+	var probe := CharacterBody2D.new()
+	probe.collision_layer = 0
+	probe.collision_mask = (warrior as CollisionObject2D).collision_mask
+	var probe_shape := CollisionShape2D.new()
+	probe_shape.shape = feet_node.shape
+	probe_shape.position = feet_node.position
+	probe.add_child(probe_shape)
+	var radius: float = (feet_node.shape as CircleShape2D).radius
+	var feet_offset: Vector2 = feet_node.position
+	warrior.free()
+	var report: Dictionary = await _walk_area(town, probe, feet_offset, radius)
+	probe.free()
+	town.free()
+	check("  a player walks up to it from the town's arrival",
+		not report.is_empty() and not (report.unreached as Array).has("anvilreach"), report.get("unreached"))
+	check("  and every door the town had is still reached with it there",
+		not report.is_empty() and (report.unreached as Array).is_empty(), report.get("unreached"))
+	print("  the anvil at %s, by the shop's door" % at)
+
+
+func _test_the_anvil_opens_the_smith() -> void:
+	section("THE ANVIL - interact at the nearest anvil opens the smith window, once a press (0.74.0)")
+	var packed: PackedScene = load("res://scene/interactables/anvil.tscn") as PackedScene
+	if packed == null:
+		check("anvil.tscn loads", false)
+		return
+	var huds: Array = get_tree().get_nodes_in_group(&"hud")
+	for h in huds:
+		h.remove_from_group(&"hud")
+	var hud := SmithHud.new()
+	hud.add_to_group(&"hud")
+	add_child(hud)
+	var world := Node2D.new()
+	add_child(world)
+	var walker := CharacterBody2D.new()
+	walker.add_to_group("player")
+	walker.collision_layer = LAYER_PLAYER
+	walker.collision_mask = 0
+	var shape := CollisionShape2D.new()
+	var feet := CircleShape2D.new()
+	feet.radius = 7.0
+	shape.shape = feet
+	walker.add_child(shape)
+	world.add_child(walker)
+	walker.global_position = Vector2(0, 600)
+	walker.reset_physics_interpolation()
+
+	# THE FARTHER ONE FIRST IN THE TREE, so it is the first to see a press: it
+	# is the nearest-anvil rule, and not the order nodes happen to process in,
+	# that has to send the press to the other.
+	var near: Area2D = packed.instantiate() as Area2D
+	var far: Area2D = packed.instantiate() as Area2D
+	world.add_child(far)
+	world.add_child(near)
+	near.global_position = Vector2(0, 0)
+	near.reset_physics_interpolation()
+	far.global_position = Vector2(36, 0)
+	far.reset_physics_interpolation()
+	await get_tree().process_frame
+	near.spawn_timer = 0.0
+	far.spawn_timer = 0.0
+
+	# THE CONTROL: the stand-in HUD really is reached, or every "nothing opened"
+	# below would be a stand-in nobody could have called.
+	near.player_in_range = walker
+	near._open_smith()
+	check("the stand-in HUD receives open_smith(), for this anvil and this player",
+		hud.opened.size() == 1 and hud.opened[0][0] == near and hud.opened[0][1] == walker, hud.opened)
+	near.notify_panel_closed()
+	near.player_in_range = null
+	hud.opened.clear()
+
+	await _press_interact_a_frame()
+	check("a press with nobody at the anvil opens nothing", hud.opened.is_empty(), hud.opened.size())
+
+	# Walked up for real: the reach sees the body, as it will in town.
+	walker.global_position = Vector2(14, 12)
+	walker.reset_physics_interpolation()
+	for i in 20:
+		await get_tree().physics_frame
+		if near.player_in_range == walker and far.player_in_range == walker:
+			break
+	check("standing between the two, both anvils see the player",
+		near.player_in_range == walker and far.player_in_range == walker)
+	await _press_interact_a_frame()
+	check("ONE PRESS OPENS ONE WINDOW, AT THE NEAREST ANVIL",
+		hud.opened.size() == 1 and hud.opened[0][0] == near, hud.opened)
+	await _press_interact_a_frame()
+	check("  pressed again with the window up, nothing opens underneath it", hud.opened.size() == 1, hud.opened.size())
+	near.notify_panel_closed()
+	await _press_interact_a_frame()
+	check("  closed with its X and pressed again, it opens again - not a prop stuck open",
+		hud.opened.size() == 2, hud.opened.size())
+
+	# TWO ANVILS EXACTLY AS FAR AWAY. Neither is nearer, so both pass that test;
+	# the press is claimed by whichever sees it first, and the other stands down.
+	near.notify_panel_closed()
+	far.global_position = Vector2(28, 0)
+	far.reset_physics_interpolation()
+	for i in 20:
+		await get_tree().physics_frame
+		if far.player_in_range == walker:
+			break
+	hud.opened.clear()
+	await _press_interact_a_frame()
+	check("  two anvils at the same distance: one press, one window", hud.opened.size() == 1, hud.opened)
+	near.notify_panel_closed()
+	far.notify_panel_closed()
+	# The window up at the near anvil again, for the walk away.
+	near._open_smith()
+
+	var left: Array = []
+	near.player_left_range.connect(func() -> void: left.append(true))
+	walker.global_position = Vector2(0, 600)
+	walker.reset_physics_interpolation()
+	for i in 20:
+		await get_tree().physics_frame
+		if near.player_in_range == null:
+			break
+	check("walking off with the window up tells the window to go", left.size() == 1 and not near._is_open, left.size())
+	far.player_in_range = null
+
+	world.queue_free()
+	hud.queue_free()
+	for h in huds:
+		if is_instance_valid(h):
+			h.add_to_group(&"hud")
+	await get_tree().process_frame
+
+	# The HUD's own half: the window built on first use, pointed at the anvil.
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	check("the HUD builds the smith window on first use and points it at the anvil",
+		_func_body(hud_src, "func open_smith(").contains("SMITH_PANEL_SCENE.instantiate()")
+		and _func_body(hud_src, "func open_smith(").contains("open_for_anvil(anvil, player)"))
+	check("  and closes it on Escape, with its own x", _func_body(hud_src, "func _escape_windows(").contains("[smith_panel, \"close_panel\"]"))
+
+
+func _smith_stage(server: SmithServer) -> Dictionary:
+	"""A stand-in HUD with a real bag in it, a player, and the smith window, all
+	pointed at `server`. Returns what was built so the section can take it down."""
+	var huds: Array = get_tree().get_nodes_in_group(&"hud")
+	for h in huds:
+		h.remove_from_group(&"hud")
+	var hud := SmithHud.new()
+	hud.add_to_group(&"hud")
+	add_child(hud)
+	var screen := Node.new()
+	hud.add_child(screen)
+	hud.inventory_screen = screen
+	var bag := GridContainer.new()
+	bag.set_script(load("res://src/ui/inventory/inventorycontainer.gd"))
+	bag.set("grid_width", 6)
+	bag.set("grid_height", 5)
+	bag.name = "inventorycontainer"
+	screen.add_child(bag)
+	bag.owner = screen
+	bag.unique_name_in_owner = true
+	# THE CARRY, as the inventory screen marks it: what tells the grid that a
+	# re-read of it is /api/character and not the bank's /api/account.
+	bag.set("is_carry", true)
+	bag.load_server_array(server.bag)
+	var player := SmithPlayer.new()
+	player.gold = server.purse
+	player.level = server.level
+	add_child(player)
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var window: Control = (load("res://scene/ui/smith/smithscreen.tscn") as PackedScene).instantiate() as Control
+	layer.add_child(window)
+	return {"huds": huds, "hud": hud, "bag": bag, "player": player, "layer": layer, "window": window}
+
+
+func _smith_unstage(stage: Dictionary) -> void:
+	(stage.layer as Node).queue_free()
+	(stage.player as Node).queue_free()
+	(stage.hud as Node).queue_free()
+	for h in stage.huds:
+		if is_instance_valid(h):
+			h.add_to_group(&"hud")
+
+
+func _cell_id(bag: Node, cell: int) -> String:
+	var stack: ItemStack = bag.get_stack_at(cell)
+	return str(stack.data.item_id) if stack != null and stack.data != null else ""
+
+
+func _texts_under(node: Node) -> PackedStringArray:
+	var out := PackedStringArray()
+	for child in node.find_children("*", "Label", true, false):
+		out.append((child as Label).text)
+	return out
+
+
+func _test_the_smith_tempers() -> void:
+	section("THE SMITH - Temper: the piece, now and after, the cost with have / need, the gate, the bag after (0.74.0)")
+	_smith_stand_ins()
+	var server := SmithServer.new()
+	add_child(server)
+	if not server.start():
+		check("a free local port for the suite's smith", false)
+		server.queue_free()
+		_smith_forget_stand_ins()
+		return
+	server.costs = SMITH_TEST_COSTS
+	server.certs = SMITH_TEST_CERTS
+	server.purse = 18450
+	server.level = 12
+	var cells: Array = []
+	cells.resize(30)
+	cells[0] = {"item_id": "zz_smith_blade~d104", "quantity": 1}
+	cells[1] = {"item_id": "zz_smith_ore", "quantity": 5}
+	cells[3] = {"item_id": "zz_smith_plate~a113h96", "quantity": 1}
+	cells[4] = {"item_id": "zz_smith_blade~d120", "quantity": 1}
+	cells[6] = {"item_id": "zz_smith_blade~d115", "quantity": 1}
+	cells[7] = {"item_id": "zz_smith_bone", "quantity": 2}
+	cells[8] = {"item_id": "zz_smith_essence", "quantity": 4}
+	cells[22] = {"item_id": "zz_smith_blade", "quantity": 1}
+	server.bag = cells
+	var kept_url: String = ApiForTests.BASE_URL
+	var kept_token: String = Api.token
+	var kept_online: bool = Api.server_online
+	var kept_known: bool = Api.reachability_known
+	ApiForTests.BASE_URL = "http://127.0.0.1:%d" % server.port
+	Api.token = "suite"
+	var stage: Dictionary = _smith_stage(server)
+	var window: Control = stage.window
+	var bag: Node = stage.bag
+	var player: SmithPlayer = stage.player
+	var anvil: Area2D = (load("res://scene/interactables/anvil.tscn") as PackedScene).instantiate() as Area2D
+	add_child(anvil)
+	await get_tree().process_frame
+
+	await window.open_for_anvil(anvil, player)
+	check("opening reads the smith's status for this character",
+		server.asked == ["GET /api/smith/status"], server.asked)
+	check("  the window shows, sized from what is in it, inside the screen",
+		window.visible and window.size.x >= 300.0
+		and Rect2(Vector2.ZERO, window.get_viewport_rect().size).encloses(window.get_global_rect()), window.get_global_rect())
+
+	# ---- THE GEAR ------------------------------------------------------------------
+	var listed: Array = (window.get("_gear") as Array).map(func(g: Dictionary) -> int: return int(g["cell"]))
+	check("the bag's weapons and armour are listed, the hotbar's keys too, in bag order - no ore, no bone",
+		listed == [0, 3, 4, 6, 22], listed)
+	var grid: Node = window.get_node("%geargrid")
+	var first: InventorySlot = (grid.get("slots") as Array)[0]
+	check("  as views: a slot of the grid cannot be dragged out of", first.slot_type == "lootbag", first.slot_type)
+
+	# ---- A PIECE ON THE ANVIL ------------------------------------------------------
+	server.clear()
+	await window.choose_cell(0)
+	check("picking the blade asks for a quote naming its cell and the piece in it",
+		server.asked == ["POST /api/smith/quote"] and int(server.bodies[-1].get("position", -1)) == 0
+		and str(server.bodies[-1].get("item_id", "")) == "zz_smith_blade~d104"
+		and int(server.bodies[-1].get("slot", -9)) == CharacterData.active_character_index, [server.asked, server.bodies.back()])
+	var stats: PackedStringArray = _texts_under(window.get_node("%statgrid"))
+	check("  each stat now and after: 104 (104%) and, tempered by three points, 107 (107%)",
+		stats.has("104 (104%)") and stats.has("107 (107%)"), stats)
+	var costs: PackedStringArray = _texts_under(window.get_node("%costgrid"))
+	check("  the cost: the gold against the purse, and each material have / need",
+		costs.has("Gold") and costs.has("18,450 / 50") and costs.has("Test Ore") and costs.has("5 / 3"), costs)
+	var temper_button: Button = window.get_node("%temperbutton")
+	check("  a tier anybody may temper says so, and Temper is offered",
+		(window.get_node("%certline") as Label).text == "Any smith may temper this tier." and not temper_button.disabled,
+		(window.get_node("%certline") as Label).text)
+
+	server.clear()
+	await window.temper()
+	check("Temper sends the cell and the piece, then quotes the same piece again",
+		server.asked == ["POST /api/smith/temper", "POST /api/smith/quote"]
+		and int(server.bodies[0].get("position", -1)) == 0 and str(server.bodies[0].get("item_id", "")) == "zz_smith_blade~d104",
+		server.asked)
+	check("  THE BAG TAKES THE ANSWER: the tempered blade in its cell, three ore gone",
+		_cell_id(bag, 0) == "zz_smith_blade~d107" and bag.get_quantity_of("zz_smith_ore") == 2,
+		[_cell_id(bag, 0), bag.get_quantity_of("zz_smith_ore")])
+	check("  and the purse is the server's number", player.gold == 18400 and server.purse == 18400, player.gold)
+	stats = _texts_under(window.get_node("%statgrid"))
+	costs = _texts_under(window.get_node("%costgrid"))
+	check("  the anvil now shows the blade as it is: 107 to 110", stats.has("107 (107%)") and stats.has("110 (110%)"), stats)
+	check("  and two ore against three is short: red, and Temper is not offered, with the server's reason",
+		costs.has("2 / 3") and temper_button.disabled
+		and (window.get_node("%tempernotice") as Label).text == "You are missing Test Ore.",
+		[costs, (window.get_node("%tempernotice") as Label).text])
+	var short_label: Label = null
+	for label in window.get_node("%costgrid").find_children("*", "Label", true, false):
+		if (label as Label).text == "2 / 3":
+			short_label = label
+	check("  the short line is drawn in the tooltip's worse colour",
+		short_label != null and short_label.get_theme_color("font_color").is_equal_approx(ItemTooltip.COMPARE_WORSE))
+	server.clear()
+	await window.temper()
+	check("  pressing Temper anyway sends nothing", server.asked.is_empty(), server.asked)
+
+	# ---- PERFECT, FULLY TEMPERED, AND A PIECE THAT NEVER ROLLED ----------------------
+	server.clear()
+	await window.choose_cell(4)
+	var notice: Label = window.get_node("%tempernotice")
+	check("a Perfect piece is shown and refused, and no quote is asked for",
+		server.asked.is_empty() and temper_button.disabled and notice.text.begins_with("Perfect"), [server.asked, notice.text])
+	await window.choose_cell(6)
+	check("  a piece at the cap on every stat is refused as fully tempered",
+		server.asked.is_empty() and temper_button.disabled and notice.text.begins_with("Fully tempered"), [server.asked, notice.text])
+	await window.choose_cell(22)
+	check("  and a piece that never rolled has nothing to raise",
+		server.asked.is_empty() and temper_button.disabled and notice.text.contains("never rolled"), notice.text)
+	var perfect_slot: InventorySlot = (grid.get("slots") as Array)[2]
+	var blade_slot: InventorySlot = (grid.get("slots") as Array)[0]
+	check("  the pieces the hammer cannot help are dimmed in the grid, the others not",
+		perfect_slot.icon_rect.modulate.r < 0.9 and blade_slot.icon_rect.modulate.r > 0.9,
+		[perfect_slot.icon_rect.modulate, blade_slot.icon_rect.modulate])
+
+	# ---- THE CAP, AND THE CERTIFICATION'S GATE ----------------------------------------
+	server.bag[1] = {"item_id": "zz_smith_ore", "quantity": 9}
+	bag.load_server_array(server.bag)
+	server.clear()
+	await window.choose_cell(3)
+	stats = _texts_under(window.get_node("%statgrid"))
+	check("a stat three points from the cap stops AT the cap: armour 113% to 115%, health 96% to 99%",
+		stats.has("45 (113%)") and stats.has("46 (115%)") and stats.has("19 (96%)") and stats.has("20 (99%)"), stats)
+	var cert_line: Label = window.get_node("%certline")
+	check("  a tier above your rank names the certification it needs, and Temper is not offered",
+		cert_line.text == "Needs a Journeyman Smith. Earn it under Royal Certification." and temper_button.disabled
+		and cert_line.get_theme_color("font_color").is_equal_approx(ItemTooltip.COMPARE_WORSE), cert_line.text)
+	server.clear()
+	await window.temper()
+	check("  and nothing is sent for it", server.asked.is_empty(), server.asked)
+
+	server.rank = 1
+	await window.call("_load_status")
+	await window.choose_cell(3)
+	check("held, the gate says so and Temper is offered",
+		cert_line.text == "Needs a Journeyman Smith - you are one." and not temper_button.disabled, cert_line.text)
+	await window.temper()
+	stats = _texts_under(window.get_node("%statgrid"))
+	check("  tempered, the plate is 115 / 99 and its armour now reads as at the cap",
+		_cell_id(bag, 3) == "zz_smith_plate~a115h99" and stats.has("at the cap") and stats.has("20 (102%)"),
+		[_cell_id(bag, 3), stats])
+
+	# ---- PAST AN AWAIT ---------------------------------------------------------------
+	await window.choose_cell(3)
+	anvil.set("_is_open", true)
+	var flying: Array = []
+	(func() -> void:
+		await window.temper()
+		flying.append(true)).call()
+	window.close_panel()
+	var waited := 0.0
+	while flying.is_empty() and waited < 5.0:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	check("closed while the hammer is down, the bag still takes the server's answer",
+		_cell_id(bag, 3) == "zz_smith_plate~a115h102" and not window.visible, _cell_id(bag, 3))
+	check("  and the anvil was told the window shut", not bool(anvil.get("_is_open")))
+
+	# ---- THE BAG MOVED UNDER THE WINDOW ------------------------------------------------
+	# A trade put another piece in cell 0, and this game has not been told yet.
+	await window.open_for_anvil(anvil, player)
+	server.bag[0] = {"item_id": "zz_smith_plate~a100h100", "quantity": 1}
+	await window.choose_cell(0)
+	check("a quote for a cell that changed brings the server's bag back, and says the bag changed",
+		_cell_id(bag, 0) == "zz_smith_plate~a100h100" and notice.text.contains("changed") and temper_button.disabled,
+		[_cell_id(bag, 0), notice.text])
+
+	# ---- WALKING AWAY -----------------------------------------------------------------
+	anvil.player_left_range.emit()
+	check("the anvil's walk-away closes the window", not window.visible)
+
+	anvil.queue_free()
+	_smith_unstage(stage)
+	server.stop()
+	server.queue_free()
+	_smith_forget_stand_ins()
+	ApiForTests.BASE_URL = kept_url
+	Api.token = kept_token
+	Api.server_online = kept_online
+	Api.reachability_known = kept_known
+	await get_tree().process_frame
+
+
+func _test_the_smith_certifies() -> void:
+	section("THE SMITH - Royal Certification: four ranks, what each costs, Earn on the next one only (0.74.0)")
+	_smith_stand_ins()
+	var server := SmithServer.new()
+	add_child(server)
+	if not server.start():
+		check("a free local port for the suite's smith", false)
+		server.queue_free()
+		_smith_forget_stand_ins()
+		return
+	server.costs = SMITH_TEST_COSTS
+	server.certs = SMITH_TEST_CERTS
+	server.purse = 7000
+	server.level = 12
+	var cells: Array = []
+	cells.resize(30)
+	cells[0] = {"item_id": "zz_smith_plate~a100h100", "quantity": 1}
+	cells[1] = {"item_id": "zz_smith_essence", "quantity": 3}
+	cells[2] = {"item_id": "zz_smith_bone", "quantity": 2}
+	server.bag = cells
+	var kept_url: String = ApiForTests.BASE_URL
+	var kept_token: String = Api.token
+	var kept_online: bool = Api.server_online
+	var kept_known: bool = Api.reachability_known
+	ApiForTests.BASE_URL = "http://127.0.0.1:%d" % server.port
+	Api.token = "suite"
+	var stage: Dictionary = _smith_stage(server)
+	var window: Control = stage.window
+	var bag: Node = stage.bag
+	var player: SmithPlayer = stage.player
+	await get_tree().process_frame
+	await window.open_for_anvil(null, player)
+	window.show_certification()
+	await get_tree().process_frame
+	var rows: Node = window.get_node("%rankrows")
+	check("the Royal Certification tab lists the ranks the server sent, in order",
+		rows.get_child_count() == 2 and str((rows.get_child(0).find_child("title", true, false) as Label).text) == "Journeyman Smith",
+		rows.get_child_count())
+	check("  and says what you hold and how far it lets you temper",
+		(window.get_node("%ranklabel") as Label).text.begins_with("You hold no certification yet")
+		and (window.get_node("%ranklabel") as Label).text.contains("Common gear (tier 1)"), (window.get_node("%ranklabel") as Label).text)
+	var first: Control = rows.get_child(0)
+	var second: Control = rows.get_child(1)
+	var texts: PackedStringArray = _texts_under(first)
+	check("  each rank: what it opens, the level it asks, the gold and each material have / need",
+		texts.has("Opens Rare gear (tier 3)  -  needs character level 10") and texts.has("7,000 / 5,000") and texts.has("3 / 4"),
+		texts)
+	var earn: Button = first.find_child("earn", true, false) as Button
+	check("ONLY THE NEXT RANK HAS AN EARN BUTTON", earn != null and second.find_child("earn", true, false) == null)
+	check("  and while something is short it is not pressable, and says what is missing",
+		earn != null and earn.disabled and texts.has("Still needed: 1 Test Essence"), texts)
+	server.clear()
+	await window.earn(1)
+	check("  so nothing is sent", server.asked.is_empty(), server.asked)
+
+	server.bag[1] = {"item_id": "zz_smith_essence", "quantity": 5}
+	bag.load_server_array(server.bag)
+	window.call("_render_ranks")
+	first = rows.get_child(0)
+	earn = first.find_child("earn", true, false) as Button
+	check("with everything in the bag the button can be pressed", earn != null and not earn.disabled)
+	# OUT OF ORDER, WITH EVERYTHING IT COSTS TO HAND: the level, the gold and the
+	# bones are all here, so it is the order alone that must stop it.
+	player.level = 30
+	player.gold = 40000
+	bag.load_server_array(server.bag.map(func(c: Variant) -> Variant:
+		return {"item_id": "zz_smith_bone", "quantity": 9} if c is Dictionary and str(c["item_id"]) == "zz_smith_bone" else c))
+	server.clear()
+	await window.earn(2)
+	check("asking for a rank out of order sends nothing, even with all it costs to hand", server.asked.is_empty(), server.asked)
+	player.level = 12
+	player.gold = 7000
+	bag.load_server_array(server.bag)
+	await window.earn(1)
+	check("Earn asks for the next rank by number", server.asked == ["POST /api/smith/certify"]
+		and int(server.bodies[0].get("rank", 0)) == 1, [server.asked, server.bodies])
+	first = rows.get_child(0)
+	second = rows.get_child(1)
+	check("  the rank is earned: the first row says so, and the Earn button has moved to the next",
+		first.find_child("earn", true, false) == null and (first.find_child("state", true, false) as Label).text == "Earned"
+		and second.find_child("earn", true, false) != null)
+	check("  the bag and purse are the server's after it took its gold and materials",
+		player.gold == 2000 and bag.get_quantity_of("zz_smith_essence") == 1, [player.gold, bag.get_quantity_of("zz_smith_essence")])
+	check("  and the window says so", (window.get_node("%noticelabel") as Label).text.contains("Journeyman Smith"),
+		(window.get_node("%noticelabel") as Label).text)
+	check("  the header's badge names the rank on its hover",
+		(window.get_node("%rankbadge") as Control).tooltip_text == "Royal Certification: Journeyman Smith")
+
+	# AN ANSWER WITHOUT THE BAG: the window asks for it rather than drawing
+	# materials the Crown has already taken.
+	server.rank = 0
+	server.purse = 9000
+	server.certify_carries_bag = false
+	player.gold = 9000
+	server.bag[1] = {"item_id": "zz_smith_essence", "quantity": 4}
+	bag.load_server_array(server.bag)
+	await window.call("_load_status")
+	server.clear()
+	await window.earn(1)
+	check("an answer that carries no bag sends the window to ask for it",
+		server.asked == ["POST /api/smith/certify", "GET /api/character"] and bag.get_quantity_of("zz_smith_essence") == 0,
+		[server.asked, bag.get_quantity_of("zz_smith_essence")])
+
+	_smith_unstage(stage)
+	server.stop()
+	server.queue_free()
+	_smith_forget_stand_ins()
+	ApiForTests.BASE_URL = kept_url
+	Api.token = kept_token
+	Api.server_online = kept_online
+	Api.reachability_known = kept_known
+	await get_tree().process_frame
+
+
+func _test_the_board_takes_gifts() -> void:
+	section("PATRONAGE - a Donate control on the kingdom board, and titles beside names (0.74.0)")
+	const Board := preload("res://src/ui/kingdom/kingdomboard.gd")
+	# "12.400" IS HOW HALF THE WORLD WRITES TWELVE THOUSAND FOUR HUNDRED, and
+	# String.to_int() stops at the point and gives 12.
+	check("a gift's box reads digits: \"12,400\" and \"12.400\" are 12,400, and a word is nothing",
+		Board.typed_gold("12,400") == 12400 and Board.typed_gold("12.400") == 12400
+		and Board.typed_gold("abc") == 0 and Board.typed_gold("") == 0, Board.typed_gold("12.400"))
+	check("your line: a title and the way to the next",
+		Board.patron_line(12400, "Patron", "Benefactor", 100000) == "Patron  -  12,400 / 100,000 to Benefactor",
+		Board.patron_line(12400, "Patron", "Benefactor", 100000))
+	check("  no title yet: only the way to the first",
+		Board.patron_line(2500, "", "Patron", 10000) == "2,500 / 10,000 to Patron", Board.patron_line(2500, "", "Patron", 10000))
+	check("  the top title says it is the top",
+		Board.patron_line(12000000, "Royal Patron", "", 0) == "Royal Patron  -  the highest title there is")
+	var colours: Array = []
+	for row in GameConstants.PATRON_TITLES:
+		colours.append(Board.title_colour(str(row["title"])))
+	check("each title wears a rarity's colour, lowest first from uncommon, each its own",
+		colours.size() == 4 and colours[0] == GameConstants.rarity_colour(2) and colours[3] == GameConstants.rarity_colour(5)
+		and colours[1] != colours[2], colours)
+	var labels: Dictionary = Board.REASON_LABELS
+	check("the breakdown has words for a temper, a certification and a gift",
+		labels.has("smith_temper") and labels.has("royal_certification") and labels.has("donation"))
+
+	var server := SmithServer.new()
+	add_child(server)
+	if not server.start():
+		check("a free local port for the suite's kingdom", false)
+		server.queue_free()
+		return
+	server.purse = 5000
+	server.donated = 9000
+	server.board_rows = [
+		{"username": "aldra", "contributed": 2400000, "lusions": 0, "deaths": 1, "rank": 1, "title": "Noble Patron"},
+		{"username": "rowan", "contributed": 300, "lusions": 0, "deaths": 0, "rank": 3, "title": ""},
+	]
+	var kept_url: String = ApiForTests.BASE_URL
+	var kept_token: String = Api.token
+	var kept_online: bool = Api.server_online
+	var kept_known: bool = Api.reachability_known
+	ApiForTests.BASE_URL = "http://127.0.0.1:%d" % server.port
+	Api.token = "suite"
+	var players: Array = get_tree().get_nodes_in_group(&"player")
+	for p in players:
+		p.remove_from_group(&"player")
+	var giver := SmithPlayer.new()
+	giver.gold = 5000
+	giver.add_to_group(&"player")
+	add_child(giver)
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var board: Control = (load("res://scene/ui/kingdom/kingdomboard.tscn") as PackedScene).instantiate() as Control
+	layer.add_child(board)
+	await get_tree().process_frame
+	await board.open_board()
+	# THE ROWS ARE BUILT ON A TIME BUDGET (ROW_BUILD_BUDGET_MS), a slice a
+	# frame, so on a busy machine the last of them arrive a frame or two later.
+	var settling := 0.0
+	while not (board.get("_rows_pending") as Array).is_empty() and settling < 2.0:
+		await get_tree().process_frame
+		settling += get_process_delta_time()
+	var list: Node = board.get("board_list")
+	var by_name: Dictionary = {}
+	for row in list.get_children():
+		by_name[(row.get_node("names/who") as Label).text] = row.get_node("names/title")
+	var noble: Label = by_name.get("aldra")
+	var plain: Label = by_name.get("rowan")
+	check("a patron's row shows the title under the name, in its colour",
+		noble != null and noble.visible and noble.text == "Noble Patron"
+		and noble.get_theme_color("font_color") == Board.title_colour("Noble Patron"), noble.text if noble != null else "")
+	check("  and says on its hover what it took", noble != null and noble.tooltip_text.contains("1,000,000"),
+		noble.tooltip_text if noble != null else "")
+	check("  a row without one shows none", plain != null and not plain.visible)
+	var reused: HBoxContainer = noble.get_parent().get_parent() as HBoxContainer if noble != null else list.get_child(0)
+	board._fill_row(reused, 1, {"username": "nobody", "contributed": 1, "lusions": 0, "deaths": 0})
+	check("  a reused row does not keep the last player's title",
+		not (reused.get_node("names/title") as Label).visible)
+	var patron: Label = board.get("patron_label")
+	var bar: ProgressBar = board.get("patron_bar")
+	check("your own line shows the way to your first title, with a bar",
+		patron.visible and patron.text == "9,000 / 10,000 to Patron" and bar.visible and is_equal_approx(bar.value, 0.9),
+		[patron.text, bar.value])
+	check("the minimum is shown beside the box", (board.get("donate_minimum") as Label).text == "at least 100")
+
+	server.clear()
+	await board.donate(50)
+	check("a gift under the minimum is refused here, and nothing is sent",
+		server.asked.is_empty() and (board.get("notice_label") as Label).text.contains("at least 100"),
+		[server.asked, (board.get("notice_label") as Label).text])
+	await board.donate(6000)
+	check("  so is one larger than the purse", server.asked.is_empty(), server.asked)
+
+	(board.get("donate_input") as LineEdit).text = "1,500"
+	await board._on_donate_pressed()
+	check("Donate sends the typed amount for this character",
+		server.asked.size() >= 1 and server.asked[0] == "POST /api/kingdom/donate"
+		and int(server.bodies[0].get("amount", 0)) == 1500 and int(server.bodies[0].get("slot", -9)) == CharacterData.active_character_index,
+		[server.asked, server.bodies])
+	check("  the purse is the server's after it", giver.gold == 3500, giver.gold)
+	check("  the title it earned is yours at once, with the way to the next",
+		patron.text == "Patron  -  10,500 / 100,000 to Benefactor" and patron.get_theme_color("font_color") == Board.title_colour("Patron"),
+		patron.text)
+	check("  the board is read again, so the realm's total and your row move",
+		server.asked.has("GET /api/economy/kingdom"), server.asked)
+	check("  and it thanks you, naming the title",
+		(board.get("notice_label") as Label).text == "You gave the Crown 1,500 gold. You are named Patron!",
+		(board.get("notice_label") as Label).text)
+	check("  the box is emptied for the next gift", (board.get("donate_input") as LineEdit).text == "")
+
+	# THE TALLEST THE BOARD GETS: a reader's line of four sentences, a title
+	# with the way to the next, at the largest text size in the tallest font.
+	# The board was authored to fit a 720-high screen just so - 719 pixels with
+	# an empty breakdown - and in a real realm it is taller than the screen
+	# there already. The patron line, its bar and the Donate row must not make
+	# that worse: the ranking, which scrolls anyway, gives their room back.
+	var scroll: ScrollContainer = list.get_parent() as ScrollContainer
+	var kept_size: Variant = Settings.get_value("text_size")
+	var kept_font: Variant = Settings.get_value("font")
+	(board.get("you_label") as Label).text = "You have given 12,400 gold and 0 Lusions.\n400 of that was lost, not given.\nYou have died 3 times.\nRank\u00A04 of\u00A06."
+	board._show_patron({"donated": 120000, "title": "Benefactor", "next_title": "Noble Patron", "next_at": 1000000})
+	Settings.set_value("font", "fell")
+	Settings.set_value("text_size", 1.5)
+	var added: Array = [board.get("patron_label"), board.get("patron_bar"), (board.get("donate_input") as Control).get_parent()]
+	for part in added:
+		(part as Control).visible = false
+	scroll.custom_minimum_size.y = 220.0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var as_it_was: float = PanelWindow.content_minimum(board).y
+	for part in added:
+		(part as Control).visible = true
+	await get_tree().process_frame
+	board._fit_list_to_screen()
+	await get_tree().process_frame
+	var as_it_is: float = PanelWindow.content_minimum(board).y
+	check("at the largest size the gift's three new lines cost the board no height: the ranking gives it back",
+		as_it_is <= maxf(720.0, as_it_was) + 0.5 and scroll.custom_minimum_size.y < 220.0,
+		[as_it_is, as_it_was, scroll.custom_minimum_size.y])
+	Settings.set_value("text_size", 1.0)
+	Settings.set_value("font", "standard")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	board._fit_list_to_screen()
+	check("  and at the normal size the ranking is its authored 220 again", is_equal_approx(scroll.custom_minimum_size.y, 220.0),
+		scroll.custom_minimum_size.y)
+	Settings.set_value("text_size", kept_size)
+	Settings.set_value("font", kept_font)
+
+	layer.queue_free()
+	giver.queue_free()
+	for p in players:
+		if is_instance_valid(p):
+			p.add_to_group(&"player")
+	server.stop()
+	server.queue_free()
+	ApiForTests.BASE_URL = kept_url
+	Api.token = kept_token
+	Api.server_online = kept_online
+	Api.reachability_known = kept_known
+	await get_tree().process_frame
+
+
+# =============================================================================
 # THE SHOPKEEPER WAVES ONCE
 # =============================================================================
 # A wave is a GREETING, not a state. It used to loop for as long as the player
@@ -24505,7 +27475,10 @@ func _test_the_gm_panel_is_a_window() -> void:
 		titles.append(tabs.get_tab_title(i))
 	# AND WORLD (0.46.0): the stirring lands' switches (worldtab.gd); AND
 	# EVENTS (0.48.0), the world's events (eventstab.gd).
-	check("Account, Testing, Server, World and Events", titles == ["Account", "Testing", "Server", "World", "Events"], titles)
+	# AND ECONOMY (0.74.0): the gold flow, the economy's numbers and the canary
+	# (economytab.gd).
+	check("Account, Testing, Server, World, Events and Economy",
+		titles == ["Account", "Testing", "Server", "World", "Events", "Economy"], titles)
 	check("sized to the tallest tab, so switching never resizes the window",
 		tabs.use_hidden_tabs_for_min_size)
 	# OWNED ONLY: an OptionButton's popup carries a ScrollContainer of its own,
@@ -26215,6 +29188,7 @@ func _test_escape_closes_every_window() -> void:
 		"bank_screen": "res://scene/ui/bank/bankinventory.tscn",
 		"lootbag_panel": "res://scene/ui/lootbag/lootbaginventory.tscn",
 		"cooking_panel": "res://scene/ui/cooking/cookingscreen.tscn",
+		"smith_panel": "res://scene/ui/smith/smithscreen.tscn",
 		"shop_panel": "res://scene/ui/shop/shopinventory.tscn",
 		"kingdom_panel": "res://scene/ui/kingdom/kingdomboard.tscn",
 		"trade_panel": "res://scene/ui/trade/tradepanel.tscn",

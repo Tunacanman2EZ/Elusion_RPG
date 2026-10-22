@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://wd43ac2a5joi"]
+
+[ext_resource type="Texture2D" uid="uid://dv1iskmxsleco" path="res://art/pack/materials/wateressence.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "wateressence"
+display_name = "Water Essence"
+description = "What a sprite leaves behind. The smith's certificates are paid in it."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 100
+tier = 2
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

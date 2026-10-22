@@ -319,6 +319,9 @@ func clear_current_user() -> void:
 	account_data = DEFAULT_ACCOUNT_DATA.duplicate(true)
 	# The next login hears the field's opening narration again.
 	GameState.opening_story_told = false
+	# AND IS FULL OF NOTHING (0.74.0). The meal belongs to the character, and the
+	# next one picked brings its own from the server (characterselect.gd).
+	FoodBuff.clear()
 
 
 # =============================================================================

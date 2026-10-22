@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://u1lp6c0j3gfk"]
+
+[ext_resource type="Texture2D" uid="uid://mhn0lgcbv6j3" path="res://art/pack/food/fishskewer.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "fishskewer"
+display_name = "Fish Skewer"
+description = "A mudfish, a stick and a fire. Nothing else needed."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 150
+tier = 1
+required_level = 1
+type = 0
+droppable = false
+restore_amount = 16
+restore_target = 1
+buff_kind = 2
+buff_amount = 1
+buff_seconds = 600
+recipe_ingredients = {"rawmudfish": 1, "wildherb": 1}
+recipe_level = 4
+recipe_xp = 20
+recipe_mastery_level = 20
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

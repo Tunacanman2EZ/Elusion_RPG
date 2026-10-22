@@ -204,6 +204,30 @@ theme_override_font_sizes/font_size = 18
 text = "×"
 flat = true
 
+[node name="tabsrow" type="HBoxContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="fishtab" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tabsrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 28)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+toggle_mode = true
+button_pressed = true
+text = "Fish"
+
+[node name="recipestab" type="Button" parent="mainpanel/margincontainer/vboxcontainer/tabsrow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 28)
+layout_mode = 2
+focus_mode = 0
+theme_override_font_sizes/font_size = 14
+toggle_mode = true
+text = "Recipes"
+
 [node name="firebox" type="Panel" parent="mainpanel/margincontainer/vboxcontainer"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(324, 184)
@@ -315,3 +339,16 @@ script = ExtResource("3_invcontainer")
 grid_width = 6
 grid_height = 1
 metadata/_custom_type_script = "uid://dfssy5oqbqqkh"
+
+[node name="recipescroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 300)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="recipelist" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/recipescroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4

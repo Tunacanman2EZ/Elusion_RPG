@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://deuhc4vr861ju"]
+
+[ext_resource type="Texture2D" uid="uid://dgqh15fdc8d53" path="res://art/pack/food/herbbread.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "herbbread"
+display_name = "Herb Bread"
+description = "Baked with whatever grew by the road."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 120
+tier = 1
+required_level = 1
+type = 0
+droppable = false
+restore_amount = 14
+restore_target = 1
+buff_kind = 3
+buff_amount = 10
+buff_seconds = 600
+recipe_ingredients = {"flour": 1, "egg": 1, "wildherb": 1}
+recipe_level = 1
+recipe_xp = 14
+recipe_mastery_level = 15
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

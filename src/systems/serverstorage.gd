@@ -167,6 +167,10 @@ static func with_listing(character: Dictionary, listed: Dictionary) -> Dictionar
 	var out: Dictionary = character.duplicate()
 	if not out.has("explored") and listed.get("explored") is Dictionary:
 		out["explored"] = listed["explored"]
+	# THE MEAL IN FORCE (0.74.0) comes on both; the character route's is the
+	# one read, and the listing's stands in for a server that only lists it.
+	if not out.has("food_buff") and listed.has("food_buff"):
+		out["food_buff"] = listed["food_buff"]
 	return out
 
 
@@ -236,7 +240,15 @@ func _slot_from_server(data: Dictionary) -> Dictionary:
 		"max_stamina": _int(status.get("max_stamina", 0)),
 
 		"inventory":   _items_from_server(_array(data.get("inventory", []))),
+
+		# THE MEAL THIS CHARACTER IS STILL FULL OF (0.74.0), as the server sent
+		# it - {"item_id", "kind", "amount", "ends_at"} or null. Opaque here, like
+		# the map: FoodBuff reads it when the character is picked, and checks it.
+		# Never sent back - no save body carries it; only eating changes it.
+		"food_buff":   null,
 	}
+	if data.get("food_buff") is Dictionary:
+		slot["food_buff"] = (data["food_buff"] as Dictionary).duplicate()
 
 	# Skills arrive as {"attack": {"level": 12, "xp": 340}} and live on the slot
 	# as three flat keys each. xp_next is not sent: it is fully derived from the

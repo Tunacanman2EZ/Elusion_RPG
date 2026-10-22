@@ -12,6 +12,13 @@
 # more than the server granted, but a client-side shop asserts BOTH halves of
 # the trade — the item gained and the gold spent — and the trim only checks the
 # first.
+#
+# THE OWNER'S NUMBERS (0.74.0). The general store's markup and what it pays
+# are the owner's to set on the server now (the API's economyrules/, held here
+# by the EconomyRules autoload). The shelf's prices still come from the server
+# - they are the till's own - and the panel says the rest with EconomyRules:
+# what share the shop pays, whether today's prices are the usual ones, and a
+# price for a row an answer left out, worked out the server's way.
 extends Control
 
 
@@ -164,6 +171,8 @@ func open_for_shop(id: String, player: Node) -> void:
 		(_mode_buttons[key] as Button).set_pressed_no_signal(key == mode)
 	_refresh_gold()
 	_watch_bag()
+	# Read once a login, if the login did not already (EconomyRules).
+	EconomyRules.ensure()
 	await _load_catalogue()
 
 
@@ -218,6 +227,11 @@ func _load_catalogue() -> void:
 # kind of row changes; the store's stock is listed tier by tier for that reason.
 func show_catalogue(data: Dictionary) -> void:
 	_catalogue = data
+	# THE GENERAL STORE'S ANSWER CARRIES THE OWNER'S TWO NUMBERS IN FORCE - the
+	# same rules EconomyRules holds, read a moment ago - so every visit keeps
+	# them current as well as the login's read.
+	if shop_id == ECONOMY_SHOP or str(data.get("shop_id", "")) == ECONOMY_SHOP:
+		EconomyRules.note_shop(data)
 	sell_prices = {}
 	var offers: Variant = data.get("sell_prices", {})
 	if offers is Dictionary:
@@ -240,7 +254,10 @@ func _show_stock(data: Dictionary) -> void:
 		_set_notice("This vendor has nothing for sale.", false)
 		return
 
-	_set_notice("", false)
+	# THE OWNER'S MARKUP, SAID (0.74.0): the prices below are the till's own,
+	# and when the owner has moved them this says by how much.
+	_set_notice(prices_note(float(data.get("price_multiplier", EconomyRules.number("shop_price_multiplier"))),
+		float(EconomyRules.usual().get("shop_price_multiplier", 1.0))) if shop_id == ECONOMY_SHOP else "", false)
 	var shelf: String = ""
 	for entry in stock:
 		if not (entry is Dictionary):
@@ -254,12 +271,26 @@ func _show_stock(data: Dictionary) -> void:
 
 # The pond's bait. fishingspot.gd's bait_item_id defaults to the same id.
 const FISHING_BAIT_ID := "fishingworm"
+# The shop the owner's two numbers are for (economyrules/services.py, SHOP_ID).
+const ECONOMY_SHOP := "generalstore"
+# EconomyRules' static helpers, on the script: called through the autoload,
+# the 4.7 editor warns (STATIC_CALLED_ON_INSTANCE).
+const EconomyRulesScript := preload("res://src/systems/economyrules.gd")
+
+
+static func prices_note(multiplier: float, usual: float) -> String:
+	"""What the shelf says when the owner has the prices away from the usual:
+	'Prices today: 150% of the usual.' - nothing when they are the usual."""
+	if is_equal_approx(multiplier, usual) or usual <= 0.0:
+		return ""
+	return "Prices today: %s of the usual." % EconomyRulesScript.percent_text(multiplier / usual)
 
 
 static func shelf_of(entry: Dictionary) -> String:
 	"""Which shelf a catalogue row sits on: "free" for what the shop gives away
 	(the server sends those first), "gear 3" for a tier-3 weapon or piece of
-	armour, "fishing" for a rod or the bait, "supplies" for everything else."""
+	armour, "fishing" for a rod or any bait, "cooking" for the staples, and
+	"supplies" for everything else."""
 	if bool(entry.get("free", false)):
 		return "free"
 	var kind: String = str(entry.get("type_name", ""))
@@ -268,9 +299,27 @@ static func shelf_of(entry: Dictionary) -> String:
 	# BY ID, the way fishingspot.gd knows a rod (ends_with("fishingrod")) and
 	# its bait (bait_item_id), so the shelf and the pond cannot disagree.
 	var item_id: String = str(entry.get("item_id", ""))
-	if item_id.ends_with("fishingrod") or item_id == FISHING_BAIT_ID:
+	if item_id.ends_with("fishingrod") or item_id == FISHING_BAIT_ID or is_bait(entry):
 		return "fishing"
+	# THE COOKING STAPLES (0.74.0): flour, salt, eggs and the rest, sold so a
+	# recipe needs only what the monsters drop. Every other MATERIAL on the
+	# shelf is tackle and was caught above. Without a shelf of their own they
+	# fell to "supplies" AFTER the fishing shelf, and the panel opened a second
+	# "Potions and supplies" heading halfway down the list.
+	if kind == "MATERIAL":
+		return "cooking"
 	return "supplies"
+
+
+static func is_bait(entry: Dictionary) -> bool:
+	# The lugworm and the glowgrub (0.74.0) are bait as much as the worm is.
+	# The export's rows carry bait_rolls; the server's catalogue rows do not,
+	# so for those the registry answers, which knows every bait by its .tres.
+	if entry.has("bait_rolls"):
+		return int(entry["bait_rolls"]) > 0
+	var item_id: String = str(entry.get("item_id", ""))
+	return item_id != "" and ItemRegistry.has_item(item_id) \
+		and ItemRegistry.get_item(item_id).bait_rolls > 0
 
 
 const FREE_SHELF_TITLE := "Free  ·  one each  ·  yours to keep: it cannot be sold or traded"
@@ -283,6 +332,8 @@ func shelf_title(entry: Dictionary) -> String:
 		return "Potions and supplies"
 	if shelf_of(entry) == "fishing":
 		return "Fishing  ·  rods and worms"
+	if shelf_of(entry) == "cooking":
+		return "Cooking  ·  staples for the pot"
 	var tier: int = int(entry.get("tier", 1))
 	var material_name: String = GameConstants.TIER_MATERIALS[tier] \
 		if tier >= 0 and tier < GameConstants.TIER_MATERIALS.size() else GameConstants.rarity_name(tier)
@@ -292,6 +343,19 @@ func shelf_title(entry: Dictionary) -> String:
 		parts.append("the %s lands" % lands)
 	parts.append("level %d" % maxi(int(entry.get("required_level", 1)), 1))
 	return "  ·  ".join(parts)
+
+
+static func row_price(entry: Dictionary, free: bool = false) -> int:
+	"""What a shelf row costs: the price the server sent - the till's own -
+	or, for a row that came without one, its value at the markup in force,
+	the server's arithmetic (EconomyRules). Free is free."""
+	if free:
+		return 0
+	if entry.has("price"):
+		return int(entry.get("price", 0))
+	var data: ItemData = ItemRegistry.get_item(str(entry.get("item_id", "")))
+	return EconomyRulesScript.price_for(int(data.value) if data != null else 0,
+		EconomyRules.number("shop_price_multiplier"))
 
 
 func _build_heading(entry: Dictionary) -> Label:
@@ -310,8 +374,8 @@ func _build_heading(entry: Dictionary) -> Label:
 
 func _build_row(entry: Dictionary) -> Control:
 	var item_id: String = str(entry.get("item_id", ""))
-	var price: int = int(entry.get("price", 0))
 	var free: bool = bool(entry.get("free", false))
+	var price: int = row_price(entry, free)
 
 	var row := HBoxContainer.new()
 	row.name = ("free_%s" % item_id) if free else ("stock_%s" % item_id)
@@ -635,8 +699,10 @@ func show_sell_list() -> void:
 	if rows == 0:
 		_set_notice("Nothing in your backpack that the shop will buy.", false)
 		return
-	var share: float = float(_catalogue.get("sell_multiplier", 0.0))
-	_set_notice("The shop pays %d%% of what things are worth." % roundi(share * 100.0)
+	# THE SHARE IN FORCE: the answer's, which is the owner's where set; for an
+	# answer without one, EconomyRules' (0.74.0).
+	var share: float = float(_catalogue.get("sell_multiplier", EconomyRules.number("shop_sell_multiplier")))
+	_set_notice("The shop pays %s of what things are worth." % EconomyRulesScript.percent_text(share)
 		if share > 0.0 else "", false)
 
 

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://b7kbivhno180r"]
+
+[ext_resource type="Texture2D" uid="uid://04jb8kep0ibf" path="res://art/pack/food/emberroastpumpkin.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "emberroastpumpkin"
+display_name = "Ember Roast Pumpkin"
+description = "Charred outside, molten in. Mind your tongue."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 2800
+tier = 4
+required_level = 16
+type = 0
+droppable = false
+restore_amount = 75
+restore_target = 1
+buff_kind = 1
+buff_amount = 7
+buff_seconds = 1200
+recipe_ingredients = {"pumpkin": 1, "emberpepper": 1, "cookingoil": 1}
+recipe_level = 40
+recipe_xp = 120
+recipe_mastery_level = 66
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

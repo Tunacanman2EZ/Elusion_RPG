@@ -7786,6 +7786,134 @@ Do not "fix" these.
   key, meaning "dev or above", because existing client code reads it. New code
   should read `Api.role` and call `Api.role_at_least()`.
 
+## The larder, the smith and the crown's ledger (0.74.0)
+
+The owner, 22 Oct: "we have a whole lot of materials and ways to expand cooking
+in clockwork lets get those done use 5 agents sync back up into 1"; on what the
+materials are for, "Cooking + a smith"; "i want to make recipes people can make
+with the food also"; and of five ideas for the economy, "we need to do these
+tasks also max power". One release, built by five agents in parallel against
+one written contract and merged into one tree. Every icon is a whole 16 px cell
+of the owner's Clockwork Raven sheet (`art/pack/materials/`, `art/pack/food/`,
+`art/pack/smith/anvil.png`, the two baits in `art/pack/fishing/`) - nothing
+drawn. `assetlicense.md` lists the new folders.
+
+**What is new, in one place:**
+
+| piece | where | what it does |
+|---|---|---|
+| 67 items | `data/items/materials/`, `data/items/food/`, `data/items/fishing/` | 22 smith materials (five ores, Royal Gold, seven essences, Old Bone, Cursed Skull, seven Beholder Eyes), 14 produce, 10 shop staples, 2 baits, 19 meals |
+| item fields | `src/types/itemdata.gd` | `BuffKind` (MIGHT % damage, GUARD armour, VIGOUR max health, WISDOM max mana), `buff_*`, `recipe_ingredients` / `recipe_level` / `recipe_xp` / `recipe_mastery_level`, `bait_rolls`, `is_meal()`, `buff_text()` |
+| drops | `EnemyData.material_drops` | per kill, rolled on the server beside the bag |
+| numbers | `GameConstants.TEMPER_*`, `CERTIFICATIONS`, `PATRON_TITLES`, `DONATION_MINIMUM` | the smith, the four ranks, the patron titles |
+| recipes | `src/ui/cooking/cookingscreen.gd` | the Fish / Recipes tabs |
+| buffs | `src/systems/foodbuff.gd` (autoload `FoodBuff`) | the one meal in force, on player.gd's numbers and the HUD |
+| the smith | `src/world/anvil.gd`, `scene/interactables/anvil.tscn`, `src/ui/smith/smithscreen.gd` | the anvil right of the shop; Temper and Royal Certification |
+| patronage | `src/ui/kingdom/kingdomboard.gd` | Donate, titles on the board |
+| live rules | `src/systems/economyrules.gd` (autoload `EconomyRules`) | the server's economy numbers, for the shop's prices |
+| GM panel | `src/ui/owner/economytab.gd`, `goldflowchart.gd` | Gold flow, Rules, Canary |
+
+**The server owns all of it.** The game shows; `/api/cooking/recipe`,
+`/api/character/consume`, `/api/fishing/catch`, `/api/smith/*`,
+`/api/kingdom/donate` and `/api/economy/rules` decide. See the API's CLAUDE.md
+for the routes, the tables and the ledger reasons.
+
+**Materials never enter the generic loot pool** (`droppable = false`). They
+come only from `material_drops`, rolled per kill on the server; a kill whose
+bag roll said no and whose materials said yes makes a bag of materials alone,
+with no gold - a material must never be a reason for more gold to drop.
+Plant monsters drop produce, slimes the ore of their land's tier, sprites
+their land's essence, skeletons bones and ore, Beholders their eye and Royal
+Gold.
+
+**The large slimes drop nothing.** They never pay out a kill (they split into
+the smalls, which do), so ore given to them could never roll. The plan gave
+them 60% and it was found only as six warnings on every export; the exporter
+now REFUSES material_drops on an enemy that grants no rewards.
+
+**Meals.** A meal is a CONSUMABLE with no skill gate - anyone at its
+character level may eat it, so a cook can sell them. One buff at a time; a new
+meal replaces the last, a potion leaves it running. The buff is applied in
+`player.gd`: `get_damage_multiplier()` (MIGHT, like a Fury amulet),
+`_recompute_max_stats()` (VIGOUR, WISDOM), `armour_total()` (worn + GUARD,
+what `damage_taken()` uses). Starting or ending a buff clamps health and mana
+into the new maxima and never heals or kills (`refresh_food_stats()`, the rule
+`refresh_gear_stats()` has). The consume answer's `food_buff` is adopted
+BEFORE the heal, so a Vigour meal's heal fills the room it made. The buff is
+read at login from the character payload, kept on the slot across Switch
+Character, cleared on logout. **A new buff renews the presence ticket at
+once** (`FoodBuff._take()` -> `Presence.renew_soon()`, as an equip does):
+presence.py bounds every hit by the ticket, which otherwise renews once a
+minute, and a Might meal eaten mid-fight would be read against the old one.
+
+**Recipes.** The Recipes tab lists every `is_meal()` item by recipe level,
+with have/need counted from the bag, a locked row below your cooking level,
+Cook and Cook all (one request at a time, Stop to end a run). A meal may be an
+ingredient of another (Shadowcap Soup takes Bone Broth; the Royal Banquet a
+Sushi and a Tart). Burns follow the fish's curve from the recipe's level and
+mastery; a burnt meal takes its ingredients anyway.
+
+**Bait.** The server uses the best bait carried (most `bait_rolls`) and rolls
+the catch that many times, keeping the best fish. `fishingspot.gd` counts every
+bait before casting - it counted only worms, which would have refused a cast to
+someone holding only a Lugworm.
+
+**The smith.** Temper raises every rolled stat of a bag piece by
+`TEMPER_STEP` (3) points up to `TEMPER_CAP` (115 = QUALITY_HIGH), never to a
+Perfect; the resistance is unchanged; Perfect and fully tempered pieces are
+refused. Tier 1-2 is anyone's; tier 3 needs a Journeyman, 4 an Artisan, 5 a
+Master, 6 a Royal Smith. The ranks are earned in order, per character, with a
+level, gold and materials; the Royal Smith asks for an eye from every one of
+the seven Beholders. **Every essence is asked for somewhere** - the first rank
+took only ice and water essence, so a Light or Wind Essence said "the smith's
+certificates are paid in it" while none was; the first rank now takes the
+first four lands' essences. The window's numbers are the server's quote.
+
+**Patronage.** Gold given to the crown is burned (`donation`) and counts per
+ACCOUNT over its lifetime toward Patron, Benefactor, Noble Patron and Royal
+Patron, shown under the name on the board and with progress on the reader's
+own line. Titles sit under the name, not beside it - the four figure columns
+leave a name no room.
+
+**The guild tag on the board finally shows.** It had `clip_text` and no width,
+so it was given one pixel and every "[ABCD]" drew as a sliver - since the day it
+was written. It takes its text's width now and the name clips first, which is
+what its own comment always said.
+
+**The economy's numbers live on the server** (`EconomyRules`, fetched after
+login, falling back to the catalogue): the shop's buy and sell prices use them.
+The owner changes them in the GM panel's Economy tab (co-owners read), beside
+the gold flow (minted vs burned by reason, per UTC day) and the canary's last
+hourly check with a Check now button.
+
+**Tests**: `_test_the_larder_loads`, `_test_monsters_drop_what_fits_them`,
+`_test_the_store_sells_the_larder`, `_test_the_export_carries_the_larder`
+(data); `_test_the_cooking_window_cooks_meals`,
+`_test_a_meal_buff_works_while_it_lasts`, `_test_the_catch_names_its_bait`,
+`_test_a_tooltip_says_what_food_is_for` (cooking); `_test_the_anvil_stands_by_the_shop`,
+`_test_the_anvil_opens_the_smith`, `_test_the_smith_tempers`,
+`_test_the_smith_certifies`, `_test_the_board_takes_gifts` (smith);
+`_test_economy_rules_on_the_client`, `_test_the_gm_panel_economy_tab`
+(economy). Every check was watched failing with its fault put back. The
+UI tests run against stand-in servers on a real socket, so they read JSON
+floats where they sent ints, as from Flask.
+
+**Things that bit while it was built:**
+
+- `export472.sh` and `gfocus472.sh` copy g472's import cache, which has none of
+  the new PNGs: every new item failed to load through them. A tree with new art
+  must be `--import`ed and run on its own `.godot`.
+- The standard warning scan misses scripts compiled before it raises the
+  warning levels (ItemRegistry compiles ItemData at boot). A planted integer
+  division in itemdata.gd passed it; setting the levels in a scratch copy's
+  project.godot caught it.
+- The wall-clock checks (the board's refresh inside a frame, the death
+  bursts) failed under five agents' load on two CPUs and passed alone. Rerun
+  before suspecting the code.
+- `art/pack` is a submodule: `tools\ship.ps1` now ships it (`SHIP_pack.txt`)
+  BEFORE the game, putting a detached pack back on main when that loses
+  nothing, so the game's commit records a pack commit GitHub already has.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven

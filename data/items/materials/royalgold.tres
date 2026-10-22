@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://d3wo85l6cy4cb"]
+
+[ext_resource type="Texture2D" uid="uid://buc7a5jc8f7yy" path="res://art/pack/materials/royalgold.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "royalgold"
+display_name = "Royal Gold"
+description = "A bar of the crown's own gold. Only the Beholders carry it."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 3600
+tier = 6
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

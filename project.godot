@@ -39,6 +39,8 @@ Voice="*res://src/systems/voice.gd"
 Lands="*res://src/systems/lands.gd"
 WorldEvents="*res://src/systems/worldevents.gd"
 TouchControls="*res://src/systems/touchcontrols.gd"
+FoodBuff="*res://src/systems/foodbuff.gd"
+EconomyRules="*res://src/systems/economyrules.gd"
 
 [display]
 

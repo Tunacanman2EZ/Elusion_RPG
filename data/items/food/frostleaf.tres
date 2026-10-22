@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://41eqhlk1jvrj"]
+
+[ext_resource type="Texture2D" uid="uid://b18s7rst3icn6" path="res://art/pack/food/frostleaf.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "frostleaf"
+display_name = "Frostleaf"
+description = "A cooking ingredient. Plant monsters drop it."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 50
+tier = 2
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

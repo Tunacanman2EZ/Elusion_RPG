@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://o2l724d2e714"]
+
+[ext_resource type="Texture2D" uid="uid://si1nhwuu64xf" path="res://art/pack/food/flour.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "flour"
+display_name = "Flour"
+description = "A cooking staple from the general store."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 99
+value = 12
+tier = 1
+type = 3
+droppable = false
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

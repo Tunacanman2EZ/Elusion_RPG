@@ -6,11 +6,20 @@
 # answer to that — the total the realm has taken, and the player's own line in
 # it. A sink nobody can see is a tax; a sink with a scoreboard is a contribution.
 #
-# READS, NEVER WRITES. There is no endpoint here that changes anything, and
-# there should not be. The number on screen is a sum of gold_ledger rows the
-# server computes on request — see /api/economy/kingdom, which is explicit that
-# nothing counts into a column, because a running total is a second place the
-# truth lives and the first disagreement is unresolvable.
+# READS, AND WRITES ONE THING. The number on screen is a sum of gold_ledger
+# rows the server computes on request - see /api/economy/kingdom, which is
+# explicit that nothing counts into a column, because a running total is a
+# second place the truth lives and the first disagreement is unresolvable.
+#
+# THE ONE WRITE IS A GIFT (0.74.0). The owner, of the economy: "Cosmetics on
+# the kingdom board ... people pay for being seen". A player may give the Crown
+# gold outright through the Donate control - POST /api/kingdom/donate, which
+# burns it as a `donation` - and an account's lifetime gifts earn it a title
+# (GameConstants.PATRON_TITLES) that the board shows under its name on every
+# row it appears in. The board still computes nothing: the server answers
+# what was given, the title it earned and the next one, and the board draws
+# that. A gift is a burn like any other, so it counts toward "given" and the
+# giver climbs the ranking by the same sum everybody else is ranked by.
 extends Control
 
 
@@ -59,6 +68,12 @@ const REASON_LABELS := {
 	# board; only a negative one burns).
 	"guild_found": "spent founding guilds",
 	"staff_gold": "taken back by staff",
+	# THREE MORE IN 0.74.0, named before they could ever render as their ids:
+	# a piece tempered at the anvil, a rank of Royal Certification, and gold
+	# given to the Crown outright through the Donate control below.
+	"smith_temper": "paid to the smith",
+	"royal_certification": "paid for the Crown's seal",
+	"donation": "given as gifts",
 }
 
 # The three colours this board adds on top of the theme, named rather than
@@ -87,6 +102,24 @@ const LUSION_COLOUR := Color(0.78, 0.62, 1.0)
 # figures it sits beside. Nobody opens this panel to read the death column
 # first.
 const DEATH_COLOUR := Color(0.78, 0.45, 0.42)
+
+# A PATRON'S TITLE WEARS A RARITY'S COLOUR, lowest title first from uncommon
+# up: Patron green, Benefactor blue, Noble Patron violet, Royal Patron ember.
+# Not a new palette - these are the colours every slot frame, tooltip and loot
+# bag already uses to say "rarer", so a title reads as rare in the same
+# language the rest of the game speaks. A title the table does not know (a
+# server ahead of this client) is drawn in the board's gold.
+const TITLE_FIRST_RARITY := 2
+
+# The gift a Donate press sends, and how long it waits for the answer. A gift
+# is a request the player made and is watching, like a trade's accept.
+const DONATE_TIMEOUT := 6.0
+
+# How tall the ranking's scroll is: its authored 220, unless the rest of the
+# board leaves less than that of the screen - then what is left, and never
+# less than about four rows. See _fit_list_to_screen().
+const LIST_TALLEST := 220.0
+const LIST_SHORTEST := 90.0
 
 # HOW LONG THIS PANEL MAY SPEND BUILDING ROWS IN ONE FRAME.
 #
@@ -176,6 +209,11 @@ const LUSION_ICON_PATH := "res://art/pack/currency/lusions.png"
 @onready var board_list: VBoxContainer = %boardlist
 @onready var notice_label: Label = %noticelabel
 @onready var refresh_button: Button = %refreshbutton
+@onready var patron_label: Label = %patronlabel
+@onready var patron_bar: ProgressBar = %patronbar
+@onready var donate_input: LineEdit = %donateinput
+@onready var donate_button: Button = %donatebutton
+@onready var donate_minimum: Label = %donateminimum
 
 
 # The username the server said is ours, so the board can mark our own row. Taken
@@ -189,6 +227,15 @@ var _me: String = ""
 var _busy: bool = false
 
 var _seconds_until_refresh: float = 0.0
+
+# ONE GIFT AT A TIME. A second press while the first is on its way would reach
+# the server after it, against a purse the first had already emptied, and be
+# refused for gold that has already gone - which reads as the button failing.
+var _donating: bool = false
+
+# The title the reader held when the board last drew it, so a gift that earns a
+# new one can say so.
+var _my_title: String = ""
 
 
 # Drag by the header, resize from any edge, and come back where it was left.
@@ -205,6 +252,17 @@ func _ready() -> void:
 	_window = PanelWindow.attach(self, "kingdom")
 	close_button.pressed.connect(close_board)
 	refresh_button.pressed.connect(_on_refresh_pressed)
+	donate_button.pressed.connect(_on_donate_pressed)
+	donate_input.text_submitted.connect(_on_donate_submitted)
+	# THE FLOOR, SAID BEFORE ANYBODY TRIES IT, beside the box rather than in a
+	# refusal - a refusal is a worse way to learn a rule that could have been
+	# printed where the number is typed. ON THE SAME LINE as the box, because
+	# the board has no height to spare at the largest text size (see
+	# _fit_list_to_screen()).
+	donate_minimum.text = "at least %s" % _commas(GameConstants.DONATION_MINIMUM)
+	donate_minimum.tooltip_text = "The smallest gift the Crown takes is %s gold." \
+		% _commas(GameConstants.DONATION_MINIMUM)
+	donate_button.tooltip_text = "Give the Crown this much gold, for good. Every gift counts toward a patron's title, shown under your name on this board."
 	# Once, here, rather than on every render: the header never changes and
 	# rebuilding it each refresh would be a node churned thirty seconds apart
 	# for no reason.
@@ -492,6 +550,8 @@ func _render(data: Dictionary) -> void:
 	you_label.add_theme_color_override("font_color",
 		YOU_COLOUR if (int(you.get("contributed", 0)) > 0
 			or int(you.get("lusions", 0)) > 0) else RANK_COLOUR)
+	_show_patron(you)
+	_fit_list_to_screen()
 
 	var top: Array = data.get("top", []) if data.get("top", []) is Array else []
 	if top.is_empty():
@@ -756,6 +816,20 @@ func _make_row() -> HBoxContainer:
 	rank_label.add_theme_color_override("font_color", RANK_COLOUR)
 	row.add_child(rank_label)
 
+	# THE NAME AND, UNDER IT, A PATRON'S TITLE (0.74.0). The title goes on a
+	# line of its own rather than beside the name in the row, and the reason is
+	# arithmetic: the four figure columns already take about 270 of the panel's
+	# 316 pixels, so "Noble Patron" beside a name would leave the name a few
+	# letters wide - and "A Label that shares a row gives way" (CLAUDE.md) says
+	# which of the two would be cut. A patron's row is a line taller instead,
+	# which is also the point: the owner's word for this was "people pay for
+	# being seen", and a row that stands out is being seen.
+	var names := VBoxContainer.new()
+	names.name = "names"
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	names.add_theme_constant_override("separation", -2)
+	row.add_child(names)
+
 	var name_label := Label.new()
 	name_label.name = "who"
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -763,7 +837,16 @@ func _make_row() -> HBoxContainer:
 	# A long username must not push the figures off the right-hand edge, and a
 	# board of two hundred will contain one.
 	name_label.clip_text = true
-	row.add_child(name_label)
+	names.add_child(name_label)
+
+	var title_label := Label.new()
+	title_label.name = "title"
+	title_label.visible = false
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.add_theme_font_size_override("font_size", 10)
+	title_label.clip_text = true
+	title_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	names.add_child(title_label)
 
 	# WHO THEY RUN WITH, AND DELIBERATELY NOT A COLUMN.
 	#
@@ -784,7 +867,12 @@ func _make_row() -> HBoxContainer:
 	# THE SAME VIOLET AS CHAT, THE PLAYERS MENU AND THE NAMEPLATE. Api owns it
 	# for the reason it owns colour_for_role.
 	guild_label.add_theme_color_override("font_color", Api.GUILD_TAG_COLOUR)
-	guild_label.clip_text = true
+	# NOT clip_text (0.74.0, found while the patrons' titles went in): a
+	# clipping Label asks for no width of its own, and with no minimum size
+	# beside an EXPAND_FILL name it was given one pixel - every "[ABCD]" on the
+	# board drew as a violet sliver. The note above was right about what it
+	# should do; this line did the opposite. The name clips instead.
+	guild_label.clip_text = false
 	guild_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	row.add_child(guild_label)
 
@@ -844,7 +932,7 @@ func _fill_row(row: HBoxContainer, rank: int, entry: Dictionary) -> void:
 	var rank_label: Label = row.get_node("rank")
 	rank_label.text = "%d." % rank
 
-	var name_label: Label = row.get_node("who")
+	var name_label: Label = row.get_node("names/who")
 	name_label.text = username
 	# Your own row is tinted rather than marked with a symbol, so the list reads
 	# the same length whether you are on it or not.
@@ -856,6 +944,22 @@ func _fill_row(row: HBoxContainer, rank: int, entry: Dictionary) -> void:
 		name_label.add_theme_color_override("font_color", YOU_COLOUR)
 	else:
 		name_label.remove_theme_color_override("font_color")
+
+	# THE TITLE, SET BOTH WAYS ROUND for the reason the name tint is: a reused
+	# row that was a Royal Patron's a refresh ago must not keep the crown.
+	#
+	# ONLY WHEN IT CHANGED. A refresh refills two hundred rows inside one frame
+	# (the budget in _test_frame_budget()), and a colour override is a theme
+	# change the label has to propagate every time it is set, same colour or
+	# not. Most rows on a board have no title and never had one, and those cost
+	# one string comparison here.
+	var title_label: Label = row.get_node("names/title")
+	var title: String = str(entry.get("title", "")) if entry.get("title") != null else ""
+	if title_label.text != title or title_label.visible != (title != ""):
+		title_label.text = title
+		title_label.visible = title != ""
+		title_label.tooltip_text = title_tooltip(title)
+		title_label.add_theme_color_override("font_color", title_colour(title))
 
 	# A REUSED ROW MAY HAVE BEEN SOMEBODY ELSE'S, so this is set both ways round
 	# for the same reason the name tint above is: a field only ever written when
@@ -904,6 +1008,187 @@ func _clear_rows() -> void:
 	_rows_done = 0
 	for child in board_list.get_children():
 		child.queue_free()
+
+
+# =============================================================================
+# PATRONAGE - the reader's title, and the gift that earns it (0.74.0)
+# =============================================================================
+
+static func title_colour(title: String) -> Color:
+	"""A title's colour: the rarity colours from uncommon up, lowest title
+	first. See TITLE_FIRST_RARITY."""
+	var titles: Array = GameConstants.PATRON_TITLES
+	for i in range(titles.size()):
+		if str((titles[i] as Dictionary).get("title", "")) == title:
+			return GameConstants.rarity_colour(TITLE_FIRST_RARITY + i)
+	return GOLD_COLOUR
+
+
+static func title_tooltip(title: String) -> String:
+	"""What a title on somebody's row means, on its hover - the board shows the
+	word, and a reader is entitled to know what it took."""
+	if title == "":
+		return ""
+	for entry in GameConstants.PATRON_TITLES:
+		if str((entry as Dictionary).get("title", "")) == title:
+			return "%s: has given the Crown at least %s gold" % [
+				title, GameConstants.commas(int((entry as Dictionary).get("at", 0)))]
+	return title
+
+
+static func patron_line(donated: int, title: String, next_title: String, next_at: int) -> String:
+	"""The reader's own patronage, in one line: the title held and the way to
+	the next - "Patron  -  12,400 / 100,000 to Benefactor". A reader with no
+	title yet sees only the way to the first, and one at the top is told so.
+
+	THE PROGRESS IS THE SERVER'S. "next_title" and "next_at" arrive with the
+	board, worked out from the account's lifetime gifts; this joins them into a
+	sentence and decides nothing."""
+	var parts := PackedStringArray()
+	if title != "":
+		parts.append(title)
+	if next_title != "" and next_at > 0:
+		parts.append("%s / %s to %s" % [GameConstants.commas(donated),
+			GameConstants.commas(next_at), next_title])
+	elif title != "":
+		parts.append("the highest title there is")
+	return "  -  ".join(parts)
+
+
+func _show_patron(you: Dictionary) -> void:
+	"""The patron line and its bar, from the reader's own line on the board or
+	from a gift's answer. AN OLDER SERVER SENDS NEITHER KEY, and then the line
+	is hidden rather than claiming nobody has given anything."""
+	if not (you.has("donated") or you.has("next_title") or you.has("title")):
+		patron_label.visible = false
+		patron_bar.visible = false
+		return
+	var donated: int = int(you.get("donated", 0))
+	var title: String = str(you.get("title", "")) if you.get("title") != null else ""
+	var next_title: String = str(you.get("next_title", "")) if you.get("next_title") != null else ""
+	var next_at: int = int(you.get("next_at", 0)) if you.get("next_at") != null else 0
+	_my_title = title
+	patron_label.text = patron_line(donated, title, next_title, next_at)
+	patron_label.visible = patron_label.text != ""
+	patron_label.add_theme_color_override("font_color",
+		title_colour(title) if title != "" else RANK_COLOUR)
+	patron_bar.visible = next_at > 0
+	patron_bar.value = clampf(float(donated) / float(next_at), 0.0, 1.0) if next_at > 0 else 1.0
+	patron_bar.tooltip_text = "%s of %s gold given" % [_commas(donated), _commas(next_at)] \
+		if next_at > 0 else ""
+
+
+func _fit_list_to_screen() -> void:
+	"""The ranking's scroll, no taller than the screen leaves it.
+
+	MEASURED, AND WHY IT IS HERE. The board was authored to fit a 720-high
+	screen at the largest text size with a pixel to spare: 719 with a reader's
+	line of four sentences and nothing yet in the breakdown, and a real realm
+	is taller than that already. The patron line, its bar and the Donate row
+	(0.74.0) are about 120 more at that size, and a window taller than the
+	screen is squeezed to it by PanelWindow.fit_to() - its bottom, the Refresh
+	button and the notice, drawn past its own edge. The ranking is the one part
+	that already scrolls, so it is the part that gives the room back - the
+	sum PanelWindow.scroll_height() does for the windows that scroll their
+	whole body, with this board's own floor. At the normal size nothing
+	changes: the rest of the board leaves far more than 220."""
+	if not is_inside_tree() or not visible:
+		return
+	var scroll: ScrollContainer = board_list.get_parent() as ScrollContainer
+	if scroll == null:
+		return
+	# THE REST OF THE BOARD is what it needs less what the scroll adds - plain
+	# subtraction, because the board stacks its parts in one column.
+	var rest: float = PanelWindow.content_minimum(self).y - scroll.get_combined_minimum_size().y
+	var height: float = clampf(get_viewport_rect().size.y - rest, LIST_SHORTEST, LIST_TALLEST)
+	if absf(scroll.custom_minimum_size.y - height) > 0.5:
+		scroll.custom_minimum_size.y = height
+
+
+static func typed_gold(text: String) -> int:
+	"""The box's text as gold: digits only, so "12,400" is twelve thousand four
+	hundred and a stray letter is not a zero. The bank's box filters as the
+	player types; this one reads the same way at the press, which is the moment
+	that matters - see "A SpinBox's typed number is not its value until Enter"
+	in CLAUDE.md for why a box is read when its button is pressed."""
+	var digits: String = ""
+	for i in range(text.length()):
+		if "0123456789".contains(text[i]):
+			digits += text[i]
+	if digits == "" or digits.length() > 15:
+		return 0
+	return int(digits)
+
+
+func _on_donate_submitted(_text: String) -> void:
+	await donate(typed_gold(donate_input.text))
+
+
+func _on_donate_pressed() -> void:
+	await donate(typed_gold(donate_input.text))
+
+
+func donate(amount: int) -> void:
+	"""Give the Crown this much gold. Awaitable."""
+	if _donating:
+		return
+	var minimum: int = GameConstants.DONATION_MINIMUM
+	if amount < minimum:
+		_set_notice("The Crown takes gifts of at least %s gold." % _commas(minimum), true)
+		return
+	var player: Node = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if player != null and "gold" in player and amount > int(player.get("gold")):
+		# Said here rather than sent: the server refuses it too, and a refusal
+		# that took a round trip to arrive at "you do not have that" is slower
+		# than reading the purse.
+		_set_notice("You carry %s gold." % _commas(int(player.get("gold"))), true)
+		return
+	if not Api.is_logged_in():
+		_set_notice("Not connected - the gift was not sent.", true)
+		return
+
+	_donating = true
+	donate_button.disabled = true
+	_set_notice("The Crown's steward counts it...", false)
+	var res: Dictionary = await Api.post("/api/kingdom/donate", {
+		"slot": CharacterData.active_character_index,
+		"amount": amount,
+	}, DONATE_TIMEOUT)
+
+	# PAST AN AWAIT, the same guard as _load().
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	_donating = false
+	donate_button.disabled = false
+
+	var data: Dictionary = res.get("data", {}) if res.get("data", {}) is Dictionary else {}
+	if not res.get("ok", false):
+		var message: String = str(data.get("message", ""))
+		_set_notice(message if message != "" else _refusal_text(res), true)
+		Audio.play("refused")
+		return
+
+	# THE PURSE IS THE SERVER'S NUMBER, not the old one less the gift.
+	if data.has("gold"):
+		player = get_tree().get_first_node_in_group("player")
+		CharacterData.adopt_server_gold({"carried_gold": int(data["gold"])}, player)
+	donate_input.text = ""
+	Audio.play("coin")
+	var was_title: String = _my_title
+	_show_patron(data)
+	var thanks: String = "You gave the Crown %s gold." % _commas(amount)
+	if _my_title != "" and _my_title != was_title:
+		thanks += " You are named %s!" % _my_title
+	# THE BOARD IS READ AGAIN, because the gift moved the realm's total, your
+	# rank and perhaps your row. If a read is already out, the next tick takes
+	# it rather than two reads racing to draw.
+	if _busy:
+		_seconds_until_refresh = 0.0
+	else:
+		await _load()
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+	_set_notice(thanks, false)
 
 
 # =============================================================================

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://dc3t3kqlfsjs"]
+
+[ext_resource type="Texture2D" uid="uid://dcm3ahpjrej4o" path="res://art/pack/food/royalbanquet.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "royalbanquet"
+display_name = "Royal Banquet"
+description = "Fit for the crown, and priced like it."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 30000
+tier = 6
+required_level = 25
+type = 0
+droppable = false
+restore_amount = 200
+restore_target = 1
+buff_kind = 1
+buff_amount = 12
+buff_seconds = 1800
+recipe_ingredients = {"azuretangsushi": 1, "nightberrytart": 1, "honey": 1}
+recipe_level = 80
+recipe_xp = 320
+recipe_mastery_level = 99
+metadata/_custom_type_script = "uid://ccaysp573wbjk"

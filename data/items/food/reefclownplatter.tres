@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ItemData" format=3 uid="uid://cc0axb255kvv7"]
+
+[ext_resource type="Texture2D" uid="uid://bl0r1f3tfcopj" path="res://art/pack/food/reefclownplatter.png" id="1_icon"]
+[ext_resource type="Script" uid="uid://ccaysp573wbjk" path="res://src/types/itemdata.gd" id="2_script"]
+
+[resource]
+script = ExtResource("2_script")
+item_id = "reefclownplatter"
+display_name = "Reef Clown Platter"
+description = "Nobody agrees on where these come from. Everybody agrees on this."
+icon = ExtResource("1_icon")
+stackable = true
+max_stack = 20
+value = 18000
+tier = 6
+required_level = 25
+type = 0
+droppable = false
+restore_amount = 150
+restore_target = 1
+buff_kind = 3
+buff_amount = 150
+buff_seconds = 1800
+recipe_ingredients = {"rawreefclown": 1, "lemon": 1, "wildherb": 1, "spicemix": 1, "honey": 1}
+recipe_level = 72
+recipe_xp = 240
+recipe_mastery_level = 95
+metadata/_custom_type_script = "uid://ccaysp573wbjk"
