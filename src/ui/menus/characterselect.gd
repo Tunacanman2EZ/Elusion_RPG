@@ -30,9 +30,10 @@ const ApiScript := preload("res://src/systems/api.gd")
 # AreaRegistry.prefetch), so by the time a character is picked it is
 # normally already there.
 const WORLD_AREA := "elusion"
-# How long Play waits for the town's background load before it takes the town
-# itself - see _enter_world(). The town loads in about two seconds cold.
-const BACKGROUND_WAIT_SECONDS := 3.0
+# How long the town's background load may sit without moving before Play stops
+# waiting and says so - see _enter_world(). The town loads in about two seconds
+# cold, and its progress moves many times a second while it does.
+const STUCK_SECONDS := 15.0
 
 # Set once a character has been picked, so a second click while the town
 # finishes loading cannot start a second trip.
@@ -283,34 +284,42 @@ func _enter_world(idx: int) -> void:
 
 	WAITS BY THE FRAME, NOT BY BLOCKING. If the player picked a character
 	faster than the town loaded, scene_for() would freeze the window until it
-	finished; waiting here keeps the screen drawing and says why - for
-	BACKGROUND_WAIT_SECONDS at most, then the town is taken (0.74.1)."""
+	finished; waiting here keeps the screen drawing and says why. A load that
+	stops moving for STUCK_SECONDS is never taken - it is said (0.74.2)."""
 	if _entering:
 		return
 	_entering = true
 
 	if not AreaRegistry.is_ready(WORLD_AREA):
 		_show_loading(idx)
-		# NOT FOR EVER (0.74.1). The owner, on 0.74.0, a screenshot of this
-		# label: "it had froze" - his log stopped at the [CHAR] line, the town's
-		# background load never reported done, and this loop polled it for good.
-		# Godot has a known stall since 4.4 where a load_threaded_request() sits
-		# in progress until somebody asks for the resource with
-		# load_threaded_get() - which every door does (scene_for()), and no door
-		# ever froze. So the wait is bounded: past BACKGROUND_WAIT_SECONDS the
-		# town is taken now, through scene_for(), the one call that finishes a
-		# stalled load. A slow disk loses nothing; it only stops drawing frames
-		# for the rest of the load, under this label.
-		var waited_from: int = Time.get_ticks_msec()
+		# A LOAD THAT STOPS IS NOT TAKEN (0.74.2). The owner, twice, on this
+		# label: "it had froze", and on 0.74.1 "still loading". 0.74.1 waited
+		# three seconds and then took the town with scene_for() - his log said
+		# "after 3.0 s (19%) - taking it now", and the take hung for good.
+		# The load had DEADLOCKED inside Godot: two worker threads waiting on
+		# each other while compiling elusion.gd's preloads (arearegistry.gd,
+		# "BACKGROUND LOADS ARE SAFE ON ONE THREAD ONLY"). One loading thread is
+		# the fix. load_threaded_get() only waits - it can never
+		# finish a load like that, and waiting in it freezes the window. So
+		# this waits by the frame, as long as the load keeps moving, and if it
+		# ever stops for STUCK_SECONDS it says so here and in the log.
+		var town: String = AreaRegistry.AREAS[WORLD_AREA]
+		var last_progress: float = -1.0
+		var moved_at: int = Time.get_ticks_msec()
 		while not AreaRegistry.is_ready(WORLD_AREA) and AreaRegistry.is_loading(WORLD_AREA):
-			if Time.get_ticks_msec() - waited_from >= int(BACKGROUND_WAIT_SECONDS * 1000.0):
-				# SAID IN THE LOG, with how far it got, so a stall that comes
-				# back is a line to read rather than a screenshot of a label.
-				var progress: Array = []
-				ResourceLoader.load_threaded_get_status(AreaRegistry.AREAS[WORLD_AREA], progress)
-				print("[WORLD] the town is still loading in the background after %.1f s (%d%%) - taking it now"
-					% [BACKGROUND_WAIT_SECONDS, int(round(float(progress[0]) * 100.0)) if not progress.is_empty() else -1])
-				break
+			var progress: Array = []
+			var status := ResourceLoader.load_threaded_get_status(town, progress)
+			var now: float = float(progress[0]) if not progress.is_empty() else -1.0
+			# Only a load that has started and stopped counts; one still queued
+			# behind another area is moving with that queue.
+			if status != ResourceLoader.THREAD_LOAD_IN_PROGRESS or now != last_progress:
+				last_progress = now
+				moved_at = Time.get_ticks_msec()
+			elif Time.get_ticks_msec() - moved_at >= int(STUCK_SECONDS * 1000.0):
+				print("[WORLD] the town's background load has not moved for %.0f s, at %d%% - stuck"
+					% [STUCK_SECONDS, int(round(last_progress * 100.0))])
+				_slot_labels()[idx].text = "The world did not finish loading - close the game and open it again"
+				return
 			await get_tree().process_frame
 			# PAST AN AWAIT. Logging out or closing the window frees this screen.
 			if not is_instance_valid(self) or not is_inside_tree():

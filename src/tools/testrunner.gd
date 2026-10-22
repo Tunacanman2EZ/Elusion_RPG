@@ -380,6 +380,7 @@ func _run_all() -> void:
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
 	await _test_the_world_loads_in_the_background()
+	_test_one_thread_loads_in_the_background()
 	await _test_rare_loot_reads_as_rare()
 	_test_a_loot_bag_is_reached_from_further()
 	_test_amulets_carry_their_bonus()
@@ -30837,6 +30838,34 @@ func _chain(closure: Dictionary, path: String) -> String:
 	return " -> ".join(links)
 
 
+func _test_one_thread_loads_in_the_background() -> void:
+	# The owner, twice on 0.74.x: Play stuck on "Loading the world..." for good.
+	# Two of Godot's workers loading at once deadlock on a script's preloads
+	# (arearegistry.gd, "BACKGROUND LOADS ARE SAFE ON ONE THREAD ONLY"). This
+	# sandbox has two cores, so it always had one loading thread and can never
+	# show the deadlock - which is why the rule is held here as numbers.
+	section("LOADING — the background loads on one thread, so it cannot deadlock (0.74.2)")
+	check("Godot's own sum, as loader_threads() works it: 16 threads at its default 0.3 load on 4",
+		_AreaRegistryCode.loader_threads(16, 0.3) == 4, _AreaRegistryCode.loader_threads(16, 0.3))
+	var sums: Array = [_AreaRegistryCode.loader_threads(2, 0.3), _AreaRegistryCode.loader_threads(1, 0.3),
+		_AreaRegistryCode.loader_threads(16, 0.9)]
+	check("  2 threads on 1, 1 thread on 1, and 16 at 0.9 on 14", sums == [1, 1, 14], sums)
+	var ratio: float = float(ProjectSettings.get_setting(_AreaRegistryCode.LOADER_RATIO_SETTING, 0.3))
+	check("project.godot sets the loading ratio so that a 64-thread computer loads on one",
+		_AreaRegistryCode.loader_threads(64, ratio) == 1, ratio)
+	check("  and so does this one", _AreaRegistryCode.loader_threads(-1, ratio) == 1, [OS.get_processor_count(), ratio])
+	var pool_setting: Variant = ProjectSettings.get_setting(_AreaRegistryCode.POOL_THREADS_SETTING, -1)
+	var ratio_setting: Variant = ProjectSettings.get_setting(_AreaRegistryCode.LOADER_RATIO_SETTING, 0.3)
+	ProjectSettings.set_setting(_AreaRegistryCode.POOL_THREADS_SETTING, 16)
+	ProjectSettings.set_setting(_AreaRegistryCode.LOADER_RATIO_SETTING, 0.3)
+	var would_with_four: bool = _AreaRegistryCode.loads_in_background()
+	ProjectSettings.set_setting(_AreaRegistryCode.LOADER_RATIO_SETTING, ratio_setting)
+	var would_with_one: bool = _AreaRegistryCode.loads_in_background()
+	ProjectSettings.set_setting(_AreaRegistryCode.POOL_THREADS_SETTING, pool_setting)
+	check("were the setting ever lost, nothing would load ahead - slower, never stuck",
+		not would_with_four and would_with_one, [would_with_four, would_with_one])
+
+
 func _test_the_world_loads_in_the_background() -> void:
 	section("LOADING — the login screen does not wait for the world")
 
@@ -34993,17 +35022,24 @@ func _test_the_browser_build() -> void:
 	check("  and lets that label draw before a load that holds the screen - two frames, the first is the click's own",
 		second_gate != -1 and drawn != -1 and drawn < takes
 		and enter.substr(second_gate, drawn - second_gate).contains("in 2:"), [first_gate, second_gate, drawn, takes])
-	# NOT FOR EVER (0.74.1, the owner: "it had froze" on this label). A
-	# background load that stalls in progress is waited for a few seconds,
-	# then taken by scene_for(), whose load_threaded_get() finishes it.
+	# A LOAD THAT STOPS IS NOT TAKEN (0.74.2). 0.74.1 waited three seconds and
+	# then took the town with scene_for() - and the owner's take hung for good:
+	# waiting in load_threaded_get() cannot finish a deadlocked load. The wait
+	# goes by the frame for as long as the load moves; one that stops for
+	# STUCK_SECONDS is said on the label and left, never taken.
 	var poll := enter.find("while not AreaRegistry.is_ready(WORLD_AREA) and AreaRegistry.is_loading(WORLD_AREA):")
-	var bound := enter.find("BACKGROUND_WAIT_SECONDS * 1000.0", poll) if poll != -1 else -1
-	var leave := enter.find("break", bound) if bound != -1 else -1
+	var stuck := enter.find("STUCK_SECONDS * 1000.0", poll) if poll != -1 else -1
+	var gives_up := enter.find("return", stuck) if stuck != -1 else -1
+	var in_loop := enter.substr(poll, second_gate - poll) if poll != -1 and second_gate > poll else ""
 	var Select: Script = load("res://src/ui/menus/characterselect.gd") as Script
-	var wait_for: float = float(Select.get_script_constant_map().get("BACKGROUND_WAIT_SECONDS", 0.0))
-	check("  and waits for a load that has stalled a few seconds at most, then takes the town itself",
-		poll != -1 and bound != -1 and leave != -1 and leave < second_gate and second_gate < takes
-		and wait_for > 0.0 and wait_for <= 5.0, [poll, bound, leave, second_gate, takes, wait_for])
+	var stuck_for: float = float(Select.get_script_constant_map().get("STUCK_SECONDS", 0.0))
+	check("  and waits by the frame while the load moves; one that stops is said, never taken",
+		poll != -1 and stuck != -1 and gives_up != -1 and gives_up < second_gate and second_gate < takes
+		and not in_loop.contains("break") and not in_loop.contains("scene_for(")
+		and not enter.contains("load_threaded_get(") and stuck_for >= 5.0 and stuck_for <= 60.0,
+		[poll, stuck, gives_up, second_gate, takes, stuck_for])
+	check("  in words the player can act on, and a line in the log",
+		in_loop.contains("close the game and open it again") and in_loop.contains("print(\"[WORLD]"))
 
 	# ---- the bug an export had and the editor never showed ------------------------
 	var walkers: Array = []

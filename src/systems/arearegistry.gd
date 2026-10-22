@@ -235,8 +235,53 @@ static func loads_in_background() -> bool:
 	2.1-2.25 s without the request - because the whole town loaded inside it.
 	So a build without threads loads nothing ahead. Each area loads when it is
 	entered: behind a door's fade, or under "Loading the world..." at character
-	select, where a player expects to wait."""
-	return not OS.has_feature("nothreads")
+	select, where a player expects to wait.
+
+	AND FALSE WHEN MORE THAN ONE THREAD WOULD LOAD (0.74.2) - see
+	loader_threads() below. Then the same holds: nothing ahead, each area on
+	the way in. Slower, never stuck."""
+	return not OS.has_feature("nothreads") and loader_threads(
+		int(ProjectSettings.get_setting(POOL_THREADS_SETTING, -1)),
+		float(ProjectSettings.get_setting(LOADER_RATIO_SETTING, 0.3))) == 1
+
+
+# BACKGROUND LOADS ARE SAFE ON ONE THREAD ONLY (0.74.2). The owner, twice in a
+# day on 0.74.x: Play stuck on "Loading the world..." - his log said "still
+# loading in the background after 3.0 s (19%)", then nothing, for good. Godot
+# 4.7.2 DEADLOCKS a background load when two of its worker threads load at once:
+#
+#   thread A compiles elusion.gd (the town's first file) and, holding the
+#   GDScript cache's lock, reaches preload("res://scene/characters/warrior.tscn").
+#   That preload goes to the pool as a task of its own, and if thread B picks
+#   it up before A does, A waits for B - still holding the lock - while B
+#   reaches warrior.gd and waits for the lock. Neither moves again.
+#
+# 19% is exactly "inside the town's first file". Reproduced in the sandbox with
+# a project of nothing but one script preloading 300 small scenes: with Godot's
+# default on a 16-thread computer (4 loading threads) 2 loads in 8 stuck, with
+# 14 loading threads 3 in 6 - and with one loading thread 0 in 28, as fast.
+# gdb on a stuck one: one worker sleeping in the loader's wait loop, one
+# blocked on a mutex, the rest idle. load_threaded_get() cannot finish such a
+# load (0.74.1 tried; it only waits), and after it nothing can - every new
+# script needs that lock - so the cure is never to let it start.
+#
+# Godot gives loading (a low-priority task) the pool's size times
+# threading/worker_pool/low_priority_thread_ratio threads, never fewer than
+# one. project.godot sets the ratio to 0.01, so any computer up to 100 threads
+# gets one. A two-core laptop always had one, which is why the sandbox and its
+# suite never saw this. One loses nothing: thread A takes each preload itself
+# when nobody else can - which is what it did on every load that worked. The
+# editor's own pool ignores the setting (main.cpp gives the editor 0.75).
+const POOL_THREADS_SETTING := "threading/worker_pool/max_threads"
+const LOADER_RATIO_SETTING := "threading/worker_pool/low_priority_thread_ratio"
+
+
+static func loader_threads(pool_threads: int, ratio: float) -> int:
+	"""How many worker threads Godot lets load resources at once - its own sum
+	in WorkerThreadPool::init(): the pool's size (the processor count unless
+	max_threads sets one) times the ratio, at least one, short of the pool."""
+	var pool: int = pool_threads if pool_threads > 0 else OS.get_processor_count()
+	return clampi(int(float(pool) * ratio), 1, maxi(1, pool - 1))
 
 
 func prefetch(area_id: String) -> bool:

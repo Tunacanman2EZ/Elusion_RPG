@@ -7910,15 +7910,36 @@ floats where they sent ints, as from Flask.
 - The wall-clock checks (the board's refresh inside a frame, the death
   bursts) failed under five agents' load on two CPUs and passed alone. Rerun
   before suspecting the code.
-- **Play froze on "Loading the world..." (0.74.1).** The owner's log stopped at
-  the `[CHAR]` line: the town's background load (started at the login screen)
-  never left THREAD_LOAD_IN_PROGRESS, and character select polled it for ever.
-  Godot has a known stall since 4.4 where a threaded request sits in progress
-  until something calls `load_threaded_get()` - which every door does through
-  `scene_for()`, and no door ever froze. Play now waits
-  `BACKGROUND_WAIT_SECONDS` (3) at most, logs how far the load got, and takes
-  the town through `scene_for()`. If it ever freezes again, the last log line
-  says whether it was the wait or the take.
+- **Play stuck on "Loading the world..." - a Godot deadlock (0.74.1, 0.74.2).**
+  The owner's log stopped at the `[CHAR]` line: the town's background load
+  (started at the login screen) never finished. 0.74.1 guessed at a stall
+  that `load_threaded_get()` would clear, waited 3 s and took the town - and
+  his next log said "still loading in the background after 3.0 s (19%) -
+  taking it now", then nothing. That guess was wrong, and it is gone.
+  **What it is:** Godot 4.7.2 deadlocks a background load when two worker
+  threads load at once. Thread A compiles `elusion.gd` (the town's first
+  file) holding the GDScript cache's lock; its
+  `preload("res://scene/characters/warrior.tscn")` becomes a pool task; if
+  thread B starts it first, A waits for B with the lock held while B waits
+  for the lock to compile `warrior.gd`. 19% is inside the town's first file.
+  Reproduced in the sandbox with one script preloading 300 small scenes: 4
+  loading threads (Godot's default on 16) stuck 2 loads in 8, 14 threads 3 in
+  6, ONE thread 0 in 28 and as fast; gdb on a stuck one showed one worker in
+  the loader's sleep loop, one on a mutex, the rest idle. Nothing can finish
+  such a load - every new script needs that lock.
+  **The fix:** `project.godot` sets
+  `threading/worker_pool/low_priority_thread_ratio=0.01`, so the game loads
+  on one worker thread on any computer up to 100 threads (Godot gives loading
+  the pool's size times that ratio, at least one). The editor's own pool is
+  untouched (main.cpp gives it 0.75). `AreaRegistry.loads_in_background()`
+  is false whenever more than one would load (`loader_threads()`), so if the
+  setting is ever lost the game loads each area on the way in instead.
+  Character select now waits by the frame while the load moves and, if it
+  ever stops for `STUCK_SECONDS` (15), says "close the game and open it
+  again" and logs it - never `load_threaded_get()` on a load that has
+  stopped. A two-core sandbox always had one loading thread, so its suite
+  never saw this; `_test_one_thread_loads_in_the_background` holds the rule
+  as numbers. **Do not edit `[threading]` in the Project Settings.**
 - `art/pack` is a submodule: `tools\ship.ps1` now ships it (`SHIP_pack.txt`)
   BEFORE the game, putting a detached pack back on main when that loses
   nothing, so the game's commit records a pack commit GitHub already has.
