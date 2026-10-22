@@ -1561,6 +1561,15 @@ func _scale_text_of(node: Node, factor: float) -> void:
 				or not node.has_theme_font_size_override(write[0]):
 			node.add_theme_font_size_override(write[0], int(write[1]))
 	_scaling_text = false
+	# AN EMPTY LABEL IS NOT MEASURED AGAIN (0.75.0). Godot 4.7.2 keeps the
+	# height an empty Label had at its old size: at 12, then 18, then 12 again
+	# it still asks for 26 px, not 17 - so every window with an empty notice
+	# line stood a line too tall after the text was made smaller. Measured in
+	# the sandbox; giving it a text and taking it away is what makes it look
+	# again.
+	if node is Label and (node as Label).text == "":
+		(node as Label).text = " "
+		(node as Label).text = ""
 	if not node.theme_changed.is_connected(_on_text_theme_changed):
 		node.theme_changed.connect(_on_text_theme_changed.bind(node))
 

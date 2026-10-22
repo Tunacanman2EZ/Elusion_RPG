@@ -356,6 +356,7 @@ func _run_all() -> void:
 	await _test_give_and_save_history()
 	await _test_monitors_and_window_modes()
 	await _test_text_size_and_font()
+	await _test_windows_snap_to_their_text()
 	await _test_rebindable_keys()
 	await _test_the_kill_record()
 	_test_presence_carries_the_monsters()
@@ -11090,6 +11091,278 @@ func _test_monitors_and_window_modes() -> void:
 # style fonts". Every font size in the interface times the text size and the
 # font's own scale; the world's writing takes only the font's scale; a window
 # that would pass the screen scrolls instead.
+func _test_windows_snap_to_their_text() -> void:
+	# The owner, of the smith window with a hand's breadth of nothing under its
+	# last row: "I need ui to snap into correct sizing when someone adjusts
+	# font size, some people have a hard time seeing." A window grew to fit
+	# what it held and never shrank; opened at Largest and set back to Normal,
+	# 16 of 27 were left bigger than they open (panelwindow.gd, THE SIZE A
+	# WINDOW SHOULD BE).
+	section("WINDOWS - every one snaps to its text, both ways (0.75.0)")
+	var kept_size: float = float(Settings.get_value("text_size"))
+	var kept_font: String = str(Settings.get_value("font"))
+	Settings.set_value("text_size", 1.0)
+	Settings.set_value("font", "standard")
+	var layer := CanvasLayer.new()
+	add_child(layer)
+
+	# ---- an empty line -----------------------------------------------------------
+	# Godot 4.7.2 keeps the height an EMPTY Label had at its old size, so every
+	# window with an empty notice line stood a line too tall after the text was
+	# made smaller (settings.gd, AN EMPTY LABEL IS NOT MEASURED AGAIN).
+	var empty := Label.new()
+	empty.add_theme_font_size_override("font_size", 12)
+	layer.add_child(empty)
+	await get_tree().process_frame
+	var empty_at_normal: float = empty.get_combined_minimum_size().y
+	Settings.set_value("text_size", 1.5)
+	await get_tree().process_frame
+	var empty_at_largest: float = empty.get_combined_minimum_size().y
+	Settings.set_value("text_size", 1.0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("an empty line is as tall at Normal again as it was before Largest",
+		empty_at_largest > empty_at_normal and is_equal_approx(empty.get_combined_minimum_size().y, empty_at_normal),
+		[empty_at_normal, empty_at_largest, empty.get_combined_minimum_size().y])
+	empty.queue_free()
+
+	# ---- every window, Largest and back ------------------------------------------
+	var scenes: Array[String] = []
+	var walk: Array[String] = ["res://scene/ui"]
+	while not walk.is_empty():
+		var dir_path: String = walk.pop_back()
+		for sub in DirAccess.get_directories_at(dir_path):
+			walk.append(dir_path.path_join(sub))
+		for file in DirAccess.get_files_at(dir_path):
+			if not file.ends_with(".tscn"):
+				continue
+			var text: String = FileAccess.get_file_as_string(dir_path.path_join(file))
+			var at: int = text.find("path=\"res://src/")
+			if at < 0:
+				continue
+			var script_path: String = text.substr(at + 6, text.find("\"", at + 6) - at - 6)
+			if script_path.ends_with(".gd") and FileAccess.get_file_as_string(script_path).contains("PanelWindow.attach("):
+				scenes.append(dir_path.path_join(file))
+	var windows: Array = []
+	for path in scenes:
+		var window: Control = (load(path) as PackedScene).instantiate() as Control
+		layer.add_child(window)
+		window.visible = true
+		windows.append(window)
+	for i in 3:
+		await get_tree().process_frame
+	Settings.set_value("text_size", 1.5)
+	for i in 3:
+		await get_tree().process_frame
+	var grew: Array = []
+	for window in windows:
+		var panel: PanelWindow = window.get("_window") as PanelWindow
+		if panel != null and panel.hand_sized:
+			grew.append(window.scene_file_path.get_file())
+	check("a text size change forgets every size the player chose - it was for the old text",
+		grew.is_empty(), grew)
+	Settings.set_value("text_size", 1.0)
+	for i in 3:
+		await get_tree().process_frame
+	var left_big: Array = []
+	var looked: int = 0
+	for window in windows:
+		var panel: PanelWindow = window.get("_window") as PanelWindow
+		if panel == null or not window.is_visible_in_tree():
+			continue
+		looked += 1
+		var want: Vector2 = PanelWindow.fit_to(Rect2(window.global_position, panel.natural_size()),
+			get_viewport().get_visible_rect().size, panel.natural_size()).size
+		if absf(window.size.x - want.x) > 1.0 or absf(window.size.y - want.y) > 1.0:
+			left_big.append("%s %s, should be %s" % [window.scene_file_path.get_file(), window.size, want])
+	check("set back to Normal from Largest, every window is its natural size again - no gap under it",
+		looked >= 20 and left_big.is_empty(), [looked, left_big])
+	for window in windows:
+		window.queue_free()
+	await get_tree().process_frame
+
+	# ---- the rule, on one window --------------------------------------------------
+	var host := Control.new()
+	host.name = "snaphost"
+	host.size = Vector2(300, 200)
+	host.position = Vector2(100, 100)
+	layer.add_child(host)
+	var frame := PanelContainer.new()
+	frame.name = "frame"
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	host.add_child(frame)
+	var margin := MarginContainer.new()
+	margin.name = "margin"
+	frame.add_child(margin)
+	var rows := VBoxContainer.new()
+	rows.name = "rows"
+	margin.add_child(rows)
+	var head := PanelContainer.new()
+	head.name = "headerpanel"
+	rows.add_child(head)
+	var tall := Control.new()
+	tall.custom_minimum_size = Vector2(200, 400)
+	rows.add_child(tall)
+	var win: PanelWindow = PanelWindow.attach(host, "")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("a window grows to what it holds", host.size.y >= 400.0, host.size)
+	tall.custom_minimum_size = Vector2(200, 80)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  and shrinks back when that needs less - to what its scene drew, no smaller",
+		is_equal_approx(host.size.y, 200.0) and is_equal_approx(host.size.x, 300.0), host.size)
+	check("  its top left corner where it was", host.position == Vector2(100, 100), host.position)
+	win.hand_sized = true
+	host.size = Vector2(420, 360)
+	tall.custom_minimum_size = Vector2(200, 60)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("a window the player sized keeps that size when what it holds needs less",
+		host.size == Vector2(420, 360), host.size)
+	tall.custom_minimum_size = Vector2(200, 500)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  and still grows when it needs more", host.size.y >= 500.0, host.size)
+	tall.custom_minimum_size = Vector2(200, 60)
+	Settings.set_value("text_size", 1.15)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("  until the text size changes: then it is its natural size again",
+		not win.hand_sized and is_equal_approx(host.size.y, 200.0), [win.hand_sized, host.size])
+	Settings.set_value("text_size", 1.0)
+	await get_tree().process_frame
+	host.queue_free()
+
+	# ---- what panels.cfg keeps -------------------------------------------------------
+	var cfg_path: String = PanelWindow.layout_path
+	var cfg := ConfigFile.new()
+	cfg.load(cfg_path)
+	cfg.set_value("_snaptest_old", "x", 40.0)
+	cfg.set_value("_snaptest_old", "y", 50.0)
+	cfg.set_value("_snaptest_old", "w", 900.0)
+	cfg.set_value("_snaptest_old", "h", 700.0)
+	cfg.set_value("_snaptest_mine", "x", 40.0)
+	cfg.set_value("_snaptest_mine", "y", 50.0)
+	cfg.set_value("_snaptest_mine", "w", 500.0)
+	cfg.set_value("_snaptest_mine", "h", 400.0)
+	cfg.set_value("_snaptest_mine", "sized", true)
+	cfg.save(cfg_path)
+	var sizes: Dictionary = {}
+	for key in ["_snaptest_old", "_snaptest_mine"]:
+		var saved := Control.new()
+		saved.size = Vector2(300, 200)
+		var saved_head := PanelContainer.new()
+		saved_head.name = "headerpanel"
+		var saved_rows := VBoxContainer.new()
+		saved_rows.name = "rows"
+		var saved_margin := MarginContainer.new()
+		saved_margin.name = "margin"
+		var saved_frame := PanelContainer.new()
+		saved_frame.name = "frame"
+		saved_frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+		saved.add_child(saved_frame)
+		saved_frame.add_child(saved_margin)
+		saved_margin.add_child(saved_rows)
+		saved_rows.add_child(saved_head)
+		layer.add_child(saved)
+		var saved_win: PanelWindow = PanelWindow.attach(saved, key)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		sizes[key] = [saved.position, saved.size, saved_win.hand_sized]
+		saved.queue_free()
+	check("a size saved before 0.75.0 is taken as a place, not a size - those were the old rule's leftovers",
+		sizes["_snaptest_old"][0] == Vector2(40, 50) and sizes["_snaptest_old"][1] == Vector2(300, 200)
+		and not sizes["_snaptest_old"][2], sizes["_snaptest_old"])
+	check("  a size the player chose is put back, and kept as theirs",
+		sizes["_snaptest_mine"][1] == Vector2(500, 400) and sizes["_snaptest_mine"][2], sizes["_snaptest_mine"])
+	cfg.load(cfg_path)
+	cfg.erase_section("_snaptest_old")
+	cfg.erase_section("_snaptest_mine")
+	cfg.save(cfg_path)
+	var pw_code := _code_src("res://src/shared/panelwindow.gd")
+	check("  a resize by hand is what marks it the player's, and the file says so",
+		_func_body(pw_code, "func _on_grip_input(").contains("hand_sized = true")
+		and _func_body(pw_code, "func _remember()").contains("cfg.set_value(key, \"sized\", hand_sized)"))
+
+	# ---- the smith: the window in the owner's picture -------------------------------
+	var smith: Control = (load("res://scene/ui/smith/smithscreen.tscn") as PackedScene).instantiate() as Control
+	layer.add_child(smith)
+	var ranks: Array = []
+	for cert in GameConstants.CERTIFICATIONS:
+		var row: Dictionary = (cert as Dictionary).duplicate(true)
+		row["earned"] = false
+		ranks.append(row)
+	smith.set("_status", {"rank": 0, "ranks": ranks, "temper_costs": GameConstants.TEMPER_COSTS})
+	smith.call("_render_ranks")
+	smith.visible = true
+	smith.show_certification()
+	for i in 4:
+		await get_tree().process_frame
+	var at_normal: Vector2 = smith.size
+	Settings.set_value("text_size", 1.5)
+	for i in 4:
+		await get_tree().process_frame
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	var rect: Rect2 = smith.get_global_rect()
+	var ranks_scroll: ScrollContainer = smith.get_node("%rankscroll") as ScrollContainer
+	var rows_need: float = PanelWindow.scroll_content(ranks_scroll).get_combined_minimum_size().y
+	check("the smith's ranks at Largest: the whole window on the screen, its header and x with it",
+		rect.position.y >= 0.0 and rect.end.y <= screen.y + 0.5 and smith.get_node("%closebutton").get_global_rect().position.y >= 0.0,
+		rect)
+	check("  the ranks scroll, rather than run off the bottom - and fill the room the screen leaves them",
+		ranks_scroll.custom_minimum_size.y >= PanelWindow.SCROLL_LEAST and ranks_scroll.custom_minimum_size.y + 0.5 < rows_need
+		and rect.end.y > screen.y - 2.0, [ranks_scroll.custom_minimum_size.y, rows_need, rect])
+	check("  and the window widens with its text, so it wraps as it does at Normal",
+		is_equal_approx(smith.get_node("%certifyview").custom_minimum_size.x, roundf(372.0 * 1.5))
+		and smith.size.x > at_normal.x + 100.0, [smith.get_node("%certifyview").custom_minimum_size.x, smith.size])
+	Settings.set_value("text_size", 1.0)
+	for i in 8:
+		await get_tree().process_frame
+	rows_need = PanelWindow.scroll_content(ranks_scroll).get_combined_minimum_size().y
+	check("  and at Normal again it is the size it was, with nothing under the last rank",
+		smith.size.distance_to(at_normal) < 1.5 and absf(ranks_scroll.custom_minimum_size.y - rows_need) < 0.5,
+		[smith.size, at_normal, ranks_scroll.custom_minimum_size.y, rows_need, ranks_scroll.get_v_scroll_bar().visible])
+	smith.queue_free()
+
+	# ---- the cooking window's meals ---------------------------------------------
+	var cook: Control = (load("res://scene/ui/cooking/cookingscreen.tscn") as PackedScene).instantiate() as Control
+	layer.add_child(cook)
+	var chef := CookingCook.new()
+	add_child(chef)
+	cook.set("_view", 1)
+	cook.open_for_firepit(null, chef)
+	for i in 4:
+		await get_tree().process_frame
+	var recipes_at_normal: Vector2 = cook.size
+	# OPENED AT LARGEST, as a player who reads at Largest opens it, so the
+	# list is measured in Largest rows - then set back.
+	Settings.set_value("text_size", 1.5)
+	cook.open_for_firepit(null, chef)
+	for i in 4:
+		await get_tree().process_frame
+	Settings.set_value("text_size", 1.0)
+	for i in 4:
+		await get_tree().process_frame
+	check("the cooking window's meals, Largest and back: the size it opens at",
+		cook.size.distance_to(recipes_at_normal) < 1.5, [cook.size, recipes_at_normal])
+	cook.call("_set_view", 0)
+	for i in 3:
+		await get_tree().process_frame
+	# THE FISH TAB IS THE SHORTER ONE with the art pack's meals; a clone has
+	# none of their icons and a short list, so the window is held to the Fish
+	# tab's own size, whichever way that is.
+	var fish_want: Vector2 = (cook.get("_window") as PanelWindow).natural_size()
+	check("  and the Fish tab takes the window to its own size - down, from the meals",
+		cook.size.distance_to(fish_want) < 1.5, [cook.size, fish_want, recipes_at_normal])
+	cook.queue_free()
+	chef.queue_free()
+
+	layer.queue_free()
+	Settings.set_value("text_size", kept_size)
+	Settings.set_value("font", kept_font)
+
+
 func _test_text_size_and_font() -> void:
 	section("TEXT SIZE AND FONT - every size scaled, five style fonts, nothing off the screen")
 	const SettingsScript := preload("res://src/systems/settings.gd")

@@ -121,7 +121,15 @@ const REFUSAL_WORDS := {
 @onready var temper_button: Button = %temperbutton
 @onready var rank_label: Label = %ranklabel
 @onready var rank_rows: VBoxContainer = %rankrows
+@onready var rank_scroll: ScrollContainer = %rankscroll
 @onready var notice_label: Label = %noticelabel
+
+# HOW WIDE THE TWO TABS ARE AT NORMAL TEXT, and they widen with it (0.75.0).
+# At Largest the window stayed 408 across, so every line wrapped and the
+# Certification tab stood 947 tall on a 720 screen, its header off the top.
+# Widened by the text factor it wraps as it does at Normal; what is still
+# taller than the screen scrolls (rank_scroll).
+const VIEW_WIDTH := 372.0
 
 
 # =============================================================================
@@ -174,6 +182,13 @@ var _window: PanelWindow
 
 func _ready() -> void:
 	_window = PanelWindow.attach(self, "smith")
+	# THE RANKS SCROLL WHEN THEY PASS THE SCREEN - four of them at Largest do
+	# - and are all shown, unscrolled, whenever the window fits.
+	if _window != null:
+		_window.keep_scroll_fitted(rank_scroll)
+	_size_views()
+	if not Settings.changed.is_connected(_on_setting_changed):
+		Settings.changed.connect(_on_setting_changed)
 	close_button.pressed.connect(close_panel)
 	temper_tab.toggled.connect(_on_tab_toggled)
 	certify_tab.toggled.connect(_on_tab_toggled)
@@ -229,9 +244,24 @@ func _fit_and_centre() -> void:
 	window's rule and its reason: the root is a plain Control, and reset_size()
 	on one does nothing. A smith window belongs to the anvil you are standing
 	at, so it opens in front of you, and can still be dragged anywhere."""
-	size = PanelWindow.content_minimum(self)
+	if _window != null:
+		_window.refit_scrolls()
+	size = _window.natural_size() if _window != null else PanelWindow.content_minimum(self)
 	var screen: Vector2 = get_viewport_rect().size
-	position = ((screen - size) * 0.5).floor()
+	# NEVER PAST THE TOP: a window taller than the screen centred on it put
+	# its header, and the ×, above the glass (0.75.0).
+	position = ((screen - size) * 0.5).floor().max(Vector2.ZERO)
+
+
+func _size_views() -> void:
+	var wide: float = roundf(VIEW_WIDTH * Settings.text_factor())
+	temper_view.custom_minimum_size.x = wide
+	certify_view.custom_minimum_size.x = wide
+
+
+func _on_setting_changed(setting: String, _value: Variant) -> void:
+	if setting == "text_size" or setting == "font":
+		_size_views()
 
 
 func _settle(view: int, centre: bool) -> void:
@@ -252,10 +282,14 @@ func _settle(view: int, centre: bool) -> void:
 
 func _fit_to_content() -> void:
 	# The window follows its content where it stands - a tab with more in it,
-	# a second row of gear - in both directions. PanelWindow only ever grows a
-	# window, so a tab with less in it would otherwise leave dead space.
+	# a second row of gear - in both directions, as every window does since
+	# 0.75.0 (PanelWindow's natural size); this does it at once rather than
+	# when the content next reports a change.
 	if is_instance_valid(self) and visible:
-		size = PanelWindow.content_minimum(self)
+		if _window != null:
+			_window.snap()
+		else:
+			size = PanelWindow.content_minimum(self)
 
 
 # =============================================================================

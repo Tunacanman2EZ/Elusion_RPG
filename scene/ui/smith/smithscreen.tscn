@@ -264,9 +264,15 @@ text = ""
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="rankrows" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/certifyview"]
+[node name="rankscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/certifyview"]
 unique_name_in_owner = true
 layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="rankrows" type="VBoxContainer" parent="mainpanel/margincontainer/vboxcontainer/certifyview/rankscroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
 [node name="noticelabel" type="Label" parent="mainpanel/margincontainer/vboxcontainer"]

@@ -324,6 +324,13 @@ var _window: PanelWindow
 
 func _ready() -> void:
 	_window = PanelWindow.attach(self, "cooking")
+	# THE MEALS' LIST FOLLOWS ITS ROWS (0.75.0): set back from Largest to
+	# Normal, the list kept the height of five Largest rows and the window
+	# stood 92 px taller than it opens. Whenever the rows change size - the
+	# text, a row built or gone - the list is measured again, and the window
+	# follows it (PanelWindow's natural size).
+	if recipe_list != null and not recipe_list.minimum_size_changed.is_connected(_fit_recipe_scroll):
+		recipe_list.minimum_size_changed.connect(_fit_recipe_scroll, CONNECT_DEFERRED)
 	if close_button != null and not close_button.pressed.is_connected(_on_close_pressed):
 		close_button.pressed.connect(_on_close_pressed)
 

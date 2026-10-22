@@ -135,6 +135,25 @@ var _resizing: int = 0
 var _resize_from := Rect2()
 var _resize_mouse := Vector2.ZERO
 
+# THE SIZE A WINDOW SHOULD BE (0.75.0). The owner, of the smith window with a
+# hand's breadth of nothing under its last row: "I need ui to snap into correct
+# sizing when someone adjusts font size, some people have a hard time seeing."
+# A window used to GROW to fit what it held and never shrink, so every time
+# its content needed less - a smaller text size, a shorter tab, a wrapping
+# line that measured tall for one frame before it had a width - the room it
+# had grown to stayed, empty. Measured on 0.74.2: opened at Largest and set
+# back to Normal, 16 windows of 27 were left bigger than they open at Normal,
+# the smith by 164 px.
+#
+# Now a window is its NATURAL SIZE - what it was drawn at in its scene, or
+# what it holds if that needs more - and it follows that both ways, whenever
+# what it holds changes. Only a window the player has resized by hand keeps
+# its size (it still grows to fit), and a text size or font change gives
+# every window back its natural size: what the player chose was a size for
+# the old text.
+var _authored := Vector2.ZERO
+var hand_sized: bool = false
+
 
 # =============================================================================
 # ATTACHING
@@ -172,6 +191,8 @@ static func attach(panel: Control, layout_key: String,
 	made.header = grip_header
 	made.key = layout_key
 	made._take_control()
+	# As the scene drew it, before anything remembered is put back.
+	made._authored = panel.size
 	made._build_grips()
 	made._find_close()
 	made._wire()
@@ -235,14 +256,24 @@ func _wire() -> void:
 	if not window.visibility_changed.is_connected(_on_shown_for_thumbs):
 		window.visibility_changed.connect(_on_shown_for_thumbs)
 
-	# AND WHEN WHAT IT HOLDS GROWS (0.8.0): a bigger text size or a wider font
-	# makes the content need more room than the window has, and a full-rect
-	# panel cannot be smaller than its contents - it would draw past the grips.
-	# Grown to fit, once a frame at most; never shrunk by this.
+	# AND WHEN WHAT IT HOLDS CHANGES (0.8.0, both ways since 0.75.0): a
+	# bigger text size or a wider font makes the content need more room than
+	# the window has - a full-rect panel cannot be smaller than its contents,
+	# it would draw past the grips - and a smaller one, or a shorter tab,
+	# needs less. Once a frame at most.
 	for child in window.get_children():
 		var part: Control = child as Control
 		if part != null and not part.minimum_size_changed.is_connected(_on_content_resized):
 			part.minimum_size_changed.connect(_on_content_resized)
+
+	# MEASURED EACH TIME IT OPENS, a frame in, when it has been laid out: what
+	# it holds may have changed while it was shut - the text size, most of all.
+	if not window.visibility_changed.is_connected(_on_shown):
+		window.visibility_changed.connect(_on_shown)
+
+	# A NEW TEXT SIZE OR FONT gives every window back its natural size.
+	if not Settings.changed.is_connected(_on_setting_changed):
+		Settings.changed.connect(_on_setting_changed)
 
 
 var _fit_queued: bool = false
@@ -257,6 +288,13 @@ func _on_content_resized() -> void:
 
 func _fit_soon() -> void:
 	_fit_queued = false
+	snap()
+
+
+func snap() -> void:
+	"""Fit the window to what it holds now: its natural size, or - sized by
+	the player - grown if it no longer fits. Called by itself whenever what it
+	holds changes; a panel may call it to fit at once (a tab it just showed)."""
 	# A HIDDEN WINDOW IS NOT LAID OUT, so what it says it needs is nonsense -
 	# a wrapping label never given a width asks for two thousand pixels - and
 	# growing on it would open Options at the full height of the screen. It
@@ -264,9 +302,43 @@ func _fit_soon() -> void:
 	if not is_instance_valid(window) or not window.is_visible_in_tree():
 		return
 	refit_scrolls()
+	if not hand_sized:
+		_snap()
+		return
+	# Sized by hand: kept, and only grown when what it holds needs more.
 	var need: Vector2 = _minimum()
 	if window.size.x < need.x or window.size.y < need.y:
 		_fit()
+
+
+func natural_size() -> Vector2:
+	"""What this window should be: as its scene drew it, or what it holds when
+	that needs more - _minimum(), the floor included."""
+	return _authored.max(_minimum())
+
+
+func _snap() -> void:
+	# THE TOP LEFT CORNER STAYS where the player put it; the window grows or
+	# shrinks from there, and _fit() keeps all of it on the screen. A small
+	# difference is left alone, so a layout that settles a pixel either way
+	# does not set it moving again.
+	var want: Vector2 = natural_size()
+	if absf(window.size.x - want.x) > 0.5 or absf(window.size.y - want.y) > 0.5:
+		window.size = want
+	_fit()
+
+
+func _on_setting_changed(setting: String, _value: Variant) -> void:
+	if setting != "text_size" and setting != "font":
+		return
+	if not is_instance_valid(window):
+		return
+	# WHAT THE PLAYER SIZED BY HAND was sized for the old text: forgotten, here
+	# and in the file, so the next launch opens it at the new natural size.
+	if hand_sized:
+		hand_sized = false
+		_remember()
+	_on_content_resized()
 
 
 func _on_viewport_resized() -> void:
@@ -342,7 +414,10 @@ func refit_scrolls() -> void:
 		return
 	var screen: Vector2 = _screen()
 	for scroll in _scrolls:
-		if not is_instance_valid(scroll):
+		# A SCROLL ON A TAB NOT SHOWING is not in what the window measures, so
+		# the room left for it would be counted without it - it is fitted when
+		# its tab opens, which changes what the window holds and calls this.
+		if not is_instance_valid(scroll) or not scroll.is_visible_in_tree():
 			continue
 		var content: Control = scroll_content(scroll)
 		if content == null:
@@ -648,6 +723,8 @@ func _on_grip_input(event: InputEvent, edges: int) -> void:
 			_resize_mouse = window.get_global_mouse_position()
 		else:
 			_resizing = 0
+			# THE PLAYER'S SIZE NOW, kept until the text size or font changes.
+			hand_sized = true
 			_fit()
 			_remember()
 		return
@@ -846,6 +923,9 @@ func _remember() -> void:
 	cfg.set_value(key, "y", window.position.y)
 	cfg.set_value(key, "w", window.size.x)
 	cfg.set_value(key, "h", window.size.y)
+	# WHETHER THE SIZE IS THE PLAYER'S (0.75.0). A window only moved is kept
+	# where it was put and opens at its natural size.
+	cfg.set_value(key, "sized", hand_sized)
 	cfg.save(layout_path)
 
 
@@ -858,15 +938,18 @@ func _restore() -> void:
 	if not cfg.has_section(key):
 		return
 
-	var floor_size: Vector2 = _minimum()
-	var wanted := Vector2(
-		maxf(float(cfg.get_value(key, "w", window.size.x)), floor_size.x),
-		maxf(float(cfg.get_value(key, "h", window.size.y)), floor_size.y))
 	var at := Vector2(
 		float(cfg.get_value(key, "x", window.position.x)),
 		float(cfg.get_value(key, "y", window.position.y)))
-
-	window.size = wanted
+	# A SIZE IS PUT BACK ONLY IF THE PLAYER CHOSE IT. A line from before
+	# 0.75.0 has no "sized" and is taken as a place, not a size: those sizes
+	# were mostly what the old grow-only rule had left behind.
+	hand_sized = bool(cfg.get_value(key, "sized", false))
+	if hand_sized:
+		var floor_size: Vector2 = _minimum()
+		window.size = Vector2(
+			maxf(float(cfg.get_value(key, "w", window.size.x)), floor_size.x),
+			maxf(float(cfg.get_value(key, "h", window.size.y)), floor_size.y))
 	window.position = at
 	# CLAMPED ON THE WAY IN AS WELL AS ON THE WAY OUT. The screen may be smaller
 	# than it was when this was written — a different monitor, a windowed launch

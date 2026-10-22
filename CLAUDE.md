@@ -7944,6 +7944,59 @@ floats where they sent ints, as from Flask.
   BEFORE the game, putting a detached pack back on main when that loses
   nothing, so the game's commit records a pack commit GitHub already has.
 
+## Windows snap to their text (0.75.0)
+
+The owner, 22 Oct, with a screenshot of the smith's Royal Certification tab
+and a hand's breadth of nothing under its last row: "I need ui to snap into
+correct sizing when someone adjusts font size, some people have a hard time
+seeing. we need to adjust the sizes".
+
+**A window grew and never shrank.** PanelWindow grew a window to fit what it
+held and left it there, so whenever its content needed less - a smaller text
+size, a shorter tab, a wrapping line that measured tall for one frame before
+it had a width - the room stayed, empty. Measured on 0.74.2 with every
+window opened at Largest and set back to Normal: 16 of 27 were left bigger
+than they open at Normal (the smith 164 px, Controls 257 x 181, Equipment
+79). And three opened taller than drawn for good - Players, Kills and Party
+at the full 720 - from that one tall frame.
+
+**Now a window is its natural size** (`PanelWindow.natural_size()`): as its
+scene drew it (`_authored`, read at attach), or what it holds if that needs
+more. It follows that both ways whenever what it holds changes, a frame
+after it opens, and on `snap()`. The top left corner stays; `_fit()` keeps it
+on the screen.
+
+- **A window the player resized by hand keeps its size** (`hand_sized`, set
+  when a grip is let go) and only grows. A text size or font change forgets
+  it - that size was for the old text - and `panels.cfg` says so (`sized`).
+- **A `panels.cfg` line from before 0.75.0 has no `sized`** and is taken as a
+  place, not a size: those sizes were mostly the old rule's leftovers.
+- **An empty Label keeps the height of its old text size** (Godot 4.7.2: at
+  12, 18, then 12 it still asks for 26 px, not 17), so every window with an
+  empty notice line stood a line too tall after the text shrank.
+  `Settings._scale_text_of()` gives it a text and takes it away.
+- **The smith widens with the text** (`VIEW_WIDTH` 372 times
+  `text_factor()`): at 408 across, Largest wrapped every line and the
+  Certification tab stood 947 tall on a 720 screen with its header and x off
+  the top. Its ranks are in `rankscroll`, fitted by `keep_scroll_fitted()`:
+  all shown while the window fits, scrolled when it cannot. `_fit_and_centre()`
+  never puts the window above the top.
+- **The cooking window's meals list** refits when its rows change size
+  (`recipe_list.minimum_size_changed`): opened at Largest and set back, it
+  kept five Largest rows of height, 92 px too tall.
+- **The suite's every-window check was blind to content**: it opened each
+  window bare, so the smith with no ranks loaded passed at Largest. The
+  smith and the cooking window are now checked with their content.
+- `_test_windows_snap_to_their_text` holds it: every window Largest and back
+  is its natural size; the rule on a built window; hand sizes; the old
+  `panels.cfg` lines; the smith at Largest on the screen and scrolling; the
+  cooking window back to its size; an empty line. Seven sabotages, each
+  caught.
+
+Measured with a throwaway harness that opens all 27 windows under xvfb at
+each text size, in the standard font and Grenze (the tallest), and prints
+each one's rectangle against what it needs.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven
