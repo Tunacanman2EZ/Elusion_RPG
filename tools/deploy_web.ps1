@@ -105,7 +105,11 @@ if ($Export) {
         if ($onPath) { $Godot = $onPath.Source }
     }
     if (-not $Godot) {
+        # C:\Godot FIRST - where the owner keeps the editor (22 Oct, "should b
+        # c/godot"). Then the usual folders. The first folder holding an engine
+        # wins, its newest engine if it holds more than one.
         $searchRoots = @(
+            "C:\Godot",
             [Environment]::GetFolderPath("Desktop"),
             "$env:USERPROFILE\Desktop",
             "$env:USERPROFILE\Downloads",
@@ -113,19 +117,48 @@ if ($Export) {
             "$env:ProgramFiles",
             "${env:ProgramFiles(x86)}"
         ) | Where-Object { $_ -and (Test-Path $_ -PathType Container) } | Select-Object -Unique
-        $all = @()
+        $main = $null
         foreach ($r in $searchRoots) {
-            $all += Get-ChildItem -Path $r -Filter "Godot*.exe" -File -Recurse -Depth 2 -ErrorAction SilentlyContinue
+            $main = Get-ChildItem -Path $r -Filter "Godot*.exe" -File -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notlike "*_console.exe" -and $_.Length -gt 10MB } |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($main) { break }
         }
-        $main = $all | Where-Object { $_.Name -notlike "*_console.exe" -and $_.Length -gt 10MB } |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($main) {
             $twin = Join-Path $main.DirectoryName ($main.BaseName + "_console.exe")
             $Godot = if (Test-Path $twin -PathType Leaf) { $twin } else { $main.FullName }
         }
     }
     if (-not $Godot -or -not (Test-Path $Godot -PathType Leaf)) {
-        throw "Could not find Godot to export with. Pass it: -Godot 'C:\path\to\Godot_v4.6.1-stable_win64_console.exe'"
+        throw "Could not find Godot to export with (looked in C:\Godot first). Pass it: -Godot 'C:\Godot\Godot_v4.7.2-stable_win64_console.exe'"
+    }
+
+    # THE WEB TEMPLATES FOR THIS GODOT, before an export that would only fail
+    # on them (22 Oct: 4.7.2 had none, and the export's own words were buried
+    # in a page of output). Each Godot version has its own; a self-contained
+    # Godot (a ._sc_ or _sc_ file beside it) keeps them in its own folder.
+    if (-not $DryRun) {
+        # In a try: Windows PowerShell 5.1 with "Stop" turns any line a program
+        # writes to stderr into an error, and this check must never be the
+        # thing that stops a deploy.
+        $said = $null
+        try { $said = (& $Godot --version 2>$null | Select-Object -First 1) } catch { $said = $null }
+        $global:LASTEXITCODE = 0
+        if ($said -match '^(\d+\.\d+(\.\d+)?)\.([a-z0-9]+)') {
+            $tag = $Matches[1] + "." + $Matches[3]
+            $home_dir = Split-Path $Godot -Parent
+            $selfContained = (Test-Path (Join-Path $home_dir "._sc_")) -or (Test-Path (Join-Path $home_dir "_sc_"))
+            $templates = Join-Path $env:APPDATA "Godot\export_templates\$tag"
+            if ($selfContained) { $templates = Join-Path $home_dir "editor_data\export_templates\$tag" }
+            if (-not (Test-Path (Join-Path $templates "web_nothreads_release.zip") -PathType Leaf)) {
+                Say "Godot $tag has no web export templates (looked in $templates)." "Red"
+                Say "  1. Open that Godot: $Godot" "Gray"
+                Say "  2. Editor > Manage Export Templates > Download and Install" "Gray"
+                Say "     (or Install from File, with the .tpz from godotengine.org/download/archive)" "Gray"
+                Say "  3. Close Godot, then run this again." "Gray"
+                exit 1
+            }
+        }
     }
     Say "1. Exporting the Web preset with $Godot" "Cyan"
     if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $web | Out-Null }

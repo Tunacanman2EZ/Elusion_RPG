@@ -7952,6 +7952,33 @@ attacks ask the same question.
   and boss-gate bars, and drives every class's attack on both sides; a code
   check fails any of the attacks above that stops asking.
 
+### Every bullet vanishes over the black (0.72.1)
+
+The owner: "white bullet projectiles from warrior fling in the black of the
+map ... spraying across the map instead of vanishing". Walls stop bullets,
+but the town, the Field and the boss arena have edges with no wall: water
+or a cliff that stops a player's feet (a thick collision body, or none at
+all past the last tile) while a bullet flies on over the unpainted black.
+A probe walking a real warrior to every edge found 64 such leaks in the
+town, 11 in the Field and 4 in the boss arena; the Big Field had none.
+
+- **`MapBackdrop.black_at(node, world_pos)`** (`src/world/mapbackdrop.gd`)
+  is the rule: true when the spot is not on any painted tile of the area the
+  node is in. The backdrop builds a byte grid of 8 px cells (`BLACK_CELL`)
+  from its `rects`, once per scene (cached in `_grids`, like `_covers`).
+  A cell a painted rect touches is painted, so a bullet skimming the edge of
+  the last tile is not cut early.
+- **Only inside the area.** `black_at()` is false for anything outside the
+  area the current backdrop belongs to, and false with no backdrop - a test
+  arena, built without one, behaves as before.
+- **Who asks, every tick.** Blade orbs (freed, no spark), slash waves and
+  finishers (broken quietly: no burst out over the black), the monsters'
+  arrows, fire, magic and poison shots, the healer's orb and every pet shot.
+  The Double Axe takes the map's edge for a wall: it stops there and spins.
+- `_test_bullets_vanish_over_the_black()` builds an area with a backdrop
+  and checks each of those, the grid against `cover()` for the town, and
+  that a node outside the area is never black.
+
 ## The players menu, and a switch for combat that does not exist
 
 **Who is playing** is a nav-bar button anyone can press. It lists every online

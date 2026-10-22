@@ -70,7 +70,9 @@ if (-not $Godot) {
 }
 
 if (-not $Godot) {
+    # C:\Godot first: where the owner keeps the editor (22 Oct).
     $searchRoots = @(
+        "C:\Godot",
         [Environment]::GetFolderPath("Desktop"),
         "$env:USERPROFILE\Desktop",
         "$env:USERPROFILE\Downloads",
@@ -80,18 +82,18 @@ if (-not $Godot) {
     ) | Where-Object { $_ -and (Test-Path $_ -PathType Container) } |
         Select-Object -Unique
 
-    $all = @()
-    foreach ($r in $searchRoots) {
-        $all += Get-ChildItem -Path $r -Filter "Godot*.exe" -File -Recurse -Depth 2 `
-                    -ErrorAction SilentlyContinue
-    }
-
     # Real engine binaries only. 10MB comfortably separates a ~170MB engine from
-    # a ~200KB stub, and keeps working across versions.
-    $main = $all |
-        Where-Object { $_.Name -notlike "*_console.exe" -and $_.Length -gt 10MB } |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
+    # a ~200KB stub, and keeps working across versions. The first folder above
+    # that holds one wins - C:\Godot before a stray copy in Downloads.
+    $main = $null
+    foreach ($r in $searchRoots) {
+        $main = Get-ChildItem -Path $r -Filter "Godot*.exe" -File -Recurse -Depth 2 `
+                    -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notlike "*_console.exe" -and $_.Length -gt 10MB } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if ($main) { break }
+    }
 
     if ($main) {
         # Prefer its console twin when there is one: the plain binary is a
@@ -103,7 +105,7 @@ if (-not $Godot) {
 
 if (-not $Godot -or -not (Test-Path $Godot -PathType Leaf)) {
     Write-Host "Could not find a Godot engine binary." -ForegroundColor Red
-    Write-Host "Searched PATH, then Desktop, Downloads, Programs and Program Files (2 levels deep)."
+    Write-Host "Searched PATH, then C:\Godot, Desktop, Downloads, Programs and Program Files (2 levels deep)."
     Write-Host "Point at it directly:  .\run_tests.ps1 -Godot 'C:\full\path\to\Godot.exe'"
     exit 1
 }

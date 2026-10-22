@@ -13,7 +13,9 @@
 # detects the player's hurtbox. enemy hurtboxes live on Layer 4 and are
 # correctly ignored, so the orb can't self-destruct on its own shooter.
 extends Area2D
+
 class_name FireProjectile
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 
 # =============================================================================
@@ -87,6 +89,9 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	position += direction * speed * delta
+	# OVER THE BLACK, GONE (0.72.1, mapbackdrop.gd).
+	if MapBackdrop.black_at(self, global_position):
+		queue_free()
 
 
 # =============================================================================

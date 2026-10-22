@@ -96,6 +96,7 @@ const WALL_LAYERS := 0b11
 
 # Whether a wall stands between the axe and what it would cut (0.69.1).
 const Targets := preload("res://src/shared/targets.gd")
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 const TICK_SECONDS := 0.25
 
@@ -452,6 +453,11 @@ func _fly_out(step: float) -> bool:
 			var at: Vector2 = hit.get("position", to)
 			global_position = at - (to - from).normalized() * 2.0
 			return true
+	# THE MAP'S EDGE IS A WALL TOO (0.72.1, mapbackdrop.gd). Thrown out over
+	# the town's water, it stops where the black starts and spins there,
+	# not out in the black.
+	if from != to and MapBackdrop.black_at(self, to):
+		return true
 	global_position = to
 	return false
 

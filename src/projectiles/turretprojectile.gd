@@ -102,6 +102,7 @@ extends Area2D
 # Whether a wall stands between this and what it would hit (0.69.1,
 # src/shared/targets.gd).
 const Targets := preload("res://src/shared/targets.gd")
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 
 # =============================================================================
@@ -291,6 +292,11 @@ func _physics_process(delta: float) -> void:
 	# way the spinning axe flies, and it bursts where it met the wall.
 	if not Targets.clear_between(self, was, global_position):
 		splash(get_parent(), global_position, doubled)
+		_let_go_of_trail()
+		queue_free()
+		return
+	# OVER THE BLACK, GONE (0.72.1, mapbackdrop.gd): no splash out there.
+	if MapBackdrop.black_at(self, global_position):
 		_let_go_of_trail()
 		queue_free()
 		return

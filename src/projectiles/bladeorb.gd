@@ -34,6 +34,8 @@
 class_name BladeOrb
 extends Area2D
 
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
+
 
 const STEEL := &"steel"
 const GOLD := &"gold"
@@ -201,6 +203,12 @@ func _physics_process(delta: float) -> void:
 	var step: float = speed * delta
 	position += direction * step
 	flown += step
+	# OVER THE BLACK, GONE (0.72.1): past the painted map nothing stops a bullet,
+	# so it does not fly on there (mapbackdrop.gd, black_at()).
+	if MapBackdrop.black_at(self, global_position):
+		_done = true
+		queue_free()
+		return
 	if flown >= reach:
 		pop()
 

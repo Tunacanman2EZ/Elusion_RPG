@@ -44,7 +44,9 @@
 # so this scene doesn't hard-require a specific caller — if nothing sets
 # caster, hits just deal damage with no XP granted, same as before.
 extends Area2D
+
 class_name SlashWave
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 # The sparks (strikefx.gd, 0.38.0).
 const Strike := preload("res://src/shared/strikefx.gd")
@@ -309,6 +311,10 @@ func _physics_process(delta: float) -> void:
 	position += direction * speed * delta
 	_age += delta
 	if _age >= MAX_SECONDS and not _is_dying:
+		destroy_wave(false)
+	# OVER THE BLACK, GONE (0.72.1): no wall stops a wave past the painted
+	# map, so it breaks there, quietly - no burst out in the black.
+	elif not _is_dying and MapBackdrop.black_at(self, hit_middle()):
 		destroy_wave(false)
 
 

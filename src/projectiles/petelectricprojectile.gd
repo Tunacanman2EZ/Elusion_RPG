@@ -9,6 +9,8 @@
 # frame, and reads as invisible "melee" damage instead of a visible zap.
 extends Area2D
 
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
+
 # Whether a wall stands between this and what it would hit (0.69.1,
 # src/shared/targets.gd).
 const Targets := preload("res://src/shared/targets.gd")
@@ -147,6 +149,10 @@ func _physics_process(delta: float) -> void:
 	# walls never stopped it: a pet's shot crossed the masonry to a monster
 	# in the next room. A ray along this tick's step, as the healer's orb.
 	if not _spent and not Targets.clear_between(self, was, global_position):
+		_spent = true
+		destroy_projectile()
+	# OVER THE BLACK, GONE (0.72.1, mapbackdrop.gd).
+	elif not _spent and MapBackdrop.black_at(self, global_position):
 		_spent = true
 		destroy_projectile()
 		return

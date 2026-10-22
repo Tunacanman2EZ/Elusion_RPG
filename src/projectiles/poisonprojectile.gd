@@ -3,6 +3,8 @@
 # the rapid-fire cadence lives in poisonslime.gd, not here — this just travels.
 extends Area2D
 
+const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -87,6 +89,9 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	position += direction * speed * delta
+	# OVER THE BLACK, GONE (0.72.1, mapbackdrop.gd) - and no puddle there.
+	if MapBackdrop.black_at(self, global_position):
+		queue_free()
 
 
 # =============================================================================

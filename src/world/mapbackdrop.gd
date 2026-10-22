@@ -28,6 +28,28 @@ const OUTSIDE := Color(0.0, 0.0, 0.0, 1.0)
 # One rectangle per run of painted cells in a row, in the area's own space.
 var rects: Array[Rect2] = []
 
+# THE BLACK, FOR BULLETS (0.72.1). The owner: "i still have the white bullet
+# projectiles from warrior fling in the black of the map for some reason and
+# spraying across the map instead of vanishing". The Big Field is walled all
+# round, and a wall stops every bullet; the town, the Field and the boss arena
+# are not - their edges stop a player's feet (tile collisions, water) and let a
+# bullet fly on over the black until its range ran out, 300 px for a
+# finisher's fan, three seconds for a wave. black_at() answers whether a point
+# is past the painted map, and every flying bullet asks it each tick: over the
+# black, it is gone.
+#
+# A GRID OF BLACK_CELL SQUARES over the rectangles above, a byte each, worked
+# out with them when the area opens (and kept with them, per scene): any
+# square a tile touches is map. One lookup a bullet a tick.
+const BLACK_CELL := 8
+var _grid: PackedByteArray = PackedByteArray()
+var _grid_origin: Vector2i = Vector2i.ZERO
+var _grid_size: Vector2i = Vector2i.ZERO
+# The backdrop of the area being played, while it is in the tree.
+static var _current: Node2D = null
+# Scene path -> [grid, origin, size], beside _covers.
+static var _grids: Dictionary = {}
+
 
 # Scene path -> its cover. An area's tiles do not change while it is played, and
 # the field's cover takes tens of milliseconds to work out, so each area pays
@@ -54,6 +76,15 @@ static func add_to(area: Node) -> Node2D:
 	backdrop.set_script(load("res://src/world/mapbackdrop.gd"))
 	backdrop.name = "mapbackdrop"
 	backdrop.rects = found
+	if path != "" and _grids.has(path):
+		var kept: Array = _grids[path]
+		backdrop.set("_grid", kept[0])
+		backdrop.set("_grid_origin", kept[1])
+		backdrop.set("_grid_size", kept[2])
+	else:
+		backdrop.call("build_grid")
+		if path != "":
+			_grids[path] = [backdrop.get("_grid"), backdrop.get("_grid_origin"), backdrop.get("_grid_size")]
 	# UNDER EVERYTHING, whatever z the layers use. The town's water is -20.
 	backdrop.z_as_relative = false
 	backdrop.z_index = RenderingServer.CANVAS_ITEM_Z_MIN
@@ -148,3 +179,59 @@ static func _transform_to(node: Node, area: Node) -> Transform2D:
 func _draw() -> void:
 	for rect in rects:
 		draw_rect(rect, GAPS)
+
+
+func _enter_tree() -> void:
+	_current = self
+
+
+func _exit_tree() -> void:
+	if _current == self:
+		_current = null
+
+
+func build_grid() -> void:
+	"""BLACK_CELL squares over `rects`: 1 where a tile touches, 0 the black."""
+	if rects.is_empty():
+		return
+	var box: Rect2 = rects[0]
+	for rect in rects:
+		box = box.merge(rect)
+	_grid_origin = Vector2i(floori(box.position.x / BLACK_CELL), floori(box.position.y / BLACK_CELL))
+	var far := Vector2i(ceili(box.end.x / BLACK_CELL), ceili(box.end.y / BLACK_CELL))
+	_grid_size = far - _grid_origin
+	_grid = PackedByteArray()
+	_grid.resize(_grid_size.x * _grid_size.y)
+	for rect in rects:
+		var x0: int = floori(rect.position.x / BLACK_CELL) - _grid_origin.x
+		var x1: int = ceili(rect.end.x / BLACK_CELL) - _grid_origin.x
+		var y0: int = floori(rect.position.y / BLACK_CELL) - _grid_origin.y
+		var y1: int = ceili(rect.end.y / BLACK_CELL) - _grid_origin.y
+		for y in range(y0, y1):
+			var row: int = y * _grid_size.x
+			for x in range(x0, x1):
+				_grid[row + x] = 1
+
+
+func painted(local: Vector2) -> bool:
+	"""Whether a tile is drawn at `local` (this node's space, the area's)."""
+	if _grid.is_empty():
+		return true
+	var x: int = floori(local.x / BLACK_CELL) - _grid_origin.x
+	var y: int = floori(local.y / BLACK_CELL) - _grid_origin.y
+	if x < 0 or y < 0 or x >= _grid_size.x or y >= _grid_size.y:
+		return false
+	return _grid[y * _grid_size.x + x] != 0
+
+
+static func black_at(any: Node, at: Vector2) -> bool:
+	"""Whether `at` (a world position) is past the painted map of the area
+	`any` is in - the black. False outside an area with a backdrop (a test's
+	arena), so nothing there changes."""
+	var backdrop: Node2D = _current
+	if backdrop == null or not is_instance_valid(backdrop) or any == null:
+		return false
+	var area: Node = backdrop.get_parent()
+	if area == null or (any != area and not area.is_ancestor_of(any)):
+		return false
+	return not backdrop.call("painted", backdrop.to_local(at))

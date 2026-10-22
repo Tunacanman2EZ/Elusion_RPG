@@ -369,6 +369,7 @@ func _run_all() -> void:
 	await _test_the_mage_spike_finds_its_mark()
 	await _test_the_mage_kit()
 	await _test_bullets_fly_true()
+	await _test_bullets_vanish_over_the_black()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -28952,6 +28953,134 @@ func _test_the_mage_spike_finds_its_mark() -> void:
 	for orb in orbs:
 		(orb as Node).queue_free()
 	arena.queue_free()
+	await get_tree().process_frame
+
+
+# =============================================================================
+# BULLETS VANISH OVER THE BLACK (0.72.1)
+# =============================================================================
+# The owner: "i still have the white bullet projectiles from warrior fling in
+# the black of the map for some reason and spraying across the map instead of
+# vanishing". The Big Field is walled all round; the town, the Field and the
+# boss arena are not, and a warrior's orbs and waves flew on over the black
+# until their range ran out. MapBackdrop.black_at(): past the painted map, a
+# bullet is gone.
+func _test_bullets_vanish_over_the_black() -> void:
+	section("BULLETS - past the painted map they are gone, not flying on over the black (0.72.1)")
+	const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
+	var area := Node2D.new()
+	area.name = "blackarea"
+	add_child(area)
+	area.global_position = Vector2(-106000.0, 76000.0)
+	var backdrop := Node2D.new()
+	backdrop.set_script(MapBackdrop)
+	backdrop.set("rects", [Rect2(0, 0, 160, 96), Rect2(0, 96, 40, 24)] as Array[Rect2])
+	backdrop.call("build_grid")
+	area.add_child(backdrop)
+	var origin: Vector2 = area.global_position
+	check("the backdrop knows where the map is painted and where the black begins",
+		backdrop.call("painted", Vector2(80, 40)) == true and backdrop.call("painted", Vector2(20, 110)) == true
+		and backdrop.call("painted", Vector2(80, 110)) == false and backdrop.call("painted", Vector2(170, 40)) == false
+		and backdrop.call("painted", Vector2(-5, 40)) == false)
+	check("  and black_at() asks it for anything in its area, in the world",
+		not MapBackdrop.black_at(area, origin + Vector2(80, 40)) and MapBackdrop.black_at(area, origin + Vector2(200, 40)))
+	var outsider := Node2D.new()
+	add_child(outsider)
+	check("  but nothing outside the area - a test's arena, anything not in it - is ever in the black",
+		not MapBackdrop.black_at(outsider, origin + Vector2(200, 40)))
+	outsider.queue_free()
+
+	# The warrior's orbs, flying out over the edge.
+	var orb: BladeOrb = BladeOrb.fire(area, origin + Vector2(130, 40), Vector2.RIGHT, 300.0, 300.0, 0, BladeOrb.STEEL)
+	var stays: BladeOrb = BladeOrb.fire(area, origin + Vector2(20, 40), Vector2.RIGHT, 30.0, 300.0, 0, BladeOrb.STEEL)
+	for i in 12:
+		await get_tree().physics_frame
+	check("a warrior's orb flying off the painted map is gone at its edge, not 300 px out",
+		(not is_instance_valid(orb) or orb.is_queued_for_deletion()), str(orb.global_position) if is_instance_valid(orb) else "gone")
+	check("  and one over the map flies on as ever",
+		is_instance_valid(stays) and not stays.is_queued_for_deletion() and not stays._done)
+	if is_instance_valid(stays):
+		stays.queue_free()
+
+	# A finisher's wave: gone quietly, no burst out in the black.
+	var wave: SlashWave = (load("res://scene/projectiles/slashwave.tscn") as PackedScene).instantiate()
+	wave.finisher = true
+	wave.hitbox_scale = SlashWave.FINISHER_SCALE
+	wave.burst_damage = 5
+	area.add_child(wave)
+	wave.global_position = origin + Vector2(120, 40)
+	wave.reset_physics_interpolation()
+	wave.shoot_vector(Vector2.RIGHT)
+	for i in 12:
+		await get_tree().physics_frame
+	var burst_orbs: int = area.get_children().filter(func(n: Node) -> bool: return n is BladeOrb and not n.is_queued_for_deletion()).size()
+	check("a wave flying off the map breaks at its edge, and a finisher bursts nothing out there",
+		(not is_instance_valid(wave) or bool(wave.get("_is_dying"))) and burst_orbs == 0, burst_orbs)
+
+	# The monsters' shots and the healer's orb, the same.
+	var shots: Array = []
+	for path in ["res://scene/projectiles/arrow.tscn", "res://scene/projectiles/magicprojectile.tscn",
+			"res://scene/projectiles/fireprojectile.tscn", "res://scene/projectiles/poisonball.tscn"]:
+		var shot: Node2D = (load(path) as PackedScene).instantiate()
+		area.add_child(shot)
+		shot.global_position = origin + Vector2(140, 20 + 12 * shots.size())
+		shot.reset_physics_interpolation()
+		shot.call("shoot_vector", Vector2.RIGHT)
+		shots.append(shot)
+	var heal: Node2D = (load("res://scene/projectiles/turretprojectile.tscn") as PackedScene).instantiate()
+	heal.set("homing_turn_rate", 0.0)
+	heal.set("weave_amplitude_deg", 0.0)
+	heal.set("direction", Vector2.RIGHT)
+	heal.set("damage", 0)
+	area.add_child(heal)
+	heal.global_position = origin + Vector2(140, 80)
+	shots.append(heal)
+	for i in 12:
+		await get_tree().physics_frame
+	var flying: Array = shots.filter(func(n: Variant) -> bool: return is_instance_valid(n) and not (n as Node).is_queued_for_deletion())
+	check("  so do the monsters' arrows and orbs and the healer's orb", flying.is_empty(),
+		flying.map(func(n: Node) -> String: return n.name))
+	for path in ["res://src/projectiles/petarrow.gd", "res://src/projectiles/petfireprojectile.gd",
+			"res://src/projectiles/petelectricprojectile.gd"]:
+		check("  and the pets' shots ask too: " + path.get_file(),
+			_func_body(_code_src(path), "func _physics_process(").contains("MapBackdrop.black_at(self, global_position)"))
+
+	# The Double Axe: the map's edge is a wall to it - it stops there and spins.
+	var hand: Node2D = _weapon_hand(area, origin + Vector2(100, 40))
+	var axe: SpinningAxe = (load("res://scene/projectiles/spinningaxe.tscn") as PackedScene).instantiate()
+	axe.caster = hand
+	axe.wounds = false
+	area.add_child(axe)
+	axe.set_physics_process(false)
+	axe.throw_to(hand.global_position, hand.global_position + Vector2(150, 0))
+	var steps := 0
+	while axe.state == SpinningAxe.State.OUT and steps < 200:
+		await get_tree().physics_frame
+		axe.advance(1.0 / 80.0)
+		steps += 1
+	var axe_x: float = axe.global_position.x - origin.x
+	check("the Double Axe thrown off the map stops at its edge and spins there, as at a wall",
+		axe.state == SpinningAxe.State.SPINNING and axe_x < 160.0 and axe_x > 150.0, [axe.state, axe_x])
+	axe.queue_free()
+	hand.queue_free()
+
+	# The real town, where the owner saw it.
+	var town: Node = (load("res://scene/elusion.tscn") as PackedScene).instantiate()
+	var rects: Array[Rect2] = MapBackdrop.cover(town)
+	var probe := Node2D.new()
+	probe.set_script(MapBackdrop)
+	probe.set("rects", rects)
+	probe.call("build_grid")
+	var left: float = INF
+	var inside_ok: bool = true
+	for r in rects:
+		left = minf(left, r.position.x)
+		inside_ok = inside_ok and bool(probe.call("painted", r.get_center()))
+	check("the town's grid is its painted tiles: every run painted, and past its west edge the black",
+		not rects.is_empty() and inside_ok and probe.call("painted", Vector2(left - 20.0, rects[0].get_center().y)) == false)
+	probe.free()
+	town.free()
+	area.queue_free()
 	await get_tree().process_frame
 
 
