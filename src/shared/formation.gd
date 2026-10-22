@@ -85,6 +85,13 @@ const RING_RADIUS := 24.0
 
 # How many rings out to generate for the overflow. Three covers about fifty
 # enemies, which is more than any fight in this game.
+#
+# NOT MORE FOR THE STRESS TEST, AND THAT WAS MEASURED (0.73.0). Seven rings -
+# 181 places, room for the 8x crowd's 200 skeletons on one player - were tried
+# on the bench and were slower, not faster: the outer places, 84 to 144 px
+# out, sat behind the jam at the crypt door and in its walls, so their holders
+# walked at places they could not reach. Three rings and a crowd that waits its
+# turn (baseenemy.gd, IN A JAM, IT WAITS ITS TURN) was the fast one.
 const RING_COUNT := 3
 
 # Once this close to its slot, an enemy stops and holds an idle pose.
@@ -103,6 +110,11 @@ const ARRIVAL_THRESHOLD := 6.0
 # the offset's length afterwards would be arithmetic done twice.
 static var _offsets: Array[Vector2] = []
 static var _rings: Array[int] = []
+# Each place's ring and bearing, packed, for the place search to read without
+# a call per place (0.73.0): searched hundreds of times a second
+# by a big crowd. Built with the offsets.
+static var _ring_list: PackedInt32Array = PackedInt32Array()
+static var _bearing_list: PackedFloat32Array = PackedFloat32Array()
 
 
 # Distance from the player to the enemies standing on ring N.
@@ -156,7 +168,22 @@ static func slot_offsets() -> Array[Vector2]:
 				var a: float = phase + TAU * float(i) / float(count)
 				_offsets.append(Vector2(cos(a), sin(a)) * r)
 				_rings.append(ring)
+				_ring_list.append(ring)
+				_bearing_list.append(_offsets[_offsets.size() - 1].angle())
 	return _offsets
+
+
+static func ring_list() -> PackedInt32Array:
+	"""Every place's ring, by index - ring_of() for all of them at once."""
+	slot_offsets()
+	return _ring_list
+
+
+static func bearing_list() -> PackedFloat32Array:
+	"""Every place's bearing from the player, by index - bearing_of() for all
+	of them at once."""
+	slot_offsets()
+	return _bearing_list
 
 
 # Which ring a slot belongs to. 1 is the ring touching the player.

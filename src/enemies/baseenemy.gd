@@ -709,6 +709,28 @@ const STUCK_SECONDS_BEFORE_RECLAIM := 0.4
 var _prefer_secondary_axis: bool = false
 var _stuck_time: float = 0.0
 
+# IN A JAM, IT WAITS ITS TURN (0.73.0). The owner's 8x crowd at a crypt door:
+# 200 skeletons after one player, 40 places round them (formation.gd), and
+# the 160 without one - and most with one - wedged behind each other in the
+# doorway, more than 48 px from where they were walking.
+# Each one still steered round its neighbours and slid into their backs every
+# tick - about 90 us of thinking a monster, 10 ms of every tick, to move
+# nowhere. A monster that has made no headway for QUEUE_AFTER_SECONDS with
+# other monsters pressed round it (not a wall: a wall is the old escalation's,
+# below) now stands still, facing where it was going, for QUEUE_SECONDS
+# (jittered, so a queue does not step off together), then tries again. Every
+# QUEUE_TRIES-th wait in a row it also gives its place up and looks for
+# another, as a stuck monster always has, so a jam still breaks. Standing still
+# costs almost nothing: no steering, and a body at rest slides every
+# STILL_SLIDE_SECONDS. A small pack that bumps for a moment waits a moment.
+const QUEUE_AFTER_SECONDS := 0.25
+const QUEUE_SECONDS := 0.45
+const QUEUE_TRIES := 3
+var _queue_time: float = 0.0
+var _queue_tries: int = 0
+var _headway: float = 0.0
+var _headway_time: float = 0.0
+
 func _setup_navigation() -> void:
 	nav_agent = NavigationAgent2D.new()
 	nav_agent.avoidance_enabled = false
@@ -1508,43 +1530,46 @@ func _ensure_slot_claimed() -> void:
 	if holds:
 		current_score = _slot_score(_claimed_slot, my_bearing, bearing_weight)
 
-	var candidates: Array = []
-	for i in range(Formation.slot_count()):
+	# THE BEST FREE PLACE THAT IS CLEARLY BETTER AND NOT IN A WALL, IN ONE
+	# PASS (0.73.0). This built a dictionary for every free place and sorted
+	# them, then took the first that cleared the margin and the wall check -
+	# every review (SLOT_REVIEW_SECONDS) and retry of every monster in a fight,
+	# hundreds a second in the 8x crowd. The same answer, without the sort:
+	# keep the lowest score seen, and only ask about a wall for a place that
+	# would beat it - the walls are asked once a tick for everybody anyway
+	# (_slot_in_wall()). _test_a_crowd_waits_its_turn() holds the two equal.
+	var threshold: float = current_score - SLOT_SWITCH_MARGIN
+	var rings: PackedInt32Array = Formation.ring_list()
+	var bearings: PackedFloat32Array = Formation.bearing_list()
+	var best_score: float = INF
+	var best_slot: int = -1
+	for i in rings.size():
 		if i == _last_released_slot:
 			continue  # don't immediately re-claim the slot just given up on
 		if i == _claimed_slot:
 			continue  # scored separately, above
-
+		# _slot_score(), inline: ring first, bearing priced per degree.
+		var score: float = float(rings[i]) * 1000.0 \
+			+ rad_to_deg(absf(angle_difference(my_bearing, bearings[i]))) * bearing_weight
+		if score > threshold or score >= best_score:
+			continue
 		var slot_owner = _slot_owners.get(i)
 		if slot_owner != null and is_instance_valid(slot_owner):
 			continue
-
-		candidates.append({
-			"index": i,
-			"world": Formation.world_position(anchor, i),
-			"score": _slot_score(i, my_bearing, bearing_weight),
-		})
-
-	candidates.sort_custom(func(a, b): return a["score"] < b["score"])
-
-	for candidate in candidates:
-		# Sorted ascending, so the first candidate that fails to clear the margin
-		# means nothing after it will either. See SLOT_SWITCH_MARGIN.
-		if candidate["score"] > current_score - SLOT_SWITCH_MARGIN:
-			break
-
 		# A slot the navmesh has to drag further than the enemy is wide is a
 		# slot inside a wall. Claiming it means walking at geometry forever, so
 		# skip to the next best instead - which naturally spreads enemies onto
 		# the side of the player that is actually open.
-		var world: Vector2 = candidate["world"]
-		if _slot_in_wall(anchor, int(candidate["index"]), world):
+		if _slot_in_wall(anchor, i, Formation.world_position(anchor, i)):
 			continue
+		best_score = score
+		best_slot = i
 
+	if best_slot != -1:
 		if holds and _slot_owners.get(_claimed_slot) == self:
 			_slot_owners.erase(_claimed_slot)
-		_slot_owners[candidate["index"]] = self
-		_claimed_slot = candidate["index"]
+		_slot_owners[best_slot] = self
+		_claimed_slot = best_slot
 		_last_released_slot = -1
 		return
 
@@ -1754,6 +1779,49 @@ func _record_nav_movement_result(pos_before: Vector2) -> void:
 		_release_slot()
 		_stuck_time = 0.0
 		_prefer_secondary_axis = false
+
+
+func _note_headway(pos_before: Vector2, slot_target: Vector2) -> void:
+	"""How far this tick's step went TOWARD where it is going - see IN A JAM,
+	IT WAITS ITS TURN. Shoved sideways round a crowd it moves, but makes no
+	headway; chasing a player who runs it makes full headway, gap or no gap."""
+	var to_target: Vector2 = slot_target - pos_before
+	if to_target.length_squared() < 0.0001:
+		_headway_time = 0.0
+		_headway = 0.0
+		return
+	var delta: float = get_physics_process_delta_time()
+	_headway += (global_position - pos_before).dot(to_target.normalized())
+	_headway_time += delta
+	if _headway_time < QUEUE_AFTER_SECONDS:
+		return
+	# (A distance, not a velocity: the stir check counts the velocities.)
+	var expected: float = stir_speed() * get_move_speed() * _headway_time
+	var jammed: bool = _headway < expected * STUCK_MOVE_FRACTION
+	_headway_time = 0.0
+	_headway = 0.0
+	if not jammed or not _crowded():
+		# Moving, or held by a wall or a corner with nobody near: that is the
+		# old escalation's, in _record_nav_movement_result().
+		_queue_tries = 0
+		return
+	# Held up by the crowd: wait a turn. Every QUEUE_TRIES-th wait in a row it
+	# also gives its place up the old way and looks for another, so a jam that
+	# does not move still breaks.
+	_queue_tries += 1
+	if _queue_tries >= QUEUE_TRIES:
+		_release_slot()
+		_queue_tries = 0
+	_queue_time = QUEUE_SECONDS * randf_range(0.7, 1.3)
+
+
+func _crowded() -> bool:
+	"""Whether another monster stood within reach of this one when it last
+	looked (_find_neighbours())."""
+	for other in _neighbours:
+		if is_instance_valid(other) and other.is_inside_tree():
+			return true
+	return false
 
 
 # =============================================================================
@@ -2231,6 +2299,14 @@ func press_reach() -> float:
 
 func _chase_slot() -> void:
 	"""One step of the chase, toward this monster's slot round its target."""
+	# WAITING ITS TURN (IN A JAM, IT WAITS ITS TURN): still, facing the way it
+	# was going, until the wait is up.
+	if _queue_time > 0.0:
+		_queue_time -= get_physics_process_delta_time()
+		velocity = Vector2.ZERO
+		_slide()
+		play_idle_animation(_walk_facing)
+		return
 	# Routes toward this enemy's claimed WEDGE on the ring around the player
 	# (see SLOT SYSTEM above and the header of formation.gd) rather than at the
 	# player's raw position — which is what spreads a pack into a circle around
@@ -2262,6 +2338,7 @@ func _chase_slot() -> void:
 	_walk_facing = Facing.from_vec_stable(slot_target - global_position, _walk_facing)
 	play_walk_animation(_walk_facing)
 	_record_nav_movement_result(pos_before)
+	_note_headway(pos_before, slot_target)
 
 
 # How far a navmesh snap is allowed to move a point before we refuse it.

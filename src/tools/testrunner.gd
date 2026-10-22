@@ -422,6 +422,7 @@ func _run_all() -> void:
 	await _test_a_big_fight_is_cheap()
 	await _test_a_crowd_thinks_in_turns()
 	await _test_the_crypt_crowd_is_cheap()
+	await _test_a_crowd_waits_its_turn()
 	_test_every_class_stands_in_front_of_a_wall()
 	_test_one_characters_map_is_not_anothers_world()
 	_test_the_welcome_plays_once_a_login()
@@ -9189,6 +9190,157 @@ func _test_the_crypt_crowd_is_cheap() -> void:
 		BaseEnemy._walls.size() == 1 and not BaseEnemy._walls.has(Vector3i(roundi(anchor.x), roundi(anchor.y),
 			foe.get_world_2d().navigation_map.get_id() & 0x7fffffff)))
 	check("  the search uses it", _func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _ensure_slot_claimed(").contains("_slot_in_wall(anchor"))
+	world.free()
+
+
+# =============================================================================
+# A CROWD WAITS ITS TURN (0.73.0)
+# =============================================================================
+# The owner, of the 8x stress test: "my pc fires up a bit and some lag is going
+# on". Timed on the bench at a crypt door, 200 skeletons after one player:
+# 120 stood more than 48 px from where they were walking, wedged behind each
+# other, and still steered and shoved every tick - 10 of the 14 ms their brains
+# cost. Now one held up by the crowd waits its turn (baseenemy.gd, IN A JAM, IT
+# WAITS ITS TURN), and a place is found in one pass rather than a sort.
+func _test_a_crowd_waits_its_turn() -> void:
+	section("A CROWD WAITS ITS TURN - a jam stands still, and a place is found in one pass (0.73.0)")
+	# ---- the places, and their lists ----------------------------------------------------------------
+	var total := 0
+	for ring in range(1, Formation.RING_COUNT + 1):
+		total += Formation.slots_in_ring(ring)
+	check("three rings of places round a player still, 40 in all - seven were tried, and were slower",
+		Formation.RING_COUNT == 3 and total == 40 and Formation.slot_count() == total, [Formation.RING_COUNT, total])
+	var lists_agree := true
+	var rings: PackedInt32Array = Formation.ring_list()
+	var bearings: PackedFloat32Array = Formation.bearing_list()
+	for i in Formation.slot_count():
+		lists_agree = lists_agree and rings[i] == Formation.ring_of(i) \
+			and absf(angle_difference(bearings[i], Formation.bearing_of(i))) < 0.0001
+	check("  each place's ring and bearing are kept in a list for the search, and agree with ring_of() and bearing_of()",
+		lists_agree and rings.size() == total and bearings.size() == total)
+
+	# ---- the one-pass search finds what the sort did ------------------------------------------------
+	var world := Node2D.new()
+	add_child(world)
+	var at := Vector2(-71000, -71000)
+	var foe: BaseEnemy = (load("res://scene/enemy/skeletonsoldier.tscn") as PackedScene).instantiate()
+	foe.position = at
+	world.add_child(foe)
+	await get_tree().physics_frame
+	foe.set_physics_process(false)
+	var dummy := ZoneDummy.new()
+	world.add_child(dummy)
+	dummy.global_position = at + Vector2(150, 0)
+	foe.player = dummy
+	var owners: Dictionary = BaseEnemy._slot_owners
+	var kept_owners: Dictionary = owners.duplicate()
+	var holder := Node2D.new()
+	world.add_child(holder)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 73
+	var mismatches: Array = []
+	for trial in 60:
+		owners.clear()
+		for i in Formation.slot_count():
+			if rng.randf() < 0.6:
+				owners[i] = holder
+		foe.global_position = dummy.global_position + Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(20.0, 220.0)
+		var holds_one: bool = rng.randf() < 0.5
+		var mine: int = -1
+		if holds_one:
+			for i in Formation.slot_count():
+				if not owners.has(i):
+					mine = i
+					break
+			owners[mine] = foe
+		foe.set("_claimed_slot", mine)
+		foe.set("_last_released_slot", -1)
+		foe.set("_slot_retry_time", 0.0)
+		foe.set("_slot_review_time", 0.0)
+		# The old way: every free place scored, sorted, the first that clears the margin.
+		var anchor: Vector2 = dummy.global_position
+		var to_anchor: Vector2 = foe.global_position - anchor
+		var weight: float = foe._bearing_weight(to_anchor.length())
+		var current: float = foe._slot_score(mine, to_anchor.angle(), weight) if holds_one else INF
+		var want_score: float = INF
+		for i in Formation.slot_count():
+			if i == mine or (owners.get(i) != null and is_instance_valid(owners.get(i))):
+				continue
+			var sc: float = foe._slot_score(i, to_anchor.angle(), weight)
+			if sc <= current - BaseEnemy.SLOT_SWITCH_MARGIN and sc < want_score:
+				want_score = sc
+		foe._ensure_slot_claimed()
+		var got: int = int(foe.get("_claimed_slot"))
+		var got_score: float = INF if got == mine else foe._slot_score(got, to_anchor.angle(), weight)
+		if want_score == INF:
+			if got != mine:
+				mismatches.append([trial, "moved", got])
+		elif absf(got_score - want_score) > 0.01:
+			mismatches.append([trial, got, got_score, want_score])
+	check("the one-pass search takes the place the sort took, every time (60 crowds, held and not)",
+		mismatches.is_empty(), mismatches.slice(0, 4))
+	owners.clear()
+	for k in kept_owners:
+		owners[k] = kept_owners[k]
+
+	# ---- a jam stands still, a wall or a chase does not ----------------------------------------------
+	var neighbour := Node2D.new()
+	world.add_child(neighbour)
+	var target: Vector2 = foe.global_position + Vector2(100, 0)
+	var ticks: int = ceili(BaseEnemy.QUEUE_AFTER_SECONDS * 80.0) + 1
+	var stand := func(pressed: Array, step: Vector2) -> float:
+		foe.set("_neighbours", pressed)
+		foe.set("_queue_time", 0.0)
+		foe.set("_queue_tries", 0)
+		foe.set("_headway", 0.0)
+		foe.set("_headway_time", 0.0)
+		for i in ticks:
+			var before: Vector2 = foe.global_position
+			foe.global_position += step
+			foe._note_headway(before, target)
+		return float(foe.get("_queue_time"))
+	var crowd: Array[Node2D] = [neighbour]
+	var none: Array[Node2D] = []
+	var jammed: float = stand.call(crowd, Vector2.ZERO)
+	var shoved: float = stand.call(crowd, Vector2(0, 0.9))
+	var walled: float = stand.call(none, Vector2.ZERO)
+	var speed: float = foe.get_move_speed() / 80.0
+	var chasing: float = stand.call(crowd, Vector2(speed, 0))
+	check("held up %.2f s with monsters pressed round it, it waits its turn, %.2f s or so" % [BaseEnemy.QUEUE_AFTER_SECONDS, BaseEnemy.QUEUE_SECONDS],
+		jammed >= BaseEnemy.QUEUE_SECONDS * 0.7 and jammed <= BaseEnemy.QUEUE_SECONDS * 1.3, jammed)
+	check("  shoved sideways round the crowd is no headway either", shoved > 0.0, shoved)
+	check("  but stuck on a wall with nobody near, it does not - that is the old escalation's", walled == 0.0, walled)
+	check("  and walking at its place, crowd or no crowd, it does not", chasing == 0.0, chasing)
+	foe.set("_neighbours", crowd)
+	foe.set("_queue_tries", 0)
+	owners.clear()
+	owners[5] = foe
+	foe.set("_claimed_slot", 5)
+	var waits := 0
+	var held_until := -1
+	for attempt in BaseEnemy.QUEUE_TRIES:
+		foe.set("_queue_time", 0.0)
+		foe.set("_headway", 0.0)
+		foe.set("_headway_time", 0.0)
+		for i in ticks:
+			foe._note_headway(foe.global_position, target)
+		if float(foe.get("_queue_time")) > 0.0:
+			waits += 1
+		if int(foe.get("_claimed_slot")) == 5:
+			held_until = attempt
+	check("  it waits every time the queue has not moved, and at wait %d in a row gives its place up and looks again, so a jam still breaks" % BaseEnemy.QUEUE_TRIES,
+		waits == BaseEnemy.QUEUE_TRIES and held_until == BaseEnemy.QUEUE_TRIES - 2 and not owners.has(5)
+		and int(foe.get("_queue_tries")) == 0, [waits, held_until, owners.keys()])
+	owners.clear()
+	for k in kept_owners:
+		owners[k] = kept_owners[k]
+	foe.set("_queue_time", 0.2)
+	foe.velocity = Vector2(30, 0)
+	foe._chase_slot()
+	check("  waiting, it stands: no step, and its wait runs down", foe.velocity == Vector2.ZERO
+		and float(foe.get("_queue_time")) < 0.2, [foe.velocity, foe.get("_queue_time")])
+	check("  and the chase hears it: every step's headway is noted",
+		_func_body(_code_src("res://src/enemies/baseenemy.gd"), "func _chase_slot(").contains("_note_headway(pos_before, slot_target)"))
 	world.free()
 
 

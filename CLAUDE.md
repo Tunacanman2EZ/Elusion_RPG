@@ -755,6 +755,43 @@ backslash"). All of it is on the owner panel (backquote) now:
     there the cost is the fighting itself). Tried and not worth it: hurtbox
     monitoring off, monsters' physics interpolation off.
   `_test_the_crypt_crowd_is_cheap()` holds it.
+- **A crowd waits its turn (0.73.0)** - the owner, of the 8x stress test:
+  "my pc fires up a bit and some lag is going on ... you would think on
+  regular absolutely nothing would lag", and "im open to real solutions".
+  Timed function by function at the hall door (1000, 180), 8x: of the
+  monsters' 14 ms a tick, 10 was the ~150 with no place in the ring, and
+  most with a place stood more than 48 px from it - a jam in the doorway,
+  every one still steering round its neighbours and sliding into their backs
+  every tick (about 80 us each) to move nowhere. Measured and not worth it:
+  hurtbox monitoring off, navigation agents off, dozers' brains off,
+  physics interpolation off - all inside the bench's noise.
+  - **In a jam, it waits** (`baseenemy.gd`, IN A JAM, IT WAITS ITS TURN):
+    `_note_headway()` adds up how far each chase step went *toward* where
+    the monster is going; under a quarter of what its speed would cover
+    over `QUEUE_AFTER_SECONDS` (0.25), with another monster pressed round it
+    (`_crowded()`, the neighbours it last looked for), it stands still facing
+    that way for `QUEUE_SECONDS` (0.45, jittered), about 5 us a tick instead
+    of 80. Shoved sideways round a crowd counts as no headway; chasing a
+    player who runs counts in full; a wall with nobody near is left to the
+    old escalation in `_record_nav_movement_result()`. Every `QUEUE_TRIES`-th
+    (3rd) wait in a row it also gives its place up (`_release_slot()`), so
+    a jam still breaks. Attacks come first in the brain, so a monster in
+    reach never waits.
+  - **A place in one pass** (`_ensure_slot_claimed()`): no dictionary per
+    free place and no sort - the lowest score that clears the margin, the
+    wall asked only for a place that would win. `Formation.ring_list()` and
+    `bearing_list()` hold every place's ring and bearing. The same answer as
+    the sort, held by a 60-crowd comparison in the test.
+  - **Seven rings were tried and were slower** (181 places for the 8x crowd's
+    200): the outer places lay behind the jam and in the crypt's walls, and
+    their holders walked at them. `RING_COUNT` stays 3.
+  - **Measured** (container, headless, holding attack, 2 runs each): the
+    hall at 8x, frames 145 and 132 ms -> 7.5 and 7.4, hitches every frame ->
+    6 of 1,334 and 3 of 1,347, physics 25 to 35 ms a tick -> 11 to 13; the
+    open field at 8x, frames 18 and 14 ms -> 9.0 and 9.5, hitches 137 of 558
+    and 109 of 741 -> 32 of 1,108 and 42 of 1,055; the hall at 4x, physics
+    8.1 -> 5.1 ms; 1x unchanged (frames held at 6.9 ms either way).
+  `_test_a_crowd_waits_its_turn()` holds it.
 
 `player.gd` reads no keys of its own any more (it has no `_unhandled_input()`),
 and `perfoverlay.gd` none either. **A new testing power goes on the panel, not
