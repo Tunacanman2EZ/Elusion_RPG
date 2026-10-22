@@ -73,6 +73,14 @@ static func sparks(parent: Node, at: Vector2, palette: StringName = STEEL) -> No
 	root.add_child(p)
 	parent.add_child(root)
 	root.global_position = at
+	# PLACED, NOT MOVED (0.72.2, CLAUDE.md "reset_physics_interpolation() goes
+	# after the position"). Without this the flash's one bright frame was drawn
+	# part way along the line from the area's origin to the blow - in the Big
+	# Field that is up and left of every fight, out past the walls in the
+	# black. The owner's video showed them there, a white disc a frame at a
+	# time: "white bullet projectiles from warrior fling in the black of the
+	# map ... spraying across the map", and "still flying through walls".
+	root.reset_physics_interpolation()
 	var t := flash.create_tween()
 	t.tween_interval(0.04)
 	t.tween_property(flash, "modulate:a", 0.0, 0.06)

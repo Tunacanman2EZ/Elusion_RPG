@@ -370,6 +370,7 @@ func _run_all() -> void:
 	await _test_the_mage_kit()
 	await _test_bullets_fly_true()
 	await _test_bullets_vanish_over_the_black()
+	_test_placed_nodes_are_not_drawn_from_the_origin()
 	await _test_guild_chat_is_open()
 	await _test_the_staff_desk_reads_trades()
 	await _test_the_friends_header_reads_well()
@@ -29082,6 +29083,60 @@ func _test_bullets_vanish_over_the_black() -> void:
 	town.free()
 	area.queue_free()
 	await get_tree().process_frame
+
+
+# =============================================================================
+# PLACED, NOT MOVED (0.72.2)
+# =============================================================================
+# The owner's video of a Big Field fight, frame by frame: a white disc out in
+# the black past the room's west wall, one frame at a time and somewhere new
+# each time - what he had been calling "white bullet projectiles from warrior
+# fling in the black of the map" and "still flying through walls". It was the
+# sword's strike flash (strikefx.gd). It was put in the projectiles container
+# and then placed at the blow, and nothing told the renderer it had been
+# placed rather than moved, so its one bright frame was drawn part way along
+# the line from the area's origin - up and left of every fight there. The
+# healer orb's splash and the boss's stalker did the same.
+#
+# THE RULE IS CLAUDE.md's ("reset_physics_interpolation() goes after the
+# position"), and this holds every script to it: a node added with
+# add_child() and then given a global_position or global_transform in the
+# same function is reset after the last of them.
+func _test_placed_nodes_are_not_drawn_from_the_origin() -> void:
+	section("PLACED, NOT MOVED - a node put in the world is drawn there on its first frame (0.72.2)")
+	var add_re := RegEx.create_from_string("(?:^|[^\\w])add_child\\((\\w+)")
+	var offenders: Array = []
+	var checked: Array = []
+	for path in _all_gd_under("res://src"):
+		if path.ends_with("testrunner.gd") or path.contains("/tools/") or path.contains("/prototype/"):
+			continue
+		var lines: PackedStringArray = _code_src(path).split("\n")
+		for i in lines.size():
+			var found := add_re.search(lines[i])
+			if found == null:
+				continue
+			var node_name: String = found.get_string(1)
+			var placed_re := RegEx.create_from_string("\\b" + node_name + "\\.global_(position|transform)\\s*=[^=]")
+			var reset_re := RegEx.create_from_string("\\b" + node_name + "\\.reset_physics_interpolation\\(\\)")
+			var placed := -1
+			var reset := -1
+			var j := i + 1
+			while j < lines.size() and not (lines[j].begins_with("func ") or lines[j].begins_with("static func ")):
+				if placed_re.search(lines[j]) != null:
+					placed = j
+				if reset_re.search(lines[j]) != null:
+					reset = j
+				j += 1
+			if placed == -1:
+				continue
+			checked.append(path.get_file())
+			if reset < placed:
+				offenders.append("%s:%d %s" % [path.get_file(), i + 1, node_name])
+	check("every node added and then placed in the world is reset after it - or its first frame is drawn on the way in from the origin",
+		offenders.is_empty(), offenders)
+	check("  the scan finds them: the strike flash, the healer's splash, the boss's stalker and the rest",
+		checked.size() >= 10 and checked.has("strikefx.gd") and checked.has("turretprojectile.gd") and checked.has("bossenemy.gd"),
+		[checked.size(), checked.slice(0, 12)])
 
 
 func _opaque_size(texture: Texture2D) -> Vector2:

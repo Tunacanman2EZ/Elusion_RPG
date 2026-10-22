@@ -238,6 +238,20 @@ than moved has to be told, or it is drawn once at the origin and streaks across
 the map over one frame. Call it **after** setting `global_position`, and after
 anything that sets rotation.
 
+**`_test_placed_nodes_are_not_drawn_from_the_origin()` holds every script to
+it (0.72.2):** a node given to `add_child()` and then a `global_position` or
+`global_transform` in the same function must be reset after the last of them.
+It was written after the owner's video of a Big Field fight showed white discs
+out in the black past the walls, one frame each, somewhere new each time - what
+he had been reporting as "white bullet projectiles from warrior fling in the
+black of the map ... spraying across the map" and "projectiles are still flying
+through walls". They were the sword's strike flash (`strikefx.gd`): placed at
+the blow and never reset, so its one bright frame was drawn part way along the
+line from the area's origin, which in the Big Field is up and left of every
+fight. The healer orb's splash, a blast's scorch, crater or frost mark and the
+boss's stalker did the same. A test cannot see a drawn frame; the scan is what
+keeps the next one out.
+
 ### Object.get() takes one argument
 
 Unlike `Dictionary.get()`, it has no default parameter and returns `null` for a

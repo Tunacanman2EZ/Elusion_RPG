@@ -1601,6 +1601,9 @@ func _spawn_stalker() -> void:
 	if away == Vector2.ZERO:
 		away = Vector2.DOWN
 	stalker.global_position = global_position + away * STALKER_SPAWN_OFFSET
+	# Placed, not moved (0.72.2): drawn its first frame on the way in from the
+	# container's origin otherwise.
+	stalker.reset_physics_interpolation()
 
 	# RESOLVED HERE, NOT IN THE STALKER. bossstalker.gd is not a BaseEnemy and
 	# has no element of its own — it drops whatever pillar it was handed. Handing

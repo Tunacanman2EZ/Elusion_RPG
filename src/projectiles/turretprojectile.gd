@@ -557,6 +557,9 @@ static func splash(parent: Node, at: Vector2, big: bool = false) -> Node2D:
 	root.add_child(ring)
 	parent.add_child(root)
 	root.global_position = at
+	# Placed, not moved: its first frame drawn on the way in from the area's
+	# origin otherwise (0.72.2, strikefx.gd's flash says how it looked).
+	root.reset_physics_interpolation()
 	root.get_tree().create_timer(SPLASH_SECONDS + 0.1).timeout.connect(root.queue_free)
 	return root
 

@@ -164,6 +164,8 @@ func _leave_mark() -> void:
 	mark.add_to_group("blastmarks")
 	get_parent().add_child(mark)
 	mark.global_position = global_position
+	# Placed, not moved (0.72.2, strikefx.gd's flash says how it looked).
+	mark.reset_physics_interpolation()
 	var t := mark.create_tween()
 	t.tween_interval(MARK_SECONDS * 0.6)
 	t.tween_property(mark, "modulate:a", 0.0, MARK_SECONDS * 0.4)
