@@ -415,6 +415,7 @@ func _run_all() -> void:
 	await _test_every_area_can_be_walked()
 	await _test_the_big_field()
 	await _test_the_owner_stress_crowd()
+	await _test_the_crowd_takes_seats()
 	_test_the_big_field_is_dressed()
 	await _test_the_crypt_doors()
 	await _test_the_bullet_zone()
@@ -8317,6 +8318,105 @@ func _test_the_road_through_the_game() -> void:
 # enemies in big field" - a switch on the owner panel's Testing tab, his game
 # only (stresscrowd.gd). Copies fight like the rest and are worth nothing:
 # no kill report, never shared, never in the respawner's census.
+func _test_the_crowd_takes_seats() -> void:
+	# The owner, aiming the stress test at 16x: "i need absolute masterclass
+	# help". At 16x, 390 monsters were after one warrior, every one chasing and
+	# firing, and the game ran at 5 frames a second. Now FIGHT_SEATS fight a
+	# player at once and the rest wait their turn (baseenemy.gd, SEATS).
+	section("SEATS - at most 64 fight a player at once, the rest wait their turn (0.76.0)")
+	const Crowd := preload("res://src/world/stresscrowd.gd")
+	check("the stress test goes to 12x and 16x", Crowd.MULTIPLIERS.has(12) and Crowd.MULTIPLIERS.has(16), Crowd.MULTIPLIERS)
+	check("64 seats a player", BaseEnemy.FIGHT_SEATS == 64, BaseEnemy.FIGHT_SEATS)
+	BaseEnemy._seats.clear()
+	var world := Node2D.new()
+	add_child(world)
+	var target := Node2D.new()
+	target.add_to_group("player")
+	world.add_child(target)
+	var crowd: Array = []
+	for i in 70:
+		var monster: BaseEnemy = (load("res://scene/enemy/icefiresprite.tscn") as PackedScene).instantiate()
+		monster.position = Vector2(-9000 - i * 40, -9000)
+		world.add_child(monster)
+		crowd.append(monster)
+	await get_tree().process_frame
+	for monster in crowd:
+		monster.set_physics_process(false)        # its ticks are driven by hand below
+		monster.player = target
+		monster.engaged = true
+	var answers: Array = []
+	for i in crowd.size():
+		answers.append(crowd[i].take_seat(100.0 + i))
+	check("the first 64 after a player take a seat, and the 65th waits",
+		answers.slice(0, 64).all(func(a): return a) and answers.slice(64).all(func(a): return not a),
+		[answers.count(true), answers.count(false)])
+	var seats: Dictionary = BaseEnemy._seats.get(target.get_instance_id(), {})
+	check("  64 seats taken, no more", seats.size() == 64, seats.size())
+	var near: BaseEnemy = crowd[69]
+	near.set("_seat_due_tick", 0)
+	var furthest: BaseEnemy = crowd[63]
+	check("one much nearer than the furthest seated takes that seat - the ones in front fight",
+		near.take_seat(10.0) and not furthest.take_seat(163.0) and int(furthest.get("_seat_target")) == 0
+		and seats.size() == 64, [seats.size(), int(furthest.get("_seat_target"))])
+	var hit: BaseEnemy = crowd[68]
+	hit.take_damage(1)
+	check("a waiter that is hit fights back at its next tick, however far",
+		hit.take_seat(400.0) and seats.size() == 64)
+	var boss: BaseEnemy = crowd[67]
+	boss.add_to_group("unpushable")
+	check("a boss never waits", boss.take_seat(500.0) and seats.size() == 64)
+	boss.remove_from_group("unpushable")
+	crowd[0].engaged = false
+	var after_leaving: int = seats.size()
+	var freed_one: BaseEnemy = crowd[66]
+	freed_one.set("_seat_due_tick", 0)
+	var took_it: bool = freed_one.take_seat(170.0)
+	check("giving up the chase gives the seat up, and the next to ask takes it",
+		after_leaving == 63 and took_it and seats.size() == 64, [after_leaving, took_it, seats.size()])
+	# A waiter is still, facing its target, off its place on the ring.
+	var stander: BaseEnemy = crowd[65]
+	stander.velocity = Vector2(30, 0)
+	stander.set("_claimed_slot", -1)
+	stander._wait_turn()
+	check("waiting, it stands still - and says it is waiting", stander.velocity == Vector2.ZERO and stander.waiting_turn)
+	# ONE TICK IN WAIT_STRIDE: it thinks once in four, a hit answered at once.
+	var thought: int = 0
+	for i in BaseEnemy.WAIT_STRIDE:
+		await get_tree().physics_frame
+		if not stander.waits_this_tick():
+			thought += 1
+	stander.set("_seat_now", true)
+	var answers_hit: bool = not stander.waits_this_tick()
+	stander.set("_seat_now", false)
+	check("  it thinks one tick in %d, and a hit is answered the next tick" % BaseEnemy.WAIT_STRIDE,
+		thought == 1 and answers_hit, thought)
+	check("  the readout counts them: fighting and waiting",
+		PerfOverlay.fight_counts().x >= 64 and PerfOverlay.fight_counts().y >= 1, PerfOverlay.fight_counts())
+	var said: String = PerfOverlay._fight_text()
+	check("  and says so, on its own row of the readout (F3): who is after you, and the seats",
+		said.contains("waiting their turn") and said.contains("(%d seats a player)" % BaseEnemy.FIGHT_SEATS)
+		and _code_src("res://src/systems/perfoverlay.gd").contains('_row("after you", _fight_text())'), said)
+	# A SEAT NOBODY SITS IN IS FREE: a holder asleep, stopped or gone stops
+	# asking, and after SEAT_STALE_TICKS its seat goes to the next to ask.
+	for i in BaseEnemy.SEAT_STALE_TICKS + 2:
+		await get_tree().physics_frame
+	var late: BaseEnemy = crowd[64]
+	late.set("_seat_due_tick", 0)
+	check("a seat nobody has sat in for %d ticks goes to whoever asks" % BaseEnemy.SEAT_STALE_TICKS,
+		late.take_seat(300.0) and seats.size() == 1, seats.size())
+	for monster in crowd:
+		monster.queue_free()
+	await get_tree().process_frame
+	check("  and a monster gone takes its seat with it", not BaseEnemy._seats.has(target.get_instance_id()),
+		BaseEnemy._seats.keys())
+	world.queue_free()
+	var mage_code := _func_body(_code_src("res://src/enemies/bushmage.gd"), "func _physics_process(")
+	check("the bush mage, which has a brain of its own, takes a seat too, and waits on the stride",
+		mage_code.contains("take_seat(dist)") and mage_code.contains("waits_this_tick()"))
+	var ring_code := _func_body(_code_src("res://src/enemies/threatring.gd"), "func _process(")
+	check("  and a waiter's ring looks at the idle pace", ring_code.contains("not monster.waiting_turn"))
+
+
 func _test_the_owner_stress_crowd() -> void:
 	section("THE OWNER'S STRESS TEST - more of the Big Field's monsters, his game only, worth nothing (0.65.0)")
 	const Crowd := preload("res://src/world/stresscrowd.gd")
@@ -8456,10 +8556,10 @@ func _test_the_owner_stress_crowd() -> void:
 	await get_tree().process_frame
 	var pick: OptionButton = gm.get_node_or_null("%stresspick") as OptionButton
 	var testing_tab: Node = gm.get_node_or_null("frame/margin/rows/tabsscroll/ownertabs/testing")
-	check("the owner panel's Testing tab has it: Off, 2x, 3x, 4x, 6x, 8x - \"we can add even more\"",
-		pick != null and testing_tab != null and testing_tab.is_ancestor_of(pick) and pick.item_count == 6
+	check("the owner panel's Testing tab has it: Off, 2x, 3x, 4x, 6x, 8x, 12x, 16x - \"we can add even more\"",
+		pick != null and testing_tab != null and testing_tab.is_ancestor_of(pick) and pick.item_count == 8
 		and pick.get_item_text(0) == "Off" and pick.get_item_text(1) == "2x" and pick.get_item_text(5) == "8x"
-		and pick.selected == 0)
+		and pick.get_item_text(7) == "16x" and pick.selected == 0)
 	if pick != null:
 		pick.select(1)
 		pick.item_selected.emit(1)
@@ -8914,7 +9014,10 @@ func _test_a_big_fight_is_cheap() -> void:
 		and str(ProjectSettings.get_setting("display/window/stretch/aspect", "keep")) == "keep", view)
 	player.position = Vector2(-1000, 0)
 	sleeper.check_now()
-	sleeper.set("_left", 10.0)
+	# The round in progress holds only the hidden one, so nothing but the jump
+	# can look at `far` this frame (A PASS SPREAD OVER ITS QUARTER SECOND).
+	sleeper.set("_round", [hidden])
+	sleeper.set("_round_at", 0)
 	sleeper.call("player_jumped")
 	player.position = Vector2(-990, 0)
 	var walked: bool = sleeper.call("player_jumped")
@@ -8923,6 +9026,36 @@ func _test_a_big_fight_is_cheap() -> void:
 	check("a player put somewhere new is looked at that frame, not a quarter second later",
 		not walked and far.visible and far.process_mode == Node.PROCESS_MODE_INHERIT, [walked, far.visible])
 	holder.free()
+
+	# ---- a pass is spread over its quarter second (0.76.0) -----------------------------------
+	# One pass looked at every monster in one frame: 5,888 at 16x, 19 ms of a
+	# frame four times a second - a hitch you could count.
+	check("a frame looks at its share of a round: at 60 fps, 393 of 5,888",
+		Sleeper.round_share(5888, 1.0 / 60.0) == 393, Sleeper.round_share(5888, 1.0 / 60.0))
+	check("  never none while any are left, never more than there are, none of none",
+		Sleeper.round_share(3, 0.0001) == 1 and Sleeper.round_share(10, 2.0) == 10 and Sleeper.round_share(0, 0.1) == 0)
+	var round_holder := Node2D.new()
+	add_child(round_holder)
+	var round_player := Node2D.new()
+	round_player.add_to_group("player")
+	round_holder.add_child(round_player)
+	var far_ones: Array = []
+	for i in 40:
+		var far_one_node := Node2D.new()
+		far_one_node.position = Vector2(2000 + i, 0)
+		far_one_node.add_to_group("enemies")
+		round_holder.add_child(far_one_node)
+		far_ones.append(far_one_node)
+	var round_sleeper: Node = Sleeper.add_to(round_holder)
+	round_sleeper.call("player_jumped")
+	round_sleeper._process(Sleeper.CHECK_SECONDS / 4.0)
+	var after_one: int = far_ones.filter(func(n): return n.has_meta(&"asleep")).size()
+	for i in 3:
+		round_sleeper._process(Sleeper.CHECK_SECONDS / 4.0)
+	var after_four: int = far_ones.filter(func(n): return n.has_meta(&"asleep")).size()
+	check("  a quarter of the round in a quarter of its time, and all of it in all of it",
+		after_one == 10 and after_four == 40, [after_one, after_four])
+	round_holder.free()
 
 	# ---- awake but idle, with nobody in reach: it dozes ------------------------------------------
 	var nap_world := Node2D.new()
@@ -17982,6 +18115,20 @@ func _test_other_players_attacks_are_pictures() -> void:
 	Presence.handle_message({"t": "x", "id": 612, "e": [["meteor", 1600, o.x, o.y, o.x, o.y, 0, 0]]})
 	check("the presence link hands each attack to the picture of whoever made it, and nobody else's",
 		them.attacks_waiting() == 1, them.attacks_waiting())
+	# THEIR ATTACKS RIDE THE TICK (0.76.0): inside the moves, the same way.
+	Presence.handle_message({"t": "moves", "p": [], "x": [
+		[611, [["meteor", 1700, o.x, o.y, o.x, o.y, 0, 0]]],
+		[612, [["meteor", 1700, o.x, o.y, o.x, o.y, 0, 0]]],
+		["junk"], [611, "nope"], 7]})
+	check("  and the attacks riding the tick's moves (0.76.0) the same way - the broken ones never",
+		them.attacks_waiting() == 2, them.attacks_waiting())
+	var my_id_was: int = Presence._my_id
+	Presence._my_id = 611
+	Presence.handle_message({"t": "moves", "p": [], "x": [[611, [["meteor", 1800, o.x, o.y, o.x, o.y, 0, 0]]]]})
+	Presence.handle_message({"t": "x", "id": 611, "e": [["meteor", 1800, o.x, o.y, o.x, o.y, 0, 0]]})
+	check("  and our own, coming back in the tick, are passed over", them.attacks_waiting() == 2,
+		them.attacks_waiting())
+	Presence._my_id = my_id_was
 	Presence._remotes.erase(611)
 	Remote.clock_override = -1.0
 	for child in scene_root.get_children():
@@ -31470,6 +31617,9 @@ func _test_presence_carries_the_monsters() -> void:
 
 	check("the game says it speaks shared monsters when it says hello",
 		_code_src("res://src/systems/presence.gd").contains('"t": "hello", "ticket": _ticket, "v": SHARED_VERSION'))
+	check("  and that others' attacks may ride the tick (0.76.0)",
+		_code_src("res://src/systems/presence.gd").contains('"v": SHARED_VERSION, "xt": TICK_ATTACKS})')
+		and Presence.TICK_ATTACKS == 1)
 	Presence.handle_message({"t": "welcome", "id": 7})
 	check("a server from before shared monsters does not share them - every game fights its own",
 		not Presence.shares())

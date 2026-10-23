@@ -41,8 +41,10 @@ const NODE_NAME := "stresscrowd"
 const GROUP := &"stresscrowd"
 const META := &"stress_copy"
 const AREAS := ["res://scene/bigfield.tscn"]
-# What the owner panel offers. 1 is off.
-const MULTIPLIERS := [1, 2, 3, 4, 6, 8]
+# What the owner panel offers. 1 is off. 12x and 16x since 0.76.0 (the owner:
+# "a x16 stress test that ran smooth"), with the seats (BaseEnemy, SEATS) and
+# the sleeper's spread pass that make it run.
+const MULTIPLIERS := [1, 2, 3, 4, 6, 8, 12, 16]
 # How far from the monster it copies a copy stands, in px.
 const SPREAD_MIN := 20.0
 const SPREAD_MAX := 56.0

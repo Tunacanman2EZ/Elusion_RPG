@@ -468,6 +468,9 @@ var engaged: bool = false:
 		# Turning on somebody - being hit, mostly - rouses a dozer that moment.
 		if value and dozing:
 			dozing = false
+		# Giving up the chase gives up its seat (SEATS).
+		if not value:
+			leave_seat()
 		if _threat_ring != null:
 			_threat_ring.look_now()
 
@@ -545,6 +548,8 @@ func _physics_process(_delta: float) -> void:
 		return
 	if _dozes():
 		return
+	if waits_this_tick():
+		return
 
 	# HELD BEHIND A GATE: no chase, no attack, no drift. Before the player
 	# lookup, because a gated boss has no business resolving a target - it
@@ -570,6 +575,7 @@ func _physics_process(_delta: float) -> void:
 	if is_attacking:
 		# Frozen mid-attack, EXCEPT for easing out from under the player. The
 		# attack is not interrupted; see _standoff_velocity().
+		_keep_seat()
 		velocity = _standoff_velocity()
 		_slide()
 		return
@@ -595,6 +601,10 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	is_returning_home = false
+	# A SEAT, OR IT WAITS ITS TURN (0.76.0) - see SEATS.
+	if not take_seat(dist_to_player):
+		_wait_turn()
+		return
 	_handle_combat(dist_to_player)
 
 
@@ -1376,6 +1386,149 @@ const SLOT_ARRIVAL_THRESHOLD := Formation.ARRIVAL_THRESHOLD
 static var _slot_owners: Dictionary = {}  # slot_index (int) -> enemy instance
 
 var _claimed_slot: int = -1
+
+# =============================================================================
+# SEATS: HOW MANY FIGHT AT ONCE (0.76.0)
+# =============================================================================
+# The owner, aiming the stress test at 16x: "i need absolute masterclass help".
+# At 16x the Big Field holds 5,888 monsters, and 390 of them were after one
+# warrior at once (measured in the container) - every one chasing, steering
+# round its neighbours and sliding into their backs every tick, every archer
+# and mage firing, for 40 places round the player (formation.gd). The tick
+# was 28 to 32 ms against its 12.5, and Godot ran up to eight a frame to catch
+# up: 5 frames a second.
+#
+# So each target has FIGHT_SEATS seats, and a monster after somebody FIGHTS
+# only while it holds one of theirs - chases, takes its place on the ring,
+# attacks, exactly as before. One without a seat WAITS ITS TURN where it
+# stands (_wait_turn()): facing its target, idle, not attacking, and asking
+# again every SEAT_RETRY_TICKS. A seat comes free when its holder dies,
+# gives up the chase, turns on somebody else or stops asking (asleep, gone -
+# SEAT_STALE_TICKS), and whoever asks next takes it. One that is
+# SEAT_SWAP_MARGIN nearer than the furthest seated one takes that one's seat,
+# so the ones in front are the ones fighting; and BEING HIT TAKES A SEAT at
+# once (take_damage()) - nothing stands there and lets itself be killed.
+#
+# WHERE IT BINDS. In the bench (the Big Field, a warrior holding attack) 2x
+# had 28 after the player and 16x 390; a heavy pull at 1x is a few dozen. 64
+# is more than any fight the game was built for, so play is as it was, and a
+# stress crowd past it fights 64 at a time with the rest waiting behind them.
+# A boss never waits (the "unpushable" group).
+const FIGHT_SEATS := 64
+# Asked again every SEAT_RETRY_TICKS physics ticks (a quarter second at 80),
+# each waiter on its own jittered beat.
+const SEAT_RETRY_TICKS := 20
+const SEAT_RETRY_JITTER := 5
+const SEAT_SWAP_MARGIN := 64.0
+const SEAT_STALE_TICKS := 40
+# A WAITER THINKS ON A STRIDE: one tick in WAIT_STRIDE, each on its own phase
+# (waits_this_tick()). Standing still, it has nothing to decide in between -
+# a hit (_seat_now) is answered on the very next tick, stride or not. At 16x
+# the 300 waiters were 4 ms of every tick, asking every tick to stand still.
+const WAIT_STRIDE := 4
+# target instance id -> {monster instance id: Vector2i(physics tick it last
+# sat, its distance to the target then)}
+static var _seats: Dictionary = {}
+var _seat_target: int = 0
+var _seat_due_tick: int = 0
+var _seat_now: bool = false
+var waiting_turn: bool = false
+
+
+func waits_this_tick() -> bool:
+	"""True on the ticks a waiting monster does not think (WAIT_STRIDE)."""
+	return waiting_turn and not _seat_now \
+		and (Engine.get_physics_frames() + get_instance_id()) % WAIT_STRIDE != 0
+
+
+func take_seat(dist: float) -> bool:
+	"""Whether this monster fights its target this tick: it holds a seat, or
+	takes one now. See SEATS."""
+	if is_in_group("unpushable") or not is_instance_valid(player):
+		waiting_turn = false
+		return true
+	var target_id: int = player.get_instance_id()
+	var me: int = get_instance_id()
+	var tick: int = Engine.get_physics_frames()
+	if _seat_target != 0 and _seat_target != target_id:
+		leave_seat()
+	if not _seats.has(target_id):
+		_seats[target_id] = {}
+	var seats: Dictionary = _seats[target_id]
+	if _seat_target == target_id and seats.has(me):
+		seats[me] = Vector2i(tick, int(dist))
+		waiting_turn = false
+		return true
+	_seat_target = 0
+	if not _seat_now and tick < _seat_due_tick:
+		return false
+	_seat_due_tick = tick + SEAT_RETRY_TICKS + randi_range(-SEAT_RETRY_JITTER, SEAT_RETRY_JITTER)
+	# Seats nobody has sat in lately are free: a holder asleep, stopped or gone.
+	var furthest: int = 0
+	var furthest_at: int = -1
+	for holder in seats.keys():
+		var seat: Vector2i = seats[holder]
+		if tick - seat.x > SEAT_STALE_TICKS:
+			seats.erase(holder)
+		elif seat.y > furthest_at:
+			furthest_at = seat.y
+			furthest = holder
+	var hit: bool = _seat_now
+	_seat_now = false
+	if seats.size() >= FIGHT_SEATS:
+		if furthest == 0 or not (hit or float(furthest_at) > dist + SEAT_SWAP_MARGIN):
+			return false
+		seats.erase(furthest)
+		var moved: Object = instance_from_id(furthest)
+		if moved != null and moved is BaseEnemy:
+			(moved as BaseEnemy)._seat_target = 0
+	seats[me] = Vector2i(tick, int(dist))
+	_seat_target = target_id
+	waiting_turn = false
+	return true
+
+
+func _keep_seat() -> void:
+	"""Mid-attack a seated monster does not reach take_seat(), and must not look
+	stale: its seat is marked sat in this tick."""
+	if _seat_target == 0:
+		return
+	var seats: Variant = _seats.get(_seat_target)
+	var me: int = get_instance_id()
+	if seats is Dictionary and (seats as Dictionary).has(me):
+		var seat: Vector2i = (seats as Dictionary)[me]
+		(seats as Dictionary)[me] = Vector2i(Engine.get_physics_frames(), seat.y)
+
+
+func leave_seat() -> void:
+	"""Give the seat up - the chase over, dead, gone, or after somebody else."""
+	waiting_turn = false
+	if _seat_target == 0:
+		return
+	var seats: Variant = _seats.get(_seat_target)
+	if seats is Dictionary:
+		(seats as Dictionary).erase(get_instance_id())
+		if (seats as Dictionary).is_empty():
+			_seats.erase(_seat_target)
+	_seat_target = 0
+
+
+func _wait_turn() -> void:
+	"""No seat: stand where it is, facing its target, until one comes free.
+	Off its place on the ring too, so a seated one can have it. Costs almost
+	nothing - a body at rest slides every STILL_SLIDE_SECONDS."""
+	waiting_turn = true
+	if _claimed_slot != -1:
+		_release_slot()
+	velocity = Vector2.ZERO
+	_slide()
+	if is_instance_valid(player):
+		_walk_facing = Facing.from_vec_stable(player.global_position - global_position, _walk_facing)
+	play_idle_animation(_walk_facing)
+
+
+func _exit_tree() -> void:
+	leave_seat()
 
 # How often an enemy reconsiders which slot it holds. See _ensure_slot_claimed().
 const SLOT_REVIEW_SECONDS := 0.4
@@ -3090,6 +3243,9 @@ func take_damage(amount: int, _element: int = Element.Type.NONE) -> void:
 	# its attention now, as long as they are inside its leash (keep_after()).
 	# On a mirror only its ring reads this (threatring.gd).
 	engaged = true
+	# AND FIGHTS BACK: a waiting monster that is hit takes a seat at its next
+	# tick, the furthest seated one giving its up (SEATS).
+	_seat_now = true
 
 	# A MONSTER THIS GAME DOES NOT RUN (SHARED MONSTERS). The hit is shown here
 	# at once - the number, the flash, the sound, all of it is your feedback -
@@ -3178,6 +3334,7 @@ func _die() -> void:
 	_death_resolved = true
 
 	_release_slot()
+	leave_seat()
 
 	# THE SERVER DECIDES WHAT THIS KILL WAS WORTH.
 	#

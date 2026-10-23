@@ -52,6 +52,17 @@
 # And every state carries this game's clock ("ts"), which the others play our
 # steps back on (remoteplayer.gd, PLAYED BACK) - the "lag wobble" the owner saw
 # running past somebody was their picture chasing steps that came unevenly.
+#
+# AND, SINCE 0.76.0, THEIR ATTACKS RIDE THE TICK. The server sent every attack
+# picture to every other game in the area in a frame of its own, the moment it
+# came: a crowd fighting is players x players frames a second, and at 128 bots
+# in one area (the API's swarm.py) that was most of the presence server's time.
+# The hello now says "xt": the server puts the attacks made since its last
+# tick inside that tick's "moves" ("x": [[who, attacks], ...]), one frame for
+# everything, and this hands them out exactly as it does an "x" of their own.
+# Nothing plays later than it would have: attacks are played back on the
+# maker's clock, PLAYBACK_DELAY behind, just as the steps in the same frame
+# are. Our own come back in it, as our own steps do, and are passed over.
 extends Node
 
 # Their aim on the wire, stepped to this many degrees (aim_degrees_of()).
@@ -61,6 +72,8 @@ const AIM_STEP_DEGREES := 8
 const SHARED_VERSION := 3
 # The oldest server wire this game shares monsters with.
 const SHARED_MINIMUM := 2
+# Said in the hello (0.76.0): others' attacks may come inside the tick's moves.
+const TICK_ATTACKS := 1
 
 # Who runs this area's monsters: the leader's account id, -1 for nobody (or no
 # link at all), and how many other games share them.
@@ -391,7 +404,7 @@ func _pump(delta: float, player: Node) -> void:
 		_server_books = false
 		_server_relays = false
 		_attacks = []
-		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION})
+		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION, "xt": TICK_ATTACKS})
 	while _socket != null and _socket.get_available_packet_count() > 0:
 		var parsed: Variant = JSON.parse_string(_socket.get_packet().get_string_from_utf8())
 		if parsed is Dictionary:
@@ -530,6 +543,13 @@ func handle_message(message: Dictionary) -> void:
 			for move in message.get("p", []):
 				if move is Array and move.size() >= 6:
 					_move(move)
+			# THEIR ATTACKS RIDE THE TICK (0.76.0): after the steps, as they were
+			# made after the states they went out with.
+			var riding: Variant = message.get("x", [])
+			if riding is Array:
+				for pair in riding:
+					if pair is Array and (pair as Array).size() == 2:
+						_hear_attacks(int(pair[0]), pair[1])
 		"leave":
 			for id in message.get("ids", []):
 				_remove(int(id))
@@ -551,9 +571,7 @@ func handle_message(message: Dictionary) -> void:
 			if batch is Array:
 				hits_received.emit(int(message.get("from", -1)), batch)
 		"x":
-			var found: Variant = _remotes.get(int(message.get("id", -1)))
-			if is_instance_valid(found) and message.get("e") is Array:
-				(found as Node).hear_attacks(message["e"])
+			_hear_attacks(int(message.get("id", -1)), message.get("e"))
 		"l":
 			if int(message.get("id", -1)) != _my_id and typeof(message.get("on")) == TYPE_BOOL:
 				_pull_lever(str(message.get("n", "")), bool(message["on"]))
@@ -563,6 +581,16 @@ func handle_message(message: Dictionary) -> void:
 					_pull_lever(str(pulled[0]), bool(pulled[1]))
 		"vs", "vc":
 			voice_message.emit(message)
+
+
+func _hear_attacks(id: int, attacks: Variant) -> void:
+	"""Somebody's attack pictures, to their picture here: never our own, and
+	nobody we are not drawing."""
+	if id == _my_id or not (attacks is Array):
+		return
+	var found: Variant = _remotes.get(id)
+	if is_instance_valid(found):
+		(found as Node).hear_attacks(attacks)
 
 
 func is_open() -> bool:

@@ -79,9 +79,19 @@ var enabled: bool = true:
 		if not enabled:
 			_wake_all()
 
-var _left: float = 0.0
 var _seen_at: Vector2 = Vector2.ZERO
 var _seen: bool = false
+
+# A PASS SPREAD OVER ITS QUARTER SECOND (0.76.0). The pass looked at every
+# monster in the area in one frame, four times a second: in the Big Field at
+# 16x that is 5,888 of them, 19 ms of one frame (measured in the container),
+# and at 8x on the owner's PC it was a hitch four times a second. Now a ROUND
+# is the area's monsters as they were when it began, and each frame looks at
+# its share of them - as many as that frame's part of CHECK_SECONDS - so every
+# monster is still looked at once a quarter second, and no frame pays for the
+# whole map. A jump still looks at everybody at once (check_now()).
+var _round: Array = []
+var _round_at: int = 0
 
 
 static func add_to(scene: Node) -> Node:
@@ -92,11 +102,24 @@ static func add_to(scene: Node) -> Node:
 
 
 func _process(delta: float) -> void:
-	_left -= delta
-	if _left > 0.0 and not player_jumped():
+	if player_jumped():
+		check_now()
 		return
-	_left = CHECK_SECONDS
-	check_now()
+	if _round_at >= _round.size():
+		_round = get_tree().get_nodes_in_group("enemies")
+		_round_at = 0
+	var share: int = round_share(_round.size(), delta)
+	var upto: int = mini(_round_at + share, _round.size())
+	_look_at(_round, _round_at, upto)
+	_round_at = upto
+
+
+static func round_share(count: int, delta: float) -> int:
+	"""How many of a round of `count` monsters one frame of `delta` seconds
+	looks at: its part of CHECK_SECONDS, never none while any are left."""
+	if count <= 0:
+		return 0
+	return clampi(ceili(float(count) * delta / CHECK_SECONDS), 1, count)
 
 
 func player_jumped() -> bool:
@@ -114,8 +137,20 @@ func player_jumped() -> bool:
 
 
 func check_now() -> int:
-	"""One pass. Returns how many enemies are asleep after it."""
+	"""One whole pass, at once - a jump, or the suite. Returns how many enemies
+	are asleep after it. It starts the next round afresh."""
 	if get_tree() == null:
+		return 0
+	_round = get_tree().get_nodes_in_group("enemies")
+	var asleep: int = _look_at(_round, 0, _round.size())
+	_round_at = _round.size()
+	return asleep
+
+
+func _look_at(enemies: Array, from: int, upto: int) -> int:
+	"""Sleep, wake, doze or rouse enemies[from..upto). Returns how many of
+	them are asleep after it."""
+	if get_tree() == null or from >= upto:
 		return 0
 	var player := get_tree().get_first_node_in_group("player") as Node2D
 	if not enabled or player == null:
@@ -123,7 +158,7 @@ func check_now() -> int:
 	# EVERYBODY THE MONSTERS MAY CHASE, not just this game's player (shared
 	# monsters, 0.7.0): on the game running an area, a monster next to another
 	# player must stay awake even when this player is a mile off. Read once
-	# per pass - a pass is every enemy against every one of these.
+	# a call - each enemy looked at is measured against every one of these.
 	var targets: Array = Targets.all(get_tree())
 	var spots: Array[Vector2] = []
 	for body in targets:
@@ -132,9 +167,14 @@ func check_now() -> int:
 		spots.append(player.global_position)
 	var asleep: int = 0
 	var view: Rect2 = view_rect()
-	for node in get_tree().get_nodes_in_group("enemies"):
+	for i in range(from, upto):
+		# A MONSTER FREED SINCE THE ROUND BEGAN is passed over; one built since
+		# is in the next round.
+		var node: Variant = enemies[i]
+		if not is_instance_valid(node):
+			continue
 		var enemy := node as Node2D
-		if enemy == null or _never_sleeps(enemy):
+		if enemy == null or not enemy.is_inside_tree() or _never_sleeps(enemy):
 			continue
 		var far: float = INF
 		for spot in spots:

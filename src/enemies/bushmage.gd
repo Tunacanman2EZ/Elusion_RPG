@@ -154,6 +154,8 @@ func _physics_process(_delta: float) -> void:
 		return
 	if _dozes():
 		return
+	if waits_this_tick():
+		return
 	# is_instance_valid, not == null: the target may be another player's
 	# picture (shared monsters), freed the moment they leave the area.
 	if not is_instance_valid(player):
@@ -166,6 +168,7 @@ func _physics_process(_delta: float) -> void:
 	# for easing out from under the player, which does not interrupt the cast.
 	# See BaseEnemy._standoff_velocity().
 	if is_attacking:
+		_keep_seat()
 		velocity = _standoff_velocity()
 		_slide()
 		return
@@ -191,6 +194,10 @@ func _physics_process(_delta: float) -> void:
 		_handle_return_home()
 		return
 	is_returning_home = false
+	# A SEAT, OR IT WAITS ITS TURN (BaseEnemy, SEATS).
+	if not take_seat(dist):
+		_wait_turn()
+		return
 
 	# TAKE A PLACE ON THE RING AND CAST FROM IT.
 	#

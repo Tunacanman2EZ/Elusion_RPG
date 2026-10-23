@@ -144,7 +144,10 @@ func _process(delta: float) -> void:
 	if _refresh_in > 0.0:
 		return
 	# Kept in step, so each ring keeps its own moment in the crowd's cycle.
-	var every: float = REFRESH_SECONDS if monster != null and monster.engaged else IDLE_REFRESH_SECONDS
+	# A MONSTER WAITING ITS TURN (BaseEnemy, SEATS) stands still, so its ring
+	# looks at the idle pace: at 16x that is 300 rings of 360 (0.76.0).
+	var every: float = REFRESH_SECONDS if monster != null and monster.engaged and not monster.waiting_turn \
+		else IDLE_REFRESH_SECONDS
 	_refresh_in = maxf(_refresh_in + every, 0.0)
 	refresh()
 

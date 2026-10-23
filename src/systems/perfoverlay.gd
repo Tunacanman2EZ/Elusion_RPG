@@ -216,6 +216,9 @@ func _process(delta: float) -> void:
 		_row("gpu", ("%.2f ms a frame   (the graphics card)" % gpu_ms()) if gpu_ms() > 0.0
 			else "not measured by this renderer"),
 		_row("monsters", _monsters_text()),
+		# HOW MANY ARE AFTER YOU, AND HOW MANY OF THEM HOLD A SEAT (0.76.0): at
+		# most BaseEnemy.FIGHT_SEATS fight a player at once; the rest wait.
+		_row("after you", _fight_text()),
 		_row("nodes", _thousands(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))),
 		_row("bodies", "%s active" % _thousands(
 			int(Performance.get_monitor(Performance.PHYSICS_2D_ACTIVE_OBJECTS)))),
@@ -274,6 +277,30 @@ func monster_counts() -> Vector2i:
 		if node.has_meta(&"asleep"):
 			asleep += 1
 	return Vector2i(here, asleep)
+
+
+func fight_counts() -> Vector2i:
+	"""(fighting, waiting their turn) among the monsters after somebody - see
+	BaseEnemy's SEATS."""
+	var fighting: int = 0
+	var waiting: int = 0
+	for node in get_tree().get_nodes_in_group("enemies"):
+		var monster := node as BaseEnemy
+		if monster == null or not monster.engaged or monster.has_meta(&"asleep"):
+			continue
+		if monster.waiting_turn:
+			waiting += 1
+		else:
+			fighting += 1
+	return Vector2i(fighting, waiting)
+
+
+func _fight_text() -> String:
+	var counts: Vector2i = fight_counts()
+	if counts.x + counts.y == 0:
+		return "nobody"
+	return "%s fighting   %s waiting their turn   (%d seats a player)" % [
+		_thousands(counts.x), _thousands(counts.y), BaseEnemy.FIGHT_SEATS]
 
 
 func _monsters_text() -> String:

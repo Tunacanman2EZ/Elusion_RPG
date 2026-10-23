@@ -7997,6 +7997,75 @@ Measured with a throwaway harness that opens all 27 windows under xvfb at
 each text size, in the standard font and Grenze (the tallest), and prints
 each one's rectangle against what it needs.
 
+## A crowd sixteen times over, and other players' attacks in the tick (0.76.0)
+
+The owner, 22 Oct, on a 16x stress test that runs smooth: "i need absolute
+masterclass help to get my server to accomplish this" - the game first, then
+the server (the API's swarm.py and its CLAUDE.md).
+
+**The game at 16x was 5 frames a second.** The Big Field at 16x is 5,888
+monsters; a warrior holding attack had 390 of them after him, every one
+chasing, steering round its neighbours, sliding into their backs and firing,
+for 40 places round him. The physics tick took 28 to 32 ms against its 12.5,
+and Godot ran up to eight ticks a frame to catch up: 161 to 200 ms frames.
+Measured headless in the container (the owner's PC is about 1.7 times
+faster), `_bench.gd`, the warrior holding attack:
+
+| | before | after |
+|---|---|---|
+| 16x, open field | 161-200 ms a frame, every frame a hitch | 10.4-11.3 ms, 10-12% hitches |
+| 16x, physics tick | 28-32 ms | 9.8-11.3 ms |
+| 16x, against a wall | - | 9.2 ms, 16 hitches in 868 frames |
+| 12x | - | 7.9 ms, 14 in 1,011 |
+| 8x, in the hall | 107 ms, every frame a hitch | about 7 ms, 0-1 hitches |
+
+With every brain switched off the same field costs 3.2 ms - that is the
+engine's floor for that many bodies, and the hitches left at 16x are frames
+that ran two ticks at about 11 ms each.
+
+- **SEATS: 64 fight at once** (`BaseEnemy.FIGHT_SEATS`; baseenemy.gd, SEATS,
+  has the whole rule). A monster after somebody fights only while it holds
+  one of that target's seats; one without WAITS ITS TURN where it stands,
+  facing them, idle, asking again every `SEAT_RETRY_TICKS`. A seat frees when
+  its holder dies, gives up, turns on somebody else or stops asking
+  (`SEAT_STALE_TICKS`). One `SEAT_SWAP_MARGIN` nearer than the furthest seated
+  one takes its seat, and **being hit takes a seat at once** - nothing stands
+  and lets itself be killed. A boss never waits. A heavy pull at 1x is a few
+  dozen, so play is as it was; only a stress crowd ever waits.
+- **A waiter thinks one tick in `WAIT_STRIDE`** (4), each on its own phase
+  (`waits_this_tick()`); a hit is answered on the next tick regardless. The
+  bush mage takes the same seat (`bushmage.gd`), and a waiter's threat ring
+  refreshes at the idle pace (`threatring.gd`).
+- **The sleeper's pass is spread over its quarter second**
+  (`EnemySleeper.round_share()`): it looked at every monster in one frame,
+  four times a second - 19 ms of one frame at 16x. Now a round is the area's
+  monsters as they were when it began, and each frame looks at its share, so
+  each is still looked at once a quarter second. A jump looks at everybody at
+  once (`check_now()`).
+- **The readout says who is fighting**: "after you" in the F3 overlay,
+  `PerfOverlay.fight_counts()` - fighting, waiting their turn, and the seats.
+- **The owner panel's stress crowd** has 1, 2, 3, 4, 6, 8, 12 and 16x
+  (`StressCrowd.MULTIPLIERS`).
+
+**THEIR ATTACKS RIDE THE TICK** (presence.gd, the header). The presence server
+sent every attack picture to every other game in the area in a frame of its
+own, as it came: players x players frames a second, and at 128 bots in one
+area that was 16,000 frames a second and most of the server's time. The hello
+now says `"xt": 1` (`TICK_ATTACKS`), and the server puts the attacks made
+since its last tick inside that tick's `moves` (`"x": [[who, attacks], ...]`);
+`_hear_attacks()` hands them out exactly as an `x` of their own. Nothing plays
+later: attacks are played back on the maker's clock, `PLAYBACK_DELAY` behind,
+like the steps in the same frame. Our own come back in it and are passed over.
+Either side may be older: a server from before ignores `"xt"` and sends `x` as
+it did, and this game reads both.
+
+`_test_the_crowd_takes_seats` holds the seats (the first 64 seated, the swap,
+a hit, a boss, leaving and retaking, the stride, the stale seat, a freed one);
+the sleeper's jump test and "a pass is spread over its quarter second" hold
+the round; `_test_other_players_attacks_are_pictures` and
+`_test_presence_carries_the_monsters` hold the attacks in the tick and the
+hello.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven
