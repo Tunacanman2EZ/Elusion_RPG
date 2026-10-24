@@ -34,6 +34,8 @@ const SLAG_SHADER := preload("res://src/shared/element_recolour.gdshader")
 # without walking the tree.
 const PUDDLE_GROUP := &"acidpuddles"
 
+const StatusEffects := preload("res://src/characters/statuseffects.gd")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -121,6 +123,13 @@ const PUDDLE_GROUP := &"acidpuddles"
 # pools a cast that is a hundred and twenty fewer calls queued in a frame the
 # game is already spending on sixty-five erupting spikes.
 var spawn_at: Vector2 = Vector2.ZERO
+
+# A BOSS'S POOL CARRIES ITS EFFECT (0.77.0): set by the boss spike that left it
+# (bossprojectile.gd) - chill on ice slick, burn on fire, soaked in water,
+# withered in the dark. Every tick that hurts you puts it on again, as from the
+# ground: a pool can chill you but never freeze you (statuseffects.gd). &"" is
+# every other pool in the game, the slimes' included, exactly as before.
+var status: StringName = &""
 
 var _age: float = 0.0
 
@@ -278,6 +287,7 @@ func _enter(node: Node) -> void:
 	# staying in it does.
 	if damages_on_spawn:
 		node.take_damage(tick_damage, element)
+		StatusEffects.apply_to(node, status, tick_damage, global_position, true)
 
 
 func _leave(node: Node) -> void:
@@ -318,6 +328,7 @@ func _tick_players_inside(delta: float) -> void:
 		_next_tick[id] = float(_next_tick[id]) - delta
 		if _next_tick[id] <= 0.0:
 			node.take_damage(tick_damage, element)
+			StatusEffects.apply_to(node, status, tick_damage, global_position, true)
 			# ADDED, not reset, so a long frame does not swallow the leftover
 			# and drift the rate.
 			_next_tick[id] = float(_next_tick[id]) + tick_interval

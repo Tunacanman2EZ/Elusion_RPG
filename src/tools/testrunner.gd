@@ -421,6 +421,7 @@ func _run_all() -> void:
 	await _test_the_bullet_zone()
 	await _test_the_bullet_zone_is_shared()
 	await _test_the_field_volleys()
+	await _test_the_bosses_are_seven_fights()
 	_test_the_road_through_the_game()
 	await _test_the_arrival_portal_closes_behind_you()
 	await _test_monsters_go_out_in_a_burst()
@@ -485,6 +486,7 @@ func _run_all() -> void:
 	await _test_coowners_and_their_levels()
 	await _test_economy_rules_on_the_client()
 	await _test_the_gm_panel_economy_tab()
+	await _test_the_gm_panel_health_tab()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -18951,6 +18953,211 @@ func _test_the_gm_panel_economy_tab() -> void:
 	await get_tree().process_frame
 
 
+# THE HEALTH TAB (0.78.0). The owner, of the four next steps after the swarm:
+# "work on this or if you have a even better idea lets hear it". The live
+# server on the GM panel - players and crowds, data out and the month it adds
+# up to, the tick, the machine, the slowest routes - and the kill receipts
+# put to the server's own count, with the switch beside them. The API's half
+# is test_serverhealth.py and test_presence.py P-13.
+func _test_the_gm_panel_health_tab() -> void:
+	section("HEALTH TAB - the live server and the kill receipts on the GM panel")
+	var was_owner: bool = Api.is_owner
+	var was_role: String = Api.role
+	Api.is_owner = true
+	Api.role = "owner"
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var tabs: TabContainer = gm.get_node_or_null("%ownertabs") as TabContainer
+	var tab: HealthTab = gm.get("health_tab") as HealthTab
+	check("the GM panel has a Health tab, after Economy",
+		tabs != null and tab != null and tab.get_parent() == tabs and tabs.get_tab_title(tab.get_index()) == "Health"
+		and tabs.get_tab_title(tab.get_index() - 1) == "Economy")
+	if tabs == null or tab == null:
+		gm.queue_free()
+		Api.is_owner = was_owner
+		Api.role = was_role
+		return
+	tab.timer.stop()
+	tabs.current_tab = tab.get_index()
+	check("the panel reads it when it opens, for the owner and a co-owner (is_owner)",
+		_func_body(_code_src("res://src/ui/owner/ownerpanel.gd"), "func _on_visibility_changed(").contains(
+			"health_tab.refresh()"))
+	check("  and every REFRESH_SECONDS (%d) while it is on screen, quietly" % int(HealthTab.REFRESH_SECONDS),
+		HealthTab.REFRESH_SECONDS == 30.0 and tab.timer.wait_time == 30.0
+		and _func_body(_code_src("res://src/ui/owner/healthtab.gd"), "func _on_timer(").contains("is_visible_in_tree()"))
+
+	var now: int = int(Time.get_unix_time_from_system())
+	var view: Variant = JSON.parse_string(JSON.stringify({"now": now,
+		"presence": {"reporting": true,
+			"last": {"at": now - 20, "age_seconds": 20, "reporting": true, "connections": 12, "players": 9,
+				"areas": 3, "crowd": [["town", 7], ["big_field", 2]], "ticks_per_second": 10.0, "late_ticks": 0,
+				"bytes_per_second": 900000.0, "net_per_second": 1200000.0, "cpu": 4.0, "load1": 0.31,
+				"mem_free_mb": 412},
+			"day": {"samples": 900, "peak_players": 19, "peak_area": "big_field", "peak_area_players": 11, "late_ticks": 0},
+			"week": {"samples": 6000, "peak_players": 40, "peak_area": "big_field", "peak_area_players": 34, "late_ticks": 3}},
+		"month": {"source": "machine", "bytes_per_second": 200000.0, "gib": 520.4, "allowance_gib": 1000,
+			"share": 0.52, "over_cost": 0.0},
+		"crowd": {"verdict": "watch", "by": "crowd", "watch_at": 32, "now_at": 96},
+		"tick": {"verdict": "steady", "per_second": 10.0, "late_today": 0},
+		"machine": {"cores": 1, "load1": 0.31, "mem_free_mb": 412, "disk_free_gb": 18.2, "disk_total_gb": 24.9,
+			"db_mb": 120.4},
+		"routes": {"uptime_seconds": 7200, "requests": 5000, "errors": 0, "slowest": [
+			{"route": "POST login", "p99_ms": 98.0, "count": 40}, {"route": "POST combat_kill", "p99_ms": 12.4, "count": 900},
+			{"route": "PUT save", "p99_ms": 9.0, "count": 800}, {"route": "GET status", "p99_ms": 2.0, "count": 70}]},
+		"receipts": {"on": false, "verdict": "ready", "days": 7, "paid": 412, "backed": 405, "share": 0.983,
+			"short": 2, "not_due": 0, "never": 5, "never_by_enemy": [["slime", 3], ["bat", 2]], "books_days": 7.0,
+			"min_client_build": 0, "receipt_build": 7, "min_build_low": true, "ready_share": 0.98, "min_kills": 200,
+			"as_of": now}}))
+	var asked: Array = []
+	var answers: Array = [{"ok": true, "status": 200, "data": view}]
+	tab.fetch = func(path: String) -> Dictionary:
+		asked.append(path)
+		await get_tree().process_frame
+		return answers[0]
+	# Empty, measured as the other tabs are; then filled.
+	for key in tab.pages:
+		(tab.pages[key] as Control).visible = false
+	await get_tree().process_frame
+	var without_it: float = tabs.get_combined_minimum_size().y
+	await tab.refresh()
+	check("opened, it reads the server's health - the receipts as kept, not fresh", asked == ["/api/server/health"], asked)
+	check("  the players: online, in an area, the biggest crowd; the most today and this week",
+		tab.players_label.text == "12 online, 9 in an area; the biggest crowd: town, 7. Most today: 19 (big field 11). This week: 40 (big field 34).",
+		tab.players_label.text)
+	check("  the data going out: the machine's own, and the sockets' share",
+		tab.data_label.text == "Now 1.2 MB/s from the machine, 900 KB/s of it the game's sockets (before a browser's compression).",
+		tab.data_label.text)
+	check("  the month at this week's rate, against what the droplet includes",
+		tab.month_label.text == "A month at this week's rate: 520 GiB of the 1,000 included."
+		and tab.month_label.get_theme_color("font_color") == HealthTab.SAY_WARN, tab.month_label.text)
+	check("  whether one area needs sending only what is near yet, and why",
+		tab.nearby_label.text == "Sending each game only nearby players: worth planning - an area held 32 or more this week.",
+		tab.nearby_label.text)
+	check("  the tick and the machine",
+		tab.tick_label.text == "Tick: 10.0 a second, steady. Late beats today: 0."
+		and tab.machine_label.text == "Load 0.31 on 1 core, 412 MB memory free, disk 18.2 of 24.9 GB free, the database 120 MB.",
+		[tab.tick_label.text, tab.machine_label.text])
+	check("  the slowest three routes by p99, as words, and the errors - one worker's",
+		tab.routes_label.text == "p99: login 98 ms, combat kill 12 ms, save 9.0 ms. No server errors in 2h 00m, one worker's.",
+		tab.routes_label.text)
+	check("the receipts: the verdict, the week in a line, the monsters never seen by name",
+		tab.verdict_label.text == "Ready to switch on: a week of honest play is backed by the server's count."
+		and tab.detail_label.text == "Of 412 kills paid in the last 7 days, 405 (98.3%%) had the server's count; 2 short, 0 not due, 5 never seen (%s 3, %s 2)." % [
+			EnemyPortraits.display_name("slime"), EnemyPortraits.display_name("bat")]
+		and tab.verdict_label.get_theme_color("font_color") == HealthTab.SAY_GOOD, [tab.verdict_label.text, tab.detail_label.text])
+	check("  and, ready with the oldest build allowed in below 7, that it has to go first",
+		tab.build_label.text.begins_with("Set Old versions must update to 7 first"), tab.build_label.text)
+	check("  the switch beside them shows the server's, the owner's to throw",
+		not tab.receipts_switch.button_pressed and not tab.receipts_switch.disabled)
+
+	# FULL, IT STILL FITS: 370 wide, no taller than the other tabs.
+	var busy: Dictionary = (view as Dictionary).duplicate(true)
+	busy["presence"]["reporting"] = false
+	busy["presence"]["last"]["age_seconds"] = 7200
+	busy["presence"]["last"]["crowd"] = [["the_longest_area_name_there_is", 128]]
+	busy["month"]["share"] = 34.1
+	busy["month"]["gib"] = 34100.0
+	busy["month"]["over_cost"] = 331.0
+	busy["receipts"]["verdict"] = "monster"
+	busy["receipts"]["never_by_enemy"] = [["elementallordboss", 9999], ["slime", 999], ["bat", 99]]
+	busy["receipts"]["paid"] = 123456
+	busy["receipts"]["min_build_low"] = true
+	tab.show_answer(busy)
+	tab._say_here("This server does not have the Health tab yet (404). Update the server, then Refresh.")
+	var filled: Array = []
+	for which in ["players", "machine", "receipts"]:
+		tab.show_page(which)
+		await get_tree().process_frame
+		filled.append(Vector2(PanelWindow.content_minimum(gm).x, tabs.get_combined_minimum_size().y))
+	check("  filled to the brim, every page fits: 370 wide, no taller than the other tabs (%d)" % without_it,
+		filled.all(func(need: Vector2) -> bool: return need.x <= 370.0 and need.y <= without_it + 0.5), filled)
+	check("  and nothing in it scrolls; one page at a time",
+		tab.find_children("*", "ScrollContainer", true, false).is_empty()
+		and tab.pages["receipts"].visible and not tab.pages["players"].visible and not tab.pages["machine"].visible
+		and tab.page_buttons["receipts"].button_pressed and not tab.page_buttons["players"].button_pressed)
+	tab.show_page("players")
+	check("presence gone quiet: said, in red, with how long",
+		tab.players_label.text.begins_with("presence.py has not written for 2h 00m - is it running?")
+		and tab.players_label.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.players_label.text)
+	check("  a month past what is included: what it would cost, in red",
+		tab.month_label.text == "A month at this week's rate: 34,100 GiB of the 1,000 included - about $331 over."
+		and tab.month_label.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.month_label.text)
+	tab._say_here("")
+
+	# REFRESH, BY HAND: fresh receipts, and Results told.
+	asked.clear()
+	await tab.refresh(true)
+	check("Refresh asks for the receipts fresh, and says what it read in Results",
+		asked == ["/api/server/health?fresh=1"] and tab.say_label.text == "Read from the server."
+		and gm.results.get_parsed_text().contains("Read from the server. 12 online"), asked)
+
+	# THE SWITCH, FROM HERE: the Testing tab's handler, and both show it.
+	var posted: Array = []
+	gm.post_request = func(path: String, body: Dictionary) -> Dictionary:
+		posted.append([path, body])
+		await get_tree().process_frame
+		return {"ok": true, "data": {"kill_receipts": true, "min_client_build": 7}}
+	var testing_switch: CheckButton = gm.get_node_or_null("%receiptsbutton") as CheckButton
+	answers[0] = {"ok": true, "status": 200, "data": JSON.parse_string(JSON.stringify(view))}
+	answers[0]["data"]["receipts"]["on"] = true
+	answers[0]["data"]["receipts"]["verdict"] = "on"
+	answers[0]["data"]["receipts"]["min_build_low"] = false
+	tab.receipts_switch.button_pressed = true
+	await get_tree().create_timer(0.1).timeout
+	check("switched on from the Health tab: the owner's route, through the Testing tab's own handler",
+		posted == [["/api/server/receipts", {"on": true}]], posted)
+	check("  and both switches show it on; the tab reads again and says on",
+		testing_switch != null and testing_switch.button_pressed and tab.receipts_switch.button_pressed
+		and tab.verdict_label.text == "On: kills are paid only when the server's count agrees." and tab.build_label.text == "",
+		[str(testing_switch.button_pressed) if testing_switch != null else "no switch", tab.verdict_label.text])
+	gm.status_request = func(_path: String) -> Dictionary:
+		await get_tree().process_frame
+		return {"ok": true, "data": {"kill_receipts": false}}
+	await gm._refresh_receipts()
+	check("  thrown back elsewhere, the panel's read of it puts the Health tab's back too",
+		not tab.receipts_switch.button_pressed and not testing_switch.button_pressed)
+	Api.is_owner = false
+	tab.show_switch(false)
+	check("  a co-owner sees it, and cannot throw it", tab.receipts_switch.disabled)
+	Api.is_owner = true
+
+	# THE VERDICTS, EACH IN WORDS.
+	check("every verdict in a sentence: no books, young, few, short, monster",
+		HealthTab.verdict_text({"verdict": "no_books"}) == "Not yet: the server has not counted a fight yet."
+		and HealthTab.verdict_text({"verdict": "young", "books_days": 3.5}) == "Not yet: the server has counted fights for 3.5 days; a week is wanted."
+		and HealthTab.verdict_text({"verdict": "few", "paid": 12, "min_kills": 200}) == "Not yet: 12 kills paid this week; 200 are wanted to judge by."
+		and HealthTab.verdict_text({"verdict": "short", "share": 0.9545, "ready_share": 0.98}) == "Not yet: 95.5% of kills had the server's count; 98% is wanted."
+		and HealthTab.verdict_text({"verdict": "monster", "never_by_enemy": [["bat", 11]]}).begins_with(
+			"Not yet: the server never saw %s die 11 times" % EnemyPortraits.display_name("bat")))
+	check("  the crowd's: fine, watch by the data, now; nothing measured",
+		HealthTab.nearby_text({"verdict": "fine", "watch_at": 32}) == "Sending each game only nearby players: not needed yet (watch from 32 in one area)."
+		and HealthTab.nearby_text({"verdict": "watch", "by": "data"}).ends_with("the month is past half the data included.")
+		and HealthTab.nearby_text({"verdict": "now", "by": "crowd", "now_at": 96}).ends_with("needed now - an area held 96 or more this week.")
+		and HealthTab.nearby_text({}) == "Sending each game only nearby players: not enough measured yet.")
+	check("  rates in KB/s and MB/s, decimal, as the swarm said them",
+		HealthTab.rate_text(200.0) == "0.2 KB/s" and HealthTab.rate_text(850000.0) == "850 KB/s"
+		and HealthTab.rate_text(13400000.0) == "13.4 MB/s")
+	check("  a server whose machine cannot be read (Windows): the sockets alone, said so",
+		HealthTab.data_text({"presence": {"last": {"bytes_per_second": 5000.0, "net_per_second": null}}})
+		== "Now 5.0 KB/s from the game's sockets (the machine's own network cannot be read here)."
+		and HealthTab.month_text({"gib": 3.26, "allowance_gib": 1000, "over_cost": 0.0, "source": "presence"})
+		== "A month at this week's rate: 3.3 GiB of the 1,000 included (the sockets alone).")
+	check("  before presence.py has written a minute: says so",
+		HealthTab.players_text({"presence": {"reporting": false, "last": null}}).begins_with("presence.py has not written a minute yet"))
+
+	# AN OLDER SERVER.
+	answers[0] = {"ok": false, "status": 404, "error": "Not found."}
+	await tab.refresh(true)
+	check("a server from before the Health tab: says to update it",
+		tab.say_label.text == "This server does not have the Health tab yet (404). Update the server, then Refresh.",
+		tab.say_label.text)
+	Api.is_owner = was_owner
+	Api.role = was_role
+	gm.queue_free()
+	await get_tree().process_frame
+
+
 # THE CO-OWNERS (0.21.0). The owner: "i would promote allmind to owner but
 # there can only be 1 however thats why i want to build another gate that
 # allows him to enter", "maybe a switch in my gm panel that gives him access as
@@ -27897,9 +28104,10 @@ func _test_the_gm_panel_is_a_window() -> void:
 	# AND WORLD (0.46.0): the stirring lands' switches (worldtab.gd); AND
 	# EVENTS (0.48.0), the world's events (eventstab.gd).
 	# AND ECONOMY (0.74.0): the gold flow, the economy's numbers and the canary
-	# (economytab.gd).
-	check("Account, Testing, Server, World, Events and Economy",
-		titles == ["Account", "Testing", "Server", "World", "Events", "Economy"], titles)
+	# (economytab.gd). AND HEALTH (0.78.0): the live server and the kill
+	# receipts (healthtab.gd).
+	check("Account, Testing, Server, World, Events, Economy and Health",
+		titles == ["Account", "Testing", "Server", "World", "Events", "Economy", "Health"], titles)
 	check("sized to the tallest tab, so switching never resizes the window",
 		tabs.use_hidden_tabs_for_min_size)
 	# OWNED ONLY: an OptionButton's popup carries a ScrollContainer of its own,
@@ -34667,6 +34875,410 @@ func _test_bosses_hit_for_their_band() -> void:
 	check("and _spawn_stalker() hands the stalker trail_damage() and the boss's element",
 		_within(_first_code_index(boss_src, "trail_damage(),\n\t\tcurrent_element())", stalk_at), stalk_end) != -1)
 	print("  bosses: spikes %s" % str(hits))
+
+
+# =============================================================================
+# SEVEN BOSSES, SEVEN FIGHTS (0.77.0) - kits, effects, whose turn it is
+# =============================================================================
+# The owner, 23 Oct: "bosses currently are stale do to only locking on 1 player
+# ... we can add real elements and effects slow on ice etc i want to keep the
+# stalagmites but each boss needs to be a challenge but also clearable".
+# bossenemy.gd's THE KITS and statuseffects.gd have the design; this holds it:
+# each boss its own shapes and volley, the effects capped so a fight stays
+# clearable, the hazards carrying them, and every attack taking turns round the
+# fight instead of locking on to one player.
+
+const _KIT_BOSSES := ["lightboss", "windboss", "waterboss", "iceboss", "earthboss", "fireboss", "boss"]
+const _KNOWN_SHAPES := [&"ring", &"cage", &"gate", &"lance", &"cross", &"spiral", &"carpet",
+	&"arc", &"triwall", &"rake", &"snare", &"ladder", &"sweep", &"checker"]
+
+
+func _kit_boss(enemy_id: String) -> Node:
+	var boss: Node = (load(_boss_scene_path(enemy_id)) as PackedScene).instantiate()
+	if boss.enemy_data == null:
+		boss.enemy_data = boss.ENEMY_DATA
+	return boss
+
+
+func _test_the_bosses_are_seven_fights() -> void:
+	section("SEVEN BOSSES, SEVEN FIGHTS (0.77.0) - each its own kit and effect, attacking everyone in turn")
+	const FX := preload("res://src/characters/statuseffects.gd")
+	const BossScript := preload("res://src/enemies/bossenemy.gd")
+	const Targets := preload("res://src/shared/targets.gd")
+	var boss_src := FileAccess.get_file_as_string("res://src/enemies/bossenemy.gd")
+	var kits: Dictionary = BossScript.KITS
+
+	# ---- the kits ------------------------------------------------------------
+	var elements: Array = []
+	var shape_sets: Array = []
+	var first_volleys: Array = []
+	var bad_kits: Array = []
+	for eid in _KIT_BOSSES:
+		var boss: Node = _kit_boss(eid)
+		var element: int = boss.current_element()
+		elements.append(element)
+		var kit: Dictionary = kits.get(element, {})
+		var shapes: Array = kit.get("shapes", [])
+		var known: bool = shapes.size() == 3
+		for shape in shapes:
+			known = known and _KNOWN_SHAPES.has(shape)
+		var phases_ok: bool = boss.stalagmite_pool(0).size() == 2 and boss.stalagmite_pool(1).size() == 3 \
+			and boss.stalagmite_pool(2).size() == 3 and boss.stalagmite_pool(0) == [shapes[0], shapes[1]]
+		var volleys: Array = kit.get("volleys", [])
+		var volleys_ok: bool = volleys.size() == 3
+		for list in volleys:
+			for v in list:
+				volleys_ok = volleys_ok and BossScript.VOLLEYS.has(v)
+		if not (kits.has(element) and known and phases_ok and volleys_ok):
+			bad_kits.append(eid)
+		var sorted_shapes: Array = shapes.duplicate()
+		sorted_shapes.sort()
+		shape_sets.append(sorted_shapes)
+		first_volleys.append(volleys[0] if volleys.size() > 0 else [])
+		boss.free()
+	check("every boss has a kit of its element's: three of the sixteen stalagmite shapes and a volley for each phase",
+		bad_kits.is_empty(), bad_kits)
+	check("  the first two shapes from the start and all three from phase two", bad_kits.is_empty())
+	var distinct_shapes: Dictionary = {}
+	var distinct_volleys: Dictionary = {}
+	for k in shape_sets.size():
+		distinct_shapes[str(shape_sets[k])] = true
+		distinct_volleys[str(first_volleys[k])] = true
+	check("no two bosses raise the same three shapes, or open with the same volley - seven fights, not one recoloured",
+		distinct_shapes.size() == 7 and distinct_volleys.size() == 7, [shape_sets, first_volleys])
+	var crowned_last: Array = kits[Element.Type.DARK]["volleys"][2]
+	var all_six: bool = true
+	for element in elements:
+		if element == Element.Type.DARK:
+			continue
+		for v in kits[element]["volleys"][0]:
+			all_six = all_six and crowned_last.has(v)
+	check("the Crowned's last phase throws every one of the other six's volleys", all_six, crowned_last)
+	var stalker_kits: Array = []
+	for element in kits:
+		if bool(kits[element].get("stalkers", false)):
+			stalker_kits.append(element)
+	check("only the Crowned keeps the stalkers", stalker_kits == [Element.Type.DARK], stalker_kits)
+	check("one clock raises the stalagmites now, so shapes once kept on separate tracks can never meet",
+		_first_code_index(boss_src, "func _build_pattern(", 0) == -1
+		and _first_code_index(boss_src, "_pattern_by_name(choice, origin), choice)", 0) != -1)
+
+	# ---- the effects, on their own -------------------------------------------
+	var lab := Node2D.new()
+	add_child(lab)
+	var body := ZoneDummy.new()
+	lab.add_child(body)
+	var fx: Node = FX.attach(body)
+	check("anything that takes damage can carry effects, found by name", FX.of(body) == fx and fx.host == body)
+	fx.apply(FX.CHILL)
+	var one: float = fx.speed_scale()
+	fx.apply(FX.CHILL)
+	var two: float = fx.speed_scale()
+	fx.apply(FX.CHILL)
+	check("chill: 20%% slower a hit, 40%% at two, and the third hit freezes (%.1f, %.1f, %.1f)" % [one, two, fx.speed_scale()],
+		is_equal_approx(one, 0.8) and is_equal_approx(two, 0.6) and fx.speed_scale() == 0.0
+		and fx.started.has(FX.FROZEN), [one, two, fx.speed_scale()])
+	check("  held, you cannot sprint either", not fx.can_sprint())
+	fx.advance(FX.FROZEN_SECONDS + 0.01)
+	check("  for %.1f s, then free" % FX.FROZEN_SECONDS, is_equal_approx(fx.speed_scale(), 1.0), fx.speed_scale())
+	for k in 4:
+		fx.apply(FX.CHILL)
+	check("  and nothing holds you again for %.0f s: chilled four times over, you are slowed, never frozen" % FX.HOLD_IMMUNITY,
+		is_equal_approx(fx.speed_scale(), FX.SLOW_FLOOR) and not fx.is_held(), fx.speed_scale())
+	check("  rooted neither", not fx.apply(FX.ROOT))
+	check("nothing slows you more than 40%", is_equal_approx(FX.SLOW_FLOOR, 0.6) and FX.CHILL_STEP * (FX.CHILL_TO_FREEZE - 1) <= 0.4 + 0.0001)
+	fx.advance(FX.HOLD_IMMUNITY + 0.1)
+	check("  the chill wears off on its own (%.1f s since the last)" % FX.CHILL_SECONDS, is_equal_approx(fx.speed_scale(), 1.0))
+	check("root: %.1f s where you stand" % FX.ROOT_SECONDS, fx.apply(FX.ROOT) and fx.speed_scale() == 0.0)
+	fx.advance(FX.ROOT_SECONDS + 0.01)
+	check("  then you walk, and cannot be rooted or frozen again at once",
+		is_equal_approx(fx.speed_scale(), 1.0) and not fx.apply(FX.ROOT) and fx.hold_immune_left > 0.0)
+	fx.clear_all()
+	for k in 5:
+		fx.apply(FX.CHILL, 4, Vector2.INF, true)
+	check("a puddle chills but never freezes: standing on ice slows you, being hit by it is what freezes",
+		is_equal_approx(fx.speed_scale(), FX.SLOW_FLOOR) and not fx.is_held())
+	check("  and a puddle cannot shove, root or dazzle - only the ground effects ride on one",
+		not fx.apply(FX.ROOT, 4, Vector2.INF, true) and not fx.apply(FX.SHOVE, 4, Vector2.ZERO, true)
+		and not fx.apply(FX.DAZZLE, 4, Vector2.INF, true)
+		and FX.GROUND == [FX.CHILL, FX.BURN, FX.SOAKED, FX.WITHER])
+	fx.clear_all()
+	body.taken.clear()
+	fx.apply(FX.BURN, 100)
+	for k in 20:
+		fx.advance(0.1)
+	fx.apply(FX.BURN, 100)
+	for k in 20:
+		fx.advance(0.1)
+	var ticks: Array = []
+	for t in body.taken:
+		ticks.append(t[0])
+	check("burn: %d%% of the hit every %.1f s, refreshed by another hit, never stacked (8 ticks of 8 over 4 s)" % [
+			roundi(FX.BURN_SHARE * 100), FX.BURN_TICK],
+		ticks.size() == 8 and ticks.max() == 8 and ticks.min() == 8 and body.taken[0][1] == Element.Type.FIRE, ticks)
+	fx.advance(FX.BURN_SECONDS)
+	check("  and out %.0f s after the last hit: ten ticks in all" % FX.BURN_SECONDS,
+		body.taken.size() == 10 and fx.burn_left == 0.0, body.taken.size())
+	fx.apply(FX.SOAKED)
+	var soaked: bool = not fx.can_sprint()
+	fx.advance(FX.SOAKED_SECONDS + 0.01)
+	check("soaked: no sprint for %.0f s, and walking as ever" % FX.SOAKED_SECONDS,
+		soaked and fx.can_sprint() and is_equal_approx(fx.speed_scale(), 1.0))
+	fx.apply(FX.SHOVE, 1, Targets.body_point(body) + Vector2(-10, 0))
+	var push: Vector2 = fx.push_velocity()
+	var carried: float = 0.0
+	for k in 40:
+		carried += fx.push_velocity().x * 0.01
+		fx.advance(0.01)
+	check("shove: knocked along the hit, about 40 px, then still (%.1f px)" % carried,
+		push.x > 0.0 and is_zero_approx(push.y) and absf(carried - 40.0) < 3.0 and fx.push_velocity() == Vector2.ZERO, [push, carried])
+	fx.pull(Targets.body_point(body) + Vector2(300, 0), 2.0, 999.0)
+	check("pull: toward the boss, never as fast as you walk (%.0f px/s at most)" % FX.PULL_SPEED_MAX,
+		fx.push_velocity().x > 0.0 and fx.push_velocity().length() <= FX.PULL_SPEED_MAX + 0.01 and FX.PULL_SPEED_MAX < 90.0,
+		fx.push_velocity())
+	fx.clear_all()
+	fx.apply(FX.DAZZLE)
+	var flashed: float = fx._flash_left
+	fx.advance(0.2)
+	fx.apply(FX.DAZZLE)
+	check("dazzle: %.0f s, one soft flash however many orbs land (at most one every %.0f s)" % [FX.DAZZLE_SECONDS, FX.DAZZLE_FLASH_GAP],
+		flashed > 0.0 and fx._flash_left < flashed and FX.FLASH_ALPHA <= 0.5 and fx.started.count(FX.DAZZLE) == 1)
+	fx.apply(FX.WITHER)
+	check("wither: healing halved while it lasts", is_equal_approx(fx.heal_scale(), 0.5))
+	fx.advance(FX.WITHER_SECONDS + 0.01)
+	check("  for %.0f s" % FX.WITHER_SECONDS, is_equal_approx(fx.heal_scale(), 1.0))
+	var longest: float = maxf(maxf(FX.CHILL_SECONDS, FX.BURN_SECONDS), maxf(FX.SOAKED_SECONDS, maxf(FX.DAZZLE_SECONDS, FX.WITHER_SECONDS)))
+	check("nothing lasts longer than 3 s", longest <= 3.0 and FX.FROZEN_SECONDS < 1.0 and FX.ROOT_SECONDS < 1.0, longest)
+	body.is_dying = true
+	check("a dying body takes no effects", not fx.apply(FX.CHILL) and not fx.apply(FX.BURN, 50))
+	body.is_dying = false
+	var boss_effects: Dictionary = {}
+	for element in elements:
+		boss_effects[FX.for_element(element)] = true
+	check("each of the seven bosses' elements carries an effect of its own", boss_effects.size() == 7 and not boss_effects.has(&""),
+		boss_effects.keys())
+	check("  and the others carry none: the Field's monsters are as they were", FX.for_element(Element.Type.POISON) == &""
+		and FX.for_element(Element.Type.NONE) == &"")
+
+	# ---- the hazards carry them ----------------------------------------------
+	var holder := Node2D.new()
+	lab.add_child(holder)
+	var wrong: Array = []
+	for eid in _KIT_BOSSES:
+		var boss: Node = _kit_boss(eid)
+		var had: Array = holder.get_children()
+		boss._spawn_one_eruption(holder, Vector2.ZERO, 1.0, boss.SPIKE_BASE_RADIUS, boss.gate_scene)
+		for c in holder.get_children():
+			if not had.has(c):
+				if StringName(c.get("status")) != FX.for_element(boss.current_element()):
+					wrong.append(eid)
+				c.free()
+		boss.free()
+	check("every boss's stalagmites carry its effect, on every game that draws them (set in _spawn_one_eruption)",
+		wrong.is_empty(), wrong)
+	var spike_src := FileAccess.get_file_as_string("res://src/projectiles/bossprojectile.gd")
+	check("  a spike puts it on whoever it catches, and its pool carries the ground ones",
+		spike_src.contains("StatusEffects.apply_to(target, status, damage, global_position)")
+		and spike_src.contains("StatusEffects.GROUND.has(status)"))
+
+	var others: Array = get_tree().get_nodes_in_group(&"player")
+	for o in others:
+		o.remove_from_group(&"player")
+	body.add_to_group(&"player")
+	body.position = Vector2(-52000, -52000)
+	var zone := BulletZone.new()
+	lab.add_child(zone)
+	zone.set_process(false)
+	fx.clear_all()
+	var at: Vector2 = Targets.body_point(body)
+	zone.field.spawn(at, 0.0, 1.0, Color.WHITE, false, 0.0, 0.0, 6.0, 9, Element.Type.ICE)
+	zone._process(0.01)
+	check("an orb in the Field chills nobody - the Field's monsters are as they were", fx.chill_stacks == 0)
+	zone.element_effects = true
+	zone.field.spawn(at, 0.0, 1.0, Color.WHITE, false, 0.0, 0.0, 6.0, 9, Element.Type.ICE)
+	zone._process(0.01)
+	check("an orb in a boss room carries its element's effect", fx.chill_stacks == 1, fx.chill_stacks)
+	zone.field.spawn(at - Vector2(6, 0), 0.0, 100.0, Color.WHITE, false, 0.0, 0.0, 6.0, 5, Element.Type.WIND)
+	zone._process(0.05)
+	check("  a wind orb shoves you on along the line it flew", fx.push_velocity().x > 0.0 and absf(fx.push_velocity().y) < 1.0,
+		fx.push_velocity())
+	fx.clear_all()
+	zone.field.spawn(at + Vector2(0, 5), 0.0, 0.0, Color.WHITE, true, 0.0, 0.0, 6.0, 5, Element.Type.WIND)
+	zone._process(0.01)
+	check("  and a mine lying still shoves you away from where it lay", fx.push_velocity().y < 0.0, fx.push_velocity())
+	check("both boss rooms are bullet rooms whose orbs carry their effects (boss.gd)",
+		FileAccess.get_file_as_string("res://src/enemies/boss.gd").contains("zone.element_effects = true"))
+	fx.clear_all()
+	var pool: Node = (load("res://scene/projectiles/icepuddle.tscn") as PackedScene).instantiate()
+	pool.status = FX.CHILL
+	pool.spawn_at = at
+	lab.add_child(pool)
+	pool._enter(body)
+	for k in 6:
+		pool._tick_players_inside(float(pool.tick_interval))
+	check("a boss's ice slick chills you while you stand in it, and never freezes you",
+		fx.chill_stacks == FX.CHILL_TO_FREEZE - 1 and not fx.is_held(), fx.chill_stacks)
+	pool.queue_free()
+	zone.queue_free()
+	var slime_pool: Node = (load("res://scene/projectiles/icepuddle.tscn") as PackedScene).instantiate()
+	check("  and every other pool in the game carries nothing", StringName(slime_pool.status) == &"")
+	slime_pool.free()
+
+	# ---- the volleys -----------------------------------------------------------
+	var arena := Node2D.new()
+	arena.position = Vector2(-60000, -60000)
+	lab.add_child(arena)
+	body.position = Vector2(-60000 + 90, -60000)
+	fx.clear_all()
+	var crowned: Node = _kit_boss("boss")
+	crowned.set_physics_process(false)
+	arena.add_child(crowned)
+	# Caged: it thinks nothing and casts nothing of its own while the test
+	# fires its volleys for it.
+	crowned.gated = true
+	crowned.global_position = Vector2(-60000, -60000)
+	var zones: Dictionary = {}
+	for kind in BossScript.VOLLEYS:
+		var z := BulletZone.new()
+		arena.add_child(z)
+		z.set_process(false)
+		zones[kind] = z
+	var origin: Vector2 = crowned.global_position
+	var aim: float = (Targets.body_point(body) - origin).angle()
+	for kind in BossScript.VOLLEYS:
+		crowned.fire_volley(zones[kind], origin, aim, "%s0" % kind, 90.0)
+	var at_once: Dictionary = {}
+	for kind in zones:
+		at_once[kind] = zones[kind].field.count
+	check("a prism's first spokes leave at once, a pincer's arms all together",
+		at_once[&"prism"] == 6 and at_once[&"pincer"] == 4, at_once)
+	check("  and the vortex draws you in, slower than you walk",
+		fx.pull_left > 0.0 and fx.pull_speed <= FX.PULL_SPEED_MAX, [fx.pull_left, fx.pull_speed])
+	await get_tree().create_timer(1.9).timeout
+	var later: Dictionary = {}
+	for kind in zones:
+		later[kind] = zones[kind].field.count
+	check("the rest on the beat: 10 prisms of 6, 3 gales of 5, 2 vortex rings of 28 with a door of 4, 3 tides of 23 with a gap of 3, 9 frost mines, a boulder's impact and 8 rocks",
+		later[&"prism"] == 60 and later[&"gale"] == 15 and later[&"vortex"] == 48 and later[&"tide"] == 60
+		and later[&"frost"] == 9 and later[&"boulder"] == 9, later)
+	var burning: int = 0
+	for p in get_tree().get_nodes_in_group(&"acidpuddles"):
+		if StringName(p.get("status")) == FX.WITHER:
+			burning += 1
+	check("  where the pincer shut, the floor carries the boss's effect (the Crowned's: withered)", burning >= 1, burning)
+	var nothing := BulletZone.new()
+	arena.add_child(nothing)
+	nothing.set_process(false)
+	for name_sent in ["laser0", "prism", "", "0", "tide:4"]:
+		crowned.fire_volley(nothing, origin, aim, name_sent, 90.0)
+	check("a volley named nothing this boss throws fires nothing - what a follower is sent cannot make one up",
+		nothing.field.count == 0, nothing.field.count)
+	check("  and every boss answers a leader's volley (monstersync \"b\")", crowned.has_method(&"fire_volley"))
+	for z in zones.values():
+		z.queue_free()
+	nothing.queue_free()
+	crowned.queue_free()
+
+	# ---- whose turn it is ------------------------------------------------------
+	var ring_boss: Node = _kit_boss("lightboss")
+	ring_boss.set_physics_process(false)
+	arena.add_child(ring_boss)
+	ring_boss.gated = true
+	ring_boss.global_position = Vector2(-60000, -60000)
+	var second := ZoneDummy.new()
+	second.add_to_group(&"player")
+	arena.add_child(second)
+	body.global_position = Vector2(-60000 + 60, -60000)
+	second.global_position = Vector2(-60000 - 100, -60000)
+	check("with nobody attacked yet, the nearer goes first", ring_boss.next_target() == body)
+	ring_boss._mark_aimed(body)
+	check("  then the one left alone longest", ring_boss.next_target() == second)
+	await get_tree().create_timer(0.02).timeout
+	ring_boss._mark_aimed(second)
+	check("  round and round", ring_boss.next_target() == body)
+	check("  never the one just attacked while anyone else is there", ring_boss.next_target(body) == second)
+	second.is_dying = true
+	check("a dying player is not in the fight", ring_boss.fight_targets() == [body] and ring_boss.next_target(body) == body)
+	second.is_dying = false
+	second.global_position = Vector2(-60000 - 600, -60000)
+	check("  nor one past the leash", ring_boss.fight_targets() == [body])
+	second.global_position = Vector2(-60000 - 100, -60000)
+	check("a boulder or a pincer goes at everyone in the fight, %d at most" % BossScript.SPLIT_MAX,
+		ring_boss.split_targets(body).size() == 2 and ring_boss.split_targets(body)[0] == body)
+
+	var cast_zone := BulletZone.new()
+	arena.add_child(cast_zone)
+	cast_zone.set_process(false)
+	ring_boss.player = body
+	ring_boss._cast_signature()
+	check("a cast at one player turns the boss to the next", ring_boss.player == second, ring_boss.player)
+	check("  and the prism went at the one it faced", cast_zone.field.count == 6, cast_zone.field.count)
+	ring_boss._cast_signature()
+	check("  and back", ring_boss.player == body)
+	second.remove_from_group(&"player")
+	ring_boss._cast_signature()
+	check("alone in the room, it is all you", ring_boss.player == body)
+	var timer: Timer = ring_boss.get_node(^"attacktimer")
+	check("each cast waits for its volley and a rest before the next (prism %.1f s + %.1f s)" % [
+			BossScript.VOLLEY_BUSY[&"prism"], BossScript.VOLLEY_REST[0]],
+		is_equal_approx(timer.wait_time, BossScript.VOLLEY_BUSY[&"prism"] + BossScript.VOLLEY_REST[0]), timer.wait_time)
+
+	var stub := GDScript.new()
+	stub.source_code = "extends Node\nvar fighting: bool = true\nfunc in_fight() -> bool:\n\treturn fighting\n"
+	stub.reload()
+	var partners: Array = []
+	for k in 3:
+		var partner: Node = stub.new()
+		partner.add_to_group(BossScript.BOSS_GROUP)
+		lab.add_child(partner)
+		partners.append(partner)
+	partners[2].fighting = false
+	check("two partners loose beside a boss slow it to x%.2f; a caged one does not count" % (1.0 + 2.0 * BossScript.WAVE_PACE),
+		is_equal_approx(ring_boss._pace(), 1.0 + 2.0 * BossScript.WAVE_PACE), ring_boss._pace())
+	for partner in partners:
+		partner.queue_free()
+	await get_tree().process_frame
+	check("  and alone it is back to full speed", is_equal_approx(ring_boss._pace(), 1.0), ring_boss._pace())
+	check("a caged boss is in no fight", not ring_boss.in_fight())
+
+	var stalkers: Dictionary = {}
+	for eid in ["lightboss", "boss"]:
+		var b: Node = _kit_boss(eid)
+		b.set_physics_process(false)
+		arena.add_child(b)
+		b.gated = true
+		stalkers[eid] = b.get("_stalker_timer") != null
+		b.queue_free()
+	check("  and only the Crowned's room has a stalker clock running", stalkers == {"lightboss": false, "boss": true}, stalkers)
+
+	# ---- you, carrying them ----------------------------------------------------
+	var me: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate()
+	me.set_physics_process(false)
+	lab.add_child(me)
+	var mine: Node = FX.of(me)
+	check("your character carries effects from the moment it is made", mine != null and me.status_effects == mine)
+	mine.apply(FX.CHILL)
+	check("  chilled, it walks slower", is_equal_approx(me.effects_speed_scale(), 0.8), me.effects_speed_scale())
+	mine.apply(FX.SOAKED)
+	check("  soaked, it cannot sprint", not me.effects_let_sprint())
+	me.set("max_hp", 400)
+	me.set("hp", 100)
+	mine.apply(FX.WITHER)
+	me.heal(40)
+	check("  withered, a heal of 40 is 20", int(me.get("hp")) == 120, me.get("hp"))
+	var player_src := FileAccess.get_file_as_string("res://src/characters/player.gd")
+	var tank_src := FileAccess.get_file_as_string("res://src/characters/tank.gd")
+	check("both walks ask: the shared loop and the tank's own",
+		player_src.contains("velocity = direction.normalized() * actual_speed * effects_speed_scale()")
+		and player_src.contains("velocity += push") and tank_src.contains("actual_speed * effects_speed_scale()")
+		and tank_src.contains("velocity += push") and tank_src.contains("effects_let_sprint()"))
+	me.queue_free()
+
+	lab.queue_free()
+	for o in others:
+		if is_instance_valid(o):
+			o.add_to_group(&"player")
+	await get_tree().process_frame
 
 
 # =============================================================================

@@ -1,4 +1,10 @@
-# bossenemy.gd — the crowned boss on the final floor.
+# bossenemy.gd — the crowned boss on the final floor, and the six element
+# bosses of the arena, which are this same scene with their own data.
+#
+# SEVEN BOSSES, SEVEN FIGHTS (0.77.0). Each runs a KIT of its own - three
+# stalagmite shapes, a signature volley of orbs, its element's effect - and
+# attacks everyone in the fight in turn rather than one player: see THE KITS
+# below, and statuseffects.gd for the effects.
 #
 # THIS SCENE HAD NO SCRIPT AT ALL. bossenemy.tscn was a CharacterBody2D with a
 # sprite, a body collider and a health bar: nothing else. No script meant no
@@ -88,10 +94,10 @@ const PLAYER_PHYSICS_LAYER := 4
 # attack it fires, which other things may eventually also use.
 @export var eruption_telegraph: float = 0.52
 
-# Prints the pattern chosen on every cast. See the note in _build_pattern().
+# Prints the shape and the volley chosen on every attack.
 #
 # OFF BY DEFAULT. It is the right tool while tuning a pattern and pure noise
-# during play: the two attack tracks cast independently, so a normal fight
+# during play: the two clocks attack independently, so a normal fight
 # prints a line every second or so and buries anything else in the console.
 # Tick it in the inspector for a tuning session rather than shipping it on.
 @export var debug_patterns: bool = false
@@ -242,6 +248,234 @@ const SPIKE_BREATHER := 0.10
 # putting empty floor where the next attack should be. What is left is the
 # minimum: the pattern's own length, the time for its hit to land, and a breath.
 const SPIKE_EXTRA_GAP := [0.35, 0.15, 0.0]
+
+
+# =============================================================================
+# THE KITS (0.77.0)
+# =============================================================================
+# The owner, 23 Oct: "bosses currently are stale do to only locking on 1
+# player ... instead of each boss being a repeat we can add real elements and
+# effects slow on ice etc i want to keep the stalagmites but each boss needs to
+# be a challenge but also clearable".
+#
+# WHAT IT WAS. All seven bosses ran this script with one vocabulary: three
+# pillar shapes on the cast, eleven spike shapes on a second clock, stalkers
+# from phase two, and the swing. The element changed timings, sizes and
+# puddles and nothing else, so the seventh fight was the first one recoloured -
+# and every shape in it was a ring painted at one player's feet: whoever was
+# nearest when the gate opened, for the whole fight.
+#
+# WHAT IT IS. Each boss has a kit, below:
+#   shapes    its own three stalagmite shapes, out of the sixteen in ATTACK
+#             PATTERNS, on the stalagmite clock (_on_spike_timer): the first
+#             two from the start, the third from phase two (PHASE_TWO_AT)
+#   volleys   its signature volley of orbs (BulletZone), fired from the cast
+#             where the pillar cast used to be - from the boss outward, so the
+#             danger comes from somewhere other than your feet. One list per
+#             phase; the Crowned's grows through the other six's
+#   stalkers  the Crowned only
+# and its element's effect (statuseffects.gd), carried by its stalagmites,
+# its orbs and - the ones that belong to the ground - its puddles:
+#   Light    lance, ring, arc        PRISM    spokes of light that turn as
+#                                             they leave: walk the gaps    dazzle
+#   Wind     arc, snare, sweep       GALE     fast fans that shove; VORTEX
+#                                             (phase three) pulls you in
+#                                             through a ring with a door   shove
+#   Water    cage, snare, ladder     TIDE     walls of orbs, each with one
+#                                             gap, the gap moving          soaked
+#   Ice      ladder, cage, checker   FROST    shards that stop and lie as
+#                                             mines across your spot       chill
+#   Earth    gate, triwall, rake     BOULDER  stalagmites thrown where you
+#                                             stood, bursting into rocks   root
+#   Fire     cross, spiral, carpet   PINCER   orbs that curve shut on your
+#                                             spot and leave it burning    burn
+#   Crowned  ring, cage, gate        one of each of the six's, more each
+#                                    phase, and the stalkers           wither
+# Fewer moves each than the one shared set had, and each one says something
+# about the boss throwing it.
+#
+# NOBODY IS LOCKED ON. Each attack picks whoever in the fight has gone longest
+# without being attacked (next_target()), never the one just attacked while
+# anyone else is there. The two clocks take their own turns, the boss walks
+# toward whoever its cast is for, and the boulders and the pincers go at up to
+# SPLIT_MAX players at once. With one player in the room, all of it is you.
+#
+# WAVES TAKE TURNS. Two or three bosses loose together each attack more slowly
+# (_pace(), WAVE_PACE), speeding back up as their partners fall: a wave of
+# three is three fights at a tempo you can follow, not three at full tempo.
+#
+# THE STALAGMITES KEEP THEIR PROMISE. Every shape here is one of the sixteen
+# and holds the rule those are built to - at most one spike in a cast can catch
+# you. And ONE clock now carries all of them, so the pairings the two tracks
+# were split to keep apart (lance+cross, carpet+spiral and lance+carpet,
+# together, left almost no floor) can no longer meet: a clock casts one shape
+# at a time.
+const KITS := {
+	Element.Type.LIGHT: {
+		"shapes": [&"lance", &"ring", &"arc"],
+		"volleys": [[&"prism"], [&"prism"], [&"prism"]],
+	},
+	Element.Type.WIND: {
+		"shapes": [&"arc", &"snare", &"sweep"],
+		"volleys": [[&"gale"], [&"gale"], [&"gale", &"vortex"]],
+	},
+	Element.Type.WATER: {
+		"shapes": [&"cage", &"snare", &"ladder"],
+		"volleys": [[&"tide"], [&"tide"], [&"tide"]],
+	},
+	Element.Type.ICE: {
+		"shapes": [&"ladder", &"cage", &"checker"],
+		"volleys": [[&"frost"], [&"frost"], [&"frost"]],
+	},
+	Element.Type.EARTH: {
+		"shapes": [&"gate", &"triwall", &"rake"],
+		"volleys": [[&"boulder"], [&"boulder"], [&"boulder"]],
+	},
+	Element.Type.FIRE: {
+		"shapes": [&"cross", &"spiral", &"carpet"],
+		"volleys": [[&"pincer"], [&"pincer"], [&"pincer"]],
+	},
+	Element.Type.DARK: {
+		"shapes": [&"ring", &"cage", &"gate"],
+		"volleys": [[&"prism", &"tide"], [&"prism", &"tide", &"frost", &"gale"],
+			[&"prism", &"tide", &"frost", &"gale", &"boulder", &"pincer"]],
+		"stalkers": true,
+	},
+}
+
+# The shapes that rise as the stone pillar (eruption_scene) rather than the
+# spike cluster (gate_scene): the three that were the old pillar cast's, so
+# each shape still wears the art it always did.
+const PILLAR_SHAPES := [&"ring", &"cage", &"gate"]
+
+# Every name a kit may list, and so every name fire_volley() answers to. A
+# volley sent with any other name fires nothing.
+const VOLLEYS := [&"prism", &"gale", &"vortex", &"tide", &"frost", &"boulder", &"pincer"]
+
+# Everybody in the fight is counted as somebody to share the attacks with; this
+# many at most get a boulder or a pincer each from one cast.
+const SPLIT_MAX := 3
+
+# Each orb, this share of the boss's spike: many small hits, like every orb in
+# the game (BulletZone.share_of).
+const ORB_SHARE := 0.3
+
+# How long each volley holds the cast before the next may start, and the rest
+# after it, by phase - both stretched by _pace() while partners are loose.
+const VOLLEY_BUSY := {
+	&"prism": 1.7, &"gale": 0.9, &"vortex": 2.2, &"tide": 1.4,
+	&"frost": 1.0, &"boulder": 1.2, &"pincer": 1.2,
+}
+const VOLLEY_REST := [1.0, 0.6, 0.3]
+
+# EACH PHASE IS HARDER THAN THE LAST, and not only by a third shape. The
+# stalagmite clock runs this much faster in each phase (its wait times this),
+# every volley has more in it (the per-phase counts below), and the rest
+# between casts shortens (VOLLEY_REST). Measured against the same dodging
+# stand-in (tools/bossmeasure.gd on the website), the first version of the
+# kits was gentler than the one shared set had been - fewer moves, the same
+# tempo - and the owner's word was "too easy", so the tempo climbs instead.
+const PHASE_TEMPO := [1.0, 0.85, 0.7]
+
+# AND THE SWING STOPS BEING SAFE. Up close the boss swings rather than casts;
+# from phase two, after this many swings in a row it casts anyway - a volley at
+# point blank - so standing in its reach is a choice with a cost, not the
+# safest place in the room. 0 never (phase one).
+const SWINGS_BEFORE_CAST := [0, 3, 2]
+
+# PRISM (light). PRISM_BURSTS rings of spokes, PRISM_GAP apart, each turned
+# PRISM_TURN further: the spokes curve as they spread, and over the volley
+# they sweep 1.35 rad or more - further than the gap between two spokes (1.05
+# at six), so standing still is always crossed by one. You walk with the turn,
+# or into a gap as it opens; a gap is wider than you from 20 px out.
+const PRISM_SPOKES := [6, 7, 8]
+const PRISM_BURSTS := [10, 12, 16]
+const PRISM_GAP := 0.14
+const PRISM_SPEED := 70.0
+const PRISM_TURN := 0.15
+
+# GALE (wind). GALE_FANS fans GALE_GAP apart, each swept GALE_SWEEP on: a
+# wall of orbs 0.8 rad wide, about 70 px at the boss's attack range - one step
+# sideways clears it, standing in it is three shoves back.
+const GALE_FANS := [3, 4, 5]
+const GALE_GAP := 0.22
+const GALE_ORBS := [5, 7, 7]
+const GALE_SPREAD := 0.8
+const GALE_SPEED := 150.0
+const GALE_SWEEP := 0.15
+
+# VORTEX (wind, phase three). Everyone within VORTEX_REACH is drawn toward the
+# boss at VORTEX_PULL - under half your walk, so you can always walk out - for
+# VORTEX_SECONDS, while VORTEX_RINGS rings leave it, each with a door of
+# VORTEX_DOOR orbs missing in a different place. Big orbs, so a ring of
+# VORTEX_ORBS is solid out to 100 px and the door is the only way through.
+const VORTEX_REACH := 170.0
+const VORTEX_SECONDS := 2.2
+const VORTEX_PULL := 40.0
+const VORTEX_RINGS := 2
+const VORTEX_GAP := 0.9
+const VORTEX_ORBS := 28
+const VORTEX_DOOR := 4
+const VORTEX_SPEED := 55.0
+
+# TIDE (water). TIDE_WAVES walls of big orbs across TIDE_SPREAD, TIDE_GAP
+# apart, each with a gap TIDE_DOOR orbs wide that moves TIDE_DOOR_STEP orbs
+# along between waves: walk with the gap. The wall is solid out to 200 px; the
+# gap is wider than you from 51 px (68 at the narrower door of phases two and
+# three).
+const TIDE_WAVES := [3, 4, 5]
+const TIDE_GAP := 0.55
+const TIDE_ORBS := 23
+const TIDE_SPREAD := 2.5
+const TIDE_SPEED := 60.0
+const TIDE_DOOR := [3, 2, 2]
+const TIDE_DOOR_STEP := 3
+const TIDE_DOOR_NEAR := 4
+
+# FROST (ice). A fan of shards that slow to a stop at the distance you stood
+# and lie there as mines (BulletZone.SETTLE_LINGER) - the middle one on your
+# spot, the others a wall either side. Step back past them, not into them on
+# the way in. From phase two a second arc FROST_SECOND_IN nearer the boss
+# follows FROST_SECOND_AFTER later.
+const FROST_SHARDS := [9, 11, 13]
+const FROST_SPREAD := 1.4
+const FROST_SPEED := 150.0
+const FROST_NEAREST := 40.0
+const FROST_FURTHEST := 160.0
+const FROST_SECOND_IN := 34.0
+const FROST_SECOND_AFTER := 0.3
+
+# BOULDER (earth). The boss's own stalagmite thrown over everything onto the
+# spot you stood on (BulletLob), landing BOULDER_FLIGHT later for its spike's
+# full hit and bursting into BOULDER_ROCKS rocks that settle round the crater.
+# One for each player in the fight; from phase two more at the one it is
+# facing, thrown where they are running (or either side of them, standing).
+const BOULDER_FLIGHT := 1.0
+const BOULDER_ROCKS := [8, 10, 12]
+const BOULDER_ROCK_SPEED := 110.0
+const BOULDER_CRATER := 34.0
+const BOULDER_LOBS := [1, 2, 3]
+const BOULDER_SPREAD := 46.0
+const BOULDER_REACH_MAX := 260.0
+
+# PINCER (fire). Orbs that leave either side of you and curve shut on your spot
+# all at once (BulletZone.fire_pincer), one pincer for each player in the
+# fight; where each shuts, the floor burns (a fire puddle that carries burn).
+const PINCER_ARMS := [
+	[-0.9, -0.45, 0.45, 0.9],
+	[-1.0, -0.6, -0.25, 0.25, 0.6, 1.0],
+	[-1.1, -0.75, -0.4, 0.4, 0.75, 1.1],
+]
+const PINCER_SPEED := 120.0
+const PINCER_AGAIN := 0.45
+const PINCER_REACH_MIN := 40.0
+
+# Each other boss loose in the same fight slows this one's clocks by this share:
+# x1.35 beside one partner, x1.7 beside two.
+const WAVE_PACE := 0.35
+const BOSS_GROUP := &"bosses"
+
+const StatusEffects := preload("res://src/characters/statuseffects.gd")
 
 
 # =============================================================================
@@ -834,8 +1068,8 @@ var _swing_landed: bool = false
 # comes.
 var _swinging: bool = false
 
-# The last pattern each track threw, so neither repeats itself back to back.
-var _last_pillar: StringName = &""
+# The last shape the stalagmite clock raised, so it does not repeat itself
+# back to back.
 var _last_spike: StringName = &""
 
 # Drives the stalker on its own clock. A TIMER RATHER THAN AN OVERRIDE of
@@ -844,6 +1078,17 @@ var _last_spike: StringName = &""
 # did and silently lost the leash and the slot geometry with it. A Timer gets
 # the same behaviour without taking on that debt.
 var _stalker_timer: Timer = null
+
+# WHO WAS LAST ATTACKED WHEN, by instance id -> msec (next_target()).
+var _last_aimed: Dictionary = {}
+# The body the stalagmite clock attacked last, and the one its shapes are being
+# built for right now (_aim_body()).
+var _last_stalagmite_body: Node2D = null
+var _aim_target: Node2D = null
+# The volley the cast threw last, so a kit with more than one does not repeat.
+var _last_volley: StringName = &""
+# Swings since the last cast (SWINGS_BEFORE_CAST).
+var _swings_in_a_row: int = 0
 
 
 # =============================================================================
@@ -869,6 +1114,8 @@ func _ready() -> void:
 	# joined it, so walking into a boss slowed you like a crowd and pushed it
 	# across the floor like a slime.
 	add_to_group(&"unpushable")
+	# Every boss, so each can see how many partners are loose (_pace()).
+	add_to_group(BOSS_GROUP)
 
 	# COMBAT TUNING LIVES HERE, not in the .tres — the .tres is the reward
 	# profile. attack_range in particular is a statement about how this fight
@@ -912,7 +1159,9 @@ func _ready() -> void:
 	sprite.frame_changed.connect(_on_frame_changed)
 
 	_measure_spike_lifetime()
-	_setup_stalker_timer()
+	# THE CROWNED'S ALONE NOW (0.77.0, THE KITS).
+	if bool(kit().get("stalkers", false)):
+		_setup_stalker_timer()
 	_setup_spike_timer()
 
 
@@ -980,6 +1229,12 @@ func _trigger_attack() -> void:
 	# immediately calls play_attack_animation(), which reads this.
 	_swinging = is_instance_valid(player) \
 		and global_position.distance_to(player.global_position) <= melee_range
+	# FROM PHASE TWO A RUN OF SWINGS ENDS IN A CAST (0.77.0) - see
+	# SWINGS_BEFORE_CAST.
+	var cap: int = int(SWINGS_BEFORE_CAST[_current_phase()])
+	if _swinging and cap > 0 and _swings_in_a_row >= cap:
+		_swinging = false
+	_swings_in_a_row = _swings_in_a_row + 1 if _swinging else 0
 
 	super._trigger_attack()
 
@@ -996,7 +1251,7 @@ func _on_frame_changed() -> void:
 			return
 		if sprite.frame != cast_frame:
 			return
-		_spawn_eruptions()
+		_cast_signature()
 		_erupted_this_cast = true
 		return
 
@@ -1141,16 +1396,10 @@ func _on_spike_timer() -> void:
 	# its spikes are the leader's.
 	if net_mirror:
 		return
-	# ALIVE AND ENGAGED ONLY. Dying, dead, or walking home on the leash all mean
-	# the boss is not fighting this player, and spikes erupting in an empty room
-	# read as a bug rather than an attack.
-	if _dying or _death_resolved:
-		_spike_timer.wait_time = 2.0
-		return
-	if not is_instance_valid(player) or is_returning_home:
-		_spike_timer.wait_time = 2.0
-		return
-	if global_position.distance_to(player.global_position) > leash_range:
+	# IN A FIGHT ONLY. Dying, dead, caged, walking home on the leash - or with
+	# nobody near - the boss is not fighting anyone, and stalagmites erupting
+	# in an empty room read as a bug rather than an attack.
+	if not in_fight():
 		_spike_timer.wait_time = 2.0
 		return
 
@@ -1158,7 +1407,9 @@ func _on_spike_timer() -> void:
 
 
 func _cast_spike_pattern() -> void:
-	if gate_scene == null:
+	# THE STALAGMITE CLOCK (0.77.0): one of this boss's own three shapes (THE
+	# KITS), at whoever in the fight it has left alone longest.
+	if gate_scene == null or eruption_scene == null:
 		return
 
 	var container: Node = get_tree().get_first_node_in_group("groundeffects")
@@ -1167,67 +1418,55 @@ func _cast_spike_pattern() -> void:
 	if container == null:
 		return
 
-	var phase: int = _current_phase()
+	var target: Node2D = next_target(_last_stalagmite_body)
+	if target == null:
+		_spike_timer.wait_time = 2.0
+		return
+	_last_stalagmite_body = target
+	_mark_aimed(target)
 
-	# THE SPIKE TRACK'S OWN LIBRARY, and the reason it stopped reading as a
-	# second helping of the pillar track. arc, lance, cross, carpet and spiral
-	# were pillar shapes wearing the gate art; triwall, rake and snare were
-	# built for this track and ask questions nothing else here asks - three
-	# walls at once with no "along" to run, rows that punish moving at all, and
-	# a collar whose only exit is the spike that has not fired yet.
-	#
-	# lance, cross, carpet and spiral STAY HERE. See the note on the pillar pool
-	# in _build_pattern(): three of their pairings are unsurvivable at zero
-	# offset, and keeping them on one track is what guarantees they never
-	# co-occur, because a track casts one pattern at a time.
-	var pool: Array[StringName] = []
-	match phase:
-		0:
-			pool = [&"arc", &"snare", &"lance", &"ladder"]
-		1:
-			pool = [&"arc", &"snare", &"lance", &"cross", &"ladder",
-				&"triwall", &"rake", &"sweep"]
-		_:
-			pool = [&"arc", &"snare", &"lance", &"cross", &"ladder",
-				&"triwall", &"rake", &"sweep", &"checker", &"carpet", &"spiral"]
+	var phase: int = _current_phase()
+	var pool: Array[StringName] = stalagmite_pool(phase)
 
 	# The spiral is drawn around the boss rather than the player, so it is only
 	# an attack while the two are close. See SPIRAL_MAX_RANGE.
-	if is_instance_valid(player) \
-			and global_position.distance_to(player.global_position) > SPIRAL_MAX_RANGE:
+	if global_position.distance_to(target.global_position) > SPIRAL_MAX_RANGE and pool.size() > 1:
 		pool.erase(&"spiral")
 
 	var choice: StringName = pool[randi() % pool.size()]
 	var guard: int = 0
-	while choice == _last_spike and guard < 32:
+	while choice == _last_spike and pool.size() > 1 and guard < 32:
 		choice = pool[randi() % pool.size()]
 		guard += 1
 	_last_spike = choice
 
+	# Built for THIS target: _aim_point() and _player_velocity() read
+	# _aim_body(), which is it for as long as the shape is being laid out.
+	_aim_target = target
 	var origin: Vector2 = _aim_point()
 	var pattern: Array[Dictionary] = _lead_pattern(
 		_pattern_by_name(choice, origin), choice)
+	_aim_target = null
 
+	var scene: PackedScene = eruption_scene if choice in PILLAR_SHAPES else gate_scene
 	var last: float = 0.0
 	for spike in pattern:
 		last = maxf(last, float(spike["telegraph"]))
 		var pos: Vector2 = clamp_to_navigation(spike["pos"])
 		_spawn_one_eruption(container, pos, float(spike["telegraph"]),
-			float(spike.get("radius", PILLAR_RADIUS)), gate_scene)
+			float(spike.get("radius", PILLAR_RADIUS)), scene)
 
-	# Paced off its own pattern, exactly like the pillar track: the next spike
-	# attack waits for this one to leave the floor. The two tracks are
-	# independent, so they drift in and out of phase with each other on their
-	# own - which is the unpredictability, and it costs nothing to arrange.
-	# RESOLVE, NOT LIFETIME - see _gate_resolve. The next spike attack starts
-	# once this one has landed its hit, not once the last spike has finished
-	# sinking back into the floor.
-	_spike_timer.wait_time = last + _gate_resolve + SPIKE_BREATHER \
-		+ float(SPIKE_EXTRA_GAP[phase])
+	# Paced off its own shape. A pillar shape waits for its pillars to leave
+	# the floor - two of those telegraphing at once is the mush that hid the
+	# gates (PATTERN PACING); a spike shape only for its hit to land (see
+	# _gate_resolve). Then the wave's pace on top (_pace()).
+	var clear: float = _spike_lifetime + PATTERN_BREATHER if scene == eruption_scene \
+		else _gate_resolve + SPIKE_BREATHER + float(SPIKE_EXTRA_GAP[phase])
+	_spike_timer.wait_time = maxf(0.2, (last + clear) * float(PHASE_TEMPO[phase]) * _pace())
 
 	if debug_patterns:
-		print("[BOSS] phase %d  SPIKES  %s  (next in %.2fs)"
-			% [phase + 1, choice, _spike_timer.wait_time])
+		print("[BOSS] phase %d  STALAGMITES %s at %s  (next in %.2fs)"
+			% [phase + 1, choice, target.name, _spike_timer.wait_time])
 
 
 func _measure_spike_lifetime() -> void:
@@ -1578,13 +1817,22 @@ func _on_stalker_timer() -> void:
 
 	if phase < STALKER_FROM_PHASE:
 		return
-	if _dying or not is_instance_valid(player):
+	if not in_fight():
 		return
 
-	_spawn_stalker()
+	# The next one in the fight, like every attack (0.77.0).
+	var target: Node2D = next_target()
+	if target == null:
+		return
+	_mark_aimed(target)
+	_spawn_stalker(target)
 
 
-func _spawn_stalker() -> void:
+func _spawn_stalker(target: Node2D = null) -> void:
+	if target == null:
+		target = player as Node2D
+	if not is_instance_valid(target):
+		return
 	var container: Node = get_tree().get_first_node_in_group("groundeffects")
 	if container == null:
 		container = get_tree().current_scene
@@ -1597,7 +1845,7 @@ func _spawn_stalker() -> void:
 
 	# Pushed out of the boss toward the player so it does not spend its first
 	# second walking out of the thing that made it.
-	var away: Vector2 = (player.global_position - global_position).normalized()
+	var away: Vector2 = (target.global_position - global_position).normalized()
 	if away == Vector2.ZERO:
 		away = Vector2.DOWN
 	stalker.global_position = global_position + away * STALKER_SPAWN_OFFSET
@@ -1610,7 +1858,7 @@ func _spawn_stalker() -> void:
 	# it the resolved variant means its trail wears the boss's element without
 	# the stalker needing to know elements exist, and its pillars pick up the
 	# element from the scene rather than staying NONE, which is what they were.
-	stalker.setup(player, Projectiles.variant_of(eruption_scene, current_element()), trail_damage(),
+	stalker.setup(target, Projectiles.variant_of(eruption_scene, current_element()), trail_damage(),
 		current_element())
 	# Whose trail it is, so each pillar it drops can be shown on every screen.
 	stalker.net_owner = self
@@ -1638,7 +1886,11 @@ func _aim_point() -> Vector2:
 	# WHERE THE PLAYER IS. The lead used to be baked in here, off a single fixed
 	# telegraph for every pattern; it now happens per spike in _lead_pattern(),
 	# which is the only place that knows when each spike actually lands.
-	if not is_instance_valid(player):
+	#
+	# WHICH PLAYER is _aim_body()'s (0.77.0): whoever the shape is being laid
+	# out for, which is not always the one the boss is walking toward.
+	var body: Node2D = _aim_body()
+	if body == null:
 		return global_position
 
 	# THE GROUND THEY ARE STANDING ON, WHICH IS NOT THEIR NODE ORIGIN.
@@ -1652,19 +1904,31 @@ func _aim_point() -> Vector2:
 	# depending on who is playing, which against a 14px spike is most of the
 	# margin - and it is the difference between a pattern that reads as tight
 	# and one that reads as broken.
-	# BaseEnemy.target_point() is that same body, and every other enemy's sight
-	# line and aim now go through it too (6 Oct: they used the origin, and held
+	# Targets.body_point() is that same body, and every other enemy's sight
+	# line and aim go through it too (6 Oct: they used the origin, and held
 	# fire at a player pressed against a wall).
-	return target_point()
+	return Targets.body_point(body)
+
+
+func _aim_body() -> Node2D:
+	"""Who a shape is being laid out for: the stalagmite clock's target while
+	it builds one, otherwise the one the boss is facing."""
+	if is_instance_valid(_aim_target):
+		return _aim_target
+	return player as Node2D if is_instance_valid(player) else null
 
 
 func _player_velocity() -> Vector2:
 	# ANY TARGET THAT KNOWS ITS SPEED. The local player is a CharacterBody2D;
 	# another player's picture (shared monsters) works its velocity out from
 	# the positions it is sent. Either way the boss leads a runner.
-	if not is_instance_valid(player):
+	return _velocity_of(_aim_body())
+
+
+func _velocity_of(body: Node) -> Vector2:
+	if not is_instance_valid(body):
 		return Vector2.ZERO
-	var v: Variant = player.get("velocity")
+	var v: Variant = body.get("velocity")
 	return v if v is Vector2 else Vector2.ZERO
 
 
@@ -1689,51 +1953,6 @@ func _lead_pattern(pattern: Array[Dictionary], pattern_name: StringName) -> Arra
 			shift = shift.normalized() * AIM_LEAD_MAX
 		spike["pos"] = (spike["pos"] as Vector2) + shift
 	return pattern
-
-
-func _build_pattern() -> Array[Dictionary]:
-	var origin: Vector2 = _aim_point()
-
-	# WHAT EACH PHASE CAN THROW. Later phases keep the earlier moves rather than
-	# replacing them - a boss whose whole vocabulary swaps at 66% is three short
-	# fights in a row, and each one is predictable again the moment you clock
-	# which it is. Keeping the old patterns and adding to the pool means phase 3
-	# can open with anything.
-	# THE PILLAR TRACK. Big, slow geometry - rings, walls, gauntlets.
-	#
-	# THE SPIKE TRACK RUNS BESIDE IT on its own timer (see _on_spike_timer) with
-	# its own, different pool. Two attacks genuinely at once, each one pattern
-	# at a time, each wearing its own art so the player can tell them apart.
-	#
-	# WHICH PATTERN SITS ON WHICH TRACK IS NOT ARBITRARY. Simulated together at
-	# zero offset, three pairings leave almost no reachable ground:
-	# lance+cross 2.3%, carpet+spiral 4.8%, lance+carpet 5.5%. Two independent
-	# timers can align at any offset, so the only way to guarantee those never
-	# co-occur is to keep all three pairs on the SAME track - a track casts one
-	# pattern at a time, so same-track patterns can never overlap each other.
-	# That forces lance, cross, carpet and spiral together on the spike side.
-	# The worst pairing this split can produce is cage+carpet at 12.5%.
-	var pool: Array[StringName] = []
-	match _current_phase():
-		0:
-			pool = [&"ring", &"ring", &"cage"]
-		1:
-			pool = [&"ring", &"ring", &"cage", &"gate"]
-		_:
-			pool = [&"ring", &"ring", &"ring", &"cage", &"gate"]
-
-	var choice: StringName = pool[randi() % pool.size()]
-	var guard: int = 0
-	while choice == _last_pillar and guard < 32:
-		choice = pool[randi() % pool.size()]
-		guard += 1
-	_last_pillar = choice
-
-	if debug_patterns:
-		print("[BOSS] phase %d  PILLARS %s  hp %d/%d"
-			% [_current_phase() + 1, choice, hp, max_hp])
-
-	return _lead_pattern(_pattern_by_name(choice, origin), choice)
 
 
 func _pattern_by_name(pattern_name: StringName, origin: Vector2) -> Array[Dictionary]:
@@ -2075,42 +2294,392 @@ func _pattern_carpet(origin: Vector2) -> Array[Dictionary]:
 	return out
 
 
-func _spawn_eruptions() -> void:
-	if eruption_scene == null:
-		push_warning("BossEnemy: eruption_scene not assigned")
-		return
+# =============================================================================
+# THE SIGNATURE VOLLEY (0.77.0) - what the cast throws now
+# =============================================================================
+
+func _cast_signature() -> void:
+	# On the cast's discharge frame (cast_frame), at the one the boss is
+	# facing - whoever next_target() handed it after its last cast.
 	if not is_instance_valid(player):
 		return
-	var scene: PackedScene = eruption_scene
+	var zone: BulletZone = BulletZone.find(self)
+	if zone == null:
+		# NO ZONE, NO ORBS: a room without one (a test world) still gets an
+		# attack - one of this boss's stalagmite shapes, as the cast used to
+		# throw - so a boss is never a statue for want of a bullet zone.
+		_cast_stalagmites_from_cast()
+		return
 
-	# Into the Y-sorted "groundeffects" container so the spikes draw UNDER
-	# characters — a spike painted over the player's sprite reads as a
-	# foreground decoration rather than something coming out of the floor.
-	# Same container and same fallback as BushMage's vine.
+	var phase: int = _current_phase()
+	var kind: StringName = _pick_volley(phase)
+	var origin: Vector2 = global_position
+	var target: Node2D = player as Node2D
+	var shots: Array[Dictionary] = []
+	var aimed: Array = [target]
+	match kind:
+		&"boulder":
+			aimed = split_targets(target)
+			for body in aimed:
+				shots.append(_shot_at(origin, Targets.body_point(body), kind, phase))
+			# MORE AT THE ONE IT FACES, thrown where they are running - or,
+			# standing, either side of them.
+			var spot: Vector2 = Targets.body_point(target)
+			var run: Vector2 = _velocity_of(target) * BOULDER_FLIGHT * AIM_LEAD
+			var across: Vector2 = (spot - origin).normalized().orthogonal()
+			for k in range(1, int(BOULDER_LOBS[phase])):
+				var extra: Vector2 = run * float(k) if run.length() > 8.0 \
+					else across * BOULDER_SPREAD * (1.0 if k % 2 == 1 else -1.0)
+				shots.append(_shot_at(origin, spot + extra, kind, phase))
+		&"pincer":
+			aimed = split_targets(target)
+			for body in aimed:
+				shots.append(_shot_at(origin, Targets.body_point(body), kind, phase))
+		_:
+			shots.append(_shot_at(origin, Targets.body_point(target), kind, phase, randi() % 64))
+
+	for shot in shots:
+		fire_volley(zone, origin, float(shot["aim"]), str(shot["v"]), float(shot["r"]))
+		# SHARED MONSTERS: every game fires its own copy of each (monstersync's
+		# "b"), with its own copy's damage - a leader can aim a volley, never
+		# make one hit harder.
+		if _net_sync != null and not net_mirror:
+			_net_sync.leader_bullets(self, origin, float(shot["aim"]), str(shot["v"]), float(shot["r"]))
+
+	_set_cast_cooldown(_volley_busy(kind, phase) + float(VOLLEY_REST[phase]))
+
+	# AND THE NEXT CAST IS FOR SOMEBODY ELSE, if anybody else is here: the
+	# boss turns and walks to them - one it can see, so it never sets off
+	# round a wall after someone it has no way to reach.
+	for body in aimed:
+		_mark_aimed(body)
+	var after: Node2D = next_target(target)
+	if after != null and after != target and _has_line_of_sight(Targets.body_point(after)):
+		player = after
+		_release_slot()
+
+	if debug_patterns:
+		print("[BOSS] phase %d  VOLLEY %s x%d  hp %d/%d" % [phase + 1, kind, shots.size(), hp, max_hp])
+
+
+func _shot_at(origin: Vector2, at: Vector2, kind: StringName, phase: int, extra: int = 0) -> Dictionary:
+	var name_sent: String = "%s%d" % [kind, phase]
+	if extra != 0:
+		name_sent += ":%d" % extra
+	return {"aim": (at - origin).angle(), "r": origin.distance_to(at), "v": name_sent}
+
+
+func _volley_busy(kind: StringName, phase: int) -> float:
+	"""How long `kind` holds the cast in `phase`: the ones that come in beats
+	for as long as their beats last and a little, the rest VOLLEY_BUSY."""
+	match kind:
+		&"prism":
+			return float(PRISM_BURSTS[phase]) * PRISM_GAP + 0.3
+		&"gale":
+			return float(GALE_FANS[phase]) * GALE_GAP + 0.5
+		&"tide":
+			return float(TIDE_WAVES[phase]) * TIDE_GAP + 0.6
+	return float(VOLLEY_BUSY.get(kind, 1.0))
+
+
+func _pick_volley(phase: int) -> StringName:
+	var lists: Array = kit()["volleys"]
+	var pool: Array = lists[clampi(phase, 0, lists.size() - 1)]
+	var choice: StringName = pool[randi() % pool.size()]
+	var guard: int = 0
+	while choice == _last_volley and pool.size() > 1 and guard < 32:
+		choice = pool[randi() % pool.size()]
+		guard += 1
+	_last_volley = choice
+	return choice
+
+
+func _set_cast_cooldown(seconds: float) -> void:
+	# RESTARTED FROM THE DISCHARGE, the same as _apply_pattern_cooldown(): the
+	# attack timer has been running since _trigger_attack(), measured from the
+	# wrong moment.
+	if not has_node("attacktimer"):
+		return
+	var timer: Timer = $attacktimer
+	timer.stop()
+	timer.wait_time = maxf(0.2, seconds * _pace())
+	timer.start()
+
+
+func _cast_stalagmites_from_cast() -> void:
 	var container: Node = get_tree().get_first_node_in_group("groundeffects")
 	if container == null:
 		container = get_tree().current_scene
-
-	# EVERY SPIKE IS PLACED WHERE THE PLAYER IS RIGHT NOW, and none of them move
-	# afterwards. That is still the entire fight: a ring is a promise about a
-	# piece of floor, and stepping off that floor is the counterplay. More
-	# promises does not change the rule - it only changes the shape of the floor
-	# that stays safe.
-	var pattern: Array[Dictionary] = _build_pattern()
-
-	# BEFORE anything is spawned, so the cooldown is set even if every spike in
-	# this pattern ends up clamped on top of a wall. See PATTERN PACING.
+	if container == null or eruption_scene == null:
+		return
+	var pool: Array[StringName] = stalagmite_pool(_current_phase())
+	var choice: StringName = pool[randi() % pool.size()]
+	var pattern: Array[Dictionary] = _lead_pattern(_pattern_by_name(choice, _aim_point()), choice)
 	_apply_pattern_cooldown(pattern)
-
+	var scene: PackedScene = eruption_scene if choice in PILLAR_SHAPES else gate_scene
 	for spike in pattern:
-		var pos: Vector2 = spike["pos"]
-
-		# Dragged onto walkable floor. A spike inside a wall is a wasted part of
-		# the attack and reads as the boss missing.
-		pos = clamp_to_navigation(pos)
-		_spawn_one_eruption(
-			container, pos, spike["telegraph"],
+		_spawn_one_eruption(container, clamp_to_navigation(spike["pos"]), float(spike["telegraph"]),
 			float(spike.get("radius", PILLAR_RADIUS)), scene)
+
+
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String = "",
+		reach: float = 0.0) -> void:
+	"""One of this boss's volleys into `zone`: `volley` is its name and the
+	phase it was cast in ("tide2"), and for some a number after a colon
+	("tide2:17", where the tide's gap starts). `reach` is how far off the
+	player stood. This boss's own damage and element - the contract is in
+	BulletZone's header - and a name that is not one of VOLLEYS fires nothing.
+	Every game runs this for every volley: the leader as it casts, the others
+	from its "b" (monstersync.gd)."""
+	if zone == null:
+		return
+	var parts: PackedStringArray = volley.split(":")
+	var head: String = parts[0]
+	if head.length() < 2 or not head.right(1).is_valid_int():
+		return
+	var kind: StringName = StringName(head.left(head.length() - 1))
+	if not VOLLEYS.has(kind):
+		return
+	var phase: int = clampi(int(head.right(1)), 0, 2)
+	var extra: int = absi(int(parts[1])) if parts.size() > 1 and parts[1].is_valid_int() else 0
+	var element: int = current_element()
+	var orb: int = BulletZone.share_of(spike_damage(), ORB_SHARE)
+	match kind:
+		&"prism":
+			var spokes: int = int(PRISM_SPOKES[phase])
+			var turn: float = PRISM_TURN * (1.0 if extra % 2 == 0 else -1.0)
+			for b in int(PRISM_BURSTS[phase]):
+				_on_beat(PRISM_GAP * b, zone.fire_ring.bind(origin, aim + turn * b, spokes,
+					PRISM_SPEED, orb, element))
+		&"gale":
+			var swing: float = 1.0 if extra % 2 == 0 else -1.0
+			var fans: int = int(GALE_FANS[phase])
+			for f in fans:
+				_on_beat(GALE_GAP * f, zone.fire_fan.bind(origin,
+					aim + (float(f) - float(fans - 1) * 0.5) * GALE_SWEEP * swing,
+					int(GALE_ORBS[phase]), GALE_SPREAD, GALE_SPEED, orb, element))
+		&"vortex":
+			_pull_my_player(origin)
+			for r in VORTEX_RINGS:
+				var door: int = (extra + r * 9) % (VORTEX_ORBS - VORTEX_DOOR)
+				_on_beat(VORTEX_GAP * r, zone.fire_ring.bind(origin, aim, VORTEX_ORBS, VORTEX_SPEED,
+					orb, element, true, 0.0, 0.0, door, VORTEX_DOOR))
+		&"tide":
+			# The first door within TIDE_DOOR_NEAR orbs of the one aimed at you,
+			# so it is always a few steps away; then it walks.
+			var width: int = int(TIDE_DOOR[phase])
+			var middle: int = (TIDE_ORBS - width) >> 1
+			var first: int = middle - TIDE_DOOR_NEAR + (extra % (TIDE_DOOR_NEAR * 2 + 1))
+			var step: int = TIDE_DOOR_STEP if ((extra >> 4) & 1) == 0 else -TIDE_DOOR_STEP
+			for w in int(TIDE_WAVES[phase]):
+				var door_at: int = clampi(first + step * w, 1, TIDE_ORBS - 1 - width)
+				_on_beat(TIDE_GAP * w, zone.fire_fan.bind(origin, aim, TIDE_ORBS, TIDE_SPREAD,
+					TIDE_SPEED, orb, element, true, 0.0, door_at, width))
+		&"frost":
+			var stop: float = clampf(reach, FROST_NEAREST, FROST_FURTHEST)
+			var shards: int = int(FROST_SHARDS[phase])
+			zone.fire_fan(origin, aim, shards, FROST_SPREAD, FROST_SPEED, orb, element, true, stop)
+			if phase >= 1:
+				_on_beat(FROST_SECOND_AFTER, zone.fire_fan.bind(origin, aim, maxi(shards - 2, 3),
+					FROST_SPREAD, FROST_SPEED, orb, element, true,
+					maxf(FROST_NEAREST * 0.75, stop - FROST_SECOND_IN)))
+			# AND PHASE THREE ONE FURTHER OUT: stepping straight back is no
+			# longer enough - between the arcs, or round their ends.
+			if phase >= 2:
+				_on_beat(FROST_SECOND_AFTER * 2.0, zone.fire_fan.bind(origin, aim, shards,
+					FROST_SPREAD * 0.8, FROST_SPEED, orb, element, true,
+					minf(FROST_FURTHEST + FROST_SECOND_IN, stop + FROST_SECOND_IN)))
+		&"boulder":
+			var landing: float = clampf(reach, 0.0, BOULDER_REACH_MAX)
+			zone.fire_mortar(origin, aim, landing, BOULDER_FLIGHT, _lob_art(), spike_damage(),
+				int(BOULDER_ROCKS[phase]), BOULDER_ROCK_SPEED, BOULDER_CRATER, orb, element,
+				Puddles.scene_for(element))
+		&"pincer":
+			var arms: Array[float] = []
+			arms.assign(PINCER_ARMS[phase])
+			var shut_at: float = maxf(reach, PINCER_REACH_MIN)
+			zone.fire_pincer(origin, aim, shut_at, arms, PINCER_SPEED, orb, element)
+			_on_beat(BulletZone.pincer_time(shut_at, arms, PINCER_SPEED),
+				_burn_floor.bind(origin + Vector2.from_angle(aim) * shut_at, element))
+			# PHASE THREE SHUTS TWICE: the same spot again PINCER_AGAIN later,
+			# with the arms between the first's, for whoever stepped back in.
+			if phase >= 2:
+				var between: Array[float] = []
+				for t in arms:
+					between.append(t * 0.8)
+				_on_beat(PINCER_AGAIN, zone.fire_pincer.bind(origin, aim, shut_at, between,
+					PINCER_SPEED, orb, element))
+
+
+func _on_beat(seconds: float, shot: Callable) -> void:
+	"""Fires `shot` `seconds` from now, unless the boss has died meanwhile.
+	On a tween of the boss's own, so a boss that is freed takes its volley
+	with it (a timer of the tree's would fire into a scene that has gone)."""
+	if seconds <= 0.0:
+		_fire_if_fighting(shot)
+		return
+	if not is_inside_tree():
+		return
+	var tween: Tween = create_tween()
+	tween.tween_interval(seconds)
+	tween.tween_callback(_fire_if_fighting.bind(shot))
+
+
+func _fire_if_fighting(shot: Callable) -> void:
+	if _dying or _death_resolved:
+		return
+	var zone: Object = shot.get_object()
+	if zone != null and not is_instance_valid(zone):
+		return
+	shot.call()
+
+
+func _pull_my_player(origin: Vector2) -> void:
+	# THIS GAME'S OWN PLAYER, on every game: each one runs this volley, so
+	# each pulls the one player it moves.
+	var me: Node2D = get_tree().get_first_node_in_group(&"player") as Node2D
+	if me == null or Targets.body_point(me).distance_to(origin) > VORTEX_REACH:
+		return
+	var fx: Node = StatusEffects.of(me)
+	if fx != null and fx.has_method(&"pull"):
+		fx.call(&"pull", origin, VORTEX_SECONDS, VORTEX_PULL)
+
+
+func _burn_floor(at: Vector2, element: int) -> void:
+	# Where a pincer shuts, the floor carries the element on: fire burns,
+	# dark withers - the boss's own puddle, carrying its effect.
+	var container: Node = get_tree().get_first_node_in_group("groundeffects")
+	if container == null:
+		container = get_tree().current_scene
+	if container == null:
+		return
+	var pool: Node = Puddles.scene_for(element).instantiate()
+	if "element" in pool:
+		pool.set("element", element)
+	var effect: StringName = StatusEffects.for_element(element)
+	if "status" in pool and StatusEffects.GROUND.has(effect):
+		pool.set("status", effect)
+	pool.set("spawn_at", clamp_to_navigation(at))
+	container.add_child.call_deferred(pool)
+
+
+func _lob_art() -> Node2D:
+	"""The boss's own stalagmite, for a boulder to carry: the risen frame of
+	its element's pillar, taken off the scene with its colouring and the rest
+	thrown away - the owner's art, not new art (bulletlob.gd)."""
+	var pillar: Node = Projectiles.variant_of(eruption_scene, current_element()).instantiate()
+	var art: AnimatedSprite2D = pillar.get_node_or_null(^"animatedsprite2d") as AnimatedSprite2D
+	if art != null:
+		art.owner = null
+		pillar.remove_child(art)
+		art.stop()
+		if art.sprite_frames != null and art.sprite_frames.has_animation(&"projectile"):
+			art.animation = &"projectile"
+			art.frame = mini(1, art.sprite_frames.get_frame_count(&"projectile") - 1)
+		art.scale = Vector2.ONE * 0.6
+	pillar.free()
+	return art
+
+
+# =============================================================================
+# WHO IS ATTACKED (0.77.0) - see THE KITS, NOBODY IS LOCKED ON
+# =============================================================================
+
+func kit() -> Dictionary:
+	"""This boss's kit: its element's, or the Crowned's for an element with
+	none of its own."""
+	return KITS.get(current_element(), KITS[Element.Type.DARK])
+
+
+func stalagmite_pool(phase: int) -> Array[StringName]:
+	"""The shapes this boss may raise in `phase`: its first two, then all
+	three from phase two."""
+	var shapes: Array = kit()["shapes"]
+	var pool: Array[StringName] = []
+	for k in mini(shapes.size(), 2 if phase <= 0 else 3):
+		pool.append(shapes[k])
+	return pool
+
+
+func in_fight() -> bool:
+	"""True while this boss is loose and after somebody: not caged, dying,
+	dead or walking home, and its target inside the leash."""
+	if gated or _dying or _death_resolved or is_returning_home or not engaged:
+		return false
+	if not is_instance_valid(player):
+		return false
+	return global_position.distance_to(player.global_position) <= leash_range
+
+
+func fight_targets() -> Array:
+	"""Everybody in this fight: everyone a monster may chase (Targets.all)
+	within the leash of where the boss stands, and not dying."""
+	var found: Array = []
+	for body in Targets.all(get_tree()):
+		if not (body is Node2D) or not is_instance_valid(body):
+			continue
+		var dying: Variant = body.get("is_dying")
+		if dying is bool and dying:
+			continue
+		if global_position.distance_to((body as Node2D).global_position) <= leash_range:
+			found.append(body)
+	return found
+
+
+func next_target(exclude: Node = null) -> Node2D:
+	"""Whoever in the fight has gone longest without being attacked; never
+	`exclude` (the one just attacked) while there is anyone else. Ties go to
+	the nearer. Null when nobody is in the fight."""
+	var bodies: Array = fight_targets()
+	if bodies.is_empty():
+		return null
+	if bodies.size() == 1:
+		return bodies[0]
+	var best: Node2D = null
+	var best_at: int = 0
+	var best_d: float = INF
+	for body in bodies:
+		if body == exclude:
+			continue
+		var at: int = int(_last_aimed.get(body.get_instance_id(), -1))
+		var d: float = global_position.distance_squared_to((body as Node2D).global_position)
+		if best == null or at < best_at or (at == best_at and d < best_d):
+			best = body
+			best_at = at
+			best_d = d
+	return best
+
+
+func split_targets(first: Node2D) -> Array:
+	"""Who a split volley goes at: `first`, then the others in the fight in the
+	order next_target() would take them, SPLIT_MAX at most."""
+	var out: Array = [first]
+	var others: Array = fight_targets()
+	others.erase(first)
+	others.sort_custom(func(a: Node, b: Node) -> bool:
+		return int(_last_aimed.get(a.get_instance_id(), -1)) < int(_last_aimed.get(b.get_instance_id(), -1)))
+	for body in others:
+		if out.size() >= SPLIT_MAX:
+			break
+		out.append(body)
+	return out
+
+
+func _mark_aimed(body: Node) -> void:
+	if is_instance_valid(body):
+		_last_aimed[body.get_instance_id()] = Time.get_ticks_msec()
+
+
+func _pace() -> float:
+	"""How much slower this boss's clocks run for the partners loose beside
+	it: 1 alone, WAVE_PACE more for each other boss in a fight."""
+	var others: int = 0
+	for boss in get_tree().get_nodes_in_group(BOSS_GROUP):
+		if boss == self or not is_instance_valid(boss) or not boss.has_method(&"in_fight"):
+			continue
+		if bool(boss.call(&"in_fight")):
+			others += 1
+	return 1.0 + WAVE_PACE * float(others)
 
 
 func _apply_pattern_cooldown(pattern: Array[Dictionary]) -> void:
@@ -2198,6 +2767,12 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	# elemental bosses was element NONE, and so was its acid.
 	if "element" in eruption:
 		eruption.element = current_element()
+
+	# AND WHAT THE ELEMENT DOES (0.77.0): an ice boss's stalagmite chills, an
+	# earth boss's roots (statuseffects.gd). From the element here, on every
+	# game that draws the spike, so each copy carries the same effect.
+	if "status" in eruption:
+		eruption.status = StatusEffects.for_element(current_element())
 
 	# THE PUDDLE IS ROLLED FROM A SEED, so every game drawing this spike leaves
 	# the same acid in the same places (shared monsters). The seed is drawn

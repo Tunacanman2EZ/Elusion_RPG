@@ -65,6 +65,9 @@ const STRETCH_SPEED: float = 30.0
 # the ground it guards is about to be safe again. The same 0.75 s an acid
 # puddle takes (acidpuddle.gd's fade_duration), so the two read alike.
 const FADE_SECONDS: float = 0.75
+# How far behind the target a moving orb's hit_from is put: any distance
+# names the direction; this one is about an orb's own length.
+const HIT_FROM_BEHIND: float = 8.0
 
 # The bullet's own colour is taken in vertex(): by fragment(), COLOR has
 # already been multiplied by the texture, which tinted every bullet the orb's
@@ -106,6 +109,12 @@ var last_step_usec: int = 0
 # What the last step() hit, one entry per bullet: (damage, element). Read it
 # after step(); it is cleared at the start of the next one.
 var hits: Array[Vector2i] = []
+# WHERE EACH OF THOSE HITS CAME FROM (0.77.0), one entry per hit, in the same
+# order: a point behind the target along the orb's flight, or - for an orb
+# lying still, a settled mine - where it lay. A wind boss's orb knocks you
+# along the line it flew (StatusEffects, shove), and nothing else here knew
+# which way that was.
+var hit_from: PackedVector2Array = PackedVector2Array()
 
 var _pos: PackedVector2Array = PackedVector2Array()
 var _vel: PackedVector2Array = PackedVector2Array()
@@ -356,6 +365,7 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 	# untouchable, bullets pass through, as they would through a ghost.
 	var started: int = Time.get_ticks_usec()
 	hits.clear()
+	hit_from.clear()
 	var grazes: int = 0
 	var area: Rect2 = bounds
 	var walled: bool = not _walls.is_empty()
@@ -401,6 +411,8 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		var gap_squared: float = drawn.distance_squared_to(target)
 		if gap_squared < reach * reach and not untouchable:
 			hits.append(Vector2i(_damage[i], _element[i]))
+			hit_from.append(drawn if velocity.length_squared() < 1.0
+				else target - velocity.normalized() * HIT_FROM_BEHIND)
 			_remove(i)
 			continue
 		var near: float = reach + graze_radius
@@ -499,6 +511,7 @@ func danger_at(point: Vector2, ahead: float, radius: float) -> float:
 func clear() -> void:
 	count = 0
 	hits.clear()
+	hit_from.clear()
 	if _multimesh != null:
 		_multimesh.visible_instance_count = 0
 

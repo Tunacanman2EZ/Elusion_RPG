@@ -75,6 +75,7 @@ extends Node2D
 
 
 const Targets := preload("res://src/shared/targets.gd")
+const StatusEffects := preload("res://src/characters/statuseffects.gd")
 
 const GROUP: StringName = &"bulletzone"
 const WALL_CELL: float = 8.0
@@ -92,6 +93,12 @@ const SETTLE_LINGER: float = 3.0
 const DRAWN_ABOVE: int = 20
 
 var field: BulletField = null
+
+# THE BOSS ROOMS' ORBS CARRY THEIR ELEMENT'S EFFECT (0.77.0). boss.gd turns it
+# on for the arena and the Crowned's room; the Field leaves it off, so a fire
+# sprite's orbs there burn no more than they ever did. See statuseffects.gd for
+# what each element does and bossenemy.gd, THE KITS, for who fires what.
+var element_effects: bool = false
 
 # scene path -> its script's own `damage`, for a monster whose .tres leaves
 # projectile_damage at 0. Read once per scene, not copied into a constant, so
@@ -156,23 +163,32 @@ static func share_of(damage: int, share: float) -> int:
 
 
 func fire_fan(origin: Vector2, aim: float, count: int, spread: float, speed: float,
-		damage: int, element: int, big: bool = false, stop_at: float = 0.0) -> void:
+		damage: int, element: int, big: bool = false, stop_at: float = 0.0,
+		gap_from: int = -1, gap_width: int = 0) -> void:
 	"""`count` orbs spread evenly across `spread` radians, centred on `aim`.
-	Given `stop_at`, they settle that far out (see the header)."""
+	Given `stop_at`, they settle that far out (see the header). Given a gap
+	(0.77.0), the `gap_width` orbs from index `gap_from` are left out: the way
+	through a wall of them."""
 	var colour: Color = shot_colour(element)
 	for k in count:
+		if gap_from >= 0 and k >= gap_from and k < gap_from + gap_width:
+			continue
 		var share: float = 0.0 if count <= 1 else float(k) / float(count - 1) - 0.5
 		_spawn_one(origin, aim + share * spread, speed, colour, big, damage, element, stop_at)
 
 
 func fire_ring(origin: Vector2, aim: float, count: int, speed: float, damage: int,
-		element: int, big: bool = false, stop_at: float = 0.0, start_out: float = 0.0) -> void:
+		element: int, big: bool = false, stop_at: float = 0.0, start_out: float = 0.0,
+		gap_from: int = -1, gap_width: int = 0) -> void:
 	"""`count` orbs evenly round a circle, one of them along `aim`: a player
 	who stands still in front of the caster meets that one. Given `stop_at`,
 	they settle into a ring that far out. Given `start_out`, they leave from a
-	circle that wide rather than from the point itself."""
+	circle that wide rather than from the point itself. Given a gap (0.77.0),
+	the `gap_width` orbs from index `gap_from` are left out."""
 	var colour: Color = shot_colour(element)
 	for k in count:
+		if gap_from >= 0 and k >= gap_from and k < gap_from + gap_width:
+			continue
 		var angle: float = aim + TAU * k / maxi(count, 1)
 		var settle: float = maxf(stop_at - start_out, 1.0) if stop_at > 0.0 else 0.0
 		_spawn_one(origin + Vector2.from_angle(angle) * start_out, angle, speed, colour, big, damage,
@@ -286,10 +302,16 @@ func _process(delta: float) -> void:
 	if CHIP_MERCY > 0.0:
 		_mercy_until_ms = Time.get_ticks_msec() + int(CHIP_MERCY * 1000.0)
 	# Each its own hit, so each is armoured, resisted and numbered on its own.
-	for hit in field.hits:
+	for n in field.hits.size():
+		var hit: Vector2i = field.hits[n]
 		if bool(player.get("is_dying")):
 			break
 		player.call(&"take_damage", maxi(hit.x, 1), hit.y)
+		# And, in a boss room, what its element does (0.77.0). After the
+		# damage, so a hit that kills you does not also freeze a corpse.
+		if element_effects:
+			StatusEffects.apply_to(player, StatusEffects.for_element(hit.y), maxi(hit.x, 1),
+				field.hit_from[n] if n < field.hit_from.size() else Vector2.INF)
 
 
 func _floor_rect() -> Rect2:

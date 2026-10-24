@@ -54,7 +54,7 @@ extends Control
 
 # The tab titles. Written here rather than taken from the node names, which are
 # lowercase like every other node in the project.
-const TAB_TITLES := ["Account", "Testing", "Server", "World", "Events", "Economy"]
+const TAB_TITLES := ["Account", "Testing", "Server", "World", "Events", "Economy", "Health"]
 const StressCrowd := preload("res://src/world/stresscrowd.gd")
 
 # What each kind of result looks like in the box. Four, because there are four
@@ -82,6 +82,11 @@ var events_tab: EventsTab = null
 # numbers the owner sets on the server, and the canary's hourly check
 # (economytab.gd), added in _ready().
 var economy_tab: EconomyTab = null
+# THE HEALTH TAB (0.78.0): the live server - players and crowds, data out and
+# the month it adds up to, the tick, the machine, the slowest routes - and the
+# kill receipts put to the server's own count, with the switch beside it
+# (healthtab.gd), added in _ready().
+var health_tab: HealthTab = null
 # PLAYER STATS (0.47.0): the button at the top of the Server tab that opens
 # the owner's Player stats window (statswindow.gd, through the HUD). The
 # owner: "add it in my gm menu as a button somewhere".
@@ -251,6 +256,15 @@ func _ready() -> void:
 		else:
 			economy_tab = tabs.get_node(^"economy") as EconomyTab
 		economy_tab.report = _say
+		if tabs.get_node_or_null(^"health") == null:
+			health_tab = HealthTab.new()
+			tabs.add_child(health_tab)
+		else:
+			health_tab = tabs.get_node(^"health") as HealthTab
+		health_tab.report = _say
+		# ONE SWITCH, TWO PLACES: the Health tab's throws it through the
+		# Testing tab's own handler, password asked again and all.
+		health_tab.toggle_receipts = _on_receipts_toggled
 		var server_page: Node = tabs.get_node_or_null(^"server")
 		if server_page != null:
 			stats_button = server_page.get_node_or_null(^"statsbutton") as Button
@@ -711,6 +725,8 @@ func _on_visibility_changed() -> void:
 			await events_tab.refresh()
 		if economy_tab != null and is_instance_valid(economy_tab) and Api.is_owner:
 			await economy_tab.refresh()
+		if health_tab != null and is_instance_valid(health_tab) and Api.is_owner:
+			await health_tab.refresh()
 	else:
 		_disarm()
 
@@ -1249,7 +1265,7 @@ func _on_trade_toggled(pressed: bool) -> void:
 # build 7 cannot wait for the count and is refused, which is why the answer is
 # read for the minimum build - turning one on without the other strands them.
 func _refresh_receipts() -> void:
-	if receipts_button == null:
+	if receipts_button == null and health_tab == null:
 		return
 	var res: Dictionary = await status_request.call("/api/status")
 	if not is_instance_valid(self) or not is_inside_tree() or not res.get("ok", false):
@@ -1257,8 +1273,17 @@ func _refresh_receipts() -> void:
 	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
 	# NO SIGNAL, like trading. An older server says nothing, and pays on the
 	# game's word: off.
-	receipts_button.set_pressed_no_signal(bool(data.get("kill_receipts", false)))
-	receipts_button.disabled = not Api.is_owner
+	_show_receipts(bool(data.get("kill_receipts", false)))
+
+
+func _show_receipts(on: bool) -> void:
+	"""Both places the switch is - this tab's and the Health tab's - showing
+	what the server holds, without throwing it."""
+	if receipts_button != null:
+		receipts_button.set_pressed_no_signal(on)
+		receipts_button.disabled = not Api.is_owner
+	if health_tab != null and is_instance_valid(health_tab):
+		health_tab.show_switch(on)
 
 
 func _on_receipts_toggled(pressed: bool) -> void:
@@ -1275,6 +1300,8 @@ func _on_receipts_toggled(pressed: bool) -> void:
 		_say("The server refused that: %s" % str(res.get("error", "")), SAY_BAD)
 		return
 	var data: Dictionary = res.get("data", {}) if res.get("data") is Dictionary else {}
+	# Thrown from either place, both show it.
+	_show_receipts(bool(data.get("kill_receipts", pressed)))
 	if pressed:
 		var minimum: int = int(data.get("min_client_build", 0))
 		_say("Kills are paid only when the server's count of the fight agrees. "

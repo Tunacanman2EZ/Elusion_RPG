@@ -32,6 +32,16 @@ var current_player: Node = null
 # =============================================================================
 
 func _ready() -> void:
+	# THE BOSS ROOMS ARE BULLET ROOMS (0.77.0). Both of them - the arena's six
+	# and the Crowned's floor - run this script, and every boss fires its
+	# signature volley as orbs (bossenemy.gd, THE KITS), so both rooms get a
+	# zone, always: unlike the Field's, there is no version of these rooms
+	# without one. Its orbs carry their element's effect (element_effects).
+	# Before the player, as field.gd does it, so the zone is there for the
+	# first thing that fires.
+	var zone := BulletZone.new()
+	zone.element_effects = true
+	add_child(zone)
 	spawn_player_from_selection()
 	_position_player_at_spawn()
 

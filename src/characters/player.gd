@@ -35,6 +35,10 @@ const NameTag := preload("res://src/shared/nametag.gd")
 const HitFlash := preload("res://src/shared/hitflash.gd")
 # Whether a wall stands between an attack and what it would hit (can_hit()).
 const Targets := preload("res://src/shared/targets.gd")
+# What a boss's element does to you besides the damage (0.77.0): chilled,
+# frozen, burning, soaked, shoved, pulled, rooted, dazzled, withered. By path,
+# not class_name - see the top of that file.
+const StatusEffects := preload("res://src/characters/statuseffects.gd")
 var _carried_light: PointLight2D = null
 
 # The name that floats over this character's head. Built in code for the same
@@ -360,6 +364,11 @@ var _regen_stamina_accumulator: float = 0.0
 
 var is_dying: bool = false
 
+# This character's effects node (statuseffects.gd), made in _ready(). Null on
+# a body that never entered the tree; every effects_*() below answers "none"
+# then.
+var status_effects: Node = null
+
 @export var hit_flash_duration: float = 0.15
 
 
@@ -432,6 +441,9 @@ signal moved(position: Vector2, direction: String)
 
 func _ready() -> void:
 	add_to_group("player")
+	# THE EFFECTS NODE (0.77.0), before anything can hit you. Every hazard
+	# reaches it through StatusEffects.apply_to(), which finds it by name.
+	status_effects = StatusEffects.attach(self)
 	# The mouse leaving the game window: aim where the character faces until it
 	# is back (THE CURSOR, WHEN THERE IS ONE).
 	if not get_window().mouse_exited.is_connected(_on_pointer_left_window):
@@ -678,12 +690,13 @@ func _physics_process(_delta):
 	if direction != Vector2.ZERO:
 		_set_active()
 
-		var wants_sprint: bool = Input.is_action_pressed("sprint") and stamina > 0
+		var wants_sprint: bool = Input.is_action_pressed("sprint") and stamina > 0 \
+			and effects_let_sprint()
 		_is_sprinting = wants_sprint
 
 		var base_speed: float = speed + (agility - 1) * PlayerStats.AGILITY_SPEED_PER_LEVEL
 		var actual_speed: float = base_speed * sprint_speed_multiplier if _is_sprinting else base_speed
-		velocity = direction.normalized() * actual_speed
+		velocity = direction.normalized() * actual_speed * effects_speed_scale()
 
 		if _is_sprinting:
 			_sprint_tick(_delta)
@@ -722,7 +735,11 @@ func _physics_process(_delta):
 	# covered — see _accrue_agility_from_travel() below.
 	var position_before: Vector2 = global_position
 
+	# A SHOVE OR A PULL rides on this move and comes off after it (0.77.0).
+	var push: Vector2 = effects_push()
+	velocity += push
 	move_and_slide()
+	velocity -= push
 	_displace_wading_enemies(wading, _delta)
 
 	_accrue_agility_from_travel(global_position.distance_to(position_before))
@@ -1217,7 +1234,7 @@ func _tick_regen(delta: float) -> void:
 		return
 
 	if hp < max_hp:
-		_regen_hp_accumulator += _regen_rate_for(max_hp) * delta
+		_regen_hp_accumulator += _regen_rate_for(max_hp) * delta * effects_heal_scale()
 		var points: int = int(_regen_hp_accumulator)
 		if points > 0:
 			_regen_hp_accumulator -= points
@@ -1870,11 +1887,60 @@ func _play_hit_flash() -> void:
 
 
 func heal(amount: int) -> void:
+	# WITHERED (0.77.0): the Crowned's dark halves every heal for a moment -
+	# potions, the healer's ring, all of it - so it is scaled here, where they
+	# all arrive.
+	amount = maxi(1, roundi(amount * effects_heal_scale())) if amount > 0 else amount
 	var actual_heal: int = min(amount, max_hp - hp)
 	if actual_heal <= 0:
 		return
 	hp = min(max_hp, hp + amount)
 	_spawn_floating_label(actual_heal, 1)
+
+
+# =============================================================================
+# WHAT THE BOSSES' ELEMENTS DO TO YOU (0.77.0)
+# =============================================================================
+# Asked by both movement loops - this one and tank.gd's, which replaces it and
+# so has to ask on its own (the note at the top of the shared steps below).
+
+func effects_speed_scale() -> float:
+	"""Chilled is slower, frozen and rooted are still: what your walk is
+	multiplied by."""
+	return float(status_effects.call(&"speed_scale")) if status_effects != null else 1.0
+
+
+func effects_let_sprint() -> bool:
+	"""Soaked, frozen or rooted, you cannot sprint."""
+	return bool(status_effects.call(&"can_sprint")) if status_effects != null else true
+
+
+func effects_push() -> Vector2:
+	"""A shove or a pull, on top of your own movement this frame."""
+	return status_effects.call(&"push_velocity") if status_effects != null else Vector2.ZERO
+
+
+func effects_heal_scale() -> float:
+	"""Withered, your healing is halved."""
+	return float(status_effects.call(&"heal_scale")) if status_effects != null else 1.0
+
+
+func show_status_word(word: String, element: int) -> void:
+	"""The word over your head as an effect starts - \"Chilled\", \"Frozen\" -
+	in the element's colour, through the same floating text as a notice."""
+	if word == "" or FLOATING_LABEL_SCENE == null:
+		return
+	var lbl = FLOATING_LABEL_SCENE.instantiate()
+	if lbl == null:
+		return
+	_label_container().add_child(lbl)
+	# Between the damage number (-30) and a notice (-52).
+	lbl.global_position = global_position + Vector2(0, -42)
+	lbl.reset_physics_interpolation()
+	if element != Element.Type.NONE and lbl is CanvasItem:
+		(lbl as CanvasItem).modulate = Element.colour_for(element)
+	if lbl.has_method("show_text"):
+		lbl.show_text(word, NOTICE_LABEL_TYPE, 1.0, 0.8)
 
 
 func restore_mana(amount: int) -> void:

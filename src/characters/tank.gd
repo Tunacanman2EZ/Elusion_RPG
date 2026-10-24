@@ -422,7 +422,12 @@ func _handle_movement(delta: float) -> void:
 		velocity *= _wade_drag_factor(wading.size())
 
 	var position_before: Vector2 = global_position
+	# A shove or a pull rides on the move and comes off after it, so the ease
+	# above never carries it into the next frame (0.77.0).
+	var push: Vector2 = effects_push()
+	velocity += push
 	move_and_slide()
+	velocity -= push
 	_displace_wading_enemies(wading, delta)
 	_accrue_agility_from_travel(global_position.distance_to(position_before))
 
@@ -433,13 +438,15 @@ func _handle_moving(direction: Vector2, delta: float) -> void:
 
 	# sprint check — duplicated from player.gd because tank overrides
 	# _physics_process entirely with its lerp-based movement
-	var wants_sprint: bool = Input.is_action_pressed("sprint") and stamina > 0
+	var wants_sprint: bool = Input.is_action_pressed("sprint") and stamina > 0 \
+		and effects_let_sprint()
 	_is_sprinting = wants_sprint
 
 	# compute target velocity, then lerp toward it for smooth heavy-class feel
+	# - chilled slower, frozen or rooted still (0.77.0, player.gd's effects).
 	var base_speed:   float = speed + (agility - 1) * PlayerStats.AGILITY_SPEED_PER_LEVEL
 	var actual_speed: float = base_speed * sprint_speed_multiplier if _is_sprinting else base_speed
-	velocity = velocity.lerp(direction.normalized() * actual_speed, 0.3)
+	velocity = velocity.lerp(direction.normalized() * actual_speed * effects_speed_scale(), 0.3)
 
 	# stamina out and agility XP in, the same as every class
 	if _is_sprinting:

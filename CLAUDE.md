@@ -8066,6 +8066,149 @@ the round; `_test_other_players_attacks_are_pictures` and
 `_test_presence_carries_the_monsters` hold the attacks in the tick and the
 hello.
 
+## Seven bosses, seven fights (0.77.0)
+
+The owner, 23 Oct: "bosses currently are stale do to only locking on 1 player
+... the idea was cool but bosses are too complicated in a sense but also to
+easy not that we have bullets we can customize each boss to do different
+things instead of each boss being a repeat we can add real elements and
+effects slow on ice etc i want to keep the stalagmites but each boss needs to
+be a challenge but also clearable".
+
+**What it was.** All seven bosses ran `bossenemy.gd` with one vocabulary:
+three pillar shapes on the cast, eleven spike shapes on a second clock,
+stalkers from phase two, the swing. The element changed timings, sizes and
+puddles and nothing else, and every attack was a ring at the feet of whoever
+was nearest when the gate opened, for the whole fight (`_resolve_player()`
+never looks again while its target is valid).
+
+**What it is** - `bossenemy.gd`, THE KITS, has the table and the reasons:
+
+| Boss | Stalagmites | Signature volley | Effect |
+|---|---|---|---|
+| Light | lance, ring, arc | PRISM: spokes that turn as they leave | dazzle |
+| Wind | arc, snare, sweep | GALE: fans that shove; VORTEX in phase three | shove, pull |
+| Water | cage, snare, ladder | TIDE: walls of orbs, one moving gap each | soaked |
+| Ice | ladder, cage, checker | FROST: shards that stop as mines across your spot | chill, frozen |
+| Earth | gate, triwall, rake | BOULDER: its stalagmite thrown where you stood | root |
+| Fire | cross, spiral, carpet | PINCER: orbs that shut on your spot and burn it | burn |
+| Crowned | ring, cage, gate + stalkers | the other six's, more each phase | wither |
+
+- **One stalagmite clock** (`_on_spike_timer` / `_cast_spike_pattern`) raises
+  the kit's shapes: the first two from the start, the third from phase two
+  (`stalagmite_pool()`). Ring, cage and gate wear the pillar art, the rest the
+  spike art, as before (`PILLAR_SHAPES`). One clock means the pairings the two
+  tracks were split to keep apart can never meet. `_build_pattern()` is gone.
+- **The cast throws the volley** (`_cast_signature()`, on `cast_frame`) into
+  the room's BulletZone - `boss.gd` gives both boss rooms one, with
+  `element_effects` on. No zone (a test world) and it raises a stalagmite
+  shape instead. Every game fires its own copy: `fire_volley(zone, origin,
+  aim, volley, reach)` is monstersync's "b" contract; the name carries the
+  phase and a number ("tide2:17"), and a name not in `VOLLEYS` fires nothing.
+  Multi-beat volleys run on tweens of the boss's own (`_on_beat()`), so a
+  freed boss takes its volley with it.
+- **Nobody is locked on.** `next_target()`: whoever in the fight
+  (`fight_targets()`, inside the leash, not dying) has gone longest without
+  being attacked, never the one just attacked while anyone else is there. Each
+  clock takes its own turns; after a cast the boss walks to the next one it
+  can see; BOULDER and PINCER go at up to `SPLIT_MAX` players at once
+  (`split_targets()`). `_aim_body()` is who a shape is laid out for.
+- **Waves take turns**: `_pace()` slows a boss's clocks by `WAVE_PACE` for
+  each partner `in_fight()` - x1.35 beside one, x1.7 beside two.
+- **Each phase is harder**: `PHASE_TEMPO` on the stalagmite clock, more in
+  every volley (the per-phase arrays), `VOLLEY_REST` shorter, and from phase
+  two a run of `SWINGS_BEFORE_CAST` swings ends in a cast at point blank.
+- **Only the Crowned keeps the stalkers** (`"stalkers"` in its kit).
+
+**The effects** (`src/characters/statuseffects.gd`, no class_name - preload it
+by path). One node per character, named `statuseffects`, made in player.gd's
+`_ready()`; hazards reach it with `StatusEffects.apply_to()`, which does
+nothing to a body without one. `FOR_ELEMENT` is the one table of which element
+carries which effect; spikes get theirs in `_spawn_one_eruption()` (on every
+game that draws them), orbs through `BulletZone.element_effects` and
+`BulletField.hit_from` (a shove goes along the orb's flight, or away from a
+mine), puddles through `AcidPuddle.status` - only the ones in `GROUND`, and a
+puddle can chill but never freeze. Your own player only; nothing is sent.
+The caps that keep a fight clearable: nothing slows more than 40%
+(`SLOW_FLOOR`), after frozen or rooted neither can happen for `HOLD_IMMUNITY`,
+nothing lasts more than 3 s, a pull is slower than walking, and you can always
+attack. Shown with no new art: a tint on your sprite (`self_modulate`), a word
+over your head (`show_status_word()`), and dazzle's darkening drawn by a
+shader on a CanvasLayer.
+
+player.gd asks `effects_speed_scale()`, `effects_let_sprint()`,
+`effects_push()` (added for the move and taken off after it) and
+`effects_heal_scale()` (in `heal()` and the regen); tank.gd's own loop asks the
+same four - it replaces the base loop, so anything added there has to be
+repeated in it.
+
+**Measured** (the website's `tools/bossmeasure.gd`, which now has a dodging
+stand-in as well as the two that stand, and carries the effects), raw damage
+a second, before armour, 2026-10-23:
+
+| Boss | In reach (phase 1 / 2 / 3) | At range | At range, dodging |
+|---|---|---|---|
+| Light | 33 / 33 / 41 | 18 / 24 / 33 | 10 / 12 / 17 |
+| Wind | 32 / 29 / 32 | 15 / 22 / 25 | 9 / 8 / 10 |
+| Water | 43 / 46 / 58 | 33 / 44 / 55 | 7 / 7 / 8 |
+| Ice | 42 / 53 / 88 | 19 / 25 / 54 | 8 / 15 / 18 |
+| Earth | 101 / 114 / 158 | 84 / 119 / 144 | 24 / 31 / 36 |
+| Fire | 127 / 130 / 186 | 80 / 113 / 183 | 20 / 24 / 28 |
+| Crowned | 122 / 201 / 284 | 78 / 164 / 238 | 46 / 40 / 57 |
+
+Against the one shared set the bosses had before, measured the same way with the
+same dodging stand-in: the first four are gentler on a player who stands still in
+phases 2 and 3 and the last three harder by phase 3, and a player who dodges takes
+about the same or less. **What makes the bosses easy is not their attacks but
+their health**: the website's Boss Sim has a level-22 warrior in Ember, alone,
+killing Light in under 10 s and the Crowned in about 25. That is the next lever,
+not more attacks.
+
+`_test_the_bosses_are_seven_fights` holds the kits, every effect and its cap,
+the hazards carrying them, every volley's count on its beat, the turns, the
+pace, and both movement loops asking.
+
+## The Health tab: the live server on the GM panel (0.78.0)
+
+The owner, 24 Oct, of four next steps after the swarm (send each game only
+the players near it, watch the live server, test on the real machine, let the
+server referee every kill): "work on this or if you have a even better idea
+lets hear it". The better idea: measure first. The droplet's plan includes
+1,000 GiB of outgoing data a month, and 128 in one area send about 13 MB/s -
+some 32 TiB a month held - so the trigger for sending only what is near is
+the bill, and nobody could see it. Now the GM panel can.
+
+`src/ui/owner/healthtab.gd` (`HealthTab`), the seventh tab, after Economy;
+built like the Economy tab - made in code, three pages that take turns,
+nothing scrolls, every page no taller than the other tabs. It reads
+`GET /api/server/health` (the API's serverhealth/; its CLAUDE.md, "The
+server's health") when the panel opens, on Refresh (the kill receipts read
+fresh, `?fresh=1`, and what it read said in Results) and every
+`REFRESH_SECONDS` (30) while it is on screen (`is_visible_in_tree()`).
+
+- **Players**: online, in an area, the biggest crowd; the most today and this
+  week; data going out a second - the machine's own network and the game's
+  sockets' share; the month at this week's rate against the 1,000 GiB, and
+  what past it would cost (green, then amber at half, red past it); whether
+  one area needs sending only what is near yet (the server's verdict).
+- **Machine**: the tick (steady is ten a second with no late beat), the
+  load, memory, disk and database size, the three slowest routes by p99
+  (one gunicorn worker's view, as /api/metrics).
+- **Receipts**: "Kills need the server's count" - the week's kills put to
+  the server's own count (killwatch.py's), a verdict in a sentence (ready,
+  or what it waits for: a week of books, 200 kills, 98% backed, no monster
+  the books never see), the monsters never seen by name, and the switch.
+  **One switch, two places**: the Health tab's throws it through the
+  Testing tab's own `_on_receipts_toggled()` (owner only, the password asked
+  again), and `_show_receipts()` sets both from whatever the server says.
+  While the oldest build allowed in is below `Combat.RECEIPT_BUILD` it says
+  to raise Old versions must update first.
+
+A server from before 0.78.0 answers 404 and the tab says to update it; a
+server whose presence.py is still the old process says it has not written a
+minute. `_test_the_gm_panel_health_tab`; the tab titles in
+`_test_the_gm_panel_is_a_window`.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven

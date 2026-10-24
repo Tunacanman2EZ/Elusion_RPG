@@ -101,6 +101,7 @@ const RISE_ANIM := &"projectile"
 # at 0.88 saturation and rotates cleanly. Two shaders, each used where its
 # measurement says it works.
 const SPIKE_SHADER := preload("res://src/shared/hearth_warm.gdshader")
+const StatusEffects := preload("res://src/characters/statuseffects.gd")
 
 # How much light the tinted rock throws. Matches hearth_warm's own default.
 const SPIKE_LIFT := 0.30
@@ -288,6 +289,13 @@ const ELEMENT_SPARKS := {
 # some players could see. bossenemy.gd draws a seed for every spike it places
 # and sends it with the spike, so every copy rolls the same pools.
 var puddle_seed: int = 0
+
+# WHAT ELSE THIS SPIKE DOES TO WHOEVER IT CATCHES (0.77.0): the boss's effect
+# (statuseffects.gd), set by bossenemy.gd's _spawn_one_eruption() from its kit
+# - chilled, burning, rooted and the rest. &"" is a plain spike. The pool it
+# leaves carries it too when it is one that belongs to the ground
+# (StatusEffects.GROUND): ice slick slows, fire burns, water soaks.
+var status: StringName = &""
 
 # 0 means "whatever the element's puddle scene says". Same convention as
 # EnemyData.projectile_damage: a zero is deference, not a value.
@@ -646,6 +654,7 @@ func _damage_players_inside() -> void:
 			continue
 		already_hit.append(id)
 		target.take_damage(damage, element)
+		StatusEffects.apply_to(target, status, damage, global_position)
 
 
 func _overlapping_player_nodes() -> Array[Node]:
@@ -756,6 +765,10 @@ func _drop_one_puddle(container: Node, at: Vector2) -> void:
 	# no scene of its own, and the pool should still deal the damage TYPE it was
 	# made with even when it is wearing someone else's art.
 	puddle.element = element
+
+	# The ground ones go on with the pool (0.77.0) - see `status`.
+	if "status" in puddle and StatusEffects.GROUND.has(status):
+		puddle.status = status
 
 	# The explicit override wins; zero defers to the scene, which is where the
 	# per-element tick now lives.
