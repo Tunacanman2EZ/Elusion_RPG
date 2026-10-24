@@ -8223,6 +8223,25 @@ monsters over where they stand when it is alone. The tab now has four pages
 the month counted and what it can still send, nearby-only sending), Machine,
 Receipts - with Refresh under the page buttons (`guard_text()`).
 
+## Bosses that scale (0.80.0)
+
+The owner, after a rating of the game: "we need to think outside the box ...
+lets fix it up". Measured on 0.77.0, a level-22 warrior in ember killed the
+Light boss in under ten seconds and the Crowned in about twenty-five. A boss's
+health is now set by who is fighting it, on the game that runs it
+(`bossenemy.gd`, BOSSES THAT SCALE): `scale_for()` - each fighter counts
+`min(LEVEL_MOST 5, 1 + LEVEL_SHARE 0.2 x levels above BAND_TOP)` (the band
+table under "The pace"), the mean of them, times `1 + PARTY_SHARE 0.6` per
+extra fighter (`PARTY_MOST` 16, the highest levels), times `HEALTH_BASE` (the
+Crowned 2.5). Looked at every `SCALE_SECONDS` while it fights: raised as
+fighters join, the damage done kept (`raise_for_scale()`), never lowered in a
+fight; back home, out of it and whole, itself again (`unscale()`). Every
+screen and the server's books are told with a world event `"mh"`
+(`net_rescale()` on a mirror; the API's combatbook.py `rescaled()`,
+`BOSS_RAISED_MOST`). **Deploy the server first**: an older one flags a raised
+boss "max_hp_differs". `_test_bosses_scale_to_their_fight`; the API's
+test_combatbook.py CB-12.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven

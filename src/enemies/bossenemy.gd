@@ -343,6 +343,38 @@ const KITS := {
 	},
 }
 
+# BOSSES THAT SCALE (0.80.0). The owner, after a rating of the game: "we need to
+# think outside the box ... lets fix it up". Measured on 0.77.0, a level-22
+# warrior in ember killed the Light boss in under ten seconds and the Crowned
+# in about twenty-five: a boss was the same fight for one player of its band
+# as for four at the level cap. Now its health is set by who is fighting it,
+# on the game that runs it (never a mirror) - scale_for():
+#   - each fighter counts min(LEVEL_MOST, 1 + LEVEL_SHARE x the levels they
+#     stand above the boss's band, BAND_TOP - CLAUDE.md, "The pace"), and the
+#     boss takes their mean;
+#   - times 1 + PARTY_SHARE for every fighter after the first (PARTY_MOST
+#     counted at most, the highest levels);
+#   - times its own HEALTH_BASE: the Crowned's 2.5, the finale at the level it
+#     is for.
+# Checked every SCALE_SECONDS while it fights: somebody joining raises it, the
+# damage already done kept (raise_for_scale()); nobody leaving lowers it - the
+# server's books count down from what the game says, and a health lowered
+# under them is a death they cannot agree to (raise_for_stir() says the same).
+# Back home at full health it is itself again (unscale()). Every screen is told
+# ("mh", monstersync.gd), and so are the books (combatbook.py,
+# BOSS_RAISED_MOST: a boss's health raised by its fight, never lowered below
+# the catalogue's).
+const BAND_TOP := {
+	Element.Type.LIGHT: 4, Element.Type.WIND: 4, Element.Type.WATER: 9, Element.Type.ICE: 9,
+	Element.Type.EARTH: 15, Element.Type.FIRE: 21, Element.Type.DARK: 22,
+}
+const HEALTH_BASE := {Element.Type.DARK: 2.5}
+const LEVEL_SHARE := 0.2
+const LEVEL_MOST := 5.0
+const PARTY_SHARE := 0.6
+const PARTY_MOST := 16
+const SCALE_SECONDS := 1.0
+
 # The shapes that rise as the stone pillar (eruption_scene) rather than the
 # spike cluster (gate_scene): the three that were the old pillar cast's, so
 # each shape still wears the art it always did.
@@ -1116,6 +1148,13 @@ func _ready() -> void:
 	add_to_group(&"unpushable")
 	# Every boss, so each can see how many partners are loose (_pace()).
 	add_to_group(BOSS_GROUP)
+	# BOSSES THAT SCALE: who is fighting it, looked at every SCALE_SECONDS.
+	_scale_timer = Timer.new()
+	_scale_timer.name = "scaletimer"
+	_scale_timer.wait_time = SCALE_SECONDS
+	_scale_timer.autostart = true
+	_scale_timer.timeout.connect(_on_scale_tick)
+	add_child(_scale_timer)
 
 	# COMBAT TUNING LIVES HERE, not in the .tres — the .tres is the reward
 	# profile. attack_range in particular is a statement about how this fight
@@ -2599,6 +2638,97 @@ func stalagmite_pool(phase: int) -> Array[StringName]:
 	for k in mini(shapes.size(), 2 if phase <= 0 else 3):
 		pool.append(shapes[k])
 	return pool
+
+
+# =============================================================================
+# BOSSES THAT SCALE (0.80.0) - see the top
+# =============================================================================
+
+# What its health is times, now: 1.0 until a fight raises it.
+var health_scale: float = 1.0
+# Its health before a fight raised it, kept whole so a second raise and the
+# way back down are worked from it, not from a rounded raise.
+var _unscaled_max: int = 0
+var _scale_timer: Timer = null
+
+
+static func scale_for(element: int, levels: Array) -> float:
+	"""How many times its catalogue health a boss of this element has for
+	fighters of these levels (the highest PARTY_MOST counted)."""
+	var base: float = float(HEALTH_BASE.get(element, 1.0))
+	if levels.is_empty():
+		return base
+	var counted: Array = levels.duplicate()
+	counted.sort()
+	counted.reverse()
+	counted = counted.slice(0, PARTY_MOST)
+	var top: float = float(BAND_TOP.get(element, BAND_TOP[Element.Type.DARK]))
+	var total: float = 0.0
+	for level in counted:
+		total += minf(LEVEL_MOST, 1.0 + LEVEL_SHARE * maxf(0.0, float(level) - top))
+	return base * (total / float(counted.size())) * (1.0 + PARTY_SHARE * float(counted.size() - 1))
+
+
+func fighter_levels() -> Array:
+	"""The level of everybody in this fight (fight_targets())."""
+	var levels: Array = []
+	for body in fight_targets():
+		var level: Variant = body.get("level")
+		levels.append(maxi(1, int(level)) if level != null else 1)
+	return levels
+
+
+func raise_for_scale() -> void:
+	"""(The game running it.) Its health for who is fighting it now: raised,
+	never lowered, the damage already done kept."""
+	if net_mirror or _dying or _death_resolved or hp <= 0:
+		return
+	var want: float = scale_for(current_element(), fighter_levels())
+	if want <= health_scale + 0.001:
+		return
+	if health_scale <= 1.001:
+		_unscaled_max = max_hp
+	var new_max: int = maxi(max_hp, roundi(float(_unscaled_max) * want))
+	hp += new_max - max_hp
+	max_hp = new_max
+	health_scale = want
+	_refresh_health_display()
+	_tell_scale()
+
+
+func unscale() -> void:
+	"""(The game running it.) Home, out of the fight and at full health:
+	itself again, for whoever comes next."""
+	if net_mirror or health_scale <= 1.001 or engaged or is_returning_home or _dying or _death_resolved \
+			or hp < max_hp:
+		return
+	max_hp = _unscaled_max if _unscaled_max > 0 else maxi(1, roundi(float(max_hp) / health_scale))
+	hp = max_hp
+	health_scale = 1.0
+	_refresh_health_display()
+	_tell_scale()
+
+
+func net_rescale(new_max: int, new_hp: int) -> void:
+	"""(Mirror.) The game running this boss changed its health for who is
+	fighting it ("mh")."""
+	if new_max <= 0:
+		return
+	max_hp = new_max
+	hp = clampi(new_hp, 0, max_hp)
+	_refresh_health_display()
+
+
+func _tell_scale() -> void:
+	if _net_sync != null and not net_mirror:
+		_net_sync.leader_event(self, {"k": "mh", "mh": max_hp, "hp": hp})
+
+
+func _on_scale_tick() -> void:
+	if in_fight():
+		raise_for_scale()
+	else:
+		unscale()
 
 
 func in_fight() -> bool:

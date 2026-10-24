@@ -422,6 +422,7 @@ func _run_all() -> void:
 	await _test_the_bullet_zone_is_shared()
 	await _test_the_field_volleys()
 	await _test_the_bosses_are_seven_fights()
+	await _test_bosses_scale_to_their_fight()
 	_test_the_road_through_the_game()
 	await _test_the_arrival_portal_closes_behind_you()
 	await _test_monsters_go_out_in_a_burst()
@@ -34916,6 +34917,73 @@ func _kit_boss(enemy_id: String) -> Node:
 	if boss.enemy_data == null:
 		boss.enemy_data = boss.ENEMY_DATA
 	return boss
+
+
+# BOSSES THAT SCALE (0.80.0). The owner: "we need to think outside the box ...
+# lets fix it up" - a boss's health set by who fights it. The server's half is
+# test_combatbook.py CB-12.
+func _test_bosses_scale_to_their_fight() -> void:
+	section("BOSSES THAT SCALE - a boss's health set by who is fighting it")
+	var B := preload("res://src/enemies/bossenemy.gd")
+	check("at its own band, one player: the catalogue's health",
+		is_equal_approx(B.scale_for(Element.Type.LIGHT, [4]), 1.0) and is_equal_approx(B.scale_for(Element.Type.FIRE, [21]), 1.0))
+	check("  a level-22 on the Light boss (band top 4): 1 + 0.2 x 18 = 4.6 times",
+		is_equal_approx(B.scale_for(Element.Type.LIGHT, [22]), 4.6), B.scale_for(Element.Type.LIGHT, [22]))
+	check("  far over, held to LEVEL_MOST (5); the Crowned at 22 its own 2.5",
+		is_equal_approx(B.scale_for(Element.Type.LIGHT, [60]), 5.0) and is_equal_approx(B.scale_for(Element.Type.DARK, [22]), 2.5))
+	check("  four of its band: 1 + 0.6 x 3 = 2.8 times; nobody: its base",
+		is_equal_approx(B.scale_for(Element.Type.LIGHT, [4, 4, 3, 2]), 2.8) and is_equal_approx(B.scale_for(Element.Type.DARK, []), 2.5))
+	var crowd: Array = []
+	for i in 20:
+		crowd.append(99)
+	check("  at most PARTY_MOST (16) counted, so the most is 2.5 x 5 x 10 = 125 - under the server's BOSS_RAISED_MOST (400)",
+		is_equal_approx(B.scale_for(Element.Type.DARK, crowd), 125.0), B.scale_for(Element.Type.DARK, crowd))
+
+	var world := Node2D.new()
+	add_child(world)
+	var boss: Node2D = (load("res://scene/enemy/lightboss.tscn") as PackedScene).instantiate() as Node2D
+	world.add_child(boss)
+	var me: Node2D = (load("res://scene/characters/warrior.tscn") as PackedScene).instantiate() as Node2D
+	me.set_physics_process(false)
+	world.add_child(me)
+	await get_tree().process_frame
+	boss.set_physics_process(false)
+	me.global_position = boss.global_position + Vector2(0, 60)
+	var base: int = int(boss.max_hp)
+	boss.set("player", me)
+	boss.set("engaged", true)
+	boss.set("gated", false)
+	me.set("level", 10)
+	boss.call("raise_for_scale")
+	var at_ten: int = int(boss.max_hp)
+	check("in a fight: raised for who is in it (one level-10 on Light: 2.2 times), and full",
+		at_ten == roundi(base * 2.2) and int(boss.hp) == at_ten and is_equal_approx(float(boss.health_scale), 2.2),
+		[base, at_ten, boss.hp])
+	boss.hp = at_ten - 500
+	me.set("level", 22)
+	boss.call("raise_for_scale")
+	check("  stronger fighters raise it again, the damage already done kept",
+		int(boss.max_hp) == roundi(base * 4.6) and int(boss.hp) == int(boss.max_hp) - 500, [boss.max_hp, boss.hp])
+	var raised: int = int(boss.max_hp)
+	me.set("level", 4)
+	boss.call("raise_for_scale")
+	check("  and never lowered in a fight", int(boss.max_hp) == raised)
+	boss.set("engaged", false)
+	boss.hp = int(boss.max_hp)
+	boss.call("unscale")
+	check("home, out of the fight and whole: itself again for whoever comes next",
+		int(boss.max_hp) == base and int(boss.hp) == base and is_equal_approx(float(boss.health_scale), 1.0), boss.max_hp)
+	boss.set("net_mirror", true)
+	boss.set("engaged", true)
+	boss.call("raise_for_scale")
+	boss.call("net_rescale", 9999, 8000)
+	check("a copy on another screen never raises it itself; it takes the leader's ('mh')",
+		int(boss.max_hp) == 9999 and int(boss.hp) == 8000)
+	check("  and the leader tells every screen and the server",
+		_func_body(_code_src("res://src/enemies/bossenemy.gd"), "func _tell_scale(").contains("\"k\": \"mh\"")
+		and _code_src("res://src/world/monstersync.gd").contains("mirror.call(\"net_rescale\""))
+	world.queue_free()
+	await get_tree().process_frame
 
 
 func _test_the_bosses_are_seven_fights() -> void:

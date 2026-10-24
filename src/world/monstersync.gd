@@ -867,6 +867,10 @@ func _apply_event(event: Dictionary) -> void:
 		"m":
 			if mirror != null and mirror.has_method("_land_swing"):
 				mirror.call("_land_swing")
+		"mh":
+			# BOSSES THAT SCALE (0.80.0): its health for who is fighting it.
+			if mirror != null and mirror.has_method("net_rescale"):
+				mirror.call("net_rescale", int(event.get("mh", 0)), int(event.get("hp", 0)))
 
 
 func _replay_shot(mirror: BaseEnemy, event: Dictionary, at: Vector2) -> void:
