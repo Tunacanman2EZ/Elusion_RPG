@@ -18998,6 +18998,8 @@ func _test_the_gm_panel_health_tab() -> void:
 			"week": {"samples": 6000, "peak_players": 40, "peak_area": "big_field", "peak_area_players": 34, "late_ticks": 3}},
 		"month": {"source": "machine", "bytes_per_second": 200000.0, "gib": 520.4, "allowance_gib": 1000,
 			"share": 0.52, "over_cost": 0.0},
+		"budget": {"on": true, "level": "full", "crowd_cap": null, "allowance_gib": 1000, "used_gib": 12.345,
+			"since": now - 86400 * 3, "affordable_per_second": 390000.0},
 		"crowd": {"verdict": "watch", "by": "crowd", "watch_at": 32, "now_at": 96},
 		"tick": {"verdict": "steady", "per_second": 10.0, "late_today": 0},
 		"machine": {"cores": 1, "load1": 0.31, "mem_free_mb": 412, "disk_free_gb": 18.2, "disk_total_gb": 24.9,
@@ -19031,6 +19033,9 @@ func _test_the_gm_panel_health_tab() -> void:
 	check("  the month at this week's rate, against what the droplet includes",
 		tab.month_label.text == "A month at this week's rate: 520 GiB of the 1,000 included."
 		and tab.month_label.get_theme_color("font_color") == HealthTab.SAY_WARN, tab.month_label.text)
+	check("  the data guard: holding the month under the plan, the month counted, what it can still send",
+		tab.guard_label.text == "Data guard: full speed. Counted this month: 12 GiB since %s; it can send 390 KB/s to the month's end." % LocalTime.date(now - 86400 * 3)
+		and tab.guard_label.get_theme_color("font_color") == HealthTab.SAY_GOOD, tab.guard_label.text)
 	check("  whether one area needs sending only what is near yet, and why",
 		tab.nearby_label.text == "Sending each game only nearby players: worth planning - an area held 32 or more this week.",
 		tab.nearby_label.text)
@@ -19059,6 +19064,8 @@ func _test_the_gm_panel_health_tab() -> void:
 	busy["month"]["share"] = 34.1
 	busy["month"]["gib"] = 34100.0
 	busy["month"]["over_cost"] = 331.0
+	busy["budget"] = {"on": true, "level": "alone", "crowd_cap": 1, "allowance_gib": 1000, "used_gib": 949.87,
+		"since": now - 86400 * 29, "affordable_per_second": -5.0}
 	busy["receipts"]["verdict"] = "monster"
 	busy["receipts"]["never_by_enemy"] = [["elementallordboss", 9999], ["slime", 999], ["bat", 99]]
 	busy["receipts"]["paid"] = 123456
@@ -19066,7 +19073,7 @@ func _test_the_gm_panel_health_tab() -> void:
 	tab.show_answer(busy)
 	tab._say_here("This server does not have the Health tab yet (404). Update the server, then Refresh.")
 	var filled: Array = []
-	for which in ["players", "machine", "receipts"]:
+	for which in ["players", "data", "machine", "receipts"]:
 		tab.show_page(which)
 		await get_tree().process_frame
 		filled.append(Vector2(PanelWindow.content_minimum(gm).x, tabs.get_combined_minimum_size().y))
@@ -19075,11 +19082,16 @@ func _test_the_gm_panel_health_tab() -> void:
 	check("  and nothing in it scrolls; one page at a time",
 		tab.find_children("*", "ScrollContainer", true, false).is_empty()
 		and tab.pages["receipts"].visible and not tab.pages["players"].visible and not tab.pages["machine"].visible
+		and not tab.pages["data"].visible
 		and tab.page_buttons["receipts"].button_pressed and not tab.page_buttons["players"].button_pressed)
 	tab.show_page("players")
 	check("presence gone quiet: said, in red, with how long",
 		tab.players_label.text.begins_with("presence.py has not written for 2h 00m - is it running?")
 		and tab.players_label.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.players_label.text)
+	check("  the guard at its hardest: players alone, in red, and nothing left to send said by leaving it out",
+		tab.guard_label.text.begins_with("Data guard: the month's data is nearly spent - players do not see each other")
+		and tab.guard_label.text.ends_with("GiB since %s." % LocalTime.date(now - 86400 * 29))
+		and tab.guard_label.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.guard_label.text)
 	check("  a month past what is included: what it would cost, in red",
 		tab.month_label.text == "A month at this week's rate: 34,100 GiB of the 1,000 included - about $331 over."
 		and tab.month_label.get_theme_color("font_color") == HealthTab.SAY_BAD, tab.month_label.text)
@@ -19135,6 +19147,12 @@ func _test_the_gm_panel_health_tab() -> void:
 		and HealthTab.nearby_text({"verdict": "watch", "by": "data"}).ends_with("the month is past half the data included.")
 		and HealthTab.nearby_text({"verdict": "now", "by": "crowd", "now_at": 96}).ends_with("needed now - an area held 96 or more this week.")
 		and HealthTab.nearby_text({}) == "Sending each game only nearby players: not enough measured yet.")
+	check("  the guard's every level: half, a crowd cap, switched off, an older server",
+		HealthTab.guard_text({"on": true, "level": "half"}) == "Data guard: holding - other players' steps at half rate, to stay under the plan."
+		and HealthTab.guard_text({"on": true, "level": "crowd", "crowd_cap": 16}) == "Data guard: holding hard - half rate, and at most 16 players see each other in one area."
+		and HealthTab.guard_text({"on": false}).begins_with("Data guard: switched off")
+		and HealthTab.guard_text({}) == "Data guard: not on this server yet."
+		and HealthTab.guard_colour({"on": true, "level": "half"}) == HealthTab.SAY_WARN)
 	check("  rates in KB/s and MB/s, decimal, as the swarm said them",
 		HealthTab.rate_text(200.0) == "0.2 KB/s" and HealthTab.rate_text(850000.0) == "850 KB/s"
 		and HealthTab.rate_text(13400000.0) == "13.4 MB/s")

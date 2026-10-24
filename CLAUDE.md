@@ -8179,7 +8179,7 @@ some 32 TiB a month held - so the trigger for sending only what is near is
 the bill, and nobody could see it. Now the GM panel can.
 
 `src/ui/owner/healthtab.gd` (`HealthTab`), the seventh tab, after Economy;
-built like the Economy tab - made in code, three pages that take turns,
+built like the Economy tab - made in code, pages that take turns,
 nothing scrolls, every page no taller than the other tabs. It reads
 `GET /api/server/health` (the API's serverhealth/; its CLAUDE.md, "The
 server's health") when the panel opens, on Refresh (the kill receipts read
@@ -8187,13 +8187,14 @@ fresh, `?fresh=1`, and what it read said in Results) and every
 `REFRESH_SECONDS` (30) while it is on screen (`is_visible_in_tree()`).
 
 - **Players**: online, in an area, the biggest crowd; the most today and this
-  week; data going out a second - the machine's own network and the game's
-  sockets' share; the month at this week's rate against the 1,000 GiB, and
-  what past it would cost (green, then amber at half, red past it); whether
-  one area needs sending only what is near yet (the server's verdict).
-- **Machine**: the tick (steady is ten a second with no late beat), the
-  load, memory, disk and database size, the three slowest routes by p99
-  (one gunicorn worker's view, as /api/metrics).
+  week; the tick (steady is ten a second with no late beat).
+- **Data**: data going out a second - the machine's own network and the
+  game's sockets' share; the month at this week's rate against the 1,000
+  GiB, and what past it would cost (green, then amber at half, red past it);
+  the data guard (0.79.0, below); whether one area needs sending only what is
+  near yet (the server's verdict).
+- **Machine**: the load, memory, disk and database size, the three slowest
+  routes by p99 (one gunicorn worker's view, as /api/metrics).
 - **Receipts**: "Kills need the server's count" - the week's kills put to
   the server's own count (killwatch.py's), a verdict in a sentence (ready,
   or what it waits for: a week of books, 200 kills, 98% backed, no monster
@@ -8208,6 +8209,19 @@ A server from before 0.78.0 answers 404 and the tab says to update it; a
 server whose presence.py is still the old process says it has not written a
 minute. `_test_the_gm_panel_health_tab`; the tab titles in
 `_test_the_gm_panel_is_a_window`.
+
+**THE DATA GUARD (0.79.0).** The owner: "i do not have that kind of budget i
+need to keep under specifications because i will go bankrupt fast". The
+server holds the month's data under the droplet's plan itself (the API's
+CLAUDE.md, "The data guard"): full, then other players' steps at half rate,
+then at most 16 players seeing each other in one area (the rest in a second
+room of it, "field#2", with monsters of their own), then everyone alone.
+Nothing changes in the game for it: a player moved between rooms is sent the
+"leave"s, "join"s and "lead" a game already handles, and its game takes the
+monsters over where they stand when it is alone. The tab now has four pages
+- Players (and the tick), **Data** (data out, the month, the guard's level,
+the month counted and what it can still send, nearby-only sending), Machine,
+Receipts - with Refresh under the page buttons (`guard_text()`).
 
 ## The element system
 

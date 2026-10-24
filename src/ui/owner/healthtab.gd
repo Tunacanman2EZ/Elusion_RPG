@@ -6,13 +6,15 @@
 # better idea lets hear it". Two of those were numbers only SSH could read,
 # and the first needed one nobody had - what the server really sends, against
 # the 1,000 GiB a month the droplet comes with. GET /api/server/health has
-# them all (the API's serverhealth/), on three pages:
+# them all (the API's serverhealth/), on four pages:
 #
-#   PLAYERS   players and the biggest crowd; data going out, and the month it
-#             adds up to at this week's rate; whether one area needs sending
-#             only what is near yet
-#   MACHINE   the tick; the machine's load, memory and disk; the slowest
-#             routes
+#   PLAYERS   players and the biggest crowd, the most today and this week;
+#             the tick
+#   DATA      data going out, and the month it adds up to at this week's
+#             rate; THE DATA GUARD (0.79.0) - the server holding the month
+#             under the plan itself, and how hard it is holding; whether one
+#             area needs sending only what is near yet
+#   MACHINE   the machine's load, memory and disk; the slowest routes
 #   RECEIPTS  "Kills need the server's count": the week's kills put to the
 #             server's own count (killwatch.py's), a verdict - ready or what
 #             it is waiting for - and the switch itself, beside it
@@ -20,7 +22,7 @@
 # Built like the Economy tab (economytab.gd): made in code, read when the
 # panel opens, on Refresh and every REFRESH_SECONDS while it is on screen;
 # what Refresh read and what the switch did go in the panel's Results box
-# too (`report`). NARROW AND SHORT: three pages that take turns, nothing
+# too (`report`). NARROW AND SHORT: four pages that take turns, nothing
 # scrolls. The switch is the Testing tab's too - one switch, two places, both
 # showing what the server holds (OwnerPanel._refresh_receipts()).
 extends VBoxContainer
@@ -35,7 +37,7 @@ const SAY_NOTE := Color(0.78, 0.82, 0.87)
 const HEAD := Color(0.93, 0.73, 0.3)
 # The GM panel's inside width, near enough (the World tab's).
 const WIDTH := 250.0
-const PAGES := [["players", "Players"], ["machine", "Machine"], ["receipts", "Receipts"]]
+const PAGES := [["players", "Players"], ["data", "Data"], ["machine", "Machine"], ["receipts", "Receipts"]]
 # How often it reads again while it is on screen. The server's minutes are a
 # minute long; half that means a new one shows within half a minute of it.
 const REFRESH_SECONDS := 30.0
@@ -61,6 +63,7 @@ var as_of_label: Label
 var players_label: Label
 var data_label: Label
 var month_label: Label
+var guard_label: Label
 var nearby_label: Label
 # Machine.
 var tick_label: Label
@@ -97,34 +100,46 @@ func _build() -> void:
 		button.pressed.connect(show_page.bind(str(spec[0])))
 		strip.add_child(button)
 		page_buttons[spec[0]] = button
+	# Refresh beside when it was read, under the pages: four page buttons are
+	# the strip's width.
+	var read_row := HBoxContainer.new()
+	read_row.name = "read"
+	read_row.add_theme_constant_override("separation", 6)
+	add_child(read_row)
 	refresh_button = _button("Refresh", "Read the server's health again - the kill receipts too, fresh.")
 	refresh_button.name = "refresh"
-	refresh_button.add_theme_font_size_override("font_size", 14)
+	refresh_button.add_theme_font_size_override("font_size", 13)
 	refresh_button.pressed.connect(refresh.bind(true))
-	strip.add_child(refresh_button)
+	read_row.add_child(refresh_button)
 	as_of_label = _label("Not read yet.", SAY_NOTE, false)
 	as_of_label.name = "asof"
 	as_of_label.add_theme_font_size_override("font_size", 12)
-	add_child(as_of_label)
+	read_row.add_child(as_of_label)
 
 	# ---- PLAYERS ---------------------------------------------------------------
 	var players_page := _page("players")
 	players_page.add_child(_head("Players"))
 	players_label = _line("players")
 	players_page.add_child(players_label)
-	players_page.add_child(_head("Data going out"))
+	players_page.add_child(_head("The tick"))
+	tick_label = _line("tick")
+	players_page.add_child(tick_label)
+
+	# ---- DATA ------------------------------------------------------------------
+	var data_page := _page("data")
+	data_page.add_child(_head("Data going out"))
 	data_label = _line("data")
-	players_page.add_child(data_label)
+	data_page.add_child(data_label)
 	month_label = _line("month")
-	players_page.add_child(month_label)
+	data_page.add_child(month_label)
+	data_page.add_child(_head("The data guard"))
+	guard_label = _line("guard")
+	data_page.add_child(guard_label)
 	nearby_label = _line("nearby")
-	players_page.add_child(nearby_label)
+	data_page.add_child(nearby_label)
 
 	# ---- MACHINE ---------------------------------------------------------------
 	var machine_page := _page("machine")
-	machine_page.add_child(_head("The tick"))
-	tick_label = _line("tick")
-	machine_page.add_child(tick_label)
 	machine_page.add_child(_head("The machine"))
 	machine_label = _line("machine")
 	machine_page.add_child(machine_label)
@@ -297,7 +312,7 @@ func show_switch(on: bool) -> void:
 func show_answer(data: Dictionary) -> void:
 	answer = data
 	var now: int = int(data.get("now", 0))
-	as_of_label.text = "Read at %s. Every half minute while it is open." % LocalTime.clock(now) if now > 0 else ""
+	as_of_label.text = "Read at %s; again every 30 s." % LocalTime.clock(now) if now > 0 else ""
 	var presence: Dictionary = _dict(data.get("presence"))
 	players_label.text = players_text(data)
 	players_label.add_theme_color_override("font_color",
@@ -306,6 +321,9 @@ func show_answer(data: Dictionary) -> void:
 	var month: Variant = data.get("month")
 	month_label.text = month_text(month)
 	month_label.add_theme_color_override("font_color", share_colour(month))
+	var budget: Dictionary = _dict(data.get("budget"))
+	guard_label.text = guard_text(budget)
+	guard_label.add_theme_color_override("font_color", guard_colour(budget))
 	var crowd: Dictionary = _dict(data.get("crowd"))
 	nearby_label.text = nearby_text(crowd)
 	nearby_label.add_theme_color_override("font_color",
@@ -400,6 +418,47 @@ static func month_text(month: Variant) -> String:
 	if str(held.get("source", "")) == "presence":
 		text += " (the sockets alone)"
 	return text + "."
+
+
+static func guard_text(budget: Dictionary) -> String:
+	"""THE DATA GUARD (0.79.0) in a line or two: how hard the server is
+	holding the month under the plan, and the month counted so far."""
+	if budget.is_empty():
+		return "Data guard: not on this server yet."
+	if not bool(budget.get("on", false)):
+		return "Data guard: switched off (ELUSION_TRANSFER_GIB) - nothing holds the month under the plan."
+	var text: String
+	match str(budget.get("level", "full")):
+		"half":
+			text = "Data guard: holding - other players' steps at half rate, to stay under the plan."
+		"crowd":
+			text = "Data guard: holding hard - half rate, and at most %d players see each other in one area." % int(
+				budget.get("crowd_cap", 16) if budget.get("crowd_cap") != null else 16)
+		"alone":
+			text = "Data guard: the month's data is nearly spent - players do not see each other until it allows."
+		_:
+			text = "Data guard: full speed."
+	if budget.get("used_gib") != null and budget.get("since") != null:
+		var used: float = float(budget.get("used_gib"))
+		text += " Counted this month: %s GiB since %s" % [("%.2f" % used) if used < 10.0 else GameConstants.commas(roundi(used)),
+			LocalTime.date(int(budget.get("since")))]
+		if budget.get("affordable_per_second") != null and float(budget.get("affordable_per_second")) > 0.0:
+			text += "; it can send %s to the month's end" % rate_text(float(budget.get("affordable_per_second")))
+		text += "."
+	return text
+
+
+static func guard_colour(budget: Dictionary) -> Color:
+	if budget.is_empty():
+		return SAY_NOTE
+	if not bool(budget.get("on", false)):
+		return SAY_WARN
+	match str(budget.get("level", "full")):
+		"half":
+			return SAY_WARN
+		"crowd", "alone":
+			return SAY_BAD
+	return SAY_GOOD
 
 
 static func share_colour(month: Variant) -> Color:
