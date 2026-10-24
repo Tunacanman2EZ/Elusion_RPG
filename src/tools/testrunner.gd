@@ -10592,10 +10592,10 @@ func _test_the_credits() -> void:
 	var shown: Array = screen.page().get_children().filter(func(n): return n.has_meta("supporter"))
 	check("Support: a name for everyone on the list, in its order",
 		shown.map(func(n): return str(n.text)) == Array(Credits.SUPPORTERS), shown.size())
-	check("  and the way to be on it", screen.page().find_children("*", "LinkButton", true, false)
+	check("  and why the game is free, on the website", screen.page().find_children("*", "LinkButton", true, false)
 		.any(func(b): return (b as LinkButton).uri == "https://elusionrpg.com/contribute.html"))
-	check("  thanks when there are names, an invitation when there are none",
-		Credits.support_intro([]).contains("your name goes here")
+	check("  that the game is free with nothing to buy (0.79.1), and thanks when there are names",
+		Credits.support_intro([]).contains("nothing to buy") and not Credits.support_intro([]).contains("cocoa")
 		and Credits.support_intro(["Ada"]).contains("Thank you")
 		and support.has(Credits.support_intro(Credits.SUPPORTERS)))
 	var bad_names: Array = []

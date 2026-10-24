@@ -7,7 +7,7 @@
 # FOUR TABS:
 #   Art      the artists, and the typefaces the game offers
 #   Audio    the sounds, and who recorded them
-#   Support  everyone who bought a hot cocoa - SUPPORTERS below
+#   Support  the game is free; anyone who helped early - SUPPORTERS below
 #   Engine   Godot, and the parts of it whose licences ask to be shown
 #
 # THE CREDITS USED TO BE THE LAST PAGE OF THE FIELD'S WELCOME (field.gd), read
@@ -32,10 +32,11 @@ enum Tab { ART, AUDIO, SUPPORT, ENGINE }
 # =============================================================================
 # SUPPORTERS - THE ONE LIST YOU EDIT
 # =============================================================================
-# Everyone who bought a hot cocoa (elusionrpg.com/contribute.html) and put
-# their name in the PayPal note. This is the only list of them: the website
-# keeps none, and sends people here. The name exactly as they want it shown,
-# newest LAST; the window shows them in this order.
+# FREE, NOTHING TO BUY (0.79.1). The owner: "this game will be free". The
+# website's hot cocoa and art fund are gone, and nobody had bought one, so
+# this list is empty; it stays for anyone the owner wants to thank by name.
+# The name exactly as they want it shown, newest LAST; the window shows them
+# in this order.
 #
 #     const SUPPORTERS: Array[String] = ["Ada L.", "Jordan"]
 const SUPPORTERS: Array[String] = []
@@ -204,15 +205,15 @@ func _fill_support() -> void:
 	_add_text(support_intro(supporters), TEXT_COLOUR, 13)
 	for supporter in supporters:
 		_add_text(supporter, NAME_COLOUR, 15).set_meta("supporter", true)
-	_add_link("Buy a hot cocoa - elusionrpg.com", SUPPORT_PAGE)
+	_add_link("Why it is free - elusionrpg.com", SUPPORT_PAGE)
 
 
 static func support_intro(names: Array) -> String:
-	"""What the Support tab says above the names: thanks when there are some,
-	an invitation when there are none yet."""
+	"""What the Support tab says above the names: that the game is free, and
+	thanks when there are names to thank."""
 	if names.is_empty():
-		return "Elusion is free to play. Buy the developer a hot cocoa - any amount - with your name in the PayPal note, and your name goes here, the first on the list."
-	return "Elusion is free to play. These people bought the developer a hot cocoa anyway. Thank you."
+		return "Elusion is free to play, with nothing to buy. The shop only takes lusions, and lusions are earned by playing - never sold."
+	return "Elusion is free to play. These people helped it along early on. Thank you."
 
 
 func _fill_engine() -> void:
