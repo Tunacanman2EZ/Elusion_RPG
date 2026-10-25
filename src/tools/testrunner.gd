@@ -489,6 +489,7 @@ func _run_all() -> void:
 	await _test_the_gm_panel_economy_tab()
 	await _test_the_gm_panel_health_tab()
 	await _test_the_damage_meter()
+	await _test_the_fight_log()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -34957,6 +34958,20 @@ func _test_the_damage_meter() -> void:
 	var stranger: Array = meter_script.rows(counted, names, 17.0, 1, false, false)
 	check("  a dealer the server never named is still a row", stranger.any(func(r: Dictionary) -> bool:
 		return str(r["name"]) == "player 3"), stranger)
+	var fight: Dictionary = meter_script.summary(counted, false)
+	check("the fight line: its length, everyone's total and the group's DPS",
+		is_equal_approx(float(fight["seconds"]), 8.0) and int(fight["total"]) == 191
+		and is_equal_approx(float(fight["dps"]), 191.0 / 8.0) and meter_script.clock(75.0) == "1:15", fight)
+	check("  bosses only counts only what bosses took, and an empty fight is zero",
+		int(meter_script.summary(counted, true)["total"]) == 80
+		and int(meter_script.summary(meter_script.fresh_state(), false)["total"]) == 0)
+	check("Limit: the fight's DPS against what the server allows, unknown when it said nothing",
+		is_equal_approx(meter_script.limit_share({"dps": 30.0, "allowed": 40}), 0.75)
+		and meter_script.limit_share({"dps": 30.0, "allowed": 0}) < 0.0)
+	var copied: String = meter_script.as_text(stranger, meter_script.summary(counted, false), "bigfield")
+	check("Copy: a line a player under a header, held hits named",
+		copied.begins_with("Damage meter - bigfield - fight 0:08") and copied.contains("Ann (mage 5)\t")
+		and copied.contains("held 30") and copied.split("\n").size() == 2 + stranger.size(), copied)
 	check("numbers short enough for a column",
 		meter_script.number(999.0) == "999" and meter_script.number(1234.0) == "1.23k"
 		and meter_script.number(12345.0) == "12.3k" and meter_script.number(1234567.0) == "1.2M")
@@ -34985,6 +35000,9 @@ func _test_the_damage_meter() -> void:
 	Presence._watching_damage = kept["watching"]
 
 	var meter: CanvasLayer = meter_script.new() as CanvasLayer
+	# Never the owner's own fight log (0.82.0): a test's fight goes nowhere.
+	meter.set("log_path", "user://test_fightlog/meter.json")
+	meter.set("csv_folder", "user://test_fightlog")
 	add_child(meter)
 	meter.call("take_report", {"a": "bigfield", "h": [[Presence.my_id(), 12, 12, 0], [77, 8, 9, 1]],
 		"who": {"77": ["Cy", "tank", 9, 15, 6]}}, 5.0)
@@ -34996,6 +35014,14 @@ func _test_the_damage_meter() -> void:
 	check("  its status says whether the server is counting",
 		str(meter.call("status_text", 5.5)) == ("Live - bigfield, counted by the server." if Presence.books()
 			else "The server is not counting hits right now."))
+	await get_tree().process_frame
+	check("  each row has its bar, as long as its share of the top total, in its class's colour",
+		(meter.get("_bars") as Array).size() == 2 and is_equal_approx(float(meter.get("_bars")[1][1]), 8.0 / 12.0)
+		and meter.get("_bars")[1][2] == meter_script.CLASS_COLOURS["tank"])
+	var panel_box: StyleBoxFlat = (meter.get_node("panel") as PanelContainer).get_theme_stylebox("panel") as StyleBoxFlat
+	check("  the window is solid, so nothing behind it shows through the numbers",
+		panel_box != null and panel_box.bg_color.a >= 0.95)
+	meter.set("fight", {})
 	meter.call("reset")
 	check("  Reset starts a fresh fight", (meter.get("state")["all"] as Dictionary).is_empty())
 	meter.queue_free()
@@ -35015,6 +35041,184 @@ func _test_the_damage_meter() -> void:
 	gm.queue_free()
 	Api.is_owner = was_owner
 	Api.role = was_role
+
+
+func _test_the_fight_log() -> void:
+	section("FIGHT LOG - every fight the meter hears, kept, timed and compared (0.82.0)")
+	var log_script: GDScript = load("res://src/ui/owner/fightlog.gd") as GDScript
+	var who: Dictionary = {"1": ["Ann", "mage", 5, 40, 20], "2": ["Bob", "warrior", 3, 30, 25]}
+	var first: Dictionary = {"a": "bigfield", "h": [[1, 100, 100, 0, 5], [2, 40, 60, 1, 9]], "who": who,
+		"m": {"5": ["slime", "Slime", 90], "9": ["fireboss", "Fire Boss", 50000]}, "k": []}
+	var second: Dictionary = {"a": "bigfield", "h": [[1, 50, 50, 1, 9]], "who": {}, "m": {}, "k": [[5, 0]]}
+	var third: Dictionary = {"a": "bigfield", "h": [[2, 30, 30, 1, 9]], "who": {},
+		"m": {"9": ["fireboss", "Fire Boss", 60000]}, "k": [[9, 1], [404, 0]]}
+	var fight: Dictionary = log_script.begin(100.0, 1793000000.0, "bigfield")
+	log_script.add(fight, first, 100.0)
+	log_script.add(fight, second, 101.0)
+	log_script.add(fight, third, 104.0)
+	check("a fight ends after QUIET_SECONDS (%d) with no hit, not before" % int(log_script.QUIET_SECONDS),
+		not log_script.quiet(fight, 113.9) and log_script.quiet(fight, 114.0) and not log_script.quiet({}, 999.0))
+	var record: Dictionary = log_script.finish(fight)
+	check("the record: its length, everyone's total, the group's DPS and its best five seconds",
+		int(record.get("seconds", 0)) == 5 and int(record.get("total", 0)) == 220
+		and is_equal_approx(float(record.get("dps", 0.0)), 44.0) and is_equal_approx(float(record.get("peak", 0.0)), 44.0),
+		record)
+	var players: Array = record.get("players", [])
+	check("  a row a player, biggest first: total, DPS, best 5 s, hits, average and biggest hit, held, limit",
+		players.size() == 2 and str(players[0]["name"]) == "Ann" and int(players[0]["total"]) == 150
+		and is_equal_approx(float(players[0]["dps"]), 30.0) and is_equal_approx(float(players[0]["peak"]), 30.0)
+		and int(players[0]["hits"]) == 2 and is_equal_approx(float(players[0]["avg"]), 75.0)
+		and int(players[0]["biggest"]) == 100 and is_equal_approx(float(players[0]["limit"]), 0.75)
+		and int(players[1]["held"]) == 20, players)
+	var kills: Array = record.get("kills", [])
+	check("  every kill timed from its first hit to its death, bosses first, at the health it died with",
+		kills.size() == 2 and str(kills[0]["name"]) == "Fire Boss" and bool(kills[0]["boss"])
+		and is_equal_approx(float(kills[0]["seconds"]), 5.0) and int(kills[0]["max_hp"]) == 60000
+		and int(kills[0]["damage"]) == 120 and str(kills[1]["name"]) == "Slime"
+		and is_equal_approx(float(kills[1]["seconds"]), 2.0), kills)
+	check("  and a second-by-second line a player", record.get("timeline", {}).get("1", []) == [100, 50, 0, 0, 0]
+		and record.get("timeline", {}).get("2", []) == [40, 0, 0, 0, 30], record.get("timeline"))
+	check("a fight nobody hit in is not kept", log_script.finish(log_script.begin(0.0, 0.0, "x")).is_empty())
+	check("the best five seconds of a line", is_equal_approx(log_script.peak([10, 0, 0, 0, 0, 50]), 10.0)
+		and is_equal_approx(log_script.peak([5]), 1.0))
+	check("its one line in the list names the boss and how long it took",
+		log_script.headline(record).contains("bigfield") and log_script.headline(record).ends_with("Fire Boss 0:05"),
+		log_script.headline(record))
+	var table: Array = log_script.compare_rows([record, record])
+	var by_label: Dictionary = {}
+	for row in table:
+		by_label[str(row[0])] = row
+	check("side by side: a row a number, a column a fight",
+		table.size() == log_script.COMPARE_LABELS.size() and (table[0] as Array).size() == 3
+		and by_label["Boss kill"][1] == "0:05" and by_label["Boss"][1] == "Fire Boss" and by_label["Boss health"][1] == "60.0k"
+		and by_label["Players"][2] == "2" and by_label["Held"][1] == "20", by_label)
+	var slow: Dictionary = record.duplicate(true)
+	slow["id"] = 1792990000000
+	slow["dps"] = 22.0
+	(slow["kills"][0] as Dictionary)["seconds"] = 10.0
+	var cells: Array = log_script.compare_cells([slow, record])
+	var by_row: Dictionary = {}
+	for row in cells:
+		by_row[str(row[0])] = row[1]
+	check("compared: each number after the first says how far it moved, and which way is better",
+		by_row["Group DPS"][1]["delta"] == "+100%" and int(by_row["Group DPS"][1]["trend"]) == 1
+		and by_row["Boss kill"][1]["delta"] == "-50%" and int(by_row["Boss kill"][1]["trend"]) == 1
+		and by_row["Group DPS"][0]["delta"] == "" and by_row["Players"][1]["delta"] == "", by_row)
+	check("  the best of a row is marked, and a tie marks none",
+		bool(by_row["Group DPS"][1]["best"]) and not bool(by_row["Group DPS"][0]["best"])
+		and not bool(by_row["Held"][0]["best"]) and not bool(by_row["Held"][1]["best"]))
+	check("  a kill remembers when in the fight it fell, for the chart's marker",
+		is_equal_approx(float(record["kills"][0]["at"]), 4.0) and is_equal_approx(float(record["kills"][1]["at"]), 1.0))
+	check("Uptime: the share of a player's own time it dealt damage; Steadiness: how evenly",
+		is_equal_approx(log_script.uptime_of([0, 5, 0, 5, 5, 0]), 0.75) and is_equal_approx(log_script.uptime_of([0, 0]), 0.0)
+		and is_equal_approx(log_script.steadiness_of([10, 10, 10]), 1.0)
+		and is_equal_approx(log_script.steadiness_of([10, 0, 30]), 1.0 / 1.5)
+		and is_equal_approx(float(players[0]["uptime"]), 1.0) and is_equal_approx(float(players[1]["uptime"]), 0.4)
+		and is_equal_approx(float(record["uptime"]), 0.7), [players[0].get("uptime"), players[1].get("uptime")])
+	var mixed: Dictionary = log_script.begin(0.0, 1793000500.0, "field")
+	log_script.add(mixed, {"a": "field", "h": [[1, 10, 10, 0, 5, Element.Type.FIRE], [1, 30, 30, 0, 5, Element.Type.ICE]],
+		"who": who, "m": {"5": ["slime", "Slime", 90]},
+		"e": [["joined", 1, "Ann"], ["grew", 5, [90, 200]], ["danced", 1, "Ann"], ["fell", 2, ""]]}, 3.0)
+	var mixed_record: Dictionary = log_script.finish(mixed)
+	check("damage by element, biggest first, as the server said each hit was",
+		mixed_record["players"][0]["elements"] == [[Element.Type.ICE, 30], [Element.Type.FIRE, 10]]
+		and log_script.elements_text(mixed_record["players"][0]["elements"], 40) == "ice 75% fire 25%",
+		mixed_record["players"][0]["elements"])
+	check("what changed the fight, when and in words - and nothing the server does not name",
+		mixed_record["events"].map(func(e: Dictionary) -> String: return str(e["text"]))
+			== ["Ann joined", "Slime grew to 200", "A player fell"]
+		and is_equal_approx(float(mixed_record["events"][0]["at"]), 3.0), mixed_record["events"])
+	var sheet: String = log_script.csv(record)
+	check("a spreadsheet: summary, players, kills, then the damage each player did each second",
+		sheet.contains("Player,Class,Level,Total") and sheet.contains("Ann,mage,5,150,30,30,2,75,100,0,40,75%,100%,")
+		and sheet.contains("Fire Boss,yes,60000,120,5") and sheet.contains("Second,Ann,Bob\n0,100,40\n")
+		and sheet.ends_with("4,0,30\n"), sheet)
+	check("  a name with a comma is quoted", log_script._cell("Ann, the first") == "\"Ann, the first\"")
+	var path: String = "user://test_fightlog/log.json"
+	check("kept between runs: saved and read back the same",
+		log_script.save_log([record], path) and int(log_script.load_log(path)[0]["id"]) == 1793000000000
+		and int(log_script.load_log(path)[0]["kills"].size()) == 2)
+	check("  a missing or broken file reads as no fights", log_script.load_log("user://test_fightlog/none.json").is_empty())
+	check("  a spreadsheet named by when and where",
+		log_script.csv_path(record, "user://x").begins_with("user://x/fight_2026") and log_script.csv_path(record, "user://x").ends_with("_bigfield.csv"))
+
+	var meter_script: GDScript = load("res://src/ui/owner/damagemeter.gd") as GDScript
+	var meter: CanvasLayer = meter_script.new() as CanvasLayer
+	meter.set("log_path", path)
+	meter.set("csv_folder", "user://test_fightlog")
+	meter.set("fights", [])
+	meter.set("picked", [])
+	add_child(meter)
+	meter.call("take_report", first, 100.0)
+	meter.call("take_report", second, 101.0)
+	check("the meter starts a fight with the first hit it hears", not (meter.get("fight") as Dictionary).is_empty())
+	meter.call("take_report", {"a": "bigfield", "h": [[1, 7, 7, 0, 5]], "who": {}, "m": {}, "k": []}, 130.0)
+	check("  and a hit after a quiet spell keeps the last fight and starts the next",
+		(meter.get("fights") as Array).size() == 1 and int((meter.get("fights")[0] as Dictionary)["total"]) == 190
+		and float((meter.get("fight") as Dictionary)["t0"]) == 130.0)
+	var shut: Dictionary = meter.call("close_fight")
+	check("  closing keeps it too, newest first, and picks it to compare - its id its own, even in the same second",
+		(meter.get("fights") as Array).size() == 2 and int(shut.get("total", 0)) == 7
+		and int(meter.get("fights")[0]["id"]) != int(meter.get("fights")[1]["id"])
+		and (meter.get("picked") as Array).size() == 2 and log_script.load_log(path).size() == 2)
+	meter.call("show_page", "fights")
+	var list: Control = meter.find_child("list", true, false) as Control
+	var compare: GridContainer = meter.find_child("compare", true, false) as GridContainer
+	var chart: Control = meter.find_child("groupchart", true, false) as Control
+	meter.call("show_view", "list")
+	var chart_page: Control = chart.get_parent() as Control
+	var table_page: Control = compare.get_parent() as Control
+	check("the Fights page shows one view at a time: List is a line a fight",
+		list != null and list.visible and list.get_child_count() == 2 and not chart_page.visible
+		and not table_page.visible)
+	meter.call("show_view", "chart")
+	check("  Chart: one chart, a line a picked fight, the group's DPS through it",
+		chart_page.visible and not list.visible and not table_page.visible and (chart.get("lines") as Array).size() == 2
+		and (chart.get("lines")[0] as Array).size() == int((meter.get("fights")[1] as Dictionary)["seconds"]))
+	meter.call("show_view", "table")
+	var key_cells: int = compare.get_child_count()
+	check("  Table: the picked side by side, the key rows until More",
+		table_page.visible and not chart_page.visible and compare.columns == 3
+		and key_cells == 3 * (1 + meter_script.KEY_ROWS.size()))
+	meter.call("_on_more")
+	check("  and every row after it", compare.get_child_count() == 3 * log_script.COMPARE_LABELS.size())
+	meter.call("show_view", "players")
+	var grid: GridContainer = meter.find_child("playergrid", true, false) as GridContainer
+	check("  Players: the newest picked fight a row a player - DPS, best 5 s, uptime, steadiness, elements",
+		(grid.get_parent() as Control).visible and grid.get_child_count() == 2 * meter_script.PLAYER_COLUMNS.size()
+		and (meter.find_child("slots", true, false) as Node).get_child_count() == 2)
+	meter.call("show_view", "chart")
+	meter.call("_on_events_toggled", true)
+	check("  Events on the chart: marked, and listed - or said there were none",
+		bool(chart.get("show_events")) and (meter.find_child("eventlist", true, false) as Node).get_child_count() == 1)
+	meter.call("_on_events_toggled", false)
+	meter.call("focus", 2, "Bob")
+	var group_button: Button = meter.find_child("group", true, false) as Button
+	var title: Label = meter.find_child("title", true, false) as Label
+	check("ONE PLAYER ON THE CHART: a name clicked shows only their damage, across the picked fights",
+		str(meter.get("fights_view")) == "chart" and title.text == "Damage meter: Bob" and group_button.visible
+		and chart.get("lines")[0] == log_script.player_line(meter.get("fights")[1], 2)
+		and (chart.get("lines")[1] as Array).is_empty(), [title.text, chart.get("lines")])
+	check("  the legend says when they were not in a fight",
+		((meter.find_child("legend", true, false) as Node).get_child(1).get_child(1) as Label).text.ends_with("not in this fight"))
+	group_button.pressed.emit()
+	check("  and Group brings the whole group back, the title with it",
+		title.text == "Damage meter" and not group_button.visible
+		and chart.get("lines")[0] == log_script.group_line(meter.get("fights")[1]))
+	check("a player's own line, and their row, from a saved fight",
+		log_script.player_line(record, 1, 1) == [100.0, 50.0, 0.0, 0.0, 0.0] and log_script.player_line(record, 9).is_empty()
+		and str(log_script.player_in(record, 2).get("name", "")) == "Bob" and log_script.player_in(record, 9).is_empty())
+	meter.call("show_page", "now")
+	var smooth: Array = log_script.group_line({"seconds": 3, "timeline": {"1": [10, 20, 30], "2": [0, 0, 30]}}, 2)
+	check("the group's line: everyone's damage each second, averaged over the seconds before",
+		smooth.size() == 3 and is_equal_approx(float(smooth[0]), 10.0) and is_equal_approx(float(smooth[1]), 15.0)
+		and is_equal_approx(float(smooth[2]), 40.0), smooth)
+	meter.queue_free()
+	var left: DirAccess = DirAccess.open("user://test_fightlog")
+	if left != null:
+		for file in left.get_files():
+			left.remove(file)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_fightlog"))
 
 func _test_bosses_scale_to_their_fight() -> void:
 	section("BOSSES THAT SCALE - a boss's health set by who is fighting it")

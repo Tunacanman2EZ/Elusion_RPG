@@ -8258,8 +8258,74 @@ stays open across areas (`shared()`), preloaded rather than a class_name.
   biggest hit, and the server's allowed DPS for that character. A hit the books
   held down to the character's bounds counts as booked, and the rest shows as
   "held" in red. Filters: Everyone / Just me; All monsters / Bosses only.
-- **Static and tested**: `fresh_state()`, `add_hits()`, `rows()`, `number()`;
-  `_test_the_damage_meter()`.
+- **0.81.1, the owner: "make this even better"**: solid (0.97 - at 0.88 the
+  windows behind showed through in patches); a fight line (length, everyone's
+  total, group DPS); a bar under each row as long as its share of the top
+  total, in its class's colour (`CLASS_COLOURS`, drawn on the grid after it
+  sorts); Share; Limit as the fight's DPS against what the server allows,
+  green under 90%, yellow to 100%, red past it or "held"; a tooltip on every
+  heading; **Copy** puts the table on the clipboard as text; the window
+  remembers where it was dragged (`last_position`) while the game runs.
+- **Static and tested**: `fresh_state()`, `add_hits()`, `rows()`, `summary()`,
+  `limit_share()`, `clock()`, `as_text()`, `number()`; `_test_the_damage_meter()`.
+
+## The fight log (0.82.0)
+
+The owner, 25 Oct: "i need to document the progression of battles to fine tune
+my system ... the main point is statistics that i can improve upon". The damage
+meter's **Fights** page (`src/ui/owner/fightlog.gd`, pure statics plus the
+`Chart` inner class; damagemeter.gd holds the state and the page).
+
+- **A fight starts with the first hit the meter hears and ends after
+  `QUIET_SECONDS` (10) with none**, or on Reset, or when the meter shuts (the
+  server stops reporting to a shut meter, so only fights fought with it open
+  are logged).
+- **The record** (`finish()`): when, where, length; a row a player - total,
+  DPS, best `PEAK_SECONDS` (5), hits, average and biggest hit, held, limit used;
+  every kill timed from its first hit to its death (the server's "m" and "k",
+  api/CLAUDE.md "The damage meter"), bosses first, at the health they died
+  with (scaled); and each player's damage each second.
+- **Kept**: the last `KEEP` (10) in `user://fights/log.json`, and each as a CSV
+  beside it (`csv()`, `save_csv()`) - not on the web build, where Folder is
+  hidden and Copy is the way out. The meter's `log_path` / `csv_folder` are
+  settable so the test runner never writes into the owner's own log.
+- **Compared**: tick up to `COMPARE_MOST` (3); a chart each (DPS over time,
+  the top four players, smoothed over five seconds, in class colours), then
+  `compare_rows()` side by side. The page scrolls past 70% of the screen.
+- **How it looks** (the owner: "needs to visually appealing for me and more
+  refined", then "its too big"): ONE VIEW AT A TIME under three buttons -
+  **List**, **Chart**, **Table** (`show_view()`, `fights_view`) - under a status
+  line (a red dot while recording) with Copy and Folder. Picked fights are
+  shown OLDEST FIRST as **A, B, C**, each in its own colour (`SLOT_COLOURS`)
+  wherever it appears. List: a row a fight, clicked to pick. Chart: one
+  `FightLog.GroupChart`, the group's DPS through each picked fight
+  (`group_line()`, smoothed over 5 s) on one clock, a dashed line in its colour
+  where its boss fell, and a legend. Table: `compare_cells()` - every number
+  after A with its change from A, green where better and red where worse
+  (`BETTER`: group DPS, best 5 s, boss kill time, held), the best of a row on a
+  green ground; `KEY_ROWS` until **More rows**.
+- **What else a fight keeps** (the owner chose all three of: steadiness and
+  uptime, damage by element, event markers): a player's **Uptime**
+  (`uptime_of()`: the seconds it dealt damage over its own first-to-last hit -
+  low is dodging, walking, waiting; a projectile in flight still counts) and
+  **Steadiness** (`steadiness_of()`: 1 / (1 + spread / average) over the seconds
+  it dealt any - low is burst or luck); its damage **by element** (the sixth of
+  a hit, the element the game sent, after the target's resistance; -1 unknown);
+  and the fight's **events** (`event_text()`: a boss grew or shrank as players
+  joined or left it, a player joined, left or fell - presence.py METER_EVENTS).
+  The table gains Uptime and Steadiness (group means); a fourth view,
+  **Players**, shows one picked fight a row a player; **Events** on the Chart
+  view marks each on the timeline (^ v + - x, in the fight's colour) and lists
+  the first `EVENTS_LISTED`. CSV and Copy carry all of it.
+- **One player on the Chart**: click a name in the Players view (`focus()`)
+  and the Chart shows only that player's damage (`player_line()`) through each
+  picked fight, matched by user id; the title reads "Damage meter: <name>",
+  the legend gives their class, DPS, best 5 s and uptime in each fight (or
+  "not in this fight"), and **x Group** beside Events brings the group back.
+- **A fight's id is its start in milliseconds**, and close_fight() moves one
+  that matches a kept fight on by one: Reset can end a fight and start the next
+  inside a second, and two fights with one id were picked and drawn as one.
+- Tested: `_test_the_fight_log()`.
 
 ## The element system
 
