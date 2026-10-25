@@ -118,6 +118,9 @@ var _empty_note: Label
 # THE CHART'S EVENTS (0.82.0), and THE PLAYERS VIEW: which picked fight it
 # shows (an index into picked_records(), -1 the newest).
 var show_events: bool = false
+# DAMAGE TAKEN on the Chart (0.83.0).
+var show_taken: bool = false
+var _taken_button: Button
 var players_slot: int = -1
 # ONE PLAYER ON THE CHART (0.82.0): the user id whose damage curve the Chart
 # shows instead of the group's, across every picked fight; -1 for the group.
@@ -130,6 +133,7 @@ var _events_button: Button
 var _event_list: VBoxContainer
 var _player_slots: HBoxContainer
 var _player_grid: GridContainer
+var _taken_grid: GridContainer
 var _tick: float = 0.0
 
 
@@ -350,15 +354,28 @@ func take_report(report: Dictionary, now: float) -> void:
 	if hits is Array:
 		add_hits(state, hits, now)
 		var deaths: Variant = report.get("k", [])
-		if not (hits as Array).is_empty() or (deaths is Array and not (deaths as Array).is_empty()):
+		# DAMAGE TAKEN (0.83.0): being hit starts a fight and keeps it going,
+		# like hitting; a heal or regen alone does neither.
+		var hurt: bool = took_any(report)
+		if not (hits as Array).is_empty() or (deaths is Array and not (deaths as Array).is_empty()) or hurt:
 			if FightLog.quiet(fight, now):
 				close_fight()
-			if fight.is_empty() and not (hits as Array).is_empty():
+			if fight.is_empty() and (not (hits as Array).is_empty() or hurt):
 				fight = FightLog.begin(now, Time.get_unix_time_from_system(), area)
 			if not fight.is_empty():
 				FightLog.add(fight, report, now)
 	_heard_at = now
 	_redraw()
+
+
+static func took_any(report: Dictionary) -> bool:
+	"""Whether anyone in the report's "tk" took damage."""
+	var taken: Variant = report.get("tk", {})
+	if taken is Dictionary:
+		for key in taken:
+			if taken[key] is Array and (taken[key] as Array).size() >= 1 and int(taken[key][0]) > 0:
+				return true
+	return false
 
 
 func _on_report(report: Dictionary) -> void:
@@ -650,6 +667,14 @@ func _build_fights() -> void:
 	_group_button.tooltip_text = "Back to the whole group's DPS"
 	_group_button.pressed.connect(func() -> void: focus(-1, ""))
 	chart_bar.add_child(_group_button)
+	_taken_button = Button.new()
+	_taken_button.name = "taken"
+	_taken_button.text = "Taken"
+	_taken_button.toggle_mode = true
+	_taken_button.tooltip_text = "Damage taken, dashed. With one player picked: their healing dotted, and their health under the chart (red under %d%%)" \
+		% int(round(100.0 * FightLog.DANGER_SHARE))
+	_taken_button.toggled.connect(_on_taken_toggled)
+	chart_bar.add_child(_taken_button)
 	chart_bar.add_child(_events_button)
 	_group_chart = FightLog.GroupChart.new()
 	_group_chart.name = "groupchart"
@@ -679,6 +704,12 @@ func _build_fights() -> void:
 	_player_grid.add_theme_constant_override("h_separation", 14)
 	_player_grid.add_theme_constant_override("v_separation", 2)
 	players_view.add_child(_player_grid)
+	_taken_grid = GridContainer.new()
+	_taken_grid.name = "takengrid"
+	_taken_grid.columns = TAKEN_COLUMNS.size()
+	_taken_grid.add_theme_constant_override("h_separation", 14)
+	_taken_grid.add_theme_constant_override("v_separation", 2)
+	players_view.add_child(_taken_grid)
 
 	var table_view := VBoxContainer.new()
 	table_view.name = "tablepage"
@@ -717,6 +748,11 @@ func _on_view_toggled(pressed: bool, view: String) -> void:
 		show_view(view)
 
 
+func _on_taken_toggled(on: bool) -> void:
+	show_taken = on
+	_draw_fights()
+
+
 func _on_events_toggled(on: bool) -> void:
 	show_events = on
 	_draw_fights()
@@ -745,6 +781,9 @@ func _on_player_slot(slot: int) -> void:
 
 
 const PLAYER_COLUMNS := ["Player", "DPS", "Best 5 s", "Uptime", "Steady", "Elements"]
+# DAMAGE TAKEN (0.83.0): a second table under the first - one row of fourteen
+# ran off the screen.
+const TAKEN_COLUMNS := ["Player", "Taken/s", "Biggest", "Healed", "Regen", "Lowest", "Danger", "Deaths", "Took"]
 const PLAYER_TIPS := [
 	"Name, class and level",
 	"Damage a second over the whole fight",
@@ -753,10 +792,21 @@ const PLAYER_TIPS := [
 	"How evenly the damage came. 100%: the same every second. Low: a few big seconds - burst, or luck.",
 	"Their damage by element, after the target's resistance",
 ]
+const TAKEN_TIPS := [
+	"Name, class and level",
+	"Damage they took a second over the whole fight, after their armour and resistance",
+	"The biggest single hit they took",
+	"Health heals gave them back - potions, the healer - only what was missing",
+	"Health their slow regeneration gave back",
+	"Their lowest health in the fight",
+	"Seconds they spent under %d%% health" % int(round(100.0 * FightLog.DANGER_SHARE)),
+	"How many times they fell",
+	"What they took by element, after their resistance",
+]
 
 
 func _draw_players(chosen: Array) -> void:
-	for holder in [_player_slots, _player_grid]:
+	for holder in [_player_slots, _player_grid, _taken_grid]:
 		for child in (holder as Node).get_children():
 			(holder as Node).remove_child(child)
 			child.queue_free()
@@ -777,6 +827,9 @@ func _draw_players(chosen: Array) -> void:
 	for i in PLAYER_COLUMNS.size():
 		_player_grid.add_child(_compare_cell(PLAYER_COLUMNS[i], HEAD))
 		(_player_grid.get_child(_player_grid.get_child_count() - 1) as Control).tooltip_text = PLAYER_TIPS[i]
+	for i in TAKEN_COLUMNS.size():
+		_taken_grid.add_child(_compare_cell(TAKEN_COLUMNS[i], HEAD))
+		(_taken_grid.get_child(_taken_grid.get_child_count() - 1) as Control).tooltip_text = TAKEN_TIPS[i]
 	var stripe: bool = false
 	for p in chosen[slot]["players"]:
 		stripe = not stripe
@@ -808,6 +861,46 @@ func _draw_players(chosen: Array) -> void:
 			part.add_theme_color_override("font_color", Element.colour_for(int(pair[0])) if int(pair[0]) >= 0 else DIM)
 			line.add_child(part)
 		_player_grid.add_child(cell)
+		var taken_name: Control = _compare_cell(("> " if focused else "") + named,
+			CLASS_COLOURS.get(str(p["cls"]), OTHER_CLASS), "", Color(1, 1, 1, 0.09) if focused else tint)
+		taken_name.mouse_filter = Control.MOUSE_FILTER_STOP
+		taken_name.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		taken_name.tooltip_text = name_cell.tooltip_text
+		taken_name.gui_input.connect(_on_player_name_input.bind(int(p["id"]), str(p["name"])))
+		_taken_grid.add_child(taken_name)
+		_add_taken_cells(p, tint)
+
+
+func _add_taken_cells(p: Dictionary, tint: Color) -> void:
+	"""DAMAGE TAKEN (0.83.0): the rest of a player's row. "-" for a fight from
+	before it was kept."""
+	if not p.has("taken"):
+		for i in 8:
+			_taken_grid.add_child(_compare_cell("-", DIM, "", tint))
+		return
+	_taken_grid.add_child(_compare_cell(number(float(p["taken_ps"])), PLAIN, "", tint))
+	_taken_grid.add_child(_compare_cell(number(float(p["biggest_taken"])), PLAIN, "", tint))
+	_taken_grid.add_child(_compare_cell(number(float(p["healed"])), PLAIN, "", tint))
+	_taken_grid.add_child(_compare_cell(number(float(p["regen"])), PLAIN, "", tint))
+	var lowest: float = float(p["lowest"])
+	_taken_grid.add_child(_compare_cell("-" if lowest < 0.0 else "%d%%" % int(round(100.0 * lowest)),
+		DIM if lowest < 0.0 else (BAD if lowest < FightLog.DANGER_SHARE else (WARN if lowest < 0.5 else GOOD)), "", tint))
+	var danger: int = int(p["danger"])
+	_taken_grid.add_child(_compare_cell("%d s" % danger, GOOD if danger == 0 else (WARN if danger <= 3 else BAD), "", tint))
+	var deaths: int = int(p["deaths"])
+	_taken_grid.add_child(_compare_cell(str(deaths), GOOD if deaths == 0 else BAD, "", tint))
+	var cell := PanelContainer.new()
+	cell.add_theme_stylebox_override("panel", card_style(tint))
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 8)
+	cell.add_child(line)
+	for pair in (p.get("took", []) as Array).slice(0, 3):
+		var part := Label.new()
+		part.text = "%s %d%%" % [FightLog.element_name(int(pair[0])),
+			int(round(100.0 * float(pair[1]) / maxf(1.0, float(p["taken"]))))]
+		part.add_theme_color_override("font_color", Element.colour_for(int(pair[0])) if int(pair[0]) >= 0 else DIM)
+		line.add_child(part)
+	_taken_grid.add_child(cell)
 
 
 func _on_more() -> void:
@@ -969,6 +1062,18 @@ func _draw_fights() -> void:
 	for record in chosen:
 		lines.append(FightLog.group_line(record) if focus_player < 0 else FightLog.player_line(record, focus_player))
 	_group_chart.set_records(chosen, colours, lines)
+	# DAMAGE TAKEN (0.83.0): the group's taken alone; one player's taken,
+	# healing and health.
+	var taken: Array = []
+	var healed: Array = []
+	var health: Array = []
+	for record in chosen:
+		taken.append(FightLog.taken_line(record, focus_player))
+		healed.append(FightLog.heal_line(record, focus_player) if focus_player >= 0 else [])
+		health.append(((record.get("health_timeline", {}) as Dictionary).get(str(focus_player), []))
+			if focus_player >= 0 else [])
+	_group_chart.call("set_taken", show_taken, taken, healed, health)
+	_taken_button.set_pressed_no_signal(show_taken)
 	_group_button.visible = focus_player >= 0
 	_group_chart.tooltip_text = ("The whole group's DPS" if focus_player < 0 else "%s's DPS" % focus_name) \
 		+ " through each fight, smoothed over 5 s, on one clock.\nA dashed line: that fight's boss fell."
@@ -991,6 +1096,15 @@ func _draw_fights() -> void:
 					FightLog.clock(float(record["seconds"])), str(row["cls"]), int(row["lvl"]), number(float(row["dps"])),
 					number(float(row["peak"])), int(round(100.0 * float(row.get("uptime", 0.0))))]
 		_chart_legend.add_child(_legend_item(text, SLOT_COLOURS[i], SLOT_COLOURS[i]))
+	if show_taken and not chosen.is_empty():
+		var key := Label.new()
+		key.text = ("solid dealt, dashed taken" if focus_player < 0
+			else "solid dealt, dashed taken, dotted healed; the strip is health, red under %d%%"
+				% int(round(100.0 * FightLog.DANGER_SHARE)))
+		if chosen.all(func(r: Dictionary) -> bool: return not r.has("taken_timeline")):
+			key.text = "These fights are from before damage taken was kept."
+		key.add_theme_color_override("font_color", DIM)
+		_chart_legend.add_child(key)
 	if not chosen.is_empty():
 		_compare.columns = 1 + chosen.size()
 		_compare.add_child(_compare_cell("", DIM))

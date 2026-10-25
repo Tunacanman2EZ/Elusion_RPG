@@ -146,6 +146,22 @@ var _retry_clock: float = 0.0
 var _connect_clock: float = 0.0
 var _failures: int = 0
 var _last_state: Dictionary = {}
+# THE ENEMY METER, PHASE 1 (0.83.0): DAMAGE TAKEN. Running totals for this
+# game's player, counted where the health actually moves (player.gd
+# take_damage(), heal(), _tick_regen()) and sent in every state: "dt" taken,
+# "dh" healed, "dr" regen, "dx" the biggest hit since the last state, "dte"
+# taken by element number (sent only when it changed), "hpa"/"hpm" real health
+# and its most. The health a state already carries ("hp") is a whole percent,
+# for name plates - too coarse to meter. The server turns totals into each
+# second's share, so a lost state loses nothing; a total that goes DOWN (a new
+# character) is a new baseline there, never a negative. Here, not on the
+# player: a revive builds a new player and the totals must not start again.
+var meter_taken: int = 0
+var meter_healed: int = 0
+var meter_regen: int = 0
+var meter_biggest: int = 0
+var meter_by_element: Dictionary = {}
+var _sent_by_element: Dictionary = {}
 var _world: Node = null
 var _remotes: Dictionary = {}     # user id -> RemotePlayer
 var _sync_pending: bool = false
@@ -416,6 +432,8 @@ func _pump(delta: float, player: Node) -> void:
 		_phase = "open"
 		_failures = 0
 		_last_state = {}
+		# A new link is a new baseline on the server: tell it every element again.
+		_sent_by_element = {}
 		_sync_pending = false
 		_renew_clock = 0.0
 		_server_shares = false
@@ -449,8 +467,16 @@ func send_tick(player: Node) -> void:
 		# state would be new and a player standing still would send ten.
 		var out: Dictionary = now.duplicate()
 		out["ts"] = clock_ms()
+		# Off the comparison too, like the clock: the biggest hit goes once,
+		# and the elements only when they moved (they move only with "dt").
+		if meter_biggest > 0:
+			out["dx"] = meter_biggest
+		if meter_by_element != _sent_by_element:
+			out["dte"] = meter_by_element.duplicate()
 		_send(out)
 		_last_state = now
+		meter_biggest = 0
+		_sent_by_element = meter_by_element.duplicate()
 	# The attacks since the last send, after the state: the server checks each
 	# against where the newest state put us.
 	if not _attacks.is_empty():
@@ -515,7 +541,47 @@ func state_for(player: Node) -> Dictionary:
 		# others to draw.
 		"aim": aim_degrees_of(player),
 		"hp": health_percent_of(player),
+		# THE ENEMY METER (0.83.0): what this player took, was healed and
+		# regenerated, all told, and their real health. Never passed on to
+		# the others - the server keeps it for an open meter.
+		"dt": meter_taken,
+		"dh": meter_healed,
+		"dr": meter_regen,
+		"hpa": int(player.get("hp")) if "hp" in player else -1,
+		"hpm": int(player.get("max_hp")) if "max_hp" in player else -1,
 	}
+
+
+# ---- the enemy meter's counts (0.83.0) -------------------------------------
+# A total past METER_TOTAL_MOST starts again from nothing: the server takes a
+# total that went down as a new baseline, so that costs one state's share.
+const METER_TOTAL_MOST := 1000000000
+
+
+func note_taken(amount: int, element: int) -> void:
+	"""`amount` health lost to a hit, after armour and resistance."""
+	if amount <= 0:
+		return
+	meter_taken = _meter_add(meter_taken, amount)
+	meter_biggest = maxi(meter_biggest, amount)
+	var key: int = maxi(element, 0)
+	meter_by_element[key] = _meter_add(int(meter_by_element.get(key, 0)), amount)
+
+
+func note_healed(amount: int) -> void:
+	"""`amount` health a heal gave back - only what was missing."""
+	if amount > 0:
+		meter_healed = _meter_add(meter_healed, amount)
+
+
+func note_regen(amount: int) -> void:
+	"""`amount` health the slow regeneration gave back."""
+	if amount > 0:
+		meter_regen = _meter_add(meter_regen, amount)
+
+
+static func _meter_add(total: int, amount: int) -> int:
+	return amount if total + amount > METER_TOTAL_MOST else total + amount
 
 
 static func aim_degrees_of(player: Node) -> int:

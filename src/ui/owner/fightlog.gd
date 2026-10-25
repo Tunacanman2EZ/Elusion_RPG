@@ -25,6 +25,8 @@ const QUIET_SECONDS := 10.0
 const KEEP := 10
 const COMPARE_MOST := 3
 const PEAK_SECONDS := 5
+# THE ENEMY METER (0.83.0): health under this share of its most is danger.
+const DANGER_SHARE := 0.25
 const FOLDER := "user://fights"
 const SAVE_PATH := "user://fights/log.json"
 
@@ -61,8 +63,7 @@ static func add(fight: Dictionary, report: Dictionary, now: float) -> void:
 			any = true
 			var id: String = str(int(hit[0]))
 			var booked: int = maxi(int(hit[1]), 0)
-			var p: Dictionary = players.get(id, {"name": "", "cls": "", "lvl": 0, "allowed": 0,
-				"total": 0, "hits": 0, "biggest": 0, "held": 0, "line": {}, "elements": {}})
+			var p: Dictionary = players.get(id, new_player())
 			if dealers is Dictionary and dealers.get(id) is Array and (dealers[id] as Array).size() >= 5:
 				var d: Array = dealers[id]
 				p["name"] = str(d[0])
@@ -87,12 +88,56 @@ static func add(fight: Dictionary, report: Dictionary, now: float) -> void:
 				m["last"] = at
 				m["damage"] = int(m["damage"]) + booked
 				m["boss"] = bool(m["boss"]) or int(hit[3]) != 0
+	# DAMAGE TAKEN (0.83.0, "tk"): each player's second - taken, healed,
+	# regen, biggest hit, lowest health and its most, taken by element. A player
+	# who took something joins the fight; one already in it has every second
+	# kept, quiet or not, so their health runs through it.
+	var taken: Variant = report.get("tk", {})
+	if taken is Dictionary:
+		for key in taken:
+			var row: Variant = taken[key]
+			if not (row is Array) or (row as Array).size() < 6:
+				continue
+			var id: String = str(int(str(key)))
+			var hurt: int = maxi(int(row[0]), 0)
+			if hurt <= 0 and not players.has(id):
+				continue
+			var p: Dictionary = players.get(id, new_player())
+			if dealers is Dictionary and dealers.get(id) is Array and (dealers[id] as Array).size() >= 5:
+				var d: Array = dealers[id]
+				p["name"] = str(d[0])
+				p["cls"] = str(d[1])
+				p["lvl"] = int(d[2])
+				p["allowed"] = int(d[3])
+			if not p.has("taken"):
+				_add_taken_fields(p)
+			p["taken"] = int(p["taken"]) + hurt
+			p["healed"] = int(p["healed"]) + maxi(int(row[1]), 0)
+			p["regen"] = int(p["regen"]) + maxi(int(row[2]), 0)
+			p["biggest_taken"] = maxi(int(p["biggest_taken"]), int(row[3]))
+			(p["tline"] as Dictionary)[second] = int((p["tline"] as Dictionary).get(second, 0)) + hurt
+			(p["hline"] as Dictionary)[second] = int((p["hline"] as Dictionary).get(second, 0)) \
+				+ maxi(int(row[1]), 0) + maxi(int(row[2]), 0)
+			if int(row[5]) > 0 and int(row[4]) >= 0:
+				var share: float = clampf(float(row[4]) / float(row[5]), 0.0, 1.0)
+				var health: Dictionary = p["health"]
+				health[second] = minf(float(health.get(second, 1.0)), share)
+			if (row as Array).size() >= 7 and row[6] is Dictionary:
+				var took: Dictionary = p["took"]
+				for element in row[6]:
+					took[str(int(str(element)))] = int(took.get(str(int(str(element))), 0)) + maxi(int(row[6][element]), 0)
+			players[id] = p
+			if hurt > 0:
+				any = true
 	if any:
 		fight["last"] = now
 	var changes: Variant = report.get("e", [])
 	if changes is Array:
 		for change in changes:
 			if change is Array and (change as Array).size() >= 3:
+				if str(change[0]) == "fell" and players.has(str(int(change[1]))):
+					var down: Dictionary = players[str(int(change[1]))]
+					down["deaths"] = int(down.get("deaths", 0)) + 1
 				var text: String = event_text(str(change[0]), int(change[1]), change[2], monsters)
 				if text != "":
 					(fight["events"] as Array).append([at, str(change[0]), text])
@@ -104,6 +149,45 @@ static func add(fight: Dictionary, report: Dictionary, now: float) -> void:
 				if float(m["killed"]) < 0.0 and float(m["first"]) >= 0.0:
 					m["killed"] = at
 					m["boss"] = bool(m["boss"]) or int(death[1]) != 0
+
+
+static func new_player() -> Dictionary:
+	var p: Dictionary = {"name": "", "cls": "", "lvl": 0, "allowed": 0,
+		"total": 0, "hits": 0, "biggest": 0, "held": 0, "line": {}, "elements": {}}
+	_add_taken_fields(p)
+	return p
+
+
+static func _add_taken_fields(p: Dictionary) -> void:
+	p.merge({"taken": 0, "healed": 0, "regen": 0, "biggest_taken": 0, "deaths": 0,
+		"tline": {}, "hline": {}, "health": {}, "took": {}})
+
+
+static func health_line(health: Dictionary, seconds: int) -> Array:
+	"""A player's lowest health each second, 0-1, carried over the seconds
+	nothing was heard (and back to the start from the first heard); [] when
+	none ever was."""
+	var out: Array = []
+	if health.is_empty():
+		return out
+	out.resize(seconds)
+	out.fill(-1.0)
+	for key in health:
+		var i: int = clampi(int(key), 0, seconds - 1)
+		out[i] = float(health[key]) if float(out[i]) < 0.0 else minf(float(out[i]), float(health[key]))
+	var last: float = -1.0
+	for i in seconds:
+		if float(out[i]) >= 0.0:
+			last = float(out[i])
+		elif last >= 0.0:
+			out[i] = last
+	var first: float = -1.0
+	for i in range(seconds - 1, -1, -1):
+		if float(out[i]) >= 0.0:
+			first = float(out[i])
+		else:
+			out[i] = first
+	return out
 
 
 static func event_text(kind: String, subject: int, detail: Variant, monsters: Dictionary) -> String:
@@ -180,6 +264,9 @@ static func finish(fight: Dictionary) -> Dictionary:
 	group.resize(seconds)
 	group.fill(0)
 	var total: int = 0
+	var taken_lines: Dictionary = {}
+	var heal_lines: Dictionary = {}
+	var health_lines: Dictionary = {}
 	for id in fight["players"]:
 		var p: Dictionary = fight["players"][id]
 		var line: Array = []
@@ -190,6 +277,23 @@ static func finish(fight: Dictionary) -> Dictionary:
 			line[i] = int(line[i]) + int(p["line"][second])
 			group[i] = int(group[i]) + int(p["line"][second])
 		timeline[str(id)] = line
+		var tline: Array = _seconds_of(p.get("tline", {}), seconds)
+		var hline: Array = _seconds_of(p.get("hline", {}), seconds)
+		var health: Array = health_line(p.get("health", {}), seconds)
+		taken_lines[str(id)] = tline
+		heal_lines[str(id)] = hline
+		health_lines[str(id)] = health
+		var danger: int = 0
+		var lowest: float = -1.0
+		for h in health:
+			if float(h) >= 0.0:
+				lowest = float(h) if lowest < 0.0 else minf(lowest, float(h))
+				if float(h) < DANGER_SHARE:
+					danger += 1
+		var took: Array = []
+		for key in p.get("took", {}):
+			took.append([int(key), int(p["took"][key])])
+		took.sort_custom(func(a: Array, b: Array) -> bool: return int(a[1]) > int(b[1]))
 		total += int(p["total"])
 		var dps: float = float(p["total"]) / float(seconds)
 		var elements: Array = []
@@ -203,6 +307,11 @@ static func finish(fight: Dictionary) -> Dictionary:
 			"avg": float(p["total"]) / maxf(1.0, float(p["hits"])), "biggest": int(p["biggest"]),
 			"held": int(p["held"]), "limit": dps / float(p["allowed"]) if int(p["allowed"]) > 0 else -1.0,
 			"uptime": uptime_of(line), "steady": steadiness_of(line), "elements": elements,
+			# DAMAGE TAKEN (0.83.0). lowest -1: no health heard.
+			"taken": int(p.get("taken", 0)), "taken_ps": float(p.get("taken", 0)) / float(seconds),
+			"biggest_taken": int(p.get("biggest_taken", 0)), "healed": int(p.get("healed", 0)),
+			"regen": int(p.get("regen", 0)), "lowest": lowest, "danger": danger,
+			"deaths": int(p.get("deaths", 0)), "took": took,
 		})
 	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return int(a["total"]) > int(b["total"]) or (int(a["total"]) == int(b["total"]) and int(a["id"]) < int(b["id"])))
@@ -232,7 +341,18 @@ static func finish(fight: Dictionary) -> Dictionary:
 		"when": Time.get_datetime_string_from_unix_time(int(fight["unix"]), true),
 		"area": str(fight["area"]), "seconds": seconds, "total": total, "dps": float(total) / float(seconds),
 		"peak": peak(group), "players": rows, "kills": kills, "timeline": timeline,
+		"taken_timeline": taken_lines, "heal_timeline": heal_lines, "health_timeline": health_lines,
 	}
+
+
+static func _seconds_of(by_second: Dictionary, seconds: int) -> Array:
+	var out: Array = []
+	out.resize(seconds)
+	out.fill(0)
+	for key in by_second:
+		var i: int = clampi(int(key), 0, seconds - 1)
+		out[i] = int(out[i]) + int(by_second[key])
+	return out
 
 
 static func clock(seconds: float) -> String:
@@ -408,7 +528,8 @@ static func compare_text(records: Array) -> String:
 		lines.append("")
 		lines.append(headline(record))
 		lines.append("\t".join(PackedStringArray(["Player", "Total", "DPS", "Best 5 s", "Hits", "Average", "Biggest", "Held", "Limit",
-			"Uptime", "Steadiness", "Elements"])))
+			"Uptime", "Steadiness", "Elements", "Taken", "Taken/s", "Biggest taken", "Healed", "Regen", "Lowest",
+			"Danger s", "Deaths", "Took"])))
 		for p in record["players"]:
 			lines.append("\t".join(PackedStringArray([
 				"%s (%s %d)" % [p["name"], p["cls"], int(p["lvl"])], str(int(p["total"])),
@@ -416,7 +537,7 @@ static func compare_text(records: Array) -> String:
 				str(int(round(float(p["avg"])))), str(int(p["biggest"])), str(int(p["held"])),
 				("%d%%" % int(round(100.0 * float(p["limit"])))) if float(p["limit"]) >= 0.0 else "-",
 				"%d%%" % int(round(100.0 * float(p.get("uptime", 0.0)))), "%d%%" % int(round(100.0 * float(p.get("steady", 0.0)))),
-				elements_text(p.get("elements", []), int(p["total"]))])))
+				elements_text(p.get("elements", []), int(p["total"]))]) + taken_cells(p)))
 		for e in record.get("events", []):
 			lines.append("  %s  %s" % [clock(float(e["at"])), str(e["text"])])
 	return "\n".join(lines)
@@ -430,14 +551,15 @@ static func csv(record: Dictionary) -> String:
 		_cell(str(record["area"])), int(record["seconds"]), int(record["total"]), int(round(float(record["dps"]))),
 		int(round(float(record["peak"])))])
 	lines.append("")
-	lines.append("Player,Class,Level,Total,DPS,Best 5 s,Hits,Average hit,Biggest hit,Held,Allowed DPS,Limit used,Uptime,Steadiness,Elements")
+	lines.append("Player,Class,Level,Total,DPS,Best 5 s,Hits,Average hit,Biggest hit,Held,Allowed DPS,Limit used,Uptime,Steadiness,Elements,"
+		+ "Taken,Taken a second,Biggest taken,Healed,Regen,Lowest health,Danger seconds,Deaths,Took by element")
 	for p in record["players"]:
-		lines.append("%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%d%%,%d%%,%s" % [_cell(str(p["name"])), str(p["cls"]), int(p["lvl"]),
+		lines.append("%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%d%%,%d%%,%s,%s" % [_cell(str(p["name"])), str(p["cls"]), int(p["lvl"]),
 			int(p["total"]), int(round(float(p["dps"]))), int(round(float(p["peak"]))), int(p["hits"]),
 			int(round(float(p["avg"]))), int(p["biggest"]), int(p["held"]), int(p["allowed"]),
 			("%d%%" % int(round(100.0 * float(p["limit"])))) if float(p["limit"]) >= 0.0 else "",
 			int(round(100.0 * float(p.get("uptime", 0.0)))), int(round(100.0 * float(p.get("steady", 0.0)))),
-			_cell(elements_text(p.get("elements", []), int(p["total"])))])
+			_cell(elements_text(p.get("elements", []), int(p["total"]))), ",".join(taken_cells(p))])
 	lines.append("")
 	lines.append("Killed,Boss,Health,Damage taken,Seconds to kill")
 	for k in record["kills"]:
@@ -460,7 +582,45 @@ static func csv(record: Dictionary) -> String:
 			var line: Array = record["timeline"].get(id, [])
 			row.append(str(int(line[second]) if second < line.size() else 0))
 		lines.append(",".join(row))
+	# DAMAGE TAKEN (0.83.0): what each took, was given back, and their lowest health, each second.
+	if took_anything(record):
+		lines.append("")
+		var head: PackedStringArray = ["Second"]
+		for p in record["players"]:
+			for what in ["taken", "healed", "health"]:
+				head.append(_cell("%s %s" % [str(p["name"]), what]))
+		lines.append(",".join(head))
+		for second in int(record["seconds"]):
+			var row: PackedStringArray = [str(second)]
+			for id in ids:
+				for key in ["taken_timeline", "heal_timeline"]:
+					var line: Array = (record.get(key, {}) as Dictionary).get(id, [])
+					row.append(str(int(line[second]) if second < line.size() else 0))
+				var health: Array = (record.get("health_timeline", {}) as Dictionary).get(id, [])
+				var h: float = float(health[second]) if second < health.size() else -1.0
+				row.append(("%d%%" % int(round(100.0 * h))) if h >= 0.0 else "")
+			lines.append(",".join(row))
 	return "\n".join(lines) + "\n"
+
+
+static func took_anything(record: Dictionary) -> bool:
+	"""Whether anyone in the record took or was given back any health, or had
+	their health heard - a fight from before 0.83.0 never has."""
+	for p in record.get("players", []):
+		if int(p.get("taken", 0)) > 0 or int(p.get("healed", 0)) > 0 or int(p.get("regen", 0)) > 0 \
+				or float(p.get("lowest", -1.0)) >= 0.0:
+			return true
+	return false
+
+
+static func taken_cells(p: Dictionary) -> PackedStringArray:
+	"""DAMAGE TAKEN (0.83.0) for one player: taken, a second, biggest, healed,
+	regen, lowest health, danger seconds, deaths, by element."""
+	var lowest: float = float(p.get("lowest", -1.0))
+	return PackedStringArray([str(int(p.get("taken", 0))), str(int(round(float(p.get("taken_ps", 0.0))))),
+		str(int(p.get("biggest_taken", 0))), str(int(p.get("healed", 0))), str(int(p.get("regen", 0))),
+		("%d%%" % int(round(100.0 * lowest))) if lowest >= 0.0 else "-", str(int(p.get("danger", 0))),
+		str(int(p.get("deaths", 0))), _cell(elements_text(p.get("took", []), int(p.get("taken", 0))))])
 
 
 static func elements_text(elements: Array, total: int) -> String:
@@ -562,6 +722,44 @@ static func player_line(record: Dictionary, id: int, smooth_seconds: int = 5) ->
 	return out
 
 
+static func smoothed(raw: Array, smooth_seconds: int = 5) -> Array:
+	"""Each second the average of the `smooth_seconds` before it."""
+	var out: Array = []
+	var running: int = 0
+	for i in raw.size():
+		running += int(raw[i])
+		if i >= smooth_seconds:
+			running -= int(raw[i - smooth_seconds])
+		out.append(float(running) / float(mini(i + 1, smooth_seconds)))
+	return out
+
+
+static func taken_line(record: Dictionary, id: int, smooth_seconds: int = 5) -> Array:
+	"""DAMAGE TAKEN (0.83.0): what one player took a second through a fight,
+	smoothed like player_line(); id -1 the whole group's. [] for a fight from
+	before 0.83.0."""
+	return _line_of(record.get("taken_timeline", {}), id, int(record.get("seconds", 0)), smooth_seconds)
+
+
+static func heal_line(record: Dictionary, id: int, smooth_seconds: int = 5) -> Array:
+	"""What healing and regen gave one player back a second, smoothed."""
+	return _line_of(record.get("heal_timeline", {}), id, int(record.get("seconds", 0)), smooth_seconds)
+
+
+static func _line_of(lines: Dictionary, id: int, seconds: int, smooth_seconds: int) -> Array:
+	if lines.is_empty():
+		return []
+	if id >= 0:
+		return smoothed(lines.get(str(id), []), smooth_seconds)
+	var raw: Array = []
+	raw.resize(maxi(seconds, 0))
+	raw.fill(0)
+	for key in lines:
+		for i in mini((lines[key] as Array).size(), raw.size()):
+			raw[i] = int(raw[i]) + int(lines[key][i])
+	return smoothed(raw, smooth_seconds)
+
+
 static func player_in(record: Dictionary, id: int) -> Dictionary:
 	"""A player's row in a fight, or {}."""
 	for p in record.get("players", []):
@@ -583,9 +781,60 @@ class GroupChart extends Control:
 	# - one left, x one fell.
 	var show_events: bool = false
 	const MARKS := {"grew": "^", "shrank": "v", "joined": "+", "left": "-", "fell": "x"}
+	# DAMAGE TAKEN (0.83.0), when shown: a fight's taken dashed in its colour,
+	# and - one player focused - its healing dotted and a strip of their health
+	# under the chart, 0-100%, red under DANGER_SHARE. Never netted: heal and
+	# damage are two lines.
+	var show_taken: bool = false
+	var taken_lines: Array = []
+	var heal_lines: Array = []
+	var health_lines: Array = []
+	const STRIP_ROW := 10
+	const STRIP_GAP := 3
+	const DANGER := Color(0.95, 0.35, 0.3)
 
 	func _init() -> void:
 		custom_minimum_size = Vector2(420, 150)
+
+	func set_taken(on: bool, taken: Array, healed: Array, health: Array) -> void:
+		"""Each picked fight's taken_line(), heal_line() and health (0-1 a
+		second; [] for none), drawn while `on`."""
+		show_taken = on
+		taken_lines = taken
+		heal_lines = healed
+		health_lines = health
+		custom_minimum_size.y = 150 + strip_height()
+		queue_redraw()
+
+	func strip_height() -> int:
+		if not show_taken:
+			return 0
+		var rows: int = 0
+		for h in health_lines:
+			if not (h as Array).is_empty():
+				rows += 1
+		return 0 if rows == 0 else 6 + rows * (STRIP_ROW + STRIP_GAP)
+
+	func _dashed(points: PackedVector2Array, colour: Color, width: float, on: float, off: float) -> void:
+		"""A polyline drawn in dashes `on` long with gaps `off` long, the
+		pattern running on along the whole line rather than starting again at
+		every second's point."""
+		var carry: float = 0.0
+		var drawing: bool = true
+		for k in range(1, points.size()):
+			var a: Vector2 = points[k - 1]
+			var b: Vector2 = points[k]
+			var length: float = a.distance_to(b)
+			var at: float = 0.0
+			while at < length:
+				var step: float = minf((on if drawing else off) - carry, length - at)
+				if drawing:
+					draw_line(a.lerp(b, at / length), a.lerp(b, (at + step) / length), colour, width, true)
+				at += step
+				carry += step
+				if carry >= (on if drawing else off) - 0.001:
+					carry = 0.0
+					drawing = not drawing
 
 	func set_records(chosen: Array, colours: Array, group_lines: Array) -> void:
 		"""The fights, their colours, and each one's group_line()."""
@@ -602,10 +851,12 @@ class GroupChart extends Control:
 		var small: int = 11
 		var dim := Color(0.55, 0.6, 0.67, 0.9)
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.035))
-		var plot := Rect2(Vector2(6, 18), size - Vector2(12, 36))
+		var strip: int = strip_height()
+		var plot := Rect2(Vector2(6, 18), size - Vector2(12, 36 + strip))
 		var top: float = 1.0
 		var length: int = 2
-		for line in lines:
+		var everything: Array = lines + (taken_lines + heal_lines if show_taken else [])
+		for line in everything:
 			length = maxi(length, (line as Array).size())
 			for v in line:
 				top = maxf(top, float(v))
@@ -621,7 +872,7 @@ class GroupChart extends Control:
 			var label: String = _time(length if at == last else at)
 			var x: float = plot.position.x + plot.size.x * float(at) / float(last)
 			var width: float = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, small).x
-			draw_string(font, Vector2(clampf(x - width / 2.0, 0.0, size.x - width), size.y - 4), label,
+			draw_string(font, Vector2(clampf(x - width / 2.0, 0.0, size.x - width), plot.end.y + 14), label,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, small, dim)
 		for i in records.size():
 			var colour: Color = slot_colours[i] if i < slot_colours.size() else Color.WHITE
@@ -638,6 +889,36 @@ class GroupChart extends Control:
 				var y: float = plot.position.y + plot.size.y * (1.0 - float(values[j]) / top)
 				points.append(Vector2(x, y))
 			draw_polyline(points, colour, 2.0, true)
+		if show_taken:
+			for i in records.size():
+				var colour: Color = slot_colours[i] if i < slot_colours.size() else Color.WHITE
+				for pair in [[taken_lines, 6.0, 4.0], [heal_lines, 1.5, 3.5]]:
+					var values: Array = pair[0][i] if i < (pair[0] as Array).size() else []
+					if values.size() < 2:
+						continue
+					var points := PackedVector2Array()
+					for j in values.size():
+						points.append(Vector2(plot.position.x + plot.size.x * float(j) / float(last),
+							plot.position.y + plot.size.y * (1.0 - float(values[j]) / top)))
+					_dashed(points, colour, 2.0, float(pair[1]), float(pair[2]))
+			if strip > 0:
+				var y0: float = plot.end.y + 22.0
+				for i in records.size():
+					var health: Array = health_lines[i] if i < health_lines.size() else []
+					if health.is_empty():
+						continue
+					var colour: Color = slot_colours[i] if i < slot_colours.size() else Color.WHITE
+					draw_rect(Rect2(plot.position.x, y0, plot.size.x, STRIP_ROW), Color(1, 1, 1, 0.05))
+					var w: float = maxf(1.0, plot.size.x / float(maxi(last, 1)))
+					for j in health.size():
+						var h: float = float(health[j])
+						if h < 0.0:
+							continue
+						var hx: float = plot.position.x + plot.size.x * float(j) / float(last)
+						var tall: float = maxf(1.0, STRIP_ROW * h)
+						draw_rect(Rect2(hx, y0 + STRIP_ROW - tall, minf(w, plot.end.x - hx), tall),
+							DANGER if h < DANGER_SHARE else Color(colour.r, colour.g, colour.b, 0.75))
+					y0 += STRIP_ROW + STRIP_GAP
 		if not show_events:
 			return
 		for i in records.size():

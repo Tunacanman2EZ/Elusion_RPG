@@ -490,6 +490,7 @@ func _run_all() -> void:
 	await _test_the_gm_panel_health_tab()
 	await _test_the_damage_meter()
 	await _test_the_fight_log()
+	await _test_damage_taken()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -35219,6 +35220,157 @@ func _test_the_fight_log() -> void:
 		for file in left.get_files():
 			left.remove(file)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_fightlog"))
+
+func _test_damage_taken() -> void:
+	section("ENEMY METER, PHASE 1 - damage TAKEN: counted where health moves, sent as totals, kept in the fight log (0.83.0)")
+	var player_src: String = (load("res://src/characters/player.gd") as GDScript).source_code
+	var hit: String = _func_body(player_src, "func take_damage(")
+	check("a hit is counted after armour and resistance, once the health has moved - and god mode, returning first, counts nothing",
+		hit.find("Presence.note_taken(reduced_amount, element)") > hit.find("hp = clamp(hp - reduced_amount")
+		and hit.find("hp = clamp(hp - reduced_amount") > 0
+		and hit.find("GameState.god_mode") < hit.find("Presence.note_taken"))
+	check("  a heal counts only what it gave back; regen is its own total",
+		_func_body(player_src, "func heal(").contains("Presence.note_healed(actual_heal)")
+		and _func_body(player_src, "func _tick_regen(").contains("Presence.note_regen(hp - before)"))
+	var kept: Dictionary = {"send": Presence.send_override, "last": Presence._last_state, "taken": Presence.meter_taken,
+		"healed": Presence.meter_healed, "regen": Presence.meter_regen, "big": Presence.meter_biggest,
+		"els": Presence.meter_by_element, "sent_els": Presence._sent_by_element, "attacks": Presence._attacks,
+		"sync": Presence._sync_pending}
+	var sent: Array = []
+	Presence.send_override = func(message: Dictionary) -> void: sent.append(message)
+	Presence._attacks = []
+	Presence._sync_pending = false
+	Presence.meter_taken = 100
+	Presence.meter_healed = 0
+	Presence.meter_regen = 0
+	Presence.meter_biggest = 0
+	Presence.meter_by_element = {}
+	Presence._sent_by_element = {}
+	Presence._last_state = {}
+	var body := Node2D.new()
+	body.set_script(_stand_in_with_health())
+	body.set("max_hp", 400)
+	body.set("hp", 358)
+	Presence.note_taken(30, Element.Type.FIRE)
+	Presence.note_taken(12, Element.Type.NONE)
+	Presence.note_taken(-5, Element.Type.FIRE)
+	Presence.note_healed(0)
+	Presence.send_tick(body)
+	var first: Dictionary = sent[0] if sent.size() == 1 else {}
+	check("the state carries the totals, the biggest hit since the last, by element, and real health",
+		int(first.get("dt", -1)) == 142 and int(first.get("dh", -1)) == 0 and int(first.get("dr", -1)) == 0
+		and int(first.get("dx", -1)) == 30 and first.get("dte", {}) == {Element.Type.FIRE: 30, Element.Type.NONE: 12}
+		and int(first.get("hpa", -1)) == 358 and int(first.get("hpm", -1)) == 400, first)
+	Presence.send_tick(body)
+	check("  nothing new, nothing sent: the biggest hit and the elements go once", sent.size() == 1, sent)
+	Presence.note_regen(3)
+	Presence.note_healed(20)
+	body.set("hp", 381)
+	Presence.send_tick(body)
+	var second: Dictionary = sent[1] if sent.size() == 2 else {}
+	check("  a heal and regen: their totals, no biggest hit, no elements",
+		int(second.get("dh", -1)) == 20 and int(second.get("dr", -1)) == 3 and not second.has("dx")
+		and not second.has("dte") and int(second.get("hpa", -1)) == 381, second)
+	Presence.meter_taken = Presence.METER_TOTAL_MOST - 1
+	Presence.note_taken(5, Element.Type.NONE)
+	check("  a total past METER_TOTAL_MOST starts again (the server takes it as a new baseline)",
+		Presence.meter_taken == 5)
+	body.free()
+	Presence.send_override = kept["send"]
+	Presence._last_state = kept["last"]
+	Presence.meter_taken = kept["taken"]
+	Presence.meter_healed = kept["healed"]
+	Presence.meter_regen = kept["regen"]
+	Presence.meter_biggest = kept["big"]
+	Presence.meter_by_element = kept["els"]
+	Presence._sent_by_element = kept["sent_els"]
+	Presence._attacks = kept["attacks"]
+	Presence._sync_pending = kept["sync"]
+
+	var log_script: GDScript = load("res://src/ui/owner/fightlog.gd") as GDScript
+	var who: Dictionary = {"1": ["Ann", "mage", 5, 40, 20], "2": ["Tom", "tank", 9, 30, 25]}
+	var fight: Dictionary = log_script.begin(100.0, 1793001000.0, "bigfield")
+	log_script.add(fight, {"a": "bigfield", "h": [[1, 50, 50, 0, 5]], "who": who, "m": {"5": ["slime", "Slime", 90]},
+		"tk": {"1": [0, 0, 1, 0, 100, 100, {}], "2": [80, 0, 0, 50, 220, 400, {"6": 80}], "3": [0, 0, 5, 0, 10, 10, {}]}}, 100.0)
+	log_script.add(fight, {"a": "bigfield", "h": [], "who": {}, "m": {},
+		"tk": {"2": [60, 40, 2, 60, 80, 400, {"6": 20, "0": 40}]}, "e": [["fell", 2, "Tom"]]}, 101.0)
+	log_script.add(fight, {"a": "bigfield", "h": [], "who": {}, "m": {},
+		"tk": {"2": [0, 0, 0, 0, 380, 400, {}]}}, 103.0)
+	var record: Dictionary = log_script.finish(fight)
+	var tom: Dictionary = log_script.player_in(record, 2)
+	check("a player hit but never hitting is in the fight: named, and the fight runs to their last hit",
+		str(tom.get("name", "")) == "Tom" and int(tom.get("total", -1)) == 0 and int(record.get("seconds", 0)) == 2
+		and log_script.player_in(record, 3).is_empty(), [tom, record.get("seconds")])
+	check("  taken, a second, biggest, healed, regen, lowest health, danger seconds, deaths, by element",
+		int(tom.get("taken", 0)) == 140 and is_equal_approx(float(tom.get("taken_ps", 0.0)), 70.0)
+		and int(tom.get("biggest_taken", 0)) == 60 and int(tom.get("healed", 0)) == 40 and int(tom.get("regen", 0)) == 2
+		and is_equal_approx(float(tom.get("lowest", -1.0)), 0.2) and int(tom.get("danger", -1)) == 1
+		and int(tom.get("deaths", 0)) == 1 and tom.get("took", []) == [[6, 100], [0, 40]], tom)
+	check("  a second-by-second line of each: taken, given back, health",
+		record["taken_timeline"]["2"] == [80, 60] and record["heal_timeline"]["2"] == [0, 42]
+		and record["health_timeline"]["2"] == [0.55, 0.2] and record["health_timeline"]["1"] == [1.0, 1.0], record["health_timeline"])
+	check("health carried over the seconds nothing was heard, and back to the start; none heard, none drawn",
+		log_script.health_line({2: 0.5, 4: 0.3}, 6) == [0.5, 0.5, 0.5, 0.5, 0.3, 0.3] and log_script.health_line({}, 3).is_empty())
+	check("  smoothed for the chart: one player's taken and healing, or the whole group's taken",
+		log_script.taken_line(record, 2, 1) == [80.0, 60.0] and log_script.heal_line(record, 2, 1) == [0.0, 42.0]
+		and log_script.taken_line(record, -1, 2) == [80.0, 70.0] and log_script.taken_line({"seconds": 3}, 2).is_empty())
+	var sheet: String = log_script.csv(record)
+	check("the spreadsheet gains the columns and each second's taken, healed and health",
+		sheet.contains(",Taken,Taken a second,Biggest taken,Healed,Regen,Lowest health,Danger seconds,Deaths,Took by element")
+		and sheet.contains(",140,70,60,40,2,20%,1,1,") and sheet.contains("Second,Ann taken,Ann healed,Ann health,Tom taken")
+		and sheet.ends_with("1,0,0,100%,60,42,20%\n"), sheet)
+	check("  and Copy says it too", log_script.compare_text([record]).contains("\tTaken\tTaken/s\t"))
+
+	var meter_script: GDScript = load("res://src/ui/owner/damagemeter.gd") as GDScript
+	var meter: CanvasLayer = meter_script.new() as CanvasLayer
+	var path: String = "user://test_fightlog_taken/log.json"
+	meter.set("log_path", path)
+	meter.set("csv_folder", "user://test_fightlog_taken")
+	meter.set("fights", [])
+	meter.set("picked", [])
+	add_child(meter)
+	meter.call("take_report", {"a": "bigfield", "h": [], "who": who, "tk": {"2": [0, 30, 4, 0, 300, 400, {}]}}, 50.0)
+	check("on the meter, a heal alone starts no fight", (meter.get("fight") as Dictionary).is_empty())
+	meter.call("take_report", {"a": "bigfield", "h": [], "who": who, "tk": {"2": [25, 0, 0, 25, 275, 400, {"6": 25}]}}, 51.0)
+	check("  being hit does", not (meter.get("fight") as Dictionary).is_empty())
+	meter.call("close_fight")
+	meter.set("fights", [record] + (meter.get("fights") as Array))
+	meter.set("picked", [int(record["id"])])
+	meter.call("show_page", "fights")
+	meter.call("show_view", "chart")
+	var chart: Control = meter.find_child("groupchart", true, false) as Control
+	meter.call("_on_taken_toggled", true)
+	check("Taken on the chart: the group's taken alone, no healing and no health strip",
+		bool(chart.get("show_taken")) and chart.get("taken_lines")[0] == log_script.taken_line(record, -1)
+		and (chart.get("heal_lines")[0] as Array).is_empty() and int(chart.call("strip_height")) == 0)
+	meter.call("focus", 2, "Tom")
+	check("  one player: their taken, their healing, and their health under the chart",
+		chart.get("taken_lines")[0] == log_script.taken_line(record, 2) and chart.get("heal_lines")[0] == log_script.heal_line(record, 2)
+		and chart.get("health_lines")[0] == [0.55, 0.2] and int(chart.call("strip_height")) > 0
+		and chart.custom_minimum_size.y > 150)
+	meter.call("show_view", "players")
+	var grid: GridContainer = meter.find_child("playergrid", true, false) as GridContainer
+	var taken_grid: GridContainer = meter.find_child("takengrid", true, false) as GridContainer
+	check("Players gains a second table: Taken/s, Biggest, Healed, Regen, Lowest, Danger, Deaths and Took",
+		meter_script.TAKEN_COLUMNS == ["Player", "Taken/s", "Biggest", "Healed", "Regen", "Lowest", "Danger", "Deaths", "Took"]
+		and meter_script.TAKEN_COLUMNS.size() == meter_script.TAKEN_TIPS.size()
+		and meter_script.PLAYER_COLUMNS.size() == meter_script.PLAYER_TIPS.size()
+		and grid.get_child_count() == 3 * meter_script.PLAYER_COLUMNS.size()
+		and taken_grid != null and taken_grid.get_child_count() == 3 * meter_script.TAKEN_COLUMNS.size())
+	meter.queue_free()
+	var left: DirAccess = DirAccess.open("user://test_fightlog_taken")
+	if left != null:
+		for file in left.get_files():
+			left.remove(file)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_fightlog_taken"))
+
+
+func _stand_in_with_health() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = "extends Node2D\nvar hp: int = 0\nvar max_hp: int = 0\n"
+	script.reload()
+	return script
+
 
 func _test_bosses_scale_to_their_fight() -> void:
 	section("BOSSES THAT SCALE - a boss's health set by who is fighting it")

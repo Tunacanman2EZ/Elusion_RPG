@@ -8327,6 +8327,50 @@ meter's **Fights** page (`src/ui/owner/fightlog.gd`, pure statics plus the
   inside a second, and two fights with one id were picked and drawn as one.
 - Tested: `_test_the_fight_log()`.
 
+## The enemy meter, phase 1: damage TAKEN (0.83.0)
+
+The owner's agreed plan: what the monsters do to the players, beside what the
+players do to them. The `"hp"` a state carried was a whole percent, for name
+plates - too coarse - so each game sends **running totals**, and the server
+turns them into each second's share (api/CLAUDE.md, "The damage meter").
+
+- **Counted where the health moves**, into `Presence` (an autoload, so a
+  revive's new player does not start the totals again): `take_damage()` counts
+  `reduced_amount` (after armour and resistance) once `hp` has moved -
+  `Presence.note_taken(amount, element)`, which also keeps the biggest hit since
+  the last state and a total by element number; god mode returns first and
+  counts nothing. `heal()` counts `actual_heal` (Withered applied, only what was
+  missing) - potions, healblob, healaura all land there; `_tick_regen()` counts
+  its own **regen**. NOT counted: the level-up refill, loading a save, max-health
+  clamps, the owner level tool, a respawn.
+- **Sent in every state** (`state_for()` / `send_tick()`): `dt` taken, `dh`
+  healed, `dr` regen, `hpa`/`hpm` real health and most; and, off the
+  comparison like the clock, `dx` the biggest hit since the last state (once)
+  and `dte` the by-element totals only when they moved. A new link sends every
+  element again (`_sent_by_element` cleared). A total past `METER_TOTAL_MOST`
+  starts again; the server takes that as a new baseline.
+- **The fight log** (`add()`, the report's `"tk"`): a player who took damage
+  joins the fight (named from `"who"`); one in it has every second kept, so
+  their health runs through it. Being hit starts and keeps a fight going like
+  hitting does; a heal alone does neither (`took_any()`). A record's row gains
+  `taken`, `taken_ps`, `biggest_taken`, `healed`, `regen`, `lowest` (-1 none
+  heard), `danger` (seconds under `DANGER_SHARE`, 25%), `deaths` (its "fell"
+  events) and `took` (by element); the record gains `taken_timeline`,
+  `heal_timeline` and `health_timeline` (lowest health each second, 0-1,
+  carried over quiet seconds - `health_line()`). CSV and Copy carry it; a
+  fight from before 0.83.0 shows "-".
+- **Players** gains a second table under the first (one row of fourteen ran
+  off the screen): Taken/s, Biggest, Healed, Regen, Lowest, Danger, Deaths,
+  Took (`TAKEN_COLUMNS`).
+- **Chart: Taken** - the group's taken dashed in each fight's colour; with one
+  player focused their taken dashed, their healing dotted (`taken_line()`,
+  `heal_line()`, smoothed like the rest), and a strip of their health under the
+  chart, a row a fight, red under 25% (`GroupChart.set_taken()`). Heal and
+  damage are two lines, never netted.
+- **Phase 2, with the element kits**: "what hit me" - which monster and which
+  attack, for a per-attack breakdown.
+- Tested: `_test_damage_taken()`.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven

@@ -1238,7 +1238,10 @@ func _tick_regen(delta: float) -> void:
 		var points: int = int(_regen_hp_accumulator)
 		if points > 0:
 			_regen_hp_accumulator -= points
+			var before: int = hp
 			hp = min(max_hp, hp + points)
+			# THE ENEMY METER (0.83.0): regen kept apart from heals.
+			Presence.note_regen(hp - before)
 
 	if mana < max_mana:
 		_regen_mana_accumulator += _regen_rate_for(max_mana) * delta
@@ -1834,6 +1837,8 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 
 	hp = clamp(hp - reduced_amount, 0, max_hp)
 	took_damage.emit(reduced_amount, Element.name_for(element))
+	# THE ENEMY METER (0.83.0): what got through, after armour and resistance.
+	Presence.note_taken(reduced_amount, element)
 
 	# THE NUMBER WEARS THE ELEMENT THAT CAUSED IT, which is the whole point of
 	# carrying one this far. A player standing in a field of six recoloured
@@ -1895,6 +1900,8 @@ func heal(amount: int) -> void:
 	if actual_heal <= 0:
 		return
 	hp = min(max_hp, hp + amount)
+	# THE ENEMY METER (0.83.0): what it gave back, never more than was missing.
+	Presence.note_healed(actual_heal)
 	_spawn_floating_label(actual_heal, 1)
 
 
