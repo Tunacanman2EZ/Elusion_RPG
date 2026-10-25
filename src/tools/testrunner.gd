@@ -488,6 +488,7 @@ func _run_all() -> void:
 	await _test_economy_rules_on_the_client()
 	await _test_the_gm_panel_economy_tab()
 	await _test_the_gm_panel_health_tab()
+	await _test_the_damage_meter()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -34922,6 +34923,99 @@ func _kit_boss(enemy_id: String) -> Node:
 # BOSSES THAT SCALE (0.80.0). The owner: "we need to think outside the box ...
 # lets fix it up" - a boss's health set by who fights it. The server's half is
 # test_combatbook.py CB-12.
+
+func _test_the_damage_meter() -> void:
+	section("DAMAGE METER - every player's damage here, as the server counts it (0.81.0)")
+	var meter_script: GDScript = load("res://src/ui/owner/damagemeter.gd") as GDScript
+	var counted: Dictionary = meter_script.fresh_state()
+	meter_script.add_hits(counted, [[1, 100, 100, 0], [2, 50, 80, 1], [1, 30, 30, 1], "junk", [3]], 10.0)
+	meter_script.add_hits(counted, [[1, 10, 10, 0]], 11.0)
+	var names: Dictionary = {1: ["Ann", "mage", 5, 40, 20], 2: ["Bob", "warrior", 3, 30, 25]}
+	var everyone: Array = meter_script.rows(counted, names, 11.0, 1, false, false)
+	check("a row a player, biggest total first; junk in a report is passed over",
+		everyone.size() == 2 and int(everyone[0]["id"]) == 1 and int(everyone[0]["total"]) == 140
+		and int(everyone[1]["total"]) == 50, everyone)
+	if everyone.size() == 2:
+		check("  DPS over the fight: total over first report to last, plus the second the first covered",
+			is_equal_approx(float(everyone[0]["dps"]), 70.0) and is_equal_approx(float(everyone[1]["dps"]), 50.0),
+			[everyone[0]["dps"], everyone[1]["dps"]])
+		check("  DPS over the last five seconds, the biggest hit, and what the server allows",
+			is_equal_approx(float(everyone[0]["dps5"]), 28.0) and int(everyone[0]["biggest"]) == 100
+			and int(everyone[0]["allowed"]) == 40 and str(everyone[0]["name"]) == "Ann")
+		check("  a hit the books held down is counted as booked, and the rest shown as held",
+			int(everyone[1]["held"]) == 30 and int(everyone[0]["held"]) == 0)
+	var bosses: Array = meter_script.rows(counted, names, 11.0, 1, false, true)
+	check("Bosses only: just the hits a boss took",
+		bosses.size() == 2 and int(bosses[0]["id"]) == 2 and int(bosses[1]["total"]) == 30
+		and is_equal_approx(float(bosses[1]["dps5"]), 6.0), bosses)
+	var mine: Array = meter_script.rows(counted, names, 11.0, 1, true, false)
+	check("Just me: only this game's own row", mine.size() == 1 and int(mine[0]["id"]) == 1, mine)
+	var later: Array = meter_script.rows(counted, names, 16.5, 1, false, false)
+	check("  five quiet seconds later the short window is empty and the fight's totals are kept",
+		later.size() == 2 and is_equal_approx(float(later[0]["dps5"]), 0.0) and int(later[0]["total"]) == 140)
+	meter_script.add_hits(counted, [[3, 1, 1, 0]], 17.0)
+	var stranger: Array = meter_script.rows(counted, names, 17.0, 1, false, false)
+	check("  a dealer the server never named is still a row", stranger.any(func(r: Dictionary) -> bool:
+		return str(r["name"]) == "player 3"), stranger)
+	check("numbers short enough for a column",
+		meter_script.number(999.0) == "999" and meter_script.number(1234.0) == "1.23k"
+		and meter_script.number(12345.0) == "12.3k" and meter_script.number(1234567.0) == "1.2M")
+
+	var kept: Dictionary = {"send": Presence.send_override, "phase": Presence._phase,
+		"watching": Presence._watching_damage}
+	var sent: Array = []
+	Presence.send_override = func(message: Dictionary) -> void: sent.append(message)
+	Presence._phase = "open"
+	Presence.watch_damage(true)
+	Presence._phase = "off"
+	Presence.watch_damage(false)
+	Presence._watching_damage = true
+	Presence.handle_message({"t": "welcome", "id": Presence._my_id, "v": int(Presence._server_shares) * 99,
+		"books": Presence._server_books, "x": int(Presence._server_relays)})
+	check("Presence asks for the reports, remembers the ask, and asks again on every welcome",
+		sent == [{"t": "dm", "on": true}, {"t": "dm", "on": true}], sent)
+	var heard: Array = []
+	var ear: Callable = func(report: Dictionary) -> void: heard.append(report)
+	Presence.damage_meter.connect(ear)
+	Presence.handle_message({"t": "dm", "a": "field", "h": [], "who": {}})
+	Presence.damage_meter.disconnect(ear)
+	check("  and hands each report to the meter (damage_meter)", heard.size() == 1 and str(heard[0]["a"]) == "field")
+	Presence.send_override = kept["send"]
+	Presence._phase = kept["phase"]
+	Presence._watching_damage = kept["watching"]
+
+	var meter: CanvasLayer = meter_script.new() as CanvasLayer
+	add_child(meter)
+	meter.call("take_report", {"a": "bigfield", "h": [[Presence.my_id(), 12, 12, 0], [77, 8, 9, 1]],
+		"who": {"77": ["Cy", "tank", 9, 15, 6]}}, 5.0)
+	var grid: GridContainer = meter.get_node_or_null("panel").find_child("rows", true, false) as GridContainer
+	var columns: int = meter_script.COLUMNS.size()
+	check("the window draws a header and a row a dealer, biggest first, named by the server",
+		grid != null and grid.get_child_count() == columns * 3
+		and (grid.get_child(columns * 2) as Label).text.begins_with("Cy (tank 9)"))
+	check("  its status says whether the server is counting",
+		str(meter.call("status_text", 5.5)) == ("Live - bigfield, counted by the server." if Presence.books()
+			else "The server is not counting hits right now."))
+	meter.call("reset")
+	check("  Reset starts a fresh fight", (meter.get("state")["all"] as Dictionary).is_empty())
+	meter.queue_free()
+
+	var was_owner: bool = Api.is_owner
+	var was_role: String = Api.role
+	Api.is_owner = true
+	Api.role = "owner"
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var perf: Node = gm.get("perf_button")
+	var switch: CheckButton = gm.get("meter_button") as CheckButton
+	check("the GM panel's Testing tab has a Damage meter switch, under Performance",
+		perf != null and switch != null and switch.get_parent() == perf.get_parent()
+		and switch.get_index() == perf.get_index() + 1 and switch.text == "Damage meter")
+	gm.queue_free()
+	Api.is_owner = was_owner
+	Api.role = was_role
+
 func _test_bosses_scale_to_their_fight() -> void:
 	section("BOSSES THAT SCALE - a boss's health set by who is fighting it")
 	var B := preload("res://src/enemies/bossenemy.gd")

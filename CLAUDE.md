@@ -8242,6 +8242,25 @@ screen and the server's books are told with a world event `"mh"`
 boss "max_hp_differs". `_test_bosses_scale_to_their_fight`; the API's
 test_combatbook.py CB-12.
 
+## The damage meter (0.81.0)
+
+GM panel > Testing > **Damage meter** (a CheckButton made in code under
+Performance, `ownerpanel.gd` `_add_meter_button()`). It opens
+`src/ui/owner/damagemeter.gd`: a CanvasLayer built in code, on the root so it
+stays open across areas (`shared()`), preloaded rather than a class_name.
+
+- **The server's count, not this game's**: `Presence.watch_damage(on)` sends
+  `{"t": "dm", "on": ...}` (said again on every welcome); presence.py answers
+  once a second with the room's hits the books counted and who dealt them
+  (api/CLAUDE.md, "The damage meter"). `Presence.damage_meter` hands each report on.
+- **Rows**: DPS over the last `RECENT_SECONDS` (5) and over the fight since
+  Reset (first report to last, plus the second the first covered), total,
+  biggest hit, and the server's allowed DPS for that character. A hit the books
+  held down to the character's bounds counts as booked, and the rest shows as
+  "held" in red. Filters: Everyone / Just me; All monsters / Bosses only.
+- **Static and tested**: `fresh_state()`, `add_hits()`, `rows()`, `number()`;
+  `_test_the_damage_meter()`.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven

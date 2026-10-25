@@ -171,6 +171,9 @@ var _tag := RegEx.create_from_string("^\\[[A-Z]+\\] ")
 @onready var coowner_status: Label = get_node_or_null("%coownerstatus")
 # The performance readout (PerfOverlay). It was the backslash key until 0.7.1.
 @onready var perf_button: CheckButton = get_node_or_null("%perfbutton")
+# THE DAMAGE METER (0.81.0), made in code beside the performance switch.
+const DamageMeterScript := preload("res://src/ui/owner/damagemeter.gd")
+var meter_button: CheckButton = null
 # THE STRESS TEST (0.65.0): more of the Big Field's monsters, this game only.
 @onready var stress_pick: OptionButton = get_node_or_null("%stresspick")
 @onready var rare_button: CheckButton = get_node_or_null("%rarebutton")
@@ -359,6 +362,7 @@ func _ready() -> void:
 	if perf_button != null and not perf_button.toggled.is_connected(_on_perf_toggled):
 		perf_button.toggled.connect(_on_perf_toggled)
 	_sync_perf_button()
+	_add_meter_button()
 	if stress_pick != null and not stress_pick.item_selected.is_connected(_on_stress_selected):
 		stress_pick.clear()
 		for times in StressCrowd.MULTIPLIERS:
@@ -708,6 +712,7 @@ func _on_visibility_changed() -> void:
 		# so they are re-read on every open rather than remembered.
 		_sync_god_mode_button()
 		_sync_perf_button()
+		_sync_meter_button()
 		_sync_stress_pick()
 		_sync_rare_button()
 		# SERVER STATE, so it is asked rather than remembered - the same rule
@@ -806,6 +811,46 @@ func _sync_perf_button() -> void:
 	if perf_button == null:
 		return
 	perf_button.set_pressed_no_signal(PerfOverlay.is_shown())
+
+
+# =============================================================================
+# THE DAMAGE METER (0.81.0)
+# =============================================================================
+# Every player's damage in your area as the server's books count it, once a
+# second (damagemeter.gd). A switch made in code under the performance one, so
+# the panel's scene is untouched.
+
+func _add_meter_button() -> void:
+	if meter_button != null or perf_button == null or perf_button.get_parent() == null:
+		return
+	meter_button = CheckButton.new()
+	meter_button.name = "meterbutton"
+	meter_button.text = "Damage meter"
+	meter_button.tooltip_text = "Every player's damage here, as the server counts it"
+	var holder: Node = perf_button.get_parent()
+	holder.add_child(meter_button)
+	holder.move_child(meter_button, perf_button.get_index() + 1)
+	meter_button.toggled.connect(_on_meter_toggled)
+	_sync_meter_button()
+
+
+func _meter() -> CanvasLayer:
+	return DamageMeterScript.shared(get_tree())
+
+
+func _sync_meter_button() -> void:
+	if meter_button == null or not is_inside_tree():
+		return
+	var found: Node = get_tree().root.get_node_or_null(DamageMeterScript.NODE_NAME)
+	meter_button.set_pressed_no_signal(found != null and bool(found.call("is_shown")))
+
+
+func _on_meter_toggled(pressed: bool) -> void:
+	_meter().call("set_shown", pressed)
+	if pressed:
+		_set_testing_status("Damage meter ON - every player's damage here, as the server counts it. Drag it by its title.")
+	else:
+		_set_testing_status("Damage meter OFF.")
 
 
 func _on_perf_toggled(pressed: bool) -> void:

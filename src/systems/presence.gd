@@ -88,6 +88,10 @@ signal world_needed(for_id: int)
 # PARTY VOICE (0.43.0): who is in the party's voice ("vs") and a call's setup
 # from another game ("vc"), for the Voice autoload (voice.gd).
 signal voice_message(message: Dictionary)
+## THE DAMAGE METER (0.81.0): a report from the server, once a second while
+## watch_damage(true) - its room's hits the books counted, and who dealt them
+## (damagemeter.gd). Only an owner's or co-owner's game is sent any.
+signal damage_meter(report: Dictionary)
 
 const RemotePlayer := preload("res://src/characters/remoteplayer.gd")
 
@@ -133,6 +137,8 @@ var _phase: String = "off"     # off, ticket, connecting, open, waiting
 var _ticket: String = ""
 var _url: String = ""
 var _my_id: int = -1
+# THE DAMAGE METER (0.81.0): this game asked for its reports.
+var _watching_damage: bool = false
 var _send_clock: float = 0.0
 var _renew_clock: float = 0.0
 var _retry_clock: float = 0.0
@@ -316,6 +322,18 @@ func send_hits(hits: Array) -> void:
 	if not shares() or hits.is_empty():
 		return
 	_send({"t": "h", "p": hits})
+
+
+func watch_damage(on: bool) -> void:
+	"""Open or shut the damage meter's reports. Remembered, and said again on
+	every welcome, so a reconnect keeps them coming."""
+	_watching_damage = on
+	if _phase == "open":
+		_send({"t": "dm", "on": on})
+
+
+func watching_damage() -> bool:
+	return _watching_damage
 
 
 func request_world() -> void:
@@ -535,6 +553,8 @@ func handle_message(message: Dictionary) -> void:
 			_server_shares = int(message.get("v", 0)) >= SHARED_MINIMUM
 			_server_books = typeof(message.get("books")) == TYPE_BOOL and bool(message["books"])
 			_server_relays = int(message.get("x", 0)) >= 1
+			if _watching_damage:
+				_send({"t": "dm", "on": true})
 		"join":
 			for entry in message.get("p", []):
 				if entry is Dictionary:
@@ -581,6 +601,8 @@ func handle_message(message: Dictionary) -> void:
 					_pull_lever(str(pulled[0]), bool(pulled[1]))
 		"vs", "vc":
 			voice_message.emit(message)
+		"dm":
+			damage_meter.emit(message)
 
 
 func _hear_attacks(id: int, attacks: Variant) -> void:
