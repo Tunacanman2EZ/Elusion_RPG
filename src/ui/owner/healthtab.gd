@@ -13,7 +13,7 @@
 #   DATA      data going out, and the month it adds up to at this week's
 #             rate; THE DATA GUARD (0.79.0) - the server holding the month
 #             under the plan itself, and how hard it is holding; whether one
-#             area needs sending only what is near yet
+#             area needs sending only what is near yet - "on" since 0.89.0
 #   MACHINE   the machine's load, memory and disk; the slowest routes
 #   RECEIPTS  "Kills need the server's count": the week's kills put to the
 #             server's own count (killwatch.py's), a verdict - ready or what
@@ -419,7 +419,7 @@ func show_answer(data: Dictionary) -> void:
 	var crowd: Dictionary = _dict(data.get("crowd"))
 	nearby_label.text = nearby_text(crowd)
 	nearby_label.add_theme_color_override("font_color",
-		{"now": SAY_BAD, "watch": SAY_WARN, "fine": SAY_GOOD}.get(str(crowd.get("verdict", "")), SAY_NOTE))
+		{"now": SAY_BAD, "watch": SAY_WARN, "fine": SAY_GOOD, "on": SAY_GOOD}.get(str(crowd.get("verdict", "")), SAY_NOTE))
 	var tick: Dictionary = _dict(data.get("tick"))
 	tick_label.text = tick_text(tick)
 	tick_label.add_theme_color_override("font_color",
@@ -563,6 +563,9 @@ static func share_colour(month: Variant) -> Color:
 static func nearby_text(crowd: Dictionary) -> String:
 	"""Whether one area needs sending only the players near each game yet."""
 	match str(crowd.get("verdict", "")):
+		"on":
+			# ONLY WHAT IS NEAR (0.89.0): presence.py does it now.
+			return "Sending each game only nearby players: on - a crowd costs what is near each player."
 		"fine":
 			return "Sending each game only nearby players: not needed yet (watch from %d in one area)." % int(
 				crowd.get("watch_at", 32))

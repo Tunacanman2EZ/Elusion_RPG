@@ -8500,6 +8500,31 @@ Tested: `_test_the_server_owns_monster_health()` (a stand-in link,
 a follower's hits bring the count to zero, both games hear it, and the death
 is AGREED with no word from the leader).
 
+## Each game is sent only the players near it (0.89.0)
+
+The owner, rating the server's cost 8 of 10 ("the weak spot is data, which
+grows fast when players crowd one area"): "upgrade this". The work is the
+API's (presence.py, ONLY WHAT IS NEAR; the API CLAUDE.md has the rules and
+the measurements) - **the game needed no change to take it**: the server
+draws a player on this game's screen with the "join" it always sent, and
+takes it off with "leave", so every version since presence began gets it.
+
+What that means here, if something looks wrong:
+
+- **A player more than about half a screen off the edge is not drawn**
+  (`presence.gd` `_remotes` holds only the near ones). They come back with a
+  "join" as they walk up, placed where they stand. Nothing in the game may
+  assume `_remotes` or the `remoteplayers` group is the whole area.
+- **What still sees everyone, by the server's rule**: the area's leader (its
+  game runs the monsters, which chase anybody - `targets.gd`), staff (Go to,
+  `Presence.meet()`), and party members of each other (the party window's
+  health, `partypanel.gd`, and the map's party rings, `mapscreen.gd`).
+- **The healer's aura blobs** go to the remote players drawn; one too far off
+  to be drawn is too far for a blob. The heal itself is the server's
+  (THE AURA'S HEALS), by distance, as before.
+- The Health tab's nearby line says "on" (`HealthTab.nearby_text()`, verdict
+  `"on"` from the server); a server from before still sends the old verdicts.
+
 ## The game tells the server what broke (0.88.0)
 
 The owner rated stability 8 of 10 - "rare live breakages, and fixes go out

@@ -2110,7 +2110,8 @@ func _test_the_gm_panel_health_tab() -> void:
 		HealthTab.nearby_text({"verdict": "fine", "watch_at": 32}) == "Sending each game only nearby players: not needed yet (watch from 32 in one area)."
 		and HealthTab.nearby_text({"verdict": "watch", "by": "data"}).ends_with("the month is past half the data included.")
 		and HealthTab.nearby_text({"verdict": "now", "by": "crowd", "now_at": 96}).ends_with("needed now - an area held 96 or more this week.")
-		and HealthTab.nearby_text({}) == "Sending each game only nearby players: not enough measured yet.")
+		and HealthTab.nearby_text({}) == "Sending each game only nearby players: not enough measured yet."
+		and HealthTab.nearby_text({"verdict": "on"}).begins_with("Sending each game only nearby players: on"))
 	check("  the guard's every level: half, a crowd cap, switched off, an older server",
 		HealthTab.guard_text({"on": true, "level": "half"}) == "Data guard: holding - other players' steps at half rate, to stay under the plan."
 		and HealthTab.guard_text({"on": true, "level": "crowd", "crowd_cap": 16}) == "Data guard: holding hard - half rate, and at most 16 players see each other in one area."
