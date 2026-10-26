@@ -301,6 +301,7 @@ func _run_all() -> void:
 	await _test_damage_taken()
 	await _test_monsters_fire_their_element()
 	await _test_what_hit_me()
+	_test_field_effects()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()

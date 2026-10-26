@@ -234,17 +234,18 @@ static func for_element(element: int) -> StringName:
 
 
 static func apply_to(body: Node, kind: StringName, amount: int = 0,
-		from: Vector2 = Vector2.INF, ground: bool = false) -> bool:
+		from: Vector2 = Vector2.INF, ground: bool = false, strength: float = 1.0) -> bool:
 	"""Puts `kind` on `body` if it carries effects; true when something
 	started or was refreshed. `amount` is the hit that carried it (burn reads
 	it), `from` where it came from (shove reads it), `ground` that it came off a
-	puddle (see GROUND)."""
+	puddle (see GROUND), `strength` how hard (1 a boss's; under 1 the Field's,
+	0.86.0 - see apply())."""
 	if kind == &"":
 		return false
 	var fx: Node = of(body)
 	if fx == null or not fx.has_method(&"apply"):
 		return false
-	return bool(fx.call(&"apply", kind, amount, from, ground))
+	return bool(fx.call(&"apply", kind, amount, from, ground, strength))
 
 
 # =============================================================================
@@ -257,25 +258,30 @@ func _ready() -> void:
 
 
 func apply(kind: StringName, amount: int = 0, from: Vector2 = Vector2.INF,
-		ground: bool = false) -> bool:
+		ground: bool = false, strength: float = 1.0) -> bool:
+	# SOFTER (0.86.0, the Field at 0.5): every effect lasts `strength` as long,
+	# a burn bites and a shove pushes `strength` as hard, and under 1 nothing
+	# takes the controls away - chill never freezes, earth never roots.
 	if _host_dying():
 		return false
 	if ground and not GROUND.has(kind):
 		return false
+	var s: float = clampf(strength, 0.1, 1.0)
+	var soft: bool = s < 1.0
 	match kind:
 		CHILL:
-			return _chill(ground)
+			return _chill(ground or soft, s)
 		BURN:
 			var was: bool = burn_left > 0.0
-			burn_left = BURN_SECONDS
-			burn_damage = maxi(burn_damage if was else 0, maxi(1, roundi(amount * BURN_SHARE)))
+			burn_left = maxf(burn_left, BURN_SECONDS * s)
+			burn_damage = maxi(burn_damage if was else 0, maxi(1, roundi(amount * BURN_SHARE * s)))
 			if not was:
 				_burn_tick_left = BURN_TICK
 				_started(BURN)
 			return true
 		SOAKED:
 			var was_soaked: bool = soaked_left > 0.0
-			soaked_left = SOAKED_SECONDS
+			soaked_left = maxf(soaked_left, SOAKED_SECONDS * s)
 			if not was_soaked:
 				_started(SOAKED)
 			return true
@@ -285,19 +291,19 @@ func apply(kind: StringName, amount: int = 0, from: Vector2 = Vector2.INF,
 			var away: Vector2 = _body_point() - from
 			if away.length_squared() < 0.01:
 				return false
-			shove_velocity = away.normalized() * SHOVE_SPEED
+			shove_velocity = away.normalized() * SHOVE_SPEED * s
 			shove_left = SHOVE_SECONDS
 			_started(SHOVE, false)
 			return true
 		ROOT:
-			if frozen_left > 0.0 or root_left > 0.0 or hold_immune_left > 0.0:
+			if soft or frozen_left > 0.0 or root_left > 0.0 or hold_immune_left > 0.0:
 				return false
 			root_left = ROOT_SECONDS
 			_started(ROOT)
 			return true
 		DAZZLE:
 			var was_dazzled: bool = dazzle_left > 0.0
-			dazzle_left = DAZZLE_SECONDS
+			dazzle_left = maxf(dazzle_left, DAZZLE_SECONDS * s)
 			if _flash_gap_left <= 0.0:
 				_flash_gap_left = DAZZLE_FLASH_GAP
 				_flash_left = FLASH_SECONDS
@@ -307,7 +313,7 @@ func apply(kind: StringName, amount: int = 0, from: Vector2 = Vector2.INF,
 			return true
 		WITHER:
 			var was_withered: bool = wither_left > 0.0
-			wither_left = WITHER_SECONDS
+			wither_left = maxf(wither_left, WITHER_SECONDS * s)
 			if not was_withered:
 				_started(WITHER)
 			return true
@@ -325,12 +331,15 @@ func pull(toward: Vector2, seconds: float, speed: float) -> void:
 	_started(PULL, false)
 
 
-func _chill(ground: bool) -> bool:
+func _chill(ground: bool, strength: float = 1.0) -> bool:
 	if frozen_left > 0.0:
 		return false
 	var was: int = chill_stacks
 	chill_stacks += 1
-	chill_left = CHILL_SECONDS
+	chill_left = maxf(chill_left, CHILL_SECONDS * strength)
+	if strength < 1.0:
+		# Soft: one stack at most, a fifth slower, never frozen.
+		chill_stacks = mini(chill_stacks, 1)
 	if chill_stacks >= CHILL_TO_FREEZE:
 		if ground or hold_immune_left > 0.0:
 			chill_stacks = CHILL_TO_FREEZE - 1

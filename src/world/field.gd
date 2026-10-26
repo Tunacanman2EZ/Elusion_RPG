@@ -29,6 +29,8 @@ var current_player: Node = null
 # Field's monsters fire orbs (BulletZone, src/world/bulletzone.gd). A monster
 # in an area without a zone fires its ordinary projectile.
 @export var bullet_zone: bool = false
+# How strong the Field's element effects are, against a boss room's 1 (0.86.0).
+const FIELD_EFFECTS := 0.5
 
 @onready var active_char_ui = get_node_or_null("hudcontrol")
 
@@ -39,7 +41,13 @@ var current_player: Node = null
 
 func _ready() -> void:
 	if bullet_zone:
-		add_child(BulletZone.new())
+		# THE FIELD'S ORBS CARRY THEIR ELEMENT TOO (0.86.0), at FIELD_EFFECTS
+		# of a boss room's strength: shorter, softer, and nothing that takes
+		# the controls away (no freeze, no root) - see statuseffects.gd.
+		var zone := BulletZone.new()
+		zone.element_effects = true
+		zone.effect_strength = FIELD_EFFECTS
+		add_child(zone)
 	spawn_player_from_selection()
 	_position_player_at_spawn()
 	# ONCE PER LOGIN - see GameState.opening_story_told.

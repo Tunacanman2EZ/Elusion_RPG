@@ -2514,3 +2514,47 @@ func _test_the_field_volleys() -> void:
 			o.add_to_group(&"player")
 	await get_tree().process_frame
 	Kit.family_only = false
+
+
+func _test_field_effects() -> void:
+	section("THE FIELD'S ELEMENTS DO SOMETHING (0.86.0) - its orbs carry their effect, at half a boss room's strength")
+	var FX: GDScript = load("res://src/characters/statuseffects.gd") as GDScript
+	var field_src: String = _code_src("res://src/world/field.gd")
+	check("the Field's zone carries its orbs' effects, at FIELD_EFFECTS (0.5)",
+		field_src.contains("zone.element_effects = true") and field_src.contains("zone.effect_strength = FIELD_EFFECTS")
+		and is_equal_approx(float((load("res://src/world/field.gd") as GDScript).get_script_constant_map().get("FIELD_EFFECTS", 0.0)), 0.5))
+	check("  and the zone hands that strength to every effect it puts on",
+		_code_src("res://src/world/bulletzone.gd").contains("false, effect_strength)")
+		and is_equal_approx(BulletZone.new().effect_strength, 1.0))
+	var host := Node2D.new()
+	var soft: Node = FX.new()
+	soft.host = host
+	for k in 5:
+		soft.apply(FX.CHILL, 10, Vector2.INF, false, 0.5)
+	check("soft: chill is one stack at most, half as long, and never freezes",
+		int(soft.chill_stacks) == 1 and float(soft.frozen_left) == 0.0
+		and is_equal_approx(float(soft.chill_left), FX.CHILL_SECONDS * 0.5), [soft.chill_stacks, soft.frozen_left, soft.chill_left])
+	check("  earth never roots", not soft.apply(FX.ROOT, 10, Vector2.INF, false, 0.5) and float(soft.root_left) == 0.0)
+	soft.apply(FX.BURN, 100, Vector2.INF, false, 0.5)
+	check("  a burn bites half as hard for half as long",
+		int(soft.burn_damage) == maxi(1, roundi(100 * FX.BURN_SHARE * 0.5))
+		and is_equal_approx(float(soft.burn_left), FX.BURN_SECONDS * 0.5), [soft.burn_damage, soft.burn_left])
+	host.position = Vector2(10, 0)
+	soft.apply(FX.SHOVE, 10, Vector2.ZERO, false, 0.5)
+	check("  a shove pushes half as hard", is_equal_approx((soft.shove_velocity as Vector2).length(), FX.SHOVE_SPEED * 0.5),
+		soft.shove_velocity)
+	soft.apply(FX.SOAKED, 10, Vector2.INF, false, 0.5)
+	soft.apply(FX.WITHER, 10, Vector2.INF, false, 0.5)
+	check("  soaked and withered for half as long",
+		is_equal_approx(float(soft.soaked_left), FX.SOAKED_SECONDS * 0.5)
+		and is_equal_approx(float(soft.wither_left), FX.WITHER_SECONDS * 0.5))
+	var full: Node = FX.new()
+	full.host = host
+	for k in FX.CHILL_TO_FREEZE:
+		full.apply(FX.CHILL, 10)
+	check("a boss room's are as they were: chilled to frozen", float(full.frozen_left) > 0.0, full.frozen_left)
+	soft.free()
+	full.free()
+	host.free()
+	print("  field effects checked")
+

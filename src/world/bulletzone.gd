@@ -100,6 +100,9 @@ var field: BulletField = null
 # sprite's orbs there burn no more than they ever did. See statuseffects.gd for
 # what each element does and bossenemy.gd, THE KITS, for who fires what.
 var element_effects: bool = false
+# AND HOW STRONG (0.86.0): 1 in a boss room; the Field's are softer
+# (field.gd FIELD_EFFECTS). StatusEffects.apply_to() reads it.
+var effect_strength: float = 1.0
 
 # scene path -> its script's own `damage`, for a monster whose .tres leaves
 # projectile_damage at 0. Read once per scene, not copied into a constant, so
@@ -315,7 +318,7 @@ func _process(delta: float) -> void:
 		# damage, so a hit that kills you does not also freeze a corpse.
 		if element_effects:
 			StatusEffects.apply_to(player, StatusEffects.for_element(hit.y), maxi(hit.x, 1),
-				field.hit_from[n] if n < field.hit_from.size() else Vector2.INF)
+				field.hit_from[n] if n < field.hit_from.size() else Vector2.INF, false, effect_strength)
 
 
 func _floor_rect() -> Rect2:

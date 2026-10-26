@@ -8382,6 +8382,19 @@ turns them into each second's share (api/CLAUDE.md, "The damage meter").
   attack, for a per-attack breakdown.
 - Tested: `_test_damage_taken()`.
 
+## The Field's elements do something (0.86.0)
+
+The boss rooms' orbs have carried their element's effect since 0.77.0 (ice
+chills, fire burns, water soaks, wind shoves, earth roots, light dazzles, dark
+withers - statuseffects.gd). Now the Field's do too, at `field.gd
+FIELD_EFFECTS` (0.5) of their strength: `BulletZone.effect_strength`, passed
+through `StatusEffects.apply_to(..., strength)` to `apply()`. Under 1 every
+effect lasts that share as long, a burn bites and a shove pushes that share as
+hard, and nothing takes the controls away: chill is one stack at most (a
+fifth slower) and never freezes, earth never roots. At 1 (a boss room)
+nothing changed. Only orbs carry effects; a monster's own shot does not.
+Tested: `_test_field_effects()`.
+
 ## The enemy meter, phase 2: what hit me (0.85.0)
 
 Every hit on a player says where it came from, "<monster>:<attack>"
