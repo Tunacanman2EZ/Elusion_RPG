@@ -368,16 +368,26 @@ func _spawn_vine() -> void:
 	if zone != null:
 		var aim: float = (target_point() - global_position).angle() if is_instance_valid(player) \
 			else _vec_from_dir(attack_direction).angle()
-		fire_volley(zone, global_position, aim)
+		# THE ELEMENT KIT (0.84.0, elementkit.gd) in place of the ring.
+		var kit: String = kit_volley()
+		var reach: float = global_position.distance_to(target_point()) if is_instance_valid(player) else 0.0
+		fire_volley(zone, global_position, aim, kit, reach)
 		if _net_sync != null and not net_mirror:
-			_net_sync.leader_bullets(self, global_position, aim)
+			_net_sync.leader_bullets(self, global_position, aim, kit, reach)
 
 
-func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
-		_reach: float = 0.0) -> void:
-	"""The ring, from `origin`, its gap toward `aim`. This mage's own damage
-	and element, as for every volley (BulletZone's header has the contract)."""
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String = "",
+		reach: float = 0.0) -> void:
+	"""The ring, from `origin`, its gap toward `aim` - or its element's kit
+	when `volley` names one (elementkit.gd); the vine is placed apart either
+	way. This mage's own damage and element, as for every volley
+	(BulletZone's header has the contract)."""
 	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, null, attack_power), RING_SHARE)
+	if ElementKit.is_kit(volley):
+		# No shot of its own to send down the middle; a boulder lands for
+		# twice an orb.
+		fire_kit(zone, origin, aim, volley, reach, null, damage, damage * 2)
+		return
 	zone.fire_ring(origin, aim + PI / RING_ORBS, RING_ORBS, RING_SPEED, damage, current_element())
 
 

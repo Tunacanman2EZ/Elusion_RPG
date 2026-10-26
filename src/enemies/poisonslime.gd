@@ -469,8 +469,13 @@ func fire_projectile() -> void:
 		var volley: String = ""
 		var reach: float = 0.0
 		if not is_small:
-			volley = MORTAR_VOLLEY if _mortar_next else ""
-			_mortar_next = not _mortar_next
+			# THE ELEMENT KIT (0.84.0, elementkit.gd): every shot of a large
+			# with one; poison has none and keeps its spray and mortar. The
+			# small keeps its twin.
+			volley = kit_volley()
+			if volley == "":
+				volley = MORTAR_VOLLEY if _mortar_next else ""
+				_mortar_next = not _mortar_next
 			reach = from.distance_to(target_point()) if is_instance_valid(player) else SPRAY_REACH_DEFAULT
 		fire_volley(zone, from, aim, volley, reach)
 		if _net_sync != null and not net_mirror:
@@ -504,6 +509,13 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 	to this slime's own range. This slime's own damage and element
 	(BulletZone's header has the contract)."""
 	var element: int = current_element()
+	if ElementKit.is_kit(volley):
+		if is_small:
+			return
+		var acid: int = BulletZone.base_damage(self, POISONBALL_SCENE)
+		var lob: Node2D = _lob_art(element) if ElementKit.kind_of(element, ElementKit.roll_of(volley)) == &"boulder" else null
+		fire_kit(zone, origin, aim, volley, reach, POISONBALL_SCENE, BulletZone.share_of(acid, SPRAY_SHARE), acid, lob)
+		return
 	if volley == SPLIT_VOLLEY:
 		if is_small:
 			return

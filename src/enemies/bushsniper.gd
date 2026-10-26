@@ -106,9 +106,13 @@ func fire_projectile() -> void:
 	if zone != null:
 		var origin: Vector2 = spawn_node.global_position
 		var aim: float = (target_point() - origin).angle()
-		fire_volley(zone, origin, aim)
+		# THE ELEMENT KIT (0.84.0, elementkit.gd); the plain sniper has no
+		# element and keeps its helix.
+		var kit: String = kit_volley()
+		var reach: float = origin.distance_to(target_point())
+		fire_volley(zone, origin, aim, kit, reach)
 		if _net_sync != null and not net_mirror:
-			_net_sync.leader_bullets(self, origin, aim)
+			_net_sync.leader_bullets(self, origin, aim, kit, reach)
 		return
 	# THE ELEMENT PICKS THE ARROW. An ice sniper fires icearrow.tscn, which is
 	# this same scene with an authored material on it — so the shot is blue
@@ -124,14 +128,19 @@ func fire_projectile() -> void:
 	spawn_projectile_node(arrow, spawn_node.global_position)
 
 
-func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
-		_reach: float = 0.0) -> void:
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String = "",
+		reach: float = 0.0) -> void:
 	"""The helix: the arrow, slowed, from `origin` toward `aim` (radians), and
 	its orbs winding round it. Damage and element are this monster's own -
 	which is what a follower relies on when it replays the leader's volley:
 	the message says where and which way, never how hard. The archer has one
-	volley, so the name and reach a message may carry are ignored
-	(BulletZone's header has the contract)."""
+	volley of its own; a name that is its element's kit fires that instead
+	(elementkit.gd), the arrow at the kit's speed (BulletZone's header has the
+	contract)."""
+	if ElementKit.is_kit(volley):
+		var shot: int = BulletZone.base_damage(self, ARROW_SCENE)
+		fire_kit(zone, origin, aim, volley, reach, ARROW_SCENE, orb_damage(), shot)
+		return
 	var arrow: Node = Projectiles.variant_of(ARROW_SCENE, current_element()).instantiate()
 	arrow.set("speed", HELIX_SPEED)
 	arrow.shoot_vector(Vector2.from_angle(aim))

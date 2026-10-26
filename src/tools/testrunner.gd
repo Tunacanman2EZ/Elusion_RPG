@@ -491,6 +491,7 @@ func _run_all() -> void:
 	await _test_the_damage_meter()
 	await _test_the_fight_log()
 	await _test_damage_taken()
+	await _test_monsters_fire_their_element()
 	await _test_founding_a_guild_shows_what_it_cost()
 	_test_a_request_waiting_on_you_lights_its_button()
 	_test_the_login_screen_asks_without_a_login()
@@ -35363,6 +35364,102 @@ func _test_damage_taken() -> void:
 		for file in left.get_files():
 			left.remove(file)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://test_fightlog_taken"))
+
+
+func _test_monsters_fire_their_element() -> void:
+	section("ELEMENT KITS - in the Field a monster's orbs move like its element (0.84.0)")
+	var Kit := preload("res://src/enemies/elementkit.gd")
+	check("each land has its kit; lightning, poison and physical have none",
+		Kit.kind_for(Element.Type.LIGHT) == &"prism" and Kit.kind_for(Element.Type.WIND) == &"gale"
+		and Kit.kind_for(Element.Type.WATER) == &"tide" and Kit.kind_for(Element.Type.ICE) == &"frost"
+		and Kit.kind_for(Element.Type.EARTH) == &"boulder" and Kit.kind_for(Element.Type.FIRE) == &"pincer"
+		and Kit.kind_for(Element.Type.DARK) == &"dark" and Kit.kind_for(Element.Type.LIGHTNING) == &""
+		and Kit.kind_for(Element.Type.POISON) == &"" and Kit.kind_for(Element.Type.NONE) == &"")
+	check("  a leader's volley name is the mark and a roll; none for no kit, or a kit that is the family's own",
+		Kit.volley_for(Element.Type.ICE).begins_with("kit:") and Kit.volley_for(Element.Type.POISON) == ""
+		and Kit.volley_for(Element.Type.FIRE, &"pincer") == "" and Kit.volley_for(Element.Type.DARK, &"pincer") != "")
+	check("  the roll read back, and junk read as 0, never as a kit it is not",
+		Kit.roll_of("kit:17") == 17 and Kit.roll_of("kit:-5") == 5 and Kit.roll_of("kit:x") == 0
+		and Kit.is_kit("kit:3") and not Kit.is_kit("mortar") and not Kit.is_kit(""))
+	var kinds: Dictionary = {}
+	var door_ok: bool = true
+	for roll in Kit.ROLL_MOST:
+		kinds[Kit.kind_of(Element.Type.DARK, roll)] = true
+		var door: int = Kit.tide_door(roll)
+		var middle: int = Kit.TIDE_ORBS >> 1
+		if door < 0 or door + Kit.TIDE_DOOR > Kit.TIDE_ORBS or (middle >= door and middle < door + Kit.TIDE_DOOR):
+			door_ok = false
+	check("a dark monster's roll reaches all six kits", kinds.size() == 6, kinds.keys())
+	check("  the tide's door is always in the wall and never on the middle, where the shot flies", door_ok)
+
+	var arena := Node2D.new()
+	arena.position = Vector2(-80000, -80000)
+	add_child(arena)
+	var cases: Array = [["lightbushsniper", "kit:1", 7, 14], ["windfiresprite", "kit:2", 4, 8],
+		["waterslimelarge", "kit:3", Kit.TIDE_ORBS - Kit.TIDE_DOOR, Kit.TIDE_ORBS - Kit.TIDE_DOOR],
+		["icesprite", "kit:4", Kit.FROST_ORBS, Kit.FROST_ORBS], ["earthsprite", "kit:5", 0, 1 + Kit.BOULDER_ROCKS],
+		["darkbushmage", "kit:0", Kit.PRISM_ORBS, Kit.PRISM_ORBS * 2]]
+	var monsters: Array = []
+	var zones: Array = []
+	for c in cases:
+		var monster: Node = (load("res://scene/enemy/%s.tscn" % c[0]) as PackedScene).instantiate()
+		monster.process_mode = Node.PROCESS_MODE_DISABLED
+		arena.add_child(monster)
+		monster.process_mode = Node.PROCESS_MODE_ALWAYS
+		monster.set_physics_process(false)
+		monster.set_process(false)
+		var zone := BulletZone.new()
+		arena.add_child(zone)
+		zone.set_process(false)
+		monsters.append(monster)
+		zones.append(zone)
+		monster.fire_volley(zone, arena.global_position, 0.0, str(c[1]), 120.0)
+	var first: Array = []
+	for z in zones:
+		first.append((z as BulletZone).field.count)
+	await get_tree().create_timer(1.2).timeout
+	var later: Array = []
+	for z in zones:
+		later.append((z as BulletZone).field.count)
+	var want_first: Array = cases.map(func(c: Array) -> int: return int(c[2]))
+	var want_later: Array = cases.map(func(c: Array) -> int: return int(c[3]))
+	check("light's prism, wind's gale, water's tide with its door, ice's frost, earth's boulder (nothing until it lands), dark's roll - as they leave",
+		first == want_first, [first, want_first])
+	check("  and on the beat: a second prism, a second gale fan, the boulder's impact and its crater",
+		later == want_later, [later, want_later])
+	var sniper: Node = monsters[0]
+	var orb_damage: int = int((zones[0] as BulletZone).field._damage[0]) if (zones[0] as BulletZone).field.count > 0 else -1
+	check("an orb keeps its family's share of the shot, so a band hits as hard as it did",
+		orb_damage == int(sniper.orb_damage()), [orb_damage, sniper.orb_damage()])
+	var small: Node = (load("res://scene/enemy/waterslime.tscn") as PackedScene).instantiate()
+	small.set("is_small", true)
+	small.process_mode = Node.PROCESS_MODE_DISABLED
+	arena.add_child(small)
+	var small_zone := BulletZone.new()
+	arena.add_child(small_zone)
+	small_zone.set_process(false)
+	small.fire_volley(small_zone, arena.global_position, 0.0, "kit:3", 120.0)
+	check("  a small slime keeps its twin: a kit name fires nothing from it", small_zone.field.count == 0)
+	var plain: Node = (load("res://scene/enemy/firesprite.tscn") as PackedScene).instantiate()
+	check("  the plain fire sprite's pincer IS fire's kit, so it sends none",
+		plain.call("kit_volley", &"pincer") == "")
+	plain.free()
+	var sent: bool = true
+	for script_path in ["bushsniper", "firesprite", "electricsprite", "poisonslime"]:
+		var body: String = _func_body(FileAccess.get_file_as_string("res://src/enemies/%s.gd" % script_path),
+			"func fire_projectile(")
+		if not (body.contains("kit_volley(") and body.contains("leader_bullets(self,")):
+			sent = false
+	var mage_body: String = _func_body(FileAccess.get_file_as_string("res://src/enemies/bushmage.gd"), "func _spawn_vine(")
+	check("every family's leader picks the kit and sends it to the other games (monstersync.gd \"b\")",
+		sent and mage_body.contains("kit_volley(") and mage_body.contains("leader_bullets(self, global_position, aim, kit, reach)"))
+	check("  and the name fits what a \"b\" may carry", ("kit:%d" % (Kit.ROLL_MOST - 1)).length() <= 16)
+	for n in get_tree().get_nodes_in_group(&"enemy_projectiles"):
+		if is_instance_valid(n) and n.get_parent() == get_tree().current_scene:
+			n.queue_free()
+	arena.queue_free()
+	await get_tree().process_frame
+	print("  element kits checked")
 
 
 func _stand_in_with_health() -> GDScript:

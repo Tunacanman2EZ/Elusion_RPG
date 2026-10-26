@@ -103,9 +103,13 @@ func fire_projectile() -> void:
 	if zone != null:
 		var origin: Vector2 = spawn_node.global_position
 		var aim: float = (target_point() - origin).angle()
-		fire_volley(zone, origin, aim)
+		# THE ELEMENT KIT (0.84.0, elementkit.gd); the electric sprite itself
+		# is lightning, which has none, and keeps its chain.
+		var kit: String = kit_volley()
+		var reach: float = origin.distance_to(target_point())
+		fire_volley(zone, origin, aim, kit, reach)
 		if _net_sync != null and not net_mirror:
-			_net_sync.leader_bullets(self, origin, aim)
+			_net_sync.leader_bullets(self, origin, aim, kit, reach)
 		return
 
 	# THE ELEMENT PICKS THE ORB — see bushsniper.gd. The plain electric sprite
@@ -150,10 +154,15 @@ func fire_projectile() -> void:
 	spawn_projectile_node(orb, spawn_node.global_position)
 
 
-func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
-		_reach: float = 0.0) -> void:
-	"""The chain, from `origin` down `aim`. This sprite's own damage and
-	element (BulletZone's header has the contract)."""
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String = "",
+		reach: float = 0.0) -> void:
+	"""The chain, from `origin` down `aim` - or its element's kit when
+	`volley` names one (elementkit.gd). This sprite's own damage and element
+	(BulletZone's header has the contract)."""
+	if ElementKit.is_kit(volley):
+		var shot: int = BulletZone.base_damage(self, ELECTRIC_ORB_SCENE)
+		fire_kit(zone, origin, aim, volley, reach, ELECTRIC_ORB_SCENE, BulletZone.share_of(shot, CHAIN_SHARE), shot)
+		return
 	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, ELECTRIC_ORB_SCENE), CHAIN_SHARE)
 	zone.fire_chain(origin, aim, CHAIN_ORBS, CHAIN_SLOWEST, CHAIN_FASTEST, damage, current_element())
 	# THE ARTIST'S ELECTRIC ORB TOO (0.24.0), at the head of the chain.

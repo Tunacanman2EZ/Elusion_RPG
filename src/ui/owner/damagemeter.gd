@@ -239,13 +239,13 @@ static func clock(seconds: float) -> String:
 	return "%d:%02d" % [int(whole / 60.0), whole % 60]
 
 
-static func as_text(all: Array, fight: Dictionary, where: String) -> String:
+static func as_text(all: Array, totals: Dictionary, where: String) -> String:
 	"""The table as plain text, for Copy - one line a player, tab between."""
 	var lines: Array = ["Damage meter - %s - fight %s, %s total, %s DPS" % [where if where != "" else "here",
-		clock(float(fight["seconds"])), number(float(fight["total"])), number(float(fight["dps"]))]]
+		clock(float(totals["seconds"])), number(float(totals["total"])), number(float(totals["dps"]))]]
 	lines.append("\t".join(PackedStringArray(COLUMNS)))
 	for row in all:
-		var total: float = maxf(1.0, float(fight["total"]))
+		var total: float = maxf(1.0, float(totals["total"]))
 		var limit: float = limit_share(row)
 		lines.append("\t".join(PackedStringArray([
 			"%s (%s %d)" % [row["name"], row["cls"], int(row["lvl"])],
@@ -542,7 +542,7 @@ func _fit_fights() -> void:
 	_panel.reset_size()
 
 
-func recording_text(now: float) -> String:
+func recording_text(_now: float) -> String:
 	if fight.is_empty():
 		return "Idle - the next hit starts a fight"
 	return "Recording %s - %s" % [FightLog.clock(float(fight["last"]) - float(fight["t0"]) + 1.0),
@@ -1185,9 +1185,9 @@ func _redraw() -> void:
 		return
 	var now: float = Time.get_ticks_msec() / 1000.0
 	_status.text = status_text(now)
-	var fight: Dictionary = summary(state, boss_only)
-	_summary.text = "Fight %s    %s total    %s DPS%s" % [clock(float(fight["seconds"])),
-		number(float(fight["total"])), number(float(fight["dps"])), "    bosses only" if boss_only else ""]
+	var totals: Dictionary = summary(state, boss_only)
+	_summary.text = "Fight %s    %s total    %s DPS%s" % [clock(float(totals["seconds"])),
+		number(float(totals["total"])), number(float(totals["dps"])), "    bosses only" if boss_only else ""]
 	for child in _grid.get_children():
 		_grid.remove_child(child)
 		child.queue_free()
@@ -1202,7 +1202,7 @@ func _redraw() -> void:
 		_grid.queue_redraw()
 		return
 	var top: float = maxf(1.0, float(all[0]["total"]))
-	var everyone: float = maxf(1.0, float(fight["total"]))
+	var everyone: float = maxf(1.0, float(totals["total"]))
 	var rest: Array = all.slice(ROWS_MOST)
 	var line: int = 1
 	for row in all.slice(0, ROWS_MOST):

@@ -8371,6 +8371,37 @@ turns them into each second's share (api/CLAUDE.md, "The damage meter").
   attack, for a per-attack breakdown.
 - Tested: `_test_damage_taken()`.
 
+## The element kits for monsters (0.84.0)
+
+The 42 element variants only changed colour and health: in the Field's bullet
+zone a water archer and an ice archer fired the same helix. Now each fires its
+element's orbs (`src/enemies/elementkit.gd`, small versions of the bosses'
+volleys - bossenemy.gd, THE KITS): light a prism ring and a second turned
+half a step; wind two swept gale fans; water a slow tide wall with a door,
+never on the middle orb where the shot flies (`tide_door()`); ice a frost
+fan that settles as mines where you stood; earth the element's stalagmite
+lobbed onto your spot, bursting into a crater (`boulder_art()`, the boss's
+pillar art at 0.4; a large slime throws its own acid ball); fire the pincer;
+dark one of the six per shot.
+
+- **Each family keeps** how it moves and fights and the artist's own shot,
+  which flies at the speed the kit gives (`BaseEnemy.fire_kit()`); a boulder
+  carries it as the lob; the bush mage's vine is placed apart as before. The
+  orbs keep the family's own share of the shot (`HELIX_SHARE`, `RING_SHARE`,
+  `CHAIN_SHARE`, `PINCER_SHARE`, `SPRAY_SHARE`), so a band hits as it did.
+- **Unchanged**: lightning, poison and physical (no kit); the fire sprite,
+  whose pincer IS fire's (`kit_volley(&"pincer")` sends none); the small
+  slime's twin and the split ring; and everywhere with no bullet zone - the
+  Big Field, as the owner chose, and the crypt.
+- **On the wire**: the leader sends the volley name `kit:<n>` (`kit_volley()`,
+  n from 0 to `ROLL_MOST`), which picks dark's kind, the tide's door and the
+  gale's swing, and the reach; every game fires the same pattern from it with
+  its own damage and element (monstersync.gd "b", 16 characters at most). A
+  game from before 0.84.0 fires its family volley for it (a slime, nothing).
+- **Element effects stay off in the Field** (`BulletZone.element_effects`),
+  so an ice orb there chills nobody; a switch for later if wanted.
+- Tested: `_test_monsters_fire_their_element()`.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven

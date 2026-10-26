@@ -79,9 +79,12 @@ func fire_projectile() -> void:
 	if zone != null:
 		var origin: Vector2 = spawn_node.global_position
 		var to_target: Vector2 = target_point() - origin
-		fire_volley(zone, origin, to_target.angle(), "", to_target.length())
+		# THE ELEMENT KIT (0.84.0, elementkit.gd): a fire sprite's own pincer IS
+		# fire's kit, so only its other elements fire another.
+		var kit: String = kit_volley(&"pincer")
+		fire_volley(zone, origin, to_target.angle(), kit, to_target.length())
 		if _net_sync != null and not net_mirror:
-			_net_sync.leader_bullets(self, origin, to_target.angle(), "",
+			_net_sync.leader_bullets(self, origin, to_target.angle(), kit,
 				clampf(to_target.length(), PINCER_REACH_MIN, PINCER_REACH_MAX))
 		return
 	# The element picks the orb — see bushsniper.gd for the full note. The fire
@@ -96,10 +99,15 @@ func fire_projectile() -> void:
 	spawn_projectile_node(orb, spawn_node.global_position)
 
 
-func fire_volley(zone: BulletZone, origin: Vector2, aim: float, _volley: String = "",
+func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String = "",
 		reach: float = 0.0) -> void:
-	"""The pincer, closing `reach` px along `aim` from `origin`. This sprite's
-	own damage and element (BulletZone's header has the contract)."""
+	"""The pincer, closing `reach` px along `aim` from `origin` - or its
+	element's kit when `volley` names one (elementkit.gd). This sprite's own
+	damage and element (BulletZone's header has the contract)."""
+	if ElementKit.is_kit(volley):
+		var shot: int = BulletZone.base_damage(self, FIRE_ORB_SCENE)
+		fire_kit(zone, origin, aim, volley, reach, FIRE_ORB_SCENE, BulletZone.share_of(shot, PINCER_SHARE), shot)
+		return
 	var meet: float = PINCER_REACH_DEFAULT if reach <= 0.0 else clampf(reach, PINCER_REACH_MIN, PINCER_REACH_MAX)
 	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, FIRE_ORB_SCENE), PINCER_SHARE)
 	zone.fire_pincer(origin, aim, meet, PINCER_OFFSETS, PINCER_SPEED, damage, current_element())

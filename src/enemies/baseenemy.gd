@@ -2823,6 +2823,32 @@ func _recolour_projectile(projectile: Node) -> void:
 	target.material = mat
 
 
+# THE ELEMENT KITS (0.84.0): in a bullet zone, this monster's orbs move like
+# its element (elementkit.gd has the whole story).
+const ElementKit := preload("res://src/enemies/elementkit.gd")
+
+
+func kit_volley(own: StringName = &"") -> String:
+	"""(Leader.) The volley name for one shot of this monster's element kit,
+	or "" to fire the family's own (no kit, or the kit is `own`)."""
+	return ElementKit.volley_for(current_element(), own)
+
+
+func fire_kit(zone: BulletZone, origin: Vector2, aim: float, volley: String, reach: float,
+		shot_scene: PackedScene, orb: int, impact: int, lob_art: Node2D = null) -> void:
+	"""The element kit's orbs, and the family's own shot (`shot_scene`, this
+	monster's element's variant of it) down `aim` at the speed the kit says;
+	none when the kit carries it as a boulder, or there is no scene (the bush
+	mage, whose vine is placed apart)."""
+	var speed: float = ElementKit.fire(zone, self, origin, aim, volley, reach, orb, impact, lob_art)
+	if speed <= 0.0 or shot_scene == null:
+		return
+	var shot: Node = Projectiles.variant_of(shot_scene, current_element()).instantiate()
+	shot.set("speed", speed)
+	shot.call("shoot_vector", Vector2.from_angle(aim))
+	spawn_projectile_node(shot, origin, false)
+
+
 func spawn_projectile_node(projectile: Node, spawn_pos: Vector2, announce: bool = true) -> void:
 	# parent a projectile into the y-sorted "projectiles" container so it
 	# depth-sorts correctly against characters. falls back to the scene root
