@@ -1359,6 +1359,7 @@ func _land_swing() -> void:
 			continue
 		already_hit.append(id)
 
+		HitSource.blame(HitSource.of(self, "swing"))
 		target.take_damage(melee_damage(), current_element())
 
 	# SHARED MONSTERS: the swing lands on every screen. This game's query only
@@ -2480,6 +2481,8 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 	if not VOLLEYS.has(kind):
 		return
 	var phase: int = clampi(int(head.right(1)), 0, 2)
+	# WHAT HIT ME (0.85.0): every orb of it is this boss's `kind`.
+	HitSource.stamp_for(self, String(kind))
 	var extra: int = absi(int(parts[1])) if parts.size() > 1 and parts[1].is_valid_int() else 0
 	var element: int = current_element()
 	var orb: int = BulletZone.share_of(spike_damage(), ORB_SHARE)
@@ -2553,7 +2556,9 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 func _on_beat(seconds: float, shot: Callable) -> void:
 	"""Fires `shot` `seconds` from now, unless the boss has died meanwhile.
 	On a tween of the boss's own, so a boss that is freed takes its volley
-	with it (a timer of the tree's would fire into a scene that has gone)."""
+	with it (a timer of the tree's would fire into a scene that has gone).
+	With the stamp it has now (WHAT HIT ME, hitsource.gd)."""
+	shot = HitSource.later(shot)
 	if seconds <= 0.0:
 		_fire_if_fighting(shot)
 		return
@@ -2595,6 +2600,7 @@ func _burn_floor(at: Vector2, element: int) -> void:
 	var pool: Node = Puddles.scene_for(element).instantiate()
 	if "element" in pool:
 		pool.set("element", element)
+	HitSource.tag(pool, self, "burn")
 	var effect: StringName = StatusEffects.for_element(element)
 	if "status" in pool and StatusEffects.GROUND.has(effect):
 		pool.set("status", effect)
@@ -2850,6 +2856,7 @@ func _spawn_one_eruption(container: Node, pos: Vector2, telegraph: float,
 	# a scene pointed somewhere custom is not in the table and comes straight
 	# back out. The line below cannot silently replace a designer's choice.
 	var eruption: Node2D = Projectiles.variant_of(scene, current_element()).instantiate()
+	HitSource.tag(eruption, self, "spike")
 
 	# CONFIGURED BEFORE IT ENTERS THE TREE. add_child() is what runs _ready(),
 	# and bossprojectile._ready() applies its element profile there — scaling

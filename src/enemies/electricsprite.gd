@@ -164,6 +164,7 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 		fire_kit(zone, origin, aim, volley, reach, ELECTRIC_ORB_SCENE, BulletZone.share_of(shot, CHAIN_SHARE), shot)
 		return
 	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, ELECTRIC_ORB_SCENE), CHAIN_SHARE)
+	HitSource.stamp_for(self, "chain")
 	zone.fire_chain(origin, aim, CHAIN_ORBS, CHAIN_SLOWEST, CHAIN_FASTEST, damage, current_element())
 	# THE ARTIST'S ELECTRIC ORB TOO (0.24.0), at the head of the chain.
 	var orb: Node = Projectiles.variant_of(ELECTRIC_ORB_SCENE, current_element()).instantiate()

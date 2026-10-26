@@ -14,6 +14,8 @@
 class_name BulletWake
 extends Node
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 
 var zone: BulletZone = null
 var interval: float = 0.08
@@ -22,6 +24,8 @@ var speed: float = 55.0
 var most: int = 14                # pairs, at most
 var damage: int = 1
 var element: int = 0
+# WHAT HIT ME (0.85.0): the stamp it was made with ("<sniper>:wake").
+var source: int = 0
 
 var _clock: float = 0.0
 var _shed: int = 0
@@ -35,6 +39,7 @@ static func on(projectile: Node, into: BulletZone, orb_damage: int, orb_element:
 	wake.zone = into
 	wake.damage = orb_damage
 	wake.element = orb_element
+	wake.source = HitSource.stamp
 	projectile.add_child(wake)
 	return wake
 
@@ -55,9 +60,12 @@ func shed_once(at: Vector2, heading: Vector2) -> void:
 		return
 	var back: float = (-heading).angle()
 	var colour: Color = BulletZone.shot_colour(element)
+	var was: int = HitSource.stamp
+	HitSource.stamp = source
 	for side in [-1.0, 1.0]:
 		zone.field.spawn(at, back + spread * side, speed, colour, false, 0.0, 0.0, BulletZone.LIFE,
 			damage, element)
+	HitSource.stamp = was
 	_shed += 1
 
 

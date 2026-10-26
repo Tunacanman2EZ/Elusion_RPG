@@ -3,6 +3,8 @@
 # the rapid-fire cadence lives in poisonslime.gd, not here — this just travels.
 extends Area2D
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 
@@ -178,6 +180,9 @@ func _leave_puddle() -> void:
 	# element on the way out, so an ice slime's ball arrives here carrying ICE
 	# and leaves an ice pool with ice's own lifetime and tick.
 	var puddle: Node2D = Puddles.scene_for(element).instantiate()
+	# WHAT HIT ME (0.85.0): the pool is its slime's.
+	if has_meta(HitSource.HIT_META):
+		puddle.set_meta(HitSource.HIT_META, str(get_meta(HitSource.HIT_META)).get_slice(":", 0) + ":pool")
 
 	# Carried through for the fallback case — see the same line in
 	# bossprojectile.gd. The scene already agrees for every element that has one.
@@ -217,6 +222,7 @@ func _try_damage(target: Node) -> void:
 	if not _is_player_target(target):
 		return
 	if target.has_method(&"take_damage"):
+		HitSource.blame_node(self, "acid")
 		target.take_damage(damage, element)
 
 

@@ -92,6 +92,12 @@ static func add(fight: Dictionary, report: Dictionary, now: float) -> void:
 	# regen, biggest hit, lowest health and its most, taken by element. A player
 	# who took something joins the fight; one already in it has every second
 	# kept, quiet or not, so their health runs through it.
+	var named_sources: Variant = report.get("sn", {})
+	if named_sources is Dictionary:
+		var names: Dictionary = fight.get("names", {})
+		for key in named_sources:
+			names[str(key)] = str(named_sources[key])
+		fight["names"] = names
 	var taken: Variant = report.get("tk", {})
 	if taken is Dictionary:
 		for key in taken:
@@ -122,6 +128,14 @@ static func add(fight: Dictionary, report: Dictionary, now: float) -> void:
 				var share: float = clampf(float(row[4]) / float(row[5]), 0.0, 1.0)
 				var health: Dictionary = p["health"]
 				health[second] = minf(float(health.get(second, 1.0)), share)
+			# WHAT HIT ME (0.85.0, the eighth): "<monster>:<attack>" -> [hits, damage].
+			if (row as Array).size() >= 8 and row[7] is Dictionary:
+				var by: Dictionary = p["sources"]
+				for source in row[7]:
+					var v: Variant = row[7][source]
+					if v is Array and (v as Array).size() >= 2:
+						var was: Array = by.get(str(source), [0, 0])
+						by[str(source)] = [int(was[0]) + maxi(int(v[0]), 0), int(was[1]) + maxi(int(v[1]), 0)]
 			if (row as Array).size() >= 7 and row[6] is Dictionary:
 				var took: Dictionary = p["took"]
 				for element in row[6]:
@@ -160,7 +174,7 @@ static func new_player() -> Dictionary:
 
 static func _add_taken_fields(p: Dictionary) -> void:
 	p.merge({"taken": 0, "healed": 0, "regen": 0, "biggest_taken": 0, "deaths": 0,
-		"tline": {}, "hline": {}, "health": {}, "took": {}})
+		"tline": {}, "hline": {}, "health": {}, "took": {}, "sources": {}})
 
 
 static func health_line(health: Dictionary, seconds: int) -> Array:
@@ -294,6 +308,11 @@ static func finish(fight: Dictionary) -> Dictionary:
 		for key in p.get("took", {}):
 			took.append([int(key), int(p["took"][key])])
 		took.sort_custom(func(a: Array, b: Array) -> bool: return int(a[1]) > int(b[1]))
+		var hit_by: Array = []
+		for key in p.get("sources", {}):
+			hit_by.append([str(key), int(p["sources"][key][0]), int(p["sources"][key][1])])
+		hit_by.sort_custom(func(a: Array, b: Array) -> bool:
+			return int(a[2]) > int(b[2]) or (int(a[2]) == int(b[2]) and str(a[0]) < str(b[0])))
 		total += int(p["total"])
 		var dps: float = float(p["total"]) / float(seconds)
 		var elements: Array = []
@@ -312,6 +331,8 @@ static func finish(fight: Dictionary) -> Dictionary:
 			"biggest_taken": int(p.get("biggest_taken", 0)), "healed": int(p.get("healed", 0)),
 			"regen": int(p.get("regen", 0)), "lowest": lowest, "danger": danger,
 			"deaths": int(p.get("deaths", 0)), "took": took,
+			# WHAT HIT ME (0.85.0): [source, hits, damage], most damage first.
+			"hit_by": hit_by,
 		})
 	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return int(a["total"]) > int(b["total"]) or (int(a["total"]) == int(b["total"]) and int(a["id"]) < int(b["id"])))
@@ -342,6 +363,7 @@ static func finish(fight: Dictionary) -> Dictionary:
 		"area": str(fight["area"]), "seconds": seconds, "total": total, "dps": float(total) / float(seconds),
 		"peak": peak(group), "players": rows, "kills": kills, "timeline": timeline,
 		"taken_timeline": taken_lines, "heal_timeline": heal_lines, "health_timeline": health_lines,
+		"names": (fight.get("names", {}) as Dictionary).duplicate(),
 	}
 
 
@@ -538,6 +560,9 @@ static func compare_text(records: Array) -> String:
 				("%d%%" % int(round(100.0 * float(p["limit"])))) if float(p["limit"]) >= 0.0 else "-",
 				"%d%%" % int(round(100.0 * float(p.get("uptime", 0.0)))), "%d%%" % int(round(100.0 * float(p.get("steady", 0.0)))),
 				elements_text(p.get("elements", []), int(p["total"]))]) + taken_cells(p)))
+		for r in hit_by_rows(record):
+			lines.append("  %s hit by %s, %s: %d hits, %d" % [str(r[0]["name"]), source_monster(record, str(r[1])),
+				source_attack(str(r[1])), int(r[2]), int(r[3])])
 		for e in record.get("events", []):
 			lines.append("  %s  %s" % [clock(float(e["at"])), str(e["text"])])
 	return "\n".join(lines)
@@ -582,6 +607,15 @@ static func csv(record: Dictionary) -> String:
 			var line: Array = record["timeline"].get(id, [])
 			row.append(str(int(line[second]) if second < line.size() else 0))
 		lines.append(",".join(row))
+	# WHAT HIT ME (0.85.0).
+	var hit_rows: Array = hit_by_rows(record, 1000)
+	if not hit_rows.is_empty():
+		lines.append("")
+		lines.append("Player,Hit by,Attack,Hits,Damage,Average,Share of taken")
+		for r in hit_rows:
+			lines.append("%s,%s,%s,%d,%d,%d,%d%%" % [_cell(str(r[0]["name"])), _cell(source_monster(record, str(r[1]))),
+				_cell(source_attack(str(r[1]))), int(r[2]), int(r[3]), int(round(float(r[3]) / maxf(1.0, float(r[2])))),
+				int(round(100.0 * float(r[4])))])
 	# DAMAGE TAKEN (0.83.0): what each took, was given back, and their lowest health, each second.
 	if took_anything(record):
 		lines.append("")
@@ -601,6 +635,53 @@ static func csv(record: Dictionary) -> String:
 				row.append(("%d%%" % int(round(100.0 * h))) if h >= 0.0 else "")
 			lines.append(",".join(row))
 	return "\n".join(lines) + "\n"
+
+
+# ---- what hit me (0.85.0) ----------------------------------------------------
+
+# An attack's name as the table says it; anything else is its own name, its
+# underscores spaces.
+const ATTACK_NAMES := {"prism": "prism rings", "gale": "gale fans", "tide": "tide wall",
+	"frost": "frost mines", "boulder": "boulder", "pincer": "pincer", "dark": "dark",
+	"helix": "helix", "ring": "ring", "chain": "chain", "spray": "acid spray", "twin": "twin",
+	"mortar": "mortar", "split": "split ring", "swing": "swing", "touch": "touch", "spike": "spikes",
+	"burn": "burning floor", "pool": "pool", "vine": "vine", "arrow": "arrow", "orb": "orb",
+	"acid": "acid ball", "hit": "hit", "spikes": "spikes"}
+
+
+static func source_monster(record: Dictionary, source: String) -> String:
+	"""The monster half of "<monster>:<attack>", as the catalogue names it."""
+	var id: String = source.get_slice(":", 0)
+	var names: Dictionary = record.get("names", {})
+	if names.has(id):
+		return str(names[id])
+	match id:
+		"unknown":
+			return "Unknown"
+		"other":
+			return "Everything else"
+		"effect":
+			return "Status effect"
+		"spikedoor":
+			return "Spike gate"
+	return id.capitalize()
+
+
+static func source_attack(source: String) -> String:
+	var kind: String = source.get_slice(":", 1)
+	return str(ATTACK_NAMES.get(kind, kind.replace("_", " ")))
+
+
+static func hit_by_rows(record: Dictionary, per_player: int = 4) -> Array:
+	"""The table's rows: [player row, source, hits, damage, share of what that
+	player took], each player's top `per_player`, players as the record has
+	them."""
+	var out: Array = []
+	for p in record.get("players", []):
+		var taken: float = maxf(1.0, float(p.get("taken", 0)))
+		for entry in (p.get("hit_by", []) as Array).slice(0, per_player):
+			out.append([p, str(entry[0]), int(entry[1]), int(entry[2]), float(entry[2]) / taken])
+	return out
 
 
 static func took_anything(record: Dictionary) -> bool:

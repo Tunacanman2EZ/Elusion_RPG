@@ -141,6 +141,7 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 		var shot: int = BulletZone.base_damage(self, ARROW_SCENE)
 		fire_kit(zone, origin, aim, volley, reach, ARROW_SCENE, orb_damage(), shot)
 		return
+	HitSource.stamp_for(self, "helix")
 	var arrow: Node = Projectiles.variant_of(ARROW_SCENE, current_element()).instantiate()
 	arrow.set("speed", HELIX_SPEED)
 	arrow.shoot_vector(Vector2.from_angle(aim))

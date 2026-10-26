@@ -520,12 +520,14 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 		if is_small:
 			return
 		var ring: int = BulletZone.share_of(BulletZone.base_damage(self, POISONBALL_SCENE), SPLIT_SHARE)
+		HitSource.stamp_for(self, "split")
 		zone.fire_ring(origin, aim, SPLIT_ORBS, SPLIT_SPEED, ring, element)
 		return
 	if volley == MORTAR_VOLLEY:
 		if is_small:
 			return
 		var acid: int = BulletZone.base_damage(self, POISONBALL_SCENE)
+		HitSource.stamp_for(self, "mortar")
 		var landing: float = MORTAR_REACH_DEFAULT if reach <= 0.0 else minf(reach, MORTAR_REACH_MAX)
 		zone.fire_mortar(origin, aim, landing, MORTAR_FLIGHT, _lob_art(element), acid,
 			MORTAR_RING, MORTAR_RING_SPEED, MORTAR_CRATER, BulletZone.share_of(acid, MORTAR_RING_SHARE),
@@ -533,6 +535,7 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 		return
 	if volley != "":
 		return
+	HitSource.stamp_for(self, "twin" if is_small else "spray")
 	if is_small:
 		var twin: int = BulletZone.share_of(BulletZone.base_damage(self, ARROW_SCENE), TWIN_SHARE)
 		zone.fire_fan(origin, aim, TWIN_ORBS, TWIN_SPREAD, TWIN_SPEED, twin, element)

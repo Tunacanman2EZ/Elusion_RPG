@@ -110,6 +110,7 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 		return
 	var meet: float = PINCER_REACH_DEFAULT if reach <= 0.0 else clampf(reach, PINCER_REACH_MIN, PINCER_REACH_MAX)
 	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, FIRE_ORB_SCENE), PINCER_SHARE)
+	HitSource.stamp_for(self, "pincer")
 	zone.fire_pincer(origin, aim, meet, PINCER_OFFSETS, PINCER_SPEED, damage, current_element())
 	# THE ARTIST'S FIRE ORB TOO (0.24.0), straight down the middle and timed
 	# to arrive as the pincer closes round it.

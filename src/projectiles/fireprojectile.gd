@@ -14,7 +14,10 @@
 # correctly ignored, so the orb can't self-destruct on its own shooter.
 extends Area2D
 
+
 class_name FireProjectile
+
+const HitSource := preload("res://src/shared/hitsource.gd")
 const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 
@@ -179,6 +182,7 @@ func _try_damage(target: Node) -> void:
 	if not _is_player_target(target):
 		return
 	if target.has_method(&"take_damage"):
+		HitSource.blame_node(self, "orb")
 		target.take_damage(damage, element)
 
 

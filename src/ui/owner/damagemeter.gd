@@ -134,6 +134,7 @@ var _event_list: VBoxContainer
 var _player_slots: HBoxContainer
 var _player_grid: GridContainer
 var _taken_grid: GridContainer
+var _hit_grid: GridContainer
 var _tick: float = 0.0
 
 
@@ -710,6 +711,12 @@ func _build_fights() -> void:
 	_taken_grid.add_theme_constant_override("h_separation", 14)
 	_taken_grid.add_theme_constant_override("v_separation", 2)
 	players_view.add_child(_taken_grid)
+	_hit_grid = GridContainer.new()
+	_hit_grid.name = "hitgrid"
+	_hit_grid.columns = HIT_COLUMNS.size()
+	_hit_grid.add_theme_constant_override("h_separation", 14)
+	_hit_grid.add_theme_constant_override("v_separation", 2)
+	players_view.add_child(_hit_grid)
 
 	var table_view := VBoxContainer.new()
 	table_view.name = "tablepage"
@@ -792,6 +799,18 @@ const PLAYER_TIPS := [
 	"How evenly the damage came. 100%: the same every second. Low: a few big seconds - burst, or luck.",
 	"Their damage by element, after the target's resistance",
 ]
+# WHAT HIT ME (0.85.0): a third table - each player's top HIT_ROWS sources.
+const HIT_COLUMNS := ["Player", "Monster", "Attack", "Hits", "Damage", "Average", "Share"]
+const HIT_TIPS := [
+	"Who was hit",
+	"The monster that hit them, as the catalogue names it",
+	"Which of its attacks: its element's orbs, its own shot, a swing",
+	"How many times it hit them",
+	"How much it took off them, after their armour and resistance",
+	"Damage a hit",
+	"Its share of everything they took in the fight",
+]
+const HIT_ROWS := 4
 const TAKEN_TIPS := [
 	"Name, class and level",
 	"Damage they took a second over the whole fight, after their armour and resistance",
@@ -806,7 +825,7 @@ const TAKEN_TIPS := [
 
 
 func _draw_players(chosen: Array) -> void:
-	for holder in [_player_slots, _player_grid, _taken_grid]:
+	for holder in [_player_slots, _player_grid, _taken_grid, _hit_grid]:
 		for child in (holder as Node).get_children():
 			(holder as Node).remove_child(child)
 			child.queue_free()
@@ -869,6 +888,37 @@ func _draw_players(chosen: Array) -> void:
 		taken_name.gui_input.connect(_on_player_name_input.bind(int(p["id"]), str(p["name"])))
 		_taken_grid.add_child(taken_name)
 		_add_taken_cells(p, tint)
+	_draw_hit_by(chosen[slot])
+
+
+func _draw_hit_by(record: Dictionary) -> void:
+	"""WHAT HIT ME (0.85.0): the third table, or nothing for a fight from
+	before it was kept."""
+	var rows: Array = FightLog.hit_by_rows(record, HIT_ROWS)
+	_hit_grid.visible = not rows.is_empty()
+	if rows.is_empty():
+		return
+	for i in HIT_COLUMNS.size():
+		_hit_grid.add_child(_compare_cell(HIT_COLUMNS[i], HEAD))
+		(_hit_grid.get_child(_hit_grid.get_child_count() - 1) as Control).tooltip_text = HIT_TIPS[i]
+	var stripe: bool = false
+	var last_id: int = -1
+	for r in rows:
+		var p: Dictionary = r[0]
+		if int(p["id"]) != last_id:
+			stripe = not stripe
+			last_id = int(p["id"])
+		var tint: Color = Color(1, 1, 1, 0.03) if stripe else Color(0, 0, 0, 0)
+		var source: String = str(r[1])
+		_hit_grid.add_child(_compare_cell(str(p["name"]), CLASS_COLOURS.get(str(p["cls"]), OTHER_CLASS), "", tint))
+		_hit_grid.add_child(_compare_cell(FightLog.source_monster(record, source), PLAIN, "", tint))
+		_hit_grid.add_child(_compare_cell(FightLog.source_attack(source), DIM, "", tint))
+		_hit_grid.add_child(_compare_cell(str(int(r[2])), PLAIN, "", tint))
+		_hit_grid.add_child(_compare_cell(number(float(r[3])), PLAIN, "", tint))
+		_hit_grid.add_child(_compare_cell(number(float(r[3]) / maxf(1.0, float(r[2]))), PLAIN, "", tint))
+		var share: float = float(r[4])
+		_hit_grid.add_child(_compare_cell("%d%%" % int(round(100.0 * share)),
+			BAD if share >= 0.5 else (WARN if share >= 0.25 else PLAIN), "", tint))
 
 
 func _add_taken_cells(p: Dictionary, tint: Color) -> void:

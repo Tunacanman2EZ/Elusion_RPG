@@ -7,6 +7,8 @@
 # probably want to mirror the change to the others for consistency.
 extends Area2D
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 const MapBackdrop := preload("res://src/world/mapbackdrop.gd")
 
 
@@ -191,6 +193,7 @@ func _try_damage(target: Node) -> void:
 	if target == null:
 		return
 	if target.is_in_group(&"player") and target.has_method(&"take_damage"):
+		HitSource.blame_node(self, "orb")
 		target.take_damage(damage, element)
 
 

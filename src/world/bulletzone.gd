@@ -76,6 +76,7 @@ extends Node2D
 
 const Targets := preload("res://src/shared/targets.gd")
 const StatusEffects := preload("res://src/characters/statuseffects.gd")
+const HitSource := preload("res://src/shared/hitsource.gd")
 
 const GROUP: StringName = &"bulletzone"
 const WALL_CELL: float = 8.0
@@ -271,6 +272,7 @@ func fire_mortar(origin: Vector2, aim: float, reach: float, flight: float, art: 
 	lob.crater = crater
 	lob.ring_damage = ring_damage
 	lob.puddle = puddle
+	lob.source = HitSource.stamp
 	add_child(lob)
 	return lob
 
@@ -306,6 +308,8 @@ func _process(delta: float) -> void:
 		var hit: Vector2i = field.hits[n]
 		if bool(player.get("is_dying")):
 			break
+		# WHAT HIT ME (0.85.0): the orb's stamp, as the meter will name it.
+		HitSource.blame(HitSource.name_of(field.hit_source[n] if n < field.hit_source.size() else 0))
 		player.call(&"take_damage", maxi(hit.x, 1), hit.y)
 		# And, in a boss room, what its element does (0.77.0). After the
 		# damage, so a hit that kills you does not also freeze a corpse.

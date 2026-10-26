@@ -53,6 +53,8 @@
 # so a checkout the editor has not scanned since this file arrived still runs.
 extends Node
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 
 const NODE_NAME := &"statuseffects"
 const SELF_PATH := "res://src/characters/statuseffects.gd"
@@ -463,6 +465,7 @@ func advance(delta: float) -> void:
 		while _burn_tick_left <= 0.000001 and burn_damage > 0:
 			_burn_tick_left += BURN_TICK
 			if host != null and host.has_method(&"take_damage") and not _host_dying():
+				HitSource.blame("effect:burn")
 				host.call(&"take_damage", burn_damage, Element.Type.FIRE)
 		if burn_left <= 0.0:
 			burn_left = 0.0

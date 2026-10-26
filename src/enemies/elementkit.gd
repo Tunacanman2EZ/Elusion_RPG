@@ -33,6 +33,12 @@
 # fires its family volley for it (or, a slime, nothing).
 extends RefCounted
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
+# Every family fires its own volley while this is on: the suite's checks of
+# the family volleys (_test_the_bullet_zone) set it, and put it back.
+static var family_only: bool = false
+
 const MARK := "kit:"
 const ROLL_MOST := 1000
 
@@ -98,7 +104,9 @@ static func kind_of(element: int, roll: int) -> StringName:
 
 static func volley_for(element: int, own: StringName = &"") -> String:
 	"""The volley name a leader sends for one shot, or "" when this element has
-	no kit or its kit is the family's `own` volley."""
+	no kit, its kit is the family's `own` volley, or `family_only` is on."""
+	if family_only:
+		return ""
 	var kind: StringName = kind_for(element)
 	if kind == &"" or kind == own:
 		return ""
@@ -128,6 +136,8 @@ static func fire(zone: BulletZone, enemy: Node, origin: Vector2, aim: float, vol
 	var element: int = int(enemy.call("current_element"))
 	var roll: int = roll_of(volley)
 	var kind: StringName = kind_of(element, roll)
+	# WHAT HIT ME (0.85.0): these orbs are this monster's `kind`.
+	HitSource.stamp_for(enemy, String(kind))
 	var far: float = REACH_DEFAULT if reach <= 0.0 else reach
 	if kind != &"boulder" and lob_art != null:
 		lob_art.free()
@@ -202,4 +212,4 @@ static func _later(enemy: Node, seconds: float, shot: Callable) -> void:
 		return
 	var tween: Tween = enemy.create_tween()
 	tween.tween_interval(seconds)
-	tween.tween_callback(shot)
+	tween.tween_callback(HitSource.later(shot))

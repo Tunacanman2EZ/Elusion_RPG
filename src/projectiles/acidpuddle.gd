@@ -20,9 +20,12 @@
 # wade through it freely, and a small slime standing in its parent's acid
 # shouldn't die to it.
 extends Area2D
+
 # One script, many scenes. Every <element>puddle.tscn runs this; what differs
 # between them is authored in the scene, not branched on here.
 class_name AcidPuddle
+
+const HitSource := preload("res://src/shared/hitsource.gd")
 
 # The hue-replacement shader every elemental creature already uses. See
 # _apply_element_recolour() for why this sprite takes this one and the boss
@@ -286,6 +289,7 @@ func _enter(node: Node) -> void:
 	# damages_on_spawn decides whether touching the acid costs anything or only
 	# staying in it does.
 	if damages_on_spawn:
+		HitSource.blame_node(self, "pool")
 		node.take_damage(tick_damage, element)
 		StatusEffects.apply_to(node, status, tick_damage, global_position, true)
 
@@ -327,6 +331,7 @@ func _tick_players_inside(delta: float) -> void:
 
 		_next_tick[id] = float(_next_tick[id]) - delta
 		if _next_tick[id] <= 0.0:
+			HitSource.blame_node(self, "pool")
 			node.take_damage(tick_damage, element)
 			StatusEffects.apply_to(node, status, tick_damage, global_position, true)
 			# ADDED, not reset, so a long frame does not swallow the leftover

@@ -29,6 +29,8 @@
 class_name BulletLob
 extends Node2D
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 
 # The impact is an orb that lies on the spot this long: long enough to be
 # met by a player standing there, short enough that the crater is what stays.
@@ -57,6 +59,9 @@ var ring_speed: float = 120.0
 var crater: float = 40.0
 var ring_damage: int = 1
 var puddle: PackedScene = null
+# WHAT HIT ME (0.85.0): the stamp of the volley that threw it, for the orbs it
+# lands as - spawned a second later, when another may be firing.
+var source: int = 0
 
 var _age: float = 0.0
 var _landed: bool = false
@@ -120,6 +125,8 @@ func land() -> void:
 		return
 	_landed = true
 	if zone != null and is_instance_valid(zone):
+		var was: int = HitSource.stamp
+		HitSource.stamp = source
 		zone.field.spawn(to, aim, 0.0, BulletZone.shot_colour(element), true, 0.0, 0.0, IMPACT_LIFE,
 			impact_damage, element)
 		# THE RING LEAVES FROM JUST OUTSIDE THE IMPACT'S REACH (0.25.3). Every
@@ -127,6 +134,7 @@ func land() -> void:
 		# hit a player standing there eight more times on top of the impact. The
 		# spot is the acid ball's; the crater is for whoever was near it.
 		zone.fire_ring(to, aim, ring, ring_speed, ring_damage, element, false, crater, RING_STARTS_OUT)
+		HitSource.stamp = was
 	_leave_puddle()
 	queue_free()
 

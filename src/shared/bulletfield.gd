@@ -34,6 +34,8 @@
 class_name BulletField
 extends Node2D
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 
 # Floats per bullet in the MultiMesh buffer: a 2D transform is 8
 # (x.x, y.x, pad, origin.x, x.y, y.y, pad, origin.y), the colour is 4 more.
@@ -115,6 +117,8 @@ var hits: Array[Vector2i] = []
 # along the line it flew (StatusEffects, shove), and nothing else here knew
 # which way that was.
 var hit_from: PackedVector2Array = PackedVector2Array()
+# WHAT HIT ME (0.85.0): each hit's source (HitSource.name_of()), beside hits.
+var hit_source: PackedInt32Array = PackedInt32Array()
 
 var _pos: PackedVector2Array = PackedVector2Array()
 var _vel: PackedVector2Array = PackedVector2Array()
@@ -124,6 +128,8 @@ var _life: PackedFloat32Array = PackedFloat32Array()
 var _radius: PackedFloat32Array = PackedFloat32Array()
 var _damage: PackedInt32Array = PackedInt32Array()
 var _element: PackedInt32Array = PackedInt32Array()
+# Each orb's source, stamped as it is spawned (HitSource.stamp).
+var _source: PackedInt32Array = PackedInt32Array()
 var _grazed: PackedByteArray = PackedByteArray()
 # THE SWAY (0.24.0): a bullet whose drawn place weaves about the point it is
 # flying - `_pos` is that point, and the orb is drawn, hit and walled at
@@ -166,6 +172,7 @@ func _ready() -> void:
 	_radius.resize(capacity)
 	_damage.resize(capacity)
 	_element.resize(capacity)
+	_source.resize(capacity)
 	_grazed.resize(capacity)
 	_sway_side.resize(capacity)
 	_sway_along.resize(capacity)
@@ -273,6 +280,7 @@ func spawn(origin: Vector2, angle: float, speed: float, colour: Color, big: bool
 	_radius[i] = BIG_RADIUS if big else SMALL_RADIUS
 	_damage[i] = damage
 	_element[i] = element
+	_source[i] = HitSource.stamp
 	_grazed[i] = 0
 	_sway_side[i] = 0.0
 	_sway_along[i] = 0.0
@@ -366,6 +374,7 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 	var started: int = Time.get_ticks_usec()
 	hits.clear()
 	hit_from.clear()
+	hit_source.clear()
 	var grazes: int = 0
 	var area: Rect2 = bounds
 	var walled: bool = not _walls.is_empty()
@@ -411,6 +420,7 @@ func step(delta: float, target: Vector2, target_radius: float, graze_radius: flo
 		var gap_squared: float = drawn.distance_squared_to(target)
 		if gap_squared < reach * reach and not untouchable:
 			hits.append(Vector2i(_damage[i], _element[i]))
+			hit_source.append(_source[i])
 			hit_from.append(drawn if velocity.length_squared() < 1.0
 				else target - velocity.normalized() * HIT_FROM_BEHIND)
 			_remove(i)
@@ -512,6 +522,7 @@ func clear() -> void:
 	count = 0
 	hits.clear()
 	hit_from.clear()
+	hit_source.clear()
 	if _multimesh != null:
 		_multimesh.visible_instance_count = 0
 
@@ -527,6 +538,7 @@ func _remove(i: int) -> void:
 		_radius[i] = _radius[last]
 		_damage[i] = _damage[last]
 		_element[i] = _element[last]
+		_source[i] = _source[last]
 		_grazed[i] = _grazed[last]
 		_sway_side[i] = _sway_side[last]
 		_sway_along[i] = _sway_along[last]

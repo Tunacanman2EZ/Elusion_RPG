@@ -24,6 +24,8 @@
 # enemy's attack, and a boss killing itself on its own spikes is not a fight.
 extends Area2D
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 
 # =============================================================================
 # CONSTANTS
@@ -653,6 +655,7 @@ func _damage_players_inside() -> void:
 		if id in already_hit:
 			continue
 		already_hit.append(id)
+		HitSource.blame_node(self, "spike")
 		target.take_damage(damage, element)
 		StatusEffects.apply_to(target, status, damage, global_position)
 

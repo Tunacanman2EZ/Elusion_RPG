@@ -26,6 +26,8 @@
 # spikes would block movement while arrows sailed straight through them.
 extends StaticBody2D
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 
 # =============================================================================
 # SIGNALS
@@ -172,4 +174,5 @@ func _on_hurtzone_body_entered(body: Node) -> void:
 	# Element.Type.NONE, the int Player.take_damage() takes - this passed the
 	# StringName &"physical", a type error the first time a door is given
 	# contact damage (none is yet). Physical: armour stops it, no resistance.
+	HitSource.blame("spikedoor:spikes")
 	body.take_damage(contact_damage, Element.Type.NONE)

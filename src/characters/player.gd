@@ -17,6 +17,8 @@
 # currency / regen / sprint / feedback architecture: see inline sections.
 extends CharacterBody2D
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 
 # =============================================================================
 # CONSTANTS
@@ -1787,6 +1789,10 @@ func take_step() -> void:
 
 
 func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
+	# WHAT HIT ME (0.85.0): whoever blamed this hit (hitsource.gd), taken
+	# first, so a hit that lands nothing - dying, god mode - leaves no blame
+	# for the next.
+	var source: String = HitSource.take()
 	if is_dying:
 		return
 
@@ -1838,7 +1844,7 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 	hp = clamp(hp - reduced_amount, 0, max_hp)
 	took_damage.emit(reduced_amount, Element.name_for(element))
 	# THE ENEMY METER (0.83.0): what got through, after armour and resistance.
-	Presence.note_taken(reduced_amount, element)
+	Presence.note_taken(reduced_amount, element, source)
 
 	# THE NUMBER WEARS THE ELEMENT THAT CAUSED IT, which is the whole point of
 	# carrying one this far. A player standing in a field of six recoloured

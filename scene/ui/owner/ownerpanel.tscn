@@ -102,7 +102,7 @@ layout_mode = 3
 offset_left = 14.0
 offset_top = 14.0
 offset_right = 384.0
-offset_bottom = 640.0
+offset_bottom = 643.0
 mouse_filter = 2
 script = ExtResource("1_lf0mq")
 

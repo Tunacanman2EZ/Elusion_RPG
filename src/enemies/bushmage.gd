@@ -383,6 +383,7 @@ func fire_volley(zone: BulletZone, origin: Vector2, aim: float, volley: String =
 	way. This mage's own damage and element, as for every volley
 	(BulletZone's header has the contract)."""
 	var damage: int = BulletZone.share_of(BulletZone.base_damage(self, null, attack_power), RING_SHARE)
+	HitSource.stamp_for(self, "ring")
 	if ElementKit.is_kit(volley):
 		# No shot of its own to send down the middle; a boulder lands for
 		# twice an orb.
@@ -413,6 +414,7 @@ func _place_vine(at: Vector2, dir: String) -> void:
 	# tale for what happens when that changes and the assignment is a line late.
 	if "element" in vine:
 		vine.element = current_element()
+	HitSource.tag(vine, self, "vine")
 
 	# DAMAGE MOVED UP HERE TOO, and it was below add_child until the suite
 	# started checking. vine.gd does not read it in _ready() today, so nothing

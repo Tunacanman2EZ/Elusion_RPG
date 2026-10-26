@@ -137,6 +137,7 @@ func _on_frame_changed() -> void:
 func _land_swing() -> void:
 	"""The blow: every player in reach, once each, now."""
 	for target in players_in_reach():
+		HitSource.blame(HitSource.of(self, "swing"))
 		target.take_damage(swing_damage(), current_element())
 
 	# SHARED MONSTERS: the blow lands on every screen. Each other game runs the

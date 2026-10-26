@@ -162,6 +162,11 @@ var meter_regen: int = 0
 var meter_biggest: int = 0
 var meter_by_element: Dictionary = {}
 var _sent_by_element: Dictionary = {}
+# WHAT HIT ME (0.85.0): "<monster>:<attack>" -> [hits, damage], all told, sent
+# as "dts" only when it moved; at most SOURCES_MOST of them, the rest
+# counted as OTHER_SOURCE.
+var meter_by_source: Dictionary = {}
+var _sent_by_source: Dictionary = {}
 var _world: Node = null
 var _remotes: Dictionary = {}     # user id -> RemotePlayer
 var _sync_pending: bool = false
@@ -434,6 +439,7 @@ func _pump(delta: float, player: Node) -> void:
 		_last_state = {}
 		# A new link is a new baseline on the server: tell it every element again.
 		_sent_by_element = {}
+		_sent_by_source = {}
 		_sync_pending = false
 		_renew_clock = 0.0
 		_server_shares = false
@@ -473,10 +479,13 @@ func send_tick(player: Node) -> void:
 			out["dx"] = meter_biggest
 		if meter_by_element != _sent_by_element:
 			out["dte"] = meter_by_element.duplicate()
+		if meter_by_source != _sent_by_source:
+			out["dts"] = meter_by_source.duplicate(true)
 		_send(out)
 		_last_state = now
 		meter_biggest = 0
 		_sent_by_element = meter_by_element.duplicate()
+		_sent_by_source = meter_by_source.duplicate(true)
 	# The attacks since the last send, after the state: the server checks each
 	# against where the newest state put us.
 	if not _attacks.is_empty():
@@ -556,12 +565,19 @@ func state_for(player: Node) -> Dictionary:
 # A total past METER_TOTAL_MOST starts again from nothing: the server takes a
 # total that went down as a new baseline, so that costs one state's share.
 const METER_TOTAL_MOST := 1000000000
+const SOURCES_MOST := 48
+const OTHER_SOURCE := "other:other"
 
 
-func note_taken(amount: int, element: int) -> void:
-	"""`amount` health lost to a hit, after armour and resistance."""
+func note_taken(amount: int, element: int, source: String = "unknown:hit") -> void:
+	"""`amount` health lost to a hit, after armour and resistance, from
+	`source` ("<monster>:<attack>", hitsource.gd)."""
 	if amount <= 0:
 		return
+	if not meter_by_source.has(source) and meter_by_source.size() >= SOURCES_MOST:
+		source = OTHER_SOURCE
+	var row: Array = meter_by_source.get(source, [0, 0])
+	meter_by_source[source] = [_meter_add(int(row[0]), 1), _meter_add(int(row[1]), amount)]
 	meter_taken = _meter_add(meter_taken, amount)
 	meter_biggest = maxi(meter_biggest, amount)
 	var key: int = maxi(element, 0)

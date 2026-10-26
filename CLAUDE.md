@@ -97,6 +97,17 @@ be checked without playing: that every script under `src/` compiles, the XP
 curve, the shared constants and class stat curves, `ItemStack`'s save round trip,
 and the rank ordering.
 
+**The suite is a chain of scripts (0.85.0).** `src/tools/testrunner.gd` holds
+only `_ready()` and `_run_all()`; it extends `testrunner_8.gd`, which extends
+`testrunner_7.gd`, and so on down to `testrunner_base.gd` (the counters,
+`check()`, `section()`, every shared helper and constant). All of it is one
+node, so every test sees every helper. A new test goes in the last part (or a
+new `testrunner_9.gd` that `testrunner.gd` extends once a part passes about
+250 KB); a test may call only a test in its own part or an earlier one, and a
+helper goes in the base. A scan of the game's code leaves the suite out with
+`_is_suite_script()`. It was one 2 MB file - slow to copy and costly to edit,
+and running a few tests meant editing that file.
+
 **Most of it checks agreement, not correctness.** `.tres` files,
 `GameConstants` and `baseenemy.gd`'s drop constants are the source of truth;
 `data/gamedata.json` is the copy Flask reads — and Flask is what actually rolls
@@ -8370,6 +8381,34 @@ turns them into each second's share (api/CLAUDE.md, "The damage meter").
 - **Phase 2, with the element kits**: "what hit me" - which monster and which
   attack, for a per-attack breakdown.
 - Tested: `_test_damage_taken()`.
+
+## The enemy meter, phase 2: what hit me (0.85.0)
+
+Every hit on a player says where it came from, "<monster>:<attack>"
+(`src/shared/hitsource.gd`): the monster is its profile's file name (the
+catalogue's id), the attack the volley's kind (frost, helix, ring, pincer...),
+the shot's scene name without its element word (arrow, orb), "swing",
+"spike", "pool", "burn". Without a new argument on `take_damage()`:
+
+- **A shot** carries it as the meta `HitSource.HIT_META`, set by
+  `BaseEnemy.spawn_projectile_node()` (and by hand for the vine, the boss's
+  spikes and burning floor, a slime ball's pool), and calls `blame_node()`
+  the line before `take_damage()`.
+- **An orb** is stamped as it spawns (`BulletField._source`, from
+  `HitSource.stamp`, which each `fire_volley()` and the kits set) and
+  BulletZone blames it as it lands. Later beats keep their volley's stamp
+  (`HitSource.later()`: the boss's `_on_beat()`, the kits' `_later()`); a lob
+  and a wake carry theirs (`source`).
+- **A swing, a gate, a burn** blame directly.
+- `Player.take_damage()` takes the blame first (`take()`), so a hit that
+  lands nothing leaves none for the next; nothing blamed is "unknown:hit".
+- `Presence.note_taken(amount, element, source)` keeps [hits, damage] a source
+  (at most `SOURCES_MOST`, then "other:other"), sent as `dts` only when it
+  moved. The server's report row gains it eighth, and `"sn"` names the
+  monsters. The fight log keeps `hit_by` a player ([source, hits, damage],
+  most first) and `names`; the Players view gains a third table (each
+  player's top `HIT_ROWS`), and CSV and Copy carry it all.
+- Tested: `_test_what_hit_me()`.
 
 ## The element kits for monsters (0.84.0)
 

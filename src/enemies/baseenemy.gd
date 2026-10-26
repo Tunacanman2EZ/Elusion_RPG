@@ -2826,6 +2826,8 @@ func _recolour_projectile(projectile: Node) -> void:
 # THE ELEMENT KITS (0.84.0): in a bullet zone, this monster's orbs move like
 # its element (elementkit.gd has the whole story).
 const ElementKit := preload("res://src/enemies/elementkit.gd")
+# WHAT HIT ME (0.85.0): who every hit on a player came from.
+const HitSource := preload("res://src/shared/hitsource.gd")
 
 
 func kit_volley(own: StringName = &"") -> String:
@@ -2883,6 +2885,9 @@ func spawn_projectile_node(projectile: Node, spawn_pos: Vector2, announce: bool 
 	# water parent passes its water down with it — see element_override.
 	if "element" in projectile:
 		projectile.element = current_element()
+	# WHAT HIT ME (0.85.0): whose shot, and which.
+	if not projectile.has_meta(HitSource.HIT_META):
+		HitSource.tag(projectile, self)
 
 	# And the shot LOOKS like it too. Same shader, same hue, so the orb leaving
 	# a water slime is the blue the slime is.

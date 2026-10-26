@@ -12,6 +12,8 @@
 # 6. queue_free() on animation_finished
 extends Area2D
 
+const HitSource := preload("res://src/shared/hitsource.gd")
+
 
 # =============================================================================
 # EXPORTED SETTINGS
@@ -92,6 +94,7 @@ func _apply_damage_to_overlapping_players() -> void:
 	# damage any player-grouped body that exposes take_damage.
 	for body in get_overlapping_bodies():
 		if body.is_in_group("player") and body.has_method("take_damage"):
+			HitSource.blame_node(self, "vine")
 			body.take_damage(damage, element)
 
 
