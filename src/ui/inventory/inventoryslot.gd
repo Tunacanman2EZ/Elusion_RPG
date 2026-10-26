@@ -256,7 +256,7 @@ func refresh_display() -> void:
 	icon_rect.texture = stack.data.icon
 	icon_rect.modulate = stack.data.icon_tint
 	if stack.quantity > 1:
-		quantity_label.text = str(stack.quantity)
+		quantity_label.text = count_text(stack.quantity)
 	else:
 		quantity_label.text = ""
 
@@ -575,3 +575,20 @@ func _ask_the_server(source_slot: InventorySlot, item_id: String) -> void:
 	# across to the bank never gets here (CASE T).
 	if home_container != null and source_slot.home_container == home_container:
 		home_container.request_move(source_slot.slot_index, slot_index, item_id)
+
+
+static func count_text(quantity: int) -> String:
+	"""A stack's count as the corner of a cell draws it (0.88.0).
+
+	FOUR DIGITS COVERED THE PICTURE. "1000" in an 11-point corner is most of a
+	cell's width, so a bank full of coins and worms was a wall of numbers - the
+	window sweep's bank. From a thousand it is thousands, ROUNDED DOWN, so a
+	cell never claims more than it holds: 1,999 is "1.9k", never "2k". The
+	tooltip still says the exact count."""
+	if quantity < 1000:
+		return str(quantity)
+	var tenths: int = floori(quantity / 100.0)
+	if quantity >= 10000 or tenths % 10 == 0:
+		return "%dk" % floori(quantity / 1000.0)
+	return "%d.%dk" % [floori(tenths / 10.0), tenths % 10]
+

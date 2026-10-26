@@ -96,7 +96,7 @@ const HELP := {
 	"optionsresetbutton": "Puts every setting here back the way the game first started - except Renderer and Graphics API, which wait for a restart and are changed only by hand.",
 	"optionsclosebutton": "Close Options. Everything you changed is already saved.",
 }
-const HELP_COLOUR := Color(0.86, 0.88, 0.93)
+const HELP_COLOUR := Color(0.9, 0.85, 0.75)
 # Orange, not the title's gold, so it reads as "look at this".
 const HELP_WARNING_COLOUR := Color(1.0, 0.62, 0.32)
 # Each warning's setting, and the control that sets it.
@@ -241,7 +241,7 @@ signal credits_requested
 
 const ACCOUNT_OK := Color(0.43, 0.84, 0.49)
 const ACCOUNT_BAD := Color(0.95, 0.55, 0.45)
-const ACCOUNT_PLAIN := Color(0.70, 0.75, 0.82)
+const ACCOUNT_PLAIN := Color(0.78, 0.74, 0.66)
 
 # The readout is polled, not signalled: nothing announces that the driver has
 # started ignoring vsync. Half a second is fast enough to watch a change take
@@ -863,7 +863,7 @@ func _update_name_swatch() -> void:
 	if name_swatch == null:
 		return
 	# A DARK PANEL BEHIND IT, because the name is read against the world and
-	# the world is dark. Shown on the options screen's own pale blue it would
+	# the world is dark. Shown on the options screen's own brown it would
 	# look like a different colour entirely.
 	var behind := StyleBoxFlat.new()
 	behind.bg_color = Color(0.09, 0.12, 0.08, 1.0)
@@ -871,7 +871,7 @@ func _update_name_swatch() -> void:
 	behind.border_width_top = 1
 	behind.border_width_right = 1
 	behind.border_width_bottom = 1
-	behind.border_color = Color(0.25, 0.33, 0.43, 1.0)
+	behind.border_color = Color(0.4, 0.33, 0.22, 1.0)
 	behind.corner_radius_top_left = 2
 	behind.corner_radius_top_right = 2
 	behind.corner_radius_bottom_right = 2
@@ -1278,8 +1278,8 @@ func _build_help() -> void:
 	help_bubble.z_index = 50
 	help_bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var look := StyleBoxFlat.new()
-	look.bg_color = Color(0.07, 0.08, 0.11, 1.0)
-	look.border_color = Color(0.45, 0.5, 0.62, 0.9)
+	look.bg_color = Color(0.07, 0.055, 0.035, 1.0)
+	look.border_color = Color(0.6, 0.45, 0.2, 0.9)
 	look.set_border_width_all(1)
 	look.set_corner_radius_all(5)
 	look.content_margin_left = 10

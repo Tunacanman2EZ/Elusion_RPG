@@ -2664,3 +2664,229 @@ func _test_the_server_owns_monster_health() -> void:
 	await get_tree().process_frame
 	print("  the server's count of monster health checked")
 
+
+
+func _layout_cuts(window: Control) -> Array:
+	"""What a window draws short: a one-line Label narrower than its own text,
+	and a button past the window's left or right edge. Measured, not read from
+	the scene - the window sweep (0.88.0) found both kinds by filling every
+	window with the longest names the server allows."""
+	var cuts: Array = []
+	var edge: Rect2 = window.get_global_rect()
+	for node in window.find_children("*", "Control", true, false):
+		var c := node as Control
+		if not c.is_visible_in_tree():
+			continue
+		var at: Rect2 = c.get_global_rect()
+		if c is Label:
+			var label := c as Label
+			if label.text.strip_edges() == "" or label.autowrap_mode != TextServer.AUTOWRAP_OFF:
+				continue
+			var font: Font = label.get_theme_font("font")
+			var wants: float = font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+				label.get_theme_font_size("font_size")).x
+			if wants > at.size.x + 1.0:
+				cuts.append("%s \"%s\" wants %d, has %d" % [window.get_path_to(c), label.text, wants, at.size.x])
+		elif c is BaseButton and (at.position.x < edge.position.x - 1.0 or at.end.x > edge.end.x + 1.0):
+			cuts.append("%s past the window's edge" % window.get_path_to(c))
+	return cuts
+
+
+func _test_long_names_fit_their_windows() -> void:
+	section("THE WINDOW SWEEP - the longest names the server allows, drawn whole (0.88.0)")
+	# The server allows twenty letters (USERNAME_PATTERN) and a twelve-letter
+	# guild tag (MAX_GUILD_NAME); W is the widest letter there is.
+	var kept_name: String = Api.username
+	Api.username = "Tunacan"
+	var layer := CanvasLayer.new()
+	add_child(layer)
+
+	# ---- the party: name, then what they play on a line of its own ----
+	var party: PartyPanel = (load("res://scene/ui/party/partypanel.tscn") as PackedScene).instantiate() as PartyPanel
+	layer.add_child(party)
+	var members: Array = [
+		{"username": "Tunacan", "leader": true, "online": true, "class_id": "warrior", "level": 23, "area": "elusion", "hp": 444, "max_hp": 444}]
+	for who in ["Wanderingswordsman20", "WWWWWWWWWWWWWWWWWWWW", "Mmmmmmmmmmmmmmmmmmmm"]:
+		members.append({"username": who, "leader": false, "online": false, "class_id": "healer",
+			"level": 27, "area": "elusion", "hp": 300, "max_hp": 322})
+	var answer: Dictionary = {"ok": true, "data": {"capacity": 4, "invites": [], "party": {
+		"id": 1, "leader": "Tunacan", "size": 4, "capacity": 4, "members": members}}}
+	party.fetch = func(_path: String) -> Dictionary: return answer
+	party.send = func(_path: String, _body: Dictionary) -> Dictionary: return answer
+	await party.open()
+	for i in 3:
+		await get_tree().process_frame
+	var party_cuts: Array = _layout_cuts(party)
+	var detail: Label = party.list.get_node(^"member_WWWWWWWWWWWWWWWWWWWW").find_child("detail", true, false) as Label
+	check("a party of twenty-letter names is drawn whole: every name, every \"Lv 27 Healer - away\", every button",
+		party_cuts.is_empty() and detail != null and detail.text.ends_with("away"), party_cuts)
+	party.queue_free()
+
+	# ---- the kingdom board: the tag under the name, never beside it ----
+	var board: Control = (load("res://scene/ui/kingdom/kingdomboard.tscn") as PackedScene).instantiate() as Control
+	layer.add_child(board)
+	await get_tree().process_frame
+	var top: Array = []
+	for i in 3:
+		top.append({"username": ["Tunacan", "WWWWWWWWWWWWWWWWWWWW", "bob"][i], "contributed": 9000 - i,
+			"lusions": 0, "deaths": 0, "lost": 0, "rank": i + 1, "title": "",
+			"guild": "Wwwwwwwwwwww", "guild_tag": "WWWWWWWWWWWW"})
+	board.visible = true
+	board.call("_render", {"total": 27000, "contributors": 3, "top": top, "by_reason": {"donation": 27000},
+		"you": top[0].duplicate(), "guilds": [], "your_guild": null})
+	var settling := 0.0
+	while not (board.get("_rows_pending") as Array).is_empty() and settling < 2.0:
+		await get_tree().process_frame
+		settling += get_process_delta_time()
+	for i in 2:
+		await get_tree().process_frame
+	# A twenty-W name is wider than the name column itself (the four figure
+	# columns take most of the board) and is clipped, with the whole name on
+	# its hover; anything else cut is the bug.
+	var board_cuts: Array = _layout_cuts(board).filter(func(cut: String) -> bool:
+		return cut.contains("boardlist") and not cut.contains("\"WWWWWWWWWWWWWWWWWWWW\""))
+	var first: Node = (board.get("board_list") as Node).get_child(0)
+	var widest: Label = (board.get("board_list") as Node).get_child(1).get_node("names/who") as Label
+	check("the kingdom board draws a name whole beside a twelve-letter guild tag, the tag on the line under it",
+		board_cuts.is_empty() and widest.tooltip_text == "WWWWWWWWWWWWWWWWWWWW"
+		and (first.get_node("names/who") as Label).text == "Tunacan"
+		and (first.get_node("names/sub") as Control).visible,
+		[board_cuts, (first.get_node("names/who") as Label).text, (first.get_node("names/sub") as Control).visible,
+		(first.get_node("names/sub/guild") as Label).text])
+	board.queue_free()
+
+	# ---- who is playing, and the count in a cell's corner ----
+	var Players: Script = load("res://src/ui/players/playerspanel.gd")
+	check("who is playing names the character only when it is called something else",
+		Players.row_name("Tunacan", "Tunacan") == "Tunacan" and Players.row_name("Tunacan", "tunacan") == "Tunacan"
+		and Players.row_name("Tunacan", "") == "Tunacan" and Players.row_name("Ahvassa", "mage") == "Ahvassa  (mage)")
+	var Slot: Script = load("res://src/ui/inventory/inventoryslot.gd")
+	var counts: Array = [2, 99, 999, 1000, 1099, 1100, 1999, 9999, 10000, 12345].map(
+		func(n: int) -> String: return Slot.count_text(n))
+	check("a cell's count is thousands from a thousand, rounded down so it never claims more than it holds",
+		counts == ["2", "99", "999", "1k", "1k", "1.1k", "1.9k", "9.9k", "10k", "12k"], counts)
+
+	layer.queue_free()
+	Api.username = kept_name
+	print("  long names fit their windows")
+
+
+func _test_the_game_reports_its_errors() -> void:
+	section("WHAT BROKE IN THE GAME - every SCRIPT ERROR told to the server, and listed for the owner (0.88.0)")
+	const Reporter := preload("res://src/systems/errorreporter.gd")
+
+	# ---- not in the editor, so not in this suite ----
+	var live: Node = Api.get("error_reporter")
+	check("Api has the reporter as a child; in the editor (and so this suite) it catches nothing",
+		live != null and live.get_parent() == Api and not Reporter.wanted() and live.call("catcher") == null)
+
+	# ---- the catcher: script errors only, each one counted ----
+	var reporter: Node = Reporter.new()
+	add_child(reporter)
+	reporter.call("start")
+	var catcher: Logger = reporter.call("catcher")
+	# Stopped from the engine at once: this suite counts any real SCRIPT ERROR
+	# as a failure, so the catcher is fed by hand from here on.
+	OS.remove_logger(catcher)
+	var noop: Array[ScriptBacktrace] = []
+	catcher._log_error("f", "res://src/ui/party/partypanel.gd", 312, "", "Invalid get index 'detail'.", false,
+		Logger.ERROR_TYPE_SCRIPT, noop)
+	catcher._log_error("f", "res://src/ui/party/partypanel.gd", 312, "", "Invalid get index 'detail'.", false,
+		Logger.ERROR_TYPE_SCRIPT, noop)
+	catcher._log_error("f", "res://src/a.gd", 1, "", "a push_error the game said on purpose", false,
+		Logger.ERROR_TYPE_ERROR, noop)
+	catcher._log_error("f", "res://src/a.gd", 2, "", "a warning", false, Logger.ERROR_TYPE_WARNING, noop)
+	check("a SCRIPT ERROR is caught, the same one twice counted twice; push_error and warnings are not",
+		catcher.call("waiting") == 1 and (catcher.get("held") as Dictionary).values()[0] == [
+			"res://src/ui/party/partypanel.gd:312", "Invalid get index 'detail'.", 2], catcher.get("held"))
+	check("  a file off the game is never its path (it could carry the player's name); none is <engine>",
+		Reporter.Catcher.place("C:/Users/robert/game/x.gd", 3) == "<x>"
+		and Reporter.Catcher.place("", 0) == "<engine>"
+		and Reporter.Catcher.place("res://src/b.gd", 0) == "res://src/b.gd")
+	for i in Reporter.ERRORS_HELD + 5:
+		catcher.call("note", "res://src/flood.gd:%d" % i, "loop")
+	check("  at most ERRORS_HELD different errors held between reports; the rest counted as lost",
+		catcher.call("waiting") == Reporter.ERRORS_HELD and int(catcher.get("lost")) == 6,
+		[catcher.call("waiting"), catcher.get("lost")])
+
+	# ---- the report ----
+	var sent: Array = []
+	var answer: Array = [{"ok": true, "status": 200, "data": {"kept": 20, "dropped": 0}}]
+	reporter.set("send", func(path: String, body: Dictionary) -> Dictionary:
+		sent.append([path, body])
+		await get_tree().process_frame
+		return answer[0])
+	reporter.set("can_send", func() -> bool: return false)
+	var went: bool = await reporter.call("report_now")
+	check("signed out, nothing is sent and nothing is lost",
+		not went and sent.is_empty() and catcher.call("waiting") == Reporter.ERRORS_HELD)
+	reporter.set("can_send", func() -> bool: return true)
+	went = await reporter.call("report_now")
+	var body: Dictionary = sent[0][1] if not sent.is_empty() else {}
+	var first: Dictionary = (body.get("errors", [{}]) as Array)[0] if body.has("errors") else {}
+	check("signed in, the oldest ERRORS_PER_REPORT go: the version, the area, where, what and how many",
+		went and sent.size() == 1 and sent[0][0] == "/api/client/errors" and body.get("version") == Api.DISPLAY_VERSION
+		and (body.get("errors") as Array).size() == Reporter.ERRORS_PER_REPORT
+		and first == {"where": "res://src/ui/party/partypanel.gd:312", "what": "Invalid get index 'detail'.", "count": 2}
+		and catcher.call("waiting") == Reporter.ERRORS_HELD - Reporter.ERRORS_PER_REPORT, [body.get("version"), first])
+	answer[0] = {"ok": false, "status": 0, "data": {}}
+	went = await reporter.call("report_now")
+	check("  a report the server never heard is kept for the next one, ahead of what is newer",
+		not went and catcher.call("waiting") == Reporter.ERRORS_HELD - Reporter.ERRORS_PER_REPORT
+		and (catcher.call("take", 1) as Array)[0]["where"] == (sent[1][1]["errors"] as Array)[0]["where"])
+	var before_refusal: int = catcher.call("waiting")
+	answer[0] = {"ok": false, "status": 400, "data": {}}
+	await reporter.call("report_now")
+	check("  one the server refused (400) is not kept, to be refused again",
+		catcher.call("waiting") == before_refusal - Reporter.ERRORS_PER_REPORT)
+	answer[0] = {"ok": false, "status": 404, "data": {}}
+	await reporter.call("report_now")
+	check("  nor one a server from before 0.88.0 has no route for (404)",
+		catcher.call("waiting") == before_refusal - 2 * Reporter.ERRORS_PER_REPORT)
+	reporter.call("stop")
+	reporter.queue_free()
+
+	# ---- the owner's list, on the Health tab ----
+	var errors_view: Dictionary = {"now": 1, "hours": 24, "players": 3, "times": 1041, "more": 2, "errors": [
+		{"where": "res://src/ui/party/partypanel.gd:312", "what": "Invalid get index 'detail' (on base: 'Nil').",
+			"players": 3, "times": 1000, "versions": ["0.88.1", "0.88.0"], "areas": ["field"]},
+		{"where": "<engine>", "what": "x", "players": 1, "times": 41, "versions": ["0.88.0"], "areas": []}]}
+	var text: String = HealthTab.errors_text(errors_view)
+	check("the Health tab says it worst first: how many players, how many times, the script and line, the versions",
+		text.begins_with("3 players hit 4 errors, 1,041 times in the last 24 hours.\n3 players, 1,000 times - party/partypanel.gd:312, 0.88.1, 0.88.0\n    Invalid get index 'detail'")
+		and text.contains("1 player, 41 times - <engine>, 0.88.0"), text)
+	check("  and nothing to say is said as good news",
+		HealthTab.errors_text({"hours": 24, "errors": []}) == "No player's game reported an error in the last 24 hours.")
+
+	var was_owner: bool = Api.is_owner
+	Api.is_owner = true
+	var gm: Control = (load("res://scene/ui/owner/ownerpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(gm)
+	await get_tree().process_frame
+	var tab: HealthTab = gm.get("health_tab") as HealthTab
+	var tabs: TabContainer = gm.get_node_or_null("%ownertabs") as TabContainer
+	tab.timer.stop()
+	tabs.current_tab = tab.get_index()
+	var replies: Dictionary = {"/api/server/health": {"ok": true, "status": 200, "data": {"now": 1}},
+		"/api/server/client-errors": {"ok": true, "status": 200, "data": errors_view}}
+	tab.fetch = func(path: String) -> Dictionary:
+		await get_tree().process_frame
+		return replies.get(path, {"ok": false, "status": 0})
+	await tab.refresh()
+	tab.show_page("errors")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var cuts: Array = _layout_cuts(gm).filter(func(cut: String) -> bool: return cut.contains("health"))
+	check("the Errors page: the button turns amber and its hover counts them, the list is on it, and the page buttons fit the panel",
+		tab.page_buttons["errors"].get_theme_color("font_color") == HealthTab.SAY_WARN
+		and tab.page_buttons["errors"].tooltip_text.begins_with("4 errors") and tab.errors_label.text == text and cuts.is_empty()
+		and PanelWindow.content_minimum(gm).x <= 370.0, [tab.page_buttons["errors"].tooltip_text, cuts,
+		PanelWindow.content_minimum(gm).x])
+	replies["/api/server/client-errors"] = {"ok": false, "status": 404, "data": {}}
+	await tab.refresh()
+	check("  a server from before 0.88.0 is said on that page, and the rest of the tab reads as ever",
+		tab.errors_label.text.begins_with("This server does not take the games' error reports yet (404)")
+		and not tab.say_label.text.begins_with("This server"), tab.errors_label.text)
+	gm.queue_free()
+	Api.is_owner = was_owner
+	print("  the game reports what broke, and the owner reads it")

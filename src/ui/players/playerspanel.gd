@@ -225,6 +225,15 @@ const ROW_PAD_X := 6
 const ROW_PAD_Y := 3
 
 
+static func row_name(who: String, character: String) -> String:
+	"""The account, and the character in brackets when it is called something
+	else. "Tunacan  (Tunacan)" said one name twice (the window sweep, 0.88.0);
+	most players name their first character after themselves."""
+	if character == "" or character.to_lower() == who.to_lower():
+		return who
+	return "%s  (%s)" % [who, character]
+
+
 func _row(entry: Dictionary) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 6)
@@ -236,7 +245,7 @@ func _row(entry: Dictionary) -> Control:
 	# because a fourth opinion about what staff look like is how they stop
 	# being recognisable.
 	var name_label: Label = NameTag.add_to(line,
-		who if character == "" else "%s  (%s)" % [who, character],
+		row_name(who, character),
 		str(entry.get("role", "player")), entry.get("name_hue"))
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 

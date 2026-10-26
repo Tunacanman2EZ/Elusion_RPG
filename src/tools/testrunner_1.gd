@@ -2156,12 +2156,13 @@ func _test_board_says_what_it_is_made_of() -> void:
 	# its own and was given one pixel, so "[ABCD]" drew as a sliver.
 	board._fill_row(built, 1, {"username": "someone", "contributed": 900,
 		"lusions": 0, "deaths": 0, "lost": 0, "guild_tag": "ABCD", "guild": "Test Guild"})
-	var tag_cell: Label = built.get_node("guild")
+	# Under the name since 0.88.0, so a long tag cannot squeeze the name away.
+	var tag_cell: Label = built.get_node("names/sub/guild")
 	var tag_wide: float = tag_cell.get_theme_font("font").get_string_size(
 		tag_cell.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
-	check("a guild tag on the board asks for the width of its text, and the name is what clips",
+	check("a guild tag on the board asks for the width of its text, on the line under the name",
 		tag_cell.text.contains("ABCD") and tag_cell.get_minimum_size().x >= tag_wide - 0.5
-		and (built.get_node("names/who") as Label).clip_text,
+		and (built.get_node("names/who") as Label).clip_text and (built.get_node("names/sub") as Control).visible,
 		[tag_cell.text, tag_cell.get_minimum_size().x, tag_wide])
 
 	built.free()

@@ -8500,6 +8500,86 @@ Tested: `_test_the_server_owns_monster_health()` (a stand-in link,
 a follower's hits bring the count to zero, both games hear it, and the death
 is AGREED with no word from the leader).
 
+## The game tells the server what broke (0.88.0)
+
+The owner rated stability 8 of 10 - "rare live breakages, and fixes go out
+fast" - and asked for the 9. A SCRIPT ERROR in a player's game printed to a
+console nobody reads and the game played on half broken; he heard of it only
+if the player said so.
+
+- **`src/systems/errorreporter.gd`**, a child of the Api autoload
+  (`Api.error_reporter`), adds a Godot `Logger` (`Catcher`) that keeps every
+  `ERROR_TYPE_SCRIPT` error - not `push_error()`, not warnings, not engine
+  errors - as where (`res://...gd:line`; a file off the game is only its name
+  in angle brackets, never a path that could hold the player's name), what it
+  said, and how many times. Once a minute (`REPORT_SECONDS`), signed in, the
+  oldest `ERRORS_PER_REPORT` (20) go to `POST /api/client/errors` with
+  `Api.DISPLAY_VERSION` and the area. Not heard (server down, signed out):
+  kept for the next. Refused (400) or a server from before 0.88.0 (404):
+  dropped. At most `ERRORS_HELD` (200) different errors wait; the rest are
+  counted in `lost`. A Logger is called from any thread, so the counts sit
+  behind a Mutex.
+- **Not in the editor** (`wanted()`): the owner sees his own errors there, and
+  the suite runs with the editor's binary - a test that provokes an error must
+  never post it. The suite starts one by hand with a stand-in `send`.
+- **The GM panel's Health tab has an Errors page**: `GET
+  /api/server/client-errors` (the API's clienterrors/), read with the health,
+  worst first - how many players, how many times, the script and line, the
+  versions, the message. Never who. The page button turns amber, its hover
+  counts them. Five page buttons at 13 points, 2 apart, fill the panel's 370.
+- `_test_the_game_reports_its_errors()` (testrunner_8) feeds the catcher by
+  hand (the suite fails any real SCRIPT ERROR) and drives the report, the
+  give-back and the Errors page. Played: a real null call in a running game
+  was caught, sent to a local server and listed on the page.
+
+## The window sweep (0.88.0)
+
+The owner, 26 Oct: the game "works and keeps improving, but its history is full
+of 'found by playing' fixes: names cut off, wrong colours, windows nobody could
+open". So every window in `WINDOW_PANELS` was opened in a real game, signed in
+to a throwaway local server seeded with the longest names it allows (twenty
+letters, W the widest; a twelve-letter guild tag), full friends, guild, party,
+chat and a kingdom donation, a bag and a bank full of stacks up to 1,000, and
+pictured at 1280 x 720. A layout check measured every Label against its text
+and every button against its window's edges. What it found, and what changed:
+
+- **The kingdom board drew only the guild tag.** The tag sat beside the name,
+  took the width of its own text, and the name (set to clip) got one pixel:
+  Tunacan's row read "[WWWWWWWWWWWW]". The tag now goes on the line under the
+  name, with a patron's title (`names/sub/guild`, `names/sub/title`; the line
+  shows only when it has something). A name wider than the name column itself
+  (a twenty-W name; the four figure columns take most of the board) is still
+  clipped, with the whole name on its hover.
+- **The party lost what members play.** "Lv 27 Mage - away" shared the row
+  with the name and the leader's buttons, set to clip: a long name cut it to
+  "awa", a twenty-letter one to nothing. It is its own line under the name now.
+- **Four-digit stacks covered the picture.** A cell's count is thousands from
+  a thousand, rounded down so it never claims more than it holds
+  (`InventorySlot.count_text()`: 1,999 is "1.9k", 12,345 is "12k"); the
+  tooltip still says the exact count.
+- **"Tunacan (Tunacan)".** Who is playing names the character only when it is
+  called something else (`PlayersPanel.row_name()`).
+
+**The owner's two rules from it (26 Oct):**
+
+- **Windows stay 95% solid, on purpose.** The hotbar, the health bars and
+  nameplates showing faintly through a window is a feature: "If a player opens
+  their bank ... in a dangerous zone, they need to see if an aggressive mob
+  wanders onto their screen." Do not make the brown panels opaque.
+- **Brown is the player's, dark blue is the staff's.** "Brown is for the
+  player experience; Dark Blue is exclusively for the admin cockpit." Options
+  was the one player window in the dark blue; it takes `rpg_ui_theme.tres`
+  now, with a small theme of its own on `margincontainer` that keeps its text
+  at 12 (the brown theme sets no size, so it would be 16 and overflow), pads
+  its drop-downs and draws its switches without a button's box. Its section
+  headings, text, help bubble and name swatch are brown-palette colours. A
+  new player window takes `rpg_ui_theme.tres`; a GM or staff window takes
+  `staff_ui_theme.tres`.
+
+`_test_long_names_fit_their_windows()` (testrunner_8) builds the party and the
+board with those names, measures them with `_layout_cuts()`, and holds the two
+small rules; it went red with the party's old row put back.
+
 ## The element system
 
 One artist's sheet becomes seven creatures. What stops that reading as seven

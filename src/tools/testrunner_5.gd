@@ -3658,7 +3658,7 @@ func _test_the_board_takes_gifts() -> void:
 	var list: Node = board.get("board_list")
 	var by_name: Dictionary = {}
 	for row in list.get_children():
-		by_name[(row.get_node("names/who") as Label).text] = row.get_node("names/title")
+		by_name[(row.get_node("names/who") as Label).text] = row.get_node("names/sub/title")
 	var noble: Label = by_name.get("aldra")
 	var plain: Label = by_name.get("rowan")
 	check("a patron's row shows the title under the name, in its colour",
@@ -3667,10 +3667,10 @@ func _test_the_board_takes_gifts() -> void:
 	check("  and says on its hover what it took", noble != null and noble.tooltip_text.contains("1,000,000"),
 		noble.tooltip_text if noble != null else "")
 	check("  a row without one shows none", plain != null and not plain.visible)
-	var reused: HBoxContainer = noble.get_parent().get_parent() as HBoxContainer if noble != null else list.get_child(0)
+	var reused: HBoxContainer = noble.get_parent().get_parent().get_parent() as HBoxContainer if noble != null else list.get_child(0)
 	board._fill_row(reused, 1, {"username": "nobody", "contributed": 1, "lusions": 0, "deaths": 0})
 	check("  a reused row does not keep the last player's title",
-		not (reused.get_node("names/title") as Label).visible)
+		not (reused.get_node("names/sub/title") as Label).visible)
 	var patron: Label = board.get("patron_label")
 	var bar: ProgressBar = board.get("patron_bar")
 	check("your own line shows the way to your first title, with a bar",

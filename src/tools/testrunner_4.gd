@@ -1984,7 +1984,9 @@ func _test_the_gm_panel_health_tab() -> void:
 	await get_tree().process_frame
 	var without_it: float = tabs.get_combined_minimum_size().y
 	await tab.refresh()
-	check("opened, it reads the server's health - the receipts as kept, not fresh", asked == ["/api/server/health"], asked)
+	# And, since 0.88.0, what broke in the games - its own route, after.
+	check("opened, it reads the server's health - the receipts as kept, not fresh",
+		asked == ["/api/server/health", "/api/server/client-errors"], asked)
 	check("  the players: online, in an area, the biggest crowd; the most today and this week",
 		tab.players_label.text == "12 online, 9 in an area; the biggest crowd: town, 7. Most today: 19 (big field 11). This week: 40 (big field 34).",
 		tab.players_label.text)
@@ -2062,7 +2064,8 @@ func _test_the_gm_panel_health_tab() -> void:
 	asked.clear()
 	await tab.refresh(true)
 	check("Refresh asks for the receipts fresh, and says what it read in Results",
-		asked == ["/api/server/health?fresh=1"] and tab.say_label.text == "Read from the server."
+		asked == ["/api/server/health?fresh=1", "/api/server/client-errors"]
+		and tab.say_label.text == "Read from the server."
 		and gm.results.get_parsed_text().contains("Read from the server. 12 online"), asked)
 
 	# THE SWITCH, FROM HERE: the Testing tab's handler, and both show it.

@@ -282,15 +282,12 @@ func member_row(member: Dictionary, leading: bool) -> Control:
 		lead_label.add_theme_color_override("font_color", LEADER_COLOUR)
 		lead_label.add_theme_font_size_override("font_size", 11)
 		top.add_child(lead_label)
-	var detail := Label.new()
-	detail.name = "detail"
-	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	detail.text = detail_text(member)
-	var online: bool = bool(member.get("online", false)) or who == Api.username
-	detail.add_theme_color_override("font_color", DETAIL_COLOUR if online else AWAY_COLOUR)
-	detail.add_theme_font_size_override("font_size", 13)
-	detail.clip_text = true
-	top.add_child(detail)
+	# The name and the LEADER mark sit together on the left and the buttons go
+	# to the right; the detail line no longer shares this row, so a
+	# twenty-letter name is drawn whole.
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(spacer)
 	if leading and who != Api.username:
 		top.add_child(_small_button("Lead", "Hand the party to %s" % who,
 			func() -> void: act("/api/party/lead", {"username": who}, "%s leads the party now." % who)))
@@ -303,6 +300,19 @@ func member_row(member: Dictionary, leading: bool) -> Control:
 		mark.tooltip_text = "In voice" if who == Api.username else "In voice - %s" % _call_words(who)
 		top.add_child(mark)
 		top.move_child(mark, 0)
+	# WHAT THEY ARE PLAYING AND WHERE, ON A LINE OF ITS OWN (0.88.0). It used to
+	# share the row with the name and the leader's buttons, set to clip, so a
+	# long name left it "Lv 27 Mage - awa", and a twenty-letter one left it
+	# nothing at all. Found by the window sweep.
+	var detail := Label.new()
+	detail.name = "detail"
+	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail.text = detail_text(member)
+	var online: bool = bool(member.get("online", false)) or who == Api.username
+	detail.add_theme_color_override("font_color", DETAIL_COLOUR if online else AWAY_COLOUR)
+	detail.add_theme_font_size_override("font_size", 13)
+	detail.clip_text = true
+	row.add_child(detail)
 	var bar := HealthStrip.new()
 	bar.name = "health"
 	bar.share = health_share(member)

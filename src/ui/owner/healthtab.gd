@@ -18,6 +18,10 @@
 #   RECEIPTS  "Kills need the server's count": the week's kills put to the
 #             server's own count (killwatch.py's), a verdict - ready or what
 #             it is waiting for - and the switch itself, beside it
+#   ERRORS    (0.88.0) what broke in players' games in the last day: every
+#             SCRIPT ERROR the games reported (errorreporter.gd, the API's
+#             clienterrors/), worst first - how many players, how many times,
+#             the script and line, the versions. Never who.
 #
 # Built like the Economy tab (economytab.gd): made in code, read when the
 # panel opens, on Refresh and every REFRESH_SECONDS while it is on screen;
@@ -37,7 +41,12 @@ const SAY_NOTE := Color(0.78, 0.82, 0.87)
 const HEAD := Color(0.93, 0.73, 0.3)
 # The GM panel's inside width, near enough (the World tab's).
 const WIDTH := 250.0
-const PAGES := [["players", "Players"], ["data", "Data"], ["machine", "Machine"], ["receipts", "Receipts"]]
+const PAGES := [["players", "Players"], ["data", "Data"], ["machine", "Machine"], ["receipts", "Receipts"],
+	["errors", "Errors"]]
+## What broke in players' games (0.88.0): the API's clienterrors/.
+const ERRORS_PATH := "/api/server/client-errors"
+## How many errors the page lists; the rest are counted.
+const ERRORS_SHOWN := 5
 # How often it reads again while it is on screen. The server's minutes are a
 # minute long; half that means a new one shows within half a minute of it.
 const REFRESH_SECONDS := 30.0
@@ -75,6 +84,8 @@ var detail_label: Label
 var receipts_switch: CheckButton
 var build_label: Label
 var say_label: Label
+var errors_label: Label
+var errors_answer: Dictionary = {}
 var timer: Timer
 var _busy: bool = false
 
@@ -88,7 +99,7 @@ func _init() -> void:
 func _build() -> void:
 	var strip := HBoxContainer.new()
 	strip.name = "pages"
-	strip.add_theme_constant_override("separation", 4)
+	strip.add_theme_constant_override("separation", 2)
 	add_child(strip)
 	var group := ButtonGroup.new()
 	for spec in PAGES:
@@ -96,7 +107,9 @@ func _build() -> void:
 		button.name = str(spec[0])
 		button.toggle_mode = true
 		button.button_group = group
-		button.add_theme_font_size_override("font_size", 14)
+		# 13, from 14 (0.88.0): five pages' buttons in the panel's 370 where
+		# four were.
+		button.add_theme_font_size_override("font_size", 13)
 		button.pressed.connect(show_page.bind(str(spec[0])))
 		strip.add_child(button)
 		page_buttons[spec[0]] = button
@@ -165,6 +178,13 @@ func _build() -> void:
 	receipts_page.add_child(receipts_switch)
 	build_label = _line("build")
 	receipts_page.add_child(build_label)
+
+	# ---- ERRORS (0.88.0) ---------------------------------------------------------
+	var errors_page := _page("errors")
+	errors_page.add_child(_head("What broke in players' games"))
+	errors_label = _line("errors")
+	errors_label.text = "Not read yet."
+	errors_page.add_child(errors_label)
 
 	say_label = _label("", SAY_NOTE)
 	say_label.name = "say"
@@ -278,11 +298,83 @@ func refresh(by_hand: bool = false) -> void:
 		_say(refusal(res), SAY_BAD)
 		return
 	show_answer(res.get("data"))
+	await read_errors()
+	if not is_instance_valid(self):
+		return
 	if by_hand:
 		_say("Read from the server.", SAY_GOOD, "Read from the server. %s %s %s" % [
 			players_text(answer), month_text(answer.get("month")), verdict_text(answer.get("receipts", {}))])
 	elif say_label.text.begins_with("Could not reach") or say_label.text.begins_with("This server"):
 		_say_here("")
+
+
+func read_errors() -> void:
+	"""What broke in players' games - asked with the health, its own route,
+	so a server from before 0.88.0 says so on its page and nowhere else."""
+	var res: Dictionary = await fetch.call(ERRORS_PATH)
+	if not is_instance_valid(self):
+		return
+	if res.get("ok", false) and res.get("data") is Dictionary:
+		show_errors(res.get("data"))
+	elif int(res.get("status", 0)) == 404:
+		errors_label.text = "This server does not take the games' error reports yet (404). Update the server."
+		errors_label.add_theme_color_override("font_color", SAY_WARN)
+	else:
+		errors_label.text = refusal(res)
+		errors_label.add_theme_color_override("font_color", SAY_BAD)
+
+
+func show_errors(data: Dictionary) -> void:
+	errors_answer = data
+	errors_label.text = errors_text(data)
+	errors_label.add_theme_color_override("font_color",
+		SAY_GOOD if (data.get("errors", []) as Array).is_empty() else SAY_WARN)
+	# THE BUTTON SAYS THERE ARE SOME, in amber, rather than how many: five
+	# pages' buttons fill the panel's width, and a number on one did not fit.
+	var button: Button = page_buttons.get("errors")
+	if button != null:
+		var count: int = (data.get("errors", []) as Array).size() + int(data.get("more", 0))
+		button.tooltip_text = "%d errors players hit in the last %d hours" % [count, int(data.get("hours", 24))] \
+			if count > 0 else "No player's game reported an error"
+		if count > 0:
+			button.add_theme_color_override("font_color", SAY_WARN)
+		else:
+			button.remove_theme_color_override("font_color")
+
+
+static func errors_text(data: Dictionary) -> String:
+	"""'2 players hit 3 errors, 41 times.' then each, worst first:
+	'5 players, 30 times - partypanel.gd:312, 0.88.0 / Invalid get index ...'"""
+	var errors: Array = data.get("errors", []) if data.get("errors") is Array else []
+	if errors.is_empty():
+		return "No player's game reported an error in the last %d hours." % int(data.get("hours", 24))
+	var total: int = errors.size() + int(data.get("more", 0))
+	var lines: PackedStringArray = []
+	lines.append("%s hit %s, %s in the last %d hours." % [
+		_count(int(data.get("players", 0)), "player"), _count(total, "error"),
+		_count(int(data.get("times", 0)), "time"), int(data.get("hours", 24))])
+	for i in mini(ERRORS_SHOWN, errors.size()):
+		var e: Dictionary = errors[i] if errors[i] is Dictionary else {}
+		var versions: Array = e.get("versions", []) if e.get("versions") is Array else []
+		lines.append("%s, %s - %s%s" % [_count(int(e.get("players", 0)), "player"),
+			_count(int(e.get("times", 0)), "time"), short_where(str(e.get("where", ""))),
+			(", " + ", ".join(PackedStringArray(versions.slice(0, 2)))) if not versions.is_empty() else ""])
+		lines.append("    " + str(e.get("what", "")).left(140))
+	if errors.size() > ERRORS_SHOWN:
+		lines.append("and %d more." % (total - ERRORS_SHOWN))
+	return "\n".join(lines)
+
+
+static func short_where(where: String) -> String:
+	"""'res://src/ui/party/partypanel.gd:312' as 'party/partypanel.gd:312'."""
+	if not where.begins_with("res://"):
+		return where
+	var parts: PackedStringArray = where.trim_prefix("res://").split("/")
+	return "/".join(parts.slice(maxi(0, parts.size() - 2)))
+
+
+static func _count(n: int, word: String) -> String:
+	return "%s %s%s" % [GameConstants.commas(n), word, "" if n == 1 else "s"]
 
 
 func _on_timer() -> void:

@@ -177,6 +177,8 @@ func _run_all() -> void:
 	_test_presence_carries_the_books()
 	await _test_shared_monsters_keep_the_books()
 	await _test_the_server_owns_monster_health()
+	await _test_long_names_fit_their_windows()
+	await _test_the_game_reports_its_errors()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
 	await _test_attacks_stop_at_walls()

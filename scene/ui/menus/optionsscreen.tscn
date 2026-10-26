@@ -1,133 +1,73 @@
 [gd_scene format=3 uid="uid://cw8yr2mnl6qtb"]
 
 [ext_resource type="Script" path="res://src/ui/menus/optionsscreen.gd" id="1_options"]
+[ext_resource type="Theme" uid="uid://b72haustafjet" path="res://assets/themes/rpg_ui_theme.tres" id="2_theme"]
 
-[sub_resource type="StyleBoxFlat" id="SB_optpanel"]
-content_margin_left = 0.0
-content_margin_top = 0.0
-content_margin_right = 0.0
-content_margin_bottom = 0.0
-bg_color = Color(0.058824, 0.070588, 0.094118, 0.98)
+[sub_resource type="StyleBoxFlat" id="SB_optpick"]
+content_margin_left = 8.0
+content_margin_top = 2.0
+content_margin_right = 6.0
+content_margin_bottom = 2.0
+bg_color = Color(0.18, 0.15, 0.12, 0.95)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.25098, 0.32549, 0.43137, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-shadow_color = Color(0, 0, 0, 0.45098)
-shadow_size = 8
+border_color = Color(0.5, 0.42, 0.28, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
 
-[sub_resource type="StyleBoxFlat" id="SB_optbtn"]
+[sub_resource type="StyleBoxFlat" id="SB_optpick_hover"]
 content_margin_left = 8.0
-content_margin_top = 5.0
-content_margin_right = 8.0
-content_margin_bottom = 5.0
-bg_color = Color(0.14118, 0.18039, 0.24706, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.24706, 0.31373, 0.4, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+content_margin_top = 2.0
+content_margin_right = 6.0
+content_margin_bottom = 2.0
+bg_color = Color(0.25, 0.2, 0.15, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.85, 0.75, 0.45, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
 
-[sub_resource type="StyleBoxFlat" id="SB_optbtn_hover"]
+[sub_resource type="StyleBoxFlat" id="SB_optpick_press"]
 content_margin_left = 8.0
-content_margin_top = 5.0
-content_margin_right = 8.0
-content_margin_bottom = 5.0
-bg_color = Color(0.20392, 0.26667, 0.36078, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.40784, 0.52549, 0.67059, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+content_margin_top = 2.0
+content_margin_right = 6.0
+content_margin_bottom = 2.0
+bg_color = Color(0.3, 0.25, 0.18, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.85, 0.4, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
 
-[sub_resource type="StyleBoxFlat" id="SB_optbtn_press"]
-content_margin_left = 8.0
-content_margin_top = 5.0
-content_margin_right = 8.0
-content_margin_bottom = 5.0
-bg_color = Color(0.098039, 0.12941, 0.18039, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.40784, 0.52549, 0.67059, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_optinput"]
-content_margin_left = 8.0
-content_margin_top = 5.0
-content_margin_right = 8.0
-content_margin_bottom = 5.0
-bg_color = Color(0.086275, 0.10588, 0.14118, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.19608, 0.24706, 0.31765, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxFlat" id="SB_optinput_focus"]
-content_margin_left = 8.0
-content_margin_top = 5.0
-content_margin_right = 8.0
-content_margin_bottom = 5.0
-bg_color = Color(0.10588, 0.13333, 0.18039, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.40784, 0.58824, 0.83137, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-
-[sub_resource type="StyleBoxLine" id="SB_optsep"]
-color = Color(0.19608, 0.24706, 0.31765, 1)
-thickness = 1
+[sub_resource type="StyleBoxEmpty" id="SB_optplain"]
 
 [sub_resource type="Theme" id="Theme_options"]
 default_font_size = 12
-Button/colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
-Button/colors/font_hover_color = Color(0.95, 0.97, 1, 1)
+CheckButton/styles/focus = SubResource("SB_optplain")
+CheckButton/styles/hover = SubResource("SB_optplain")
+CheckButton/styles/hover_pressed = SubResource("SB_optplain")
+CheckButton/styles/normal = SubResource("SB_optplain")
+CheckButton/styles/pressed = SubResource("SB_optplain")
+OptionButton/styles/focus = SubResource("SB_optpick_hover")
+OptionButton/styles/hover = SubResource("SB_optpick_hover")
+OptionButton/styles/normal = SubResource("SB_optpick")
+OptionButton/styles/pressed = SubResource("SB_optpick_press")
 Button/font_sizes/font_size = 12
-Button/styles/normal = SubResource("SB_optbtn")
-Button/styles/hover = SubResource("SB_optbtn_hover")
-Button/styles/pressed = SubResource("SB_optbtn_press")
-Button/styles/focus = SubResource("SB_optbtn")
-CheckButton/colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 CheckButton/font_sizes/font_size = 12
-OptionButton/colors/font_color = Color(0.84706, 0.88235, 0.92549, 1)
 OptionButton/font_sizes/font_size = 12
-OptionButton/styles/normal = SubResource("SB_optinput")
-OptionButton/styles/hover = SubResource("SB_optbtn_hover")
-OptionButton/styles/pressed = SubResource("SB_optbtn_press")
-OptionButton/styles/focus = SubResource("SB_optinput_focus")
-LineEdit/colors/font_color = Color(0.87843, 0.9098, 0.9451, 1)
-LineEdit/colors/font_placeholder_color = Color(0.40784, 0.45882, 0.53333, 1)
 LineEdit/font_sizes/font_size = 12
-LineEdit/styles/normal = SubResource("SB_optinput")
-LineEdit/styles/focus = SubResource("SB_optinput_focus")
-HSeparator/styles/separator = SubResource("SB_optsep")
-VSeparator/styles/separator = SubResource("SB_optsep")
 
 [node name="optionsscreen" type="Control"]
 anchors_preset = 8
@@ -141,12 +81,11 @@ offset_right = 370.0
 offset_bottom = 351.0
 grow_horizontal = 2
 grow_vertical = 2
-theme = SubResource("Theme_options")
+theme = ExtResource("2_theme")
 script = ExtResource("1_options")
 
 [node name="mainpanel" type="PanelContainer" parent="."]
 layout_mode = 1
-theme_override_styles/panel = SubResource("SB_optpanel")
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -155,6 +94,7 @@ grow_vertical = 2
 
 [node name="margincontainer" type="MarginContainer" parent="mainpanel"]
 layout_mode = 2
+theme = SubResource("Theme_options")
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 16
@@ -204,7 +144,7 @@ theme_override_constants/separation = 4
 
 [node name="audioheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 theme_override_font_sizes/font_size = 12
 text = "AUDIO"
 
@@ -215,7 +155,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/masterrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Master"
 vertical_alignment = 1
@@ -234,7 +174,7 @@ value = 1.0
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "100%"
 horizontal_alignment = 2
@@ -247,7 +187,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/musicrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Music"
 vertical_alignment = 1
@@ -266,7 +206,7 @@ value = 0.7
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "70%"
 horizontal_alignment = 2
@@ -279,7 +219,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/sfxrow"]
 custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Sound effects"
 vertical_alignment = 1
@@ -298,7 +238,7 @@ value = 1.0
 unique_name_in_owner = true
 custom_minimum_size = Vector2(42, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "100%"
 horizontal_alignment = 2
@@ -309,7 +249,7 @@ layout_mode = 2
 
 [node name="gameheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 theme_override_font_sizes/font_size = 12
 text = "GAME"
 
@@ -320,7 +260,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/textsizerow"]
 custom_minimum_size = Vector2(104, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Text size"
 vertical_alignment = 1
@@ -339,7 +279,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/fontrow"]
 custom_minimum_size = Vector2(104, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Font"
 vertical_alignment = 1
@@ -358,7 +298,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/camerarow"]
 custom_minimum_size = Vector2(104, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Camera view"
 vertical_alignment = 1
@@ -388,7 +328,7 @@ vertical_alignment = 1
 
 [node name="camerahint" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.55, 0.6, 0.66, 1)
+theme_override_colors/font_color = Color(0.62, 0.58, 0.52, 1)
 theme_override_font_sizes/font_size = 10
 text = "Lower pulls the camera back and shows more of the world."
 autowrap_mode = 3
@@ -400,7 +340,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/namecolourrow"]
 custom_minimum_size = Vector2(104, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Name colour"
 vertical_alignment = 1
@@ -434,7 +374,7 @@ vertical_alignment = 1
 
 [node name="namecolourhint" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.55, 0.6, 0.66, 1)
+theme_override_colors/font_color = Color(0.62, 0.58, 0.52, 1)
 theme_override_font_sizes/font_size = 10
 text = "Tells your name apart from everyone else's in a crowd."
 autowrap_mode = 3
@@ -446,7 +386,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/damagerow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Damage numbers"
 vertical_alignment = 1
@@ -462,7 +402,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/chatfilterrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Filter bad language in chat"
 vertical_alignment = 1
@@ -478,7 +418,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol/projectilerow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Projectile brightness"
 vertical_alignment = 1
@@ -508,7 +448,7 @@ layout_mode = 2
 
 [node name="accountheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/leftcol" unique_id=1900114002]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 theme_override_font_sizes/font_size = 12
 text = "ACCOUNT"
 
@@ -625,7 +565,7 @@ theme_override_constants/separation = 4
 
 [node name="displayheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 theme_override_font_sizes/font_size = 12
 text = "DISPLAY"
 
@@ -637,7 +577,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/screenrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Monitor"
 vertical_alignment = 1
@@ -655,7 +595,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/windowmoderow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Window mode"
 vertical_alignment = 1
@@ -673,7 +613,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/windowrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Window size"
 vertical_alignment = 1
@@ -690,7 +630,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/vsyncrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "V-Sync"
 vertical_alignment = 1
@@ -707,7 +647,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/framecaprow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Frame cap"
 vertical_alignment = 1
@@ -740,7 +680,7 @@ layout_mode = 2
 
 [node name="perfheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 theme_override_font_sizes/font_size = 12
 text = "PERFORMANCE"
 
@@ -751,7 +691,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/resolutionrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Render resolution"
 vertical_alignment = 1
@@ -768,7 +708,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/lightingrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Lighting"
 vertical_alignment = 1
@@ -785,7 +725,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/backgroundrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Slow down in background"
 vertical_alignment = 1
@@ -801,7 +741,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/batteryrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Battery saver"
 vertical_alignment = 1
@@ -817,7 +757,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/restrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Rest the screen when idle"
 vertical_alignment = 1
@@ -833,7 +773,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/brightnessrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Brightness"
 vertical_alignment = 1
@@ -861,7 +801,7 @@ vertical_alignment = 1
 [node name="batteryhint" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.55, 0.6, 0.66, 1)
+theme_override_colors/font_color = Color(0.62, 0.58, 0.52, 1)
 theme_override_font_sizes/font_size = 10
 text = "Battery saver draws 30 frames a second. Rest the screen dims it after 2 minutes untouched."
 autowrap_mode = 3
@@ -873,7 +813,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/rendererrow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Renderer"
 vertical_alignment = 1
@@ -901,7 +841,7 @@ theme_override_constants/separation = 8
 [node name="label" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol/apirow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Graphics API"
 vertical_alignment = 1
@@ -924,7 +864,7 @@ layout_mode = 2
 
 [node name="ringsheading" type="Label" parent="mainpanel/margincontainer/vboxcontainer/columnsscroll/columns/rightcol"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.49804, 0.65882, 0.85098, 1)
+theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 theme_override_font_sizes/font_size = 12
 text = "ON SCREEN"
 
@@ -938,7 +878,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 1
 tooltip_text = "The ring under you, with a ball where your attack goes - and the red one under each monster, with its dot on whoever it is after."
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Aim rings"
 vertical_alignment = 1
@@ -958,7 +898,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 1
 tooltip_text = "The dashed circles: how close you can come to a monster before it notices you, how far it chases you once it has, and how far a mythic weapon reaches."
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Range circles"
 vertical_alignment = 1
@@ -978,7 +918,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 1
 tooltip_text = "Other players' waves, axes, spells, dynamite, orbs and auras. Off hides them all - a healer's aura still heals you."
-theme_override_colors/font_color = Color(0.78, 0.83, 0.89, 1)
+theme_override_colors/font_color = Color(0.9, 0.85, 0.75, 1)
 theme_override_font_sizes/font_size = 12
 text = "Other players' attacks"
 vertical_alignment = 1

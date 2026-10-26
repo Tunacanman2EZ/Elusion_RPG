@@ -837,7 +837,33 @@ func _make_row() -> HBoxContainer:
 	# A long username must not push the figures off the right-hand edge, and a
 	# board of two hundred will contain one.
 	name_label.clip_text = true
+	name_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	names.add_child(name_label)
+
+	# THE LINE UNDER THE NAME: the guild tag, then a patron's title (0.88.0).
+	# The tag used to sit beside the name in the row, taking the width of its
+	# own text, with the name set to clip and take what was left. A twelve-
+	# letter tag ("[WWWWWWWWWWWW]") left the name one pixel: the board's row
+	# for Tunacan drew only his guild. Found by the window sweep (0.88.0),
+	# filling every window with the longest names the server allows. The name
+	# is what the row is about, so it has its line to itself, and everything
+	# said about it goes under it ("A Label that shares a row gives way").
+	var sub := HBoxContainer.new()
+	sub.name = "sub"
+	sub.visible = false
+	sub.add_theme_constant_override("separation", 6)
+	names.add_child(sub)
+
+	# THE SAME VIOLET AS CHAT, THE PLAYERS MENU AND THE NAMEPLATE. Api owns it
+	# for the reason it owns colour_for_role. NOT clip_text: a clipping Label
+	# asks for no width of its own (0.74.0); on its own line it has room.
+	var guild_label := Label.new()
+	guild_label.name = "guild"
+	guild_label.add_theme_font_size_override("font_size", 10)
+	guild_label.add_theme_color_override("font_color", Api.GUILD_TAG_COLOUR)
+	guild_label.clip_text = false
+	guild_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	sub.add_child(guild_label)
 
 	var title_label := Label.new()
 	title_label.name = "title"
@@ -846,35 +872,7 @@ func _make_row() -> HBoxContainer:
 	title_label.add_theme_font_size_override("font_size", 10)
 	title_label.clip_text = true
 	title_label.mouse_filter = Control.MOUSE_FILTER_STOP
-	names.add_child(title_label)
-
-	# WHO THEY RUN WITH, AND DELIBERATELY NOT A COLUMN.
-	#
-	# The note over the deaths label below says the panel is narrow enough that
-	# the fourth column of figures nearly did not fit, and a guild tag is twelve
-	# characters plus brackets - wider than any of them. A fifth fixed column
-	# would have pushed the money off the edge on the exact screens this board
-	# is read on.
-	#
-	# So it has NO custom_minimum_size at all: it takes the width of its own
-	# text and nothing more, and the name beside it is the only thing set to
-	# EXPAND_FILL, so the name absorbs whatever is left and clips itself first.
-	# A row for somebody in no guild has an empty label taking no space, which
-	# is why there is no column of blanks down the board either.
-	var guild_label := Label.new()
-	guild_label.name = "guild"
-	guild_label.add_theme_font_size_override("font_size", 10)
-	# THE SAME VIOLET AS CHAT, THE PLAYERS MENU AND THE NAMEPLATE. Api owns it
-	# for the reason it owns colour_for_role.
-	guild_label.add_theme_color_override("font_color", Api.GUILD_TAG_COLOUR)
-	# NOT clip_text (0.74.0, found while the patrons' titles went in): a
-	# clipping Label asks for no width of its own, and with no minimum size
-	# beside an EXPAND_FILL name it was given one pixel - every "[ABCD]" on the
-	# board drew as a violet sliver. The note above was right about what it
-	# should do; this line did the opposite. The name clips instead.
-	guild_label.clip_text = false
-	guild_label.mouse_filter = Control.MOUSE_FILTER_STOP
-	row.add_child(guild_label)
+	sub.add_child(title_label)
 
 	var given_label := Label.new()
 	given_label.name = "gold"
@@ -934,6 +932,9 @@ func _fill_row(row: HBoxContainer, rank: int, entry: Dictionary) -> void:
 
 	var name_label: Label = row.get_node("names/who")
 	name_label.text = username
+	# A name too long for the column is clipped (the four figure columns take
+	# most of the board's width); the hover says it whole.
+	name_label.tooltip_text = username
 	# Your own row is tinted rather than marked with a symbol, so the list reads
 	# the same length whether you are on it or not.
 	#
@@ -953,7 +954,7 @@ func _fill_row(row: HBoxContainer, rank: int, entry: Dictionary) -> void:
 	# change the label has to propagate every time it is set, same colour or
 	# not. Most rows on a board have no title and never had one, and those cost
 	# one string comparison here.
-	var title_label: Label = row.get_node("names/title")
+	var title_label: Label = row.get_node("names/sub/title")
 	var title: String = str(entry.get("title", "")) if entry.get("title") != null else ""
 	if title_label.text != title or title_label.visible != (title != ""):
 		title_label.text = title
@@ -965,11 +966,17 @@ func _fill_row(row: HBoxContainer, rank: int, entry: Dictionary) -> void:
 	# for the same reason the name tint above is: a field only ever written when
 	# there is something to say is a field that keeps the last thing it said,
 	# and the tag would creep down the board as ranks moved.
-	var guild_label: Label = row.get_node("guild")
+	var guild_label: Label = row.get_node("names/sub/guild")
 	var tag: String = Api.guild_tag_text(str(entry.get("guild_tag", "")))
 	guild_label.text = tag
 	guild_label.tooltip_text = "" if tag == "" \
 		else "In %s" % str(entry.get("guild", tag))
+	# The line under the name shows when it has something to say. Set both ways
+	# round, for the reused-row reason above.
+	var sub: Control = row.get_node("names/sub")
+	var sub_shown: bool = tag != "" or title != ""
+	if sub.visible != sub_shown:
+		sub.visible = sub_shown
 
 	var given_label: Label = row.get_node("gold")
 	given_label.text = _compact(given)
