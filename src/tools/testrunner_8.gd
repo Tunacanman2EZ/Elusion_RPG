@@ -2558,3 +2558,109 @@ func _test_field_effects() -> void:
 	host.free()
 	print("  field effects checked")
 
+
+# =============================================================================
+# THE SERVER OWNS THEIR HEALTH (0.87.0)
+# =============================================================================
+# The owner, of the leader still being trusted with the monsters: "fix this".
+# A server that says "sh" sends its own count of every monster's health each
+# tick, and the monsters it brought to zero. A mirror shows that count and
+# never the leader's; the leader's own monsters come down to it and never up;
+# and a death the count makes is a death on every screen, reported once.
+
+func _test_the_server_owns_monster_health() -> void:
+	section("THE SERVER OWNS THEIR HEALTH - every game draws the server's count, and its deaths are deaths")
+	var world: Node2D = _sm_world()
+	var fs: BaseEnemy = world.get_node("enemies/fs1")
+	var link := HealthLink.new()
+	link.me = 2
+	add_child(link)
+	var sync: Node = _sm_sync(link)
+	var kills: Array = []
+	sync.report_kill = func(enemy_id: String, at: Vector2, _who: Node) -> void: kills.append([enemy_id, at])
+	world.add_child(sync)
+	await get_tree().process_frame
+	link.lead_changed.emit(SM_AREA, 1, 1)
+	var origin_fs: String = str(fs.get_meta(&"net_origin", ""))
+	link.world_received.emit(JSON.parse_string(JSON.stringify({"full": true, "reset": false, "part": 0,
+		"parts": 1, "wave": -1, "spawn": [{"id": 4, "o": origin_fs, "s": "res://scene/enemy/firesprite.tscn",
+			"pp": "smworld/enemies", "x": -19950.0, "y": -20000.0, "a": "idledown", "hp": 300,
+			"mh": fs.max_hp, "p": fs.net_props()}]})))
+	await get_tree().process_frame
+	check("a follower draws the leader's monster as before", sync.monsters().get(4) == fs and fs.hp == 300,
+		[sync.monsters().keys(), fs.hp])
+
+	sync.apply_world({"snap": [[4, -19950.0, -20000.0, "idledown", 9999]]})
+	check("the leader's word on a mirror's health is passed over", fs.hp == 300, fs.hp)
+	link.deliver_health([[4, 210, fs.max_hp]])
+	check("  the server's count is what it shows", fs.hp == 210, fs.hp)
+	link.deliver_health([[4, 260, fs.max_hp]])
+	check("  up or down: a mirror shows the count as it is", fs.hp == 260, fs.hp)
+
+	fs.take_damage(12)
+	check("your hit on it still goes to the leader, and changes nothing here", fs.hp == 260)
+	var fs_id: String = fs.get_enemy_id()
+	link.deliver_health([], [4])
+	check("a death the server's count made is a death here", fs._death_resolved, fs._death_resolved)
+	check("  and your kill, since you hit it - reported once", kills.size() == 1 and kills[0][0] == fs_id, kills)
+	sync.apply_world({"ev": [{"k": "die", "id": 4, "x": 0.0, "y": 0.0}]})
+	check("  the leader's own word on that death, coming second, reports nothing more", kills.size() == 1, kills)
+	world.free()
+	link.free()
+	await get_tree().process_frame
+
+	# The leader: its monsters come down to the count, never up, and die at its word.
+	world = _sm_world()
+	fs = world.get_node("enemies/fs1")
+	var sn: BaseEnemy = world.get_node("enemies/sn1")
+	link = HealthLink.new()
+	link.area = SM_AREA
+	link.leader = 1
+	link.n = 1
+	add_child(link)
+	sync = _sm_sync(link)
+	world.add_child(sync)
+	await get_tree().process_frame
+	check("the leader runs its own", sync.has_authority() and not fs.net_mirror)
+	var top: int = fs.max_hp
+	link.deliver_health([[fs.net_id, top - 50, top]])
+	check("a hit the server counted that never reached the leader still lands there", fs.hp == top - 50, fs.hp)
+	link.deliver_health([[fs.net_id, top, top]])
+	check("  but the server never heals what the leader's game has hurt", fs.hp == top - 50, fs.hp)
+	link.sent_world.clear()
+	var sn_id: int = sn.net_id
+	sn._net_remote_hit = true          # somebody else's kill: nothing to report from here
+	link.deliver_health([], [sn_id])
+	check("a monster the count brought to zero dies on the leader's game too, as from a blow",
+		sn._death_resolved and sn.hp == 0, [sn._death_resolved, sn.hp])
+	sync.tick_lead()
+	var died: bool = false
+	for ev in _sm_last_world(link).get("ev", []):
+		if ev.get("k", "") == "die" and int(ev.get("id", -1)) == sn_id:
+			died = true
+	check("  and the leader says so, as for any death", died, _sm_last_world(link))
+
+	link.sent_world.clear()
+	link.n = 0
+	sync.leader_event(fs, {"k": "mh", "mh": top + 100, "hp": top + 50})
+	sync.tick_lead()
+	var raised: bool = false
+	for ev in _sm_last_world(link).get("ev", []):
+		if ev.get("k", "") == "mh" and int(ev.get("id", -1)) == fs.net_id:
+			raised = true
+	check("a change to a monster's health is told even alone, for the server's count", raised, _sm_last_world(link))
+	check("raise_for_stir() tells the area's sync when this game runs the monster",
+		_code_src("res://src/enemies/baseenemy.gd").contains('_net_sync.leader_event(self, {"k": "mh", "mh": max_hp, "hp": hp})'))
+
+	var plain := FakeLink.new()
+	add_child(plain)
+	var sync2: Node = _sm_sync(plain)
+	check("a link from before the server owned health is still listened to (no health signal needed)",
+		not plain.has_signal(&"health_received") and not sync2._server_health())
+	sync2.free()
+	plain.free()
+	world.free()
+	link.free()
+	await get_tree().process_frame
+	print("  the server's count of monster health checked")
+

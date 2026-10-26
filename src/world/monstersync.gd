@@ -66,6 +66,22 @@
 #                                                 deaths they caused
 # Every other game's hits already pass through the server on their way here.
 # Shots, vines and swings still go only to games that draw them (_sharing()).
+#
+# THE SERVER OWNS THEIR HEALTH (0.87.0). The owner, of the leader still being
+# trusted with the monsters: "fix this". A server whose welcome says "sh"
+# sends its own count every tick (Presence.health_received):
+#   - a mirror shows the server's health, not the leader's - the snap's
+#     health is passed over (BaseEnemy.net_server_health());
+#   - the leader's own monsters come DOWN to it, never up;
+#   - a monster the count brings to zero is dead on every screen: a mirror
+#     dies as at a leader's "die" (the kill reported if this game helped), and
+#     the leader's own dies as from a blow (net_server_kill()), its respawner
+#     carrying on. Whichever of the server's word and the leader's "die"
+#     comes second finds nothing to do.
+# A stir that raises a monster while it stands is said ("mh"), so the count
+# rises with it. The leader still moves the monsters and throws their attacks;
+# a leader that keeps calling deaths the count does not back loses the area
+# to the next game in line (presence.py, LEAD STRIKES).
 extends Node
 
 const NODE_NAME := "monstersync"
@@ -194,8 +210,11 @@ func _listen(on: bool) -> void:
 	"""On or off the link's four signals - once each, whichever way."""
 	if link == null:
 		return
-	for pair in [[link.lead_changed, _on_lead], [link.world_received, _on_world],
-			[link.hits_received, _on_hits], [link.world_needed, _on_need]]:
+	var pairs: Array = [[link.lead_changed, _on_lead], [link.world_received, _on_world],
+			[link.hits_received, _on_hits], [link.world_needed, _on_need]]
+	if link.has_signal(&"health_received"):
+		pairs.append([link.health_received, _on_health])
+	for pair in pairs:
 		var heard: Signal = pair[0]
 		var handler: Callable = pair[1]
 		if on and not heard.is_connected(handler):
@@ -297,6 +316,12 @@ func _books() -> bool:
 	"""The server keeps books on the monsters (0.10.0): it hears the world
 	even with nobody else here, and this game's own hits with it."""
 	return link != null and link.has_method("books") and link.books()
+
+
+func _server_health() -> bool:
+	"""The server owns the monsters' health (0.87.0): its count is drawn, and
+	a death it calls is a death."""
+	return link != null and link.has_method("server_health") and link.server_health()
 
 
 func _sending() -> bool:
@@ -601,7 +626,9 @@ func leader_bullets(enemy: BaseEnemy, at: Vector2, aim: float, volley: String = 
 
 func leader_event(enemy: Node, event: Dictionary) -> void:
 	"""(Leader.) A vine, a spike, a pillar or a swing, for every screen."""
-	if role != Role.LEAD or not _sharing():
+	# A HEALTH CHANGE ("mh") GOES EVEN ALONE: the server's count needs it.
+	var heard: bool = _sending() if str(event.get("k", "")) == "mh" else _sharing()
+	if role != Role.LEAD or not heard:
 		return
 	var id: int = int(enemy.get("net_id")) if enemy != null else -1
 	if id < 0:
@@ -795,8 +822,11 @@ func apply_world(data: Dictionary) -> void:
 				continue
 			var e: Variant = _enemies.get(int(state[0]))
 			if is_instance_valid(e) and (e as BaseEnemy).net_mirror:
+				# THE SERVER OWNS THEIR HEALTH: the leader's word on it is
+				# passed over; the server's count arrives on its own.
+				var said_hp: int = (e as BaseEnemy).hp if _server_health() else int(state[4])
 				(e as BaseEnemy).net_apply_state(Vector2(float(state[1]), float(state[2])),
-					str(state[3]), int(state[4]))
+					str(state[3]), said_hp)
 	if data.has("wave") and int(data.get("wave", -1)) > 0:
 		var gauntlet: Node = get_tree().get_first_node_in_group(&"bossgauntlet")
 		if gauntlet != null and gauntlet.has_method("net_jump_to"):
@@ -817,16 +847,7 @@ func _apply_event(event: Dictionary) -> void:
 				if made != null:
 					_apply_record(made, r, true)
 		"die":
-			if mirror == null:
-				return
-			_enemies.erase(id)
-			# YOUR KILL, IF YOU HELPED: reported from here, by this game, so
-			# the server rolls this player's own bag.
-			if _hit_ids.has(id):
-				_hit_ids.erase(id)
-				report_kill.call(mirror.get_enemy_id(), mirror.global_position,
-					get_tree().get_first_node_in_group("player"))
-			mirror.net_vanish()
+			_mirror_died(id, mirror)
 		"gone":
 			if mirror == null:
 				return
@@ -871,6 +892,45 @@ func _apply_event(event: Dictionary) -> void:
 			# BOSSES THAT SCALE (0.80.0): its health for who is fighting it.
 			if mirror != null and mirror.has_method("net_rescale"):
 				mirror.call("net_rescale", int(event.get("mh", 0)), int(event.get("hp", 0)))
+
+
+func _mirror_died(id: int, mirror: BaseEnemy) -> void:
+	"""(Follower.) A monster dies here: at the leader's "die", or the server's
+	count bringing it to zero - whichever comes first; the second finds it
+	gone."""
+	if mirror == null:
+		return
+	_enemies.erase(id)
+	# YOUR KILL, IF YOU HELPED: reported from here, by this game, so the
+	# server rolls this player's own bag.
+	if _hit_ids.has(id):
+		_hit_ids.erase(id)
+		report_kill.call(mirror.get_enemy_id(), mirror.global_position,
+			get_tree().get_first_node_in_group("player"))
+	mirror.net_vanish()
+
+
+func _on_health(rows: Array, dead: Array) -> void:
+	"""THE SERVER OWNS THEIR HEALTH (0.87.0): its count, on every monster
+	this game draws or runs, and the deaths it made."""
+	if role == Role.PENDING or (role == Role.FOLLOW and _awaiting_full):
+		return
+	for row in rows:
+		if not (row is Array) or (row as Array).size() < 3:
+			continue
+		var e: Variant = _enemies.get(int(row[0]))
+		if is_instance_valid(e):
+			(e as BaseEnemy).net_server_health(int(row[1]), int(row[2]))
+	for raw_id in dead:
+		var id: int = int(raw_id)
+		var e: Variant = _enemies.get(id)
+		if not is_instance_valid(e):
+			continue
+		var monster: BaseEnemy = e
+		if role == Role.FOLLOW and monster.net_mirror:
+			_mirror_died(id, monster)
+		elif role == Role.LEAD and not monster.net_mirror:
+			monster.net_server_kill()
 
 
 func _replay_shot(mirror: BaseEnemy, event: Dictionary, at: Vector2) -> void:

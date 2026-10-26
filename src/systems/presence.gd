@@ -63,6 +63,14 @@
 # Nothing plays later than it would have: attacks are played back on the
 # maker's clock, PLAYBACK_DELAY behind, just as the steps in the same frame
 # are. Our own come back in it, as our own steps do, and are passed over.
+#
+# AND, SINCE 0.87.0, THE SERVER OWNS THEIR HEALTH. The owner, of the leader
+# still being trusted with the monsters: "fix this". A server whose welcome
+# says "sh" sends its own count of every monster's health each tick ("hp"),
+# and the monsters it brought to zero. monstersync.gd draws that count on
+# every mirror, lowers the leader's own monsters to it, and kills what it
+# says is dead on every screen - so a leader can still move the monsters, but
+# can no longer heal one past the hits that landed or kill one they did not.
 extends Node
 
 # Their aim on the wire, stepped to this many degrees (aim_degrees_of()).
@@ -74,6 +82,10 @@ const SHARED_VERSION := 3
 const SHARED_MINIMUM := 2
 # Said in the hello (0.76.0): others' attacks may come inside the tick's moves.
 const TICK_ATTACKS := 1
+# Said in the hello (0.87.0): this game draws the server's count of every
+# monster's health, and takes a death the count makes (THE SERVER OWNS THEIR
+# HEALTH, below).
+const SERVER_HEALTH := 1
 
 # Who runs this area's monsters: the leader's account id, -1 for nobody (or no
 # link at all), and how many other games share them.
@@ -88,6 +100,10 @@ signal world_needed(for_id: int)
 # PARTY VOICE (0.43.0): who is in the party's voice ("vs") and a call's setup
 # from another game ("vc"), for the Voice autoload (voice.gd).
 signal voice_message(message: Dictionary)
+## THE SERVER OWNS THEIR HEALTH (0.87.0): the server's count of the area's
+## monsters this tick, as [[monster id, health, maximum], ...], and the ones
+## it brought to zero - dead, whatever the leader says. For monstersync.gd.
+signal health_received(rows: Array, dead: Array)
 ## THE DAMAGE METER (0.81.0): a report from the server, once a second while
 ## watch_damage(true) - its room's hits the books counted, and who dealt them
 ## (damagemeter.gd). Only an owner's or co-owner's game is sent any.
@@ -175,6 +191,7 @@ var _server_shares: bool = false
 var _server_books: bool = false
 # Whether the server passes on attacks and levers (its welcome's "x").
 var _server_relays: bool = false
+var _server_health: bool = false
 # Attack pictures waiting for the next send: [kind, ts, ox, oy, tx, ty, delay ms, flags].
 var _attacks: Array = []
 var _lever_rule: RegEx = RegEx.create_from_string(LEVER_PATTERN)
@@ -252,6 +269,12 @@ func books() -> bool:
 	"""True while the link is open to a server that keeps books on the
 	monsters: the leader sends its world even alone, its own hits inside."""
 	return shares() and _server_books
+
+
+func server_health() -> bool:
+	"""True while the link is open to a server that owns the monsters' health
+	(0.87.0): every game draws its count, and a monster it says is dead is."""
+	return shares() and _server_health
 
 
 func relays() -> bool:
@@ -445,8 +468,10 @@ func _pump(delta: float, player: Node) -> void:
 		_server_shares = false
 		_server_books = false
 		_server_relays = false
+		_server_health = false
 		_attacks = []
-		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION, "xt": TICK_ATTACKS})
+		_send({"t": "hello", "ticket": _ticket, "v": SHARED_VERSION, "xt": TICK_ATTACKS,
+			"sh": SERVER_HEALTH})
 	while _socket != null and _socket.get_available_packet_count() > 0:
 		var parsed: Variant = JSON.parse_string(_socket.get_packet().get_string_from_utf8())
 		if parsed is Dictionary:
@@ -635,6 +660,7 @@ func handle_message(message: Dictionary) -> void:
 			_server_shares = int(message.get("v", 0)) >= SHARED_MINIMUM
 			_server_books = typeof(message.get("books")) == TYPE_BOOL and bool(message["books"])
 			_server_relays = int(message.get("x", 0)) >= 1
+			_server_health = int(message.get("sh", 0)) >= SERVER_HEALTH
 			if _watching_damage:
 				_send({"t": "dm", "on": true})
 		"join":
@@ -668,6 +694,10 @@ func handle_message(message: Dictionary) -> void:
 		"w":
 			if message.get("d") is Dictionary:
 				world_received.emit(message["d"])
+		"hp":
+			var rows: Variant = message.get("p", [])
+			var dead: Variant = message.get("d", [])
+			health_received.emit(rows if rows is Array else [], dead if dead is Array else [])
 		"h":
 			var batch: Variant = message.get("p")
 			if batch is Array:

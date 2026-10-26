@@ -2644,6 +2644,11 @@ func raise_for_stir() -> void:
 	max_hp = stirred_max
 	stir_raised = true
 	_refresh_health_display()
+	# AND THE SERVER COUNTS IT (0.87.0): it owns this monster's health now, so
+	# a raise it never heard of would end the monster a third early. Only the
+	# game running it says so; every copy raises itself.
+	if _net_sync != null and not net_mirror:
+		_net_sync.leader_event(self, {"k": "mh", "mh": max_hp, "hp": hp})
 
 
 func get_flee_speed() -> float:
@@ -3653,6 +3658,41 @@ func net_take_remote_hit(amount: int, element: int = Element.Type.NONE) -> void:
 	_net_applying_remote = true
 	take_damage(amount, element)
 	_net_applying_remote = false
+
+
+func net_server_health(new_hp: int, new_max: int) -> void:
+	"""THE SERVER OWNS THEIR HEALTH (0.87.0): its count of this monster. A
+	mirror shows it outright - flashing for a drop it did not cause, as for
+	the leader's word before. The monster this game runs only comes DOWN to
+	it: a hit the server counted that never reached this game still lands,
+	and the server never heals what this game has hurt."""
+	if _death_resolved or _dying:
+		return
+	if net_mirror:
+		if new_max > 0 and new_max != max_hp:
+			max_hp = new_max
+		var shown: int = clampi(new_hp, 0, maxi(max_hp, 1))
+		if shown == hp:
+			return
+		if shown < hp and not _net_flashed_recently():
+			play_hit_flash()
+		hp = shown
+		_refresh_health_display()
+		return
+	if new_hp < hp:
+		hp = maxi(new_hp, 0)
+		_refresh_health_display()
+
+
+func net_server_kill() -> void:
+	"""(The monster this game runs.) The server's count brought it to zero:
+	it dies here as from a blow - the kill reported if this game helped, the
+	respawner told, the death played - whatever this game's own count says."""
+	if _death_resolved or _dying or net_mirror:
+		return
+	hp = 0
+	_refresh_health_display()
+	_die()
 
 
 func net_vanish() -> void:

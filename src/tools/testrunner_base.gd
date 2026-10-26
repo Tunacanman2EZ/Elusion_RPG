@@ -4110,6 +4110,19 @@ class BooksLink extends FakeLink:
 		return open and keeps_books
 
 
+class HealthLink extends BooksLink:
+	## THE SERVER OWNS THEIR HEALTH (0.87.0): a link to a server that says "sh".
+	signal health_received(rows: Array, dead: Array)
+	var owns_health: bool = true
+
+	func server_health() -> bool:
+		return open and owns_health
+
+	func deliver_health(rows: Array, dead: Array = []) -> void:
+		# THROUGH JSON, as the wire does.
+		health_received.emit(JSON.parse_string(JSON.stringify(rows)), JSON.parse_string(JSON.stringify(dead)))
+
+
 func _sm_hits(world: Dictionary) -> Array:
 	var out: Array = []
 	for hit in world.get("hits", []):

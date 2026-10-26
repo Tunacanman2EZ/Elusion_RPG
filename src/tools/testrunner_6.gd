@@ -3280,8 +3280,11 @@ func _test_presence_carries_the_monsters() -> void:
 	check("the game says it speaks shared monsters when it says hello",
 		_code_src("res://src/systems/presence.gd").contains('"t": "hello", "ticket": _ticket, "v": SHARED_VERSION'))
 	check("  and that others' attacks may ride the tick (0.76.0)",
-		_code_src("res://src/systems/presence.gd").contains('"v": SHARED_VERSION, "xt": TICK_ATTACKS})')
+		_code_src("res://src/systems/presence.gd").contains('"v": SHARED_VERSION, "xt": TICK_ATTACKS,')
 		and Presence.TICK_ATTACKS == 1)
+	check("  and that it draws the server's count of the monsters' health (0.87.0)",
+		_code_src("res://src/systems/presence.gd").contains('"sh": SERVER_HEALTH})')
+		and Presence.SERVER_HEALTH == 1)
 	Presence.handle_message({"t": "welcome", "id": 7})
 	check("a server from before shared monsters does not share them - every game fights its own",
 		not Presence.shares())

@@ -2821,7 +2821,9 @@ follower took the arena over when the leader left.
 each game's own until 0.19.0 - see "Seeing each other's attacks" below. The leader is trusted with the monsters exactly as every
 game is trusted with its own kills (E-3): a cheating leader can do no more to
 the monsters than a cheating game always could, and the caps above keep an
-invented number from reaching anybody's health.
+invented number from reaching anybody's health. **Since 0.87.0 it is not
+trusted with their health either** - see "The server owns the monsters'
+health" below.
 
 ### The server's books: it watches every fight (0.10.0)
 
@@ -8453,6 +8455,50 @@ dark one of the six per shot.
 - **Element effects stay off in the Field** (`BulletZone.element_effects`),
   so an ice orb there chills nobody; a switch for later if wanted.
 - Tested: `_test_monsters_fire_their_element()`.
+
+## The server owns the monsters' health (0.87.0)
+
+The owner, of the leader still being trusted with the monsters: "fix this",
+choosing the smaller of two sizes - the server owns every monster's health,
+deaths and respawns; the leader's game still moves them. (The bigger, the
+server running the monsters itself, is weeks and more CPU.) The server half is
+the API's presence.py and combatbook.py; this half is `monstersync.gd`,
+`BaseEnemy` and `presence.gd`.
+
+- **The hello says `"sh": 1`** and a server whose welcome says the same sends
+  `{"t": "hp", "p": [[id, health, maximum], ...], "d": [id, ...]}` each tick
+  in a room of two or more: its own count of every monster it moved, and the
+  ones it brought to zero (`Presence.health_received`, `server_health()`).
+- **A mirror shows the server's count**, never the leader's: the snap's
+  health is passed over and `BaseEnemy.net_server_health()` sets it, flashing
+  for a drop it did not cause as before.
+- **The leader's own monsters come DOWN to the count, never up**: a hit the
+  server counted that never reached this game still lands, and the server
+  never heals what this game has hurt.
+- **A count at zero is dead on every screen.** A mirror dies as at a leader's
+  "die" (`_mirror_died()`: the kill reported if this game helped); the
+  leader's own dies as from a blow (`net_server_kill()` -> `_die()`, its
+  respawner and the gauntlet hearing `died` as ever). Whichever of the
+  server's word and the leader's "die" comes second finds nothing to do, so a
+  kill is reported once. The server judges such a death AGREED at once.
+- **A stir raising a monster while it stands is said** (`raise_for_stir()`
+  sends "mh", which `leader_event()` now lets go even alone): the count rises
+  with it instead of reaching zero a third early.
+- **What stays the leader's**: where monsters stand, how they move, what they
+  throw, and when they come back. A dodge is still decided on your screen.
+- **A leader that lies loses the area** (presence.py, LEAD STRIKES): three
+  deaths in ten minutes the count did not back, monsters back sooner than
+  their respawn, or moving one the count killed, and the next game in line
+  leads; the struck one may not lead there for ten minutes. Alone, it keeps
+  it - there is nobody to hand it to, and it only affects its own screen.
+- **Old on either side plays as before**: a game without `sh` is sent no
+  `hp` and shows the leader's health; a server without it sends none.
+  Deploy the server first.
+
+Tested: `_test_the_server_owns_monster_health()` (a stand-in link,
+`HealthLink`), and the API's test_presence.py P-19 and P-19b (a real socket:
+a follower's hits bring the count to zero, both games hear it, and the death
+is AGREED with no word from the leader).
 
 ## The element system
 
