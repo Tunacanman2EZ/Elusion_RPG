@@ -4391,15 +4391,21 @@ func _test_the_hotbar_grows_for_thumbs() -> void:
 	var grown: Rect2 = bar.get_global_rect()
 	check("  while the touch screen is in use the bar is that size, grown up and left from its bottom right corner",
 		want > 1.2 and is_equal_approx(bar.scale.x, want) and is_equal_approx(bar.scale.y, want) and grown.end.is_equal_approx(resting.end)
-		and grown.size.is_equal_approx(resting.size * want), [want, bar.scale, resting, grown])
+		and is_equal_approx(grown.size.y, resting.size.y * want), [want, bar.scale, resting, grown])
+	# FIVE KEYS UNDER A THUMB (0.91.0): 1 to 5 shown, the bar as wide as they are.
+	var shown_keys: int = bar.slots.filter(func(key: Control) -> bool: return key.visible).size()
+	check("  and it shows keys 1 to 5 only, narrowed to them from its right edge (0.91.0)",
+		shown_keys == Hotbar.TOUCH_KEYS and bar.slots[0].visible and not bar.slots[Hotbar.TOUCH_KEYS].visible
+		and grown.size.x < resting.size.x * want * 0.6, [shown_keys, grown.size.x, resting.size.x * want])
 	pad._process(0.0)
 	var attack_rect: Rect2 = (pad.get("attack") as Control).get_global_rect()
 	check("  and the pad lays out over it the frame it appears - Attack stands on its top",
 		attack_rect.end.y <= grown.position.y + 0.5, [attack_rect, grown])
 	TouchControls.set_active(false)
 	Hotbar.pixel_ratio_for_test = 0.0
-	check("  back to its own size with a mouse or the keys",
-		bar.scale == Vector2.ONE and bar.get_global_rect().is_equal_approx(resting), [bar.scale, bar.get_global_rect()])
+	check("  back to its own size with a mouse or the keys, all ten keys again",
+		bar.scale == Vector2.ONE and bar.get_global_rect().is_equal_approx(resting)
+		and bar.slots.all(func(key: Control) -> bool: return key.visible), [bar.scale, bar.get_global_rect()])
 	hud.queue_free()
 	await get_tree().process_frame
 	var shell: String = FileAccess.get_file_as_string("res://web/shell.html")

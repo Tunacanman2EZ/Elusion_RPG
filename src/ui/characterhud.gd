@@ -13,6 +13,8 @@ extends CanvasLayer
 # Api's static helpers, called on the script and not on the autoload: a static
 # function called through an instance is a warning in the editor's debugger.
 const ApiScript := preload("res://src/systems/api.gd")
+# The menu bar under a thumb (0.91.0): Menu alone, opening every window.
+const TouchMenu := preload("res://src/ui/touchmenu.gd")
 
 
 # =============================================================================
@@ -312,6 +314,8 @@ func _ready() -> void:
 	# ON A TOUCH SCREEN, A PAD FOR THE THUMBS (0.53.0): the stick and the
 	# buttons, under everything else here (touchcontrols.gd, touchpad.gd).
 	TouchControls.attach(self)
+	# AND THE BAR FOLDED INTO MENU while the touch screen is in use (0.91.0).
+	touch_menu = TouchMenu.attach(self)
 
 
 # The keys that play the game. project.godot puts WASD and the arrows in
@@ -880,7 +884,18 @@ func _add_version_to_menu() -> void:
 	items.add_child(tag)
 
 
+# The touch screen's grid (touchmenu.gd), made in _ready().
+var touch_menu: Control = null
+
+
 func toggle_nav_menu(toggle_name: String) -> void:
+	# ON A TOUCH SCREEN MENU OPENS THE GRID of everything on the bar.
+	if toggle_name == "menubutton" and touch_menu != null and bool(touch_menu.call("is_folded")):
+		var was_open: bool = touch_menu.visible
+		close_nav_menus()
+		if not was_open:
+			touch_menu.call("open")
+		return
 	var menu: Control = _nav_menu(toggle_name)
 	if menu == null:
 		return
@@ -900,8 +915,9 @@ func toggle_nav_menu(toggle_name: String) -> void:
 
 
 func close_nav_menus() -> bool:
-	"""Shuts both dropdowns. True when one was open."""
-	var was_open: bool = false
+	"""Shuts both dropdowns, and the touch screen's grid. True when one was
+	open."""
+	var was_open: bool = touch_menu != null and bool(touch_menu.call("close"))
 	for toggle_name in NAV_GROUPS:
 		var menu: Control = _nav_menu(toggle_name)
 		if menu != null and menu.visible:
@@ -929,6 +945,11 @@ func _click_outside_nav_menus(event: InputEvent) -> void:
 	var click := event as InputEventMouseButton
 	if click == null or not click.pressed:
 		return
+	if touch_menu != null and touch_menu.visible:
+		var menu_button: Button = _nav_button("menubutton")
+		if not bool(touch_menu.call("covers", click.position)) \
+				and not (menu_button != null and menu_button.get_global_rect().has_point(click.position)):
+			touch_menu.call("close")
 	for toggle_name in NAV_GROUPS:
 		var menu: Control = _nav_menu(toggle_name)
 		if menu == null or not menu.visible:
@@ -968,6 +989,24 @@ func _paint_group_dots() -> void:
 			toggle.text = "%s •" % words
 			toggle.tooltip_text = "Waiting for you: %s" % ", ".join(lit)
 			toggle.add_theme_color_override("font_color", colour if colour is Color else ASK_COLOUR)
+	paint_touch_menu_dot()
+
+
+func paint_touch_menu_dot() -> void:
+	"""On a touch screen Menu is the whole bar (touchmenu.gd), so it wears the
+	dot of anything on it - Chat and Social as well as its own. With the bar
+	unfolded _paint_group_dots() has already painted it."""
+	var menu: Button = _nav_button("menubutton")
+	if menu == null or touch_menu == null or not bool(touch_menu.call("is_folded")):
+		return
+	if menu.text.ends_with(" •"):
+		return
+	for other in ["chatbutton", "socialbutton"]:
+		var button: Button = _nav_button(other)
+		if button != null and button.text.ends_with(" •"):
+			menu.text = "Menu •"
+			menu.add_theme_color_override("font_color", button.get_theme_color("font_color"))
+			return
 
 
 func _add_owner_button() -> void:
@@ -2052,6 +2091,7 @@ func _mark_chat_button(lit: bool) -> void:
 		button.add_theme_color_override("font_color", WHISPER_COLOUR)
 	else:
 		button.remove_theme_color_override("font_color")
+	paint_touch_menu_dot()
 
 
 # =============================================================================

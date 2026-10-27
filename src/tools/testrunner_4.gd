@@ -274,7 +274,7 @@ func _test_a_phone_stays_cool_and_unburnt() -> void:
 
 	# ---- the welcome says try Options -----------------------------------------------------------
 	check("the welcome says to take a minute in Options first - brightness, attacks, the battery saver and the rest",
-		ControlsPanel.welcome_words(false).contains("the button below, or Esc.") and ControlsPanel.welcome_words(true).contains("or Menu, then Options.")
+		ControlsPanel.welcome_words(false).contains("the button below, or Esc.") and ControlsPanel.welcome_words(true).contains("Options is in Menu, bottom left.")
 		and ControlsPanel.welcome_words(false).contains("battery saver") and ControlsPanel.welcome_words(false).contains("how bright attacks are")
 		and ControlsPanel.welcome_words(false).contains("Field"))
 	var was_seen_path: String = ControlsPanel.seen_path

@@ -8500,6 +8500,65 @@ Tested: `_test_the_server_owns_monster_health()` (a stand-in link,
 a follower's hits bring the count to zero, both games hear it, and the death
 is AGREED with no word from the leader).
 
+## The phone's screen is the game's (0.91.0)
+
+The owner, on a phone: "attack and stuff takes up a majority of the screen on
+mobile we are going to have to figure that out". Measured at 844x390 (a phone
+held sideways): the stick's resting frame, Attack, Use and Run, ten hotbar
+keys at the thumbs' scale (731 of 1280 units across) and an eight-button bar
+covered most of the lower half, and the welcome card was fourteen rows at
+about 7 CSS pixels. Five changes, all only while `TouchControls.active` - with
+a keyboard and mouse nothing moved (pictured, and every older check passes):
+
+- **The pad a quarter smaller** (touchpad.gd): Attack 72 CSS pixels (was 92),
+  Use and Run 46 (60), the stick 50 (62), the gaps with them. Still past a
+  thumb's 9 mm. Under 4.5% of the screen where it was 5.8%.
+- **The stick only under a thumb**: `Stick._draw()` returns at rest. The zone
+  still takes a touch anywhere on the left; the welcome says so.
+- **Five hotbar keys** (hotbar.gd, `TOUCH_KEYS`): 1 to 5 shown, the bar
+  narrowed from its pinned right edge (`_show_touch_keys()`, which keeps the
+  ten-key width and puts it back). 6 to 0 keep what is on them.
+- **One Menu button** (src/ui/touchmenu.gd, made by the HUD as `touch_menu`):
+  the bar keeps only Menu, at the pad's scale from its bottom left corner, and
+  Menu opens a grid of every button the bar has - its own, Social's and
+  Menu's (`ITEMS`). **Nothing is moved**: a grid button presses the bar's own
+  button, so the windows, the dropdowns' wiring and the dots stay the bar's,
+  and the grid copies each button's words (dot included) as it opens. Menu
+  wears Chat's and Social's dot while folded (`paint_touch_menu_dot()`).
+  `toggle_nav_menu("menubutton")` opens the grid while folded;
+  `close_nav_menus()` and a tap outside shut it.
+- **A welcome for thumbs** (controlspanel.gd): three lines of directions
+  (`TOUCH_WELCOME_LINES`), the six things a thumb does
+  (`TOUCH_WELCOME_ROWS`), in text `TOUCH_TEXT` (1.5) times its size
+  (`fit_text_to_thumbs()`, each label's own size kept in a meta, so it never
+  grows twice). **Bigger text, not a scaled card**: PanelWindow sizes and
+  places every window from what it holds, and a scaled one was measured at
+  its unscaled size and ran off the bottom of the screen. The card redraws
+  when the thumbs or the keys take over with it open. Menu, then Controls
+  still shows the whole touch list.
+
+Two fixes found on the way, both in touchpad.gd: an icon was snapped to whole
+screen pixels on a window with fewer pixels than units (20-unit steps, so it
+left its frame), and `Art.texel_size()` grew a picture past its room when the
+room was under a screen pixel a texel. Both now only snap where there are
+more pixels than units, as `art_pixel()` already did.
+
+`_test_the_phone_screen_is_the_games()` (testrunner_8) holds the sizes, the
+stick at rest, the fold and back, the grid's buttons and dots, and the
+welcome; testrunner_3's hotbar check holds the five keys. Four sabotages
+caught: the stick drawn at rest, the bar not folded, ten keys, the long
+welcome list.
+
+**Speed at 1x, measured for the same request ("making it even faster")**:
+with every script's physics switched off, town's tick costs the same, so at
+1x the scripts are not the cost; the sandbox's software drawing cannot say
+what a phone's GPU does. Two levers left, both the owner's call: physics at
+60 ticks instead of 80 (a quarter of the physics work; interpolated, so it
+looks the same, but every count in ticks would change in seconds - "a feel
+decision", Speed on day 1), and a smaller engine for the web (index.wasm is
+39.5 MB of a 58 MB first visit, about 16 MB compressed; a Godot build without
+3D is a custom export template, built from source).
+
 ## Deleting your own account (0.90.0)
 
 The owner, of a database diagram that showed no way to remove an account:

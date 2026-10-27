@@ -108,6 +108,29 @@ const TOUCH_ROWS := [
 ]
 const TOUCH_FOOTER := "Menu, then Controls, shows this card again."
 
+# THE WELCOME UNDER A THUMB (0.91.0). On a phone the card was the keyboard
+# welcome's seven lines and fourteen rows at the game's 14-unit text - about
+# 7 CSS pixels, and taller than the screen. So a touch screen's welcome says
+# less, in text half as big again (TOUCH_TEXT): the directions in three
+# lines, and the six things a thumb does. Menu, then Controls, still shows the
+# whole list, at the same size. Bigger text, not a scaled card: PanelWindow
+# sizes and places every window from what it holds, and a scaled one would
+# be measured at the wrong size.
+const TOUCH_WELCOME_LINES := [
+	"Walk south to the portal. It takes you to the town square and the shop.",
+	"From the square, walk north to the portal to the Field and the fighting.",
+	"Start with the small enemies. Options is in Menu, bottom left.",
+]
+const TOUCH_WELCOME_ROWS := [
+	["Move", "A thumb anywhere on the left"],
+	["Attack", "Hold Attack; drag it to aim"],
+	["Run", "Tap Run, then move"],
+	["Shop, bank, fire, fishing", "Use"],
+	["Potions and food", "Tap a hotbar key"],
+	["Bag, map, chat and the rest", "Menu"],
+]
+const TOUCH_TEXT := 1.5
+
 # WHERE "SEEN" IS KEPT. Its own file, not options.cfg: every key in Settings'
 # DEFAULTS has a control in the Options window, and a flag nobody should set by
 # hand is not a setting. A static var so the suite can point it at a scratch
@@ -164,6 +187,10 @@ func _ready() -> void:
 			keys = settings.get("keys")
 	if keys != null and not keys.changed.is_connected(_on_keys_changed):
 		keys.changed.connect(_on_keys_changed)
+	# THUMBS OR KEYS CHANGED WITH THE CARD UP: it says the other one's words.
+	var touch: Node = get_node_or_null("/root/TouchControls")
+	if touch != null and touch.has_signal("changed"):
+		touch.connect("changed", _on_touch_changed)
 	build_rows()
 
 
@@ -203,8 +230,15 @@ func close() -> void:
 
 static func welcome_words(touch: bool) -> String:
 	"""The welcome: the way to the Field, then a word about Options."""
+	if touch:
+		return "\n".join(TOUCH_WELCOME_LINES)
 	var options: String = "\n".join(WELCOME_OPTIONS_LINES) % (WELCOME_OPTIONS_TOUCH if touch else WELCOME_OPTIONS_KEYS)
 	return "\n".join(WELCOME_LINES) + "\n\n" + options
+
+
+func _on_touch_changed(_on: bool) -> void:
+	if visible and not _editing:
+		_show(is_welcome())
 
 
 func _on_options_pressed() -> void:
@@ -242,6 +276,7 @@ func _show(welcome: bool) -> void:
 	if key_note != null:
 		key_note.visible = _editing
 	build_rows()
+	fit_text_to_thumbs()
 	visible = true
 	# SIZED TO WHAT IS SHOWING, then centred: the welcome is taller than the
 	# key list, and a plain Control does not size itself to its children.
@@ -262,6 +297,26 @@ func _size_to_content() -> void:
 		position = ((get_viewport_rect().size - size) * 0.5).floor()
 
 
+func fit_text_to_thumbs() -> void:
+	"""Every word on the card TOUCH_TEXT times its size on a touch screen, and
+	its own size with a keyboard. Each control's own size is kept the first
+	time, so this can run on every open without growing anything twice."""
+	var grow: float = TOUCH_TEXT if on_touch_screen() else 1.0
+	for node in find_children("*", "Control", true, false):
+		var c := node as Control
+		if not (c is Label or c is Button):
+			continue
+		if not c.has_meta(&"_own_font_size"):
+			c.set_meta(&"_own_font_size", [c.get_theme_font_size(&"font_size"), c.has_theme_font_size_override(&"font_size")])
+		var own: Array = c.get_meta(&"_own_font_size")
+		if grow != 1.0:
+			c.add_theme_font_size_override(&"font_size", int(round(float(own[0]) * grow)))
+		elif bool(own[1]):
+			c.add_theme_font_size_override(&"font_size", int(own[0]))
+		else:
+			c.remove_theme_font_size_override(&"font_size")
+
+
 # =============================================================================
 # THE ROWS
 # =============================================================================
@@ -277,7 +332,10 @@ func build_rows() -> void:
 		return
 	key_grid.columns = 2
 	var touch: bool = on_touch_screen()
-	for row in (TOUCH_ROWS if touch else ROWS):
+	var rows: Array = ROWS
+	if touch:
+		rows = TOUCH_WELCOME_ROWS if is_welcome() else TOUCH_ROWS
+	for row in rows:
 		var what := Label.new()
 		what.text = String(row[0])
 		what.add_theme_color_override("font_color", WHAT_COLOR)

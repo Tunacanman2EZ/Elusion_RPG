@@ -66,6 +66,12 @@ const SLOT_KEYS: Array[Key] = [
 const TOUCH_MOST_SCALE := 1.85
 const PadScript := preload("res://src/ui/touchpad.gd")
 
+# FIVE KEYS UNDER A THUMB (0.91.0). Ten keys at the touch scale were 731 of
+# the game's 1280 units across, half the screen's width, under Attack. On a
+# touch screen keys 1 to 5 are shown and the bar is as wide as they are; 6 to
+# 0 keep what is on them, and come back with a keyboard.
+const TOUCH_KEYS := 5
+
 # The suite's stand-in for a phone's pixels to a CSS pixel; 0 asks the screen.
 # A headless run's window is the game's own size at one pixel to one, where
 # the bar would never grow at all.
@@ -118,9 +124,14 @@ func _on_touch_changed(_on: bool) -> void:
 	fit_to_thumbs()
 
 
+# How wide the bar is with all ten keys, kept as it is narrowed.
+var _full_width: float = NAN
+
+
 func fit_to_thumbs() -> void:
 	var grow: float = 1.0
 	var window: Window = get_window() if is_inside_tree() else null
+	_show_touch_keys(TouchControls.active)
 	if TouchControls.active and window != null:
 		var view: Vector2 = get_viewport_rect().size
 		var drawn_at: Vector2 = Vector2(window.content_scale_size) if window.content_scale_size != Vector2i.ZERO else view
@@ -128,6 +139,24 @@ func fit_to_thumbs() -> void:
 		grow = touch_scale(Vector2(window.size), drawn_at, ratio)
 	pivot_offset = size
 	scale = Vector2(grow, grow)
+
+
+func _show_touch_keys(touch: bool) -> void:
+	"""Keys past TOUCH_KEYS hidden on a touch screen, and the bar narrowed to
+	the ones left, from its right edge, where it is pinned."""
+	var narrowed: bool = not is_nan(_full_width)
+	if touch == narrowed:
+		return
+	if touch:
+		_full_width = offset_right - offset_left
+	for i in slots.size():
+		if slots[i] != null:
+			slots[i].visible = not touch or i < TOUCH_KEYS
+	if touch:
+		offset_left = offset_right - get_combined_minimum_size().x
+	else:
+		offset_left = offset_right - _full_width
+		_full_width = NAN
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -6,7 +6,8 @@
 # until a key - and holds:
 #
 #   the stick    anywhere in the left part of the screen: it comes to where the
-#                thumb lands and follows it, and is the move keys, eight ways
+#                thumb lands and follows it, and is the move keys, eight ways;
+#                drawn only while a thumb is on it (0.91.0)
 #   Attack       bottom right, above the hotbar: a press is an attack; held, it
 #                keeps attacking; dragged, it aims (TouchControls, THE AIM)
 #   Use          the interact key: the shop, the bank, the fire, the fishing
@@ -44,16 +45,22 @@
 extends Control
 
 # In CSS pixels: what a thumb gets, whatever the screen.
-const STICK_RADIUS := 62.0
-const KNOB_RADIUS := 26.0
+#
+# A QUARTER SMALLER (0.91.0). The owner, on a phone: "attack and stuff takes
+# up a majority of the screen on mobile". Measured at 844x390, the pad, the
+# hotbar and the menu bar covered most of the lower half. Attack is 72 CSS
+# pixels now (was 92), about 19 mm on a phone - still past the 9 mm a thumb
+# needs - and the small ones 46 (was 60).
+const STICK_RADIUS := 50.0
+const KNOB_RADIUS := 21.0
 # The square sockets: Attack, and the small ones beside and above it.
-const ATTACK_SIDE := 92.0
-const SMALL_SIDE := 60.0
-const EDGE := 18.0
-const GAP := 10.0
+const ATTACK_SIDE := 72.0
+const SMALL_SIDE := 46.0
+const EDGE := 14.0
+const GAP := 8.0
 # Room under a small socket for its word.
-const CAPTION := 15.0
-const LABEL_SIZE := 12.0
+const CAPTION := 13.0
+const LABEL_SIZE := 11.0
 # Never smaller than the game's own units, and on the smallest phone no bigger
 # than this - past it the pad would cover the game.
 const MOST_SCALE := 2.4
@@ -315,9 +322,11 @@ class Art:
 		units, held to whole screen pixels."""
 		if texels <= 0:
 			return 0.0
-		if screen_per_unit < 1.0:
+		# Less than a screen pixel to each of its pixels (a small socket
+		# on a small window): drawn to fit, not grown past its room.
+		if screen_per_unit < 1.0 or room * screen_per_unit < texels:
 			return room / texels
-		return maxf(1.0, floor(room * screen_per_unit / texels)) / screen_per_unit
+		return floor(room * screen_per_unit / texels) / screen_per_unit
 
 	static func draw_socket(on: CanvasItem, box: Rect2, pixel: float, tint: Color) -> void:
 		"""The slot drawn as `box`, its frame `pixel` units to one of its pixels."""
@@ -396,7 +405,10 @@ class PadButton extends Control:
 		var at: Vector2 = box.position + (box.size - Vector2(side, side)) / 2.0
 		if finger >= 0:
 			at.y += pixel
-		return Rect2((at * per_unit).round() / per_unit, Vector2(side, side))
+		# Whole screen pixels only where there are more of them than units.
+		if per_unit >= 1.0:
+			at = (at * per_unit).round() / per_unit
+		return Rect2(at, Vector2(side, side))
 
 	func _gui_input(event: InputEvent) -> void:
 		var touch := event as InputEventScreenTouch
@@ -450,7 +462,7 @@ class PadButton extends Control:
 
 class Stick extends Control:
 	"""The move stick: wherever the thumb lands in its zone, following the
-	thumb past its rim, at rest in the corner when nothing holds it. The
+	thumb past its rim, and not drawn when nothing holds it. The
 	hotbar's slot as big as the stick, with the pack's gold coin for a knob."""
 	var radius: float = 62.0
 	var knob_radius: float = 26.0
@@ -540,12 +552,18 @@ class Stick extends Control:
 		if coin != null:
 			var texels: int = maxi(coin.get_width(), coin.get_height())
 			side = Art.texel_size(knob_radius * 2.0, texels, per_unit) * texels
-		var corner: Vector2 = ((at - Vector2(side, side) / 2.0) * per_unit).round() / per_unit
+		var corner: Vector2 = at - Vector2(side, side) / 2.0
+		if per_unit >= 1.0:
+			corner = (corner * per_unit).round() / per_unit
 		return Rect2(corner, Vector2(side, side))
 
 	func _draw() -> void:
 		var held: bool = finger >= 0
-		var tint := Color(1, 1, 1, 0.92 if held else 0.5)
+		# ONLY UNDER A THUMB (0.91.0): at rest the stick is not drawn at all,
+		# so the lower left is the game's. It appears where the thumb lands.
+		if not held:
+			return
+		var tint := Color(1, 1, 1, 0.92)
 		var side: float = float(int(radius * 2.0 / pixel)) * pixel
 		var corner: Vector2 = ((base - Vector2(side, side) / 2.0) * per_unit).round() / per_unit
 		Art.draw_socket(self, Rect2(corner, Vector2(side, side)), pixel, tint)

@@ -2966,3 +2966,132 @@ func _test_an_account_can_be_deleted() -> void:
 	screen.queue_free()
 	Api.username = was_name
 	print("  an account can be deleted, asked three times")
+
+
+# =============================================================================
+# THE PHONE'S SCREEN IS THE GAME'S (0.91.0)
+# =============================================================================
+# The owner, on a phone: "attack and stuff takes up a majority of the screen
+# on mobile". Measured at 844x390: the stick's frame, Attack, Use and Run, ten
+# hotbar keys and an eight-button bar covered most of the lower half, and the
+# welcome card's text was about 7 CSS pixels. Each part below has its own
+# check; PC is held by every older check, which still passes.
+
+func _test_the_phone_screen_is_the_games() -> void:
+	section("THE PHONE'S SCREEN IS THE GAME'S - a smaller pad, no stick at rest, five keys, one Menu, a welcome for thumbs (0.91.0)")
+	var PadScript := preload("res://src/ui/touchpad.gd")
+	var MenuScript := preload("res://src/ui/touchmenu.gd")
+	# ---- the pad, a quarter smaller ------------------------------------------------
+	var view := Vector2(1280, 720)
+	var phone: float = 1.85
+	var at: Dictionary = PadScript.layout(view, phone, 720.0 - 163.0 * phone, 720.0 - 48.0, false)
+	var covered: float = 0.0
+	for id in ["attack", "use", "run"]:
+		covered += (at[id] as Rect2).get_area()
+	var share: float = covered / (view.x * view.y)
+	check("the pad's buttons cover under 4.5% of a phone's screen (they were 5.8%%): Attack %d, the small ones %d CSS pixels" % [int(PadScript.ATTACK_SIDE), int(PadScript.SMALL_SIDE)],
+		share < 0.045 and PadScript.ATTACK_SIDE <= 72.0 and PadScript.SMALL_SIDE <= 46.0, share)
+	check("  still a thumb's size: Attack at least 64 CSS pixels and the small ones 44",
+		PadScript.ATTACK_SIDE >= 64.0 and PadScript.SMALL_SIDE >= 44.0)
+	var pad_src: String = _code_src("res://src/ui/touchpad.gd")
+	var stick_src: String = pad_src.substr(pad_src.find("class Stick"))
+	var stick_draw: String = stick_src.substr(stick_src.find("	func _draw("))
+	var rest_return: int = stick_draw.find("if not held:")
+	var socket_at: int = stick_draw.find("Art.draw_socket(")
+	check("the stick is drawn only under a thumb: _draw() returns at rest before it draws a thing",
+		rest_return != -1 and socket_at != -1 and rest_return < socket_at
+		and stick_draw.substr(rest_return, 40).contains("return"))
+
+	# ---- the bar folds into Menu ---------------------------------------------------
+	var was_touch: bool = TouchControls.active
+	TouchControls.set_active(false)
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	add_child(hud)
+	await get_tree().process_frame
+	var menu: Control = hud.get("touch_menu")
+	var nav: Control = hud.get_node("%navframe")
+	var row: Control = hud.get_node("%navbuttons")
+	var bar_rect: Rect2 = nav.get_global_rect()
+	var on_bar: Array = row.get_children().filter(func(c: Node) -> bool: return (c as Control).visible).map(func(c: Node) -> String: return String(c.name))
+	check("the HUD makes the touch menu, folded off with a mouse: the bar's buttons all there",
+		menu != null and not bool(menu.call("is_folded")) and on_bar.size() == 8 and is_equal_approx(nav.scale.x, 1.0), on_bar)
+	MenuScript.pixel_ratio_for_test = 2.0
+	TouchControls.set_active(true)
+	await get_tree().process_frame
+	var left: Array = row.get_children().filter(func(c: Node) -> bool: return (c as Control).visible).map(func(c: Node) -> String: return String(c.name))
+	var folded_rect: Rect2 = nav.get_global_rect()
+	check("on a touch screen only Menu is on the bar, at the pad's scale, from its bottom left corner",
+		bool(menu.call("is_folded")) and left == ["menubutton"] and nav.scale.x > 1.2
+		and folded_rect.size.x < bar_rect.size.x * 0.3 and is_equal_approx(folded_rect.end.y, bar_rect.end.y)
+		and is_equal_approx(folded_rect.position.x, bar_rect.position.x), [left, nav.scale, folded_rect, bar_rect])
+	var menu_button: Button = hud.get_node("%menubutton")
+	menu_button.pressed.emit()
+	var system: Control = hud.get_node("%systemmenu")
+	var grid_ids: Array = []
+	for b in (menu.get("grid") as Control).get_children():
+		if (b as Control).visible:
+			grid_ids.append(String(b.name))
+	check("  Menu opens the grid of everything, not its dropdown: the bar's, Social's and Menu's own",
+		menu.visible and not system.visible and grid_ids == Array(MenuScript.ITEMS), grid_ids)
+	var drawn: Rect2 = Rect2(menu.global_position, menu.size * menu.scale.x)
+	check("  above the bar and on the screen", drawn.end.y <= folded_rect.position.y + 0.5 and drawn.position.x >= 0.0
+		and drawn.end.x <= 1280.0 and drawn.position.y >= 0.0, [drawn, folded_rect])
+	var opened: Array = []
+	var stats: Button = hud.get_node("%statsbutton")
+	stats.pressed.connect(func(): opened.append("stats"))
+	(menu.get("grid").get_node("statsbutton") as Button).pressed.emit()
+	check("  a button there presses the bar's own, and the grid shuts", opened == ["stats"] and not menu.visible, opened)
+	hud.call("_mark_chat_button", true)
+	check("  Menu wears Chat's dot while the bar is folded, as it is the whole bar", menu_button.text == "Menu •", menu_button.text)
+	menu.call("open")
+	check("  and the grid's Chat says it too", (menu.get("grid").get_node("chatbutton") as Button).text == "Chat •")
+	hud.call("close_nav_menus")
+	check("  closing the bar's menus shuts the grid", not menu.visible)
+	hud.call("_mark_chat_button", false)
+	TouchControls.set_active(false)
+	await get_tree().process_frame
+	var back: Array = row.get_children().filter(func(c: Node) -> bool: return (c as Control).visible).map(func(c: Node) -> String: return String(c.name))
+	check("a key back: the bar as the scene made it, all eight buttons, Menu its own words",
+		back == on_bar and nav.get_global_rect().is_equal_approx(bar_rect) and is_equal_approx(nav.scale.x, 1.0)
+		and menu_button.text == "Menu", [back, nav.get_global_rect(), menu_button.text])
+	menu_button.pressed.emit()
+	check("  and Menu opens its own dropdown again", system.visible and not menu.visible)
+	hud.call("close_nav_menus")
+	MenuScript.pixel_ratio_for_test = 0.0
+	hud.queue_free()
+	await get_tree().process_frame
+
+	# ---- the welcome for thumbs ----------------------------------------------------
+	var was_seen_path: String = ControlsPanel.seen_path
+	ControlsPanel.seen_path = "user://_suite_seen_phone.cfg"
+	var card: ControlsPanel = (load("res://scene/ui/controls/controlspanel.tscn") as PackedScene).instantiate() as ControlsPanel
+	add_child(card)
+	await get_tree().process_frame
+	card.open_welcome()
+	await get_tree().process_frame
+	var key_size: int = card.header_label.get_theme_font_size(&"font_size")
+	var key_rows: int = card.key_grid.get_child_count() / 2
+	TouchControls.set_active(true)
+	await get_tree().process_frame
+	var touch_size: int = card.header_label.get_theme_font_size(&"font_size")
+	var touch_rows: int = card.key_grid.get_child_count() / 2
+	var first_how: String = (card.key_grid.get_child(1) as Label).text if card.key_grid.get_child_count() > 1 else ""
+	check("the welcome under a thumb: the six things a thumb does, in text half as big again, said again the moment the thumbs take over",
+		touch_rows == ControlsPanel.TOUCH_WELCOME_ROWS.size() and touch_rows < key_rows
+		and touch_size == int(round(key_size * ControlsPanel.TOUCH_TEXT)) and first_how == String(ControlsPanel.TOUCH_WELCOME_ROWS[0][1]),
+		[touch_rows, key_rows, touch_size, key_size, first_how])
+	await get_tree().process_frame
+	check("  and it fits the screen", card.size.x <= 1280.0 and card.size.y <= 720.0 and card.position.y >= 0.0, card.size)
+	check("  three lines of directions, Options named in Menu", ControlsPanel.welcome_words(true).split("\n").size() == 3
+		and ControlsPanel.welcome_words(true).contains("Options is in Menu"))
+	card.open_controls()
+	check("  Menu, then Controls still shows the whole list for thumbs", card.key_grid.get_child_count() / 2 == ControlsPanel.TOUCH_ROWS.size())
+	TouchControls.set_active(false)
+	card.open_welcome()
+	check("  and a keyboard's welcome at its own size", card.header_label.get_theme_font_size(&"font_size") == key_size
+		and card.key_grid.get_child_count() / 2 == key_rows)
+	card.queue_free()
+	ControlsPanel.seen_path = was_seen_path
+	TouchControls.set_active(was_touch)
+	await get_tree().process_frame
+	print("  the phone's screen is the game's")
