@@ -641,6 +641,11 @@ func heard_save(body: Dictionary, answer: Variant) -> void:
 	stayed out, and came back at every door, until the next login."""
 	if pet_refused(answer):
 		CharacterData.pet_not_held(int(body.get("slot", -1)))
+	# A NEW CHARACTER'S STARTER POTIONS (0.92.0). The save that made it is
+	# answered with its bag when the server put potions on its first keys; the
+	# game made the character with an empty bag of its own, and takes this one.
+	if answer is Dictionary and (answer as Dictionary).get("inventory") is Array:
+		CharacterData.adopt_granted_bag(int(body.get("slot", -1)), (answer as Dictionary)["inventory"])
 
 
 func forget_slot(index: int) -> void:

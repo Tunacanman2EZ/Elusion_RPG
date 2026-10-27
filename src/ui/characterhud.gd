@@ -15,6 +15,8 @@ extends CanvasLayer
 const ApiScript := preload("res://src/systems/api.gd")
 # The menu bar under a thumb (0.91.0): Menu alone, opening every window.
 const TouchMenu := preload("res://src/ui/touchmenu.gd")
+# The way to the first fight, until the first kill (0.92.0).
+const GuideScript := preload("res://src/ui/guide.gd")
 
 
 # =============================================================================
@@ -316,6 +318,11 @@ func _ready() -> void:
 	TouchControls.attach(self)
 	# AND THE BAR FOLDED INTO MENU while the touch screen is in use (0.91.0).
 	touch_menu = TouchMenu.attach(self)
+	# THE WAY TO THE FIRST FIGHT (0.92.0, guide.gd), under every window: just
+	# after the pad, which is the HUD's first child.
+	guide = GuideScript.new()
+	add_child(guide)
+	move_child(guide, 1)
 
 
 # The keys that play the game. project.godot puts WASD and the arrows in
@@ -886,6 +893,8 @@ func _add_version_to_menu() -> void:
 
 # The touch screen's grid (touchmenu.gd), made in _ready().
 var touch_menu: Control = null
+# The pointer to the first fight (guide.gd), made in _ready().
+var guide: Control = null
 
 
 func toggle_nav_menu(toggle_name: String) -> void:

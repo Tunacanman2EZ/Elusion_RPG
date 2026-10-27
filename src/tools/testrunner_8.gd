@@ -3181,7 +3181,8 @@ func _test_the_phone_screen_is_the_games() -> void:
 		[touch_rows, key_rows, touch_size, key_size, first_how])
 	await get_tree().process_frame
 	check("  and it fits the screen", card.size.x <= 1280.0 and card.size.y <= 720.0 and card.position.y >= 0.0, card.size)
-	check("  three lines of directions, Options named in Menu", ControlsPanel.welcome_words(true).split("\n").size() == 3
+	check("  four lines: the way, Options in Menu, the potions and the free weapon (0.92.0)", ControlsPanel.welcome_words(true).split("\n").size() == 4
+		and ControlsPanel.welcome_words(true).contains("free mythic weapon") and ControlsPanel.welcome_words(false).contains("free mythic")
 		and ControlsPanel.welcome_words(true).contains("Options is in Menu"))
 	card.open_controls()
 	check("  Menu, then Controls still shows the whole list for thumbs", card.key_grid.get_child_count() / 2 == ControlsPanel.TOUCH_ROWS.size())
@@ -3194,3 +3195,58 @@ func _test_the_phone_screen_is_the_games() -> void:
 	TouchControls.set_active(was_touch)
 	await get_tree().process_frame
 	print("  the phone's screen is the game's")
+
+
+# =============================================================================
+# THE WAY TO THE FIRST FIGHT (0.92.0)
+# =============================================================================
+
+func _test_the_way_to_the_first_fight() -> void:
+	section("THE WAY TO THE FIRST FIGHT - a pointer to the next portal, then the first enemy, until the first kill (0.92.0)")
+	var GuideScript := preload("res://src/ui/guide.gd")
+	check("shown for a new character, gone after the first kill (level 1 with no XP; any XP or level means a kill)",
+		GuideScript.wanted(1, 0) and not GuideScript.wanted(1, 5) and not GuideScript.wanted(2, 0))
+	# The town as it is built: both portals read from elusion.tscn, so moving
+	# one in the editor is what this checks against.
+	var town: Node = (load("res://scene/elusion.tscn") as PackedScene).instantiate()
+	add_child(town)
+	await get_tree().process_frame
+	var square: Node2D = GuideScript._portal(town, GuideScript.TownPortalSquare)
+	var field: Node2D = GuideScript._portal(town, GuideScript.TownPortalField)
+	var spawn: Node2D = town.get_node_or_null("playerspawn") as Node2D
+	var arrive: Node2D = town.find_child("destinationpoint", true, false) as Node2D
+	check("the town has both portals, by name, each with its picture", square != null and field != null
+		and square.name == GuideScript.PORTAL_PICTURE and field.name == GuideScript.PORTAL_PICTURE)
+	if square != null and field != null and spawn != null and arrive != null:
+		var s: Vector2 = square.global_position
+		var f: Vector2 = field.global_position
+		var on_the_road: Vector2 = spawn.global_position.lerp(s, 0.8)
+		var by_the_field_portal: Vector2 = f + (f - s).normalized() * 30.0
+		check("  from where a character appears, and walking to it, the next step is the portal to the square",
+			GuideScript.town_step(spawn.global_position, s, f) == 0 and GuideScript.town_step(on_the_road, s, f) == 0)
+		check("  from where that portal lands, and at the Big Field's portal, the next step is the Big Field",
+			GuideScript.town_step(arrive.global_position, s, f) == 1 and GuideScript.town_step(by_the_field_portal, s, f) == 1,
+			[arrive.global_position, s, f])
+	town.queue_free()
+	await get_tree().process_frame
+	var far: Dictionary = GuideScript.place(Vector2(100, 100), Vector2(600, 100))
+	var near: Dictionary = GuideScript.place(Vector2(100, 100), Vector2(150, 100))
+	check("the » circles the character turned toward a far target, and stands over a near one pointing down at it",
+		(far["at"] as Vector2).is_equal_approx(Vector2(100 + GuideScript.RING, 100)) and is_zero_approx(float(far["angle"]))
+		and bool(near["over"]) and is_equal_approx(float(near["angle"]), PI / 2.0)
+		and (near["at"] as Vector2).is_equal_approx(Vector2(150, 100 - GuideScript.OVER)))
+	var word_box := Vector2(180, 20)
+	var up_words: Vector2 = GuideScript.words_at(GuideScript.place(Vector2(300, 300), Vector2(300, 0)), Vector2(20, 30), word_box)
+	var down_words: Vector2 = GuideScript.words_at(GuideScript.place(Vector2(300, 300), Vector2(300, 700)), Vector2(20, 30), word_box)
+	check("  its words sit on the far side of it from the character - above when it points up, below when down",
+		up_words.y + word_box.y <= 300.0 - GuideScript.RING and down_words.y >= 300.0 + GuideScript.RING, [up_words, down_words])
+	var answer := {"slot": 0, "updated_at": 1, "inventory": []}
+	check("  a new character's save answered with its bag is adopted (starter potions, 0.92.0)",
+		_func_body(_code_src("res://src/systems/serverstorage.gd"), "func heard_save(").contains("CharacterData.adopt_granted_bag(")
+		and answer.get("inventory") is Array)
+	check("  the » is a letter of the font, not a picture", ThemeDB.fallback_font.has_char("»".unicode_at(0))
+		and not _code_src("res://src/ui/guide.gd").contains("draw_"))
+	var hud_src: String = _func_body(_code_src("res://src/ui/characterhud.gd"), "func _ready(")
+	check("  the HUD makes it, just after the pad, under every window",
+		hud_src.contains("guide = GuideScript.new()") and hud_src.contains("move_child(guide, 1)"))
+	print("  the way to the first fight is pointed at")

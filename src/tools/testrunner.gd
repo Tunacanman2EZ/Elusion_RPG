@@ -181,6 +181,7 @@ func _run_all() -> void:
 	await _test_the_game_reports_its_errors()
 	await _test_an_account_can_be_deleted()
 	await _test_the_phone_screen_is_the_games()
+	await _test_the_way_to_the_first_fight()
 	_test_combat_bounds_match_the_game()
 	await _test_enemies_see_a_player_against_a_wall()
 	await _test_attacks_stop_at_walls()

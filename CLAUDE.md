@@ -8500,6 +8500,46 @@ Tested: `_test_the_server_owns_monster_health()` (a stand-in link,
 a follower's hits bring the count to zero, both games hear it, and the death
 is AGREED with no word from the leader).
 
+## The way to the first fight (0.92.0)
+
+The owner's first five minutes, walked: a new character stood in town with the
+welcome read once and gone, no sign of which way the portal was, and nothing
+to drink. Asked "what is next", he chose this ("yes absolutely improve as
+needed"). Three parts:
+
+- **A pointer, until the first kill** (src/ui/guide.gd, made by the HUD just
+  after the pad, under every window). A gold » - a letter of the theme font,
+  not a picture - circles the character's middle (`RING`, `BODY_MIDDLE`),
+  turned toward the next step, with its name on the far side of it from the
+  character (`words_at()`); near a target it stands over it pointing down.
+  Shown while `wanted(level, xp)`: level 1 with no XP, which the first kill
+  ends - nothing new is stored.
+  - **The town is one area with a wall across it.** Both portals stand on one
+    north-south road: the square's (`teleportnextarea`) south of the spawn,
+    the Big Field's (`leavetown`) south of that, the wall between. So the
+    nearer is not the next: `town_step()` takes the side of the line halfway
+    between them. Found by name each look (every `LOOK_SECONDS`), as each
+    one's `teleporter` sprite, so moving a portal in the editor moves it.
+  - **A field**: the nearest living monster, "Your first enemy".
+  - Bigger under a thumb, at the touch menu's scale, held to 1.6.
+- **Starter potions** - the server's (the API's CLAUDE.md, "A new
+  character's starter potions"): 5 Tiny Health Potions on key 1, and 5 Tiny
+  Mana Potions on key 2 for the mage and the healer, for a slot's first
+  character only. The save that made it is answered with its bag, which
+  `ServerStorage.heard_save()` adopts (`CharacterData.adopt_granted_bag()`):
+  the game made the character with an empty bag of its own, and the potions
+  did not show until the next sign-in.
+- **The welcome says so**: the potions on key 1, and the shop's free mythic
+  weapon on its Free shelf ("for most classes": the healer has none yet).
+  And it names the Big Field, where the square's portal has led since 0.15.0
+  ("to the Field" was a release out of date).
+
+`_test_the_way_to_the_first_fight()` (testrunner_8) reads both portals from
+elusion.tscn and holds the side rule at the spawn, on the road, where the
+portal lands and at the Big Field's portal; the placing and the words; the
+font letter; the HUD's wiring; the bag adopted. Flipping the side failed two
+checks by name. The welcome checks hold the new lines.
+
 ## The phone's screen is the game's (0.91.0)
 
 The owner, on a phone: "attack and stuff takes up a majority of the screen on

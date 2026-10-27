@@ -46,8 +46,13 @@ const KEY_COLOR := Color(1.0, 0.86, 0.5)
 const WELCOME_LINES := [
 	"Walk south down the road. The portal there takes you to the town square,",
 	"where the shop is. From the square, walk north up the road to the portal",
-	"to the Field, where the fighting is.",
+	"to the Big Field, where the fighting is.",
 	"Every enemy shows its health above its head. Start with the small ones.",
+	# THE FIRST POTIONS AND THE FREE WEAPON (0.92.0): a new character starts
+	# with potions on its first keys, and nothing told a new player the shop
+	# gives a mythic weapon away. Not the healer's yet - hence "most".
+	"Your first potions are on hotbar key 1. The shop has a free mythic",
+	"weapon for most classes: look on its Free shelf before the Field.",
 ]
 
 const WELCOME_FOOTER := "Press %s any time to see these keys again."
@@ -118,8 +123,9 @@ const TOUCH_FOOTER := "Menu, then Controls, shows this card again."
 # be measured at the wrong size.
 const TOUCH_WELCOME_LINES := [
 	"Walk south to the portal. It takes you to the town square and the shop.",
-	"From the square, walk north to the portal to the Field and the fighting.",
+	"From the square, walk north to the Big Field portal and the fighting.",
 	"Start with the small enemies. Options is in Menu, bottom left.",
+	"Potions are on key 1. The shop has a free mythic weapon for most classes.",
 ]
 const TOUCH_WELCOME_ROWS := [
 	["Move", "A thumb anywhere on the left"],
