@@ -8540,6 +8540,14 @@ a keyboard and mouse nothing moved (pictured, and every older check passes):
   player's name there opens their menu instead (`tap_name_at()` at the
   press). A tap on the world outside the zone still strikes where it lands.
   Not faded with Use: it is never drawn without a thumb.
+- **Use always there, and Menu in from the edge (0.91.3)**: "do not make
+  the use button invisable next move over the menu more it is cut off on my
+  phone because of gm panel". Use is not faded (only the Aura is). The
+  owner's Staff, Owner and Powers row is wider than Menu, and the folded bar
+  grew both ways (the scene's `grow_horizontal` 2), so it began 18 units off
+  the left of the screen. Folded, it grows right only and sits at
+  `FOLDED_LEFT` (24) from the edge; the grid opens there too. Unfolded, the
+  scene's 8 and both ways are put back.
 - **No Run button (0.91.1)**: "if player drags the coin all the way over run
   is initiated". The stick past `TouchControls.RUN_EDGE` (0.92 of its reach)
   sprints, eased back it walks, and its ring and coin light while it runs.

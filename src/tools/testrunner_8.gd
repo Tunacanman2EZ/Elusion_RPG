@@ -3026,11 +3026,12 @@ func _test_the_phone_screen_is_the_games() -> void:
 	finger.pressed = true
 	probe.call("_input", finger)
 	probe.call("_fade", PadScript.FADE_SECONDS)
-	var up_on_touch: bool = is_equal_approx((probe.get("use") as Control).modulate.a, 1.0)
+	var up_on_touch: bool = is_equal_approx((probe.get("skill") as Control).modulate.a, 1.0)
 	probe.call("_fade", PadScript.SHOW_SECONDS + PadScript.FADE_SECONDS)
-	var gone_after: bool = is_zero_approx((probe.get("use") as Control).modulate.a)
-	check("Use shows only once the screen is touched, and fades %d seconds after the last touch (0.91.2)" % int(PadScript.SHOW_SECONDS),
-		gone_after and up_on_touch, [up_on_touch, gone_after])
+	var gone_after: bool = is_zero_approx((probe.get("skill") as Control).modulate.a)
+	var use_stays: bool = is_equal_approx((probe.get("use") as Control).modulate.a, 1.0)
+	check("the Aura shows only once the screen is touched and fades %d seconds after; Use is always there (0.91.3)" % int(PadScript.SHOW_SECONDS),
+		gone_after and up_on_touch and use_stays, [up_on_touch, gone_after, use_stays])
 	# ---- Attack under the right thumb ----------------------------------------------
 	var right_zone: Rect2 = at["attack_zone"]
 	check("Attack's part of the screen is the middle right, clear of the stick's: from half way across, above the hotbar",
@@ -3107,7 +3108,7 @@ func _test_the_phone_screen_is_the_games() -> void:
 	check("on a touch screen only Menu is on the bar, at the pad's scale, from its bottom left corner",
 		bool(menu.call("is_folded")) and left == ["menubutton"] and nav.scale.x > 1.2
 		and folded_rect.size.x < bar_rect.size.x * 0.3 and is_equal_approx(folded_rect.end.y, bar_rect.end.y)
-		and is_equal_approx(folded_rect.position.x, bar_rect.position.x), [left, nav.scale, folded_rect, bar_rect])
+		and is_equal_approx(folded_rect.position.x, MenuScript.FOLDED_LEFT), [left, nav.scale, folded_rect, bar_rect])
 	var menu_button: Button = hud.get_node("%menubutton")
 	menu_button.pressed.emit()
 	var system: Control = hud.get_node("%systemmenu")
@@ -3125,6 +3126,20 @@ func _test_the_phone_screen_is_the_games() -> void:
 	stats.pressed.connect(func(): opened.append("stats"))
 	(menu.get("grid").get_node("statsbutton") as Button).pressed.emit()
 	check("  a button there presses the bar's own, and the grid shuts", opened == ["stats"] and not menu.visible, opened)
+	# THE OWNER'S ROW (0.91.3): Staff, Owner and Powers are wider than Menu, and
+	# the folded bar grew both ways, off the left of his phone.
+	var wide := Button.new()
+	wide.text = "A very wide staff button"
+	wide.custom_minimum_size = Vector2(240, 24)
+	hud.get_node("%staffrow").add_child(wide)
+	hud.get_node("%staffrow").visible = true
+	await get_tree().process_frame
+	var with_row: Rect2 = nav.get_global_rect()
+	check("  a staff row wider than Menu grows the folded bar to the right, never off the left edge, and the bar sits in from the edge",
+		is_equal_approx(with_row.position.x, MenuScript.FOLDED_LEFT) and with_row.position.x > 8.0, with_row)
+	wide.queue_free()
+	hud.get_node("%staffrow").visible = false
+	await get_tree().process_frame
 	hud.call("_mark_chat_button", true)
 	check("  Menu wears Chat's dot while the bar is folded, as it is the whole bar", menu_button.text == "Menu •", menu_button.text)
 	menu.call("open")

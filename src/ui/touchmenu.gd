@@ -35,6 +35,13 @@ const FONT_SIZE := 14
 const MENU_WIDTH := 96.0
 # The bar's right offset in the scene, put back with a keyboard.
 const BAR_RIGHT := -334.0
+# The bar's left offset in the scene, and folded (0.91.3): further in from the
+# edge, where a phone's rounded corner is. The owner, of his phone: "move over
+# the menu more it is cut off on my phone because of gm panel" - the owner's
+# Staff, Owner and Powers row is wider than Menu, and the bar grew both ways,
+# so it started off the left of the screen. Folded, it grows to the right only.
+const BAR_LEFT := 8.0
+const FOLDED_LEFT := 24.0
 const GAP := 6.0
 
 # The suite's stand-in for a phone's pixels to a CSS pixel; 0 asks the screen.
@@ -140,6 +147,8 @@ func fold(touch: bool) -> void:
 	_folded = touch
 	var f: float = thumb_scale_of(nav) if touch else 1.0
 	nav.anchor_right = 0.0 if touch else 1.0
+	nav.grow_horizontal = Control.GROW_DIRECTION_END if touch else Control.GROW_DIRECTION_BOTH
+	nav.offset_left = FOLDED_LEFT if touch else BAR_LEFT
 	nav.offset_right = nav.offset_left + MENU_WIDTH if touch else BAR_RIGHT
 	nav.scale = Vector2(f, f)
 	# Grown from its bottom left corner, where it is pinned.
@@ -176,7 +185,7 @@ func open() -> void:
 	var screen: Vector2 = get_viewport_rect().size
 	var drawn: Vector2 = size * f
 	var above: float = nav.get_global_rect().position.y if nav != null else screen.y
-	position = Vector2(clampf(8.0, 0.0, maxf(0.0, screen.x - drawn.x)),
+	position = Vector2(clampf(FOLDED_LEFT, 0.0, maxf(0.0, screen.x - drawn.x)),
 		maxf(0.0, above - drawn.y - GAP * f)).floor()
 
 

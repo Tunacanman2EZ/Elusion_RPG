@@ -276,8 +276,10 @@ func _fade(delta: float) -> void:
 			show_left = SHOW_SECONDS
 	show_left = maxf(0.0, show_left - delta)
 	shown = move_toward(shown, 1.0 if show_left > 0.0 else 0.0, delta / FADE_SECONDS)
-	# Attack is not faded: it is drawn only under its thumb.
-	for button in [use, skill]:
+	# Attack is not faded: it is drawn only under its thumb. Nor is Use
+	# (0.91.3): the owner, "do not make the use button invisable" - it is
+	# always there, at its see-through rest.
+	for button in [skill]:
 		if button != null:
 			button.modulate.a = shown
 
