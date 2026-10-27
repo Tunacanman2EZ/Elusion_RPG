@@ -8529,6 +8529,17 @@ a keyboard and mouse nothing moved (pictured, and every older check passes):
   Attack is a spare: 52 CSS pixels, Use and the Aura 40. They fade in at any
   touch (`_input()`) and out `SHOW_SECONDS` (3) after the last (`_fade()`),
   and answer a press while faded. Sockets at 60%, icons at 75% at rest.
+- **Attack under the right thumb (0.91.2)**: "attack button only needs to
+  appear when player taps screen should not be visable and anywhere on the
+  middle right screen it can appear", "left side of screen is joystick".
+  Attack is a floating `PadButton` (`place_floating()`): the control is the
+  whole of `layout()`'s `attack_zone` - from `ATTACK_ZONE_LEFT` (half) across
+  to the right edge, the stick's top down to the hotbar - and its ring is
+  drawn where the thumb lands (`_land()`), only while it is down. Held, it
+  attacks the nearest; dragged, it aims, as the button did. A quick tap on a
+  player's name there opens their menu instead (`tap_name_at()` at the
+  press). A tap on the world outside the zone still strikes where it lands.
+  Not faded with Use: it is never drawn without a thumb.
 - **No Run button (0.91.1)**: "if player drags the coin all the way over run
   is initiated". The stick past `TouchControls.RUN_EDGE` (0.92 of its reach)
   sprints, eased back it walks, and its ring and coin light while it runs.

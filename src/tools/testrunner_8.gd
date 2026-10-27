@@ -3022,17 +3022,39 @@ func _test_the_phone_screen_is_the_games() -> void:
 	# ---- the buttons only when touched ---------------------------------------------
 	var probe: Control = PadScript.new()
 	probe.call("_fade", 1.0)
-	var hidden_at_start: bool = is_zero_approx((probe.get("attack") as Control).modulate.a)
 	var finger := InputEventScreenTouch.new()
 	finger.pressed = true
 	probe.call("_input", finger)
 	probe.call("_fade", PadScript.FADE_SECONDS)
-	var up_on_touch: bool = is_equal_approx((probe.get("attack") as Control).modulate.a, 1.0) \
-		and is_equal_approx((probe.get("use") as Control).modulate.a, 1.0)
+	var up_on_touch: bool = is_equal_approx((probe.get("use") as Control).modulate.a, 1.0)
 	probe.call("_fade", PadScript.SHOW_SECONDS + PadScript.FADE_SECONDS)
-	var gone_after: bool = is_zero_approx((probe.get("attack") as Control).modulate.a)
-	check("Attack and Use show only once the screen is touched, and fade %d seconds after the last touch (0.91.1)" % int(PadScript.SHOW_SECONDS),
-		hidden_at_start and up_on_touch and gone_after, [hidden_at_start, up_on_touch, gone_after])
+	var gone_after: bool = is_zero_approx((probe.get("use") as Control).modulate.a)
+	check("Use shows only once the screen is touched, and fades %d seconds after the last touch (0.91.2)" % int(PadScript.SHOW_SECONDS),
+		gone_after and up_on_touch, [up_on_touch, gone_after])
+	# ---- Attack under the right thumb ----------------------------------------------
+	var right_zone: Rect2 = at["attack_zone"]
+	check("Attack's part of the screen is the middle right, clear of the stick's: from half way across, above the hotbar",
+		is_equal_approx(right_zone.position.x, view.x * PadScript.ATTACK_ZONE_LEFT)
+		and right_zone.position.x >= view.x * PadScript.STICK_ZONE_WIDTH and right_zone.end.y <= 720.0 - 163.0 * phone,
+		right_zone)
+	var floater: Control = probe.get("attack")
+	floater.call("place_floating", right_zone, at["attack"], PadScript.ATTACK_ART, 3.0, 1.0)
+	var ring_node: Control = floater.get("ring")
+	var unseen: bool = not ring_node.visible and floater.size.is_equal_approx(right_zone.size.round())
+	var downs: Array = []
+	floater.connect("went_down", func(): downs.append(true))
+	var thumb := InputEventScreenTouch.new()
+	thumb.index = 3
+	thumb.pressed = true
+	thumb.position = Vector2(200, 150)
+	floater.call("_gui_input", thumb)
+	var drawn_box: Rect2 = floater.get("box")
+	var under: bool = ring_node.visible and drawn_box.get_center().distance_to(thumb.position) < 1.0 and downs.size() == 1
+	thumb.pressed = false
+	floater.call("_gui_input", thumb)
+	var gone: bool = not ring_node.visible
+	check("  no Attack drawn until a thumb lands there; then it is drawn under the thumb and attacks, and goes when it lifts",
+		unseen and under and gone, [unseen, under, gone, drawn_box])
 	check("  and they are see-through: the socket at most 60% and the icon 75% at rest",
 		PadScript.TINT_IDLE.a <= 0.601 and _code_src("res://src/ui/touchpad.gd").contains("1.0 if down or lit else 0.75"))
 	check("  the stick is dimmed too: its ring at most 40% and its coin 60%, running at most 70%",

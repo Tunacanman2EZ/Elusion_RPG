@@ -8,8 +8,9 @@
 #   the stick    anywhere in the left part of the screen: it comes to where the
 #                thumb lands and follows it, and is the move keys, eight ways;
 #                drawn only while a thumb is on it (0.91.0), round (0.91.1)
-#   Attack       bottom right, above the hotbar: a press is an attack; held, it
-#                keeps attacking; dragged, it aims (TouchControls, THE AIM)
+#   Attack       a thumb anywhere on the middle right (ATTACK_ZONE_LEFT): drawn
+#                where it lands, only while down (0.91.2); a press is an attack;
+#                held, it keeps attacking; dragged, it aims (TouchControls, THE AIM)
 #   Use          the interact key: the shop, the bank, the fire, the fishing
 #                spot, a loot bag, a lever
 #   Run          no button since 0.91.1: the stick pushed to its edge runs
@@ -76,6 +77,13 @@ const MOST_SCALE := 2.4
 # The stick takes the left share of the screen, from this far down.
 const STICK_ZONE_WIDTH := 0.42
 const STICK_ZONE_TOP := 0.2
+# ATTACK UNDER THE RIGHT THUMB (0.91.2). The owner: "attack button only needs
+# to appear when player taps screen should not be visable and anywhere on the
+# middle right screen it can appear", and "left side of screen is joystick" (0.91.2).
+# From this share of the screen's width to its right edge, from the stick's
+# top down to the hotbar: a thumb down there is Attack, drawn where it lands,
+# gone when it lifts. A tap on the world outside it still strikes there.
+const ATTACK_ZONE_LEFT := 0.5
 # A button answers a touch a little outside its socket.
 const REACH := 1.1
 
@@ -268,7 +276,8 @@ func _fade(delta: float) -> void:
 			show_left = SHOW_SECONDS
 	show_left = maxf(0.0, show_left - delta)
 	shown = move_toward(shown, 1.0 if show_left > 0.0 else 0.0, delta / FADE_SECONDS)
-	for button in [attack, use, skill]:
+	# Attack is not faded: it is drawn only under its thumb.
+	for button in [use, skill]:
 		if button != null:
 			button.modulate.a = shown
 
@@ -313,8 +322,11 @@ static func layout(view: Vector2, f: float, hotbar_top: float, nav_top: float, h
 		use_box = Rect2(bars.position.x - gap - small, bars.get_center().y - small / 2.0, small, small)
 	var zone_top: float = view.y * STICK_ZONE_TOP
 	var zone := Rect2(0.0, zone_top, view.x * STICK_ZONE_WIDTH, maxf(nav_top - zone_top, stick_r * 2.0))
+	var attack_zone := Rect2(view.x * ATTACK_ZONE_LEFT, zone_top,
+		view.x * (1.0 - ATTACK_ZONE_LEFT) - edge, maxf(floor_y - zone_top, big))
 	var out := {
 		"zone": zone,
+		"attack_zone": attack_zone,
 		"stick_rest": Vector2(edge + stick_r + 10.0 * f, nav_top - edge - stick_r),
 		"stick_radius": stick_r,
 		"knob_radius": KNOB_RADIUS * f,
@@ -380,8 +392,10 @@ func lay_out() -> void:
 	for id in ["attack", "use", "run", "skill"]:
 		var button: PadButton = get(id)
 		button.visible = at.has(id)
-		if at.has(id):
-			button.place(at[id], ATTACK_ART if id == "attack" else SMALL_ART, px, LABEL_SIZE * scale_now, float(at["words"]), per_unit)
+		if id == "attack":
+			button.place_floating(at["attack_zone"], at[id], ATTACK_ART, px, per_unit)
+		elif at.has(id):
+			button.place(at[id], SMALL_ART, px, LABEL_SIZE * scale_now, float(at["words"]), per_unit)
 
 
 # =============================================================================
@@ -507,6 +521,9 @@ class PadButton extends Control:
 	var finger: int = -1
 	var _from: Vector2 = Vector2.ZERO
 	var ring: RoundSocket = null
+	# FLOATING: this control is the whole zone, and the socket is drawn where
+	# the thumb lands, only while it is down (Attack, 0.91.2).
+	var floating: bool = false
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
@@ -528,6 +545,30 @@ class PadButton extends Control:
 		box = Rect2(((size - Vector2(drawn, drawn)) / 2.0).round(), Vector2(drawn, drawn))
 		ring.place(box, pixel)
 		queue_redraw()
+
+	func place_floating(zone: Rect2, socket: Rect2, art_pixels: int, art_pixel_size: float,
+			screen_per_unit: float = 1.0) -> void:
+		"""The whole of `zone` answers; a socket of `socket`'s size is drawn
+		under the thumb."""
+		floating = true
+		art = art_pixels
+		pixel = art_pixel_size
+		per_unit = screen_per_unit
+		position = zone.position.round()
+		size = zone.size.round()
+		var drawn: float = pixel * art
+		if finger < 0:
+			box = Rect2(((size - Vector2(drawn, drawn)) / 2.0).round(), Vector2(drawn, drawn))
+		ring.place(box, pixel)
+		ring.visible = finger >= 0
+		queue_redraw()
+
+	func _land(at: Vector2) -> void:
+		"""The socket under the thumb, kept inside the zone."""
+		var corner: Vector2 = (at - box.size / 2.0).clamp(Vector2.ZERO, (size - box.size).max(Vector2.ZERO))
+		box = Rect2(corner.round(), box.size)
+		ring.place(box, pixel)
+		ring.visible = true
 
 	func radius() -> float:
 		return box.size.x / 2.0
@@ -552,8 +593,15 @@ class PadButton extends Control:
 		var touch := event as InputEventScreenTouch
 		if touch != null:
 			if touch.pressed and finger < 0:
+				# A NAME UNDER THE THUMB opens that player's menu instead
+				# (0.56.0's tap, kept on the side Attack now covers).
+				if floating and TouchControls.tap_name_at(get_global_transform_with_canvas() * touch.position):
+					accept_event()
+					return
 				finger = touch.index
 				_from = touch.position
+				if floating:
+					_land(touch.position)
 				went_down.emit()
 				queue_redraw()
 			elif not touch.pressed and touch.index == finger:
@@ -573,11 +621,15 @@ class PadButton extends Control:
 		if finger < 0:
 			return
 		finger = -1
+		if floating:
+			ring.visible = false
 		went_up.emit()
 		queue_redraw()
 
 	func _draw() -> void:
 		var down: bool = finger >= 0
+		if floating and not down:
+			return
 		ring.tint = TINT_PRESSED if down else (TINT_LIT if lit else TINT_IDLE)
 		if picture != null:
 			draw_texture_rect(picture, icon_rect(), false, Color(1, 1, 1, 1.0 if down or lit else 0.75))
