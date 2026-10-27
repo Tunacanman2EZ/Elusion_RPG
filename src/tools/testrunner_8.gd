@@ -2978,7 +2978,7 @@ func _test_an_account_can_be_deleted() -> void:
 # check; PC is held by every older check, which still passes.
 
 func _test_the_phone_screen_is_the_games() -> void:
-	section("THE PHONE'S SCREEN IS THE GAME'S - a smaller pad, no stick at rest, five keys, one Menu, a welcome for thumbs (0.91.0)")
+	section("THE PHONE'S SCREEN IS THE GAME'S - a smaller, round pad, no stick at rest, five keys, one Menu, a welcome for thumbs (0.91.0)")
 	var PadScript := preload("res://src/ui/touchpad.gd")
 	var MenuScript := preload("res://src/ui/touchmenu.gd")
 	# ---- the pad, a quarter smaller ------------------------------------------------
@@ -2987,12 +2987,58 @@ func _test_the_phone_screen_is_the_games() -> void:
 	var at: Dictionary = PadScript.layout(view, phone, 720.0 - 163.0 * phone, 720.0 - 48.0, false)
 	var covered: float = 0.0
 	for id in ["attack", "use", "run"]:
-		covered += (at[id] as Rect2).get_area()
+		if at.has(id):
+			covered += (at[id] as Rect2).get_area()
 	var share: float = covered / (view.x * view.y)
-	check("the pad's buttons cover under 4.5% of a phone's screen (they were 5.8%%): Attack %d, the small ones %d CSS pixels" % [int(PadScript.ATTACK_SIDE), int(PadScript.SMALL_SIDE)],
-		share < 0.045 and PadScript.ATTACK_SIDE <= 72.0 and PadScript.SMALL_SIDE <= 46.0, share)
-	check("  still a thumb's size: Attack at least 64 CSS pixels and the small ones 44",
-		PadScript.ATTACK_SIDE >= 64.0 and PadScript.SMALL_SIDE >= 44.0)
+	check("the pad's buttons cover under 2%% of a phone's screen (they were 5.8%%): Attack %d, Use %d CSS pixels, and no Run (0.91.1)" % [int(PadScript.ATTACK_SIDE), int(PadScript.SMALL_SIDE)],
+		share < 0.02 and not at.has("run") and PadScript.ATTACK_SIDE <= 52.0 and PadScript.SMALL_SIDE <= 40.0, share)
+	check("  still a thumb's size: Attack at least 48 CSS pixels and Use 40",
+		PadScript.ATTACK_SIDE >= 48.0 and PadScript.SMALL_SIDE >= 40.0)
+	var bars := Rect2(979.0, 611.0, 148.0, 47.0)
+	var beside: Dictionary = PadScript.layout(view, phone, 720.0 - 163.0 * phone, 720.0 - 48.0, false, bars)
+	var use_box: Rect2 = beside["use"]
+	check("Use stands just left of the health and mana bars, its middle on theirs (0.91.1)",
+		use_box.end.x <= bars.position.x and use_box.end.x >= bars.position.x - PadScript.GAP * phone - 0.5
+		and is_equal_approx(use_box.get_center().y, bars.get_center().y), [use_box, bars])
+	# ---- the stick's edge runs -----------------------------------------------------
+	var was_active: bool = TouchControls.active
+	TouchControls.set_active(true)
+	TouchControls.sprint_on = false
+	TouchControls.stick_held = true
+	TouchControls.stick = Vector2(0.6, 0.0)
+	TouchControls._physics_process(0.0)
+	var walking: bool = Input.is_action_pressed("move_right") and not Input.is_action_pressed("sprint")
+	TouchControls.stick = Vector2(1.0, 0.0)
+	TouchControls._physics_process(0.0)
+	var at_edge: bool = Input.is_action_pressed("sprint")
+	TouchControls.stick = Vector2(0.7, 0.0)
+	TouchControls._physics_process(0.0)
+	var eased: bool = not Input.is_action_pressed("sprint")
+	TouchControls.stick = Vector2.ZERO
+	TouchControls.stick_held = false
+	TouchControls._physics_process(0.0)
+	check("the stick pushed to its edge runs, and eased back it walks - no Run button (0.91.1)",
+		walking and at_edge and eased, [walking, at_edge, eased])
+	# ---- the buttons only when touched ---------------------------------------------
+	var probe: Control = PadScript.new()
+	probe.call("_fade", 1.0)
+	var hidden_at_start: bool = is_zero_approx((probe.get("attack") as Control).modulate.a)
+	var finger := InputEventScreenTouch.new()
+	finger.pressed = true
+	probe.call("_input", finger)
+	probe.call("_fade", PadScript.FADE_SECONDS)
+	var up_on_touch: bool = is_equal_approx((probe.get("attack") as Control).modulate.a, 1.0) \
+		and is_equal_approx((probe.get("use") as Control).modulate.a, 1.0)
+	probe.call("_fade", PadScript.SHOW_SECONDS + PadScript.FADE_SECONDS)
+	var gone_after: bool = is_zero_approx((probe.get("attack") as Control).modulate.a)
+	check("Attack and Use show only once the screen is touched, and fade %d seconds after the last touch (0.91.1)" % int(PadScript.SHOW_SECONDS),
+		hidden_at_start and up_on_touch and gone_after, [hidden_at_start, up_on_touch, gone_after])
+	check("  and they are see-through: the socket at most 60% and the icon 75% at rest",
+		PadScript.TINT_IDLE.a <= 0.601 and _code_src("res://src/ui/touchpad.gd").contains("1.0 if down or lit else 0.75"))
+	check("  the stick is dimmed too: its ring at most 40% and its coin 60%, running at most 70%",
+		PadScript.STICK_RING.a <= 0.401 and PadScript.STICK_COIN.a <= 0.601 and PadScript.STICK_RUNNING.a <= 0.701)
+	probe.free()
+	TouchControls.set_active(was_active)
 	var pad_src: String = _code_src("res://src/ui/touchpad.gd")
 	var stick_src: String = pad_src.substr(pad_src.find("class Stick"))
 	var stick_draw: String = stick_src.substr(stick_src.find("	func _draw("))
@@ -3001,6 +3047,22 @@ func _test_the_phone_screen_is_the_games() -> void:
 	check("the stick is drawn only under a thumb: _draw() returns at rest before it draws a thing",
 		rest_return != -1 and socket_at != -1 and rest_return < socket_at
 		and stick_draw.substr(rest_return, 40).contains("return"))
+
+	# ---- round sockets (0.91.1): the slot bent, no new pixels -------------------------
+	var shader_code: String = PadScript.ROUND_SHADER
+	var ring_src: String = pad_src.substr(pad_src.find("class RoundSocket"))
+	ring_src = ring_src.substr(0, ring_src.find("class PadButton"))
+	check("the sockets are the hotbar slot bent round: the shader reads only the slot's own pixels (texelFetch of TEXTURE, no other picture), and the ring draws SOCKET",
+		shader_code.contains("texelFetch(TEXTURE,") and not shader_code.contains("uniform sampler")
+		and not shader_code.contains("texture(") and ring_src.contains("draw_texture_rect(SOCKET,")
+		and Shader.new() != null)
+	var pad_probe: Control = PadScript.new()
+	var attack_ring: Control = (pad_probe.get("attack") as Control).get("ring")
+	check("  every button and the stick carry one, drawn behind the icon",
+		attack_ring != null and attack_ring.show_behind_parent and (pad_probe.get("stick") as Control).get("ring") != null
+		and (attack_ring.material as ShaderMaterial).shader.code == shader_code)
+	check("  a square icon's corners stay inside the round frame", PadScript.ICON_FILL * sqrt(2.0) <= 1.0 + 0.001, PadScript.ICON_FILL)
+	pad_probe.free()
 
 	# ---- the bar folds into Menu ---------------------------------------------------
 	var was_touch: bool = TouchControls.active

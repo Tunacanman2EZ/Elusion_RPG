@@ -90,8 +90,8 @@ const ROWS := [
 # on the HUD (touchpad.gd) - not keys a phone does not have. Words as they are.
 const TOUCH_ROWS := [
 	["Move", "The stick: a thumb anywhere on the left"],
-	["Sprint", "Run, then move - lifting the thumb stops it"],
-	["Attack", "Attack: at the nearest enemy; hold to keep on"],
+	["Sprint", "Push the stick all the way to its edge"],
+	["Attack", "Tap or hold where to strike, or Attack for the nearest"],
 	["Aim an attack", "Drag from Attack, or tap where to strike"],
 	["Healer: drop a healing aura", "Aura: a tap at your feet, a drag to place it"],
 	["Use the shop, bank, fire or fishing spot", "Use"],
@@ -123,8 +123,8 @@ const TOUCH_WELCOME_LINES := [
 ]
 const TOUCH_WELCOME_ROWS := [
 	["Move", "A thumb anywhere on the left"],
-	["Attack", "Hold Attack; drag it to aim"],
-	["Run", "Tap Run, then move"],
+	["Attack", "Tap or hold where to strike"],
+	["Run", "Push the stick to its edge"],
 	["Shop, bank, fire, fishing", "Use"],
 	["Potions and food", "Tap a hotbar key"],
 	["Bag, map, chat and the rest", "Menu"],

@@ -7,12 +7,14 @@
 #
 #   the stick    anywhere in the left part of the screen: it comes to where the
 #                thumb lands and follows it, and is the move keys, eight ways;
-#                drawn only while a thumb is on it (0.91.0)
+#                drawn only while a thumb is on it (0.91.0), round (0.91.1)
 #   Attack       bottom right, above the hotbar: a press is an attack; held, it
 #                keeps attacking; dragged, it aims (TouchControls, THE AIM)
 #   Use          the interact key: the shop, the bank, the fire, the fishing
 #                spot, a loot bag, a lever
-#   Run          on for this run: sprints until the thumb leaves the stick
+#   Run          no button since 0.91.1: the stick pushed to its edge runs
+#                (TouchControls.RUN_EDGE); the button is kept, hidden, for
+#                anything still calling toggle_sprint()
 #   Aura         the healer's: a tap drops it at the healer's feet, a drag
 #                where it is dragged to; only for a class that has one
 #                (player.gd, touch_skill_name())
@@ -51,11 +53,18 @@ extends Control
 # hotbar and the menu bar covered most of the lower half. Attack is 72 CSS
 # pixels now (was 92), about 19 mm on a phone - still past the 9 mm a thumb
 # needs - and the small ones 46 (was 60).
+#
+# SMALLER STILL, AND ONLY WHEN TOUCHED (0.91.1). The owner: "we do not need a
+# attack button really we could make it much smaller and only appear when
+# player touches screen ... we could also make them more transparent". A tap
+# or a hold on the world attacks there already, so Attack is a spare: 52 CSS
+# pixels, Use and the Aura 40 (about 11 mm). They fade in at any touch and
+# out SHOW_SECONDS after the last, and answer a press while faded out.
 const STICK_RADIUS := 50.0
 const KNOB_RADIUS := 21.0
-# The square sockets: Attack, and the small ones beside and above it.
-const ATTACK_SIDE := 72.0
-const SMALL_SIDE := 46.0
+# The round sockets: Attack, and the small ones beside and above it.
+const ATTACK_SIDE := 52.0
+const SMALL_SIDE := 40.0
 const EDGE := 14.0
 const GAP := 8.0
 # Room under a small socket for its word.
@@ -73,10 +82,15 @@ const REACH := 1.1
 # How many art pixels across each part is drawn: the socket's 24 (the hotbar
 # slot's visible frame) for a small one, more for Attack, so all of them share
 # one pixel size.
-const SMALL_ART := 22
+const SMALL_ART := 26
 const ATTACK_ART := 34
-# How much of a socket's inside its icon fills, at most.
-const ICON_FILL := 0.82
+# Shown this long after the last touch, faded in and out over FADE_SECONDS.
+const SHOW_SECONDS := 3.0
+const FADE_SECONDS := 0.25
+# How much of a socket's inside its icon fills, at most: a square icon whose
+# corners stay inside the round frame (0.91.1) - half its diagonal is no more
+# than the frame's inner radius, 0.707 of the inside's width.
+const ICON_FILL := 0.7
 
 const SOCKET := preload("res://art/images/hotbarslot.png")
 # The slot's frame is 3 pixels inside 4 of clear rim: nine-sliced at 7, as
@@ -95,12 +109,62 @@ const ICON_PATHS := {
 }
 const KNOB_PATH := "res://art/pack/currency/goldcoin.png"
 
+# ROUND SOCKETS (0.91.1). The owner: "we can use the same gold ring just bend
+# the shape so its round thats not ai art thats customization". The hotbar
+# slot is drawn through this shader, which bends it: every point of the circle
+# takes its colour from one of the slot's own pixels (texelFetch, no
+# blending), found by stretching its ray from the middle onto the square - so
+# each square ring of the slot becomes a circle, and the gold frame stays
+# SOCKET_FRAME pixels thick all the way round. It is nine-sliced first, as the
+# square one was, so the frame is that thick at every size. No pixel here is
+# made; each is one of the slot's.
+const ROUND_SHADER := """
+shader_type canvas_item;
+uniform float art = 22.0;
+uniform float rim = 4.0;
+uniform float slice = 7.0;
+varying vec4 tint;
+void vertex() {
+	tint = COLOR;
+}
+float sliced(float a, float length, float width) {
+	if (a < slice) {
+		return a;
+	}
+	if (a > length - slice) {
+		return width - (length - a);
+	}
+	return slice + (a - slice) * (width - 2.0 * slice) / (length - 2.0 * slice);
+}
+void fragment() {
+	vec2 p = UV * 2.0 - 1.0;
+	float r = length(p);
+	float most = max(abs(p.x), abs(p.y));
+	if (r > 1.0 || most <= 0.0) {
+		COLOR = vec4(0.0);
+	} else {
+		vec2 square = p * (r / most);
+		float length = art + 2.0 * rim;
+		vec2 a = (square + 1.0) * 0.5 * length;
+		vec2 size = vec2(textureSize(TEXTURE, 0));
+		vec2 t = vec2(sliced(a.x, length, size.x), sliced(a.y, length, size.y));
+		ivec2 at = clamp(ivec2(floor(t)), ivec2(0), ivec2(size) - 1);
+		COLOR = texelFetch(TEXTURE, at, 0) * tint;
+	}
+}
+"""
+
 # The theme's own tints for a socket button (ButtonSocket): pressed is its
 # pressed, lit is its hover.
-const TINT_IDLE := Color(1.0, 1.0, 1.0, 0.86)
+const TINT_IDLE := Color(1.0, 1.0, 1.0, 0.6)
 const TINT_PRESSED := Color(0.75, 0.7, 0.62, 1.0)
 const TINT_LIT := Color(1.35, 1.25, 1.05, 1.0)
-const WORDS := Color(0.99, 0.93, 0.74, 1.0)
+# THE STICK DIMMED (0.91.1): the owner, "dim the joystick also". Its ring and
+# coin are this see-through under a thumb; running lights them, still dimmed.
+const STICK_RING := Color(1, 1, 1, 0.4)
+const STICK_COIN := Color(1, 1, 1, 0.6)
+const STICK_RUNNING := Color(1.35, 1.25, 1.05, 0.7)
+const WORDS := Color(0.99, 0.93, 0.74, 0.8)
 const WORDS_LIT := Color(1.0, 0.82, 0.3, 1.0)
 const WORDS_OUTLINE := Color(0.1, 0.07, 0.07, 0.95)
 
@@ -114,6 +178,9 @@ var scale_now: float = 1.0
 var _skill_name: String = ""
 var _look_left: float = 0.0
 var _laid_for: Array = []
+# How long the buttons stay up, and how far faded in they are now (0 to 1).
+var show_left: float = 0.0
+var shown: float = 0.0
 
 
 func _init() -> void:
@@ -174,7 +241,7 @@ func _process(delta: float) -> void:
 	# for the thumbs (hotbar.gd, 0.55.0), and Attack sits on its top.
 	if not was_shown:
 		_look_left = 0.0
-	run.lit = TouchControls.sprint_on
+	_fade(delta)
 	_look_left -= delta
 	if _look_left <= 0.0:
 		_look_left = 0.5
@@ -186,6 +253,24 @@ func _process(delta: float) -> void:
 			lay_out()
 		elif _laid_for != _what_lays_out():
 			lay_out()
+
+
+func _input(event: InputEvent) -> void:
+	# ANY FINGER ON THE SCREEN brings the buttons up; nothing is taken from it.
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		show_left = SHOW_SECONDS
+
+
+func _fade(delta: float) -> void:
+	"""Up while a finger is down and SHOW_SECONDS after, faded in and out."""
+	for part in [stick, attack, use, skill]:
+		if part != null and int(part.get("finger")) >= 0:
+			show_left = SHOW_SECONDS
+	show_left = maxf(0.0, show_left - delta)
+	shown = move_toward(shown, 1.0 if show_left > 0.0 else 0.0, delta / FADE_SECONDS)
+	for button in [attack, use, skill]:
+		if button != null:
+			button.modulate.a = shown
 
 
 # =============================================================================
@@ -202,14 +287,19 @@ static func thumb_scale(window_pixels: Vector2, drawn_at: Vector2, pixel_ratio: 
 	return clampf(maxf(pixel_ratio, 1.0) / stretch, 1.0, MOST_SCALE)
 
 
-static func layout(view: Vector2, f: float, hotbar_top: float, nav_top: float, has_skill: bool) -> Dictionary:
+static func layout(view: Vector2, f: float, hotbar_top: float, nav_top: float, has_skill: bool,
+		bars: Rect2 = Rect2()) -> Dictionary:
 	"""Where everything goes on a `view`-sized HUD at `f` units to a CSS pixel,
 	with the hotbar's top at `hotbar_top` and the menu bar's at `nav_top`.
 	Each button is its socket's box; a small one has its word under it.
 
-	SQUARES IN A BLOCK, not round buttons on an arc: Attack bottom right over
-	the hotbar, Use to its left, Run over Use and the skill over Attack - each
-	small one's word in the gap under it."""
+	IN A BLOCK, not on an arc: Attack bottom right over the hotbar, Use to
+	its left and the skill over Attack - each small one's word in the gap
+	under it. No Run since 0.91.1: the stick's edge runs.
+
+	USE BESIDE THE HEALTH AND MANA (0.91.1): the owner, "the use button we
+	can put right next to hp and mana". Given the bars' box, Use stands just
+	left of it, its middle on theirs, its word under it."""
 	var edge: float = EDGE * f
 	var gap: float = GAP * f
 	var words: float = CAPTION * f
@@ -219,7 +309,8 @@ static func layout(view: Vector2, f: float, hotbar_top: float, nav_top: float, h
 	var floor_y: float = hotbar_top - gap
 	var attack_box := Rect2(view.x - edge - big, floor_y - big, big, big)
 	var use_box := Rect2(attack_box.position.x - gap - small, floor_y - words - small, small, small)
-	var run_box := Rect2(use_box.position.x, use_box.position.y - gap - words - small, small, small)
+	if bars.has_area():
+		use_box = Rect2(bars.position.x - gap - small, bars.get_center().y - small / 2.0, small, small)
 	var zone_top: float = view.y * STICK_ZONE_TOP
 	var zone := Rect2(0.0, zone_top, view.x * STICK_ZONE_WIDTH, maxf(nav_top - zone_top, stick_r * 2.0))
 	var out := {
@@ -229,7 +320,6 @@ static func layout(view: Vector2, f: float, hotbar_top: float, nav_top: float, h
 		"knob_radius": KNOB_RADIUS * f,
 		"attack": attack_box,
 		"use": use_box,
-		"run": run_box,
 		"words": words,
 	}
 	if has_skill:
@@ -258,12 +348,18 @@ func _what_lays_out() -> Array:
 	var hud: Node = get_parent()
 	var hotbar: Control = hud.get_node_or_null(^"hotbar") as Control if hud != null else null
 	var nav: Control = hud.get_node_or_null(^"navframe") as Control if hud != null else null
+	var health: Control = hud.get_node_or_null(^"barcontainer/healthbar") as Control if hud != null else null
+	var mana: Control = hud.get_node_or_null(^"barcontainer/magicbar") as Control if hud != null else null
+	var bars := Rect2()
+	if health != null and mana != null and health.is_visible_in_tree():
+		bars = health.get_global_rect().merge(mana.get_global_rect())
 	var view: Vector2 = get_viewport_rect().size
 	var window: Window = get_window()
 	return [view,
 		window.size if window != null else Vector2i.ZERO,
 		hotbar.get_global_rect().position.y if hotbar != null and hotbar.visible else view.y - 163.0,
-		nav.get_global_rect().position.y if nav != null and nav.visible else view.y - 48.0]
+		nav.get_global_rect().position.y if nav != null and nav.visible else view.y - 48.0,
+		bars]
 
 
 func lay_out() -> void:
@@ -276,7 +372,7 @@ func lay_out() -> void:
 		DisplayServer.screen_get_scale())
 	# Screen pixels to a game unit, for whole-pixel art.
 	var per_unit: float = minf(float(window.size.x) / view.x, float(window.size.y) / view.y) if view.x > 0.0 and view.y > 0.0 else 1.0
-	var at: Dictionary = layout(view, scale_now, float(_laid_for[2]), float(_laid_for[3]), _skill_name != "")
+	var at: Dictionary = layout(view, scale_now, float(_laid_for[2]), float(_laid_for[3]), _skill_name != "", _laid_for[4])
 	var px: float = art_pixel((at["attack"] as Rect2).size.x, ATTACK_ART, per_unit)
 	# ONE PIXEL SIZE FOR THE WHOLE PAD, Attack's: the stick and the sockets
 	# read as one set.
@@ -328,6 +424,14 @@ class Art:
 			return room / texels
 		return floor(room * screen_per_unit / texels) / screen_per_unit
 
+	static var _round: Shader = null
+
+	static func round_shader() -> Shader:
+		if _round == null:
+			_round = Shader.new()
+			_round.code = ROUND_SHADER
+		return _round
+
 	static func draw_socket(on: CanvasItem, box: Rect2, pixel: float, tint: Color) -> void:
 		"""The slot drawn as `box`, its frame `pixel` units to one of its pixels."""
 		var art := Vector2(box.size.x / pixel, box.size.y / pixel)
@@ -336,6 +440,36 @@ class Art:
 		socket.modulate_color = tint
 		on.draw_style_box(socket, Rect2(-Vector2(SOCKET_RIM, SOCKET_RIM), art + Vector2(SOCKET_RIM, SOCKET_RIM) * 2.0))
 		on.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+class RoundSocket extends Control:
+	"""The hotbar slot bent round (ROUND_SHADER), drawn behind its button."""
+	var tint: Color = TINT_IDLE:
+		set(value):
+			if value != tint:
+				tint = value
+				queue_redraw()
+
+	func _init() -> void:
+		name = "roundsocket"
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		show_behind_parent = true
+		var mat := ShaderMaterial.new()
+		mat.shader = Art.round_shader()
+		material = mat
+
+	func place(box: Rect2, pixel: float) -> void:
+		"""As `box`, its frame `pixel` units to one of the slot's pixels."""
+		var reach := Vector2(SOCKET_RIM, SOCKET_RIM) * pixel
+		position = box.position - reach
+		size = box.size + reach * 2.0
+		(material as ShaderMaterial).set_shader_parameter(&"art", box.size.x / pixel)
+		(material as ShaderMaterial).set_shader_parameter(&"rim", float(SOCKET_RIM))
+		(material as ShaderMaterial).set_shader_parameter(&"slice", float(SOCKET_SLICE))
+		queue_redraw()
+
+	func _draw() -> void:
+		draw_texture_rect(SOCKET, Rect2(Vector2.ZERO, size), false, tint)
 
 
 class PadButton extends Control:
@@ -372,10 +506,13 @@ class PadButton extends Control:
 	var caption_height: float = 15.0
 	var finger: int = -1
 	var _from: Vector2 = Vector2.ZERO
+	var ring: RoundSocket = null
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		focus_mode = Control.FOCUS_NONE
+		ring = RoundSocket.new()
+		add_child(ring)
 
 	func place(socket: Rect2, art_pixels: int, art_pixel_size: float, words_size: float, words_height: float,
 			screen_per_unit: float = 1.0) -> void:
@@ -389,6 +526,7 @@ class PadButton extends Control:
 		size = (socket.size + Vector2(reach, reach) * 2.0).round()
 		var drawn: float = pixel * art
 		box = Rect2(((size - Vector2(drawn, drawn)) / 2.0).round(), Vector2(drawn, drawn))
+		ring.place(box, pixel)
 		queue_redraw()
 
 	func radius() -> float:
@@ -440,9 +578,9 @@ class PadButton extends Control:
 
 	func _draw() -> void:
 		var down: bool = finger >= 0
-		Art.draw_socket(self, box, pixel, TINT_PRESSED if down else (TINT_LIT if lit else TINT_IDLE))
+		ring.tint = TINT_PRESSED if down else (TINT_LIT if lit else TINT_IDLE)
 		if picture != null:
-			draw_texture_rect(picture, icon_rect(), false, Color(1, 1, 1, 1.0 if down or lit else 0.95))
+			draw_texture_rect(picture, icon_rect(), false, Color(1, 1, 1, 1.0 if down or lit else 0.75))
 		if words == "":
 			return
 		var font: Font = get_theme_default_font()
@@ -478,10 +616,15 @@ class Stick extends Control:
 	var _landed_at: Vector2 = Vector2.ZERO
 	var _landed_msec: int = 0
 
+	var ring: RoundSocket = null
+
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		focus_mode = Control.FOCUS_NONE
 		coin = Art.picture(KNOB_PATH)
+		ring = RoundSocket.new()
+		ring.visible = false
+		add_child(ring)
 
 	func place(zone: Rect2, resting: Vector2, r: float, knob_r: float, art_pixel_size: float = 0.0,
 			screen_per_unit: float = 1.0) -> void:
@@ -494,7 +637,9 @@ class Stick extends Control:
 		rest = resting
 		if finger < 0:
 			base = rest
+		_place_base()
 		queue_redraw()
+
 	func _gui_input(event: InputEvent) -> void:
 		var touch := event as InputEventScreenTouch
 		if touch != null:
@@ -542,7 +687,25 @@ class Stick extends Control:
 	func _say() -> void:
 		TouchControls.stick = (knob / radius).limit_length(1.0) if radius > 0.0 else Vector2.ZERO
 		TouchControls.stick_held = finger >= 0
+		_place_base()
 		queue_redraw()
+
+	func running() -> bool:
+		return finger >= 0 and radius > 0.0 and knob.length() >= radius * TouchControls.RUN_EDGE
+
+	func _place_base() -> void:
+		"""The round slot under the thumb, as wide as the stick - and no slot
+		at rest (0.91.0)."""
+		ring.visible = finger >= 0
+		if not ring.visible:
+			return
+		var side: float = float(int(radius * 2.0 / pixel)) * pixel
+		var corner: Vector2 = base - Vector2(side, side) / 2.0
+		if per_unit >= 1.0:
+			corner = (corner * per_unit).round() / per_unit
+		# AT THE EDGE IT RUNS (0.91.1), and the ring lights to say so.
+		ring.tint = STICK_RUNNING if running() else STICK_RING
+		ring.place(Rect2(corner, Vector2(side, side)), pixel)
 
 	func knob_rect() -> Rect2:
 		"""Where the knob is drawn: the coin, a whole number of screen pixels to
@@ -563,10 +726,7 @@ class Stick extends Control:
 		# so the lower left is the game's. It appears where the thumb lands.
 		if not held:
 			return
-		var tint := Color(1, 1, 1, 0.92)
-		var side: float = float(int(radius * 2.0 / pixel)) * pixel
-		var corner: Vector2 = ((base - Vector2(side, side) / 2.0) * per_unit).round() / per_unit
-		Art.draw_socket(self, Rect2(corner, Vector2(side, side)), pixel, tint)
+		var tint: Color = STICK_RUNNING if running() else STICK_COIN
 		var spot: Rect2 = knob_rect()
 		if coin != null:
 			draw_texture_rect(coin, spot, false, tint)

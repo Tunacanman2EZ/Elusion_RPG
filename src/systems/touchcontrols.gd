@@ -67,6 +67,8 @@ const SKILL_NEAREST := 24.0
 # The stick: under this share of its reach is no direction; past it, 8 ways,
 # each a 45-degree slice (sin 22.5 degrees is where one slice meets the next).
 const STICK_DEAD := 0.22
+# The stick this far out of its reach runs (0.91.1).
+const RUN_EDGE := 0.92
 const EIGHTH := 0.3827
 
 const MOVES: Array[StringName] = [&"move_right", &"move_left", &"move_down", &"move_up"]
@@ -458,7 +460,9 @@ func _latch_move() -> void:
 	_set_action(&"move_left", way.x < 0.0)
 	_set_action(&"move_down", way.y > 0.0)
 	_set_action(&"move_up", way.y < 0.0)
-	_set_action(&"sprint", sprint_on and way != Vector2.ZERO)
+	# THE STICK'S EDGE RUNS (0.91.1): the owner, "if player drags the coin all
+	# the way over run is initiated". Eased back off the edge, it walks.
+	_set_action(&"sprint", (sprint_on or stick.length() >= RUN_EDGE) and way != Vector2.ZERO)
 
 
 static func move_way(at: Vector2) -> Vector2:

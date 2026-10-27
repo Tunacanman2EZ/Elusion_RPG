@@ -4360,7 +4360,7 @@ func _test_the_hotbar_grows_for_thumbs() -> void:
 	for f in [1.0, 1.4, 1.85, 2.4]:
 		var top: float = bottom - height * minf(f, Hotbar.TOUCH_MOST_SCALE)
 		var at: Dictionary = PadScript.layout(Vector2(1280, 720), f, top, 672.0, true)
-		for id in ["attack", "use", "run", "skill"]:
+		for id in ["attack", "use", "skill"]:
 			var socket: Rect2 = at[id]
 			var reach: Rect2 = socket.grow(socket.size.x * (PadScript.REACH - 1.0) / 2.0)
 			if reach.end.y > top or reach.position.y < 0.0:

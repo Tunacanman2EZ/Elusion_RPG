@@ -8513,6 +8513,30 @@ a keyboard and mouse nothing moved (pictured, and every older check passes):
 - **The pad a quarter smaller** (touchpad.gd): Attack 72 CSS pixels (was 92),
   Use and Run 46 (60), the stick 50 (62), the gaps with them. Still past a
   thumb's 9 mm. Under 4.5% of the screen where it was 5.8%.
+- **Round sockets (0.91.1)**: the owner, "we can use the same gold ring just bend the
+  shape so its round thats not ai art thats customization". The hotbar slot
+  is drawn through `ROUND_SHADER` (touchpad.gd) on a `RoundSocket` behind
+  each button and under the stick: each point of the circle reads one of the
+  slot's own pixels (`texelFetch`), found by stretching its ray onto the
+  square after the same nine-slice, so each square ring of the slot is a
+  circle and the gold frame stays 3 pixels thick. `ICON_FILL` is 0.7 so a
+  square icon's corners stay inside. The suite checks the shader reads only
+  TEXTURE.
+- **Smaller, see-through, only when touched (0.91.1)**: the owner, "we do
+  not need a attack button really we could make it much smaller and only
+  appear when player touches screen ... we could also make them more
+  transparent". A tap or a hold on the world already attacks there, so
+  Attack is a spare: 52 CSS pixels, Use and the Aura 40. They fade in at any
+  touch (`_input()`) and out `SHOW_SECONDS` (3) after the last (`_fade()`),
+  and answer a press while faded. Sockets at 60%, icons at 75% at rest.
+- **No Run button (0.91.1)**: "if player drags the coin all the way over run
+  is initiated". The stick past `TouchControls.RUN_EDGE` (0.92 of its reach)
+  sprints, eased back it walks, and its ring and coin light while it runs.
+  The Run button is kept, hidden and out of `layout()`, for anything still
+  calling `toggle_sprint()`.
+- **Use beside the health and mana (0.91.1)**: "the use button we can put
+  right next to hp and mana". `layout()` takes the bars' box (`bars`) and
+  stands Use just left of it, its middle on theirs.
 - **The stick only under a thumb**: `Stick._draw()` returns at rest. The zone
   still takes a touch anywhere on the left; the welcome says so.
 - **Five hotbar keys** (hotbar.gd, `TOUCH_KEYS`): 1 to 5 shown, the bar
