@@ -8500,6 +8500,29 @@ Tested: `_test_the_server_owns_monster_health()` (a stand-in link,
 a follower's hits bring the count to zero, both games hear it, and the death
 is AGREED with no word from the leader).
 
+## Deleting your own account (0.90.0)
+
+The owner, of a database diagram that showed no way to remove an account:
+"lets fix all of those". Options > Account > **Delete account...**, built in
+code under the password form (`_build_delete_account()`, like character
+select's delete), so `optionsscreen.tscn` is untouched:
+
+- A red warning that says what goes and that it cannot be undone
+  (`delete_warning_text()`), a box for the account's name ("Type <name>"), the
+  password, and **Delete forever**, pressable only when `delete_ready()` (the
+  name in any case, and a password).
+- **The first press only arms it** ("Sure? Press again to delete") for
+  `DELETE_ARM_MSEC` (4 s); typing, or shutting the form, disarms it.
+- The second sends POST /api/account/delete (the API's accountdelete/); a 401
+  says the password is wrong and changes nothing. Deleted:
+  `Api.forget_session()` with "Your account is deleted. Thank you for playing
+  Elusion.", `CharacterData.clear_current_user()`, and the login screen. The
+  server already ended every session, so there is nobody to tell.
+- Hidden when nobody is signed in. `delete_request` is the suite's door.
+
+`_test_an_account_can_be_deleted()` (testrunner_8); one sabotage (no arming)
+caught.
+
 ## Each game is sent only the players near it (0.89.0)
 
 The owner, rating the server's cost 8 of 10 ("the weak spot is data, which

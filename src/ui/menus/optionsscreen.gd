@@ -74,6 +74,7 @@ const HELP := {
 	"projectilebrightness": "How bright arrows, orbs, spikes and bullets are. They are the brightest things on the screen; lower this if a big fight is hard on your eyes.",
 	"accountemailbutton": "The email address that can get your account back if you forget your password.",
 	"accountpasswordbutton": "Change the password you sign in with. You will need your current one.",
+	"accountdeletebutton": "Delete your account for good: every character, your bank, your friends and your chat lines. It cannot be undone.",
 	"screenpick": "Which screen the game plays on, if you have more than one. It opens there next time too.",
 	"windowmode": "Windowed: a window you can move. Borderless fullscreen: fills the screen and lets you switch away instantly. Exclusive fullscreen: takes the screen over - usually the smoothest.",
 	"windowsize": "How big the window is when it is not fullscreen. The number in brackets is how many times the game's own 1280 x 720.",
@@ -242,6 +243,20 @@ signal credits_requested
 const ACCOUNT_OK := Color(0.43, 0.84, 0.49)
 const ACCOUNT_BAD := Color(0.95, 0.55, 0.45)
 const ACCOUNT_PLAIN := Color(0.78, 0.74, 0.66)
+# DELETING THE ACCOUNT (0.90.0): the second press must come this soon after
+# the first ("Sure?"), or it disarms.
+const DELETE_ARM_MSEC := 4000
+
+# Built in code beside the email and password forms (_build_delete_account()).
+var account_delete_button: Button = null
+var account_delete_form: VBoxContainer = null
+var account_delete_name: LineEdit = null
+var account_delete_password: LineEdit = null
+var account_delete_go: Button = null
+var _delete_armed_until: int = 0
+# The server's answer, for the suite: a Callable(path, body) -> Dictionary
+# stands in for Api.post; empty is the real one.
+var delete_request: Callable = Callable()
 
 # The readout is polled, not signalled: nothing announces that the driver has
 # started ignoring vsync. Half a second is fast enough to watch a change take
@@ -625,6 +640,7 @@ func _connect_account() -> void:
 		if button != null and not button.pressed.is_connected(handler):
 			button.pressed.connect(handler)
 
+	_build_delete_account()
 	_show_account_form(null)
 
 
@@ -642,6 +658,10 @@ func _show_account_form(which) -> void:
 		account_email_form.visible = which == account_email_form
 	if account_password_form != null:
 		account_password_form.visible = which == account_password_form
+	if account_delete_form != null:
+		account_delete_form.visible = which == account_delete_form
+		if which != account_delete_form:
+			_disarm_delete()
 	if which == null:
 		_account_say("", ACCOUNT_PLAIN)
 
@@ -649,6 +669,8 @@ func _show_account_form(which) -> void:
 func _refresh_account() -> void:
 	if account_email_value == null:
 		return
+	if account_delete_button != null:
+		account_delete_button.visible = Api.is_logged_in()
 	if not Api.is_logged_in():
 		account_email_value.text = "not signed in"
 		return
@@ -772,6 +794,140 @@ func _on_account_password_save() -> void:
 			field.text = ""
 	_show_account_form(null)
 	_account_say("Password updated. Other devices were signed out.", ACCOUNT_OK)
+
+
+# =============================================================================
+# DELETING THE ACCOUNT (0.90.0)
+# =============================================================================
+# The owner, of a database diagram that showed no way to remove an account:
+# "lets fix all of those". POST /api/account/delete (the API's accountdelete/)
+# takes the account's name typed and its password; this asks for both, and a
+# second press of "Delete forever" within DELETE_ARM_MSEC. Gone means every
+# character, the bank, friends, guild seat, chat lines and sign-ins; the name is
+# free again. Built in code under the password form, like character select's
+# delete, so the scene file is untouched.
+
+func _build_delete_account() -> void:
+	if account_delete_button != null or account_password_form == null:
+		return
+	var column: Node = account_password_form.get_parent()
+	account_delete_button = Button.new()
+	account_delete_button.name = "accountdeletebutton"
+	account_delete_button.text = "Delete account..."
+	account_delete_button.add_theme_font_size_override("font_size", 12)
+	account_delete_button.add_theme_color_override("font_color", ACCOUNT_BAD)
+	account_delete_button.pressed.connect(_on_account_delete_button)
+	column.add_child(account_delete_button)
+	column.move_child(account_delete_button, account_password_form.get_index() + 1)
+
+	account_delete_form = VBoxContainer.new()
+	account_delete_form.name = "accountdeleteform"
+	account_delete_form.add_theme_constant_override("separation", 4)
+	account_delete_form.visible = false
+	var warning := Label.new()
+	warning.name = "accountdeletewarning"
+	warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	warning.add_theme_font_size_override("font_size", 12)
+	warning.add_theme_color_override("font_color", ACCOUNT_BAD)
+	warning.text = delete_warning_text()
+	account_delete_form.add_child(warning)
+	account_delete_name = LineEdit.new()
+	account_delete_name.name = "accountdeletename"
+	account_delete_name.add_theme_font_size_override("font_size", 12)
+	account_delete_name.text_changed.connect(_on_delete_typed)
+	account_delete_form.add_child(account_delete_name)
+	account_delete_password = LineEdit.new()
+	account_delete_password.name = "accountdeletepassword"
+	account_delete_password.secret = true
+	account_delete_password.placeholder_text = "Your password"
+	account_delete_password.add_theme_font_size_override("font_size", 12)
+	account_delete_password.text_changed.connect(_on_delete_typed)
+	account_delete_form.add_child(account_delete_password)
+	account_delete_go = Button.new()
+	account_delete_go.name = "accountdeletego"
+	account_delete_go.text = "Delete forever"
+	account_delete_go.add_theme_font_size_override("font_size", 12)
+	account_delete_go.add_theme_color_override("font_color", ACCOUNT_BAD)
+	account_delete_go.disabled = true
+	account_delete_go.pressed.connect(_on_account_delete_go)
+	account_delete_form.add_child(account_delete_go)
+	column.add_child(account_delete_form)
+	column.move_child(account_delete_form, account_delete_button.get_index() + 1)
+
+
+static func delete_warning_text() -> String:
+	return ("This deletes your account for good: every character and what they carry, your bank, "
+		+ "your gold, your friends, your guild seat and your chat lines. It cannot be undone, "
+		+ "and nobody - not even the owner - can bring it back. Type your account's name to go on.")
+
+
+static func delete_ready(typed: String, username: String, password: String) -> bool:
+	"""The account's name typed (any case, spaces round it forgiven) and a password."""
+	return username != "" and typed.strip_edges().to_lower() == username.to_lower() and password != ""
+
+
+func _on_account_delete_button() -> void:
+	var opening: bool = account_delete_form != null and not account_delete_form.visible
+	_show_account_form(account_delete_form if opening else null)
+	if opening and account_delete_name != null:
+		account_delete_name.placeholder_text = "Type %s" % Api.username
+		_on_delete_typed("")
+
+
+func _on_delete_typed(_text: String) -> void:
+	_disarm_delete()
+	if account_delete_go != null:
+		account_delete_go.disabled = not delete_ready(
+			account_delete_name.text if account_delete_name != null else "", Api.username,
+			ApiScript.clean_password(account_delete_password.text) if account_delete_password != null else "")
+
+
+func _disarm_delete() -> void:
+	_delete_armed_until = 0
+	if account_delete_go != null:
+		account_delete_go.text = "Delete forever"
+
+
+func _on_account_delete_go() -> void:
+	if account_delete_go == null or account_delete_go.disabled:
+		return
+	var now: int = Time.get_ticks_msec()
+	if now > _delete_armed_until:
+		# THE FIRST PRESS ONLY ARMS IT.
+		_delete_armed_until = now + DELETE_ARM_MSEC
+		account_delete_go.text = "Sure? Press again to delete"
+		_account_say("Press again within %d seconds to delete your account for good." % (DELETE_ARM_MSEC / 1000),
+			ACCOUNT_BAD)
+		return
+	_disarm_delete()
+	account_delete_go.disabled = true
+	var body := {"confirm": account_delete_name.text.strip_edges(),
+		"password": ApiScript.clean_password(account_delete_password.text)}
+	var res: Dictionary = {}
+	if delete_request.is_valid():
+		res = await delete_request.call("/api/account/delete", body)
+	else:
+		res = await Api.post("/api/account/delete", body)
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	account_delete_go.disabled = false
+	if not res.get("ok", false):
+		var status: int = int(res.get("status", 0))
+		_account_say("That password is not correct." if status == 401
+			else str(res.get("error", "Your account was not deleted.")), ACCOUNT_BAD)
+		return
+	account_delete_password.text = ""
+	_account_deleted()
+
+
+func _account_deleted() -> void:
+	"""GONE: back to the login screen, with the reason on it. The server ended
+	every session already, so there is nobody to tell (forget_session)."""
+	if delete_request.is_valid():
+		return    # the suite stops here
+	Api.forget_session("Your account is deleted. Thank you for playing Elusion.")
+	CharacterData.clear_current_user()
+	get_tree().change_scene_to_file("res://scene/ui/menus/loginmenu.tscn")
 
 
 func _update_volume_labels() -> void:

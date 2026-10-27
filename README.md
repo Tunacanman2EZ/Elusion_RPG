@@ -6,6 +6,16 @@ A top-down 2.5D action RPG built in Godot 4.7 with GDScript, backed by a Flask a
 
 *The boss telegraphs in red, then erupts. Two attack tracks run on separate timers and never sync, so the pattern you are dodging is emergent rather than authored — and each spike leads you by its own telegraph time, which means a volley deforms in flight instead of landing where you were.*
 
+## Built in the open, to learn from
+
+Elusion is a labour of love and an educational showcase. I started it with no coding experience, and this repository is public on purpose: the whole game, along with the notes on what went wrong and why. If you are an indie developer or a student, you are welcome to read through it, take ideas from it, and learn from the mistakes as much as from the parts that work.
+
+- **The code is free to use**, change and learn from, under the MIT License in [LICENSE](LICENSE).
+- **The art is not.** Some of it belongs to the artists who made it; [License](#license) and [assetlicense.md](assetlicense.md) say what is whose.
+- **Where to start:** [What's interesting in here](#whats-interesting-in-here) below points at the parts worth reading first, and `CLAUDE.md` is the long record of every trap this project fell into and how it got out.
+
+If something here helps you, I would love to hear about it.
+
 ## The run
 
 Register or log in → pick one of four class slots → town → through the portal to the Big Field, one long road with ten fields off it, a different element in each and harder the further you go → the ladder at its far end down to the Field, where every monster fights bullet-hell style (0.22.0, 0.23.0) → the gauntlet → the Crowned Beholder → the teleporter that opens in its room → home to town.
@@ -14,7 +24,7 @@ It has a beginning, an escalation, an ending, and a road back to the start.
 
 ## Playing it
 
-Elusion is a PC game, played with a keyboard and mouse in a desktop browser at [play.elusionrpg.com](https://play.elusionrpg.com). It is not made for phones.
+Elusion is played in a browser at [play.elusionrpg.com](https://play.elusionrpg.com), best with a keyboard and mouse. It also plays on a phone held sideways, with touch controls, though the screen is cramped there for now.
 
 The first time a character stands in town, a welcome card gives the way out to the Field and lists every key. **H** brings the keys back at any time, and they are read from the game's own input settings, so the card cannot drift from the game. **Change keys** on that card (or on Options) turns the list into buttons: click one, press the new key. Every key but Escape and Enter can be moved, each action takes two, and a key taken from another action says so.
 

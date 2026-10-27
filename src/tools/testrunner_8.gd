@@ -2890,3 +2890,79 @@ func _test_the_game_reports_its_errors() -> void:
 	gm.queue_free()
 	Api.is_owner = was_owner
 	print("  the game reports what broke, and the owner reads it")
+
+
+# =============================================================================
+# DELETING THE ACCOUNT (0.90.0)
+# =============================================================================
+# The owner, of a database diagram with no way to remove an account: "lets fix
+# all of those". Options > Account has Delete account...: the account's name
+# typed, the password, and a second press of Delete forever; the server's
+# accountdelete/ does the rest (the API's test_accountdelete.py).
+
+func _test_an_account_can_be_deleted() -> void:
+	section("DELETING THE ACCOUNT - Options asks for the name, the password and a second press")
+	const OptionsScript := preload("res://src/ui/menus/optionsscreen.gd")
+	check("ready only with the account's name typed (any case) and a password",
+		OptionsScript.delete_ready(" TunaCan ", "tunacan", "pw") and not OptionsScript.delete_ready("tuna", "tunacan", "pw")
+		and not OptionsScript.delete_ready("tunacan", "tunacan", "") and not OptionsScript.delete_ready("", "", "pw"))
+	check("  the warning says what goes, and that it cannot be undone",
+		OptionsScript.delete_warning_text().contains("cannot be undone")
+		and OptionsScript.delete_warning_text().contains("every character")
+		and OptionsScript.HELP.has("accountdeletebutton"))
+	var was_name: String = Api.username
+	Api.username = "deltester"
+	var screen: Control = (load("res://scene/ui/menus/optionsscreen.tscn") as PackedScene).instantiate() as Control
+	add_child(screen)
+	await get_tree().process_frame
+	var button: Button = screen.get("account_delete_button")
+	var form: Control = screen.get("account_delete_form")
+	var go: Button = screen.get("account_delete_go")
+	var password_form: Control = screen.get("account_password_form")
+	check("Options has Delete account... under the password form, its form shut",
+		button != null and form != null and not form.visible and password_form != null
+		and button.get_parent() == password_form.get_parent() and button.get_index() == password_form.get_index() + 1
+		and form.get_index() == button.get_index() + 1)
+	screen.call("_on_account_delete_button")
+	check("  opening it shows the form and shuts the others, Delete forever unpressable",
+		form.visible and not password_form.visible and go.disabled
+		and (screen.get("account_delete_name") as LineEdit).placeholder_text == "Type deltester")
+	var asked: Array = []
+	var answer: Array = [{"ok": false, "status": 401, "error": "That password is not correct."}]
+	screen.set("delete_request", func(path: String, body: Dictionary) -> Dictionary:
+		asked.append([path, body])
+		await get_tree().process_frame
+		return answer[0])
+	var name_box: LineEdit = screen.get("account_delete_name")
+	var pass_box: LineEdit = screen.get("account_delete_password")
+	name_box.text = "deltestr"
+	name_box.text_changed.emit(name_box.text)
+	pass_box.text = "secret"
+	pass_box.text_changed.emit(pass_box.text)
+	check("  a misspelt name keeps it unpressable", go.disabled)
+	name_box.text = "DelTester"
+	name_box.text_changed.emit(name_box.text)
+	check("  the name and a password make it pressable", not go.disabled)
+	await screen.call("_on_account_delete_go")
+	check("THE FIRST PRESS ONLY ARMS IT: nothing sent, and it says to press again",
+		asked.is_empty() and go.text.begins_with("Sure?"))
+	await screen.call("_on_account_delete_go")
+	check("  the second sends the name and the password to /api/account/delete",
+		asked.size() == 1 and asked[0][0] == "/api/account/delete"
+		and asked[0][1] == {"confirm": "DelTester", "password": "secret"}, asked)
+	check("  a wrong password is said, and nothing else happens",
+		(screen.get("account_status") as Label).text == "That password is not correct." and screen.is_inside_tree())
+	await screen.call("_on_account_delete_go")
+	answer[0] = {"ok": true, "status": 200, "data": {"deleted": true}}
+	await screen.call("_on_account_delete_go")
+	check("  deleted: the password is cleared from its box", asked.size() == 2 and pass_box.text == "")
+	name_box.text = "deltester"
+	name_box.text_changed.emit(name_box.text)
+	pass_box.text = "x"
+	pass_box.text_changed.emit(pass_box.text)
+	await screen.call("_on_account_delete_go")
+	screen.call("_on_account_delete_button")
+	check("  shutting the form disarms it", go.text == "Delete forever")
+	screen.queue_free()
+	Api.username = was_name
+	print("  an account can be deleted, asked three times")
