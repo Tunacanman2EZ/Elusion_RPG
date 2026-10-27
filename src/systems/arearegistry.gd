@@ -38,6 +38,9 @@ const AREAS := {
 	"boss":      "res://scene/boss.tscn",
 	"bossarena": "res://scene/bossarena.tscn",
 	"easteregg": "res://scene/easteregg.tscn",
+	# 0.93.0: the endless run - a corridor, a door, and a horde that grows
+	# (src/world/endless/). Down a ladder from the town square.
+	"endless":   "res://scene/endless.tscn",
 }
 
 # WHAT A PLAYER READS for each area. Every screen that named an area ran the
@@ -51,6 +54,7 @@ const AREA_NAMES := {
 	"boss":      "Boss Room",
 	"bossarena": "Boss Arena",
 	"easteregg": "Easter Egg",
+	"endless":   "The Endless",
 }
 
 

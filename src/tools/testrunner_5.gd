@@ -26,7 +26,7 @@ func _test_every_area_floor_is_under_its_floor_effects() -> void:
 			wrong.append([area, ground, water])
 	with_ground.sort()
 	check("the ground is below every floor effect, and the water below the ground, in every area that has one",
-		wrong.is_empty() and with_ground == ["bigfield", "boss", "bossarena", "elusion", "field"], [with_ground, wrong])
+		wrong.is_empty() and with_ground == ["bigfield", "boss", "bossarena", "elusion", "endless", "field"], [with_ground, wrong])
 
 
 func _test_monsters_show_who_they_are_after() -> void:

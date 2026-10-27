@@ -322,7 +322,7 @@ func _physics_process(delta: float) -> void:
 	var attack_pressed: bool = _poll_attack_pressed()
 	# Space in a chat message is not the aura key. Discarded after the poll,
 	# never instead of it - see player.gd's loop.
-	if attack_pressed and _typing_in_ui():
+	if attack_pressed and _typing_in_ui() and not TouchControls.holds(&"attack"):
 		attack_pressed = false
 
 	# The ball, every frame - and none while dying (player.gd's _point_aim_ring()).

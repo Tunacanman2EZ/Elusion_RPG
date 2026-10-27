@@ -1933,6 +1933,106 @@ called from the poll - this project's most repeated bug - fails a check that
 drives `_apply_broadcast()` with a server-shaped answer. The two old checks on
 the cursor, which read the source, became checks on what it does.
 
+### A trade is made from the bag (0.93.0)
+
+The owner: "i find trade screen pretty annoying also we need to upgrade the
+way it works", and all four of: too many steps, the window in the way, the
+deal hard to see, starting a trade. Your side listed every item you held,
+each with a number box, in a 580 by 500 window in the middle of the screen,
+and the one asked saw only a dot on the Trade button. Nothing changed on the
+server; tradepanel.gd's header has the list.
+
+- **The one asked gets a card** (`src/ui/trade/tradeprompt.gd`, made by the
+  HUD's `_ready()` with `TradePrompt.attach(self)`): "bob wants to trade with
+  you." with **See offer** (`toggle_trade()`) and **No thanks** (the
+  window's Decline, `POST /api/trade/cancel`; a 404 means it had already
+  gone). `_read_trade()` puts it up while they asked and you have not
+  answered, and with it up the strip stays quiet - one place says it. A trade
+  answered No is not put back by a poll already in flight. The Trade button
+  keeps its dot.
+- **Beside the bag.** A new trade on screen (and the window opened on one)
+  opens the bag and stands left of it, level with its top - right of it when
+  the left has no room (`docked_at()`, `_bring_the_bag()`). Only then: once up,
+  either window may be moved. The window is 440 wide, the lists 132 high.
+- **Your side is what you give.** An item goes on by a double-click in the
+  bag or a hotbar key (a finger held, on a phone) or by dragging it onto your
+  side (`set_drag_forwarding` on the column, `_can_drop_offer()` - never from
+  the bank or a loot bag); a stack has - and +, everything an x
+  (`_offer`, `add_from_bag()`, `_step_quantity()`, `remove_from_offer()`).
+  The double-click is the bank's rule exactly (`_wire_bag()`): wired only
+  while a trade is on screen, `held_is_double_click` with it, and left alone
+  if the bank already holds the bag.
+- **You give / You get**, each with its worth and "· accepted"
+  (`column_header()`); names give way with "…" so the columns stay even.
+
+`_test_a_trade_is_made_from_the_bag()`. Played with two accounts against the
+local server (the second a script): the card, See offer, the window beside the
+bag, their potions arriving, two of ours given from the bag.
+
+### The Endless: a corridor, a door, and a horde of thousands (0.93.0)
+
+The owner: "a endless type map where monsters increase difficulty as time
+progresses but i need to account for 4 players and maybe 3000 enemies", "a
+corridor with a door as the first area then when walking through the door the
+spawn begins with a timer pumping out monsters and elites and occasionally 1
+of the elemental bosses", and "if player dies they can walk to the chest and
+collect". This is the first step: the run in one game. Sharing the horde in a
+party and the server's chest are the next two.
+
+- **The map** (`scene/endless.tscn`, area `endless`, "The Endless") is
+  written by `src/tools/buildendless.gd` - the Big Field's underground floor
+  (its tileset saved once as `scene/world/underground.tres`), the crypt's
+  walls, door, candelabras and bones (scene/crypt/), a ladder. No new art.
+  A 1,536 x 1,408 arena with the corridor walled into its foot; the
+  corridor's crypt door opens on the arena and its ladder goes up to town.
+  **A ladder in the town square** (`endlessladder`, at 330, 880) comes down
+  to the corridor (`endless_entrance`). Root script field.gd with
+  `bullet_zone` on and `tells_story` off (the opening story is the fields').
+  Rebuilding the map from the tool loses anything changed by hand.
+- **The run** (`src/world/endless/endlessrun.gd`): WAITING in the corridor;
+  stepping through the door into `start_rect` starts the clock and locks the
+  door (`cryptdoor.gd` `lock()` - the interact key does nothing, and an open
+  door shuts once the gap is clear). Every `STAGE_SECONDS` (60) a stage, in
+  the bands' order of lands (light, wind, water, ice, earth, fire, dark, round
+  again): the crowd fills toward `stage_crowd()` (60, growing, held at 3,000)
+  at a rate, each new swarmling at `stage_health()` (24, a fifth more each
+  stage - what keeps climbing once the crowd stops), `stage_speed()` and
+  `stage_touch()`. Every `ELITE_SECONDS` (30) from stage 2, `elites_at()` real
+  monsters of the land; every `BOSS_EVERY` (5) stages, its boss. All of them
+  wear the stress-copy mark: no kill report, never shared, never counted.
+- **A fall is not a death.** `Player.take_damage()` asks
+  `_endless_catches_fall()` before it starts dying; inside a run
+  `knock_out()` leaves 1 health and puts the player at `wake_spot` in the
+  corridor, keeping everything. Nothing is healed - regeneration brings it
+  back, which the server's heal check allows. The arena empties two seconds
+  later and the door unlocks. `endlesshud.gd` says the stage, land, clock,
+  slain and how many are in the arena, a banner each stage, and "You lasted
+  ... best ..." after.
+- **The swarm** (`swarm.gd`) is not made of monsters. A swarmling is a row in
+  packed arrays - where it stands and stood, health, state, facing, hue -
+  stepped `STEPS_PER_SECOND` (20) times a second: each heads for the player,
+  pushed off where its 24 px cell is thick, held in the arena and out of the
+  corridor (`keep_out`, never pushed out a side that leaves the floor). One
+  `MultiMeshInstance2D` draws them all (`swarm.gdshader`) from the small
+  slime's own sheet, recoloured like `element_recolour.gdshader`, the walk
+  drawn between steps (`blend`), at z `DRAW_Z` (-1) under everything
+  standing, with the arena as its bounds (`custom_aabb` - a buffer-filled
+  MultiMesh keeps stale bounds and was culled up close). It hits by touch,
+  through `Player.take_damage()`, every `TOUCH_SECONDS`.
+- **Every attack hits it through stand-ins** (`swarmproxy.gd`): `PROXIES`
+  (96) Node2Ds in "enemies" with a hurtbox on layer 8, chosen once a step as
+  the swarmlings nearest the player (by distance bands, not a sort) and moved
+  onto them every physics tick. A blow on one is a blow on its swarmling.
+  They carry the stress-copy mark, so nothing that numbers, counts or
+  respawns monsters sees them; aiming may pick them, which is how a spike, a
+  pet or the touch aim lands on the swarm.
+- **Measured in the container** (software drawing, so the frame is not the
+  owner's): a step of 3,000 about 3.7 ms, the buffer 1.3 ms, choosing the
+  stand-ins 0.7 ms - 20 times a second. The drawing is the GPU's.
+
+`_test_the_endless_run()`. The map's area is in `data/gamedata.json` (no
+monsters placed); copy it to the API with the next export.
+
 ### Deleting inert code is how you find out what it was for
 
 E-2 closed by making all six skills server-granted, which left machinery behind
@@ -8499,6 +8599,53 @@ Tested: `_test_the_server_owns_monster_health()` (a stand-in link,
 `HealthLink`), and the API's test_presence.py P-19 and P-19b (a real socket:
 a follower's hits bring the count to zero, both games hear it, and the death
 is AGREED with no word from the leader).
+
+## Chat you walk with (0.93.0)
+
+The owner: "my chat is not free like it use to be ... how i had global chat
+still visable and you could walk around ... it actually stays open cannot
+walk and douse not fade ... this was on godot not mobile".
+
+- **The Chat button opens the log you walk with** (chatpanel.gd
+  `open(to_type)`): see-through, the keyboard left on the game. It put the
+  keyboard in the box, so WASD typed and the window stayed solid until
+  Enter or a click away. **Enter opens it to type** (characterhud.gd
+  `open_chat_to_type()` -> `toggle_chat(true)`), and a send hands the
+  keyboard back as before (WALK AND TALK, 0.18.3). A whisper aims and types.
+- **A phone's chat rests by itself** `TOUCH_REST_SECONDS` (3) after the last
+  touch on it, unless its box has the keyboard (`_rest_soon()`,
+  `_on_rest_timer()`). It was awake until a thumb touched the game, and it
+  lies over the stick's half: with the pad's buttons no longer drawn there,
+  nothing outside it was touched and it never rested.
+- **The thumbs still walk and attack while a box has the keyboard**
+  (`TouchControls.holds()`): `_typing_in_ui()` is about keys, so "wade"
+  typed walks nobody, but the stick and Attack are not keys.
+- `_test_chat_you_walk_with()`; the button taking the keyboard back was
+  caught by name.
+
+## Every element's pattern, everywhere (0.93.0)
+
+The owner: "i want each element to have different patterns". They had them
+since 0.84.0 (elementkit.gd), but only in the Field's bullet zone; the Big
+Field and its crypt fired every family's plain shot, his 0.22.0 call ("leave
+large field as it is"). Asked where now, he chose "Everywhere, full
+strength", over a gentler Big Field and over the Field alone.
+
+- **One line**: `bullet_zone = true` on bigfield.tscn's root (field.gd adds the
+  BulletZone, with the Field's element effects at `FIELD_EFFECTS`). Every
+  monster that fires a volley there now fires its element's kit - light a
+  prism ring, wind gale fans, water a tide wall with a door, ice frost mines,
+  earth the lobbed boulder, fire the pincer, dark one of the six - with the
+  artist's own shot still flying. Skeletons have no volley and fight as they
+  did. The bosses' rooms keep their own.
+- **A new player meets it at once**: the Big Field is where the town's
+  portal lands, light and wind first. That is his call, made knowing it.
+- **Cost**: the orbs are one multimesh (BulletField), and its `capacity`
+  drops new orbs past the ceiling, so a stress crowd cannot flood it. In
+  the sandbox the Big Field with the zone drew 3 more draw calls (171 to
+  174). The frame numbers there are software drawing; the owner's readout
+  is the real measure.
+- `_test_the_bullet_zone` holds that the Big Field is a zone now.
 
 ## The way to the first fight (0.92.0)
 

@@ -17,6 +17,8 @@ const ApiScript := preload("res://src/systems/api.gd")
 const TouchMenu := preload("res://src/ui/touchmenu.gd")
 # The way to the first fight, until the first kill (0.92.0).
 const GuideScript := preload("res://src/ui/guide.gd")
+# "Bram wants to trade with you", with See offer and No thanks (0.93.0).
+const TradePrompt := preload("res://src/ui/trade/tradeprompt.gd")
 
 
 # =============================================================================
@@ -318,6 +320,7 @@ func _ready() -> void:
 	TouchControls.attach(self)
 	# AND THE BAR FOLDED INTO MENU while the touch screen is in use (0.91.0).
 	touch_menu = TouchMenu.attach(self)
+	trade_prompt = TradePrompt.attach(self)
 	# THE WAY TO THE FIRST FIGHT (0.92.0, guide.gd), under every window: just
 	# after the pad, which is the HUD's first child.
 	guide = GuideScript.new()
@@ -376,7 +379,7 @@ static func is_chat_key(event: InputEvent, focused: Control) -> bool:
 func open_chat_to_type() -> void:
 	"""Chat with the keyboard in its box: opened if it is shut."""
 	if chat_panel == null or not chat_panel.visible:
-		toggle_chat()
+		toggle_chat(true)
 	elif chat_panel.has_method("focus_entry"):
 		chat_panel.focus_entry()
 
@@ -895,6 +898,8 @@ func _add_version_to_menu() -> void:
 var touch_menu: Control = null
 # The pointer to the first fight (guide.gd), made in _ready().
 var guide: Control = null
+# The card a trade offered to you shows (tradeprompt.gd), made in _ready().
+var trade_prompt: Control = null
 
 
 func toggle_nav_menu(toggle_name: String) -> void:
@@ -1963,6 +1968,8 @@ func _read_trade(summary: Variant) -> void:
 	var window_open: bool = trade_panel != null and trade_panel.visible
 	if not (summary is Dictionary):
 		_trade_announced = ""
+		if trade_prompt != null:
+			trade_prompt.call("clear")
 		set_world_status("trade", "")
 		_mark_trade_button(false)
 		return
@@ -1976,9 +1983,20 @@ func _read_trade(summary: Variant) -> void:
 	# answered, or they have accepted and you have not. A trade you opened and
 	# are waiting on them for is not news to you.
 	var waiting_on_you: bool = (they_asked or they_accepted) and not you_accepted
-	if not waiting_on_you or window_open:
+	var trade_id: String = str(summary.get("trade_id", ""))
+	# ASKED AND NOT ANSWERED: the card too, with its two buttons
+	# (tradeprompt.gd) - the strip says it, the card answers it.
+	var card_up: bool = they_asked and not you_accepted and not window_open
+	if trade_prompt != null:
+		if card_up:
+			trade_prompt.call("ask", trade_id, who)
+		else:
+			trade_prompt.call("clear")
+	# ONE PLACE SAYS IT: with the card up the strip leaves it to the card.
+	var card_says_it: bool = card_up and trade_prompt != null
+	if not waiting_on_you or window_open or card_says_it:
 		set_world_status("trade", "")
-		_mark_trade_button(false)
+		_mark_trade_button(waiting_on_you and not window_open, who)
 	else:
 		set_world_status("trade",
 			"%s accepted your trade - waiting on you" % who if they_accepted
@@ -1986,10 +2004,9 @@ func _read_trade(summary: Variant) -> void:
 			Color(0.62, 0.86, 1.0))
 		_mark_trade_button(true, who)
 
-	var trade_id: String = str(summary.get("trade_id", ""))
 	if they_asked and trade_id != "" and trade_id != _trade_announced and not window_open:
 		_trade_announced = trade_id
-		_push_message("%s wants to trade with you. Open Trade to see the offer." % who,
+		_push_message("%s wants to trade with you." % who,
 			Color(0.62, 0.86, 1.0))
 
 
@@ -3757,7 +3774,7 @@ func _on_guild_pressed() -> void:
 	toggle_guild()
 
 
-func toggle_chat() -> void:
+func toggle_chat(to_type: bool = false) -> void:
 	# BUILT ON FIRST USE, like every other panel here. It also polls, so a
 	# player who never opens it never starts that timer.
 	if chat_panel == null:
@@ -3770,7 +3787,9 @@ func toggle_chat() -> void:
 			chat_panel.whisper_arrived(_last_whisper_from)
 
 	if chat_panel.has_method("toggle"):
-		chat_panel.toggle()
+		# TO TYPE from Enter; from the Chat button, the log you walk with
+		# (chatpanel.gd open(), 0.93.1).
+		chat_panel.toggle(to_type)
 	if chat_panel.visible:
 		_mark_chat_button(false)
 		_whisper_waiting = false

@@ -3017,6 +3017,12 @@
 			"scene": "res://scene/elusion.tscn",
 			"spawns": []
 		},
+		"endless": {
+			"respawn_jitter": 0.0,
+			"respawn_seconds": 0.0,
+			"scene": "res://scene/endless.tscn",
+			"spawns": []
+		},
 		"field": {
 			"respawn_jitter": 6.0,
 			"respawn_seconds": 30.0,

@@ -36,6 +36,11 @@ const GAP_MASK := 4 | 8
 
 @export var starts_open: bool = false
 
+# LOCKED (0.93.0, the endless run's door - endlessrun.gd): shut, and the
+# interact key does nothing, until unlocked. Locking an open door shuts it as
+# soon as nobody stands in the gap.
+var locked: bool = false
+
 var _open: bool = false
 var _player_nearby: Node = null
 var _tween: Tween = null
@@ -74,6 +79,8 @@ func _process(delta: float) -> void:
 func work() -> void:
 	"""The local player opened or shut it: everyone else in the area is told.
 	It does not shut on somebody standing in the gap."""
+	if locked:
+		return
 	if _open and gap_taken():
 		return
 	_close_in = -1.0
@@ -120,7 +127,7 @@ func _close_now() -> void:
 	taken - then look again shortly. A shut of this game's own is told."""
 	if not _open:
 		return
-	if _close_tells and _player_nearby != null and is_instance_valid(_player_nearby):
+	if not locked and _close_tells and _player_nearby != null and is_instance_valid(_player_nearby):
 		return
 	if gap_taken():
 		_close_later(RECHECK_SECONDS, _close_tells)
@@ -132,6 +139,13 @@ func _close_now() -> void:
 
 func is_open() -> bool:
 	return _open
+
+
+func lock(on: bool) -> void:
+	"""Locked: shut (once the gap is clear) and deaf to the interact key."""
+	locked = on
+	if on and _open:
+		_close_later(0.0, true)
 
 
 func _show(open: bool, animate: bool) -> void:

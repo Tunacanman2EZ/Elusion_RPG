@@ -520,6 +520,17 @@ func _is_pressed(action: StringName) -> bool:
 	return _pressed.has(action)
 
 
+func holds(action: StringName) -> bool:
+	"""True while a THUMB holds `action` down - the stick's move keys, Attack.
+	CHATTING WHILE WALKING (0.93.1): the owner, "my chat is not free like it
+	use to be ... in terms of chatting while walking". The character ignores
+	keys while a text box has the keyboard (player.gd _typing_in_ui()), so
+	typing "wade" walks nobody - and that ignored the stick too, so with the
+	chat open on a phone nobody could walk. A thumb is not a key: what this
+	holds still moves and attacks while typing."""
+	return active and _pressed.has(action)
+
+
 # =============================================================================
 # THE AIM
 # =============================================================================

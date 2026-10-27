@@ -333,7 +333,7 @@ func _ready() -> void:
 # OPENING AND CLOSING
 # =============================================================================
 
-func toggle() -> void:
+func toggle(to_type: bool = false) -> void:
 	# QUIET ON A TOUCH SCREEN, Chat on the bar wakes it rather than shutting
 	# it: it is the one way back to a window that lets touches through.
 	if visible and _on_touch() and not is_awake():
@@ -342,10 +342,10 @@ func toggle() -> void:
 	if visible:
 		close()
 	else:
-		open()
+		open(to_type)
 
 
-func open() -> void:
+func open(to_type: bool = false) -> void:
 	visible = true
 	set_process(not _playing.is_empty())
 
@@ -370,11 +370,18 @@ func open() -> void:
 		# over half the screen to read a line, and the character would stand
 		# frozen until it was sent. A tap on the box types.
 		wake_for_touch()
-	elif entry != null:
-		# FOCUS GOES TO THE BOX, because opening chat is something you do in
-		# order to type. player.gd's _typing_in_ui() sees the focused LineEdit
-		# and stops polling movement and attack, so the keyboard belongs to
-		# the conversation until the box is closed or clicked away from.
+	elif entry != null and to_type:
+		# FOCUS GOES TO THE BOX when chat is opened TO TYPE - Enter, a
+		# whisper. player.gd's _typing_in_ui() sees the focused LineEdit and
+		# stops polling movement and attack until the line is sent.
+		#
+		# NOT FROM THE CHAT BUTTON (0.93.1). The owner: "my chat is not free
+		# like it use to be ... how i had global chat still visable and you
+		# could walk around ... it actually stays open cannot walk and douse
+		# not fade". The button put the keyboard in the box, so WASD typed
+		# and the window stayed solid until Enter or a click away. Opened
+		# from the button it is the see-through log you walk with; a click in
+		# the box, or Enter, types.
 		entry.grab_focus()
 
 
@@ -401,7 +408,7 @@ func focus_entry() -> void:
 	"""Enter, from the HUD: the keyboard goes into the box, the window opening
 	first if it was shut (open() focuses it)."""
 	if not visible:
-		open()
+		open(true)
 	elif entry != null:
 		entry.grab_focus()
 
@@ -440,9 +447,40 @@ func _on_touch() -> bool:
 
 
 func wake_for_touch() -> void:
-	"""Awake, until a thumb goes back to the game."""
+	"""Awake, until a thumb goes back to the game - or TOUCH_REST_SECONDS
+	without a touch on the window while nothing is typed (0.93.1)."""
 	_touch_awake = true
+	_rest_soon()
 	_refresh_look()
+
+
+# QUIET ON ITS OWN ON A PHONE (0.93.1). Awake until a thumb went back to the
+# game - but the window lies over the stick's half of the screen, and once
+# the pad's buttons stopped being drawn there was nothing outside it to touch:
+# it stayed solid and nobody could walk. Now it goes quiet this long after the
+# last touch on it, unless its box has the keyboard.
+const TOUCH_REST_SECONDS := 3.0
+var _rest_timer: Timer = null
+
+
+func _rest_soon() -> void:
+	if not is_inside_tree():
+		return
+	if _rest_timer == null:
+		_rest_timer = Timer.new()
+		_rest_timer.one_shot = true
+		_rest_timer.timeout.connect(_on_rest_timer)
+		add_child(_rest_timer)
+	_rest_timer.start(TOUCH_REST_SECONDS)
+
+
+func _on_rest_timer() -> void:
+	if not visible or not _touch_awake:
+		return
+	if is_typing():
+		_rest_soon()
+		return
+	rest_for_touch()
 
 
 func rest_for_touch() -> void:
@@ -2218,6 +2256,11 @@ func _on_send_pressed() -> void:
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
+
+	# A THUMB ON THE AWAKE WINDOW keeps it awake TOUCH_REST_SECONDS more.
+	if event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed and _touch_awake \
+			and window_frame != null and window_frame.get_global_rect().has_point((event as InputEventScreenTouch).position):
+		_rest_soon()
 
 	# THE MOUSE OVER THE WINDOW WAKES IT (WALK AND TALK) - read from motion
 	# that is happening anyway, rather than polled every frame.

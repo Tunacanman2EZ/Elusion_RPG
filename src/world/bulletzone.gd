@@ -4,8 +4,11 @@
 # THE FIELD IS THE BULLET-HELL ZONE (0.22.0). The owner: "set up field
 # monsters to fire more projectiles small patterns and leave large field as it
 # is ... keeping rpg and bullet hell both well tuned". field.gd adds one of
-# these when its scene says `bullet_zone = true`, which field.tscn does and
-# bigfield.tscn does not, so the Big Field fights exactly as before.
+# these when its scene says `bullet_zone = true`, which field.tscn does - AND
+# SINCE 0.93.0 bigfield.tscn too: the owner, "i want each element to have
+# different patterns", asked where, "Everywhere, full strength". So every
+# element's pattern (elementkit.gd) is fired in the Big Field and its crypt
+# as in the Field. The bosses' rooms have their own volleys.
 #
 # WHAT A MONSTER DOES WITH IT: BulletZone.find(self), then one of the shapes
 # below - fire_fan(), fire_ring(), fire_chain(), fire_pincer(), fire_helix(),

@@ -3605,7 +3605,7 @@ func _test_chat_walk_and_talk() -> void:
 		chat_key_body.contains("open_chat_to_type()") and chat_key_body.contains("set_input_as_handled()"))
 	var to_type := _func_body(hud_src, "func open_chat_to_type(")
 	check("  a shut chat is opened (which puts the keyboard in the box); an open one is typed in",
-		to_type.contains("toggle_chat()") and to_type.contains("focus_entry()"))
+		to_type.contains("toggle_chat(true)") and to_type.contains("focus_entry()"))
 
 	# ---- the window ----
 	var packed: PackedScene = load("res://scene/ui/chat/chatpanel.tscn") as PackedScene

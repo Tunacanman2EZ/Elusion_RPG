@@ -1759,8 +1759,11 @@ func _test_the_bullet_zone() -> void:
 	Kit.family_only = true
 
 	check("the Field is the bullet-hell zone", _root_property("res://scene/field.tscn", &"bullet_zone") == true)
-	check("  and the Big Field is not: it stays the RPG",
-		_root_property("res://scene/bigfield.tscn", &"bullet_zone") != true)
+	# EVERY ELEMENT ITS OWN PATTERN, EVERYWHERE (0.93.0). The owner: "i want each
+	# element to have different patterns", and asked where, "Everywhere, full
+	# strength" - so the Big Field and its crypt are a bullet zone too.
+	check("  and so is the Big Field, crypt and all, since 0.93.0",
+		_root_property("res://scene/bigfield.tscn", &"bullet_zone") == true)
 	check("orbs are drawn unshaded, so the crypt's CanvasModulate cannot swallow them",
 		BulletField.SHADER_CODE.contains("render_mode unshaded"))
 	var drawn := BulletField.new()
@@ -3250,3 +3253,378 @@ func _test_the_way_to_the_first_fight() -> void:
 	check("  the HUD makes it, just after the pad, under every window",
 		hud_src.contains("guide = GuideScript.new()") and hud_src.contains("move_child(guide, 1)"))
 	print("  the way to the first fight is pointed at")
+
+
+# =============================================================================
+# CHAT YOU WALK WITH (0.93.1)
+# =============================================================================
+
+func _test_chat_you_walk_with() -> void:
+	section("CHAT YOU WALK WITH - the Chat button opens the log you walk with; Enter types; a phone's chat rests and the thumbs still walk (0.93.1)")
+	var was_touch: bool = TouchControls.active
+	TouchControls.set_active(false)
+	var chat: Control = (load("res://scene/ui/chat/chatpanel.tscn") as PackedScene).instantiate() as Control
+	add_child(chat)
+	await get_tree().process_frame
+	chat.call("open")
+	await get_tree().process_frame
+	var from_button_typing: bool = bool(chat.call("is_typing"))
+	var from_button_awake: bool = bool(chat.call("is_awake"))
+	chat.call("close")
+	chat.call("open", true)
+	await get_tree().process_frame
+	var to_type: bool = bool(chat.call("is_typing"))
+	check("from the Chat button chat opens see-through with the keyboard on the game; opened to type, the box has it",
+		not from_button_typing and not from_button_awake and to_type, [from_button_typing, from_button_awake, to_type])
+	chat.call("close")
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	check("  Enter opens it to type (toggle_chat(true)); the button's handler opens it to walk (toggle_chat())",
+		_func_body(hud_src, "func open_chat_to_type(").contains("toggle_chat(true)")
+		and _func_body(hud_src, "func _on_chat_pressed(").contains("toggle_chat()"))
+
+	# ---- a phone: the window rests by itself ----
+	TouchControls.set_active(true)
+	chat.call("open")
+	await get_tree().process_frame
+	var awake_at_open: bool = bool(chat.call("is_awake"))
+	chat.call("_on_rest_timer")
+	var rested: bool = not bool(chat.call("is_awake")) and bool(chat.call("is_passing"))
+	chat.call("wake_for_touch")
+	var entry: LineEdit = chat.get("entry")
+	entry.grab_focus()
+	chat.call("_on_rest_timer")
+	var stays_typing: bool = bool(chat.call("is_awake"))
+	entry.release_focus()
+	check("on a phone it opens awake and rests by itself %d s later, touches passing through to the stick; not while its box is typed in" % int(chat.get("TOUCH_REST_SECONDS")),
+		awake_at_open and rested and stays_typing, [awake_at_open, rested, stays_typing])
+	chat.queue_free()
+
+	# ---- the thumbs walk while a box has the keyboard ----
+	TouchControls.stick = Vector2(1, 0)
+	TouchControls.stick_held = true
+	TouchControls._physics_process(0.0)
+	var held: bool = TouchControls.holds(&"move_right")
+	TouchControls.stick = Vector2.ZERO
+	TouchControls.stick_held = false
+	TouchControls._physics_process(0.0)
+	var let_go: bool = not TouchControls.holds(&"move_right")
+	var player_src: String = _code_src("res://src/characters/player.gd")
+	check("the stick's keys are the thumbs' (TouchControls.holds), and the character walks on them while a box has the keyboard",
+		held and let_go and _func_body(player_src, "func _read_move_direction(").contains("TouchControls.holds(&\"move_right\")"),
+		[held, let_go])
+	check("  and attacks on the thumbs' Attack while typing - never on a key",
+		player_src.contains("_typing_in_ui() and not TouchControls.holds(&\"attack\")")
+		and _code_src("res://src/characters/tank.gd").contains("_typing_in_ui() and not TouchControls.holds(&\"attack\")"))
+	TouchControls.set_active(was_touch)
+	await get_tree().process_frame
+	print("  chat walks with you")
+
+
+func _test_a_trade_is_made_from_the_bag() -> void:
+	section("A TRADE IS MADE FROM THE BAG - the card, beside the bag, give by a double-click or a drop, You give / You get (0.93.0)")
+	var TradePanel: Script = load("res://src/ui/trade/tradepanel.gd") as Script
+	var Prompt: Script = load("res://src/ui/trade/tradeprompt.gd") as Script
+	var packed: PackedScene = load("res://scene/ui/trade/tradepanel.tscn") as PackedScene
+	check("the trade window and its card load", TradePanel != null and Prompt != null and packed != null)
+	if TradePanel == null or Prompt == null or packed == null:
+		return
+
+	# ---- beside the bag ----
+	var screen := Vector2(1280, 720)
+	var bag := Rect2(Vector2(997, 3), Vector2(274, 412))
+	var left: Vector2 = TradePanel.docked_at(Vector2(440, 404), bag, screen)
+	var right: Vector2 = TradePanel.docked_at(Vector2(440, 404), Rect2(Vector2(20, 40), Vector2(274, 412)), screen)
+	var squeezed: Vector2 = TradePanel.docked_at(Vector2(440, 404), Rect2(Vector2(300, 400), Vector2(800, 412)), screen)
+	check("the window stands left of the bag, level with its top; right of it when the left has no room; on the screen always",
+		left == Vector2(549, 3) and right == Vector2(302, 40)
+		and squeezed.x >= 0.0 and squeezed.x + 440.0 <= screen.x and squeezed.y + 404.0 <= screen.y,
+		[left, right, squeezed])
+	var trade_src: String = _code_src("res://src/ui/trade/tradepanel.gd")
+	check("  a new trade on screen brings the bag and docks there (_render, open_panel -> _bring_the_bag -> show_inventory)",
+		_func_body(trade_src, "func _render(").contains("_bring_the_bag.call_deferred()")
+		and _func_body(trade_src, "func open_panel(").contains("_bring_the_bag()")
+		and _func_body(trade_src, "func _bring_the_bag(").contains("show_inventory"))
+	var scene_text: String = FileAccess.get_file_as_string("res://scene/ui/trade/tradepanel.tscn")
+	check("  and it is smaller: 440 wide where it was 580 by 500",
+		scene_text.contains("custom_minimum_size = Vector2(440, 0)") and not scene_text.contains("Vector2(580, 500)"))
+
+	# ---- the columns ----
+	check("the columns say You give and You get, and who has accepted",
+		TradePanel.column_header("You get", false) == "You get"
+		and TradePanel.column_header("You give", true) == "You give  · accepted")
+
+	# ---- our side is what we give, from the bag ----
+	var was_name: String = Api.username
+	Api.username = "tester"
+	var grid := InventoryContainer.new()
+	grid.is_carry = true
+	add_child(grid)
+	grid.load_save_array([{"item_id": "tinyhealthpotion", "quantity": 5}, {"item_id": "ironsword", "quantity": 1}])
+	var panel: Control = packed.instantiate() as Control
+	add_child(panel)
+	panel.set("bag_override", grid)
+	panel.visible = true
+	await get_tree().process_frame
+	panel._apply_poll({"trade": _trade_payload(3, [{"item_id": "tinymanapotion", "quantity": 3}]), "resync": null})
+	await get_tree().process_frame
+	var hint: String = " ".join(_guild_texts_any(panel.you_list))
+	check("an empty side says how to give: a double-click or a drag", hint.contains("Double-click") and hint.contains("drag"), hint)
+	check("  and nothing of the bag is listed until it is given", panel.you_list.get_node_or_null("item_tinyhealthpotion") == null)
+	panel.set("_busy", true)
+	panel._wire_bag(true)
+	check("a trade on screen takes the bag's double-click (and a finger held - held_is_double_click)",
+		grid.held_is_double_click and grid.slot_double_clicked.is_connected(panel._on_bag_double_clicked))
+	grid.slot_double_clicked.emit(grid.slots[0])
+	await get_tree().process_frame
+	var row: Node = panel.you_list.get_node_or_null("item_tinyhealthpotion")
+	var count: Label = row.get_node_or_null("quantity") as Label if row != null else null
+	check("  a double-click gives the cell's whole stack: a row, x5, with - + and x",
+		count != null and count.text == "x5" and row.get_node_or_null("less") != null
+		and row.get_node_or_null("more") != null and row.get_node_or_null("remove") != null,
+		count.text if count else "no row")
+	check("  and goes to the server as the offer (sent once the window is free)",
+		panel._collect_offer() == [{"item_id": "tinyhealthpotion", "quantity": 5}] and bool(panel.get("_offer_dirty")),
+		panel._collect_offer())
+	await panel._step_quantity("tinyhealthpotion", 1)
+	var capped: int = int(panel.get("_offer")["tinyhealthpotion"])
+	await panel._step_quantity("tinyhealthpotion", -1)
+	check("  + stops at what you hold, - takes one off", capped == 5 and int(panel.get("_offer")["tinyhealthpotion"]) == 4,
+		[capped, panel.get("_offer")])
+	var sword_drag := {"stack": grid.slots[1].stack.duplicate_stack(), "source_slot": grid.slots[1], "source_type": "inventory"}
+	var bank_drag := {"stack": grid.slots[1].stack.duplicate_stack(), "source_slot": grid.slots[1], "source_type": "bank"}
+	check("a cell dragged from the bag drops on your side; one from the bank or a loot bag does not",
+		panel._can_drop_offer(Vector2.ZERO, sword_drag) and not panel._can_drop_offer(Vector2.ZERO, bank_drag)
+		and not panel._can_drop_offer(Vector2.ZERO, {"stack": null, "source_type": "lootbag"}))
+	await panel._drop_offer(Vector2.ZERO, sword_drag)
+	var sword_row: Node = panel.you_list.get_node_or_null("item_ironsword")
+	check("  dropped, it is given - one of a kind has no - or +",
+		sword_row != null and sword_row.get_node_or_null("less") == null
+		and (sword_row.get_node("quantity") as Label).text == "x1")
+	await panel.remove_from_offer("tinyhealthpotion")
+	check("the x takes it off", panel._collect_offer() == [{"item_id": "ironsword", "quantity": 1}], panel._collect_offer())
+	await panel.add_from_bag("tinyhealthpotion", 99)
+	check("  and nothing is given past what you hold", int(panel.get("_offer")["tinyhealthpotion"]) == 5)
+	panel._apply_poll({"trade": null, "resync": null, "last": {"trade_id": "t-one", "state": "cancelled"}})
+	check("the trade gone, a double-click in the bag means nothing again",
+		not grid.held_is_double_click and not grid.slot_double_clicked.is_connected(panel._on_bag_double_clicked)
+		and (panel.get("_offer") as Dictionary).is_empty())
+	grid.held_is_double_click = true
+	panel._apply_poll({"trade": _trade_payload(4, []), "resync": null})
+	panel._wire_bag(true)
+	check("  and the bank, holding the bag, keeps it", not grid.slot_double_clicked.is_connected(panel._on_bag_double_clicked))
+	grid.held_is_double_click = false
+	panel.queue_free()
+	grid.queue_free()
+	Api.username = was_name
+
+	# ---- the card ----
+	var hud: Node = (load("res://scene/ui/characterhud.tscn") as PackedScene).instantiate()
+	hud._build_message_box()
+	hud._build_status_strip()
+	var card: Control = Prompt.attach(hud)
+	hud.set("trade_prompt", card)
+	var asked: Dictionary = {"trade_id": "t-20", "with": "bob", "from_them": true,
+		"they_accepted": false, "you_accepted": false}
+	hud._read_trade(asked)
+	var words: String = (card.get("words") as Label).text
+	var trade_button: Button = hud.get_node_or_null("%tradebutton") as Button
+	check("a trade opened with you puts up a card - who, See offer, No thanks - and the Trade button's dot",
+		card.visible and words == "bob wants to trade with you." and card.get("see_button") is Button
+		and card.get("no_button") is Button and trade_button != null and trade_button.text == "Trade •", words)
+	check("  the card says it, so the strip does not say it twice", not hud.status_strip.visible, hud.status_label.text)
+	var sent: Array = []
+	card.set("cancel_request", func(path: String, body: Dictionary, _t: float) -> Dictionary:
+		sent.append([path, body])
+		return {"ok": true, "status": 200, "data": {}})
+	await card.call("_on_no")
+	check("No thanks is the window's Decline: POST /api/trade/cancel, and the card goes",
+		sent == [["/api/trade/cancel", {}]] and not card.visible, sent)
+	hud._read_trade(asked)
+	check("  a poll already in flight with that trade does not bring it back", not card.visible)
+	hud._read_trade({"trade_id": "t-21", "with": "cara", "from_them": true, "they_accepted": false, "you_accepted": false})
+	check("  a new one does", card.visible)
+	hud._read_trade(null)
+	check("  and when the trade has gone, so has the card", not card.visible)
+	var hud_src: String = _code_src("res://src/ui/characterhud.gd")
+	check("the HUD makes the card (TradePrompt.attach) and See offer opens the trade (toggle_trade)",
+		_func_body(hud_src, "func _ready(").contains("TradePrompt.attach(self)")
+		and _func_body(_code_src("res://src/ui/trade/tradeprompt.gd"), "func _on_see(").contains("toggle_trade"))
+	hud.free()
+	await get_tree().process_frame
+	print("  a trade is made from the bag")
+
+
+func _test_the_endless_run() -> void:
+	section("THE ENDLESS - a corridor, a door, a horde of thousands drawn in one batch, a fall that is not a death (0.93.0)")
+	var Run: GDScript = load("res://src/world/endless/endlessrun.gd") as GDScript
+	var SwarmScript: GDScript = load("res://src/world/endless/swarm.gd") as GDScript
+	check("the run, the swarm and its stand-ins load", Run != null and Run.can_instantiate()
+		and SwarmScript != null and SwarmScript.can_instantiate())
+	if Run == null or SwarmScript == null:
+		return
+
+	# ---- the curve ----
+	var crowd_rises: bool = true
+	var health_rises: bool = true
+	for s in range(1, 30):
+		if Run.stage_crowd(s + 1) < Run.stage_crowd(s) or Run.stage_health(s + 1) <= Run.stage_health(s):
+			crowd_rises = false
+			health_rises = false
+	check("a stage is a minute; the crowd starts at 60, grows every stage and never passes 3,000",
+		is_equal_approx(Run.STAGE_SECONDS, 60.0) and Run.stage_crowd(1) == 60 and crowd_rises
+		and Run.stage_crowd(40) == SwarmScript.MOST and SwarmScript.MOST == 3000, [Run.stage_crowd(1), Run.stage_crowd(13)])
+	check("  and every swarmling is tougher than the stage before's, past the cap too", health_rises
+		and Run.stage_health(1) == 24.0 and Run.stage_health(40) > Run.stage_health(30))
+	check("the lands come in the bands' order, light first and dark last, then round again",
+		Run.land_of(1) == Element.Type.LIGHT and Run.land_of(2) == Element.Type.WIND
+		and Run.land_of(7) == Element.Type.DARK and Run.land_of(8) == Element.Type.LIGHT)
+	var scenes_exist: bool = true
+	for land in Run.STAGE_LANDS:
+		for kind in Run.ELITES[land]:
+			if not ResourceLoader.exists("res://scene/enemy/%s.tscn" % kind):
+				scenes_exist = false
+		if not ResourceLoader.exists("res://scene/enemy/%s.tscn" % Run.BOSSES[land]):
+			scenes_exist = false
+	check("elites from stage 2, more as it goes; every land has elites and a boss whose scenes exist",
+		Run.elites_at(1) == 0 and Run.elites_at(2) >= 1 and Run.elites_at(9) > Run.elites_at(2) and scenes_exist)
+
+	# ---- the map ----
+	check("the Endless is an area, named for players", AreaRegistry.has_area("endless")
+		and AreaRegistry.display_name("endless") == "The Endless")
+	var packed: PackedScene = load(str(AreaRegistry.AREAS.get("endless", ""))) as PackedScene
+	var area: Node = packed.instantiate() if packed != null else null
+	check("endless.tscn loads", area != null)
+	if area == null:
+		return
+	var run_node: Node = area.get_node_or_null("endlessrun")
+	var door: Node = area.get_node_or_null("ysortworld/props/rundoor")
+	var ladder: Node = area.get_node_or_null("ysortworld/interactables/ladderup")
+	check("it has its run, its door, the way up to town and the arrival from it",
+		run_node != null and run_node.get_script() == Run and door != null and door.has_method("lock")
+		and ladder != null and str(ladder.get("destination_scene_path")) == str(AreaRegistry.AREAS["elusion"])
+		and _endless_arrival(area))
+	check("  it tells no opening story, and its elites fight in the bullet zone",
+		area.get("tells_story") == false and area.get("bullet_zone") == true)
+	var arena: Rect2 = run_node.get("arena_rect")
+	var corridor: Rect2 = run_node.get("corridor_rect")
+	var start: Rect2 = run_node.get("start_rect")
+	check("  the corridor stands in the arena, the start line is outside it past the door, and you wake inside it",
+		arena.encloses(Rect2(corridor.position, Vector2(corridor.size.x, arena.end.y - corridor.position.y)))
+		and not corridor.intersects(start) and arena.encloses(start) and corridor.has_point(run_node.get("wake_spot"))
+		and corridor.has_point((door as Node2D).position + Vector2(0, 10)))
+	area.free()
+	var town: Node = (load(AreaRegistry.AREAS["elusion"]) as PackedScene).instantiate()
+	var down: Node = town.get_node_or_null("ysortworld/interactables/endlessladder")
+	check("a ladder in the town square goes down to it, to its corridor",
+		down != null and str(down.get("destination_scene_path")) == str(AreaRegistry.AREAS["endless"])
+		and str(down.get("target_spawn_id")) == "endless_entrance")
+	town.free()
+
+	# ---- the swarm ----
+	var swarm: Node2D = SwarmScript.new()
+	swarm.set("arena", Rect2(0, 0, 800, 600))
+	(swarm.get("keep_out") as Array).append(Rect2(350, 450, 100, 150))
+	add_child(swarm)
+	await get_tree().process_frame
+	var made: int = int(swarm.call("spawn", 500, Vector2(400, 300)))
+	var px: PackedFloat32Array = swarm.get("px")
+	var py: PackedFloat32Array = swarm.get("py")
+	var clear_of_you: bool = true
+	for i in made:
+		if Vector2(px[i], py[i]).distance_to(Vector2(400, 300)) < SwarmScript.SPAWN_CLEAR:
+			clear_of_you = false
+	check("the swarm comes in at the arena's edges, none near you", made == 500 and clear_of_you
+		and int(swarm.get("alive")) == 500)
+	for k in 60:
+		swarm.call("_step", Vector2(400, 560), true)
+	px = swarm.get("px")
+	py = swarm.get("py")
+	var in_corridor: int = 0
+	var outside: int = 0
+	for i in made:
+		if Rect2(350, 450, 100, 150).has_point(Vector2(px[i], py[i])):
+			in_corridor += 1
+		if not Rect2(0, 0, 800, 600).has_point(Vector2(px[i], py[i])):
+			outside += 1
+	check("  it never walks into the corridor or off the floor, even after someone standing at the corridor's door",
+		in_corridor == 0 and outside == 0, [in_corridor, outside])
+	var proxies: Array = []
+	var proxies_right: bool = true
+	for child in swarm.get_children():
+		if child.is_in_group(&"enemies"):
+			proxies.append(child)
+			if not child.has_meta(&"stress_copy") or not child.has_method("take_damage") \
+					or (child.get_node("hurtbox") as Area2D).collision_layer != 8:
+				proxies_right = false
+	check("  %d stand-ins take its hits: in \"enemies\", marked as the owner's copies (never shared, counted or paid), a hurtbox on the monsters' layer" % proxies.size(),
+		proxies.size() == SwarmScript.PROXIES and proxies_right)
+	swarm.set("max_hp", 30.0)
+	swarm.call("spawn", 1, Vector2(-9999, -9999))
+	var last: int = int(swarm.get("_high")) - 1
+	var proxy: Node = proxies[0]
+	proxy.call("stand_on", last, Vector2(10, 10))
+	proxy.call("take_damage", 20)
+	var hp_after: float = (swarm.get("hp") as PackedFloat32Array)[last]
+	var slain_before: int = int(swarm.get("slain"))
+	proxy.call("take_damage", 20)
+	check("a blow on a stand-in is a blow on its swarmling; the one that kills it counts, and the stand-in lets go",
+		is_equal_approx(hp_after, 10.0) and int(swarm.get("slain")) == slain_before + 1
+		and not bool(swarm.call("is_alive", last)) and int(proxy.get("slot")) == -1)
+	swarm.call("clear")
+	check("  and the run's end empties it", int(swarm.get("alive")) == 0 and int(swarm.get("_high")) == 0)
+	swarm.queue_free()
+	check("one MultiMesh draws them, under everything standing, from the small slime's own sheet",
+		_code_src("res://src/world/endless/swarm.gd").contains("MultiMeshInstance2D.new()")
+		and SwarmScript.DRAW_Z < 0 and SwarmScript.SHEET.resource_path == "res://art/enemy/slime.png")
+
+	# ---- a fall ----
+	var run: Node = Run.new()
+	add_child(run)
+	await get_tree().process_frame
+	var body := Node2D.new()
+	body.set_script(_endless_body_script())
+	add_child(body)
+	body.global_position = Vector2(800, 400)
+	check("outside a run a fall is an ordinary death", run.call("knock_out", body) == false)
+	run.set("state", 1)
+	var caught: bool = bool(run.call("knock_out", body))
+	check("inside one it is caught: 1 health, back in the corridor, and the run over",
+		caught and int(body.get("hp")) == 1 and body.global_position == run.get("wake_spot")
+		and int(run.get("state")) == 2 and str(run.call("result_line")).begins_with("You lasted"))
+	var player_src: String = _code_src("res://src/characters/player.gd")
+	var take: String = _func_body(player_src, "func take_damage(")
+	check("  Player.take_damage() asks the run before it starts dying, and heals nothing",
+		take.find("_endless_catches_fall()") != -1 and take.find("_endless_catches_fall()") < take.find("_start_death_sequence()"))
+	body.queue_free()
+	if is_instance_valid(run.get("swarm")):
+		(run.get("swarm") as Node).queue_free()
+	run.queue_free()
+
+	# ---- the door ----
+	var crypt_door: Node = (load("res://scene/crypt/door.tscn") as PackedScene).instantiate()
+	add_child(crypt_door)
+	await get_tree().process_frame
+	crypt_door.call("lock", true)
+	crypt_door.call("work")
+	var stayed_shut: bool = not bool(crypt_door.call("is_open"))
+	crypt_door.call("lock", false)
+	crypt_door.call("work")
+	check("the run's door locks: the interact key does nothing until it is unlocked, then opens it",
+		stayed_shut and bool(crypt_door.call("is_open")))
+	crypt_door.queue_free()
+	await get_tree().process_frame
+	print("  the endless runs")
+
+
+func _endless_arrival(area: Node) -> bool:
+	for node in area.find_children("*", "", true, false):
+		if str(node.get("portal_id")) == "endless_entrance":
+			return true
+	return false
+
+
+func _endless_body_script() -> GDScript:
+	var script := GDScript.new()
+	script.source_code = "extends Node2D\nvar hp: int = 0\n"
+	script.reload()
+	return script

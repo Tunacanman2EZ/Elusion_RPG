@@ -285,6 +285,7 @@ size = Vector2(16.666668, 16.666668)
 
 [node name="bigfield" type="Node2D" unique_id=1525605120]
 script = ExtResource("1_field")
+bullet_zone = true
 
 [node name="ground" type="TileMapLayer" parent="." unique_id=372410063]
 z_index = -10

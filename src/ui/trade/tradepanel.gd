@@ -23,6 +23,21 @@
 # their bag went on showing what it had - and their next save deleted what the
 # trade gave them. The poll now carries the result (see _apply_poll()) and
 # CharacterData adopts it.
+#
+# A TRADE IS MADE FROM THE BAG (0.93.0). The owner: "i find trade screen pretty
+# annoying also we need to upgrade the way it works" - too many steps, the
+# window in the way, the deal hard to see, and starting one. Your side listed
+# every item you held, each with a number box to set, in a window 580 wide in
+# the middle of the screen. Now:
+#   - the window is smaller and opens BESIDE THE BAG, which opens with it
+#     (_bring_the_bag(), docked_at());
+#   - your side lists only what you are giving. An item goes on by a
+#     double-click in the bag (a finger held, on a phone) or by dragging it onto
+#     your side; a stack's - and + and an x on each row change or take it off
+#     (add_from_bag(), _offer);
+#   - the columns are "You give" and "You get", each with its worth;
+#   - and the one asked is shown a card with See offer and No thanks
+#     (tradeprompt.gd), not only a dot on the Trade button.
 extends Control
 
 
@@ -138,6 +153,10 @@ func _ready() -> void:
 	cancel_button.pressed.connect(_on_cancel_pressed)
 	username_edit.text_submitted.connect(func(_t: String) -> void: _on_offer_pressed())
 	gold_spin.value_changed.connect(_on_offer_edited)
+	# ANYWHERE ON OUR SIDE TAKES A DROP from the bag: the panel, the list and
+	# the space under it.
+	for part: Control in [you_panel, you_list, you_list.get_parent() as Control]:
+		part.set_drag_forwarding(Callable(), _can_drop_offer, _drop_offer)
 	visible = false
 
 
@@ -170,6 +189,10 @@ func open_panel(player: Node) -> void:
 	_set_notice("", false)
 	_seconds_to_nearby = NEARBY_REFRESH_SECONDS
 	await _poll(true)
+	if not is_instance_valid(self) or not is_inside_tree():
+		return
+	if trade_box.visible:
+		_bring_the_bag()
 	if start_box.visible:
 		await _check_trading_open()
 		_load_recent()
@@ -204,6 +227,7 @@ func close_panel() -> void:
 	# lives on the server; reopening this panel picks it straight back up, and
 	# the HUD's poll says if the other side does anything meanwhile.
 	visible = false
+	_wire_bag(false)
 	_clear(you_list)
 	_clear(them_list)
 	_clear(nearby_list)
@@ -290,6 +314,8 @@ func _show_start() -> void:
 	start_box.visible = true
 	trade_box.visible = false
 	header_label.text = "Trade"
+	_wire_bag(false)
+	_offer.clear()
 	_clear(you_list)
 	_clear(them_list)
 	_clear(with_row)
@@ -545,6 +571,11 @@ func _render(trade: Dictionary, render_our_side: bool) -> void:
 	summary_label.text = summary_text(us, them)
 	_update_buttons(us, them)
 
+	# A NEW TRADE ON SCREEN BRINGS THE BAG, and stands beside it. Only on a
+	# new one: once it is up the player may move either window.
+	if new_trade:
+		_bring_the_bag.call_deferred()
+
 
 func _render_with_row(them: Dictionary) -> void:
 	"""Who this trade is with: a presence dot, their character in their colour
@@ -578,21 +609,14 @@ func _render_with_row(them: Dictionary) -> void:
 func _render_our_side(us: Dictionary) -> void:
 	_loading_our_side = true
 
-	_clear(you_list)
-
-	# Prefill from what the server already has us offering, so reopening the
-	# panel shows the offer that is actually standing rather than an empty one.
-	var offered: Dictionary = {}
+	# WHAT THE SERVER HAS US OFFERING, so reopening the panel shows the offer
+	# that is actually standing rather than an empty one - and an offer the
+	# server refused is put back to what it holds.
+	_offer.clear()
 	for entry in (us.get("items", []) if us.get("items", []) is Array else []):
-		if entry is Dictionary:
-			offered[str(entry.get("item_id", ""))] = int(entry.get("quantity", 0))
-
-	var held: Dictionary = _held_items()
-	if held.is_empty():
-		you_list.add_child(_hint_label("Your backpack is empty."))
-	else:
-		for item_id in held:
-			you_list.add_child(_build_our_row(item_id, int(held[item_id]), int(offered.get(item_id, 0))))
+		if entry is Dictionary and int(entry.get("quantity", 0)) > 0:
+			_offer[str(entry.get("item_id", ""))] = int(entry.get("quantity", 0))
+	_draw_offer()
 
 	var purse: int = _current_gold()
 	gold_spin.max_value = float(purse)
@@ -603,9 +627,23 @@ func _render_our_side(us: Dictionary) -> void:
 	_update_our_summary(us)
 
 
+func _draw_offer() -> void:
+	"""Our column from `_offer`: a row for each thing we are giving, or the
+	words that say how to give something."""
+	var was_loading: bool = _loading_our_side
+	_loading_our_side = true
+	_clear(you_list)
+	var held: Dictionary = _held_items()
+	if _offer.is_empty():
+		you_list.add_child(_hint_label(EMPTY_SIDE_TOUCH if TouchControls.active else EMPTY_SIDE))
+	for item_id in _offer:
+		you_list.add_child(_build_our_row(item_id, int(held.get(item_id, 0)), int(_offer[item_id])))
+	_loading_our_side = was_loading
+
+
 func _update_our_summary(us: Dictionary) -> void:
 	var agreed: bool = bool(us.get("confirmed", false))
-	you_header.text = "You give%s" % ("  · accepted" if agreed else "")
+	you_header.text = column_header("You give", agreed)
 	you_header.add_theme_color_override("font_color", COLOUR_AGREED if agreed else Color(0.6, 0.9, 0.7))
 	you_worth.text = worth_text(us.get("offering_value"))
 
@@ -617,7 +655,7 @@ func _render_their_side(them: Dictionary) -> void:
 
 	_clear(them_list)
 	var agreed: bool = bool(them.get("confirmed", false))
-	them_header.text = "They give%s" % ("  · accepted" if agreed else "")
+	them_header.text = column_header("You get", agreed)
 	them_header.add_theme_color_override("font_color", COLOUR_AGREED if agreed else Color(0.95, 0.85, 0.6))
 
 	var items: Array = them.get("items", []) if them.get("items", []) is Array else []
@@ -638,6 +676,10 @@ func _render_their_side(them: Dictionary) -> void:
 		_set_notice("%s changed their offer. Check it before you accept."
 			% _display_name(them), true)
 		_flash(them_panel)
+
+
+static func column_header(words: String, agreed: bool) -> String:
+	return "%s  · accepted" % words if agreed else words
 
 
 static func offer_signature(side: Dictionary) -> String:
@@ -744,27 +786,46 @@ func _held_items() -> Dictionary:
 
 
 func _build_our_row(item_id: String, held: int, offered: int) -> Control:
+	"""One thing we are giving: the item, a number box when there can be more
+	than one of it, and an x that takes it off."""
 	var row := _item_row(item_id)
-
-	var spin := SpinBox.new()
-	spin.min_value = 0
-	spin.max_value = held
-	spin.step = 1
-	spin.value = clampi(offered, 0, held)
-	spin.custom_minimum_size = Vector2(62, 0)
-	spin.tooltip_text = "You have %d" % held
-	# The id travels on the node so _collect_offer() does not have to parse it
-	# back out of a label the player never sees the real value of.
-	spin.set_meta("item_id", item_id)
-	spin.value_changed.connect(_on_offer_edited)
-	row.add_child(spin)
-
-	var of := Label.new()
-	of.text = "/%d" % held
-	of.add_theme_font_size_override("font_size", HINT_FONT_SIZE + 1)
-	of.add_theme_color_override("font_color", COLOUR_HINT)
-	row.add_child(of)
+	var most: int = maxi(held, offered)
+	# A STACK HAS - AND +, not a number box: a box wide enough for its arrows
+	# left the name three letters, and a thumb hits a button.
+	if most > 1:
+		var less: Button = _small_button("less", "-", "One fewer")
+		less.disabled = offered <= 1
+		less.pressed.connect(_step_quantity.bind(item_id, -1))
+		row.add_child(less)
+	var count := Label.new()
+	count.name = "quantity"
+	count.text = "x%d" % offered
+	count.tooltip_text = "You have %d" % held
+	count.mouse_filter = Control.MOUSE_FILTER_PASS
+	count.add_theme_font_size_override("font_size", ROW_FONT_SIZE + 1)
+	count.add_theme_color_override("font_color", COLOUR_GOLD)
+	row.add_child(count)
+	if most > 1:
+		var more: Button = _small_button("more", "+", "One more")
+		more.disabled = offered >= held
+		more.pressed.connect(_step_quantity.bind(item_id, 1))
+		row.add_child(more)
+	var off: Button = _small_button("remove", "×", "Take it off the trade")
+	off.pressed.connect(remove_from_offer.bind(item_id))
+	row.add_child(off)
 	return row
+
+
+func _small_button(id: String, text: String, tip: String) -> Button:
+	var button := Button.new()
+	button.name = id
+	button.text = text
+	button.flat = true
+	button.focus_mode = Control.FOCUS_NONE
+	button.custom_minimum_size = Vector2(22, 22)
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button.tooltip_text = tip
+	return button
 
 
 func _build_their_row(entry: Dictionary) -> Control:
@@ -817,6 +878,11 @@ func _item_row(item_id: String) -> HBoxContainer:
 	label.name = "name"
 	label.text = item_name(item_id)
 	label.add_theme_font_size_override("font_size", ROW_FONT_SIZE)
+	# THE TWO COLUMNS ARE EVEN (0.93.0): a long name gives way with "…" rather
+	# than widening its column; the row's tooltip has it whole. Both labels are
+	# in a column that expands and has the row to itself - the rule under "A
+	# Label that shares a row gives way" in CLAUDE.md.
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	words.add_child(label)
 
 	var hint := Label.new()
@@ -824,6 +890,7 @@ func _item_row(item_id: String) -> HBoxContainer:
 	hint.text = quality_hint(data) + value_hint(data)
 	hint.add_theme_font_size_override("font_size", HINT_FONT_SIZE)
 	hint.add_theme_color_override("font_color", COLOUR_HINT)
+	hint.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	words.add_child(hint)
 	return row
 
@@ -868,14 +935,153 @@ static func item_tooltip(item_id: String) -> String:
 
 func _collect_offer() -> Array:
 	var items: Array = []
-	for row in you_list.get_children():
-		for child in row.get_children():
-			if child is SpinBox and child.has_meta("item_id") and int(child.value) > 0:
-				items.append({
-					"item_id": str(child.get_meta("item_id")),
-					"quantity": int(child.value),
-				})
+	for item_id in _offer:
+		if int(_offer[item_id]) > 0:
+			items.append({"item_id": str(item_id), "quantity": int(_offer[item_id])})
 	return items
+
+
+# =============================================================================
+# GIVING FROM THE BAG
+# =============================================================================
+
+# What we are giving, item id -> how many, in the order it went on. The rows
+# are drawn from it and the offer is sent from it.
+var _offer: Dictionary = {}
+
+const EMPTY_SIDE := "Double-click an item in your bag, or drag it here, to give it."
+const EMPTY_SIDE_TOUCH := "Hold an item in your bag to give it."
+
+
+func trading() -> bool:
+	"""A trade is open and on screen - the only time the bag gives to it."""
+	return visible and trade_box.visible and _my_side != ""
+
+
+func add_from_bag(item_id: String, quantity: int) -> void:
+	"""Put `quantity` more of `item_id` on our side, up to what we hold."""
+	if not trading() or item_id == "" or quantity <= 0:
+		return
+	var held: int = int(_held_items().get(item_id, 0))
+	if held <= 0:
+		return
+	var now: int = mini(held, int(_offer.get(item_id, 0)) + quantity)
+	if now == int(_offer.get(item_id, 0)):
+		_set_notice("All your %s is on the trade already." % item_name(item_id), false)
+		return
+	_offer[item_id] = now
+	_draw_offer()
+	Audio.play("ui_click")
+	await _push_offer()
+
+
+func remove_from_offer(item_id: String) -> void:
+	if not _offer.has(item_id):
+		return
+	_offer.erase(item_id)
+	_draw_offer()
+	await _push_offer()
+
+
+func _step_quantity(item_id: String, by: int) -> void:
+	if not trading() or not _offer.has(item_id):
+		return
+	var held: int = int(_held_items().get(item_id, 0))
+	var now: int = clampi(int(_offer[item_id]) + by, 1, maxi(1, held))
+	if now == int(_offer[item_id]):
+		return
+	_offer[item_id] = now
+	_draw_offer()
+	await _push_offer()
+
+
+# THE BAG, WIRED ONLY WHILE A TRADE IS ON SCREEN - the bank's rule
+# (bankinventory.gd, _wire_carry_container()): a double-click in the bag
+# means "give it" here and must go back to meaning nothing the moment the trade
+# is gone. A finger held is that double-click, for exactly as long. If the
+# bank already holds the bag (its window is open) the trade leaves it alone.
+var _bag: Node = null
+
+
+func _wire_bag(on: bool) -> void:
+	var carry: Node = _player_inventory_container() if on else _bag
+	if on and carry == _bag:
+		return
+	if _bag != null and is_instance_valid(_bag):
+		if _bag.slot_double_clicked.is_connected(_on_bag_double_clicked):
+			_bag.slot_double_clicked.disconnect(_on_bag_double_clicked)
+		_bag.set("held_is_double_click", false)
+	_bag = null
+	if not on or carry == null or not carry.has_signal("slot_double_clicked"):
+		return
+	if carry.get("held_is_double_click") == true:
+		return
+	_bag = carry
+	_bag.set("held_is_double_click", true)
+	_bag.slot_double_clicked.connect(_on_bag_double_clicked)
+
+
+func _on_bag_double_clicked(slot: Node) -> void:
+	if slot == null or not trading() or slot.call("is_empty"):
+		return
+	var stack: Variant = slot.get("stack")
+	if stack == null or stack.data == null:
+		return
+	await add_from_bag(str(stack.data.item_id), int(stack.quantity))
+
+
+func _can_drop_offer(_at: Vector2, data: Variant) -> bool:
+	"""A cell of the bag or a hotbar key dragged onto our side. Not the bank's
+	or a loot bag's: those are not ours to give."""
+	if not trading() or not (data is Dictionary) or not data.has("stack"):
+		return false
+	return not (str(data.get("source_type", "")) in ["bank", "lootbag"])
+
+
+func _drop_offer(_at: Vector2, data: Variant) -> void:
+	var stack: Variant = data.get("stack")
+	if stack == null or stack.data == null:
+		return
+	await add_from_bag(str(stack.data.item_id), int(stack.quantity))
+
+
+# =============================================================================
+# BESIDE THE BAG
+# =============================================================================
+
+const DOCK_GAP := 8.0
+
+
+static func docked_at(mine: Vector2, bag: Rect2, screen: Vector2) -> Vector2:
+	"""Where the window goes beside the bag: to its left if it fits, else to
+	its right, else as near as the screen allows - level with the bag's top."""
+	var x: float = bag.position.x - DOCK_GAP - mine.x
+	if x < 0.0:
+		x = bag.end.x + DOCK_GAP
+		if x + mine.x > screen.x:
+			x = screen.x - mine.x
+	x = clampf(x, 0.0, maxf(0.0, screen.x - mine.x))
+	var y: float = clampf(bag.position.y, 0.0, maxf(0.0, screen.y - mine.y))
+	return Vector2(x, y).floor()
+
+
+func _bring_the_bag() -> void:
+	"""Open the bag and stand beside it: a trade is made from the bag."""
+	if bag_override != null:
+		_wire_bag(true)
+		return
+	var hud: Node = get_tree().get_first_node_in_group("hud") if is_inside_tree() else null
+	if hud == null or not hud.has_method("show_inventory"):
+		return
+	hud.call("show_inventory")
+	await get_tree().process_frame
+	if not is_instance_valid(self) or not is_inside_tree() or not trading():
+		return
+	_wire_bag(true)
+	var bag: Control = hud.get("inventory_screen") as Control
+	if bag == null or not bag.is_visible_in_tree():
+		return
+	position = docked_at(size * scale, bag.get_global_rect(), get_viewport_rect().size)
 
 
 func _on_offer_edited(_value: float) -> void:
@@ -1095,10 +1301,16 @@ func _apply_result(data: Dictionary, acting: Node) -> void:
 # PLAYER AND INVENTORY
 # =============================================================================
 
+# The suite's bag: a grid of its own in place of the HUD's.
+var bag_override: Node = null
+
+
 func _player_inventory_container() -> Node:
 	# Reached through the HUD rather than held as a reference: the inventory
 	# screen is lazily created and freed on logout, so a cached node here would
 	# dangle the first time someone logs out and back in.
+	if bag_override != null and is_instance_valid(bag_override):
+		return bag_override
 	if not is_inside_tree():
 		return null
 	var hud: Node = get_tree().get_first_node_in_group("hud")

@@ -666,7 +666,7 @@ func _physics_process(_delta):
 	# holds the left-click edge detector and its own comment says it must run
 	# exactly once per physics frame; skipping the call would make a held
 	# button fire twice the moment the box lost focus.
-	if attack_pressed and _typing_in_ui():
+	if attack_pressed and _typing_in_ui() and not TouchControls.holds(&"attack"):
 		attack_pressed = false
 
 	if is_dying:
@@ -885,6 +885,12 @@ func _read_move_direction() -> Vector2:
 	leaked."""
 	var direction := Vector2.ZERO
 	if _typing_in_ui():
+		# THE THUMBS STILL WALK (0.93.1): only the keys a text box is taking
+		# are ignored; the stick's are TouchControls.holds().
+		if TouchControls.holds(&"move_right"): direction.x += 1
+		if TouchControls.holds(&"move_left"):  direction.x -= 1
+		if TouchControls.holds(&"move_down"):  direction.y += 1
+		if TouchControls.holds(&"move_up"):    direction.y -= 1
 		return direction
 	if Input.is_action_pressed("move_right"): direction.x += 1
 	if Input.is_action_pressed("move_left"):  direction.x -= 1
@@ -1857,6 +1863,12 @@ func take_damage(amount: int, element: int = Element.Type.NONE) -> void:
 
 	_play_hit_flash()
 
+	# THE ENDLESS RUN CATCHES A FALL (0.93.0): inside a run the blow that
+	# would kill leaves 1 health and wakes the player in its corridor
+	# (endlessrun.gd, knock_out()). No death, nothing lost, nothing healed.
+	if hp <= 0 and _endless_catches_fall():
+		return
+
 	if hp <= 0:
 		died.emit()
 		_start_death_sequence()
@@ -1973,6 +1985,11 @@ func restore_mana(amount: int) -> void:
 # drives skipping straight to the screen, because the death already happened
 # and its animation played in a session that has ended.
 var _died_before_load: bool = false
+
+
+func _endless_catches_fall() -> bool:
+	var run: Node = get_tree().get_first_node_in_group(&"endless_run") if is_inside_tree() else null
+	return run != null and bool(run.call("knock_out", self))
 
 
 func _start_death_sequence() -> void:

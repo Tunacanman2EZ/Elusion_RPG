@@ -33,6 +33,7 @@
 [ext_resource type="PackedScene" uid="uid://dshxbd3rf8u3v" path="res://scene/walls/shophouse.tscn" id="34_onj5f"]
 [ext_resource type="Texture2D" uid="uid://nqhgg6340427" path="res://art/tiles/barrels.png" id="34_rqwqw"]
 [ext_resource type="PackedScene" path="res://scene/interactables/anvil.tscn" id="35_anvil"]
+[ext_resource type="PackedScene" uid="uid://biy8p8c42eisd" path="res://scene/ladderdown.tscn" id="36_endless"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_onj5f"]
 texture = ExtResource("5_akpem")
@@ -982,6 +983,13 @@ shape = SubResource("RectangleShape2D_tfn2f")
 [node name="anvil" parent="ysortworld/interactables" instance=ExtResource("35_anvil")]
 position = Vector2(-118, 774)
 
+[node name="endlessladder" parent="ysortworld/interactables" instance=ExtResource("36_endless")]
+position = Vector2(330, 880)
+collision_layer = 16
+collision_mask = 4
+destination_scene_path = "res://scene/endless.tscn"
+target_spawn_id = "endless_entrance"
+
 [node name="shophouse" parent="ysortworld/interactables" unique_id=1896304923 instance=ExtResource("34_onj5f")]
 position = Vector2(-426, 823)
 
@@ -1016,3 +1024,5 @@ texture_filter = 1
 [connection signal="body_exited" from="ysortworld/interactables/teleportnextarea" to="ysortworld/interactables/teleportnextarea" method="_on_body_exited"]
 [connection signal="body_entered" from="ysortworld/interactables/leavetown" to="ysortworld/interactables/leavetown" method="_on_body_entered"]
 [connection signal="body_exited" from="ysortworld/interactables/leavetown" to="ysortworld/interactables/leavetown" method="_on_body_exited"]
+[connection signal="body_entered" from="ysortworld/interactables/endlessladder" to="ysortworld/interactables/endlessladder" method="_on_body_entered"]
+[connection signal="body_exited" from="ysortworld/interactables/endlessladder" to="ysortworld/interactables/endlessladder" method="_on_body_exited"]

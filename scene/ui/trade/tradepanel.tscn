@@ -20,7 +20,7 @@ theme = ExtResource("1_theme")
 script = ExtResource("2_script")
 
 [node name="mainpanel" type="PanelContainer" parent="."]
-custom_minimum_size = Vector2(580, 500)
+custom_minimum_size = Vector2(440, 0)
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -157,6 +157,7 @@ theme_override_constants/separation = 8
 [node name="youpanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns"]
 unique_name_in_owner = true
 layout_mode = 2
+custom_minimum_size = Vector2(200, 0)
 size_flags_horizontal = 3
 theme_type_variation = &"PanelSub"
 
@@ -173,7 +174,7 @@ text = "You give"
 horizontal_alignment = 1
 
 [node name="youscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/youpanel/youvbox"]
-custom_minimum_size = Vector2(0, 200)
+custom_minimum_size = Vector2(0, 132)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
@@ -214,6 +215,7 @@ autowrap_mode = 2
 [node name="thempanel" type="PanelContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns"]
 unique_name_in_owner = true
 layout_mode = 2
+custom_minimum_size = Vector2(200, 0)
 size_flags_horizontal = 3
 theme_type_variation = &"PanelSub"
 
@@ -226,11 +228,11 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.6, 1)
 theme_override_font_sizes/font_size = 13
-text = "They give"
+text = "You get"
 horizontal_alignment = 1
 
 [node name="themscroll" type="ScrollContainer" parent="mainpanel/margincontainer/vboxcontainer/tradebox/columns/thempanel/themvbox"]
-custom_minimum_size = Vector2(0, 200)
+custom_minimum_size = Vector2(0, 132)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0

@@ -23,8 +23,9 @@
 # WHAT DOES NOT CHANGE: an element with no kit (lightning, poison, physical)
 # fires its family's own volley; a family whose own volley IS its element's
 # (the fire sprite's pincer) keeps it; the small slime keeps its twin, the
-# split ring stays; and anywhere with no bullet zone (the Big Field, the
-# crypt) fires the ordinary projectile, as the owner chose for the Big Field.
+# split ring stays; and anywhere with no bullet zone fires the ordinary
+# projectile. The Big Field and its crypt were that until 0.93.0, when the
+# owner asked for every element's pattern "Everywhere, full strength".
 #
 # ON THE WIRE: the volley name "kit:<n>", n a number the leader rolls, which
 # picks a dark monster's kind, the tide's door and the gale's swing. Every
